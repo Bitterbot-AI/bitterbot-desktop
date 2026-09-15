@@ -5,6 +5,8 @@ import type { EmbeddedPiRunResult } from "./pi-embedded-runner.js";
 import { resolveHeartbeatPrompt } from "../auto-reply/heartbeat.js";
 import { shouldLogVerbose } from "../globals.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
+import { recordUsage } from "../infra/usage-ledger.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getProcessSupervisor } from "../process/supervisor/index.js";
 import { resolveSessionAgentIds } from "./agent-scope.js";
@@ -377,6 +379,22 @@ export async function runCliAgent(params: {
 
     const text = output.text?.trim();
     const payloads = text ? [{ text }] : undefined;
+
+    // PLAN-50: CLI-backed providers never write a pi transcript, so this is the only place
+    // their tokens can enter the ledger. Cost is resolved from the catalog (no library cost here).
+    recordUsage({
+      kind: "chat",
+      feature: USAGE_FEATURES.agentCliBackend,
+      provider: params.provider,
+      model: modelId,
+      agentId: params.agentId,
+      sessionKey: params.sessionKey,
+      sessionId: output.sessionId ?? sessionIdSent ?? params.sessionId,
+      runId: params.runId,
+      usage: output.usage,
+      durationMs: Date.now() - started,
+      config: params.config,
+    });
 
     return {
       payloads,

@@ -2,6 +2,7 @@ import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.j
 import { requireApiKey, resolveApiKeyForProvider } from "../agents/model-auth.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { recordEmbeddingUsage, type EmbedCallOptions } from "./embeddings-usage.js";
 
 export type GeminiEmbeddingClient = {
   baseUrl: string;
@@ -73,10 +74,11 @@ export async function createGeminiEmbeddingProvider(
   const embedUrl = `${baseUrl}/${client.modelPath}:embedContent`;
   const batchUrl = `${baseUrl}/${client.modelPath}:batchEmbedContents`;
 
-  const embedQuery = async (text: string): Promise<number[]> => {
+  const embedQuery = async (text: string, opts?: EmbedCallOptions): Promise<number[]> => {
     if (!text.trim()) {
       return [];
     }
+    const started = Date.now();
     const res = await fetch(embedUrl, {
       method: "POST",
       headers: client.headers,
@@ -89,14 +91,29 @@ export async function createGeminiEmbeddingProvider(
       const payload = await res.text();
       throw new Error(`gemini embeddings failed: ${res.status} ${payload}`);
     }
-    const payload = (await res.json()) as { embedding?: { values?: number[] } };
+    const payload = (await res.json()) as {
+      embedding?: { values?: number[] };
+      usageMetadata?: { promptTokenCount?: number };
+    };
+    // PLAN-50: newer Gemini responses carry usageMetadata.promptTokenCount; older ones carry
+    // nothing, in which case the count is estimated and tagged.
+    recordEmbeddingUsage({
+      providerId: "gemini",
+      model: client.model,
+      texts: [text],
+      tokens: payload.usageMetadata?.promptTokenCount,
+      feature: opts?.feature,
+      agentId: options.agentId,
+      durationMs: Date.now() - started,
+    });
     return payload.embedding?.values ?? [];
   };
 
-  const embedBatch = async (texts: string[]): Promise<number[][]> => {
+  const embedBatch = async (texts: string[], opts?: EmbedCallOptions): Promise<number[][]> => {
     if (texts.length === 0) {
       return [];
     }
+    const started = Date.now();
     const requests = texts.map((text) => ({
       model: client.modelPath,
       content: { parts: [{ text }] },
@@ -111,7 +128,19 @@ export async function createGeminiEmbeddingProvider(
       const payload = await res.text();
       throw new Error(`gemini embeddings failed: ${res.status} ${payload}`);
     }
-    const payload = (await res.json()) as { embeddings?: Array<{ values?: number[] }> };
+    const payload = (await res.json()) as {
+      embeddings?: Array<{ values?: number[] }>;
+      usageMetadata?: { promptTokenCount?: number };
+    };
+    recordEmbeddingUsage({
+      providerId: "gemini",
+      model: client.model,
+      texts,
+      tokens: payload.usageMetadata?.promptTokenCount,
+      feature: opts?.feature,
+      agentId: options.agentId,
+      durationMs: Date.now() - started,
+    });
     const embeddings = Array.isArray(payload.embeddings) ? payload.embeddings : [];
     return texts.map((_, index) => embeddings[index]?.values ?? []);
   };

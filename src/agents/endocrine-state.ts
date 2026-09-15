@@ -117,15 +117,17 @@ export async function resolveEndocrineState(params: {
         try {
           const memManager = manager as Record<string, unknown>;
           const provider = memManager.provider as
-            | { embedQuery?: (text: string) => Promise<number[]> }
+            | { embedQuery?: (text: string, opts?: { feature?: string }) => Promise<number[]> }
             | undefined;
           if (provider?.embedQuery) {
             const { cosineSimilarity } = await import("../memory/internal.js");
-            const briefEmb = await provider.embedQuery(brief.purpose);
+            // PLAN-50: two paid embeds per prompt build, attributed to the continuity gate.
+            const gateOpts = { feature: "agent/continuity-gate" };
+            const briefEmb = await provider.embedQuery(brief.purpose, gateOpts);
             // Use the most recent user message or session context for comparison.
             // If no user message available yet (cold start), let the brief through.
             const recentQuery = brief.nextSteps?.[0] ?? brief.purpose;
-            const contextEmb = await provider.embedQuery(recentQuery);
+            const contextEmb = await provider.embedQuery(recentQuery, gateOpts);
             // Only gate if embeddings are valid
             if (briefEmb.length > 0 && contextEmb.length > 0) {
               const similarity = cosineSimilarity(briefEmb, contextEmb);

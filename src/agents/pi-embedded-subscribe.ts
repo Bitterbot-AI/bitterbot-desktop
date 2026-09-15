@@ -1,4 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import path from "node:path";
 import type { InlineCodeState } from "../markdown/code-spans.js";
 import type {
   EmbeddedPiSubscribeContext,
@@ -9,8 +10,13 @@ import { parseReplyDirectives } from "../auto-reply/reply/reply-directives.js";
 import { createStreamingDirectiveAccumulator } from "../auto-reply/reply/streaming-directives.js";
 import { formatToolAggregate } from "../auto-reply/tool-meta.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { getAgentRunContext } from "../infra/agent-events.js";
+import { classifyAgentFeature } from "../infra/usage-features.js";
+import { recordUsage } from "../infra/usage-ledger.js";
+import { transcriptSessionId, usageDedupeKey } from "../infra/usage-reconcile.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { buildCodeSpanIndex, createInlineCodeState } from "../markdown/code-spans.js";
+import { parseAgentSessionKey } from "../routing/session-key.js";
 import { EmbeddedBlockChunker } from "./pi-embedded-block-chunker.js";
 import {
   isMessagingToolDuplicateNormalized,
@@ -19,7 +25,7 @@ import {
 import { createEmbeddedPiSessionEventHandler } from "./pi-embedded-subscribe.handlers.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
 import { recordCacheTurn } from "./prompt-cache-monitor.js";
-import { hasNonzeroUsage, normalizeUsage, type UsageLike } from "./usage.js";
+import { hasNonzeroUsage, normalizeUsage, type NormalizedUsage, type UsageLike } from "./usage.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
 const FINAL_TAG_SCAN_RE = /<\s*(\/?)\s*final\s*>/gi;
@@ -247,11 +253,67 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       state.compactionRetryPromise = null;
     }
   };
-  const recordAssistantUsage = (usageLike: unknown) => {
+  // PLAN-50: every completed assistant message becomes one usage-ledger row, attributed to the
+  // session's feature (chat turn, subagent, cron, heartbeat, evolution) and deduped against the
+  // transcript reconciler by `<transcript id>:<message.timestamp>`.
+  const transcriptId = params.sessionFile
+    ? transcriptSessionId(path.basename(params.sessionFile))
+    : null;
+  const recordTurnUsage = (usage: NormalizedUsage, message: unknown) => {
+    try {
+      const msg = (message ?? {}) as {
+        provider?: string;
+        model?: string;
+        api?: string;
+        stopReason?: string;
+        timestamp?: number;
+        usage?: {
+          cost?: {
+            input?: number;
+            output?: number;
+            cacheRead?: number;
+            cacheWrite?: number;
+            total?: number;
+          };
+        };
+      };
+      const msgTs =
+        typeof msg.timestamp === "number" && Number.isFinite(msg.timestamp)
+          ? msg.timestamp
+          : undefined;
+      const runContext = getAgentRunContext(params.runId);
+      recordUsage({
+        ts: msgTs,
+        kind: "chat",
+        feature: classifyAgentFeature(params.sessionKey, {
+          isHeartbeat: params.isHeartbeat ?? runContext?.isHeartbeat,
+        }),
+        provider: msg.provider ?? params.modelRef?.provider,
+        model: msg.model ?? params.modelRef?.model,
+        api: msg.api,
+        agentId: params.agentId ?? parseAgentSessionKey(params.sessionKey)?.agentId,
+        sessionKey: params.sessionKey,
+        sessionId: transcriptId ?? (params.session as { sessionId?: string }).sessionId,
+        runId: params.runId,
+        taskId: runContext?.taskId,
+        usage,
+        cost: msg.usage?.cost,
+        stopReason: msg.stopReason,
+        status: msg.stopReason === "error" ? "error" : "ok",
+        dedupeKey:
+          transcriptId && msgTs !== undefined ? usageDedupeKey(transcriptId, msgTs) : undefined,
+        config: params.config,
+      });
+    } catch {
+      // Usage accounting must never affect the turn.
+    }
+  };
+  const recordAssistantUsage = (usageLike: unknown, message?: unknown) => {
     const usage = normalizeUsage((usageLike ?? undefined) as UsageLike | undefined);
     if (!hasNonzeroUsage(usage)) {
       return;
     }
+    recordTurnUsage(usage, message);
     usageTotals.input += usage.input ?? 0;
     usageTotals.output += usage.output ?? 0;
     usageTotals.cacheRead += usage.cacheRead ?? 0;

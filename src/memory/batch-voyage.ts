@@ -1,9 +1,11 @@
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
 import type { VoyageEmbeddingClient } from "./embeddings-voyage.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { postJsonWithRetry } from "./batch-http.js";
-import { applyEmbeddingBatchOutputLine } from "./batch-output.js";
+import { applyEmbeddingBatchOutputLine, extractBatchRequestText } from "./batch-output.js";
 import { buildBatchHeaders, normalizeBatchBaseUrl, splitBatchRequests } from "./batch-utils.js";
+import { recordEmbeddingUsage } from "./embeddings-usage.js";
 import { hashText, runWithConcurrency } from "./internal.js";
 
 /**
@@ -258,6 +260,7 @@ export async function runVoyageEmbeddingBatches(params: {
 
     const errors: string[] = [];
     const remaining = new Set(group.map((request) => request.custom_id));
+    const tokens = { total: 0 };
 
     if (contentRes.body) {
       const reader = createInterface({
@@ -270,9 +273,21 @@ export async function runVoyageEmbeddingBatches(params: {
           continue;
         }
         const line = JSON.parse(rawLine) as VoyageBatchOutputLine;
-        applyEmbeddingBatchOutputLine({ line, remaining, errors, byCustomId });
+        applyEmbeddingBatchOutputLine({ line, remaining, errors, byCustomId, tokens });
       }
     }
+
+    // PLAN-50: Voyage batch output carries per-line usage; billed at batch rates.
+    recordEmbeddingUsage({
+      providerId: "voyage",
+      model: params.client.model,
+      items: group.length,
+      tokens: tokens.total,
+      texts: group.map((request) => extractBatchRequestText(request)),
+      feature: USAGE_FEATURES.memoryIndexBatch,
+      agentId: params.agentId,
+      batch: true,
+    });
 
     if (errors.length > 0) {
       throw new Error(`voyage batch ${batchInfo.id} failed: ${errors.join("; ")}`);

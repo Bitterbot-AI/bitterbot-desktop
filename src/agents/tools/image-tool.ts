@@ -4,6 +4,8 @@ import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { SandboxFsBridge } from "../sandbox/fs-bridge.js";
 import type { AnyAgentTool } from "./common.js";
+import { USAGE_FEATURES } from "../../infra/usage-features.js";
+import { recordUsage } from "../../infra/usage-ledger.js";
 import { resolveUserPath } from "../../utils.js";
 import { getDefaultLocalRoots, loadWebMedia } from "../../web/media.js";
 import { ensureAuthProfileStore, listProfilesForProvider } from "../auth-profiles.js";
@@ -306,9 +308,23 @@ async function runImagePrompt(params: {
       }
 
       const context = buildImageContext(params.prompt, params.images);
+      const startedAt = Date.now();
       const message = await complete(model, context, {
         apiKey,
         maxTokens: resolveImageToolMaxTokens(model.maxTokens),
+      });
+      // PLAN-50: the image tool's vision call lands in the usage ledger under media/image.
+      recordUsage({
+        kind: "vision",
+        feature: USAGE_FEATURES.mediaImage,
+        provider: message.provider ?? model.provider,
+        model: message.model ?? model.id,
+        api: message.api,
+        usage: message.usage,
+        cost: message.usage?.cost,
+        durationMs: Date.now() - startedAt,
+        status: message.stopReason === "error" ? "error" : "ok",
+        stopReason: message.stopReason,
       });
       const text = coerceImageAssistantText({
         message,

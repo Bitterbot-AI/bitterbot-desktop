@@ -262,46 +262,26 @@ export function toPiMessages(
  */
 function buildLlmCallFn(cfg: BitterbotConfig | undefined): RLMLLMCallFn {
   return async (params) => {
-    const { completeSimple } = await import("@mariozechner/pi-ai");
-    const { resolveModel } = await import("../pi-embedded-runner/model.js");
-    const { getApiKeyForModel } = await import("../model-auth.js");
-
-    const resolved = resolveModel(params.provider, params.model, undefined, cfg);
-    if (!resolved.model) {
-      throw new Error(`Cannot resolve model: ${params.provider}/${params.model}`);
-    }
-
-    const auth = await getApiKeyForModel({ model: resolved.model, cfg });
+    const { completeAttributed } = await import("../complete-attributed.js");
 
     const messages = toPiMessages(
       params.messages,
     ) as unknown as import("@mariozechner/pi-ai").Message[];
 
-    const res = await completeSimple(
-      resolved.model,
-      { messages },
-      {
-        apiKey: auth?.apiKey,
-        maxTokens: params.maxTokens ?? 4000,
-        // No sampling params: current Anthropic models 400 on temperature,
-        // and completeSimple embeds that error instead of throwing.
-      },
-    );
-    const failure = res as { stopReason?: string; errorMessage?: string };
-    if (failure.stopReason === "error") {
-      throw new Error(`deep-recall llm error: ${failure.errorMessage ?? "unknown"}`);
-    }
+    // PLAN-50: usage lands in the ledger under rlm/deep-recall; the RLM cost tracker keeps
+    // using the library-reported cost for its per-invocation budget.
+    const { text, costUsd } = await completeAttributed({
+      provider: params.provider,
+      modelId: params.model,
+      cfg,
+      messages,
+      maxTokens: params.maxTokens ?? 4000,
+      feature: "rlm/deep-recall",
+      errorPrefix: "deep-recall",
+      ignoreBudget: true,
+    });
 
-    const text =
-      res.content
-        ?.filter((b: { type: string }) => b.type === "text")
-        .map((b: { type: string; text?: string }) => b.text ?? "")
-        .join("\n") ?? "";
-
-    // Estimate cost from usage if available
-    const cost = res.usage?.cost?.total ?? 0;
-
-    return { text, cost };
+    return { text, cost: costUsd };
   };
 }
 

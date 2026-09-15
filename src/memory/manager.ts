@@ -23,6 +23,7 @@ import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { loadConfig, type BitterbotConfig } from "../config/config.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
 import {
@@ -278,6 +279,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     | null = null;
   private dreamEngine: DreamEngine | null = null;
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  /** PLAN-50: dedicated session-extraction lane (attributed to memory/extraction). */
+  private extractionLlmCall: ((prompt: string) => Promise<string>) | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-18 Phase 1 — small fast LLM call for query decomposition. Lazy-built. */
   private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -464,6 +467,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       const providerResult = await createEmbeddingProvider({
         config: cfg,
         agentDir: resolveAgentDir(cfg, agentId),
+        agentId,
         provider: settings.provider,
         remote: settings.remote,
         model: settings.model,
@@ -725,7 +729,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     let embedding: number[] | null = null;
     try {
-      const vec = (await this.embedQueryWithTimeout(text)) as number[];
+      const vec = (await this.embedQueryWithTimeout(text, USAGE_FEATURES.memoryRecall)) as number[];
       embedding = Array.isArray(vec) && vec.length > 0 ? vec : null;
     } catch (err) {
       log.debug(`proactive recall: query embed failed: ${String(err)}`);
@@ -1589,7 +1593,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       ? ["anthropic/claude-haiku-4-5-20251001", "anthropic/claude-haiku-4-5"]
       : ["openai/gpt-4o-mini"];
     for (const spec of candidates) {
-      const raw = this.buildLlmCallFn(spec);
+      const raw = this.buildLlmCallFn(spec, { feature: USAGE_FEATURES.memoryPlanner });
       if (!raw) {
         continue;
       }
@@ -2195,7 +2199,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   async probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult> {
     try {
-      await this.embedBatchWithRetry(["ping"]);
+      await this.embedBatchWithRetry(["ping"], USAGE_FEATURES.memoryProbe);
       return { ok: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -2715,7 +2719,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       ...(() => {
         const spec =
           this.cfg.skills?.evolution?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
-        const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
+        const call = spec
+          ? this.buildLlmCallFn(spec, { maxTokens: 8192, feature: USAGE_FEATURES.skillsEvolution })
+          : null;
         return call ? { evolutionLlmCall: call } : {};
       })(),
       // PLAN-42: dedicated proposer lane — a stronger model holds the strict
@@ -2728,13 +2734,20 @@ export class MemoryIndexManager implements MemorySearchManager {
       ...(() => {
         const evo = this.cfg.skills?.evolution;
         const spec = evo?.proposerModel ?? evo?.judgeModel ?? this.resolvePrimaryLlmSpec();
-        const call = spec ? this.buildLlmCallFn(spec, { maxTokens: 8192 }) : null;
+        const call = spec
+          ? this.buildLlmCallFn(spec, { maxTokens: 8192, feature: USAGE_FEATURES.skillsEvolution })
+          : null;
         // PLAN-44 Phase 5c: expose the lanes to on-demand gateway RPCs — the
         // same 8k evolution lane housekeeping uses, plus the proposer lane.
         const evoSpec =
           this.cfg.skills?.evolution?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
         setActiveEvolutionLlm({
-          evolution: evoSpec ? this.buildLlmCallFn(evoSpec, { maxTokens: 8192 }) : null,
+          evolution: evoSpec
+            ? this.buildLlmCallFn(evoSpec, {
+                maxTokens: 8192,
+                feature: USAGE_FEATURES.skillsEvolution,
+              })
+            : null,
           proposer: call,
         });
         // PLAN-45 4.6 (I8): the evolver model rides every published skill.
@@ -2765,11 +2778,18 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     const embedBatchFn = async (texts: string[]) => {
-      return await this.embedBatchWithRetry(texts);
+      return await this.embedBatchWithRetry(texts, USAGE_FEATURES.memoryDream);
     };
 
     this.dreamLlmCall = builtLlmCall;
     this.dreamSynthesisLlmCall = builtSynthesisLlmCall;
+    // PLAN-50: session fact extraction gets its own lane so its spend is attributed separately
+    // from dreaming (same model, different feature). An injected llmCall is reused as-is.
+    this.extractionLlmCall = dreamCfg?.llmCall
+      ? builtLlmCall
+      : this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec(), {
+          feature: USAGE_FEATURES.memoryExtraction,
+        });
     this.dreamEngine = new DreamEngine(this.db, engineCfg, synthesizeFn, embedBatchFn);
 
     if (this.hormonalManager) {
@@ -2826,7 +2846,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
       let triggerEmbedding: number[] | undefined;
       try {
-        const vecs = await this.embedBatchWithRetry([p.trigger]);
+        const vecs = await this.embedBatchWithRetry([p.trigger], USAGE_FEATURES.memoryDream);
         if (vecs[0] && vecs[0].length > 0) {
           triggerEmbedding = vecs[0];
         }
@@ -3181,7 +3201,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const { SkillMarketabilityPredictor } = await import("./skill-marketability-predictor.js");
     const modelSpec =
       predictorCfg?.model ?? this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec();
-    const llmCall = this.buildLlmCallFn(modelSpec);
+    const llmCall = this.buildLlmCallFn(modelSpec, { feature: USAGE_FEATURES.memoryMarketability });
     this.marketabilityPredictor = new SkillMarketabilityPredictor(
       this.db,
       {
@@ -3323,7 +3343,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private buildLlmCallFn(
     modelSpec: string,
-    opts?: { maxTokens?: number },
+    opts?: { maxTokens?: number; feature?: string },
   ): ((prompt: string) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
@@ -3331,55 +3351,28 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     const provider = parts[0]!;
     const modelId = parts.slice(1).join("/");
+    // PLAN-50: every hidden lane records to the usage ledger under its feature and honors the
+    // background budget gate (dream, extraction, evolution pause when `usage.budgets.mode` is
+    // "enforce" and a covering budget is exceeded).
+    const feature = opts?.feature ?? USAGE_FEATURES.memoryDream;
+    const agentDir = resolveAgentDir(this.cfg, this.agentId);
 
-    try {
-      // Lazy imports to avoid circular deps and keep cold path fast
-      const resolveModelFn = async () => {
-        const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
-        const { getApiKeyForModel } = await import("../agents/model-auth.js");
-        const resolved = resolveModel(provider, modelId, undefined, this.cfg);
-        if (!resolved.model) {
-          return null;
-        }
-        const auth = await getApiKeyForModel({ model: resolved.model, cfg: this.cfg });
-        return { model: resolved.model, apiKey: auth?.apiKey };
-      };
-
-      return async (prompt: string): Promise<string> => {
-        const { completeSimple } = await import("@mariozechner/pi-ai");
-        const ctx = await resolveModelFn();
-        if (!ctx) {
-          throw new Error(`Cannot resolve model: ${modelSpec}`);
-        }
-
-        const res = await completeSimple(
-          ctx.model,
-          {
-            messages: [{ role: "user" as const, content: prompt, timestamp: Date.now() }],
-          },
-          {
-            apiKey: ctx.apiKey,
-            maxTokens: opts?.maxTokens ?? 2048,
-            // No sampling params: current Anthropic models 400 on temperature,
-            // and completeSimple embeds that error instead of throwing.
-          },
-        );
-        const failure = res as { stopReason?: string; errorMessage?: string };
-        if (failure.stopReason === "error") {
-          throw new Error(`llm error (${modelSpec}): ${failure.errorMessage ?? "unknown"}`);
-        }
-
-        return (
-          res.content
-            ?.filter((b: { type: string }) => b.type === "text")
-            .map((b: { type: string; text?: string }) => b.text ?? "")
-            .join("\n") ?? ""
-        );
-      };
-    } catch (err) {
-      log.warn(`Failed to build LLM call for ${modelSpec}: ${String(err)}`);
-      return null;
-    }
+    return async (prompt: string): Promise<string> => {
+      // Lazy import to avoid circular deps and keep cold path fast.
+      const { completeAttributed } = await import("../agents/complete-attributed.js");
+      const { text } = await completeAttributed({
+        provider,
+        modelId,
+        cfg: this.cfg,
+        agentDir,
+        prompt,
+        maxTokens: opts?.maxTokens ?? 2048,
+        feature,
+        agentId: this.agentId,
+        errorPrefix: `llm error (${modelSpec})`,
+      });
+      return text;
+    };
   }
 
   async dream(): Promise<DreamStats | null> {
@@ -3419,7 +3412,14 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (stats && stats.newInsights.length > 0) {
       try {
         if (!this.discoveryAgent) {
-          const llmCall = this.dreamLlmCall ?? this.buildLlmCallFn(this.resolveCheapLlmSpec());
+          // An injected memory.dream.llmCall (tests, programmatic) wins; otherwise a dedicated
+          // discovery lane so its spend is attributed separately from dreaming.
+          const llmCall =
+            this.cfg.memory?.dream?.llmCall ??
+            this.buildLlmCallFn(this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec(), {
+              feature: USAGE_FEATURES.memoryDiscovery,
+            }) ??
+            this.dreamLlmCall;
           this.discoveryAgent = new DiscoveryAgent(this.db, llmCall);
         }
         const discovery = await this.discoveryAgent.runCycle();
@@ -3632,7 +3632,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
 
-    const llmCall = this.dreamLlmCall;
+    const llmCall = this.extractionLlmCall ?? this.dreamLlmCall;
     if (!llmCall) {
       log.debug("session extraction skipped: no LLM call available");
       return;
@@ -5190,7 +5190,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     query: string,
     opts?: { maxResults?: number; minScore?: number },
   ): Promise<DreamSearchResult[]> {
-    const queryVec = (await this.embedQueryWithTimeout(query)) as number[];
+    const queryVec = (await this.embedQueryWithTimeout(
+      query,
+      USAGE_FEATURES.memoryDream,
+    )) as number[];
     return searchDreamInsights(this.db, queryVec, opts);
   }
 
@@ -5583,7 +5586,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
     let embedding: number[] = [];
     try {
-      embedding = ((await this.embedQueryWithTimeout(params.text)) as number[]) ?? [];
+      embedding =
+        ((await this.embedQueryWithTimeout(params.text, USAGE_FEATURES.memoryIndex)) as number[]) ??
+        [];
     } catch {
       /* pending backfill */
     }
@@ -6314,7 +6319,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.discoveryAgent) {
       const dreamCfg = this.cfg.memory?.dream;
       const llmCall =
-        dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec());
+        dreamCfg?.llmCall ??
+        this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec(), {
+          feature: USAGE_FEATURES.memoryDiscovery,
+        });
       this.discoveryAgent = new DiscoveryAgent(this.db, llmCall);
     }
     return this.discoveryAgent.suggestSkills(config);

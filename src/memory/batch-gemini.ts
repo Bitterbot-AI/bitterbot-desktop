@@ -1,7 +1,10 @@
 import type { GeminiEmbeddingClient } from "./embeddings-gemini.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { extractBatchRequestText } from "./batch-output.js";
 import { buildBatchHeaders, normalizeBatchBaseUrl, splitBatchRequests } from "./batch-utils.js";
+import { recordEmbeddingUsage } from "./embeddings-usage.js";
 import { hashText, runWithConcurrency } from "./internal.js";
 
 export type GeminiBatchRequest = {
@@ -343,6 +346,17 @@ export async function runGeminiEmbeddingBatches(params: {
       }
       byCustomId.set(customId, embedding);
     }
+
+    // PLAN-50: Gemini batch output carries no usage; estimate from request text and tag it.
+    recordEmbeddingUsage({
+      providerId: "gemini",
+      model: params.gemini.model,
+      items: group.length,
+      texts: group.map((request) => extractBatchRequestText(request)),
+      feature: USAGE_FEATURES.memoryIndexBatch,
+      agentId: params.agentId,
+      batch: true,
+    });
 
     if (errors.length > 0) {
       throw new Error(`gemini batch ${batchName} failed: ${errors.join("; ")}`);

@@ -1,5 +1,10 @@
 import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.js";
 import { requireApiKey, resolveApiKeyForProvider } from "../agents/model-auth.js";
+import {
+  isLocalEmbeddingBaseUrl,
+  recordEmbeddingUsage,
+  type EmbedCallOptions,
+} from "./embeddings-usage.js";
 
 export type OpenAiEmbeddingClient = {
   baseUrl: string;
@@ -31,11 +36,13 @@ export async function createOpenAiEmbeddingProvider(
 ): Promise<{ provider: EmbeddingProvider; client: OpenAiEmbeddingClient }> {
   const client = await resolveOpenAiEmbeddingClient(options);
   const url = `${client.baseUrl.replace(/\/$/, "")}/embeddings`;
+  const localEndpoint = isLocalEmbeddingBaseUrl(client.baseUrl);
 
-  const embed = async (input: string[]): Promise<number[][]> => {
+  const embed = async (input: string[], opts?: EmbedCallOptions): Promise<number[][]> => {
     if (input.length === 0) {
       return [];
     }
+    const started = Date.now();
     const res = await fetch(url, {
       method: "POST",
       headers: client.headers,
@@ -47,7 +54,20 @@ export async function createOpenAiEmbeddingProvider(
     }
     const payload = (await res.json()) as {
       data?: Array<{ embedding?: number[] }>;
+      usage?: { prompt_tokens?: number; total_tokens?: number };
     };
+    // PLAN-50: OpenAI (and OpenAI-compatible endpoints such as vLLM/Ollama) report
+    // usage.prompt_tokens / usage.total_tokens on /embeddings.
+    recordEmbeddingUsage({
+      providerId: "openai",
+      model: client.model,
+      texts: input,
+      tokens: payload.usage?.total_tokens ?? payload.usage?.prompt_tokens,
+      feature: opts?.feature,
+      agentId: options.agentId,
+      durationMs: Date.now() - started,
+      local: localEndpoint,
+    });
     const data = payload.data ?? [];
     return data.map((entry) => entry.embedding ?? []);
   };
@@ -57,11 +77,11 @@ export async function createOpenAiEmbeddingProvider(
       id: "openai",
       model: client.model,
       maxInputTokens: OPENAI_MAX_INPUT_TOKENS[client.model],
-      embedQuery: async (text) => {
-        const [vec] = await embed([text]);
+      embedQuery: async (text, opts) => {
+        const [vec] = await embed([text], opts);
         return vec ?? [];
       },
-      embedBatch: embed,
+      embedBatch: (texts, opts) => embed(texts, opts),
     },
     client,
   };

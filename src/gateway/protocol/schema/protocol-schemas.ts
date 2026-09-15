@@ -124,6 +124,8 @@ import {
   SessionsResetParamsSchema,
   SessionsResolveParamsSchema,
   SessionsUsageParamsSchema,
+  UsageLedgerEventsParamsSchema,
+  UsageLedgerSummaryParamsSchema,
 } from "./sessions.js";
 import { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
 import {
@@ -176,6 +178,8 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   SessionsDeleteParams: SessionsDeleteParamsSchema,
   SessionsCompactParams: SessionsCompactParamsSchema,
   SessionsUsageParams: SessionsUsageParamsSchema,
+  UsageLedgerSummaryParams: UsageLedgerSummaryParamsSchema,
+  UsageLedgerEventsParams: UsageLedgerEventsParamsSchema,
   ConfigGetParams: ConfigGetParamsSchema,
   ConfigSetParams: ConfigSetParamsSchema,
   ConfigApplyParams: ConfigApplyParamsSchema,

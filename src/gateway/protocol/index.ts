@@ -178,6 +178,10 @@ import {
   SessionsResolveParamsSchema,
   type SessionsUsageParams,
   SessionsUsageParamsSchema,
+  type UsageLedgerEventsParams,
+  UsageLedgerEventsParamsSchema,
+  type UsageLedgerSummaryParams,
+  UsageLedgerSummaryParamsSchema,
   type ShutdownEvent,
   ShutdownEventSchema,
   type SkillsBinsParams,
@@ -335,6 +339,12 @@ export const validateSessionsCompactParams = ajv.compile<SessionsCompactParams>(
 );
 export const validateSessionsUsageParams =
   ajv.compile<SessionsUsageParams>(SessionsUsageParamsSchema);
+export const validateUsageLedgerSummaryParams = ajv.compile<UsageLedgerSummaryParams>(
+  UsageLedgerSummaryParamsSchema,
+);
+export const validateUsageLedgerEventsParams = ajv.compile<UsageLedgerEventsParams>(
+  UsageLedgerEventsParamsSchema,
+);
 export const validateConfigGetParams = ajv.compile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = ajv.compile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = ajv.compile<ConfigApplyParams>(ConfigApplyParamsSchema);
@@ -527,6 +537,8 @@ export {
   SessionsDeleteParamsSchema,
   SessionsCompactParamsSchema,
   SessionsUsageParamsSchema,
+  UsageLedgerSummaryParamsSchema,
+  UsageLedgerEventsParamsSchema,
   ConfigGetParamsSchema,
   ConfigSetParamsSchema,
   ConfigApplyParamsSchema,
@@ -715,6 +727,8 @@ export type {
   SessionsDeleteParams,
   SessionsCompactParams,
   SessionsUsageParams,
+  UsageLedgerSummaryParams,
+  UsageLedgerEventsParams,
   ExecApprovalsGetParams,
   ExecApprovalsSetParams,
   ExecApprovalsSnapshot,

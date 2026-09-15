@@ -1,5 +1,153 @@
 import { create } from "zustand";
 
+// ---------------------------------------------------------------------------
+// PLAN-50 usage ledger shapes (mirror of src/infra/usage-ledger.types.ts)
+// ---------------------------------------------------------------------------
+
+export type UsageKind = "chat" | "embedding" | "vision" | "audio" | "tts" | "search";
+
+export type PricingSource =
+  | "provider"
+  | "override"
+  | "catalog"
+  | "embedding-catalog"
+  | "local"
+  | "estimated"
+  | "unpriced";
+
+export type UsageBuckets = {
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+  reasoning: number;
+  total: number;
+};
+
+export type UsageCost = {
+  input: number;
+  cacheRead: number;
+  cacheWrite: number;
+  output: number;
+  total: number;
+};
+
+export type UsageTotalsRow = {
+  calls: number;
+  errors: number;
+  usage: UsageBuckets;
+  cost: UsageCost;
+  cacheHitRate: number;
+  unpricedCalls: number;
+  estimatedCalls: number;
+};
+
+export type UsageModelSummary = UsageTotalsRow & {
+  provider: string | null;
+  model: string | null;
+  kinds: UsageKind[];
+  pricingSources: PricingSource[];
+  lastTs: number | null;
+};
+
+export type UsageGroupSummary = UsageTotalsRow & { key: string; label: string };
+
+export type UsageDailyPoint = {
+  date: string;
+  tokens: number;
+  cost: number;
+  calls: number;
+  usage: UsageBuckets;
+  byModel: Array<{
+    provider: string | null;
+    model: string | null;
+    tokens: number;
+    cost: number;
+    calls: number;
+  }>;
+  byKind: Array<{ kind: UsageKind; tokens: number; cost: number; calls: number }>;
+};
+
+export type UsageBudgetStatus = {
+  id: string;
+  scope: "global" | "model" | "feature";
+  window: "daily" | "weekly" | "monthly";
+  target?: string;
+  limitUsd: number;
+  spentUsd: number;
+  ratio: number;
+  level: 0 | 50 | 80 | 95 | 100;
+  exceeded: boolean;
+  windowStartMs: number;
+  resetsAtMs: number;
+  projectedUsd: number;
+};
+
+export type UsageLedgerSummary = {
+  updatedAt: number;
+  startMs: number;
+  endMs: number;
+  startDate: string;
+  endDate: string;
+  days: number;
+  totals: UsageTotalsRow;
+  byModel: UsageModelSummary[];
+  byProvider: UsageGroupSummary[];
+  byFeature: UsageGroupSummary[];
+  byKind: UsageGroupSummary[];
+  byAgent: UsageGroupSummary[];
+  daily: UsageDailyPoint[];
+  unpricedModels: Array<{
+    provider: string | null;
+    model: string | null;
+    calls: number;
+    tokens: number;
+  }>;
+  budgets: { mode: "warn" | "enforce"; budgets: UsageBudgetStatus[]; backgroundPaused: boolean };
+  ledger: {
+    enabled: boolean;
+    dbPath: string | null;
+    events: number;
+    oldestTs: number | null;
+    newestTs: number | null;
+    dbBytes: number | null;
+    lastReconcileAt: number | null;
+    lastReconcileRows: number | null;
+    retentionDays: number;
+  };
+  flags: Array<{ id: string; level: "info" | "warn"; message: string; tip?: string }>;
+};
+
+export type UsageEventRow = {
+  id: number;
+  ts: number;
+  day: string;
+  kind: UsageKind;
+  feature: string;
+  provider: string | null;
+  model: string | null;
+  api: string | null;
+  agentId: string | null;
+  sessionKey: string | null;
+  sessionId: string | null;
+  runId: string | null;
+  taskId: string | null;
+  channel: string | null;
+  usage: UsageBuckets;
+  cost: UsageCost;
+  costSource: PricingSource;
+  durationMs: number | null;
+  status: "ok" | "error";
+  stopReason: string | null;
+  batch: boolean;
+  items: number | null;
+  source: "live" | "reconcile";
+};
+
+// ---------------------------------------------------------------------------
+// Legacy transcript-scan shapes (sessions.usage) — still used for the Sessions tab.
+// ---------------------------------------------------------------------------
+
 export type UsageTotals = {
   input: number;
   output: number;
@@ -58,24 +206,58 @@ export type UsageResult = {
   aggregates: UsageAggregates;
 };
 
+export type UsageTab = "overview" | "models" | "features" | "sessions" | "live";
+
+export const LIVE_FEED_LIMIT = 100;
+
 type UsageState = {
+  summary: UsageLedgerSummary | null;
   result: UsageResult | null;
+  liveEvents: UsageEventRow[];
   days: number;
+  tab: UsageTab;
   loading: boolean;
   error: string | null;
-  setResult: (result: UsageResult) => void;
+  /** null = unknown (not connected yet); false = gateway predates the ledger RPCs. */
+  ledgerSupported: boolean | null;
+  lastEventAt: number | null;
+  setSummary: (summary: UsageLedgerSummary | null) => void;
+  setResult: (result: UsageResult | null) => void;
+  setLiveEvents: (events: UsageEventRow[]) => void;
+  pushLiveEvent: (event: UsageEventRow) => void;
   setDays: (days: number) => void;
+  setTab: (tab: UsageTab) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  setLedgerSupported: (supported: boolean | null) => void;
 };
 
 export const useUsageStore = create<UsageState>((set) => ({
+  summary: null,
   result: null,
+  liveEvents: [],
   days: 30,
+  tab: "overview",
   loading: false,
   error: null,
+  ledgerSupported: null,
+  lastEventAt: null,
+  setSummary: (summary) => set({ summary }),
   setResult: (result) => set({ result }),
+  setLiveEvents: (liveEvents) => set({ liveEvents: liveEvents.slice(0, LIVE_FEED_LIMIT) }),
+  pushLiveEvent: (event) =>
+    set((state) => {
+      if (state.liveEvents.some((e) => e.id === event.id)) {
+        return state;
+      }
+      return {
+        liveEvents: [event, ...state.liveEvents].slice(0, LIVE_FEED_LIMIT),
+        lastEventAt: event.ts,
+      };
+    }),
   setDays: (days) => set({ days }),
+  setTab: (tab) => set({ tab }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
+  setLedgerSupported: (ledgerSupported) => set({ ledgerSupported }),
 }));

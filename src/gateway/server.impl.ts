@@ -44,6 +44,8 @@ import {
   setSkillsRemoteRegistry,
 } from "../infra/skills-remote.js";
 import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
+import { checkUsageBudgetAlerts, onUsageBudgetAlert } from "../infra/usage-budgets.js";
+import { getUsageLedger, onUsageEvent, startUsageLedger } from "../infra/usage-ledger.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { initOtel } from "../observability/otel.js";
@@ -274,6 +276,13 @@ export async function startGatewayServer(
   // No-op when no Anthropic credential is configured; `task_judge` then
   // reports "judge LLM call is not registered" and the agent can route around it.
   registerJudgeFromConfig(cfgAtStart);
+
+  // PLAN-50: open the usage ledger, prune to retention, and start the transcript reconciler
+  // (one-time backfill, then a 10-minute safety net). On by default; BITTERBOT_USAGE_LEDGER=0
+  // or usage.ledger.enabled=false disables.
+  if (!minimalTestGateway) {
+    startUsageLedger({ cfg: cfgAtStart });
+  }
 
   // PLAN-17 follow-up: feed live hormonal state into the long-horizon task
   // concurrency gate. Refresh interval 30s; disable with
@@ -528,6 +537,39 @@ export async function startGatewayServer(
         broadcast("heartbeat", evt, { dropIfSlow: true });
       });
 
+  // PLAN-50: stream every recorded usage row to the Control UI, and evaluate budgets at most
+  // once every few seconds so the alert ladder (50/80/95/100%) fires promptly without a SQL
+  // sum per token.
+  let usageBudgetTimer: NodeJS.Timeout | null = null;
+  const scheduleUsageBudgetCheck = () => {
+    if (usageBudgetTimer) {
+      return;
+    }
+    usageBudgetTimer = setTimeout(() => {
+      usageBudgetTimer = null;
+      try {
+        const ledger = getUsageLedger();
+        if (ledger) {
+          checkUsageBudgetAlerts({ ledger, cfg: loadConfig() });
+        }
+      } catch {
+        // budget evaluation never affects the gateway
+      }
+    }, 5_000);
+    usageBudgetTimer.unref?.();
+  };
+  const usageUnsub = minimalTestGateway
+    ? null
+    : onUsageEvent((evt) => {
+        broadcast("usage", evt, { dropIfSlow: true });
+        scheduleUsageBudgetCheck();
+      });
+  const usageBudgetUnsub = minimalTestGateway
+    ? null
+    : onUsageBudgetAlert((alert) => {
+        broadcast("usage.budget", alert);
+      });
+
   let heartbeatRunner: HeartbeatRunner = minimalTestGateway
     ? {
         stop: () => {},
@@ -753,6 +795,8 @@ export async function startGatewayServer(
     stopUpdateCheck,
     agentUnsub,
     heartbeatUnsub,
+    usageUnsub,
+    usageBudgetUnsub,
     chatRunState,
     clients,
     configReloader,

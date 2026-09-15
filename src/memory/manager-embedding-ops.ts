@@ -5,6 +5,7 @@ import type { CrystalOrigin } from "./crystal-types.js";
 import type { HormonalInfluence } from "./crystal-types.js";
 import type { SessionFileEntry } from "./session-files.js";
 import type { MemorySource } from "./types.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runGeminiEmbeddingBatches, type GeminiBatchRequest } from "./batch-gemini.js";
 import {
@@ -583,7 +584,10 @@ class MemoryManagerEmbeddingOps {
     return embeddings;
   }
 
-  private async embedBatchWithRetry(texts: string[]): Promise<number[][]> {
+  private async embedBatchWithRetry(
+    texts: string[],
+    feature: string = USAGE_FEATURES.memoryIndex,
+  ): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
@@ -598,7 +602,7 @@ class MemoryManagerEmbeddingOps {
           timeoutMs,
         });
         return await this.withTimeout(
-          this.provider.embedBatch(texts),
+          this.provider.embedBatch(texts, { feature }),
           timeoutMs,
           `memory embeddings batch timed out after ${Math.round(timeoutMs / 1000)}s`,
         );
@@ -633,11 +637,14 @@ class MemoryManagerEmbeddingOps {
     return isLocal ? EMBEDDING_BATCH_TIMEOUT_LOCAL_MS : EMBEDDING_BATCH_TIMEOUT_REMOTE_MS;
   }
 
-  private async embedQueryWithTimeout(text: string): Promise<number[]> {
+  private async embedQueryWithTimeout(
+    text: string,
+    feature: string = USAGE_FEATURES.memorySearch,
+  ): Promise<number[]> {
     const timeoutMs = this.resolveEmbeddingTimeout("query");
     log.debug("memory embeddings: query start", { provider: this.provider.id, timeoutMs });
     return await this.withTimeout(
-      this.provider.embedQuery(text),
+      this.provider.embedQuery(text, { feature }),
       timeoutMs,
       `memory embeddings query timed out after ${Math.round(timeoutMs / 1000)}s`,
     );

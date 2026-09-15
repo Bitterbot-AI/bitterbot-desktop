@@ -230,7 +230,7 @@ export function handleMessageEnd(
 
   const assistantMessage = msg;
   ctx.noteLastAssistant(assistantMessage);
-  ctx.recordAssistantUsage((assistantMessage as { usage?: unknown }).usage);
+  ctx.recordAssistantUsage((assistantMessage as { usage?: unknown }).usage, assistantMessage);
   promoteThinkingTagsToBlocks(assistantMessage);
 
   const rawText = extractAssistantText(assistantMessage);

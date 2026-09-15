@@ -1,7 +1,9 @@
 import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
+import type { UsageLedgerSummary } from "../../infra/usage-ledger.types.js";
 import { gatewayStatusCommand } from "../../commands/gateway-status.js";
 import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
+import { renderUsageLedgerSummary, type UsageRenderDimension } from "../../infra/usage-render.js";
 import { defaultRuntime } from "../../runtime.js";
 import { styleHealthChannelLine } from "../../terminal/health-style.js";
 import { formatDocsLink } from "../../terminal/links.js";
@@ -121,6 +123,32 @@ export function registerGatewayCli(program: Command) {
             defaultRuntime.log(line);
           }
         }, "Gateway usage cost failed");
+      }),
+  );
+
+  gatewayCallOpts(
+    gateway
+      .command("usage")
+      .description(
+        "Usage ledger: tokens and cost per model, feature (chat, embeddings, dream, …), provider or day",
+      )
+      .option("--days <days>", "Number of days to include", "30")
+      .option("--by <dimension>", "model | feature | provider | kind | agent | day", "model")
+      .action(async (opts) => {
+        await runGatewayCommand(async () => {
+          const days = parseDaysOption(opts.days);
+          const result = (await callGatewayCli("usage.ledger.summary", opts, {
+            days,
+          })) as UsageLedgerSummary;
+          if (opts.json) {
+            defaultRuntime.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          const by = String(opts.by ?? "model") as UsageRenderDimension;
+          for (const line of renderUsageLedgerSummary(result, by)) {
+            defaultRuntime.log(line);
+          }
+        }, "Gateway usage failed");
       }),
   );
 

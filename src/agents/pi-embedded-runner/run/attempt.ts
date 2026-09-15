@@ -876,6 +876,8 @@ export async function runEmbeddedAttempt(
         enforceFinalTag: params.enforceFinalTag,
         config: params.config,
         sessionKey: params.sessionKey ?? params.sessionId,
+        sessionFile: params.sessionFile,
+        agentId: sessionAgentId,
         contextWindowTokens: params.model.contextWindow,
         modelRef: {
           provider: params.model.provider,

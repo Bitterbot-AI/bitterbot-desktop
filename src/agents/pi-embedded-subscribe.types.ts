@@ -36,6 +36,16 @@ export type SubscribeEmbeddedPiSessionParams = {
   config?: BitterbotConfig;
   sessionKey?: string;
   /**
+   * PLAN-50: transcript file for this session. The usage ledger keys live rows on
+   * `<transcript basename>:<message.timestamp>` so the periodic transcript reconcile never
+   * double counts a turn that was already recorded live.
+   */
+  sessionFile?: string;
+  /** PLAN-50: agent that owns the session, for per-agent usage attribution. */
+  agentId?: string;
+  /** PLAN-50: heartbeat runs are attributed to `agent/heartbeat`. */
+  isHeartbeat?: boolean;
+  /**
    * Model context window in tokens. When provided, enables the mid-turn
    * budget guard that proactively compresses session messages between
    * tool calls so long tool loops don't overflow context.

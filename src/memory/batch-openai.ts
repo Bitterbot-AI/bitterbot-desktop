@@ -1,7 +1,9 @@
 import type { OpenAiEmbeddingClient } from "./embeddings-openai.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { postJsonWithRetry } from "./batch-http.js";
-import { applyEmbeddingBatchOutputLine } from "./batch-output.js";
+import { applyEmbeddingBatchOutputLine, extractBatchRequestText } from "./batch-output.js";
 import { buildBatchHeaders, normalizeBatchBaseUrl, splitBatchRequests } from "./batch-utils.js";
+import { recordEmbeddingUsage } from "./embeddings-usage.js";
 import { hashText, runWithConcurrency } from "./internal.js";
 
 export type OpenAiBatchRequest = {
@@ -259,10 +261,22 @@ export async function runOpenAiEmbeddingBatches(params: {
     const outputLines = parseOpenAiBatchOutput(content);
     const errors: string[] = [];
     const remaining = new Set(group.map((request) => request.custom_id));
+    const tokens = { total: 0 };
 
     for (const line of outputLines) {
-      applyEmbeddingBatchOutputLine({ line, remaining, errors, byCustomId });
+      applyEmbeddingBatchOutputLine({ line, remaining, errors, byCustomId, tokens });
     }
+    // PLAN-50: batch embeddings are billed at half price; the output JSONL carries per-line usage.
+    recordEmbeddingUsage({
+      providerId: "openai",
+      model: params.openAi.model,
+      items: group.length,
+      tokens: tokens.total,
+      texts: group.map((request) => extractBatchRequestText(request)),
+      feature: USAGE_FEATURES.memoryIndexBatch,
+      agentId: params.agentId,
+      batch: true,
+    });
 
     if (errors.length > 0) {
       throw new Error(`openai batch ${batchInfo.id} failed: ${errors.join("; ")}`);

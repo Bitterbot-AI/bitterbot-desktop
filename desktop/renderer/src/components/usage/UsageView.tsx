@@ -1,158 +1,185 @@
-import { useCallback, useEffect } from "react";
-import { formatTokens, formatCost } from "../../lib/format";
+import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useRef } from "react";
+import { useGatewayEvent } from "../../hooks/useGatewayEvent";
+import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
-import { useUsageStore, type UsageResult } from "../../stores/usage-store";
-
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
-      <p className="text-xs text-muted-foreground mb-1">{label}</p>
-      <p className="text-xl font-semibold text-foreground">{value}</p>
-      {sub && <p className="text-xs text-muted-foreground/60 mt-1">{sub}</p>}
-    </div>
-  );
-}
-
-function DailyChart({ daily }: { daily: UsageResult["aggregates"]["daily"] }) {
-  if (!daily || daily.length === 0) return null;
-  const maxTokens = Math.max(...daily.map((d) => d.tokens), 1);
-
-  return (
-    <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
-      <h3 className="text-sm font-medium text-foreground mb-3">Daily Token Usage</h3>
-      <div className="flex items-end gap-1 h-32">
-        {daily.map((day) => {
-          const height = Math.max(2, (day.tokens / maxTokens) * 100);
-          return (
-            <div key={day.date} className="flex-1 flex flex-col items-center group relative">
-              <div
-                className="w-full bg-brand/40 hover:bg-brand/70 rounded-t transition-colors"
-                style={{ height: `${height}%` }}
-                title={`${day.date}: ${formatTokens(day.tokens)} tokens, ${formatCost(day.cost)}`}
-              />
-              {daily.length <= 14 && (
-                <span className="text-3xs text-muted-foreground/40 mt-1 rotate-[-45deg] origin-top-left whitespace-nowrap">
-                  {day.date.slice(5)}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function ModelBreakdown({ byModel }: { byModel: UsageResult["aggregates"]["byModel"] }) {
-  if (!byModel || byModel.length === 0) return null;
-
-  return (
-    <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
-      <h3 className="text-sm font-medium text-foreground mb-3">By Model</h3>
-      <div className="space-y-2">
-        {byModel.slice(0, 10).map((entry, i) => (
-          <div key={i} className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-foreground truncate">{entry.model ?? "unknown"}</span>
-              <span className="text-muted-foreground/60">{entry.provider ?? ""}</span>
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <span className="text-muted-foreground">
-                {formatTokens(entry.totals.totalTokens)}
-              </span>
-              <span className="text-brand font-medium">{formatCost(entry.totals.totalCost)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SessionList({ sessions }: { sessions: UsageResult["sessions"] }) {
-  if (!sessions || sessions.length === 0) return null;
-
-  return (
-    <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm overflow-hidden">
-      <h3 className="text-sm font-medium text-foreground px-4 py-3 border-b border-border/10">
-        Sessions ({sessions.length})
-      </h3>
-      <div className="max-h-[300px] overflow-y-auto">
-        {sessions.map((session, i) => (
-          <div
-            key={session.key ?? i}
-            className="flex items-center justify-between px-4 py-2 border-b border-border/5 last:border-0 hover:bg-muted/30"
-          >
-            <div className="min-w-0 flex-1">
-              <span className="text-xs text-foreground truncate block">
-                {session.label ?? session.key}
-              </span>
-              {session.model && (
-                <span className="text-badge text-muted-foreground/60">{session.model}</span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 flex-shrink-0 text-xs">
-              {session.usage && (
-                <>
-                  <span className="text-muted-foreground">
-                    {formatTokens(session.usage.totalTokens)}
-                  </span>
-                  <span className="text-brand">{formatCost(session.usage.totalCost)}</span>
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+import {
+  useUsageStore,
+  type UsageEventRow,
+  type UsageLedgerSummary,
+  type UsageResult,
+  type UsageTab,
+} from "../../stores/usage-store";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { UsageFeaturesPanel } from "./UsageFeaturesPanel";
+import { UsageLiveFeed } from "./UsageLiveFeed";
+import { UsageModelsTable } from "./UsageModelsTable";
+import { UsageOverview } from "./UsageOverview";
+import { UsageSessionsList } from "./UsageSessionsList";
 
 const DAY_OPTIONS = [7, 14, 30, 60, 90] as const;
+/** A streamed usage event schedules one summary refresh at most this often. */
+const LIVE_REFRESH_MS = 8_000;
+
+const TABS: Array<{ id: UsageTab; label: string }> = [
+  { id: "overview", label: "Overview" },
+  { id: "models", label: "Models" },
+  { id: "features", label: "Features" },
+  { id: "sessions", label: "Sessions" },
+  { id: "live", label: "Live" },
+];
+
+function EmptyState({ ledgerSupported }: { ledgerSupported: boolean | null }) {
+  return (
+    <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-6 text-sm text-muted-foreground space-y-2">
+      <p className="text-foreground font-medium">No model calls in this window yet.</p>
+      {ledgerSupported === false ? (
+        <p>
+          This gateway predates the usage ledger. Update the node to see per-model, per-feature and
+          embedding usage.
+        </p>
+      ) : (
+        <p>
+          The ledger records every chat turn, hidden LLM lane (dreams, extraction, skill evolution)
+          and embedding call as it happens, and imports past session transcripts in the background
+          within minutes of gateway start.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function UsageView() {
   const gwStatus = useGatewayStore((s) => s.status);
+  const hello = useGatewayStore((s) => s.hello);
   const request = useGatewayStore((s) => s.request);
+  const summary = useUsageStore((s) => s.summary);
   const result = useUsageStore((s) => s.result);
+  const liveEvents = useUsageStore((s) => s.liveEvents);
   const days = useUsageStore((s) => s.days);
+  const tab = useUsageStore((s) => s.tab);
   const loading = useUsageStore((s) => s.loading);
+  const error = useUsageStore((s) => s.error);
+  const ledgerSupported = useUsageStore((s) => s.ledgerSupported);
+  const lastEventAt = useUsageStore((s) => s.lastEventAt);
+  const setSummary = useUsageStore((s) => s.setSummary);
   const setResult = useUsageStore((s) => s.setResult);
+  const setLiveEvents = useUsageStore((s) => s.setLiveEvents);
+  const pushLiveEvent = useUsageStore((s) => s.pushLiveEvent);
   const setDays = useUsageStore((s) => s.setDays);
+  const setTab = useUsageStore((s) => s.setTab);
   const setLoading = useUsageStore((s) => s.setLoading);
   const setError = useUsageStore((s) => s.setError);
+  const setLedgerSupported = useUsageStore((s) => s.setLedgerSupported);
+
+  const methods = hello?.features?.methods;
+  const ledgerAvailable = methods ? methods.includes("usage.ledger.summary") : true;
 
   const refresh = useCallback(async () => {
     if (gwStatus !== "connected") return;
     setLoading(true);
-    try {
-      const res = (await request("sessions.usage", {
-        days,
-        limit: 50,
-      })) as UsageResult;
-      setResult(res);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load usage");
-    } finally {
-      setLoading(false);
+    const errors: string[] = [];
+    const [summaryRes, sessionsRes] = await Promise.allSettled([
+      ledgerAvailable
+        ? (request("usage.ledger.summary", { days }) as Promise<UsageLedgerSummary>)
+        : Promise.reject(new Error("usage ledger unavailable on this gateway")),
+      request("sessions.usage", { days, limit: 50 }) as Promise<UsageResult>,
+    ]);
+    if (summaryRes.status === "fulfilled") {
+      setSummary(summaryRes.value);
+      setLedgerSupported(true);
+    } else {
+      setLedgerSupported(ledgerAvailable ? null : false);
+      errors.push(
+        summaryRes.reason instanceof Error
+          ? summaryRes.reason.message
+          : "Failed to load usage ledger",
+      );
     }
-  }, [gwStatus, request, days, setResult, setLoading, setError]);
+    if (sessionsRes.status === "fulfilled") {
+      setResult(sessionsRes.value);
+    } else {
+      errors.push(
+        sessionsRes.reason instanceof Error
+          ? sessionsRes.reason.message
+          : "Failed to load session usage",
+      );
+    }
+    if (ledgerAvailable) {
+      try {
+        const page = (await request("usage.ledger.events", { limit: 50 })) as {
+          events: UsageEventRow[];
+        };
+        // Merge by id so a refresh never shrinks a feed that already streamed more rows.
+        const current = useUsageStore.getState().liveEvents;
+        const seen = new Set(current.map((e) => e.id));
+        const merged = [...current, ...(page.events ?? []).filter((e) => !seen.has(e.id))].toSorted(
+          (a, b) => b.id - a.id,
+        );
+        setLiveEvents(merged);
+      } catch {
+        // live feed is best-effort
+      }
+    }
+    setError(errors.length > 0 ? errors.join(" · ") : null);
+    setLoading(false);
+  }, [
+    gwStatus,
+    request,
+    days,
+    ledgerAvailable,
+    setSummary,
+    setResult,
+    setLiveEvents,
+    setLoading,
+    setError,
+    setLedgerSupported,
+  ]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
-  const totals = result?.totals;
-  const aggregates = result?.aggregates;
+  // Streamed rows update the live feed immediately and coalesce into one summary refresh.
+  // The timer calls the LATEST refresh (via ref) so a day-chip change inside the window wins.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onUsageEvent = useCallback(
+    (payload: unknown) => {
+      const evt = payload as UsageEventRow;
+      if (!evt || typeof evt.id !== "number") return;
+      pushLiveEvent(evt);
+      if (!refreshTimer.current) {
+        refreshTimer.current = setTimeout(() => {
+          refreshTimer.current = null;
+          void refreshRef.current();
+        }, LIVE_REFRESH_MS);
+      }
+    },
+    [pushLiveEvent],
+  );
+  useGatewayEvent("usage", onUsageEvent);
+  useEffect(
+    () => () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
+
+  const hasData = (summary?.totals.calls ?? 0) > 0;
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Usage</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {result ? `${result.startDate} — ${result.endDate}` : "Analytics & cost breakdown"}
+            {summary
+              ? `${summary.startDate} — ${summary.endDate}`
+              : "Tokens and cost per model, feature and day"}
+            {lastEventAt ? ` · last call ${formatRelativeTime(lastEventAt)}` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -160,6 +187,7 @@ export function UsageView() {
             {DAY_OPTIONS.map((d) => (
               <button
                 key={d}
+                type="button"
                 onClick={() => setDays(d)}
                 className={cn(
                   "px-2.5 py-1 text-xs transition-colors",
@@ -171,76 +199,84 @@ export function UsageView() {
             ))}
           </div>
           <button
-            onClick={refresh}
+            type="button"
+            onClick={() => void refresh()}
             disabled={loading}
             className={cn(
-              "px-3 py-1.5 text-xs rounded-lg",
+              "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg",
               "bg-brand/10 text-brand hover:bg-brand/30",
               "border border-brand/20 transition-colors",
               loading && "opacity-50",
             )}
           >
+            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
             {loading ? "Loading…" : "Refresh"}
           </button>
         </div>
       </div>
 
-      {/* Summary stats */}
-      {totals && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            label="Total Cost"
-            value={formatCost(totals.totalCost)}
-            sub={`${formatTokens(totals.totalTokens)} tokens`}
-          />
-          <StatCard
-            label="Input Tokens"
-            value={formatTokens(totals.input)}
-            sub={formatCost(totals.inputCost)}
-          />
-          <StatCard
-            label="Output Tokens"
-            value={formatTokens(totals.output)}
-            sub={formatCost(totals.outputCost)}
-          />
-          <StatCard
-            label="Cache"
-            value={formatTokens(totals.cacheRead + totals.cacheWrite)}
-            sub={`R: ${formatTokens(totals.cacheRead)} / W: ${formatTokens(totals.cacheWrite)}`}
-          />
+      {error && (
+        <div className="rounded-xl border border-danger/30 bg-danger/5 p-3 text-xs text-danger flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+          <span>{error}</span>
         </div>
       )}
 
-      {/* Messages */}
-      {aggregates?.messages && (
-        <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
-          {[
-            ["Messages", aggregates.messages.total],
-            ["User", aggregates.messages.user],
-            ["Assistant", aggregates.messages.assistant],
-            ["Tool Calls", aggregates.messages.toolCalls],
-            ["Errors", aggregates.messages.errors],
-            ["Tools", aggregates.tools?.uniqueTools ?? 0],
-          ].map(([label, value]) => (
-            <div
-              key={String(label)}
-              className="rounded-lg border border-border/10 bg-card/40 px-3 py-2"
-            >
-              <p className="text-badge text-muted-foreground">{label}</p>
-              <p className="text-sm font-medium text-foreground">{String(value)}</p>
-            </div>
+      {!summary && !loading && !error && gwStatus !== "connected" && (
+        <p className="text-xs text-muted-foreground">Connect to the gateway to load usage.</p>
+      )}
+
+      {summary && !hasData && <EmptyState ledgerSupported={ledgerSupported} />}
+
+      <Tabs value={tab} onValueChange={(v) => setTab(v as UsageTab)}>
+        <TabsList>
+          {TABS.map((t) => (
+            <TabsTrigger key={t.id} value={t.id} className="text-xs">
+              {t.label}
+              {t.id === "live" && liveEvents.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-brand/20 px-1.5 text-3xs text-brand">
+                  {liveEvents.length}
+                </span>
+              )}
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
+        <TabsContent value="overview">
+          {summary && hasData && <UsageOverview summary={summary} />}
+        </TabsContent>
+        <TabsContent value="models">
+          {summary && <UsageModelsTable models={summary.byModel} />}
+        </TabsContent>
+        <TabsContent value="features">
+          {summary && hasData && <UsageFeaturesPanel summary={summary} />}
+        </TabsContent>
+        <TabsContent value="sessions">
+          <UsageSessionsList result={result} />
+        </TabsContent>
+        <TabsContent value="live">
+          <UsageLiveFeed
+            events={liveEvents}
+            connected={gwStatus === "connected" && ledgerSupported !== false}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {summary && (
+        <p className="text-2xs text-muted-foreground/60">
+          Ledger: {summary.ledger.events} rows
+          {summary.ledger.dbBytes ? ` · ${(summary.ledger.dbBytes / 1_048_576).toFixed(1)} MB` : ""}
+          {summary.ledger.lastReconcileAt
+            ? ` · transcripts reconciled ${formatRelativeTime(summary.ledger.lastReconcileAt)}`
+            : ""}
+          {` · ${summary.ledger.retentionDays}d retention`}
+          {summary.totals.unpricedCalls > 0
+            ? ` · ${summary.totals.unpricedCalls} unpriced calls`
+            : ""}
+          {summary.totals.estimatedCalls > 0
+            ? ` · ${summary.totals.estimatedCalls} estimated (≈)`
+            : ""}
+        </p>
       )}
-
-      {/* Daily chart */}
-      {aggregates?.daily && <DailyChart daily={aggregates.daily} />}
-
-      {/* Model breakdown */}
-      {aggregates?.byModel && <ModelBreakdown byModel={aggregates.byModel} />}
-
-      {/* Session list */}
-      {result?.sessions && <SessionList sessions={result.sessions} />}
     </div>
   );
 }

@@ -1,0 +1,321 @@
+/**
+ * PLAN-50: transcript reconciler.
+ *
+ * Every assistant turn the embedded pi runner produces is appended to a session transcript
+ * (`<state>/agents/<id>/sessions/<sessionId>.jsonl`) with usage and cost. The live hook records
+ * those turns as they happen; this pass is (a) the one-time backfill of history into the ledger
+ * and (b) a periodic safety net for any path that writes a transcript without going through the
+ * live hook (compaction, repairs, older builds). Rows dedupe on `<sessionId>:<message.timestamp>`
+ * so the two sources never double count.
+ *
+ * Files are read incrementally from a per-file byte cursor kept in `usage_meta`.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
+import type { BitterbotConfig } from "../config/config.js";
+import type { UsageLedger } from "./usage-ledger.js";
+import { normalizeUsage, type UsageLike } from "../agents/usage.js";
+import { resolveStateDir } from "../config/paths.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { USAGE_FEATURES } from "./usage-features.js";
+import { resolveUsageEvent, type ResolvedUsageEvent } from "./usage-ledger.js";
+
+const log = createSubsystemLogger("usage-reconcile");
+
+const TRANSCRIPT_RE = /^(?<sessionId>.+?)\.jsonl(?:\.(?:deleted|reset)\..+)?$/;
+const SYNTHETIC_PROVIDERS = new Set(["bitterbot", "openclaw"]);
+const MAX_LINE_BYTES = 8 * 1024 * 1024;
+const READ_CHUNK_BYTES = 1024 * 1024;
+const YIELD_EVERY_LINES = 200;
+
+type Cursor = { offset: number; size: number; mtimeMs: number };
+
+export type ReconcileResult = { files: number; rows: number; skipped: number };
+
+export function transcriptSessionId(fileName: string): string | null {
+  const match = TRANSCRIPT_RE.exec(fileName);
+  return match?.groups?.sessionId ?? null;
+}
+
+export function usageDedupeKey(sessionId: string, messageTimestamp: number | string): string {
+  return `${sessionId}:${messageTimestamp}`;
+}
+
+type ParsedAssistantLine = {
+  ts: number;
+  dedupeKey: string;
+  provider?: string;
+  model?: string;
+  api?: string;
+  usage: ReturnType<typeof normalizeUsage>;
+  cost?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    total?: number;
+  };
+  stopReason?: string;
+  durationMs?: number;
+};
+
+/** Parse one transcript line into a ledger candidate; null for anything that is not a priced assistant turn. */
+export function parseTranscriptLine(line: string, sessionId: string): ParsedAssistantLine | null {
+  let entry: Record<string, unknown>;
+  try {
+    entry = JSON.parse(line) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const message = entry.message as Record<string, unknown> | undefined;
+  if (!message || typeof message !== "object" || message.role !== "assistant") {
+    return null;
+  }
+  const usageRaw = (message.usage ?? entry.usage) as UsageLike | undefined;
+  const usage = normalizeUsage(usageRaw);
+  if (!usage) {
+    return null;
+  }
+  const provider = typeof message.provider === "string" ? message.provider : undefined;
+  if (provider && SYNTHETIC_PROVIDERS.has(provider)) {
+    return null;
+  }
+  const model = typeof message.model === "string" ? message.model : undefined;
+  const api = typeof message.api === "string" ? message.api : undefined;
+  const msgTs =
+    typeof message.timestamp === "number"
+      ? message.timestamp
+      : typeof entry.timestamp === "string"
+        ? Date.parse(entry.timestamp)
+        : undefined;
+  const entryTs = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : undefined;
+  const ts = Number.isFinite(msgTs)
+    ? (msgTs as number)
+    : Number.isFinite(entryTs)
+      ? (entryTs as number)
+      : Date.now();
+  const costRaw = (usageRaw as { cost?: Record<string, unknown> } | undefined)?.cost;
+  const cost =
+    costRaw && typeof costRaw === "object"
+      ? {
+          input: typeof costRaw.input === "number" ? costRaw.input : undefined,
+          output: typeof costRaw.output === "number" ? costRaw.output : undefined,
+          cacheRead: typeof costRaw.cacheRead === "number" ? costRaw.cacheRead : undefined,
+          cacheWrite: typeof costRaw.cacheWrite === "number" ? costRaw.cacheWrite : undefined,
+          total: typeof costRaw.total === "number" ? costRaw.total : undefined,
+        }
+      : undefined;
+  return {
+    ts,
+    dedupeKey: usageDedupeKey(sessionId, Number.isFinite(msgTs) ? (msgTs as number) : ts),
+    provider,
+    model,
+    api,
+    usage,
+    cost,
+    stopReason: typeof message.stopReason === "string" ? message.stopReason : undefined,
+    durationMs: typeof message.durationMs === "number" ? message.durationMs : undefined,
+  };
+}
+
+function listAgentSessionDirs(stateDir: string): Array<{ agentId: string; dir: string }> {
+  const agentsDir = path.join(stateDir, "agents");
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(agentsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const out: Array<{ agentId: string; dir: string }> = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const dir = path.join(agentsDir, entry.name, "sessions");
+    if (fs.existsSync(dir)) {
+      out.push({ agentId: entry.name, dir });
+    }
+  }
+  return out;
+}
+
+function readCursor(ledger: UsageLedger, filePath: string): Cursor | null {
+  const raw = ledger.getMeta(`reconcile:file:${filePath}`);
+  if (!raw) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as Cursor;
+    if (typeof parsed.offset === "number" && typeof parsed.size === "number") {
+      return parsed;
+    }
+  } catch {
+    // corrupt cursor — start over
+  }
+  return null;
+}
+
+async function reconcileFile(params: {
+  ledger: UsageLedger;
+  filePath: string;
+  agentId: string;
+  cfg?: BitterbotConfig;
+}): Promise<{ rows: number; skipped: number }> {
+  const { ledger, filePath, agentId } = params;
+  const sessionId = transcriptSessionId(path.basename(filePath));
+  if (!sessionId) {
+    return { rows: 0, skipped: 0 };
+  }
+  const stat = fs.statSync(filePath);
+  const prev = readCursor(ledger, filePath);
+  let offset = prev && prev.offset <= stat.size ? prev.offset : 0;
+  if (prev && prev.size === stat.size && prev.mtimeMs === stat.mtimeMs) {
+    return { rows: 0, skipped: 0 };
+  }
+  if (stat.size <= offset) {
+    ledger.setMeta(
+      `reconcile:file:${filePath}`,
+      JSON.stringify({
+        offset: stat.size,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+      } satisfies Cursor),
+    );
+    return { rows: 0, skipped: 0 };
+  }
+
+  const fd = fs.openSync(filePath, "r");
+  let rows = 0;
+  let skipped = 0;
+  try {
+    const length = stat.size - offset;
+    const buffer = Buffer.alloc(Math.min(length, READ_CHUNK_BYTES));
+    const decoder = new StringDecoder("utf8");
+    let carry = "";
+    let consumed = 0;
+    // Bytes after the last newline seen so far (a torn tail); the cursor never advances past it.
+    let tailBytes = 0;
+    let linesSinceYield = 0;
+    const pending: Array<ResolvedUsageEvent & { dedupeKey: string }> = [];
+    while (consumed < length) {
+      const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, offset + consumed);
+      if (bytesRead <= 0) {
+        break;
+      }
+      consumed += bytesRead;
+      const lastNewline = buffer.lastIndexOf(0x0a, bytesRead - 1);
+      tailBytes = lastNewline >= 0 ? bytesRead - lastNewline - 1 : tailBytes + bytesRead;
+      if (tailBytes > MAX_LINE_BYTES) {
+        // A single line larger than the cap is not a transcript we can use; skip the rest.
+        log.debug(
+          `reconcile: line over ${MAX_LINE_BYTES} bytes in ${filePath}; stopping at cursor`,
+        );
+        break;
+      }
+      const chunk = carry + decoder.write(buffer.subarray(0, bytesRead));
+      const lines = chunk.split("\n");
+      carry = lines.pop() ?? "";
+      for (const line of lines) {
+        linesSinceYield += 1;
+        if (linesSinceYield >= YIELD_EVERY_LINES) {
+          linesSinceYield = 0;
+          // Keep the gateway event loop responsive during a large first-run backfill.
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        if (!line.trim() || !line.includes('"usage"')) {
+          continue;
+        }
+        const parsed = parseTranscriptLine(line, sessionId);
+        if (!parsed) {
+          continue;
+        }
+        const resolved = await resolveUsageEvent({
+          ts: parsed.ts,
+          kind: "chat",
+          feature: USAGE_FEATURES.agentTurn,
+          provider: parsed.provider,
+          model: parsed.model,
+          api: parsed.api,
+          agentId,
+          sessionId,
+          usage: parsed.usage,
+          cost: parsed.cost,
+          stopReason: parsed.stopReason,
+          durationMs: parsed.durationMs,
+          status: parsed.stopReason === "error" ? "error" : "ok",
+          source: "reconcile",
+          config: params.cfg,
+        });
+        if (!resolved) {
+          skipped += 1;
+          continue;
+        }
+        pending.push({ ...resolved, dedupeKey: parsed.dedupeKey });
+      }
+      if (pending.length > 0) {
+        const batch = pending.splice(0, pending.length);
+        ledger.transaction(() => {
+          for (const row of batch) {
+            if (ledger.insert(row) === null) {
+              skipped += 1;
+            } else {
+              rows += 1;
+            }
+          }
+        });
+      }
+    }
+    // Persist the cursor at the last complete line so a torn tail is re-read next time.
+    offset = offset + consumed - tailBytes;
+    ledger.setMeta(
+      `reconcile:file:${filePath}`,
+      JSON.stringify({ offset, size: stat.size, mtimeMs: stat.mtimeMs } satisfies Cursor),
+    );
+  } finally {
+    fs.closeSync(fd);
+  }
+  return { rows, skipped };
+}
+
+export async function reconcileTranscripts(params: {
+  ledger: UsageLedger;
+  cfg?: BitterbotConfig;
+  stateDir?: string;
+}): Promise<ReconcileResult> {
+  const stateDir = params.stateDir ?? resolveStateDir();
+  const result: ReconcileResult = { files: 0, rows: 0, skipped: 0 };
+  for (const { agentId, dir } of listAgentSessionDirs(stateDir)) {
+    let names: string[];
+    try {
+      names = fs.readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names) {
+      if (!TRANSCRIPT_RE.test(name)) {
+        continue;
+      }
+      const filePath = path.join(dir, name);
+      try {
+        const res = await reconcileFile({
+          ledger: params.ledger,
+          filePath,
+          agentId,
+          cfg: params.cfg,
+        });
+        result.files += 1;
+        result.rows += res.rows;
+        result.skipped += res.skipped;
+      } catch (err) {
+        log.debug(
+          `reconcile skipped ${filePath}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+  params.ledger.setMeta("reconcile:lastAt", String(Date.now()));
+  params.ledger.setMeta("reconcile:lastRows", String(result.rows));
+  return result;
+}

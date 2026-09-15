@@ -29,6 +29,7 @@ import type { PaymentsConfig } from "./types.payments.js";
 import type { PluginsConfig } from "./types.plugins.js";
 import type { SkillsConfig } from "./types.skills.js";
 import type { ToolsConfig } from "./types.tools.js";
+import type { UsageConfig } from "./types.usage.js";
 
 export type BitterbotConfig = {
   meta?: {
@@ -62,6 +63,8 @@ export type BitterbotConfig = {
     lastRunMode?: "local" | "remote";
   };
   diagnostics?: DiagnosticsConfig;
+  /** PLAN-50: usage ledger + spend budgets. */
+  usage?: UsageConfig;
   logging?: LoggingConfig;
   update?: {
     /** Update channel for git + npm installs ("stable", "beta", or "dev"). */

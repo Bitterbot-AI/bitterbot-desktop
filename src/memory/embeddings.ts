@@ -23,14 +23,19 @@ function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
 export type { GeminiEmbeddingClient } from "./embeddings-gemini.js";
 export type { OpenAiEmbeddingClient } from "./embeddings-openai.js";
 export type { VoyageEmbeddingClient } from "./embeddings-voyage.js";
+import { recordEmbeddingUsage } from "./embeddings-usage.js";
+
+export type { EmbedCallOptions } from "./embeddings-usage.js";
 
 export type EmbeddingProvider = {
   id: string;
   model: string;
   maxInputTokens?: number;
-  embedQuery: (text: string) => Promise<number[]>;
-  embedBatch: (texts: string[]) => Promise<number[][]>;
+  /** PLAN-50: `opts.feature` attributes the call in the usage ledger. */
+  embedQuery: (text: string, opts?: EmbedCallOptionsLocal) => Promise<number[]>;
+  embedBatch: (texts: string[], opts?: EmbedCallOptionsLocal) => Promise<number[][]>;
 };
+type EmbedCallOptionsLocal = import("./embeddings-usage.js").EmbedCallOptions;
 
 export type EmbeddingProviderId = "openai" | "local" | "gemini" | "voyage";
 export type EmbeddingProviderRequest = EmbeddingProviderId | "auto";
@@ -51,6 +56,8 @@ export type EmbeddingProviderResult = {
 export type EmbeddingProviderOptions = {
   config: BitterbotConfig;
   agentDir?: string;
+  /** PLAN-50: owning agent for usage attribution. */
+  agentId?: string;
   provider: EmbeddingProviderRequest;
   remote?: {
     baseUrl?: string;
@@ -148,19 +155,37 @@ async function createLocalEmbeddingProvider(
   return {
     id: "local",
     model: modelPath,
-    embedQuery: async (text) => {
+    embedQuery: async (text, opts) => {
       const ctx = await ensureContext();
+      const started = Date.now();
       const embedding = await ctx.getEmbeddingFor(text);
+      recordEmbeddingUsage({
+        providerId: "local",
+        model: modelPath,
+        texts: [text],
+        feature: opts?.feature,
+        agentId: options.agentId,
+        durationMs: Date.now() - started,
+      });
       return sanitizeAndNormalizeEmbedding(Array.from(embedding.vector));
     },
-    embedBatch: async (texts) => {
+    embedBatch: async (texts, opts) => {
       const ctx = await ensureContext();
+      const started = Date.now();
       const embeddings = await Promise.all(
         texts.map(async (text) => {
           const embedding = await ctx.getEmbeddingFor(text);
           return sanitizeAndNormalizeEmbedding(Array.from(embedding.vector));
         }),
       );
+      recordEmbeddingUsage({
+        providerId: "local",
+        model: modelPath,
+        texts,
+        feature: opts?.feature,
+        agentId: options.agentId,
+        durationMs: Date.now() - started,
+      });
       return embeddings;
     },
   };

@@ -1215,6 +1215,7 @@ class MemoryManagerSyncOps {
     const fallbackResult = await createEmbeddingProvider({
       config: this.cfg,
       agentDir: resolveAgentDir(this.cfg, this.agentId),
+      agentId: this.agentId,
       provider: fallback,
       remote: this.settings.remote,
       model: fallbackModel,

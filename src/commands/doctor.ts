@@ -77,6 +77,7 @@ import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integ
 import { runSubsystemChecks } from "./doctor-subsystems.js";
 import { runTaskSpineChecks } from "./doctor-tasks.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
+import { runUsageChecks } from "./doctor-usage.js";
 import { runWalletChecks } from "./doctor-wallet.js";
 import { runWebSearchChecks } from "./doctor-web-search.js";
 import { noteWorkspaceStatus } from "./doctor-workspace-status.js";
@@ -374,6 +375,9 @@ async function runDoctor(
 
   // ── Economy (forage settlements, revenue queue, x402 payment gate) ──
   runEconomyChecks({ config: cfg, isGatewayRunning: healthOk });
+
+  // ── Usage & cost (PLAN-50 ledger coverage, unpriced models, budgets) ──
+  runUsageChecks({ config: cfg });
 
   // ── Artifact liveness (loops that run but whose output never appears —
   //    the wired-but-dead defect class from the 2026-08-09 audit) ──

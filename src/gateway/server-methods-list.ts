@@ -12,6 +12,11 @@ const BASE_METHODS = [
   "status",
   "usage.status",
   "usage.cost",
+  "sessions.usage",
+  "sessions.usage.timeseries",
+  "sessions.usage.logs",
+  "usage.ledger.summary",
+  "usage.ledger.events",
   "tts.status",
   "tts.providers",
   "tts.enable",
@@ -238,4 +243,7 @@ export const GATEWAY_EVENTS = [
   // Periodic update-staleness status (git behind count / npm version drift);
   // the Control UI raises or clears its update prompt on this.
   "update",
+  // PLAN-50: one event per recorded usage-ledger row, and budget threshold crossings.
+  "usage",
+  "usage.budget",
 ];

@@ -1,5 +1,6 @@
 import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.js";
 import { requireApiKey, resolveApiKeyForProvider } from "../agents/model-auth.js";
+import { recordEmbeddingUsage, type EmbedCallOptions } from "./embeddings-usage.js";
 
 export type VoyageEmbeddingClient = {
   baseUrl: string;
@@ -32,10 +33,15 @@ export async function createVoyageEmbeddingProvider(
   const client = await resolveVoyageEmbeddingClient(options);
   const url = `${client.baseUrl.replace(/\/$/, "")}/embeddings`;
 
-  const embed = async (input: string[], input_type?: "query" | "document"): Promise<number[][]> => {
+  const embed = async (
+    input: string[],
+    input_type?: "query" | "document",
+    opts?: EmbedCallOptions,
+  ): Promise<number[][]> => {
     if (input.length === 0) {
       return [];
     }
+    const started = Date.now();
     const body: { model: string; input: string[]; input_type?: "query" | "document" } = {
       model: client.model,
       input,
@@ -55,7 +61,18 @@ export async function createVoyageEmbeddingProvider(
     }
     const payload = (await res.json()) as {
       data?: Array<{ embedding?: number[] }>;
+      usage?: { total_tokens?: number };
     };
+    // PLAN-50: Voyage reports usage.total_tokens.
+    recordEmbeddingUsage({
+      providerId: "voyage",
+      model: client.model,
+      texts: input,
+      tokens: payload.usage?.total_tokens,
+      feature: opts?.feature,
+      agentId: options.agentId,
+      durationMs: Date.now() - started,
+    });
     const data = payload.data ?? [];
     return data.map((entry) => entry.embedding ?? []);
   };
@@ -65,11 +82,11 @@ export async function createVoyageEmbeddingProvider(
       id: "voyage",
       model: client.model,
       maxInputTokens: VOYAGE_MAX_INPUT_TOKENS[client.model],
-      embedQuery: async (text) => {
-        const [vec] = await embed([text], "query");
+      embedQuery: async (text, opts) => {
+        const [vec] = await embed([text], "query", opts);
         return vec ?? [];
       },
-      embedBatch: async (texts) => embed(texts, "document"),
+      embedBatch: async (texts, opts) => embed(texts, "document", opts),
     },
     client,
   };

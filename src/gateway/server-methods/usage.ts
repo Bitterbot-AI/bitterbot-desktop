@@ -24,6 +24,8 @@ import {
   discoverAllSessions,
   type DiscoveredSession,
 } from "../../infra/session-cost-usage.js";
+import { getUsageLedger } from "../../infra/usage-ledger.js";
+import { buildUsageLedgerSummary } from "../../infra/usage-summary.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { buildUsageAggregateTail } from "../../shared/usage-aggregates.js";
 import {
@@ -31,6 +33,8 @@ import {
   errorShape,
   formatValidationErrors,
   validateSessionsUsageParams,
+  validateUsageLedgerEventsParams,
+  validateUsageLedgerSummaryParams,
 } from "../protocol/index.js";
 import {
   listAgentsForGateway,
@@ -49,6 +53,11 @@ type CostUsageCacheEntry = {
 };
 
 const costUsageCache = new Map<string, CostUsageCacheEntry>();
+
+// PLAN-50: ledger summaries are cheap (indexed SQLite) — this only guards against a UI that
+// refreshes on every streamed usage event.
+const LEDGER_SUMMARY_CACHE_TTL_MS = 5_000;
+const ledgerSummaryCache = new Map<string, { at: number; value: unknown }>();
 
 function resolveSessionUsageFileOrRespond(
   key: string,
@@ -226,6 +235,8 @@ async function loadCostUsageSummaryCached(params: {
 }
 
 // Exposed for unit tests (kept as a single export to avoid widening the public API surface).
+export const __testLedger = { ledgerSummaryCache };
+
 export const __test = {
   parseDateToMs,
   parseDays,
@@ -291,6 +302,98 @@ export type SessionsUsageResult = {
 };
 
 export const usageHandlers: GatewayRequestHandlers = {
+  // PLAN-50: the ledger-backed surfaces. Cheap (indexed SQLite, no transcript scans), so the
+  // cache is only a guard against a UI refreshing on every streamed usage event.
+  "usage.ledger.summary": async ({ respond, params }) => {
+    if (!validateUsageLedgerSummaryParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid usage.ledger.summary params: ${formatValidationErrors(validateUsageLedgerSummaryParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const ledger = getUsageLedger();
+    if (!ledger) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          "usage ledger is disabled (BITTERBOT_USAGE_LEDGER=0 or usage.ledger.enabled=false)",
+        ),
+      );
+      return;
+    }
+    const p = params;
+    const { startMs, endMs } = parseDateRange({
+      startDate: p.startDate,
+      endDate: p.endDate,
+      days: p.days,
+    });
+    const cacheKey = JSON.stringify([
+      startMs,
+      endMs,
+      p.agentId ?? "",
+      p.feature ?? "",
+      p.kind ?? "",
+    ]);
+    const cached = ledgerSummaryCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.at < LEDGER_SUMMARY_CACHE_TTL_MS) {
+      respond(true, cached.value, undefined);
+      return;
+    }
+    const summary = buildUsageLedgerSummary({
+      ledger,
+      cfg: loadConfig(),
+      startMs,
+      endMs,
+      agentId: p.agentId,
+      feature: p.feature,
+      kind: p.kind,
+      nowMs: now,
+    });
+    ledgerSummaryCache.set(cacheKey, { at: now, value: summary });
+    respond(true, summary, undefined);
+  },
+  "usage.ledger.events": async ({ respond, params }) => {
+    if (!validateUsageLedgerEventsParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid usage.ledger.events params: ${formatValidationErrors(validateUsageLedgerEventsParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const ledger = getUsageLedger();
+    if (!ledger) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "usage ledger is disabled"));
+      return;
+    }
+    const p = params;
+    respond(
+      true,
+      ledger.events({
+        limit: p.limit,
+        beforeId: p.beforeId,
+        agentId: p.agentId,
+        feature: p.feature,
+        kind: p.kind,
+        provider: p.provider,
+        model: p.model,
+        sessionKey: p.sessionKey,
+        runId: p.runId,
+      }),
+      undefined,
+    );
+  },
   "usage.status": async ({ respond }) => {
     const summary = await loadProviderUsageSummary();
     respond(true, summary, undefined);
@@ -323,6 +426,7 @@ export const usageHandlers: GatewayRequestHandlers = {
     const { startMs, endMs } = parseDateRange({
       startDate: p.startDate,
       endDate: p.endDate,
+      days: p.days,
     });
     const limit = typeof p.limit === "number" && Number.isFinite(p.limit) ? p.limit : 50;
     const includeContextWeight = p.includeContextWeight ?? false;

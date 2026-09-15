@@ -48,6 +48,8 @@ const _HttpUrlSchema = z
     return protocol === "http:" || protocol === "https:";
   }, "Expected http:// or https:// URL");
 
+const UsageBudgetLimitSchema = z.object({ usd: z.number().positive() }).strict();
+
 export const BitterbotSchema = z
   .object({
     $schema: z.string().optional(),
@@ -78,6 +80,29 @@ export const BitterbotSchema = z
         lastRunCommit: z.string().optional(),
         lastRunCommand: z.string().optional(),
         lastRunMode: z.union([z.literal("local"), z.literal("remote")]).optional(),
+      })
+      .strict()
+      .optional(),
+    usage: z
+      .object({
+        ledger: z
+          .object({
+            enabled: z.boolean().optional(),
+            retentionDays: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
+        budgets: z
+          .object({
+            mode: z.union([z.literal("warn"), z.literal("enforce")]).optional(),
+            daily: UsageBudgetLimitSchema.optional(),
+            weekly: UsageBudgetLimitSchema.optional(),
+            monthly: UsageBudgetLimitSchema.optional(),
+            perModel: z.record(z.string(), UsageBudgetLimitSchema).optional(),
+            perFeature: z.record(z.string(), UsageBudgetLimitSchema).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

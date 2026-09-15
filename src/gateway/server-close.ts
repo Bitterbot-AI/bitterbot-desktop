@@ -7,6 +7,7 @@ import type { PluginServicesHandle } from "../plugins/services.js";
 import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
 import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
+import { flushUsageLedger, stopUsageLedger } from "../infra/usage-ledger.js";
 
 export function createGatewayCloseHandler(params: {
   tailscaleCleanup: (() => Promise<void>) | null;
@@ -25,6 +26,9 @@ export function createGatewayCloseHandler(params: {
   stopUpdateCheck: (() => void) | null;
   agentUnsub: (() => void) | null;
   heartbeatUnsub: (() => void) | null;
+  /** PLAN-50 */
+  usageUnsub?: (() => void) | null;
+  usageBudgetUnsub?: (() => void) | null;
   chatRunState: { clear: () => void };
   clients: Set<{ socket: { close: (code: number, reason: string) => void } }>;
   configReloader: { stop: () => Promise<void> };
@@ -95,6 +99,23 @@ export function createGatewayCloseHandler(params: {
       } catch {
         /* ignore */
       }
+    }
+    // PLAN-50: stop streaming usage rows and close the ledger.
+    for (const unsub of [params.usageUnsub, params.usageBudgetUnsub]) {
+      if (unsub) {
+        try {
+          unsub();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    try {
+      // Drain queued rows (embeddings/hidden lanes have no reconcile safety net) before closing.
+      await Promise.race([flushUsageLedger(), new Promise((r) => setTimeout(r, 2_000))]);
+      stopUsageLedger();
+    } catch {
+      // ignore
     }
     params.chatRunState.clear();
     for (const c of params.clients) {
