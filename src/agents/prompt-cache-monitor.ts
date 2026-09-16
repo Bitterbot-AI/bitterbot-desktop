@@ -81,11 +81,26 @@ function ringInOrder(s: CacheSession): CacheTurn[] {
   return [...s.ring.slice(s.ringHead), ...s.ring.slice(0, s.ringHead)];
 }
 
+export type CacheTurnState = "hit" | "write" | "mixed" | "none";
+
 export type RecordResult = {
   /** Set when this turn looks like a cache bust (the rule mirrors the
    *  Anthropic docs: a write where we expected a read). */
   bust: boolean;
+  /** PLAN-50 Phase 5: what the cache did on this turn. */
+  state: CacheTurnState;
+  /** Likely cause, for the cost coach: only set on busts, cold starts and prefix growth. */
+  reason?: string;
 };
+
+export const CACHE_BUST_REASONS = {
+  coldStart: "cold start (first turn of the session)",
+  expired: "cache expired (TTL elapsed between turns)",
+  prefixChanged: "prompt prefix changed (system prompt, tools, or model)",
+  prefixGrew: "context grew past the cached prefix",
+} as const;
+
+const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
 
 /**
  * Record one observed turn for a session. Returns whether this turn looks
@@ -100,6 +115,7 @@ export function recordCacheTurn(
   sessionKey: string,
   usage: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number },
   now = Date.now(),
+  opts?: { ttlMs?: number },
 ): RecordResult {
   const input = usage.input ?? 0;
   const cacheRead = usage.cacheRead ?? 0;
@@ -109,25 +125,41 @@ export function recordCacheTurn(
   // Skip turns with no observable cache traffic. Some providers don't emit
   // cache fields at all; recording zeros would dilute the metric.
   if (input === 0 && cacheRead === 0 && cacheWrite === 0) {
-    return { bust: false };
+    return { bust: false, state: "none" };
   }
 
   const s = getOrCreate(sessionKey);
   const prev = s.ring.length > 0 ? s.ring[(s.ringHead - 1 + RING_SIZE) % RING_SIZE] : undefined;
 
   const turn: CacheTurn = { ts: now, input, cacheRead, cacheWrite, output };
+  const state: CacheTurnState =
+    cacheRead > 0 && cacheWrite > 0
+      ? "mixed"
+      : cacheRead > 0
+        ? "hit"
+        : cacheWrite > 0
+          ? "write"
+          : "none";
+  const ttlMs = opts?.ttlMs ?? DEFAULT_CACHE_TTL_MS;
 
   // Bust if: previous turn had a meaningful cacheRead, this turn has
   // cacheWrite without compensating cacheRead, and the input shapes are
   // similar (within 30%) — "similar input but the cache no longer worked".
   let bust = false;
+  let reason: string | undefined;
   if (prev && prev.cacheRead > 0 && cacheWrite > 0 && cacheRead === 0) {
     const inputDelta = Math.abs(input - prev.input);
     const inputBase = Math.max(1, prev.input);
     if (inputDelta / inputBase < 0.3) {
       bust = true;
       s.busts += 1;
+      reason =
+        now - prev.ts > ttlMs ? CACHE_BUST_REASONS.expired : CACHE_BUST_REASONS.prefixChanged;
+    } else {
+      reason = CACHE_BUST_REASONS.prefixGrew;
     }
+  } else if (!prev && cacheWrite > 0) {
+    reason = CACHE_BUST_REASONS.coldStart;
   }
 
   s.totalInput += input;
@@ -137,7 +169,7 @@ export function recordCacheTurn(
   s.turns += 1;
   ringPush(s, turn);
 
-  return { bust };
+  return { bust, state, reason };
 }
 
 export type CacheMetrics = {

@@ -24,6 +24,8 @@ export function pricingSourceLabel(source: PricingSource): string {
       return "catalog";
     case "embedding-catalog":
       return "catalog";
+    case "live":
+      return "live price";
     case "local":
       return "local (free)";
     case "estimated":

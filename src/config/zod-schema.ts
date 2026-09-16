@@ -103,6 +103,13 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        pricing: z
+          .object({
+            liveRefresh: z.boolean().optional(),
+            openRouterUrl: z.string().url().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

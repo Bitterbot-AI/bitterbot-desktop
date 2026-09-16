@@ -75,7 +75,7 @@ import { resolveTranscriptPolicy } from "../../transcript-policy.js";
 import { isRunnerAbortError } from "../abort.js";
 import { appendCacheTtlTimestamp, isCacheTtlEligibleProvider } from "../cache-ttl.js";
 import { buildEmbeddedExtensionPaths } from "../extensions.js";
-import { applyExtraParamsToAgent } from "../extra-params.js";
+import { applyExtraParamsToAgent, resolveCacheTtlLabel } from "../extra-params.js";
 import {
   logToolSchemasForGoogle,
   sanitizeAntigravityThinkingBlocks,
@@ -878,6 +878,12 @@ export async function runEmbeddedAttempt(
         sessionKey: params.sessionKey ?? params.sessionId,
         sessionFile: params.sessionFile,
         agentId: sessionAgentId,
+        cacheTtl: resolveCacheTtlLabel({
+          cfg: params.config,
+          provider: params.provider,
+          modelId: params.modelId,
+          baseUrl: typeof params.model.baseUrl === "string" ? params.model.baseUrl : undefined,
+        }),
         contextWindowTokens: params.model.contextWindow,
         modelRef: {
           provider: params.model.provider,

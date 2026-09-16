@@ -1,8 +1,8 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { UsageModelSummary } from "../../stores/usage-store";
 import { formatRelativeTime, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import { useUsageStore, type UsageModelSummary } from "../../stores/usage-store";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import {
   formatPct,
@@ -61,7 +61,11 @@ function valueOf(m: UsageModelSummary, key: SortKey): number {
 export function UsageModelsTable({ models }: { models: UsageModelSummary[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("cost");
   const [desc, setDesc] = useState(true);
+  const costMode = useUsageStore((s) => s.costMode);
+  const setCostMode = useUsageStore((s) => s.setCostMode);
   const hasReasoning = models.some((m) => m.usage.reasoning > 0);
+  const showComputed = costMode !== "reported";
+  const showReported = costMode !== "computed";
 
   const sorted = useMemo(
     () =>
@@ -87,118 +91,163 @@ export function UsageModelsTable({ models }: { models: UsageModelSummary[] }) {
   }
 
   return (
-    <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="text-2xs">Model</TableHead>
-            <TableHead className="text-2xs">Type</TableHead>
-            {COLUMNS.map((c) => (
-              <TableHead key={c.key} className="text-2xs text-right">
-                <button
-                  type="button"
-                  title={c.title}
-                  onClick={() => toggle(c.key)}
-                  className={cn(
-                    "inline-flex items-center gap-1 hover:text-foreground",
-                    sortKey === c.key && "text-foreground",
-                  )}
-                >
-                  {c.label}
-                  {sortKey === c.key &&
-                    (desc ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />)}
-                </button>
-              </TableHead>
-            ))}
-            {hasReasoning && (
-              <TableHead
-                className="text-2xs text-right"
-                title="Reasoning tokens (subset of output)"
-              >
-                Reasoning
-              </TableHead>
-            )}
-            <TableHead className="text-2xs">Pricing</TableHead>
-            <TableHead className="text-2xs">Last</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {sorted.map((m) => {
-            const key = `${m.provider ?? "?"}/${m.model ?? "?"}`;
-            const worstSource = m.pricingSources.includes("unpriced")
-              ? "unpriced"
-              : m.pricingSources.includes("estimated")
-                ? "estimated"
-                : m.pricingSources.includes("local")
-                  ? "local"
-                  : (m.pricingSources[0] ?? "catalog");
-            return (
-              <TableRow key={key} className="text-xs">
-                <TableCell>
-                  <div className="text-foreground truncate max-w-[260px]" title={key}>
-                    {m.model ?? "unknown"}
-                  </div>
-                  <div className="text-2xs text-muted-foreground/60">{m.provider ?? ""}</div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {m.kinds.map((k) => (
-                      <span
-                        key={k}
-                        className="rounded border border-border/20 bg-muted/30 px-1.5 text-2xs text-muted-foreground"
-                      >
-                        {kindLabel(k)}
-                      </span>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell className="text-right tabular-nums">{m.calls}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatTokens(m.usage.input)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatTokens(m.usage.cacheRead)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatTokens(m.usage.cacheWrite)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatTokens(m.usage.output)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatTokens(m.usage.total)}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    "text-right tabular-nums",
-                    m.cacheHitRate >= 0.5 ? "text-success" : undefined,
-                  )}
-                >
-                  {m.kinds.includes("chat") ? formatPct(m.cacheHitRate) : "—"}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-brand font-medium">
-                  {formatUsdSmart(m.cost.total)}
-                </TableCell>
-                {hasReasoning && (
-                  <TableCell className="text-right tabular-nums">
-                    {formatTokens(m.usage.reasoning)}
-                  </TableCell>
-                )}
-                <TableCell>
-                  <span
-                    className={cn("rounded border px-1.5 text-2xs", pricingSourceTone(worstSource))}
+    <div className="space-y-2">
+      <div className="flex items-center justify-end gap-2 text-2xs text-muted-foreground">
+        <span title="reported = cost the model library returned with the call; computed = tokens × our price table">
+          cost mode
+        </span>
+        <div className="flex rounded-lg overflow-hidden border border-border/20">
+          {(["reported", "computed", "both"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setCostMode(m)}
+              className={cn(
+                "px-2 py-0.5 transition-colors",
+                costMode === m ? "bg-brand/20 text-brand" : "hover:bg-muted/40",
+              )}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-2xs">Model</TableHead>
+              <TableHead className="text-2xs">Type</TableHead>
+              {COLUMNS.map((c) => (
+                <TableHead key={c.key} className="text-2xs text-right">
+                  <button
+                    type="button"
+                    title={c.title}
+                    onClick={() => toggle(c.key)}
+                    className={cn(
+                      "inline-flex items-center gap-1 hover:text-foreground",
+                      sortKey === c.key && "text-foreground",
+                    )}
                   >
-                    {pricingSourceLabel(worstSource)}
-                  </span>
-                </TableCell>
-                <TableCell className="text-2xs text-muted-foreground whitespace-nowrap">
-                  {m.lastTs ? formatRelativeTime(m.lastTs) : ""}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                    {c.label}
+                    {sortKey === c.key &&
+                      (desc ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />)}
+                  </button>
+                </TableHead>
+              ))}
+              {hasReasoning && (
+                <TableHead
+                  className="text-2xs text-right"
+                  title="Reasoning tokens (subset of output)"
+                >
+                  Reasoning
+                </TableHead>
+              )}
+              <TableHead className="text-2xs">Pricing</TableHead>
+              <TableHead className="text-2xs">Last</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sorted.map((m) => {
+              const key = `${m.provider ?? "?"}/${m.model ?? "?"}`;
+              const worstSource = m.pricingSources.includes("unpriced")
+                ? "unpriced"
+                : m.pricingSources.includes("estimated")
+                  ? "estimated"
+                  : m.pricingSources.includes("local")
+                    ? "local"
+                    : (m.pricingSources[0] ?? "catalog");
+              return (
+                <TableRow key={key} className="text-xs">
+                  <TableCell>
+                    <div className="text-foreground truncate max-w-[260px]" title={key}>
+                      {m.model ?? "unknown"}
+                    </div>
+                    <div className="text-2xs text-muted-foreground/60">{m.provider ?? ""}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {m.kinds.map((k) => (
+                        <span
+                          key={k}
+                          className="rounded border border-border/20 bg-muted/30 px-1.5 text-2xs text-muted-foreground"
+                        >
+                          {kindLabel(k)}
+                        </span>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{m.calls}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatTokens(m.usage.input)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatTokens(m.usage.cacheRead)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatTokens(m.usage.cacheWrite)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatTokens(m.usage.output)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatTokens(m.usage.total)}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "text-right tabular-nums",
+                      m.cacheHitRate >= 0.5 ? "text-success" : undefined,
+                    )}
+                  >
+                    {m.kinds.includes("chat") ? formatPct(m.cacheHitRate) : "—"}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-brand font-medium">
+                    {showReported && <div>{formatUsdSmart(m.cost.total)}</div>}
+                    {showComputed && (
+                      <div
+                        className={cn(
+                          costMode === "both" ? "text-2xs text-muted-foreground" : undefined,
+                        )}
+                        title="tokens × our price table"
+                      >
+                        {costMode === "both" ? "≙ " : ""}
+                        {m.computedCalls > 0 ? formatUsdSmart(m.costComputed) : "—"}
+                        {costMode === "both" &&
+                        m.cost.total > 0 &&
+                        Math.abs(m.costComputed / m.cost.total - 1) > 0.05 ? (
+                          <span className="text-warning">
+                            {" "}
+                            {m.costComputed > m.cost.total ? "+" : ""}
+                            {Math.round((m.costComputed / m.cost.total - 1) * 100)}%
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
+                  </TableCell>
+                  {hasReasoning && (
+                    <TableCell className="text-right tabular-nums">
+                      {formatTokens(m.usage.reasoning)}
+                    </TableCell>
+                  )}
+                  <TableCell>
+                    <span
+                      className={cn(
+                        "rounded border px-1.5 text-2xs",
+                        pricingSourceTone(worstSource),
+                      )}
+                    >
+                      {pricingSourceLabel(worstSource)}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-2xs text-muted-foreground whitespace-nowrap">
+                    {m.lastTs ? formatRelativeTime(m.lastTs) : ""}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

@@ -6192,6 +6192,7 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   css-select@5.2.2:
     resolution: {integrity: sha512-TizTzUddG/xYLA3NXodFM0fSbNizXjOKhqiQQwvhlspadZokn1KDy0NZFS0wuEubIYAV5/c1/lAr0TaaFXEXzw==}
@@ -11695,7 +11696,7 @@ snapshots:
 
   '@larksuiteoapi/node-sdk@1.59.0(bufferutil@4.1.0)(utf-8-validate@5.0.10)':
     dependencies:
-      axios: 1.13.5(debug@4.4.3)
+      axios: 1.13.5
       lodash.identity: 3.0.0
       lodash.merge: 4.6.2
       lodash.pickby: 4.6.0
@@ -14032,7 +14033,7 @@ snapshots:
       '@slack/types': 2.20.0
       '@slack/web-api': 7.14.1
       '@types/express': 5.0.6
-      axios: 1.13.5(debug@4.4.3)
+      axios: 1.13.5
       express: 5.2.1
       path-to-regexp: 8.3.0
       raw-body: 3.0.2
@@ -14078,7 +14079,7 @@ snapshots:
       '@slack/types': 2.20.0
       '@types/node': 25.2.3
       '@types/retry': 0.12.0
-      axios: 1.13.5(debug@4.4.3)
+      axios: 1.13.5
       eventemitter3: 5.0.4
       form-data: 2.5.4
       is-electron: 2.2.2
@@ -16977,6 +16978,14 @@ snapshots:
       axios: 1.13.6
       is-retry-allowed: 2.2.0
 
+  axios@1.13.5:
+    dependencies:
+      follow-redirects: 1.15.11
+      form-data: 2.5.4
+      proxy-from-env: 1.1.0
+    transitivePeerDependencies:
+      - debug
+
   axios@1.13.5(debug@4.4.3):
     dependencies:
       follow-redirects: 1.15.11(debug@4.4.3)
@@ -16987,7 +16996,7 @@ snapshots:
 
   axios@1.13.6:
     dependencies:
-      follow-redirects: 1.15.11(debug@4.4.3)
+      follow-redirects: 1.15.11
       form-data: 2.5.4
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -18183,6 +18192,8 @@ snapshots:
     dependencies:
       locate-path: 5.0.0
       path-exists: 4.0.0
+
+  follow-redirects@1.15.11: {}
 
   follow-redirects@1.15.11(debug@4.4.3):
     optionalDependencies:

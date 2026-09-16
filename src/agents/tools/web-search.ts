@@ -2,6 +2,8 @@ import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { formatCliCommand } from "../../cli/command-format.js";
+import { USAGE_FEATURES } from "../../infra/usage-features.js";
+import { recordUsage } from "../../infra/usage-ledger.js";
 import { wrapWebContent } from "../../security/external-content.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
@@ -153,6 +155,7 @@ type PerplexitySearchResponse = {
     };
   }>;
   citations?: string[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
 };
 
 type PerplexityBaseUrlHint = "direct" | "openrouter";
@@ -532,6 +535,7 @@ async function runPerplexitySearch(params: {
     body.search_recency_filter = recencyFilter;
   }
 
+  const searchStartedAt = Date.now();
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -551,6 +555,20 @@ async function runPerplexitySearch(params: {
   }
 
   const data = (await res.json()) as PerplexitySearchResponse;
+  // PLAN-50 Phase 5: Perplexity answers are LLM completions; count them as search usage.
+  recordUsage({
+    kind: "search",
+    feature: USAGE_FEATURES.toolsWebSearch,
+    provider: baseUrl.includes("openrouter") ? "openrouter" : "perplexity",
+    model,
+    usage: {
+      input: data.usage?.prompt_tokens,
+      output: data.usage?.completion_tokens,
+      total: data.usage?.total_tokens,
+    },
+    items: 1,
+    durationMs: Date.now() - searchStartedAt,
+  });
   const content = data.choices?.[0]?.message?.content ?? "No response";
   const citations = data.citations ?? [];
 
@@ -584,6 +602,7 @@ async function runGrokSearch(params: {
   // citations are returned automatically when available — we just parse
   // them from the response without requesting them explicitly (#12910).
 
+  const searchStartedAt = Date.now();
   const res = await fetch(XAI_API_ENDPOINT, {
     method: "POST",
     headers: {
@@ -601,6 +620,23 @@ async function runGrokSearch(params: {
   }
 
   const data = (await res.json()) as GrokSearchResponse;
+  // PLAN-50 Phase 5: xAI Responses usage {input_tokens, output_tokens}.
+  const grokUsage = (
+    data as { usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } }
+  ).usage;
+  recordUsage({
+    kind: "search",
+    feature: USAGE_FEATURES.toolsWebSearch,
+    provider: "xai",
+    model: params.model,
+    usage: {
+      input: grokUsage?.input_tokens,
+      output: grokUsage?.output_tokens,
+      total: grokUsage?.total_tokens,
+    },
+    items: 1,
+    durationMs: Date.now() - searchStartedAt,
+  });
   const { text: extractedText, annotationCitations } = extractGrokContent(data);
   const content = extractedText ?? "No response";
   // Prefer top-level citations; fall back to annotation-derived ones

@@ -14,6 +14,8 @@ import {
   resolveModelRefFromString,
   type ModelRef,
 } from "../agents/model-selection.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
+import { recordUsage } from "../infra/usage-ledger.js";
 
 const DEFAULT_ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 const TEMP_FILE_CLEANUP_DELAY_MS = 5 * 60 * 1000; // 5 minutes
@@ -539,6 +541,7 @@ export async function elevenLabsTTS(params: {
   const normalizedNormalization = normalizeApplyTextNormalization(applyTextNormalization);
   const normalizedSeed = normalizeSeed(seed);
 
+  const synthStartedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -576,6 +579,16 @@ export async function elevenLabsTTS(params: {
       throw new Error(`ElevenLabs API error (${response.status})`);
     }
 
+    // PLAN-50 Phase 5: ElevenLabs bills per character on a subscription; recorded, unpriced.
+    recordUsage({
+      kind: "tts",
+      feature: USAGE_FEATURES.ttsSynthesis,
+      provider: "elevenlabs",
+      model: modelId,
+      usage: { input: text.length, total: text.length },
+      items: text.length,
+      durationMs: Date.now() - synthStartedAt,
+    });
     return Buffer.from(await response.arrayBuffer());
   } finally {
     clearTimeout(timeout);
@@ -599,6 +612,7 @@ export async function openaiTTS(params: {
     throw new Error(`Invalid voice: ${voice}`);
   }
 
+  const synthStartedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -622,6 +636,16 @@ export async function openaiTTS(params: {
       throw new Error(`OpenAI TTS API error (${response.status})`);
     }
 
+    // PLAN-50 Phase 5: speech is billed per character; `input` holds characters for tts rows.
+    recordUsage({
+      kind: "tts",
+      feature: USAGE_FEATURES.ttsSynthesis,
+      provider: "openai",
+      model,
+      usage: { input: text.length, total: text.length },
+      items: text.length,
+      durationMs: Date.now() - synthStartedAt,
+    });
     return Buffer.from(await response.arrayBuffer());
   } finally {
     clearTimeout(timeout);

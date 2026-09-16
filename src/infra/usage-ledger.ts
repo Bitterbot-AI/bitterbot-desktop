@@ -16,6 +16,8 @@ import path from "node:path";
 import type { NormalizedUsage } from "../agents/usage.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type {
+  CacheTtlLabel,
+  CacheTurnState,
   ModelPrice,
   PricingSource,
   UsageBuckets,
@@ -29,6 +31,7 @@ import { resolveStateDir } from "../config/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
 import { resolveUserPath } from "../utils.js";
+import { startPricingRefresh, stopPricingRefresh } from "./model-pricing-live.js";
 import { priceUsage, resolveModelPricing } from "./model-pricing.js";
 import { emptyUsageCost, formatUsageDay } from "./usage-ledger.types.js";
 
@@ -74,7 +77,11 @@ CREATE TABLE IF NOT EXISTS usage_events (
   stop_reason      TEXT,
   batch            INTEGER NOT NULL DEFAULT 0,
   items            INTEGER,
-  source           TEXT NOT NULL DEFAULT 'live'
+  source           TEXT NOT NULL DEFAULT 'live',
+  cost_computed    REAL,
+  cache_state      TEXT,
+  cache_bust_reason TEXT,
+  cache_ttl        TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_dedupe ON usage_events(dedupe_key) WHERE dedupe_key IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_usage_events_ts      ON usage_events(ts);
@@ -83,11 +90,20 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_model   ON usage_events(provider, mo
 CREATE INDEX IF NOT EXISTS idx_usage_events_feature ON usage_events(feature);
 CREATE INDEX IF NOT EXISTS idx_usage_events_session ON usage_events(session_key);
 CREATE INDEX IF NOT EXISTS idx_usage_events_run     ON usage_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_usage_events_task    ON usage_events(task_id);
 CREATE TABLE IF NOT EXISTS usage_meta (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
 `;
+
+/** Columns added after the first release; applied with ALTER TABLE on existing databases. */
+const MIGRATION_COLUMNS: Array<[string, string]> = [
+  ["cost_computed", "REAL"],
+  ["cache_state", "TEXT"],
+  ["cache_bust_reason", "TEXT"],
+  ["cache_ttl", "TEXT"],
+];
 
 export type UsageEventInput = {
   ts?: number;
@@ -113,6 +129,10 @@ export type UsageEventInput = {
   stopReason?: string | null;
   batch?: boolean;
   items?: number | null;
+  /** PLAN-50 Phase 5: prompt-cache observation for this turn (chat rows). */
+  cacheState?: CacheTurnState | null;
+  cacheBustReason?: string | null;
+  cacheTtl?: CacheTtlLabel | null;
   /** Stable key so live rows and transcript reconcile rows never double count. */
   dedupeKey?: string | null;
   source?: "live" | "reconcile";
@@ -157,6 +177,10 @@ type RawRow = {
   batch: number;
   items: number | null;
   source: string;
+  cost_computed: number | null;
+  cache_state: string | null;
+  cache_bust_reason: string | null;
+  cache_ttl: string | null;
 };
 
 export type UsageEventFilters = {
@@ -243,6 +267,10 @@ function rowToEvent(row: RawRow): UsageEventRow {
     batch: row.batch === 1,
     items: row.items,
     source: row.source === "reconcile" ? "reconcile" : "live",
+    costComputed: typeof row.cost_computed === "number" ? row.cost_computed : null,
+    cacheState: (row.cache_state as CacheTurnState | null) ?? null,
+    cacheBustReason: row.cache_bust_reason ?? null,
+    cacheTtl: (row.cache_ttl as CacheTtlLabel | null) ?? null,
   };
 }
 
@@ -292,6 +320,22 @@ export class UsageLedger {
     this.db = db;
     this.dbPath = dbPath;
     this.db.exec(SCHEMA_SQL);
+    this.ensureColumns();
+  }
+
+  private ensureColumns(): void {
+    const existing = new Set(
+      (
+        this.db.prepare("PRAGMA table_info(usage_events)").all() as unknown as Array<{
+          name: string;
+        }>
+      ).map((c) => c.name),
+    );
+    for (const [name, type] of MIGRATION_COLUMNS) {
+      if (!existing.has(name)) {
+        this.db.exec(`ALTER TABLE usage_events ADD COLUMN ${name} ${type}`);
+      }
+    }
   }
 
   static open(dbPath: string): UsageLedger {
@@ -352,8 +396,9 @@ export class UsageLedger {
            run_id, task_id, channel, input, cache_read, cache_write, output, reasoning, total,
            cost_input, cost_cache_read, cost_cache_write, cost_output, cost_total, cost_source,
            price_input, price_output, price_cache_read, price_cache_write,
-           duration_ms, status, stop_reason, batch, items, source)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           duration_ms, status, stop_reason, batch, items, source,
+           cost_computed, cache_state, cache_bust_reason, cache_ttl)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         evt.ts,
@@ -392,6 +437,10 @@ export class UsageLedger {
         evt.batch ? 1 : 0,
         evt.items ?? null,
         evt.source,
+        evt.costComputed ?? null,
+        evt.cacheState ?? null,
+        evt.cacheBustReason ?? null,
+        evt.cacheTtl ?? null,
       );
     const changes = Number(result.changes ?? 0);
     if (changes === 0) {
@@ -571,6 +620,7 @@ export function setUsageLedgerConfigEnabledForTest(enabled: boolean | null): voi
 
 export function stopUsageLedger(): void {
   closed = true;
+  stopPricingRefresh();
   if (!state) {
     return;
   }
@@ -645,21 +695,41 @@ export async function resolveUsageEvent(
   input: UsageEventInput,
 ): Promise<ResolvedUsageEvent | null> {
   const usage = toUsageBuckets(input.usage);
-  if (usage.total <= 0 && input.status !== "error") {
+  const hasItems =
+    typeof input.items === "number" && Number.isFinite(input.items) && input.items > 0;
+  // Zero-token rows are kept only when they still represent a billable call (per-request
+  // pricing such as speech-to-text minutes) or an error.
+  if (usage.total <= 0 && input.status !== "error" && !hasItems) {
     return null;
   }
   const ts = typeof input.ts === "number" && Number.isFinite(input.ts) ? input.ts : Date.now();
   const provider = input.provider?.trim() || null;
   const model = input.model?.trim() || null;
+  const cacheTtl = input.cacheTtl ?? null;
 
   let cost: UsageCost;
   let costSource: PricingSource;
   let price: ModelPrice | null = null;
+  let costComputed: number | null = null;
+
+  const cfg = input.config ?? (await loadConfigLazy());
+  // Always resolve our own table so "computed" is available next to a library-reported cost.
+  const table = await resolveModelPricing({ provider, model, kind: input.kind, cfg, ts });
+  const tablePriced = table.source !== "unpriced" && table.source !== "local";
+  if (tablePriced) {
+    costComputed = priceUsage(table.price, usage, {
+      batch: input.batch,
+      cacheTtl,
+      provider,
+      source: table.source,
+    }).total;
+  }
 
   if (input.costSource === "local") {
     cost = emptyUsageCost();
     costSource = "local";
     price = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    costComputed = 0;
   } else if (hasNonzeroCost(input.cost)) {
     const c = input.cost ?? {};
     const n = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
@@ -673,11 +743,17 @@ export async function resolveUsageEvent(
     cost = { ...parts, total };
     costSource = "provider";
   } else {
-    const cfg = input.config ?? (await loadConfigLazy());
-    const resolved = await resolveModelPricing({ provider, model, kind: input.kind, cfg });
-    price = resolved.price;
-    cost = priceUsage(resolved.price, usage, { batch: input.batch });
-    costSource = resolved.source;
+    price = table.price;
+    cost = priceUsage(table.price, usage, {
+      batch: input.batch,
+      cacheTtl,
+      provider,
+      source: table.source,
+    });
+    costSource = table.source;
+    if (table.source === "local") {
+      costComputed = 0;
+    }
   }
   if (input.costSource === "estimated" && costSource !== "unpriced" && costSource !== "local") {
     costSource = "estimated";
@@ -713,6 +789,10 @@ export async function resolveUsageEvent(
         ? Math.round(input.items)
         : null,
     source: input.source ?? "live",
+    costComputed,
+    cacheState: input.cacheState ?? null,
+    cacheBustReason: input.cacheBustReason?.trim() || null,
+    cacheTtl,
   };
 }
 
@@ -796,6 +876,14 @@ export function startUsageLedger(opts?: {
   } catch (err) {
     log.debug(`usage prune failed: ${err instanceof Error ? err.message : String(err)}`);
   }
+  // PLAN-50 Phase 5: dated live-pricing snapshots (OpenRouter), refreshed daily. The first
+  // refresh completes before the first backfill so history for live-only models is priced.
+  let pricingReady: Promise<void> = Promise.resolve();
+  try {
+    pricingReady = startPricingRefresh({ cfg: opts?.cfg });
+  } catch (err) {
+    log.debug(`live pricing start failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
   if (opts?.reconcile !== false && !state.reconcileTimer) {
     const run = () => {
       void import("./usage-reconcile.js")
@@ -809,8 +897,12 @@ export function startUsageLedger(opts?: {
           log.debug(`usage reconcile failed: ${err instanceof Error ? err.message : String(err)}`);
         });
     };
-    // First pass shortly after boot so the gateway is not delayed by a large backfill.
-    setTimeout(run, 2_000).unref?.();
+    // First pass shortly after boot, once prices are in (capped so a slow network never
+    // delays the backfill more than a few seconds).
+    const firstTimer = setTimeout(() => {
+      void Promise.race([pricingReady, new Promise((r) => setTimeout(r, 8_000))]).then(run);
+    }, 2_000);
+    firstTimer.unref?.();
     state.reconcileTimer = setInterval(run, RECONCILE_INTERVAL_MS);
     state.reconcileTimer.unref?.();
   }

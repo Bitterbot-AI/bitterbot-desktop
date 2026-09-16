@@ -24,7 +24,7 @@ import {
 } from "./pi-embedded-helpers.js";
 import { createEmbeddedPiSessionEventHandler } from "./pi-embedded-subscribe.handlers.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
-import { recordCacheTurn } from "./prompt-cache-monitor.js";
+import { recordCacheTurn, type CacheTurnState } from "./prompt-cache-monitor.js";
 import { hasNonzeroUsage, normalizeUsage, type NormalizedUsage, type UsageLike } from "./usage.js";
 
 const THINKING_TAG_SCAN_RE = /<\s*(\/?)\s*(?:think(?:ing)?|thought|antthinking)\s*>/gi;
@@ -259,7 +259,11 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
   const transcriptId = params.sessionFile
     ? transcriptSessionId(path.basename(params.sessionFile))
     : null;
-  const recordTurnUsage = (usage: NormalizedUsage, message: unknown) => {
+  const recordTurnUsage = (
+    usage: NormalizedUsage,
+    message: unknown,
+    cache?: { state: CacheTurnState; reason?: string },
+  ) => {
     try {
       const msg = (message ?? {}) as {
         provider?: string;
@@ -302,6 +306,9 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
         status: msg.stopReason === "error" ? "error" : "ok",
         dedupeKey:
           transcriptId && msgTs !== undefined ? usageDedupeKey(transcriptId, msgTs) : undefined,
+        cacheState: cache?.state,
+        cacheBustReason: cache?.reason,
+        cacheTtl: params.cacheTtl,
         config: params.config,
       });
     } catch {
@@ -313,7 +320,6 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     if (!hasNonzeroUsage(usage)) {
       return;
     }
-    recordTurnUsage(usage, message);
     usageTotals.input += usage.input ?? 0;
     usageTotals.output += usage.output ?? 0;
     usageTotals.cacheRead += usage.cacheRead ?? 0;
@@ -327,14 +333,18 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     // can correlate them with config changes; the heuristic is deliberately
     // approximate (we don't see the prompt bytes).
     const sessionKey = params.sessionKey?.trim();
+    let cacheResult: ReturnType<typeof recordCacheTurn> | undefined;
     if (sessionKey) {
-      const result = recordCacheTurn(sessionKey, usage);
-      if (result.bust) {
+      cacheResult = recordCacheTurn(sessionKey, usage, Date.now(), {
+        ttlMs: params.cacheTtl === "1h" ? 60 * 60_000 : 5 * 60_000,
+      });
+      if (cacheResult.bust) {
         log.info(
           `[cache] bust detected for ${sessionKey}: previous turn read from cache, this turn wrote without compensating read`,
         );
       }
     }
+    recordTurnUsage(usage, message, cacheResult);
   };
   const getUsageTotals = () => {
     const hasUsage =

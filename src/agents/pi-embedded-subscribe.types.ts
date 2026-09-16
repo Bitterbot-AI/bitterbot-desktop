@@ -45,6 +45,8 @@ export type SubscribeEmbeddedPiSessionParams = {
   agentId?: string;
   /** PLAN-50: heartbeat runs are attributed to `agent/heartbeat`. */
   isHeartbeat?: boolean;
+  /** PLAN-50 Phase 5: prompt-cache TTL the run uses (Anthropic), for cache-write pricing. */
+  cacheTtl?: "5m" | "1h" | "none";
   /**
    * Model context window in tokens. When provided, enables the mid-turn
    * budget guard that proactively compresses session messages between

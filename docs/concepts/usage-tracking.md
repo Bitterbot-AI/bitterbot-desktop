@@ -86,7 +86,8 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
 `agent/cli-backend`, `agent/continuity-gate`, `skills/evolution`, `memory/search`,
 `memory/recall`, `memory/index`, `memory/index-batch`, `memory/dream`, `memory/extraction`,
 `memory/probe`, `memory/planner`, `memory/architect`, `memory/marketability`,
-`memory/discovery`, `tasks/judge`, `rlm/deep-recall`, `tts/summary`, `media/image`.
+`memory/discovery`, `tasks/judge`, `rlm/deep-recall`, `tts/summary`, `tts/synthesis`,
+`media/image`, `media/audio`, `agent/compaction`, `tools/web-search`.
 
 ## Counting a new model call
 
@@ -96,12 +97,34 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
   to `embedQuery` / `embedBatch` so the row is attributed.
 - Anything else: `recordUsage()` from `src/infra/usage-ledger.ts`. It never throws.
 
+## Cache health, burn rate, cost modes
+
+- The Overview's prompt-cache line shows hit rate, busts with their likely cause (cold start,
+  TTL expired, prompt prefix changed, context grew), warm/cold with the TTL in use, and what
+  the busts cost in re-written cache. Anthropic 1-hour cache writes (`cacheRetention: "long"`)
+  are priced at 2x input.
+- Burn rate: last hour, the rolling 5-hour window with cost per hour and projection, and the
+  busiest previous 5-hour block as the bar's ceiling.
+- Cost modes (Models tab): `reported` is what the model library returned with the call,
+  `computed` is tokens times our price table, `both` shows the drift.
+- Live pricing: a dated snapshot of OpenRouter's model list is refreshed daily under
+  `<state>/model-pricing/` and used only for models the override, catalog and local tiers
+  do not know, priced by the snapshot in force at the event time. Disable with
+  `usage.pricing.liveRefresh: false`.
+- OpenTelemetry: with an OTLP endpoint configured, every row is exported as the per-modality
+  counters `gen_ai.client.inference.usage.{input_tokens,output_tokens,cache_read.input_tokens,cache_write.input_tokens,reasoning.output_tokens}`,
+  the `gen_ai.client.token.usage` histogram, and `bitterbot.usage.cost` (USD).
+
 ## Known gaps
 
-- Context compaction summaries run inside the model library without a usage callback and are
-  not counted.
-- Web search (Perplexity/xAI), speech-to-text and TTS audio synthesis (billed per character)
-  are not counted.
+- Compaction summaries (automatic and manual) are counted as estimates
+  (`agent/compaction`): the model library exposes no usage for them.
+- `items` means different things per kind: characters for `tts`, one billable request for
+  `audio` and `search`, and embedded texts for `embedding`. Text-to-speech characters are
+  never summed into token totals.
+- Speech-to-text providers that report no tokens (Whisper, Deepgram) and ElevenLabs speech
+  are recorded per call or per character but stay unpriced.
+- OpenAI service tiers (batch, flex, priority) are not distinguished for chat calls.
 
 ## Provider quota (separate from the ledger)
 

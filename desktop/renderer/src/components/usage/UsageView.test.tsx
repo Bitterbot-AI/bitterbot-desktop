@@ -9,6 +9,10 @@ const emptyTotals = () => ({
   errors: 0,
   usage: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0 },
   cost: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, total: 0 },
+  costComputed: 0,
+  computedCalls: 0,
+  costReportedOnComputed: 0,
+  reportedCalls: 0,
   cacheHitRate: 0,
   unpricedCalls: 0,
   estimatedCalls: 0,
@@ -90,6 +94,51 @@ function makeSummary(): UsageLedgerSummary {
         byKind: [],
       },
     ],
+    byTask: [{ ...chat, key: "task-1", taskId: "task-1", label: "Summarize the inbox", runs: 2 }],
+    cacheHealth: {
+      requests: 12,
+      hitRate: 0.86,
+      busts: 1,
+      wastedUsd: 0.31,
+      warm: true,
+      ttl: "5m",
+      lastChatTs: Date.now(),
+      reasons: [{ reason: "prompt prefix changed (system prompt, tools, or model)", count: 1 }],
+      byModel: [
+        {
+          provider: "anthropic",
+          model: "claude-opus-4-8",
+          requests: 12,
+          hitRate: 0.86,
+          busts: 1,
+          wastedUsd: 0.31,
+        },
+      ],
+    },
+    live: {
+      window5h: {
+        startMs: 0,
+        endMs: 1,
+        calls: 3,
+        tokens: 3000,
+        cost: 0.03,
+        tokensPerMinute: 10,
+        costPerHour: 0.006,
+        projectedCost: 0.03,
+      },
+      lastHour: {
+        startMs: 0,
+        endMs: 1,
+        calls: 1,
+        tokens: 1000,
+        cost: 0.01,
+        tokensPerMinute: 16,
+        costPerHour: 0.01,
+        projectedCost: 0.01,
+      },
+      peak5h: { startMs: 0, cost: 0.5, tokens: 50000 },
+    },
+    pricing: { liveSnapshots: 1, liveNewestAt: Date.now(), liveEntries: 400, liveError: null },
     unpricedModels: [],
     budgets: {
       mode: "warn",
@@ -160,6 +209,9 @@ describe("UsageView", () => {
     expect(screen.getByText("86%")).toBeTruthy();
     expect(screen.getByText("Embeddings")).toBeTruthy();
     expect(screen.getByText("flagged model")).toBeTruthy();
+    expect(screen.getByText("Prompt cache")).toBeTruthy();
+    expect(screen.getByText(/1 bust/)).toBeTruthy();
+    expect(screen.getByText("Burn rate")).toBeTruthy();
     expect(screen.getByText(/Ledger: 52 rows/)).toBeTruthy();
     expect(request).toHaveBeenCalledWith("usage.ledger.summary", { days: 30 });
     expect(request).toHaveBeenCalledWith("sessions.usage", { days: 30, limit: 50 });

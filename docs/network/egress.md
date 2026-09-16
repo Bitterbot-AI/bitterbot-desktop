@@ -80,6 +80,20 @@ below in one step.
 - **What:** end-to-end circle envelopes addressed to circle members.
 - **Off switch:** `circles.enabled: false`, or simply never join a circle.
 
+## 7. Live model pricing (runtime)
+
+- **When:** a few seconds after gateway start if the newest snapshot is older
+  than a day, then once every 24 hours.
+- **Where:** `openrouter.ai` (`GET /api/v1/models`), or the URL in
+  `usage.pricing.openRouterUrl`.
+- **What:** a plain, unauthenticated HTTPS GET of OpenRouter's public model
+  list. Nothing about this node is sent; the response's per-token prices are
+  stored under `~/.bitterbot/model-pricing/` and used only to price models
+  that the built-in catalog does not know (see
+  `docs/concepts/usage-tracking.md`).
+- **Off switch:** `usage.pricing.liveRefresh: false` in `bitterbot.json`.
+  With it off, unknown models are marked "unpriced" instead of guessed.
+
 ## Everything else is opt-in
 
 Web search (Brave/Tavily/Perplexity/xAI), Skill Seekers ingestion

@@ -92,6 +92,12 @@ export function UsageFeaturesPanel({ summary }: { summary: UsageLedgerSummary })
         />
         <DistributionPanel title="By provider" groups={summary.byProvider} />
         <DistributionPanel title="By agent" groups={summary.byAgent} />
+        <DistributionPanel
+          title="By task"
+          groups={summary.byTask}
+          labelOf={(g) => `${g.label} (${(g as { runs?: number }).runs ?? 0} runs)`}
+          hint="long-horizon tasks, by goal"
+        />
       </div>
     </div>
   );

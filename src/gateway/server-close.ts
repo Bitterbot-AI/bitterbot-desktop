@@ -29,6 +29,7 @@ export function createGatewayCloseHandler(params: {
   /** PLAN-50 */
   usageUnsub?: (() => void) | null;
   usageBudgetUnsub?: (() => void) | null;
+  usageMetricsUnsub?: (() => void) | null;
   chatRunState: { clear: () => void };
   clients: Set<{ socket: { close: (code: number, reason: string) => void } }>;
   configReloader: { stop: () => Promise<void> };
@@ -101,7 +102,7 @@ export function createGatewayCloseHandler(params: {
       }
     }
     // PLAN-50: stop streaming usage rows and close the ledger.
-    for (const unsub of [params.usageUnsub, params.usageBudgetUnsub]) {
+    for (const unsub of [params.usageUnsub, params.usageBudgetUnsub, params.usageMetricsUnsub]) {
       if (unsub) {
         try {
           unsub();

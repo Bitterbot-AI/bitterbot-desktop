@@ -41,7 +41,11 @@ export const USAGE_FEATURES = {
   tasksJudge: "tasks/judge",
   rlmDeepRecall: "rlm/deep-recall",
   ttsSummary: "tts/summary",
+  ttsSynthesis: "tts/synthesis",
   mediaImage: "media/image",
+  mediaAudio: "media/audio",
+  agentCompaction: "agent/compaction",
+  toolsWebSearch: "tools/web-search",
 } as const;
 
 export type UsageFeature = (typeof USAGE_FEATURES)[keyof typeof USAGE_FEATURES] | (string & {});
@@ -140,6 +144,14 @@ export function describeUsageFeature(feature: string): string {
       return "TTS summaries";
     case USAGE_FEATURES.mediaImage:
       return "Image understanding";
+    case USAGE_FEATURES.mediaAudio:
+      return "Speech-to-text";
+    case USAGE_FEATURES.ttsSynthesis:
+      return "Text-to-speech (characters)";
+    case USAGE_FEATURES.agentCompaction:
+      return "Context compaction (estimated)";
+    case USAGE_FEATURES.toolsWebSearch:
+      return "Web search";
     default:
       return feature;
   }

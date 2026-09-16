@@ -4,6 +4,8 @@ import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { DailyStackedChart } from "./DailyStackedChart";
 import { budgetTone, formatPct, formatResetIn, formatUsdSmart, kindLabel } from "./usage-format";
+import { UsageBurnRate } from "./UsageBurnRate";
+import { UsageCacheHealthLine } from "./UsageCacheHealth";
 
 export function StatCard({
   label,
@@ -204,9 +206,12 @@ export function UsageOverview({ summary }: { summary: UsageLedgerSummary }) {
 
       <Flags flags={summary.flags} />
 
+      <UsageCacheHealthLine health={summary.cacheHealth} />
+
       <DailyStackedChart daily={summary.daily} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <UsageBurnRate live={summary.live} />
         <BudgetBars budgets={summary.budgets} />
         <KindStrip byKind={summary.byKind} />
       </div>

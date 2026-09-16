@@ -29,7 +29,15 @@ export type UsageLedgerConfig = {
   retentionDays?: number;
 };
 
+export type UsagePricingConfig = {
+  /** Refresh a dated price snapshot from OpenRouter's public model list once a day. Default true. */
+  liveRefresh?: boolean;
+  /** Override the models endpoint (e.g. a mirror). */
+  openRouterUrl?: string;
+};
+
 export type UsageConfig = {
   ledger?: UsageLedgerConfig;
   budgets?: UsageBudgetsConfig;
+  pricing?: UsagePricingConfig;
 };

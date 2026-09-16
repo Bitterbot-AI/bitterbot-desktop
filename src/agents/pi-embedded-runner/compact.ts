@@ -7,6 +7,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs/promises";
 import os from "node:os";
+import path from "node:path";
 import type { ReasoningLevel, ThinkLevel } from "../../auto-reply/thinking.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { ExecElevatedDefaults } from "../bash-tools.js";
@@ -14,8 +15,12 @@ import type { EmbeddedPiCompactResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../config/channel-capabilities.js";
 import { getMachineDisplayName } from "../../infra/machine-name.js";
+import { USAGE_FEATURES } from "../../infra/usage-features.js";
+import { recordUsage } from "../../infra/usage-ledger.js";
+import { transcriptSessionId } from "../../infra/usage-reconcile.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { type enqueueCommand, enqueueCommandInLane } from "../../process/command-queue.js";
+import { parseAgentSessionKey } from "../../routing/session-key.js";
 import {
   isCronSessionKey,
   isSkillEvolveValidationSessionKey,
@@ -784,6 +789,25 @@ export async function compactEmbeddedPiSessionDirect(
           );
         }
         recordCompactionSuccess(breakerSessionKey);
+        // PLAN-50 Phase 5: the summary call runs inside pi-coding-agent with no usage callback,
+        // so it is recorded as an estimate (context summarized in, summary text out) and tagged.
+        recordUsage({
+          kind: "chat",
+          feature: USAGE_FEATURES.agentCompaction,
+          provider,
+          model: modelId,
+          agentId: parseAgentSessionKey(params.sessionKey)?.agentId,
+          sessionKey: params.sessionKey,
+          sessionId: transcriptSessionId(path.basename(params.sessionFile)) ?? params.sessionId,
+          runId,
+          usage: {
+            input: result.tokensBefore,
+            output: Math.ceil((result.summary?.length ?? 0) / 4),
+          },
+          costSource: "estimated",
+          durationMs: Date.now() - compactStartedAt,
+          config: params.config,
+        });
         return {
           ok: true,
           compacted: true,

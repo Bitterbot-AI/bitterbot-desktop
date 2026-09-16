@@ -47,6 +47,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "usage.budgets.monthly.usd": "Monthly Budget (USD)",
   "usage.budgets.perModel": "Per-Model Budgets",
   "usage.budgets.perFeature": "Per-Feature Budgets",
+  "usage.pricing.liveRefresh": "Live Price Refresh (OpenRouter)",
+  "usage.pricing.openRouterUrl": "OpenRouter Models URL",
   "diagnostics.enabled": "Diagnostics Enabled",
   "diagnostics.flags": "Diagnostics Flags",
   "diagnostics.otel.enabled": "OpenTelemetry Enabled",

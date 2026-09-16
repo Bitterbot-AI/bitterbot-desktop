@@ -9,6 +9,7 @@ export type PricingSource =
   | "override"
   | "catalog"
   | "embedding-catalog"
+  | "live"
   | "local"
   | "estimated"
   | "unpriced";
@@ -19,6 +20,8 @@ export type ModelPrice = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  /** Anthropic 1-hour cache-write rate when published (live snapshots); optional. */
+  cacheWrite1h?: number;
 };
 
 /** Exclusive token buckets (Langfuse/OTel-subset model). */
@@ -40,6 +43,9 @@ export type UsageCost = {
   total: number;
 };
 
+export type CacheTurnState = "hit" | "write" | "mixed" | "none";
+export type CacheTtlLabel = "5m" | "1h" | "none";
+
 export type UsageEventRow = {
   id: number;
   ts: number;
@@ -59,6 +65,13 @@ export type UsageEventRow = {
   cost: UsageCost;
   costSource: PricingSource;
   price: ModelPrice | null;
+  /** Cost recomputed from our own price table (null when no price is known); lets the UI show
+   *  "reported" vs "computed" side by side, the ccusage cost-mode idea. */
+  costComputed: number | null;
+  /** PLAN-50 Phase 5: prompt-cache observation for chat rows. */
+  cacheState: CacheTurnState | null;
+  cacheBustReason: string | null;
+  cacheTtl: CacheTtlLabel | null;
   durationMs: number | null;
   status: "ok" | "error";
   stopReason: string | null;
@@ -72,6 +85,14 @@ export type UsageTotalsRow = {
   errors: number;
   usage: UsageBuckets;
   cost: UsageCost;
+  /** Sum of computed cost over rows that have a table price (`computedCalls`). */
+  costComputed: number;
+  /** Rows with a table price, i.e. the denominator for `costComputed`. */
+  computedCalls: number;
+  /** Reported cost summed over the same rows, so drift compares like with like. */
+  costReportedOnComputed: number;
+  /** Rows whose cost came from the model library rather than our table. */
+  reportedCalls: number;
   /** cacheRead / (input + cacheRead + cacheWrite); 0 when no input. */
   cacheHitRate: number;
   /** Share of calls whose cost came from an unpriced or estimated source. */
@@ -88,6 +109,59 @@ export type UsageModelSummary = UsageTotalsRow & {
 };
 
 export type UsageGroupSummary = UsageTotalsRow & { key: string; label: string };
+
+export type UsageTaskSummary = UsageGroupSummary & { taskId: string; runs: number };
+
+export type UsageCacheModelHealth = {
+  provider: string | null;
+  model: string | null;
+  requests: number;
+  hitRate: number;
+  busts: number;
+  /** Cost of cache writes on bust turns: what a warm cache would have avoided. */
+  wastedUsd: number;
+};
+
+export type UsageCacheHealth = {
+  /** Chat requests on cache-capable providers in the window. */
+  requests: number;
+  hitRate: number;
+  busts: number;
+  wastedUsd: number;
+  /** True when the newest chat turn is within its cache TTL. */
+  warm: boolean;
+  ttl: CacheTtlLabel | null;
+  lastChatTs: number | null;
+  reasons: Array<{ reason: string; count: number }>;
+  byModel: UsageCacheModelHealth[];
+};
+
+export type UsageRateWindow = {
+  startMs: number;
+  endMs: number;
+  calls: number;
+  tokens: number;
+  cost: number;
+  tokensPerMinute: number;
+  costPerHour: number;
+  /** Cost projected to the end of the window at the current rate. */
+  projectedCost: number;
+};
+
+export type UsageLiveStats = {
+  /** Rolling last 5 hours (the subscription-style block ccusage and Claude Code watch). */
+  window5h: UsageRateWindow;
+  lastHour: UsageRateWindow;
+  /** Most expensive 5-hour block in the range; the default ceiling for the 5h bar ("-t max"). */
+  peak5h: { startMs: number; cost: number; tokens: number } | null;
+};
+
+export type UsagePricingStatus = {
+  liveSnapshots: number;
+  liveNewestAt: number | null;
+  liveEntries: number;
+  liveError: string | null;
+};
 
 export type UsageDailyModelPoint = {
   provider: string | null;
@@ -161,6 +235,10 @@ export type UsageLedgerSummary = {
   byKind: UsageGroupSummary[];
   byAgent: UsageGroupSummary[];
   daily: UsageDailyPoint[];
+  byTask: UsageTaskSummary[];
+  cacheHealth: UsageCacheHealth;
+  live: UsageLiveStats;
+  pricing: UsagePricingStatus;
   /** Models seen in range whose cost had to be zeroed because nobody knows their price. */
   unpricedModels: Array<{
     provider: string | null;
@@ -195,6 +273,10 @@ export function emptyUsageTotals(): UsageTotalsRow {
     errors: 0,
     usage: emptyUsageBuckets(),
     cost: emptyUsageCost(),
+    costComputed: 0,
+    computedCalls: 0,
+    costReportedOnComputed: 0,
+    reportedCalls: 0,
     cacheHitRate: 0,
     unpricedCalls: 0,
     estimatedCalls: 0,

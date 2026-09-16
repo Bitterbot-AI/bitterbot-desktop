@@ -49,6 +49,7 @@ import { getUsageLedger, onUsageEvent, startUsageLedger } from "../infra/usage-l
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { initOtel } from "../observability/otel.js";
+import { startUsageMetricsExport } from "../observability/usage-metrics.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
@@ -569,6 +570,8 @@ export async function startGatewayServer(
     : onUsageBudgetAlert((alert) => {
         broadcast("usage.budget", alert);
       });
+  // PLAN-50 Phase 5: OTel token counters (no-op unless an OTLP endpoint is configured).
+  const usageMetricsUnsub = minimalTestGateway ? null : startUsageMetricsExport();
 
   let heartbeatRunner: HeartbeatRunner = minimalTestGateway
     ? {
@@ -797,6 +800,7 @@ export async function startGatewayServer(
     heartbeatUnsub,
     usageUnsub,
     usageBudgetUnsub,
+    usageMetricsUnsub,
     chatRunState,
     clients,
     configReloader,

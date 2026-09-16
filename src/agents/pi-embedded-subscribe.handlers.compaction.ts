@@ -1,10 +1,36 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import { estimateTokens } from "@mariozechner/pi-coding-agent";
 import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
+import { recordUsage } from "../infra/usage-ledger.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import { parseAgentSessionKey } from "../routing/session-key.js";
+
+/** PLAN-50 Phase 5: context size at compaction start, per session, for the estimated row. */
+const compactionTokensBefore = new WeakMap<object, { tokens: number; startedAt: number }>();
+
+function estimateSessionTokens(messages: unknown): number {
+  if (!Array.isArray(messages)) {
+    return 0;
+  }
+  let total = 0;
+  for (const message of messages) {
+    try {
+      total += estimateTokens(message as Parameters<typeof estimateTokens>[0]);
+    } catch {
+      // best effort
+    }
+  }
+  return total;
+}
 
 export function handleAutoCompactionStart(ctx: EmbeddedPiSubscribeContext) {
   ctx.state.compactionInFlight = true;
+  compactionTokensBefore.set(ctx.params.session as object, {
+    tokens: estimateSessionTokens(ctx.params.session.messages),
+    startedAt: Date.now(),
+  });
   ctx.incrementCompactionCount();
   ctx.ensureCompactionPromise();
   ctx.log.debug(`embedded run compaction start: runId=${ctx.params.runId}`);
@@ -56,6 +82,30 @@ export function handleAutoCompactionEnd(
     stream: "compaction",
     data: { phase: "end", willRetry },
   });
+
+  // PLAN-50 Phase 5: the summary call runs inside pi-agent-core with no usage callback, so it is
+  // recorded as an estimate (context summarized in, summary text out) under agent/compaction.
+  if (!willRetry && !(evt as { aborted?: unknown }).aborted) {
+    const before = compactionTokensBefore.get(ctx.params.session as object);
+    compactionTokensBefore.delete(ctx.params.session as object);
+    const first = ctx.params.session.messages?.[0];
+    const summaryTokens = first ? estimateSessionTokens([first]) : 0;
+    if (before && before.tokens > 0) {
+      recordUsage({
+        kind: "chat",
+        feature: USAGE_FEATURES.agentCompaction,
+        provider: ctx.params.modelRef?.provider,
+        model: ctx.params.modelRef?.model,
+        agentId: ctx.params.agentId ?? parseAgentSessionKey(ctx.params.sessionKey)?.agentId,
+        sessionKey: ctx.params.sessionKey,
+        runId: ctx.params.runId,
+        usage: { input: before.tokens, output: summaryTokens },
+        costSource: "estimated",
+        durationMs: Date.now() - before.startedAt,
+        config: ctx.params.config,
+      });
+    }
+  }
 
   // Run after_compaction plugin hook (fire-and-forget)
   if (!willRetry) {

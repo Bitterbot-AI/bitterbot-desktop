@@ -11,6 +11,7 @@ export type PricingSource =
   | "override"
   | "catalog"
   | "embedding-catalog"
+  | "live"
   | "local"
   | "estimated"
   | "unpriced";
@@ -37,6 +38,10 @@ export type UsageTotalsRow = {
   errors: number;
   usage: UsageBuckets;
   cost: UsageCost;
+  costComputed: number;
+  computedCalls: number;
+  costReportedOnComputed: number;
+  reportedCalls: number;
   cacheHitRate: number;
   unpricedCalls: number;
   estimatedCalls: number;
@@ -51,6 +56,43 @@ export type UsageModelSummary = UsageTotalsRow & {
 };
 
 export type UsageGroupSummary = UsageTotalsRow & { key: string; label: string };
+export type UsageTaskSummary = UsageGroupSummary & { taskId: string; runs: number };
+
+export type UsageCacheHealth = {
+  requests: number;
+  hitRate: number;
+  busts: number;
+  wastedUsd: number;
+  warm: boolean;
+  ttl: "5m" | "1h" | "none" | null;
+  lastChatTs: number | null;
+  reasons: Array<{ reason: string; count: number }>;
+  byModel: Array<{
+    provider: string | null;
+    model: string | null;
+    requests: number;
+    hitRate: number;
+    busts: number;
+    wastedUsd: number;
+  }>;
+};
+
+export type UsageRateWindow = {
+  startMs: number;
+  endMs: number;
+  calls: number;
+  tokens: number;
+  cost: number;
+  tokensPerMinute: number;
+  costPerHour: number;
+  projectedCost: number;
+};
+
+export type UsageLiveStats = {
+  window5h: UsageRateWindow;
+  lastHour: UsageRateWindow;
+  peak5h: { startMs: number; cost: number; tokens: number } | null;
+};
 
 export type UsageDailyPoint = {
   date: string;
@@ -97,6 +139,15 @@ export type UsageLedgerSummary = {
   byKind: UsageGroupSummary[];
   byAgent: UsageGroupSummary[];
   daily: UsageDailyPoint[];
+  byTask: UsageTaskSummary[];
+  cacheHealth: UsageCacheHealth;
+  live: UsageLiveStats;
+  pricing: {
+    liveSnapshots: number;
+    liveNewestAt: number | null;
+    liveEntries: number;
+    liveError: string | null;
+  };
   unpricedModels: Array<{
     provider: string | null;
     model: string | null;
@@ -136,6 +187,10 @@ export type UsageEventRow = {
   usage: UsageBuckets;
   cost: UsageCost;
   costSource: PricingSource;
+  costComputed: number | null;
+  cacheState: "hit" | "write" | "mixed" | "none" | null;
+  cacheBustReason: string | null;
+  cacheTtl: "5m" | "1h" | "none" | null;
   durationMs: number | null;
   status: "ok" | "error";
   stopReason: string | null;
@@ -216,6 +271,8 @@ type UsageState = {
   liveEvents: UsageEventRow[];
   days: number;
   tab: UsageTab;
+  /** Models tab: reported (model library) vs computed (tokens × our table) cost. */
+  costMode: "reported" | "computed" | "both";
   loading: boolean;
   error: string | null;
   /** null = unknown (not connected yet); false = gateway predates the ledger RPCs. */
@@ -227,6 +284,7 @@ type UsageState = {
   pushLiveEvent: (event: UsageEventRow) => void;
   setDays: (days: number) => void;
   setTab: (tab: UsageTab) => void;
+  setCostMode: (mode: "reported" | "computed" | "both") => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setLedgerSupported: (supported: boolean | null) => void;
@@ -238,6 +296,7 @@ export const useUsageStore = create<UsageState>((set) => ({
   liveEvents: [],
   days: 30,
   tab: "overview",
+  costMode: "reported",
   loading: false,
   error: null,
   ledgerSupported: null,
@@ -257,6 +316,7 @@ export const useUsageStore = create<UsageState>((set) => ({
     }),
   setDays: (days) => set({ days }),
   setTab: (tab) => set({ tab }),
+  setCostMode: (costMode) => set({ costMode }),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
   setLedgerSupported: (ledgerSupported) => set({ ledgerSupported }),

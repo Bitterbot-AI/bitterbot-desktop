@@ -28,6 +28,7 @@ import { getUsageLedger } from "../../infra/usage-ledger.js";
 import { buildUsageLedgerSummary } from "../../infra/usage-summary.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { buildUsageAggregateTail } from "../../shared/usage-aggregates.js";
+import { getActiveTaskStore } from "../../tasks/store.js";
 import {
   ErrorCodes,
   errorShape,
@@ -347,6 +348,7 @@ export const usageHandlers: GatewayRequestHandlers = {
       respond(true, cached.value, undefined);
       return;
     }
+    const taskStore = getActiveTaskStore();
     const summary = buildUsageLedgerSummary({
       ledger,
       cfg: loadConfig(),
@@ -356,6 +358,13 @@ export const usageHandlers: GatewayRequestHandlers = {
       feature: p.feature,
       kind: p.kind,
       nowMs: now,
+      taskLabel: (taskId) => {
+        try {
+          return taskStore?.get(taskId)?.goal;
+        } catch {
+          return undefined;
+        }
+      },
     });
     ledgerSummaryCache.set(cacheKey, { at: now, value: summary });
     respond(true, summary, undefined);

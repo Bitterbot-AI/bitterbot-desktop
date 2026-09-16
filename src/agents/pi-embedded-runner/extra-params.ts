@@ -68,6 +68,40 @@ function resolveCacheRetention(
   return undefined;
 }
 
+/**
+ * PLAN-50 Phase 5: the prompt-cache TTL a run will use, for cost attribution (Anthropic bills
+ * 1-hour cache writes at 2x input vs 1.25x for 5-minute writes). Only Anthropic exposes a TTL.
+ */
+export function resolveCacheTtlLabel(params: {
+  cfg: BitterbotConfig | undefined;
+  provider: string;
+  modelId: string;
+  baseUrl?: string;
+}): "5m" | "1h" | "none" | undefined {
+  if (params.provider !== "anthropic") {
+    return undefined;
+  }
+  const envRetention = process.env.PI_CACHE_RETENTION;
+  const retention =
+    resolveCacheRetention(
+      resolveExtraParams({ cfg: params.cfg, provider: params.provider, modelId: params.modelId }),
+      params.provider,
+    ) ??
+    (envRetention === "none" || envRetention === "short" || envRetention === "long"
+      ? envRetention
+      : "short");
+  if (retention === "none") {
+    return "none";
+  }
+  if (
+    retention === "long" &&
+    (params.baseUrl ?? "api.anthropic.com").includes("api.anthropic.com")
+  ) {
+    return "1h";
+  }
+  return "5m";
+}
+
 function createStreamFnWithExtraParams(
   baseStreamFn: StreamFn | undefined,
   extraParams: Record<string, unknown> | undefined,

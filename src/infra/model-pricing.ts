@@ -21,6 +21,7 @@ import type {
   UsageCost,
   UsageKind,
 } from "./usage-ledger.types.js";
+import { getLivePricingStatus, lookupLivePrice } from "./model-pricing-live.js";
 
 export type ResolvedPricing = { price: ModelPrice; source: PricingSource };
 
@@ -58,6 +59,16 @@ export const EMBEDDING_PRICES_PER_MILLION: Readonly<Record<string, number>> = {
   "voyage/voyage-code-3": 0.18,
 };
 
+/**
+ * USD per 1M input CHARACTERS for text-to-speech (`kind: "tts"` rows store characters in
+ * `input`). Source: https://developers.openai.com/api/docs/pricing (tts-1 $15/M, tts-1-hd $30/M).
+ * ElevenLabs is subscription-billed per character and stays `unpriced`.
+ */
+export const TTS_PRICES_PER_MILLION_CHARS: Readonly<Record<string, number>> = {
+  "openai/tts-1": 15,
+  "openai/tts-1-hd": 30,
+};
+
 const ZERO_PRICE: ModelPrice = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 const MEMO_TTL_MS = 5 * 60_000;
 const memo = new Map<string, { at: number; value: ResolvedPricing }>();
@@ -71,14 +82,18 @@ export function hasNonzeroPrice(cost: Partial<ModelPrice> | null | undefined): c
   );
 }
 
-function toPrice(cost: Partial<ModelPrice>): ModelPrice {
+function toPrice(cost: Partial<ModelPrice> & { cacheWrite1h?: number }): ModelPrice {
   const n = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-  return {
+  const price: ModelPrice = {
     input: n(cost.input),
     output: n(cost.output),
     cacheRead: n(cost.cacheRead),
     cacheWrite: n(cost.cacheWrite),
   };
+  if (typeof cost.cacheWrite1h === "number" && cost.cacheWrite1h > 0) {
+    price.cacheWrite1h = cost.cacheWrite1h;
+  }
+  return price;
 }
 
 /** Strip provider prefixes and Gemini's `models/` path so table lookups are stable. */
@@ -120,6 +135,15 @@ function lookupEmbeddingCatalog(provider: string, model: string): ModelPrice | u
   return { input: perMillion, output: 0, cacheRead: 0, cacheWrite: 0 };
 }
 
+function lookupTtsCatalog(provider: string, model: string): ModelPrice | undefined {
+  const key = `${provider.toLowerCase()}/${normalizeModelIdForPricing(provider, model)}`;
+  const perMillion = TTS_PRICES_PER_MILLION_CHARS[key];
+  if (typeof perMillion !== "number") {
+    return undefined;
+  }
+  return { input: perMillion, output: 0, cacheRead: 0, cacheWrite: 0 };
+}
+
 async function lookupCatalog(
   provider: string,
   model: string,
@@ -140,13 +164,17 @@ export async function resolveModelPricing(params: {
   model: string | undefined | null;
   kind?: UsageKind;
   cfg?: BitterbotConfig;
+  /** Event time; the live overlay answers with the snapshot in force then. */
+  ts?: number;
 }): Promise<ResolvedPricing> {
   const provider = params.provider?.trim() ?? "";
   const model = params.model?.trim() ?? "";
   if (!provider || !model) {
     return { price: ZERO_PRICE, source: "unpriced" };
   }
-  const memoKey = `${params.kind ?? "chat"}|${provider}|${model}`;
+  const kind = params.kind ?? "chat";
+  const day = typeof params.ts === "number" ? Math.floor(params.ts / 86_400_000) : "now";
+  const memoKey = `${kind}|${provider}|${model}|${day}`;
   const cached = memo.get(memoKey);
   const now = Date.now();
   if (cached && now - cached.at < MEMO_TTL_MS) {
@@ -158,30 +186,51 @@ export async function resolveModelPricing(params: {
   if (override) {
     value = { price: override, source: "override" };
   }
-  if (!value && params.kind === "embedding") {
+  if (!value && kind === "embedding") {
     const embedding = lookupEmbeddingCatalog(provider, model);
     if (embedding) {
       value = { price: embedding, source: "embedding-catalog" };
     }
   }
+  if (!value && kind === "tts") {
+    const tts = lookupTtsCatalog(provider, model);
+    if (tts) {
+      value = { price: tts, source: "embedding-catalog" };
+    }
+  }
   if (!value && isLocalModelProvider(provider)) {
     value = { price: ZERO_PRICE, source: "local" };
   }
-  if (!value && params.kind !== "embedding") {
+  if (!value) {
     const catalog = await lookupCatalog(provider, model, params.cfg);
     if (catalog) {
       value = { price: catalog, source: "catalog" };
     }
   }
-  if (!value && params.kind === "embedding") {
-    // A chat-catalog hit for an embedding id is unlikely but harmless.
-    const catalog = await lookupCatalog(provider, model, params.cfg);
-    if (catalog) {
-      value = { price: catalog, source: "catalog" };
+  if (!value && kind === "search" && provider === "perplexity") {
+    // Perplexity is served natively and via OpenRouter; the vendored catalog carries the latter.
+    const viaOpenRouter = await lookupCatalog(
+      "openrouter",
+      `perplexity/${normalizeModelIdForPricing(provider, model)}`,
+      params.cfg,
+    );
+    if (viaOpenRouter) {
+      value = { price: viaOpenRouter, source: "catalog" };
+    }
+  }
+  if (!value) {
+    const live = lookupLivePrice(provider, model, params.ts);
+    if (live) {
+      value = { price: toPrice(live.price), source: "live" };
     }
   }
   if (!value) {
     value = { price: ZERO_PRICE, source: "unpriced" };
+    // Do not remember "unpriced" before the first live snapshot has landed: backfilled history
+    // would otherwise stay $0 for five minutes after prices arrive.
+    if (getLivePricingStatus().snapshots === 0) {
+      return value;
+    }
   }
   memo.set(memoKey, { at: now, value });
   return value;
@@ -195,13 +244,30 @@ export function resetModelPricingMemoForTest(): void {
 export function priceUsage(
   price: ModelPrice,
   usage: UsageBuckets,
-  opts?: { batch?: boolean },
+  opts?: {
+    batch?: boolean;
+    cacheTtl?: "5m" | "1h" | "none" | null;
+    provider?: string | null;
+    /** Where the price came from; a user override is taken as-is, never scaled. */
+    source?: PricingSource;
+  },
 ): UsageCost {
   const factor = opts?.batch ? 0.5 : 1;
   const per = (tokens: number, perMillion: number) => (tokens * perMillion * factor) / 1_000_000;
   const input = per(usage.input, price.input);
   const cacheRead = per(usage.cacheRead, price.cacheRead);
-  const cacheWrite = per(usage.cacheWrite, price.cacheWrite);
+  // Anthropic bills 1-hour cache writes at 2x base input vs 1.25x for 5-minute writes. Prefer
+  // a published 1h rate (live snapshots carry one); otherwise scale the catalog's 5-minute rate.
+  // A user override is trusted verbatim.
+  let cacheWriteRate = price.cacheWrite;
+  if (opts?.cacheTtl === "1h" && opts.source !== "override") {
+    if (typeof price.cacheWrite1h === "number" && price.cacheWrite1h > 0) {
+      cacheWriteRate = price.cacheWrite1h;
+    } else if ((opts.provider ?? "").toLowerCase() === "anthropic") {
+      cacheWriteRate = price.cacheWrite * (2 / 1.25);
+    }
+  }
+  const cacheWrite = per(usage.cacheWrite, cacheWriteRate);
   const output = per(usage.output, price.output);
   return { input, cacheRead, cacheWrite, output, total: input + cacheRead + cacheWrite + output };
 }
