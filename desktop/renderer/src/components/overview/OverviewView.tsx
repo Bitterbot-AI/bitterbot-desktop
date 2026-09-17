@@ -7,6 +7,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { GatewayControls } from "./GatewayControls";
 import { GetStartedCard } from "./GetStartedCard";
 import { RepairsCard } from "./RepairsCard";
+import { SpendCard } from "./SpendCard";
 import { UpdateCard } from "./UpdateCard";
 
 function StatCard({
@@ -141,6 +142,9 @@ export function OverviewView() {
         <StatCard label="Platform" value={String(platform)} />
         <StatCard label="Channels" value={String(configuredChannels.length)} sub="configured" />
       </div>
+
+      {/* PLAN-50: today's spend, the current 5-hour block, cache state; links to Usage */}
+      <SpendCard />
 
       {/* Doctor-fed repairs (renders only when something needs attention) */}
       <RepairsCard />

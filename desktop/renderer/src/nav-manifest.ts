@@ -46,6 +46,8 @@ export interface NavItem {
 const NAV_MANIFEST_LITERAL = [
   // ── SHIP set ──
   { id: "overview", label: "Overview", icon: Gauge, group: "main" },
+  // PLAN-50: cost is a daily-glance surface, second only to health.
+  { id: "usage", label: "Usage", icon: BarChart3, group: "main" },
   { id: "channels", label: "Channels", icon: Radio, group: "main" },
   { id: "agents", label: "Agents", icon: Bot, group: "main" },
   { id: "skills", label: "Skills", icon: Puzzle, group: "main" },
@@ -61,7 +63,6 @@ const NAV_MANIFEST_LITERAL = [
   { id: "spendGrants", label: "Spend Grants", icon: Coins, group: "advanced" },
   { id: "workspace", label: "Workspace", icon: FolderOpen, group: "advanced" },
   { id: "nodes", label: "Nodes", icon: Server, group: "advanced" },
-  { id: "usage", label: "Usage", icon: BarChart3, group: "advanced" },
   { id: "logs", label: "Logs", icon: ScrollText, group: "advanced" },
   {
     id: "management",

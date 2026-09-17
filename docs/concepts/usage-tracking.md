@@ -28,7 +28,9 @@ recall, dream embeddings, the provider Batch APIs, the bundled local model) and 
 
 ## Where it shows up
 
-- **Control UI → Usage** (Advanced group): Overview (cost, tokens, cache hit rate, embeddings,
+- **Control UI → Usage** (main navigation, right after Overview; the Overview page also
+  carries a spend card with today, the current 5-hour block, the 30-day total, cache state,
+  the tightest budget and the loudest flag): Overview (cost, tokens, cache hit rate, embeddings,
   energy, budgets, burn rate, daily spend stacked by model, cost per outcome, explain, cost
   coach flags), Models (sortable per-model table with cache read/write, cache hit %, pricing
   source, cost modes, what-if replay), Features (chat vs embeddings vs dreams vs extraction vs
