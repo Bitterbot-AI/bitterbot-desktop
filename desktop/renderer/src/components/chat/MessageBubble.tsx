@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback } from "react";
 import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
-import { formatTokens } from "../../lib/format";
+import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useUIStore } from "../../stores/ui-store";
 import { Markdown } from "../ui/markdown";
@@ -251,6 +251,7 @@ export const MessageBubble = memo(function MessageBubble({
             title="Tokens for this reply: prompt (including cached) · output"
           >
             ⬆ {formatTokens(message.usage.input)} · ⬇ {formatTokens(message.usage.output)}
+            {typeof message.usage.cost === "number" ? ` · ${formatCost(message.usage.cost)}` : ""}
           </div>
         )}
 

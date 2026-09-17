@@ -147,6 +147,33 @@ export const UsageLedgerSummaryParamsSchema = Type.Object(
     agentId: Type.Optional(NonEmptyString),
     feature: Type.Optional(NonEmptyString),
     kind: Type.Optional(UsageKindSchema),
+    /** Restrict to one session (the chat status strip uses this). */
+    sessionKey: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+/** PLAN-50 Phase 6: re-price a window under another model. */
+export const UsageLedgerWhatIfParamsSchema = Type.Object(
+  {
+    days: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
+    startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    agentId: Type.Optional(NonEmptyString),
+    feature: Type.Optional(NonEmptyString),
+    provider: NonEmptyString,
+    model: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+/** PLAN-50 Phase 6: explain a window against the one before it. */
+export const UsageLedgerExplainParamsSchema = Type.Object(
+  {
+    days: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
+    startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    agentId: Type.Optional(NonEmptyString),
   },
   { additionalProperties: false },
 );

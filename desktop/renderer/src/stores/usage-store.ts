@@ -57,12 +57,97 @@ export type UsageModelSummary = UsageTotalsRow & {
 
 export type UsageGroupSummary = UsageTotalsRow & { key: string; label: string };
 export type UsageTaskSummary = UsageGroupSummary & { taskId: string; runs: number };
+export type UsageSessionSummary = UsageGroupSummary & {
+  sessionKey: string;
+  agentId: string | null;
+  channel: string | null;
+  lastTs: number | null;
+  models: string[];
+};
+export type UsageOutcomes = {
+  tasks: number;
+  succeeded: number;
+  failed: number;
+  stopped: number;
+  costTotal: number;
+  costPerSuccess: number | null;
+  costOnFailures: number;
+  byModel: Array<{
+    provider: string | null;
+    model: string | null;
+    tasks: number;
+    succeeded: number;
+    failed: number;
+    costTotal: number;
+    costPerSuccess: number | null;
+  }>;
+  byFeature: Array<{
+    feature: string;
+    label: string;
+    tasks: number;
+    succeeded: number;
+    costTotal: number;
+    costPerSuccess: number | null;
+  }>;
+};
+export type UsageEnergyEstimate = {
+  wh: number;
+  gco2e: number;
+  bandLow: number;
+  bandHigh: number;
+  method: string;
+};
+export type UsageRunawayRun = {
+  runId: string;
+  sessionKey: string | null;
+  feature: string;
+  cost: number;
+  calls: number;
+  startedAt: number;
+  multiple: number;
+};
+export type UsageWhatIf = {
+  startDate: string;
+  endDate: string;
+  target: { provider: string; model: string; source: PricingSource };
+  calls: number;
+  actualCost: number;
+  projectedCost: number;
+  savingsUsd: number;
+  savingsPct: number;
+  byModel: Array<{
+    provider: string | null;
+    model: string | null;
+    calls: number;
+    actualCost: number;
+    projectedCost: number;
+  }>;
+  caveat: string;
+};
+export type UsageExplanation = {
+  startDate: string;
+  endDate: string;
+  cost: number;
+  priorCost: number;
+  changePct: number | null;
+  lines: string[];
+  drivers: Array<{
+    kind: "feature" | "model" | "session" | "day";
+    key: string;
+    label: string;
+    cost: number;
+    priorCost: number;
+    delta: number;
+  }>;
+};
 
 export type UsageCacheHealth = {
   requests: number;
   hitRate: number;
   busts: number;
   wastedUsd: number;
+  unreadWriteUsd: number;
+  unreadWriteTokens: number;
   warm: boolean;
   ttl: "5m" | "1h" | "none" | null;
   lastChatTs: number | null;
@@ -74,6 +159,7 @@ export type UsageCacheHealth = {
     hitRate: number;
     busts: number;
     wastedUsd: number;
+    unreadWriteUsd: number;
   }>;
 };
 
@@ -140,6 +226,10 @@ export type UsageLedgerSummary = {
   byAgent: UsageGroupSummary[];
   daily: UsageDailyPoint[];
   byTask: UsageTaskSummary[];
+  bySession: UsageSessionSummary[];
+  outcomes: UsageOutcomes;
+  energy: UsageEnergyEstimate;
+  runawayRuns: UsageRunawayRun[];
   cacheHealth: UsageCacheHealth;
   live: UsageLiveStats;
   pricing: {
@@ -267,7 +357,6 @@ export const LIVE_FEED_LIMIT = 100;
 
 type UsageState = {
   summary: UsageLedgerSummary | null;
-  result: UsageResult | null;
   liveEvents: UsageEventRow[];
   days: number;
   tab: UsageTab;
@@ -279,7 +368,6 @@ type UsageState = {
   ledgerSupported: boolean | null;
   lastEventAt: number | null;
   setSummary: (summary: UsageLedgerSummary | null) => void;
-  setResult: (result: UsageResult | null) => void;
   setLiveEvents: (events: UsageEventRow[]) => void;
   pushLiveEvent: (event: UsageEventRow) => void;
   setDays: (days: number) => void;
@@ -292,7 +380,6 @@ type UsageState = {
 
 export const useUsageStore = create<UsageState>((set) => ({
   summary: null,
-  result: null,
   liveEvents: [],
   days: 30,
   tab: "overview",
@@ -302,7 +389,6 @@ export const useUsageStore = create<UsageState>((set) => ({
   ledgerSupported: null,
   lastEventAt: null,
   setSummary: (summary) => set({ summary }),
-  setResult: (result) => set({ result }),
   setLiveEvents: (liveEvents) => set({ liveEvents: liveEvents.slice(0, LIVE_FEED_LIMIT) }),
   pushLiveEvent: (event) =>
     set((state) => {

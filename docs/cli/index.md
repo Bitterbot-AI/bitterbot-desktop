@@ -592,11 +592,15 @@ Surfaces:
 
 - `/status` (adds a short provider usage line when available)
 - `bitterbot status --usage` (prints full provider breakdown)
-- Control UI (Usage section under Context)
+- Control UI → Usage (the usage ledger: every model call priced, per model,
+  feature, session and day; see [Usage tracking](/concepts/usage-tracking))
+- `bitterbot gateway usage [--by ...] [--why] [--whatif provider/model] [--json]`
+  (the same ledger from the CLI)
 
 Notes:
 
-- Data comes directly from provider usage endpoints (no estimates).
+- Provider quota data comes directly from provider usage endpoints (no estimates); the
+  ledger's costs are computed from provider-reported token counts and a price table.
 - Providers: Anthropic, GitHub Copilot, OpenAI Codex OAuth, plus Gemini CLI/Antigravity when those provider plugins are enabled.
 - If no matching credentials exist, usage is hidden.
 - Details: see [Usage tracking](/concepts/usage-tracking).

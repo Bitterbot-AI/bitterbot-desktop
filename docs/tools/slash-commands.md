@@ -83,7 +83,8 @@ Text + native (when enabled):
 - `/tell <id|#> <message>` (alias for `/steer`)
 - `/config show|get|set|unset` (persist config to disk, owner-only; requires `commands.config: true`)
 - `/debug show|set|unset|reset` (runtime overrides, owner-only; requires `commands.debug: true`)
-- `/usage off|tokens|full|cost` (per-response usage footer or local cost summary)
+- `/usage off|tokens|full|cost|why` (per-response usage footer, local cost summary, or an
+  explanation of recent spend from the usage ledger)
 - `/tts off|always|inbound|tagged|status|provider|limit|summary|audio` (control TTS; see [TTS](/tools/tts))
   - Discord: native command is `/voice` (Discord reserves `/tts`); text `/tts` still works.
 - `/stop`
@@ -116,7 +117,7 @@ Notes:
 - `/new <model>` accepts a model alias, `provider/model`, or a provider name (fuzzy match); if no match, the text is treated as the message body.
 - For full provider usage breakdown, use `bitterbot status --usage`.
 - `/allowlist add|remove` requires `commands.config=true` and honors channel `configWrites`.
-- `/usage` controls the per-response usage footer; `/usage cost` prints a local cost summary from Bitterbot session logs.
+- `/usage` controls the per-response usage footer; `/usage cost` prints a local cost summary from Bitterbot session logs; `/usage why [today|7d|30d]` names the features, models and sessions that moved the bill (see [Usage tracking](/concepts/usage-tracking)).
 - `/restart` is disabled by default; set `commands.restart: true` to enable it.
 - `/verbose` is meant for debugging and extra visibility; keep it **off** in normal use.
 - `/reasoning` (and `/verbose`) are risky in group settings: they may reveal internal reasoning or tool output you did not intend to expose. Prefer leaving them off, especially in group chats.

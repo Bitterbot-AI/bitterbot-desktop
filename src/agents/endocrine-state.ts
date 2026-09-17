@@ -29,6 +29,12 @@ export type EndocrineStateForPrompt = {
   proactiveMemories?: string;
   /** Intra-session coherence context (Plan 7, Phase 2+9) */
   sessionCoherence?: string;
+  /**
+   * PLAN-50 Phase 6: spend pressure from the usage budgets (0 = none, 1 = at the limit). Feeds
+   * the prompt so the agent paces itself, the way cortisol shapes urgency.
+   */
+  budgetPressure?: number;
+  budgetLabel?: string;
 };
 
 export async function resolveEndocrineState(params: {
@@ -317,6 +323,23 @@ export async function resolveEndocrineState(params: {
       return undefined;
     }
 
+    let budgetPressure: number | undefined;
+    let budgetLabel: string | undefined;
+    try {
+      const { getUsageLedger } = await import("../infra/usage-ledger.js");
+      const { getUsageBudgetPressure } = await import("../infra/usage-budgets.js");
+      const pressure = getUsageBudgetPressure({
+        ledger: getUsageLedger(),
+        cfg: params.config ?? undefined,
+      });
+      if (pressure.pressure > 0) {
+        budgetPressure = pressure.pressure;
+        budgetLabel = pressure.label ?? undefined;
+      }
+    } catch {
+      // budgets unavailable — non-critical
+    }
+
     return {
       dopamine: hormones?.dopamine ?? 0,
       cortisol: hormones?.cortisol ?? 0,
@@ -328,6 +351,8 @@ export async function resolveEndocrineState(params: {
       lastSessionBrief,
       proactiveMemories,
       sessionCoherence,
+      budgetPressure,
+      budgetLabel,
     };
   } catch (err) {
     log.debug(`Failed to resolve endocrine state: ${String(err)}`);

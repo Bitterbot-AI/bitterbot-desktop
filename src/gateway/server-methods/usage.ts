@@ -24,6 +24,7 @@ import {
   discoverAllSessions,
   type DiscoveredSession,
 } from "../../infra/session-cost-usage.js";
+import { buildUsageExplanation, buildUsageWhatIf } from "../../infra/usage-insights.js";
 import { getUsageLedger } from "../../infra/usage-ledger.js";
 import { buildUsageLedgerSummary } from "../../infra/usage-summary.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
@@ -35,7 +36,9 @@ import {
   formatValidationErrors,
   validateSessionsUsageParams,
   validateUsageLedgerEventsParams,
+  validateUsageLedgerExplainParams,
   validateUsageLedgerSummaryParams,
+  validateUsageLedgerWhatIfParams,
 } from "../protocol/index.js";
 import {
   listAgentsForGateway,
@@ -341,6 +344,7 @@ export const usageHandlers: GatewayRequestHandlers = {
       p.agentId ?? "",
       p.feature ?? "",
       p.kind ?? "",
+      p.sessionKey ?? "",
     ]);
     const cached = ledgerSummaryCache.get(cacheKey);
     const now = Date.now();
@@ -348,26 +352,114 @@ export const usageHandlers: GatewayRequestHandlers = {
       respond(true, cached.value, undefined);
       return;
     }
+    const config = loadConfig();
     const taskStore = getActiveTaskStore();
+    const sessionStore = loadCombinedSessionStoreForGateway(config).store;
     const summary = buildUsageLedgerSummary({
       ledger,
-      cfg: loadConfig(),
+      cfg: config,
       startMs,
       endMs,
       agentId: p.agentId,
       feature: p.feature,
       kind: p.kind,
+      sessionKey: p.sessionKey,
       nowMs: now,
-      taskLabel: (taskId) => {
+      taskInfo: (taskId) => {
         try {
-          return taskStore?.get(taskId)?.goal;
+          const task = taskStore?.get(taskId);
+          return task
+            ? { status: task.status, goal: task.goal, updatedAt: task.updatedAt }
+            : undefined;
         } catch {
           return undefined;
         }
       },
+      sessionInfo: (sessionKey) => {
+        const entry = sessionStore[sessionKey];
+        if (!entry) {
+          return undefined;
+        }
+        return {
+          label: entry.label ?? entry.origin?.label,
+          channel: entry.lastChannel ?? entry.channel ?? entry.origin?.provider,
+          agentId: parseAgentSessionKey(sessionKey)?.agentId,
+        };
+      },
     });
     ledgerSummaryCache.set(cacheKey, { at: now, value: summary });
     respond(true, summary, undefined);
+  },
+  "usage.ledger.whatif": async ({ respond, params }) => {
+    if (!validateUsageLedgerWhatIfParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid usage.ledger.whatif params: ${formatValidationErrors(validateUsageLedgerWhatIfParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const ledger = getUsageLedger();
+    if (!ledger) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "usage ledger is disabled"));
+      return;
+    }
+    const p = params;
+    const { startMs, endMs } = parseDateRange({
+      startDate: p.startDate,
+      endDate: p.endDate,
+      days: p.days,
+    });
+    const result = await buildUsageWhatIf({
+      ledger,
+      cfg: loadConfig(),
+      startMs,
+      endMs,
+      targetProvider: p.provider,
+      targetModel: p.model,
+      agentId: p.agentId,
+      feature: p.feature,
+    });
+    respond(true, result, undefined);
+  },
+  "usage.ledger.explain": async ({ respond, params }) => {
+    if (!validateUsageLedgerExplainParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid usage.ledger.explain params: ${formatValidationErrors(validateUsageLedgerExplainParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    const ledger = getUsageLedger();
+    if (!ledger) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "usage ledger is disabled"));
+      return;
+    }
+    const p = params;
+    const { startMs, endMs } = parseDateRange({
+      startDate: p.startDate,
+      endDate: p.endDate,
+      days: p.days ?? 7,
+    });
+    const sessionStore = loadCombinedSessionStoreForGateway(loadConfig()).store;
+    const result = buildUsageExplanation({
+      ledger,
+      startMs,
+      endMs,
+      agentId: p.agentId,
+      sessionInfo: (sessionKey) => {
+        const entry = sessionStore[sessionKey];
+        return entry ? { label: entry.label ?? entry.origin?.label } : undefined;
+      },
+    });
+    respond(true, result, undefined);
   },
   "usage.ledger.events": async ({ respond, params }) => {
     if (!validateUsageLedgerEventsParams(params)) {

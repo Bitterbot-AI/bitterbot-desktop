@@ -183,6 +183,31 @@ type RawRow = {
   cache_ttl: string | null;
 };
 
+export type UsageAggregateRow = {
+  group_key?: string | null;
+  calls: number;
+  errors: number;
+  input: number;
+  cache_read: number;
+  cache_write: number;
+  output: number;
+  reasoning: number;
+  total: number;
+  cost_input: number;
+  cost_cache_read: number;
+  cost_cache_write: number;
+  cost_output: number;
+  cost_total: number;
+  cost_computed: number;
+  computed_calls: number;
+  cost_reported_on_computed: number;
+  reported_calls: number;
+  unpriced_calls: number;
+  estimated_calls: number;
+  last_ts: number | null;
+  [extra: string]: unknown;
+};
+
 export type UsageEventFilters = {
   startMs?: number;
   endMs?: number;
@@ -193,6 +218,8 @@ export type UsageEventFilters = {
   model?: string;
   sessionKey?: string;
   runId?: string;
+  taskId?: string;
+  channel?: string;
 };
 
 const nz = (v: number | undefined | null): number =>
@@ -299,6 +326,8 @@ function buildWhere(filters: UsageEventFilters | undefined): {
     ["model", "model"],
     ["sessionKey", "session_key"],
     ["runId", "run_id"],
+    ["taskId", "task_id"],
+    ["channel", "channel"],
   ];
   for (const [key, column] of eq) {
     const value = filters[key];
@@ -469,6 +498,307 @@ export class UsageLedger {
     const events = rows.map(rowToEvent);
     const last = events.at(-1);
     return { events, nextBeforeId: events.length === limit && last ? last.id : null };
+  }
+
+  // ---------------------------------------------------------------------------
+  // PLAN-50 Phase 6: SQL-side aggregation. The summary used to materialize every row in range
+  // on the gateway event loop; these run one GROUP BY per pivot instead. Text-to-speech rows
+  // store characters in `input`, so token sums exclude kind='tts'.
+  // ---------------------------------------------------------------------------
+
+  private static readonly TOTALS_SELECT = `
+    COUNT(*) AS calls,
+    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE input END) AS input,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE cache_read END) AS cache_read,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE cache_write END) AS cache_write,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE output END) AS output,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE reasoning END) AS reasoning,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE total END) AS total,
+    SUM(cost_input) AS cost_input,
+    SUM(cost_cache_read) AS cost_cache_read,
+    SUM(cost_cache_write) AS cost_cache_write,
+    SUM(cost_output) AS cost_output,
+    SUM(cost_total) AS cost_total,
+    SUM(COALESCE(cost_computed, 0)) AS cost_computed,
+    SUM(CASE WHEN cost_computed IS NOT NULL THEN 1 ELSE 0 END) AS computed_calls,
+    SUM(CASE WHEN cost_computed IS NOT NULL THEN cost_total ELSE 0 END) AS cost_reported_on_computed,
+    SUM(CASE WHEN cost_source = 'provider' THEN 1 ELSE 0 END) AS reported_calls,
+    SUM(CASE WHEN cost_source = 'unpriced' THEN 1 ELSE 0 END) AS unpriced_calls,
+    SUM(CASE WHEN cost_source = 'estimated' THEN 1 ELSE 0 END) AS estimated_calls,
+    MAX(ts) AS last_ts`;
+
+  /** Totals for the filter, or for each value of `groupExpr` when given (one row per group). */
+  aggregate(filters: UsageEventFilters, groupExpr?: string, extraSelect = ""): UsageAggregateRow[] {
+    const { where, args } = buildWhere(filters);
+    const groupSelect = groupExpr ? `${groupExpr} AS group_key, ` : "";
+    const groupBy = groupExpr ? `GROUP BY ${groupExpr}` : "";
+    const rows = this.db
+      .prepare(
+        `SELECT ${groupSelect}${UsageLedger.TOTALS_SELECT}${extraSelect} FROM usage_events ${where} ${groupBy}`,
+      )
+      .all(...args) as unknown as UsageAggregateRow[];
+    return rows;
+  }
+
+  /** Per model, the pricing sources and kinds seen (small; one row per model/source/kind). */
+  modelFacets(filters: UsageEventFilters): Array<{
+    provider: string | null;
+    model: string | null;
+    kind: string;
+    cost_source: string;
+    calls: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    return this.db
+      .prepare(
+        `SELECT provider, model, kind, cost_source, COUNT(*) AS calls FROM usage_events ${where}
+         GROUP BY provider, model, kind, cost_source`,
+      )
+      .all(...args) as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      kind: string;
+      cost_source: string;
+      calls: number;
+    }>;
+  }
+
+  /** Per (day, model) and per (day, kind) sums for stacked charts. */
+  dailyBy(
+    filters: UsageEventFilters,
+    dimension: "model" | "kind",
+  ): Array<{
+    day: string;
+    provider: string | null;
+    model: string | null;
+    kind: string | null;
+    tokens: number;
+    cost: number;
+    calls: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    const cols =
+      dimension === "model"
+        ? "provider, model, NULL AS kind"
+        : "NULL AS provider, NULL AS model, kind";
+    const group = dimension === "model" ? "day, provider, model" : "day, kind";
+    return this.db
+      .prepare(
+        `SELECT day, ${cols}, SUM(CASE WHEN kind = 'tts' THEN 0 ELSE total END) AS tokens,
+                SUM(cost_total) AS cost, COUNT(*) AS calls
+         FROM usage_events ${where} GROUP BY ${group}`,
+      )
+      .all(...args) as unknown as Array<{
+      day: string;
+      provider: string | null;
+      model: string | null;
+      kind: string | null;
+      tokens: number;
+      cost: number;
+      calls: number;
+    }>;
+  }
+
+  /** Hourly cost/token buckets (for peak-block search without loading rows). */
+  hourly(
+    filters: UsageEventFilters,
+  ): Array<{ hour: number; cost: number; tokens: number; calls: number }> {
+    const { where, args } = buildWhere(filters);
+    return this.db
+      .prepare(
+        `SELECT (ts / 3600000) AS hour, SUM(cost_total) AS cost,
+                SUM(CASE WHEN kind = 'tts' THEN 0 ELSE total END) AS tokens, COUNT(*) AS calls
+         FROM usage_events ${where} GROUP BY hour ORDER BY hour`,
+      )
+      .all(...args) as unknown as Array<{
+      hour: number;
+      cost: number;
+      tokens: number;
+      calls: number;
+    }>;
+  }
+
+  /** Cache observations per model, feature and bust reason (chat rows on cache-capable providers). */
+  cacheFacets(filters: UsageEventFilters): Array<{
+    provider: string | null;
+    model: string | null;
+    feature: string;
+    cache_bust_reason: string | null;
+    calls: number;
+    input: number;
+    cache_read: number;
+    cache_write: number;
+    cost_cache_write: number;
+    last_ts: number | null;
+    last_ttl: string | null;
+  }> {
+    const { where, args } = buildWhere({ ...filters, kind: "chat" });
+    return this.db
+      .prepare(
+        `SELECT provider, model, feature, cache_bust_reason, COUNT(*) AS calls, SUM(input) AS input,
+                SUM(cache_read) AS cache_read, SUM(cache_write) AS cache_write,
+                SUM(cost_cache_write) AS cost_cache_write, MAX(ts) AS last_ts,
+                MAX(CASE WHEN cache_ttl IS NOT NULL THEN cache_ttl END) AS last_ttl
+         FROM usage_events ${where ? `${where} AND` : "WHERE"} provider IN ('anthropic', 'openai')
+         GROUP BY provider, model, feature, cache_bust_reason`,
+      )
+      .all(...args) as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      feature: string;
+      cache_bust_reason: string | null;
+      calls: number;
+      input: number;
+      cache_read: number;
+      cache_write: number;
+      cost_cache_write: number;
+      last_ts: number | null;
+      last_ttl: string | null;
+    }>;
+  }
+
+  /** Per-run cost, newest first, for the runaway-run detector. */
+  runCosts(
+    filters: UsageEventFilters,
+    limit = 2000,
+  ): Array<{
+    run_id: string;
+    session_key: string | null;
+    feature: string;
+    cost: number;
+    calls: number;
+    first_ts: number;
+    last_ts: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    const clause = where ? `${where} AND run_id IS NOT NULL` : "WHERE run_id IS NOT NULL";
+    return this.db
+      .prepare(
+        `SELECT run_id, MIN(session_key) AS session_key, MIN(feature) AS feature, SUM(cost_total) AS cost,
+                COUNT(*) AS calls, MIN(ts) AS first_ts, MAX(ts) AS last_ts
+         FROM usage_events ${clause} GROUP BY run_id ORDER BY last_ts DESC LIMIT ?`,
+      )
+      .all(...args, limit) as unknown as Array<{
+      run_id: string;
+      session_key: string | null;
+      feature: string;
+      cost: number;
+      calls: number;
+      first_ts: number;
+      last_ts: number;
+    }>;
+  }
+
+  /** Token buckets per (provider, model, batch) for chat-like rows: the input to a what-if replay. */
+  replayBuckets(filters: UsageEventFilters): Array<{
+    provider: string | null;
+    model: string | null;
+    kind: string;
+    batch: number;
+    input: number;
+    cache_read: number;
+    cache_write: number;
+    output: number;
+    cost: number;
+    calls: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    return this.db
+      .prepare(
+        `SELECT provider, model, kind, batch, SUM(input) AS input, SUM(cache_read) AS cache_read,
+                SUM(cache_write) AS cache_write, SUM(output) AS output, SUM(cost_total) AS cost, COUNT(*) AS calls
+         FROM usage_events ${where} GROUP BY provider, model, kind, batch`,
+      )
+      .all(...args) as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      kind: string;
+      batch: number;
+      input: number;
+      cache_read: number;
+      cache_write: number;
+      output: number;
+      cost: number;
+      calls: number;
+    }>;
+  }
+
+  /** Distinct pricing identities of rows that still lack a computed cost (for the backfill). */
+  uncomputedIdentities(): Array<{
+    provider: string | null;
+    model: string | null;
+    kind: string;
+    batch: number;
+    cache_ttl: string | null;
+    rows: number;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT provider, model, kind, batch, cache_ttl, COUNT(*) AS rows FROM usage_events
+         WHERE cost_computed IS NULL AND provider IS NOT NULL AND model IS NOT NULL
+           AND kind IN ('chat', 'vision', 'search', 'embedding')
+         GROUP BY provider, model, kind, batch, cache_ttl`,
+      )
+      .all() as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      kind: string;
+      batch: number;
+      cache_ttl: string | null;
+      rows: number;
+    }>;
+  }
+
+  /** Apply a per-million price to every row of one pricing identity that lacks cost_computed. */
+  applyComputedCost(
+    identity: {
+      provider: string;
+      model: string;
+      kind: string;
+      batch: number;
+      cache_ttl: string | null;
+    },
+    price: ModelPrice,
+    cacheWriteRate: number,
+  ): number {
+    const factor = identity.batch ? 0.5 : 1;
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET cost_computed =
+           ((input * ?) + (cache_read * ?) + (cache_write * ?) + (output * ?)) * ? / 1000000.0
+         WHERE cost_computed IS NULL AND provider = ? AND model = ? AND kind = ? AND batch = ?
+           AND ((cache_ttl IS NULL AND ? IS NULL) OR cache_ttl = ?)`,
+      )
+      .run(
+        price.input,
+        price.cacheRead,
+        cacheWriteRate,
+        price.output,
+        factor,
+        identity.provider,
+        identity.model,
+        identity.kind,
+        identity.batch,
+        identity.cache_ttl,
+        identity.cache_ttl,
+      );
+    return Number(result.changes ?? 0);
+  }
+
+  /** Relabel reconciled rows (feature / session_key / channel) for one transcript. */
+  relabelReconciled(
+    sessionId: string,
+    agentId: string | null,
+    patch: { feature: string; sessionKey: string | null; channel: string | null },
+  ): number {
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, session_key = COALESCE(?, session_key), channel = COALESCE(?, channel)
+         WHERE source = 'reconcile' AND session_id = ? AND (agent_id = ? OR (agent_id IS NULL AND ? IS NULL))`,
+      )
+      .run(patch.feature, patch.sessionKey, patch.channel, sessionId, agentId, agentId);
+    return Number(result.changes ?? 0);
   }
 
   /** Raw rows for aggregation; callers group in JS so one query serves every pivot. */
@@ -848,6 +1178,68 @@ export function isUsageLedgerConfigEnabled(cfg: BitterbotConfig | undefined): bo
 const RECONCILE_INTERVAL_MS = 10 * 60_000;
 
 /**
+ * PLAN-50 Phase 6: fill `cost_computed` on rows written before the column existed (and on any
+ * row whose price was unknown at write time), one pricing identity at a time. Rows that still
+ * have no price are left NULL so "computed" never fabricates a number.
+ */
+export async function backfillComputedCost(
+  ledger: UsageLedger,
+  cfg?: BitterbotConfig,
+): Promise<number> {
+  const identities = ledger.uncomputedIdentities();
+  let updated = 0;
+  for (const identity of identities) {
+    if (!identity.provider || !identity.model) {
+      continue;
+    }
+    const resolved = await resolveModelPricing({
+      provider: identity.provider,
+      model: identity.model,
+      kind: identity.kind as UsageKind,
+      cfg,
+    });
+    if (resolved.source === "unpriced") {
+      continue;
+    }
+    const price = resolved.price;
+    let cacheWriteRate = price.cacheWrite;
+    if (identity.cache_ttl === "1h" && resolved.source !== "override") {
+      cacheWriteRate =
+        typeof price.cacheWrite1h === "number" && price.cacheWrite1h > 0
+          ? price.cacheWrite1h
+          : identity.provider.toLowerCase() === "anthropic"
+            ? price.cacheWrite * (2 / 1.25)
+            : price.cacheWrite;
+    }
+    if (resolved.source === "local") {
+      cacheWriteRate = 0;
+    }
+    try {
+      updated += ledger.applyComputedCost(
+        {
+          provider: identity.provider,
+          model: identity.model,
+          kind: identity.kind,
+          batch: identity.batch,
+          cache_ttl: identity.cache_ttl,
+        },
+        resolved.source === "local" ? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } : price,
+        cacheWriteRate,
+      );
+    } catch (err) {
+      log.debug(
+        `cost_computed backfill failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  if (updated > 0) {
+    log.info(`usage ledger: computed cost filled on ${updated} rows`);
+  }
+  return updated;
+}
+
+/**
  * Gateway boot: open the ledger, prune, and start the transcript reconciler (backfill on first
  * run, then a periodic safety net for any path that writes a transcript without recording live).
  */
@@ -885,8 +1277,8 @@ export function startUsageLedger(opts?: {
     log.debug(`live pricing start failed: ${err instanceof Error ? err.message : String(err)}`);
   }
   if (opts?.reconcile !== false && !state.reconcileTimer) {
-    const run = () => {
-      void import("./usage-reconcile.js")
+    const run = (): Promise<void> =>
+      import("./usage-reconcile.js")
         .then(({ reconcileTranscripts }) => reconcileTranscripts({ ledger, cfg: opts?.cfg }))
         .then((res) => {
           if (res.rows > 0) {
@@ -896,14 +1288,24 @@ export function startUsageLedger(opts?: {
         .catch((err) => {
           log.debug(`usage reconcile failed: ${err instanceof Error ? err.message : String(err)}`);
         });
-    };
     // First pass shortly after boot, once prices are in (capped so a slow network never
     // delays the backfill more than a few seconds).
     const firstTimer = setTimeout(() => {
-      void Promise.race([pricingReady, new Promise((r) => setTimeout(r, 8_000))]).then(run);
+      void Promise.race([pricingReady, new Promise((r) => setTimeout(r, 8_000))])
+        .then(() => run())
+        .then(() => backfillComputedCost(ledger, opts?.cfg))
+        .catch(() => {});
     }, 2_000);
     firstTimer.unref?.();
-    state.reconcileTimer = setInterval(run, RECONCILE_INTERVAL_MS);
+    state.reconcileTimer = setInterval(() => {
+      void run();
+      // Retention is enforced on a schedule too, not only at boot.
+      try {
+        ledger.pruneOlderThan(Date.now() - retentionDays * 24 * 60 * 60_000);
+      } catch {
+        // non-essential
+      }
+    }, RECONCILE_INTERVAL_MS);
     state.reconcileTimer.unref?.();
   }
   return ledger;

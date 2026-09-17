@@ -17,6 +17,8 @@ const BASE_METHODS = [
   "sessions.usage.logs",
   "usage.ledger.summary",
   "usage.ledger.events",
+  "usage.ledger.whatif",
+  "usage.ledger.explain",
   "tts.status",
   "tts.providers",
   "tts.enable",

@@ -98,6 +98,7 @@ export const CACHE_BUST_REASONS = {
   expired: "cache expired (TTL elapsed between turns)",
   prefixChanged: "prompt prefix changed (system prompt, tools, or model)",
   prefixGrew: "context grew past the cached prefix",
+  writeNeverRead: "cache written but never read (turns spaced past the TTL)",
 } as const;
 
 const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
@@ -160,6 +161,23 @@ export function recordCacheTurn(
     }
   } else if (!prev && cacheWrite > 0) {
     reason = CACHE_BUST_REASONS.coldStart;
+  } else if (
+    prev &&
+    prev.cacheRead === 0 &&
+    prev.cacheWrite > 0 &&
+    cacheWrite > 0 &&
+    cacheRead === 0
+  ) {
+    if (now - prev.ts > ttlMs) {
+      // Two write-only turns spaced past the TTL: the previous write was never served.
+      // Typical of heartbeats or cron turns on a long interval.
+      reason = CACHE_BUST_REASONS.writeNeverRead;
+    } else {
+      // Written again within the TTL: the prefix must have changed. That is a bust.
+      bust = true;
+      s.busts += 1;
+      reason = CACHE_BUST_REASONS.prefixChanged;
+    }
   }
 
   s.totalInput += input;

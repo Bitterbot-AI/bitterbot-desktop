@@ -185,6 +185,37 @@ export const handleUsageCommand: CommandHandler = async (params, allowTextComman
 
   const rawArgs = normalized === "/usage" ? "" : normalized.slice("/usage".length).trim();
   const requested = rawArgs ? normalizeUsageDisplay(rawArgs) : undefined;
+  if (rawArgs.toLowerCase().startsWith("why")) {
+    // PLAN-50 Phase 6: "explain my bill" from the ledger. `/usage why [today|7d|30d]`.
+    const { getUsageLedger } = await import("../../infra/usage-ledger.js");
+    const { buildUsageExplanation } = await import("../../infra/usage-insights.js");
+    const ledger = getUsageLedger();
+    if (!ledger) {
+      return {
+        shouldContinue: false,
+        reply: { text: "💸 Usage ledger is disabled on this node." },
+      };
+    }
+    const arg = rawArgs.slice(3).trim().toLowerCase();
+    const days = arg === "today" ? 1 : /^(\d+)d$/.test(arg) ? Number(arg.slice(0, -1)) : 7;
+    const now = Date.now();
+    const todayStart = Date.UTC(
+      new Date(now).getUTCFullYear(),
+      new Date(now).getUTCMonth(),
+      new Date(now).getUTCDate(),
+    );
+    const startMs = todayStart - (Math.max(1, days) - 1) * 24 * 60 * 60_000;
+    const explanation = buildUsageExplanation({
+      ledger,
+      startMs,
+      endMs: now,
+      agentId: params.agentId,
+    });
+    return {
+      shouldContinue: false,
+      reply: { text: `💸 Why usage looks like this\n${explanation.lines.join("\n")}` },
+    };
+  }
   if (rawArgs.toLowerCase().startsWith("cost")) {
     const sessionSummary = await loadSessionCostSummary({
       sessionId: params.sessionEntry?.sessionId,
@@ -227,7 +258,7 @@ export const handleUsageCommand: CommandHandler = async (params, allowTextComman
   if (rawArgs && !requested) {
     return {
       shouldContinue: false,
-      reply: { text: "⚙️ Usage: /usage off|tokens|full|cost" },
+      reply: { text: "⚙️ Usage: /usage off|tokens|full|cost|why [today|7d|30d]" },
     };
   }
 

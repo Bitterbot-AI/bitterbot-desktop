@@ -6,6 +6,8 @@ import { DailyStackedChart } from "./DailyStackedChart";
 import { budgetTone, formatPct, formatResetIn, formatUsdSmart, kindLabel } from "./usage-format";
 import { UsageBurnRate } from "./UsageBurnRate";
 import { UsageCacheHealthLine } from "./UsageCacheHealth";
+import { UsageExplain } from "./UsageExplain";
+import { UsageOutcomes } from "./UsageOutcomes";
 
 export function StatCard({
   label,
@@ -159,7 +161,7 @@ export function UsageOverview({ summary }: { summary: UsageLedgerSummary }) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
         <StatCard
           label="Total cost"
           value={formatCost(t.cost.total)}
@@ -198,6 +200,15 @@ export function UsageOverview({ summary }: { summary: UsageLedgerSummary }) {
           sub={`${activeDays} active of ${summary.days} days`}
         />
         <StatCard
+          label="Energy (estimate)"
+          value={
+            summary.energy.wh >= 1000
+              ? `${(summary.energy.wh / 1000).toFixed(2)} kWh`
+              : `${summary.energy.wh.toFixed(0)} Wh`
+          }
+          sub={`≈ ${summary.energy.gco2e >= 1000 ? `${(summary.energy.gco2e / 1000).toFixed(2)} kg` : `${summary.energy.gco2e.toFixed(0)} g`} CO₂e · ×${summary.energy.bandLow.toFixed(2)}–${summary.energy.bandHigh}`}
+        />
+        <StatCard
           label="Cost split"
           value={`${formatPct(t.cost.total > 0 ? t.cost.output / t.cost.total : 0)} out`}
           sub={`in ${formatCost(t.cost.input)} · cache ${formatCost(t.cost.cacheRead + t.cost.cacheWrite)}`}
@@ -214,6 +225,11 @@ export function UsageOverview({ summary }: { summary: UsageLedgerSummary }) {
         <UsageBurnRate live={summary.live} />
         <BudgetBars budgets={summary.budgets} />
         <KindStrip byKind={summary.byKind} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <UsageOutcomes summary={summary} />
+        <UsageExplain />
       </div>
     </div>
   );

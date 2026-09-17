@@ -8,7 +8,6 @@ import {
   useUsageStore,
   type UsageEventRow,
   type UsageLedgerSummary,
-  type UsageResult,
   type UsageTab,
 } from "../../stores/usage-store";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
@@ -17,6 +16,7 @@ import { UsageLiveFeed } from "./UsageLiveFeed";
 import { UsageModelsTable } from "./UsageModelsTable";
 import { UsageOverview } from "./UsageOverview";
 import { UsageSessionsList } from "./UsageSessionsList";
+import { UsageWhatIf } from "./UsageWhatIf";
 
 const DAY_OPTIONS = [7, 14, 30, 60, 90] as const;
 /** A streamed usage event schedules one summary refresh at most this often. */
@@ -55,7 +55,6 @@ export function UsageView() {
   const hello = useGatewayStore((s) => s.hello);
   const request = useGatewayStore((s) => s.request);
   const summary = useUsageStore((s) => s.summary);
-  const result = useUsageStore((s) => s.result);
   const liveEvents = useUsageStore((s) => s.liveEvents);
   const days = useUsageStore((s) => s.days);
   const tab = useUsageStore((s) => s.tab);
@@ -64,7 +63,6 @@ export function UsageView() {
   const ledgerSupported = useUsageStore((s) => s.ledgerSupported);
   const lastEventAt = useUsageStore((s) => s.lastEventAt);
   const setSummary = useUsageStore((s) => s.setSummary);
-  const setResult = useUsageStore((s) => s.setResult);
   const setLiveEvents = useUsageStore((s) => s.setLiveEvents);
   const pushLiveEvent = useUsageStore((s) => s.pushLiveEvent);
   const setDays = useUsageStore((s) => s.setDays);
@@ -80,11 +78,10 @@ export function UsageView() {
     if (gwStatus !== "connected") return;
     setLoading(true);
     const errors: string[] = [];
-    const [summaryRes, sessionsRes] = await Promise.allSettled([
+    const [summaryRes] = await Promise.allSettled([
       ledgerAvailable
         ? (request("usage.ledger.summary", { days }) as Promise<UsageLedgerSummary>)
         : Promise.reject(new Error("usage ledger unavailable on this gateway")),
-      request("sessions.usage", { days, limit: 50 }) as Promise<UsageResult>,
     ]);
     if (summaryRes.status === "fulfilled") {
       setSummary(summaryRes.value);
@@ -95,15 +92,6 @@ export function UsageView() {
         summaryRes.reason instanceof Error
           ? summaryRes.reason.message
           : "Failed to load usage ledger",
-      );
-    }
-    if (sessionsRes.status === "fulfilled") {
-      setResult(sessionsRes.value);
-    } else {
-      errors.push(
-        sessionsRes.reason instanceof Error
-          ? sessionsRes.reason.message
-          : "Failed to load session usage",
       );
     }
     if (ledgerAvailable) {
@@ -130,7 +118,6 @@ export function UsageView() {
     days,
     ledgerAvailable,
     setSummary,
-    setResult,
     setLiveEvents,
     setLoading,
     setError,
@@ -245,13 +232,18 @@ export function UsageView() {
           {summary && hasData && <UsageOverview summary={summary} />}
         </TabsContent>
         <TabsContent value="models">
-          {summary && <UsageModelsTable models={summary.byModel} />}
+          {summary && (
+            <div className="space-y-4">
+              <UsageModelsTable models={summary.byModel} />
+              <UsageWhatIf />
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="features">
           {summary && hasData && <UsageFeaturesPanel summary={summary} />}
         </TabsContent>
         <TabsContent value="sessions">
-          <UsageSessionsList result={result} />
+          <UsageSessionsList sessions={summary?.bySession ?? []} />
         </TabsContent>
         <TabsContent value="live">
           <UsageLiveFeed

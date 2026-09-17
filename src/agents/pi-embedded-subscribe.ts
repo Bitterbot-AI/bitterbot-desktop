@@ -17,6 +17,7 @@ import { transcriptSessionId, usageDedupeKey } from "../infra/usage-reconcile.js
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { buildCodeSpanIndex, createInlineCodeState } from "../markdown/code-spans.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
+import { isSubagentSessionKey } from "../sessions/session-key-utils.js";
 import { EmbeddedBlockChunker } from "./pi-embedded-block-chunker.js";
 import {
   isMessagingToolDuplicateNormalized,
@@ -306,6 +307,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
         status: msg.stopReason === "error" ? "error" : "ok",
         dedupeKey:
           transcriptId && msgTs !== undefined ? usageDedupeKey(transcriptId, msgTs) : undefined,
+        channel: params.channel,
         cacheState: cache?.state,
         cacheBustReason: cache?.reason,
         cacheTtl: params.cacheTtl,
@@ -345,6 +347,18 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       }
     }
     recordTurnUsage(usage, message, cacheResult);
+    // PLAN-50 Phase 6: the cache is warm right now; let a soon-due heartbeat ride on it.
+    if (
+      (params.cacheTtl === "5m" || params.cacheTtl === "1h") &&
+      !params.isHeartbeat &&
+      !isSubagentSessionKey(params.sessionKey)
+    ) {
+      const ttlMs = params.cacheTtl === "1h" ? 60 * 60_000 : 5 * 60_000;
+      const agentId = params.agentId ?? parseAgentSessionKey(params.sessionKey)?.agentId;
+      void import("../infra/heartbeat-runner.js")
+        .then(({ nudgeHeartbeatIfDueSoon }) => nudgeHeartbeatIfDueSoon(ttlMs, agentId))
+        .catch(() => {});
+    }
   };
   const getUsageTotals = () => {
     const hasUsage =

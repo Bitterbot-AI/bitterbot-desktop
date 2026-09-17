@@ -94,12 +94,49 @@ function makeSummary(): UsageLedgerSummary {
         byKind: [],
       },
     ],
+    bySession: [
+      {
+        ...chat,
+        key: "agent:main:main",
+        sessionKey: "agent:main:main",
+        label: "Main chat",
+        agentId: "main",
+        channel: "webchat",
+        lastTs: Date.now(),
+        models: ["anthropic/claude-opus-4-8"],
+      },
+    ],
+    outcomes: {
+      tasks: 3,
+      succeeded: 2,
+      failed: 1,
+      stopped: 0,
+      costTotal: 5.5,
+      costPerSuccess: 2.75,
+      costOnFailures: 3,
+      byModel: [
+        {
+          provider: "anthropic",
+          model: "claude-opus-4-8",
+          tasks: 3,
+          succeeded: 2,
+          failed: 1,
+          costTotal: 5.5,
+          costPerSuccess: 2.75,
+        },
+      ],
+      byFeature: [],
+    },
+    energy: { wh: 42, gco2e: 18, bandLow: 0.33, bandHigh: 3, method: "test" },
+    runawayRuns: [],
     byTask: [{ ...chat, key: "task-1", taskId: "task-1", label: "Summarize the inbox", runs: 2 }],
     cacheHealth: {
       requests: 12,
       hitRate: 0.86,
       busts: 1,
       wastedUsd: 0.31,
+      unreadWriteUsd: 0,
+      unreadWriteTokens: 0,
       warm: true,
       ttl: "5m",
       lastChatTs: Date.now(),
@@ -112,6 +149,7 @@ function makeSummary(): UsageLedgerSummary {
           hitRate: 0.86,
           busts: 1,
           wastedUsd: 0.31,
+          unreadWriteUsd: 0,
         },
       ],
     },
@@ -178,7 +216,6 @@ describe("UsageView", () => {
   beforeEach(() => {
     useUsageStore.setState({
       summary: null,
-      result: null,
       liveEvents: [],
       error: null,
       loading: false,
@@ -214,7 +251,10 @@ describe("UsageView", () => {
     expect(screen.getByText("Burn rate")).toBeTruthy();
     expect(screen.getByText(/Ledger: 52 rows/)).toBeTruthy();
     expect(request).toHaveBeenCalledWith("usage.ledger.summary", { days: 30 });
-    expect(request).toHaveBeenCalledWith("sessions.usage", { days: 30, limit: 50 });
+    // The Sessions tab reads the ledger's bySession now; the transcript scan is no longer requested.
+    expect(request).not.toHaveBeenCalledWith("sessions.usage", expect.anything());
+    expect(screen.getByText("Cost per outcome")).toBeTruthy();
+    expect(screen.getByText("Energy (estimate)")).toBeTruthy();
   });
 
   it("shows the empty state when nothing was recorded", async () => {

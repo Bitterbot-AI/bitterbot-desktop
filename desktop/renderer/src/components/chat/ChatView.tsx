@@ -14,6 +14,7 @@ import { useChatStore, nextMsgId } from "../../stores/chat-store";
 import { useCoworkStore, type TaskStatus } from "../../stores/cowork-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore } from "../../stores/ui-store";
+import { UsageStatusStrip } from "../usage/UsageStatusStrip";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelPicker } from "./ModelPicker";
@@ -387,12 +388,20 @@ export function ChatView() {
   useGatewayEvent("chat", handleChatEvent);
   useGatewayEvent("agent", handleAgentEvent);
   useGatewayEvent("artifact", handleArtifactEvent);
+  // PLAN-50 Phase 6: per-message cost from the ledger stream.
+  const applyUsageEvent = useChatStore((s) => s.applyUsageEvent);
+  const handleUsageEvent = useCallback(
+    (payload: unknown) => applyUsageEvent(payload as Parameters<typeof applyUsageEvent>[0]),
+    [applyUsageEvent],
+  );
+  useGatewayEvent("usage", handleUsageEvent);
 
   return (
     <div className="flex flex-col h-full">
       {/* Session + model controls */}
       <div className="flex-shrink-0 flex items-center justify-between gap-2 px-3 py-1.5 border-b border-border/50">
         <SessionSelector />
+        <UsageStatusStrip />
         <ModelPicker />
       </div>
 

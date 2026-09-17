@@ -12,7 +12,14 @@ export interface ChatMessage {
   thinking?: string;
   toolCalls?: ToolCallItem[];
   images?: ImageItem[];
-  usage?: { input: number; output: number; total: number };
+  usage?: {
+    input: number;
+    output: number;
+    total: number;
+    cost?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
   stopReason?: string;
   toolCallId?: string; // For tool-role messages: which tool_use this is a response to
 }
@@ -52,6 +59,13 @@ export interface ActiveToolCall {
 
 interface ChatState {
   messages: ChatMessage[];
+  /** PLAN-50 Phase 6: ledger costs buffered per run until the reply is finalized. */
+  pendingRunCosts: Record<
+    string,
+    { cost: number; input: number; output: number; cacheRead: number; cacheWrite: number }
+  >;
+  /** Run id -> message id for replies already finalized (bounded), so late rows still attach. */
+  runMessages: Record<string, string>;
   activeRun: StreamRun | null;
   sessionKey: string;
   loading: boolean;
@@ -60,6 +74,16 @@ interface ChatState {
 
   setMessages: (msgs: ChatMessage[]) => void;
   addMessage: (msg: ChatMessage) => void;
+  /** PLAN-50 Phase 6: attach the ledger's cost for the latest assistant reply of this session. */
+  applyUsageEvent: (evt: {
+    kind?: string;
+    feature?: string;
+    runId?: string | null;
+    sessionKey?: string | null;
+    ts?: number;
+    cost?: { total?: number };
+    usage?: { input?: number; cacheRead?: number; cacheWrite?: number; output?: number };
+  }) => void;
   setSessionKey: (key: string) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -85,6 +109,8 @@ export function nextMsgId(): string {
 
 export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
+  pendingRunCosts: {},
+  runMessages: {},
   activeRun: null,
   sessionKey: "default",
   loading: false,
@@ -94,6 +120,59 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setMessages: (msgs) => set({ messages: msgs, error: null }),
 
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+
+  applyUsageEvent: (evt) =>
+    set((s) => {
+      if (evt.kind !== "chat" || !evt.sessionKey || evt.sessionKey !== s.sessionKey) return s;
+      if (evt.feature && evt.feature !== "agent/turn") return s;
+      const cost = evt.cost?.total;
+      if (typeof cost !== "number" || !evt.runId) return s;
+      const cacheRead = evt.usage?.cacheRead ?? 0;
+      const cacheWrite = evt.usage?.cacheWrite ?? 0;
+      const input = (evt.usage?.input ?? 0) + cacheRead + cacheWrite;
+      const output = evt.usage?.output ?? 0;
+      // The ledger row streams at message_end, before the reply is appended in finalizeRun.
+      // Buffer per run; finalizeRun attaches the sum. Late rows for an already-finalized run
+      // land on the message recorded for that run.
+      const finalizedId = s.runMessages[evt.runId];
+      if (finalizedId) {
+        const next = s.messages.map((m) =>
+          m.id === finalizedId
+            ? {
+                ...m,
+                usage: {
+                  input: (m.usage?.input ?? 0) + input,
+                  output: (m.usage?.output ?? 0) + output,
+                  total: (m.usage?.total ?? 0) + input + output,
+                  cost: (m.usage?.cost ?? 0) + cost,
+                  cacheRead: (m.usage?.cacheRead ?? 0) + cacheRead,
+                  cacheWrite: (m.usage?.cacheWrite ?? 0) + cacheWrite,
+                },
+              }
+            : m,
+        );
+        return { messages: next };
+      }
+      const prev = s.pendingRunCosts[evt.runId] ?? {
+        cost: 0,
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      };
+      return {
+        pendingRunCosts: {
+          ...s.pendingRunCosts,
+          [evt.runId]: {
+            cost: prev.cost + cost,
+            input: prev.input + input,
+            output: prev.output + output,
+            cacheRead: prev.cacheRead + cacheRead,
+            cacheWrite: prev.cacheWrite + cacheWrite,
+          },
+        },
+      };
+    }),
 
   setSessionKey: (key) => set({ sessionKey: key }),
 
@@ -120,8 +199,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
   finalizeRun: (runId, message) =>
     set((s) => {
       if (s.activeRun?.runId !== runId) return s;
-      const newMessages = message ? [...s.messages, message] : s.messages;
-      return { activeRun: null, messages: newMessages };
+      const pending = s.pendingRunCosts[runId];
+      const finalMessage =
+        message && pending
+          ? {
+              ...message,
+              usage: {
+                input: message.usage?.input ?? pending.input,
+                output: message.usage?.output ?? pending.output,
+                total: message.usage?.total ?? pending.input + pending.output,
+                cost: pending.cost,
+                cacheRead: pending.cacheRead,
+                cacheWrite: pending.cacheWrite,
+              },
+            }
+          : message;
+      const newMessages = finalMessage ? [...s.messages, finalMessage] : s.messages;
+      const { [runId]: _consumed, ...restPending } = s.pendingRunCosts;
+      const runEntries = Object.entries(s.runMessages).slice(-49);
+      const runMessages = finalMessage
+        ? Object.fromEntries([...runEntries, [runId, finalMessage.id]])
+        : s.runMessages;
+      return { activeRun: null, messages: newMessages, pendingRunCosts: restPending, runMessages };
     }),
 
   abortRun: (runId) =>

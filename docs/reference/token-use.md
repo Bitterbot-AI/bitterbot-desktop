@@ -48,12 +48,20 @@ Use these in chat:
   - Persists per session (stored as `responseUsage`).
   - OAuth auth **hides cost** (tokens only).
 - `/usage cost` → shows a local cost summary from Bitterbot session logs.
+- `/usage why [today|7d|30d]` → explains the window against the one before it
+  (which features, models and sessions moved the bill), from the usage ledger.
 
 Other surfaces:
 
-- **TUI/Web TUI:** `/status` + `/usage` are supported.
-- **CLI:** `bitterbot status --usage` and `bitterbot channels list` show
-  provider quota windows (not per-response costs).
+- **Control UI → Usage:** the usage ledger, which counts every model call
+  (chat, embeddings, dreams, extraction, evolution, judge, speech, search) per
+  model, feature, session and day, with cache health, burn rate, budgets,
+  cost per outcome and what-if replay. See
+  [Usage tracking](/concepts/usage-tracking).
+- **CLI:** `bitterbot gateway usage [--by model|feature|provider|kind|agent|day]
+[--why] [--whatif provider/model] [--json]` reads the same ledger.
+- **CLI (provider quotas):** `bitterbot status --usage` and
+  `bitterbot channels list` show provider quota windows (not per-response costs).
 
 ## Cost estimation (when shown)
 

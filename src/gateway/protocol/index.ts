@@ -180,8 +180,12 @@ import {
   SessionsUsageParamsSchema,
   type UsageLedgerEventsParams,
   UsageLedgerEventsParamsSchema,
+  type UsageLedgerExplainParams,
+  UsageLedgerExplainParamsSchema,
   type UsageLedgerSummaryParams,
   UsageLedgerSummaryParamsSchema,
+  type UsageLedgerWhatIfParams,
+  UsageLedgerWhatIfParamsSchema,
   type ShutdownEvent,
   ShutdownEventSchema,
   type SkillsBinsParams,
@@ -344,6 +348,12 @@ export const validateUsageLedgerSummaryParams = ajv.compile<UsageLedgerSummaryPa
 );
 export const validateUsageLedgerEventsParams = ajv.compile<UsageLedgerEventsParams>(
   UsageLedgerEventsParamsSchema,
+);
+export const validateUsageLedgerWhatIfParams = ajv.compile<UsageLedgerWhatIfParams>(
+  UsageLedgerWhatIfParamsSchema,
+);
+export const validateUsageLedgerExplainParams = ajv.compile<UsageLedgerExplainParams>(
+  UsageLedgerExplainParamsSchema,
 );
 export const validateConfigGetParams = ajv.compile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = ajv.compile<ConfigSetParams>(ConfigSetParamsSchema);
@@ -539,6 +549,8 @@ export {
   SessionsUsageParamsSchema,
   UsageLedgerSummaryParamsSchema,
   UsageLedgerEventsParamsSchema,
+  UsageLedgerWhatIfParamsSchema,
+  UsageLedgerExplainParamsSchema,
   ConfigGetParamsSchema,
   ConfigSetParamsSchema,
   ConfigApplyParamsSchema,
@@ -729,6 +741,8 @@ export type {
   SessionsUsageParams,
   UsageLedgerSummaryParams,
   UsageLedgerEventsParams,
+  UsageLedgerWhatIfParams,
+  UsageLedgerExplainParams,
   ExecApprovalsGetParams,
   ExecApprovalsSetParams,
   ExecApprovalsSnapshot,

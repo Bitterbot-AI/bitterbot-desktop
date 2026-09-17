@@ -1,9 +1,18 @@
 import type { Command } from "commander";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
-import type { UsageLedgerSummary } from "../../infra/usage-ledger.types.js";
+import type {
+  UsageExplanation,
+  UsageLedgerSummary,
+  UsageWhatIf,
+} from "../../infra/usage-ledger.types.js";
 import { gatewayStatusCommand } from "../../commands/gateway-status.js";
 import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
-import { renderUsageLedgerSummary, type UsageRenderDimension } from "../../infra/usage-render.js";
+import {
+  renderUsageExplanation,
+  renderUsageLedgerSummary,
+  renderUsageWhatIf,
+  type UsageRenderDimension,
+} from "../../infra/usage-render.js";
 import { defaultRuntime } from "../../runtime.js";
 import { styleHealthChannelLine } from "../../terminal/health-style.js";
 import { formatDocsLink } from "../../terminal/links.js";
@@ -134,9 +143,46 @@ export function registerGatewayCli(program: Command) {
       )
       .option("--days <days>", "Number of days to include", "30")
       .option("--by <dimension>", "model | feature | provider | kind | agent | day", "model")
+      .option(
+        "--why",
+        "Explain the window against the one before it (drivers by feature, model, session)",
+      )
+      .option(
+        "--whatif <provider/model>",
+        "Re-price the window as if this model had handled every chat call",
+      )
       .action(async (opts) => {
         await runGatewayCommand(async () => {
           const days = parseDaysOption(opts.days);
+          if (opts.why) {
+            const explanation = (await callGatewayCli("usage.ledger.explain", opts, {
+              days,
+            })) as UsageExplanation;
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify(explanation, null, 2));
+              return;
+            }
+            for (const line of renderUsageExplanation(explanation)) {
+              defaultRuntime.log(line);
+            }
+            return;
+          }
+          if (typeof opts.whatif === "string" && opts.whatif.includes("/")) {
+            const slash = opts.whatif.indexOf("/");
+            const whatIf = (await callGatewayCli("usage.ledger.whatif", opts, {
+              days,
+              provider: opts.whatif.slice(0, slash),
+              model: opts.whatif.slice(slash + 1),
+            })) as UsageWhatIf;
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify(whatIf, null, 2));
+              return;
+            }
+            for (const line of renderUsageWhatIf(whatIf)) {
+              defaultRuntime.log(line);
+            }
+            return;
+          }
           const result = (await callGatewayCli("usage.ledger.summary", opts, {
             days,
           })) as UsageLedgerSummary;

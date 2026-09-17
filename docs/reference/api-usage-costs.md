@@ -24,6 +24,14 @@ Bitterbot features that can generate provider usage or paid API calls.
 - `/usage full` appends a usage footer to every reply, including **estimated cost** (API-key only).
 - `/usage tokens` shows tokens only; OAuth flows hide dollar cost.
 
+**Usage ledger (every call, priced)**
+
+- Control UI → Usage and `bitterbot gateway usage` show the local usage ledger: every model
+  call including memory embeddings, dream and extraction lanes, the task judge, speech and
+  search, per model, feature, session and day, with cache health, budgets and cost per outcome.
+- `/usage why` in chat explains a window against the one before it.
+- See [Usage tracking](/concepts/usage-tracking).
+
 **CLI usage windows (provider quotas)**
 
 - `bitterbot status --usage` and `bitterbot channels list` show provider **usage windows**

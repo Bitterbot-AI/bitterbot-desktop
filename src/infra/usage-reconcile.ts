@@ -19,7 +19,7 @@ import type { UsageLedger } from "./usage-ledger.js";
 import { normalizeUsage, type UsageLike } from "../agents/usage.js";
 import { resolveStateDir } from "../config/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { USAGE_FEATURES } from "./usage-features.js";
+import { classifyAgentFeature, USAGE_FEATURES } from "./usage-features.js";
 import { resolveUsageEvent, type ResolvedUsageEvent } from "./usage-ledger.js";
 
 const log = createSubsystemLogger("usage-reconcile");
@@ -157,11 +157,61 @@ function readCursor(ledger: UsageLedger, filePath: string): Cursor | null {
   return null;
 }
 
+export type SessionAttribution = { sessionKey: string; channel: string | null; feature: string };
+
+/**
+ * Map transcript ids to session keys, channels and features from the agent's `sessions.json`
+ * (a flat map of session key -> entry). Heartbeat sessions are recognised by their origin.
+ */
+export function loadSessionAttribution(sessionsDir: string): Map<string, SessionAttribution> {
+  const map = new Map<string, SessionAttribution>();
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(sessionsDir, "sessions.json"), "utf8");
+  } catch {
+    return map;
+  }
+  let store: Record<string, Record<string, unknown>>;
+  try {
+    store = JSON.parse(raw) as Record<string, Record<string, unknown>>;
+  } catch {
+    return map;
+  }
+  for (const [sessionKey, entry] of Object.entries(store ?? {})) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const sessionId = typeof entry.sessionId === "string" ? entry.sessionId : null;
+    if (!sessionId) {
+      continue;
+    }
+    const origin = (entry.origin ?? {}) as Record<string, unknown>;
+    const channel =
+      (typeof entry.lastChannel === "string" && entry.lastChannel) ||
+      (typeof entry.channel === "string" && entry.channel) ||
+      (typeof origin.provider === "string" && origin.provider) ||
+      null;
+    // Heartbeats share the main session by default, where user turns and heartbeats are
+    // indistinguishable in the transcript (live rows carry the runtime flag instead). Only a
+    // dedicated heartbeat session (heartbeat.session) is classified as heartbeat here.
+    const isMainSession = /^agent:[^:]+:main$/.test(sessionKey) || sessionKey === "global";
+    const isHeartbeat =
+      !isMainSession && (origin.provider === "heartbeat" || entry.lastTo === "heartbeat");
+    map.set(sessionId, {
+      sessionKey,
+      channel,
+      feature: classifyAgentFeature(sessionKey, { isHeartbeat }),
+    });
+  }
+  return map;
+}
+
 async function reconcileFile(params: {
   ledger: UsageLedger;
   filePath: string;
   agentId: string;
   cfg?: BitterbotConfig;
+  attribution?: Map<string, SessionAttribution>;
 }): Promise<{ rows: number; skipped: number }> {
   const { ledger, filePath, agentId } = params;
   const sessionId = transcriptSessionId(path.basename(filePath));
@@ -231,15 +281,18 @@ async function reconcileFile(params: {
         if (!parsed) {
           continue;
         }
+        const attribution = params.attribution?.get(sessionId);
         const resolved = await resolveUsageEvent({
           ts: parsed.ts,
           kind: "chat",
-          feature: USAGE_FEATURES.agentTurn,
+          feature: attribution?.feature ?? USAGE_FEATURES.agentTurn,
           provider: parsed.provider,
           model: parsed.model,
           api: parsed.api,
           agentId,
           sessionId,
+          sessionKey: attribution?.sessionKey,
+          channel: attribution?.channel,
           usage: parsed.usage,
           cost: parsed.cost,
           stopReason: parsed.stopReason,
@@ -293,6 +346,25 @@ export async function reconcileTranscripts(params: {
     } catch {
       continue;
     }
+    const attribution = loadSessionAttribution(dir);
+    // One-time relabel of rows imported before attribution existed (Phase 6).
+    const relabelKey = `relabel:v2:${agentId}`;
+    if (params.ledger.getMeta(relabelKey) === null) {
+      let relabeled = 0;
+      params.ledger.transaction(() => {
+        for (const [sessionId, attr] of attribution) {
+          relabeled += params.ledger.relabelReconciled(sessionId, agentId, {
+            feature: attr.feature,
+            sessionKey: attr.sessionKey,
+            channel: attr.channel,
+          });
+        }
+      });
+      params.ledger.setMeta(relabelKey, String(relabeled));
+      if (relabeled > 0) {
+        log.info(`usage reconcile: relabeled ${relabeled} imported rows for agent ${agentId}`);
+      }
+    }
     for (const name of names) {
       if (!TRANSCRIPT_RE.test(name)) {
         continue;
@@ -304,6 +376,7 @@ export async function reconcileTranscripts(params: {
           filePath,
           agentId,
           cfg: params.cfg,
+          attribution,
         });
         result.files += 1;
         result.rows += res.rows;

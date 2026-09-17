@@ -18,6 +18,7 @@ import { OverviewView } from "../overview/OverviewView";
 import { P2pDashboard } from "../p2p/P2pDashboard";
 import { SkillsView } from "../skills/SkillsView";
 import { SpendGrantsView } from "../spend-grants/SpendGrantsView";
+import { UsageBudgetToasts } from "../usage/UsageBudgetToasts";
 import { UsageView } from "../usage/UsageView";
 import { WalletView } from "../wallet/WalletView";
 import { WorkspaceView } from "../workspace/WorkspaceView";
@@ -71,6 +72,7 @@ export function AppShell() {
           <ConnectionBadge />
         </div>
         <UpdateBanner />
+        <UsageBudgetToasts />
         {/* Main content */}
         <div className="flex-1 overflow-hidden">{VIEW_MAP[activeTab]()}</div>
       </main>

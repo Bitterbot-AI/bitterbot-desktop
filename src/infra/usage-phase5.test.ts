@@ -303,7 +303,7 @@ describe("ledger phase 5 columns and summary sections", () => {
       startMs: now - 7 * 24 * 3_600_000,
       endMs: now,
       nowMs: now,
-      taskLabel: (id) => `goal for ${id}`,
+      taskInfo: (id) => ({ status: "running", goal: `goal for ${id}` }),
     });
     expect(summary.cacheHealth.requests).toBe(13);
     expect(summary.cacheHealth.busts).toBe(1);

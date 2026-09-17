@@ -141,7 +141,9 @@ import type {
   SessionsResolveParamsSchema,
   SessionsUsageParamsSchema,
   UsageLedgerEventsParamsSchema,
+  UsageLedgerExplainParamsSchema,
   UsageLedgerSummaryParamsSchema,
+  UsageLedgerWhatIfParamsSchema,
 } from "./sessions.js";
 import type { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
 import type {
@@ -192,6 +194,8 @@ export type SessionsCompactParams = Static<typeof SessionsCompactParamsSchema>;
 export type SessionsUsageParams = Static<typeof SessionsUsageParamsSchema>;
 export type UsageLedgerSummaryParams = Static<typeof UsageLedgerSummaryParamsSchema>;
 export type UsageLedgerEventsParams = Static<typeof UsageLedgerEventsParamsSchema>;
+export type UsageLedgerWhatIfParams = Static<typeof UsageLedgerWhatIfParamsSchema>;
+export type UsageLedgerExplainParams = Static<typeof UsageLedgerExplainParamsSchema>;
 export type ConfigGetParams = Static<typeof ConfigGetParamsSchema>;
 export type ConfigSetParams = Static<typeof ConfigSetParamsSchema>;
 export type ConfigApplyParams = Static<typeof ConfigApplyParamsSchema>;

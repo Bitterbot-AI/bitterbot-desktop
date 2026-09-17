@@ -270,3 +270,44 @@ export function isBackgroundUsagePaused(params: {
       (b.scope === "global" || (b.scope === "feature" && b.target === params.feature)),
   );
 }
+
+/**
+ * PLAN-50 Phase 6: the "fiscal stress" signal for the endocrine model. 0 when no budget is
+ * configured or spend is far from every limit; approaches 1 as the tightest budget fills.
+ * Cheap (a few SQL sums) and memoized for a minute so prompt builds do not hammer the ledger.
+ */
+let pressureMemo: { at: number; value: number; label: string | null } | null = null;
+const PRESSURE_MEMO_MS = 60_000;
+
+export function getUsageBudgetPressure(params: {
+  ledger: UsageLedger | null;
+  cfg: BitterbotConfig | undefined;
+  nowMs?: number;
+}): { pressure: number; label: string | null } {
+  const nowMs = params.nowMs ?? Date.now();
+  if (pressureMemo && nowMs - pressureMemo.at < PRESSURE_MEMO_MS) {
+    return { pressure: pressureMemo.value, label: pressureMemo.label };
+  }
+  let value = 0;
+  let label: string | null = null;
+  if (params.ledger) {
+    try {
+      const summary = evaluateUsageBudgets({ ledger: params.ledger, cfg: params.cfg, nowMs });
+      for (const b of summary.budgets) {
+        if (b.ratio > value) {
+          value = b.ratio;
+          label = b.id;
+        }
+      }
+    } catch {
+      value = 0;
+    }
+  }
+  value = Math.min(1.5, Math.max(0, value));
+  pressureMemo = { at: nowMs, value, label };
+  return { pressure: value, label };
+}
+
+export function resetUsageBudgetPressureForTest(): void {
+  pressureMemo = null;
+}

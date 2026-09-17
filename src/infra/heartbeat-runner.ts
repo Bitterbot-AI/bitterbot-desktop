@@ -73,6 +73,48 @@ type HeartbeatDeps = OutboundSendDeps &
 const log = createSubsystemLogger("gateway/heartbeat");
 let heartbeatsEnabled = true;
 
+/**
+ * PLAN-50 Phase 6: cache-aware heartbeats. A live turn just left the prompt cache warm; if a
+ * heartbeat is due within the cache TTL, fire it now so it reads the cached prefix instead of
+ * re-writing it a few minutes later (the dominant cache waste on spaced-heartbeat nodes).
+ */
+let activeAgents: Map<string, HeartbeatAgentState> | null = null;
+/** Per-agent early-fire window granted by the last nudge, and how long the cache stays warm. */
+const cacheWarmSlack = new Map<string, { slackMs: number; warmUntilMs: number; retries: number }>();
+const CACHE_WARM_RETRY_MS = 3_000;
+const CACHE_WARM_MAX_RETRIES = 20;
+
+export function nudgeHeartbeatIfDueSoon(withinMs: number, agentId?: string): boolean {
+  if (!activeAgents || activeAgents.size === 0 || !heartbeatsEnabled) {
+    return false;
+  }
+  const now = Date.now();
+  let dueSoon = false;
+  for (const agent of activeAgents.values()) {
+    if (agentId && agent.agentId !== agentId) {
+      continue;
+    }
+    if (agent.nextDueMs - now <= withinMs) {
+      cacheWarmSlack.set(agent.agentId, {
+        slackMs: withinMs,
+        warmUntilMs: now + withinMs,
+        retries: 0,
+      });
+      dueSoon = true;
+    }
+  }
+  if (!dueSoon) {
+    return false;
+  }
+  requestHeartbeatNow({ reason: "cache-warm", coalesceMs: 250 });
+  return true;
+}
+
+/** Test seam. */
+export function resetHeartbeatCacheWarmStateForTest(): void {
+  cacheWarmSlack.clear();
+}
+
 export function setHeartbeatsEnabled(enabled: boolean) {
   heartbeatsEnabled = enabled;
 }
@@ -934,6 +976,7 @@ export function startHeartbeatRunner(opts: {
 
     state.cfg = cfg;
     state.agents = nextAgents;
+    activeAgents = nextAgents;
     const nextEnabled = nextAgents.size > 0;
     if (!initialized) {
       if (!nextEnabled) {
@@ -975,12 +1018,19 @@ export function startHeartbeatRunner(opts: {
 
     const reason = params?.reason;
     const isInterval = reason === "interval";
+    const isCacheWarm = reason === "cache-warm";
     const startedAt = Date.now();
     const now = startedAt;
     let ran = false;
 
     for (const agent of state.agents.values()) {
-      if (isInterval && now < agent.nextDueMs) {
+      const warm = isCacheWarm ? cacheWarmSlack.get(agent.agentId) : undefined;
+      const slack = warm && now <= warm.warmUntilMs ? warm.slackMs : 0;
+      if ((isInterval || isCacheWarm) && now < agent.nextDueMs - slack) {
+        continue;
+      }
+      if (isCacheWarm && !warm) {
+        // Only agents the nudge marked as due-soon fire early on a warm cache.
         continue;
       }
 
@@ -1002,9 +1052,32 @@ export function startHeartbeatRunner(opts: {
         continue;
       }
       if (res.status === "skipped" && res.reason === "requests-in-flight") {
+        if (isCacheWarm) {
+          // The turn that warmed the cache still holds the lane. Do not push the schedule out
+          // by a whole interval; retry shortly while the cache is still warm.
+          const warm = cacheWarmSlack.get(agent.agentId);
+          if (
+            warm &&
+            warm.retries < CACHE_WARM_MAX_RETRIES &&
+            now + CACHE_WARM_RETRY_MS < warm.warmUntilMs
+          ) {
+            warm.retries += 1;
+            const retry = setTimeout(() => {
+              requestHeartbeatNow({ reason: "cache-warm", coalesceMs: 0 });
+            }, CACHE_WARM_RETRY_MS);
+            retry.unref?.();
+          } else {
+            cacheWarmSlack.delete(agent.agentId);
+          }
+          scheduleNext();
+          return res;
+        }
         advanceAgentSchedule(agent, now);
         scheduleNext();
         return res;
+      }
+      if (isCacheWarm) {
+        cacheWarmSlack.delete(agent.agentId);
       }
       if (res.status !== "skipped" || res.reason !== "disabled") {
         advanceAgentSchedule(agent, now);

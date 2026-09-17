@@ -878,6 +878,7 @@ export async function runEmbeddedAttempt(
         sessionKey: params.sessionKey ?? params.sessionId,
         sessionFile: params.sessionFile,
         agentId: sessionAgentId,
+        channel: params.messageChannel ?? params.messageProvider,
         cacheTtl: resolveCacheTtlLabel({
           cfg: params.config,
           provider: params.provider,

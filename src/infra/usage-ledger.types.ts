@@ -120,6 +120,70 @@ export type UsageCacheModelHealth = {
   busts: number;
   /** Cost of cache writes on bust turns: what a warm cache would have avoided. */
   wastedUsd: number;
+  unreadWriteUsd: number;
+};
+
+export type UsageSessionSummary = UsageGroupSummary & {
+  sessionKey: string;
+  agentId: string | null;
+  channel: string | null;
+  lastTs: number | null;
+  /** Models used, most spend first. */
+  models: string[];
+};
+
+export type UsageOutcomeRow = {
+  provider: string | null;
+  model: string | null;
+  tasks: number;
+  succeeded: number;
+  failed: number;
+  costTotal: number;
+  /** costTotal / succeeded; null when nothing succeeded. */
+  costPerSuccess: number | null;
+};
+
+export type UsageOutcomes = {
+  /** Tasks in the window that reached a terminal status and have ledger rows. */
+  tasks: number;
+  succeeded: number;
+  failed: number;
+  stopped: number;
+  costTotal: number;
+  costPerSuccess: number | null;
+  /** Spend on tasks that ended in failure or were stopped. */
+  costOnFailures: number;
+  byModel: UsageOutcomeRow[];
+  byFeature: Array<{
+    feature: string;
+    label: string;
+    tasks: number;
+    succeeded: number;
+    costTotal: number;
+    costPerSuccess: number | null;
+  }>;
+};
+
+export type UsageEnergyEstimate = {
+  /** Watt-hours, from published per-token estimates; treat as an order of magnitude. */
+  wh: number;
+  /** Grams CO2-equivalent at a world-average grid factor. */
+  gco2e: number;
+  /** Uncertainty band multiplier (estimates published by vendors differ by ~3x). */
+  bandLow: number;
+  bandHigh: number;
+  method: string;
+};
+
+export type UsageRunawayRun = {
+  runId: string;
+  sessionKey: string | null;
+  feature: string;
+  cost: number;
+  calls: number;
+  startedAt: number;
+  /** Multiple of the median run cost in the window. */
+  multiple: number;
 };
 
 export type UsageCacheHealth = {
@@ -127,7 +191,14 @@ export type UsageCacheHealth = {
   requests: number;
   hitRate: number;
   busts: number;
+  /** Cost of cache writes on bust turns. */
   wastedUsd: number;
+  /** Cost of cache writes that were never read back (write-only sessions such as spaced
+   *  heartbeats): the dominant waste on nodes whose turns are spaced past the TTL. */
+  unreadWriteUsd: number;
+  unreadWriteTokens: number;
+  /** Which lanes are re-writing the cache without reading it (heartbeats, cron), most costly first. */
+  unreadByFeature: Array<{ feature: string; label: string; requests: number; usd: number }>;
   /** True when the newest chat turn is within its cache TTL. */
   warm: boolean;
   ttl: CacheTtlLabel | null;
@@ -236,6 +307,10 @@ export type UsageLedgerSummary = {
   byAgent: UsageGroupSummary[];
   daily: UsageDailyPoint[];
   byTask: UsageTaskSummary[];
+  bySession: UsageSessionSummary[];
+  outcomes: UsageOutcomes;
+  energy: UsageEnergyEstimate;
+  runawayRuns: UsageRunawayRun[];
   cacheHealth: UsageCacheHealth;
   live: UsageLiveStats;
   pricing: UsagePricingStatus;
@@ -295,3 +370,43 @@ export function formatUsageDay(ts: number): string {
   const d = new Date(ts);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
+
+/** PLAN-50 Phase 6: what-if replay of a window under another model's prices. */
+export type UsageWhatIf = {
+  startDate: string;
+  endDate: string;
+  target: { provider: string; model: string; source: PricingSource };
+  /** Rows replayed (chat, vision, search); embeddings/tts/audio are excluded. */
+  calls: number;
+  actualCost: number;
+  projectedCost: number;
+  savingsUsd: number;
+  savingsPct: number;
+  byModel: Array<{
+    provider: string | null;
+    model: string | null;
+    calls: number;
+    actualCost: number;
+    projectedCost: number;
+  }>;
+  caveat: string;
+};
+
+/** PLAN-50 Phase 6: "explain my bill" for a window vs the window before it. */
+export type UsageExplanation = {
+  startDate: string;
+  endDate: string;
+  cost: number;
+  priorCost: number;
+  changePct: number | null;
+  /** Human-readable lines, most important first. */
+  lines: string[];
+  drivers: Array<{
+    kind: "feature" | "model" | "session" | "day";
+    key: string;
+    label: string;
+    cost: number;
+    priorCost: number;
+    delta: number;
+  }>;
+};

@@ -20,7 +20,7 @@ export function UsageBurnRate({ live }: { live: UsageLiveStats }) {
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <p className="text-2xs text-muted-foreground">last hour</p>
+          <p className="text-2xs text-muted-foreground">trailing 1–2h</p>
           <p className="text-sm font-medium text-foreground tabular-nums">
             {formatCost(live.lastHour.cost)}
           </p>

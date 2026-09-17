@@ -19,7 +19,7 @@ export type PromptMode = "full" | "minimal" | "none";
  * Build the Endocrine State section for the system prompt.
  * Injected early so the model sees its emotional state before tooling/instructions.
  */
-function buildEndocrineStateSection(params: {
+export function buildEndocrineStateSection(params: {
   endocrineState?: {
     dopamine: number;
     cortisol: number;
@@ -31,6 +31,8 @@ function buildEndocrineStateSection(params: {
     lastSessionBrief?: string;
     proactiveMemories?: string;
     sessionCoherence?: string;
+    budgetPressure?: number;
+    budgetLabel?: string;
   };
   isMinimal: boolean;
 }): string[] {
@@ -67,6 +69,24 @@ function buildEndocrineStateSection(params: {
   };
 
   const lines: string[] = ["", "## Endocrine State"];
+  // PLAN-50 Phase 6: spend pressure reads like cortisol — the agent paces itself before a
+  // budget hard-stops background work.
+  const budgetPressure = endocrineState.budgetPressure;
+  if (typeof budgetPressure === "number" && budgetPressure >= 0.5) {
+    const pct = Math.round(budgetPressure * 100);
+    const scope = endocrineState.budgetLabel ? ` (${endocrineState.budgetLabel})` : "";
+    if (budgetPressure >= 1) {
+      lines.push(
+        `- Budget: ${pct}% of the spend budget${scope} is used. Keep replies concise, avoid speculative or repeated tool calls, and say so if you skip optional work because of cost.`,
+      );
+    } else if (budgetPressure >= 0.8) {
+      lines.push(
+        `- Budget: ${pct}% of the spend budget${scope} is used. Prefer shorter answers and fewer tool calls; skip optional exploration.`,
+      );
+    } else {
+      lines.push(`- Budget: ${pct}% of the spend budget${scope} is used. Spend deliberately.`);
+    }
+  }
 
   // For sub-agents (minimal mode), keep it ultra-compact
   if (isMinimal) {

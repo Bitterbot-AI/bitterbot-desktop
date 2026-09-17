@@ -78,6 +78,8 @@ const READ_METHODS = new Set([
   "sessions.usage.logs",
   "usage.ledger.summary",
   "usage.ledger.events",
+  "usage.ledger.whatif",
+  "usage.ledger.explain",
   "tts.status",
   "tts.providers",
   "models.list",

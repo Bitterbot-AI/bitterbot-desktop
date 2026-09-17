@@ -47,6 +47,8 @@ export type SubscribeEmbeddedPiSessionParams = {
   isHeartbeat?: boolean;
   /** PLAN-50 Phase 5: prompt-cache TTL the run uses (Anthropic), for cache-write pricing. */
   cacheTtl?: "5m" | "1h" | "none";
+  /** PLAN-50 Phase 6: messaging channel that carried the turn, for per-channel attribution. */
+  channel?: string;
   /**
    * Model context window in tokens. When provided, enables the mid-turn
    * budget guard that proactively compresses session messages between

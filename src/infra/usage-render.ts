@@ -3,10 +3,12 @@
  */
 
 import type {
+  UsageExplanation,
   UsageGroupSummary,
   UsageLedgerSummary,
   UsageModelSummary,
   UsageTotalsRow,
+  UsageWhatIf,
 } from "./usage-ledger.types.js";
 import {
   formatTokenCount as formatTokenCountRaw,
@@ -144,4 +146,22 @@ export function renderUsageLedgerSummary(
     }
   }
   return lines;
+}
+
+export function renderUsageWhatIf(result: UsageWhatIf): string[] {
+  const lines = [
+    `What if ${result.target.provider}/${result.target.model} had handled ${result.startDate} → ${result.endDate}?`,
+    `Actual ${formatUsd(result.actualCost)} → projected ${formatUsd(result.projectedCost)} (${result.savingsUsd >= 0 ? "save" : "spend"} ${formatUsd(Math.abs(result.savingsUsd))}, ${Math.round(Math.abs(result.savingsPct) * 100)}%) over ${result.calls} calls`,
+  ];
+  for (const m of result.byModel.slice(0, 8)) {
+    lines.push(
+      `  ${m.provider ?? "?"}/${m.model ?? "?"}: ${formatUsd(m.actualCost)} → ${formatUsd(m.projectedCost)} (${m.calls} calls)`,
+    );
+  }
+  lines.push(`Note: ${result.caveat}`);
+  return lines;
+}
+
+export function renderUsageExplanation(result: UsageExplanation): string[] {
+  return ["Why usage looks like this", ...result.lines.map((l) => `  ${l}`)];
 }

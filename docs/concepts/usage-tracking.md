@@ -29,18 +29,21 @@ recall, dream embeddings, the provider Batch APIs, the bundled local model) and 
 ## Where it shows up
 
 - **Control UI → Usage** (Advanced group): Overview (cost, tokens, cache hit rate, embeddings,
-  budgets, daily spend stacked by model, cost coach flags), Models (sortable per-model table
-  with cache read/write, cache hit %, pricing source), Features (chat vs embeddings vs dreams vs
-  extraction vs evolution, plus provider and agent), Sessions, and Live (streams every call as
-  it happens over the `usage` gateway event).
-- **Chat**: assistant replies carry a small `⬆ in · ⬇ out` token badge.
+  energy, budgets, burn rate, daily spend stacked by model, cost per outcome, explain, cost
+  coach flags), Models (sortable per-model table with cache read/write, cache hit %, pricing
+  source, cost modes, what-if replay), Features (chat vs embeddings vs dreams vs extraction vs
+  evolution, plus provider, agent and task), Sessions (from the ledger, so it sums to the
+  Overview), and Live (streams every call as it happens over the `usage` gateway event).
+- **Chat**: assistant replies carry a `⬆ in · ⬇ out · $cost` badge and the header shows the
+  status strip.
 - **CLI**: `bitterbot gateway usage [--days 30] [--by model|feature|provider|kind|agent|day] [--json]`.
   The older `bitterbot gateway usage-cost` (transcript scan, whole-node daily cost) still works.
 - **Chat commands**: `/usage off|tokens|full` per-response footer, `/usage cost`, `/status`.
 - **Doctor**: the "Usage & Cost (ledger)" section flags unpriced models, stale reconciles,
   estimated-only embeddings and budgets near or over their limit.
-- **Gateway RPC**: `usage.ledger.summary` and `usage.ledger.events` (read scope), events
-  `usage` (one per row) and `usage.budget` (threshold crossings).
+- **Gateway RPC**: `usage.ledger.summary` (optionally per `sessionKey`), `usage.ledger.events`,
+  `usage.ledger.whatif`, `usage.ledger.explain` (read scope); events `usage` (one per row) and
+  `usage.budget` (threshold crossings, shown as toasts in the Control UI).
 
 ## Pricing
 
@@ -97,11 +100,35 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
   to `embedQuery` / `embedBatch` so the row is attributed.
 - Anything else: `recordUsage()` from `src/infra/usage-ledger.ts`. It never throws.
 
+## Cost intelligence
+
+- **Cost per outcome** (Overview): spend on long-horizon tasks divided by the tasks that
+  completed, per model and per feature, so a cheaper model with a lower resolve rate is
+  visible for what it is.
+- **What if** (Models tab, `bitterbot gateway usage --whatif provider/model`): the window's
+  chat calls re-priced under another model's price table. Same tokens; a different model would
+  also change output length, cache behaviour and quality.
+- **Why does usage look like this** (Overview, `/usage why [today|7d|30d]` in chat,
+  `bitterbot gateway usage --why`): the window against the one before it, with the features,
+  models, sessions and days that moved the bill.
+- **Spend as a hormone**: with budgets configured, the agent's prompt carries the budget
+  pressure from 50% upward and it paces itself (shorter answers, fewer optional tool calls)
+  before enforce mode pauses background lanes.
+- **Cache-aware heartbeats**: a heartbeat due within the cache TTL fires right after a user
+  turn, while the prompt cache is warm, instead of re-writing it minutes later.
+- **Runaway runs**: runs costing five times the median in the window are flagged.
+- **Energy**: a watt-hour and CO₂e estimate per window from published per-token figures, with
+  the uncertainty band shown; an order of magnitude, not a meter reading.
+- The chat header carries a status strip: context used of window, session cost, cache
+  warm/cold, and the current 5-hour block; assistant replies show their cost once the ledger
+  row streams in.
+
 ## Cache health, burn rate, cost modes
 
 - The Overview's prompt-cache line shows hit rate, busts with their likely cause (cold start,
-  TTL expired, prompt prefix changed, context grew), warm/cold with the TTL in use, and what
-  the busts cost in re-written cache. Anthropic 1-hour cache writes (`cacheRetention: "long"`)
+  TTL expired, prompt prefix changed, context grew, written but never read), warm/cold with
+  the TTL in use, what the busts cost in re-written cache, and the cost of cache writes that
+  were never read back (turns spaced past the TTL). Anthropic 1-hour cache writes (`cacheRetention: "long"`)
   are priced at 2x input.
 - Burn rate: last hour, the rolling 5-hour window with cost per hour and projection, and the
   busiest previous 5-hour block as the bar's ceiling.
