@@ -32,6 +32,11 @@ const FACT_META_SUFFIX_RE =
  * untouched (memory_status / memory_search still expose counts and dates);
  * only the projection changes, so the block's bytes move only when a fact
  * is added, retired or reworded, never on every confirmation.
+ *
+ * W6: `CanonicalFactsStore.renderBlock` now emits `- [key] value` lines with
+ * no suffix at all, so on the live path this is a sort-only pass; it stays
+ * as the guard for any pre-W6 block (tests, older stores) that still carries
+ * the `(confirmed Nx, last date)` / `(since date)` suffix.
  */
 export function stripCanonicalFactMetadata(block: string): string {
   const lines = block.split("\n");

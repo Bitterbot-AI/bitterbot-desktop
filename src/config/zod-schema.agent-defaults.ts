@@ -28,6 +28,33 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    anthropic: z
+      .object({
+        runtime: z
+          .union([z.literal("native"), z.literal("vendored")])
+          .optional()
+          .describe(
+            'In-tree Anthropic Messages runtime ("native", default) or vendored pi-ai provider ("vendored", kill switch).',
+          ),
+        toolSearch: z
+          .object({
+            enabled: z.boolean().optional().describe("Default: true"),
+            variant: z
+              .union([z.literal("bm25"), z.literal("regex")])
+              .optional()
+              .describe('Server-side tool search variant. Default: "bm25"'),
+          })
+          .strict()
+          .optional(),
+        runtimeStatePlacement: z
+          .union([z.literal("auto"), z.literal("user-tail"), z.literal("system-message")])
+          .optional()
+          .describe(
+            'Placement of the volatile <runtime-state> block: "auto" (default; role:system message on Opus 4.8+/Fable), "user-tail", or "system-message".',
+          ),
+      })
+      .strict()
+      .optional(),
     models: z
       .record(
         z.string(),

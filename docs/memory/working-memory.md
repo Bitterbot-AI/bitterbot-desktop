@@ -295,7 +295,7 @@ MEMORY.md token budget scales based on model context window to work across diffe
 | 64K            | 4,000                    | ~1,000  |
 | 32K            | 3,200                    | ~800    |
 
-If MEMORY.md exceeds its budget, it's truncated with a note: `[Full working memory available via memory_search]`.
+If MEMORY.md exceeds its budget, it's truncated with a constant note, `(truncated, use memory tools)`, so the injected text never carries a changing character count into the cached prompt prefix.
 
 ---
 

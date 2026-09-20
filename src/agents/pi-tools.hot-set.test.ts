@@ -158,3 +158,42 @@ describe("use_tool goes through the same gates as a direct call", () => {
     expect(String(out.error)).toMatch(/Validation failed for tool "task_get"/);
   });
 });
+
+describe("native tool search exposure through the real factory", () => {
+  it("Anthropic API-key + Opus 4.8: full registry with deferral flags, no meta-tools", async () => {
+    const { isToolDeferLoading } = await import("./providers/anthropic/tool-search.js");
+    const tools = build({
+      modelProvider: "anthropic",
+      modelId: "claude-opus-4-8",
+      modelAuthMode: "api-key",
+    });
+    const exposed = names(tools);
+    expect(exposed).toEqual([...exposed].toSorted());
+    expect(exposed).not.toContain(LIST_TOOLS_NAME);
+    expect(exposed).not.toContain(USE_TOOL_NAME);
+    expect(exposed).toContain("message");
+    const hot = new Set([...HOT_SET_DEFAULT_ALWAYS, ...HOT_SET_DEFAULT_PER_LANE.chat]);
+    for (const tool of tools) {
+      expect(isToolDeferLoading(tool)).toBe(!hot.has(tool.name));
+    }
+    // Every object still carries the gate wrappers.
+    expect(tools.every((tool) => isToolWrappedWithBeforeToolCallHook(tool))).toBe(true);
+  });
+
+  it("OAuth, a non-Anthropic provider, or runtime=vendored keep the dispatcher", () => {
+    for (const extra of [
+      { modelProvider: "anthropic", modelId: "claude-opus-4-8", modelAuthMode: "oauth" as const },
+      { modelProvider: "openai", modelId: "gpt-5" },
+      {
+        modelProvider: "anthropic",
+        modelId: "claude-opus-4-8",
+        modelAuthMode: "api-key" as const,
+        config: { agents: { defaults: { anthropic: { runtime: "vendored" } } } } as BitterbotConfig,
+      },
+    ]) {
+      const exposed = names(build(extra));
+      expect(exposed).toContain(LIST_TOOLS_NAME);
+      expect(exposed).toContain(USE_TOOL_NAME);
+    }
+  });
+});

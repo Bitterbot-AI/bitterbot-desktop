@@ -136,8 +136,11 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
   coaching tip names the TTL seen on that lane's rows.
 - Cache TTL on rows: `cache_ttl` is the retention the request asked for (`cacheRetention`
   short = 5m, long = 1h on Anthropic), recorded on chat turns, hidden lanes and reconciled
-  transcript rows alike. The model library (pi-ai 0.52) does not surface Anthropic's
-  per-TTL `cache_creation` split, so the label comes from config, not from the response.
+  transcript rows alike. When the model library surfaces Anthropic's per-TTL
+  `cache_creation` split (`usage.cacheWrite5m` / `usage.cacheWrite1h`, read defensively), the
+  row stores it in `cache_write_5m` / `cache_write_1h`, the label is set from the split
+  (`1h` when any 1h tokens were written, else `5m`), and only the 1h share is priced at the
+  1h rate; without the split the configured label is the fallback, as before.
   Anthropic 1-hour cache writes are priced at 2x input: library-reported costs (which assume
   the 5-minute 1.25x rate) are rescaled on 1h rows and the price used is frozen on the row.
 - Heartbeats are recognised by content, not by session key: the reconciler labels an
@@ -155,7 +158,8 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
   cost of pass (dollars per delivered heartbeat message, or "no deliveries"; warn at $1/day
   with none delivered), and the idle-day floor: the cheapest of the last 14 whole days with
   zero real chat turns (a real turn answers with more than 20 tokens or reads its cache),
-  naming the lane that set it (warn at $1/day).
+  naming the lane that set it (warn at $1/day). Three more lines come from the tool and
+  prefix telemetry below: the hot-set proof, spilled tool results, and prefix stability.
 - Burn rate: last hour, the rolling 5-hour window with cost per hour and projection, and the
   busiest previous 5-hour block as the bar's ceiling.
 - Cost modes (Models tab): `reported` is what the model library returned with the call,
@@ -167,6 +171,66 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
 - OpenTelemetry: with an OTLP endpoint configured, every row is exported as the per-modality
   counters `gen_ai.client.inference.usage.{input_tokens,output_tokens,cache_read.input_tokens,cache_write.input_tokens,reasoning.output_tokens}`,
   the `gen_ai.client.token.usage` histogram, and `bitterbot.usage.cost` (USD).
+
+## Tool telemetry (hot-set proof)
+
+The agent sees a hot set of tool schemas in chat (`tools.hotSet`) and reaches the rest
+through `list_tools` / `use_tool` or, once the model library parses `tool_reference`
+blocks, through Anthropic's native tool search. Whether the hot set is the right one is an
+empirical question, so every tool call lands in a `tool_calls` table in the same ledger
+database (`usage:v3`; created on open):
+
+| column                                           | meaning                                                                                                                                                                       |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ts`, `day`, `agent_id`, `session_key`, `run_id` | when and where                                                                                                                                                                |
+| `tool`                                           | the tool actually reached; for `use_tool` the dispatched target (`input.name`)                                                                                                |
+| `via`                                            | `direct` (hot set), `use_tool`, `native-search` (a `server_tool_use` block named `tool_search_tool_*`; one row per `tool_reference` it surfaced), `list_tools`                |
+| `ok`, `error_class`                              | body-level outcome (the same classifier the journal uses); coarse class: `timeout`, `denied`, `not-found`, `invalid-args`, `rate-limit`, `network`, `error`                   |
+| `duration_ms`                                    | start to end of the tool execution                                                                                                                                            |
+| `result_chars`, `spilled`                        | size of the result; when it overflowed `tools.resultMaxChars` to a file, `spilled` is 1 and `result_chars` is the original length from the `[truncated: N chars total` marker |
+
+Rows are captured from the agent event stream in `pi-embedded-subscribe.ts`
+(`createToolCallTelemetry` in `pi-embedded-subscribe.tools.ts`), written through the same
+fire-and-forget queue as usage rows, and pruned with the same retention.
+
+Where it shows up:
+
+- `bitterbot doctor` (7d): `hot-set: N direct calls, M via use_tool (K failed), J via native
+search in 7d; top deferred tools reached indirectly: ...`, warning with a tip to add a tool
+  to `tools.hotSet` when it is reached indirectly 5 or more times a week
+  (`HOT_SET_PROMOTE_MIN_INDIRECT_PER_WEEK`; scaled to the window), and `tool results
+spilled: N in 7d, avg X chars` (info).
+- `bitterbot gateway usage --tools [--days N] [--json]`: the same lines plus failures by
+  class and the prefix-stability report below. It reads the ledger file directly, so it works
+  without a running gateway.
+
+## Prefix stability
+
+Nobody else records this: every chat row stores two digests of the request it answered,
+`prefix_digest` (SHA-256 of the stable system block above `<!-- BITTERBOT_CACHE_BOUNDARY -->`)
+and `tools_digest` (SHA-256 of the sorted tool names). They are computed on every request by
+the stream wrapper in `cache-trace.ts`, which now always wraps the stream: with
+`BITTERBOT_CACHE_TRACE` off it is digest-only (no file, no per-message fingerprints), with it
+on the full JSONL trace is written as before. A digest that moves between two turns less
+than 60 minutes apart is a cache bust the operator can fix.
+
+- `bitterbot doctor` (7d): `prefix stability: N sessions in 7d where the cached prefix
+changed mid-session (turns < 60 min apart): <session, turn count, likely tier: tools|system>`,
+  warn when N > 0, with the tip "a prompt section above the cache boundary is changing between
+  turns; run with BITTERBOT_CACHE_TRACE=1 to see which". Rows without digests (older
+  releases, reconciled transcripts) never count as changes.
+
+## Batch rows
+
+Latency-tolerant hidden lanes (`memory/dream`, `memory/extraction`, `memory/discovery`,
+`skills/evolution` judge and maintainer) go through the Anthropic Message Batches API by
+default (`memory.batch.enabled`, `memory.batch.lanes`, `memory.batch.maxWaitMinutes` = 20;
+see the dream engine docs). A batched call is recorded with `batch = 1`, priced at the 50%
+batch discount from the price table (the library reports no cost for batch results), with
+cache read/write tokens and the per-TTL split as the API reported them. A call that fell back
+to the live path (timeout, error, non-Anthropic model, OAuth token, images in the prompt)
+is recorded as an ordinary row. The what-if replay keeps the batch flag, so re-pricing a
+window under another model preserves the discount.
 
 ## Known gaps
 

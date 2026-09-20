@@ -121,9 +121,35 @@ export type CliBackendConfig = {
   };
 };
 
+/**
+ * In-tree Anthropic Messages runtime (src/agents/providers/anthropic).
+ * `runtime: "vendored"` is the kill switch back to pi-ai 0.52.12's provider
+ * (byte-identical requests, no tool search, no system-message placement).
+ */
+export type AgentAnthropicRuntimeConfig = {
+  /** Default: "native". */
+  runtime?: "native" | "vendored";
+  /** Native tool search: full registry sent, hot set loaded, the rest `defer_loading`. */
+  toolSearch?: {
+    /** Default: true (api.anthropic.com + API key + a model with tool search). */
+    enabled?: boolean;
+    /** Server-side search variant. Default: "bm25". */
+    variant?: "bm25" | "regex";
+  };
+  /**
+   * Where the volatile `<runtime-state>` half of the prompt goes:
+   * "auto" (default) = a `role: "system"` message after the last user message
+   * on models that support it (Opus 4.8+, Fable), user-message tail elsewhere
+   * and after a 400; "user-tail" / "system-message" force one placement.
+   */
+  runtimeStatePlacement?: "auto" | "user-tail" | "system-message";
+};
+
 export type AgentDefaultsConfig = {
   /** Primary model and fallbacks (provider/model). */
   model?: AgentModelListConfig;
+  /** In-tree Anthropic runtime, tool search, and runtime-state placement. */
+  anthropic?: AgentAnthropicRuntimeConfig;
   /** Optional image-capable model and fallbacks (provider/model). */
   imageModel?: AgentModelListConfig;
   /** Model catalog with optional aliases (full provider/model keys). */
@@ -231,7 +257,7 @@ export type AgentDefaultsConfig = {
     to?: string;
     /** Optional account id for multi-account channels. */
     accountId?: string;
-    /** Override the heartbeat prompt body (default: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."). */
+    /** Override the heartbeat prompt body (default: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked."). */
     prompt?: string;
     /** Max chars allowed after HEARTBEAT_OK before delivery (default: 30). */
     ackMaxChars?: number;

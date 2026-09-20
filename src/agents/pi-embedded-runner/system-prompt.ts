@@ -28,6 +28,8 @@ export function buildEmbeddedSystemPrompt(params: {
   promptMode?: PromptMode;
   /** PLAN-44 Phase 2: keep the skills section in minimal mode (validation sessions). */
   skillsInMinimal?: boolean;
+  /** Session-scoped facts the prompt builder may condition sections on (group chat, gh available). */
+  sessionContext?: { group?: boolean; githubAvailable?: boolean };
   runtimeInfo: {
     agentId?: string;
     host: string;
@@ -83,6 +85,7 @@ export function buildEmbeddedSystemPrompt(params: {
     reactionGuidance: params.reactionGuidance,
     promptMode: params.promptMode,
     skillsInMinimal: params.skillsInMinimal,
+    sessionContext: params.sessionContext,
     runtimeInfo: params.runtimeInfo,
     messageToolHints: params.messageToolHints,
     sandboxInfo: params.sandboxInfo,

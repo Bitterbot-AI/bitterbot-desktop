@@ -151,9 +151,35 @@ export function registerGatewayCli(program: Command) {
         "--whatif <provider/model>",
         "Re-price the window as if this model had handled every chat call",
       )
+      .option(
+        "--tools",
+        "Tool-call telemetry: hot-set proof (direct / use_tool / native search), spilled results, prefix stability (reads the ledger directly)",
+      )
       .action(async (opts) => {
         await runGatewayCommand(async () => {
           const days = parseDaysOption(opts.days);
+          if (opts.tools) {
+            const [{ getUsageLedger }, telemetry] = await Promise.all([
+              import("../../infra/usage-ledger.js"),
+              import("../../infra/usage-tool-telemetry.js"),
+            ]);
+            const ledger = getUsageLedger();
+            if (!ledger) {
+              throw new Error("usage ledger is disabled or could not be opened");
+            }
+            const endMs = Date.now();
+            const window = { startMs: endMs - days * 24 * 60 * 60_000, endMs };
+            const tools = telemetry.buildToolTelemetry(ledger, window);
+            const prefix = telemetry.buildPrefixStability(ledger, window);
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify({ tools, prefix }, null, 2));
+              return;
+            }
+            for (const line of telemetry.renderToolTelemetry({ tools, prefix, days })) {
+              defaultRuntime.log(line);
+            }
+            return;
+          }
           if (opts.why) {
             const explanation = (await callGatewayCli("usage.ledger.explain", opts, {
               days,

@@ -7,7 +7,8 @@
  * single system block and the last user message. Nothing on tools, and tools
  * in discovery order. This wrapper reshapes the payload so that:
  *
- *   tools   -> sorted by name, marker on the LAST definition
+ *   tools   -> sorted by name, marker on the LAST NON-DEFERRED definition
+ *              (a `defer_loading: true` tool cannot carry cache_control)
  *   system  -> [stable block (marker)] only
  *   messages-> pi-ai's last-user marker stays; the volatile half of the
  *              prompt is appended AFTER it as an unmarked text block on the
@@ -49,7 +50,12 @@ export type AnthropicCacheControl = { type: "ephemeral"; ttl?: "1h" };
 export type AnthropicCacheRetention = "none" | "short" | "long";
 
 type TextBlock = { type: string; text?: string; cache_control?: AnthropicCacheControl };
-type ToolDef = { name?: unknown; cache_control?: AnthropicCacheControl } & Record<string, unknown>;
+type ToolDef = {
+  name?: unknown;
+  type?: unknown;
+  defer_loading?: unknown;
+  cache_control?: AnthropicCacheControl;
+} & Record<string, unknown>;
 type MessageParam = { role?: string; content?: unknown };
 
 export type AnthropicCacheLayoutResult = {
@@ -57,9 +63,24 @@ export type AnthropicCacheLayoutResult = {
   markerCount: number;
   stableSystemChars: number;
   volatileSystemChars: number;
-  /** Where the volatile half landed: user-message tail, system fallback, or nothing to place. */
-  volatilePlacement: "user-tail" | "system" | "none";
+  /**
+   * Where the volatile half landed: user-message tail, a `role: "system"`
+   * message after the last user message, the system-array fallback (no user
+   * message to attach to), or nothing to place.
+   */
+  volatilePlacement: "user-tail" | "system-message" | "system" | "none";
   toolCount: number;
+  /** Tools sent with `defer_loading: true` (native tool search). */
+  deferredToolCount: number;
+};
+
+export type AnthropicCacheLayoutOptions = {
+  /**
+   * `user-tail` (default): unmarked text block on the last user message.
+   * `system-message`: `{ role: "system", content }` appended after the last
+   * user message (Opus 4.8+/Fable; the caller handles the 400 fallback).
+   */
+  volatilePlacement?: "user-tail" | "system-message";
 };
 
 export const RUNTIME_STATE_OPEN = "<runtime-state>";
@@ -106,6 +127,37 @@ function placeVolatileTail(messages: unknown, volatileText: string): boolean {
   return false;
 }
 
+/**
+ * Append the volatile text as a mid-conversation system message. Anthropic
+ * requires it to immediately follow a user message (tool_result messages
+ * count) and to be last or followed by an assistant turn; our last message
+ * is always the user turn, so it goes at the very end. Returns false when
+ * the last message is not a user message (caller falls back to user-tail).
+ */
+function placeVolatileSystemMessage(messages: unknown, volatileText: string): boolean {
+  if (!Array.isArray(messages) || volatileText.length === 0) {
+    return false;
+  }
+  const last = messages[messages.length - 1] as MessageParam | undefined;
+  if (!last) {
+    return false;
+  }
+  if (last.role === "system") {
+    // Idempotence: a layout already placed the tail.
+    return true;
+  }
+  if (last.role !== "user") {
+    return false;
+  }
+  messages.push({
+    role: "system",
+    content: [
+      { type: "text", text: `${RUNTIME_STATE_OPEN}\n${volatileText}\n${RUNTIME_STATE_CLOSE}` },
+    ],
+  });
+  return true;
+}
+
 /** Mirror pi-ai's getCacheControl: 1h only for `long` against api.anthropic.com. */
 export function resolveAnthropicCacheControl(params: {
   retention: AnthropicCacheRetention;
@@ -138,11 +190,34 @@ function layoutTools(tools: unknown, cacheControl: AnthropicCacheControl | undef
   for (const def of defs) {
     delete def.cache_control;
   }
-  const last = defs[defs.length - 1];
-  if (last && cacheControl) {
-    last.cache_control = { ...cacheControl };
+  if (cacheControl) {
+    const target = pickToolMarkerTarget(defs);
+    if (target) {
+      target.cache_control = { ...cacheControl };
+    }
   }
   return defs;
+}
+
+/**
+ * The marker goes on the last NON-deferred definition: a deferred tool cannot
+ * carry cache_control (400), and deferred tools are excluded from the rendered
+ * prefix anyway, so the marker still covers every loaded definition. A custom
+ * tool is preferred over a server-tool entry (`type` field) when both qualify.
+ */
+function pickToolMarkerTarget(defs: ToolDef[]): ToolDef | undefined {
+  let fallback: ToolDef | undefined;
+  for (let i = defs.length - 1; i >= 0; i--) {
+    const def = defs[i];
+    if (!def || def.defer_loading === true) {
+      continue;
+    }
+    if (def.type === undefined) {
+      return def;
+    }
+    fallback ??= def;
+  }
+  return fallback;
 }
 
 function layoutSystem(
@@ -231,6 +306,7 @@ function countMarkers(tools: ToolDef[], system: TextBlock[], messages: unknown):
 export function applyAnthropicCacheLayout(
   payload: unknown,
   cacheControl: AnthropicCacheControl | undefined,
+  options?: AnthropicCacheLayoutOptions,
 ): AnthropicCacheLayoutResult | undefined {
   if (!payload || typeof payload !== "object") {
     return undefined;
@@ -244,7 +320,12 @@ export function applyAnthropicCacheLayout(
   let volatilePlacement: AnthropicCacheLayoutResult["volatilePlacement"] = "none";
   if (system.boundaryFound) {
     if (system.volatileText.length > 0) {
-      if (placeVolatileTail(params.messages, system.volatileText)) {
+      if (
+        options?.volatilePlacement === "system-message" &&
+        placeVolatileSystemMessage(params.messages, system.volatileText)
+      ) {
+        volatilePlacement = "system-message";
+      } else if (placeVolatileTail(params.messages, system.volatileText)) {
         volatilePlacement = "user-tail";
       } else {
         // No user message to attach to (should not happen for a real turn):
@@ -270,9 +351,9 @@ export function applyAnthropicCacheLayout(
     }
   }
   if (markerCount > ANTHROPIC_MAX_CACHE_MARKERS) {
-    const last = tools[tools.length - 1];
-    if (last?.cache_control) {
-      delete last.cache_control;
+    const marked = tools.find((t) => t.cache_control);
+    if (marked) {
+      delete marked.cache_control;
       markerCount -= 1;
     }
   }
@@ -284,6 +365,7 @@ export function applyAnthropicCacheLayout(
     volatileSystemChars: system.volatileChars,
     volatilePlacement,
     toolCount: tools.length,
+    deferredToolCount: tools.filter((t) => t.defer_loading === true).length,
   };
 }
 

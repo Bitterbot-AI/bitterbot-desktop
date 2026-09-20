@@ -11,12 +11,12 @@
 
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveCacheTtlLabel } from "../agents/pi-embedded-runner/extra-params.js";
-import { HEARTBEAT_PROMPT } from "../auto-reply/heartbeat.js";
+import { HEARTBEAT_PROMPT_PREFIX } from "../auto-reply/heartbeat.js";
 import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
 
 /** Default heartbeat prompt plus every configured override (global and per agent). */
 export function resolveHeartbeatPromptSet(cfg: BitterbotConfig | undefined): string[] {
-  const out = new Set<string>([HEARTBEAT_PROMPT.trim()]);
+  const out = new Set<string>([HEARTBEAT_PROMPT_PREFIX.trim()]);
   const push = (raw: unknown) => {
     if (typeof raw === "string" && raw.trim()) {
       out.add(raw.trim());

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { HEARTBEAT_PROMPT } from "../auto-reply/heartbeat.js";
+import { HEARTBEAT_PROMPT, HEARTBEAT_PROMPT_PREFIX } from "../auto-reply/heartbeat.js";
 import { resetModelPricingMemoForTest } from "./model-pricing.js";
 import { UsageLedger, resolveUsageEvent } from "./usage-ledger.js";
 import { RECONCILE_GRACE_MS, reconcileTranscripts } from "./usage-reconcile.js";
@@ -93,7 +93,7 @@ describe("transcript heartbeat classification", () => {
         list: [{ id: "b", heartbeat: { prompt: "Agent B pulse" } }],
       },
     } as never);
-    expect(prompts).toEqual([HEARTBEAT_PROMPT, CUSTOM_PROMPT, "Agent B pulse"]);
+    expect(prompts).toEqual([HEARTBEAT_PROMPT_PREFIX, CUSTOM_PROMPT, "Agent B pulse"]);
     expect(isHeartbeatPromptText(HB, prompts)).toBe(true);
     expect(isHeartbeatPromptText(`${CUSTOM_PROMPT}\nCurrent time: now`, prompts)).toBe(true);
     expect(isHeartbeatPromptText("Read HEARTBEAT.md please, I edited it", prompts)).toBe(false);

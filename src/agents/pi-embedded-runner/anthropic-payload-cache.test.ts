@@ -247,3 +247,42 @@ describe("volatile tail fallback", () => {
     expect((payload.messages[0] as { content: Block[] }).content.length).toBe(1);
   });
 });
+
+describe("deferred tools (native tool search)", () => {
+  it("marker goes on the last non-deferred custom tool; a deferred tool never carries cache_control", () => {
+    const payload = syntheticPayload();
+    (payload.tools as Array<Tool & { defer_loading?: boolean; type?: string }>).push(
+      { name: "zeta_deferred", defer_loading: true },
+      { name: "tool_search_tool_bm25", type: "tool_search_tool_bm25_20251119" },
+    );
+    (payload.tools[0] as Tool & { defer_loading?: boolean }).defer_loading = true; // "write"
+    const result = applyAnthropicCacheLayout(payload, { type: "ephemeral" });
+    const marked = payload.tools.filter((t) => t.cache_control).map((t) => t.name);
+    expect(marked).toEqual(["exec"]);
+    expect(payload.tools.map((t) => t.name)).toEqual([
+      "Read",
+      "a2a_status",
+      "exec",
+      "tool_search_tool_bm25",
+      "write",
+      "zeta_deferred",
+    ]);
+    expect(result?.deferredToolCount).toBe(2);
+    expect(result?.markerCount).toBe(3);
+  });
+
+  it("falls back to the server-tool entry when it is the only non-deferred tool", () => {
+    const payload = syntheticPayload();
+    for (const tool of payload.tools as Array<Tool & { defer_loading?: boolean }>) {
+      tool.defer_loading = true;
+    }
+    (payload.tools as Array<Tool & { type?: string }>).push({
+      name: "tool_search_tool_bm25",
+      type: "tool_search_tool_bm25_20251119",
+    });
+    applyAnthropicCacheLayout(payload, { type: "ephemeral" });
+    expect(payload.tools.filter((t) => t.cache_control).map((t) => t.name)).toEqual([
+      "tool_search_tool_bm25",
+    ]);
+  });
+});

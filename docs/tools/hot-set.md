@@ -1,10 +1,11 @@
 ---
-summary: "Hot-set tool exposure: a few tools by schema, the rest through list_tools/use_tool, long results spilled to files"
+summary: "Hot-set tool exposure: a few tools by schema, the rest deferred (native Anthropic tool search) or reached through list_tools/use_tool, long results spilled to files"
 read_when:
   - A tool the agent needs is "missing" from the model's tool list
   - Promoting or demoting a tool in the hot set for a lane
   - Tuning tools.resultMaxChars or cleaning up tool-results files
   - Reading the token-efficiency research (docs/reviews/sota-token-efficiency-research-2026-09-19.md, item E)
+  - Working out why a session has (or lacks) list_tools/use_tool
 title: "Hot set"
 ---
 
@@ -13,14 +14,42 @@ title: "Hot set"
 Bitterbot registers about 59 agent tools. Sending every schema on every call
 cost roughly 20k tokens per request, heartbeats included, and tool selection
 accuracy degrades past 30 to 50 loaded tools. Since 2026-09-19 the model
-receives only the lane's **hot set** with full JSON schemas plus two
-meta-tools; everything else stays registered and reachable.
+loads only the lane's **hot set** with full JSON schemas; everything else
+stays registered and reachable through one of two modes that share the same
+hot-set selection:
 
-This is client-side deferral (the pattern Cursor and Goose Code Mode use).
-Native `defer_loading` needs the runtime to parse `tool_reference` blocks,
-which the vendored pi-ai cannot do yet.
+- `native-deferred`: Anthropic API-key auth on a model with tool search,
+  in-tree runtime (`agents.defaults.anthropic.runtime: "native"`, the default)
+  and `toolSearch.enabled`. The model gets the **full registry**: hot tools
+  loaded, the rest `defer_loading: true`, plus Anthropic's server-side search
+  tool. No meta-tools.
+- `dispatcher`: every other provider, setup-token (OAuth) auth, non-Anthropic
+  base URLs, tool search disabled, or `runtime: "vendored"`. Hot tools with
+  schemas plus `list_tools` and `use_tool`.
+- `all`: hot set disabled, nothing to defer, or an empty hot set in native
+  mode (never defer everything). Every schema, sorted, no flags, no meta-tools.
 
-## What the model sees
+The mode is decided once per run in `src/agents/pi-tools.ts`
+(`isNativeToolSearchActive`) and logged at debug as `hot-set exposure`.
+
+## Native mode (Anthropic tool search)
+
+`src/agents/tools/tool-registry-hot-set.ts` returns the whole sorted registry
+and marks every non-hot tool with a deferral flag on the tool object. The
+in-tree provider (`src/agents/providers/anthropic/`) turns the flag into
+`defer_loading: true`, appends `tool_search_tool_bm25_20251119` (or the
+regex variant) and puts the cache marker on the last non-deferred definition.
+The API keeps deferred schemas out of the rendered prefix; when Claude
+searches, the matching `tool_reference`s are expanded server-side and the
+model calls the tool as a normal `tool_use`. pi-agent-core executes it by name
+against the same registry array, so every gate (policy pipeline,
+before-tool-call hook, capability enforcer, abort, cache, result spill) runs
+exactly as for a hot tool. The `server_tool_use` and `tool_search_tool_result`
+blocks are kept on the assistant message and replayed on later turns, so a
+discovered tool stays visible for the session without re-searching. See
+[Anthropic](/providers/anthropic) for the config keys and guards.
+
+## Dispatcher mode: what the model sees
 
 For a chat turn the tool array is, sorted by name:
 
@@ -159,4 +188,6 @@ the same head/marker/tail shape.
 
 - `docs/reviews/sota-token-efficiency-research-2026-09-19.md`, section 4 item E
 - `src/agents/tools/tool-registry-hot-set.ts`, `tool-dispatcher-tool.ts`, `tool-result-spill.ts`
+- `src/agents/providers/anthropic/tool-search.ts` (native deferral plan and guards)
+- [Anthropic](/providers/anthropic) for the runtime switch and tool search config
 - [Tools](/tools/index) for allow/deny and profiles

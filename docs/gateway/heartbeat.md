@@ -47,9 +47,12 @@ Example config:
 
 - Interval: `30m` (or `1h` when Anthropic OAuth/setup-token is the detected auth mode). Set `agents.defaults.heartbeat.every` or per-agent `agents.list[].heartbeat.every`; use `0m` to disable.
 - Prompt body (configurable via `agents.defaults.heartbeat.prompt`):
-  `Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`
+  `Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.`
 - The heartbeat prompt is sent **verbatim** as the user message. The system
   prompt includes a “Heartbeat” section and the run is flagged internally.
+- The first four sentences of the default prompt are frozen (exported as
+  `HEARTBEAT_PROMPT_PREFIX`): the usage ledger and memory transcript prep
+  recognise heartbeat turns by that prefix, so only append to it.
 - Active hours (`heartbeat.activeHours`) are checked in the configured timezone.
   Outside the window, heartbeats are skipped until the next tick inside the window.
 - `skipWhenUnchanged: true`, `isolatedSession: true`, `lightContext: true` (all
@@ -83,7 +86,12 @@ stats” or “verify gateway health”), set `agents.defaults.heartbeat.prompt`
 
 ## Response contract
 
-- If nothing needs attention, reply with **`HEARTBEAT_OK`**.
+- If nothing needs attention, reply with **`HEARTBEAT_OK`** and nothing else;
+  the default prompt now says so explicitly because a cheap model that narrates
+  what it checked before the ack wastes output tokens and, past `ackMaxChars`,
+  gets that narration delivered as an alert.
+- Markdown or HTML emphasis around the token (`**HEARTBEAT_OK**`,
+  `<b>HEARTBEAT_OK</b>`) is tolerated and leaves no residue.
 - During heartbeat runs, Bitterbot treats `HEARTBEAT_OK` as an ack when it appears
   at the **start or end** of the reply. The token is stripped and the reply is
   dropped if the remaining content is **≤ `ackMaxChars`** (default: 300).
@@ -107,7 +115,7 @@ and logged; a message that is only `HEARTBEAT_OK` is dropped.
         target: "last", // last | none | <channel id> (e.g. "telegram")
         to: "+15551234567", // optional channel-specific override
         accountId: "ops-bot", // optional multi-account channel id
-        prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.",
         ackMaxChars: 300, // max chars allowed after HEARTBEAT_OK
         skipWhenUnchanged: true, // default: true; no model call when inputs are unchanged
         isolatedSession: true, // default: true; run in <main>:heartbeat, fresh transcript
@@ -151,7 +159,7 @@ Example: two agents, only the second agent runs heartbeats.
           every: "1h",
           target: "whatsapp",
           to: "+15551234567",
-          prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+          prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.",
         },
       },
     ],
@@ -254,7 +262,9 @@ Use `accountId` to target a specific account on multi-account channels like Tele
   and `session.scope: "global"` deployments.
 - `lightContext` (default `true`): the run uses the minimal system prompt
   (same shape as cron/subagent turns), injects `HEARTBEAT.md` as the only
-  workspace file (no GENOME/PROTOCOLS/TOOLS/MEMORY), pins thinking to `low`,
+  workspace file (no GENOME/PROTOCOLS/TOOLS/MEMORY; the bootstrap budget and
+  its "truncating in injected context" log line run only on that file, so a
+  light heartbeat no longer reports a MEMORY.md truncation), pins thinking to `low`,
   skips proactive recall, and, when `model` is unset, uses the cheap tier
   (`anthropic/claude-haiku-4-5` with an `ANTHROPIC_API_KEY`,
   `openai/gpt-4o-mini` with an `OPENAI_API_KEY`, otherwise the agent's default

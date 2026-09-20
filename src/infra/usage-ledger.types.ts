@@ -72,12 +72,84 @@ export type UsageEventRow = {
   cacheState: CacheTurnState | null;
   cacheBustReason: string | null;
   cacheTtl: CacheTtlLabel | null;
+  /**
+   * Anthropic's per-TTL cache_creation split when the provider reported it (workstream B
+   * surfaces `usage.cacheWrite5m` / `usage.cacheWrite1h`); null when only the aggregate is known.
+   */
+  cacheWrite5m: number | null;
+  cacheWrite1h: number | null;
+  /**
+   * Prefix-stability telemetry: SHA-256 of the stable system block (above the cache boundary)
+   * and of the sorted tool names sent with this request. A digest that moves between turns
+   * less than a TTL apart is a cache bust the operator can act on.
+   */
+  prefixDigest: string | null;
+  toolsDigest: string | null;
   durationMs: number | null;
   status: "ok" | "error";
   stopReason: string | null;
   batch: boolean;
   items: number | null;
   source: "live" | "reconcile";
+};
+
+/** How the agent reached a tool: the hot set directly, the client dispatcher, or native search. */
+export type ToolCallVia = "direct" | "use_tool" | "native-search" | "list_tools";
+
+export type ToolCallRow = {
+  id: number;
+  ts: number;
+  day: string;
+  agentId: string | null;
+  sessionKey: string | null;
+  runId: string | null;
+  tool: string;
+  via: ToolCallVia;
+  ok: boolean;
+  errorClass: string | null;
+  durationMs: number | null;
+  resultChars: number | null;
+  spilled: boolean;
+};
+
+export type UsageToolTelemetry = {
+  startMs: number;
+  endMs: number;
+  days: number;
+  calls: number;
+  direct: number;
+  useTool: number;
+  useToolFailed: number;
+  nativeSearch: number;
+  listTools: number;
+  failed: number;
+  /** Tools reached through use_tool or native search, most often first. */
+  indirect: Array<{ tool: string; calls: number; failed: number }>;
+  /** Tools the hot set should probably include: indirect calls at or above the threshold. */
+  promote: string[];
+  promoteThreshold: number;
+  spilled: { calls: number; avgChars: number; byTool: Array<{ tool: string; calls: number }> };
+  errorClasses: Array<{ errorClass: string; calls: number }>;
+};
+
+export type UsagePrefixChange = {
+  sessionKey: string;
+  /** Turns in the window for that session. */
+  turns: number;
+  /** Prefix changes observed between turns less than `maxGapMs` apart. */
+  changes: number;
+  /** Which tier moved: the tool list, the stable system block, or both. */
+  tier: "tools" | "system" | "both";
+  lastChangeTs: number;
+};
+
+export type UsagePrefixStability = {
+  startMs: number;
+  endMs: number;
+  sessions: number;
+  /** Sessions with at least one close-gap prefix change. */
+  changed: UsagePrefixChange[];
+  maxGapMs: number;
 };
 
 export type UsageTotalsRow = {

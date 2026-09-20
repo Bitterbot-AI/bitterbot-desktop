@@ -84,6 +84,17 @@ export function stripThoughtSignatures<T>(
 
 export const DEFAULT_BOOTSTRAP_MAX_CHARS = 20_000;
 export const DEFAULT_BOOTSTRAP_TOTAL_MAX_CHARS = 24_000;
+/**
+ * Constant working-memory truncation marker: no counts or sizes, so a
+ * MEMORY.md that grows by one line never churns the cached prompt prefix on
+ * the marker itself. Shared by the 200-line cap in `bootstrap-files.ts` and
+ * the adaptive budget below.
+ */
+export const WORKING_MEMORY_TRUNCATED_LINE = "(truncated, use memory tools)";
+/** Constant marker for every other bootstrap file (the name is stable per file). */
+export function bootstrapTruncatedLine(fileName: string): string {
+  return `[...truncated, read ${fileName} for full content...]`;
+}
 const MIN_BOOTSTRAP_FILE_BUDGET_CHARS = 64;
 const BOOTSTRAP_HEAD_RATIO = 0.7;
 const BOOTSTRAP_TAIL_RATIO = 0.2;
@@ -134,7 +145,7 @@ export function resolveBootstrapTotalMaxChars(cfg?: BitterbotConfig): number {
 
 function trimBootstrapContent(
   content: string,
-  fileName: string,
+  marker: string,
   maxChars: number,
 ): TrimBootstrapResult {
   const trimmed = content.trimEnd();
@@ -152,13 +163,9 @@ function trimBootstrapContent(
   const head = trimmed.slice(0, headChars);
   const tail = trimmed.slice(-tailChars);
 
-  const marker = [
-    "",
-    `[...truncated, read ${fileName} for full content...]`,
-    `…(truncated ${fileName}: kept ${headChars}+${tailChars} chars of ${trimmed.length})…`,
-    "",
-  ].join("\n");
-  const contentWithMarker = [head, marker, tail].join("\n");
+  // Marker text is constant per file (no char counts): a growing file must
+  // not rewrite the marker and churn the cached prefix.
+  const contentWithMarker = [head, "", marker, "", tail].join("\n");
   return {
     content: contentWithMarker,
     truncated: true,
@@ -263,18 +270,17 @@ export function buildBootstrapContextFiles(
       content = `## Unsynthesized Notes (pending dream consolidation)\n\n${content}`;
     }
 
-    const trimmed = trimBootstrapContent(content, file.name, effectiveMaxChars);
+    const marker =
+      isMemoryFile && !isScratchFile
+        ? WORKING_MEMORY_TRUNCATED_LINE
+        : bootstrapTruncatedLine(file.name);
+    const trimmed = trimBootstrapContent(content, marker, effectiveMaxChars);
     const contentWithinBudget = clampToBudget(trimmed.content, remainingTotalChars);
     if (!contentWithinBudget) {
       continue;
     }
 
-    // Add truncation note for MEMORY.md
-    let finalContent = contentWithinBudget;
-    if (isMemoryFile && trimmed.truncated) {
-      finalContent += "\n\n[Full working memory available via memory_search]";
-    }
-
+    const finalContent = contentWithinBudget;
     if (trimmed.truncated || contentWithinBudget.length < trimmed.content.length) {
       opts?.warn?.(
         `workspace bootstrap file ${file.name} is ${trimmed.originalLength} chars (limit ${trimmed.maxChars}); truncating in injected context`,

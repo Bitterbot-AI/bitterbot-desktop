@@ -588,6 +588,7 @@ export async function runEmbeddedAttempt(
       // skills index the runtime sees, or the gate measures a different
       // selection problem than production.
       skillsInMinimal: isSkillEvolveValidationSessionKey(params.sessionKey),
+      sessionContext: { group: /:(group|channel):/.test(params.sessionKey ?? "") },
       runtimeInfo,
       messageToolHints,
       sandboxInfo,

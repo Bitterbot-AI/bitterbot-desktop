@@ -2,17 +2,32 @@ import { AssistantMessageEventStream } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveUserPath } from "../utils.js";
-import { createCacheTrace } from "./cache-trace.js";
+import { computePrefixDigests, createCacheTrace, getRunPrefixDigests } from "./cache-trace.js";
 import { CACHE_BOUNDARY_MARKER, digestToolDefinitions } from "./system-prompt-cache-boundary.js";
 
 describe("createCacheTrace", () => {
-  it("returns null when diagnostics cache tracing is disabled", () => {
+  it("is digest-only (enabled=false, no writes) when diagnostics cache tracing is disabled", () => {
     const trace = createCacheTrace({
       cfg: {} as BitterbotConfig,
       env: {},
+      runId: "run-off",
     });
 
-    expect(trace).toBeNull();
+    expect(trace.enabled).toBe(false);
+    trace.recordStage("session:loaded", { messages: [], system: "sys" });
+    const streamFn = trace.wrapStreamFn(() => {
+      const stream = new AssistantMessageEventStream();
+      stream.end({ usage: { input: 1, output: 1 } } as never);
+      return stream;
+    });
+    const system = `STABLE\n${CACHE_BOUNDARY_MARKER}\nVOLATILE`;
+    const tools = [{ name: "b" }, { name: "a" }];
+    void streamFn({ id: "m" } as never, { systemPrompt: system, messages: [], tools } as never, {});
+    const digests = getRunPrefixDigests("run-off");
+    expect(digests?.prefixDigest).toBe(computePrefixDigests(system, tools).prefixDigest);
+    expect(digests?.toolsDigest).toBe(
+      computePrefixDigests(system, [{ name: "a" }, { name: "b" }]).toolsDigest,
+    );
   });
 
   it("honors diagnostics cache trace config and expands file paths", () => {
@@ -33,7 +48,7 @@ describe("createCacheTrace", () => {
       },
     });
 
-    expect(trace).not.toBeNull();
+    expect(trace.enabled).toBe(true);
     expect(trace?.filePath).toBe(resolveUserPath("~/.bitterbot/logs/cache-trace.jsonl"));
 
     trace?.recordStage("session:loaded", {
@@ -89,7 +104,9 @@ describe("createCacheTrace", () => {
       },
     });
 
-    expect(trace).toBeNull();
+    expect(trace.enabled).toBe(false);
+    trace.recordStage("prompt:before", { system: "x" });
+    expect(lines.length).toBe(0);
   });
 });
 

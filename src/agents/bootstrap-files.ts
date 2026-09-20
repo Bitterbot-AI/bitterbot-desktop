@@ -1,5 +1,6 @@
 import type { BitterbotConfig } from "../config/config.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
+import { filterHeartbeatOnlyFiles, resolveHeartbeatLightContext } from "../infra/heartbeat-gate.js";
 import { isSkillEvolveValidationSessionKey } from "../sessions/session-key-utils.js";
 import { applyBootstrapHookOverrides } from "./bootstrap-hooks.js";
 import {
@@ -7,6 +8,7 @@ import {
   resolveBootstrapMaxChars,
   resolveBootstrapTotalMaxChars,
 } from "./pi-embedded-helpers.js";
+import { WORKING_MEMORY_TRUNCATED_LINE } from "./pi-embedded-helpers/bootstrap.js";
 import {
   DEFAULT_HEARTBEAT_FILENAME,
   DEFAULT_MEMORY_FILENAME,
@@ -16,10 +18,14 @@ import {
 } from "./workspace.js";
 
 /** Token-efficiency W4: working-memory files are capped before injection. */
-export const WORKING_MEMORY_MAX_LINES = 200;
-export const WORKING_MEMORY_MAX_CHARS = 25_000;
-/** Constant marker: no counts or sizes, so the injected text never churns on the marker. */
-export const WORKING_MEMORY_TRUNCATED_LINE = "(truncated, use memory tools)";
+export const WORKING_MEMORY_MAX_LINES = 120;
+export const WORKING_MEMORY_MAX_CHARS = 12_000;
+/**
+ * Constant marker: no counts or sizes, so the injected text never churns on
+ * the marker. Defined next to the adaptive budget (which uses the same line)
+ * and re-exported here for the callers of the 200-line cap.
+ */
+export { WORKING_MEMORY_TRUNCATED_LINE };
 
 /**
  * Cap MEMORY.md / memory/scratch.md at 200 lines and 25 KB with a stable
@@ -129,14 +135,30 @@ export async function resolveBootstrapContextForRun(params: {
    * on demand, which keeps the periodic task list out of the cached prefix.
    */
   includeHeartbeatFile?: boolean;
+  /**
+   * Light heartbeat context: inject HEARTBEAT.md as the only workspace file.
+   * Only meaningful with `includeHeartbeatFile`. When unset it is resolved
+   * from config the same way the runner does (`heartbeat.lightContext`,
+   * default on), so the adaptive budget and its "truncating" warnings run
+   * only on files that will actually reach the prompt: a light heartbeat no
+   * longer logs a MEMORY.md truncation for a file it then drops.
+   */
+  lightContext?: boolean;
 }): Promise<{
   bootstrapFiles: WorkspaceBootstrapFile[];
   contextFiles: EmbeddedContextFile[];
 }> {
   const bootstrapFiles = await resolveBootstrapFilesForRun(params);
-  const injectionFiles = selectContextInjectionFiles(bootstrapFiles, {
-    includeHeartbeatFile: params.includeHeartbeatFile === true,
-  });
+  const includeHeartbeatFile = params.includeHeartbeatFile === true;
+  const heartbeatLight =
+    includeHeartbeatFile &&
+    (params.lightContext ??
+      resolveHeartbeatLightContext(params.config, {
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+      }));
+  const selected = selectContextInjectionFiles(bootstrapFiles, { includeHeartbeatFile });
+  const injectionFiles = heartbeatLight ? filterHeartbeatOnlyFiles(selected) : selected;
   const contextFiles = buildBootstrapContextFiles(injectionFiles, {
     maxChars: resolveBootstrapMaxChars(params.config),
     totalMaxChars: resolveBootstrapTotalMaxChars(params.config),

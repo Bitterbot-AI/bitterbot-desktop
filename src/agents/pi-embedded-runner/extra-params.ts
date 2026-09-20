@@ -3,6 +3,10 @@ import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../../config/config.js";
 import {
+  createAnthropicStreamFn,
+  resolveAnthropicRuntimeConfig,
+} from "../providers/anthropic/index.js";
+import {
   type AnthropicCacheRetention,
   createAnthropicCacheLayoutWrapper,
 } from "./anthropic-payload-cache.js";
@@ -235,6 +239,19 @@ export function applyExtraParamsToAgent(
         )
       : undefined;
   const merged = Object.assign({}, extraParams, override);
+
+  // In-tree Anthropic runtime (default). Installed at the BOTTOM of the chain
+  // so the extra-params / OpenRouter / Responses wrappers above it keep
+  // working unchanged; it delegates every non-`anthropic-messages` model to
+  // whatever was there before (pi-ai's streamSimple). `runtime: "vendored"`
+  // leaves the chain exactly as it was.
+  const anthropicRuntime =
+    provider === "anthropic" ? resolveAnthropicRuntimeConfig(cfg) : undefined;
+  if (anthropicRuntime?.runtime === "native") {
+    log.debug(`installing in-tree Anthropic runtime for ${provider}/${modelId}`);
+    agent.streamFn = createAnthropicStreamFn(cfg, { fallback: agent.streamFn });
+  }
+
   const wrappedStreamFn = createStreamFnWithExtraParams(agent.streamFn, merged, provider);
 
   if (wrappedStreamFn) {
@@ -256,7 +273,9 @@ export function applyExtraParamsToAgent(
   // system split at the cache boundary into cached/uncached blocks). The
   // retention mirrors what pi-ai itself resolves (config, then
   // PI_CACHE_RETENTION=long, then "short") so every marker carries one TTL.
-  if (provider === "anthropic") {
+  // Vendored runtime only: the native provider applies the same layout
+  // function directly (with deferred-tool and system-message awareness).
+  if (provider === "anthropic" && anthropicRuntime?.runtime !== "native") {
     const retention =
       resolveCacheRetention(merged, provider) ??
       (process.env.PI_CACHE_RETENTION === "long" ? "long" : "short");

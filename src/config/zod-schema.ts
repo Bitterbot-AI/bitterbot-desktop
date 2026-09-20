@@ -32,6 +32,15 @@ const MemorySchema = z
   .object({
     backend: z.literal("builtin").optional(),
     citations: z.union([z.literal("auto"), z.literal("on"), z.literal("off")]).optional(),
+    // Token-efficiency item 3: Anthropic Message Batches for latency-tolerant lanes.
+    batch: z
+      .object({
+        enabled: z.boolean().optional(),
+        lanes: z.array(z.string()).optional(),
+        maxWaitMinutes: z.number().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   // Memory subsystems (dream, curiosity, consolidation, digest, requestFrequency, etc.)
   // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.

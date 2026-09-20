@@ -52,6 +52,7 @@ import {
   wrapToolParamNormalization,
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
+import { isNativeToolSearchActive } from "./providers/anthropic/config.js";
 import {
   resolveSkillValidationToolPolicy,
   validationExecEnabled,
@@ -603,10 +604,12 @@ export function createBitterbotCodingTools(options?: {
   // NOTE: Keep canonical (lowercase) tool names here.
   // pi-ai's Anthropic OAuth transport remaps tool names to Claude Code-style names
   // on the wire and maps them back for tool dispatch.
-  // W5 item 1: hot tools by schema + list_tools/use_tool over the SAME wrapped
-  // objects (every gate above is inside them); sorted by name for a
-  // byte-stable prefix. The meta-tools get the hook + abort wrappers so the
-  // adapter sees the same markers as every other tool.
+  // W5 item 1: hot tools by schema over the SAME wrapped objects (every gate
+  // above is inside them); sorted by name for a byte-stable prefix. With the
+  // in-tree Anthropic runtime and native tool search the full registry goes
+  // out with deferral flags (the provider adds `defer_loading` + the search
+  // tool); otherwise list_tools/use_tool are added, with the hook + abort
+  // wrappers so the adapter sees the same markers as every other tool.
   return applyHotSetExposure({
     tools: withSpill,
     lane: resolveToolLane({
@@ -616,6 +619,12 @@ export function createBitterbotCodingTools(options?: {
     }),
     config: options?.config,
     agentId,
+    nativeToolSearch: isNativeToolSearchActive({
+      config: options?.config,
+      provider: options?.modelProvider,
+      modelId: options?.modelId,
+      authMode: options?.modelAuthMode,
+    }),
     wrapMetaTool: (tool) => {
       const hooked = wrapToolWithBeforeToolCallHook(tool, {
         agentId,

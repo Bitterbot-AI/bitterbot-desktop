@@ -157,9 +157,9 @@ Example:
 
 ## Heartbeats (proactive mode)
 
-By default, Bitterbot runs a heartbeat every 30 minutes with the prompt:
-`Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`
-Set `agents.defaults.heartbeat.every: "0m"` to disable.
+By default, Bitterbot schedules a heartbeat every 30 minutes with the prompt:
+`Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.`
+Interval ticks are skipped before any API call while HEARTBEAT.md is empty or comments-only, or while its inputs are unchanged since the last tick; when one does run it uses an isolated, minimal-context session on the cheap model tier. Set `agents.defaults.heartbeat.every: "0m"` to disable entirely.
 
 - If `HEARTBEAT.md` exists but is effectively empty (only blank lines and markdown headers like `# Heading`), Bitterbot skips the heartbeat run to save API calls.
 - If the file is missing, the heartbeat still runs and the model decides what to do.

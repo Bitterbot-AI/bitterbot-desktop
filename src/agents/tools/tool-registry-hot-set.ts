@@ -3,18 +3,22 @@
  *
  * The model used to receive all ~59 tool schemas (~20k tokens) on every call,
  * heartbeats included. Anthropic's guidance is to defer at 10+ tools or over
- * 10k tokens of definitions and keep the 3 to 5 hottest tools loaded. Native
- * `defer_loading` needs the runtime to parse `tool_reference` blocks, which
- * vendored pi-ai 0.52.12 cannot, so deferral is done client-side the way
- * Cursor (names-only + lookup) and Goose Code Mode (meta-tools) do it:
+ * 10k tokens of definitions and keep the 3 to 5 hottest tools loaded. Two
+ * exposure modes share one hot-set selection:
  *
- * - the HOT tools for the lane are exposed with full schemas;
- * - everything else stays registered but is reached through `list_tools`
- *   (name + one-line description, or the full schema of one tool) and
- *   `use_tool({ name, input })`, which validates against the target schema
- *   and dispatches to the SAME wrapped tool object the direct call would
- *   hit (policy filter, before-tool-call hook, capability enforcer, abort,
- *   cache, result spill all preserved).
+ * - `native-deferred` (Anthropic API key auth on a model with tool search,
+ *   in-tree runtime, `agents.defaults.anthropic.toolSearch.enabled`): the
+ *   FULL registry is returned, hot tools plain and every other tool flagged
+ *   with the deferral marker the provider turns into `defer_loading: true`.
+ *   The provider adds the server-side search tool; discovered tools arrive
+ *   as ordinary `tool_use` blocks and pi-agent-core executes them by name
+ *   against this same array. No meta-tools.
+ * - `dispatcher` (every other provider, OAuth, or tool search disabled): the
+ *   hot tools with full schemas plus `list_tools` (name + one-line
+ *   description, or the full schema of one tool) and `use_tool({ name,
+ *   input })`, which validates against the target schema and dispatches to
+ *   the SAME wrapped tool object the direct call would hit (policy filter,
+ *   before-tool-call hook, capability enforcer, abort, cache, result spill).
  *
  * The exposed array is sorted by name (ASCII) so the request prefix is
  * byte-stable across turns for a given lane.
@@ -27,6 +31,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { isSubagentSessionKey } from "../../routing/session-key.js";
 import { isCronSessionKey } from "../../sessions/session-key-utils.js";
 import { resolveAgentConfig } from "../agent-scope.js";
+import { markToolDeferLoading, registerDeferralPlan } from "../providers/anthropic/tool-search.js";
 import { normalizeToolName } from "../tool-policy.js";
 import { createListToolsTool, createUseToolTool } from "./tool-dispatcher-tool.js";
 
@@ -211,23 +216,100 @@ export function estimateToolDefinitionTokens(tools: readonly AnyAgentTool[]): {
 }
 
 /**
- * Final exposure: hot tools + the two meta-tools, sorted by name. When the
- * hot set is disabled, or nothing is deferred (a validation/A2A session
- * whose whole policy-filtered list is hot), the full sorted list is returned
- * unchanged and no meta-tools are added.
+ * `all`: hot set disabled or nothing to defer, full sorted list, no flags.
+ * `dispatcher`: hot tools + list_tools/use_tool.
+ * `native-deferred`: full registry with deferral flags for the provider.
  */
-export function applyHotSetExposure(params: {
+export type HotSetExposureMode = "all" | "dispatcher" | "native-deferred";
+
+export type HotSetExposure = {
+  mode: HotSetExposureMode;
+  lane: ToolHotSetLane;
+  /** What pi-agent-core receives (sorted by name). */
+  tools: AnyAgentTool[];
+  hot: string[];
+  deferred: string[];
+};
+
+export type HotSetExposureParams = {
   tools: readonly AnyAgentTool[];
   lane: ToolHotSetLane;
   config?: BitterbotConfig;
   agentId?: string;
   /** Applied to the meta-tools so they carry the same wrapper markers as the rest. */
   wrapMetaTool?: (tool: AnyAgentTool) => AnyAgentTool;
-}): AnyAgentTool[] {
+  /**
+   * The provider will send `defer_loading` + the server-side search tool
+   * (see `isNativeToolSearchActive`). Flags go on the tool objects; the
+   * dispatcher meta-tools are not added.
+   */
+  nativeToolSearch?: boolean;
+};
+
+export function resolveHotSetExposure(params: HotSetExposureParams): HotSetExposure {
   const hotSet = resolveHotSetConfig({ config: params.config, agentId: params.agentId });
   const selection = selectHotTools({ tools: params.tools, lane: params.lane, hotSet });
+  const hotNames = selection.hot.map((tool) => tool.name);
+  const deferredNames = selection.deferred.map((tool) => tool.name);
+  // Native mode never leaves stale flags behind from a previous decision.
+  for (const tool of params.tools) {
+    markToolDeferLoading(tool, false);
+  }
   if (!hotSet.enabled || selection.deferred.length === 0) {
-    return sortToolsByName(params.tools);
+    registerDeferralPlan(
+      params.tools.map((tool) => tool.name),
+      [],
+    );
+    return {
+      mode: "all",
+      lane: selection.lane,
+      tools: sortToolsByName(params.tools),
+      hot: hotNames,
+      deferred: [],
+    };
+  }
+  if (params.nativeToolSearch) {
+    // Guard: never defer everything. With an empty hot set the provider would
+    // have only the search tool loaded; fall back to loading every schema.
+    if (selection.hot.length === 0) {
+      log.warn("hot-set exposure: empty hot set in native mode; loading all schemas", {
+        lane: selection.lane,
+      });
+      return {
+        mode: "all",
+        lane: selection.lane,
+        tools: sortToolsByName(params.tools),
+        hot: [],
+        deferred: [],
+      };
+    }
+    const hotKeys = new Set(hotNames.map((name) => normalizeToolName(name)));
+    const registry = sortToolsByName(params.tools);
+    for (const tool of registry) {
+      markToolDeferLoading(tool, !hotKeys.has(normalizeToolName(tool.name)));
+    }
+    // pi-agent-core rebuilds tool definitions before the provider sees them,
+    // so the plan is also published by tool-name set (see tool-search.ts).
+    registerDeferralPlan(
+      registry.map((tool) => tool.name),
+      registry
+        .filter((tool) => !hotKeys.has(normalizeToolName(tool.name)))
+        .map((tool) => tool.name),
+    );
+    log.debug("hot-set exposure", {
+      mode: "native-deferred",
+      lane: selection.lane,
+      hot: hotNames,
+      deferredCount: deferredNames.length,
+      estimatedLoadedTokens: estimateToolDefinitionTokens(selection.hot).tokens,
+    });
+    return {
+      mode: "native-deferred",
+      lane: selection.lane,
+      tools: registry,
+      hot: hotNames,
+      deferred: deferredNames,
+    };
   }
   const wrap = params.wrapMetaTool ?? ((tool: AnyAgentTool) => tool);
   const registry = sortToolsByName(params.tools);
@@ -244,10 +326,22 @@ export function applyHotSetExposure(params: {
   ];
   const estimate = estimateToolDefinitionTokens(exposed);
   log.debug("hot-set exposure", {
+    mode: "dispatcher",
     lane: selection.lane,
-    hot: selection.hot.map((tool) => tool.name),
+    hot: hotNames,
     deferredCount: selection.deferred.length,
     estimatedTokens: estimate.tokens,
   });
-  return sortToolsByName(exposed);
+  return {
+    mode: "dispatcher",
+    lane: selection.lane,
+    tools: sortToolsByName(exposed),
+    hot: hotNames,
+    deferred: deferredNames,
+  };
+}
+
+/** Final exposure as pi-agent-core receives it (see `resolveHotSetExposure`). */
+export function applyHotSetExposure(params: HotSetExposureParams): AnyAgentTool[] {
+  return resolveHotSetExposure(params).tools;
 }

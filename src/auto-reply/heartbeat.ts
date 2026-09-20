@@ -3,8 +3,21 @@ import { HEARTBEAT_TOKEN } from "./tokens.js";
 
 // Default heartbeat prompt (used when config.agents.defaults.heartbeat.prompt is unset).
 // Keep it tight and avoid encouraging the model to invent/rehash "open loops" from prior chat context.
-export const HEARTBEAT_PROMPT =
+//
+// The prefix is frozen: transcript classifiers (usage ledger, memory transcript
+// prep) recognise heartbeat turns by matching the user turn against it, so
+// historical transcripts written with the shorter prompt must keep matching.
+// Only append to the prompt; never edit the prefix.
+export const HEARTBEAT_PROMPT_PREFIX =
   "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.";
+/**
+ * Appended 2026-09-20: the live heartbeat run on claude-haiku-4-5 narrated for
+ * ~400 output tokens before ending with the ack. That text is waste, and if it
+ * ever exceeded `ackMaxChars` the runner would deliver it as an alert.
+ */
+export const HEARTBEAT_PROMPT_ACK_SENTENCE =
+  "In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.";
+export const HEARTBEAT_PROMPT = `${HEARTBEAT_PROMPT_PREFIX} ${HEARTBEAT_PROMPT_ACK_SENTENCE}`;
 export const DEFAULT_HEARTBEAT_EVERY = "30m";
 export const DEFAULT_HEARTBEAT_ACK_MAX_CHARS = 300;
 
@@ -194,23 +207,30 @@ export function stripHeartbeatToken(
 
   // Normalize lightweight markup so HEARTBEAT_OK wrapped in HTML/Markdown
   // (e.g., <b>HEARTBEAT_OK</b> or **HEARTBEAT_OK**) still strips.
+  const tokenEmphasisWrapped = new RegExp(`[*_\`~]+${escapeRegExp(HEARTBEAT_TOKEN)}[*_\`~]+`, "g");
   const stripMarkup = (text: string) =>
     text
       // Drop HTML tags.
       .replace(/<[^>]*>/g, " ")
       // Decode common nbsp variant.
       .replace(/&nbsp;/gi, " ")
+      // Unwrap emphasis around the token itself (e.g. "all quiet **HEARTBEAT_OK**")
+      // so the wrapper does not survive as residue after the token is stripped.
+      .replace(tokenEmphasisWrapped, HEARTBEAT_TOKEN)
       // Remove markdown-ish wrappers at the edges.
       .replace(/^[*`~_]+/, "")
       .replace(/[*`~_]+$/, "");
 
+  // Emphasis glued to the token (**HEARTBEAT_OK**) is unwrapped in both passes;
+  // otherwise the un-normalized pass wins with the wrapper left as residue.
+  const trimmedUnwrapped = trimmed.replace(tokenEmphasisWrapped, HEARTBEAT_TOKEN);
   const trimmedNormalized = stripMarkup(trimmed);
   const hasToken = trimmed.includes(HEARTBEAT_TOKEN) || trimmedNormalized.includes(HEARTBEAT_TOKEN);
   if (!hasToken) {
     return { shouldSkip: false, text: trimmed, didStrip: false };
   }
 
-  const strippedOriginal = stripTokenAtEdges(trimmed);
+  const strippedOriginal = stripTokenAtEdges(trimmedUnwrapped);
   const strippedNormalized = stripTokenAtEdges(trimmedNormalized);
   const picked =
     strippedOriginal.didStrip && strippedOriginal.text ? strippedOriginal : strippedNormalized;

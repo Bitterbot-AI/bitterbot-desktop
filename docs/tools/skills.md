@@ -35,6 +35,20 @@ If a skill name conflicts, precedence is:
 Additionally, you can configure extra skill folders (lowest precedence) via
 `skills.load.extraDirs` in `~/.bitterbot/bitterbot.json`.
 
+### Bundled guidance skills (progressive disclosure)
+
+Some bundled skills exist so the system prompt can stay short: the prompt keeps a one-line index entry and the agent reads the SKILL.md only when the situation applies. They are plain advisory skills (name + description frontmatter, no binaries) and can be overridden like any other bundled skill:
+
+| Skill                     | Holds                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| `memory-architecture`     | Crystal lifecycle, ingestion, background pipeline, hormonal modulation, memory tools       |
+| `working-memory-protocol` | MEMORY.md sections, when to call `working_memory_note`, epistemic `type`, Crystal Pointers |
+| `curiosity-loop`          | Curiosity engine, `curiosity_state` / `curiosity_resolve`, `dream_search` / `dream_status` |
+| `pre-action-interceptors` | `INTERCEPTOR:` directives, the built-in interceptors, the Active Guards panel              |
+| `forage-economy`          | Economic identity, marketplace crystallization, the `forage` tool and its actions          |
+| `circles-protocol`        | `circles` reads, queue-only writes, untrusted-content and no-money invariants              |
+| `wallet-payments`         | HTTP 402 / x402 workflow, paid API tiers, micro-tolls, delegated purchases, spending rules |
+
 ## Per-agent vs shared skills
 
 In **multi-agent** setups, each agent has its own workspace. That means:
@@ -382,6 +396,12 @@ Notes:
 
 - XML escaping expands `& < > " '` into entities (`&amp;`, `&lt;`, etc.), increasing length.
 - Token counts vary by model tokenizer. A rough OpenAI-style estimate is ~4 chars/token, so **97 chars ≈ 24 tokens** per skill plus your actual field lengths.
+
+That is the raw list. Before it reaches the system prompt, `src/agents/system-prompt-skills.ts` compacts it (the `<skill><name>...</name></skill>` shape is preserved for the canary registry and the evolution validators):
+
+- Every description becomes its first sentence, stepping down 160 -> 80 -> 40 chars, then names only, until the whole index fits `SKILLS_PROMPT_BUDGET_CHARS` (4,000 chars, ~1k tokens). Skills are never dropped.
+- Skills located at `<root>/<name>/SKILL.md` under the dominant root share one `Default location: <root>/<name>/SKILL.md` line instead of a per-skill `<location>`; any other location stays inline.
+- The P2P `## Skill content trust notice` (present when an active skill carries `.provenance.json`) is compacted to its operative rule (~110 tokens), and the two preamble sentences the `## Skills (mandatory)` rules already state are dropped.
 
 ## Managed skills lifecycle
 

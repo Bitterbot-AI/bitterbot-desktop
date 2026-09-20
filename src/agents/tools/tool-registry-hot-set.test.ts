@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
+import { isToolDeferLoading } from "../providers/anthropic/tool-search.js";
 import { LIST_TOOLS_NAME, USE_TOOL_NAME } from "./tool-dispatcher-tool.js";
 import {
   applyHotSetExposure,
+  resolveHotSetExposure,
   estimateToolDefinitionTokens,
   HOT_SET_DEFAULT_ALWAYS,
   HOT_SET_DEFAULT_MAX,
@@ -262,5 +264,54 @@ describe("sortToolsByName / estimate", () => {
       chars,
       tokens: Math.ceil(chars / 2.6),
     });
+  });
+});
+
+describe("native-deferred exposure (in-tree Anthropic runtime + tool search)", () => {
+  const registry = () => LIVE_TOOL_NAMES.map((name) => stub(name));
+
+  it("returns the FULL registry sorted by name, hot tools plain, the rest flagged, no meta-tools", () => {
+    const exposure = resolveHotSetExposure({
+      tools: registry(),
+      lane: "chat",
+      nativeToolSearch: true,
+    });
+    expect(exposure.mode).toBe("native-deferred");
+    const names = exposure.tools.map((t) => t.name);
+    expect(names).toEqual([...LIVE_TOOL_NAMES].toSorted());
+    expect(names).not.toContain(LIST_TOOLS_NAME);
+    expect(names).not.toContain(USE_TOOL_NAME);
+    const hot = new Set([...HOT_SET_DEFAULT_ALWAYS, ...HOT_SET_DEFAULT_PER_LANE.chat]);
+    for (const tool of exposure.tools) {
+      expect(isToolDeferLoading(tool)).toBe(!hot.has(tool.name));
+    }
+    expect(exposure.hot.toSorted()).toEqual([...hot].toSorted());
+    expect(exposure.deferred.length).toBe(LIVE_TOOL_NAMES.length - hot.size);
+  });
+
+  it("dispatcher mode is unchanged when the native flag is off", () => {
+    const exposure = resolveHotSetExposure({ tools: registry(), lane: "chat" });
+    expect(exposure.mode).toBe("dispatcher");
+    expect(exposure.tools.map((t) => t.name)).toContain(LIST_TOOLS_NAME);
+    expect(exposure.tools.some((t) => isToolDeferLoading(t))).toBe(false);
+  });
+
+  it("guard: an empty hot set never defers everything", () => {
+    const exposure = resolveHotSetExposure({
+      tools: registry(),
+      lane: "chat",
+      nativeToolSearch: true,
+      config: { tools: { hotSet: { always: [], perLane: { chat: [] } } } } as BitterbotConfig,
+    });
+    expect(exposure.mode).toBe("all");
+    expect(exposure.tools.some((t) => isToolDeferLoading(t))).toBe(false);
+  });
+
+  it("clears stale flags when a session moves back to the dispatcher", () => {
+    const tools = registry();
+    resolveHotSetExposure({ tools, lane: "chat", nativeToolSearch: true });
+    expect(tools.some((t) => isToolDeferLoading(t))).toBe(true);
+    resolveHotSetExposure({ tools, lane: "chat", nativeToolSearch: false });
+    expect(tools.some((t) => isToolDeferLoading(t))).toBe(false);
   });
 });

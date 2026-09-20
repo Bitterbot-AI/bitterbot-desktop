@@ -34,6 +34,21 @@ Every agent ships with a workspace that defines who it is:
 | `TOOLS.md`     | Environment-specific notes — camera names, SSH hosts, device nicknames       | User-editable                         |
 | `HEARTBEAT.md` | Periodic tasks the agent checks on a schedule                                | User-editable                         |
 
+## What the agent is told
+
+The system prompt carries only a short **Memory System** index (one line per tool and when to reach for it, plus two rules; under 600 tokens) so the cached prompt prefix stays small. The long-form guidance is progressive disclosure: bundled skills the agent opens only when the situation applies.
+
+| Skill                     | Loads when                                                                                         |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `memory-architecture`     | The user asks how memory, dreams, hormones or crystals work; interpreting `memory_status` output   |
+| `working-memory-protocol` | Deciding what to record with `working_memory_note`; "remember this"; corrections; Crystal Pointers |
+| `curiosity-loop`          | "What are you curious about?"; dream insights; closing an exploration target                       |
+| `pre-action-interceptors` | A tool error starting with `INTERCEPTOR:`; a silently hedged message; questions about guards       |
+| `forage-economy`          | Bounties ("forge"), agent earnings, marketplace skills, A2A activity, reputation                   |
+| `circles-protocol`        | Anything about the user's circles, before calling the `circles` tool                               |
+
+Canonical Facts (the ledger described in [How the Memory Works](../memory/how-the-memory-works.md)) render as `- [key] value` lines sorted by key, without counts, dates or statement sentences, capped at 2,400 chars; placeholder values and heartbeat scaffolding never reach the prompt. See [System Prompt](system-prompt.md) for the full layout and the stable-half token budget.
+
 ## How It Works
 
 ```

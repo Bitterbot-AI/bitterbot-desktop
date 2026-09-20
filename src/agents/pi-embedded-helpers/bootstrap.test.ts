@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { WorkspaceBootstrapFile } from "../workspace.js";
-import { resolveMemoryMdBudgetChars, buildBootstrapContextFiles } from "./bootstrap.js";
+import {
+  WORKING_MEMORY_TRUNCATED_LINE,
+  bootstrapTruncatedLine,
+  buildBootstrapContextFiles,
+  resolveMemoryMdBudgetChars,
+} from "./bootstrap.js";
 
 describe("resolveMemoryMdBudgetChars", () => {
   it("should return 8000 for 200K+ context windows", () => {
@@ -58,7 +63,28 @@ describe("buildBootstrapContextFiles", () => {
     const result = buildBootstrapContextFiles(files, { contextWindowTokens: 32_000 });
     // With 32K context, budget is 3200 chars, so 10K content should be truncated
     expect(result.length).toBe(1);
-    expect(result[0]!.content).toContain("[Full working memory available via memory_search]");
+    expect(result[0]!.content).toContain(WORKING_MEMORY_TRUNCATED_LINE);
+    expect(result[0]!.content).not.toContain("[Full working memory available via memory_search]");
+  });
+
+  it("truncation markers are constant text: no char counts, byte-identical when the file grows", () => {
+    const build = (name: string, content: string) =>
+      buildBootstrapContextFiles([{ name, path: `/workspace/${name}`, content, missing: false }], {
+        contextWindowTokens: 32_000,
+        maxChars: 3200,
+      })[0]!.content;
+    for (const name of ["MEMORY.md", "TOOLS.md"]) {
+      const a = build(name, "A".repeat(10_000));
+      const b = build(name, "A".repeat(10_500));
+      expect(a).toBe(b);
+      expect(a).not.toMatch(/kept \d+/);
+      expect(a).not.toMatch(/chars of \d+/);
+    }
+    expect(build("MEMORY.md", "A".repeat(10_000))).toContain(
+      `\n\n${WORKING_MEMORY_TRUNCATED_LINE}\n\n`,
+    );
+    expect(build("TOOLS.md", "A".repeat(10_000))).toContain(bootstrapTruncatedLine("TOOLS.md"));
+    expect(build("TOOLS.md", "A".repeat(10_000))).not.toContain(WORKING_MEMORY_TRUNCATED_LINE);
   });
 
   it("should not add truncation note for short MEMORY.md", () => {
@@ -72,6 +98,6 @@ describe("buildBootstrapContextFiles", () => {
     ];
     const result = buildBootstrapContextFiles(files);
     expect(result.length).toBe(1);
-    expect(result[0]!.content).not.toContain("[Full working memory available via memory_search]");
+    expect(result[0]!.content).not.toContain(WORKING_MEMORY_TRUNCATED_LINE);
   });
 });

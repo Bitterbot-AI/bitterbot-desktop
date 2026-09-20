@@ -12,18 +12,20 @@ import { formatToolAggregate } from "../auto-reply/tool-meta.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { getAgentRunContext } from "../infra/agent-events.js";
 import { classifyAgentFeature } from "../infra/usage-features.js";
-import { recordUsage } from "../infra/usage-ledger.js";
+import { recordToolCall, recordUsage } from "../infra/usage-ledger.js";
 import { transcriptSessionId, usageDedupeKey } from "../infra/usage-reconcile.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { buildCodeSpanIndex, createInlineCodeState } from "../markdown/code-spans.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { isSubagentSessionKey } from "../sessions/session-key-utils.js";
+import { getRunPrefixDigests } from "./cache-trace.js";
 import { EmbeddedBlockChunker } from "./pi-embedded-block-chunker.js";
 import {
   isMessagingToolDuplicateNormalized,
   normalizeTextForComparison,
 } from "./pi-embedded-helpers.js";
 import { createEmbeddedPiSessionEventHandler } from "./pi-embedded-subscribe.handlers.js";
+import { createToolCallTelemetry } from "./pi-embedded-subscribe.tools.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
 import { recordCacheTurn, type CacheTurnState } from "./prompt-cache-monitor.js";
 import { hasNonzeroUsage, normalizeUsage, type NormalizedUsage, type UsageLike } from "./usage.js";
@@ -280,6 +282,9 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
             cacheWrite?: number;
             total?: number;
           };
+          /** Anthropic per-TTL cache_creation split, when the model library surfaces it. */
+          cacheWrite5m?: unknown;
+          cacheWrite1h?: unknown;
         };
       };
       const msgTs =
@@ -287,6 +292,9 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
           ? msg.timestamp
           : undefined;
       const runContext = getAgentRunContext(params.runId);
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      // Prefix-stability telemetry: digests of the request this message answered.
+      const digests = getRunPrefixDigests(params.runId) ?? getRunPrefixDigests(params.sessionKey);
       recordUsage({
         ts: msgTs,
         kind: "chat",
@@ -310,13 +318,35 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
         channel: params.channel,
         cacheState: cache?.state,
         cacheBustReason: cache?.reason,
+        // Fallback label; the exact TTL comes from the split below when the provider reports it.
         cacheTtl: params.cacheTtl,
+        cacheWrite5m: num(msg.usage?.cacheWrite5m),
+        cacheWrite1h: num(msg.usage?.cacheWrite1h),
+        prefixDigest: digests?.prefixDigest,
+        toolsDigest: digests?.toolsDigest,
         config: params.config,
       });
     } catch {
       // Usage accounting must never affect the turn.
     }
   };
+  // Hot-set proof: one ledger row per tool call, with how the tool was reached.
+  const toolTelemetry = createToolCallTelemetry((evt) => {
+    recordToolCall({
+      ts: evt.ts,
+      agentId: params.agentId ?? parseAgentSessionKey(params.sessionKey)?.agentId,
+      sessionKey: params.sessionKey,
+      runId: params.runId,
+      tool: evt.tool,
+      via: evt.via,
+      ok: evt.ok,
+      errorClass: evt.errorClass,
+      durationMs: evt.durationMs,
+      resultChars: evt.resultChars,
+      spilled: evt.spilled,
+      config: params.config,
+    });
+  });
   const recordAssistantUsage = (usageLike: unknown, message?: unknown) => {
     const usage = normalizeUsage((usageLike ?? undefined) as UsageLike | undefined);
     if (!hasNonzeroUsage(usage)) {
@@ -347,6 +377,7 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
       }
     }
     recordTurnUsage(usage, message, cacheResult);
+    toolTelemetry.onAssistantMessage(message);
     // PLAN-50 Phase 6: the cache is warm right now; let a soon-due heartbeat ride on it.
     if (
       (params.cacheTtl === "5m" || params.cacheTtl === "1h") &&
@@ -734,7 +765,11 @@ export function subscribeEmbeddedPiSession(params: SubscribeEmbeddedPiSessionPar
     getCompactionCount: () => compactionCount,
   };
 
-  const sessionUnsubscribe = params.session.subscribe(createEmbeddedPiSessionEventHandler(ctx));
+  const eventHandler = createEmbeddedPiSessionEventHandler(ctx);
+  const sessionUnsubscribe = params.session.subscribe((evt) => {
+    toolTelemetry.onEvent(evt);
+    return eventHandler(evt);
+  });
 
   const unsubscribe = () => {
     if (state.unsubscribed) {

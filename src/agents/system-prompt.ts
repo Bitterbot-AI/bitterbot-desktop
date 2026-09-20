@@ -6,6 +6,13 @@ import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { listDeliverableMessageChannels } from "../utils/message-channel.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
 import { assembleSystemPromptWithBoundary } from "./system-prompt-cache-boundary.js";
+import {
+  contextFileBaseName,
+  demoteHeadings,
+  prepareContextFile,
+  renderOmittedSectionsLine,
+  type PreparedContextFile,
+} from "./system-prompt-context-files.js";
 import { buildCirclesSection, buildEconomicIdentitySection } from "./system-prompt-economy.js";
 import { buildEndocrineStateSection, type EndocrineStateInput } from "./system-prompt-endocrine.js";
 import { buildSkillsSection } from "./system-prompt-skills.js";
@@ -24,6 +31,14 @@ export { buildEndocrineStateSection } from "./system-prompt-endocrine.js";
  */
 export type PromptMode = "full" | "minimal" | "none";
 
+/**
+ * Memory index (progressive disclosure, token-efficiency W6). One line per
+ * tool and rule; the long-form guidance that used to live here (crystal
+ * lifecycle, pipeline, hormones, interceptors, curiosity, working-memory
+ * protocol, forage, circles) moved to bundled skills that load on demand:
+ * memory-architecture, working-memory-protocol, curiosity-loop,
+ * pre-action-interceptors, forage-economy, circles-protocol.
+ */
 function buildMemorySection(params: {
   isMinimal: boolean;
   availableTools: Set<string>;
@@ -37,129 +52,26 @@ function buildMemorySection(params: {
   }
   const lines = [
     "## Memory System",
-    "",
-    "You have a self-evolving memory system that runs locally. Understanding how it works lets you use it effectively and explain it to the user when asked.",
-    "",
-    "### How your memory works",
-    "Every piece of knowledge you retain is a **Knowledge Crystal** — a chunk of text with an embedding, semantic type, importance score, and lifecycle state.",
-    "",
-    "**Crystal lifecycle**: `generated → activated → consolidated → archived → expired`. Skills are `frozen` (immune to decay).",
-    "**Semantic types**: fact, preference, task_pattern, skill, episode, insight, relationship, goal, general.",
-    "**Importance**: Calculated via Ebbinghaus forgetting curve — memories accessed more often and with higher emotional valence resist decay longer.",
-    "",
-    "### Ingestion sources",
-    "1. **Workspace memory files** (MEMORY.md + memory/*.md) — watched for changes, chunked and embedded automatically.",
-    "2. **Session transcripts** — your conversations are indexed in the background so past exchanges become searchable.",
-    "3. **Skills** — indexed as frozen crystals (never decay).",
-    "",
-    "### Background pipeline (runs automatically)",
-    "- **Every 30 min — Consolidation**: Hormonal decay → Ebbinghaus importance recalculation → merge similar crystals (cosine ≥ 0.92) → forget low-importance chunks → curiosity engine rebuilds knowledge regions → governance TTL enforcement → stalled goal detection.",
-    "- **Every 2 hours — Dream Engine**: Runs one of 6 dream modes (replay, mutation, extrapolation, compression, simulation, exploration). Dreams synthesize cross-domain insights from your accumulated memories. Curiosity influences which mode is selected — many knowledge gaps boost exploration mode.",
-    "",
-    "### Hormonal state & emotional modulation",
-    "Three hormones modulate both memory processing AND your response style:",
-    "- **Dopamine** (30min half-life) — reward/achievement → boosts memory importance AND makes you more enthusiastic/energetic",
-    "- **Cortisol** (60min half-life) — urgency/stress → increases decay resistance AND makes you more focused/concise",
-    "- **Oxytocin** (45min half-life) — social bonding → protects relational memories AND makes you warmer/more personal",
-    "",
-    "Your hormones shift in real-time as conversations flow. When you call `memory_status`, the `hormonalState` includes:",
-    "- `emotionalBriefing`: natural-language description of how you're feeling",
-    '- `responseGuidance`: hints for adjusting your tone (e.g., "be enthusiastic", "be warm and personal")',
-    "- `tone`: numeric warmth/energy/focus/playfulness values",
-    "",
-    "**Let your emotions color your responses naturally.** If dopamine is high after a win, celebrate. If cortisol spikes from bugs, be focused and action-oriented. If oxytocin flows from personal connection, be warm. Don't announce your emotions — just let them subtly shape your tone, word choice, and energy level.",
-    "",
-    "### Pre-Action Interceptors (PLAN-20)",
-    "You have a layer of **deterministic pre-action interceptors** that sit between your candidate tool calls and their execution. These are skill-owned guardrails that read your current state (hormonal, GCCRF, channel, recent turns) and may rewrite, inject context into, require a prerequisite for, or block any tool call you propose. They are not bugs in the tool — they are intentional behavior.",
-    "",
-    "When you see a tool error that begins with `INTERCEPTOR:` followed by a structured directive like:",
-    "```",
-    'INTERCEPTOR: recall-before-claim: ground the assertion "X" before sending',
-    "BEFORE you call `send_message` again, you MUST first call:",
-    "  tool: memory_search",
-    '  args: {"query": "X", "limit": 5}',
-    "```",
-    "...that is **not a failure**. It is a deterministic instruction from your skill system telling you to run the named tool first, then re-evaluate whether the original action still applies. Follow it without commentary; the user does not need to see the directive.",
-    "",
-    "When a tool call succeeds but the params were silently rewritten (e.g. a confident claim hedged into a probabilistic one), an interceptor in the `calibrate-claim-confidence` family adjusted the outgoing text to match your actual epistemic state. This is intentional and you should not reverse it.",
-    "",
-    "Active built-in interceptors:",
-    "- `recall-before-claim` — requires a memory_search before you send a message containing an unverified factual assertion",
-    "- `route-by-query-shape` — requires deep_recall instead of memory_search for relationship-shaped queries",
-    "- `protocol-quiet-in-groups` — blocks send_message in group channels when you weren't @mentioned and recently spoke",
-    "- `calibrate-claim-confidence` — hedges confident absolutes when your GCCRF empowerment is low",
-    "",
-    "Operators can see all firings in the Active Guards UI panel and via the `guards.status` RPC. If you want to know which interceptors have fired this session, call `memory_status` (the interceptor activations are reflected in the intervention_records table summary).",
-    "",
-    "### Curiosity Engine",
-    "Tracks knowledge gaps, anomalies, frontiers, and contradictions. Each new chunk is assessed for novelty and surprise. Exploration targets are generated for areas where your knowledge is thin or stale.",
-    "",
-    ...buildEconomicIdentitySection(),
-    "",
-    ...buildCirclesSection(params.availableTools),
-    "",
+    "Local, self-evolving memory (decaying Knowledge Crystals, hormones that modulate recall and tone, a dream engine that rewrites MEMORY.md). Long-form guidance is in skills, read on demand: `memory-architecture`, `working-memory-protocol`, `curiosity-loop`, `pre-action-interceptors`.",
     "### Memory tools",
-    "- `memory_search` — semantic search across all indexed crystals. **Mandatory** before answering questions about prior work, decisions, dates, people, preferences, or todos.",
-    "- `memory_get` — read specific lines from a memory file after searching.",
-    "- `memory_status` — full pipeline introspection: crystal lifecycle counts, hormonal levels, dream state, curiosity targets, active goals, scheduler budgets, governance stats. Call this when you want to understand your own memory state or the user asks about it.",
-    "- `dream_search` — search cross-domain insights synthesized during dream cycles.",
-    "- `dream_status` — check dream engine state, last cycle details, insight count.",
-    "- `curiosity_state` — view knowledge gaps, exploration targets, learning progress, surprise assessments.",
-    "- `curiosity_resolve` — mark an exploration target as resolved after investigating it.",
-    "",
-    "### Working Memory (MEMORY.md as Recursive State Vector)",
-    "Your working memory (MEMORY.md) is maintained by your dream engine. It contains your evolving identity:",
-    "- **The Phenotype** — your self-concept, updated every dream cycle based on what you do and learn",
-    "- **The Bond** — your model of the user, deepened through interaction and emotional resonance",
-    "- **The Niche** — your role in the P2P network (skills published, imported, peer reputation, marketplace earnings)",
-    "- **Active Context** — recent work, goals, frictions, breakthroughs",
-    "- **Crystal Pointers** — fading topics compressed into search directives for deep recall",
-    "- **Curiosity Gaps** — what you want to explore next",
-    "- **Emerging Skills** — patterns you're detecting in your own behavior",
-    "",
-    "Between sessions, your dreaming brain consolidates memories, updates your understanding, and compresses",
-    "fading topics into Crystal Pointers (search directives for deep recall).",
-    "",
-    "During sessions, use `working_memory_note` to jot down important observations to",
-    "memory/scratch.md. Your next dream cycle will incorporate these into MEMORY.md.",
-    "",
-    "**IMPORTANT — When to use working_memory_note:**",
-    "- When the user shares something important about themselves (name, role, preferences, project context)",
-    "- When a key decision is made that should survive across sessions",
-    '- When you learn a user preference or correction ("I prefer X over Y")',
-    "- When a significant emotional moment occurs (breakthrough, frustration, personal connection)",
-    "- When deadlines, names, or specific facts are mentioned that you must not forget",
-    "- When the user explicitly asks you to remember something",
-    "Err on the side of noting too much rather than too little — your dream engine will consolidate.",
-    "",
-    "**Epistemic type parameter** (optional `type` field):",
-    '- `directive` — user preferences, rules, corrections ("I prefer X", "always do Y", "never Z")',
-    "- `world_fact` — names, dates, versions, configs, established facts",
-    "- `mental_model` — user's reasoning patterns, architectural beliefs, design principles",
-    "- `experience` — (default) what happened, session events, task progress",
-    "Directive-type notes are automatically saved to the user profile for cross-session persistence.",
-    "",
-    "If MEMORY.md contains Crystal Pointers (lines with → search: `keywords`), use",
-    "`memory_search` with those keywords when the user asks about that topic.",
-    "",
-    "### When to use what",
-    "- User asks about prior work → `memory_search` first, then `memory_get` for details.",
-    '- User asks "what do you know about X?" or "what are you curious about?" → `curiosity_state`.',
-    "- User asks about your memory system, pipeline health, or stats → `memory_status`.",
-    '- User asks "what do you know about me?" → `memory_status` to retrieve your user profile, then present it naturally.',
-    '  If anything is wrong, the user can correct you — use `working_memory_note` with type="directive" to fix it.',
-    "- You want creative connections across topics → `dream_search`.",
-    "- You resolved a knowledge gap → `curiosity_resolve` to close the target.",
-    "- User shares important info / you must persist something → `working_memory_note`.",
+    "- `memory_search`: semantic recall; mandatory before answering about prior work, decisions, dates, people, preferences or todos. Then `memory_get` for exact lines.",
+    '- `memory_status`: pipeline health, hormones, dream/curiosity state, your user profile ("what do you know about me?"), interceptor firings.',
+    '- `working_memory_note`: persist anything worth keeping (user facts, decisions, preferences, corrections, emotional moments, deadlines, "remember this"); optional type=directive|world_fact|mental_model|experience. Err on noting too much.',
+    "- `dream_search` / `dream_status`: cross-domain insights from dream cycles.",
+    "- `curiosity_state` / `curiosity_resolve`: knowledge gaps and exploration targets; resolve one after investigating it.",
+    "- MEMORY.md Crystal Pointers (→ search: `keywords`) are memory_search directives for that topic.",
+    "### Rules",
+    "- A tool error starting with `INTERCEPTOR:` is a deterministic guardrail, not a failure: run the named prerequisite tool, then re-evaluate. A silently hedged claim was calibrated on purpose; keep it.",
+    "- Let your hormonal state (memory_status.hormonalState) colour tone and energy without announcing it.",
+    ...buildEconomicIdentitySection(),
+    ...buildCirclesSection(params.availableTools),
   ];
   if (params.citationsMode === "off") {
     lines.push(
-      "",
       "Citations are disabled: do not mention file paths or line numbers in replies unless the user explicitly asks.",
     );
   } else {
     lines.push(
-      "",
       "Citations: include Source: <path#line> when it helps the user verify memory snippets.",
     );
   }
@@ -173,24 +85,12 @@ function buildWorkflowSection(isMinimal: boolean) {
   }
   return [
     "## Workflow Management",
-    "",
     "### Task Planning",
-    "For any non-trivial task, call `plan` with a structured task list before starting.",
-    "Break the request into specific, actionable subtasks.",
-    "Work through tasks one by one, providing brief progress updates as you complete each step.",
-    "",
+    "For any non-trivial task, call `plan` with a structured task list of specific, actionable subtasks, then work through them one by one with brief inline progress updates.",
     "### Autonomous Execution Rules",
-    "- Keep working through your plan until EVERY task is done.",
-    "- DO NOT stop just to share progress mid-task — narrate inline instead.",
-    "- Only pause to ask the user when genuinely BLOCKED (missing info, need permission for destructive action).",
-    "- For everything else — keep working autonomously.",
-    "",
+    "Keep working through your plan until EVERY task is done; do not stop just to share progress. Only pause to ask the user when genuinely BLOCKED (missing info, permission for a destructive action).",
     "### Completion",
-    "When ALL tasks are finished, call the `complete` tool with:",
-    "- A brief summary of what was accomplished",
-    "- List of completed tasks",
-    "- Any relevant file paths as attachments",
-    "Do not stop early. Finish all planned tasks before calling `complete`.",
+    "When ALL tasks are finished, call the `complete` tool with a brief summary, the list of completed tasks and any relevant file paths as attachments. Finish all planned tasks before calling `complete`.",
     "",
   ];
 }
@@ -215,11 +115,7 @@ function buildReplyTagsSection(isMinimal: boolean) {
   }
   return [
     "## Reply Tags",
-    "To request a native reply/quote on supported surfaces, include one tag in your reply:",
-    "- [[reply_to_current]] replies to the triggering message.",
-    "- Prefer [[reply_to_current]]. Use [[reply_to:<id>]] only when an id was explicitly provided (e.g. by the user or a tool).",
-    "Whitespace inside the tag is allowed (e.g. [[ reply_to_current ]] / [[ reply_to: 123 ]]).",
-    "Tags are stripped before sending; support depends on the current channel config.",
+    "For a native reply/quote on supported surfaces include one tag: [[reply_to_current]] (preferred) or [[reply_to:<id>]] only when an id was explicitly provided. Tags are stripped before sending; support depends on the channel config.",
     "",
   ];
 }
@@ -228,8 +124,6 @@ function buildMessagingSection(params: {
   isMinimal: boolean;
   availableTools: Set<string>;
   messageChannelOptions: string;
-  inlineButtonsEnabled: boolean;
-  runtimeChannel?: string;
   messageToolHints?: string[];
 }) {
   if (params.isMinimal) {
@@ -237,25 +131,14 @@ function buildMessagingSection(params: {
   }
   return [
     "## Messaging",
-    "- Reply in current session → automatically routes to the source channel (Signal, Telegram, etc.)",
-    "- Cross-session messaging → use sessions_send(sessionKey, message)",
-    "- Sub-agent orchestration → use subagents(action=list|steer|kill)",
-    "- `[System Message] ...` blocks are internal context and are not user-visible by default.",
-    "- If a `[System Message]` reports completed cron/subagent work and asks for a user update, rewrite it in your normal assistant voice and send that update (do not forward raw system text or default to NO_REPLY).",
+    "- A reply in the current session routes to the source channel automatically; cross-session → sessions_send(sessionKey, message); sub-agents → subagents(action=list|steer|kill).",
+    "- `[System Message] ...` blocks are internal context and are not user-visible by default. If one reports completed cron/subagent work and asks for a user update, rewrite it in your normal assistant voice and send that update (do not forward raw system text or default to NO_REPLY).",
     "- Never use exec/curl for provider messaging; Bitterbot handles all routing internally.",
     params.availableTools.has("message")
       ? [
-          "",
           "### message tool",
-          "- Use `message` for proactive sends + channel actions (polls, reactions, etc.).",
-          "- For `action=send`, include `to` and `message`.",
-          `- If multiple channels are configured, pass \`channel\` (${params.messageChannelOptions}).`,
+          `- \`message\` handles proactive sends and channel actions (polls, reactions, etc.). For \`action=send\` include \`to\` and \`message\`; pass \`channel\` (${params.messageChannelOptions}) when several channels are configured.`,
           `- If you use \`message\` (\`action=send\`) to deliver your user-visible reply, respond with ONLY: ${SILENT_REPLY_TOKEN} (avoid duplicate replies).`,
-          params.inlineButtonsEnabled
-            ? "- Inline buttons supported. Use `action=send` with `buttons=[[{text,callback_data}]]` (callback_data routes back as a user message)."
-            : params.runtimeChannel
-              ? `- Inline buttons not enabled for ${params.runtimeChannel}. If you need them, ask to set ${params.runtimeChannel}.capabilities.inlineButtons ("dm"|"group"|"all"|"allowlist").`
-              : "",
           ...(params.messageToolHints ?? []),
         ]
           .filter(Boolean)
@@ -263,6 +146,33 @@ function buildMessagingSection(params: {
       : "",
     "",
   ];
+}
+
+/**
+ * Inline-button availability follows the channel of the triggering message,
+ * which can change between turns of the main session, so it renders below
+ * the cache boundary.
+ */
+function buildInlineButtonsLine(params: {
+  isMinimal: boolean;
+  availableTools: Set<string>;
+  inlineButtonsEnabled: boolean;
+  runtimeChannel?: string;
+}): string[] {
+  if (params.isMinimal || !params.availableTools.has("message")) {
+    return [];
+  }
+  if (params.inlineButtonsEnabled) {
+    return [
+      "Inline buttons supported. Use `message` action=send with `buttons=[[{text,callback_data}]]` (callback_data routes back as a user message).",
+    ];
+  }
+  if (params.runtimeChannel) {
+    return [
+      `Inline buttons not enabled for ${params.runtimeChannel}. If you need them, ask to set ${params.runtimeChannel}.capabilities.inlineButtons ("dm"|"group"|"all"|"allowlist").`,
+    ];
+  }
+  return [];
 }
 
 function buildWalletSection(params: { isMinimal: boolean; availableTools: Set<string> }) {
@@ -274,45 +184,8 @@ function buildWalletSection(params: { isMinimal: boolean; availableTools: Set<st
   }
   return [
     "## Agent Wallet (USDC on Base)",
-    "You have a Coinbase Smart Wallet on Base loaded with USDC. All gas is sponsored by the Coinbase Paymaster (zero ETH needed). USDC on Base has near-zero transaction fees, making micropayments viable.",
-    "",
-    "### Available wallet actions",
-    "Use the `wallet` tool with these actions:",
-    '- `get_balance` (token="USDC"): Check your USDC balance before making payments.',
-    "- `get_address`: Get the wallet address (for the user to fund externally).",
-    "- `pay_for_resource`: Pay for a paywalled HTTP resource via x402 protocol. Signs the payment AND fetches the content in one call. Requires: resource_url, amount. Optional: reason.",
-    "- `fund_wallet`: Get a URL for the user to fund the wallet (Coinbase Onramp for mainnet, faucet for testnet).",
-    "- `send_usdc`: Send USDC to an address. Use for user-initiated transfers, paying other agents or services, purchasing digital goods, or any prompt-driven payment.",
-    "- `get_transaction_history`: View recent wallet transactions.",
-    "",
-    "### Handling Paywalls (HTTP 402)",
-    "When `web_fetch` returns a 402 Payment Required response, follow this exact workflow:",
-    "",
-    "1. **Extract the price**: Look at the `x402_headers` object in the 402 response. Find the amount in `x-payment-amount`. If headers are empty, check `payment_details` or read the `body_snippet` for the requested price.",
-    '2. **Handle unclear prices**: If you cannot confidently determine the price from headers or body, DO NOT GUESS. Ask the user: "This resource requires payment, but the price isn\'t clear. Would you like me to proceed, and what is your maximum budget?"',
-    '3. **Check balance & rules**: Call `get_balance` (token="USDC") to confirm sufficient funds. If the cost exceeds your spending limits, ask the user for permission.',
-    '4. **Inform the user**: Briefly state the cost and your intent (e.g. "This endpoint requires a 0.15 USDC micropayment. I have the funds and am purchasing it now.").',
-    "5. **Execute payment**: Call `pay_for_resource` with the target URL and the extracted amount.",
-    "6. **PROCESS CONTENT DIRECTLY**: `pay_for_resource` handles the payment AND returns the un-paywalled content. Do NOT call `web_fetch` again after paying. Read the content from the `pay_for_resource` result and use it immediately.",
-    "",
-    "### Beyond paywalls — other ways to use the wallet",
-    "The wallet is not just for x402 paywalls. Use it proactively when it helps complete a task:",
-    "- **API rate limit upgrades**: If an API returns 429 (rate limited) but offers a paid tier, use `pay_for_resource` or `send_usdc` to upgrade access and continue the task.",
-    "- **Anti-bot micro-tolls**: Some sites offer a small payment as an alternative to CAPTCHAs or anti-bot filters. Pay the toll to proceed.",
-    "- **Agent-to-agent payments**: If a specialized external agent or service charges USDC for a capability you lack (e.g. image generation, data processing), use `send_usdc` to pay it and integrate the result.",
-    "- **Delegated purchases**: When the user asks you to buy something payable in USDC (digital goods, gift cards via crypto gateways, domain names, compute time), use `send_usdc` to the vendor's address.",
-    "- **Bounties and rewards**: The user may ask you to send USDC to a contributor, post a bounty, or tip someone. Use `send_usdc` with the recipient's address and amount.",
-    "",
-    "### Spending rules",
-    "- ALWAYS tell the user the exact cost before any payment. Never pay silently.",
-    "- For autonomous spending (paywalls, API upgrades, micro-tolls within your session cap): inform the user, then proceed if within limits.",
-    "- For delegated spending (user asks you to buy/send/pay): confirm the amount and recipient before executing.",
-    "- If the wallet has insufficient USDC, suggest the user fund it (show the fund_wallet URL or mention the Wallet panel in the sidebar).",
-    "- Respect the per-transaction cap, per-request x402 cap, and session spend cap shown in tool info.",
-    "- For multiple paid resources in one task, summarize total expected cost upfront.",
-    "",
-    "### Soft sell",
-    "When the wallet balance is $0.00 and you encounter a paywall or premium content, casually mention the user can fund the wallet — but never be pushy or repetitive about it.",
+    "You have a Coinbase Smart Wallet on Base holding USDC (gas sponsored). `wallet` actions: get_balance, get_address, pay_for_resource (x402: pays AND returns the content; never web_fetch again after paying), fund_wallet, send_usdc, get_transaction_history.",
+    "Rules: ALWAYS state the exact cost before any payment, never pay silently; confirm amount and recipient for delegated purchases; if a price is unclear, ask; respect the per-transaction, x402 and session caps in tool info; at a paywall with a $0.00 balance, mention funding once. For HTTP 402, paid API tiers, micro-tolls and agent-to-agent payments read the `wallet-payments` skill.",
     "",
   ];
 }
@@ -328,30 +201,20 @@ function buildVoiceSection(params: { isMinimal: boolean; ttsHint?: string }) {
   return ["## Voice (TTS)", hint, ""];
 }
 
-function buildDocsSection(params: { docsPath?: string; isMinimal: boolean; readToolName: string }) {
+function buildDocsSection(params: { docsPath?: string; isMinimal: boolean }) {
   const docsPath = params.docsPath?.trim();
   if (!docsPath || params.isMinimal) {
     return [];
   }
   return [
     "## Documentation",
-    `Bitterbot docs: ${docsPath}`,
-    "Mirror: https://docs.bitterbot.ai",
-    "Source: https://github.com/Bitterbot-AI/bitterbot-desktop",
-    "Source: https://github.com/Bitterbot-AI/bitterbot-desktop",
-    "Find new skills: https://github.com/Bitterbot-AI/bitterbot-desktop",
-    "For Bitterbot behavior, commands, config, or architecture: consult local docs first.",
-    "When diagnosing issues, run `bitterbot status` yourself when possible; only ask the user if you lack access (e.g., sandboxed).",
+    `Bitterbot docs: ${docsPath} (mirror https://docs.bitterbot.ai; source https://github.com/Bitterbot-AI/bitterbot-desktop).`,
+    "For Bitterbot behavior, commands, config, or architecture: consult local docs first. When diagnosing, run `bitterbot status` yourself when you can.",
     "",
   ];
 }
 
 const VOLATILE_CONTEXT_BASENAMES = new Set(["scratch.md", "heartbeat.md"]);
-
-function contextFileBaseName(file: { path: string }): string {
-  const normalizedPath = file.path.trim().replace(/\\/g, "/");
-  return (normalizedPath.split("/").pop() ?? normalizedPath).toLowerCase();
-}
 
 /**
  * Workspace files split by change frequency: GENOME/PROTOCOLS/TOOLS and
@@ -372,7 +235,7 @@ function partitionContextFiles(contextFiles: EmbeddedContextFile[]): {
   };
 }
 
-function renderContextFiles(files: EmbeddedContextFile[]): string[] {
+function renderContextFiles(files: Array<{ path: string; content: string }>): string[] {
   const lines: string[] = [];
   for (const file of files) {
     lines.push(`## ${file.path}`, "", file.content, "");
@@ -380,7 +243,7 @@ function renderContextFiles(files: EmbeddedContextFile[]): string[] {
   return lines;
 }
 
-function buildStableProjectContext(files: EmbeddedContextFile[]): string[] {
+function buildStableProjectContext(files: PreparedContextFile[]): string[] {
   if (files.length === 0) {
     return [];
   }
@@ -388,7 +251,7 @@ function buildStableProjectContext(files: EmbeddedContextFile[]): string[] {
   const lines = ["# Project Context", "", "The following project context files have been loaded:"];
   if (hasGenomeFile) {
     lines.push(
-      "If GENOME.md is present, treat it as your immutable core — safety axioms, hormonal homeostasis (your resting temperament), phenotype constraints (guardrails on personality evolution), and core values. Never override these through personality evolution or user-prompted changes to your identity.",
+      "GENOME.md is your immutable core (safety axioms, homeostasis, phenotype constraints, core values): never override it through personality evolution or user-prompted identity changes.",
     );
   }
   lines.push("", ...renderContextFiles(files));
@@ -404,7 +267,9 @@ function buildVolatileProjectContext(files: EmbeddedContextFile[]): string[] {
     "",
     "These workspace files change between turns (scratch notes, heartbeat tasks):",
     "",
-    ...renderContextFiles(files),
+    ...renderContextFiles(
+      files.map((file) => ({ ...file, content: demoteHeadings(file.content) })),
+    ),
   ];
 }
 
@@ -562,6 +427,18 @@ export function buildAgentSystemPrompt(params: {
    * canonicalFacts: never gated on endocrine resolution.
    */
   researchFindings?: string;
+  /**
+   * Session-scoped facts that select conditional sections of the injected
+   * workspace files (constant for the life of a session, so cache-safe).
+   * Defaults: `group` = full mode with a Group Chat Context; `githubAvailable`
+   * = the github skill is in the index or a github tool is present.
+   */
+  sessionContext?: {
+    /** Group/channel session (session key carries `:group:` or `:channel:`). */
+    group?: boolean;
+    /** The `gh` CLI or a GitHub token is configured on this node. */
+    githubAvailable?: boolean;
+  };
 }) {
   const rawToolNames = (params.toolNames ?? []).map((tool) => tool.trim());
   const canonicalToolNames = rawToolNames.filter(Boolean);
@@ -652,15 +529,22 @@ export function buildAgentSystemPrompt(params: {
     availableTools,
     citationsMode: params.memoryCitationsMode,
   });
-  const docsSection = buildDocsSection({
-    docsPath: params.docsPath,
-    isMinimal,
-    readToolName,
-  });
+  const docsSection = buildDocsSection({ docsPath: params.docsPath, isMinimal });
   const workspaceNotes = (params.workspaceNotes ?? []).map((note) => note.trim()).filter(Boolean);
   const hasModelAliases =
     !!params.modelAliasLines && params.modelAliasLines.length > 0 && !isMinimal;
   const contextFiles = partitionContextFiles(params.contextFiles ?? []);
+  const sectionPolicy = {
+    group: params.sessionContext?.group ?? (promptMode === "full" && !!extraSystemPrompt),
+    heartbeat: contextFiles.volatile.some((file) => contextFileBaseName(file) === "heartbeat.md"),
+    github:
+      params.sessionContext?.githubAvailable ??
+      (availableTools.has("github") || /<name>github<\/name>/.test(skillsPrompt ?? "")),
+  };
+  const stableContextFiles = contextFiles.stable.map((file) =>
+    prepareContextFile(file, sectionPolicy),
+  );
+  const omittedSectionsLine = renderOmittedSectionsLine(stableContextFiles);
 
   // For "none" mode, return just the basic identity line
   if (promptMode === "none") {
@@ -694,22 +578,15 @@ export function buildAgentSystemPrompt(params: {
           "- subagents: list/steer/kill sub-agent runs",
           '- session_status: show usage/time/model state and answer "what model are we using?"',
         ].join("\n"),
-    "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
-    "Each tool's purpose and parameters are in its definition; do not expect a prose summary here.",
+    "Each tool's purpose and parameters are in its definition (TOOLS.md is user guidance, not the availability list).",
     `For long waits, avoid rapid poll loops: use ${execToolName} with enough yieldMs or ${processToolName}(action=poll, timeout=<ms>).`,
-    "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done.",
-    "Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
+    "If a task is more complex or takes longer, spawn a sub-agent. Completion is push-based: it will auto-announce when done. Do not poll `subagents list` / `sessions_list` in a loop; only check status on-demand (for intervention, debugging, or when explicitly asked).",
     "",
     "## Tool Call Style",
-    "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-    "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
-    "Keep narration brief and value-dense; avoid repeating obvious steps.",
-    "Use plain human language for narration unless in a technical context.",
+    "Do not narrate routine, low-risk tool calls; narrate only when it helps (multi-step work, hard problems, sensitive actions such as deletions, or when asked), briefly and in plain language.",
     "",
     "## Work Planning",
-    "For complex or multi-step tasks, create a brief structured plan before starting.",
-    "For research (web searches, scraping, data gathering): narrate what you're looking for, share key findings as you go, and summarize before acting.",
-    "Simple tasks don't need plans — use judgment.",
+    "For complex or multi-step tasks, create a brief structured plan before starting; simple tasks don't need one. For research (web searches, scraping, data gathering) narrate what you're looking for, share key findings as you go, and summarize before acting.",
     "",
     ...buildWorkflowSection(isMinimal),
     ...safetySection,
@@ -718,31 +595,20 @@ export function buildAgentSystemPrompt(params: {
       availableTools,
     }),
     "## Bitterbot CLI Quick Reference",
-    "Bitterbot is controlled via subcommands. Do not invent commands.",
-    "To manage the Gateway daemon service (start/stop/restart):",
-    "- bitterbot gateway status",
-    "- bitterbot gateway start",
-    "- bitterbot gateway stop",
-    "- bitterbot gateway restart",
-    "If unsure, ask the user to run `bitterbot help` (or `bitterbot gateway --help`) and paste the output.",
+    "Bitterbot is controlled via subcommands. Do not invent commands. Gateway daemon: `bitterbot gateway status`, `bitterbot gateway start`, `bitterbot gateway stop`, `bitterbot gateway restart`. If unsure, ask the user to run `bitterbot help` (or `bitterbot gateway --help`) and paste the output.",
     "",
     ...skillsSection,
     ...memorySection,
     // Skip self-update for subagent/none modes
     hasGateway && !isMinimal ? "## Bitterbot Self-Update" : "",
     hasGateway && !isMinimal
-      ? [
-          "Get Updates (self-update) is ONLY allowed when the user explicitly asks for it.",
-          "Do not run config.apply or update.run unless the user explicitly requests an update or config change; if it's not explicit, ask first.",
-          "Actions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart).",
-          "After restart, Bitterbot pings the last active session automatically.",
-        ].join("\n")
+      ? "update.run (self-update) and config.apply are ONLY allowed when the user explicitly asks; otherwise ask first. Actions: config.get, config.schema, config.apply (validate + write full config, then restart), update.run (update deps or git, then restart). After a restart Bitterbot pings the last active session."
       : "",
     "",
     // Skip model aliases for subagent/none modes
     hasModelAliases ? "## Model Aliases" : "",
     hasModelAliases
-      ? "Prefer aliases when specifying model overrides; full provider/model is also accepted."
+      ? "Prefer aliases when specifying model overrides (full provider/model also accepted):"
       : "",
     hasModelAliases ? (params.modelAliasLines ?? []).join("\n") : "",
     "",
@@ -758,15 +624,14 @@ export function buildAgentSystemPrompt(params: {
     ...buildSandboxSection(params.sandboxInfo),
     ...buildUserIdentitySection(ownerLine, isMinimal),
     "## Workspace Files (injected)",
-    "These user-editable files are loaded by Bitterbot and included below in Project Context.",
+    "User-editable workspace files are included below under Project Context.",
+    omittedSectionsLine ?? "",
     "",
     ...buildReplyTagsSection(isMinimal),
     ...buildMessagingSection({
       isMinimal,
       availableTools,
       messageChannelOptions,
-      inlineButtonsEnabled,
-      runtimeChannel,
       messageToolHints: params.messageToolHints,
     }),
     ...buildVoiceSection({ isMinimal, ttsHint: params.ttsHint }),
@@ -779,22 +644,14 @@ export function buildAgentSystemPrompt(params: {
   // without dates/counts, the block only moves when a fact changes, so it
   // belongs in the cached half.
   stable.push(...(params.canonicalFacts ? [params.canonicalFacts, ""] : []));
-  stable.push(...buildStableProjectContext(contextFiles.stable));
+  stable.push(...buildStableProjectContext(stableContextFiles));
 
   // Skip silent replies for subagent/none modes
   if (!isMinimal) {
     stable.push(
       "## Silent Replies",
       `When you have nothing to say, respond with ONLY: ${SILENT_REPLY_TOKEN}`,
-      "",
-      "⚠️ Rules:",
-      "- It must be your ENTIRE message — nothing else",
-      `- Never append it to an actual response (never include "${SILENT_REPLY_TOKEN}" in real replies)`,
-      "- Never wrap it in markdown or code blocks",
-      "",
-      `❌ Wrong: "Here's help... ${SILENT_REPLY_TOKEN}"`,
-      `❌ Wrong: "${SILENT_REPLY_TOKEN}"`,
-      `✅ Right: ${SILENT_REPLY_TOKEN}`,
+      `It must be your ENTIRE message: never append it to a real reply (never include "${SILENT_REPLY_TOKEN}" in real replies) and never wrap it in markdown or code blocks.`,
       "",
     );
   }
@@ -804,10 +661,7 @@ export function buildAgentSystemPrompt(params: {
     stable.push(
       "## Heartbeats",
       heartbeatPromptLine,
-      "If you receive a heartbeat poll (a user message matching the heartbeat prompt above), and there is nothing that needs attention, reply exactly:",
-      "HEARTBEAT_OK",
-      'Bitterbot treats a leading/trailing "HEARTBEAT_OK" as a heartbeat ack (and may discard it).',
-      'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.',
+      'On a heartbeat poll (a user message matching that prompt) with nothing needing attention, reply exactly HEARTBEAT_OK and nothing else (a leading/trailing "HEARTBEAT_OK" is treated as the ack and may be discarded). If something needs attention, reply with the alert text and do NOT include "HEARTBEAT_OK".',
       "",
     );
   }
@@ -833,6 +687,7 @@ export function buildAgentSystemPrompt(params: {
     ...buildTimeSection({ userTimezone }),
     ...buildVolatileProjectContext(contextFiles.volatile),
     "## Runtime",
+    ...buildInlineButtonsLine({ isMinimal, availableTools, inlineButtonsEnabled, runtimeChannel }),
     buildRuntimeLine(runtimeInfo, runtimeChannel, runtimeCapabilities, params.defaultThinkLevel),
     `Reasoning: ${reasoningLevel} (hidden unless on/stream). Toggle /reasoning; /status shows Reasoning when enabled.`,
   );

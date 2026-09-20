@@ -5,6 +5,11 @@
  *   read it back, per lane; warn at >= $1/day, fail at >= $5/day.
  * - heartbeat cost and cost of pass (7d): what the heartbeat lane cost per delivered message.
  * - idle-day floor (14d): the cheapest day with zero real turns, naming the lane that set it.
+ * - hot-set proof (7d): direct / use_tool / native-search tool calls and promotion candidates
+ *   (warn when a deferred tool is reached indirectly 5+ times a week).
+ * - tool results spilled (7d): count and average size of results that overflowed to disk.
+ * - prefix stability (7d): warn when any session's cached prefix changed between turns
+ *   less than 60 min apart, with the likely tier (tools | system).
  *
  * Pure over the ledger (plus the heartbeat considerations log for deliveries) so the checks
  * are testable with an in-memory database.
@@ -18,6 +23,15 @@ import { __considerationsConsts } from "./heartbeat-considerations.js";
 import { describeUsageFeature, USAGE_FEATURES } from "./usage-features.js";
 import { formatUsageDay } from "./usage-ledger.types.js";
 import { buildCacheHealth, describeUnreadCacheTip } from "./usage-summary.js";
+import {
+  buildPrefixStability,
+  buildToolTelemetry,
+  describeHotSet,
+  describePrefixStability,
+  describePromoteTip,
+  describeSpilled,
+  PREFIX_STABILITY_TIP,
+} from "./usage-tool-telemetry.js";
 
 const DAY_MS = 24 * 60 * 60_000;
 const SEP = String.fromCharCode(1);
@@ -203,10 +217,74 @@ export function idleDayFloorCheck(params: {
   return { level: "info", message };
 }
 
+/**
+ * Hot-set proof (7d): direct vs use_tool vs native-search counts and the deferred tools the
+ * agent keeps reaching indirectly. Info unless a tool crosses the promotion threshold.
+ */
+export function hotSetCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const t = buildToolTelemetry(params.ledger, {
+    startMs: params.nowMs - days * DAY_MS,
+    endMs: params.nowMs,
+  });
+  if (t.calls === 0) {
+    return { level: "info", message: `hot-set: no tool calls recorded in the last ${days}d` };
+  }
+  const tip = describePromoteTip(t);
+  return {
+    level: tip ? "warn" : "info",
+    message: tip ? `${describeHotSet(t, days)}. ${tip}` : describeHotSet(t, days),
+  };
+}
+
+export function spilledResultsCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const t = buildToolTelemetry(params.ledger, {
+    startMs: params.nowMs - days * DAY_MS,
+    endMs: params.nowMs,
+  });
+  return { level: t.spilled.calls > 0 ? "info" : "ok", message: describeSpilled(t, days) };
+}
+
+/** Warn when any session changed its cached prefix between turns less than an hour apart. */
+export function prefixStabilityCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const p = buildPrefixStability(params.ledger, {
+    startMs: params.nowMs - days * DAY_MS,
+    endMs: params.nowMs,
+  });
+  if (p.changed.length > 0) {
+    return {
+      level: "warn",
+      message: `${describePrefixStability(p, days)}. Tip: ${PREFIX_STABILITY_TIP}`,
+    };
+  }
+  return { level: p.sessions > 0 ? "ok" : "info", message: describePrefixStability(p, days) };
+}
+
 export function collectUsageDoctorLines(params: {
   ledger: UsageLedger;
   nowMs: number;
   considerationsDir?: string;
 }): UsageDoctorLine[] {
-  return [unreadCacheWriteCheck(params), heartbeatCostCheck(params), idleDayFloorCheck(params)];
+  return [
+    unreadCacheWriteCheck(params),
+    heartbeatCostCheck(params),
+    idleDayFloorCheck(params),
+    hotSetCheck(params),
+    spilledResultsCheck(params),
+    prefixStabilityCheck(params),
+  ];
 }

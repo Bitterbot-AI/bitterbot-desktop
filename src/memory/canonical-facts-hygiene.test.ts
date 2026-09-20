@@ -30,6 +30,8 @@ describe("canonical-facts hygiene", () => {
       ["project.date", "2026-08-15"],
       ["project.time", "2026-08-15 16:02:00"],
       ["preference.reply_on_no_attention", "HEARTBEAT_OK"],
+      ["identity.user_name", "If nothing needs attention, the user requests to reply HEARTBEAT_OK"],
+      ["identity.user_name", "not stated"],
     ];
     for (const [k, v] of junk) {
       expect(isHeartbeatArtifact(k, v), `${k}=${v}`).toBe(true);

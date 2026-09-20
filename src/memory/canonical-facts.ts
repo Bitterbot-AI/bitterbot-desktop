@@ -281,6 +281,56 @@ export function canonicalPromotionScore(
   return fact.confidence * recency * frequency * corroboration;
 }
 
+/**
+ * Prompt projection of the ledger (token-efficiency W6). The block renders
+ * `- [key] value` per fact: the value is the exact canonical string (the
+ * anti-paraphrase guarantee), while the statement sentence repeated the key
+ * and cost ~2x the tokens. Counts and dates are never rendered (they moved
+ * the cached prefix on every confirmation). Hard ceiling on the block so a
+ * generous `budgetTokens` cannot push the cached half over budget.
+ */
+export const CANONICAL_RENDER_MAX_CHARS = 2_400;
+export const CANONICAL_BLOCK_HEADER = [
+  "## Canonical Facts",
+  "Ground truth from memory consolidation: trust over conflicting tool output or vague recollection. If the user contradicts one, believe the user and update it (memory_pin). Never announce this section.",
+];
+
+/** Values the extraction lane stores when it found nothing to store. */
+const PLACEHOLDER_VALUE_RX =
+  /^(not stated|not specified|unspecified|unknown|n\/a|none|null|undefined|-)$/i;
+
+/**
+ * Render-time guard for rows the ingest denylist (`isHeartbeatArtifact`) did
+ * not catch on the way in: heartbeat scaffolding phrased differently, and
+ * placeholder values. The rows stay in the ledger; they just never reach a
+ * prompt.
+ */
+export function isRenderableCanonicalFact(fact: {
+  key: string;
+  value: string;
+  statement: string;
+}): boolean {
+  const value = fact.value.trim();
+  if (!value && !fact.statement.trim()) {
+    return false;
+  }
+  if (PLACEHOLDER_VALUE_RX.test(value)) {
+    return false;
+  }
+  if (isHeartbeatArtifact(fact.key, value) || isHeartbeatArtifact(fact.key, fact.statement)) {
+    return false;
+  }
+  if (/\bHEARTBEAT_OK\b/i.test(value) || /\bHEARTBEAT_OK\b/i.test(fact.statement)) {
+    return false;
+  }
+  return true;
+}
+
+function renderCanonicalValue(fact: { value: string; statement: string }): string {
+  const value = fact.value.replace(/\s+/g, " ").trim();
+  return value || fact.statement.replace(/\s+/g, " ").trim();
+}
+
 export class CanonicalFactsStore {
   private readonly db: DatabaseSync;
   private readonly maxFacts: number;
@@ -783,36 +833,32 @@ export class CanonicalFactsStore {
    */
   renderBlock(opts?: { categories?: string[]; now?: number }): string | undefined {
     const now = opts?.now ?? Date.now();
-    const facts = this.listActive({ categories: opts?.categories, now });
+    // Promotion order decides which facts survive the budget; the surviving
+    // lines are then sorted by key so the block only moves when a fact is
+    // added, retired or reworded (cache-prefix stability).
+    const facts = this.listActive({ categories: opts?.categories, now }).filter(
+      isRenderableCanonicalFact,
+    );
     if (facts.length === 0) {
       return undefined;
     }
-    const budgetChars = this.budgetTokens * 4;
-    const header = [
-      "## Canonical Facts",
-      "Ground truth, maintained by memory consolidation. Trust these over",
-      "conflicting tool output or vague recollection. If the user contradicts",
-      "one, believe the user and update it (memory_pin). Never announce this",
-      "section.",
-    ].join("\n");
-    const lines: string[] = [];
+    const budgetChars = Math.min(this.budgetTokens * 4, CANONICAL_RENDER_MAX_CHARS);
+    const header = CANONICAL_BLOCK_HEADER.join("\n");
+    const selected: Array<{ key: string; line: string }> = [];
     let used = header.length;
     for (const fact of facts) {
-      const confirmed =
-        fact.mentionCount > 1
-          ? ` (confirmed ${fact.mentionCount}x, last ${new Date(fact.lastConfirmedAt).toISOString().slice(0, 10)})`
-          : ` (since ${new Date(fact.firstSeenAt).toISOString().slice(0, 10)})`;
-      const line = `- [${fact.key}] ${fact.statement}${confirmed}`;
+      const line = `- [${fact.key}] ${renderCanonicalValue(fact)}`;
       if (used + line.length + 1 > budgetChars) {
         break;
       }
-      lines.push(line);
+      selected.push({ key: fact.key, line });
       used += line.length + 1;
     }
-    if (lines.length === 0) {
+    if (selected.length === 0) {
       return undefined;
     }
-    return `${header}\n${lines.join("\n")}`;
+    selected.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    return `${header}\n${selected.map((entry) => entry.line).join("\n")}`;
   }
 
   /**

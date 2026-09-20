@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { isHeartbeatPromptText as classifyIsHeartbeatPrompt } from "../infra/usage-transcript-classify.js";
+import { isHeartbeatPromptText as prepIsHeartbeatPrompt } from "../memory/session-transcript-prep.js";
 import {
   DEFAULT_HEARTBEAT_ACK_MAX_CHARS,
+  HEARTBEAT_PROMPT,
+  HEARTBEAT_PROMPT_ACK_SENTENCE,
+  HEARTBEAT_PROMPT_PREFIX,
   isHeartbeatContentEffectivelyEmpty,
   stripHeartbeatToken,
 } from "./heartbeat.js";
@@ -298,5 +303,62 @@ describe("isHeartbeatContentEffectivelyEmpty – hardened placeholders (token-ef
     expect(
       isHeartbeatContentEffectivelyEmpty("Nothing to do until the report lands; then send it"),
     ).toBe(false);
+  });
+});
+
+describe("HEARTBEAT_PROMPT (2026-09-20 exact-ack sentence)", () => {
+  it("keeps the historical prompt as an unchanged prefix and appends the exact-ack sentence", () => {
+    expect(HEARTBEAT_PROMPT_PREFIX).toBe(
+      "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+    );
+    expect(HEARTBEAT_PROMPT.startsWith(HEARTBEAT_PROMPT_PREFIX)).toBe(true);
+    expect(HEARTBEAT_PROMPT.endsWith(HEARTBEAT_PROMPT_ACK_SENTENCE)).toBe(true);
+    expect(HEARTBEAT_PROMPT_ACK_SENTENCE).toContain("exactly HEARTBEAT_OK and nothing else");
+    expect(HEARTBEAT_PROMPT).toBe(`${HEARTBEAT_PROMPT_PREFIX} ${HEARTBEAT_PROMPT_ACK_SENTENCE}`);
+  });
+
+  it("transcript classifiers still recognise both the historical and the new user turn", () => {
+    const timeLine = "\nCurrent time: Sunday, September 20th, 2026 — 2:31 AM (UTC)";
+    const historical = `${HEARTBEAT_PROMPT_PREFIX}${timeLine}`;
+    const current = `${HEARTBEAT_PROMPT}${timeLine}`;
+    // memory/session-transcript-prep matches on content, not a prefix.
+    expect(prepIsHeartbeatPrompt(historical)).toBe(true);
+    expect(prepIsHeartbeatPrompt(current)).toBe(true);
+    // infra/usage-transcript-classify matches startsWith(prompt): the frozen
+    // prefix covers both generations; the full new prompt only covers the new one.
+    expect(classifyIsHeartbeatPrompt(historical, [HEARTBEAT_PROMPT_PREFIX])).toBe(true);
+    expect(classifyIsHeartbeatPrompt(current, [HEARTBEAT_PROMPT_PREFIX])).toBe(true);
+    expect(classifyIsHeartbeatPrompt(current, [HEARTBEAT_PROMPT])).toBe(true);
+    expect(classifyIsHeartbeatPrompt(historical, [HEARTBEAT_PROMPT])).toBe(false);
+  });
+});
+
+describe("stripHeartbeatToken: narration before a markdown-bold ack (live run 2026-09-20)", () => {
+  const narration = "Checked HEARTBEAT.md. No tasks listed, nothing pending.";
+
+  it("treats narration + **HEARTBEAT_OK** as an ack when the narration fits ackMaxChars", () => {
+    expect(
+      stripHeartbeatToken(`${narration}\n\n**${HEARTBEAT_TOKEN}**`, { mode: "heartbeat" }),
+    ).toEqual({ shouldSkip: true, text: "", didStrip: true });
+    expect(
+      stripHeartbeatToken(`**${HEARTBEAT_TOKEN}**\n\n${narration}`, { mode: "heartbeat" }),
+    ).toEqual({ shouldSkip: true, text: "", didStrip: true });
+  });
+
+  it("leaves no emphasis residue when the bold token is stripped from a message", () => {
+    expect(stripHeartbeatToken(`${narration} **${HEARTBEAT_TOKEN}**`, { mode: "message" })).toEqual(
+      { shouldSkip: false, text: narration, didStrip: true },
+    );
+    expect(stripHeartbeatToken(`__${HEARTBEAT_TOKEN}__ ${narration}`, { mode: "message" })).toEqual(
+      { shouldSkip: false, text: narration, didStrip: true },
+    );
+  });
+
+  it("still delivers narration that exceeds ackMaxChars even with a bold ack (why the prompt now demands an exact ack)", () => {
+    const long = "word ".repeat(DEFAULT_HEARTBEAT_ACK_MAX_CHARS).trim();
+    const result = stripHeartbeatToken(`${long}\n\n**${HEARTBEAT_TOKEN}**`, { mode: "heartbeat" });
+    expect(result.shouldSkip).toBe(false);
+    expect(result.didStrip).toBe(true);
+    expect(result.text).toBe(long);
   });
 });

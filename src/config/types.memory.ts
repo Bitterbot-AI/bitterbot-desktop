@@ -59,6 +59,24 @@ export type MemoryConfig = {
     /** Approximate token budget for the rendered prompt block (default: 1500). */
     budgetTokens?: number;
   };
+  /**
+   * Token-efficiency item 3: route latency-tolerant hidden lanes through the Anthropic
+   * Message Batches API (50% of the standard price). A lane call submits one batch, polls
+   * with backoff, and falls back to the live call on timeout or any error, so no lane
+   * stalls. Only anthropic API-key models qualify; other providers take the live path.
+   */
+  batch?: {
+    /** Kill switch (default: true). */
+    enabled?: boolean;
+    /**
+     * Ledger feature ids routed through batches. Default: memory/dream, memory/extraction,
+     * memory/discovery, skills/evolution (judge + maintainer; the proposer ReAct loop and
+     * on-demand RPC lanes always run live).
+     */
+    lanes?: string[];
+    /** Wall-clock cap per call before the batch is canceled and the live call runs (default: 20). */
+    maxWaitMinutes?: number;
+  };
   /** Session fact extraction pipeline (Mem0/Hindsight-inspired). */
   extraction?: {
     /** Enable LLM-powered fact extraction from session transcripts (default: true). */

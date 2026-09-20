@@ -11,6 +11,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  CANONICAL_RENDER_MAX_CHARS,
   CanonicalFactsStore,
   canonicalPromotionScore,
   normalizeCanonicalKey,
@@ -182,11 +183,15 @@ describe("renderBlock", () => {
     });
     const block = store.renderBlock();
     expect(block).toContain("## Canonical Facts");
-    expect(block).toContain(
-      "[project.repo] The project repository is github.com/Bitterbot-AI/bitterbot-desktop.",
-    );
-    expect(block).toContain("confirmed 2x");
-    expect(block).toContain("[identity.user_name]");
+    // W6: `- [key] value`, sorted by key, no counts or dates (they moved the
+    // cached prefix on every confirmation) and no statement sentence (which
+    // repeated the key and doubled the token cost).
+    expect(block).toContain("- [identity.user_name] Victor");
+    expect(block).toContain("- [project.repo] github.com/Bitterbot-AI/bitterbot-desktop");
+    expect(block).not.toContain("confirmed 2x");
+    expect(block).not.toMatch(/\(since \d{4}/);
+    expect(block).not.toContain("The project repository is");
+    expect(block?.indexOf("[identity.user_name]")).toBeLessThan(block!.indexOf("[project.repo]"));
     // Exact string survives verbatim — the anti-paraphrase guarantee.
     expect(block).toContain("github.com/Bitterbot-AI/bitterbot-desktop");
   });
@@ -222,8 +227,34 @@ describe("renderBlock", () => {
     expect(block.length).toBeLessThanOrEqual(400 + 10);
     // No truncated mid-line entries: every fact line is complete.
     for (const line of block.split("\n").filter((l) => l.startsWith("- ["))) {
-      expect(line).toMatch(/\(since \d{4}-\d{2}-\d{2}\)$/);
+      expect(line).toMatch(/^- \[k\.fact\d+\] value-\d+$/);
     }
+  });
+
+  it("never renders heartbeat scaffolding or placeholder values, whatever key they hide under", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db);
+    store.pin({ key: "identity.user_name", value: "not stated", source: "extraction" });
+    store.pin({
+      key: "identity.user_name_2",
+      value: "If nothing needs attention, the user requests to reply HEARTBEAT_OK.",
+      source: "agent_pin",
+    });
+    store.pin({ key: "identity.user.name", value: "Victor M. Gil", source: "agent_pin" });
+    const block = store.renderBlock()!;
+    expect(block).toContain("- [identity.user.name] Victor M. Gil");
+    expect(block).not.toContain("not stated");
+    expect(block).not.toContain("HEARTBEAT_OK");
+    expect(block.split("\n- [").length - 1).toBe(1);
+  });
+
+  it("caps the rendered block regardless of a generous budgetTokens", () => {
+    const db = makeDb();
+    const store = new CanonicalFactsStore(db, { budgetTokens: 100_000 });
+    for (let i = 0; i < 48; i++) {
+      store.pin({ key: `k.fact${i}`, value: "v".repeat(120), source: "agent_pin" });
+    }
+    expect(store.renderBlock()!.length).toBeLessThanOrEqual(CANONICAL_RENDER_MAX_CHARS);
   });
 });
 

@@ -7,7 +7,12 @@ import { resolveStateDir } from "../config/paths.js";
 import { resolveUserPath } from "../utils.js";
 import { parseBooleanValue } from "../utils/boolean.js";
 import { safeJsonStringify } from "../utils/safe-json.js";
-import { digestSystemPromptHalves, digestToolDefinitions } from "./system-prompt-cache-boundary.js";
+import {
+  digestSystemPromptHalves,
+  digestToolDefinitions,
+  sha256Hex,
+  splitSystemPromptAtBoundary,
+} from "./system-prompt-cache-boundary.js";
 
 export type CacheTraceStage =
   | "session:loaded"
@@ -61,11 +66,73 @@ export type CacheTraceEvent = {
 };
 
 export type CacheTrace = {
-  enabled: true;
+  /**
+   * True when the JSONL trace is being written (`BITTERBOT_CACHE_TRACE=1` or
+   * `diagnostics.cacheTrace.enabled`). When false the trace is digest-only: `recordStage`
+   * is a no-op and `wrapStreamFn` computes just the two cheap prefix digests per request
+   * for the usage ledger (`prefix_digest`, `tools_digest`). It never returns null so the
+   * ledger telemetry does not depend on the diagnostics flag.
+   */
+  enabled: boolean;
   filePath: string;
   recordStage: (stage: CacheTraceStage, payload?: Partial<CacheTraceEvent>) => void;
   wrapStreamFn: (streamFn: StreamFn) => StreamFn;
 };
+
+/** Prefix digests of the most recent request of a run, read by the usage-ledger hook. */
+export type RunPrefixDigests = {
+  /** SHA-256 of the stable system block (text above the cache boundary marker). */
+  prefixDigest?: string;
+  /** SHA-256 of the sorted tool names sent with the request. */
+  toolsDigest?: string;
+  at: number;
+};
+
+const RUN_PREFIX_DIGESTS_MAX = 512;
+const runPrefixDigests = new Map<string, RunPrefixDigests>();
+
+/** The two cheap digests: stable system block and sorted tool names. Pure; exported for tests. */
+export function computePrefixDigests(
+  system: unknown,
+  tools: ReadonlyArray<{ name?: unknown }> | undefined,
+): Omit<RunPrefixDigests, "at"> {
+  const out: Omit<RunPrefixDigests, "at"> = {};
+  if (typeof system === "string" && system.length > 0) {
+    out.prefixDigest = sha256Hex(splitSystemPromptAtBoundary(system).stable);
+  }
+  if (Array.isArray(tools) && tools.length > 0) {
+    const names = tools
+      .map((tool) => (typeof tool?.name === "string" ? tool.name : ""))
+      .filter((name) => name.length > 0)
+      .toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (names.length > 0) {
+      out.toolsDigest = sha256Hex(JSON.stringify(names));
+    }
+  }
+  return out;
+}
+
+function publishRunPrefixDigests(key: string | undefined, digests: Omit<RunPrefixDigests, "at">) {
+  if (!key) {
+    return;
+  }
+  if (runPrefixDigests.size >= RUN_PREFIX_DIGESTS_MAX && !runPrefixDigests.has(key)) {
+    const oldest = runPrefixDigests.keys().next().value;
+    if (oldest !== undefined) {
+      runPrefixDigests.delete(oldest);
+    }
+  }
+  runPrefixDigests.set(key, { ...digests, at: Date.now() });
+}
+
+/** Digests of the latest request sent under `runId` (or session key), if any. */
+export function getRunPrefixDigests(runId: string | undefined): RunPrefixDigests | undefined {
+  return runId ? runPrefixDigests.get(runId) : undefined;
+}
+
+export function resetRunPrefixDigestsForTest(): void {
+  runPrefixDigests.clear();
+}
 
 type CacheTraceInit = {
   cfg?: BitterbotConfig;
@@ -200,10 +267,33 @@ function summarizeMessages(messages: AgentMessage[]): {
   };
 }
 
-export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
+export function createCacheTrace(params: CacheTraceInit): CacheTrace {
   const cfg = resolveCacheTraceConfig(params);
+  const digestKey = params.runId ?? params.sessionKey;
   if (!cfg.enabled) {
-    return null;
+    // Digest-only mode: no file, no per-message fingerprints; just the two prefix digests the
+    // usage ledger stores on every chat row.
+    return {
+      enabled: false,
+      filePath: cfg.filePath,
+      recordStage: () => undefined,
+      wrapStreamFn: (streamFn) => (model, context, options) => {
+        try {
+          const ctx = context as {
+            system?: unknown;
+            systemPrompt?: string;
+            tools?: Array<{ name: string }>;
+          };
+          publishRunPrefixDigests(
+            digestKey,
+            computePrefixDigests(ctx.systemPrompt ?? ctx.system, ctx.tools),
+          );
+        } catch {
+          // Telemetry only.
+        }
+        return streamFn(model, context, options);
+      },
+    };
   }
 
   const writer = params.writer ?? getWriter(cfg.filePath);
@@ -314,6 +404,14 @@ export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
         messages: ctx.messages ?? [],
         options: (options ?? {}) as Record<string, unknown>,
       });
+      try {
+        publishRunPrefixDigests(
+          digestKey,
+          computePrefixDigests(ctx.systemPrompt ?? ctx.system, ctx.tools),
+        );
+      } catch {
+        // Telemetry only.
+      }
       const out = streamFn(model, context, options);
       // Hook the final assistant message for cache_read / cache_write. The
       // stream is consumed by the agent loop as usual; result() only awaits

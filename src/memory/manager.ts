@@ -2813,18 +2813,25 @@ export class MemoryIndexManager implements MemorySearchManager {
         const evo = this.cfg.skills?.evolution;
         const spec =
           evo?.proposerModel ?? evo?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
+        // The proposer's ReAct loop is many dependent round-trips: never the Batches API.
         const call = spec
-          ? this.buildLlmCallFn(spec, { maxTokens: 8192, feature: USAGE_FEATURES.skillsEvolution })
+          ? this.buildLlmCallFn(spec, {
+              maxTokens: 8192,
+              feature: USAGE_FEATURES.skillsEvolution,
+              batch: false,
+            })
           : null;
         // PLAN-44 Phase 5c: expose the lanes to on-demand gateway RPCs — the
         // same 8k evolution lane housekeeping uses, plus the proposer lane.
         const evoSpec =
           this.cfg.skills?.evolution?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
+        // On-demand RPC lanes: an operator is waiting, so no batch queue here either.
         setActiveEvolutionLlm({
           evolution: evoSpec
             ? this.buildLlmCallFn(evoSpec, {
                 maxTokens: 8192,
                 feature: USAGE_FEATURES.skillsEvolution,
+                batch: false,
               })
             : null,
           proposer: call,
@@ -3425,7 +3432,17 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private buildLlmCallFn(
     modelSpec: string,
-    opts?: { maxTokens?: number; feature?: string },
+    opts?: {
+      maxTokens?: number;
+      feature?: string;
+      /**
+       * Route through the Anthropic Message Batches API (50% price, up to
+       * `memory.batch.maxWaitMinutes` of latency, live fallback). Default: the
+       * lane decision from `memory.batch.lanes`; pass `false` for anything a
+       * user is waiting on (the proposer ReAct loop, on-demand RPC lanes).
+       */
+      batch?: boolean;
+    },
   ): ((prompt: string) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
@@ -3452,6 +3469,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         feature,
         agentId: this.agentId,
         errorPrefix: `llm error (${modelSpec})`,
+        // Token-efficiency item 3: latency-tolerant lanes (dream, extraction, discovery,
+        // evolution judge/maintainer) go through the Batches API; completeAttributed falls
+        // back to the live call on timeout or error and records batch rows at 50%.
+        ...(opts?.batch !== undefined ? { batch: opts.batch } : {}),
       });
       return text;
     };

@@ -1,3 +1,4 @@
+import type { ToolCallVia } from "../infra/usage-ledger.types.js";
 import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.js";
 import { normalizeTargetForProvider } from "../infra/outbound/target-normalization.js";
 import { MEDIA_TOKEN_RE } from "../media/parse.js";
@@ -348,4 +349,259 @@ export function extractMessagingToolSend(
         to,
       }
     : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Tool-call telemetry (hot-set proof). Pure classification over the agent
+// event stream; the subscriber wires `record` to the usage ledger.
+// ---------------------------------------------------------------------------
+
+export type ToolCallTelemetryEvent = {
+  ts: number;
+  toolCallId: string;
+  /** The tool the agent actually reached (for use_tool, the dispatched target). */
+  tool: string;
+  via: ToolCallVia;
+  ok: boolean;
+  errorClass?: string;
+  durationMs?: number;
+  /** Full result size when known (the spill marker carries the original length). */
+  resultChars?: number;
+  spilled: boolean;
+};
+
+const SPILL_MARKER_RE = /\[truncated: (\d+) chars total/;
+const NATIVE_TOOL_SEARCH_PREFIX = "tool_search_tool";
+
+/** Coarse failure class for the ledger; the full message stays in the transcript. */
+export function classifyToolErrorClass(message: string | undefined): string {
+  const text = (message ?? "").toLowerCase();
+  if (!text) {
+    return "error";
+  }
+  if (/timed? ?out|timeout|deadline/.test(text)) {
+    return "timeout";
+  }
+  if (/denied|not allowed|blocked|forbidden|policy|approval|consent|unauthori[sz]ed/.test(text)) {
+    return "denied";
+  }
+  if (/not found|unknown tool|no such tool|does not exist|enoent/.test(text)) {
+    return "not-found";
+  }
+  if (/invalid|missing required|must be|expected|schema|malformed|parse/.test(text)) {
+    return "invalid-args";
+  }
+  if (/rate limit|429|too many/.test(text)) {
+    return "rate-limit";
+  }
+  if (/network|econnrefused|econnreset|fetch failed|dns|socket/.test(text)) {
+    return "network";
+  }
+  return "error";
+}
+
+function resolveToolVia(toolName: string, args: unknown): { tool: string; via: ToolCallVia } {
+  const name = toolName.trim().toLowerCase();
+  const record = args && typeof args === "object" ? (args as Record<string, unknown>) : {};
+  if (name === "use_tool") {
+    const target =
+      typeof record.name === "string"
+        ? record.name
+        : typeof record.tool === "string"
+          ? record.tool
+          : "";
+    return { tool: target.trim() || "use_tool", via: "use_tool" };
+  }
+  if (name === "list_tools") {
+    return { tool: "list_tools", via: "list_tools" };
+  }
+  if (name.startsWith(NATIVE_TOOL_SEARCH_PREFIX)) {
+    return { tool: toolName.trim(), via: "native-search" };
+  }
+  return { tool: toolName.trim(), via: "direct" };
+}
+
+/** Size and spill state of a tool result: the marker carries the original length. */
+export function measureToolResult(result: unknown): { chars?: number; spilled: boolean } {
+  const text = extractToolResultText(result);
+  if (!text) {
+    return { spilled: false };
+  }
+  const match = SPILL_MARKER_RE.exec(text);
+  if (match) {
+    const total = Number(match[1]);
+    return { chars: Number.isFinite(total) ? total : text.length, spilled: true };
+  }
+  const record = result as { details?: { spilled?: unknown; spilledPath?: unknown } };
+  const flagged =
+    record?.details?.spilled === true || typeof record?.details?.spilledPath === "string";
+  return { chars: text.length, spilled: flagged };
+}
+
+/**
+ * Native tool search: Anthropic's `server_tool_use` blocks named `tool_search_tool_*` and the
+ * `tool_search_tool_result` blocks listing the `tool_reference`s it surfaced. One telemetry
+ * row per referenced tool (via "native-search"); a search with no references is one row
+ * named after the search tool itself.
+ */
+export function extractNativeToolSearchCalls(
+  message: unknown,
+  now: number,
+): ToolCallTelemetryEvent[] {
+  const content = (message as { content?: unknown })?.content;
+  if (!Array.isArray(content)) {
+    return [];
+  }
+  const out: ToolCallTelemetryEvent[] = [];
+  for (let i = 0; i < content.length; i += 1) {
+    const block = content[i] as Record<string, unknown> | null;
+    if (!block || typeof block !== "object") {
+      continue;
+    }
+    const type = typeof block.type === "string" ? block.type : "";
+    const name = typeof block.name === "string" ? block.name : "";
+    const isServerSearch =
+      (type === "server_tool_use" || type === "serverToolUse") &&
+      name.startsWith(NATIVE_TOOL_SEARCH_PREFIX);
+    if (!isServerSearch) {
+      continue;
+    }
+    const id = typeof block.id === "string" ? block.id : `native-${i}`;
+    const references: string[] = [];
+    let errored = false;
+    for (let j = i + 1; j < content.length; j += 1) {
+      const next = content[j] as Record<string, unknown> | null;
+      if (!next || typeof next !== "object") {
+        continue;
+      }
+      const nextType = typeof next.type === "string" ? next.type : "";
+      if (nextType !== "tool_search_tool_result" && nextType !== "toolSearchToolResult") {
+        continue;
+      }
+      if (typeof next.tool_use_id === "string" && next.tool_use_id !== id) {
+        continue;
+      }
+      const inner = next.content;
+      if (Array.isArray(inner)) {
+        for (const ref of inner) {
+          const r = ref as Record<string, unknown> | null;
+          if (r && (r.type === "tool_reference" || r.type === "toolReference")) {
+            const toolName = typeof r.tool_name === "string" ? r.tool_name : r.name;
+            if (typeof toolName === "string" && toolName.trim()) {
+              references.push(toolName.trim());
+            }
+          }
+        }
+      } else if (inner && typeof inner === "object" && "error_code" in (inner as object)) {
+        errored = true;
+      }
+      break;
+    }
+    if (references.length === 0) {
+      out.push({
+        ts: now,
+        toolCallId: id,
+        tool: name,
+        via: "native-search",
+        ok: !errored,
+        errorClass: errored ? "error" : undefined,
+        spilled: false,
+      });
+      continue;
+    }
+    for (const ref of references) {
+      out.push({
+        ts: now,
+        toolCallId: id,
+        tool: ref,
+        via: "native-search",
+        ok: true,
+        spilled: false,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Tap the raw agent events for tool telemetry. Start events remember (tool, args, time);
+ * end events classify the outcome (body-level failures count) and emit one row. Never throws.
+ */
+export function createToolCallTelemetry(
+  record: (evt: ToolCallTelemetryEvent) => void,
+  opts?: { now?: () => number },
+): { onEvent: (evt: unknown) => void; onAssistantMessage: (message: unknown) => void } {
+  const now = opts?.now ?? Date.now;
+  const starts = new Map<string, { startedAt: number; toolName: string; args: unknown }>();
+  const safeRecord = (evt: ToolCallTelemetryEvent) => {
+    try {
+      record(evt);
+    } catch {
+      // Telemetry must never affect the turn.
+    }
+  };
+  return {
+    onEvent: (raw) => {
+      const evt = raw as {
+        type?: string;
+        toolCallId?: unknown;
+        toolName?: unknown;
+        args?: unknown;
+        result?: unknown;
+        isError?: unknown;
+      };
+      if (!evt || typeof evt !== "object") {
+        return;
+      }
+      const toolCallId = typeof evt.toolCallId === "string" ? evt.toolCallId : "";
+      if (evt.type === "tool_execution_start" && toolCallId) {
+        starts.set(toolCallId, {
+          startedAt: now(),
+          toolName: typeof evt.toolName === "string" ? evt.toolName : "unknown",
+          args: evt.args,
+        });
+        if (starts.size > 256) {
+          const oldest = starts.keys().next().value;
+          if (oldest !== undefined) {
+            starts.delete(oldest);
+          }
+        }
+        return;
+      }
+      if (evt.type !== "tool_execution_end" || !toolCallId) {
+        return;
+      }
+      const start = starts.get(toolCallId);
+      starts.delete(toolCallId);
+      const toolName =
+        start?.toolName ?? (typeof evt.toolName === "string" ? evt.toolName : "unknown");
+      const { tool, via } = resolveToolVia(toolName, start?.args);
+      const outcome = classifyToolResultOutcome(evt.result);
+      const failed = evt.isError === true || outcome === "error";
+      const measured = measureToolResult(evt.result);
+      const ts = now();
+      safeRecord({
+        ts,
+        toolCallId,
+        tool,
+        via,
+        ok: !failed,
+        errorClass: failed
+          ? classifyToolErrorClass(extractToolErrorMessage(evt.result))
+          : undefined,
+        durationMs: start ? Math.max(0, ts - start.startedAt) : undefined,
+        resultChars: measured.chars,
+        spilled: measured.spilled,
+      });
+    },
+    onAssistantMessage: (message) => {
+      try {
+        for (const evt of extractNativeToolSearchCalls(message, now())) {
+          safeRecord(evt);
+        }
+      } catch {
+        // Telemetry only.
+      }
+    },
+  };
 }

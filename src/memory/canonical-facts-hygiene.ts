@@ -24,9 +24,15 @@ const PROMPT_RX =
 // Time-line junk the same lane produces from the "Current time:" suffix.
 const CLOCK_KEY_RX = /^(project|session|context)\.(date|time|datetime|current_time)$/i;
 
+const ANY_HEARTBEAT_TEXT_RX = /heartbeat_ok|heartbeat\.md/i;
+const PLACEHOLDER_VALUE_RX = /^(not stated|not specified|unknown|none|n\/a|unspecified|tbd)\.?$/i;
+
 export function isHeartbeatArtifact(key: string, value: string): boolean {
   const k = key.trim();
   const v = value.trim();
+  if (ANY_HEARTBEAT_TEXT_RX.test(v) || PLACEHOLDER_VALUE_RX.test(v)) {
+    return true;
+  }
   if (KEY_RX.test(k)) {
     return true;
   }

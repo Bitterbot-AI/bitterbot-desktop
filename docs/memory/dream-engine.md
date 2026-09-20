@@ -501,6 +501,39 @@ Counters persist in `memory_meta` (`dream_gate.*`) so they survive restarts. Exp
 
 ---
 
+## Batch lanes (token-efficiency item 3)
+
+The dream engine's LLM calls do not answer anyone in real time, so they go through the
+Anthropic Message Batches API at 50% of the standard price. `buildLlmCallFn` in
+`src/memory/manager.ts` passes the lane's ledger feature to `completeAttributed`, which
+decides per call: submit one Message Batch (`POST /v1/messages/batches`, one request), poll
+with backoff (3s growing to 30s) until `processing_status` is `ended`, fetch the JSONL
+results by `custom_id`, and return the message. On timeout, abort or any error the batch is
+canceled (`POST .../cancel`, best effort) and the same call runs live, so a lane can be
+slower but never stalls. Prompt caching works inside batches; the ledger records the rows
+with `batch = 1` and the cache split as reported.
+
+| Key                           | Default                                                                         | Meaning                                               |
+| ----------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `memory.batch.enabled`        | `true`                                                                          | Kill switch for batching                              |
+| `memory.batch.lanes`          | `["memory/dream", "memory/extraction", "memory/discovery", "skills/evolution"]` | Ledger feature ids routed through batches             |
+| `memory.batch.maxWaitMinutes` | `20`                                                                            | Wall-clock cap per call before cancel + live fallback |
+
+Routed: every dream mode (generator, synthesis, working-memory rewrite), session fact
+extraction, the discovery agent, and the skill-evolution judge/maintainer lane. Never
+routed: the proposer ReAct loop (many dependent round-trips), the on-demand evolution RPC
+lanes an operator is waiting on, `tasks/judge`, continuity/recall, the memory planner, and
+anything on a user turn. Only `anthropic` models with an API key qualify; OAuth tokens,
+other providers, local tiers and prompts with images take the live path unchanged. A base
+URL that refuses the endpoint (401/403/404) is skipped for an hour.
+
+Latency: a full dream cycle holds the maintenance mutex while its calls wait, so with
+`maxLlmCallsPerCycle` sequential calls the cycle can take up to `calls x maxWaitMinutes` in
+the worst case (most single-request batches end within minutes). Consolidation queued
+behind it waits; user turns are unaffected.
+
+---
+
 ## Configuration Reference
 
 ```typescript

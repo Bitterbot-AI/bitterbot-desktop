@@ -54,8 +54,10 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
       peersByTier: { edge: 4 },
     });
     const text = buildEconomicIdentitySection().join("\n");
-    expect(text).toContain("### Forage (bounty economy)");
+    expect(text).toContain("Forage bounty economy");
     expect(text).toMatch(/call the `forage` tool/);
+    // Progressive disclosure (W6): the long form lives in the bundled skill.
+    expect(text).toContain("skill `forage-economy`");
     expect(text).toContain("'forge'");
     expect(text).toContain("Night Shift");
     expect(text).toContain("You cannot post bounties yourself");
@@ -65,9 +67,9 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
 
   it("disabled/offline states do NOT advertise the forage tool", () => {
     // disabled (default snapshot)
-    expect(buildEconomicIdentitySection().join("\n")).not.toContain("### Forage");
+    expect(buildEconomicIdentitySection().join("\n")).not.toContain("Forage");
     patchP2pStatus({ enabled: true, connected: false, lastError: "ENOENT" });
-    expect(buildEconomicIdentitySection().join("\n")).not.toContain("### Forage");
+    expect(buildEconomicIdentitySection().join("\n")).not.toContain("Forage");
   });
 
   it("connected state — identity bits render, live counters never do (cache prefix stability)", () => {
@@ -87,7 +89,7 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
 
     // Identity line: truncated peer id + tier (stable per process)
     expect(text).toContain(
-      "You are connected to the network (you are 12D3KooWQM…HJVM, edge tier).",
+      "You are connected to the P2P skills marketplace (you are 12D3KooWQM…HJVM, edge tier)",
     );
 
     // Token-efficiency W4: no peer count, health %, pulse or anomaly count in
@@ -134,7 +136,7 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
       networkHealthScore: null,
     });
     const text = buildEconomicIdentitySection().join("\n");
-    expect(text).toContain("You are connected to the network.");
+    expect(text).toContain("You are connected to the P2P skills marketplace and earn USDC");
     expect(text).not.toContain("Network health");
     expect(text).not.toContain("Recent network pulse");
   });

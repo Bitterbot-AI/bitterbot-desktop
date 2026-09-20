@@ -155,7 +155,7 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("Tools: Exec, Read, process");
     expect(prompt).not.toContain("Read file contents");
     expect(prompt).toContain(
-      "- If exactly one skill clearly applies: read its SKILL.md at <location> with `Read`, then follow it.",
+      "- If exactly one skill clearly applies: read its SKILL.md (at <location>, or the default location) with `Read`, then follow it.",
     );
     expect(prompt).toContain("Bitterbot docs: /tmp/bitterbot/docs");
     expect(prompt).toContain(
@@ -289,7 +289,7 @@ describe("buildAgentSystemPrompt", () => {
 
     expect(prompt).toContain("## Skills");
     expect(prompt).toContain(
-      "- If exactly one skill clearly applies: read its SKILL.md at <location> with `read`, then follow it.",
+      "- If exactly one skill clearly applies: read its SKILL.md (at <location>, or the default location) with `read`, then follow it.",
     );
   });
 
@@ -352,7 +352,8 @@ describe("buildAgentSystemPrompt", () => {
       toolNames: ["message"],
     });
 
-    expect(prompt).toContain("message: Send messages and channel actions");
+    // Token-efficiency W4: names only in Tooling; the message guidance is its own subsection.
+    expect(prompt).toContain("Tools: message");
     expect(prompt).toContain("### message tool");
     expect(prompt).toContain("respond with ONLY: NO_REPLY");
   });
