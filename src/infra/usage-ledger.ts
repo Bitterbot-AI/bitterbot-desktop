@@ -473,9 +473,39 @@ export class UsageLedger {
       );
     const changes = Number(result.changes ?? 0);
     if (changes === 0) {
+      if (evt.source === "live" && evt.dedupeKey) {
+        this.adoptLiveAttribution(evt);
+      }
       return null;
     }
     return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * A reconcile pass that read the transcript line before the live queue landed inserted the
+   * row with weaker attribution; the live event carries the truth (feature, session, run,
+   * cache observation), so it wins on the dedupe conflict.
+   */
+  private adoptLiveAttribution(evt: ResolvedUsageEvent & { dedupeKey?: string | null }): void {
+    this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, session_key = COALESCE(?, session_key),
+           channel = COALESCE(?, channel), run_id = COALESCE(?, run_id), task_id = COALESCE(?, task_id),
+           cache_state = COALESCE(?, cache_state), cache_bust_reason = COALESCE(?, cache_bust_reason),
+           cache_ttl = COALESCE(?, cache_ttl), source = 'live'
+         WHERE dedupe_key = ? AND source = 'reconcile'`,
+      )
+      .run(
+        evt.feature,
+        evt.sessionKey,
+        evt.channel,
+        evt.runId,
+        evt.taskId,
+        evt.cacheState ?? null,
+        evt.cacheBustReason ?? null,
+        evt.cacheTtl ?? null,
+        evt.dedupeKey ?? null,
+      );
   }
 
   events(params: UsageEventFilters & { limit?: number; beforeId?: number } = {}): UsageEventsPage {
@@ -505,6 +535,12 @@ export class UsageLedger {
   // on the gateway event loop; these run one GROUP BY per pivot instead. Text-to-speech rows
   // store characters in `input`, so token sums exclude kind='tts'.
   // ---------------------------------------------------------------------------
+
+  /** Session class of a row: the shared main session, another keyed session, or none. */
+  private static readonly SESSION_CLASS_EXPR = `CASE
+    WHEN session_key IS NULL THEN 'none'
+    WHEN session_key = 'global' OR session_key GLOB 'agent:*:main' THEN 'main'
+    ELSE 'session' END`;
 
   private static readonly TOTALS_SELECT = `
     COUNT(*) AS calls,
@@ -624,6 +660,8 @@ export class UsageLedger {
     provider: string | null;
     model: string | null;
     feature: string;
+    /** main (agent:<id>:main / global), session (any other key) or none (unattributed). */
+    session_class: string;
     cache_bust_reason: string | null;
     calls: number;
     input: number;
@@ -636,17 +674,19 @@ export class UsageLedger {
     const { where, args } = buildWhere({ ...filters, kind: "chat" });
     return this.db
       .prepare(
-        `SELECT provider, model, feature, cache_bust_reason, COUNT(*) AS calls, SUM(input) AS input,
+        `SELECT provider, model, feature, ${UsageLedger.SESSION_CLASS_EXPR} AS session_class,
+                cache_bust_reason, COUNT(*) AS calls, SUM(input) AS input,
                 SUM(cache_read) AS cache_read, SUM(cache_write) AS cache_write,
                 SUM(cost_cache_write) AS cost_cache_write, MAX(ts) AS last_ts,
                 MAX(CASE WHEN cache_ttl IS NOT NULL THEN cache_ttl END) AS last_ttl
          FROM usage_events ${where ? `${where} AND` : "WHERE"} provider IN ('anthropic', 'openai')
-         GROUP BY provider, model, feature, cache_bust_reason`,
+         GROUP BY provider, model, feature, session_class, cache_bust_reason`,
       )
       .all(...args) as unknown as Array<{
       provider: string | null;
       model: string | null;
       feature: string;
+      session_class: string;
       cache_bust_reason: string | null;
       calls: number;
       input: number;
@@ -799,6 +839,55 @@ export class UsageLedger {
       )
       .run(patch.feature, patch.sessionKey, patch.channel, sessionId, agentId, agentId);
     return Number(result.changes ?? 0);
+  }
+
+  /** relabel:v3 — reconciled chat-turn rows whose transcript content says heartbeat. */
+  relabelReconciledByDedupeKeys(
+    dedupeKeys: readonly string[],
+    patch: { feature: string; channel: string },
+  ): number {
+    if (dedupeKeys.length === 0) {
+      return 0;
+    }
+    const marks = dedupeKeys.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, channel = ?
+         WHERE source = 'reconcile' AND feature = 'agent/turn' AND dedupe_key IN (${marks})`,
+      )
+      .run(patch.feature, patch.channel, ...dedupeKeys);
+    return Number(result.changes ?? 0);
+  }
+
+  /** relabel:v3 fallback for pruned transcripts: the heartbeat signature (tiny ack, no cache read). */
+  relabelHeartbeatSignature(
+    agentId: string,
+    sessionIds: readonly string[],
+    patch: { feature: string; channel: string },
+  ): number {
+    if (sessionIds.length === 0) {
+      return 0;
+    }
+    const marks = sessionIds.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, channel = ?
+         WHERE source = 'reconcile' AND feature = 'agent/turn' AND session_key IS NULL
+           AND output <= 20 AND cache_read = 0 AND agent_id = ? AND session_id IN (${marks})`,
+      )
+      .run(patch.feature, patch.channel, agentId, ...sessionIds);
+    return Number(result.changes ?? 0);
+  }
+
+  /** Distinct transcript ids with reconciled rows of one feature for an agent. */
+  reconciledSessionIds(agentId: string, feature: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT session_id FROM usage_events
+         WHERE source = 'reconcile' AND agent_id = ? AND feature = ? AND session_id IS NOT NULL`,
+      )
+      .all(agentId, feature) as unknown as Array<{ session_id: string }>;
+    return rows.map((r) => r.session_id);
   }
 
   /** Raw rows for aggregation; callers group in JS so one query serves every pivot. */
@@ -1020,6 +1109,33 @@ async function ensureUsageLedger(input?: {
   return getUsageLedger();
 }
 
+/**
+ * Factor to apply to a library-reported cache-write cost when the row's TTL is 1h: the library
+ * assumes the 5-minute rate (1.25x input on Anthropic) while the 1-hour rate is 2x input. Returns
+ * the frozen price too, with `cacheWrite` at the rate actually charged.
+ */
+function providerCacheWriteRescale(params: {
+  cacheTtl: CacheTtlLabel | null;
+  provider: string | null;
+  table: Awaited<ReturnType<typeof resolveModelPricing>>;
+}): { factor: number; price: ModelPrice | null } | null {
+  if (params.cacheTtl !== "1h" || (params.provider ?? "").toLowerCase() !== "anthropic") {
+    return null;
+  }
+  const base = params.table.price;
+  const priced = params.table.source !== "unpriced" && params.table.source !== "local";
+  const published =
+    priced && params.table.source !== "override" && typeof base.cacheWrite1h === "number"
+      ? base.cacheWrite1h
+      : undefined;
+  const factor =
+    published && published > 0 && base.cacheWrite > 0 ? published / base.cacheWrite : 2 / 1.25;
+  if (!priced) {
+    return { factor, price: null };
+  }
+  return { factor, price: { ...base, cacheWrite: published ?? base.cacheWrite * factor } };
+}
+
 /** Resolve pricing and cost for an input; exported for the reconciler and tests. */
 export async function resolveUsageEvent(
   input: UsageEventInput,
@@ -1069,8 +1185,15 @@ export async function resolveUsageEvent(
       cacheWrite: n(c.cacheWrite),
       output: n(c.output),
     };
-    const total = n(c.total) || parts.input + parts.cacheRead + parts.cacheWrite + parts.output;
-    cost = { ...parts, total };
+    // The model library prices cache writes at the 5-minute rate regardless of TTL; an
+    // Anthropic 1-hour write costs 2x input, so rescale and freeze the price used on the row.
+    const rescale = providerCacheWriteRescale({ cacheTtl, provider, table });
+    if (rescale) {
+      parts.cacheWrite *= rescale.factor;
+      price = rescale.price;
+    }
+    const total = parts.input + parts.cacheRead + parts.cacheWrite + parts.output;
+    cost = { ...parts, total: rescale || !n(c.total) ? total : n(c.total) };
     costSource = "provider";
   } else {
     price = table.price;

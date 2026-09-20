@@ -42,7 +42,11 @@ export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   compression: { enabled: true, weight: 0.18, maxChunks: 30, requiresLlm: false },
   simulation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
   extrapolation: { enabled: true, weight: 0.09, maxChunks: 15, requiresLlm: true },
-  exploration: { enabled: true, weight: 0.09, maxChunks: 10, requiresLlm: true },
+  // Token-efficiency pass (2026-09-19): exploration asked near-identical
+  // questions every cycle (28 of 30 frontier targets already explored) and
+  // the live config had already switched it off. Opt back in via
+  // memory.dream.modes.exploration.enabled.
+  exploration: { enabled: false, weight: 0.09, maxChunks: 10, requiresLlm: true },
   // PLAN-45 Phase 1 (2026-09-05): `mutation` (PLAN-40 E2: 206 unread
   // paraphrases of one skill) and `research` (PLAN-34: unfueled, ungated
   // direct-write) were deleted outright; the verified-success distillation
@@ -180,6 +184,34 @@ export type DreamEngineConfig = {
     /** Activity score below which the interval doubles. Default: 0.3. */
     lowThreshold?: number;
   };
+  /**
+   * Token-efficiency gate (2026-09-19). A SCHEDULED full cycle runs only when
+   * all three hold; explicit triggers (`dream.trigger` RPC, CLI) bypass it.
+   * Minimum new user turns since the last full cycle. Default: 1.
+   */
+  minNewSessions?: number;
+  /** Minimum minutes since the last live user turn (idle). Default: 60. */
+  minIdleMinutes?: number;
+  /** Minimum hours since the last completed full cycle. Default: 8. */
+  minHoursBetween?: number;
+  /**
+   * Cooldown between emotional mini-dreams in minutes. Must exceed the
+   * consolidation tick (30 min) or a pinned hormone re-fires every tick.
+   * Default: 90.
+   */
+  miniDreamCooldownMinutes?: number;
+  /**
+   * Mini-dreams and auto-scratch notes fire on a hormonal RISE of at least
+   * this much since the previous trigger check, never on an absolute level.
+   * Default: 0.15.
+   */
+  hormonalTriggerDelta?: number;
+  /**
+   * Output cap for the RLM working-memory synthesis call. The prompt asks for
+   * up to ~4.5k tokens across 7 sections; the old 2048 lane cap truncated
+   * every call. Default: 6144.
+   */
+  synthesisMaxTokens?: number;
   /** Max chunks to process per dream cycle. Default: 50. */
   maxChunksPerCycle?: number;
   /** Max LLM calls per dream cycle. Default: 5. */
@@ -307,6 +339,12 @@ export const DEFAULT_DREAM_CONFIG: Required<
     highThreshold: 0.7,
     lowThreshold: 0.3,
   },
+  minNewSessions: 1,
+  minIdleMinutes: 60,
+  minHoursBetween: 8,
+  miniDreamCooldownMinutes: 90,
+  hormonalTriggerDelta: 0.15,
+  synthesisMaxTokens: 6144,
   maxChunksPerCycle: 50,
   // PLAN-34 Phase 4: 5 mode calls + up to 3 claim-decomposition
   // verification calls for insight promotion.

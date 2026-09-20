@@ -9,6 +9,8 @@ export type ResolvedMemorySearchConfig = {
   enabled: boolean;
   sources: Array<"memory" | "sessions" | "skills">;
   extraPaths: string[];
+  /** Workspace-relative glob patterns excluded from memory-file sync. */
+  excludePaths: string[];
   provider: "openai" | "local" | "gemini" | "voyage" | "auto";
   remote?: {
     baseUrl?: string;
@@ -104,6 +106,50 @@ const DEFAULT_CACHE_ENABLED = true;
 // live chunk count). Bound it by default; oldest (updated_at ASC) evicted.
 const DEFAULT_CACHE_MAX_ENTRIES = 10_000;
 const DEFAULT_SOURCES: Array<"memory" | "sessions" | "skills"> = ["memory", "sessions"];
+// Token-efficiency pass (2026-09-19): the dream journal (429 KB, appended
+// every cycle) and the per-cycle working-memory snapshots were re-chunked
+// and re-embedded on every sync (60-180 s embed calls). Neither is user
+// memory: insights are promoted as chunks separately, and snapshots are
+// provenance for the rewrite. Override via memorySearch.excludePaths.
+export const DEFAULT_MEMORY_EXCLUDE_PATHS = [
+  "memory/memory-snapshots/**",
+  "memory/dream-journal.md",
+];
+
+function globToRegExp(pattern: string): RegExp {
+  let re = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i]!;
+    if (ch === "*") {
+      if (pattern[i + 1] === "*") {
+        re += ".*";
+        i++;
+        if (pattern[i + 1] === "/") {
+          i++;
+        }
+      } else {
+        re += "[^/]*";
+      }
+    } else if (ch === "?") {
+      re += "[^/]";
+    } else {
+      re += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/**
+ * True when a workspace-relative path (forward slashes) matches one of the
+ * exclusion globs. `**` spans directories, `*` a single segment.
+ */
+export function isExcludedMemoryPath(relPath: string, patterns: readonly string[]): boolean {
+  if (patterns.length === 0) {
+    return false;
+  }
+  const normalized = relPath.replaceAll("\\", "/").replace(/^\.?\//, "");
+  return patterns.some((p) => globToRegExp(p.replaceAll("\\", "/")).test(normalized));
+}
 
 function normalizeSources(
   sources: Array<"memory" | "sessions" | "skills"> | undefined,
@@ -207,6 +253,13 @@ function mergeConfig(
     .map((value) => value.trim())
     .filter(Boolean);
   const extraPaths = Array.from(new Set(rawPaths));
+  const excludePaths = Array.from(
+    new Set(
+      (overrides?.excludePaths ?? defaults?.excludePaths ?? DEFAULT_MEMORY_EXCLUDE_PATHS)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
   const vector = {
     enabled: overrides?.store?.vector?.enabled ?? defaults?.store?.vector?.enabled ?? true,
     extensionPath:
@@ -294,6 +347,7 @@ function mergeConfig(
     enabled,
     sources,
     extraPaths,
+    excludePaths,
     provider,
     remote,
     experimental: {

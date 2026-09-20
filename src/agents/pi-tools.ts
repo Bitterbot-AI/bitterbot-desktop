@@ -6,6 +6,7 @@ import {
   readTool,
 } from "@mariozechner/pi-coding-agent";
 import type { BitterbotConfig } from "../config/config.js";
+import type { ToolHotSetLane } from "../config/types.tools.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import type { AnyAgentTool } from "./pi-tools.types.js";
 import type { SandboxContext } from "./sandbox.js";
@@ -72,6 +73,12 @@ import {
   mergeAlsoAllowPolicy,
   resolveToolProfilePolicy,
 } from "./tool-policy.js";
+import { applyHotSetExposure, resolveToolLane } from "./tools/tool-registry-hot-set.js";
+import {
+  resolveToolResultMaxChars,
+  resolveToolResultsDir,
+  wrapToolsWithResultSpill,
+} from "./tools/tool-result-spill.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
 /** PLAN-45 4.5: exec-approvals identity for validation shells (no operator allow-always entries). */
@@ -214,6 +221,12 @@ export function createBitterbotCodingTools(options?: {
    * enforcer is not applied (today's behavior).
    */
   capabilityEnforcer?: EnforcerContext;
+  /** Run id; names the spill files (`<runId>-<n>.txt`). Falls back to the session key. */
+  runId?: string;
+  /** Heartbeat runs share the main session key; the flag selects the heartbeat lane. */
+  isHeartbeat?: boolean;
+  /** Explicit hot-set lane override (tests, callers that already know the lane). */
+  toolLane?: ToolHotSetLane;
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -579,8 +592,37 @@ export function createBitterbotCodingTools(options?: {
     ? wrapToolsWithCache(withAbort, options.toolCache)
     : withAbort;
 
+  // W5 item 3: model-facing result cap with spill-to-file (the event-stream
+  // sanitizer in pi-embedded-subscribe.tools.ts never reached the model).
+  const withSpill = wrapToolsWithResultSpill(withCache, {
+    maxChars: resolveToolResultMaxChars(options?.config),
+    dir: resolveToolResultsDir(options?.agentDir),
+    runId: options?.runId ?? options?.sessionKey,
+  });
+
   // NOTE: Keep canonical (lowercase) tool names here.
   // pi-ai's Anthropic OAuth transport remaps tool names to Claude Code-style names
   // on the wire and maps them back for tool dispatch.
-  return withCache;
+  // W5 item 1: hot tools by schema + list_tools/use_tool over the SAME wrapped
+  // objects (every gate above is inside them); sorted by name for a
+  // byte-stable prefix. The meta-tools get the hook + abort wrappers so the
+  // adapter sees the same markers as every other tool.
+  return applyHotSetExposure({
+    tools: withSpill,
+    lane: resolveToolLane({
+      sessionKey: options?.sessionKey,
+      isHeartbeat: options?.isHeartbeat,
+      lane: options?.toolLane,
+    }),
+    config: options?.config,
+    agentId,
+    wrapMetaTool: (tool) => {
+      const hooked = wrapToolWithBeforeToolCallHook(tool, {
+        agentId,
+        sessionKey: options?.sessionKey,
+        ...(workspaceRoot ? { workspaceDir: workspaceRoot } : {}),
+      });
+      return options?.abortSignal ? wrapToolWithAbortSignal(hooked, options.abortSignal) : hooked;
+    },
+  });
 }

@@ -226,6 +226,25 @@ export type FsToolsConfig = {
   workspaceOnly?: boolean;
 };
 
+/** Tool exposure lane (derived from the session key / run flags). */
+export type ToolHotSetLane = "chat" | "heartbeat" | "cron" | "subagent";
+
+/**
+ * Hot-set tool exposure: only the hottest tools are sent to the model with
+ * full JSON schemas; every other registered tool stays reachable through the
+ * `list_tools` / `use_tool` meta-tools (client-side deferral).
+ */
+export type ToolHotSetConfig = {
+  /** Enable hot-set exposure (default: true). */
+  enabled?: boolean;
+  /** Maximum number of hot tools exposed with full schemas (default: 10). */
+  max?: number;
+  /** Tools hot in EVERY lane (default: ["read", "memory_search"]). */
+  always?: string[];
+  /** Extra hot tools per lane, merged after `always` (list order = priority). */
+  perLane?: Partial<Record<ToolHotSetLane, string[]>>;
+};
+
 export type AgentToolsConfig = {
   /** Base tool profile applied before allow/deny lists. */
   profile?: ToolProfileId;
@@ -246,6 +265,8 @@ export type AgentToolsConfig = {
   exec?: ExecToolConfig;
   /** Filesystem tool path guards. */
   fs?: FsToolsConfig;
+  /** Per-agent hot-set override (field-wise over the global `tools.hotSet`). */
+  hotSet?: ToolHotSetConfig;
   sandbox?: {
     tools?: {
       allow?: string[];
@@ -261,6 +282,13 @@ export type MemorySearchConfig = {
   sources?: Array<"memory" | "sessions" | "skills">;
   /** Extra paths to include in memory search (directories or .md files). */
   extraPaths?: string[];
+  /**
+   * Workspace-relative globs excluded from memory-file indexing. Default:
+   * ["memory/memory-snapshots/**", "memory/dream-journal.md"] (dream
+   * artifacts that changed every cycle and were re-embedded each sync).
+   * Set to [] to index everything.
+   */
+  excludePaths?: string[];
   /** Experimental memory search settings. */
   experimental?: {
     /** Enable session transcript indexing (experimental, default: false). */
@@ -537,6 +565,14 @@ export type ToolsConfig = {
   exec?: ExecToolConfig;
   /** Filesystem tool path guards. */
   fs?: FsToolsConfig;
+  /** Hot-set tool exposure (see docs/tools/hot-set.md). */
+  hotSet?: ToolHotSetConfig;
+  /**
+   * Max chars of a tool result text block handed back to the model (default:
+   * 8000). Longer results are spilled to `<agent state dir>/tool-results/` and
+   * the model receives head + marker + tail.
+   */
+  resultMaxChars?: number;
   /** Sub-agent tool policy defaults (deny wins). */
   subagents?: {
     /** Default model selection for spawned sub-agents (string or {primary,fallbacks}). */

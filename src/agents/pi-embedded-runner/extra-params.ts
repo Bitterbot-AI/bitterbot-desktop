@@ -2,6 +2,10 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../../config/config.js";
+import {
+  type AnthropicCacheRetention,
+  createAnthropicCacheLayoutWrapper,
+} from "./anthropic-payload-cache.js";
 import { log } from "./logger.js";
 
 const OPENROUTER_APP_HEADERS: Record<string, string> = {
@@ -29,7 +33,7 @@ export function resolveExtraParams(params: {
   return modelConfig?.params ? { ...modelConfig.params } : undefined;
 }
 
-type CacheRetention = "none" | "short" | "long";
+type CacheRetention = AnthropicCacheRetention;
 type CacheRetentionStreamOptions = Partial<SimpleStreamOptions> & {
   cacheRetention?: CacheRetention;
 };
@@ -247,4 +251,16 @@ export function applyExtraParamsToAgent(
   // Force `store=true` for direct OpenAI/OpenAI Codex providers so multi-turn
   // server-side conversation state is preserved.
   agent.streamFn = createOpenAIResponsesStoreWrapper(agent.streamFn);
+
+  // Token-efficiency W4: Anthropic prompt-cache layout (tools sorted + marked,
+  // system split at the cache boundary into cached/uncached blocks). The
+  // retention mirrors what pi-ai itself resolves (config, then
+  // PI_CACHE_RETENTION=long, then "short") so every marker carries one TTL.
+  if (provider === "anthropic") {
+    const retention =
+      resolveCacheRetention(merged, provider) ??
+      (process.env.PI_CACHE_RETENTION === "long" ? "long" : "short");
+    log.debug(`applying Anthropic cache layout (${retention}) for ${provider}/${modelId}`);
+    agent.streamFn = createAnthropicCacheLayoutWrapper(agent.streamFn, retention);
+  }
 }

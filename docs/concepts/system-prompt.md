@@ -13,65 +13,63 @@ Bitterbot builds a unique system prompt for every agent run. Unlike static syste
 
 The prompt is the agent's mirror. Change the Genome, and the safety axioms change. Let the dream engine run overnight, and the Phenotype section will read differently in the morning. Earn USDC from skill sales, and the economic identity updates. It's not configuration — it's identity.
 
-## Prompt Structure
+## Prompt Structure and the cache boundary
 
-The system prompt assembles these sections in order:
+The prompt is rendered in two halves separated by one constant marker line,
+`<!-- BITTERBOT_CACHE_BOUNDARY -->`. Everything **above** the marker is stable
+for the life of a session; everything **below** may change on every call.
+Anthropic's prompt cache is a prefix match over `tools -> system -> messages`,
+so the split lets the stable half (and the tool definitions in front of it)
+stay cached while hormones, facts and runtime state move underneath.
 
-### Identity & Emotional State
+The marker is consumed by the Anthropic payload wrapper (the model never sees
+it: `system` is sent as two text blocks). For every other provider it stays in
+the prompt as an HTML comment, constant bytes with no instruction content.
+The stable half is byte-normalized (CRLF to LF, trailing whitespace trimmed,
+blank-line runs collapsed) so cosmetic differences can never bust the cache.
 
-- **Endocrine State** — Current hormonal levels (dopamine, cortisol, oxytocin) with dominant/active/baseline labels, behavioral guidance ("be enthusiastic and celebrate wins"), phenotype summary (self-concept from MEMORY.md), session handover brief (cross-session continuity), and developmental note for young agents (maturity < 15%). High dopamine → enthusiastic and exploratory. High cortisol → focused and cautious. High oxytocin → warm and relational. These shift in real-time based on tool success/failure, user feedback, memory retrieval (limbic bridge), and dream cycles.
-- **Safety Axioms** — Short guardrail reminders from `GENOME.md`. These are advisory in the prompt but enforced by tool policy, exec approvals, and sandboxing at the runtime level.
+### Above the boundary (cached, stable per session), in order
 
-### Memory & Cognition
+1. Identity line.
+2. **Tooling**: one sorted line of tool _names_ only (`Tools: a2a_status, exec, ...`). No prose summaries: descriptions already ship in the `tools` parameter and a recap in the prompt is pure inflation.
+3. **Tool Call Style**, **Work Planning**, **Workflow Management**.
+4. **Safety**: short guardrail reminders (enforced at runtime by tool policy, exec approvals and sandboxing).
+5. **Agent Wallet** (when the `wallet` tool is present), **Bitterbot CLI Quick Reference**.
+6. **Skills (mandatory)**: the `<available_skills>` index, compacted to name + one short line + location per skill and capped at ~1k tokens (descriptions step down 160 -> 80 -> 40 chars, then names + locations only; skills are never dropped). Bodies load on demand with `read`.
+7. **Memory System**: crystal lifecycle, ingestion, background pipeline, hormonal modulation _instructions_, Pre-Action Interceptors, Curiosity Engine, **Economic Identity**, **Forage**, **Circles**, memory tools, Working Memory instructions, citations mode.
+   Economic Identity carries a capability sentence only ("disabled" / "offline" / "connected to the network (you are 12D3..., edge tier)"). Peer counts, network health, telemetry pulse and anomaly counts are never rendered; the agent calls `network_status`, `a2a_status` or `management.anomalies` for live numbers.
+8. **Bitterbot Self-Update**, **Model Aliases**, the `session_status` date hint.
+9. **Workspace**, **Documentation**, **Sandbox**, **User Identity**, **Workspace Files (injected)** header, **Reply Tags**, **Messaging**, **Voice (TTS)**, **Reasoning Format**.
+10. **Project Context**: the stable workspace files `GENOME.md`, `PROTOCOLS.md`, `TOOLS.md`.
+11. **Silent Replies**, **Heartbeats**.
 
-- **Working Memory (MEMORY.md)** — The dream-synthesized identity, injected every turn:
-  - **The Phenotype** — Who the agent is right now. Personality, communication style, strengths, growing edges. Rewritten every dream cycle.
-  - **The Bond** — Theory of mind about the user. Communication preferences, trust level, shared history.
-  - **The Niche** — Ecosystem identity. Skills crystallized, marketplace earnings, reputation score, P2P network role.
-  - **Active Context** — What the agent is working on, weighted by dopamine (excitement) and cortisol (urgency).
-  - **Curiosity Gaps** — What the agent wants to explore next, driven by the CuriosityEngine's GCCRF reward signals.
-  - **Crystal Pointers** — Deep memory search hints for topics the agent knows it has stored.
-- **Memory System Instructions** — How to use `memory_search`, `memory_get`, working memory notes, dream/curiosity introspection, and emotional anchors.
-- **Dream State** — Last dream timestamp, current maturity level, mood descriptor. The agent knows it dreams and can reference its dream journal.
+Also above the boundary: **Canonical Facts** (sorted by key, rendered _without_ confirmation counts or dates; the bytes move only when a fact is added, retired or reworded) and `MEMORY.md` (rewritten only by a dream cycle, hours apart, so one cache rebuild per cycle instead of one per turn).
 
-### Skills & Capabilities
+### Below the boundary (uncached, may change every call), in order
 
-- **Available Skills** — Compact XML list of eligible skills with name, description, and file path. The agent uses `read` to load a SKILL.md on demand.
-- **Skill Marketplace** — Awareness of published skills, pricing, and marketplace activity. The agent knows it can earn from its expertise.
+On Anthropic the whole volatile half is sent as an unmarked `<runtime-state>` block appended to the **last user message**, after pi-ai's cache marker, so it never invalidates the cached conversation prefix. Other providers keep it as the tail of the system prompt.
 
-### Economic Identity
+1. **Research Findings** (one-shot idle-research brief).
+2. **Endocrine State**: hormones bucketed to one decimal with a level label (`- Dopamine: 0.6 elevated (DOMINANT)`), budget pressure in 10% steps, self-concept, last-session brief, proactive memories, session coherence, developmental note.
+3. **Group Chat Context** / **Subagent Context**, **Reactions**, **Current Date & Time** (time zone only).
+4. **Project Context (live)**: `memory/scratch.md` and, on heartbeat runs only, `HEARTBEAT.md`.
+5. **Runtime** line (host, model, channel, capabilities, thinking level) and the Reasoning visibility line.
 
-- **Agent Wallet** — USDC balance on Base, transaction history awareness. The agent knows it has financial autonomy.
-- **A2A Capability** — The agent knows it can discover other agents via the A2A protocol, delegate tasks, and accept inbound work requests with x402 micropayment gating.
-- **P2P Network** — Awareness of the peer mesh: connected peers, trust levels, skill propagation. The agent understands it's part of a network, not an isolated instance.
-
-### Tools & Environment
-
-- **Tooling** — Current tool list with short descriptions. Tools change based on channel, session type, and agent configuration.
-- **Workspace** — Working directory path (`agents.defaults.workspace`).
-- **Sandbox** (when enabled) — Sandbox paths, elevated exec availability, container configuration.
-- **Documentation** — Path to local Bitterbot docs and instructions to consult them for self-help.
-
-### Context & Runtime
-
-- **Current Date & Time** — User-local time and timezone (time zone only for cache stability; use `session_status` for exact time).
-- **Runtime** — Host OS, Node version, model name, repo root, thinking level.
-- **Reply Tags** — Provider-specific reply tag syntax (when applicable).
-- **Heartbeats** — Heartbeat prompt and acknowledgment behavior for periodic check-ins.
-- **Reasoning** — Current visibility level and `/reasoning` toggle hint.
+Operators can prove the split holds with the cache trace (`BITTERBOT_CACHE_TRACE=1`, JSONL at `<state>/logs/cache-trace.jsonl`): every `stream:context` event carries `stableDigest`, `volatileDigest` and `toolsDigest`, and `stream:usage` carries the provider's `cacheRead` / `cacheWrite`. Across turns of one session `stableDigest` and `toolsDigest` must not change; see [Anthropic provider: prompt caching](/providers/anthropic#prompt-caching-anthropic-api) for the marker layout.
 
 ## Workspace Bootstrap Injection
 
 Bootstrap files are trimmed and injected under **Project Context** so the agent sees its identity without needing explicit file reads:
 
-| File           | Purpose                                                  | Injected?                                             |
-| -------------- | -------------------------------------------------------- | ----------------------------------------------------- |
-| `GENOME.md`    | Immutable safety axioms, hormonal baselines, core values | Always                                                |
-| `MEMORY.md`    | Living working memory — Phenotype, Bond, Niche, context  | Always (main session only)                            |
-| `PROTOCOLS.md` | Operating procedures, group behavior, heartbeat rules    | Always                                                |
-| `TOOLS.md`     | Environment-specific notes (devices, SSH, voice prefs)   | Always                                                |
-| `HEARTBEAT.md` | Periodic task instructions                               | Always                                                |
-| `memory/*.md`  | Daily logs                                               | NOT injected — accessed via `memory_search` on demand |
+| File                | Purpose                                                  | Injected?                                                                                                                        |
+| ------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `GENOME.md`         | Immutable safety axioms, hormonal baselines, core values | Always (above the cache boundary)                                                                                                |
+| `MEMORY.md`         | Living working memory — Phenotype, Bond, Niche, context  | Always (main session only; above the boundary, capped at 200 lines / 25 KB with a constant `(truncated, use memory tools)` line) |
+| `PROTOCOLS.md`      | Operating procedures, group behavior, heartbeat rules    | Always (above the cache boundary)                                                                                                |
+| `TOOLS.md`          | Environment-specific notes (devices, SSH, voice prefs)   | Always (above the cache boundary)                                                                                                |
+| `HEARTBEAT.md`      | Periodic task instructions                               | Heartbeat runs only (`includeHeartbeatFile`); other turns read it on demand, as the heartbeat prompt instructs                   |
+| `memory/scratch.md` | Unsynthesized notes (write-ahead log)                    | Main session only, below the boundary, same cap as MEMORY.md                                                                     |
+| `memory/*.md`       | Daily logs                                               | NOT injected — accessed via `memory_search` on demand                                                                            |
 
 **Security note:** `MEMORY.md` is only loaded in the main, private session. It's never injected in group chats, Discord channels, or shared contexts to prevent personal information leakage.
 

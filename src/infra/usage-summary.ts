@@ -161,10 +161,12 @@ export function buildCacheHealth(
     provider: string | null;
     model: string | null;
     feature: string;
+    sessionClass: string;
     requests: number;
     cacheRead: number;
     cacheWrite: number;
     writeCost: number;
+    ttl: CacheTtlLabel | null;
   };
   const perModel = new Map<string, ModelAcc>();
   const perLane = new Map<string, LaneAcc>();
@@ -197,17 +199,19 @@ export function buildCacheHealth(
     m.usage.input += f.input;
     m.usage.cacheRead += f.cache_read;
     m.usage.cacheWrite += f.cache_write;
-    const laneKey = `${key}${SEP}${f.feature}`;
+    const laneKey = `${key}${SEP}${f.feature}${SEP}${f.session_class}`;
     let lane = perLane.get(laneKey);
     if (!lane) {
       lane = {
         provider: f.provider,
         model: f.model,
         feature: f.feature,
+        sessionClass: f.session_class,
         requests: 0,
         cacheRead: 0,
         cacheWrite: 0,
         writeCost: 0,
+        ttl: null,
       };
       perLane.set(laneKey, lane);
     }
@@ -215,6 +219,9 @@ export function buildCacheHealth(
     lane.cacheRead += f.cache_read;
     lane.cacheWrite += f.cache_write;
     lane.writeCost += f.cost_cache_write;
+    if (f.last_ttl === "5m" || f.last_ttl === "1h" || f.last_ttl === "none") {
+      lane.ttl = f.last_ttl;
+    }
     if (f.cache_bust_reason) {
       reasons.set(f.cache_bust_reason, (reasons.get(f.cache_bust_reason) ?? 0) + f.calls);
     }
@@ -225,13 +232,17 @@ export function buildCacheHealth(
       m.wastedUsd += f.cost_cache_write;
     }
   }
-  // Never-read cache writes, judged per model AND lane: a heartbeat lane that re-caches the
-  // prompt every 30 minutes shows near-zero reads even when the same model's chat turns read
-  // the cache fine. Reads under a tenth of writes over at least three calls counts the lane's
+  // Never-read cache writes, judged per (model, feature, session class): a heartbeat lane that
+  // re-caches the prompt every 30 minutes shows near-zero reads even when the same model's chat
+  // turns read the cache fine, and the shared main session must not let keyed chat sessions
+  // mask it either. Reads under a tenth of writes over at least three calls counts the lane's
   // whole write cost as what a warm cache would have avoided.
   let unreadWriteUsd = 0;
   let unreadWriteTokens = 0;
-  const unreadByFeature = new Map<string, { requests: number; usd: number }>();
+  const unreadByFeature = new Map<
+    string,
+    { requests: number; usd: number; ttl: CacheTtlLabel | null }
+  >();
   for (const lane of perLane.values()) {
     if (lane.cacheWrite > 0 && lane.requests >= 3 && lane.cacheRead / lane.cacheWrite < 0.1) {
       unreadWriteUsd += lane.writeCost;
@@ -240,9 +251,10 @@ export function buildCacheHealth(
       if (m) {
         m.unreadWriteUsd += lane.writeCost;
       }
-      const acc = unreadByFeature.get(lane.feature) ?? { requests: 0, usd: 0 };
+      const acc = unreadByFeature.get(lane.feature) ?? { requests: 0, usd: 0, ttl: null };
       acc.requests += lane.requests;
       acc.usd += lane.writeCost;
+      acc.ttl = acc.ttl ?? lane.ttl;
       unreadByFeature.set(lane.feature, acc);
     }
   }
@@ -260,6 +272,7 @@ export function buildCacheHealth(
         label: describeUsageFeature(feature),
         requests: acc.requests,
         usd: acc.usd,
+        ttl: acc.ttl,
       }))
       .toSorted((a, b) => b.usd - a.usd),
     warm: lastTs !== null && nowMs - lastTs < ttlMs(ttl),
@@ -551,6 +564,16 @@ export function buildRunawayRuns(
     .slice(0, 10);
 }
 
+/** Model-agnostic advice for cache written but never read; the TTL comes from the rows. */
+export function describeUnreadCacheTip(ttl: CacheTtlLabel | null | undefined): string {
+  const ttlText = ttl && ttl !== "none" ? `the ${ttl} cache TTL` : "the cache TTL";
+  const longer =
+    ttl === "1h"
+      ? "or stop re-sending the full prompt from that lane"
+      : 'or, where the provider offers a longer TTL (Anthropic cacheRetention: "long" = 1h), lengthen it';
+  return `Turns in that lane are spaced past ${ttlText}, so every call re-caches the prompt and never reads it back. Run the lane less often, within the TTL, on a cheaper model, ${longer}.`;
+}
+
 export function buildUsageFlags(
   summary: Omit<UsageLedgerSummary, "flags">,
 ): UsageLedgerSummary["flags"] {
@@ -580,7 +603,7 @@ export function buildUsageFlags(
       message:
         `$${health.unreadWriteUsd.toFixed(2)} of prompt cache was written and never read back` +
         (lane ? ` (${lane.label}: ${lane.requests} requests, $${lane.usd.toFixed(2)})` : ""),
-      tip: `Turns are spaced past the ${health.ttl ?? "5m"} cache TTL, so every call re-caches the prompt. A heartbeat due within the TTL now fires right after a user turn; also consider a heartbeat interval under the TTL or cacheRetention: "long" (1h) on Anthropic.`,
+      tip: describeUnreadCacheTip(lane?.ttl ?? health.ttl),
     });
   } else if (health.requests >= 10 && health.busts > 0 && health.wastedUsd >= 0.5) {
     const top = health.reasons.find((r) => isBustReason(r.reason));

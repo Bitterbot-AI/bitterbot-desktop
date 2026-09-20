@@ -102,6 +102,9 @@ function makeEngine(db: DatabaseSync) {
       // V1 default flip (PLAN-41 D-D): autoResearch egress is opt-in, so the
       // research-branch tests opt in; default-off has its own test below.
       autoResearch: { enabled: true },
+      // Token-efficiency pass (2026-09-19): exploration is off by default;
+      // these tests target the mode, so they opt in explicitly.
+      modes: { exploration: { enabled: true } },
     },
     noopSynthesize as never,
     fakeEmbedBatch,
@@ -292,7 +295,7 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
     // No localLlmCall: cloud-only engine.
     const engine = new DreamEngine(
       db,
-      { llmCall: strategyLlm, minChunksForDream: 3 },
+      { llmCall: strategyLlm, minChunksForDream: 3, modes: { exploration: { enabled: true } } },
       noopSynthesize as never,
       fakeEmbedBatch,
     );
@@ -337,6 +340,7 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
         llmCall: leakyLlm,
         localLlmCall: leakyLlm,
         minChunksForDream: 3,
+        modes: { exploration: { enabled: true } },
         autoResearch: { enabled: true },
       },
       noopSynthesize as never,
@@ -364,6 +368,7 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
           llmCall: strategyLlm,
           localLlmCall: strategyLlm,
           minChunksForDream: 3,
+          modes: { exploration: { enabled: true } },
           autoResearch: { enabled: true, maxPerDay: 1 },
         },
         noopSynthesize as never,
@@ -390,7 +395,12 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
     seedChunks(db);
     const engine = new DreamEngine(
       db,
-      { llmCall: strategyLlm, localLlmCall: strategyLlm, minChunksForDream: 3 },
+      {
+        llmCall: strategyLlm,
+        localLlmCall: strategyLlm,
+        minChunksForDream: 3,
+        modes: { exploration: { enabled: true } },
+      },
       noopSynthesize as never,
       fakeEmbedBatch,
     );
@@ -411,6 +421,7 @@ describe("egress safety (PLAN-34 Phase 2c)", () => {
         llmCall: strategyLlm,
         localLlmCall: strategyLlm,
         minChunksForDream: 3,
+        modes: { exploration: { enabled: true } },
         autoResearch: { enabled: false },
       },
       noopSynthesize as never,
@@ -437,6 +448,7 @@ describe("egress hardening (PLAN-34 Phase 2 adversarial fixes)", () => {
         localLlmCall: strategyLlm,
         localModelIsLocal: false,
         minChunksForDream: 3,
+        modes: { exploration: { enabled: true } },
       },
       noopSynthesize as never,
       fakeEmbedBatch,
@@ -465,6 +477,7 @@ describe("egress hardening (PLAN-34 Phase 2 adversarial fixes)", () => {
         llmCall: throwingLocal,
         localLlmCall: throwingLocal,
         minChunksForDream: 3,
+        modes: { exploration: { enabled: true } },
         autoResearch: { enabled: true },
       },
       noopSynthesize as never,

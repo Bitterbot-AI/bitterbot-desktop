@@ -10,6 +10,11 @@ import { resolveModelRefFromString } from "../../agents/model-selection.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../../agents/workspace.js";
 import { type BitterbotConfig, loadConfig } from "../../config/config.js";
+import {
+  HEARTBEAT_LIGHT_THINK_LEVEL,
+  resolveCheapHeartbeatModelSpec,
+  resolveHeartbeatLightContext,
+} from "../../infra/heartbeat-gate.js";
 import { applyLinkUnderstanding } from "../../link-understanding/apply.js";
 import { applyMediaUnderstanding } from "../../media-understanding/apply.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -79,11 +84,19 @@ export async function getReplyFromConfig(
   let provider = defaultProvider;
   let model = defaultModel;
   let hasResolvedHeartbeatModelOverride = false;
+  const heartbeatLight =
+    opts?.isHeartbeat === true && resolveHeartbeatLightContext(cfg, { agentId });
   if (opts?.isHeartbeat) {
     // Prefer the resolved per-agent heartbeat model passed from the heartbeat runner,
     // fall back to the global defaults heartbeat model for backward compatibility.
+    // Light heartbeats with no configured model use the cheap tier (same env rule
+    // as the memory lanes) instead of the primary model: an idle tick on the
+    // primary model was ~$0.33; on Haiku it is well under a cent.
     const heartbeatRaw =
-      opts.heartbeatModelOverride?.trim() ?? agentCfg?.heartbeat?.model?.trim() ?? "";
+      opts.heartbeatModelOverride?.trim() ||
+      agentCfg?.heartbeat?.model?.trim() ||
+      (heartbeatLight ? resolveCheapHeartbeatModelSpec() : undefined) ||
+      "";
     const heartbeatRef = heartbeatRaw
       ? resolveModelRefFromString({
           raw: heartbeatRaw,
@@ -240,6 +253,11 @@ export async function getReplyFromConfig(
   } = directiveResult.result;
   provider = resolvedProvider;
   model = resolvedModel;
+  if (heartbeatLight) {
+    // Pin thinking per lane (research item J): a heartbeat never inherits the
+    // chat session's thinking level, and never changes it mid-lane.
+    resolvedThinkLevel = HEARTBEAT_LIGHT_THINK_LEVEL;
+  }
 
   const inlineActionResult = await handleInlineActions({
     ctx,

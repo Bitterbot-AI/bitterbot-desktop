@@ -93,6 +93,8 @@ describe("exploration explored-target filtering (adversarial F12)", () => {
           return "[]";
         },
         minChunksForDream: 1,
+        // Token-efficiency pass (2026-09-19): exploration is off by default; opt in.
+        modes: { exploration: { enabled: true } },
       },
       noopSynthesize,
       noopEmbedBatch,

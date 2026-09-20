@@ -24,20 +24,21 @@ Both heartbeats and cron jobs let you run tasks on a schedule. This guide helps 
 
 ## Heartbeat: Periodic Awareness
 
-Heartbeats run in the **main session** at a regular interval (default: 30 min). They're designed for the agent to check on things and surface anything important.
+Heartbeats run at a regular interval (default: 30 min). They're designed for the agent to check on things and surface anything important. By default an interval tick only calls the model when its inputs (`HEARTBEAT.md`, the prompt, queued system events) changed since the last completed tick, and it then runs in a small isolated `<main>:heartbeat` session on a cheap model. Ticks that carry events (exec completions, cron payloads, wakes) run in the **main session** with full context. See [Heartbeat cost model](/gateway/heartbeat#cost-model).
 
 ### When to use heartbeat
 
 - **Multiple periodic checks**: Instead of 5 separate cron jobs checking inbox, calendar, weather, notifications, and project status, a single heartbeat can batch all of these.
-- **Context-aware decisions**: The agent has full main-session context, so it can make smart decisions about what's urgent vs. what can wait.
-- **Conversational continuity**: Heartbeat runs share the same session, so the agent remembers recent conversations and can follow up naturally.
+- **Context-aware decisions**: Event-driven ticks (cron payloads, exec completions, wakes) run with full main-session context, so the agent can make smart decisions about what's urgent vs. what can wait.
+- **Conversational continuity**: Those event-driven runs share the main session, so the agent remembers recent conversations and can follow up naturally. Plain interval checks run isolated (set `heartbeat.isolatedSession: false` to change that).
 - **Low-overhead monitoring**: One heartbeat replaces many small polling tasks.
 
 ### Heartbeat advantages
 
 - **Batches multiple checks**: One agent turn can review inbox, calendar, and notifications together.
 - **Reduces API calls**: A single heartbeat is cheaper than 5 isolated cron jobs.
-- **Context-aware**: The agent knows what you've been working on and can prioritize accordingly.
+- **Context-aware when it matters**: Event-driven ticks see what you've been working on and can prioritize accordingly.
+- **Free when idle**: Unchanged inputs mean no model call at all (`skipWhenUnchanged`).
 - **Smart suppression**: If nothing needs attention, the agent replies `HEARTBEAT_OK` and no message is delivered.
 - **Natural timing**: Drifts slightly based on queue load, which is fine for most monitoring.
 
@@ -234,15 +235,15 @@ bitterbot cron add \
 
 ## Cost Considerations
 
-| Mechanism       | Cost Profile                                            |
-| --------------- | ------------------------------------------------------- |
-| Heartbeat       | One turn every N minutes; scales with HEARTBEAT.md size |
-| Cron (main)     | Adds event to next heartbeat (no isolated turn)         |
-| Cron (isolated) | Full agent turn per job; can use cheaper model          |
+| Mechanism       | Cost Profile                                                                           |
+| --------------- | -------------------------------------------------------------------------------------- |
+| Heartbeat       | $0 while inputs are unchanged; a light isolated turn on a cheap model when they change |
+| Cron (main)     | Adds event to next heartbeat (a full main-session turn)                                |
+| Cron (isolated) | Full agent turn per job; can use cheaper model                                         |
 
 **Tips**:
 
-- Keep `HEARTBEAT.md` small to minimize token overhead.
+- Keep `HEARTBEAT.md` small and stable: every content edit re-runs the next tick.
 - Batch similar checks into heartbeat instead of multiple cron jobs.
 - Use `target: "none"` on heartbeat if you only want internal processing.
 - Use isolated cron with a cheaper model for routine tasks.

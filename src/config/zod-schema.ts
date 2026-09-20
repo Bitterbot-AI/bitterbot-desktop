@@ -693,7 +693,8 @@ export const BitterbotSchema = z
             proposerModel: z
               .string()
               .optional()
-              .describe("Default: judgeModel, else the agent's primary model"),
+              .describe("Default: judgeModel, else dream model, else cheap model"),
+            minFailsForProposer: z.number().int().min(0).optional().describe("Default: 1"),
             wikiMaxPatterns: z.number().int().positive().optional().describe("Default: 100"),
             semanticLintCadenceDays: z.number().positive().optional().describe("Default: 7"),
             propagate: z.boolean().optional().describe("Default: true"),

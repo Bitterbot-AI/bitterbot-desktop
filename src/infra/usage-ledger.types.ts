@@ -198,7 +198,14 @@ export type UsageCacheHealth = {
   unreadWriteUsd: number;
   unreadWriteTokens: number;
   /** Which lanes are re-writing the cache without reading it (heartbeats, cron), most costly first. */
-  unreadByFeature: Array<{ feature: string; label: string; requests: number; usd: number }>;
+  unreadByFeature: Array<{
+    feature: string;
+    label: string;
+    requests: number;
+    usd: number;
+    /** TTL observed on the lane's rows (null when the rows carry none). */
+    ttl: CacheTtlLabel | null;
+  }>;
   /** True when the newest chat turn is within its cache TTL. */
   warm: boolean;
   ttl: CacheTtlLabel | null;

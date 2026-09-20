@@ -2770,6 +2770,8 @@ export class DreamEngine {
       db: this.db,
       cycleId,
       ...(this.llmCallEvolutionProposer ? { proposerLlmCall: this.llmCallEvolutionProposer } : {}),
+      // Token-efficiency pass (2026-09-19): no failing trace, no proposer run.
+      minFailsForProposer: cfg?.minFailsForProposer ?? 1,
       ...(agentTurn ? { agentTurn } : {}),
       ...(peerAgentTurn ? { peerAgentTurn } : {}),
       ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),

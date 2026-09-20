@@ -530,3 +530,9 @@ Tools are exposed in two parallel channels:
 
 That means the agent sees both “what tools exist” and “how to call them.” If a tool
 doesn’t appear in the system prompt or the schema, the model cannot call it.
+
+## Hot set and deferred tools
+
+Only the lane's hottest tools are sent to the model with full schemas; every
+other registered tool is reachable through `list_tools` / `use_tool`, and long
+tool results are spilled to a file. See [Hot set](/tools/hot-set).

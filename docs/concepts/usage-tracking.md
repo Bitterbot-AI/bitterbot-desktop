@@ -130,8 +130,32 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
 - The Overview's prompt-cache line shows hit rate, busts with their likely cause (cold start,
   TTL expired, prompt prefix changed, context grew, written but never read), warm/cold with
   the TTL in use, what the busts cost in re-written cache, and the cost of cache writes that
-  were never read back (turns spaced past the TTL). Anthropic 1-hour cache writes (`cacheRetention: "long"`)
-  are priced at 2x input.
+  were never read back (turns spaced past the TTL). "Never read" is judged per model, feature
+  and session class (the shared main session, other keyed sessions, unattributed rows), so
+  chat turns that read the cache fine cannot hide a heartbeat lane that only writes it; the
+  coaching tip names the TTL seen on that lane's rows.
+- Cache TTL on rows: `cache_ttl` is the retention the request asked for (`cacheRetention`
+  short = 5m, long = 1h on Anthropic), recorded on chat turns, hidden lanes and reconciled
+  transcript rows alike. The model library (pi-ai 0.52) does not surface Anthropic's
+  per-TTL `cache_creation` split, so the label comes from config, not from the response.
+  Anthropic 1-hour cache writes are priced at 2x input: library-reported costs (which assume
+  the 5-minute 1.25x rate) are rescaled on 1h rows and the price used is frozen on the row.
+- Heartbeats are recognised by content, not by session key: the reconciler labels an
+  assistant turn `agent/heartbeat` (channel `heartbeat`) when its user turn is the heartbeat
+  prompt (default or `agents.defaults.heartbeat.prompt`, per-agent overrides included) or the
+  reply is only `HEARTBEAT_OK`. A one-time `relabel:v3` pass (keyed per agent in `usage_meta`)
+  re-walks existing transcripts on the first reconcile after upgrade and fixes rows imported
+  as chat turns; where a transcript is gone it falls back to the heartbeat signature (reply
+  of 20 tokens or fewer, no cache read, no session key). Live rows are never touched.
+- The reconciler leaves transcript lines younger than two minutes for the next pass so the
+  live hook's row (with its run, session and cache observation) lands first; if a reconcile
+  row still slips in first, the live row adopts it on the dedupe conflict.
+- `bitterbot doctor` (Usage & Cost section) adds three idle-spend lines: unread prompt-cache
+  writes in the last 7 days per lane (warn at $1/day, fail at $5/day), heartbeat cost and
+  cost of pass (dollars per delivered heartbeat message, or "no deliveries"; warn at $1/day
+  with none delivered), and the idle-day floor: the cheapest of the last 14 whole days with
+  zero real chat turns (a real turn answers with more than 20 tokens or reads its cache),
+  naming the lane that set it (warn at $1/day).
 - Burn rate: last hour, the rolling 5-hour window with cost per hour and projection, and the
   busiest previous 5-hour block as the bar's ceiling.
 - Cost modes (Models tab): `reported` is what the model library returned with the call,
@@ -154,6 +178,8 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
 - Speech-to-text providers that report no tokens (Whisper, Deepgram) and ElevenLabs speech
   are recorded per call or per character but stay unpriced.
 - OpenAI service tiers (batch, flex, priority) are not distinguished for chat calls.
+- Rows recorded before 2026-09-19 by hidden lanes and the reconciler carry no `cache_ttl`;
+  their cost is the library's 5-minute figure, which is what was charged at the time.
 
 ## Provider quota (separate from the ledger)
 

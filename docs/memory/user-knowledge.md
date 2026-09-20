@@ -40,6 +40,13 @@ interface ExtractedFact {
 
 **Cost control:** Extraction runs per-session, not per-message. Only sessions with new messages since the last dream cycle are processed. Typical cost: 1 LLM call per changed session.
 
+**Token-efficiency pass (2026-09-19)** — four gates in front of that call (`src/memory/session-transcript-prep.ts`, `src/memory/extraction-failures.ts`):
+
+- **Heartbeat turns are not memory.** The heartbeat runner's "Read HEARTBEAT.md ..." prompt and its `HEARTBEAT_OK` ack are stripped before the prompt is built (an alert reply that is not a bare ack is kept). Evidence line numbers are mapped back to the original transcript. A transcript with no non-heartbeat turns makes no extraction call and writes no handover brief — previously the daily main transcript carried 48 such pairs and the handover brief read "Purpose: Monitor workspace via HEARTBEAT.md protocol".
+- **Output cap fits the request.** `memory.extraction.maxTokens` (default 6144) replaces the 2048 lane default that truncated long transcripts into unparseable JSON.
+- **Long transcripts are windowed.** Above `memory.extraction.maxTranscriptChars` (default 48000 chars after heartbeat stripping) the transcript is split at turn boundaries; facts are merged (capped at `maxFactsPerSession`), milestones/decisions are merged across windows, blockers/next steps come from the last window.
+- **Failures do not retry forever.** A transcript whose extraction fails (LLM error or unparseable output) is recorded in `session_extraction_failures` per content hash and retried at most `memory.extraction.maxAttempts` times (default 2), then parked until its content changes or `memory.extraction.retryAfterDays` (default 7) elapses. On the reference node one Sep-3 transcript accounted for 27 of 52 extraction calls.
+
 ### Layer 2: Epistemic Typing
 
 Each extracted fact is classified into one of four epistemic types:

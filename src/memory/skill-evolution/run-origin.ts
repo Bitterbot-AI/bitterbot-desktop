@@ -10,7 +10,15 @@
  * pattern pages and the Skill Proposer's transcript.
  */
 
-export type RunOrigin = "human" | "system" | "circle" | "a2a" | "subagent" | "guest" | "unknown";
+export type RunOrigin =
+  | "human"
+  | "system"
+  | "heartbeat"
+  | "circle"
+  | "a2a"
+  | "subagent"
+  | "guest"
+  | "unknown";
 
 const CIRCLE_TOKENS = new Set(["circle", "circles", "canvas", "sandbox"]);
 const GROUP_TOKENS = new Set(["group", "channel"]);
@@ -43,6 +51,11 @@ export function classifyRunOrigin(sessionKey: string | null | undefined): RunOri
     }
     if (token === "cron") {
       return "system";
+    }
+    if (token === "heartbeat") {
+      // Isolated heartbeat sessions (`<key>:heartbeat`, token-efficiency
+      // build) are machine-authored ack loops: never learnable.
+      return "heartbeat";
     }
     if (token === "hook" || token.startsWith("hook-")) {
       // Webhook bodies are third-party text by definition (adversarial H2).

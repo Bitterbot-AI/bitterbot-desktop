@@ -255,6 +255,8 @@ Cross-domain creative recombination. Uses **farthest-point sampling** to select 
 
 Gap-filling driven by the curiosity engine. Loads unresolved `curiosity_targets` of type `knowledge_gap` and generates content to fill those gaps using a local LLM (to minimize cost).
 
+**Off by default since the token-efficiency pass (2026-09-19).** On the reference node exploration asked near-identical questions every cycle (28 of 30 frontier targets already explored) and the live config had already disabled it. Re-enable with `memory.dream.modes.exploration.enabled: true`.
+
 ### Research Mode
 
 **Retired in PLAN-45 Phase 1 (2026-09-05).** The empirical prompt-optimization mode (`prompt-optimization.ts`), its PLAN-21 two-gate validation sandbox (faithfulness gate + paired-bootstrap performance gate over held-out `skill_executions`), and the Pareto / cosine-decay edit budget (`skill-mutation-pareto.ts`) were deleted. It was unfueled (skill-execution bootstrap deadlock) and its promotion path wrote directly to live chunk text. What survives of `experiment-sandbox.ts` is only the paired LLM judge that harness-evolve (PLAN-25) uses to compare two harness policies; it never gates a skill.
@@ -269,12 +271,14 @@ Gap-filling driven by the curiosity engine. Loads unresolved `curiosity_targets`
 
 The dream engine can be triggered immediately by significant hormonal spikes, bypassing the normal timer:
 
-| Spike    | Threshold | Mini-Dream Mode | Rationale                         |
-| -------- | --------- | --------------- | --------------------------------- |
-| Dopamine | > 0.7     | `replay`        | Reinforce the positive experience |
-| Cortisol | > 0.8     | `compression`   | Process the stressful event       |
+| Spike    | Trigger                                            | Mini-Dream Mode | Rationale                         |
+| -------- | -------------------------------------------------- | --------------- | --------------------------------- |
+| Dopamine | rise of >= `hormonalTriggerDelta` since last check | `replay`        | Reinforce the positive experience |
+| Cortisol | rise of >= `hormonalTriggerDelta` since last check | `compression`   | Process the stressful event       |
 
-Mini-dreams run through the same `run()` pipeline but with a single non-LLM mode (free). A **10-minute cooldown** prevents runaway cycles.
+**Delta, not level (token-efficiency pass 2026-09-19).** GCCRF stimulation on every consolidation tick plus `recall_relational` on every prompt build pinned dopamine above 0.7 while the node was idle, so the old absolute-level check fired a mini-dream and an identical `[AUTO] Hormonal event` scratch note every 30 minutes (48 per idle day, each re-embedded). Both triggers now fire only on a RISE of at least `memory.dream.hormonalTriggerDelta` (default 0.15) since the previous check (`HormonalDeltaTrigger` in `dream-gate.ts`); the baseline moves on every check so a pinned level fires once. The auto-scratch note is additionally deduped against the previous auto note. The mini-dream cooldown is `memory.dream.miniDreamCooldownMinutes` (default 90, deliberately above the 30-minute consolidation tick).
+
+Mini-dreams run through the same `run()` pipeline but with a single non-LLM mode (free).
 
 The trigger is wired through `MemoryIndexManager` (the orchestration layer), not directly on the hormonal manager — maintaining the existing architectural pattern where the manager coordinates all subsystems.
 
@@ -481,12 +485,34 @@ Search and consolidation are always allowed (no API calls).
 
 ---
 
+## Scheduled Cycle Gate (token-efficiency pass 2026-09-19)
+
+The timer used to run a full cycle every interval regardless of new input: an idle day produced 6 full cycles (each bundling exploration + discovery + extraction + working-memory synthesis + embeddings) that metabolized only the artifacts the previous cycle wrote (the readiness check counts chunks, and dream journal / snapshot / handover chunks are new chunks). A **scheduled** full cycle now runs only when all three hold (`evaluateDreamGate` in `src/memory/dream-gate.ts`):
+
+| Gate      | Config key                     | Default | Meaning                                                   |
+| --------- | ------------------------------ | ------- | --------------------------------------------------------- |
+| New input | `memory.dream.minNewSessions`  | 1       | Live (non-heartbeat) user turns since the last full cycle |
+| Idle      | `memory.dream.minIdleMinutes`  | 60      | Minutes since the last live user turn                     |
+| Cadence   | `memory.dream.minHoursBetween` | 8       | Hours since the last full cycle                           |
+
+Counters persist in `memory_meta` (`dream_gate.*`) so they survive restarts. Explicit triggers — the `dream.trigger` RPC, the CLI, `MemoryIndexManager.dream()` without `{ scheduled: true }` — bypass the gate. A skipped cycle logs `scheduled dream cycle skipped: <reason>` at debug level.
+
+**Discovery gate.** The post-dream discovery agent's pair selection is deterministic (first 3 unconnected pairs), so a run without new skill chunks repeats the same LLM calls for the same answer (0 new edges since 2026-09-05 on the reference node). It now runs only when skill chunks were created since its last run (`discovery.last_run_at` in `memory_meta`).
+
+---
+
 ## Configuration Reference
 
 ```typescript
 type DreamEngineConfig = {
   enabled?: boolean; // Default: true
   intervalMinutes?: number; // Default: 120
+  minNewSessions?: number; // Default: 1 (scheduled-cycle gate)
+  minIdleMinutes?: number; // Default: 60 (scheduled-cycle gate)
+  minHoursBetween?: number; // Default: 8 (scheduled-cycle gate)
+  miniDreamCooldownMinutes?: number; // Default: 90
+  hormonalTriggerDelta?: number; // Default: 0.15
+  synthesisMaxTokens?: number; // Default: 6144 (RLM working-memory synthesis output cap)
   maxChunksPerCycle?: number; // Default: 50
   maxLlmCallsPerCycle?: number; // Default: 5
   clusterSimilarityThreshold?: number; // Default: 0.65

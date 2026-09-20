@@ -27,11 +27,12 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
     expect(lines.join("\n")).not.toContain("Currently connected");
   });
 
-  it("offline state — surfaces the bridge error", () => {
+  it("offline state — stable capability sentence, no error text (network_status has it)", () => {
     patchP2pStatus({ enabled: true, connected: false, lastError: "ENOENT" });
     const text = buildEconomicIdentitySection().join("\n");
     expect(text).toContain("P2P offline");
-    expect(text).toContain("ENOENT");
+    expect(text).not.toContain("ENOENT");
+    expect(text).toMatch(/use `network_status`/i);
   });
 
   it("connected state includes a nudge to reach for network_status when fresh data is needed", () => {
@@ -69,7 +70,7 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
     expect(buildEconomicIdentitySection().join("\n")).not.toContain("### Forage");
   });
 
-  it("connected with full census — peer id, tier, tier mix, health, pulse render", () => {
+  it("connected state — identity bits render, live counters never do (cache prefix stability)", () => {
     patchP2pStatus({
       enabled: true,
       connected: true,
@@ -80,41 +81,51 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
       networkHealthScore: 0.82,
       skillsPublishedNetworkWide: 14,
       telemetryCountsByType: { novelty: 38, experience: 7 },
-      anomalyAlertCount: 0,
-    });
-    const text = buildEconomicIdentitySection().join("\n");
-
-    // Identity line: truncated peer id + tier
-    expect(text).toMatch(/you are 12D3KooWQM…HJVM, edge tier/);
-
-    // Peer count + tier mix (management before edge by spec)
-    expect(text).toContain("Currently connected to 6 peers (3 management, 3 edge)");
-
-    // Health + skills count
-    expect(text).toContain("Network health: 82%");
-    expect(text).toContain("14 skills published network-wide");
-
-    // Telemetry pulse, ordered by count desc
-    expect(text).toContain("Recent network pulse: 38 novelty, 7 experience");
-
-    // No anomaly line when count is zero
-    expect(text).not.toContain("Active anomaly alerts");
-  });
-
-  it("anomaly alerts surface only when non-zero", () => {
-    patchP2pStatus({
-      enabled: true,
-      connected: true,
-      peerCount: 4,
-      peersByTier: { edge: 4 },
       anomalyAlertCount: 2,
     });
     const text = buildEconomicIdentitySection().join("\n");
-    expect(text).toContain("Active anomaly alerts: 2");
+
+    // Identity line: truncated peer id + tier (stable per process)
+    expect(text).toContain(
+      "You are connected to the network (you are 12D3KooWQM…HJVM, edge tier).",
+    );
+
+    // Token-efficiency W4: no peer count, health %, pulse or anomaly count in
+    // the prompt; the agent is pointed at network_status instead.
+    expect(text).not.toContain("Currently connected");
+    expect(text).not.toContain("Network health");
+    expect(text).not.toContain("skills published network-wide");
+    expect(text).not.toContain("Recent network pulse");
+    expect(text).not.toContain("Active anomaly alerts");
+    expect(text).not.toMatch(/\b(6|82|14|38|7|2)\b/);
+    expect(text).toMatch(/use `network_status`/);
   });
 
-  it("partial state — missing fields are omitted gracefully", () => {
-    // peerId / tier / health unset (e.g. before first census poll)
+  it("connected state is byte-identical across peer-count / health / pulse changes", () => {
+    patchP2pStatus({
+      enabled: true,
+      connected: true,
+      peerCount: 1,
+      peerId: "12D3KooWQMptNZvAvA39NUAJur8NZN82AQBZ6bVoZ5y5H7WrHJVM",
+      nodeTier: "edge",
+      peersByTier: { edge: 1 },
+      networkHealthScore: 0.1,
+      telemetryCountsByType: { a: 1 },
+      anomalyAlertCount: 0,
+    });
+    const a = buildEconomicIdentitySection().join("\n");
+    patchP2pStatus({
+      peerCount: 40,
+      peersByTier: { edge: 30, management: 10 },
+      networkHealthScore: 0.95,
+      telemetryCountsByType: { a: 500, b: 12 },
+      anomalyAlertCount: 3,
+    });
+    const b = buildEconomicIdentitySection().join("\n");
+    expect(a).toBe(b);
+  });
+
+  it("partial state — missing identity bits are omitted gracefully", () => {
     patchP2pStatus({
       enabled: true,
       connected: true,
@@ -123,36 +134,8 @@ describe("buildEconomicIdentitySection — live network awareness", () => {
       networkHealthScore: null,
     });
     const text = buildEconomicIdentitySection().join("\n");
-    expect(text).toContain("Currently connected to 1 peer");
+    expect(text).toContain("You are connected to the network.");
     expect(text).not.toContain("Network health");
     expect(text).not.toContain("Recent network pulse");
-  });
-
-  it("tier mix omits zero buckets and sorts management-first", () => {
-    patchP2pStatus({
-      enabled: true,
-      connected: true,
-      peerCount: 5,
-      peersByTier: { edge: 4, management: 1, unknown: 0 },
-    });
-    const text = buildEconomicIdentitySection().join("\n");
-    expect(text).toContain("(1 management, 4 edge)");
-    expect(text).not.toContain("unknown");
-  });
-
-  it("telemetry pulse caps at top-3 signal types by count", () => {
-    patchP2pStatus({
-      enabled: true,
-      connected: true,
-      peerCount: 2,
-      peersByTier: { edge: 2 },
-      telemetryCountsByType: { a: 1, b: 50, c: 12, d: 30, e: 7 },
-    });
-    const text = buildEconomicIdentitySection().join("\n");
-    // Top 3 by count: b=50, d=30, c=12
-    expect(text).toContain("Recent network pulse: 50 b, 30 d, 12 c");
-    // Lowest-count signals (a=1, e=7) excluded from the pulse line.
-    expect(text).not.toMatch(/pulse:.*7 e/);
-    expect(text).not.toMatch(/pulse:.*1 a/);
   });
 });

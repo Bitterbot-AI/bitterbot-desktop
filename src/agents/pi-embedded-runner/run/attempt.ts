@@ -7,6 +7,10 @@ import os from "node:os";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
+import {
+  filterHeartbeatOnlyFiles,
+  resolveHeartbeatLightContext,
+} from "../../../infra/heartbeat-gate.js";
 import { getMachineDisplayName } from "../../../infra/machine-name.js";
 import { MAX_IMAGE_BYTES } from "../../../media/constants.js";
 import { getGlobalHookRunner } from "../../../plugins/hook-runner-global.js";
@@ -289,14 +293,30 @@ export async function runEmbeddedAttempt(
     });
 
     const sessionLabel = params.sessionKey ?? params.sessionId;
-    const { bootstrapFiles: hookAdjustedBootstrapFiles, contextFiles } =
+    const { bootstrapFiles: resolvedBootstrapFiles, contextFiles: resolvedContextFiles } =
       await resolveBootstrapContextForRun({
         workspaceDir: effectiveWorkspace,
         config: params.config,
         sessionKey: params.sessionKey,
         sessionId: params.sessionId,
+        includeHeartbeatFile: params.isHeartbeat === true,
         warn: makeBootstrapWarn({ sessionLabel, warn: (message) => log.warn(message) }),
       });
+    // Light heartbeat (token-efficiency build): HEARTBEAT.md is the only
+    // workspace file a heartbeat needs; the rest of the bootstrap set
+    // (GENOME/PROTOCOLS/TOOLS/MEMORY) is what made an idle tick cost ~54k tokens.
+    const heartbeatLight =
+      params.isHeartbeat === true &&
+      resolveHeartbeatLightContext(params.config, {
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+      });
+    const hookAdjustedBootstrapFiles = heartbeatLight
+      ? filterHeartbeatOnlyFiles(resolvedBootstrapFiles)
+      : resolvedBootstrapFiles;
+    const contextFiles = heartbeatLight
+      ? filterHeartbeatOnlyFiles(resolvedContextFiles)
+      : resolvedContextFiles;
     const workspaceNotes: string[] | undefined = undefined;
 
     const agentDir = params.agentDir ?? resolveBitterbotAgentDir();
@@ -325,6 +345,8 @@ export async function runEmbeddedAttempt(
           senderE164: params.senderE164,
           senderIsOwner: params.senderIsOwner,
           sessionKey: params.sessionKey ?? params.sessionId,
+          isHeartbeat: params.isHeartbeat === true,
+          runId: params.runId,
           agentDir,
           workspaceDir: effectiveWorkspace,
           config: params.config,
@@ -473,7 +495,8 @@ export async function runEmbeddedAttempt(
     const promptMode =
       (remoteTaskTurn && !ownValidationTurn) ||
       isSubagentSessionKey(params.sessionKey) ||
-      isCronSessionKey(params.sessionKey)
+      isCronSessionKey(params.sessionKey) ||
+      heartbeatLight
         ? "minimal"
         : "full";
     const docsPath = await resolveBitterbotDocsPath({
@@ -502,6 +525,9 @@ export async function runEmbeddedAttempt(
           // PLAN-40 funnel: dream-fact consumption stamps only in full mode
           // (minimal assembly drops the proactive block after selection).
           promptMode,
+          // Heartbeat ticks must not spend embeddings on proactive recall or
+          // drain the continuity gate (token-efficiency build, W2 contract).
+          isHeartbeat: params.isHeartbeat === true,
         }).catch(() => undefined);
 
     // PLAN-33: canonical facts resolve independently of endocrine state so a

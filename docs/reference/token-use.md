@@ -86,16 +86,25 @@ write costs lower when a session goes idle past the TTL.
 Configure it in [Gateway configuration](/gateway/configuration) and see the
 behavior details in [Session pruning](/concepts/session-pruning).
 
-Heartbeat can keep the cache **warm** across idle gaps. If your model cache TTL
-is `1h`, setting the heartbeat interval just under that (e.g., `55m`) can avoid
-re-caching the full prompt, reducing cache write costs.
+Heartbeats no longer warm the main-session cache by default. Since the
+token-efficiency build, an interval heartbeat is skipped outright when its inputs
+(`HEARTBEAT.md`, the heartbeat prompt, queued system events) are unchanged
+(`heartbeat.skipWhenUnchanged`), and when it does run it uses an isolated session
+with a minimal prompt on the cheap model tier (`heartbeat.isolatedSession`,
+`heartbeat.lightContext`). That is a different, much smaller prefix, so it cannot
+refresh the chat prefix. If you specifically want a keep-warm tick, set
+`isolatedSession: false`, `lightContext: false`, `skipWhenUnchanged: false`, pick
+an interval under the cache TTL, and confirm with the usage ledger that
+`cache_read` is non-zero on heartbeat rows; otherwise every tick is a full cache
+write that is never read back. See [Heartbeat](/gateway/heartbeat) for the cost
+model.
 
 For Anthropic API pricing, cache reads are significantly cheaper than input
 tokens, while cache writes are billed at a higher multiplier. See Anthropic’s
 prompt caching pricing for the latest rates and TTL multipliers:
 [https://docs.anthropic.com/docs/build-with-claude/prompt-caching](https://docs.anthropic.com/docs/build-with-claude/prompt-caching)
 
-### Example: keep 1h cache warm with heartbeat
+### Example: keep 1h cache warm with heartbeat (opt-in)
 
 ```yaml
 agents:
@@ -108,6 +117,9 @@ agents:
           cacheRetention: "long"
     heartbeat:
       every: "55m"
+      skipWhenUnchanged: false
+      isolatedSession: false
+      lightContext: false
 ```
 
 ## Tips for reducing token pressure

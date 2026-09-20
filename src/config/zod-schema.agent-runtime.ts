@@ -29,6 +29,9 @@ export const HeartbeatSchema = z
     accountId: z.string().optional(),
     prompt: z.string().optional(),
     ackMaxChars: z.number().int().nonnegative().optional(),
+    skipWhenUnchanged: z.boolean().optional(),
+    isolatedSession: z.boolean().optional(),
+    lightContext: z.boolean().optional(),
   })
   .strict()
   .superRefine((val, ctx) => {
@@ -364,6 +367,18 @@ export const AgentSandboxSchema = z
   .strict()
   .optional();
 
+const ToolHotSetLaneSchema = z.enum(["chat", "heartbeat", "cron", "subagent"]);
+
+export const ToolHotSetSchema = z
+  .object({
+    enabled: z.boolean().optional().describe("Default: true"),
+    max: z.number().int().min(1).max(60).optional().describe("Default: 10"),
+    always: z.array(z.string()).optional().describe('Default: ["read", "memory_search"]'),
+    perLane: z.partialRecord(ToolHotSetLaneSchema, z.array(z.string())).optional(),
+  })
+  .strict()
+  .optional();
+
 export const AgentToolsSchema = z
   .object({
     profile: ToolProfileSchema,
@@ -380,6 +395,7 @@ export const AgentToolsSchema = z
       .optional(),
     exec: AgentToolExecSchema,
     fs: ToolFsSchema,
+    hotSet: ToolHotSetSchema,
     sandbox: z
       .object({
         tools: ToolPolicySchema,
@@ -404,6 +420,7 @@ export const MemorySearchSchema = z
     enabled: z.boolean().optional(),
     sources: z.array(z.union([z.literal("memory"), z.literal("sessions")])).optional(),
     extraPaths: z.array(z.string()).optional(),
+    excludePaths: z.array(z.string()).optional(),
     experimental: z
       .object({
         sessionMemory: z.boolean().optional(),
@@ -628,6 +645,8 @@ export const ToolsSchema = z
       .optional(),
     exec: ToolExecSchema,
     fs: ToolFsSchema,
+    hotSet: ToolHotSetSchema,
+    resultMaxChars: z.number().int().min(1000).optional().describe("Default: 8000"),
     subagents: z
       .object({
         tools: ToolPolicySchema,

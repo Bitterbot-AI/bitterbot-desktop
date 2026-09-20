@@ -80,11 +80,13 @@ export async function completeAttributed(
     }
   }
 
-  const [{ completeSimple }, { resolveModel }, modelAuth] = await Promise.all([
-    import("@mariozechner/pi-ai"),
-    import("./pi-embedded-runner/model.js"),
-    import("./model-auth.js"),
-  ]);
+  const [{ completeSimple }, { resolveModel }, modelAuth, { resolveCacheTtlLabel }] =
+    await Promise.all([
+      import("@mariozechner/pi-ai"),
+      import("./pi-embedded-runner/model.js"),
+      import("./model-auth.js"),
+      import("./pi-embedded-runner/extra-params.js"),
+    ]);
 
   const resolved = resolveModel(params.provider, params.modelId, params.agentDir, params.cfg);
   if (!resolved.model) {
@@ -121,6 +123,19 @@ export async function completeAttributed(
   );
 
   const failure = message as { stopReason?: string; errorMessage?: string };
+  // pi-ai does not surface Anthropic's per-TTL cache_creation split, so the TTL on the row is the
+  // configured retention for this model (what the request asked for); 1h writes are priced at 2x.
+  let cacheTtl: "5m" | "1h" | "none" | undefined;
+  try {
+    cacheTtl = resolveCacheTtlLabel({
+      cfg: params.cfg,
+      provider: message.provider ?? params.provider,
+      modelId: message.model ?? params.modelId,
+      baseUrl: typeof resolved.model.baseUrl === "string" ? resolved.model.baseUrl : undefined,
+    });
+  } catch {
+    cacheTtl = undefined;
+  }
   recordUsage({
     kind: params.kind ?? "chat",
     feature: params.feature,
@@ -137,6 +152,7 @@ export async function completeAttributed(
     durationMs: Date.now() - startedAt,
     status: failure.stopReason === "error" ? "error" : "ok",
     stopReason: failure.stopReason,
+    cacheTtl,
     config: params.cfg,
   });
 

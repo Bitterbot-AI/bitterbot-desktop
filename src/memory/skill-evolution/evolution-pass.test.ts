@@ -241,6 +241,50 @@ describe("runEvolutionIteration", () => {
     expect(result.cursorBefore).toBeGreaterThan(0);
   });
 
+  // Token-efficiency pass (2026-09-19): the proposer (the expensive lane)
+  // only runs when the window sampled at least minFailsForProposer fails.
+  it("skips the proposer when the sampled window has fewer fails than minFailsForProposer", async () => {
+    const journal = seedJournal(); // 3 fails, 2 passes
+    let proposerCalls = 0;
+    const llmCall = async (prompt: string) => {
+      if (prompt.includes("Skill Proposer Agent")) {
+        proposerCalls++;
+        return JSON.stringify({ tool: "finish", proposal: { action: "no_action" } });
+      }
+      return "```json\n" + MAINTAINER_JSON + "\n```";
+    };
+    const result = await runEvolutionIteration({
+      journal,
+      llmCall,
+      storeOpts: { configDir: tmpDir },
+      minFailsForProposer: 5,
+    });
+    expect(result.ran).toBe(true);
+    expect(result.samplerStats?.failsSelected).toBe(3);
+    expect(proposerCalls).toBe(0);
+    expect(result.proposer).toBeUndefined();
+    // Maintenance still ran.
+    expect(result.maintenance?.applied).toBe(true);
+  });
+
+  it("runs the proposer with the default floor (1) when a fail was sampled", async () => {
+    const journal = seedJournal();
+    let proposerCalls = 0;
+    const result = await runEvolutionIteration({
+      journal,
+      llmCall: async (prompt) => {
+        if (prompt.includes("Skill Proposer Agent")) {
+          proposerCalls++;
+          return JSON.stringify({ tool: "finish", proposal: { action: "no_action" } });
+        }
+        return "```json\n" + MAINTAINER_JSON + "\n```";
+      },
+      storeOpts: { configDir: tmpDir },
+    });
+    expect(proposerCalls).toBeGreaterThan(0);
+    expect(result.proposer?.proposal.action).toBe("no_action");
+  });
+
   it("never throws even when everything is broken, and says why (PLAN-44)", async () => {
     const journal = seedJournal();
     const result = await runEvolutionIteration({

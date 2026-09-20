@@ -15,6 +15,16 @@
  * - Emerging Skills section: BitterBot
  */
 
+/**
+ * Day-granular stamp for the injected MEMORY.md header. The full ISO
+ * timestamp lives in provenance/journal; in the prompt it only churned the
+ * cached prefix (token-efficiency build).
+ */
+function dreamDay(ts: string): string {
+  const d = new Date(ts);
+  return Number.isNaN(d.getTime()) ? ts : d.toISOString().slice(0, 10);
+}
+
 export type WorkingMemoryContext = {
   oldState: string;
   scratchNotes: string;
@@ -204,7 +214,7 @@ Write the new Working Memory state using this exact schema. Keep total output un
 
 \`\`\`markdown
 # Working Memory State
-*Last dream: ${ctx.timestamp} | Mood: ${ctx.hormonalState?.mood ?? "unknown"} | Maturity: ${Math.round(ctx.maturity * 100)}%*
+*Last dream: ${dreamDay(ctx.timestamp)} | Mood: ${ctx.hormonalState?.mood ?? "unknown"} | Maturity: ${Math.round(ctx.maturity * 100)}%*
 
 ## The Phenotype (Ego State)
 *Who am I becoming? (Dopamine/Cortisol-weighted — achievements shape self-concept, frictions reveal growth areas)*
@@ -472,7 +482,7 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
   const mood = ctx.hormonalState?.mood ?? "unknown";
 
   // The Phenotype: extract from old state or use developmental placeholder
-  const oldPhenotype = extractSection(ctx.oldState, "The Phenotype");
+  const oldPhenotype = stripSectionSubheaders(extractSection(ctx.oldState, "The Phenotype"));
   const maturityStage =
     ctx.maturity < 0.15
       ? "Nascent — still forming initial understanding of the world."
@@ -486,7 +496,7 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
     `Developmental stage: ${maturityStage}\nSelf-concept forming — more interactions needed.`;
 
   // The Bond: extract from old state, enrich with preferences, or use placeholder
-  const oldBond = extractSection(ctx.oldState, "The Bond");
+  const oldBond = stripSectionSubheaders(extractSection(ctx.oldState, "The Bond"));
   let bondContent: string;
   if (oldBond) {
     bondContent = oldBond;
@@ -500,7 +510,7 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
   }
 
   // The Niche: extract from old state or use pre-network placeholder
-  const oldNiche = extractSection(ctx.oldState, "The Niche");
+  const oldNiche = stripSectionSubheaders(extractSection(ctx.oldState, "The Niche"));
   let nicheContent: string;
   if (oldNiche) {
     nicheContent = oldNiche;
@@ -590,7 +600,7 @@ export function buildHeuristicWorkingMemory(ctx: WorkingMemoryContext): string {
       : "*No repeated task patterns detected yet.*";
 
   return `# Working Memory State
-*Last dream: ${ctx.timestamp} | Mood: ${mood} | Maturity: ${Math.round(ctx.maturity * 100)}%*
+*Last dream: ${dreamDay(ctx.timestamp)} | Mood: ${mood} | Maturity: ${Math.round(ctx.maturity * 100)}%*
 
 ## The Phenotype (Ego State)
 *Who am I becoming?*
@@ -755,6 +765,26 @@ export function validateWorkingMemory(
     collapseReason,
     bondDriftRatio,
   };
+}
+
+/**
+ * Token-efficiency pass (2026-09-19): the heuristic builder re-emits its own
+ * italic sub-header (`*Who am I becoming?*` etc.) above each carried-over
+ * section, but `extractSection` returned the old sub-header as part of the
+ * body, so every heuristic rewrite prepended one more copy (the live
+ * MEMORY.md reached 21). Strip every sub-header line from a carried section
+ * so the builder is idempotent on its own output.
+ */
+const SECTION_SUBHEADER_RE =
+  /^\*(?:Who am I becoming\?|Who is the user, and how do we relate\?|What is my role in the network\?)[^\n]*\*\s*$/;
+
+export function stripSectionSubheaders(body: string | null): string | null {
+  if (!body) {
+    return body;
+  }
+  const kept = body.split("\n").filter((line) => !SECTION_SUBHEADER_RE.test(line.trim()));
+  const out = kept.join("\n").trim();
+  return out || null;
 }
 
 /**

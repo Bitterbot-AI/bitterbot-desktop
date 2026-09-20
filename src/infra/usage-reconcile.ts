@@ -21,6 +21,14 @@ import { resolveStateDir } from "../config/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { classifyAgentFeature, USAGE_FEATURES } from "./usage-features.js";
 import { resolveUsageEvent, type ResolvedUsageEvent } from "./usage-ledger.js";
+import { relabelHeartbeatsV3 } from "./usage-relabel.js";
+import {
+  cacheTtlFor,
+  HEARTBEAT_CHANNEL,
+  HeartbeatTurnTracker,
+  resolveHeartbeatPromptSet,
+  type TtlMemo,
+} from "./usage-transcript-classify.js";
 
 const log = createSubsystemLogger("usage-reconcile");
 
@@ -29,8 +37,15 @@ const SYNTHETIC_PROVIDERS = new Set(["bitterbot", "openclaw"]);
 const MAX_LINE_BYTES = 8 * 1024 * 1024;
 const READ_CHUNK_BYTES = 1024 * 1024;
 const YIELD_EVERY_LINES = 200;
+/**
+ * The live hook records a turn on an async queue right after the transcript line is written.
+ * A reconcile pass that reads the line first would insert it with weaker attribution and the
+ * live row would then be dropped by the dedupe key. Lines younger than this are left for the
+ * next pass (the live queue settles in milliseconds; two minutes is a generous bound).
+ */
+export const RECONCILE_GRACE_MS = 2 * 60_000;
 
-type Cursor = { offset: number; size: number; mtimeMs: number };
+type Cursor = { offset: number; size: number; mtimeMs: number; deferred?: boolean };
 
 export type ReconcileResult = { files: number; rows: number; skipped: number };
 
@@ -59,6 +74,8 @@ type ParsedAssistantLine = {
   };
   stopReason?: string;
   durationMs?: number;
+  /** The raw assistant message, for content classification (heartbeat ack). */
+  message: Record<string, unknown>;
 };
 
 /** Parse one transcript line into a ledger candidate; null for anything that is not a priced assistant turn. */
@@ -117,6 +134,7 @@ export function parseTranscriptLine(line: string, sessionId: string): ParsedAssi
     cost,
     stopReason: typeof message.stopReason === "string" ? message.stopReason : undefined,
     durationMs: typeof message.durationMs === "number" ? message.durationMs : undefined,
+    message,
   };
 }
 
@@ -212,6 +230,9 @@ async function reconcileFile(params: {
   agentId: string;
   cfg?: BitterbotConfig;
   attribution?: Map<string, SessionAttribution>;
+  heartbeatPrompts: readonly string[];
+  ttlMemo: TtlMemo;
+  nowMs: number;
 }): Promise<{ rows: number; skipped: number }> {
   const { ledger, filePath, agentId } = params;
   const sessionId = transcriptSessionId(path.basename(filePath));
@@ -221,7 +242,7 @@ async function reconcileFile(params: {
   const stat = fs.statSync(filePath);
   const prev = readCursor(ledger, filePath);
   let offset = prev && prev.offset <= stat.size ? prev.offset : 0;
-  if (prev && prev.size === stat.size && prev.mtimeMs === stat.mtimeMs) {
+  if (prev && !prev.deferred && prev.size === stat.size && prev.mtimeMs === stat.mtimeMs) {
     return { rows: 0, skipped: 0 };
   }
   if (stat.size <= offset) {
@@ -239,6 +260,8 @@ async function reconcileFile(params: {
   const fd = fs.openSync(filePath, "r");
   let rows = 0;
   let skipped = 0;
+  const tracker = new HeartbeatTurnTracker(params.heartbeatPrompts);
+  const graceCutoff = params.nowMs - RECONCILE_GRACE_MS;
   try {
     const length = stat.size - offset;
     const buffer = Buffer.alloc(Math.min(length, READ_CHUNK_BYTES));
@@ -247,9 +270,14 @@ async function reconcileFile(params: {
     let consumed = 0;
     // Bytes after the last newline seen so far (a torn tail); the cursor never advances past it.
     let tailBytes = 0;
+    // Bytes of complete lines handled so far, and where the current turn's user line starts, so
+    // a deferred (too-young) assistant line re-reads its own user turn next time.
+    let processedBytes = 0;
+    let turnStartBytes = 0;
+    let deferred = false;
     let linesSinceYield = 0;
     const pending: Array<ResolvedUsageEvent & { dedupeKey: string }> = [];
-    while (consumed < length) {
+    while (consumed < length && !deferred) {
       const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, offset + consumed);
       if (bytesRead <= 0) {
         break;
@@ -274,30 +302,50 @@ async function reconcileFile(params: {
           // Keep the gateway event loop responsive during a large first-run backfill.
           await new Promise<void>((resolve) => setImmediate(resolve));
         }
+        const lineBytes = Buffer.byteLength(line, "utf8") + 1;
+        if (HeartbeatTurnTracker.mayCarryUserTurn(line)) {
+          try {
+            tracker.noteEntry(JSON.parse(line) as Record<string, unknown>);
+            turnStartBytes = processedBytes;
+          } catch {
+            // not a transcript entry
+          }
+        }
         if (!line.trim() || !line.includes('"usage"')) {
+          processedBytes += lineBytes;
           continue;
         }
         const parsed = parseTranscriptLine(line, sessionId);
         if (!parsed) {
+          processedBytes += lineBytes;
           continue;
         }
+        if (parsed.ts > graceCutoff) {
+          deferred = true;
+          break;
+        }
+        processedBytes += lineBytes;
         const attribution = params.attribution?.get(sessionId);
+        const isHeartbeat = tracker.isHeartbeatAssistant(parsed.message);
         const resolved = await resolveUsageEvent({
           ts: parsed.ts,
           kind: "chat",
-          feature: attribution?.feature ?? USAGE_FEATURES.agentTurn,
+          feature: isHeartbeat
+            ? USAGE_FEATURES.agentHeartbeat
+            : (attribution?.feature ?? USAGE_FEATURES.agentTurn),
           provider: parsed.provider,
           model: parsed.model,
           api: parsed.api,
           agentId,
           sessionId,
           sessionKey: attribution?.sessionKey,
-          channel: attribution?.channel,
+          channel: isHeartbeat ? HEARTBEAT_CHANNEL : attribution?.channel,
           usage: parsed.usage,
           cost: parsed.cost,
           stopReason: parsed.stopReason,
           durationMs: parsed.durationMs,
           status: parsed.stopReason === "error" ? "error" : "ok",
+          cacheTtl: cacheTtlFor(params.ttlMemo, params.cfg, parsed.provider, parsed.model),
           source: "reconcile",
           config: params.cfg,
         });
@@ -320,6 +368,19 @@ async function reconcileFile(params: {
         });
       }
     }
+    if (deferred) {
+      // Stop before the young turn (its user line included) and come back after the grace.
+      ledger.setMeta(
+        `reconcile:file:${filePath}`,
+        JSON.stringify({
+          offset: offset + Math.min(processedBytes, turnStartBytes),
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          deferred: true,
+        } satisfies Cursor),
+      );
+      return { rows, skipped };
+    }
     // Persist the cursor at the last complete line so a torn tail is re-read next time.
     offset = offset + consumed - tailBytes;
     ledger.setMeta(
@@ -336,9 +397,14 @@ export async function reconcileTranscripts(params: {
   ledger: UsageLedger;
   cfg?: BitterbotConfig;
   stateDir?: string;
+  /** Test hook: "now" for the young-line grace window. */
+  nowMs?: number;
 }): Promise<ReconcileResult> {
   const stateDir = params.stateDir ?? resolveStateDir();
   const result: ReconcileResult = { files: 0, rows: 0, skipped: 0 };
+  const nowMs = params.nowMs ?? Date.now();
+  const heartbeatPrompts = resolveHeartbeatPromptSet(params.cfg);
+  const ttlMemo: TtlMemo = new Map();
   for (const { agentId, dir } of listAgentSessionDirs(stateDir)) {
     let names: string[];
     try {
@@ -365,6 +431,19 @@ export async function reconcileTranscripts(params: {
         log.info(`usage reconcile: relabeled ${relabeled} imported rows for agent ${agentId}`);
       }
     }
+    // One-time relabel of main-session heartbeats imported as chat turns (relabel:v3).
+    try {
+      await relabelHeartbeatsV3({
+        ledger: params.ledger,
+        agentId,
+        sessionsDir: dir,
+        heartbeatPrompts,
+      });
+    } catch (err) {
+      log.debug(
+        `usage reconcile: heartbeat relabel failed for ${agentId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     for (const name of names) {
       if (!TRANSCRIPT_RE.test(name)) {
         continue;
@@ -377,6 +456,9 @@ export async function reconcileTranscripts(params: {
           agentId,
           cfg: params.cfg,
           attribution,
+          heartbeatPrompts,
+          ttlMemo,
+          nowMs,
         });
         result.files += 1;
         result.rows += res.rows;

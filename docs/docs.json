@@ -610,7 +610,8 @@
                   "channels/telegram",
                   "channels/discord",
                   "channels/slack",
-                  "channels/signal"
+                  "channels/signal",
+                  "channels/x"
                 ]
               },
               {
@@ -748,7 +749,7 @@
             "groups": [
               {
                 "group": "Overview",
-                "pages": ["tools/index"]
+                "pages": ["tools/index", "tools/hot-set"]
               },
               {
                 "group": "Built-in tools",

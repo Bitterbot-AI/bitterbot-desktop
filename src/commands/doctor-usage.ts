@@ -1,11 +1,15 @@
 /**
- * PLAN-50 doctor section: is every token being counted, and priced?
+ * PLAN-50 doctor section: is every token being counted, and priced, and what does the node
+ * spend when idle?
  *
- * All warn/info: an unpriced model or a stale ledger is operator-attention state, never a
- * reason to block the update gate.
+ * Coverage lines are warn/info: an unpriced model or a stale ledger is operator-attention
+ * state. The unread prompt-cache line is the one exception: at >= $5/day of cache written and
+ * never read back it is an `error` (severity is the gate), because that is money burned on
+ * nothing and the fix is a config change.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { collectUsageDoctorLines } from "../infra/usage-doctor-checks.js";
 import {
   getUsageLedger,
   isUsageLedgerConfigEnabled,
@@ -13,7 +17,14 @@ import {
 } from "../infra/usage-ledger.js";
 import { buildUsageLedgerSummary } from "../infra/usage-summary.js";
 import { formatUsd } from "../utils/usage-format.js";
-import { type CheckResult, info, ok, renderSectionQuietIfAllInfo, warn } from "./doctor-check.js";
+import {
+  type CheckResult,
+  error,
+  info,
+  ok,
+  renderSectionQuietIfAllInfo,
+  warn,
+} from "./doctor-check.js";
 
 const SECTION = "Usage & Cost (ledger)";
 const DAY_MS = 24 * 60 * 60_000;
@@ -90,6 +101,11 @@ export function collectUsageChecks(params: {
     results.push(
       info("embedding token counts are estimated (provider reports none); costs are approximate"),
     );
+  }
+  // Idle spend: unread cache writes (7d), heartbeat cost of pass (7d), idle-day floor (14d).
+  const byLevel = { ok, info, warn, error } as const;
+  for (const line of collectUsageDoctorLines({ ledger, nowMs })) {
+    results.push(byLevel[line.level](line.message));
   }
   for (const b of summary.budgets.budgets) {
     if (b.exceeded) {

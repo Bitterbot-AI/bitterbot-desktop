@@ -124,11 +124,17 @@ export type SkillsEvolutionConfig = {
   /** Model spec "provider/model" for maintainer/labeler calls. Default: cheap-model resolution. */
   judgeModel?: string;
   /**
-   * Model spec for the Skill Proposer ReAct agent. The proposer must hold a
-   * strict JSON tool protocol over many turns; a stronger model than the
-   * cheap maintainer lane pays off. Default: judgeModel, else cheap-model.
+   * Model spec for the Skill Proposer ReAct agent. Default: judgeModel, else
+   * the dream model, else the cheap lane (token-efficiency pass 2026-09-19;
+   * previously the agent's primary model). Set explicitly for a stronger
+   * model when the cheap lane fails the ReAct JSON protocol.
    */
   proposerModel?: string;
+  /**
+   * Skip the proposer when an iteration sampled fewer failing traces than
+   * this (a window of clean PASSes gives it nothing to fix). Default: 1.
+   */
+  minFailsForProposer?: number;
   /** Wiki pattern-page count that triggers the lint/archive pass. Default: 100. */
   wikiMaxPatterns?: number;
   /** Minimum days between semantic (LLM) wiki lint passes. Default: 7. */

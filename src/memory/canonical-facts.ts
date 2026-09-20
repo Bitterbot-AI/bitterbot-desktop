@@ -27,6 +27,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isHeartbeatArtifact, sweepHeartbeatArtifacts } from "./canonical-facts-hygiene.js";
 
 const log = createSubsystemLogger("memory/canonical");
 
@@ -289,6 +290,16 @@ export class CanonicalFactsStore {
     this.db = db;
     this.maxFacts = Math.max(1, config?.maxFacts ?? DEFAULT_MAX_FACTS);
     this.budgetTokens = Math.max(100, config?.budgetTokens ?? DEFAULT_BUDGET_TOKENS);
+    // One-time-per-boot hygiene: retire heartbeat scaffolding the extraction
+    // lane learned as "facts" (see canonical-facts-hygiene.ts). Idempotent.
+    try {
+      const retired = sweepHeartbeatArtifacts(this.db);
+      if (retired > 0) {
+        log.info(`canonical hygiene: retired ${retired} heartbeat-artifact fact(s)`);
+      }
+    } catch (err) {
+      log.warn(`canonical hygiene sweep failed: ${String(err)}`);
+    }
   }
 
   /** Current belief for a key (active or retired), or null. */
@@ -431,6 +442,12 @@ export class CanonicalFactsStore {
       return {
         op: "rejected",
         reason: `value exceeds ${MAX_VALUE_CHARS} chars — canonical facts are atomic, store prose as a crystal instead`,
+      };
+    }
+    if (isHeartbeatArtifact(slug, value)) {
+      return {
+        op: "rejected",
+        reason: "heartbeat scaffolding is not a fact (prompt/ack text, HEARTBEAT.md, clock lines)",
       };
     }
     const statement = (input.statement?.trim() || `${slug}: ${value}`).slice(

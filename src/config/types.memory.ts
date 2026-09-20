@@ -69,6 +69,25 @@ export type MemoryConfig = {
     minSessionDelta?: number;
     /** Maximum facts to extract per session (default: 20). */
     maxFactsPerSession?: number;
+    /**
+     * Output cap for the extraction call. The prompt asks for up to
+     * maxFactsPerSession cited facts plus a handover brief; the old 2048
+     * lane cap truncated long transcripts into unparseable JSON. Default: 6144.
+     */
+    maxTokens?: number;
+    /**
+     * A transcript whose extraction fails (LLM error or unparseable output)
+     * is retried at most this many times per content hash, then skipped
+     * until its content changes or `retryAfterDays` elapses. Default: 2.
+     */
+    maxAttempts?: number;
+    /** Days after which a skipped transcript gets one more attempt. Default: 7. */
+    retryAfterDays?: number;
+    /**
+     * Transcripts longer than this (chars, after heartbeat turns are
+     * stripped) are extracted in line-aligned windows and merged. Default: 48000.
+     */
+    maxTranscriptChars?: number;
   };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {

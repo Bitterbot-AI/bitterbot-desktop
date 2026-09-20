@@ -151,8 +151,9 @@ describe("buildAgentSystemPrompt", () => {
       docsPath: "/tmp/bitterbot/docs",
     });
 
-    expect(prompt).toContain("- Read: Read file contents");
-    expect(prompt).toContain("- Exec: Run shell commands");
+    // Token-efficiency W4: names only (sorted byte order), no prose summaries.
+    expect(prompt).toContain("Tools: Exec, Read, process");
+    expect(prompt).not.toContain("Read file contents");
     expect(prompt).toContain(
       "- If exactly one skill clearly applies: read its SKILL.md at <location> with `Read`, then follow it.",
     );

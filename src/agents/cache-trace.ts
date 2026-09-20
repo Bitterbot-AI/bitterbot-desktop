@@ -7,6 +7,7 @@ import { resolveStateDir } from "../config/paths.js";
 import { resolveUserPath } from "../utils.js";
 import { parseBooleanValue } from "../utils/boolean.js";
 import { safeJsonStringify } from "../utils/safe-json.js";
+import { digestSystemPromptHalves, digestToolDefinitions } from "./system-prompt-cache-boundary.js";
 
 export type CacheTraceStage =
   | "session:loaded"
@@ -15,6 +16,7 @@ export type CacheTraceStage =
   | "prompt:before"
   | "prompt:images"
   | "stream:context"
+  | "stream:usage"
   | "session:after";
 
 export type CacheTraceEvent = {
@@ -38,6 +40,22 @@ export type CacheTraceEvent = {
   messageFingerprints?: string[];
   messagesDigest?: string;
   systemDigest?: string;
+  /**
+   * Token-efficiency W4: separate digests of the two system-prompt halves and
+   * of the sorted tool definitions. A stable prefix shows as an unchanged
+   * stableDigest + toolsDigest across turns while volatileDigest moves.
+   */
+  stableDigest?: string;
+  volatileDigest?: string;
+  boundaryFound?: boolean;
+  toolsDigest?: string;
+  /** Response usage (stream:usage): cache_read / cache_write straight from the provider. */
+  usage?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
   note?: string;
   error?: string;
 };
@@ -216,6 +234,18 @@ export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
       event.system = payload.system;
       event.systemDigest = digest(payload.system);
     }
+    if (typeof payload.system === "string") {
+      const halves = digestSystemPromptHalves(payload.system);
+      event.stableDigest = halves.stableDigest;
+      event.volatileDigest = halves.volatileDigest;
+      event.boundaryFound = halves.boundaryFound;
+    }
+    if (payload.toolsDigest) {
+      event.toolsDigest = payload.toolsDigest;
+    }
+    if (payload.usage) {
+      event.usage = payload.usage;
+    }
     if (payload.options) {
       event.options = payload.options;
     }
@@ -249,19 +279,50 @@ export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
     writer.write(`${line}\n`);
   };
 
+  const recordUsage = (result: unknown) => {
+    const usage = (result as { usage?: Record<string, unknown> } | undefined)?.usage;
+    if (!usage || typeof usage !== "object") {
+      return;
+    }
+    const num = (value: unknown) => (typeof value === "number" ? value : undefined);
+    recordStage("stream:usage", {
+      usage: {
+        input: num(usage.input),
+        output: num(usage.output),
+        cacheRead: num(usage.cacheRead),
+        cacheWrite: num(usage.cacheWrite),
+      },
+    });
+  };
+
   const wrapStreamFn: CacheTrace["wrapStreamFn"] = (streamFn) => {
     const wrapped: StreamFn = (model, context, options) => {
+      const ctx = context as {
+        system?: unknown;
+        systemPrompt?: string;
+        messages?: AgentMessage[];
+        tools?: Array<{ name: string; description?: unknown; parameters?: unknown }>;
+      };
       recordStage("stream:context", {
         model: {
           id: model?.id,
           provider: model?.provider,
           api: model?.api,
         },
-        system: (context as { system?: unknown }).system,
-        messages: (context as { messages?: AgentMessage[] }).messages ?? [],
+        system: ctx.systemPrompt ?? ctx.system,
+        toolsDigest: digestToolDefinitions(ctx.tools),
+        messages: ctx.messages ?? [],
         options: (options ?? {}) as Record<string, unknown>,
       });
-      return streamFn(model, context, options);
+      const out = streamFn(model, context, options);
+      // Hook the final assistant message for cache_read / cache_write. The
+      // stream is consumed by the agent loop as usual; result() only awaits
+      // the terminal event and never drains the queue.
+      Promise.resolve(out)
+        .then((stream) => (stream as { result?: () => Promise<unknown> }).result?.())
+        .then((result) => recordUsage(result))
+        .catch(() => undefined);
+      return out;
     };
     return wrapped;
   };

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildWorkingMemorySynthesisPrompt,
   buildHeuristicWorkingMemory,
+  stripSectionSubheaders,
   validateWorkingMemory,
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
@@ -144,7 +145,7 @@ Working on memory system.`;
 
     it("should include timestamp and mood", () => {
       const result = buildHeuristicWorkingMemory(makeContext());
-      expect(result).toContain("2026-03-12T00:00:00Z");
+      expect(result).toContain("2026-03-12");
       expect(result).toContain("motivated");
     });
   });
@@ -269,5 +270,46 @@ Working on memory system.`;
       expect(result.collapsed).toBe(true);
       expect(result.collapseReason).toContain("Empty synthesis");
     });
+  });
+});
+
+describe("buildHeuristicWorkingMemory idempotence (token-efficiency pass 2026-09-19)", () => {
+  const count = (text: string, needle: string) => text.split(needle).length - 1;
+
+  it("running the heuristic on its own output does not grow it or duplicate sub-headers", () => {
+    const first = buildHeuristicWorkingMemory(
+      makeContext({
+        userPreferences: [{ category: "identity", key: "name", value: "Victor" }],
+        curiosityTargets: [{ description: "learn zig", type: "frontier", priority: 0.5 }],
+      } as Partial<WorkingMemoryContext>),
+    );
+    const second = buildHeuristicWorkingMemory(makeContext({ oldState: first }));
+    const third = buildHeuristicWorkingMemory(makeContext({ oldState: second }));
+    expect(third.length).toBe(second.length);
+    expect(count(third, "*Who am I becoming?*")).toBe(1);
+    expect(count(third, "*Who is the user, and how do we relate?*")).toBe(1);
+    expect(count(third, "*What is my role in the network?*")).toBe(1);
+    expect(count(third, "*Use memory_search if user asks about these topics:*")).toBe(1);
+    expect(third).toContain("Victor");
+  });
+
+  it("repairs a MEMORY.md already polluted with repeated sub-headers", () => {
+    const polluted = buildHeuristicWorkingMemory(makeContext()).replace(
+      "*Who am I becoming?*\n",
+      "*Who am I becoming?*\n".repeat(21),
+    );
+    expect(count(polluted, "*Who am I becoming?*")).toBe(21);
+    const repaired = buildHeuristicWorkingMemory(makeContext({ oldState: polluted }));
+    expect(count(repaired, "*Who am I becoming?*")).toBe(1);
+  });
+
+  it("stripSectionSubheaders also drops the LLM-schema variant with the parenthetical", () => {
+    expect(
+      stripSectionSubheaders(
+        "*Who am I becoming? (Dopamine/Cortisol-weighted — achievements shape self-concept)*\nI am curious.",
+      ),
+    ).toBe("I am curious.");
+    expect(stripSectionSubheaders(null)).toBeNull();
+    expect(stripSectionSubheaders("*Who am I becoming?*")).toBeNull();
   });
 });

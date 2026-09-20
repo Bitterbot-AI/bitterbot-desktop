@@ -12,12 +12,14 @@ import { resolveMainSessionKey } from "../config/sessions.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { createPluginRuntime } from "../plugins/runtime/index.js";
 import { createTestRegistry } from "../test-utils/channel-plugins.js";
+import { __resetHeartbeatHashStateForTest } from "./heartbeat-gate.js";
 import { runHeartbeatOnce } from "./heartbeat-runner.js";
 
 // Avoid pulling optional runtime deps during isolated runs.
 vi.mock("jiti", () => ({ createJiti: () => () => ({}) }));
 
 beforeEach(() => {
+  __resetHeartbeatHashStateForTest();
   const runtime = createPluginRuntime();
   setTelegramRuntime(runtime);
   setWhatsAppRuntime(runtime);

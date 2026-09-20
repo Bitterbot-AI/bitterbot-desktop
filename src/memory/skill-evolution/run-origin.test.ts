@@ -38,3 +38,12 @@ describe("classifyRunOrigin (PLAN-44 D-6)", () => {
     }
   });
 });
+
+describe("heartbeat origin (token-efficiency build)", () => {
+  it("classifies isolated heartbeat sessions as non-learnable", async () => {
+    const { classifyRunOrigin, isLearnableOrigin } = await import("./run-origin.js");
+    expect(classifyRunOrigin("agent:main:main:heartbeat")).toBe("heartbeat");
+    expect(isLearnableOrigin("heartbeat")).toBe(false);
+    expect(classifyRunOrigin("agent:main:main")).toBe("human");
+  });
+});

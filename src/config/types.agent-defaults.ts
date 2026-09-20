@@ -242,6 +242,32 @@ export type AgentDefaultsConfig = {
      * Default: false (only the final heartbeat payload is delivered).
      */
     includeReasoning?: boolean;
+    /**
+     * Content-hash gate: before an interval tick calls the model, hash HEARTBEAT.md,
+     * the resolved heartbeat prompt, and the pending system events for the session.
+     * If the hash matches the last completed tick, skip the model call entirely
+     * (reason `unchanged-hash`). Wake/exec/cron/hook/manual reasons bypass the gate.
+     *
+     * Default: true.
+     */
+    skipWhenUnchanged?: boolean;
+    /**
+     * Run interval heartbeats in a dedicated `<mainKey>:heartbeat` session with a fresh
+     * transcript each tick instead of the shared main session. Delivery (`target: "last"`)
+     * still resolves from the main session. Ticks that must drain pending system events
+     * (exec completions, cron, wake) stay in the main session.
+     *
+     * Default: true.
+     */
+    isolatedSession?: boolean;
+    /**
+     * Light context for heartbeat runs: minimal system prompt, only HEARTBEAT.md injected
+     * (no other workspace bootstrap files), thinking pinned low, and a cheap-tier model
+     * when `model` is not set and a matching API key is present.
+     *
+     * Default: true.
+     */
+    lightContext?: boolean;
   };
   /** Max concurrent agent runs across all conversations. Default: 1 (sequential). */
   maxConcurrent?: number;

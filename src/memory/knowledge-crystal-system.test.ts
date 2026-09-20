@@ -788,7 +788,13 @@ describe("Dream Engine", () => {
 
       const engine = new DreamEngine(
         db,
-        { llmCall: llm, minChunksForDream: 5 },
+        {
+          llmCall: llm,
+          minChunksForDream: 5,
+          // Exploration is off by default since the token-efficiency build;
+          // this test exercises the mode itself, so opt in explicitly.
+          modes: { exploration: { enabled: true } },
+        },
         noopSynthesize,
         noopEmbedBatch,
       );

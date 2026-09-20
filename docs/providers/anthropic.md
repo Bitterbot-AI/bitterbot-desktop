@@ -79,6 +79,35 @@ We recommend migrating to the new `cacheRetention` parameter.
 Bitterbot includes the `extended-cache-ttl-2025-04-11` beta flag for Anthropic API
 requests; keep it if you override provider headers (see [/gateway/configuration](/gateway/configuration)).
 
+### Marker layout (what Bitterbot sends)
+
+Anthropic caches a prefix over `tools -> system -> messages`, tiered: a change in
+`system` leaves the `tools` cache entry intact, and at most four `cache_control`
+markers are allowed per request. Vendored pi-ai places two (the system block and
+the last user message). Bitterbot reshapes the payload before it leaves the
+process (`onPayload` hook, `src/agents/pi-embedded-runner/anthropic-payload-cache.ts`):
+
+| Position          | Content                                                                                                                 | Marker                                                    |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `tools`           | tool definitions **sorted by name** (byte order)                                                                        | on the **last** definition, same TTL as the system marker |
+| `system[0]`       | stable half of the prompt (above `<!-- BITTERBOT_CACHE_BOUNDARY -->`)                                                   | `ephemeral`, `ttl: "1h"` when `cacheRetention: "long"`    |
+| last user message | conversation so far                                                                                                     | pi-ai's marker (unchanged)                                |
+| user-message tail | volatile half (hormones, runtime line, scratch notes) as an unmarked `<runtime-state>` block **after** the marked block | **none** (plain input; the history prefix stays cached)   |
+
+With subscription (OAuth) auth pi-ai adds a Claude Code identity block in front;
+it keeps its marker and the total stays at four. If the system prompt carries
+no boundary marker (custom prompt), only the tool sort and the tool marker are
+applied. See [System Prompt](/concepts/system-prompt) for what sits on each side
+of the boundary.
+
+**1h retention only pays once the stable digest is constant across turns.** A 1h
+write costs 2x input (5m: 1.25x); it is strictly worse than 5m on a prefix that
+changes every call. Before switching to `long`, enable the cache trace
+(`BITTERBOT_CACHE_TRACE=1`, JSONL at `<state>/logs/cache-trace.jsonl`) and check
+that `stableDigest` and `toolsDigest` on consecutive `stream:context` events are
+identical while `stream:usage` shows `cacheRead` growing. Only then does a longer
+TTL turn idle gaps of 5 to 60 minutes into cache reads instead of rewrites.
+
 ## Option B: Claude setup-token
 
 **Best for:** using your Claude subscription.

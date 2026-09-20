@@ -8,6 +8,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { MemorySource, MemorySyncProgressUpdate } from "./types.js";
+import { isExcludedMemoryPath } from "../agents/memory-search.js";
 import { resolveWatchPaths } from "../agents/skills/refresh.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -767,9 +768,12 @@ class MemoryManagerSyncOps {
     progress?: MemorySyncProgressState;
   }) {
     const files = await listMemoryFiles(this.workspaceDir, this.settings.extraPaths);
-    const fileEntries = await Promise.all(
-      files.map(async (file) => buildFileEntry(file, this.workspaceDir)),
-    );
+    // Token-efficiency pass (2026-09-19): memorySearch.excludePaths (default:
+    // dream journal + working-memory snapshots) never reach the index.
+    const excludePaths = this.settings.excludePaths ?? [];
+    const fileEntries = (
+      await Promise.all(files.map(async (file) => buildFileEntry(file, this.workspaceDir)))
+    ).filter((entry) => !isExcludedMemoryPath(entry.path, excludePaths));
     log.debug("memory sync: indexing memory files", {
       files: fileEntries.length,
       needsFullReindex: params.needsFullReindex,

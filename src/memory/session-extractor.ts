@@ -20,6 +20,7 @@
 import type { SessionHandoverBrief } from "./session-handover.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeCanonicalKey } from "./canonical-facts.js";
+import { remapLine, stripHeartbeatTurns, windowTranscript } from "./session-transcript-prep.js";
 
 const log = createSubsystemLogger("memory/session-extractor");
 
@@ -95,7 +96,40 @@ export type ExtractionResult = {
   processingTimeMs: number;
   /** PLAN-34 Phase 1: validated answers to open questions (usually empty). */
   resolutions: DirectiveResolutionCandidate[];
+  /** Heartbeat prompt/ack turns dropped before extraction. */
+  heartbeatTurnsDropped?: number;
+  /** Number of LLM windows the transcript was split into (1 = no split). */
+  windows?: number;
 };
+
+export type ExtractionOptions = {
+  /**
+   * Transcripts longer than this (chars, after heartbeat stripping) are
+   * extracted in line-aligned windows and merged. Default: 48000.
+   */
+  maxTranscriptChars?: number;
+};
+
+export const DEFAULT_MAX_TRANSCRIPT_CHARS = 48_000;
+
+function remapEvidence(refs: EvidenceRef[], lineMap: number[]): EvidenceRef[] {
+  return refs.map((e) => (e.kind === "session" ? { ...e, line: remapLine(lineMap, e.line) } : e));
+}
+
+function mergeUnique(lists: string[][], cap: number): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const item of list) {
+      const key = item.trim();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        out.push(item);
+      }
+    }
+  }
+  return out.slice(0, cap);
+}
 
 export type HormonalBias = {
   dopamine: number;
@@ -588,44 +622,94 @@ export async function extractSessionFacts(
   hormones?: HormonalBias,
   learnedRules?: string[],
   openQuestions?: OpenQuestion[],
+  options?: ExtractionOptions,
 ): Promise<ExtractionResult | null> {
   const start = Date.now();
 
-  const prompt = buildExtractionPrompt(
-    sessionContent,
-    maxFacts,
-    hormones,
-    learnedRules,
-    openQuestions,
-  );
-
-  let response: string;
-  try {
-    response = await llmCall(prompt);
-  } catch (err) {
-    // The LLM call failing (network/auth/overload) means this session's facts
-    // are silently never extracted. Surface it instead of returning null mute.
-    log.warn(`session fact extraction LLM call failed for ${sessionId}: ${String(err)}`);
+  // Token-efficiency pass (2026-09-19): heartbeat prompt/ack pairs are
+  // stripped first (a heartbeat-only transcript makes no LLM call), then the
+  // transcript is windowed so each call fits the output cap. Evidence line
+  // numbers are mapped back to the ORIGINAL transcript so provenance and the
+  // user-authored checks still point at real lines.
+  const prepared = stripHeartbeatTurns(sessionContent);
+  if (prepared.content.trim().length === 0) {
+    log.debug(`session fact extraction skipped for ${sessionId}: no non-heartbeat turns`);
     return null;
   }
-
+  const windows = windowTranscript(
+    prepared,
+    options?.maxTranscriptChars ?? DEFAULT_MAX_TRANSCRIPT_CHARS,
+  );
   const openQuestionIds = new Set((openQuestions ?? []).map((q) => q.id));
-  const parsed = parseExtractionResponse(
-    response,
-    sessionId,
-    openQuestionIds,
-    sessionContent.split("\n"),
-  );
-  if (!parsed) {
-    log.debug(`session fact extraction: unparseable LLM response for ${sessionId}`);
-    return null;
+  const perWindow: Array<NonNullable<ReturnType<typeof parseExtractionResponse>>> = [];
+
+  for (const window of windows) {
+    const prompt = buildExtractionPrompt(
+      window.content,
+      maxFacts,
+      hormones,
+      learnedRules,
+      openQuestions,
+    );
+    let response: string;
+    try {
+      response = await llmCall(prompt);
+    } catch (err) {
+      // The LLM call failing (network/auth/overload) means this session's facts
+      // are silently never extracted. Surface it instead of returning null mute.
+      log.warn(`session fact extraction LLM call failed for ${sessionId}: ${String(err)}`);
+      return null;
+    }
+    const parsed = parseExtractionResponse(
+      response,
+      sessionId,
+      openQuestionIds,
+      window.content.split("\n"),
+    );
+    if (!parsed) {
+      log.debug(`session fact extraction: unparseable LLM response for ${sessionId}`);
+      return null;
+    }
+    for (const fact of parsed.facts) {
+      fact.evidence = remapEvidence(fact.evidence, window.lineMap);
+    }
+    for (const r of parsed.resolutions) {
+      r.evidence = remapEvidence(r.evidence, window.lineMap);
+    }
+    perWindow.push(parsed);
   }
+
+  const last = perWindow[perWindow.length - 1]!;
+  const handover: SessionHandoverBrief =
+    perWindow.length === 1
+      ? last.handover
+      : {
+          ...last.handover,
+          milestones: mergeUnique(
+            perWindow.map((w) => w.handover.milestones),
+            10,
+          ),
+          decisions: mergeUnique(
+            perWindow.map((w) => w.handover.decisions),
+            10,
+          ),
+          blockers: last.handover.blockers,
+          nextSteps: last.handover.nextSteps,
+        };
+  const seenResolutionIds = new Set<string>();
+  const resolutions = perWindow
+    .flatMap((w) => w.resolutions)
+    .filter((r) =>
+      seenResolutionIds.has(r.directiveId) ? false : seenResolutionIds.add(r.directiveId),
+    );
 
   return {
-    facts: parsed.facts.slice(0, maxFacts),
-    handoverBrief: parsed.handover,
+    facts: perWindow.flatMap((w) => w.facts).slice(0, maxFacts),
+    handoverBrief: handover,
     processingTimeMs: Date.now() - start,
-    resolutions: parsed.resolutions,
+    resolutions,
+    heartbeatTurnsDropped: prepared.droppedTurns,
+    windows: windows.length,
   };
 }
 

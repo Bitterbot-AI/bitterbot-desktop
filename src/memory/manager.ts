@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { type FSWatcher } from "chokidar";
 import crypto from "node:crypto";
-import { appendFileSync, mkdirSync, existsSync } from "node:fs";
+import { appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
@@ -43,6 +43,14 @@ import {
   type SuggestSkillsConfig,
 } from "./discovery-agent.js";
 import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
+import {
+  AUTO_SCRATCH_PREFIX,
+  autoScratchEventText,
+  DreamGateState,
+  evaluateDreamGate,
+  HormonalDeltaTrigger,
+  lastAutoScratchEvent,
+} from "./dream-gate.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
 import { DEFAULT_DREAM_CONFIG } from "./dream-types.js";
 import {
@@ -58,6 +66,11 @@ import { yieldToEventLoop } from "./event-loop.js";
 import { parseEvidenceRefs, scoreCitationSupport } from "./evidence-expand.js";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ExperienceSignalCollector } from "./experience-signal-collector.js";
+import {
+  clearExtractionFailure,
+  recordExtractionFailure,
+  shouldSkipExtraction,
+} from "./extraction-failures.js";
 import { MemoryGovernance } from "./governance.js";
 import { detectGraphGaps, emitGraphBridgeSignal } from "./graph-bridge-target.js";
 import { insertTrainingPair } from "./graph-optimizer.js";
@@ -106,6 +119,7 @@ import { SessionCoherenceTracker } from "./session-coherence.js";
 import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
+import { stripHeartbeatTurns } from "./session-transcript-prep.js";
 import { setActiveEvolutionLlm } from "./skill-evolution/active-llm.js";
 import { makeAttesterWeight, resolveOwnAttesterPubkey } from "./skill-evolution/attester-weight.js";
 import { readValidationSummaries } from "./skill-evolution/validation-summaries.js";
@@ -651,7 +665,19 @@ export class MemoryIndexManager implements MemorySearchManager {
    * emotional state reacts in real-time, not retroactively at index time.
    */
   stimulateFromLiveMessage(text: string): void {
-    if (!this.hormonalManager || !text) {
+    if (!text) {
+      return;
+    }
+    // Dream gate: count live (non-heartbeat) user turns. Heartbeat prompt
+    // builds skip recallForUserTurn entirely, so they never land here.
+    if (text !== this.lastLiveMessage || Date.now() - this.lastLiveMessageAt >= 5_000) {
+      try {
+        this.getDreamGateState().recordUserTurn();
+      } catch {
+        // Non-critical.
+      }
+    }
+    if (!this.hormonalManager) {
       return;
     }
     // Dedupe: prompt assembly can run more than once for the same user turn
@@ -961,7 +987,42 @@ export class MemoryIndexManager implements MemorySearchManager {
   // ── Emotional Dream Triggering (Plan 6, Phase 4) ──
 
   private lastMiniDreamTrigger = 0;
-  private readonly miniDreamCooldown = 10 * 60 * 1000; // 10 min
+  /**
+   * Token-efficiency pass (2026-09-19): the cooldown must exceed the 30-min
+   * consolidation tick or a pinned hormone re-fires a mini-dream every tick.
+   */
+  private get miniDreamCooldown(): number {
+    return (
+      (this.cfg.memory?.dream?.miniDreamCooldownMinutes ??
+        DEFAULT_DREAM_CONFIG.miniDreamCooldownMinutes) *
+      60 *
+      1000
+    );
+  }
+  /** Mini-dreams fire on a hormonal RISE since the last check, never on a level. */
+  private miniDreamTriggerInstance: HormonalDeltaTrigger | null = null;
+  private autoScratchTriggerInstance: HormonalDeltaTrigger | null = null;
+  private get hormonalTriggerDelta(): number {
+    return (
+      this.cfg.memory?.dream?.hormonalTriggerDelta ?? DEFAULT_DREAM_CONFIG.hormonalTriggerDelta
+    );
+  }
+  private get miniDreamTrigger(): HormonalDeltaTrigger {
+    this.miniDreamTriggerInstance ??= new HormonalDeltaTrigger(this.hormonalTriggerDelta);
+    return this.miniDreamTriggerInstance;
+  }
+  private get autoScratchTrigger(): HormonalDeltaTrigger {
+    this.autoScratchTriggerInstance ??= new HormonalDeltaTrigger(this.hormonalTriggerDelta);
+    return this.autoScratchTriggerInstance;
+  }
+  /** Persisted counters behind the scheduled full-cycle gate. */
+  private dreamGateState: DreamGateState | null = null;
+  private getDreamGateState(): DreamGateState {
+    if (!this.dreamGateState) {
+      this.dreamGateState = new DreamGateState(this.db);
+    }
+    return this.dreamGateState;
+  }
 
   // Plan 7: Cognitive coherence state
   readonly coherenceTracker = new SessionCoherenceTracker();
@@ -1041,15 +1102,20 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     const state = this.hormonalManager.getState();
 
-    if (state.dopamine > 0.7) {
+    // Token-efficiency pass (2026-09-19): GCCRF stimulation on every
+    // consolidation tick plus recall_relational on every prompt build pinned
+    // dopamine above 0.7 while idle, so the old absolute-level check fired a
+    // mini-dream every 30 minutes. A spike is now a RISE since the last check.
+    const spikes = this.miniDreamTrigger.check(state);
+    const reason = spikes.includes("dopamine_spike")
+      ? "dopamine_spike"
+      : spikes.includes("cortisol_spike")
+        ? "cortisol_spike"
+        : null;
+    if (reason) {
       this.lastMiniDreamTrigger = now;
       void this.dreamEngine
-        .runMiniDream("dopamine_spike")
-        .catch((err) => log.warn(`mini-dream failed: ${String(err)}`));
-    } else if (state.cortisol > 0.8) {
-      this.lastMiniDreamTrigger = now;
-      void this.dreamEngine
-        .runMiniDream("cortisol_spike")
+        .runMiniDream(reason)
         .catch((err) => log.warn(`mini-dream failed: ${String(err)}`));
     }
 
@@ -2658,9 +2724,17 @@ export class MemoryIndexManager implements MemorySearchManager {
     // not true model independence — configure a different
     // memory.dream.synthesisModel for that.
     const synthesisModelSpec = dreamCfg?.synthesisModel ?? this.resolveCheapLlmSpec();
+    // Token-efficiency pass (2026-09-19): the synthesis prompt asks for up to
+    // ~4.5k output tokens across 7 sections; the lane default (2048) ended
+    // every call at stop_reason=length, failed section validation, and fell
+    // back to the heuristic builder on every cycle.
     const builtSynthesisLlmCall =
       dreamCfg?.synthesisLlmCall ??
-      (synthesisModelSpec ? this.buildLlmCallFn(synthesisModelSpec) : null);
+      (synthesisModelSpec
+        ? this.buildLlmCallFn(synthesisModelSpec, {
+            maxTokens: dreamCfg?.synthesisMaxTokens ?? DEFAULT_DREAM_CONFIG.synthesisMaxTokens,
+          })
+        : null);
     // PLAN-34 Phase 2c: the local-tier call was previously destructured out
     // and DISCARDED (wired-but-dead). It now powers local-tier modes and —
     // critically — the depersonalization rewrite that gates all autonomous
@@ -2731,9 +2805,14 @@ export class MemoryIndexManager implements MemorySearchManager {
       // that will execute the skill also proposes it — the paper's
       // self-evolution reading). Live finding: on the cheap lane the proposer
       // failed its own JSON protocol in 3 of 5 iterations.
+      // Token-efficiency pass (2026-09-19): the primary-model default spent
+      // ~$0.40 of Opus per iteration even when the only trace was a clean
+      // PASS. The proposer now defaults to the cheap lane; set
+      // skills.evolution.proposerModel explicitly for a stronger model.
       ...(() => {
         const evo = this.cfg.skills?.evolution;
-        const spec = evo?.proposerModel ?? evo?.judgeModel ?? this.resolvePrimaryLlmSpec();
+        const spec =
+          evo?.proposerModel ?? evo?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
         const call = spec
           ? this.buildLlmCallFn(spec, { maxTokens: 8192, feature: USAGE_FEATURES.skillsEvolution })
           : null;
@@ -2789,6 +2868,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       ? builtLlmCall
       : this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec(), {
           feature: USAGE_FEATURES.memoryExtraction,
+          // Token-efficiency pass (2026-09-19): 20 cited facts + a handover
+          // brief do not fit the 2048 lane default; truncated JSON never parsed.
+          maxTokens: this.cfg.memory?.extraction?.maxTokens ?? 6144,
         });
     this.dreamEngine = new DreamEngine(this.db, engineCfg, synthesizeFn, embedBatchFn);
 
@@ -2899,7 +2981,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.dreamInitialTimer = setTimeout(() => {
         this.dreamInitialTimer = null;
         log.info("initial dream cycle starting (trigger-on-start)");
-        void this.dream().catch((err) => {
+        void this.dream({ scheduled: true }).catch((err) => {
           log.warn(`initial dream cycle failed: ${String(err)}`);
         });
       }, initialDelayMs);
@@ -2934,7 +3016,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       } else {
         const ms = minutes * 60 * 1000;
         this.dreamTimer = setInterval(() => {
-          void this.dream().catch((err) => {
+          void this.dream({ scheduled: true }).catch((err) => {
             log.warn(`dream cycle failed: ${String(err)}`);
           });
         }, ms);
@@ -2972,7 +3054,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.dreamTimer = setTimeout(
       () => {
         this.dreamTimer = null;
-        void this.dream()
+        void this.dream({ scheduled: true })
           .catch((err) => {
             log.warn(`dream cycle failed: ${String(err)}`);
           })
@@ -3375,15 +3457,44 @@ export class MemoryIndexManager implements MemorySearchManager {
     };
   }
 
-  async dream(): Promise<DreamStats | null> {
+  /**
+   * Run a full dream cycle. `scheduled: true` (timers) applies the triple
+   * gate — new user turns since the last full cycle, user idle, and hours
+   * since the last full cycle (memory.dream.minNewSessions / minIdleMinutes /
+   * minHoursBetween). Explicit triggers (`dream.trigger` RPC, CLI, tests)
+   * omit it and always run.
+   */
+  async dream(opts?: { scheduled?: boolean }): Promise<DreamStats | null> {
     if (!this.dreamEngine) {
       return null;
+    }
+    const gateState = this.getDreamGateState();
+    if (opts?.scheduled) {
+      const dreamCfg = this.cfg.memory?.dream;
+      const decision = evaluateDreamGate(
+        {
+          minNewSessions: dreamCfg?.minNewSessions ?? DEFAULT_DREAM_CONFIG.minNewSessions,
+          minIdleMinutes: dreamCfg?.minIdleMinutes ?? DEFAULT_DREAM_CONFIG.minIdleMinutes,
+          minHoursBetween: dreamCfg?.minHoursBetween ?? DEFAULT_DREAM_CONFIG.minHoursBetween,
+        },
+        gateState.snapshot(),
+      );
+      if (!decision.pass) {
+        log.debug(`scheduled dream cycle skipped: ${decision.reason}`);
+        return null;
+      }
+      log.info(`scheduled dream cycle: ${decision.reason}`);
     }
     const stats = await this.maintenanceMutex.run(
       "dream",
       () => withSpan("memory.dream", () => this.dreamEngine!.run(), { "dream.engine": "default" }),
       120_000,
     );
+    // Only a cycle that actually ran resets the gate counters; an engine-side
+    // readiness skip leaves the new-turn count intact for the next attempt.
+    if (stats) {
+      gateState.recordFullCycle();
+    }
 
     if (stats && stats.newInsights.length > 0) {
       // Post-dream curiosity assessment
@@ -3408,9 +3519,17 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.curiosityEngine?.saveGCCRFState();
     }
 
-    // Post-dream: run discovery agent to find skill relationships
-    if (stats && stats.newInsights.length > 0) {
+    // Post-dream: run discovery agent to find skill relationships.
+    // Token-efficiency pass (2026-09-19): pair selection is deterministic
+    // (first 3 unconnected pairs), so a run without new skill chunks since
+    // the previous run repeats the same LLM calls for the same answer.
+    const newSkillChunks = stats ? gateState.newSkillChunksSinceDiscovery() : 0;
+    if (stats && stats.newInsights.length > 0 && newSkillChunks === 0) {
+      log.debug("discovery skipped: no new skill chunks since last run");
+    }
+    if (stats && stats.newInsights.length > 0 && newSkillChunks > 0) {
       try {
+        gateState.recordDiscoveryRun();
         if (!this.discoveryAgent) {
           // An injected memory.dream.llmCall (tests, programmatic) wins; otherwise a dedicated
           // discovery lane so its spend is attributed separately from dreaming.
@@ -3705,7 +3824,14 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Read session content
         const { buildSessionEntry } = await import("./session-files.js");
         const entry = await buildSessionEntry(absPath);
-        if (!entry || entry.content.length < minDelta) {
+        if (!entry) {
+          continue;
+        }
+        // Token-efficiency pass (2026-09-19): heartbeat prompt/ack pairs are
+        // protocol scaffolding. The size floor applies to what is left; a
+        // heartbeat-only transcript makes no extraction call at all.
+        const prepared = stripHeartbeatTurns(entry.content);
+        if (prepared.content.trim().length === 0 || prepared.content.length < minDelta) {
           continue;
         }
 
@@ -3716,6 +3842,20 @@ export class MemoryIndexManager implements MemorySearchManager {
           .get(absPath) as { last_extracted_hash: string } | undefined;
 
         if (existing?.last_extracted_hash === contentHash) {
+          continue;
+        }
+        // Failure ledger: a transcript that failed maxAttempts times at this
+        // content hash is parked instead of retried every cycle.
+        if (
+          shouldSkipExtraction(this.db, absPath, contentHash, {
+            maxAttempts: extractionCfg?.maxAttempts,
+            retryAfterMs:
+              extractionCfg?.retryAfterDays !== undefined
+                ? extractionCfg.retryAfterDays * 24 * 60 * 60 * 1000
+                : undefined,
+          })
+        ) {
+          log.debug(`session extraction parked (attempts exhausted): ${path.basename(absPath)}`);
           continue;
         }
 
@@ -3739,10 +3879,21 @@ export class MemoryIndexManager implements MemorySearchManager {
           hormonalBias,
           learnedRules,
           openQuestionsForFile.length > 0 ? openQuestionsForFile : undefined,
+          { maxTranscriptChars: extractionCfg?.maxTranscriptChars },
         );
         if (!result) {
+          const failure = recordExtractionFailure(
+            this.db,
+            absPath,
+            contentHash,
+            "llm call failed or response unparseable",
+          );
+          log.warn(
+            `session extraction failed for ${path.basename(absPath)} (attempt ${failure.attempts})`,
+          );
           continue;
         }
+        clearExtractionFailure(this.db, absPath);
 
         const now = Date.now();
 
@@ -5143,10 +5294,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     const state = this.hormonalManager.getState();
     const scratchPath = path.join(this.workspaceDir, "memory", "scratch.md");
 
-    // Only trigger on significant hormonal events
-    const highDopamine = state.dopamine > 0.7;
-    const highCortisol = state.cortisol > 0.7;
-    const highOxytocin = state.oxytocin > 0.7;
+    // Token-efficiency pass (2026-09-19): trigger on a hormonal RISE since the
+    // previous tick, not an absolute level — a pinned hormone wrote an
+    // identical "[AUTO] Hormonal event" note every 30 minutes.
+    const spikes = this.autoScratchTrigger.check(state);
+    const highDopamine = spikes.includes("dopamine_spike");
+    const highCortisol = spikes.includes("cortisol_spike");
+    const highOxytocin = spikes.includes("oxytocin_spike");
 
     if (!highDopamine && !highCortisol && !highOxytocin) {
       return;
@@ -5164,7 +5318,20 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     const briefing = this.hormonalManager.emotionalBriefing?.() ?? "";
-    const note = `[AUTO] Hormonal event: ${parts.join(", ")}. ${briefing}`.trim();
+    const eventText = autoScratchEventText(parts);
+    const note = `${AUTO_SCRATCH_PREFIX}${eventText}. ${briefing}`.trim();
+
+    // Dedupe: never append a note whose event equals the previous auto note.
+    try {
+      if (
+        existsSync(scratchPath) &&
+        lastAutoScratchEvent(readFileSync(scratchPath, "utf-8")) === eventText
+      ) {
+        return;
+      }
+    } catch {
+      // Unreadable scratch — fall through and append.
+    }
 
     const timestamp = new Date().toISOString();
     const entry = `\n- [${timestamp}] (importance: 0.8) ${note}\n`;

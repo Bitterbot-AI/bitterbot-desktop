@@ -3,15 +3,25 @@ import { normalizeTargetForProvider } from "../infra/outbound/target-normalizati
 import { MEDIA_TOKEN_RE } from "../media/parse.js";
 import { truncateUtf16Safe } from "../utils.js";
 import { type MessagingToolSend } from "./pi-embedded-messaging.js";
+import {
+  DEFAULT_TOOL_RESULT_MAX_CHARS,
+  formatTruncatedToolText,
+} from "./tools/tool-result-spill.js";
 
-const TOOL_RESULT_MAX_CHARS = 8000;
+/**
+ * Event-stream cap (UI / journal / after_tool_call). The MODEL-facing cap is
+ * the spill wrapper in tools/tool-result-spill.ts (config
+ * `tools.resultMaxChars`), applied inside every tool, so by the time a
+ * result reaches this sanitizer it is normally already within the cap.
+ */
+const TOOL_RESULT_MAX_CHARS = DEFAULT_TOOL_RESULT_MAX_CHARS;
 const TOOL_ERROR_MAX_CHARS = 400;
 
-function truncateToolText(text: string): string {
-  if (text.length <= TOOL_RESULT_MAX_CHARS) {
+function truncateToolText(text: string, maxChars = TOOL_RESULT_MAX_CHARS): string {
+  if (text.length <= maxChars) {
     return text;
   }
-  return `${truncateUtf16Safe(text, TOOL_RESULT_MAX_CHARS)}\n…(truncated)…`;
+  return formatTruncatedToolText({ text, maxChars });
 }
 
 function normalizeToolErrorText(text: string): string | undefined {
@@ -61,7 +71,7 @@ function extractErrorField(value: unknown): string | undefined {
   return status ? normalizeToolErrorText(status) : undefined;
 }
 
-export function sanitizeToolResult(result: unknown): unknown {
+export function sanitizeToolResult(result: unknown, maxChars?: number): unknown {
   if (!result || typeof result !== "object") {
     return result;
   }
@@ -77,7 +87,7 @@ export function sanitizeToolResult(result: unknown): unknown {
     const entry = item as Record<string, unknown>;
     const type = typeof entry.type === "string" ? entry.type : undefined;
     if (type === "text" && typeof entry.text === "string") {
-      return { ...entry, text: truncateToolText(entry.text) };
+      return { ...entry, text: truncateToolText(entry.text, maxChars) };
     }
     if (type === "image") {
       const data = typeof entry.data === "string" ? entry.data : undefined;

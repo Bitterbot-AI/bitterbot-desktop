@@ -82,6 +82,12 @@ export interface EvolutionPassDeps {
   maxProposerTurns?: number;
   /** Set false to run maintenance only (tests / staged rollouts). */
   runProposer?: boolean;
+  /**
+   * Token-efficiency pass (2026-09-19): skip the proposer (the expensive
+   * lane) when this iteration sampled fewer failing traces than this. A
+   * window of clean PASSes gives the proposer nothing to fix. Default 1.
+   */
+  minFailsForProposer?: number;
   /** Validation gate settings (Phase 4). Gate runs whenever a proposal staged. */
   validationMode?: "records" | "tasks";
   trialsPerTask?: number;
@@ -341,7 +347,12 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   // proposal is staged through the SICA gate but never promoted here.
   let proposer: ProposerRunResult | undefined;
   let proposalOutcome: ApplyProposalResult | undefined;
-  if (deps.runProposer !== false) {
+  const minFails = Math.max(0, deps.minFailsForProposer ?? 1);
+  if (deps.runProposer !== false && sample.stats.failsSelected < minFails) {
+    log.info(
+      `skill proposer skipped: ${sample.stats.failsSelected} failing trace(s) sampled (need ${minFails})`,
+    );
+  } else if (deps.runProposer !== false) {
     const proposerDeps = {
       samples: sample.samples,
       ...(deps.storeOpts ? { storeOpts: deps.storeOpts } : {}),

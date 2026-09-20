@@ -901,9 +901,16 @@ corpus list|accept|reject`) is the only writer of `task-corpus.jsonl`:
   proposals, evolved live skills with verdicts, P2P eligibility, corpus
   presence) plus the FULL effective `skills.evolution.*` config (every
   field has help text + a label; defaults are declared on the zod schema).
-  **PLAN-44 Phase 0 (D-1):** when neither `proposerModel` nor `judgeModel`
-  is set, the Skill Proposer runs on the agent's primary model (the cheap
-  lane failed its own JSON protocol in 3 of 5 live iterations); the RPC
+  **PLAN-44 Phase 0 (D-1), revised by the token-efficiency pass
+  (2026-09-19):** when neither `proposerModel` nor `judgeModel` is set the
+  Skill Proposer now runs on the cheap lane (dream model, else cheap model)
+  — the primary-model default cost ~$0.40 of Opus per iteration even when
+  the only sampled trace was a clean PASS. Set `skills.evolution.proposerModel`
+  explicitly for a stronger model (D-1 noted the cheap lane failed its own
+  JSON protocol in 3 of 5 early iterations). The proposer is also skipped
+  entirely when the iteration sampled fewer failing traces than
+  `skills.evolution.minFailsForProposer` (default 1); maintenance and
+  housekeeping still run. `cadenceHours` default remains 24. The RPC
   reports `proposerModelSource` and `proposerModelConfigured`; each iteration record carries the proposer `lane`. The `user`
   journal stream is emitted once per run (retries dedupe) by the embedded
   runner, the CLI-provider path, and the gateway `agent` command's CLI
