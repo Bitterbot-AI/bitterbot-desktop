@@ -543,6 +543,7 @@ async function runPerplexitySearch(params: {
       Authorization: `Bearer ${params.apiKey}`,
       "HTTP-Referer": "https://bitterbot.ai",
       "X-Title": "Bitterbot Web Search",
+      ...(isDirectPerplexityBaseUrl(baseUrl) ? { "X-Pplx-Integration": "bitterbot" } : {}),
     },
     body: JSON.stringify(body),
     signal: withTimeout(undefined, params.timeoutSeconds * 1000),
