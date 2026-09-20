@@ -24,7 +24,19 @@ interface EconomicsView {
   getDb?(): DatabaseSync | undefined;
 }
 interface ManagerView {
+  getPaymentsDb?(): DatabaseSync | undefined;
   getMarketplaceEconomics?(): EconomicsView | null;
+}
+
+/**
+ * Spend grants live in the memory DB and gate `a2a.payment`, not the
+ * marketplace. Resolving the handle through `getMarketplaceEconomics()` made
+ * the whole Spend Grants page fail with "payments not initialized" on every
+ * node running the V1 default (`a2a.marketplace.enabled: false`, PLAN-41 D-D)
+ * while the agent-side client kept writing grants to the same DB directly.
+ */
+export function resolveSpendGrantDb(manager: ManagerView): DatabaseSync | undefined {
+  return manager.getPaymentsDb?.() ?? manager.getMarketplaceEconomics?.()?.getDb?.();
 }
 
 async function getGrantStore(): Promise<{ store: SpendGrantStore } | { error: string }> {
@@ -32,8 +44,8 @@ async function getGrantStore(): Promise<{ store: SpendGrantStore } | { error: st
   const agentId = resolveDefaultAgentId(cfg);
   const { manager, error } = await getMemorySearchManager({ cfg, agentId });
   if (!manager) return { error: error ?? "memory manager unavailable" };
-  const db = (manager as unknown as ManagerView).getMarketplaceEconomics?.()?.getDb?.();
-  if (!db) return { error: "marketplace db unavailable (payments not initialized)" };
+  const db = resolveSpendGrantDb(manager as unknown as ManagerView);
+  if (!db) return { error: "payments db unavailable (memory manager has no database handle)" };
   return { store: new SpendGrantStore(db) };
 }
 

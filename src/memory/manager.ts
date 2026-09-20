@@ -4952,6 +4952,17 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.db;
   }
 
+  /**
+   * SQLite handle for the payments tables (spend grants, approvals, usage).
+   * Independent of `marketplaceEconomics` for the same reason as
+   * `getCirclesDb()`: `a2a.marketplace.enabled` defaults to false since
+   * PLAN-41 D-D, but spend grants (PLAN-48) gate `a2a.payment`, not the
+   * marketplace, and the agent-side client already writes them to this DB.
+   */
+  getPaymentsDb(): DatabaseSync {
+    return this.db;
+  }
+
   /** PLAN-43 Phase 4: contributor standings (status, never cash). */
   getContributorStatus(): ContributorStatusLedger | undefined {
     return this.contributorStatus;
