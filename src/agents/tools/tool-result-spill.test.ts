@@ -47,10 +47,13 @@ describe("config + paths", () => {
   });
 
   it("the spill dir is the sibling of the agent dir (~/.bitterbot/agents/<id>/tool-results)", () => {
+    // path.join normalizes separators, so the assertion holds on Windows too.
     expect(resolveToolResultsDir("/state/agents/main/agent")).toBe(
-      "/state/agents/main/tool-results",
+      path.join("/state/agents/main", "tool-results"),
     );
-    expect(resolveToolResultsDir("/somewhere/else")).toBe("/somewhere/else/tool-results");
+    expect(resolveToolResultsDir("/somewhere/else")).toBe(
+      path.join("/somewhere/else", "tool-results"),
+    );
     expect(resolveToolResultsDir(undefined)).toBe(
       path.join(os.tmpdir(), "bitterbot", "tool-results"),
     );
