@@ -37,57 +37,63 @@ async function executeJavaScript(
   code: string,
   sessionId: string,
 ): Promise<{ stdout: string; stderr: string; returnValue: string | null; error: string | null }> {
-  const stdout: string[] = [];
-  const stderr: string[] = [];
-
-  // Reuse or create a vm context for this session
+  // Reuse or create a vm context for this session.
+  //
+  // SECURITY (report: code_interpreter sandbox escape -> host RCE, 2026-09-20):
+  // node:vm is NOT a security boundary on its own; the previous implementation
+  // seeded the context with host-realm built-ins (console, Buffer, Math, ...),
+  // and a trivial constructor-chain escape
+  // (`console.log.constructor.constructor("return process")()`) reached the host
+  // `process` and gave full RCE. Three measures close that class of escape:
+  //
+  //   1. The global object is `Object.create(null)`, a plain null-prototype
+  //      object with no host constructor reachable via `this`/`globalThis`.
+  //   2. `codeGeneration: { strings: false, wasm: false }` disables eval() and
+  //      the Function(string) constructor in the realm. Every constructor-chain
+  //      escape pivots through Function(string); those calls now throw.
+  //   3. NO host-realm function or object is injected. Standard ECMAScript
+  //      intrinsics (Object/Array/Math/JSON/Promise/...) are provided by the vm
+  //      realm itself, and `console` is defined *inside* the realm so its
+  //      `.constructor` chain leads to the realm's own (inert) Function, never
+  //      the host's. Output is captured into realm-local arrays and read back.
+  //
+  // This tool is additionally owner-only (see tool-policy.ts); the vm hardening
+  // is defense in depth, not the sole boundary. Note: host extras like Buffer
+  // and timers (setTimeout/setInterval) are intentionally no longer available.
   let context = jsSessions.get(sessionId);
   if (!context) {
-    const sandbox: Record<string, unknown> = {
-      console: {
-        log: (...args: unknown[]) => stdout.push(args.map(formatArg).join(" ")),
-        error: (...args: unknown[]) => stderr.push(args.map(formatArg).join(" ")),
-        warn: (...args: unknown[]) => stdout.push("[warn] " + args.map(formatArg).join(" ")),
-        info: (...args: unknown[]) => stdout.push(args.map(formatArg).join(" ")),
-      },
-      setTimeout,
-      setInterval,
-      clearTimeout,
-      clearInterval,
-      Math,
-      Date,
-      JSON,
-      Array,
-      Object,
-      String,
-      Number,
-      Boolean,
-      Map,
-      Set,
-      RegExp,
-      Error,
-      Promise,
-      Symbol,
-      parseInt,
-      parseFloat,
-      isNaN,
-      isFinite,
-      encodeURIComponent,
-      decodeURIComponent,
-      encodeURI,
-      decodeURI,
-      Buffer,
-    };
-    context = vm.createContext(sandbox);
+    context = vm.createContext(Object.create(null) as object, {
+      codeGeneration: { strings: false, wasm: false },
+    });
+    // One-time realm-local bootstrap: capture buffers + a console built entirely
+    // from realm intrinsics (no host functions cross the boundary).
+    vm.runInContext(CONSOLE_BOOTSTRAP, context, { timeout: EXEC_TIMEOUT_MS });
     jsSessions.set(sessionId, context);
-  } else {
-    // Update console for this call (captures go to fresh arrays)
-    context.console = {
-      log: (...args: unknown[]) => stdout.push(args.map(formatArg).join(" ")),
-      error: (...args: unknown[]) => stderr.push(args.map(formatArg).join(" ")),
-      warn: (...args: unknown[]) => stdout.push("[warn] " + args.map(formatArg).join(" ")),
-      info: (...args: unknown[]) => stdout.push(args.map(formatArg).join(" ")),
-    };
+  }
+
+  const readCapture = (name: string): string => {
+    try {
+      const v = vm.runInContext(
+        `globalThis.${name}.join(String.fromCharCode(10))`,
+        context as vm.Context,
+        {
+          timeout: EXEC_TIMEOUT_MS,
+        },
+      );
+      return typeof v === "string" ? v : "";
+    } catch {
+      return "";
+    }
+  };
+
+  // Clear capture buffers before each run (state otherwise persists per session).
+  try {
+    vm.runInContext("globalThis.__bb_out.length = 0; globalThis.__bb_err.length = 0;", context, {
+      timeout: EXEC_TIMEOUT_MS,
+    });
+  } catch {
+    // If the bootstrap globals are missing (should not happen), rebuild them.
+    vm.runInContext(CONSOLE_BOOTSTRAP, context, { timeout: EXEC_TIMEOUT_MS });
   }
 
   try {
@@ -97,21 +103,42 @@ async function executeJavaScript(
     const result = await script.runInContext(context, { timeout: EXEC_TIMEOUT_MS });
     const returnValue = result !== undefined && result !== null ? formatArg(result) : null;
     return {
-      stdout: truncate(stdout.join("\n"), MAX_OUTPUT_CHARS),
-      stderr: truncate(stderr.join("\n"), MAX_OUTPUT_CHARS),
+      stdout: truncate(readCapture("__bb_out"), MAX_OUTPUT_CHARS),
+      stderr: truncate(readCapture("__bb_err"), MAX_OUTPUT_CHARS),
       returnValue,
       error: null,
     };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     return {
-      stdout: truncate(stdout.join("\n"), MAX_OUTPUT_CHARS),
-      stderr: truncate(stderr.join("\n"), MAX_OUTPUT_CHARS),
+      stdout: truncate(readCapture("__bb_out"), MAX_OUTPUT_CHARS),
+      stderr: truncate(readCapture("__bb_err"), MAX_OUTPUT_CHARS),
       returnValue: null,
       error: errMsg,
     };
   }
 }
+
+// Realm-local console + capture buffers. Runs once per vm context. Uses only
+// intrinsics that exist inside the vm realm, so nothing here is a host object
+// reachable by user code's constructor chain.
+const CONSOLE_BOOTSTRAP = `
+globalThis.__bb_out = [];
+globalThis.__bb_err = [];
+const __bb_fmt = (a) => {
+  if (typeof a === "string") return a;
+  if (typeof a === "object" && a !== null) {
+    try { return JSON.stringify(a, null, 2); } catch (_e) { return String(a); }
+  }
+  return String(a);
+};
+globalThis.console = {
+  log: (...a) => { globalThis.__bb_out.push(a.map(__bb_fmt).join(" ")); },
+  info: (...a) => { globalThis.__bb_out.push(a.map(__bb_fmt).join(" ")); },
+  warn: (...a) => { globalThis.__bb_out.push("[warn] " + a.map(__bb_fmt).join(" ")); },
+  error: (...a) => { globalThis.__bb_err.push(a.map(__bb_fmt).join(" ")); },
+};
+`;
 
 function formatArg(a: unknown): string {
   if (typeof a === "object" && a !== null) {
@@ -303,3 +330,11 @@ export function createCodeInterpreterTool(): AnyAgentTool {
     },
   };
 }
+
+/**
+ * Test-only surface. `executeJavaScript` is otherwise private; exported here so
+ * the sandbox-hardening regression suite can exercise it directly.
+ */
+export const __testing = {
+  executeJavaScript,
+};

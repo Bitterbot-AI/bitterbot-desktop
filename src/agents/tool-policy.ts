@@ -68,7 +68,16 @@ export const TOOL_GROUPS: Record<string, string[]> = {
   ],
 };
 
-const OWNER_ONLY_TOOL_NAMES = new Set<string>(["whatsapp_login"]);
+const OWNER_ONLY_TOOL_NAMES = new Set<string>([
+  "whatsapp_login",
+  // High-privilege tools that must never be reachable by non-owner senders
+  // (remote channel messages / group members). Each is effectively host RCE or
+  // host control: code_interpreter runs code on the host (JS vm + python3),
+  // computer_use drives the desktop, browser drives a real browser session.
+  "code_interpreter",
+  "computer_use",
+  "browser",
+]);
 
 const TOOL_PROFILES: Record<ToolProfileId, ToolProfilePolicy> = {
   minimal: {
