@@ -103,7 +103,7 @@ jobs:
     # Rust tree — the only cargo touchpoint was the non-blocking audit. A
     # plain `cargo check --locked` is the cheapest gate that catches API
     # breaks from dependency bumps (e.g. sha2 0.10->0.11, base64 0.22->0.23).
-    name: Orchestrator (cargo check)
+    name: Orchestrator (cargo check + test)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -120,6 +120,13 @@ jobs:
 
       - name: cargo check
         run: cargo check --locked --manifest-path orchestrator/Cargo.toml
+
+      # The unit suite never ran in CI, so the orchestrator's only regression
+      # guards were dead weight — including the one for the event-loop timer
+      # starvation that froze every mesh stat and stopped the bootnode registry
+      # ever being flushed. 13 tests, well under a second once compiled.
+      - name: cargo test
+        run: cargo test --locked --manifest-path orchestrator/Cargo.toml
 
   audit:
     # PLAN-41 Phase 1 (p0-11): dependency-advisory visibility. Non-blocking by
