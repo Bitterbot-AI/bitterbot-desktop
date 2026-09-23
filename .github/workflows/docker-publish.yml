@@ -65,7 +65,13 @@ jobs:
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=docker-${{ matrix.slug }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.slug }}
+          # ignore-error: the layer-cache export to the Actions cache service is an
+          # optimisation, not a deliverable. buildx treats a cache-exporter error as
+          # fatal, and on 2026-09-23 a transient `error writing layer blob: not_found`
+          # from that service failed the amd64 job AFTER the image had already been
+          # pushed by digest, which skipped the merge and left v1.1.0 untagged on GHCR
+          # while a critical-severity advisory pointed users at it.
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.slug }},ignore-error=true
 
       - name: Export digest
         run: |
