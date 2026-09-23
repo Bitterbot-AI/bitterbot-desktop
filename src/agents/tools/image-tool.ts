@@ -15,6 +15,7 @@ import { getApiKeyForModel, requireApiKey, resolveEnvApiKey } from "../model-aut
 import { runWithImageModelFallback } from "../model-fallback.js";
 import { resolveConfiguredModelRef } from "../model-selection.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
+import { withOpenRouterAttribution } from "../openrouter-attribution.js";
 import { discoverAuthStorage, discoverModels } from "../pi-model-discovery.js";
 import { normalizeWorkspaceDir } from "../workspace-dir.js";
 import {
@@ -311,6 +312,7 @@ async function runImagePrompt(params: {
       const startedAt = Date.now();
       const message = await complete(model, context, {
         apiKey,
+        headers: withOpenRouterAttribution(model),
         maxTokens: resolveImageToolMaxTokens(model.maxTokens),
       });
       // PLAN-50: the image tool's vision call lands in the usage ledger under media/image.

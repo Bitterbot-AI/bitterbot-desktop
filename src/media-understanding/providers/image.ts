@@ -4,6 +4,7 @@ import type { ImageDescriptionRequest, ImageDescriptionResult } from "../types.j
 import { minimaxUnderstandImage } from "../../agents/minimax-vlm.js";
 import { getApiKeyForModel, requireApiKey } from "../../agents/model-auth.js";
 import { ensureBitterbotModelsJson } from "../../agents/models-config.js";
+import { withOpenRouterAttribution } from "../../agents/openrouter-attribution.js";
 import { discoverAuthStorage, discoverModels } from "../../agents/pi-model-discovery.js";
 import { coerceImageAssistantText } from "../../agents/tools/image-tool.helpers.js";
 import { USAGE_FEATURES } from "../../infra/usage-features.js";
@@ -58,6 +59,7 @@ export async function describeImageWithModel(
   const startedAt = Date.now();
   const message = await complete(model, context, {
     apiKey,
+    headers: withOpenRouterAttribution(model),
     maxTokens: params.maxTokens ?? 512,
   });
   // PLAN-50: vision calls land in the usage ledger under media/image.

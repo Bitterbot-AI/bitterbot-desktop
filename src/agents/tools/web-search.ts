@@ -6,6 +6,7 @@ import { USAGE_FEATURES } from "../../infra/usage-features.js";
 import { recordUsage } from "../../infra/usage-ledger.js";
 import { wrapWebContent } from "../../security/external-content.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
+import { withOpenRouterAttribution } from "../openrouter-attribution.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 import {
   CacheEntry,
@@ -541,8 +542,9 @@ async function runPerplexitySearch(params: {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${params.apiKey}`,
-      "HTTP-Referer": "https://bitterbot.ai",
-      "X-Title": "Bitterbot Web Search",
+      // One app identity on OpenRouter (a second title would fight over the
+      // app's display name); a no-op when talking to Perplexity directly.
+      ...withOpenRouterAttribution({ baseUrl }),
       ...(isDirectPerplexityBaseUrl(baseUrl) ? { "X-Pplx-Integration": "bitterbot" } : {}),
     },
     body: JSON.stringify(body),

@@ -166,6 +166,28 @@ describe("completeAttributed batch routing", () => {
     expect(rows.every((r) => !r.batch)).toBe(true);
   });
 
+  it("attributes background calls served by OpenRouter to the Bitterbot app", async () => {
+    await completeAttributed({
+      provider: "openrouter",
+      modelId: "anthropic/claude-haiku-4.5",
+      prompt: "extract",
+      feature: "memory/extraction",
+    });
+    await completeAttributed({
+      provider: "anthropic",
+      modelId: "claude-haiku-4-5",
+      prompt: "judge",
+      feature: "tasks/judge",
+    });
+    const orOptions = completeSimple.mock.calls[0]?.[2] as { headers?: Record<string, string> };
+    expect(orOptions.headers).toMatchObject({
+      "HTTP-Referer": "https://bitterbot.ai",
+      "X-OpenRouter-Title": "Bitterbot",
+    });
+    const anthropicOptions = completeSimple.mock.calls[1]?.[2] as { headers?: unknown };
+    expect(anthropicOptions.headers).toBeUndefined();
+  });
+
   it("never batches non-lane features, non-anthropic providers, or when disabled by config", async () => {
     await completeAttributed({
       provider: "anthropic",

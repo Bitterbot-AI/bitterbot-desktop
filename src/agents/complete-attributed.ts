@@ -23,6 +23,7 @@ import { isBackgroundUsagePaused } from "../infra/usage-budgets.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { getUsageLedger, recordUsage } from "../infra/usage-ledger.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { withOpenRouterAttribution } from "./openrouter-attribution.js";
 
 const log = createSubsystemLogger("agents/complete-attributed");
 
@@ -292,6 +293,8 @@ export async function completeAttributed(
     { messages },
     {
       apiKey,
+      // Dreams, extraction, curator, judges on OpenRouter count toward the app too.
+      headers: withOpenRouterAttribution(resolved.model),
       maxTokens: params.maxTokens ?? 2048,
       // No sampling params: current Anthropic models 400 on temperature, and completeSimple
       // embeds that error in the response instead of throwing.

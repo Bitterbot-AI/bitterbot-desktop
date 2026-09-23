@@ -2,6 +2,7 @@ import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { SimpleStreamOptions } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../../config/config.js";
+import { withOpenRouterAttribution } from "../openrouter-attribution.js";
 import {
   createAnthropicStreamFn,
   resolveAnthropicRuntimeConfig,
@@ -12,10 +13,6 @@ import {
 } from "./anthropic-payload-cache.js";
 import { log } from "./logger.js";
 
-const OPENROUTER_APP_HEADERS: Record<string, string> = {
-  "HTTP-Referer": "https://bitterbot.ai",
-  "X-Title": "Bitterbot",
-};
 // NOTE: We only force `store=true` for *direct* OpenAI Responses.
 // Codex responses (chatgpt.com/backend-api/codex/responses) require `store=false`.
 const OPENAI_RESPONSES_APIS = new Set(["openai-responses"]);
@@ -199,18 +196,16 @@ function createOpenAIResponsesStoreWrapper(baseStreamFn: StreamFn | undefined): 
 }
 
 /**
- * Create a streamFn wrapper that adds OpenRouter app attribution headers.
- * These headers allow Bitterbot to appear on OpenRouter's leaderboard.
+ * Create a streamFn wrapper that adds OpenRouter app attribution headers
+ * (src/agents/openrouter-attribution.ts) whenever the request is served by
+ * OpenRouter, by provider id or by base URL (custom providers pointed at it).
  */
 function createOpenRouterHeadersWrapper(baseStreamFn: StreamFn | undefined): StreamFn {
   const underlying = baseStreamFn ?? streamSimple;
   return (model, context, options) =>
     underlying(model, context, {
       ...options,
-      headers: {
-        ...OPENROUTER_APP_HEADERS,
-        ...options?.headers,
-      },
+      headers: withOpenRouterAttribution(model, options?.headers),
     });
 }
 
@@ -259,10 +254,9 @@ export function applyExtraParamsToAgent(
     agent.streamFn = wrappedStreamFn;
   }
 
-  if (provider === "openrouter") {
-    log.debug(`applying OpenRouter app attribution headers for ${provider}/${modelId}`);
-    agent.streamFn = createOpenRouterHeadersWrapper(agent.streamFn);
-  }
+  // Per-request check: covers the "openrouter" provider and any custom
+  // provider whose base URL is OpenRouter; a no-op for everything else.
+  agent.streamFn = createOpenRouterHeadersWrapper(agent.streamFn);
 
   // Work around upstream pi-ai hardcoding `store: false` for Responses API.
   // Force `store=true` for direct OpenAI/OpenAI Codex providers so multi-turn

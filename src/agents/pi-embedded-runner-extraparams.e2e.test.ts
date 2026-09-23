@@ -87,9 +87,46 @@ describe("applyExtraParamsToAgent", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.headers).toEqual({
       "HTTP-Referer": "https://bitterbot.ai",
+      "X-OpenRouter-Title": "Bitterbot",
       "X-Title": "Bitterbot",
+      "X-OpenRouter-Categories": "personal-agent,general-chat",
       "X-Custom": "1",
     });
+  });
+
+  it("attributes a custom provider pointed at OpenRouter, and nothing else", () => {
+    const calls: Array<SimpleStreamOptions | undefined> = [];
+    const baseStreamFn: StreamFn = (_model, _context, options) => {
+      calls.push(options);
+      return new AssistantMessageEventStream();
+    };
+    const agent = { streamFn: baseStreamFn };
+    applyExtraParamsToAgent(agent, undefined, "my-router", "some/model");
+    const context: Context = { messages: [] };
+
+    void agent.streamFn?.(
+      {
+        api: "openai-completions",
+        provider: "my-router",
+        id: "some/model",
+        baseUrl: "https://openrouter.ai/api/v1",
+      } as Model<"openai-completions">,
+      context,
+      {},
+    );
+    void agent.streamFn?.(
+      {
+        api: "openai-completions",
+        provider: "openai",
+        id: "gpt-4.1-mini",
+        baseUrl: "https://api.openai.com/v1",
+      } as Model<"openai-completions">,
+      context,
+      { headers: { "X-Custom": "1" } },
+    );
+
+    expect(calls[0]?.headers?.["HTTP-Referer"]).toBe("https://bitterbot.ai");
+    expect(calls[1]?.headers).toEqual({ "X-Custom": "1" });
   });
 
   it("forces store=true for direct OpenAI Responses payloads", () => {
