@@ -55,6 +55,11 @@
           "type": "json",
           "path": "extensions/whatsapp/package.json",
           "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "extensions/x/package.json",
+          "jsonpath": "$.version"
         }
       ]
     }

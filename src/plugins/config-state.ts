@@ -30,6 +30,10 @@ export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   "discord",
   "slack",
   "signal",
+  // X (Twitter) is outbound-only; registering it exposes channels.x in the
+  // Control UI and the `bitterbot x` CLI. Nothing posts until an OAuth token
+  // exists AND the policy gate passes (extensions/x/src/policy.ts).
+  "x",
 ]);
 
 const normalizeList = (value: unknown): string[] => {

@@ -1,0 +1,18 @@
+{
+  "name": "@bitterbot/x",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Bitterbot X (Twitter) channel plugin: autonomous original posts via the X API v2, policy-gated",
+  "type": "module",
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "bitterbot": "workspace:*"
+  },
+  "bitterbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

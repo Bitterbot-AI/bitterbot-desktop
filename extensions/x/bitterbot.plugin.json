@@ -1,0 +1,14 @@
+{
+  "id": "x",
+  "name": "X",
+  "description": "X (Twitter) channel: policy-gated original posts through the official X API v2",
+  "channels": ["x"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "uiHints": {
+    "clientSecret": { "label": "OAuth 2.0 client secret", "sensitive": true }
+  }
+}

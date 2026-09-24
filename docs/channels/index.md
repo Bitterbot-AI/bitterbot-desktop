@@ -19,6 +19,7 @@ Text is supported everywhere; media and reactions vary by channel.
 - [Slack](/channels/slack) — Bolt SDK; workspace apps.
 - [Signal](/channels/signal) — signal-cli; privacy-focused.
 - [Twitch](/channels/twitch) — Twitch chat via IRC connection (plugin, installed separately).
+- [X (Twitter)](/channels/x) — Outbound-only: policy-gated original posts to the bot's own X account.
 - [WebChat](/web/webchat) — Gateway WebChat UI over WebSocket.
 
 ## Notes

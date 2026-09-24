@@ -512,6 +512,16 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/x:
+    dependencies:
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
+    devDependencies:
+      bitterbot:
+        specifier: workspace:*
+        version: link:../..
+
 packages:
 
   '@across-protocol/app-sdk@0.2.3':
