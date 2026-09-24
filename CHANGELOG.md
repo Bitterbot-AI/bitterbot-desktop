@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.1.0...v1.2.0) (2026-09-24)
+
+
+### Features
+
+* **channels:** X (Twitter) outbound posting channel, policy-gated ([873e5d5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/873e5d58ce95eccd7908d1d0bf0f28112db4bbe7))
+* **providers:** full OpenRouter app attribution on every OpenRouter request ([0fb9dbb](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0fb9dbb5036680296425134c7daa385983155409))
+
 ## [1.1.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.0.0...v1.1.0) (2026-09-22)
 
 
