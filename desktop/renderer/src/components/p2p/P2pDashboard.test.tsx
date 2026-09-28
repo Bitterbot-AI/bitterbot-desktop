@@ -145,6 +145,35 @@ describe("P2pDashboard", () => {
     expect(screen.queryByText("314")).toBeNull();
   });
 
+  it("falls back to the orchestrator count right after a gateway-only restart", async () => {
+    const empty = {
+      sinceMs: 0,
+      messages: 0,
+      distinctSkills: 0,
+      accepted: 0,
+      heldForReview: 0,
+      retracted: 0,
+      rejected: 0,
+      repeatsIgnored: 0,
+      rejectReasons: {},
+    };
+    requestMock.mockImplementation((method: string) =>
+      method === "skills.network"
+        ? Promise.resolve({ networkCensus: null, ingest: empty })
+        : method === "management.health"
+          ? Promise.reject(new Error("not a management node"))
+          : Promise.resolve({ rows: [], count: 0 }),
+    );
+    stubFetch({ status: 404 });
+    STATS.skills_received = 7;
+    try {
+      render(<P2pDashboard />);
+      await waitFor(() => expect(screen.getByText("7")).toBeTruthy());
+    } finally {
+      STATS.skills_received = 0;
+    }
+  });
+
   it("describeIngest stays quiet until something arrived", () => {
     expect(describeIngest(null)).toBeUndefined();
     expect(

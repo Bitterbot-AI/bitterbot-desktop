@@ -296,6 +296,11 @@ export async function ingestSkill(params: {
       if (rejectedLegacyCrystals.has(legacyKey)) {
         return { ok: false, action: "rejected", reason: "legacy dream crystal (repeat)" };
       }
+      // Rate-limit before writing reputation rows: keys are free, so first
+      // copies from throwaway keys must not grow the DB at mesh speed.
+      if (!checkRateLimit(envelope.author_peer_id, p2pConfig?.maxIngestedPerHour ?? 20)) {
+        return { ok: false, action: "rejected", reason: "rate limit exceeded" };
+      }
       if (rejectedLegacyCrystals.size >= MAX_REJECTED_LEGACY) {
         rejectedLegacyCrystals.clear();
       }
@@ -360,7 +365,8 @@ export async function ingestSkill(params: {
     if (mismatch) {
       log.warn(`Rejected skill from ${envelope.author_peer_id}: ${mismatch}`);
       params.reputationManager?.recordIngestionResult(envelope.author_pubkey, false);
-      rememberRejection(envelope);
+      // Not remembered: the mismatch can come from the unsigned envelope name,
+      // so a relay could rename a genuine author's bytes and get them blocked.
       return { ok: false, action: "rejected", reason: mismatch };
     }
   }
@@ -384,7 +390,7 @@ export async function ingestSkill(params: {
   // 6. Check existing skills for content-hash dedup
   const existingSkillsDir = path.join(CONFIG_DIR, "skills");
   if (await skillExistsWithHash(existingSkillsDir, envelope.content_hash)) {
-    rememberRejection(envelope);
+    // Not remembered: it depends on local state (the user may delete the skill).
     return { ok: false, action: "rejected", reason: "skill already exists" };
   }
   // 6b. PLAN-45 4.4: version-bound trust. A name already bound to another

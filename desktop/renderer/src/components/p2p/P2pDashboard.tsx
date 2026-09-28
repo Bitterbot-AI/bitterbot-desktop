@@ -112,7 +112,11 @@ export function P2pDashboard() {
         />
         <ContributionCard
           title="Skills Received"
-          value={ingest?.distinctSkills ?? stats?.skills_received ?? 0}
+          value={
+            // After a gateway-only restart the gateway has seen nothing yet
+            // while the orchestrator (a separate process) still has its count.
+            ingest && ingest.messages > 0 ? ingest.distinctSkills : (stats?.skills_received ?? 0)
+          }
           icon="download"
           detail={describeIngest(ingest)}
         />

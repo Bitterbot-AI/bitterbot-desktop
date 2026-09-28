@@ -24,7 +24,7 @@ function rewindTo(db: DatabaseSync, version: number): void {
 }
 
 describe("migration v69: skill-receive accounting repair", () => {
-  it("caps rejections at receipts and clears anomaly flags, leaving sane rows alone", () => {
+  it("caps rejections at receipts minus acceptances and clears anomaly flags, leaving sane rows alone", () => {
     const db = openMigratedDb();
     const insert = db.prepare(
       `INSERT INTO peer_reputation
@@ -34,6 +34,7 @@ describe("migration v69: skill-receive accounting repair", () => {
     );
     insert.run("inflated", "12D3KooWInflated", 154, 0, 965, 1);
     insert.run("sane", "12D3KooWSane", 10, 4, 6, 0);
+    insert.run("mixed", "12D3KooWMixed", 10, 3, 40, 0);
     rewindTo(db, 68);
     runMigrations(db);
 
@@ -49,6 +50,13 @@ describe("migration v69: skill-receive accounting repair", () => {
         skills_received: 154,
         skills_accepted: 0,
         skills_rejected: 154,
+        anomaly_flag: 0,
+      },
+      {
+        peer_pubkey: "mixed",
+        skills_received: 10,
+        skills_accepted: 3,
+        skills_rejected: 7,
         anomaly_flag: 0,
       },
       {
