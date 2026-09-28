@@ -78,6 +78,10 @@ export type P2pCensusHistoryRow = {
 
 export type P2pContributions = {
   skills_published: number;
+  /** Distinct skills received (author + name). */
+  skills_received?: number;
+  /** Raw skill messages received, re-broadcasts included. */
+  skill_messages_received?: number;
   skills_verified: number;
   uptime_hours: number;
   score: number;
@@ -93,6 +97,8 @@ export type P2pIngestStats = {
   retracted: number;
   rejected: number;
   repeatsIgnored: number;
+  /** Our own skills echoed back by a peer; never counted as received. */
+  ownEchoesIgnored?: number;
   rejectReasons: Record<string, number>;
 };
 

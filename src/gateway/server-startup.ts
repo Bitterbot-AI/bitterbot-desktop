@@ -206,7 +206,6 @@ export async function startGatewaySidecars(params: {
       // own skill echoed back by a re-publishing peer is dropped instead of
       // landing in review as an anonymous peer skill (audit finding F15; the
       // guard existed in ingest.ts but was never wired here).
-      let ownPublishPubkey: string | undefined;
       let skillReceiveHandler: ReturnType<typeof createSkillReceivedHandler> | undefined;
       // Cache the orchestrator's identity once at startup. Stable until
       // restart, so a single fetch is enough — the system prompt then sees
@@ -214,7 +213,6 @@ export async function startGatewaySidecars(params: {
       void orchestratorBridge
         .getIdentity()
         .then((identity) => {
-          ownPublishPubkey = identity.pubkey;
           skillReceiveHandler?.setOwnPublishPubkey(identity.pubkey);
           patchP2pStatus({ peerId: identity.peerId, nodeTier: identity.nodeTier });
         })
@@ -295,9 +293,6 @@ export async function startGatewaySidecars(params: {
         getSkillNetworkBridge: () => skillNetworkBridge,
         log: params.log,
       });
-      if (ownPublishPubkey) {
-        skillReceiveHandler.setOwnPublishPubkey(ownPublishPubkey);
-      }
       const receiver = skillReceiveHandler;
       orchestratorBridge.onSkillReceived((event) => void receiver.handle(event));
       // Cache bootnode census snapshots received over gossipsub. Buffer if

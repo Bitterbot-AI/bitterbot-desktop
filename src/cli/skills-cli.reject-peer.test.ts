@@ -46,4 +46,11 @@ describe("bitterbot skills incoming reject-peer", () => {
     expect(runtime.error).toHaveBeenCalledWith("  b: EACCES");
     expect(runtime.exit).toHaveBeenCalledWith(1);
   });
+
+  it("refuses an empty peer id", async () => {
+    await run("   ");
+    expect(runtime.error).toHaveBeenCalledWith("peer id required");
+    expect(runtime.exit).toHaveBeenCalledWith(1);
+    expect(rejectIncomingSkillsByPeer).not.toHaveBeenCalled();
+  });
 });

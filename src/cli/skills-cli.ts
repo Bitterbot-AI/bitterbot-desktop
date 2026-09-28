@@ -278,9 +278,15 @@ export function registerSkillsCli(program: Command) {
     .option("--json", "Output as JSON", false)
     .action(async (peerId, opts) => {
       try {
+        const authorPeerId = String(peerId).trim();
+        if (!authorPeerId) {
+          defaultRuntime.error("peer id required");
+          defaultRuntime.exit(1);
+          return;
+        }
         const { rejectIncomingSkillsByPeer } = await import("../agents/skills/ingest.js");
         const result = await rejectIncomingSkillsByPeer({
-          authorPeerId: String(peerId).trim(),
+          authorPeerId,
           config: loadConfig(),
         });
         if (opts.json) {

@@ -226,5 +226,8 @@ export function describeIngest(ingest: P2pIngestStats | null): string | undefine
   if (ingest.repeatsIgnored > 0) {
     parts.push(`${ingest.repeatsIgnored} repeats ignored`);
   }
+  if ((ingest.ownEchoesIgnored ?? 0) > 0) {
+    parts.push(`${ingest.ownEchoesIgnored} own echoes ignored`);
+  }
   return parts.join(" · ");
 }

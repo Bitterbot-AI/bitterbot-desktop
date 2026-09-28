@@ -122,4 +122,18 @@ describe("P2P skill receive path", () => {
     await h.handle(envelope("still-works", "Identity lookup failed.", peer));
     expect(await quarantined()).toContain("still-works");
   });
+
+  it("a burst of messages shares one identity lookup", async () => {
+    const me = keypair();
+    const getIdentity = vi.fn(async () => ({ pubkey: me.pubkeyBase64 }));
+    const h = handler(getIdentity);
+    await Promise.all([
+      h.handle(envelope("burst-a", "First.", me)),
+      h.handle(envelope("burst-b", "Second.", me)),
+      h.handle(envelope("burst-c", "Third.", me)),
+    ]);
+    await h.handle(envelope("burst-d", "Later.", me));
+    expect(getIdentity).toHaveBeenCalledTimes(1);
+    expect(getIngestOutcomeStats().ownEchoesIgnored).toBe(4);
+  });
 });

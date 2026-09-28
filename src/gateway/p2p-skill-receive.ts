@@ -33,15 +33,27 @@ export type SkillReceiveDeps = {
 
 export function createSkillReceivedHandler(deps: SkillReceiveDeps) {
   let ownPublishPubkey: string | undefined;
+  // One identity lookup in flight at a time: if the startup fetch failed, a
+  // burst of messages must not each send (and wait out) its own IPC call.
+  let identityInFlight: Promise<string | undefined> | null = null;
 
   const resolveOwnPubkey = async (): Promise<string | undefined> => {
+    if (ownPublishPubkey) {
+      return ownPublishPubkey;
+    }
     // A skill can arrive before the startup identity fetch resolves;
-    // getIdentity() is cached, so asking again costs nothing.
-    ownPublishPubkey ??= await deps
+    // getIdentity() is cached by the bridge once it succeeds.
+    identityInFlight ??= deps
       .getIdentity()
-      .then((identity) => identity.pubkey)
-      .catch(() => undefined);
-    return ownPublishPubkey;
+      .then((identity) => {
+        ownPublishPubkey = identity.pubkey;
+        return identity.pubkey;
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        identityInFlight = null;
+      });
+    return identityInFlight;
   };
 
   return {
@@ -74,9 +86,11 @@ export function createSkillReceivedHandler(deps: SkillReceiveDeps) {
       // PLAN-44 Phase 3: only an ACCEPTED envelope becomes a crystal. A
       // quarantined one used to become an `active`, recall-visible chunk while
       // its file sat in review; skills.incoming.accept routes it here instead.
-      if (bridge && shouldBridgeIngest(result)) {
+      // Re-read: the memory backend may have wired the bridge while we awaited.
+      const liveBridge = deps.getSkillNetworkBridge();
+      if (liveBridge && shouldBridgeIngest(result)) {
         try {
-          bridge.ingestNetworkSkill(envelope);
+          liveBridge.ingestNetworkSkill(envelope);
         } catch (err) {
           deps.log.warn(`Skill network bridge ingestion failed: ${String(err)}`);
         }
