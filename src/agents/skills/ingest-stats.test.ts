@@ -56,3 +56,20 @@ describe("ingest outcome stats", () => {
     expect(getIngestOutcomeStats().distinctSkills).toBe(1);
   });
 });
+
+describe("ingest outcome stats: own echoes", () => {
+  beforeEach(() => resetIngestOutcomeStatsForTest());
+
+  it("keeps our own echoed skills out of every received count", () => {
+    recordIngestOutcome(
+      { author_pubkey: "me", name: "mine" },
+      { action: "rejected", reason: "self-loopback (own published skill)" },
+    );
+    expect(getIngestOutcomeStats()).toMatchObject({
+      ownEchoesIgnored: 1,
+      messages: 0,
+      distinctSkills: 0,
+      rejected: 0,
+    });
+  });
+});

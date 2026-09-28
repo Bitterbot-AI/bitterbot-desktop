@@ -36,6 +36,7 @@ import {
   listLiveSkillIndex,
 } from "./description-overlap.js";
 import { appendImpactEntry, resolveWikiDir } from "./impact-trail.js";
+import { SELF_LOOPBACK_REASON } from "./ingest-stats.js";
 import { peerStageCollision, stagePeerSkill } from "./peer-staging.js";
 import { bumpSkillsSnapshotVersion, getSkillsSnapshotVersion } from "./refresh.js";
 import { archiveVersion, resolveStorageRoots } from "./skill-storage.js";
@@ -234,7 +235,7 @@ export async function ingestSkill(params: {
   // output as an anonymous inbound peer skill (a source of the "received from
   // unknown peer" clutter).
   if (params.ownPublishPubkey && envelope.author_pubkey === params.ownPublishPubkey) {
-    return { ok: false, action: "rejected", reason: "self-loopback (own published skill)" };
+    return { ok: false, action: "rejected", reason: SELF_LOOPBACK_REASON };
   }
 
   // Policy: deny all (peer skills and scraped harvests alike).

@@ -695,6 +695,8 @@ pub struct BitterbotBehaviour {
 
 pub struct SwarmHandle {
     signing_key: SigningKey,
+    /// crypto::author_pubkey_b64(&signing_key), computed once.
+    own_author_pubkey: String,
     local_peer_id: PeerId,
     stats: SharedStats,
     security: SecurityValidator,
@@ -1968,6 +1970,7 @@ impl SwarmHandle {
                         "peer_id": stats.peer_id,
                         "peers": stats.connected_peers,
                         "published": stats.skills_published,
+                        // Distinct skills (author + name); raw count below.
                         "received": stats.skills_received,
                         "messages_received": stats.skill_messages_received,
                         "uptime_secs": stats.uptime_secs,
@@ -2597,6 +2600,15 @@ impl SwarmHandle {
                         "Rejected invalid skill envelope from {}",
                         envelope.author_peer_id
                     );
+                    return;
+                }
+
+                // Our own skill echoed back (a peer re-published it, or another
+                // machine shares this node key). Gossipsub already suppresses our
+                // own messages, but not a re-publish. Same rule as telemetry
+                // below: never count, reward, or forward our own output.
+                if envelope.author_pubkey == self.own_author_pubkey {
+                    debug!("Dropping our own skill echoed back: {}", envelope.name);
                     return;
                 }
 
@@ -3384,6 +3396,7 @@ pub async fn build_swarm(
         .as_secs();
 
     let handle = SwarmHandle {
+        own_author_pubkey: crate::crypto::author_pubkey_b64(&keypair),
         signing_key: keypair.clone(),
         local_peer_id,
         stats,

@@ -106,7 +106,9 @@ struct StatsResponse {
 #[derive(Serialize)]
 struct ContributionsResponse {
     skills_published: u64,
+    /// Distinct skills (author + name), not messages; see skill_receipts.rs.
     skills_received: u64,
+    skill_messages_received: u64,
     uptime_hours: f64,
     score: f64,
 }
@@ -244,6 +246,7 @@ async fn get_contributions(State(state): State<AppState>) -> Json<ContributionsR
     Json(ContributionsResponse {
         skills_published: stats.skills_published,
         skills_received: stats.skills_received,
+        skill_messages_received: stats.skill_messages_received,
         uptime_hours,
         score,
     })

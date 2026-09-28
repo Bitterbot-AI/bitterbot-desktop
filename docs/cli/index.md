@@ -443,6 +443,7 @@ Subcommands:
 - `skills incoming list`: list quarantined skills (P2P gossip + agentskills.io imports).
 - `skills incoming accept <name>`: move a quarantined skill into the active set.
 - `skills incoming reject <name>`: delete a quarantined skill.
+- `skills incoming reject-peer <peerId>`: delete every quarantined skill from one peer.
 
 Options:
 

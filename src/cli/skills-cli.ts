@@ -269,6 +269,39 @@ export function registerSkillsCli(program: Command) {
       }
     });
 
+  incoming
+    .command("reject-peer")
+    .description(
+      "Reject every quarantined skill from one peer (e.g. a compromised or spamming node)",
+    )
+    .argument("<peerId>", "Author peer id as shown by 'skills incoming list'")
+    .option("--json", "Output as JSON", false)
+    .action(async (peerId, opts) => {
+      try {
+        const { rejectIncomingSkillsByPeer } = await import("../agents/skills/ingest.js");
+        const result = await rejectIncomingSkillsByPeer({
+          authorPeerId: String(peerId).trim(),
+          config: loadConfig(),
+        });
+        if (opts.json) {
+          defaultRuntime.log(JSON.stringify(result, null, 2));
+        } else if (result.rejected.length === 0 && result.errored.length === 0) {
+          defaultRuntime.log(`no quarantined skills from ${peerId}`);
+        } else {
+          defaultRuntime.log(`rejected ${result.rejected.length} skill(s) from ${peerId}`);
+        }
+        for (const e of result.errored) {
+          defaultRuntime.error(`  ${e.name}: ${e.reason}`);
+        }
+        if (!result.ok) {
+          defaultRuntime.exit(1);
+        }
+      } catch (err) {
+        defaultRuntime.error(String(err));
+        defaultRuntime.exit(1);
+      }
+    });
+
   // PLAN-44 Phase 2: review the corpus miner's drafts (the only way a
   // capability task enters the live corpus). Goes through the gateway so
   // the running node's files are the ones edited.

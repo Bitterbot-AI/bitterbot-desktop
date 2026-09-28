@@ -65,6 +65,13 @@ pub fn peer_id_from_keypair(keypair: &SigningKey) -> libp2p::PeerId {
     libp2p::PeerId::from_public_key(&libp2p_pk)
 }
 
+/// The author pubkey this node stamps on skills it publishes (see sign_skill):
+/// standard base64 of the Ed25519 verifying key. Used to recognize our own
+/// skills echoed back by a peer that re-published them.
+pub fn author_pubkey_b64(signing_key: &SigningKey) -> String {
+    base64::engine::general_purpose::STANDARD.encode(signing_key.verifying_key().to_bytes())
+}
+
 /// Sign a skill payload and produce a SkillEnvelope for gossip transmission.
 pub fn sign_skill(
     signing_key: &SigningKey,
@@ -86,7 +93,7 @@ pub fn sign_skill(
         skill_md: skill_md_base64.to_string(),
         name: skill_name.to_string(),
         author_peer_id: local_peer_id.to_string(),
-        author_pubkey: base64::engine::general_purpose::STANDARD.encode(verifying_key.to_bytes()),
+        author_pubkey: author_pubkey_b64(signing_key),
         signature: base64::engine::general_purpose::STANDARD.encode(signature.to_bytes()),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -368,6 +375,16 @@ mod tests {
         let key1 = load_or_generate_keypair(dir.path()).unwrap();
         let key2 = load_or_generate_keypair(dir.path()).unwrap();
         assert_eq!(key1.to_bytes(), key2.to_bytes());
+    }
+
+    #[test]
+    fn own_author_pubkey_matches_what_sign_skill_stamps() {
+        let dir = TempDir::new().unwrap();
+        let keypair = load_or_generate_keypair(dir.path()).unwrap();
+        let peer_id = peer_id_from_keypair(&keypair);
+        let skill_md = base64::engine::general_purpose::STANDARD.encode(b"# Mine\nHello");
+        let envelope = sign_skill(&keypair, &peer_id, &skill_md, "mine");
+        assert_eq!(envelope.author_pubkey, author_pubkey_b64(&keypair));
     }
 
     #[test]

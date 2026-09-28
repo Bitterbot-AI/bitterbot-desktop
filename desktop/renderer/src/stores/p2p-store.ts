@@ -83,12 +83,6 @@ export type P2pContributions = {
   score: number;
 };
 
-export type P2pIncomingSkill = {
-  name: string;
-  author_peer_id?: string;
-  timestamp?: number;
-};
-
 /** Gateway-side decisions about received skills since boot (skills.network `ingest`). */
 export type P2pIngestStats = {
   sinceMs: number;
@@ -106,7 +100,6 @@ interface P2pState {
   connected: boolean;
   stats: P2pStats | null;
   contributions: P2pContributions | null;
-  incomingSkills: P2pIncomingSkill[];
   bootstrapCensus: P2pBootstrapCensus | null;
   networkCensus: P2pNetworkCensus | null;
   ingest: P2pIngestStats | null;
@@ -116,7 +109,6 @@ interface P2pState {
 
   fetchStats: (httpAddr?: string) => Promise<void>;
   fetchContributions: (httpAddr?: string) => Promise<void>;
-  fetchIncomingSkills: () => Promise<void>;
   fetchBootstrapCensus: (httpAddr?: string) => Promise<void>;
   fetchNetworkCensus: () => Promise<void>;
   fetchCensusHistory: (opts?: {
@@ -133,7 +125,6 @@ export const useP2pStore = create<P2pState>((set) => ({
   connected: false,
   stats: null,
   contributions: null,
-  incomingSkills: [],
   bootstrapCensus: null,
   networkCensus: null,
   ingest: null,
@@ -168,12 +159,6 @@ export const useP2pStore = create<P2pState>((set) => ({
     } catch {
       /* connectivity errors surface via fetchStats */
     }
-  },
-
-  fetchIncomingSkills: async () => {
-    // This uses the gateway RPC, not the orchestrator HTTP API
-    // In a real implementation, this would call the gateway client
-    set({ incomingSkills: [] });
   },
 
   fetchBootstrapCensus: async (httpAddr) => {

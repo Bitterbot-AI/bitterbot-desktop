@@ -99,6 +99,7 @@ bitterbot skills import agentskills github-release --accept
 bitterbot skills incoming list
 bitterbot skills incoming accept <name>
 bitterbot skills incoming reject <name>
+bitterbot skills incoming reject-peer <peerId>   # everything held from one peer
 ```
 
 Gating:

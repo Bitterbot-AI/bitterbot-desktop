@@ -25,6 +25,8 @@ export type IngestOutcomeStats = {
   rejected: number;
   /** Copies of an already-decided skill, dropped without re-processing. */
   repeatsIgnored: number;
+  /** Our own skills echoed back by a peer. Not counted as received. */
+  ownEchoesIgnored: number;
   rejectReasons: Record<string, number>;
 };
 
@@ -50,14 +52,23 @@ function fresh(): IngestOutcomeStats {
     retracted: 0,
     rejected: 0,
     repeatsIgnored: 0,
+    ownEchoesIgnored: 0,
     rejectReasons: {},
   };
 }
+
+/** ingest.ts's reason for our own skill echoed back. */
+export const SELF_LOOPBACK_REASON = "self-loopback (own published skill)";
 
 export function recordIngestOutcome(
   envelope: Pick<SkillEnvelope, "author_pubkey" | "name">,
   result: Pick<IngestResult, "action" | "reason"> | null,
 ): void {
+  // Our own output is not something we received: keep it out of every count.
+  if (result?.reason === SELF_LOOPBACK_REASON) {
+    state.ownEchoesIgnored += 1;
+    return;
+  }
   state.messages += 1;
   const key = `${envelope.author_pubkey}\u0000${normalizeSkillName(envelope.name)}`;
   if (!distinct.has(key)) {

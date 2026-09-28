@@ -20,6 +20,7 @@ import { isTruthyEnvValue } from "../infra/env.js";
 import { getP2pStatus, patchP2pStatus } from "../infra/p2p-status.js";
 import { recordPeerWalletCapability, setLocalWalletCapability } from "../infra/wallet-discovery.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
+import { createSkillReceivedHandler } from "./p2p-skill-receive.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
   scheduleRestartSentinelWake,
@@ -201,12 +202,20 @@ export async function startGatewaySidecars(params: {
         patchP2pStatus({ peerCount: next, connected: next > 0 });
       });
 
+      // The key this node publishes skills under. Passed to ingestSkill so our
+      // own skill echoed back by a re-publishing peer is dropped instead of
+      // landing in review as an anonymous peer skill (audit finding F15; the
+      // guard existed in ingest.ts but was never wired here).
+      let ownPublishPubkey: string | undefined;
+      let skillReceiveHandler: ReturnType<typeof createSkillReceivedHandler> | undefined;
       // Cache the orchestrator's identity once at startup. Stable until
       // restart, so a single fetch is enough — the system prompt then sees
       // peerId + tier on every turn without an IPC round-trip.
       void orchestratorBridge
         .getIdentity()
         .then((identity) => {
+          ownPublishPubkey = identity.pubkey;
+          skillReceiveHandler?.setOwnPublishPubkey(identity.pubkey);
           patchP2pStatus({ peerId: identity.peerId, nodeTier: identity.nodeTier });
         })
         .catch((err) => {
@@ -278,41 +287,19 @@ export async function startGatewaySidecars(params: {
         pendingPeerSeen.clear();
         callerReady?.(bridge);
       };
-      // Wire skill_received → ingestion pipeline (with reputation manager support)
-      orchestratorBridge.onSkillReceived(async (event) => {
-        const { ingestSkill, shouldBridgeIngest } = await import("../agents/skills/ingest.js");
-        const { loadConfig } = await import("../config/config.js");
-        const envelope = event as import("../agents/skills/ingest.js").SkillEnvelope;
-        const result = await ingestSkill({
-          envelope,
-          config: loadConfig(),
-          workspaceDir: params.defaultWorkspaceDir,
-          // Wire the live reputation manager so a genuine peer receipt is
-          // actually counted (peer_reputation.skills_received) and graduated
-          // trust can auto-accept verified peers. Without this the receive
-          // path was structurally silent — receipts never recorded, nothing
-          // ever auto-accepted, everything piled into review.
-          reputationManager: skillNetworkBridge?.getPeerReputation() ?? undefined,
-        }).catch((err) => {
-          params.log.warn(`P2P skill ingestion failed: ${String(err)}`);
-          return null;
-        });
-        // Dashboard accounting: skills vs messages, and what we decided.
-        const { recordIngestOutcome } = await import("../agents/skills/ingest-stats.js");
-        recordIngestOutcome(envelope, result);
-
-        // Also route to SkillNetworkBridge for crystal-level ingestion —
-        // PLAN-44 Phase 3: only an ACCEPTED envelope. A quarantined one used
-        // to become an `active`, recall-visible chunk while its file sat in
-        // review; skills.incoming.accept routes it here instead.
-        if (skillNetworkBridge && shouldBridgeIngest(result)) {
-          try {
-            skillNetworkBridge.ingestNetworkSkill(envelope);
-          } catch (err) {
-            params.log.warn(`Skill network bridge ingestion failed: ${String(err)}`);
-          }
-        }
+      // Wire skill_received → ingestion pipeline (src/gateway/p2p-skill-receive.ts).
+      const identityBridge = orchestratorBridge;
+      skillReceiveHandler = createSkillReceivedHandler({
+        getIdentity: () => identityBridge.getIdentity(),
+        workspaceDir: params.defaultWorkspaceDir,
+        getSkillNetworkBridge: () => skillNetworkBridge,
+        log: params.log,
       });
+      if (ownPublishPubkey) {
+        skillReceiveHandler.setOwnPublishPubkey(ownPublishPubkey);
+      }
+      const receiver = skillReceiveHandler;
+      orchestratorBridge.onSkillReceived((event) => void receiver.handle(event));
       // Cache bootnode census snapshots received over gossipsub. Buffer if
       // the bridge isn't ready yet — same pattern as peer-identified above.
       const pendingCensus = new Map<string, { source: string; snapshot: unknown }>();

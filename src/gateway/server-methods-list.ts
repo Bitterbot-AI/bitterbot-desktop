@@ -79,6 +79,7 @@ const BASE_METHODS = [
   "skills.incoming.list",
   "skills.incoming.accept",
   "skills.incoming.reject",
+  "skills.incoming.rejectByPeer",
   "update.run",
   "update.check",
   "system.restart",
