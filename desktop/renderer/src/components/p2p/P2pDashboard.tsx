@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
-import { useP2pStore } from "../../stores/p2p-store";
+import { type P2pIngestStats, useP2pStore } from "../../stores/p2p-store";
 import { CensusBreakdown } from "./CensusBreakdown";
 import { ContributionCard } from "./ContributionCard";
 import { NetworkGrowthSparkline } from "./NetworkGrowthSparkline";
@@ -15,6 +15,7 @@ export function P2pDashboard() {
     error,
     bootstrapCensus,
     networkCensus,
+    ingest,
     censusHistory,
     fetchStats,
     fetchContributions,
@@ -111,8 +112,9 @@ export function P2pDashboard() {
         />
         <ContributionCard
           title="Skills Received"
-          value={stats?.skills_received ?? 0}
+          value={ingest?.distinctSkills ?? stats?.skills_received ?? 0}
           icon="download"
+          detail={describeIngest(ingest)}
         />
         <ContributionCard
           title="Contribution Score"
@@ -202,4 +204,23 @@ function formatUptime(secs: number): string {
   const hours = Math.floor(secs / 3600);
   const mins = Math.floor((secs % 3600) / 60);
   return `${hours}h ${mins}m`;
+}
+
+/**
+ * One line under "Skills Received": what this node decided about the skills
+ * it got, so a re-broadcasting peer can't pass as a busy network.
+ */
+export function describeIngest(ingest: P2pIngestStats | null): string | undefined {
+  if (!ingest || ingest.messages === 0) {
+    return undefined;
+  }
+  const parts = [
+    `${ingest.accepted} accepted`,
+    `${ingest.heldForReview} in review`,
+    `${ingest.rejected} rejected`,
+  ];
+  if (ingest.repeatsIgnored > 0) {
+    parts.push(`${ingest.repeatsIgnored} repeats ignored`);
+  }
+  return parts.join(" · ");
 }

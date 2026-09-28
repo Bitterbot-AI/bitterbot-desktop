@@ -8,7 +8,7 @@ import { createHash, generateKeyPairSync, type KeyObject, sign as cryptoSign } f
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
 import { ingestSkill, type SkillEnvelope } from "./ingest.js";
 
@@ -123,5 +123,50 @@ describe("ingestSkill — legacy dream crystal rejection (PLAN-42)", () => {
       config: configFor(tmpRoot, { rejectLegacyCrystals: false }),
     });
     expect(res.action).toBe("quarantined");
+  });
+
+  it("counts a re-broadcast crystal once per author and name (same name, new bytes)", async () => {
+    const pair = generateEd25519();
+    const reputation = {
+      recordSkillReceived: vi.fn(),
+      recordIngestionResult: vi.fn(),
+      getTrustLevel: vi.fn(() => "untrusted" as const),
+    };
+    const reasons: string[] = [];
+    // The legacy publisher re-sends its crystal's CURRENT text each time, so
+    // every copy hashes differently.
+    for (let i = 0; i < 5; i++) {
+      const res = await ingestSkill({
+        envelope: buildEnvelope(`${LEGACY_CRYSTAL}\n\nrevision ${i}`, "e03d582d-53dc", pair),
+        config: configFor(tmpRoot),
+        reputationManager: reputation as never,
+      });
+      expect(res.ok).toBe(false);
+      reasons.push(res.reason ?? "");
+    }
+    expect(reasons[0]).toBe("legacy unvalidated dream crystal");
+    expect(reasons.slice(1).every((r) => r === "legacy dream crystal (repeat)")).toBe(true);
+    // One receipt, one rejection: rejections can no longer outnumber receipts.
+    expect(reputation.recordSkillReceived).toHaveBeenCalledTimes(1);
+    expect(reputation.recordIngestionResult).toHaveBeenCalledTimes(1);
+    expect(reputation.recordIngestionResult).toHaveBeenCalledWith(pair.pubkeyBase64, false);
+
+    // The same crystal name from a different author is a different skill.
+    const other = generateEd25519();
+    await ingestSkill({
+      envelope: buildEnvelope(`${LEGACY_CRYSTAL}\n\nfrom another author`, "e03d582d-53dc", other),
+      config: configFor(tmpRoot),
+      reputationManager: reputation as never,
+    });
+    expect(reputation.recordIngestionResult).toHaveBeenCalledTimes(2);
+  });
+
+  it("an exact re-broadcast of a rejected crystal is dropped as a repeat", async () => {
+    const pair = generateEd25519();
+    const envelope = buildEnvelope(`${LEGACY_CRYSTAL}\n\nexact`, "exact-repeat", pair);
+    const first = await ingestSkill({ envelope, config: configFor(tmpRoot) });
+    const second = await ingestSkill({ envelope, config: configFor(tmpRoot) });
+    expect(first.reason).toBe("legacy unvalidated dream crystal");
+    expect(second.reason).toBe("legacy dream crystal (repeat)");
   });
 });

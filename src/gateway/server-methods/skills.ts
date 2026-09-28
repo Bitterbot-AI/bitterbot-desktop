@@ -295,7 +295,12 @@ export const skillsHandlers: GatewayRequestHandlers = {
       // unlike the old "latest single source wins" read that flapped between
       // bootnodes' divergent local counts.
       const networkCensus = context.skillNetworkBridge?.getAggregatedNetworkCensus?.() ?? null;
+      // What the gateway decided about received skills since boot (distinct
+      // skills vs raw gossip messages, accepted / held / rejected).
+      const { getIngestOutcomeStats } = await import("../../agents/skills/ingest-stats.js");
+      const ingest = getIngestOutcomeStats();
       return {
+        ingest,
         enabled: p2p?.enabled ?? false,
         topics: p2p?.topics ?? {},
         security: p2p?.security ?? {},

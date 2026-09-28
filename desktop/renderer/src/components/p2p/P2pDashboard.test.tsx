@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useP2pStore } from "../../stores/p2p-store";
-import { P2pDashboard } from "./P2pDashboard";
+import { describeIngest, P2pDashboard } from "./P2pDashboard";
 
 // The P2P dashboard serves two audiences from one component: every node sees
 // its own connectivity stats, but the census/growth panels and the
@@ -82,6 +82,7 @@ describe("P2pDashboard", () => {
       contributions: null,
       bootstrapCensus: null,
       networkCensus: null,
+      ingest: null,
       censusHistory: [],
       error: null,
       connected: false,
@@ -111,6 +112,54 @@ describe("P2pDashboard", () => {
     expect(screen.queryByText("Peak Concurrent Peers")).toBeNull();
     expect(screen.queryByText("Routing Table Size")).toBeNull();
     expect(screen.queryByText(/Peer IDs \(this session\)/)).toBeNull();
+  });
+
+  it("Skills Received shows distinct skills and what was decided, not raw gossip", async () => {
+    // The 2026-09-28 case: one peer re-sent 5 legacy crystals 314 times.
+    const ingest = {
+      sinceMs: 0,
+      messages: 314,
+      distinctSkills: 5,
+      accepted: 0,
+      heldForReview: 0,
+      retracted: 0,
+      rejected: 5,
+      repeatsIgnored: 309,
+      rejectReasons: { "legacy unvalidated dream crystal": 5 },
+    };
+    requestMock.mockImplementation((method: string) =>
+      method === "skills.network"
+        ? Promise.resolve({ networkCensus: null, ingest })
+        : method === "management.health"
+          ? Promise.reject(new Error("not a management node"))
+          : Promise.resolve({ rows: [], count: 0 }),
+    );
+    stubFetch({ status: 404 });
+    render(<P2pDashboard />);
+    await waitFor(() =>
+      expect(
+        screen.getByText("0 accepted · 0 in review · 5 rejected · 309 repeats ignored"),
+      ).toBeTruthy(),
+    );
+    expect(screen.getByText("5")).toBeTruthy();
+    expect(screen.queryByText("314")).toBeNull();
+  });
+
+  it("describeIngest stays quiet until something arrived", () => {
+    expect(describeIngest(null)).toBeUndefined();
+    expect(
+      describeIngest({
+        sinceMs: 0,
+        messages: 0,
+        distinctSkills: 0,
+        accepted: 0,
+        heldForReview: 0,
+        retracted: 0,
+        rejected: 0,
+        repeatsIgnored: 0,
+        rejectReasons: {},
+      }),
+    ).toBeUndefined();
   });
 
   it("edge node: census enabled:false also hides operator panels", async () => {

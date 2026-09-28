@@ -158,6 +158,39 @@ const peerRates = new Map<string, RateState>();
 const seenHashes = new Set<string>();
 const MAX_SEEN_HASHES = 10_000;
 
+/**
+ * Rejections that are final for these bytes FROM THIS AUTHOR, keyed by
+ * author pubkey + content hash, so an exact re-broadcast short-circuits instead
+ * of re-running the pipeline and re-penalizing the sender. Keyed by author on
+ * purpose: a hash-only memory would let bytes rejected for one sender (say, a
+ * signed trailer lifted onto another node's envelope) block the genuine author.
+ * Only recorded AFTER the signature and content hash verified.
+ */
+const rejectedEnvelopes = new Set<string>();
+const MAX_REJECTED_ENVELOPES = 10_000;
+
+function rejectionKey(envelope: SkillEnvelope): string {
+  return `${envelope.author_pubkey}\u0000${envelope.content_hash}`;
+}
+
+function rememberRejection(envelope: SkillEnvelope): void {
+  if (rejectedEnvelopes.size >= MAX_REJECTED_ENVELOPES) {
+    rejectedEnvelopes.clear();
+  }
+  rejectedEnvelopes.add(rejectionKey(envelope));
+}
+
+/**
+ * Legacy dream crystals already rejected, keyed by author + skill name. The
+ * legacy publisher re-sends the SAME crystal with different bytes (its current
+ * text) every broadcast, so the content-hash dedupe never matches: one peer's
+ * 5 crystals arrived 314 times, each counted as a fresh rejection. The first
+ * copy is recorded (one receipt, one rejection); later copies are dropped
+ * without touching reputation.
+ */
+const rejectedLegacyCrystals = new Set<string>();
+const MAX_REJECTED_LEGACY = 10_000;
+
 export async function ingestSkill(params: {
   envelope: SkillEnvelope;
   config: BitterbotConfig;
@@ -223,9 +256,16 @@ export async function ingestSkill(params: {
     return { ok: false, action: "rejected", reason: "content hash mismatch" };
   }
 
+  // 2a. An exact repeat of bytes this author already had rejected: drop it
+  // quietly, without another reputation hit.
+  if (rejectedEnvelopes.has(rejectionKey(envelope))) {
+    return { ok: false, action: "rejected", reason: "repeat of a rejected skill" };
+  }
+
   // 2b. PLAN-45 Phase 3.4: bytes the author retracted stay retracted (a
   // fresh envelope has a fresh timestamp/signature, the same hash).
   if (await isRetracted(envelope.author_pubkey, envelope.content_hash)) {
+    rememberRejection(envelope);
     return { ok: false, action: "rejected", reason: "retracted by its author" };
   }
 
@@ -249,8 +289,24 @@ export async function ingestSkill(params: {
     // verdict, not the marker text (a bare substring exempted anything).
     const hasValidationEvidence = parseProvenanceTrailer(md) !== null;
     if (looksLikeLegacyCrystal && !hasValidationEvidence) {
+      // Keyed by author + name (not bytes): the legacy publisher changes the
+      // bytes every broadcast. No byte memory here, so flipping the kill
+      // switch takes effect for the next copy.
+      const legacyKey = `${envelope.author_pubkey}\u0000${normalizeSkillName(envelope.name)}`;
+      if (rejectedLegacyCrystals.has(legacyKey)) {
+        return { ok: false, action: "rejected", reason: "legacy dream crystal (repeat)" };
+      }
+      if (rejectedLegacyCrystals.size >= MAX_REJECTED_LEGACY) {
+        rejectedLegacyCrystals.clear();
+      }
+      rejectedLegacyCrystals.add(legacyKey);
       log.info(
-        `Rejected legacy unvalidated dream crystal "${envelope.name}" from ${envelope.author_peer_id}`,
+        `Rejected legacy unvalidated dream crystal "${envelope.name}" from ${envelope.author_peer_id} (later copies are ignored)`,
+      );
+      // Record the receipt with the rejection so rejections never outnumber receipts.
+      params.reputationManager?.recordSkillReceived(
+        envelope.author_pubkey,
+        envelope.author_peer_id,
       );
       params.reputationManager?.recordIngestionResult(envelope.author_pubkey, false);
       return { ok: false, action: "rejected", reason: "legacy unvalidated dream crystal" };
@@ -289,6 +345,7 @@ export async function ingestSkill(params: {
 
   // 5. Parse and validate SKILL.md
   if (!validateSkillContent(skillContent)) {
+    rememberRejection(envelope);
     return { ok: false, action: "rejected", reason: "invalid SKILL.md structure" };
   }
   // Sender's validation claim, parsed once and carried on the envelope for
@@ -303,6 +360,7 @@ export async function ingestSkill(params: {
     if (mismatch) {
       log.warn(`Rejected skill from ${envelope.author_peer_id}: ${mismatch}`);
       params.reputationManager?.recordIngestionResult(envelope.author_pubkey, false);
+      rememberRejection(envelope);
       return { ok: false, action: "rejected", reason: mismatch };
     }
   }
@@ -326,6 +384,7 @@ export async function ingestSkill(params: {
   // 6. Check existing skills for content-hash dedup
   const existingSkillsDir = path.join(CONFIG_DIR, "skills");
   if (await skillExistsWithHash(existingSkillsDir, envelope.content_hash)) {
+    rememberRejection(envelope);
     return { ok: false, action: "rejected", reason: "skill already exists" };
   }
   // 6b. PLAN-45 4.4: version-bound trust. A name already bound to another

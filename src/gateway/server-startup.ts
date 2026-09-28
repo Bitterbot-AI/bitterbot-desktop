@@ -297,6 +297,9 @@ export async function startGatewaySidecars(params: {
           params.log.warn(`P2P skill ingestion failed: ${String(err)}`);
           return null;
         });
+        // Dashboard accounting: skills vs messages, and what we decided.
+        const { recordIngestOutcome } = await import("../agents/skills/ingest-stats.js");
+        recordIngestOutcome(envelope, result);
 
         // Also route to SkillNetworkBridge for crystal-level ingestion —
         // PLAN-44 Phase 3: only an ACCEPTED envelope. A quarantined one used

@@ -247,7 +247,13 @@ pub struct SwarmStats {
     pub peer_id: String,
     pub connected_peers: usize,
     pub skills_published: u64,
+    /// Distinct skills received this session: one per (author, skill name),
+    /// however many times it is re-broadcast. See skill_receipts.rs.
     pub skills_received: u64,
+    /// Raw skill gossip messages that passed envelope validation, repeats of
+    /// an already-counted skill included.
+    #[serde(default)]
+    pub skill_messages_received: u64,
     pub uptime_secs: u64,
     pub peer_details: HashMap<String, PeerDetail>,
     pub listen_addrs: Vec<String>,
@@ -725,6 +731,8 @@ pub struct SwarmHandle {
     current_minute_leaves: u32,
     /// Rolling buffer of skill receive latencies (ms), capped at LATENCY_WINDOW.
     latency_window_ms: std::collections::VecDeque<u64>,
+    /// Which (author, skill name) pairs have already been counted.
+    skill_receipts: crate::skill_receipts::SkillReceiptTracker,
     /// Bootnode registry — only flushes to disk if enabled.
     bootnode_registry: SharedBootnodeRegistry,
     /// Stage 3: circle topics this RELAY carries purely to forward. Only
@@ -1961,6 +1969,7 @@ impl SwarmHandle {
                         "peers": stats.connected_peers,
                         "published": stats.skills_published,
                         "received": stats.skills_received,
+                        "messages_received": stats.skill_messages_received,
                         "uptime_secs": stats.uptime_secs,
                         "mesh_peers_count": stats.mesh_peers_count,
                         "subscribed_topics": stats.subscribed_topics,
@@ -2617,14 +2626,24 @@ impl SwarmHandle {
                     .map(|v| v.len() as u64)
                     .unwrap_or(0);
 
-                // Update per-peer skills_received_from counter
+                // Count skills, not messages: a re-broadcast of a skill this
+                // author already sent (same name, new bytes) is still forwarded
+                // to Node below, but neither counts as a new skill nor earns the
+                // sender reputation again.
+                let first_receipt = self
+                    .skill_receipts
+                    .record(&envelope.author_pubkey, &envelope.name);
                 {
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
-                    stats.skills_received += 1;
+                    stats.skill_messages_received += 1;
                     *stats
                         .bytes_received_per_topic
                         .entry(SKILLS_TOPIC.to_string())
                         .or_insert(0) += approx_bytes;
+                }
+                if first_receipt {
+                    let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                    stats.skills_received += 1;
                     if let Some(detail) = stats.peer_details.get_mut(&envelope.author_peer_id) {
                         detail.skills_received_from += 1;
                         // Diminishing reputation gain: logarithmic scaling, capped at 100
@@ -3303,6 +3322,7 @@ pub async fn build_swarm(
         connected_peers: 0,
         skills_published: 0,
         skills_received: 0,
+        skill_messages_received: 0,
         uptime_secs: 0,
         peer_details: HashMap::new(),
         listen_addrs: vec![listen_addr.to_string()],
@@ -3389,6 +3409,7 @@ pub async fn build_swarm(
         current_minute_joins: 0,
         current_minute_leaves: 0,
         latency_window_ms: std::collections::VecDeque::with_capacity(LATENCY_WINDOW),
+        skill_receipts: crate::skill_receipts::SkillReceiptTracker::default(),
         bootnode_registry,
         carried_circle_topics: std::collections::HashMap::new(),
         inbound_circle_rpc: std::collections::HashMap::new(),

@@ -72,7 +72,10 @@ struct StatsResponse {
     peer_id: String,
     connected_peers: usize,
     skills_published: u64,
+    /// Distinct skills (author + name); see skill_receipts.rs.
     skills_received: u64,
+    /// Raw skill messages, re-broadcasts included.
+    skill_messages_received: u64,
     uptime_secs: u64,
     mesh_peers_count: usize,
     subscribed_topics: Vec<String>,
@@ -194,6 +197,7 @@ async fn get_stats(State(state): State<AppState>) -> Json<StatsResponse> {
         connected_peers: stats.connected_peers,
         skills_published: stats.skills_published,
         skills_received: stats.skills_received,
+        skill_messages_received: stats.skill_messages_received,
         uptime_secs: stats.uptime_secs,
         mesh_peers_count: stats.mesh_peers_count,
         subscribed_topics: stats.subscribed_topics.clone(),
@@ -318,6 +322,7 @@ async fn events(
             "connected_peers": stats.connected_peers,
             "skills_published": stats.skills_published,
             "skills_received": stats.skills_received,
+            "skill_messages_received": stats.skill_messages_received,
             "uptime_secs": stats.uptime_secs,
             "mesh_peers_count": stats.mesh_peers_count,
             "subscribed_topics": stats.subscribed_topics,

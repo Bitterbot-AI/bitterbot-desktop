@@ -2395,6 +2395,29 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 69,
+    description:
+      "Skill-receive accounting repair (2026-09-28): a peer re-broadcasting legacy dream " +
+      "crystals with new bytes each time was penalized once per COPY (965 rejections " +
+      "against 154 receipts on the reference node). Every rejected skill is also a " +
+      "received one, so rejections are capped at receipts. Anomaly flags are cleared: " +
+      "the detector never un-flagged a peer that went quiet, and re-flags any peer that " +
+      "is genuinely spiking on its next hourly pass.",
+    up: (db: DatabaseSync) => {
+      const hasTable = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'peer_reputation'`)
+        .get();
+      if (!hasTable) {
+        return;
+      }
+      db.exec(
+        `UPDATE peer_reputation SET skills_rejected = skills_received
+           WHERE skills_rejected > skills_received`,
+      );
+      db.exec(`UPDATE peer_reputation SET anomaly_flag = 0 WHERE anomaly_flag = 1`);
+    },
+  },
 ];
 
 /**

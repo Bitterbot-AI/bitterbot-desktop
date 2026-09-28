@@ -917,6 +917,21 @@ export class PeerReputationManager {
       )
       .all(cutoff) as Array<{ peer_pubkey: string; c: number }>;
 
+    // A peer flagged earlier that has since gone quiet is no longer spiking.
+    // Without this the flag outlived the burst forever, because the loop
+    // below only revisits peers active in this window.
+    const active = new Set(recentCounts.map((r) => r.peer_pubkey));
+    const flagged = this.db
+      .prepare(`SELECT peer_pubkey FROM peer_reputation WHERE anomaly_flag = 1`)
+      .all() as Array<{ peer_pubkey: string }>;
+    for (const { peer_pubkey } of flagged) {
+      if (!active.has(peer_pubkey)) {
+        this.db
+          .prepare(`UPDATE peer_reputation SET anomaly_flag = 0 WHERE peer_pubkey = ?`)
+          .run(peer_pubkey);
+      }
+    }
+
     for (const { peer_pubkey, c: recentCount } of recentCounts) {
       // Get total historical count and age
       const rep = this.db

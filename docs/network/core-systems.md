@@ -266,6 +266,7 @@ The P2P layer uses a Rust binary (`orchestrator`) built on libp2p:
 - IP colocation penalties for Sybil resistance (gossipsub `ip_colocation_factor_weight: -50.0`, penalizes >3 peers from same /24 subnet)
 - Ban/blocklist support for individual peers by pubkey
 - **SkillVerifier safety gate on P2P ingest:** Skills received from peers pass through the same 3-check verification pipeline as locally crystallized skills -- dangerous pattern detection, structural integrity validation, and semantic drift analysis. Rejected skills result in a negative trust signal to the sender.
+- **Skills are counted, not messages:** a skill is one author plus one skill name. A peer that re-broadcasts the same skill (even with changed bytes, as the legacy dream-crystal publisher does) is counted, and if rejected penalized, once; later copies are dropped quietly. The P2P dashboard's **Skills Received** card shows distinct skills with a breakdown of what this node accepted, held for review, rejected, and ignored as repeats.
 
 ---
 
