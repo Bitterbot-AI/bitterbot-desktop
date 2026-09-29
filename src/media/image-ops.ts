@@ -28,7 +28,9 @@ function prefersSips(): boolean {
 async function loadSharp(): Promise<(buffer: Buffer) => ReturnType<Sharp>> {
   const mod = (await import("sharp")) as unknown as { default?: Sharp };
   const sharp = mod.default ?? (mod as unknown as Sharp);
-  return (buffer) => sharp(buffer, { failOnError: false });
+  // failOn "none" = the old failOnError: false (removed in sharp 0.35):
+  // tolerate bad pixel data instead of throwing on imperfect user images.
+  return (buffer) => sharp(buffer, { failOn: "none" });
 }
 
 /**
