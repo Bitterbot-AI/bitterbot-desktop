@@ -10,13 +10,6 @@
  */
 
 import crypto from "node:crypto";
-import type {
-  RLMExecutorOptions,
-  RLMResult,
-  RLMTraceEntry,
-  RLMMessage,
-  RLMLLMCallFn,
-} from "./types.js";
 import { CostTracker } from "./cost-tracker.js";
 import {
   buildRLMSystemPrompt,
@@ -25,6 +18,13 @@ import {
   buildBudgetWarning,
 } from "./prompts.js";
 import { RLMSandbox } from "./sandbox.js";
+import type {
+  RLMExecutorOptions,
+  RLMResult,
+  RLMTraceEntry,
+  RLMMessage,
+  RLMLLMCallFn,
+} from "./types.js";
 
 /**
  * Cap on sandbox output fed back to the root model per iteration. Without

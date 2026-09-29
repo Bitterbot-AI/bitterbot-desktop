@@ -454,7 +454,7 @@ const N = (t, i) => {
       u,
       d = -1,
       f = 0;
-    for (; f < s.length && ((c.lastIndex = f), (u = c.exec(s)), null !== u); )
+    for (; f < s.length && ((c.lastIndex = f), (u = c.exec(s)), null !== u);)
       ((f = c.lastIndex),
         c === v$1
           ? "!--" === u[1]
@@ -502,7 +502,7 @@ var S = class S {
       const t = this.el.content.firstChild;
       t.replaceWith(...t.childNodes);
     }
-    for (; null !== (r = P.nextNode()) && d.length < u; ) {
+    for (; null !== (r = P.nextNode()) && d.length < u;) {
       if (1 === r.nodeType) {
         if (r.hasAttributes())
           for (const t of r.getAttributeNames())
@@ -548,7 +548,7 @@ var S = class S {
           });
         else {
           let t = -1;
-          for (; -1 !== (t = r.data.indexOf(o$12, t + 1)); )
+          for (; -1 !== (t = r.data.indexOf(o$12, t + 1));)
             (d.push({
               type: 7,
               index: l,
@@ -597,7 +597,7 @@ var R = class {
       o = 0,
       n = 0,
       r = s[0];
-    for (; void 0 !== r; ) {
+    for (; void 0 !== r;) {
       if (o === r.index) {
         let i;
         (2 === r.type
@@ -702,7 +702,7 @@ var k = class k {
     e < i.length && (this._$AR(s && s._$AB.nextSibling, e), (i.length = e));
   }
   _$AR(t = this._$AA.nextSibling, s) {
-    for (this._$AP?.(!1, !0, s); t !== this._$AB; ) {
+    for (this._$AP?.(!1, !0, s); t !== this._$AB;) {
       const s = i$7(t).nextSibling;
       (i$7(t).remove(), (t = s));
     }
@@ -954,7 +954,7 @@ var i$5 = class {
       }
       if (t !== d || c) {
         let o = e._$AA;
-        for (; o !== t; ) {
+        for (; o !== t;) {
           const t = i$4(o).nextSibling;
           (i$4(l).insertBefore(o, d), (o = t));
         }
@@ -1016,7 +1016,7 @@ const u = (e, s, t) => {
           j = d.length - 1,
           k = 0,
           w = p$3.length - 1;
-        for (; x <= j && k <= w; )
+        for (; x <= j && k <= w;)
           if (null === d[x]) x++;
           else if (null === d[j]) j--;
           else if (h[x] === a[k]) ((v$2[k] = u$1(d[x], p$3[k])), x++, k++);
@@ -1034,11 +1034,11 @@ const u = (e, s, t) => {
               k++;
             } else (h$4(d[j]), j--);
           else (h$4(d[x]), x++);
-        for (; k <= w; ) {
+        for (; k <= w;) {
           const e = v(s, v$2[w + 1]);
           (u$1(e, p$3[k]), (v$2[k++] = e));
         }
-        for (; x <= j; ) {
+        for (; x <= j;) {
           const e = d[x++];
           null !== e && h$4(e);
         }
@@ -18030,7 +18030,7 @@ const decode = function (input) {
     }
     output.push(input.charCodeAt(j));
   }
-  for (let index = basic > 0 ? basic + 1 : 0; index < inputLength; ) {
+  for (let index = basic > 0 ? basic + 1 : 0; index < inputLength;) {
     const oldi = i;
     for (let w = 1, k = base; ; k += base) {
       if (index >= inputLength) {

@@ -3,8 +3,6 @@ import fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionConfig } from "../types.base.js";
-import type { SessionEntry } from "./types.js";
 import {
   clearSessionStoreCacheForTest,
   getSessionStoreLockQueueSizeForTest,
@@ -13,6 +11,7 @@ import {
   updateSessionStoreEntry,
 } from "../sessions.js";
 import { withSessionStoreLockForTest } from "../sessions.js";
+import type { SessionConfig } from "../types.base.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
 import {
   resolveSessionFilePath,
@@ -28,6 +27,7 @@ import {
   appendAssistantMessageToSessionTranscript,
   resolveMirroredTranscriptText,
 } from "./transcript.js";
+import type { SessionEntry } from "./types.js";
 
 describe("deriveSessionMetaPatch", () => {
   it("captures origin + group metadata", () => {

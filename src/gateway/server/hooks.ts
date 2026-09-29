@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { CliDeps } from "../../cli/deps.js";
-import type { createSubsystemLogger } from "../../logging/subsystem.js";
-import type { HookMessageChannel, HooksConfigResolved } from "../hooks.js";
 import { resolveMainSessionKeyFromConfig } from "../../config/sessions.js";
 import { runIsolatedAgentTurn } from "../../cron/isolated-agent.js";
 import { requestHeartbeatNow } from "../../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
+import type { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { HookMessageChannel, HooksConfigResolved } from "../hooks.js";
 import { createHooksRequestHandler } from "../server-http.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;

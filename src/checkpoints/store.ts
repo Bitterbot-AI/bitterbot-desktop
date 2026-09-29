@@ -20,10 +20,10 @@
  * boundaries without schema migrations.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import zlib from "node:zlib";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";

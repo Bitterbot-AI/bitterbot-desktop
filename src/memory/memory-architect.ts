@@ -16,8 +16,8 @@
  * logic is unit-testable without a live model.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { scoreCitationSupport } from "./evidence-expand.js";
 import { type HormonalBias, extractSessionFacts } from "./session-extractor.js";

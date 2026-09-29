@@ -16,10 +16,9 @@
  * rates for status and, later, retirement (D-5).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { EventJournal } from "../../infra/event-journal.js";
+import type { DatabaseSync } from "node:sqlite";
 import { readCanaryRegistry } from "../../agents/skills/canary-registry.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import {
@@ -27,6 +26,7 @@ import {
   resolveStorageRoots,
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
+import type { EventJournal } from "../../infra/event-journal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { makeYieldEvery } from "../event-loop.js";
 import { SkillLifecycleStore } from "../skill-lifecycle.js";

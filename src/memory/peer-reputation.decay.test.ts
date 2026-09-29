@@ -12,10 +12,10 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
 import { PeerReputationManager } from "./peer-reputation.js";
+import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 
 // Stub: decay does not touch the execution tracker.
 const stubTracker: SkillExecutionTracker = {

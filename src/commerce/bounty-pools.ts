@@ -21,10 +21,10 @@
  * review (PLAN-26 precedent). The flag flip is its own reviewed commit.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { Eip3009Authorization, SettlementExecutor } from "./settlement.js";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { Eip3009Authorization, SettlementExecutor } from "./settlement.js";
 
 const log = createSubsystemLogger("commerce/bounty-pools");
 

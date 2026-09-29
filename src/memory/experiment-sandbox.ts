@@ -16,8 +16,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { HeldOutExecution } from "./skill-execution-selection.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { HeldOutExecution } from "./skill-execution-selection.js";
 
 const log = createSubsystemLogger("memory/experiment-sandbox");
 

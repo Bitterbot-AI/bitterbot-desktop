@@ -12,15 +12,15 @@
  * the telemetry/v1 Gossipsub topic.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { DreamInsight, DreamStats } from "./dream-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import type { OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 import { RUN_EVIDENCE_WHERE, RUN_SUCCESS_EXPR } from "./skill-execution-tracker.js";
+import type { OrchestratorBridgeLike } from "./skill-network-bridge.js";
 
 const log = createSubsystemLogger("memory/experience-signals");
 

@@ -1,9 +1,9 @@
-import type { BitterbotConfig } from "../config/config.js";
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../agents/agent-scope.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 
 export type AgentSummary = {

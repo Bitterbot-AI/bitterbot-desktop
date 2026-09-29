@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { TaskPlan } from "./types.js";
 import { TaskStore, getActiveTaskStore, startTaskStore, stopTaskStore } from "./store.js";
+import type { TaskPlan } from "./types.js";
 
 /** B4: `completed` is reachable only through a passing verification. */
 function completeVerified(

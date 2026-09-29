@@ -9,10 +9,10 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { SkillValidationSummary } from "./skill-evolution/validation-summaries.js";
 import { contentSha256 } from "./lineage-gate.js";
 import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { ensureColumn, ensureMemoryIndexSchema } from "./memory-schema.js";
+import type { SkillValidationSummary } from "./skill-evolution/validation-summaries.js";
 
 function createTestDb(): DatabaseSync {
   const db = new DatabaseSync(":memory:");

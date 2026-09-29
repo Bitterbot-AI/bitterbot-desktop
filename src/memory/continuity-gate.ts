@@ -17,8 +17,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { SessionHandoverBrief } from "./session-handover.js";
 import { cosineSimilarity } from "./internal.js";
+import type { SessionHandoverBrief } from "./session-handover.js";
 
 export const CONTINUITY_GATE_THRESHOLD = 0.25;
 const CACHE_FILE = ".purpose-embedding.json";

@@ -24,8 +24,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { KeyPair } from "../../commerce/envelope.js";
-import type { EvolutionMeta } from "./validation-gate.js";
 import {
   appendImpactEntry,
   type ImpactTrailOptions,
@@ -36,6 +34,7 @@ import {
   resolveStorageRoots,
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
+import type { KeyPair } from "../../commerce/envelope.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { atomicWriteJson } from "./fs-atomic.js";
@@ -45,6 +44,7 @@ import {
   type EvolutionRetractionRecord,
   stripProvenanceTrailer,
 } from "./provenance-trailer.js";
+import type { EvolutionMeta } from "./validation-gate.js";
 
 const log = createSubsystemLogger("skill-evolution/p2p-publish");
 

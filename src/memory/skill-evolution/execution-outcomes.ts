@@ -22,7 +22,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import type { EventJournal } from "../../infra/event-journal.js";
-import type { RunFeedbackEntry } from "./run-feedback.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { makeYieldEvery } from "../event-loop.js";
 import {
@@ -32,6 +31,7 @@ import {
 } from "../skill-execution-tracker.js";
 import { labelHeuristic } from "./labeler.js";
 import { deriveRunOutcome } from "./outcome.js";
+import type { RunFeedbackEntry } from "./run-feedback.js";
 import { readRunFeedback } from "./run-feedback.js";
 import { MAX_RECONSTRUCT_EVENTS, reconstructTrace } from "./traces.js";
 

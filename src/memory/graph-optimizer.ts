@@ -17,8 +17,8 @@
  *                  with the ground-truth chunk (graph-evidence overlap)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { graphRead, type GateFn, type GraphReaderOptions } from "./graph-reader.js";
 import { getOrComputeEdgeFeatures, type TopologyFeatures } from "./graph-topology.js";

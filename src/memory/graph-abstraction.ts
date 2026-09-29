@@ -12,8 +12,8 @@
  * Community detection is pure; the LLM is injected, so the builder is testable.
  */
 import type { DatabaseSync } from "node:sqlite";
-import type { EntityType, KnowledgeGraphManager } from "./knowledge-graph.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { EntityType, KnowledgeGraphManager } from "./knowledge-graph.js";
 
 const log = createSubsystemLogger("memory/graph-abstraction");
 

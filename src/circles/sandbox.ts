@@ -49,8 +49,8 @@
  * never `event_id` (a node-local UUID).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { JsonValue } from "../commerce/sku.js";
 import { computeCanvasCards } from "./canvas.js";
 

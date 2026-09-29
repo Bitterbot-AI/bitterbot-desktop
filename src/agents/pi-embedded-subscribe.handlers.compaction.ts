@@ -1,11 +1,11 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
 import { estimateTokens } from "@mariozechner/pi-coding-agent";
-import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { recordUsage } from "../infra/usage-ledger.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
+import type { EmbeddedPiSubscribeContext } from "./pi-embedded-subscribe.handlers.types.js";
 
 /** PLAN-50 Phase 5: context size at compaction start, per session, for the estimated row. */
 const compactionTokensBefore = new WeakMap<object, { tokens: number; startedAt: number }>();

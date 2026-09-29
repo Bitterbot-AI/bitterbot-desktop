@@ -13,6 +13,15 @@
 import type { Context, Message, Model, ThinkingLevel, Tool } from "@mariozechner/pi-ai";
 import { transformMessages } from "@mariozechner/pi-ai/dist/providers/transform-messages.js";
 import { sanitizeSurrogates } from "@mariozechner/pi-ai/dist/utils/sanitize-unicode.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import { toClaudeCodeName } from "./client.js";
+import { modelSupportsAdaptiveThinking } from "./config.js";
+import {
+  filterToolReferences,
+  isServerToolUseBlock,
+  isToolSearchResultBlock,
+  type ToolDeferralPlan,
+} from "./tool-search.js";
 import type {
   AnthropicEffort,
   AnthropicProviderOptions,
@@ -23,15 +32,6 @@ import type {
   WireTool,
   WireToolSearchTool,
 } from "./types.js";
-import { createSubsystemLogger } from "../../../logging/subsystem.js";
-import { toClaudeCodeName } from "./client.js";
-import { modelSupportsAdaptiveThinking } from "./config.js";
-import {
-  filterToolReferences,
-  isServerToolUseBlock,
-  isToolSearchResultBlock,
-  type ToolDeferralPlan,
-} from "./tool-search.js";
 
 const log = createSubsystemLogger("agents/providers/anthropic");
 

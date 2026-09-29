@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
-import type { BitterbotConfig } from "../../config/config.js";
 import { resolveBitterbotAgentDir } from "../../agents/agent-paths.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import {
@@ -15,6 +14,7 @@ import { loadModelCatalog } from "../../agents/model-catalog.js";
 import { normalizeProviderId, parseModelRef } from "../../agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { resolveDefaultAgentWorkspaceDir } from "../../agents/workspace.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import {
   resolveSessionTranscriptPath,
   resolveSessionTranscriptsDirForAgent,

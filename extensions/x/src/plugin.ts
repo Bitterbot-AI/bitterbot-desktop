@@ -8,13 +8,6 @@
 
 import type { BitterbotConfig } from "bitterbot/plugin-sdk";
 import { buildChannelConfigSchema } from "bitterbot/plugin-sdk";
-import type {
-  ChannelAccountSnapshot,
-  ChannelCapabilities,
-  ChannelMeta,
-  ChannelPlugin,
-  XAccountConfig,
-} from "./types.js";
 import { XConfigSchema } from "./config-schema.js";
 import {
   DEFAULT_ACCOUNT_ID,
@@ -26,6 +19,13 @@ import {
 import { parseXTarget, X_TARGET_HINT, xOutbound } from "./outbound.js";
 import { collectXStatusIssues, probeX } from "./status.js";
 import { X_MAX_WEIGHTED_LENGTH } from "./text.js";
+import type {
+  ChannelAccountSnapshot,
+  ChannelCapabilities,
+  ChannelMeta,
+  ChannelPlugin,
+  XAccountConfig,
+} from "./types.js";
 
 function resolveAccountId(cfg: BitterbotConfig, account: XAccountConfig): string {
   const raw = (cfg.channels as Record<string, unknown> | undefined)?.x as

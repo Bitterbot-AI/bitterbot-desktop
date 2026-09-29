@@ -1,6 +1,6 @@
-import type { UsageLiveStats } from "../../stores/usage-store";
 import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { UsageLiveStats } from "../../stores/usage-store";
 import { formatPct } from "./usage-format";
 
 /**

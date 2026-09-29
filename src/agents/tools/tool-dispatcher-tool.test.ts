@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it, vi } from "vitest";
-import type { AnyAgentTool } from "./common.js";
 import { wrapToolWithCapabilityEnforcer } from "../skills/capability-enforcer.js";
+import type { AnyAgentTool } from "./common.js";
 import {
   createListToolsTool,
   createUseToolTool,

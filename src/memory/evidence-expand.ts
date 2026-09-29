@@ -1,4 +1,3 @@
-import type { EvidenceRef } from "./session-extractor.js";
 /**
  * PLAN-24 HORMA Phase 0: resolve a provenance EvidenceRef back to verbatim raw
  * source. Synthesized memories (extracted facts, dream insights) are paraphrases;
@@ -11,6 +10,7 @@ import type { EvidenceRef } from "./session-extractor.js";
  * so callers degrade gracefully instead of failing the recall.
  */
 import { getActiveEventJournal } from "../infra/event-journal.js";
+import type { EvidenceRef } from "./session-extractor.js";
 
 export type ExpandedEvidence = {
   ref: EvidenceRef;

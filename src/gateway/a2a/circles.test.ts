@@ -1,9 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { JsonValue } from "../../commerce/sku.js";
 import { makeCircleEnvelope } from "../../circles/envelope.js";
 import { createInvite, parseInviteCode } from "../../circles/invites.js";
 import { generateKeyPair, pubkeyId, type KeyPair } from "../../commerce/envelope.js";
+import type { JsonValue } from "../../commerce/sku.js";
 import {
   CirclesStore,
   DEFAULT_MEMBER_SCOPES,

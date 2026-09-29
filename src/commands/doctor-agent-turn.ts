@@ -27,8 +27,8 @@
  */
 
 import crypto from "node:crypto";
-import type { BitterbotConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { callGateway, randomIdempotencyKey } from "../gateway/call.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import { renderSection, type CheckResult, ok, warn, info } from "./doctor-check.js";

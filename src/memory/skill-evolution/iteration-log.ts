@@ -13,9 +13,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { SamplerStats } from "./types.js";
 import { type ImpactTrailOptions, resolveWikiDir } from "../../agents/skills/impact-trail.js";
 import { atomicWriteFile } from "./fs-atomic.js";
+import type { SamplerStats } from "./types.js";
 
 export const ITERATION_LOG_FILENAME = "iterations.jsonl";
 export const MAX_RECORDS = 500;

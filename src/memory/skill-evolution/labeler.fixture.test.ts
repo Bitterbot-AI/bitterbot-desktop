@@ -10,8 +10,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ReconstructedTrace, TraceLabel } from "./types.js";
 import { labelHeuristic } from "./labeler.js";
+import type { ReconstructedTrace, TraceLabel } from "./types.js";
 
 interface FixtureRow {
   id: string;

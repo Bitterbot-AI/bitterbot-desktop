@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { GatewayRequestOptions } from "./server-methods/types.js";
 import { authorizeGatewayMethod } from "./server-methods.js";
 import { circlesHandlers } from "./server-methods/circles.js";
+import type { GatewayRequestOptions } from "./server-methods/types.js";
 
 // Every circles RPC must be reachable with operator.read/operator.write —
 // none may silently fall through to the terminal operator.admin branch. The

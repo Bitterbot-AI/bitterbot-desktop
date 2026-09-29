@@ -16,8 +16,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
-import type { EventJournal } from "../../src/infra/event-journal.js";
 import { loadConfig } from "../../src/config/config.js";
+import type { EventJournal } from "../../src/infra/event-journal.js";
 import { getActiveEventJournal, startEventJournal } from "../../src/infra/event-journal.js";
 import {
   CANONICAL_EXEMPLAR_SHA256,

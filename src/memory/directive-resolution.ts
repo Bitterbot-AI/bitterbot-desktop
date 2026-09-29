@@ -20,13 +20,13 @@
  * the identical gates for directive-preferences and canonical pins).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { CanonicalFactsStore } from "./canonical-facts.js";
 import type { EpistemicDirective, EpistemicDirectiveEngine } from "./epistemic-directives.js";
-import type { DirectiveResolutionCandidate } from "./session-extractor.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 import { USER_ANSWERABLE_TYPES } from "./epistemic-directives.js";
+import type { DirectiveResolutionCandidate } from "./session-extractor.js";
 
 const log = createSubsystemLogger("memory/directive-resolution");
 

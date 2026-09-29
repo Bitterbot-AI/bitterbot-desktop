@@ -42,14 +42,6 @@
 import { createHash } from "node:crypto";
 import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import type { EventJournal } from "../../infra/event-journal.js";
-import type {
-  IterationSample,
-  LabeledTrace,
-  PendingRun,
-  ReconstructedTrace,
-  SamplerStats,
-  TraceToolStep,
-} from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
@@ -68,6 +60,14 @@ import {
   reconstructTrace,
   runHasTerminal,
 } from "./traces.js";
+import type {
+  IterationSample,
+  LabeledTrace,
+  PendingRun,
+  ReconstructedTrace,
+  SamplerStats,
+  TraceToolStep,
+} from "./types.js";
 
 const log = createSubsystemLogger("skill-evolution/sampler");
 

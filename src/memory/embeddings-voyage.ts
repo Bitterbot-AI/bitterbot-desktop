@@ -1,6 +1,6 @@
-import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.js";
 import { requireApiKey, resolveApiKeyForProvider } from "../agents/model-auth.js";
 import { recordEmbeddingUsage, type EmbedCallOptions } from "./embeddings-usage.js";
+import type { EmbeddingProvider, EmbeddingProviderOptions } from "./embeddings.js";
 
 export type VoyageEmbeddingClient = {
   baseUrl: string;

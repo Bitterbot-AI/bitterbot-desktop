@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { isToolDeferLoading } from "../providers/anthropic/tool-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { LIST_TOOLS_NAME, USE_TOOL_NAME } from "./tool-dispatcher-tool.js";
 import {
   applyHotSetExposure,

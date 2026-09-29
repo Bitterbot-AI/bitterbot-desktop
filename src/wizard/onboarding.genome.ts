@@ -18,9 +18,9 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { DEFAULT_GENOME_FILENAME } from "../agents/workspace.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
-import { DEFAULT_GENOME_FILENAME } from "../agents/workspace.js";
 
 export async function setupGenomeForOnboarding(params: {
   workspaceDir: string;

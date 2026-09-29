@@ -16,10 +16,10 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { LlmCallFn } from "./maintainer.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import type { LlmCallFn } from "./maintainer.js";
 import { parseCorpusTasks, type CorpusTask } from "./task-corpus.js";
 
 const log = createSubsystemLogger("skill-evolution/corpus-miner");

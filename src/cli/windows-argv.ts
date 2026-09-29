@@ -50,7 +50,7 @@ export function normalizeWindowsArgv(argv: string[]): string[] {
   };
 
   const next = [...argv];
-  for (let i = 1; i <= 3 && i < next.length; ) {
+  for (let i = 1; i <= 3 && i < next.length;) {
     if (isExecPath(next[i])) {
       next.splice(i, 1);
       continue;
@@ -62,7 +62,7 @@ export function normalizeWindowsArgv(argv: string[]): string[] {
     return filtered;
   }
   const cleaned = [...filtered];
-  for (let i = 2; i < cleaned.length; ) {
+  for (let i = 2; i < cleaned.length;) {
     const arg = cleaned[i];
     if (!arg || arg.startsWith("-")) {
       i += 1;

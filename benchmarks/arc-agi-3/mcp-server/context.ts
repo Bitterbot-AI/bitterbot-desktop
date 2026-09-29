@@ -13,9 +13,9 @@
  * `sageRetrieve` over the same DB. Tools import this context.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../../../src/config/types.js";
 import type { CuriosityEngine } from "../../../src/memory/curiosity-engine.js";
 import type { EpistemicDirectiveEngine } from "../../../src/memory/epistemic-directives.js";

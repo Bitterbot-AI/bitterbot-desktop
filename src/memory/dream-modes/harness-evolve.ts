@@ -9,9 +9,8 @@
 // the dream LLM call — so harness edits and skill edits are held to one bar.
 // Promotions are LOCAL ONLY (never gossiped over P2P) and fully reversible.
 
-import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import type { DreamInsight } from "../dream-types.js";
+import type { DatabaseSync } from "node:sqlite";
 import {
   appendHarnessPolicyProvenance,
   promotePolicy,
@@ -25,6 +24,7 @@ import {
   mergeActivePolicy,
 } from "../../agents/pi-embedded-runner/harness-policy.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { DreamInsight } from "../dream-types.js";
 import { ExperimentSandbox, type ScorePairFn } from "../experiment-sandbox.js";
 import { MIN_PAIRED_FOR_BOOTSTRAP } from "../skill-execution-selection.js";
 import { evaluateHarnessCandidate } from "./harness-evolve.gate.js";

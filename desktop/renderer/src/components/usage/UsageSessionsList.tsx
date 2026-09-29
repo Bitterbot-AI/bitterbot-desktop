@@ -1,5 +1,5 @@
-import type { UsageSessionSummary } from "../../stores/usage-store";
 import { formatCost, formatRelativeTime, formatTokens } from "../../lib/format";
+import type { UsageSessionSummary } from "../../stores/usage-store";
 import { formatPct } from "./usage-format";
 
 /** Per-session totals from the ledger (same source as every other tab, so the numbers agree). */

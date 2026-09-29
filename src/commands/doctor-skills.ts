@@ -24,8 +24,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { CONFIG_DIR, resolveUserPath } from "../utils.js";
 import {
   renderSection as renderDoctorSection,

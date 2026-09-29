@@ -429,10 +429,10 @@ off in group chats.
 ## Cost model
 
 Why the old defaults cost real money: a heartbeat used to be a full agent turn
-in the main session. On a typical node that is a ~54k-token prompt (system
+in the main session. On a typical node that is a ~~54k-token prompt (system
 prompt, 59 tool schemas, every workspace file) on the primary model. The prompt
 cache TTL is 5 minutes and the interval is 30 minutes, so every tick was a cold
-cache write at 1.25x input price (~$0.33) that produced 13 output tokens
+cache write at 1.25x input price (~~$0.33) that produced 13 output tokens
 (`HEARTBEAT_OK`). 48 ticks a day is ~$16 per idle day, with nothing delivered.
 The audited node ran 1,021 ticks, all ack-only, because its `HEARTBEAT.md`
 carried one italic placeholder line that the empty-file skip did not recognize.

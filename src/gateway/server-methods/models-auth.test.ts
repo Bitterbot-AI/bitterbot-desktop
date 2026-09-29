@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AuthProfileStore } from "../../agents/auth-profiles/types.js";
 import { probeProviderKey } from "../../agents/auth-probe.js";
 import { ensureAuthProfileStore, resolveAuthProfileOrder } from "../../agents/auth-profiles.js";
 import { updateAuthProfileStoreWithLock } from "../../agents/auth-profiles/store.js";
+import type { AuthProfileStore } from "../../agents/auth-profiles/types.js";
 import { resolveApiKeyForProvider, resolveEnvApiKey } from "../../agents/model-auth.js";
 import { applyDefaultModelPrimaryUpdate, updateConfig } from "../../commands/models/shared.js";
 import { refreshGatewayModelCatalog } from "../server-model-catalog.js";

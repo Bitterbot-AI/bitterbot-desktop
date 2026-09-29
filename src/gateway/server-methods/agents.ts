@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 import {
   listAgentIds,
   resolveAgentDir,
@@ -40,6 +39,7 @@ import {
   validateAgentsUpdateParams,
 } from "../protocol/index.js";
 import { listAgentsForGateway } from "../session-utils.js";
+import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 
 // Biological identity model: GENOME.md (immutable core) + MEMORY.md (emergent identity via dream engine).
 const BOOTSTRAP_FILE_NAMES = [

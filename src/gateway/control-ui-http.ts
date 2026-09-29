@@ -1,5 +1,5 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { resolveFileWithinRoot } from "../canvas-host/file-resolver.js";
 import { mimeFromExtension } from "../media/mime.js";

@@ -26,7 +26,14 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { KeyPair } from "../../commerce/envelope.js";
 import type { EventJournal } from "../../infra/event-journal.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { recordDreamArtifact } from "../dream-utility.js";
 import type { CanaryMonitorAction, CanaryMonitorResult } from "./canary-monitor.js";
+import { loadEffectiveCorpus } from "./canonical-corpus.js";
+import { mineCapabilityTasks } from "./corpus-miner.js";
+import { reviewedDraftIds } from "./corpus-review.js";
+import { runHousekeeping } from "./housekeeping.js";
+import { appendIterationRecord, buildIterationRecord } from "./iteration-log.js";
 import type { PublishSweepResult, SkillPublisher } from "./p2p-publish.js";
 import type { AgentTurnFn } from "./task-runner.js";
 import type { SamplerStats } from "./types.js";
@@ -34,13 +41,6 @@ import type { ValidationGateOutcome } from "./validation-gate.js";
 import type { WikiLintResult } from "./wiki-lint.js";
 import type { SemanticLintResult } from "./wiki-semantic-lint.js";
 import type { WikiStoreOptions } from "./wiki-store.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { recordDreamArtifact } from "../dream-utility.js";
-import { loadEffectiveCorpus } from "./canonical-corpus.js";
-import { mineCapabilityTasks } from "./corpus-miner.js";
-import { reviewedDraftIds } from "./corpus-review.js";
-import { runHousekeeping } from "./housekeeping.js";
-import { appendIterationRecord, buildIterationRecord } from "./iteration-log.js";
 export { buildIterationRecord } from "./iteration-log.js";
 import { type LlmCallFn, type MaintenanceResult, runWikiMaintenance } from "./maintainer.js";
 import {

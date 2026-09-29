@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { JsonValue } from "../commerce/sku.js";
 import { generateKeyPair, pubkeyId, type KeyPair } from "../commerce/envelope.js";
+import type { JsonValue } from "../commerce/sku.js";
 import { handleCircleMethod, resetCircleRateLimits } from "../gateway/a2a/circles.js";
 import { CirclesStore, DEFAULT_MEMBER_SCOPES } from "../memory/circles-store.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";

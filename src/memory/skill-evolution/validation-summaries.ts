@@ -12,8 +12,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { EvolutionMeta } from "./validation-gate.js";
 import { resolveStorageRoots, type SkillStorageRoots } from "../../agents/skills/skill-storage.js";
+import type { EvolutionMeta } from "./validation-gate.js";
 
 export interface SkillValidationSummary {
   skillName: string;

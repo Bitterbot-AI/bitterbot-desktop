@@ -1,17 +1,17 @@
 import type { AgentEvent } from "@mariozechner/pi-agent-core";
+import { emitAgentEvent } from "../infra/agent-events.js";
+import { startSpan } from "../observability/otel.js";
+import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { PluginHookAfterToolCallEvent } from "../plugins/types.js";
+import { maybeNudgeTaskHandoff } from "../tasks/handoff-nudge.js";
+import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
+import { isMessagingTool, isMessagingToolSendAction } from "./pi-embedded-messaging.js";
+import { applyMidTurnBudget } from "./pi-embedded-runner/mid-turn-budget.js";
 import type {
   EmbeddedPiSubscribeContext,
   ToolCallSummary,
 } from "./pi-embedded-subscribe.handlers.types.js";
 import type { ToolResultOutcome } from "./pi-embedded-subscribe.tools.js";
-import { emitAgentEvent } from "../infra/agent-events.js";
-import { startSpan } from "../observability/otel.js";
-import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
-import { maybeNudgeTaskHandoff } from "../tasks/handoff-nudge.js";
-import { normalizeTextForComparison } from "./pi-embedded-helpers.js";
-import { isMessagingTool, isMessagingToolSendAction } from "./pi-embedded-messaging.js";
-import { applyMidTurnBudget } from "./pi-embedded-runner/mid-turn-budget.js";
 import {
   extractToolErrorMessage,
   extractToolResultMediaPaths,

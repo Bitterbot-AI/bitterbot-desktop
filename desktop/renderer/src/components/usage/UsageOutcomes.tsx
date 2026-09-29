@@ -1,6 +1,6 @@
-import type { UsageLedgerSummary } from "../../stores/usage-store";
 import { formatCost } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { UsageLedgerSummary } from "../../stores/usage-store";
 import { formatPct, formatUsdSmart } from "./usage-format";
 
 /** Cost per verified outcome: spend divided by tasks that reached a terminal status. */

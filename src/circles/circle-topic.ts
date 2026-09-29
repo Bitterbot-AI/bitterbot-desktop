@@ -31,10 +31,10 @@
  *     secret (still unbuilt).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { CircleEnvelope } from "./envelope.js";
+import type { DatabaseSync } from "node:sqlite";
 import { handleCircleMethod } from "../gateway/a2a/circles.js";
+import type { CircleEnvelope } from "./envelope.js";
 
 /**
  * Blinded gossip topic for a circle. Hashing `circleId:keyEpoch` keeps the raw

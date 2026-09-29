@@ -26,10 +26,10 @@
  * switch `circles.sandbox.enabled` (default OFF).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { JsonValue } from "../commerce/sku.js";
+import type { DatabaseSync } from "node:sqlite";
 import { pubkeyId, type KeyPair } from "../commerce/envelope.js";
+import type { JsonValue } from "../commerce/sku.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   containsExternalUntrustedContent,

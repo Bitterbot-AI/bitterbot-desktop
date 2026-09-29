@@ -9,15 +9,15 @@
  * Credit: Scratch Buffer WAL concept — BitterBot
  */
 
-import { Type } from "@sinclair/typebox";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveAgentWorkspaceDir } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, readNumberParam } from "./common.js";
 
 const WorkingMemoryNoteSchema = Type.Object({

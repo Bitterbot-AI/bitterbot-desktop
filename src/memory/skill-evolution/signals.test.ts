@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ReconstructedTrace, TraceToolStep } from "./types.js";
 import {
   classifyLifecycleError,
   classifyToolError,
@@ -7,6 +6,7 @@ import {
   extractTraceSignals,
   formatSignals,
 } from "./signals.js";
+import type { ReconstructedTrace, TraceToolStep } from "./types.js";
 
 /** Production tool-result envelope shape. */
 function envelope(tool: string, error: string): string {

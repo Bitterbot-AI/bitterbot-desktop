@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import process from "node:process";
 /**
  * Bundle src/entry.ts into a single dist/entry.js via esbuild.
  *
@@ -22,9 +25,6 @@
  * grammy/twitter-api-v2 dead-weight.
  */
 import { build } from "esbuild";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import process from "node:process";
 
 // Strip the source shebang from src/entry.ts so esbuild doesn't emit it
 // in the middle of the bundled output (shebangs are only valid on line 1).

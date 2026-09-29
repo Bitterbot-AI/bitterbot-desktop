@@ -8,7 +8,6 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { SkillLifecycleStore } from "../skill-lifecycle.js";
 import {
   DEFAULT_CANARY_FRACTION,
   registerCanary,
@@ -26,6 +25,7 @@ import {
   type StorageRoots,
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillLifecycleStore } from "../skill-lifecycle.js";
 import { atomicWriteJson } from "./fs-atomic.js";
 import { publishRetraction, type SkillPublisher } from "./p2p-publish.js";
 import { hashProposalContent } from "./proposal-apply.js";

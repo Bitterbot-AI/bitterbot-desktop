@@ -27,17 +27,17 @@
  *   - TTL: auto-generated skills expire; the memory lifecycle can prune stale ones
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import { execFile, execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import type { SkillEnvelope, IngestResult } from "../agents/skills/ingest.js";
+import { ingestSkill } from "../agents/skills/ingest.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { SkillSeekersConfig } from "../config/types.skill-seekers.js";
-import { ingestSkill } from "../agents/skills/ingest.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CONFIG_DIR } from "../utils.js";
 import { logResearchEgress } from "./auto-research-egress.js";

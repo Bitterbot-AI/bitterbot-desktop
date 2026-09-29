@@ -11,9 +11,9 @@ import {
   Trophy,
 } from "lucide-react";
 import { memo, useCallback } from "react";
-import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
 import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
 import { useUIStore } from "../../stores/ui-store";
 import { Markdown } from "../ui/markdown";
 import { ArtifactChip } from "./ArtifactChip";

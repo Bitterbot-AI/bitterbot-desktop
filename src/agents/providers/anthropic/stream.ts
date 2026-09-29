@@ -19,10 +19,10 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AssistantMessage, Model, StopReason, Tool } from "@mariozechner/pi-ai";
 import { type AssistantMessageEventStream, parseStreamingJson } from "@mariozechner/pi-ai";
-import type { AnthropicAssistantBlock, AnthropicUsage } from "./types.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { fromClaudeCodeName } from "./client.js";
 import { extractToolReferenceNames } from "./tool-search.js";
+import type { AnthropicAssistantBlock, AnthropicUsage } from "./types.js";
 import { applyMessageDeltaUsage, applyMessageStartUsage, type RawUsageLike } from "./usage.js";
 
 const log = createSubsystemLogger("providers/anthropic");

@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 /**
  * Threshold settlement — PLAN-26 Primitive 3 (docs/protocol/aubaine-v1 §7).
  *
@@ -19,6 +18,7 @@ import type { DatabaseSync } from "node:sqlite";
  * is fully unit-testable and carries no wallet/chain dependency itself.
  */
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 
 export interface Eip3009Authorization {
   from: string;

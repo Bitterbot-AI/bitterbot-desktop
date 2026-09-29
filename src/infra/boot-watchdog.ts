@@ -39,9 +39,9 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import type { BootVerifyRecord } from "./boot-verify.js";
 import { resolveStateDir } from "../config/paths.js";
 import { runCommandWithTimeout } from "../process/exec.js";
+import type { BootVerifyRecord } from "./boot-verify.js";
 import { claimRollbackAttempt, readBootVerify, writeRollbackRecord } from "./boot-verify.js";
 
 const POLL_INTERVAL_MS = 5_000;

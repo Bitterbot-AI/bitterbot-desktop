@@ -10,7 +10,6 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { EvolutionMeta } from "./validation-gate.js";
 import {
   canaryOff,
   readCanaryRegistry,
@@ -40,6 +39,7 @@ import {
 import { refreshEvidenceRecords } from "./evidence-record.js";
 import { runHousekeeping } from "./housekeeping.js";
 import { retractionsPath } from "./p2p-publish.js";
+import type { EvolutionMeta } from "./validation-gate.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 

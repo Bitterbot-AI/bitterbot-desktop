@@ -19,8 +19,8 @@
  * auth, rate limiting, db resolution.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { recordPoolPledge } from "../../commerce/bounty-pools.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { claimCapUsd } from "../../memory/bounty-reputation.js";

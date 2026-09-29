@@ -3,7 +3,6 @@
 // batched call. Each candidate is whitelist-parsed (forbidden surfaces are
 // structurally impossible) and must actually differ from the live policy.
 
-import type { FailureCluster } from "./harness-evolve.weakness.js";
 import {
   type HarnessPolicy,
   parseHarnessPolicy,
@@ -11,6 +10,7 @@ import {
   serializePolicyForJudge,
 } from "../../agents/pi-embedded-runner/harness-policy.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { FailureCluster } from "./harness-evolve.weakness.js";
 
 const log = createSubsystemLogger("memory/dream/harness-evolve.propose");
 

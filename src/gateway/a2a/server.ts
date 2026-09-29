@@ -1,4 +1,5 @@
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
+import { executeA2aTask, extractTaskText } from "./task-executor.js";
 import type { A2aTaskManager } from "./task-manager.js";
 import type {
   JsonRpcRequest,
@@ -9,7 +10,6 @@ import type {
   TaskCancelParams,
   A2aTaskState,
 } from "./types.js";
-import { executeA2aTask, extractTaskText } from "./task-executor.js";
 import { A2aErrorCodes } from "./types.js";
 
 type A2aServerContext = {

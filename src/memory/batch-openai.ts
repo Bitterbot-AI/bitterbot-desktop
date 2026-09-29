@@ -1,8 +1,8 @@
-import type { OpenAiEmbeddingClient } from "./embeddings-openai.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { postJsonWithRetry } from "./batch-http.js";
 import { applyEmbeddingBatchOutputLine, extractBatchRequestText } from "./batch-output.js";
 import { buildBatchHeaders, normalizeBatchBaseUrl, splitBatchRequests } from "./batch-utils.js";
+import type { OpenAiEmbeddingClient } from "./embeddings-openai.js";
 import { recordEmbeddingUsage } from "./embeddings-usage.js";
 import { hashText, runWithConcurrency } from "./internal.js";
 

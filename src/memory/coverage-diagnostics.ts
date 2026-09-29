@@ -17,8 +17,8 @@
  * primitive that separates them, cheaply and online.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { insertTrainingPair } from "./graph-optimizer.js";
 

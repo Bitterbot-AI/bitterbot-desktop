@@ -7,9 +7,6 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import type { BitterbotConfig } from "../config/config.js";
 import type { ToolHotSetLane } from "../config/types.tools.js";
-import type { ModelAuthMode } from "./model-auth.js";
-import type { AnyAgentTool } from "./pi-tools.types.js";
-import type { SandboxContext } from "./sandbox.js";
 import { logWarn } from "../logger.js";
 import { getPluginToolMeta } from "../plugins/tools.js";
 import {
@@ -30,6 +27,7 @@ import {
 } from "./bash-tools.js";
 import { createBitterbotTools } from "./bitterbot-tools.js";
 import { listChannelAgentTools } from "./channel-tools.js";
+import type { ModelAuthMode } from "./model-auth.js";
 import { wrapToolWithAbortSignal } from "./pi-tools.abort.js";
 import { wrapToolWithBeforeToolCallHook } from "./pi-tools.before-tool-call.js";
 import { wrapToolsWithCache } from "./pi-tools.cache.js";
@@ -52,7 +50,9 @@ import {
   wrapToolParamNormalization,
 } from "./pi-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./pi-tools.schema.js";
+import type { AnyAgentTool } from "./pi-tools.types.js";
 import { isNativeToolSearchActive } from "./providers/anthropic/config.js";
+import type { SandboxContext } from "./sandbox.js";
 import {
   resolveSkillValidationToolPolicy,
   validationExecEnabled,

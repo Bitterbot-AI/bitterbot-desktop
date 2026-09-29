@@ -13,11 +13,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { AnyAgentTool } from "./common.js";
 import { getForageStats } from "../../memory/bounty-tape.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 
 const ForageSchema = Type.Object({

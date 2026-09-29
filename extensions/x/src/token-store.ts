@@ -10,12 +10,12 @@
  * is possible in that mode; it exists for smoke tests.
  */
 
-import { withFileLock } from "bitterbot/plugin-sdk";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { XAccountConfig, XTokenRecord } from "./types.js";
+import { withFileLock } from "bitterbot/plugin-sdk";
 import { DEFAULT_ACCOUNT_ID } from "./config.js";
 import { resolveTokenFilePath } from "./paths.js";
+import type { XAccountConfig, XTokenRecord } from "./types.js";
 
 export const X_TOKEN_URL = "https://api.x.com/2/oauth2/token";
 const REFRESH_SKEW_MS = 5 * 60 * 1000;

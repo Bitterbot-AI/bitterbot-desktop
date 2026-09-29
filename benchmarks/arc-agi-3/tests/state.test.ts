@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { FrameResponse } from "../src/types.js";
 import {
   appendScorecard,
   cacheGames,
@@ -17,6 +16,7 @@ import {
   updateScorecardClose,
   writeConfig,
 } from "../src/state.js";
+import type { FrameResponse } from "../src/types.js";
 
 let tmpRoot: string;
 

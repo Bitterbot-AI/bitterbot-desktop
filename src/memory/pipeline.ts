@@ -6,8 +6,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import { type Lifecycle, setChunkImportance } from "./chunk-writer.js";
+import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import { rowToCrystal } from "./crystal.js";
 export type PipelineResult = {
   crystals: KnowledgeCrystal[];

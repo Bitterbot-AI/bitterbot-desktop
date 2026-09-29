@@ -6,9 +6,9 @@
  * and a summary table is printed to stdout.
  */
 
-import type { Reporter, File, Task } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import type { Reporter, File, Task } from "vitest";
 
 interface SuiteScore {
   name: string;

@@ -1,8 +1,8 @@
 import { Globe, ExternalLink, Copy, Check, FileText, Loader2 } from "lucide-react";
 import { useState, useCallback, useMemo } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { extractDomain, getFaviconUrl, getContentStats } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 export function WebCrawlToolView({ toolCall }: ToolViewProps) {
   const [copied, setCopied] = useState(false);

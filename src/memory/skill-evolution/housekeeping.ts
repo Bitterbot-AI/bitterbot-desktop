@@ -4,8 +4,6 @@
  * publish. Split out of evolution-pass.ts (500-line cap).
  */
 
-import type { EvolutionPassDeps } from "./evolution-pass.js";
-import type { WikiStoreOptions } from "./wiki-store.js";
 import { verifyPeerBindings } from "../../agents/skills/peer-binding.js";
 import { pubkeyId } from "../../commerce/envelope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -24,6 +22,7 @@ import {
   runCanaryMonitor,
 } from "./canary-monitor.js";
 import { refreshEvidenceRecords } from "./evidence-record.js";
+import type { EvolutionPassDeps } from "./evolution-pass.js";
 import {
   type BackfillExecutionOutcomesResult,
   backfillExecutionOutcomes,
@@ -39,6 +38,7 @@ import {
   runSemanticLint,
   type SemanticLintResult,
 } from "./wiki-semantic-lint.js";
+import type { WikiStoreOptions } from "./wiki-store.js";
 
 const log = createSubsystemLogger("skill-evolution/housekeeping");
 

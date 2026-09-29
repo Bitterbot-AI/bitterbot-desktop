@@ -21,8 +21,8 @@
  * instruction.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { JsonValue } from "../commerce/sku.js";
 import { normalizeSandboxInput, type SandboxEventInput } from "./sandbox.js";
 

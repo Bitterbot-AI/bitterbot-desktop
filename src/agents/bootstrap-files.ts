@@ -1,8 +1,8 @@
 import type { BitterbotConfig } from "../config/config.js";
-import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import { filterHeartbeatOnlyFiles, resolveHeartbeatLightContext } from "../infra/heartbeat-gate.js";
 import { isSkillEvolveValidationSessionKey } from "../sessions/session-key-utils.js";
 import { applyBootstrapHookOverrides } from "./bootstrap-hooks.js";
+import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import {
   buildBootstrapContextFiles,
   resolveBootstrapMaxChars,

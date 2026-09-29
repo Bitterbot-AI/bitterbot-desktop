@@ -1,11 +1,11 @@
 import type { BrowserActionPathResult, BrowserActionTargetOk } from "./client-actions-types.js";
+import { buildProfileQuery, withBaseUrl } from "./client-actions-url.js";
+import { fetchBrowserJson } from "./client-fetch.js";
 import type {
   BrowserConsoleMessage,
   BrowserNetworkRequest,
   BrowserPageError,
 } from "./pw-session.js";
-import { buildProfileQuery, withBaseUrl } from "./client-actions-url.js";
-import { fetchBrowserJson } from "./client-fetch.js";
 
 export async function browserConsoleMessages(
   baseUrl: string | undefined,

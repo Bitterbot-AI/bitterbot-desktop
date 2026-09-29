@@ -17,10 +17,10 @@
 
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import type { ImpactTrailOptions } from "../agents/skills/impact-trail.js";
-import type { BitterbotConfig } from "../config/config.js";
 import { readCanaryRegistry, isCanaryOff } from "../agents/skills/canary-registry.js";
+import type { ImpactTrailOptions } from "../agents/skills/impact-trail.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { readCanaryRuns } from "../memory/skill-evolution/canary-ledger.js";
 import { CANARY_MAX_DAYS, MONITOR_CHECKPOINTS } from "../memory/skill-evolution/canary-stats.js";
 import { loadEffectiveCorpus } from "../memory/skill-evolution/canonical-corpus.js";

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ReconstructedTrace, TraceLabelResult, TraceToolStep } from "./types.js";
 import { computeRunOutcome } from "./outcome.js";
 import { extractTraceSignals } from "./signals.js";
 import {
@@ -7,6 +6,7 @@ import {
   rankFailureSignatures,
   REPEATED_CALL_BLOCK_MARKER,
 } from "./signatures.js";
+import type { ReconstructedTrace, TraceLabelResult, TraceToolStep } from "./types.js";
 
 function envelope(error: string): string {
   return JSON.stringify({

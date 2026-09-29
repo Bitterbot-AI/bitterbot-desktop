@@ -15,8 +15,8 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { KnowledgeGraphManager } from "./knowledge-graph.js";
-import type { UserModelManager, UserPreference } from "./user-model.js";
 import { graphAnchoredFacts } from "./proactive-recall-graph.js";
+import type { UserModelManager, UserPreference } from "./user-model.js";
 import { getActiveOpenLoops } from "./zeigarnik-effect.js";
 
 export interface ProactiveRecallConfig {

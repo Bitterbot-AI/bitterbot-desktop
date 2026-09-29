@@ -1,11 +1,5 @@
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import path from "node:path";
-import type { InlineCodeState } from "../markdown/code-spans.js";
-import type {
-  EmbeddedPiSubscribeContext,
-  EmbeddedPiSubscribeState,
-} from "./pi-embedded-subscribe.handlers.types.js";
-import type { SubscribeEmbeddedPiSessionParams } from "./pi-embedded-subscribe.types.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { parseReplyDirectives } from "../auto-reply/reply/reply-directives.js";
 import { createStreamingDirectiveAccumulator } from "../auto-reply/reply/streaming-directives.js";
 import { formatToolAggregate } from "../auto-reply/tool-meta.js";
@@ -15,6 +9,7 @@ import { classifyAgentFeature } from "../infra/usage-features.js";
 import { recordToolCall, recordUsage } from "../infra/usage-ledger.js";
 import { transcriptSessionId, usageDedupeKey } from "../infra/usage-reconcile.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { InlineCodeState } from "../markdown/code-spans.js";
 import { buildCodeSpanIndex, createInlineCodeState } from "../markdown/code-spans.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { isSubagentSessionKey } from "../sessions/session-key-utils.js";
@@ -25,7 +20,12 @@ import {
   normalizeTextForComparison,
 } from "./pi-embedded-helpers.js";
 import { createEmbeddedPiSessionEventHandler } from "./pi-embedded-subscribe.handlers.js";
+import type {
+  EmbeddedPiSubscribeContext,
+  EmbeddedPiSubscribeState,
+} from "./pi-embedded-subscribe.handlers.types.js";
 import { createToolCallTelemetry } from "./pi-embedded-subscribe.tools.js";
+import type { SubscribeEmbeddedPiSessionParams } from "./pi-embedded-subscribe.types.js";
 import { formatReasoningMessage, stripDowngradedToolCallText } from "./pi-embedded-utils.js";
 import { recordCacheTurn, type CacheTurnState } from "./prompt-cache-monitor.js";
 import { hasNonzeroUsage, normalizeUsage, type NormalizedUsage, type UsageLike } from "./usage.js";

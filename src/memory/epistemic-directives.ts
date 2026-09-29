@@ -16,8 +16,8 @@
  * PLAN-9: GAP-11 (Active Inference — Curiosity-Driven Live Directives)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/epistemic-directives");

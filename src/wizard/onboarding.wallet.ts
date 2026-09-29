@@ -27,11 +27,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { openUrl } from "../commands/onboard-helpers.js";
 import type { BitterbotConfig } from "../config/config.js";
+import { resolveConfigDir } from "../utils.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
-import { openUrl } from "../commands/onboard-helpers.js";
-import { resolveConfigDir } from "../utils.js";
 
 const DEFAULT_PER_TX_CAP_USD = 25;
 const DEFAULT_DAILY_CAP_USD = 50;

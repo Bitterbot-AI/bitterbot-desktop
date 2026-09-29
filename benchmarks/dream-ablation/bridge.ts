@@ -16,10 +16,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 import type { BitterbotConfig } from "../../src/config/types.js";
+import { MemoryIndexManager } from "../../src/memory/manager.js";
 import type { MemorySearchResult } from "../../src/memory/types.js";
 import type { MemoryChunk } from "../longmemeval/adapter.js";
 import type { VariantConfig } from "./variants.js";
-import { MemoryIndexManager } from "../../src/memory/manager.js";
 
 // ── Types ──
 

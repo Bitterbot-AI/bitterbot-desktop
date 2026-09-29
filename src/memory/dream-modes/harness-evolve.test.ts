@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ScorePairFn } from "../experiment-sandbox.js";
 import {
   readHarnessPolicyProvenance,
   readLivePolicy,
 } from "../../agents/pi-embedded-runner/harness-policy-store.js";
 import { defaultHarnessPolicy } from "../../agents/pi-embedded-runner/harness-policy.js";
+import type { ScorePairFn } from "../experiment-sandbox.js";
 import { runHarnessEvolve } from "./harness-evolve.js";
 
 function seedDb(): DatabaseSync {

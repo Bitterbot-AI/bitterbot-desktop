@@ -25,8 +25,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { CanonicalFactsStore } from "../canonical-facts.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { CanonicalFactsStore } from "../canonical-facts.js";
 import { CANONICAL_CATEGORIES, normalizeCanonicalKey } from "../canonical-facts.js";
 
 const log = createSubsystemLogger("memory/canonical-promotion");

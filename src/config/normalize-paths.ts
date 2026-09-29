@@ -1,5 +1,5 @@
-import type { BitterbotConfig } from "./types.js";
 import { isPlainObject, resolveUserPath } from "../utils.js";
+import type { BitterbotConfig } from "./types.js";
 
 const PATH_VALUE_RE = /^~(?=$|[\\/])/;
 

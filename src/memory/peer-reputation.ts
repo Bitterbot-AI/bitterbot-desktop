@@ -10,13 +10,13 @@
  * - Anomaly detection for publication rate spikes
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { contributorTierOf, TIER_PRIVILEGES } from "./contributor-status.js";
 import type { PeerReputation, TrustLevel } from "./crystal-types.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
-import { contributorTierOf, TIER_PRIVILEGES } from "./contributor-status.js";
 
 const log = createSubsystemLogger("memory/peer-reputation");
 

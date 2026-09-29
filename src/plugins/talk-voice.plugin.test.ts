@@ -12,8 +12,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { BitterbotPluginApi } from "./types.js";
 import register from "../../extensions/talk-voice/index.js";
+import type { BitterbotPluginApi } from "./types.js";
 
 type CommandHandler = (ctx: { args?: string }) => Promise<{ text: string }>;
 

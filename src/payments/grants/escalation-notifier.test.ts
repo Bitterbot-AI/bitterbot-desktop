@@ -4,12 +4,12 @@
  * (relayed to the operator's primary channel), best-effort and fail-open.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SpendApproval } from "./spend-grant-store.js";
 import {
   formatEscalationText,
   isEscalationNotifyEnabled,
   notifyEscalation,
 } from "./escalation-notifier.js";
+import type { SpendApproval } from "./spend-grant-store.js";
 
 function approval(over: Partial<SpendApproval> = {}): SpendApproval {
   return {

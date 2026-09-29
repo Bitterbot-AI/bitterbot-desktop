@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 /**
  * PLAN-40 Lane 2, P1-F1 regression (phase adversarial pass, 2026-08-12).
  *
@@ -21,6 +20,7 @@ import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 

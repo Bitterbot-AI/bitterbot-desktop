@@ -1,6 +1,6 @@
-import type { UsageEventRow } from "../../stores/usage-store";
 import { formatDateTime, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { UsageEventRow } from "../../stores/usage-store";
 import { formatUsdSmart, kindLabel, pricingSourceLabel, pricingSourceTone } from "./usage-format";
 
 /** The last N ledger rows, newest first, updated as `usage` events stream in. */

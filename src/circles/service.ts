@@ -20,12 +20,12 @@
  * that failed state to the UI instead of discarding it.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { keyPairFromPrivateKeyPem, pubkeyId, type KeyPair } from "../commerce/envelope.js";
 import type { JsonValue } from "../commerce/sku.js";
 import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import type { CircleJoinResult } from "../gateway/a2a/circles.js";
-import { keyPairFromPrivateKeyPem, pubkeyId, type KeyPair } from "../commerce/envelope.js";
 import { blobDigest, buildMailboxProof } from "../gateway/a2a/mailbox.js";
 import { loadOrCreateDeviceIdentity } from "../infra/device-identity.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";

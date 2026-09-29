@@ -1,23 +1,11 @@
-import type { DatabaseSync } from "node:sqlite";
-import { type FSWatcher } from "chokidar";
 import crypto from "node:crypto";
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
-import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
-import type { CuriosityState } from "./curiosity-types.js";
-import type { DreamStats, SynthesizeFn } from "./dream-types.js";
-import type { ManagementNodeService } from "./management-node-service.js";
-import type {
-  MemoryEmbeddingProbeResult,
-  MemoryProviderStatus,
-  MemorySearchManager,
-  MemorySearchResult,
-  MemorySource,
-  MemorySyncProgressUpdate,
-} from "./types.js";
+import type { DatabaseSync } from "node:sqlite";
+import { type FSWatcher } from "chokidar";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
+import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
@@ -26,6 +14,7 @@ import { loadConfig, type BitterbotConfig } from "../config/config.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
+import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
 import {
   evidenceTouchesUntrusted,
   findExternalUntrustedLineRanges,
@@ -36,6 +25,7 @@ import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
+import type { CuriosityState } from "./curiosity-types.js";
 import { applyDirectiveResolutions, finalizeAnsweredDirectives } from "./directive-resolution.js";
 import {
   DiscoveryAgent,
@@ -52,6 +42,7 @@ import {
   lastAutoScratchEvent,
 } from "./dream-gate.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
+import type { DreamStats, SynthesizeFn } from "./dream-types.js";
 import { DEFAULT_DREAM_CONFIG } from "./dream-types.js";
 import {
   createEmbeddingProvider,
@@ -88,6 +79,7 @@ import * as kgAdmission from "./kg-entity-admission.js";
 import * as kgExtract from "./kg-relationship-extract.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { MaintenanceMutex } from "./maintenance-mutex.js";
+import type { ManagementNodeService } from "./management-node-service.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import { searchKeyword, searchVector } from "./manager-search.js";
 import { memoryManagerSyncOps } from "./manager-sync-ops.js";
@@ -130,6 +122,14 @@ import { SkillVerifier } from "./skill-verifier.js";
 import { recordAccess } from "./spacing-effect.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
+import type {
+  MemoryEmbeddingProbeResult,
+  MemoryProviderStatus,
+  MemorySearchManager,
+  MemorySearchResult,
+  MemorySource,
+  MemorySyncProgressUpdate,
+} from "./types.js";
 import { UserModelManager } from "./user-model.js";
 import {
   buildWorkingMemorySynthesisPrompt,
@@ -6590,9 +6590,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (assessment?.gccrfReward != null && assessment.gccrfComponents && this.hormonalManager) {
       let semanticType: string | null = null;
       try {
-        const row = this.db.prepare(`SELECT semantic_type FROM chunks WHERE id = ?`).get(chunkId) as
-          | { semantic_type: string | null }
-          | undefined;
+        const row = this.db
+          .prepare(`SELECT semantic_type FROM chunks WHERE id = ?`)
+          .get(chunkId) as { semantic_type: string | null } | undefined;
         semanticType = row?.semantic_type ?? null;
       } catch {
         /* column may not exist */

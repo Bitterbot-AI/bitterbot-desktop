@@ -5,9 +5,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { PendingRun } from "./types.js";
 import { resolveWikiDir } from "../../agents/skills/impact-trail.js";
 import { atomicWriteJson } from "./fs-atomic.js";
+import type { PendingRun } from "./types.js";
 
 /** PLAN-44 Phase 0: pending-list bound. */
 export const PENDING_MAX = 50;

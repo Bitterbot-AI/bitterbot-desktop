@@ -1,6 +1,6 @@
-import type { UsageCacheHealth as CacheHealth } from "../../stores/usage-store";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { UsageCacheHealth as CacheHealth } from "../../stores/usage-store";
 import { formatPct, formatUsdSmart } from "./usage-format";
 
 /**

@@ -1,8 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, beforeEach } from "vitest";
-import type { InterventionRecord } from "./intervention-record.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { runMigrations } from "../../memory/migrations.js";
+import type { InterventionRecord } from "./intervention-record.js";
 import { createSqliteInterventionStore } from "./intervention-store.js";
 
 function rec(over: Partial<InterventionRecord> = {}): InterventionRecord {

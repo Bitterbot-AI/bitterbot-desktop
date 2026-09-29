@@ -27,8 +27,8 @@
  * enforcement that does not depend on the seller.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { cosineSimilarity } from "./internal.js";
 
 /** Cosine similarity at or above which two skills are near-duplicates. */

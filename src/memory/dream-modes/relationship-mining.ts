@@ -20,13 +20,13 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type {
   EntityType,
   ExtractedRelationship,
   KnowledgeGraphManager,
   RelationType,
 } from "../knowledge-graph.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/relationship-mining");
 

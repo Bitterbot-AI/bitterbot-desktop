@@ -13,8 +13,8 @@
 import { validateToolArguments } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ToolHotSetLane } from "../../config/types.tools.js";
-import type { AnyAgentTool } from "./common.js";
 import { normalizeToolName } from "../tool-policy.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult } from "./common.js";
 
 export const LIST_TOOLS_NAME = "list_tools";

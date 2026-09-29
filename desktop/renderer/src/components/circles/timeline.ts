@@ -1,5 +1,5 @@
-import type { CircleMessage } from "../../stores/circles-store";
 import { unwrapForDisplay } from "../../lib/external-content-display";
+import type { CircleMessage } from "../../stores/circles-store";
 
 // Phase A (readable timeline): pure layout logic for the circle conversation
 // stream — consecutive-message grouping, day dividers, and the frozen "New"

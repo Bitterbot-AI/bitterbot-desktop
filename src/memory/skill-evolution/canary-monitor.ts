@@ -17,8 +17,6 @@
  * snapshot, and retract on the mesh when the version was published.
  */
 
-import type { SkillLifecycleStore } from "../skill-lifecycle.js";
-import type { SkillPublisher } from "./p2p-publish.js";
 import {
   canaryOff,
   DEFAULT_CANARY_FRACTION,
@@ -30,6 +28,7 @@ import {
 import { appendImpactEntry, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillLifecycleStore } from "../skill-lifecycle.js";
 import {
   demoteEvolved,
   listLiveEvolvedMeta,
@@ -38,6 +37,7 @@ import {
 } from "./canary-demote.js";
 import { type CanaryRunRow, readCanaryRuns } from "./canary-ledger.js";
 import { type CanaryDecision, type Cohort, decideCanary } from "./canary-stats.js";
+import type { SkillPublisher } from "./p2p-publish.js";
 import { skillDescription } from "./validation-gate.js";
 
 const log = createSubsystemLogger("skill-evolution/canary-monitor");

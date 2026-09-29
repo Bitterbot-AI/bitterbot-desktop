@@ -9,10 +9,10 @@ import {
   Check,
 } from "lucide-react";
 import { useState, useCallback } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { SyntaxViewer } from "../../workspace/SyntaxViewer";
 import { extractFilePath, getLanguageFromExtension } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 /** Detect which file operation this is and pick an icon + color. */
 function getFileOp(name: string): {
