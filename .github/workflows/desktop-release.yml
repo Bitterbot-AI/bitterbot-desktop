@@ -45,7 +45,7 @@ jobs:
       release_id: ${{ steps.create.outputs.release_id }}
       version: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
 
@@ -99,7 +99,7 @@ jobs:
             args: "--target x86_64-pc-windows-msvc --bundles nsis"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
 
