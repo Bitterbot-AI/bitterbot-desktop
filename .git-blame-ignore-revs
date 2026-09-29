@@ -1,0 +1,6 @@
+# Commits `git blame` should look through: mechanical, formatting-only changes.
+# GitHub's blame view reads this file automatically; locally run
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: reformat with oxfmt 0.70 (1,230 files, formatter version bump)
+2a399f2f0713a7a3672d9f2ca257fe03ba0e5b28
