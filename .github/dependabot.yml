@@ -21,10 +21,14 @@ updates:
       agent-runtime:
         patterns: ["@mariozechner/*", "@anthropic-ai/*"]
       # A formatter bump reformats the whole tree: land it as its own commit.
+      # Minor/patch only for these two: a major (e.g. TypeScript 7, the native
+      # compiler rewrite) arrives as its own PR instead of hiding in a group.
       lint-format:
         patterns: ["oxfmt", "oxlint", "oxlint-*"]
+        update-types: ["minor", "patch"]
       build-tooling:
         patterns: ["tsdown", "rolldown", "esbuild", "tsx", "typescript", "vite", "@vitejs/*"]
+        update-types: ["minor", "patch"]
       # Native binaries the desktop bundle ships; verify with the stage smoke.
       native:
         patterns:
