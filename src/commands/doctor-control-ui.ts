@@ -3,6 +3,7 @@
  * a missing build means the primary interface silently 404s. Shared by the
  * CLI doctor and the gateway's doctor.findings RPC.
  */
+
 import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveControlUiRoot } from "../gateway/control-ui-assets.js";

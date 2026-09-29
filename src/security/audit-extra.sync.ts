@@ -3,6 +3,7 @@
  *
  * These functions analyze config-based security properties without I/O.
  */
+
 import type { SandboxToolPolicy } from "../agents/sandbox/types.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { AgentToolsConfig } from "../config/types.tools.js";

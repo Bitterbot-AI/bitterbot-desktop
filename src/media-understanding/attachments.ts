@@ -362,7 +362,7 @@ export class MediaAttachmentCache {
   }
 
   async cleanup(): Promise<void> {
-    const cleanups: Array<Promise<void> | void> = [];
+    const cleanups: Array<Promise<void>> = [];
     for (const entry of this.entries.values()) {
       if (entry.tempCleanup) {
         cleanups.push(Promise.resolve(entry.tempCleanup()));

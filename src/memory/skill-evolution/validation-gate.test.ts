@@ -251,7 +251,10 @@ describe("task corpus + tasks validation", () => {
     expect(corpus).not.toBeNull();
     expect(corpus?.tasks.length).toBe(24);
     expect(corpus?.version).toHaveLength(12);
-    const arith = corpus?.tasks.find((t) => t.id === "arith-basic")!;
+    const arith = corpus?.tasks.find((t) => t.id === "arith-basic");
+    if (!arith) {
+      throw new Error("arith-basic task missing from the canonical corpus");
+    }
     const answer = arith.checker.value;
     expect(scoreTaskAnswer(arith, `Working it out...\nFINAL: ${answer}`)).toBe(1);
     // The hardened checker refuses a bare value or a wrong FINAL line.

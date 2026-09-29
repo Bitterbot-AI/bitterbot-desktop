@@ -4,6 +4,7 @@
  * Aggregates telemetry, computes network-wide analytics, detects anomalies,
  * and provides economic oversight. Only active on management nodes.
  */
+
 import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
