@@ -29,7 +29,7 @@ const lsAssets = async (outDir: string) =>
   (await fs.readdir(path.join(outDir, "assets"), { withFileTypes: true }).catch(() => []))
     .filter((e) => e.isFile())
     .map((e) => e.name)
-    .sort();
+    .toSorted();
 
 afterEach(async () => {
   while (dirs.length) {

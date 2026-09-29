@@ -87,7 +87,7 @@ export async function loadModelCatalog(params?: {
   modelCatalogPromise = (async () => {
     const models: ModelCatalogEntry[] = [];
     const sortModels = (entries: ModelCatalogEntry[]) =>
-      entries.sort((a, b) => {
+      entries.toSorted((a, b) => {
         const p = a.provider.localeCompare(b.provider);
         if (p !== 0) {
           return p;
