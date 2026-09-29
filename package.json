@@ -154,7 +154,7 @@
     "@anthropic-ai/sdk": "^0.73.0",
     "@aws-sdk/client-bedrock": "^3.990.0",
     "@buape/carbon": "0.14.0",
-    "@clack/prompts": "^1.0.1",
+    "@clack/prompts": "^1.8.1",
     "@coinbase/agentkit": "^0.10.4",
     "@coinbase/cdp-sdk": "^1.48.2",
     "@grammyjs/runner": "^2.0.3",
