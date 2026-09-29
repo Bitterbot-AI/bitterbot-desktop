@@ -42,7 +42,13 @@ updates:
           - "@napi-rs/*"
       npm-minor-patch:
         update-types: ["minor", "patch"]
+        # Also kept out, as their own PRs: @clack/prompts (prompts now type the
+        # Ctrl-C cancel symbol, ~25 call sites to adapt) and grammy (new Bot API
+        # types across the Telegram channel), both found in #99.
         exclude-patterns:
+          - "@clack/prompts"
+          - "grammy"
+          - "@grammyjs/*"
           - "@mariozechner/*"
           - "@anthropic-ai/*"
           - "oxfmt"
