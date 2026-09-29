@@ -44,7 +44,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 # `cargo build --features=computer-use` to enable. Off by default so
 # the relay fleet's headless Linux build doesn't pull in libxdo / X11.
 xcap = { version = "0.0.14", optional = true }
-enigo = { version = "0.2", optional = true }
+enigo = { version = "0.6", optional = true }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 
 [features]
