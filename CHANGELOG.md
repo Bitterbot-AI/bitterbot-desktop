@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.2.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.1.0...v1.2.0) (2026-09-29)
+
+
+### Features
+
+* **channels:** X (Twitter) outbound posting channel, policy-gated ([873e5d5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/873e5d58ce95eccd7908d1d0bf0f28112db4bbe7))
+* **providers:** full OpenRouter app attribution on every OpenRouter request ([0fb9dbb](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0fb9dbb5036680296425134c7daa385983155409))
+
+
+### Bug Fixes
+
+* **p2p:** adversarial-pass fixes for skill-receive accounting ([cf2472a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cf2472a1e7dcc5000f2bb630f8a7f68b287fd558))
+* **p2p:** count received skills, not gossip messages; stop per-copy penalties ([2e5e79b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2e5e79bd64ac138b82710631e1e2a0efb6e0cde3))
+* **p2p:** drop our own skills echoed back; incoming-skills cleanup ([922bd68](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/922bd689455556f62ee06052941c7880593449c8))
+* **p2p:** review fixes for the self-echo / incoming change ([458de02](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/458de02ddd70052cd1d982ec2562af590c2c2c56))
+
 ## [1.1.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.0.0...v1.1.0) (2026-09-22)
 
 
