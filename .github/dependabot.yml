@@ -10,10 +10,55 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 8
+    # Risk-tiered groups (2026-09-29): one "minor-patch" group of 78 packages
+    # (#89) could not merge because 0.x "minor" bumps are breaking in practice
+    # (@mariozechner/pi-* 0.52 -> 0.73 broke the agent runner's typecheck). A
+    # dependency joins the FIRST group whose pattern matches, so each risky
+    # family gets its own PR and the catch-all stays routine.
     groups:
+      # The agent runner and the in-tree Anthropic provider: API migrations.
+      agent-runtime:
+        patterns: ["@mariozechner/*", "@anthropic-ai/*"]
+      # A formatter bump reformats the whole tree: land it as its own commit.
+      lint-format:
+        patterns: ["oxfmt", "oxlint", "oxlint-*"]
+      build-tooling:
+        patterns: ["tsdown", "rolldown", "esbuild", "tsx", "typescript", "vite", "@vitejs/*"]
+      # Native binaries the desktop bundle ships; verify with the stage smoke.
+      native:
+        patterns:
+          - "sharp"
+          - "sqlite-vec"
+          - "sqlite-vec-*"
+          - "playwright"
+          - "playwright-core"
+          - "@lydell/node-pty"
+          - "node-llama-cpp"
+          - "@napi-rs/*"
       npm-minor-patch:
         update-types: ["minor", "patch"]
+        exclude-patterns:
+          - "@mariozechner/*"
+          - "@anthropic-ai/*"
+          - "oxfmt"
+          - "oxlint"
+          - "oxlint-*"
+          - "tsdown"
+          - "rolldown"
+          - "esbuild"
+          - "tsx"
+          - "typescript"
+          - "vite"
+          - "@vitejs/*"
+          - "sharp"
+          - "sqlite-vec"
+          - "sqlite-vec-*"
+          - "playwright"
+          - "playwright-core"
+          - "@lydell/node-pty"
+          - "node-llama-cpp"
+          - "@napi-rs/*"
   - package-ecosystem: cargo
     directory: /orchestrator
     schedule:
