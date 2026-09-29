@@ -5,7 +5,7 @@
   "description": "Bitterbot X (Twitter) channel plugin: autonomous original posts via the X API v2, policy-gated",
   "type": "module",
   "dependencies": {
-    "zod": "^4.3.6"
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "bitterbot": "workspace:*"
