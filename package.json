@@ -225,7 +225,7 @@
     "@types/ws": "^8.18.1",
     "@typescript/native-preview": "7.0.0-dev.20260215.1",
     "@vitest/coverage-v8": "^4.0.18",
-    "esbuild": "^0.27.3",
+    "esbuild": "^0.28.2",
     "lit": "^3.3.3",
     "ollama": "^0.6.3",
     "oxfmt": "0.70.0",
@@ -233,7 +233,7 @@
     "oxlint-tsgolint": "^0.13.0",
     "rolldown": "1.0.0-rc.4",
     "tsdown": "^0.20.3",
-    "tsx": "^4.21.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   },
