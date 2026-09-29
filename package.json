@@ -230,7 +230,7 @@
     "ollama": "^0.6.3",
     "oxfmt": "0.70.0",
     "oxlint": "^1.85.0",
-    "oxlint-tsgolint": "^0.13.0",
+    "oxlint-tsgolint": "^7.0.2003",
     "rolldown": "1.0.0-rc.4",
     "tsdown": "^0.20.3",
     "tsx": "^4.23.15",
