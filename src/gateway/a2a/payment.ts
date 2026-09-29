@@ -8,9 +8,9 @@
 
 import type { IncomingMessage } from "node:http";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { MarketplaceEconomics } from "../../memory/marketplace-economics.js";
 import { getLocalWalletCapability } from "../../infra/wallet-discovery.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { MarketplaceEconomics } from "../../memory/marketplace-economics.js";
 import { getHeader } from "../http-utils.js";
 
 const log = createSubsystemLogger("a2a/payment");

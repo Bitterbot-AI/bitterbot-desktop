@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 /**
  * ManagementNodeService: network oversight for management-tier nodes.
  *
@@ -5,12 +6,11 @@
  * and provides economic oversight. Only active on management nodes.
  */
 import type { DatabaseSync } from "node:sqlite";
-import crypto from "node:crypto";
 import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { ManagementKeyAuth } from "./management-key-auth.js";
 import type { MarketplaceEconomics } from "./marketplace-economics.js";
 import type { PeerReputationManager } from "./peer-reputation.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/management-node");
 

@@ -1,11 +1,11 @@
 import { ArrowRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { UsageLedgerSummary } from "../../stores/usage-store";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { formatCost, formatRelativeTime, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useUIStore } from "../../stores/ui-store";
+import type { UsageLedgerSummary } from "../../stores/usage-store";
 import { formatPct } from "../usage/usage-format";
 
 /**

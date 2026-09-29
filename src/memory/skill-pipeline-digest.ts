@@ -21,9 +21,9 @@
  *   - chunks               → new auto-generated skills (via tags JSON)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { RUN_EVIDENCE_WHERE, RUN_SUCCESS_EXPR } from "./skill-execution-tracker.js";
 

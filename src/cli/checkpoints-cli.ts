@@ -1,6 +1,6 @@
-import type { Command } from "commander";
 import os from "node:os";
 import path from "node:path";
+import type { Command } from "commander";
 import { CheckpointStore } from "../checkpoints/store.js";
 import { defaultRuntime } from "../runtime.js";
 

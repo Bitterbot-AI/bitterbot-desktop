@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../config/config.js";
+import { createBitterbotCodingTools } from "./pi-tools.js";
 import type { SandboxContext } from "./sandbox.js";
 import type { SandboxFsBridge, SandboxResolvedPath } from "./sandbox/fs-bridge.js";
-import { createBitterbotCodingTools } from "./pi-tools.js";
 import { createSandboxFsBridgeFromResolver } from "./test-helpers/host-sandbox-fs-bridge.js";
 
 vi.mock("../infra/shell-env.js", async (importOriginal) => {

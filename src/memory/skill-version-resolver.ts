@@ -16,8 +16,8 @@
  * This makes each branch uniquely identifiable even at the same version number.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/skill-version-resolver");

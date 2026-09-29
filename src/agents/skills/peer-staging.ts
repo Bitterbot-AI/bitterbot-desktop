@@ -11,10 +11,10 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { EvolutionProvenanceRecord } from "../../memory/skill-evolution/provenance-trailer.js";
-import type { EvolutionMeta } from "../../memory/skill-evolution/validation-gate.js";
 import { atomicWriteJson } from "../../memory/skill-evolution/fs-atomic.js";
 import { hashProposalContent } from "../../memory/skill-evolution/proposal-apply.js";
+import type { EvolutionProvenanceRecord } from "../../memory/skill-evolution/provenance-trailer.js";
+import type { EvolutionMeta } from "../../memory/skill-evolution/validation-gate.js";
 import {
   resolveStorageRoots,
   type SkillStorageRoots,

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import type { UsageDailyPoint } from "../../stores/usage-store";
 import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { UsageDailyPoint } from "../../stores/usage-store";
 import { CHART_BG_CLASSES, CHART_FILL_CLASSES } from "./usage-format";
 
 const MAX_SERIES = 5;

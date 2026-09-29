@@ -8,8 +8,8 @@
  * counter. No-op unless OTel is enabled (`OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_TRACES_EXPORTER`).
  */
 
-import type { UsageEventRow } from "../infra/usage-ledger.types.js";
 import { onUsageEvent } from "../infra/usage-ledger.js";
+import type { UsageEventRow } from "../infra/usage-ledger.types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isOtelEnabled } from "./otel.js";
 

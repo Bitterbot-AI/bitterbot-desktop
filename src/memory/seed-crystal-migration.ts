@@ -1,3 +1,6 @@
+import crypto from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 /**
  * Seed Crystal Migration: converts existing MEMORY.md content into
  * high-importance frozen crystals so that the dream engine's RLM
@@ -7,9 +10,6 @@
  * `meta` table.
  */
 import type { DatabaseSync } from "node:sqlite";
-import crypto from "node:crypto";
-import fs from "node:fs/promises";
-import path from "node:path";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CONFIG_DIR } from "../utils.js";
 

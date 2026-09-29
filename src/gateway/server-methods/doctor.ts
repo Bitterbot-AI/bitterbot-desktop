@@ -1,4 +1,3 @@
-import type { GatewayRequestHandlers } from "./types.js";
 /**
  * PLAN-41 Phase 2: doctor findings over RPC for the Repairs card. Read-only;
  * runs the fast local doctor subset (see doctor-findings.ts) with a short
@@ -6,6 +5,7 @@ import type { GatewayRequestHandlers } from "./types.js";
  */
 import { collectRepairFindings } from "../../commands/doctor-findings.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 export const doctorHandlers: GatewayRequestHandlers = {
   "doctor.findings": async ({ respond }) => {

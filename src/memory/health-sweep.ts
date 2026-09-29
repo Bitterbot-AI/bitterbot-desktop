@@ -17,8 +17,8 @@
  * interactive runs; a daily job must be free.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { CheckResult } from "../commands/doctor-check.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";

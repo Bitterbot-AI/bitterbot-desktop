@@ -1,10 +1,10 @@
-import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
 import { createHostedOnrampSession, DEFAULT_ONRAMP_URL } from "../../services/hosted-onramp.js";
 import { createOnrampSession } from "../../services/stripe-onramp.js";
 import { resolveWalletProvisioning } from "../../services/wallet-provisioning.js";
 import { createWalletService, type WalletService } from "../../services/wallet-service.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 let cachedService: WalletService | null = null;
 

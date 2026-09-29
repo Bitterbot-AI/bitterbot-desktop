@@ -14,9 +14,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
-import type { UsageLedger } from "./usage-ledger.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { USAGE_FEATURES } from "./usage-features.js";
+import type { UsageLedger } from "./usage-ledger.js";
 import { HEARTBEAT_CHANNEL, HeartbeatTurnTracker } from "./usage-transcript-classify.js";
 
 const log = createSubsystemLogger("usage-relabel");

@@ -10,8 +10,8 @@
  */
 import { RotateCw, Search } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { ConfigSchema, ConfigSnapshot } from "../../stores/config-store";
 import { cn } from "../../lib/utils";
+import type { ConfigSchema, ConfigSnapshot } from "../../stores/config-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";

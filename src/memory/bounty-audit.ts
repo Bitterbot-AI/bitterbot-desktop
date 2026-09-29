@@ -34,8 +34,8 @@
  * refundable capital bond (PLAN-30 G0.2) layers on top in a follow-up.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/bounty-audit");

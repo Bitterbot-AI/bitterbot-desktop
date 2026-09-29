@@ -8,8 +8,8 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import http from "node:http";
-import type { XAccountConfig, XTokenRecord } from "./types.js";
 import { X_TOKEN_URL, buildClientAuthHeaders, tokenResponseToRecord } from "./token-store.js";
+import type { XAccountConfig, XTokenRecord } from "./types.js";
 
 export const X_AUTHORIZE_URL = "https://x.com/i/oauth2/authorize";
 export const X_SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"] as const;

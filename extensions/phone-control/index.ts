@@ -1,6 +1,6 @@
-import type { BitterbotPluginApi, BitterbotPluginService } from "bitterbot/plugin-sdk";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { BitterbotPluginApi, BitterbotPluginService } from "bitterbot/plugin-sdk";
 
 type ArmGroup = "camera" | "screen" | "writes" | "all";
 

@@ -4,7 +4,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { EvolutionMeta } from "./validation-gate.js";
 import {
   PROVENANCE_TRAILER_MARKER,
   RETRACTION_TRAILER_MARKER,
@@ -16,6 +15,7 @@ import {
   parseRetractionTrailer,
   stripProvenanceTrailer,
 } from "./provenance-trailer.js";
+import type { EvolutionMeta } from "./validation-gate.js";
 
 const META = {
   validation: {

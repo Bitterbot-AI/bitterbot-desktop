@@ -9,13 +9,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
-import type { EventJournal } from "../../infra/event-journal.js";
-import type { CorpusTask } from "./task-corpus.js";
-import type { TaskRunnerFn, TaskVariant, TrialContext, TrialResult } from "./validate-tasks.js";
 import {
   collectTrialEgress,
   registerTrialDeclaredHosts,
 } from "../../agents/skills/validation-egress.js";
+import type { EventJournal } from "../../infra/event-journal.js";
+import type { CorpusTask } from "./task-corpus.js";
 import {
   type AgentTurnFn,
   type AgentTurnOutcome,
@@ -24,6 +23,7 @@ import {
   trialsRoot,
   writeTaskFiles,
 } from "./task-runner.js";
+import type { TaskRunnerFn, TaskVariant, TrialContext, TrialResult } from "./validate-tasks.js";
 
 export interface ContextRunnerDeps {
   agentTurn: AgentTurnFn;

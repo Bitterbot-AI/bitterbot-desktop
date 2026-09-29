@@ -1,11 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import type { PreActionInterceptor } from "./interceptor.js";
 import {
   setInterceptorContextProviders,
   clearInterceptorContextProviders,
 } from "./interceptor-context.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
 import { runInterceptors, resetInterceptorRunnerState } from "./interceptor-runner.js";
+import type { PreActionInterceptor } from "./interceptor.js";
 
 function makeInterceptor(
   opts: Partial<PreActionInterceptor> & Pick<PreActionInterceptor, "id" | "skill">,

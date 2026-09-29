@@ -14,8 +14,8 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { unregisterCanary } from "./canary-registry.js";
 import {
   readConsolidateTarget,

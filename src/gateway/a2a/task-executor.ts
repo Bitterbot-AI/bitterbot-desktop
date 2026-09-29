@@ -11,14 +11,14 @@
  */
 
 import crypto from "node:crypto";
-import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { A2aTaskManager } from "./task-manager.js";
-import type { MessageSendParams } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
+import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { replaceMarkers, wrapExternalContent } from "../../security/external-content.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { callGateway } from "../call.js";
+import type { A2aTaskManager } from "./task-manager.js";
+import type { MessageSendParams } from "./types.js";
 
 const log = createSubsystemLogger("a2a/executor");
 

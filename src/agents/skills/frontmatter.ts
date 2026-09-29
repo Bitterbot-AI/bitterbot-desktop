@@ -1,4 +1,14 @@
 import type { Skill } from "@mariozechner/pi-coding-agent";
+import { parseFrontmatterBlock } from "../../markdown/frontmatter.js";
+import {
+  getFrontmatterString,
+  normalizeStringList,
+  parseFrontmatterBool,
+  resolveBitterbotManifestBlock,
+  resolveBitterbotManifestInstall,
+  resolveBitterbotManifestOs,
+  resolveBitterbotManifestRequires,
+} from "../../shared/frontmatter.js";
 import type {
   BitterbotSkillMetadata,
   ParsedSkillFrontmatter,
@@ -10,16 +20,6 @@ import type {
   SkillMarketplaceTier,
   SkillOrigin,
 } from "./types.js";
-import { parseFrontmatterBlock } from "../../markdown/frontmatter.js";
-import {
-  getFrontmatterString,
-  normalizeStringList,
-  parseFrontmatterBool,
-  resolveBitterbotManifestBlock,
-  resolveBitterbotManifestInstall,
-  resolveBitterbotManifestOs,
-  resolveBitterbotManifestRequires,
-} from "../../shared/frontmatter.js";
 
 export function parseFrontmatter(content: string): ParsedSkillFrontmatter {
   return parseFrontmatterBlock(content);

@@ -6,16 +6,16 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { MarketplaceEntry, MarketplaceFilters } from "./crystal-types.js";
 import type { PeerReputationManager } from "./peer-reputation.js";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 import {
   aggregateAttestations,
   currentAttestationCorpusPrefix,
   listAttestations,
   skillContentSha256,
 } from "./skill-evolution/attestation.js";
+import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 
 const log = createSubsystemLogger("memory/skill-marketplace");
 

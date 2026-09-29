@@ -21,11 +21,11 @@ import { createHash } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { DEFAULT_HEARTBEAT_FILENAME } from "../agents/workspace.js";
 import type { ThinkLevel } from "../auto-reply/thinking.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
-import { resolveAgentConfig, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { DEFAULT_HEARTBEAT_FILENAME } from "../agents/workspace.js";
 import { parseAgentSessionKey, normalizeAgentId } from "../routing/session-key.js";
 import { CONFIG_DIR } from "../utils.js";
 

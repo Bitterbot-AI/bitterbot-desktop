@@ -28,16 +28,16 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { EventJournal } from "../../infra/event-journal.js";
-import type { CorpusTask } from "./task-corpus.js";
-import type { TaskRunnerFn, TaskVariant, TrialContext, TrialResult } from "./validate-tasks.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import {
   collectTrialEgress,
   declaredHosts,
   registerTrialDeclaredHosts,
 } from "../../agents/skills/validation-egress.js";
+import type { EventJournal } from "../../infra/event-journal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { CorpusTask } from "./task-corpus.js";
+import type { TaskRunnerFn, TaskVariant, TrialContext, TrialResult } from "./validate-tasks.js";
 
 const log = createSubsystemLogger("skill-evolution/task-runner");
 

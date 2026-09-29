@@ -1,10 +1,10 @@
 import type { Command } from "commander";
-import type { BitterbotConfig } from "../config/config.js";
-import type { PluginLogger } from "./types.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { loadConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { loadBitterbotPlugins } from "./loader.js";
+import type { PluginLogger } from "./types.js";
 
 const log = createSubsystemLogger("plugins");
 

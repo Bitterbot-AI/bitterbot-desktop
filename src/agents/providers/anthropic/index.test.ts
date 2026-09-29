@@ -3,7 +3,6 @@ import type { Context } from "@mariozechner/pi-ai";
 import { AssistantMessageEventStream } from "@mariozechner/pi-ai/dist/utils/event-stream.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../../../config/config.js";
-import type { AnthropicRequestParams, AnthropicTransport, WireTool } from "./types.js";
 import { applyExtraParamsToAgent } from "../../pi-embedded-runner/extra-params.js";
 import { CACHE_BOUNDARY_MARKER } from "../../system-prompt-cache-boundary.js";
 import {
@@ -22,6 +21,7 @@ import {
   toolUseEvents,
 } from "./test-fixtures.js";
 import { markToolDeferLoading } from "./tool-search.js";
+import type { AnthropicRequestParams, AnthropicTransport, WireTool } from "./types.js";
 
 function context(): Context {
   return {

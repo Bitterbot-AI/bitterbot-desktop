@@ -27,8 +27,8 @@
  * right to be QUARANTINED POLITELY, not trusted.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { detectAgentSummon, queueAgentDraft } from "../../circles/agent-drafts.js";
 import { loadOrCreateBoxKeys, type BoxKeyPair } from "../../circles/box-crypto.js";
 import {

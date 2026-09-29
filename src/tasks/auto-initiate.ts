@@ -18,7 +18,6 @@
  * block or break a turn (PLAN-22 Addendum item 1).
  */
 
-import type { TaskSource } from "./types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { acquireTaskSlot, releaseTaskSlot } from "./active-task-tracker.js";
 import {
@@ -28,6 +27,7 @@ import {
 } from "./complexity.js";
 import { getJudgeLlmCall, type LlmCall } from "./judge.js";
 import { getActiveTaskStore, type TaskStore } from "./store.js";
+import type { TaskSource } from "./types.js";
 
 const log = createSubsystemLogger("tasks/auto-initiate");
 

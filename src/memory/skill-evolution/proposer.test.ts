@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LabeledTrace, ReconstructedTrace } from "./types.js";
 import { readProvenance } from "../../agents/skills/impact-trail.js";
 import {
   readStaged,
@@ -13,6 +12,7 @@ import { recordDreamArtifact } from "../dream-utility.js";
 import { requireNodeSqlite } from "../sqlite.js";
 import { applyProposal } from "./proposal-apply.js";
 import { runSkillProposer } from "./proposer.js";
+import type { LabeledTrace, ReconstructedTrace } from "./types.js";
 import { applyMaintainerOutput } from "./wiki-store.js";
 
 function fakeTrace(runId: string, label: "pass" | "fail"): LabeledTrace {

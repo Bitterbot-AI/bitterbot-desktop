@@ -19,17 +19,12 @@
  *      tool_search_tool_result, usage with the cache-write TTL split
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
-import Anthropic from "@anthropic-ai/sdk";
 import { getEnvApiKey, streamSimple } from "@mariozechner/pi-ai";
 import { AssistantMessageEventStream } from "@mariozechner/pi-ai/dist/utils/event-stream.js";
 import type { BitterbotConfig } from "../../../config/config.js";
-import type {
-  AnthropicRuntimeConfig,
-  AnthropicTransport,
-  AnthropicTransportResult,
-} from "./types.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { applyAnthropicCacheLayout } from "../../pi-embedded-runner/anthropic-payload-cache.js";
 import {
@@ -47,6 +42,11 @@ import {
 import { buildParams, getCacheControl, resolveProviderOptions } from "./request.js";
 import { consumeAnthropicMessage, consumeAnthropicStream } from "./stream.js";
 import { collectToolSearchHistoryState, planToolDeferral } from "./tool-search.js";
+import type {
+  AnthropicRuntimeConfig,
+  AnthropicTransport,
+  AnthropicTransportResult,
+} from "./types.js";
 import { createEmptyUsage } from "./usage.js";
 
 export * from "./config.js";

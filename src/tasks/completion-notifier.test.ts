@@ -2,12 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { TaskStore } from "./store.js";
 import {
   isCompletionNotifierEnabled,
   startCompletionNotifier,
   stopCompletionNotifier,
 } from "./completion-notifier.js";
+import type { TaskStore } from "./store.js";
 import { startTaskStore, stopTaskStore, getActiveTaskStore } from "./store.js";
 
 /** B4: `completed` is reachable only through a passing verification. */

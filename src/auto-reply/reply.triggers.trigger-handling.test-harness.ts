@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { afterEach, expect, vi } from "vitest";
-import type { BitterbotConfig } from "../config/config.js";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
+import type { BitterbotConfig } from "../config/config.js";
 
 // Avoid exporting vitest mock types (TS2742 under pnpm + d.ts emit).
 // oxlint-disable-next-line typescript/no-explicit-any

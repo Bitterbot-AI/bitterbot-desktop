@@ -26,15 +26,15 @@
  * `BITTERBOT_EVENT_JOURNAL=0` to disable.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import zlib from "node:zlib";
-import type { AgentEventPayload, AgentEventStream } from "./agent-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
 import { resolveUserPath } from "../utils.js";
+import type { AgentEventPayload, AgentEventStream } from "./agent-events.js";
 import { onAgentEvent } from "./agent-events.js";
 
 const log = createSubsystemLogger("event-journal");

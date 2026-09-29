@@ -15,13 +15,13 @@
  *  4. Persists them as DreamInsights with a structured payload.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { DreamInsight, EmbedBatchFn, SynthesizeFn } from "../dream-types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { DreamInsight, EmbedBatchFn, SynthesizeFn } from "../dream-types.js";
 import {
   renderSkillMd,
   synthesizeInterceptorCandidate,

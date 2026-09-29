@@ -14,14 +14,14 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
-import type { ExecutionOutcome } from "./crystal-types.js";
-import type { HormonalStateManager } from "./hormonal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
 import {
   isA2aTaskSessionKey,
   isSkillEvolveValidationSessionKey,
 } from "../sessions/session-key-utils.js";
+import type { ExecutionOutcome } from "./crystal-types.js";
+import type { HormonalStateManager } from "./hormonal.js";
 import { RUN_EVIDENCE_WHERE, type SkillExecutionTracker } from "./skill-execution-tracker.js";
 
 const log = createSubsystemLogger("memory/exec-hook");

@@ -8,8 +8,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { BitterbotConfig } from "../../config/config.js";
 import { generateKeyPair } from "../../commerce/envelope.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import { buildProvenanceTrailer } from "../../memory/skill-evolution/provenance-trailer.js";
 import { CONFIG_DIR } from "../../utils.js";
 import {

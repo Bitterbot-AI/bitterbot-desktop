@@ -18,8 +18,8 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import type { SandboxToolPolicy } from "./sandbox/types.js";
 import { A2A_REMOTE_TOOL_DENY_ALWAYS } from "./a2a-remote-policy.js";
+import type { SandboxToolPolicy } from "./sandbox/types.js";
 
 /** File tools a validation rollout may always use (workspace-scoped). */
 export const SKILL_VALIDATION_TOOL_ALLOW = ["read", "write", "edit", "apply_patch"] as const;

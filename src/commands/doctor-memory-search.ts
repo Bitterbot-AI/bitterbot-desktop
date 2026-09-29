@@ -1,9 +1,9 @@
 import fsSync from "node:fs";
-import type { BitterbotConfig } from "../config/config.js";
 import { resolveAgentDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveApiKeyForProvider } from "../agents/model-auth.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { probeSqliteVec } from "../memory/sqlite-vec.js";
 import { resolveUserPath } from "../utils.js";
 import { renderSection, type CheckResult, ok, warn, info } from "./doctor-check.js";

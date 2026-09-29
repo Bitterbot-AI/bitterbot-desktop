@@ -5,7 +5,6 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { CanaryMonitorAction, CanaryMonitorDeps } from "./canary-monitor.js";
 import {
   readLive,
   resolveStorageRoots,
@@ -13,6 +12,7 @@ import {
 } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { demoteEvolved, listLiveEvolvedMeta, rollbackFreesSlot } from "./canary-demote.js";
+import type { CanaryMonitorAction, CanaryMonitorDeps } from "./canary-monitor.js";
 import { readEvidenceRecords, type SkillEvidenceRecord } from "./evidence-record.js";
 import {
   DEFAULT_MAX_ACTIVE_EVOLVED,

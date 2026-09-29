@@ -3,7 +3,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { TraceLabel } from "./types.js";
 import { appendFixtureRun, makeFixtureJournal } from "./__fixtures__/journal-fixture.js";
 import {
   buildCalibrationSet,
@@ -12,6 +11,7 @@ import {
   parseLabelFile,
   scoreCalibration,
 } from "./calibration.js";
+import type { TraceLabel } from "./types.js";
 
 function key(
   id: string,

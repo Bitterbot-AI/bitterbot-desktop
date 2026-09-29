@@ -7,8 +7,8 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import type { AnyAgentTool } from "./common.js";
 import { getOriginalContent, getTruncatedOriginalsSize } from "../progressive-compression.js";
+import type { AnyAgentTool } from "./common.js";
 
 const ExpandMessageToolSchema = Type.Object({
   reference: Type.String({

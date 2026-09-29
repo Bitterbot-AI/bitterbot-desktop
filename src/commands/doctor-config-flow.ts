@@ -1,11 +1,10 @@
 import type { ZodIssue } from "zod";
-import type { BitterbotConfig } from "../config/config.js";
-import type { DoctorOptions } from "./doctor-prompter.js";
 import {
   isNumericTelegramUserId,
   normalizeTelegramAllowFromEntry,
 } from "../channels/telegram/allow-from.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import {
   BitterbotSchema,
   CONFIG_PATH,
@@ -17,6 +16,7 @@ import { listTelegramAccountIds, resolveTelegramAccount } from "../telegram/acco
 import { note } from "../terminal/note.js";
 import { isRecord } from "../utils.js";
 import { normalizeLegacyConfigValues } from "./doctor-legacy-config.js";
+import type { DoctorOptions } from "./doctor-prompter.js";
 
 type UnrecognizedKeysIssue = ZodIssue & {
   code: "unrecognized_keys";

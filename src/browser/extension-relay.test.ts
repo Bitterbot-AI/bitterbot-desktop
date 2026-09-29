@@ -1,5 +1,5 @@
-import type { AddressInfo } from "node:net";
 import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
 import {

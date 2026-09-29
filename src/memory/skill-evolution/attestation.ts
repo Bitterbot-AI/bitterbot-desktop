@@ -18,8 +18,8 @@
  * on the attester's device pubkey.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { pubkeyId, type KeyPair } from "../../commerce/envelope.js";
 import { canonicalJson, type JsonValue } from "../../commerce/sku.js";

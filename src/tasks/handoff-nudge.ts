@@ -22,11 +22,11 @@
  * Disable globally with `BITTERBOT_TASKS_NUDGE=0`.
  */
 
-import type { TaskHandoff } from "./types.js";
 import { getAgentRunContext } from "../infra/agent-events.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getActiveTaskStore } from "./store.js";
+import type { TaskHandoff } from "./types.js";
 
 const log = createSubsystemLogger("tasks/handoff-nudge");
 

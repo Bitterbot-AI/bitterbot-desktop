@@ -3,13 +3,13 @@
  * user context only. One automatic retry on 401 after a forced refresh.
  */
 
-import type { XAccountConfig } from "./types.js";
 import {
   getValidAccessToken,
   readTokenRecord,
   refreshAccessToken,
   writeTokenRecord,
 } from "./token-store.js";
+import type { XAccountConfig } from "./types.js";
 
 export const X_API_BASE = "https://api.x.com/2";
 

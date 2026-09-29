@@ -1,12 +1,12 @@
 import type { Command } from "commander";
+import { gatewayStatusCommand } from "../../commands/gateway-status.js";
+import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
 import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import type {
   UsageExplanation,
   UsageLedgerSummary,
   UsageWhatIf,
 } from "../../infra/usage-ledger.types.js";
-import { gatewayStatusCommand } from "../../commands/gateway-status.js";
-import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
 import {
   renderUsageExplanation,
   renderUsageLedgerSummary,

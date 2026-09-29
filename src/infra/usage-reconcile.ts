@@ -14,12 +14,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import type { BitterbotConfig } from "../config/config.js";
-import type { UsageLedger } from "./usage-ledger.js";
 import { normalizeUsage, type UsageLike } from "../agents/usage.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { classifyAgentFeature, USAGE_FEATURES } from "./usage-features.js";
+import type { UsageLedger } from "./usage-ledger.js";
 import { resolveUsageEvent, type ResolvedUsageEvent } from "./usage-ledger.js";
 import { relabelHeartbeatsV3 } from "./usage-relabel.js";
 import {

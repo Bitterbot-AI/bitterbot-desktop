@@ -1,13 +1,12 @@
-// @ts-nocheck
-// oxlint-disable eslint/no-unused-vars, typescript/no-explicit-any
-import type { DatabaseSync } from "node:sqlite";
-import chokidar, { type FSWatcher } from "chokidar";
 import { randomUUID } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { MemorySource, MemorySyncProgressUpdate } from "./types.js";
+// @ts-nocheck
+// oxlint-disable eslint/no-unused-vars, typescript/no-explicit-any
+import type { DatabaseSync } from "node:sqlite";
+import chokidar, { type FSWatcher } from "chokidar";
 import { isExcludedMemoryPath } from "../agents/memory-search.js";
 import { resolveWatchPaths } from "../agents/skills/refresh.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
@@ -34,6 +33,7 @@ import {
 } from "./session-files.js";
 import { loadSqliteVecExtension } from "./sqlite-vec.js";
 import { requireNodeSqlite } from "./sqlite.js";
+import type { MemorySource, MemorySyncProgressUpdate } from "./types.js";
 
 type MemoryIndexMeta = {
   model: string;

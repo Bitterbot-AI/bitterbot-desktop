@@ -1,11 +1,11 @@
 import { Play, Terminal, Image, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { onCodeExecResult, type CodeExecResult } from "../../../lib/code-exec-manager";
 import { cn } from "../../../lib/utils";
 import { useArtifactStore } from "../../../stores/artifact-store";
 import { useGatewayStore } from "../../../stores/gateway-store";
 import { useUIStore } from "../../../stores/ui-store";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 /**
  * Tool view for the code_interpreter tool call.

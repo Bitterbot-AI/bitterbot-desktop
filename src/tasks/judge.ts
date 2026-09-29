@@ -20,8 +20,8 @@
  */
 
 import YAML from "yaml";
-import type { Task, TaskCheckResult, TaskHandoff, TaskVerification } from "./types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { Task, TaskCheckResult, TaskHandoff, TaskVerification } from "./types.js";
 
 const log = createSubsystemLogger("tasks/judge");
 

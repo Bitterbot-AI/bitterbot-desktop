@@ -1,6 +1,6 @@
-import type { BitterbotConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveAgentIdentity } from "../agents/identity.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 
 const MAX_ASSISTANT_NAME = 50;

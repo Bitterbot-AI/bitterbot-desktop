@@ -12,8 +12,8 @@
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { EmbedBatchFn, SynthesizeFn } from "./dream-types.js";
 import { DreamEngine } from "./dream-engine.js";
+import type { EmbedBatchFn, SynthesizeFn } from "./dream-types.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 
 function createTestDb(): DatabaseSync {

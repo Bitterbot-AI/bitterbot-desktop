@@ -1,7 +1,7 @@
 import type { ChannelStatusIssue } from "bitterbot/plugin-sdk";
-import type { ChannelAccountSnapshot, XAccountConfig, XTokenRecord } from "./types.js";
 import { resolveTokenFilePath } from "./paths.js";
 import { readTokenRecord } from "./token-store.js";
+import type { ChannelAccountSnapshot, XAccountConfig, XTokenRecord } from "./types.js";
 
 /**
  * Offline probe: reports token presence/expiry from the token file only.

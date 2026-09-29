@@ -9,9 +9,9 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { A2aClient } from "../../services/a2a-client.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const _log = createSubsystemLogger("tool/a2a-client");

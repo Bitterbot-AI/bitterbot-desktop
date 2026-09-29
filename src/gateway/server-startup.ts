@@ -1,6 +1,3 @@
-import type { CliDeps } from "../cli/deps.js";
-import type { loadConfig } from "../config/config.js";
-import type { loadBitterbotPlugins } from "../plugins/loader.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import {
@@ -8,6 +5,8 @@ import {
   resolveConfiguredModelRef,
   resolveHooksGmailModel,
 } from "../agents/model-selection.js";
+import type { CliDeps } from "../cli/deps.js";
+import type { loadConfig } from "../config/config.js";
 import { startCronEngine } from "../cron/runtime.js";
 import { startGmailWatcher } from "../hooks/gmail-watcher.js";
 import {
@@ -19,6 +18,7 @@ import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { getP2pStatus, patchP2pStatus } from "../infra/p2p-status.js";
 import { recordPeerWalletCapability, setLocalWalletCapability } from "../infra/wallet-discovery.js";
+import type { loadBitterbotPlugins } from "../plugins/loader.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { createSkillReceivedHandler } from "./p2p-skill-receive.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";

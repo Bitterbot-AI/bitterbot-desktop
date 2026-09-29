@@ -13,8 +13,8 @@
  * Posting a bond is an operator action (RPC); nothing auto-posts.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { CommerceReputationLedger, commercePubkeyKey } from "./commerce-reputation.js";
 import {
   ensureAttestationSchema,

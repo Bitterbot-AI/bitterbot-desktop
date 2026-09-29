@@ -1,11 +1,11 @@
 import { createInterface } from "node:readline";
 import { Readable } from "node:stream";
-import type { VoyageEmbeddingClient } from "./embeddings-voyage.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { postJsonWithRetry } from "./batch-http.js";
 import { applyEmbeddingBatchOutputLine, extractBatchRequestText } from "./batch-output.js";
 import { buildBatchHeaders, normalizeBatchBaseUrl, splitBatchRequests } from "./batch-utils.js";
 import { recordEmbeddingUsage } from "./embeddings-usage.js";
+import type { VoyageEmbeddingClient } from "./embeddings-voyage.js";
 import { hashText, runWithConcurrency } from "./internal.js";
 
 /**

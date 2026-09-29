@@ -3,7 +3,6 @@
  * fresh = the generator at a run seed; private = the node's grown suite.
  */
 
-import type { CorpusId, ResolvedCorpus } from "./plan.js";
 import {
   CANONICAL_GENERATOR_VERSION,
   generateCanonicalCorpus,
@@ -15,6 +14,7 @@ import {
   ensureContinualSkillBench,
   loadContinualSkillBench,
 } from "../external/continual-skill-bench.js";
+import type { CorpusId, ResolvedCorpus } from "./plan.js";
 
 export async function resolveCorpora(params: {
   ids: readonly CorpusId[];

@@ -23,8 +23,8 @@
  * `pass`.
  */
 
-import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { listLiveSkillIndex } from "./description-overlap.js";
 import { formatGateSummary, type GateResult, runSkillGate } from "./skill-gate.js";
 import {

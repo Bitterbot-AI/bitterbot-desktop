@@ -22,12 +22,9 @@
  * gate runs, staged proposals are visible to operators via skills.promote.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { EventJournal } from "../../infra/event-journal.js";
-import type { LlmCallFn } from "./maintainer.js";
-import type { LabeledTrace } from "./types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { DESCRIPTION_CONTRACT_PROMPT } from "../../agents/skills/description-contract.js";
 import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
 import {
@@ -36,12 +33,15 @@ import {
   readProvenance,
 } from "../../agents/skills/impact-trail.js";
 import { liveSkillDir, readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
+import type { EventJournal } from "../../infra/event-journal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { isSuspicious, scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { markDreamConsumption } from "../dream-utility.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
+import type { LlmCallFn } from "./maintainer.js";
 import { buildPreviouslyTried } from "./rejected-edits.js";
 import { fenceUntrusted } from "./traces.js";
+import type { LabeledTrace } from "./types.js";
 import {
   isValidPatternName,
   logsPath,

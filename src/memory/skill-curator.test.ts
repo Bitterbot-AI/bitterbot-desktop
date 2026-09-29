@@ -3,9 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LlmCall } from "./skill-curator-judge.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
+import type { LlmCall } from "./skill-curator-judge.js";
 import { runFullCuratorPass, runHeuristicCuratorPass } from "./skill-curator.js";
 import { SkillLifecycleStore } from "./skill-lifecycle.js";
 

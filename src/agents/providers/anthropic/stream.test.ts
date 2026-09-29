@@ -2,7 +2,6 @@ import type Anthropic from "@anthropic-ai/sdk";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import { AssistantMessageEventStream } from "@mariozechner/pi-ai/dist/utils/event-stream.js";
 import { describe, expect, it } from "vitest";
-import type { AnthropicUsage } from "./types.js";
 import { consumeAnthropicMessage, consumeAnthropicStream, mapStopReason } from "./stream.js";
 import {
   makeModel,
@@ -15,6 +14,7 @@ import {
   toolUseEvents,
   type SyntheticEvent,
 } from "./test-fixtures.js";
+import type { AnthropicUsage } from "./types.js";
 import { createEmptyUsage } from "./usage.js";
 
 function freshOutput(): AssistantMessage {

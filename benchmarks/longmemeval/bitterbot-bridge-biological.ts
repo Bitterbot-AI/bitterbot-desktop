@@ -19,9 +19,9 @@ const __dirname = dirname(__filename);
 import { readFileSync } from "node:fs";
 import type { BitterbotConfig } from "../../src/config/types.js";
 import type { KnowledgeGraphManager } from "../../src/memory/knowledge-graph.js";
+import { MemoryIndexManager } from "../../src/memory/manager.js";
 import type { MemorySearchResult } from "../../src/memory/types.js";
 import type { MemoryChunk } from "./adapter.js";
-import { MemoryIndexManager } from "../../src/memory/manager.js";
 import { extractEntitiesFromSession } from "./entity-extractor.js";
 
 // ── Types ──

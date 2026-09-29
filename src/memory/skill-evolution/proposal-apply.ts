@@ -7,7 +7,6 @@
 
 import { createHash } from "node:crypto";
 import path from "node:path";
-import type { SkillProposal } from "./proposer.js";
 import {
   appendImpactEntry,
   type ImpactTrailOptions,
@@ -22,6 +21,7 @@ import {
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseSkillMarkdown } from "../skill-curator-judge.js";
 import { atomicWriteFile, atomicWriteJson } from "./fs-atomic.js";
+import type { SkillProposal } from "./proposer.js";
 import { classifyRunOrigin } from "./run-origin.js";
 import { applyPatchOps, type ParseIssue } from "./wiki-store.js";
 

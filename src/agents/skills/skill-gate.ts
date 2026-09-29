@@ -20,8 +20,8 @@
  * well? If yes, raise the bar for replacement.
  */
 
-import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
+import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { checkDescriptionContract, describeContractIssues } from "./description-contract.js";
 import { findDescriptionOverlap, type LiveSkillIndexEntry } from "./description-overlap.js";

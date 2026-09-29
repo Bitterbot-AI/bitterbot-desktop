@@ -13,19 +13,10 @@
  * a structured error rather than throwing.
  */
 
-import { Type } from "@sinclair/typebox";
 import crypto from "node:crypto";
-import type { CronJob } from "../../cron/types.js";
-import type {
-  PlanStep,
-  PlanStepStatus,
-  Task,
-  TaskPlan,
-  TaskSource,
-  TaskStatus,
-} from "../../tasks/types.js";
-import type { AnyAgentTool } from "./common.js";
+import { Type } from "@sinclair/typebox";
 import { getCronEngine } from "../../cron/active.js";
+import type { CronJob } from "../../cron/types.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { getActiveEventJournal } from "../../infra/event-journal.js";
 import { getTaskCheckContext, parseTaskChecks, runTaskChecks } from "../../tasks/checks.js";
@@ -39,7 +30,16 @@ import {
   runTaskJudge,
 } from "../../tasks/judge.js";
 import { getActiveTaskStore, type TaskStore } from "../../tasks/store.js";
+import type {
+  PlanStep,
+  PlanStepStatus,
+  Task,
+  TaskPlan,
+  TaskSource,
+  TaskStatus,
+} from "../../tasks/types.js";
 import { isTerminal } from "../../tasks/types.js";
+import type { AnyAgentTool } from "./common.js";
 
 /** Hard cap on per-task scheduled wakeups to prevent runaway loops. */
 const DEFAULT_MAX_WAKEUPS = 50;

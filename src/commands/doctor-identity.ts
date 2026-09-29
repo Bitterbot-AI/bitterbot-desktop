@@ -25,8 +25,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { defaultP2pKeyDir } from "../infra/p2p-key-dir.js";
 import { resolveUserPath } from "../utils.js";
 import { renderSectionQuietIfAllInfo, type CheckResult, ok, warn, info } from "./doctor-check.js";

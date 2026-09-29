@@ -14,8 +14,8 @@
  * (poster == hunter) holds even against our own hunting.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { parseHeartbeatTerms } from "../gateway/a2a/forage.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { commitOracleSpec, type OracleSpec } from "./bounty-oracle.js";

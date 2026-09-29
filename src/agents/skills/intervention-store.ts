@@ -7,9 +7,9 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { InterventionStore } from "./intervention-record.js";
 import type { InterventionRecord, OutcomeSignal } from "./intervention-record.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 
 const log = createSubsystemLogger("agents/skills/interventions");
 

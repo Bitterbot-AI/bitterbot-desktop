@@ -2,8 +2,8 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { CronJob, CronRun } from "./types.js";
 import { appendRun, loadJobsFile, readRuns, resolveCronPaths, saveJobsFile } from "./store.js";
+import type { CronJob, CronRun } from "./types.js";
 
 function sampleJob(jobId = "job1"): CronJob {
   return {

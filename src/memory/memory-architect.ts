@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 /**
  * PLAN-24 HORMA Phase 3: the self-evolving memory architect.
  *
@@ -16,7 +17,6 @@
  * logic is unit-testable without a live model.
  */
 import type { DatabaseSync } from "node:sqlite";
-import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { scoreCitationSupport } from "./evidence-expand.js";
 import { type HormonalBias, extractSessionFacts } from "./session-extractor.js";

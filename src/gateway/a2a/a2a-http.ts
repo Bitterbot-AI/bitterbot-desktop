@@ -1,14 +1,13 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdirSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SkillEntry } from "../../agents/skills/types.js";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
+import { safeEqualSecret } from "../../security/secret-equal.js";
 import type { AuthRateLimiter } from "../auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "../auth.js";
-import type { JsonRpcRequest, MessageSendParams } from "./types.js";
-import { safeEqualSecret } from "../../security/secret-equal.js";
 import { authorizeGatewayConnect, isLocalDirectRequest } from "../auth.js";
 import { sendJson, sendGatewayAuthFailure, readJsonBodyOrError } from "../http-common.js";
 import { getBearerToken } from "../http-utils.js";
@@ -22,6 +21,7 @@ import { streamTaskEvents } from "./streaming.js";
 import { executeA2aTask, extractTaskText } from "./task-executor.js";
 import { A2aTaskManager } from "./task-manager.js";
 import { isTaskCreationRateLimited } from "./task-rate-limit.js";
+import type { JsonRpcRequest, MessageSendParams } from "./types.js";
 import { A2aErrorCodes } from "./types.js";
 
 const MAX_A2A_BODY_BYTES = 1_048_576; // 1 MB

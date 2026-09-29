@@ -18,8 +18,6 @@
  * per proposal so a skill that cannot be routed to stops costing anything.
  */
 
-import type { LlmCallFn } from "./maintainer.js";
-import type { CorpusTask } from "./task-corpus.js";
 import {
   checkDescriptionContract,
   DESCRIPTION_CONTRACT_PROMPT,
@@ -32,6 +30,8 @@ import {
 import { runSkillGate } from "../../agents/skills/skill-gate.js";
 import { parseSkillMarkdown } from "../skill-curator-judge.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
+import type { LlmCallFn } from "./maintainer.js";
+import type { CorpusTask } from "./task-corpus.js";
 import { relevantCapabilityTasks } from "./validate-tasks.js";
 
 export const MAX_DESCRIPTION_REPAIRS = 2;

@@ -1,7 +1,7 @@
-import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import { createGatewayStartHandler } from "./gateway-launcher";
 

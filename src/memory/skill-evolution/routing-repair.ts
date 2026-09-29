@@ -20,7 +20,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { LlmCallFn } from "./maintainer.js";
 import {
   checkDescriptionContract,
   DESCRIPTION_CONTRACT_PROMPT,
@@ -49,6 +48,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
 import { parseSkillMarkdown } from "../skill-curator-judge.js";
 import { extractJsonObjectLenient } from "./json-extract.js";
+import type { LlmCallFn } from "./maintainer.js";
 import { hashProposalContent } from "./proposal-apply.js";
 import { fenceUntrusted } from "./traces.js";
 

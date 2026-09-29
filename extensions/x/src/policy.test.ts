@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { XLedgerEntry } from "./types.js";
 import { DEFAULT_POLICY } from "./config.js";
 import { evaluatePolicy } from "./policy.js";
+import type { XLedgerEntry } from "./types.js";
 
 const NOW = Date.parse("2026-09-17T12:00:00Z");
 const H = 60 * 60 * 1000;

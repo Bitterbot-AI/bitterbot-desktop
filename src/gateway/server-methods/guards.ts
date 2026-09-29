@@ -21,7 +21,6 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { GatewayRequestHandlers } from "./types.js";
 import { resolveAgentConfig, resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { appendImpactEntry } from "../../agents/skills/impact-trail.js";
 import { ensureInterceptorsAutoBoot } from "../../agents/skills/interceptor-autoboot.js";
@@ -39,6 +38,7 @@ import { loadConfig } from "../../config/io.js";
 import { resolveStateDir } from "../../config/paths.js";
 import { resolveUserPath } from "../../utils.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 function asStr(v: unknown): string {
   return typeof v === "string" ? v : "";

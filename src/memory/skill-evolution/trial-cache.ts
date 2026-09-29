@@ -11,9 +11,9 @@
  * on open; a model change simply never matches.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { requireNodeSqlite } from "../sqlite.js";
 

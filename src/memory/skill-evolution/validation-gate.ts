@@ -15,12 +15,9 @@
  *     live dir, and enforces the maxActiveEvolved cap.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { EventJournal } from "../../infra/event-journal.js";
-import type { LlmCallFn } from "./maintainer.js";
-import type { EvolutionProvenanceRecord } from "./provenance-trailer.js";
+import type { DatabaseSync } from "node:sqlite";
 import { DEFAULT_CANARY_FRACTION, registerCanary } from "../../agents/skills/canary-registry.js";
 import { listLiveSkillIndex } from "../../agents/skills/description-overlap.js";
 import {
@@ -47,6 +44,7 @@ import {
   stagingSkillPath,
 } from "../../agents/skills/skill-storage.js";
 import { type KeyPair, pubkeyId } from "../../commerce/envelope.js";
+import type { EventJournal } from "../../infra/event-journal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getActiveSkillNetworkBridge } from "../skill-network-bridge.js";
 import {
@@ -67,7 +65,9 @@ import {
   sweepStaleTrials,
   CONTENT_CHANGE_VERDICTS,
 } from "./gate-support.js";
+import type { LlmCallFn } from "./maintainer.js";
 import { hashProposalContent } from "./proposal-apply.js";
+import type { EvolutionProvenanceRecord } from "./provenance-trailer.js";
 import { loadTaskCorpus } from "./task-corpus.js";
 import { type AgentTurnFn, makeRuntimePathwayRunner } from "./task-runner.js";
 import { strictCanaryFor, transferDirection } from "./transfer-direction.js";

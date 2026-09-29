@@ -1,4 +1,3 @@
-import type { AnyAgentTool } from "./tools/common.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { isPlainObject } from "../utils.js";
@@ -6,6 +5,7 @@ import { checkRepeatedCall } from "./pi-tools.repeat-guard.js";
 import { runInterceptors } from "./skills/interceptor-runner.js";
 import { checkValidationEgress } from "./skills/validation-egress.js";
 import { normalizeToolName } from "./tool-policy.js";
+import type { AnyAgentTool } from "./tools/common.js";
 
 type HookContext = {
   agentId?: string;

@@ -24,14 +24,14 @@
  */
 
 import type { EventJournal } from "../../infra/event-journal.js";
-import type { LlmCallFn } from "./maintainer.js";
-import type { ReconstructedTrace } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { isA2aTaskSessionKey } from "../../sessions/session-key-utils.js";
 import { bootstrapMeanCi, MIN_PAIRED_TRIALS } from "./bootstrap-ci.js";
+import type { LlmCallFn } from "./maintainer.js";
 import { DEFAULT_EXCLUDED_SESSION_PATTERNS } from "./sampler.js";
 import { isRunHeldOut } from "./sampler.js";
 import { exactSignTest } from "./sign-test.js";
+import type { ReconstructedTrace } from "./types.js";
 
 /** Judge score margin below which a pair is a tie (position-bias floor). */
 export const RECORDS_MIN_DISCORDANT_DELTA = 0.1;

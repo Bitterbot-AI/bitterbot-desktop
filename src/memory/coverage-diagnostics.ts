@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 /**
  * PLAN-24 HORMA Phase 1: coverage discriminator — a deterministic (no LLM)
  * blame router that runs on a recall miss and decides WHY recall failed:
@@ -17,7 +18,6 @@
  * primitive that separates them, cheaply and online.
  */
 import type { DatabaseSync } from "node:sqlite";
-import crypto from "node:crypto";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { insertTrainingPair } from "./graph-optimizer.js";
 

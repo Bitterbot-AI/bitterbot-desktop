@@ -21,13 +21,13 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { SkillLifecycleStore } from "../skill-lifecycle.js";
-import type { EvolutionMeta } from "./validation-gate.js";
 import { readProvenance, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillLifecycleStore } from "../skill-lifecycle.js";
 import { atomicWriteJson } from "./fs-atomic.js";
 import { readSkillReadEvents, type SkillReadEvent } from "./skill-reads.js";
+import type { EvolutionMeta } from "./validation-gate.js";
 
 const log = createSubsystemLogger("skill-evolution/evidence-record");
 

@@ -9,9 +9,6 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { BitterbotConfig } from "../../../src/config/config.js";
-import type { ModelId, ResolvedArm, ResolvedModel, Trial } from "./plan.js";
-import type { TrialRecord } from "./stats.js";
 import { resolveDefaultAgentId } from "../../../src/agents/agent-scope.js";
 import { resolveDefaultModelForAgent } from "../../../src/agents/model-selection.js";
 import { runEmbeddedPiAgent } from "../../../src/agents/pi-embedded-runner.js";
@@ -21,6 +18,7 @@ import {
   registerTrialDeclaredHosts,
 } from "../../../src/agents/skills/validation-egress.js";
 import { buildWorkspaceSkillSnapshot } from "../../../src/agents/skills/workspace.js";
+import type { BitterbotConfig } from "../../../src/config/config.js";
 import { getActiveEventJournal } from "../../../src/infra/event-journal.js";
 import { scoreTaskAnswer } from "../../../src/memory/skill-evolution/task-corpus.js";
 import {
@@ -28,6 +26,8 @@ import {
   writeTaskFiles,
 } from "../../../src/memory/skill-evolution/task-runner.js";
 import { makeSkillEvolveValidationSessionKey } from "../../../src/sessions/session-key-utils.js";
+import type { ModelId, ResolvedArm, ResolvedModel, Trial } from "./plan.js";
+import type { TrialRecord } from "./stats.js";
 
 export type Executor = (
   trial: Trial,

@@ -19,9 +19,9 @@
 import os from "node:os";
 import path from "node:path";
 import type { AgentEventPayload } from "../infra/agent-events.js";
-import type { CheckpointKind } from "./store.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { CheckpointKind } from "./store.js";
 import { CheckpointStore } from "./store.js";
 
 const log = createSubsystemLogger("checkpoints/agent-event-writer");

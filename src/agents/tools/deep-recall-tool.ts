@@ -9,15 +9,13 @@
  * Paper: https://arxiv.org/abs/2512.24601
  */
 
-import { Type } from "@sinclair/typebox";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { MemorySearchManager } from "../../memory/types.js";
-import type { RLMScope, RLMLLMCallFn, RLMLiveApis } from "../rlm/types.js";
-import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
+import type { MemorySearchManager } from "../../memory/types.js";
 import { resolveSessionAgentId, resolveAgentModelPrimary } from "../agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
@@ -28,7 +26,9 @@ import {
 } from "../rlm/context-builder.js";
 import { RLMExecutor } from "../rlm/executor.js";
 import { RLMSandbox } from "../rlm/sandbox.js";
+import type { RLMScope, RLMLLMCallFn, RLMLiveApis } from "../rlm/types.js";
 import { DEFAULT_RLM_CONFIG } from "../rlm/types.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 // ---------------------------------------------------------------------------

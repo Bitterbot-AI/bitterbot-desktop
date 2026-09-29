@@ -1,10 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Eip3009Authorization } from "./settlement.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";
 import { runMigrations } from "../memory/migrations.js";
 import { recordPoolPledge, strikeReadyPools } from "./bounty-pools.js";
 import { createCaptureExecutor, createCdpEip3009Signer } from "./cdp-adapters.js";
+import type { Eip3009Authorization } from "./settlement.js";
 
 // PLAN-29 Phase 4 (legal-gated): pledges validate structurally against the
 // awarded hunter; strike captures ONLY on quorum + oracle pass; below

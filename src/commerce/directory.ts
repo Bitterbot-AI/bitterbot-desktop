@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 /**
  * Offer/Intent Directory — PLAN-26 Primitive 1, the local index over signed
  * Aubaine offers and intents (docs/protocol/aubaine-v1 §6 list endpoints).
@@ -13,6 +12,7 @@ import type { DatabaseSync } from "node:sqlite";
  * envelope `ts`/`expires_at` fields.
  */
 import { createHash } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { type Envelope, validateEnvelope } from "./envelope.js";
 
 export interface IngestResult {

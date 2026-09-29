@@ -22,12 +22,12 @@
  */
 
 import type { EventJournal, JournalEvent } from "../../infra/event-journal.js";
-import type { ReconstructedTrace, TraceStep, TraceTask } from "./types.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { makeYieldEvery, yieldToEventLoop } from "../event-loop.js";
 import { formatRunOutcome } from "./outcome.js";
 import { classifyRunOrigin } from "./run-origin.js";
 import { extractTraceSignals, formatSignals } from "./signals.js";
+import type { ReconstructedTrace, TraceStep, TraceTask } from "./types.js";
 
 /** Paper Appendix C: per-log character cap before prompt injection. */
 export const TRACE_LOG_MAX_CHARS = 15_000;

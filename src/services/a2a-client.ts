@@ -9,11 +9,11 @@
  * 5. Collect result and record purchase
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { WalletService } from "./wallet-service.js";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CommerceReputationLedger, type CommerceOutcome } from "../memory/commerce-reputation.js";
+import type { WalletService } from "./wallet-service.js";
 
 const log = createSubsystemLogger("a2a-client");
 

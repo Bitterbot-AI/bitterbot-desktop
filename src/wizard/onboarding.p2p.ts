@@ -26,15 +26,15 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
-import type { WizardFlow } from "./onboarding.types.js";
-import type { WizardPrompter } from "./prompts.js";
 import { resolveBootstrapDns } from "../infra/dns-bootstrap.js";
 import {
   parseMultiaddr,
   probeOrchestratorBinary,
   probeTcpReachable,
 } from "../infra/orchestrator-binary.js";
+import type { RuntimeEnv } from "../runtime.js";
+import type { WizardFlow } from "./onboarding.types.js";
+import type { WizardPrompter } from "./prompts.js";
 
 export async function setupP2pForOnboarding(params: {
   config: BitterbotConfig;

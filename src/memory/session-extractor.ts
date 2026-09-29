@@ -17,9 +17,9 @@
  * - High dopamine → prioritize achievement facts
  */
 
-import type { SessionHandoverBrief } from "./session-handover.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeCanonicalKey } from "./canonical-facts.js";
+import type { SessionHandoverBrief } from "./session-handover.js";
 import { remapLine, stripHeartbeatTurns, windowTranscript } from "./session-transcript-prep.js";
 
 const log = createSubsystemLogger("memory/session-extractor");

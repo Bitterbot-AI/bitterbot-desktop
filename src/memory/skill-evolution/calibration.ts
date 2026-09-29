@@ -22,9 +22,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { EventJournal } from "../../infra/event-journal.js";
-import type { ReconstructedTrace, TraceLabel, TraceLabelResult } from "./types.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import type { EventJournal } from "../../infra/event-journal.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
@@ -36,6 +35,7 @@ import { readRunFeedback } from "./run-feedback.js";
 import { classifyRunOrigin, isLearnableOrigin } from "./run-origin.js";
 import { DEFAULT_EXCLUDED_SESSION_PATTERNS } from "./sampler.js";
 import { formatTraceLog, listRunsSinceDetailed, reconstructTrace } from "./traces.js";
+import type { ReconstructedTrace, TraceLabel, TraceLabelResult } from "./types.js";
 
 const log = createSubsystemLogger("skill-evolution/calibration");
 

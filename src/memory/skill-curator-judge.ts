@@ -21,9 +21,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { TransitionProposal } from "./skill-curator-heuristics.js";
 import type { SkillLifecycleRow } from "./skill-lifecycle.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/skill-curator-judge");
 

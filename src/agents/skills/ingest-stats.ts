@@ -9,8 +9,8 @@
  * like the orchestrator's session counters it sits next to.
  */
 
-import type { IngestResult, SkillEnvelope } from "./ingest.js";
 import { normalizeSkillName } from "../../memory/skill-evolution/validation-summaries.js";
+import type { IngestResult, SkillEnvelope } from "./ingest.js";
 
 export type IngestOutcomeStats = {
   sinceMs: number;

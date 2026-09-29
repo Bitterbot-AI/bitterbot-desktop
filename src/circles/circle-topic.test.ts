@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import { generateKeyPair, type KeyPair } from "../commerce/envelope.js";
+import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import { handleCircleMethod } from "../gateway/a2a/circles.js";
 import { handleMailboxMethod } from "../gateway/a2a/mailbox.js";
 import { ensureMemoryIndexSchema } from "../memory/memory-schema.js";

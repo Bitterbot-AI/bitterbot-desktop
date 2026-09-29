@@ -14,11 +14,14 @@
  * gateway and exposed via `getActiveTaskStore()` for tool callsites.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { requireNodeSqlite } from "../memory/sqlite.js";
+import { resolveUserPath } from "../utils.js";
 import type {
   CheckpointRef,
   TaskCheck,
@@ -34,9 +37,6 @@ import type {
   TaskStatus,
   TaskUpdateInput,
 } from "./types.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
-import { requireNodeSqlite } from "../memory/sqlite.js";
-import { resolveUserPath } from "../utils.js";
 import { isTerminal } from "./types.js";
 
 const log = createSubsystemLogger("tasks/store");

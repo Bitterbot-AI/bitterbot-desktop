@@ -12,12 +12,12 @@
 import crypto from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it, expect, beforeEach } from "vitest";
-import type { KnowledgeCrystal } from "./crystal-types.js";
-import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js";
 import { ConsolidationEngine } from "./consolidation.js";
+import type { KnowledgeCrystal } from "./crystal-types.js";
 import { rowToCrystal, crystalToRow, inferSemanticType, defaultGovernance } from "./crystal.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import { DreamEngine } from "./dream-engine.js";
+import type { DreamInsight, SynthesizeFn, EmbedBatchFn } from "./dream-types.js";
 import { MemoryGovernance } from "./governance.js";
 import { HormonalStateManager } from "./hormonal.js";
 import { MemStore } from "./mem-store.js";

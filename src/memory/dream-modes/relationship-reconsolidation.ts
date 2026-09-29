@@ -23,8 +23,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { KnowledgeGraphManager } from "../knowledge-graph.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { KnowledgeGraphManager } from "../knowledge-graph.js";
 
 const log = createSubsystemLogger("memory/dream/relationship-reconsolidation");
 

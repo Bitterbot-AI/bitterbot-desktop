@@ -4,9 +4,9 @@
  * test and bootstrap CI unchanged so the report's numbers are the gate's.
  */
 
-import type { ArmId, CorpusId, ModelId } from "./plan.js";
 import { bootstrapMeanCi } from "../../../src/memory/skill-evolution/bootstrap-ci.js";
 import { exactSignTest } from "../../../src/memory/skill-evolution/sign-test.js";
+import type { ArmId, CorpusId, ModelId } from "./plan.js";
 
 export interface TrialRecord {
   arm: ArmId;

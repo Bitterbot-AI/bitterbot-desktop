@@ -20,8 +20,8 @@
  *    recall-eligible memory in either direction.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { wrapExternalContent } from "../security/external-content.js";
 import { computeCanvasCards } from "./canvas.js";

@@ -14,9 +14,9 @@
  * a miss. Non-entity turns skip the stage entirely (zero graph cost).
  */
 
+import { FAMILY_RELATION_LABEL } from "./kg-relationship-extract.js";
 import type { KnowledgeGraphManager, RelationType } from "./knowledge-graph.js";
 import type { ProactiveFact } from "./proactive-recall.js";
-import { FAMILY_RELATION_LABEL } from "./kg-relationship-extract.js";
 
 const FAMILY_RELATIONS = new Set<RelationType>([
   "spouse_of",

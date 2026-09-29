@@ -1,6 +1,5 @@
 import { FileEdit, Plus, Minus, Columns, Rows } from "lucide-react";
 import { useState, useMemo } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import {
   extractStrReplaceArgs,
@@ -8,6 +7,7 @@ import {
   calculateDiffStats,
   type DiffLine,
 } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 type DiffMode = "unified" | "split";
 

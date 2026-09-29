@@ -11,7 +11,6 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { appendImpactEntry } from "../skills/impact-trail.js";
 import { bumpSkillsSnapshotVersion } from "../skills/refresh.js";
@@ -23,6 +22,7 @@ import {
 } from "../skills/skill-manage.js";
 import { promoteStaged, rollbackStaged } from "../skills/skill-promote.js";
 import { liveSkillPath, resolveStorageRoots } from "../skills/skill-storage.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const ManageSchema = Type.Object({

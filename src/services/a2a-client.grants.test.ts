@@ -6,11 +6,11 @@
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { WalletService } from "./wallet-service.js";
 import { loadNodeCircleSigner, verifyEd25519 } from "../payments/ap2/ed25519.js";
 import { SpendGrantStore } from "../payments/grants/spend-grant-store.js";
 import { buildSpendGrant, usdc } from "../payments/grants/spend-grant.js";
 import { A2aClient, classifyOutcome } from "./a2a-client.js";
+import type { WalletService } from "./wallet-service.js";
 
 // Spy on escalation delivery so we can assert a raised approval is pushed to
 // the operator (the notifier itself is unit-tested in escalation-notifier.test).

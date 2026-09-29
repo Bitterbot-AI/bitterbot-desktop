@@ -1,5 +1,5 @@
-import type { Llama, LlamaEmbeddingContext, LlamaModel } from "node-llama-cpp";
 import fsSync from "node:fs";
+import type { Llama, LlamaEmbeddingContext, LlamaModel } from "node-llama-cpp";
 import type { BitterbotConfig } from "../config/config.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
