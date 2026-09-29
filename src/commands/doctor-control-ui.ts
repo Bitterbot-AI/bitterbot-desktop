@@ -4,8 +4,8 @@
  * CLI doctor and the gateway's doctor.findings RPC.
  */
 
-import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { resolveControlUiRoot } from "../gateway/control-ui-assets.js";
 import { renderSection, type CheckResult, error, info, ok } from "./doctor-check.js";
 

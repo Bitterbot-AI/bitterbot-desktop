@@ -14,10 +14,9 @@
  * Phase 1 (2026-09-05).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { HarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
-import type { HormonalStateManager } from "./hormonal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { computeDreamTaskAdjustments, scanPendingTasksForDream } from "../tasks/biology.js";
 import {
@@ -63,6 +62,7 @@ import {
   DEFAULT_MODE_TIERS,
 } from "./dream-types.js";
 import { yieldToEventLoop } from "./event-loop.js";
+import type { HormonalStateManager } from "./hormonal.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 import { ensureColumn } from "./memory-schema.js";
 const log = createSubsystemLogger("memory/dream");

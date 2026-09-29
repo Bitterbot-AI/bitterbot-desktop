@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { XAccountConfig, XTokenRecord } from "./types.js";
 import {
   buildClientAuthHeaders,
   getValidAccessToken,
@@ -10,6 +9,7 @@ import {
   tokenResponseToRecord,
   writeTokenRecord,
 } from "./token-store.js";
+import type { XAccountConfig, XTokenRecord } from "./types.js";
 
 const account: XAccountConfig = { clientId: "cid", clientSecret: "sec" };
 

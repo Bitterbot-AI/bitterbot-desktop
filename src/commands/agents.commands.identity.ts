@@ -1,10 +1,10 @@
 import path from "node:path";
-import type { IdentityConfig } from "../config/types.js";
-import type { RuntimeEnv } from "../runtime.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { writeConfigFile } from "../config/config.js";
 import { logConfigUpdated } from "../config/logging.js";
+import type { IdentityConfig } from "../config/types.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath, shortenHomePath } from "../utils.js";
 import { requireValidConfig } from "./agents.command-shared.js";

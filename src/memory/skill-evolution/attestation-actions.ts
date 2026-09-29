@@ -10,9 +10,9 @@
  * cannot demote. Split out of attestation.ts (500-line cap).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { canaryOff, isCanaryOff, readCanaryRegistry } from "../../agents/skills/canary-registry.js";
 import { appendImpactEntry, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";

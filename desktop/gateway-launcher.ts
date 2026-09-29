@@ -1,4 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 // Dev-server endpoint that lets the Control UI start the gateway when the
 // gateway itself is down. The Vite dev server is the only process still
 // listening at that point (PLAN-39 gateway-served UI is unbuilt; the Tauri
@@ -11,6 +10,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
 import { createHash, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import net from "node:net";
 import path from "node:path";
 

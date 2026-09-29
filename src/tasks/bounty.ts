@@ -42,8 +42,8 @@
  * once the orchestrator pubsub channel for `task_bounty` is plumbed.
  */
 
-import type { Task } from "./types.js";
 import { getActiveTaskStore } from "./store.js";
+import type { Task } from "./types.js";
 
 export type BiddableTaskSummary = {
   taskId: string;

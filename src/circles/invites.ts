@@ -20,8 +20,8 @@
  * cannot be upgraded in transit. Redemption is default single-use.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { KeyPair } from "../commerce/envelope.js";
 import type { JsonValue } from "../commerce/sku.js";
 import type { CircleScope } from "../memory/circles-store.js";

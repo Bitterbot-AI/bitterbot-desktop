@@ -6,14 +6,8 @@
  * bot's own timeline; "reply:<postId>" replies (only if policy.allowReplies).
  */
 
-import { withFileLock } from "bitterbot/plugin-sdk";
 import fs from "node:fs/promises";
-import type {
-  ChannelOutboundAdapter,
-  ChannelOutboundContext,
-  OutboundDeliveryResult,
-  XPostTarget,
-} from "./types.js";
+import { withFileLock } from "bitterbot/plugin-sdk";
 import { createPost } from "./api.js";
 import { DEFAULT_ACCOUNT_ID, getAccountConfig, normalizeHandle, resolvePolicy } from "./config.js";
 import { appendLedger, ledgerWindowStart, readLedger } from "./ledger.js";
@@ -21,6 +15,12 @@ import { resolveKillSwitchPath, resolveLedgerPath, resolveTokenFilePath } from "
 import { evaluatePolicy } from "./policy.js";
 import { X_MAX_WEIGHTED_LENGTH } from "./text.js";
 import { readTokenRecord } from "./token-store.js";
+import type {
+  ChannelOutboundAdapter,
+  ChannelOutboundContext,
+  OutboundDeliveryResult,
+  XPostTarget,
+} from "./types.js";
 
 export const X_TARGET_HINT =
   'use target "timeline" for an original post, or "reply:<postId>" (replies are off by default)';

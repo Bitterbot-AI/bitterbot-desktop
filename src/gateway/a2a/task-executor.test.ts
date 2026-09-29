@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { MessageSendParams } from "./types.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import {
   composeSkillInvocationMessage,
@@ -8,6 +7,7 @@ import {
   prepareOutboundA2aText,
   resolveRemoteTimeoutSeconds,
 } from "./task-executor.js";
+import type { MessageSendParams } from "./types.js";
 
 // PLAN-31 Phase 0: inbound A2A text is a hostile principal class. It must be
 // injection-scanned and wrapped in the external-untrusted envelope before it

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { BitterbotConfig } from "./types.bitterbot.js";
 import { applyA2aDefaults, isEarningCapable } from "./defaults.js";
+import type { BitterbotConfig } from "./types.bitterbot.js";
 
 // PLAN-29 Phase 0.2: the earning path (charging peers x402 USDC over A2A)
 // defaults ON when the node holds full CDP credentials, OFF otherwise, and

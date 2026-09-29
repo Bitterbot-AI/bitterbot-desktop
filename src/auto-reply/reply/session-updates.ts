@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
-import type { CapabilityGateContext } from "../../agents/skills/capability-gate.js";
-import type { BitterbotConfig } from "../../config/config.js";
 import { resolveUserTimezone } from "../../agents/date-time.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
+import type { CapabilityGateContext } from "../../agents/skills/capability-gate.js";
 import { createCapabilityRuntimeFromMemory } from "../../agents/skills/capability-runtime.js";
 import { ensureSkillsWatcher, getSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import { type SessionEntry, updateSessionStore } from "../../config/sessions.js";
 import { buildChannelSummary } from "../../infra/channel-summary.js";
 import {

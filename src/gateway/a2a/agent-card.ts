@@ -1,8 +1,8 @@
 import type { SkillEntry } from "../../agents/skills/types.js";
 import type { A2aConfig } from "../../config/types.a2a.js";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { A2aAgentCard, A2aSkill } from "./types.js";
 import { getLocalWalletCapability } from "../../infra/wallet-discovery.js";
+import type { A2aAgentCard, A2aSkill } from "./types.js";
 
 const A2A_PROTOCOL_VERSION = "a2a/1.0.0";
 const AGENT_CARD_VERSION = "1.0.0";

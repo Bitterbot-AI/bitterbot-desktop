@@ -6,6 +6,7 @@
  */
 
 import type { IclContext } from "../../../src/memory/skill-evolution/icl-context.js";
+import { exactSignTest } from "../../../src/memory/skill-evolution/sign-test.js";
 import type {
   ArmId,
   CorpusId,
@@ -15,7 +16,6 @@ import type {
   ResolvedModel,
 } from "./plan.js";
 import type { ArmStats, PairedStats } from "./stats.js";
-import { exactSignTest } from "../../../src/memory/skill-evolution/sign-test.js";
 
 export const HARNESS_VERSION = 2;
 

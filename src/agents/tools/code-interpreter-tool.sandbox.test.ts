@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { AnyAgentTool } from "./common.js";
 import { applyOwnerOnlyToolPolicy, isOwnerOnlyToolName } from "../tool-policy.js";
 import { __testing } from "./code-interpreter-tool.js";
+import type { AnyAgentTool } from "./common.js";
 
 const { executeJavaScript } = __testing;
 

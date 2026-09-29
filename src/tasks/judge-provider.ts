@@ -24,8 +24,8 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import type { LlmCall } from "./judge.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { LlmCall } from "./judge.js";
 import { registerJudgeLlmCall, registerJudgeModel } from "./judge.js";
 
 const log = createSubsystemLogger("tasks/judge-provider");

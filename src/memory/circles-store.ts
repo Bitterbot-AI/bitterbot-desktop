@@ -31,8 +31,8 @@
  *    global revocation.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 
 /**
  * Hard roster ceiling (2026-08-13). "Circles cap at ~15" was prose in two

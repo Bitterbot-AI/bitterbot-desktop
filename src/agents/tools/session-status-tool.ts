@@ -1,9 +1,8 @@
 import { Type } from "@sinclair/typebox";
-import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { normalizeGroupActivation } from "../../auto-reply/group-activation.js";
 import { getFollowupQueueDepth, resolveQueueSettings } from "../../auto-reply/reply/queue.js";
 import { buildStatusMessage } from "../../auto-reply/status.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import { loadConfig } from "../../config/config.js";
 import {
   loadSessionStore,
@@ -42,6 +41,7 @@ import {
 } from "../model-selection.js";
 import { getTruncatedOriginalsSize } from "../progressive-compression.js";
 import { getGlobalToolCache } from "../tool-cache.js";
+import type { AnyAgentTool } from "./common.js";
 import { readStringParam } from "./common.js";
 import {
   shouldResolveSessionIdInput,

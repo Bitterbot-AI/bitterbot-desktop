@@ -4,9 +4,9 @@ import type {
   AgentToolUpdateCallback,
 } from "@mariozechner/pi-agent-core";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import type { ClientToolDefinition } from "./pi-embedded-runner/run/params.js";
 import { logDebug, logError } from "../logger.js";
 import { isPlainObject } from "../utils.js";
+import type { ClientToolDefinition } from "./pi-embedded-runner/run/params.js";
 import {
   consumeAdjustedParamsForToolCall,
   isToolWrappedWithBeforeToolCallHook,

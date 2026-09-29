@@ -6,11 +6,11 @@
  * peer-to-peer crystal import with governance-enforced access control.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import { rowToCrystal } from "./crystal.js";
 import { ensureColumn } from "./memory-schema.js";
 import { skillCategoryFromContent } from "./skill-category.js";

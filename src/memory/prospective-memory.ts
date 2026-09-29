@@ -11,8 +11,8 @@
  * PLAN-9: GAP-9 (Prospective Memory)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
 

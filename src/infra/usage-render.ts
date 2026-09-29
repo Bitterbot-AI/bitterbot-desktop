@@ -2,6 +2,10 @@
  * PLAN-50: plain-text rendering of a usage-ledger summary for the CLI and chat commands.
  */
 
+import {
+  formatTokenCount as formatTokenCountRaw,
+  formatUsd as formatUsdRaw,
+} from "../utils/usage-format.js";
 import type {
   UsageExplanation,
   UsageGroupSummary,
@@ -10,10 +14,6 @@ import type {
   UsageTotalsRow,
   UsageWhatIf,
 } from "./usage-ledger.types.js";
-import {
-  formatTokenCount as formatTokenCountRaw,
-  formatUsd as formatUsdRaw,
-} from "../utils/usage-format.js";
 
 const formatTokenCount = (n: number): string => formatTokenCountRaw(n) ?? String(n);
 const formatUsd = (n: number): string => formatUsdRaw(n) ?? `$${n.toFixed(2)}`;

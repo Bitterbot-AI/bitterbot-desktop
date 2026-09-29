@@ -3,10 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { CrystallizationCandidate } from "./types.js";
 import { crystallizeSkill } from "./crystallize.js";
 import { readProvenance } from "./impact-trail.js";
 import { readLive, resolveStorageRoots } from "./skill-storage.js";
+import type { CrystallizationCandidate } from "./types.js";
 
 function candidate(overrides: Partial<CrystallizationCandidate> = {}): CrystallizationCandidate {
   return {

@@ -3,11 +3,11 @@
  * Only functional when the node is running in management tier.
  */
 
-import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 async function getManagementService() {
   const cfg = loadConfig();

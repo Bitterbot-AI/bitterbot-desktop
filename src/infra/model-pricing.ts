@@ -14,6 +14,7 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { getLivePricingStatus, lookupLivePrice } from "./model-pricing-live.js";
 import type {
   ModelPrice,
   PricingSource,
@@ -21,7 +22,6 @@ import type {
   UsageCost,
   UsageKind,
 } from "./usage-ledger.types.js";
-import { getLivePricingStatus, lookupLivePrice } from "./model-pricing-live.js";
 
 export type ResolvedPricing = { price: ModelPrice; source: PricingSource };
 

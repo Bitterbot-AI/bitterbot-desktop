@@ -10,11 +10,17 @@
  * default; `BITTERBOT_USAGE_LEDGER=0` disables. Recording never throws into callers.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import type { NormalizedUsage } from "../agents/usage.js";
 import type { BitterbotConfig } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { requireNodeSqlite } from "../memory/sqlite.js";
+import { resolveUserPath } from "../utils.js";
+import { startPricingRefresh, stopPricingRefresh } from "./model-pricing-live.js";
+import { priceUsage, resolveModelPricing } from "./model-pricing.js";
 import type {
   CacheTtlLabel,
   CacheTurnState,
@@ -29,12 +35,6 @@ import type {
   UsageKind,
   UsageLedgerHealth,
 } from "./usage-ledger.types.js";
-import { resolveStateDir } from "../config/paths.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
-import { requireNodeSqlite } from "../memory/sqlite.js";
-import { resolveUserPath } from "../utils.js";
-import { startPricingRefresh, stopPricingRefresh } from "./model-pricing-live.js";
-import { priceUsage, resolveModelPricing } from "./model-pricing.js";
 import { emptyUsageCost, formatUsageDay } from "./usage-ledger.types.js";
 
 const log = createSubsystemLogger("usage-ledger");

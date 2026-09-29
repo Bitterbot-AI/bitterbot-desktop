@@ -1,12 +1,12 @@
 import { Type } from "@sinclair/typebox";
-import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { formatCliCommand } from "../../cli/command-format.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import { USAGE_FEATURES } from "../../infra/usage-features.js";
 import { recordUsage } from "../../infra/usage-ledger.js";
 import { wrapWebContent } from "../../security/external-content.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import { withOpenRouterAttribution } from "../openrouter-attribution.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 import {
   CacheEntry,

@@ -3,10 +3,10 @@
  * and computes empirical quality metrics for feedback into mutation scoring.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { ExecutionOutcome, SkillMetrics, PeerSkillMetrics } from "./crystal-types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { ExecutionOutcome, SkillMetrics, PeerSkillMetrics } from "./crystal-types.js";
 
 const _log = createSubsystemLogger("memory/execution-tracker");
 

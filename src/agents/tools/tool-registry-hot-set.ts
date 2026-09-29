@@ -26,13 +26,13 @@
 
 import type { BitterbotConfig } from "../../config/config.js";
 import type { ToolHotSetConfig, ToolHotSetLane } from "../../config/types.tools.js";
-import type { AnyAgentTool } from "./common.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { isSubagentSessionKey } from "../../routing/session-key.js";
 import { isCronSessionKey } from "../../sessions/session-key-utils.js";
 import { resolveAgentConfig } from "../agent-scope.js";
 import { markToolDeferLoading, registerDeferralPlan } from "../providers/anthropic/tool-search.js";
 import { normalizeToolName } from "../tool-policy.js";
+import type { AnyAgentTool } from "./common.js";
 import { createListToolsTool, createUseToolTool } from "./tool-dispatcher-tool.js";
 
 const log = createSubsystemLogger("agents/tools/hot-set");

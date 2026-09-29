@@ -16,8 +16,8 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { EventJournal } from "../../infra/event-journal.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import type { EventJournal } from "../../infra/event-journal.js";
 import { atomicWriteJson } from "./fs-atomic.js";
 import { formatTraceLog, reconstructTrace } from "./traces.js";
 

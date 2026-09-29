@@ -1,6 +1,6 @@
-import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_EXECUTABLE = "hol-guard";

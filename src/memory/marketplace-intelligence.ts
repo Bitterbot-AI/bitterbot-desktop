@@ -9,10 +9,10 @@
  * Plan 8, Phase 7.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { DreamMode } from "./dream-types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { DreamMode } from "./dream-types.js";
 import { runEvidenceWhere } from "./skill-execution-tracker.js";
 
 const log = createSubsystemLogger("memory/marketplace-intelligence");

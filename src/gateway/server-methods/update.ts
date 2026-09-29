@@ -1,4 +1,3 @@
-import type { GatewayRequestHandlers } from "./types.js";
 import { loadConfig } from "../../config/config.js";
 import { resolveBitterbotPackageRoot } from "../../infra/bitterbot-root.js";
 import { armBootVerify, clearRollbackRecord } from "../../infra/boot-verify.js";
@@ -21,6 +20,7 @@ import {
   validateUpdateRunParams,
 } from "../protocol/index.js";
 import { parseRestartRequestParams } from "./restart-request.js";
+import type { GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
 // Single-flight: concurrent update.check calls share one underlying probe so

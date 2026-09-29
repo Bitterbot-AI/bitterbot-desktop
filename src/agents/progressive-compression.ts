@@ -9,9 +9,9 @@
  * - Long conversations: cheap truncation first, then LLM summarization on the reduced set
  */
 
+import { createHash } from "node:crypto";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { estimateTokens } from "@mariozechner/pi-coding-agent";
-import { createHash } from "node:crypto";
 
 export interface ProgressiveCompressionConfig {
   /** Enable progressive compression (default: true). */

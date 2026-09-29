@@ -15,8 +15,8 @@
  * - MAGMA multi-graph (arxiv:2601.03236)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isAdmissibleEntity, isAdmissibleRelation } from "./kg-entity-admission.js";
 import { buildRelationshipTemporalWhereClause } from "./temporal-filter.js";

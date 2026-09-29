@@ -15,9 +15,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
-import type { ModelPrice } from "./usage-ledger.types.js";
 import { resolveStateDir } from "../config/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { ModelPrice } from "./usage-ledger.types.js";
 
 const log = createSubsystemLogger("model-pricing-live");
 

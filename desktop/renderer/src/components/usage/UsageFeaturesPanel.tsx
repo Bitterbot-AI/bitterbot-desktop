@@ -1,6 +1,6 @@
-import type { UsageGroupSummary, UsageLedgerSummary } from "../../stores/usage-store";
 import { formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { UsageGroupSummary, UsageLedgerSummary } from "../../stores/usage-store";
 import { formatPct, formatUsdSmart, kindLabel } from "./usage-format";
 
 function DistributionPanel({

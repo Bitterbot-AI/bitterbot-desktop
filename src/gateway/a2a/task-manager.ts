@@ -1,6 +1,7 @@
-import type { DatabaseSync } from "node:sqlite";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
+import { A2aTaskStore, ensureA2aSchema } from "./task-store.js";
 import type {
   A2aArtifact,
   A2aMessage,
@@ -10,7 +11,6 @@ import type {
   A2aStreamEvent,
   MessageSendParams,
 } from "./types.js";
-import { A2aTaskStore, ensureA2aSchema } from "./task-store.js";
 
 type TaskEventListener = (event: A2aStreamEvent) => void;
 

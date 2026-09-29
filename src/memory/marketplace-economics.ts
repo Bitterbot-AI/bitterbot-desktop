@@ -12,8 +12,8 @@
  * search, discovery, trending, and recommendations.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { setChunkProvenance } from "./chunk-writer.js";
 import { checkListingLineage, contentSha256 } from "./lineage-gate.js";

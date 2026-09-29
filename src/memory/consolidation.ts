@@ -8,8 +8,8 @@
  * All state transitions are logged to memory_audit_log.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { setChunkLifecycle } from "./chunk-writer.js";
 import { recordDreamTelemetry } from "./dream-schema.js";

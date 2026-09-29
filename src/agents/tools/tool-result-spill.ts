@@ -14,10 +14,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { truncateUtf16Safe } from "../../utils.js";
 import { carryToolMarkers } from "../pi-tools.types.js";
+import type { AnyAgentTool } from "./common.js";
 
 const log = createSubsystemLogger("agents/tools/result-spill");
 

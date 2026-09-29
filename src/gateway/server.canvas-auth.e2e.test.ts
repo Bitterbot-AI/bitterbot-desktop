@@ -3,12 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import type { CanvasHostHandler } from "../canvas-host/server.js";
-import type { ResolvedGatewayAuth } from "./auth.js";
-import type { GatewayWsClient } from "./server/ws-types.js";
 import { A2UI_PATH, CANVAS_HOST_PATH, CANVAS_WS_PATH } from "../canvas-host/a2ui.js";
+import type { CanvasHostHandler } from "../canvas-host/server.js";
 import { createAuthRateLimiter } from "./auth-rate-limit.js";
+import type { ResolvedGatewayAuth } from "./auth.js";
 import { attachGatewayUpgradeHandler, createGatewayHttpServer } from "./server-http.js";
+import type { GatewayWsClient } from "./server/ws-types.js";
 
 async function withTempConfig(params: { cfg: unknown; run: () => Promise<void> }): Promise<void> {
   const prevConfigPath = process.env.BITTERBOT_CONFIG_PATH;

@@ -9,7 +9,6 @@
 
 import type { AssistantMessage, Message } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../config/config.js";
-import type { UsageKind } from "../infra/usage-ledger.types.js";
 import {
   ANTHROPIC_BATCH_DEFAULT_MAX_WAIT_MINUTES,
   batchStopReason,
@@ -22,6 +21,7 @@ import {
 import { isBackgroundUsagePaused } from "../infra/usage-budgets.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { getUsageLedger, recordUsage } from "../infra/usage-ledger.js";
+import type { UsageKind } from "../infra/usage-ledger.types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withOpenRouterAttribution } from "./openrouter-attribution.js";
 

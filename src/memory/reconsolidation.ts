@@ -13,8 +13,8 @@
  * PLAN-9: GAP-5 (Memory Reconsolidation)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/reconsolidation");

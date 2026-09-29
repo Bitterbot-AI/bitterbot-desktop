@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { ReconstructedTrace, TraceToolStep } from "./types.js";
 import { appendFixtureRun, makeFixtureJournal } from "./__fixtures__/journal-fixture.js";
 import {
   computeRunOutcome,
@@ -8,6 +7,7 @@ import {
   formatRunOutcome,
 } from "./outcome.js";
 import { reconstructTrace } from "./traces.js";
+import type { ReconstructedTrace, TraceToolStep } from "./types.js";
 
 function tool(name: string, opts: { error?: boolean; pending?: boolean } = {}): TraceToolStep {
   return {

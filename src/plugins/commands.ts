@@ -6,12 +6,12 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { logVerbose } from "../globals.js";
 import type {
   BitterbotPluginCommandDefinition,
   PluginCommandContext,
   PluginCommandResult,
 } from "./types.js";
-import { logVerbose } from "../globals.js";
 
 type RegisteredPluginCommand = BitterbotPluginCommandDefinition & {
   pluginId: string;

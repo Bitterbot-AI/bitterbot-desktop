@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ScorePairFn } from "../experiment-sandbox.js";
-import type { HeldOutExecution } from "../skill-execution-selection.js";
 import {
   defaultHarnessPolicy,
   type HarnessPolicy,
 } from "../../agents/pi-embedded-runner/harness-policy.js";
+import type { ScorePairFn } from "../experiment-sandbox.js";
+import type { HeldOutExecution } from "../skill-execution-selection.js";
 import { evaluateHarnessCandidate } from "./harness-evolve.gate.js";
 
 function selection(n: number): HeldOutExecution[] {

@@ -1,9 +1,9 @@
 import { Type } from "@sinclair/typebox";
 import type { ClearinghouseService } from "../../commerce/clearinghouse.js";
-import type { BitterbotConfig } from "../../config/config.js";
 import { type KeyPair, makeEnvelope } from "../../commerce/envelope.js";
 import { isAubaineEnabled } from "../../commerce/feature.js";
 import { canonicalizeSku, type JsonValue } from "../../commerce/sku.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import { stringEnum } from "../schema/typebox.js";
 import {
   type AnyAgentTool,

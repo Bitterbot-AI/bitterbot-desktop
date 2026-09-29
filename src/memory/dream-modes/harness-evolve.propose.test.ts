@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { FailureCluster } from "./harness-evolve.weakness.js";
 import { defaultHarnessPolicy } from "../../agents/pi-embedded-runner/harness-policy.js";
 import { proposeHarnessCandidates } from "./harness-evolve.propose.js";
+import type { FailureCluster } from "./harness-evolve.weakness.js";
 
 const cluster: FailureCluster = {
   signature: {

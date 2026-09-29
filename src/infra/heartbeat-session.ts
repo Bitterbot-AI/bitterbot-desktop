@@ -5,9 +5,8 @@
  */
 
 import fs from "node:fs/promises";
-import type { BitterbotConfig } from "../config/config.js";
-import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { BitterbotConfig } from "../config/config.js";
 import {
   canonicalizeMainSessionAlias,
   loadSessionStore,
@@ -18,6 +17,7 @@ import {
   resolveStorePath,
   updateSessionStore,
 } from "../config/sessions.js";
+import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
 import {
   normalizeAgentId,
   parseAgentSessionKey,

@@ -7,19 +7,19 @@
  * network) plus the benign cases (verified publisher, local skill).
  */
 
-import type { Skill } from "@mariozechner/pi-coding-agent";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { Skill } from "@mariozechner/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { CapabilityGrant } from "./capability-grants.js";
-import type { SkillEntry } from "./types.js";
 import {
   applyCapabilityGate,
   evaluateSkillCapabilities,
   loadSkillProvenance,
   type CapabilityGateContext,
 } from "./capability-gate.js";
+import type { CapabilityGrant } from "./capability-grants.js";
+import type { SkillEntry } from "./types.js";
 
 function buildEntry(overrides: {
   baseDir: string;

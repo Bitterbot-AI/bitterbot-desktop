@@ -8,9 +8,9 @@ import {
   Image,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { extractScreenshot, extractDomain } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 export function BrowserToolView({ toolCall }: ToolViewProps) {
   const args = toolCall.args as Record<string, unknown> | undefined;

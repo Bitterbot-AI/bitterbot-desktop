@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { TaskStore } from "./store.js";
 import { getBids, listBiddableTasks, recordBid } from "./bounty.js";
+import type { TaskStore } from "./store.js";
 import { getActiveTaskStore, startTaskStore, stopTaskStore } from "./store.js";
 
 /** B4: `completed` is reachable only through a passing verification. */

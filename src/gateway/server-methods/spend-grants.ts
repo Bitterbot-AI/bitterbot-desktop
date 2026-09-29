@@ -11,7 +11,6 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
@@ -19,6 +18,7 @@ import { loadNodeCircleSigner, verifyEd25519 } from "../../payments/ap2/ed25519.
 import { SpendGrantStore } from "../../payments/grants/spend-grant-store.js";
 import { buildSpendGrant, usdc } from "../../payments/grants/spend-grant.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 interface EconomicsView {
   getDb?(): DatabaseSync | undefined;

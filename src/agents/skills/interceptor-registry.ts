@@ -6,12 +6,12 @@
  * runner can enforce `maxFiresPerEpisode` cheaply.
  */
 
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type {
   InterceptorOrigin,
   PreActionInterceptor,
   RegisteredInterceptor,
 } from "./interceptor.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
 
 const log = createSubsystemLogger("agents/skills/interceptors");
 

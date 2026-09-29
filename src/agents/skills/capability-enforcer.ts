@@ -31,10 +31,10 @@
  * than the unguarded baseline.
  */
 
-import type { AnyAgentTool } from "../tools/common.js";
-import type { CapabilityAxis } from "./capability-grants.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { carryToolMarkers } from "../pi-tools.types.js";
+import type { AnyAgentTool } from "../tools/common.js";
+import type { CapabilityAxis } from "./capability-grants.js";
 import { type EffectiveCapabilityProfile, profileAllows } from "./capability-profile.js";
 
 const log = createSubsystemLogger("skills/capability-enforcer");

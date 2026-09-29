@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { EvolutionMeta } from "./validation-gate.js";
 import { readProvenance } from "../../agents/skills/impact-trail.js";
 import { resolveStorageRoots } from "../../agents/skills/skill-storage.js";
 import {
@@ -14,6 +13,7 @@ import {
 } from "./p2p-publish.js";
 import { parseProvenanceTrailer, parseRetractionTrailer } from "./provenance-trailer.js";
 import { collectEvolutionStatus } from "./status.js";
+import type { EvolutionMeta } from "./validation-gate.js";
 import { runWikiLint } from "./wiki-lint.js";
 import { applyMaintainerOutput, listPatternNames, type MaintainerOutput } from "./wiki-store.js";
 

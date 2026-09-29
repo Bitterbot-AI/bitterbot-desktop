@@ -1,4 +1,3 @@
-import type { BitterbotConfig } from "./config.js";
 import { normalizeProviderId } from "../agents/model-selection.js";
 import {
   getChannelPluginCatalogEntry,
@@ -11,6 +10,7 @@ import {
 } from "../channels/registry.js";
 import { isRecord } from "../utils.js";
 import { hasAnyWhatsAppAuth } from "../web/accounts.js";
+import type { BitterbotConfig } from "./config.js";
 
 type PluginEnableChange = {
   pluginId: string;

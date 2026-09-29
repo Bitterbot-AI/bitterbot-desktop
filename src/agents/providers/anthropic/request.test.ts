@@ -1,7 +1,6 @@
 import type { AnthropicOptions, Context, Message } from "@mariozechner/pi-ai";
 import { streamAnthropic, streamSimpleAnthropic } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
-import type { AnthropicRequestParams, WireTool } from "./types.js";
 import { applyAnthropicCacheLayout } from "../../pi-embedded-runner/anthropic-payload-cache.js";
 import { CACHE_BOUNDARY_MARKER } from "../../system-prompt-cache-boundary.js";
 import {
@@ -18,6 +17,7 @@ import {
   TOOL_SEARCH_TOOL_NAMES,
   TOOL_SEARCH_TOOL_TYPES,
 } from "./tool-search.js";
+import type { AnthropicRequestParams, WireTool } from "./types.js";
 import { createEmptyUsage } from "./usage.js";
 
 const NO_SEARCH = planToolDeferral({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ReconstructedTrace, TraceToolStep } from "./types.js";
 import { labelHeuristic, labelTrace, parseJudgeVerdict, parseJudgeCriteria } from "./labeler.js";
+import type { ReconstructedTrace, TraceToolStep } from "./types.js";
 
 function envelope(tool: string, error: string): string {
   return JSON.stringify({

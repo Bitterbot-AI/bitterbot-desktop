@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { UsageEventRow, UsageLedgerSummary } from "../../stores/usage-store";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
@@ -7,6 +6,7 @@ import { useChatStore } from "../../stores/chat-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useModelsStore } from "../../stores/models-store";
 import { useSessionsStore } from "../../stores/sessions-store";
+import type { UsageEventRow, UsageLedgerSummary } from "../../stores/usage-store";
 import { formatPct } from "./usage-format";
 
 /**

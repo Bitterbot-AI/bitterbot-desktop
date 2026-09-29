@@ -19,10 +19,10 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { LlmCallFn } from "./maintainer.js";
 import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { atomicWriteJson } from "./fs-atomic.js";
+import type { LlmCallFn } from "./maintainer.js";
 import {
   appendWikiLog,
   archivePattern,

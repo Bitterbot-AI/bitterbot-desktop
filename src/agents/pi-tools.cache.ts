@@ -4,8 +4,8 @@
  */
 
 import type { AnyAgentTool } from "./pi-tools.types.js";
-import type { ToolCache } from "./tool-cache.js";
 import { carryToolMarkers } from "./pi-tools.types.js";
+import type { ToolCache } from "./tool-cache.js";
 
 /**
  * Wrap a tool with cache-checking behavior.

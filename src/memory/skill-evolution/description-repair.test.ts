@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { CorpusTask } from "./task-corpus.js";
 import {
   buildProxyPrompt,
   buildVariantPrompt,
@@ -7,6 +6,7 @@ import {
   parseVariants,
   repairDescription,
 } from "./description-repair.js";
+import type { CorpusTask } from "./task-corpus.js";
 
 const SKILL_MD =
   "---\nname: curl-timeout-guard\ndescription: Curl helper.\n---\n\n## Rule\nAlways pass --max-time 30 to curl.\n";

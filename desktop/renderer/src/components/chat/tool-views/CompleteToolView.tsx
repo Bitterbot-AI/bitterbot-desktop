@@ -1,9 +1,9 @@
 import { CheckCircle2, Trophy, FileText, Sparkles, AlertTriangle } from "lucide-react";
 import { useMemo } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { Markdown } from "../../ui/markdown";
 import { safeJsonParse } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 /**
  * Completion ceremony view for the `complete` tool.

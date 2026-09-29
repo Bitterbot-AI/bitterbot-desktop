@@ -1,9 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { CrystallizationCandidate } from "../../agents/skills/types.js";
-import type { BitterbotConfig } from "../../config/config.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import {
   listAgentIds,
   resolveAgentWorkspaceDir,
@@ -11,7 +8,10 @@ import {
 } from "../../agents/agent-scope.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { installSkill } from "../../agents/skills-install.js";
+import type { CrystallizationCandidate } from "../../agents/skills/types.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import { withTimeout } from "../../utils/with-timeout.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 // Cap the orchestrator IPC (getStats/getBootstrapCensus) in skills.network so a
 // slow/churning orchestrator can't make the polled RPC hang for 20s+ (observed

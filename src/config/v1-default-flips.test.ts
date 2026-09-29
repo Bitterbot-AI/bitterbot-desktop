@@ -7,11 +7,11 @@
  * explicitly. Circles deliberately stays ON (Victor's call) — see the plan.
  */
 import { describe, expect, it } from "vitest";
-import type { BitterbotConfig } from "./types.bitterbot.js";
 import { createSkillSeekersIngestTool } from "../agents/tools/skill-seekers-tool.js";
 import { createWalletTool } from "../agents/tools/wallet-tool.js";
 import { MemoryIndexManager } from "../memory/manager.js";
 import { applyA2aDefaults } from "./defaults.js";
+import type { BitterbotConfig } from "./types.bitterbot.js";
 
 describe("V1 default flips (PLAN-41 D-D)", () => {
   it("a2a.enabled defaults OFF", () => {

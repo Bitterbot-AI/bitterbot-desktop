@@ -1,6 +1,6 @@
+import { listChannelPlugins } from "../../channels/plugins/index.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.js";
 import type { BitterbotConfig } from "../../config/config.js";
-import { listChannelPlugins } from "../../channels/plugins/index.js";
 import {
   listDeliverableMessageChannels,
   type DeliverableMessageChannel,

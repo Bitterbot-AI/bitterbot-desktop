@@ -1,4 +1,3 @@
-import type { GatewayRequestHandlers } from "./types.js";
 import { classifyFeatured } from "../../agents/model-featured.js";
 import { getModelRefStatus, resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { applyDefaultModelPrimaryUpdate, updateConfig } from "../../commands/models/shared.js";
@@ -11,6 +10,7 @@ import {
   validateModelsSetDefaultParams,
 } from "../protocol/index.js";
 import { refreshGatewayModelCatalog } from "../server-model-catalog.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 export const modelsHandlers: GatewayRequestHandlers = {
   "models.list": async ({ params, respond, context }) => {

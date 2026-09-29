@@ -1,8 +1,8 @@
 import { Search, ExternalLink, Globe, Image, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { safeJsonParse, getFaviconUrl, extractDomain, classifyResultType } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 interface SearchResult {
   title: string;

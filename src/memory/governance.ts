@@ -3,11 +3,11 @@
  * TTL enforcement, and audit logging for Knowledge Crystals.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { ProvenanceNode } from "./crystal-types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { setChunkLifecycle, setChunkProvenance } from "./chunk-writer.js";
+import type { ProvenanceNode } from "./crystal-types.js";
 import { ensureColumn } from "./memory-schema.js";
 const log = createSubsystemLogger("memory/governance");
 

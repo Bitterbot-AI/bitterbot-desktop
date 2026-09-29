@@ -14,8 +14,8 @@
  * - computeReward(), scorePendingChunks()
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 // Re-export for consumers that previously imported from gccrf-reward directly via manager
 import { setChunkCuriosityReward } from "./chunk-writer.js";
@@ -23,9 +23,8 @@ import { yieldToEventLoop } from "./event-loop.js";
 import { GCCRFRewardFunction, type GCCRFConfig, type GCCRFRewardResult } from "./gccrf-reward.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 export type { GCCRFRewardResult, GCCRFConfig };
-import type { EmbeddingPerspective } from "./crystal-types.js";
-import type { DreamInsight, DreamMode } from "./dream-types.js";
 import { maybeSpawnTaskFromCuriosity } from "../tasks/biology.js";
+import type { EmbeddingPerspective } from "./crystal-types.js";
 import { ensureCuriositySchema } from "./curiosity-schema.js";
 import {
   type CuriosityConfig,
@@ -37,6 +36,7 @@ import {
   DEFAULT_CURIOSITY_CONFIG,
   DEFAULT_CURIOSITY_WEIGHTS,
 } from "./curiosity-types.js";
+import type { DreamInsight, DreamMode } from "./dream-types.js";
 
 const log = createSubsystemLogger("memory/curiosity");
 
@@ -1661,9 +1661,9 @@ export class CuriosityEngine {
     // Try reading GCCRF region ETA state
     let regionEta: Record<string, { emaLong: number; emaShort: number; sampleCount: number }> = {};
     try {
-      const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
-        | { value: string }
-        | undefined;
+      const row = this.db
+        .prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`)
+        .get() as { value: string } | undefined;
       if (row) {
         regionEta = JSON.parse(row.value);
       }
@@ -1753,9 +1753,9 @@ export class CuriosityEngine {
 
     let regionEta: Record<string, { emaLong: number; emaShort: number; sampleCount: number }> = {};
     try {
-      const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
-        | { value: string }
-        | undefined;
+      const row = this.db
+        .prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`)
+        .get() as { value: string } | undefined;
       if (row) {
         regionEta = JSON.parse(row.value);
       }
@@ -1828,9 +1828,9 @@ export class CuriosityEngine {
 
     // Read per-region learning progress from GCCRF state
     try {
-      const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
-        | { value: string }
-        | undefined;
+      const row = this.db
+        .prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`)
+        .get() as { value: string } | undefined;
       if (row) {
         const regionEta = JSON.parse(row.value) as Record<
           string,

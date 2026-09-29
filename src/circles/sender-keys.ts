@@ -46,8 +46,8 @@
  * tracked follow-up (security pass M6).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { openBox, sealToBox, type BoxKeyPair, type SealedBlob } from "./box-crypto.js";
 

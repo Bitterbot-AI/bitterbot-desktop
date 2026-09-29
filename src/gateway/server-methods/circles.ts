@@ -62,9 +62,8 @@
  * only when a node explicitly sets circles.enabled=false.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { GatewayRequestHandlers } from "./types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
 import {
@@ -84,6 +83,7 @@ import { applyMergePatch } from "../../config/merge-patch.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { renderQrPngBase64 } from "../../web/qr-image.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 async function getCirclesDb(): Promise<DatabaseSync | null> {
   const cfg = loadConfig();

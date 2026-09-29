@@ -32,14 +32,14 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { Type } from "@sinclair/typebox";
-import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { AnyAgentTool } from "./common.js";
 import { pendingAsks } from "../../circles/disclosure.js";
 import { queuePendingOutbound } from "../../circles/pending-outbound.js";
 import { CirclesService } from "../../circles/service.js";
+import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { replaceMarkers } from "../../security/external-content.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringArrayParam, readStringParam } from "./common.js";
 
 const CirclesSchema = Type.Object({

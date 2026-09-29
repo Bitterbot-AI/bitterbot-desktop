@@ -1,4 +1,3 @@
-import { Type } from "@sinclair/typebox";
 /**
  * a2a_status — agent introspection into the A2A subsystem.
  *
@@ -12,6 +11,7 @@ import { mkdirSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { Type } from "@sinclair/typebox";
 import { loadConfig } from "../../config/config.js";
 import { ensureA2aSchema } from "../../gateway/a2a/task-store.js";
 import { stringEnum } from "../schema/typebox.js";

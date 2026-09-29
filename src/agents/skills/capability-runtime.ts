@@ -15,23 +15,23 @@
  */
 
 import type { BitterbotConfig } from "../../config/config.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { PeerReputationManager } from "../../memory/peer-reputation.js";
 import type { EnforcerContext } from "./capability-enforcer.js";
 import type { CapabilityGateContext } from "./capability-gate.js";
+import { loadSkillProvenance } from "./capability-gate.js";
 import type {
   CapabilityAxis,
   CapabilityGrant,
   CapabilityGrantsStore,
 } from "./capability-grants.js";
-import type { SkillEntry } from "./types.js";
-import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { loadSkillProvenance } from "./capability-gate.js";
 import { CapabilityGrantsStore as CapabilityGrantsStoreImpl } from "./capability-grants.js";
 import {
   type EffectiveCapabilityProfile,
   type SkillTrustTier,
   resolveCapabilityProfile,
 } from "./capability-profile.js";
+import type { SkillEntry } from "./types.js";
 
 const log = createSubsystemLogger("skills/capability-runtime");
 

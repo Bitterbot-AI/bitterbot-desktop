@@ -8,13 +8,13 @@
 
 import type { BitterbotConfig } from "../../config/config.js";
 import type { OrchestratorBridge } from "../../infra/orchestrator-bridge.js";
-import type { CrystallizationCandidate } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { appendImpactEntry } from "./impact-trail.js";
 import { bumpSkillsSnapshotVersion } from "./refresh.js";
 import { skillManage } from "./skill-manage.js";
 import { promoteStaged } from "./skill-promote.js";
 import { liveSkillPath, resolveStorageRoots } from "./skill-storage.js";
+import type { CrystallizationCandidate } from "./types.js";
 
 const log = createSubsystemLogger("skills/crystallize");
 

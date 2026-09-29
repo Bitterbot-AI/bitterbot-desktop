@@ -7,10 +7,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
-import type { TaskRunnerFn } from "./validate-tasks.js";
 import { CANONICAL_GENERATOR_VERSION } from "./canonical-corpus.js";
 import { trialsRoot } from "./task-runner.js";
 import { promptHash, type TrialCache } from "./trial-cache.js";
+import type { TaskRunnerFn } from "./validate-tasks.js";
 
 /**
  * PLAN-44 Phase 2: serve trials from the memo. Both arms are keyed by the

@@ -1,7 +1,7 @@
-import type { Page } from "playwright-core";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { Page } from "playwright-core";
 import { resolvePreferredBitterbotTmpDir } from "../infra/tmp-bitterbot-dir.js";
 import {
   ensurePageState,

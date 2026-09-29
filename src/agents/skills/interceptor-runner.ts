@@ -16,18 +16,18 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type {
-  CandidateAction,
-  Intervention,
-  RegisteredInterceptor,
-  StepContext,
-} from "./interceptor.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { ensureInterceptorsAutoBoot } from "./interceptor-autoboot.js";
 import { resolveStepContext } from "./interceptor-context.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
 import { getInterceptorStrikesStore } from "./interceptor-strikes-store.js";
+import type {
+  CandidateAction,
+  Intervention,
+  RegisteredInterceptor,
+  StepContext,
+} from "./interceptor.js";
 import {
   getInterventionStore,
   signInterventionRecord,

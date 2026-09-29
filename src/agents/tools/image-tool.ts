@@ -1,9 +1,7 @@
+import path from "node:path";
 import { type Api, type Context, complete, type Model } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
-import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { SandboxFsBridge } from "../sandbox/fs-bridge.js";
-import type { AnyAgentTool } from "./common.js";
 import { USAGE_FEATURES } from "../../infra/usage-features.js";
 import { recordUsage } from "../../infra/usage-ledger.js";
 import { resolveUserPath } from "../../utils.js";
@@ -17,7 +15,9 @@ import { resolveConfiguredModelRef } from "../model-selection.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
 import { withOpenRouterAttribution } from "../openrouter-attribution.js";
 import { discoverAuthStorage, discoverModels } from "../pi-model-discovery.js";
+import type { SandboxFsBridge } from "../sandbox/fs-bridge.js";
 import { normalizeWorkspaceDir } from "../workspace-dir.js";
+import type { AnyAgentTool } from "./common.js";
 import {
   coerceImageAssistantText,
   coerceImageModelConfig,

@@ -1,10 +1,10 @@
-import type { GatewayRequestHandlers } from "./types.js";
 import {
   getCompactionBreakerSnapshot,
   listCompactionBreakers,
 } from "../../agents/pi-embedded-runner/compaction-circuit-breaker.js";
 import { getCacheMetrics, listCacheMetrics } from "../../agents/prompt-cache-monitor.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 /**
  * Live read of agent-runtime in-memory state inside the gateway process.

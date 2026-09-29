@@ -1,8 +1,7 @@
-import type { AuthProfileCredential, AuthProfileStore } from "../../agents/auth-profiles/types.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import { probeProviderKey } from "../../agents/auth-probe.js";
 import { ensureAuthProfileStore, resolveAuthProfileOrder } from "../../agents/auth-profiles.js";
 import { updateAuthProfileStoreWithLock } from "../../agents/auth-profiles/store.js";
+import type { AuthProfileCredential, AuthProfileStore } from "../../agents/auth-profiles/types.js";
 import { resolveApiKeyForProvider, resolveEnvApiKey } from "../../agents/model-auth.js";
 import { normalizeProviderId } from "../../agents/model-selection.js";
 import { buildTokenProfileId } from "../../commands/auth-token.js";
@@ -18,6 +17,7 @@ import {
   validateModelsAuthTestParams,
 } from "../protocol/index.js";
 import { refreshGatewayModelCatalog } from "../server-model-catalog.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 /**
  * models.auth.* — key management over RPC so the Control UI can list

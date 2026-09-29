@@ -11,8 +11,8 @@ import type {
   HormonalInfluence,
   KnowledgeCrystal,
 } from "./crystal-types.js";
-import type { MemorySource } from "./types.js";
 import { parseEmbedding } from "./internal.js";
+import type { MemorySource } from "./types.js";
 
 /**
  * Convert a DB row into a KnowledgeCrystal object.

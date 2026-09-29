@@ -8,10 +8,10 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { MemorySearchManager } from "../../memory/types.js";
-import type { RLMScope } from "./types.js";
 import { resolveSessionTranscriptsDirForAgent } from "../../config/sessions/paths.js";
 import { isRemoteTaskTranscriptName } from "../../memory/session-files.js";
+import type { MemorySearchManager } from "../../memory/types.js";
+import type { RLMScope } from "./types.js";
 
 type SessionTranscriptMessage = {
   role: string;

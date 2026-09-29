@@ -18,8 +18,8 @@
  *   - Quota / rate-limit headers (we don't speak the wire to ask)
  */
 
-import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import {
   renderSection as renderDoctorSection,
   type CheckResult,

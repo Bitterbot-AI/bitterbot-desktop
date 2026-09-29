@@ -6,8 +6,8 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { XLedgerEntry } from "./types.js";
 import { resolveLedgerPath } from "./paths.js";
+import type { XLedgerEntry } from "./types.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

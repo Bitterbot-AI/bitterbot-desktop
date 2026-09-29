@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Task, TaskHandoff } from "./types.js";
 import {
   buildTaskJudgePrompt,
   buildTaskVerification,
@@ -7,6 +6,7 @@ import {
   runTaskJudge,
   type TaskJudgeInput,
 } from "./judge.js";
+import type { Task, TaskHandoff } from "./types.js";
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   const now = Date.now();

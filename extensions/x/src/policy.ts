@@ -10,7 +10,6 @@
  * - never post while the kill switch file exists
  */
 
-import type { XLedgerEntry, XPolicyConfig, XPolicyVerdict } from "./types.js";
 import {
   X_MAX_WEIGHTED_LENGTH,
   findLinks,
@@ -18,6 +17,7 @@ import {
   similarity,
   weightedLength,
 } from "./text.js";
+import type { XLedgerEntry, XPolicyConfig, XPolicyVerdict } from "./types.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 

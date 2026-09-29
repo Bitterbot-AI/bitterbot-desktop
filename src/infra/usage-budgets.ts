@@ -9,14 +9,14 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { BACKGROUND_USAGE_FEATURES } from "./usage-features.js";
 import type { UsageLedger } from "./usage-ledger.js";
 import type {
   UsageBudgetStatus,
   UsageBudgetWindow,
   UsageBudgetsSummary,
 } from "./usage-ledger.types.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
-import { BACKGROUND_USAGE_FEATURES } from "./usage-features.js";
 import { USAGE_ALERT_LADDER } from "./usage-ledger.types.js";
 
 const log = createSubsystemLogger("usage-budgets");

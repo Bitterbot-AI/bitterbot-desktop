@@ -1,10 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import { TtlCache } from "./ttl-cache.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 // memory.retrievalHealth is polled by the dream dashboard (~10s) and computes
 // cognition/governance stats that GROUP BY / COUNT over the unbounded

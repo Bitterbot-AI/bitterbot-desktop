@@ -3,7 +3,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
-import type { ResolvedBrowserConfig, ResolvedBrowserProfile } from "./config.js";
 import { ensurePortAvailable } from "../infra/ports.js";
 import { isWSLSync } from "../infra/wsl.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -19,6 +18,7 @@ import {
   ensureProfileCleanExit,
   isProfileDecorated,
 } from "./chrome.profile-decoration.js";
+import type { ResolvedBrowserConfig, ResolvedBrowserProfile } from "./config.js";
 import {
   DEFAULT_BITTERBOT_BROWSER_COLOR,
   DEFAULT_BITTERBOT_BROWSER_PROFILE_NAME,

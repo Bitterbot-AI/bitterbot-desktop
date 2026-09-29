@@ -24,8 +24,8 @@
  *    prose decision
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isHeartbeatArtifact, sweepHeartbeatArtifacts } from "./canonical-facts-hygiene.js";
 

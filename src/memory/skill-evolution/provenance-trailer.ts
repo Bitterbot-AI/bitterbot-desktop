@@ -16,9 +16,9 @@
  */
 
 import crypto from "node:crypto";
-import type { EvolutionMeta } from "./validation-gate.js";
 import { type KeyPair, pubkeyId } from "../../commerce/envelope.js";
 import { canonicalJson, type JsonValue } from "../../commerce/sku.js";
+import type { EvolutionMeta } from "./validation-gate.js";
 
 export const PROVENANCE_TRAILER_MARKER = "wiki-evolution-provenance";
 /** Domain prefix of the trailer binding preimage (PLAN-45 4.4). */

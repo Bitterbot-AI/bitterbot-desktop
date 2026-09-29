@@ -32,11 +32,11 @@
  * benchmarks/skill-evolution/labeled-traces.jsonl (labeler.fixture.test.ts).
  */
 
-import type { ReconstructedTrace, TraceLabelResult } from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { classifyLifecycleError, extractTraceSignals, type TraceSignals } from "./signals.js";
 import { deriveFailureSignature } from "./signatures.js";
 import { formatTraceLog, formatTraceHeader } from "./traces.js";
+import type { ReconstructedTrace, TraceLabelResult } from "./types.js";
 
 const log = createSubsystemLogger("skill-evolution/labeler");
 

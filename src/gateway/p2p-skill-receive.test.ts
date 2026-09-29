@@ -3,12 +3,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import type { BitterbotConfig } from "../config/config.js";
 import {
   getIngestOutcomeStats,
   resetIngestOutcomeStatsForTest,
 } from "../agents/skills/ingest-stats.js";
+import type { SkillEnvelope } from "../agents/skills/ingest.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { createSkillReceivedHandler } from "./p2p-skill-receive.js";
 
 // Audit finding F15: ingestSkill's self-loopback guard was never handed this

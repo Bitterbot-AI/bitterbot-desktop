@@ -8,12 +8,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { SkillReadEvent } from "./skill-reads.js";
 import {
   buildEvidenceRecord,
   readEvidenceRecords,
   refreshEvidenceRecords,
 } from "./evidence-record.js";
+import type { SkillReadEvent } from "./skill-reads.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = 1_800_000_000_000;
