@@ -26,8 +26,12 @@ updates:
       lint-format:
         patterns: ["oxfmt", "oxlint", "oxlint-*"]
         update-types: ["minor", "patch"]
+      # tsdown + rolldown move together (tsdown pins a rolldown). 0.20 -> 0.23
+      # ran the build out of heap (>4 GB, 2026-09-29): its own tracked PR.
+      bundler:
+        patterns: ["tsdown", "rolldown"]
       build-tooling:
-        patterns: ["tsdown", "rolldown", "esbuild", "tsx", "typescript", "vite", "@vitejs/*"]
+        patterns: ["esbuild", "tsx", "typescript", "vite", "@vitejs/*"]
         update-types: ["minor", "patch"]
       # Native binaries the desktop bundle ships; verify with the stage smoke.
       native:
