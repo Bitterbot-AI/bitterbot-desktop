@@ -92,7 +92,7 @@ import {
   buildEmbeddedSystemPrompt,
   createSystemPromptOverride,
 } from "./system-prompt.js";
-import { splitSdkTools } from "./tool-split.js";
+import { sessionToolAllowlist, splitSdkTools } from "./tool-split.js";
 import type { EmbeddedPiCompactResult } from "./types.js";
 import { describeUnknownError, mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
@@ -584,10 +584,6 @@ export async function compactEmbeddedPiSessionDirect(
       });
       trackSessionManagerAccess(params.sessionFile);
       const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
-      ensurePiCompactionReserveTokens({
-        settingsManager,
-        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-      });
       // Call for side effects (sets compaction/pruning runtime state)
       buildEmbeddedExtensionPaths({
         cfg: params.config,
@@ -597,7 +593,7 @@ export async function compactEmbeddedPiSessionDirect(
         model,
       });
 
-      const { builtInTools, customTools } = splitSdkTools({
+      const { customTools } = splitSdkTools({
         tools,
         sandboxEnabled: !!sandbox?.enabled,
       });
@@ -609,12 +605,18 @@ export async function compactEmbeddedPiSessionDirect(
         modelRegistry,
         model,
         thinkingLevel: mapThinkingLevel(params.thinkLevel),
-        tools: builtInTools,
+        tools: sessionToolAllowlist(customTools),
         customTools,
         sessionManager,
         settingsManager,
       });
       applySystemPromptOverrideToSession(session, systemPromptOverride());
+      // After createAgentSession: pi >= 0.73 reloads settings from disk while
+      // creating the session, which drops overrides applied earlier.
+      ensurePiCompactionReserveTokens({
+        settingsManager,
+        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+      });
 
       try {
         const prior = await sanitizeSessionHistory({
@@ -645,7 +647,7 @@ export async function compactEmbeddedPiSessionDirect(
           ? sanitizeToolUseResultPairing(truncated)
           : truncated;
         if (limited.length > 0) {
-          session.agent.replaceMessages(limited);
+          session.agent.state.messages = limited;
         }
 
         // Progressive compression: cheap deterministic truncation BEFORE
@@ -664,7 +666,7 @@ export async function compactEmbeddedPiSessionDirect(
             spareRecentMessages: compressionCfg?.spareRecentMessages,
           });
           if (compressed.totalCompressed > 0) {
-            session.agent.replaceMessages(compressed.messages);
+            session.agent.state.messages = compressed.messages;
             log.info(
               `[progressive-compression] diagId=${diagId} compressed=${compressed.totalCompressed} ` +
                 `passes=${compressed.passesRun} tokensBefore=${compressed.tokensBefore} ` +

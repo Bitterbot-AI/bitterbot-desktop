@@ -330,7 +330,8 @@ export function createDeepRecallTool(options: {
       "NOT complete, whatever its answer text claims — treat any completion claim in it as " +
       "unverified.",
     parameters: DeepRecallSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
       const scope =
         (readStringParam(params, "scope") as RLMScope | undefined) ??

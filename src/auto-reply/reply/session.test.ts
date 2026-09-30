@@ -73,9 +73,25 @@ describe("initSessionState thread forking", () => {
       timestamp: new Date().toISOString(),
       message: { role: "user", content: "Parent prompt" },
     };
+    const reply = {
+      type: "message",
+      id: "m2",
+      parentId: "m1",
+      timestamp: new Date().toISOString(),
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Parent reply" }],
+        api: "anthropic-messages",
+        provider: "anthropic",
+        model: "claude-opus-4-8",
+        usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2 },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      },
+    };
     await fs.writeFile(
       parentSessionFile,
-      `${JSON.stringify(header)}\n${JSON.stringify(message)}\n`,
+      `${[header, message, reply].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
       "utf-8",
     );
 
@@ -122,6 +138,63 @@ describe("initSessionState thread forking", () => {
       parentSession?: string;
     };
     expect(parsedHeader.parentSession).toBe(parentSessionFile);
+    const forkedLines = (await fs.readFile(newSessionFile, "utf-8"))
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0);
+    expect(forkedLines.filter((line) => line.includes('"type":"session"'))).toHaveLength(1);
+    expect(forkedLines.join("\n")).toContain("Parent reply");
+    warn.mockRestore();
+  });
+
+  it("starts a thread fresh when the parent branch has no assistant reply yet", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const root = await makeCaseDir("bitterbot-thread-session-");
+    const sessionsDir = path.join(root, "sessions");
+    await fs.mkdir(sessionsDir);
+    const parentSessionFile = path.join(sessionsDir, "parent.jsonl");
+    const header = {
+      type: "session",
+      version: 3,
+      id: "parent-session",
+      timestamp: new Date().toISOString(),
+      cwd: process.cwd(),
+    };
+    const message = {
+      type: "message",
+      id: "m1",
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      message: { role: "user", content: "Parent prompt" },
+    };
+    await fs.writeFile(
+      parentSessionFile,
+      `${JSON.stringify(header)}\n${JSON.stringify(message)}\n`,
+      "utf-8",
+    );
+    const storePath = path.join(root, "sessions.json");
+    const parentSessionKey = "agent:main:slack:channel:c2";
+    await saveSessionStore(storePath, {
+      [parentSessionKey]: {
+        sessionId: "parent-session",
+        sessionFile: parentSessionFile,
+        updatedAt: Date.now(),
+      },
+    });
+
+    const result = await initSessionState({
+      ctx: {
+        Body: "Thread reply",
+        SessionKey: "agent:main:slack:channel:c2:thread:456",
+        ParentSessionKey: parentSessionKey,
+      },
+      cfg: { session: { store: storePath } } as BitterbotConfig,
+      commandAuthorized: true,
+    });
+
+    expect(result.sessionEntry.sessionId).not.toBe("parent-session");
+    const files = await fs.readdir(sessionsDir);
+    // Only the parent: no header-only fork file that would later get a second header.
+    expect(files).toEqual(["parent.jsonl"]);
     warn.mockRestore();
   });
 

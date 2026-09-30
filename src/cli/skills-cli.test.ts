@@ -254,7 +254,12 @@ describe("skills-cli", () => {
           skill: {
             name: "test-bundled",
             description: "Capture UI screenshots",
-            source: "bitterbot-bundled",
+            sourceInfo: {
+              path: baseDir,
+              source: "bitterbot-bundled",
+              scope: "temporary",
+              origin: "top-level",
+            },
             filePath: path.join(baseDir, "SKILL.md"),
             baseDir,
           } as SkillEntry["skill"],

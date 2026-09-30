@@ -236,179 +236,29 @@ describe("models list/status", () => {
     expect(payload.models[0]?.available).toBe(false);
   });
 
-  it("models list resolves antigravity opus 4.6 thinking from 4.5 template", async () => {
-    loadConfig.mockReturnValue({
-      agents: {
-        defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
-          models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
-          },
-        },
-      },
-    });
-    const runtime = makeRuntime();
-
-    modelRegistryState.models = [
-      {
-        provider: "google-antigravity",
-        id: "claude-opus-4-5-thinking",
-        name: "Claude Opus 4.5 Thinking",
-        api: "google-gemini-cli",
-        input: ["text", "image"],
-        baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-        contextWindow: 200000,
-        maxTokens: 64000,
-        reasoning: true,
-        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-      },
-    ];
-    modelRegistryState.available = [];
-    await modelsListCommand({ json: true }, runtime);
-
-    expect(runtime.log).toHaveBeenCalledTimes(1);
-    const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6-thinking");
-    expect(payload.models[0]?.missing).toBe(false);
-    expect(payload.models[0]?.tags).toContain("default");
-    expect(payload.models[0]?.tags).toContain("configured");
-  });
-
-  it("models list resolves antigravity opus 4.6 (non-thinking) from 4.5 template", async () => {
-    loadConfig.mockReturnValue({
-      agents: {
-        defaults: {
-          model: "google-antigravity/claude-opus-4-6",
-          models: {
-            "google-antigravity/claude-opus-4-6": {},
-          },
-        },
-      },
-    });
-    const runtime = makeRuntime();
-
-    modelRegistryState.models = [
-      {
-        provider: "google-antigravity",
-        id: "claude-opus-4-5",
-        name: "Claude Opus 4.5",
-        api: "google-gemini-cli",
-        input: ["text", "image"],
-        baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-        contextWindow: 200000,
-        maxTokens: 64000,
-        reasoning: true,
-        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-      },
-    ];
-    modelRegistryState.available = [];
-    await modelsListCommand({ json: true }, runtime);
-
-    expect(runtime.log).toHaveBeenCalledTimes(1);
-    const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6");
-    expect(payload.models[0]?.missing).toBe(false);
-    expect(payload.models[0]?.tags).toContain("default");
-    expect(payload.models[0]?.tags).toContain("configured");
-  });
-
-  it("models list marks synthesized antigravity opus 4.6 thinking as available when template is available", async () => {
-    loadConfig.mockReturnValue({
-      agents: {
-        defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
-          models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
-          },
-        },
-      },
-    });
-    const runtime = makeRuntime();
-
-    const template = {
-      provider: "google-antigravity",
-      id: "claude-opus-4-5-thinking",
-      name: "Claude Opus 4.5 Thinking",
-      api: "google-gemini-cli",
-      input: ["text", "image"],
-      baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-      contextWindow: 200000,
-      maxTokens: 64000,
-      reasoning: true,
-      cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-    };
-    modelRegistryState.models = [template];
-    modelRegistryState.available = [template];
-    await modelsListCommand({ json: true }, runtime);
-
-    expect(runtime.log).toHaveBeenCalledTimes(1);
-    const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6-thinking");
-    expect(payload.models[0]?.missing).toBe(false);
-    expect(payload.models[0]?.available).toBe(true);
-  });
-
-  it("models list marks synthesized antigravity opus 4.6 (non-thinking) as available when template is available", async () => {
-    loadConfig.mockReturnValue({
-      agents: {
-        defaults: {
-          model: "google-antigravity/claude-opus-4-6",
-          models: {
-            "google-antigravity/claude-opus-4-6": {},
-          },
-        },
-      },
-    });
-    const runtime = makeRuntime();
-
-    const template = {
-      provider: "google-antigravity",
-      id: "claude-opus-4-5",
-      name: "Claude Opus 4.5",
-      api: "google-gemini-cli",
-      input: ["text", "image"],
-      baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
-      contextWindow: 200000,
-      maxTokens: 64000,
-      reasoning: true,
-      cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
-    };
-    modelRegistryState.models = [template];
-    modelRegistryState.available = [template];
-    await modelsListCommand({ json: true }, runtime);
-
-    expect(runtime.log).toHaveBeenCalledTimes(1);
-    const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6");
-    expect(payload.models[0]?.missing).toBe(false);
-    expect(payload.models[0]?.available).toBe(true);
-  });
-
   it("models list prefers registry availability over provider auth heuristics", async () => {
     loadConfig.mockReturnValue({
       agents: {
         defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
+          model: "anthropic/claude-opus-4-5",
           models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
+            "anthropic/claude-opus-4-5": {},
           },
         },
       },
     });
     listProfilesForProvider.mockImplementation((_: unknown, provider: string) =>
-      provider === "google-antigravity"
-        ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>)
-        : [],
+      provider === "anthropic" ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>) : [],
     );
     const runtime = makeRuntime();
 
     const template = {
-      provider: "google-antigravity",
-      id: "claude-opus-4-5-thinking",
-      name: "Claude Opus 4.5 Thinking",
-      api: "google-gemini-cli",
+      provider: "anthropic",
+      id: "claude-opus-4-5",
+      name: "Claude Opus 4.5",
+      api: "anthropic-messages",
       input: ["text", "image"],
-      baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+      baseUrl: "https://api.anthropic.com",
       contextWindow: 200000,
       maxTokens: 64000,
       reasoning: true,
@@ -420,7 +270,7 @@ describe("models list/status", () => {
 
     expect(runtime.log).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6-thinking");
+    expect(payload.models[0]?.key).toBe("anthropic/claude-opus-4-5");
     expect(payload.models[0]?.missing).toBe(false);
     expect(payload.models[0]?.available).toBe(false);
     listProfilesForProvider.mockReturnValue([]);
@@ -430,17 +280,15 @@ describe("models list/status", () => {
     loadConfig.mockReturnValue({
       agents: {
         defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
+          model: "anthropic/claude-opus-4-5",
           models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
+            "anthropic/claude-opus-4-5": {},
           },
         },
       },
     });
     listProfilesForProvider.mockImplementation((_: unknown, provider: string) =>
-      provider === "google-antigravity"
-        ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>)
-        : [],
+      provider === "anthropic" ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>) : [],
     );
     modelRegistryState.getAvailableError = Object.assign(
       new Error("availability unsupported: getAvailable failed"),
@@ -450,12 +298,12 @@ describe("models list/status", () => {
 
     modelRegistryState.models = [
       {
-        provider: "google-antigravity",
-        id: "claude-opus-4-5-thinking",
-        name: "Claude Opus 4.5 Thinking",
-        api: "google-gemini-cli",
+        provider: "anthropic",
+        id: "claude-opus-4-5",
+        name: "Claude Opus 4.5",
+        api: "anthropic-messages",
         input: ["text", "image"],
-        baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+        baseUrl: "https://api.anthropic.com",
         contextWindow: 200000,
         maxTokens: 64000,
         reasoning: true,
@@ -470,7 +318,7 @@ describe("models list/status", () => {
     expect(runtime.error.mock.calls[0]?.[0]).toContain("getAvailable failed");
     expect(runtime.log).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6-thinking");
+    expect(payload.models[0]?.key).toBe("anthropic/claude-opus-4-5");
     expect(payload.models[0]?.missing).toBe(false);
     expect(payload.models[0]?.available).toBe(true);
   });
@@ -479,29 +327,27 @@ describe("models list/status", () => {
     loadConfig.mockReturnValue({
       agents: {
         defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
+          model: "anthropic/claude-opus-4-5",
           models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
+            "anthropic/claude-opus-4-5": {},
           },
         },
       },
     });
     listProfilesForProvider.mockImplementation((_: unknown, provider: string) =>
-      provider === "google-antigravity"
-        ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>)
-        : [],
+      provider === "anthropic" ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>) : [],
     );
     modelRegistryState.available = { bad: true } as unknown as Array<Record<string, unknown>>;
     const runtime = makeRuntime();
 
     modelRegistryState.models = [
       {
-        provider: "google-antigravity",
-        id: "claude-opus-4-5-thinking",
-        name: "Claude Opus 4.5 Thinking",
-        api: "google-gemini-cli",
+        provider: "anthropic",
+        id: "claude-opus-4-5",
+        name: "Claude Opus 4.5",
+        api: "anthropic-messages",
         input: ["text", "image"],
-        baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+        baseUrl: "https://api.anthropic.com",
         contextWindow: 200000,
         maxTokens: 64000,
         reasoning: true,
@@ -515,7 +361,7 @@ describe("models list/status", () => {
     expect(runtime.error.mock.calls[0]?.[0]).toContain("non-array value");
     expect(runtime.log).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6-thinking");
+    expect(payload.models[0]?.key).toBe("anthropic/claude-opus-4-5");
     expect(payload.models[0]?.missing).toBe(false);
     expect(payload.models[0]?.available).toBe(true);
   });
@@ -524,17 +370,15 @@ describe("models list/status", () => {
     loadConfig.mockReturnValue({
       agents: {
         defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
+          model: "anthropic/claude-opus-4-5",
           models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
+            "anthropic/claude-opus-4-5": {},
           },
         },
       },
     });
     listProfilesForProvider.mockImplementation((_: unknown, provider: string) =>
-      provider === "google-antigravity"
-        ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>)
-        : [],
+      provider === "anthropic" ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>) : [],
     );
     modelRegistryState.getAvailableError = new Error(
       "availability unsupported: getAvailable failed",
@@ -543,12 +387,12 @@ describe("models list/status", () => {
 
     modelRegistryState.models = [
       {
-        provider: "google-antigravity",
-        id: "claude-opus-4-5-thinking",
-        name: "Claude Opus 4.5 Thinking",
-        api: "google-gemini-cli",
+        provider: "anthropic",
+        id: "claude-opus-4-5",
+        name: "Claude Opus 4.5",
+        api: "anthropic-messages",
         input: ["text", "image"],
-        baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+        baseUrl: "https://api.anthropic.com",
         contextWindow: 200000,
         maxTokens: 64000,
         reasoning: true,
@@ -565,7 +409,7 @@ describe("models list/status", () => {
     );
     expect(runtime.log).toHaveBeenCalledTimes(1);
     const payload = JSON.parse(String(runtime.log.mock.calls[0]?.[0]));
-    expect(payload.models[0]?.key).toBe("google-antigravity/claude-opus-4-6-thinking");
+    expect(payload.models[0]?.key).toBe("anthropic/claude-opus-4-5");
     expect(payload.models[0]?.missing).toBe(false);
     expect(payload.models[0]?.available).toBe(true);
   });
@@ -574,9 +418,9 @@ describe("models list/status", () => {
     loadConfig.mockReturnValue({
       agents: {
         defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
+          model: "anthropic/claude-opus-4-5",
           models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
+            "anthropic/claude-opus-4-5": {},
           },
         },
       },
@@ -599,17 +443,15 @@ describe("models list/status", () => {
     loadConfig.mockReturnValue({
       agents: {
         defaults: {
-          model: "google-antigravity/claude-opus-4-6-thinking",
+          model: "anthropic/claude-opus-4-5",
           models: {
-            "google-antigravity/claude-opus-4-6-thinking": {},
+            "anthropic/claude-opus-4-5": {},
           },
         },
       },
     });
     listProfilesForProvider.mockImplementation((_: unknown, provider: string) =>
-      provider === "google-antigravity"
-        ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>)
-        : [],
+      provider === "anthropic" ? ([{ id: "profile-1" }] as Array<Record<string, unknown>>) : [],
     );
     modelRegistryState.getAllError = Object.assign(new Error("model discovery unavailable"), {
       code: "MODEL_DISCOVERY_UNAVAILABLE",
@@ -633,12 +475,12 @@ describe("models list/status", () => {
     });
     modelRegistryState.available = [
       {
-        provider: "google-antigravity",
-        id: "claude-opus-4-5-thinking",
-        name: "Claude Opus 4.5 Thinking",
-        api: "google-gemini-cli",
+        provider: "anthropic",
+        id: "claude-opus-4-5",
+        name: "Claude Opus 4.5",
+        api: "anthropic-messages",
         input: ["text", "image"],
-        baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+        baseUrl: "https://api.anthropic.com",
         contextWindow: 200000,
         maxTokens: 64000,
         reasoning: true,
@@ -655,18 +497,18 @@ describe("models list/status", () => {
 
     const row = toModelRow({
       model: {
-        provider: "google-antigravity",
+        provider: "anthropic",
         id: "claude-opus-4-6-thinking",
         name: "Claude Opus 4.6 Thinking",
-        api: "google-gemini-cli",
+        api: "anthropic-messages",
         input: ["text", "image"],
-        baseUrl: "https://daily-cloudcode-pa.sandbox.googleapis.com",
+        baseUrl: "https://api.anthropic.com",
         contextWindow: 200000,
         maxTokens: 64000,
         reasoning: true,
         cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
       },
-      key: "google-antigravity/claude-opus-4-6-thinking",
+      key: "anthropic/claude-opus-4-5",
       tags: [],
       availableKeys: undefined,
     });

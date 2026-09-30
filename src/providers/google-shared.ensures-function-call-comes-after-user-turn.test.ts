@@ -1,13 +1,15 @@
-import { convertMessages } from "@mariozechner/pi-ai/dist/providers/google-shared.js";
-import type { Context } from "@mariozechner/pi-ai/dist/types.js";
+import type { Context } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import {
   asRecord,
+  loadGoogleShared,
   makeGeminiCliAssistantMessage,
   makeGeminiCliModel,
   makeGoogleAssistantMessage,
   makeModel,
 } from "./google-shared.test-helpers.js";
+
+const { convertMessages } = await loadGoogleShared();
 
 describe("google-shared convertTools", () => {
   it("ensures function call comes after user turn, not after model turn", () => {
@@ -31,7 +33,9 @@ describe("google-shared convertTools", () => {
     } as unknown as Context;
 
     const contents = convertMessages(model, context);
-    expect(contents).toHaveLength(3);
+    // pi-ai >= 0.73 closes a trailing unanswered tool call with a synthetic
+    // error result, so a fourth (user/functionResponse) turn follows.
+    expect(contents).toHaveLength(4);
     expect(contents[0].role).toBe("user");
     expect(contents[1].role).toBe("model");
     expect(contents[2].role).toBe("model");
@@ -40,6 +44,11 @@ describe("google-shared convertTools", () => {
     );
     const toolCall = asRecord(toolCallPart);
     expect(toolCall.functionCall).toBeTruthy();
+    expect(contents[3].role).toBe("user");
+    const responsePart = contents[3].parts?.find(
+      (part) => typeof part === "object" && part !== null && "functionResponse" in part,
+    );
+    expect(asRecord(responsePart).functionResponse).toBeTruthy();
   });
 
   it("strips tool call and response ids for google-gemini-cli", () => {

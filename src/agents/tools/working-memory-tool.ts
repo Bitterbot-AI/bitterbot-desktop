@@ -78,7 +78,8 @@ export function createWorkingMemoryNoteTool(options: {
       "Use this for things you must not forget between sessions: user preferences, " +
       "key decisions, names, deadlines, emotional context.",
     parameters: WorkingMemoryNoteSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const note = readStringParam(params, "note", { required: true });
       const importance = readNumberParam(params, "importance") ?? 0.7;
       const clampedImportance = Math.max(0, Math.min(1, importance));

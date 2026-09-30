@@ -27,8 +27,6 @@ COPY desktop/package.json ./desktop/
 # extension gains a package.json and is missed here, --frozen-lockfile fails
 # and the CI docker job catches it.
 COPY extensions/discord/package.json ./extensions/discord/
-COPY extensions/google-antigravity-auth/package.json ./extensions/google-antigravity-auth/
-COPY extensions/google-gemini-cli-auth/package.json ./extensions/google-gemini-cli-auth/
 COPY extensions/signal/package.json ./extensions/signal/
 COPY extensions/slack/package.json ./extensions/slack/
 COPY extensions/telegram/package.json ./extensions/telegram/

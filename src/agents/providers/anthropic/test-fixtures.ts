@@ -5,7 +5,7 @@
 
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AssistantMessageEvent, Model, Tool } from "@mariozechner/pi-ai";
-import type { AssistantMessageEventStream } from "@mariozechner/pi-ai/dist/utils/event-stream.js";
+import type { AssistantMessageEventStream } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 
 export const TEST_MODEL_ID = "claude-opus-4-8";

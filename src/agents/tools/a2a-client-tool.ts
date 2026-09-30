@@ -88,7 +88,8 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
       "x402 USDC payment). Use 'spend_status' to check daily spending limits. Target a peer by " +
       "agentUrl, or by peerId if the peer advertised its A2A endpoint over the mesh.",
     parameters: A2aClientSchema,
-    execute: async (_toolCallId, rawParams) => {
+    execute: async (_toolCallId, args) => {
+      const rawParams = args as Record<string, unknown>;
       const action = readStringParam(rawParams, "action");
 
       if (action === "spend_status") {

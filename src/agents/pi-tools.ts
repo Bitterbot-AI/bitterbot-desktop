@@ -1,9 +1,8 @@
 import {
-  codingTools,
+  createCodingTools,
   createEditTool,
   createReadTool,
   createWriteTool,
-  readTool,
 } from "@mariozechner/pi-coding-agent";
 import type { BitterbotConfig } from "../config/config.js";
 import type { ToolHotSetLane } from "../config/types.tools.js";
@@ -343,8 +342,10 @@ export function createBitterbotCodingTools(options?: {
     throw new Error("Sandbox filesystem bridge is unavailable.");
   }
 
-  const base = (codingTools as unknown as AnyAgentTool[]).flatMap((tool) => {
-    if (tool.name === readTool.name) {
+  // read/bash/edit/write; bash is replaced by exec below and the rest are
+  // rebuilt per workspace, so only the names matter here.
+  const base = (createCodingTools(workspaceRoot) as unknown as AnyAgentTool[]).flatMap((tool) => {
+    if (tool.name === "read") {
       if (sandboxRoot) {
         const sandboxed = createSandboxedReadTool({
           root: sandboxRoot,

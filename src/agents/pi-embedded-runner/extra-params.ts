@@ -185,11 +185,11 @@ function createOpenAIResponsesStoreWrapper(baseStreamFn: StreamFn | undefined): 
     const originalOnPayload = options?.onPayload;
     return underlying(model, context, {
       ...options,
-      onPayload: (payload) => {
+      onPayload: (payload, payloadModel) => {
         if (payload && typeof payload === "object") {
           (payload as { store?: unknown }).store = true;
         }
-        originalOnPayload?.(payload);
+        return originalOnPayload?.(payload, payloadModel);
       },
     });
   };

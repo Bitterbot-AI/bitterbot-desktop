@@ -1,8 +1,4 @@
-import type {
-  AgentTool,
-  AgentToolResult,
-  AgentToolUpdateCallback,
-} from "@mariozechner/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 import { logDebug, logError } from "../logger.js";
 import { isPlainObject } from "../utils.js";
@@ -12,40 +8,15 @@ import {
   isToolWrappedWithBeforeToolCallHook,
   runBeforeToolCallHook,
 } from "./pi-tools.before-tool-call.js";
+import { toPlainJsonSchema } from "./schema/plain-json-schema.js";
 import { normalizeToolName } from "./tool-policy.js";
 import { jsonResult } from "./tools/common.js";
 
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyAgentTool = AgentTool<any, unknown>;
 
-type ToolExecuteArgsCurrent = [
-  string,
-  unknown,
-  AgentToolUpdateCallback<unknown> | undefined,
-  unknown,
-  AbortSignal | undefined,
-];
-type ToolExecuteArgsLegacy = [
-  string,
-  unknown,
-  AbortSignal | undefined,
-  AgentToolUpdateCallback<unknown> | undefined,
-  unknown,
-];
-type ToolExecuteArgs = ToolDefinition["execute"] extends (...args: infer P) => unknown
-  ? P
-  : ToolExecuteArgsCurrent;
-type ToolExecuteArgsAny = ToolExecuteArgs | ToolExecuteArgsLegacy | ToolExecuteArgsCurrent;
-
-function isAbortSignal(value: unknown): value is AbortSignal {
-  return typeof value === "object" && value !== null && "aborted" in value;
-}
-
-function isLegacyToolExecuteArgs(args: ToolExecuteArgsAny): args is ToolExecuteArgsLegacy {
-  const third = args[2];
-  const fourth = args[3];
-  return isAbortSignal(third) || typeof fourth === "function";
-}
+// pi-coding-agent >= 0.73 calls ToolDefinition.execute(toolCallId, params, signal, onUpdate, ctx).
+type ToolExecuteArgs = Parameters<ToolDefinition["execute"]>;
 
 function describeToolExecutionError(err: unknown): {
   message: string;
@@ -58,30 +29,6 @@ function describeToolExecutionError(err: unknown): {
   return { message: String(err) };
 }
 
-function splitToolExecuteArgs(args: ToolExecuteArgsAny): {
-  toolCallId: string;
-  params: unknown;
-  onUpdate: AgentToolUpdateCallback<unknown> | undefined;
-  signal: AbortSignal | undefined;
-} {
-  if (isLegacyToolExecuteArgs(args)) {
-    const [toolCallId, params, signal, onUpdate] = args;
-    return {
-      toolCallId,
-      params,
-      onUpdate,
-      signal,
-    };
-  }
-  const [toolCallId, params, onUpdate, _ctx, signal] = args;
-  return {
-    toolCallId,
-    params,
-    onUpdate,
-    signal,
-  };
-}
-
 export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
   return tools.map((tool) => {
     const name = tool.name || "tool";
@@ -91,9 +38,13 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
       name,
       label: tool.label ?? name,
       description: tool.description ?? "",
-      parameters: tool.parameters,
+      parameters: toPlainJsonSchema(tool.parameters),
+      // Argument shims (e.g. pi's edit tool folding legacy oldText/newText into
+      // edits[]) run before validation and must survive the conversion.
+      ...(tool.prepareArguments ? { prepareArguments: tool.prepareArguments } : {}),
+      ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
-        const { toolCallId, params, onUpdate, signal } = splitToolExecuteArgs(args);
+        const [toolCallId, params, signal, onUpdate] = args;
         let executeParams = params;
         try {
           if (!beforeHookWrapped) {
@@ -175,7 +126,7 @@ export function toClientToolDefinitions(
       // oxlint-disable-next-line typescript/no-explicit-any
       parameters: func.parameters as any,
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
-        const { toolCallId, params } = splitToolExecuteArgs(args);
+        const [toolCallId, params] = args;
         const outcome = await runBeforeToolCallHook({
           toolName: func.name,
           params,

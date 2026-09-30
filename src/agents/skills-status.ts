@@ -269,7 +269,7 @@ function buildSkillStatus(
   const bundled =
     bundledNames && bundledNames.size > 0
       ? bundledNames.has(entry.skill.name)
-      : entry.skill.source === "bitterbot-bundled";
+      : entry.skill.sourceInfo.source === "bitterbot-bundled";
 
   const primaryEnv = entry.metadata?.primaryEnv;
   const hasApiKey = Boolean(
@@ -301,7 +301,7 @@ function buildSkillStatus(
   return {
     name: entry.skill.name,
     description: entry.skill.description,
-    source: entry.skill.source,
+    source: entry.skill.sourceInfo.source,
     bundled,
     filePath: entry.skill.filePath,
     baseDir: entry.skill.baseDir,

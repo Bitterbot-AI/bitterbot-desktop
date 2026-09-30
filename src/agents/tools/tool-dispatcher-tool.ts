@@ -7,12 +7,14 @@
  * would run: exec approvals, wallet consent and group policy live either in
  * those wrappers or inside the tool implementation itself, and both are the
  * same object here. Input is validated against the target's JSON schema with
- * the same ajv path pi-agent uses for direct calls (`validateToolArguments`).
+ * the same validator pi-agent uses for direct calls (`validateToolArguments`),
+ * on the same symbol-free schema copy (see schema/plain-json-schema.ts).
  */
 
 import { validateToolArguments } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ToolHotSetLane } from "../../config/types.tools.js";
+import { toPlainJsonSchema } from "../schema/plain-json-schema.js";
 import { normalizeToolName } from "../tool-policy.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult } from "./common.js";
@@ -162,12 +164,15 @@ export function createUseToolTool(params: { registry: readonly AnyAgentTool[] })
           : {};
       let validated: unknown;
       try {
-        validated = validateToolArguments(target, {
-          type: "toolCall",
-          id: toolCallId,
-          name: target.name,
-          arguments: args,
-        });
+        validated = validateToolArguments(
+          { ...target, parameters: toPlainJsonSchema(target.parameters) },
+          {
+            type: "toolCall",
+            id: toolCallId,
+            name: target.name,
+            arguments: args,
+          },
+        );
       } catch (err) {
         return errorResult(err instanceof Error ? err.message : String(err), {
           tool: target.name,

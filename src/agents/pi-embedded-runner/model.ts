@@ -13,6 +13,7 @@ import {
   type AuthStorage,
   type ModelRegistry,
 } from "../pi-model-discovery.js";
+import { retiredProviderError } from "../retired-providers.js";
 
 type InlineModelEntry = ModelDefinitionConfig & { provider: string; baseUrl?: string };
 type InlineProviderConfig = {
@@ -54,6 +55,11 @@ export function resolveModel(
   const resolvedAgentDir = agentDir ?? resolveBitterbotAgentDir();
   const authStorage = discoverAuthStorage(resolvedAgentDir);
   const modelRegistry = discoverModels(authStorage, resolvedAgentDir);
+  // Checked before the registry: an old models.json can still list these.
+  const retired = retiredProviderError(provider, modelId);
+  if (retired) {
+    return { error: retired, authStorage, modelRegistry };
+  }
   const model = modelRegistry.find(provider, modelId) as Model<Api> | null;
   if (!model) {
     const providers = cfg?.models?.providers ?? {};

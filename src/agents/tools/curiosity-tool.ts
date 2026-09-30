@@ -89,7 +89,8 @@ export function createCuriosityResolveTool(options: {
     description:
       "Mark an exploration target as resolved/addressed. Use after investigating a knowledge gap, contradiction, or frontier identified by the Curiosity Engine.",
     parameters: CuriosityResolveSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const targetId = readStringParam(params, "targetId", { required: true });
 
       const { manager, error } = await getMemorySearchManager({ cfg, agentId });

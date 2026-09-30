@@ -57,7 +57,8 @@ export function createDreamSearchTool(options: {
     description:
       "Search synthesized cross-domain insights from the Dream Engine. Returns pattern connections discovered across accumulated memories during offline dream cycles.",
     parameters: DreamSearchSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
       const maxResults = readNumberParam(params, "maxResults") ?? 10;
       const minScore = readNumberParam(params, "minScore") ?? 0.3;

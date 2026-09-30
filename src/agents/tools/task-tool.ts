@@ -63,10 +63,12 @@ type ExecuteFn = (
  * required:true is missing) into a structured `{ok:false,error}`
  * response so callers see a consistent shape.
  */
-function safeExecute(fn: ExecuteFn): ExecuteFn {
+function safeExecute(
+  fn: ExecuteFn,
+): (toolCallId: string, params: unknown) => Promise<AgentToolResult<unknown>> {
   return async (toolCallId, params) => {
     try {
-      return await fn(toolCallId, params);
+      return await fn(toolCallId, params as Record<string, unknown>);
     } catch (err) {
       if (err instanceof ToolInputError) {
         return jsonResult({ ok: false, error: err.message });

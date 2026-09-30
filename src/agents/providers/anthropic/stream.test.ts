@@ -1,6 +1,6 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
-import { AssistantMessageEventStream } from "@mariozechner/pi-ai/dist/utils/event-stream.js";
+import { AssistantMessageEventStream } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
 import { consumeAnthropicMessage, consumeAnthropicStream, mapStopReason } from "./stream.js";
 import {

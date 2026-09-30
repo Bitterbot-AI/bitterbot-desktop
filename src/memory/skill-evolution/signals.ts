@@ -82,7 +82,7 @@ const AGENT_RULES: Array<[string, RegExp]> = [
     /Security Violation|Blocked: resolves|INTERCEPTOR:|blocked by policy|not allowed|are disabled\b/i,
   ],
   ["file-not-found", /ENOENT|no such file|not a git repository|does not exist/i],
-  ["edit-mismatch", /Could not find the exact text|old_string not found/i],
+  ["edit-mismatch", /Could not find (?:the exact text|edits\[\d+\])|old_string not found/i],
   [
     "http-client",
     /(?:Web fetch failed|status(?:Code)?|HTTP)\D{0,6}\b4\d\d\b|\bNot Found\b|Cannot (?:GET|POST)/i,

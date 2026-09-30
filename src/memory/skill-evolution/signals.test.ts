@@ -86,6 +86,7 @@ describe("classifyToolError (live journal signatures)", () => {
     ["file-not-found", "ENOENT: no such file or directory, access '/tmp/x'"],
     ["file-not-found", "fatal: not a git repository (or any of the parent directories): .git"],
     ["edit-mismatch", "Could not find the exact text in /tmp/scratch.md"],
+    ["edit-mismatch", "Could not find edits[1] in /tmp/scratch.md. The oldText must match exactly"],
     ["http-client", "Web fetch failed (404): SECURITY NOTICE: The following content"],
     ["exit-nonzero", "Command exited with code 1"],
     ["exception", 'Traceback (most recent call last):\n File "<string>", line 1'],

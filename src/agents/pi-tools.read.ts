@@ -99,16 +99,12 @@ export const CLAUDE_PARAM_GROUPS = {
     { keys: ["path", "file_path"], label: "path (path or file_path)" },
     { keys: ["content"], label: "content" },
   ],
+  // pi-coding-agent >= 0.73: {path, edits: [{oldText, newText}]}. The legacy
+  // single-replacement form (and Claude Code's old_string/new_string) is
+  // folded into edits[] by prepareArguments before validation.
   edit: [
     { keys: ["path", "file_path"], label: "path (path or file_path)" },
-    {
-      keys: ["oldText", "old_string"],
-      label: "oldText (oldText or old_string)",
-    },
-    {
-      keys: ["newText", "new_string"],
-      label: "newText (newText or new_string)",
-    },
+    { keys: ["edits"], label: "edits (or oldText/newText)" },
   ],
 } as const;
 
@@ -191,6 +187,25 @@ export function normalizeToolParams(params: unknown): Record<string, unknown> | 
   normalizeTextLikeParam(normalized, "content");
   normalizeTextLikeParam(normalized, "oldText");
   normalizeTextLikeParam(normalized, "newText");
+  if (Array.isArray(normalized.edits)) {
+    normalized.edits = normalized.edits.map((entry: unknown) => {
+      if (!entry || typeof entry !== "object") {
+        return entry;
+      }
+      const edit = { ...(entry as Record<string, unknown>) };
+      if ("old_string" in edit && !("oldText" in edit)) {
+        edit.oldText = edit.old_string;
+        delete edit.old_string;
+      }
+      if ("new_string" in edit && !("newText" in edit)) {
+        edit.newText = edit.new_string;
+        delete edit.new_string;
+      }
+      normalizeTextLikeParam(edit, "oldText");
+      normalizeTextLikeParam(edit, "newText");
+      return edit;
+    });
+  }
   return normalized;
 }
 
@@ -261,6 +276,9 @@ export function assertRequiredParams(
         return false;
       }
       const value = record[key];
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
       if (typeof value !== "string") {
         return false;
       }
@@ -284,13 +302,59 @@ export function assertRequiredParams(
 }
 
 // Generic wrapper to normalize parameters for any tool
+/**
+ * pi-coding-agent >= 0.73's edit schema has `additionalProperties: false` at
+ * the root and per edit, so keys pi-agent 0.52 (Ajv) simply ignored, such as
+ * Claude Code's `replace_all: false`, now fail validation. Keep only what the
+ * tool reads. `replace_all: true` cannot be honoured, so it is an explicit error.
+ */
+function sanitizeEditArguments(args: unknown): unknown {
+  if (!args || typeof args !== "object") {
+    return args;
+  }
+  const record = args as Record<string, unknown>;
+  const wantsReplaceAll = (value: unknown) =>
+    !!value &&
+    typeof value === "object" &&
+    (value as { replace_all?: unknown }).replace_all === true;
+  if (
+    wantsReplaceAll(record) ||
+    (Array.isArray(record.edits) && record.edits.some((entry) => wantsReplaceAll(entry)))
+  ) {
+    throw new Error(
+      "edit: replace_all is not supported. Give each occurrence its own entry in edits[] with enough surrounding context to be unique.",
+    );
+  }
+  const sanitized: Record<string, unknown> = { path: record.path };
+  if (Array.isArray(record.edits)) {
+    sanitized.edits = record.edits.map((entry) =>
+      entry && typeof entry === "object"
+        ? {
+            oldText: (entry as Record<string, unknown>).oldText,
+            newText: (entry as Record<string, unknown>).newText,
+          }
+        : entry,
+    );
+  }
+  return sanitized;
+}
+
 export function wrapToolParamNormalization(
   tool: AnyAgentTool,
   requiredParamGroups?: readonly RequiredParamGroup[],
 ): AnyAgentTool {
   const patched = patchToolSchemaForClaudeCompatibility(tool);
+  const basePrepare = tool.prepareArguments;
   return {
     ...patched,
+    // Runs before schema validation (pi-agent-core >= 0.73): map Claude Code
+    // aliases first, then the tool's own shim (edit folds oldText/newText
+    // into edits[]).
+    prepareArguments: (args: unknown) => {
+      const normalized = normalizeToolParams(args) ?? args;
+      const prepared = basePrepare ? basePrepare(normalized) : normalized;
+      return tool.name === "edit" ? sanitizeEditArguments(prepared) : prepared;
+    },
     execute: async (toolCallId, params, signal, onUpdate) => {
       const normalized = normalizeToolParams(params);
       const record =

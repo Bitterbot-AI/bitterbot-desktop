@@ -33,6 +33,7 @@ import {
   maybeRemoveDeprecatedCliAuthProfiles,
   maybeRepairAnthropicOAuthProfileId,
   noteAuthProfileHealth,
+  noteRetiredOAuthProviders,
 } from "./doctor-auth.js";
 import { noteBootHealth } from "./doctor-boot-health.js";
 import { runCanvasChecks } from "./doctor-canvas.js";
@@ -174,6 +175,7 @@ async function runDoctor(
 
   cfg = await maybeRepairAnthropicOAuthProfileId(cfg, prompter);
   cfg = await maybeRemoveDeprecatedCliAuthProfiles(cfg, prompter);
+  noteRetiredOAuthProviders(cfg);
   await noteAuthProfileHealth({
     cfg,
     prompter,

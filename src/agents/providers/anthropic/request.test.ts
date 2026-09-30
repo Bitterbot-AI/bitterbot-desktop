@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import type { AnthropicOptions, Context, Message } from "@mariozechner/pi-ai";
 import { streamAnthropic, streamSimpleAnthropic } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
@@ -96,8 +97,52 @@ async function captureVendored(
   return captured;
 }
 
+/**
+ * Request bodies pi-ai 0.52.12's own Anthropic provider produced for the four
+ * parity cases below (captured from the real 0.52.12 package). The in-tree
+ * provider was ported from 0.52.12 and must stay byte-identical to it until a
+ * deliberate change says otherwise; pi-ai itself has since moved on (see the
+ * drift test).
+ */
+const PI_AI_0_52_12_GOLDEN = JSON.parse(
+  fs.readFileSync(new URL("./request.pi-ai-0.52.12.golden.json", import.meta.url), "utf8"),
+) as Record<
+  "streamAnthropicRich" | "simpleHaikuBudget" | "simpleThinkingOff" | "oauthSetupToken",
+  string
+>;
+
+/**
+ * Wire-format changes pi-ai made to its Anthropic provider after 0.52.12 that
+ * the in-tree provider has not adopted: eager_input_streaming on every tool, a
+ * cache breakpoint on the last tool (ours places markers itself), thinking
+ * `display: "summarized"`, an explicit thinking {type: "disabled"}, and no
+ * `temperature` alongside thinking. Normalize both sides to compare the rest.
+ */
+function stripKnownPiAiDrift(json: string): string {
+  const body = JSON.parse(json) as AnthropicRequestParams & {
+    thinking?: { type?: string; display?: string };
+    temperature?: number;
+  };
+  const tools = (body.tools ?? []) as Array<Record<string, unknown>>;
+  for (const tool of tools) {
+    delete tool.eager_input_streaming;
+  }
+  const lastTool = tools.at(-1);
+  if (lastTool) {
+    delete lastTool.cache_control;
+  }
+  if (body.thinking?.type === "disabled") {
+    delete body.thinking;
+  }
+  if (body.thinking) {
+    delete body.thinking.display;
+    delete body.temperature;
+  }
+  return JSON.stringify(body);
+}
+
 describe("byte-level parity with vendored pi-ai 0.52.12", () => {
-  it("streamAnthropic: identical request body (adaptive model, tools, thinking, metadata, tool_choice)", async () => {
+  it("streamAnthropic: identical request body (adaptive model, tools, thinking, metadata, tool_choice)", () => {
     const modelId = "claude-opus-4-6";
     const context = richContext(modelId);
     const options = {
@@ -110,7 +155,7 @@ describe("byte-level parity with vendored pi-ai 0.52.12", () => {
       metadata: { user_id: "u1", ignored: "x" },
       toolChoice: "auto",
     };
-    const vendored = await captureVendored(streamAnthropic, modelId, context, options);
+    const vendored = PI_AI_0_52_12_GOLDEN.streamAnthropicRich;
     const model = makeModel({ id: modelId });
     const { cacheControl } = getCacheControl(model.baseUrl, "long");
     const native = buildParams(model, context, false, options as AnthropicOptions, {
@@ -120,11 +165,11 @@ describe("byte-level parity with vendored pi-ai 0.52.12", () => {
     expect(JSON.stringify(native)).toBe(vendored);
   });
 
-  it("streamSimpleAnthropic: identical option derivation for budget-based thinking (Haiku 4.5)", async () => {
+  it("streamSimpleAnthropic: identical option derivation for budget-based thinking (Haiku 4.5)", () => {
     const modelId = "claude-haiku-4-5";
     const context = richContext(modelId);
     const options = { apiKey: "sk-test", reasoning: "medium", maxTokens: 2000 };
-    const vendored = await captureVendored(streamSimpleAnthropic, modelId, context, options);
+    const vendored = PI_AI_0_52_12_GOLDEN.simpleHaikuBudget;
     const model = makeModel({ id: modelId, maxTokens: 64000 });
     const providerOptions = resolveProviderOptions(model, options as never, "sk-test");
     const { cacheControl } = getCacheControl(model.baseUrl, providerOptions.cacheRetention);
@@ -136,11 +181,11 @@ describe("byte-level parity with vendored pi-ai 0.52.12", () => {
     expect(native.thinking).toEqual({ type: "enabled", budget_tokens: 8192 });
   });
 
-  it("streamSimpleAnthropic: identical with thinking off and default maxTokens", async () => {
+  it("streamSimpleAnthropic: identical with thinking off and default maxTokens", () => {
     const modelId = "claude-opus-4-6";
     const context = richContext(modelId);
     const options = { apiKey: "sk-test" };
-    const vendored = await captureVendored(streamSimpleAnthropic, modelId, context, options);
+    const vendored = PI_AI_0_52_12_GOLDEN.simpleThinkingOff;
     const model = makeModel({ id: modelId });
     const providerOptions = resolveProviderOptions(model, options, "sk-test");
     const { cacheControl } = getCacheControl(model.baseUrl, providerOptions.cacheRetention);
@@ -151,11 +196,11 @@ describe("byte-level parity with vendored pi-ai 0.52.12", () => {
     expect(JSON.stringify(native)).toBe(vendored);
   });
 
-  it("OAuth setup-token: Claude Code identity block + tool name casing, byte-identical", async () => {
+  it("OAuth setup-token: Claude Code identity block + tool name casing, byte-identical", () => {
     const modelId = "claude-opus-4-6";
     const context = richContext(modelId);
     const options = { apiKey: "sk-ant-oat01-test", maxTokens: 500 };
-    const vendored = await captureVendored(streamAnthropic, modelId, context, options);
+    const vendored = PI_AI_0_52_12_GOLDEN.oauthSetupToken;
     const model = makeModel({ id: modelId });
     const { cacheControl } = getCacheControl(model.baseUrl, undefined);
     const native = buildParams(model, context, true, options, { plan: NO_SEARCH, cacheControl });
@@ -163,6 +208,50 @@ describe("byte-level parity with vendored pi-ai 0.52.12", () => {
     const firstTool = (native.tools ?? [])[0] as WireTool | undefined;
     expect(firstTool?.name).toBe("Read");
     expect(native.system?.[0]?.text).toContain("Claude Code");
+  });
+
+  it("pi-ai drift: the installed pi-ai differs from 0.52.12 only by the known deltas", async () => {
+    const cases = [
+      {
+        key: "streamAnthropicRich",
+        fn: streamAnthropic,
+        modelId: "claude-opus-4-6",
+        options: {
+          apiKey: "sk-test",
+          maxTokens: 1000,
+          temperature: 0.2,
+          cacheRetention: "long",
+          thinkingEnabled: true,
+          effort: "high",
+          metadata: { user_id: "u1", ignored: "x" },
+          toolChoice: "auto",
+        },
+      },
+      {
+        key: "simpleHaikuBudget",
+        fn: streamSimpleAnthropic,
+        modelId: "claude-haiku-4-5",
+        options: { apiKey: "sk-test", reasoning: "medium", maxTokens: 2000 },
+      },
+      {
+        key: "simpleThinkingOff",
+        fn: streamSimpleAnthropic,
+        modelId: "claude-opus-4-6",
+        options: { apiKey: "sk-test" },
+      },
+      {
+        key: "oauthSetupToken",
+        fn: streamAnthropic,
+        modelId: "claude-opus-4-6",
+        options: { apiKey: "sk-ant-oat01-test", maxTokens: 500 },
+      },
+    ] as const;
+    for (const c of cases) {
+      const current = await captureVendored(c.fn, c.modelId, richContext(c.modelId), c.options);
+      expect(stripKnownPiAiDrift(current), c.key).toBe(
+        stripKnownPiAiDrift(PI_AI_0_52_12_GOLDEN[c.key]),
+      );
+    }
   });
 
   it("documented divergence: Opus 4.8 gets adaptive thinking (vendored would send budget_tokens, a 400)", async () => {

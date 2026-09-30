@@ -234,16 +234,27 @@ vi.mock("../agents/pi-model-discovery.js", async () => {
     "../agents/pi-model-discovery.js",
   );
 
-  class MockModelRegistry extends actual.ModelRegistry {
-    override getAll(): ReturnType<typeof actual.ModelRegistry.prototype.getAll> {
+  type Registry = ReturnType<typeof actual.ModelRegistry.create>;
+  // pi-coding-agent 0.73 made the ModelRegistry constructor private, so wrap
+  // the factories and override getAll on each instance instead of subclassing.
+  const withMockGetAll = (registry: Registry): Registry => {
+    const realGetAll = registry.getAll.bind(registry);
+    registry.getAll = () => {
       if (!piSdkMock.enabled) {
-        return super.getAll();
+        return realGetAll();
       }
       piSdkMock.discoverCalls += 1;
       // Cast to expected type for testing purposes
-      return piSdkMock.models as ReturnType<typeof actual.ModelRegistry.prototype.getAll>;
-    }
-  }
+      return piSdkMock.models as ReturnType<Registry["getAll"]>;
+    };
+    return registry;
+  };
+  const MockModelRegistry = Object.assign(Object.create(actual.ModelRegistry) as object, {
+    create: (...args: Parameters<typeof actual.ModelRegistry.create>) =>
+      withMockGetAll(actual.ModelRegistry.create(...args)),
+    inMemory: (...args: Parameters<typeof actual.ModelRegistry.inMemory>) =>
+      withMockGetAll(actual.ModelRegistry.inMemory(...args)),
+  }) as typeof actual.ModelRegistry;
 
   return {
     ...actual,

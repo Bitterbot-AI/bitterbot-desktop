@@ -50,11 +50,17 @@ export function createEmbeddedPiSessionEventHandler(ctx: EmbeddedPiSubscribeCont
       case "agent_start":
         handleAgentStart(ctx);
         return;
-      case "auto_compaction_start":
-        handleAutoCompactionStart(ctx);
+      // pi-coding-agent >= 0.73 renamed auto_compaction_* to compaction_* and
+      // also emits them for manual compaction; only automatic runs count here.
+      case "compaction_start":
+        if ((evt as { reason?: unknown }).reason !== "manual") {
+          handleAutoCompactionStart(ctx);
+        }
         return;
-      case "auto_compaction_end":
-        handleAutoCompactionEnd(ctx, evt as never);
+      case "compaction_end":
+        if ((evt as { reason?: unknown }).reason !== "manual") {
+          handleAutoCompactionEnd(ctx, evt as never);
+        }
         return;
       case "agent_end":
         handleAgentEnd(ctx);

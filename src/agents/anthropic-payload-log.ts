@@ -157,7 +157,7 @@ export function createAnthropicPayloadLogger(params: {
       if (!isAnthropicModel(model)) {
         return streamFn(model, context, options);
       }
-      const nextOnPayload = (payload: unknown) => {
+      const nextOnPayload = (payload: unknown, payloadModel: typeof model) => {
         record({
           ...base,
           ts: new Date().toISOString(),
@@ -165,7 +165,7 @@ export function createAnthropicPayloadLogger(params: {
           payload,
           payloadDigest: digest(payload),
         });
-        options?.onPayload?.(payload);
+        return options?.onPayload?.(payload, payloadModel);
       };
       return streamFn(model, context, {
         ...options,

@@ -96,6 +96,7 @@ import {
   setActiveEmbeddedRun,
 } from "../runs.js";
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
+import { withSessionRequestAuth } from "../session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { prepareSessionManagerForRun } from "../session-manager-init.js";
 import {
@@ -103,7 +104,8 @@ import {
   buildEmbeddedSystemPrompt,
   createSystemPromptOverride,
 } from "../system-prompt.js";
-import { splitSdkTools } from "../tool-split.js";
+import { applyToolLoopCompat } from "../tool-loop-compat.js";
+import { sessionToolAllowlist, splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
 import {
@@ -674,10 +676,6 @@ export async function runEmbeddedAttempt(
       });
 
       const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
-      ensurePiCompactionReserveTokens({
-        settingsManager,
-        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-      });
 
       // Call for side effects (sets compaction/pruning runtime state)
       buildEmbeddedExtensionPaths({
@@ -691,7 +689,7 @@ export async function runEmbeddedAttempt(
       // Get hook runner early so it's available when creating tools
       const hookRunner = getGlobalHookRunner();
 
-      const { builtInTools, customTools } = splitSdkTools({
+      const { customTools } = splitSdkTools({
         tools,
         sandboxEnabled: !!sandbox?.enabled,
       });
@@ -720,7 +718,7 @@ export async function runEmbeddedAttempt(
         modelRegistry: params.modelRegistry,
         model: params.model,
         thinkingLevel: mapThinkingLevel(params.thinkLevel),
-        tools: builtInTools,
+        tools: sessionToolAllowlist(allCustomTools),
         customTools: allCustomTools,
         sessionManager,
         settingsManager,
@@ -729,6 +727,13 @@ export async function runEmbeddedAttempt(
       if (!session) {
         throw new Error("Embedded agent session missing");
       }
+      // After createAgentSession: pi >= 0.73 reloads settings from disk while
+      // creating the session, which drops overrides applied earlier.
+      ensurePiCompactionReserveTokens({
+        settingsManager,
+        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+      });
+      applyToolLoopCompat(session);
       const activeSession = session;
       const cacheTrace = createCacheTrace({
         cfg: params.config,
@@ -789,6 +794,12 @@ export async function runEmbeddedAttempt(
           activeSession.agent.streamFn,
         );
       }
+      // Outermost: pi >= 0.73 only resolves the API key and headers inside the
+      // default streamFn we replaced above.
+      activeSession.agent.streamFn = withSessionRequestAuth(
+        activeSession.agent.streamFn,
+        params.modelRegistry,
+      );
 
       try {
         const prior = await sanitizeSessionHistory({
@@ -819,7 +830,7 @@ export async function runEmbeddedAttempt(
           : truncated;
         cacheTrace?.recordStage("session:limited", { messages: limited });
         if (limited.length > 0) {
-          activeSession.agent.replaceMessages(limited);
+          activeSession.agent.state.messages = limited;
         }
       } catch (err) {
         await flushPendingToolResultsAfterIdle({
@@ -1063,7 +1074,7 @@ export async function runEmbeddedAttempt(
           const sanitizedOrphan = transcriptPolicy.normalizeAntigravityThinkingBlocks
             ? sanitizeAntigravityThinkingBlocks(sessionContext.messages)
             : sessionContext.messages;
-          activeSession.agent.replaceMessages(sanitizedOrphan);
+          activeSession.agent.state.messages = sanitizedOrphan;
           log.warn(
             `Removed orphaned user message to prevent consecutive user turns. ` +
               `runId=${params.runId} sessionId=${params.sessionId}`,
@@ -1097,7 +1108,7 @@ export async function runEmbeddedAttempt(
           );
           if (didMutate) {
             // Persist message mutations (e.g., injected history images) so we don't re-scan/reload.
-            activeSession.agent.replaceMessages(activeSession.messages);
+            activeSession.agent.state.messages = activeSession.messages;
           }
 
           cacheTrace?.recordStage("prompt:images", {

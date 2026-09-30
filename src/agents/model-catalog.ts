@@ -107,8 +107,8 @@ export async function loadModelCatalog(params?: {
       const piSdk = await importPiSdk();
       const agentDir = resolveBitterbotAgentDir();
       const { join } = await import("node:path");
-      const authStorage = new piSdk.AuthStorage(join(agentDir, "auth.json"));
-      const registry = new piSdk.ModelRegistry(authStorage, join(agentDir, "models.json")) as
+      const authStorage = piSdk.AuthStorage.create(join(agentDir, "auth.json"));
+      const registry = piSdk.ModelRegistry.create(authStorage, join(agentDir, "models.json")) as
         | {
             getAll: () => Array<DiscoveredModel>;
           }

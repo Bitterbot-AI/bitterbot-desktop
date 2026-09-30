@@ -23,16 +23,6 @@
         },
         {
           "type": "json",
-          "path": "extensions/google-antigravity-auth/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "extensions/google-gemini-cli-auth/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
           "path": "extensions/signal/package.json",
           "jsonpath": "$.version"
         },

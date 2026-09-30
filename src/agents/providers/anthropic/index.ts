@@ -21,9 +21,14 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "@mariozechner/pi-ai";
-import { getEnvApiKey, streamSimple } from "@mariozechner/pi-ai";
-import { AssistantMessageEventStream } from "@mariozechner/pi-ai/dist/utils/event-stream.js";
+import type {
+  AssistantMessage,
+  AssistantMessageEventStream,
+  Context,
+  Model,
+  SimpleStreamOptions,
+} from "@mariozechner/pi-ai";
+import { createAssistantMessageEventStream, getEnvApiKey, streamSimple } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../../../config/config.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { applyAnthropicCacheLayout } from "../../pi-embedded-runner/anthropic-payload-cache.js";
@@ -43,6 +48,7 @@ import { buildParams, getCacheControl, resolveProviderOptions } from "./request.
 import { consumeAnthropicMessage, consumeAnthropicStream } from "./stream.js";
 import { collectToolSearchHistoryState, planToolDeferral } from "./tool-search.js";
 import type {
+  AnthropicRequestParams,
   AnthropicRuntimeConfig,
   AnthropicTransport,
   AnthropicTransportResult,
@@ -150,7 +156,7 @@ export function streamAnthropicNative(
     throw new Error(`No API key for provider: ${model.provider}`);
   }
   const providerOptions = resolveProviderOptions(model, options, resolvedKey);
-  const stream = new AssistantMessageEventStream();
+  const stream = createAssistantMessageEventStream();
   void (async () => {
     const output: AssistantMessage = {
       role: "assistant",
@@ -233,10 +239,13 @@ export function streamAnthropicNative(
             `request: tools=${layout.toolCount} deferred=${plan.deferred.size} search=${plan.searchTool?.name ?? `off(${searchOffReason ?? "no-deferred-tools"})`} markers=${layout.markerCount} volatile=${layout.volatileSystemChars}c@${layout.volatilePlacement}`,
           );
         }
-        providerOptions.onPayload?.(params);
+        // pi-ai >= 0.73: onPayload may return a replacement payload.
+        const replaced = await providerOptions.onPayload?.(params, model);
+        const requestParams =
+          replaced === undefined ? params : (replaced as AnthropicRequestParams);
         try {
           const result: AnthropicTransportResult = await deps.transport({
-            params,
+            params: requestParams,
             clientOptions,
             signal: providerOptions.signal,
           });

@@ -10,7 +10,7 @@
  * This module fires inside our subscription handler after each tool
  * result is committed: cheap char check, then a token estimate, and
  * only if we cross the trigger threshold do we run progressive
- * compression and call session.agent.replaceMessages. Progressive
+ * compression and assign session.agent.state.messages. Progressive
  * compression is deterministic (no LLM calls), so calling it from
  * inside an active run is safe.
  *
@@ -43,7 +43,7 @@ export type MidTurnBudgetConfig = {
 
 export type MidTurnBudgetSessionLike = {
   messages: AgentMessage[];
-  agent: { replaceMessages: (messages: AgentMessage[]) => void };
+  agent: { state: { messages: AgentMessage[] } };
 };
 
 export type MidTurnBudgetResult =
@@ -97,10 +97,10 @@ function estimateMessagesTokens(messages: AgentMessage[]): number {
 /**
  * Inspect the session's current message volume and, if it exceeds the
  * trigger threshold, replace its messages with a progressively-compressed
- * variant. The session is mutated in place via session.agent.replaceMessages.
+ * variant. The session is mutated in place via session.agent.state.messages.
  *
  * Safe to call concurrently with an in-flight run because progressive
- * compression doesn't make any LLM calls and replaceMessages is the same
+ * compression doesn't make any LLM calls and the state.messages assignment is the same
  * mechanism pi-coding-agent uses for its own auto-compaction.
  */
 export function applyMidTurnBudget(params: {
@@ -154,7 +154,7 @@ export function applyMidTurnBudget(params: {
     };
   }
 
-  params.session.agent.replaceMessages(result.messages);
+  params.session.agent.state.messages = result.messages;
 
   return {
     applied: true,

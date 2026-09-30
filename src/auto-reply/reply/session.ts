@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
+import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
 import type { BitterbotConfig } from "../../config/config.js";
@@ -73,26 +73,18 @@ function forkSessionFromParent(params: {
   try {
     const manager = SessionManager.open(parentSessionFile);
     const leafId = manager.getLeafId();
-    if (leafId) {
-      const sessionFile = manager.createBranchedSession(leafId) ?? manager.getSessionFile();
-      const sessionId = manager.getSessionId();
-      if (sessionFile && sessionId) {
-        return { sessionId, sessionFile };
-      }
+    if (!leafId) {
+      return null;
     }
-    const sessionId = crypto.randomUUID();
-    const timestamp = new Date().toISOString();
-    const fileTimestamp = timestamp.replace(/[:.]/g, "-");
-    const sessionFile = path.join(manager.getSessionDir(), `${fileTimestamp}_${sessionId}.jsonl`);
-    const header = {
-      type: "session",
-      version: CURRENT_SESSION_VERSION,
-      id: sessionId,
-      timestamp,
-      cwd: manager.getCwd(),
-      parentSession: parentSessionFile,
-    };
-    fs.writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, "utf-8");
+    const sessionFile = manager.createBranchedSession(leafId);
+    const sessionId = manager.getSessionId();
+    // pi only writes a session file once it holds an assistant message; a file
+    // written earlier gets its header and entries appended a second time when
+    // the first reply lands. A parent branch with no reply yet has nothing
+    // worth inheriting, so the thread starts fresh instead.
+    if (!sessionFile || !sessionId || !fs.existsSync(sessionFile)) {
+      return null;
+    }
     return { sessionId, sessionFile };
   } catch {
     return null;

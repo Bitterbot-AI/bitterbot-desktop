@@ -12,6 +12,7 @@ import {
   resolveProfileUnusableUntilForDisplay,
 } from "../agents/auth-profiles.js";
 import { updateAuthProfileStoreWithLock } from "../agents/auth-profiles/store.js";
+import { retiredProviderLabel } from "../agents/retired-providers.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { note } from "../terminal/note.js";
@@ -197,6 +198,66 @@ export async function maybeRemoveDeprecatedCliAuthProfiles(
     );
   }
   return pruned.next;
+}
+
+function modelRefsFromConfig(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const { primary, fallbacks } = value as { primary?: unknown; fallbacks?: unknown };
+  return [
+    ...(typeof primary === "string" ? [primary] : []),
+    ...(Array.isArray(fallbacks)
+      ? fallbacks.filter((ref): ref is string => typeof ref === "string")
+      : []),
+  ];
+}
+
+export function findRetiredOAuthProviderUse(
+  cfg: BitterbotConfig,
+  storeProfiles: Record<string, { provider?: string }>,
+): string[] {
+  const findings = new Set<string>();
+  const profiles = { ...storeProfiles, ...cfg.auth?.profiles };
+  for (const [profileId, profile] of Object.entries(profiles)) {
+    const provider = profile?.provider ?? profileId.split(":")[0];
+    const label = retiredProviderLabel(provider);
+    if (label) {
+      findings.add(`auth profile ${profileId} (${label})`);
+    }
+  }
+  const modelRefs = [
+    ...modelRefsFromConfig(cfg.agents?.defaults?.model),
+    ...modelRefsFromConfig(cfg.agents?.defaults?.imageModel),
+    ...(cfg.agents?.list ?? []).flatMap((agent) => modelRefsFromConfig(agent.model)),
+  ];
+  for (const ref of modelRefs) {
+    const provider = ref.split("/")[0]?.trim();
+    const label = retiredProviderLabel(provider);
+    if (label) {
+      findings.add(`model ${ref} (${label})`);
+    }
+  }
+  return Array.from(findings);
+}
+
+export function noteRetiredOAuthProviders(cfg: BitterbotConfig): void {
+  const store = ensureAuthProfileStore(undefined, { allowKeychainPrompt: false });
+  const findings = findRetiredOAuthProviderUse(cfg, store.profiles);
+  if (findings.length === 0) {
+    return;
+  }
+  note(
+    [
+      "Google Gemini CLI and Google Antigravity OAuth are no longer supported (removed upstream); these will fail:",
+      ...findings.map((finding) => `- ${finding}`),
+      `Use a Gemini API key instead: ${formatCliCommand("bitterbot configure")} → Model → Google.`,
+    ].join("\n"),
+    "Auth profiles",
+  );
 }
 
 type AuthIssue = {
