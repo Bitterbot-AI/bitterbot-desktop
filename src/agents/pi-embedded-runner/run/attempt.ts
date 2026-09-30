@@ -96,6 +96,7 @@ import {
   setActiveEmbeddedRun,
 } from "../runs.js";
 import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
+import { withSessionRequestAuth } from "../session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { prepareSessionManagerForRun } from "../session-manager-init.js";
 import {
@@ -103,6 +104,7 @@ import {
   buildEmbeddedSystemPrompt,
   createSystemPromptOverride,
 } from "../system-prompt.js";
+import { applyToolLoopCompat } from "../tool-loop-compat.js";
 import { sessionToolAllowlist, splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
@@ -674,10 +676,6 @@ export async function runEmbeddedAttempt(
       });
 
       const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
-      ensurePiCompactionReserveTokens({
-        settingsManager,
-        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-      });
 
       // Call for side effects (sets compaction/pruning runtime state)
       buildEmbeddedExtensionPaths({
@@ -729,6 +727,13 @@ export async function runEmbeddedAttempt(
       if (!session) {
         throw new Error("Embedded agent session missing");
       }
+      // After createAgentSession: pi >= 0.73 reloads settings from disk while
+      // creating the session, which drops overrides applied earlier.
+      ensurePiCompactionReserveTokens({
+        settingsManager,
+        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+      });
+      applyToolLoopCompat(session);
       const activeSession = session;
       const cacheTrace = createCacheTrace({
         cfg: params.config,
@@ -789,6 +794,12 @@ export async function runEmbeddedAttempt(
           activeSession.agent.streamFn,
         );
       }
+      // Outermost: pi >= 0.73 only resolves the API key and headers inside the
+      // default streamFn we replaced above.
+      activeSession.agent.streamFn = withSessionRequestAuth(
+        activeSession.agent.streamFn,
+        params.modelRegistry,
+      );
 
       try {
         const prior = await sanitizeSessionHistory({

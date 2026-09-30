@@ -68,7 +68,7 @@ describe("compaction hook wiring", () => {
     handleAutoCompactionEnd(
       ctx as never,
       {
-        type: "auto_compaction_end",
+        type: "compaction_end",
         willRetry: false,
       } as never,
     );
@@ -98,7 +98,7 @@ describe("compaction hook wiring", () => {
     handleAutoCompactionEnd(
       ctx as never,
       {
-        type: "auto_compaction_end",
+        type: "compaction_end",
         willRetry: true,
       } as never,
     );

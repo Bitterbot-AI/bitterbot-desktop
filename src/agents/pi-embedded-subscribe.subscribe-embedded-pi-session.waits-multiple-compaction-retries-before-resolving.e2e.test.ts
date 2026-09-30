@@ -22,8 +22,8 @@ describe("subscribeEmbeddedPiSession", () => {
     });
 
     for (const listener of listeners) {
-      listener({ type: "auto_compaction_end", willRetry: true });
-      listener({ type: "auto_compaction_end", willRetry: true });
+      listener({ type: "compaction_end", willRetry: true });
+      listener({ type: "compaction_end", willRetry: true });
     }
 
     let resolved = false;
@@ -78,9 +78,9 @@ describe("subscribeEmbeddedPiSession", () => {
       runId: "run-compaction",
     });
 
-    handler?.({ type: "auto_compaction_start" });
-    handler?.({ type: "auto_compaction_end", willRetry: true });
-    handler?.({ type: "auto_compaction_end", willRetry: false });
+    handler?.({ type: "compaction_start" });
+    handler?.({ type: "compaction_end", willRetry: true });
+    handler?.({ type: "compaction_end", willRetry: false });
 
     stop();
 
@@ -109,7 +109,7 @@ describe("subscribeEmbeddedPiSession", () => {
     });
 
     for (const listener of listeners) {
-      listener({ type: "auto_compaction_start" });
+      listener({ type: "compaction_start" });
     }
 
     const waitPromise = subscription.waitForCompactionRetry();

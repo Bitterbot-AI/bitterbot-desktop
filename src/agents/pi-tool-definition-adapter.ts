@@ -39,6 +39,10 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
       label: tool.label ?? name,
       description: tool.description ?? "",
       parameters: toPlainJsonSchema(tool.parameters),
+      // Argument shims (e.g. pi's edit tool folding legacy oldText/newText into
+      // edits[]) run before validation and must survive the conversion.
+      ...(tool.prepareArguments ? { prepareArguments: tool.prepareArguments } : {}),
+      ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
         const [toolCallId, params, signal, onUpdate] = args;
         let executeParams = params;

@@ -584,10 +584,6 @@ export async function compactEmbeddedPiSessionDirect(
       });
       trackSessionManagerAccess(params.sessionFile);
       const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
-      ensurePiCompactionReserveTokens({
-        settingsManager,
-        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-      });
       // Call for side effects (sets compaction/pruning runtime state)
       buildEmbeddedExtensionPaths({
         cfg: params.config,
@@ -615,6 +611,12 @@ export async function compactEmbeddedPiSessionDirect(
         settingsManager,
       });
       applySystemPromptOverrideToSession(session, systemPromptOverride());
+      // After createAgentSession: pi >= 0.73 reloads settings from disk while
+      // creating the session, which drops overrides applied earlier.
+      ensurePiCompactionReserveTokens({
+        settingsManager,
+        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+      });
 
       try {
         const prior = await sanitizeSessionHistory({
