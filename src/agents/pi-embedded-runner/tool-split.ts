@@ -6,12 +6,20 @@ import { toToolDefinitions } from "../pi-tool-definition-adapter.js";
 type AnyAgentTool = AgentTool;
 
 export function splitSdkTools(options: { tools: AnyAgentTool[]; sandboxEnabled: boolean }): {
-  builtInTools: AnyAgentTool[];
   customTools: ReturnType<typeof toToolDefinitions>;
 } {
   const { tools } = options;
   return {
-    builtInTools: [],
     customTools: toToolDefinitions(tools),
   };
+}
+
+/**
+ * The `tools` option of pi's createAgentSession (pi-coding-agent >= 0.73) is a
+ * name allowlist over built-in AND custom tools: an empty array enables no
+ * tools at all, and omitting it enables pi's own read/bash/edit/write. Pass
+ * exactly our custom tool names so the session gets our toolset and nothing else.
+ */
+export function sessionToolAllowlist(customTools: ReadonlyArray<{ name: string }>): string[] {
+  return customTools.map((tool) => tool.name);
 }

@@ -40,7 +40,13 @@ describe("resolveSkillsPromptForRun", () => {
         description: "Demo",
         filePath: "/app/skills/demo-skill/SKILL.md",
         baseDir: "/app/skills/demo-skill",
-        source: "bitterbot-bundled",
+        sourceInfo: {
+          path: "/app/skills/demo-skill",
+          source: "bitterbot-bundled",
+          scope: "temporary",
+          origin: "top-level",
+        },
+        disableModelInvocation: false,
       },
       frontmatter: {},
     };

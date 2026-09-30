@@ -206,7 +206,8 @@ export function createCirclesTool(options: {
       "send or ask into a circle. Use this instead of guessing whenever asked about your " +
       "connections, circle, roommates, or the shared tab.",
     parameters: CirclesSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
       const db = await getCirclesDb(cfg, agentId);
       if (!db) {

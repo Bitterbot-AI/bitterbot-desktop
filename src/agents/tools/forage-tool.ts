@@ -151,7 +151,8 @@ export function createForageTool(options: {
       "Read-only; always use this instead of guessing when asked about bounties, " +
       "agent earnings, or the agent economy.",
     parameters: ForageSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
       const limit = Math.min(Math.max(readNumberParam(params, "limit") ?? 20, 1), 100);
       const db = await getBountyDb(cfg, agentId);

@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   __midTurnBudgetConsts,
   applyMidTurnBudget,
@@ -29,10 +29,16 @@ function makeSession(messages: AgentMessage[]): MidTurnBudgetSessionLike & {
   return {
     messages,
     agent: {
-      replaceMessages: (next: AgentMessage[]) => {
-        replaceCalled += 1;
-        messages.length = 0;
-        for (const m of next) messages.push(m);
+      state: {
+        get messages() {
+          return messages;
+        },
+        set messages(next: AgentMessage[]) {
+          replaceCalled += 1;
+          const copy = [...next];
+          messages.length = 0;
+          for (const m of copy) messages.push(m);
+        },
       },
     },
     get replaceCalled() {
@@ -166,11 +172,9 @@ describe("applyMidTurnBudget — robustness", () => {
     expect(() => applyMidTurnBudget({ session, contextWindowTokens: 200_000 })).not.toThrow();
   });
 
-  it("does not call replaceMessages when applied=false", () => {
+  it("does not replace messages when applied=false", () => {
     const session = makeSession([makeMsg("user", "hi")]);
-    const _stub = vi.fn();
-    session.agent.replaceMessages = _stub;
     applyMidTurnBudget({ session, contextWindowTokens: 200_000 });
-    expect(_stub).not.toHaveBeenCalled();
+    expect(session.replaceCalled).toBe(0);
   });
 });

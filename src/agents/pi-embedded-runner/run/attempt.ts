@@ -103,7 +103,7 @@ import {
   buildEmbeddedSystemPrompt,
   createSystemPromptOverride,
 } from "../system-prompt.js";
-import { splitSdkTools } from "../tool-split.js";
+import { sessionToolAllowlist, splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
 import {
@@ -691,7 +691,7 @@ export async function runEmbeddedAttempt(
       // Get hook runner early so it's available when creating tools
       const hookRunner = getGlobalHookRunner();
 
-      const { builtInTools, customTools } = splitSdkTools({
+      const { customTools } = splitSdkTools({
         tools,
         sandboxEnabled: !!sandbox?.enabled,
       });
@@ -720,7 +720,7 @@ export async function runEmbeddedAttempt(
         modelRegistry: params.modelRegistry,
         model: params.model,
         thinkingLevel: mapThinkingLevel(params.thinkLevel),
-        tools: builtInTools,
+        tools: sessionToolAllowlist(allCustomTools),
         customTools: allCustomTools,
         sessionManager,
         settingsManager,
@@ -819,7 +819,7 @@ export async function runEmbeddedAttempt(
           : truncated;
         cacheTrace?.recordStage("session:limited", { messages: limited });
         if (limited.length > 0) {
-          activeSession.agent.replaceMessages(limited);
+          activeSession.agent.state.messages = limited;
         }
       } catch (err) {
         await flushPendingToolResultsAfterIdle({
@@ -1063,7 +1063,7 @@ export async function runEmbeddedAttempt(
           const sanitizedOrphan = transcriptPolicy.normalizeAntigravityThinkingBlocks
             ? sanitizeAntigravityThinkingBlocks(sessionContext.messages)
             : sessionContext.messages;
-          activeSession.agent.replaceMessages(sanitizedOrphan);
+          activeSession.agent.state.messages = sanitizedOrphan;
           log.warn(
             `Removed orphaned user message to prevent consecutive user turns. ` +
               `runId=${params.runId} sessionId=${params.sessionId}`,
@@ -1097,7 +1097,7 @@ export async function runEmbeddedAttempt(
           );
           if (didMutate) {
             // Persist message mutations (e.g., injected history images) so we don't re-scan/reload.
-            activeSession.agent.replaceMessages(activeSession.messages);
+            activeSession.agent.state.messages = activeSession.messages;
           }
 
           cacheTrace?.recordStage("prompt:images", {

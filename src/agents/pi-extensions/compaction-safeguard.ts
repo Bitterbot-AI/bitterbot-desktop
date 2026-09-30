@@ -182,7 +182,9 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
       };
     }
 
-    const apiKey = await ctx.modelRegistry.getApiKey(model);
+    const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+    const apiKey = auth.ok ? auth.apiKey : undefined;
+    const headers = auth.ok ? auth.headers : undefined;
     if (!apiKey) {
       return {
         compaction: {
@@ -249,6 +251,7 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
                   messages: pruned.droppedMessagesList,
                   model,
                   apiKey,
+                  headers,
                   signal,
                   reserveTokens: Math.max(1, Math.floor(preparation.settings.reserveTokens)),
                   maxChunkTokens: droppedMaxChunkTokens,
@@ -282,6 +285,7 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
         messages: messagesToSummarize,
         model,
         apiKey,
+        headers,
         signal,
         reserveTokens,
         maxChunkTokens,
@@ -296,6 +300,7 @@ export default function compactionSafeguardExtension(api: ExtensionAPI): void {
           messages: turnPrefixMessages,
           model,
           apiKey,
+          headers,
           signal,
           reserveTokens,
           maxChunkTokens,

@@ -35,11 +35,13 @@ describe("loadModelCatalog e2e smoke", () => {
         throw new Error("boom");
       }
       return {
-        AuthStorage: class {},
-        ModelRegistry: class {
-          getAll() {
-            return [{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }];
-          }
+        AuthStorage: { create: () => ({}) },
+        ModelRegistry: {
+          create: () => ({
+            getAll() {
+              return [{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }];
+            },
+          }),
         },
       } as unknown as PiSdkModule;
     });

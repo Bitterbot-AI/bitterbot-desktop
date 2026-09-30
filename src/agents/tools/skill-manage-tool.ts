@@ -199,7 +199,8 @@ export function createSkillManageTool(options: {
       "commands that worked plus an honest rewardScore, and the sequence becomes a reusable " +
       "skill (threshold 0.85).",
     parameters: ManageSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action") as
         | SkillManageAction
         | "promote"

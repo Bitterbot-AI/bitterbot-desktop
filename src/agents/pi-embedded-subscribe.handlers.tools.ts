@@ -384,13 +384,13 @@ export async function handleToolExecutionEnd(
   // through from the run attempt and a session+agent are present.
   const ctxWindow = ctx.params.contextWindowTokens;
   const session = ctx.params.session as
-    | { messages?: unknown; agent?: { replaceMessages?: unknown } }
+    | { messages?: unknown; agent?: { state?: { messages?: unknown } } }
     | undefined;
   if (
     typeof ctxWindow === "number" &&
     ctxWindow > 0 &&
     Array.isArray(session?.messages) &&
-    typeof session?.agent?.replaceMessages === "function"
+    Array.isArray(session?.agent?.state?.messages)
   ) {
     let estimatedTokens: number | undefined;
     try {

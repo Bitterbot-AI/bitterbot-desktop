@@ -1,5 +1,33 @@
-import type { Model } from "@mariozechner/pi-ai/dist/types.js";
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import type { Context, Model, Tool } from "@mariozechner/pi-ai";
 import { expect } from "vitest";
+
+type GoogleShared = {
+  convertMessages: (
+    model: Model<"google-generative-ai">,
+    context: Context,
+  ) => Array<{ role: string; parts?: unknown[] }>;
+  convertTools: (tools: Tool[]) => ConvertedTools | undefined;
+};
+
+/**
+ * pi-ai >= 0.73 has an `exports` map that hides dist/providers/google-shared.js,
+ * so locate the package directory and load it by file URL. These tests
+ * guard upstream Google message conversion behaviour we rely on.
+ */
+export async function loadGoogleShared(): Promise<GoogleShared> {
+  const require = createRequire(import.meta.url);
+  for (const dir of require.resolve.paths("@mariozechner/pi-ai") ?? []) {
+    const file = path.join(dir, "@mariozechner/pi-ai/dist/providers/google-shared.js");
+    if (fs.existsSync(file)) {
+      return (await import(pathToFileURL(file).href)) as GoogleShared;
+    }
+  }
+  throw new Error("@mariozechner/pi-ai google-shared.js not found");
+}
 
 export const asRecord = (value: unknown): Record<string, unknown> => {
   expect(value).toBeTruthy();

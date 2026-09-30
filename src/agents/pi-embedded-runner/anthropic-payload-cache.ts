@@ -386,7 +386,7 @@ export function createAnthropicCacheLayoutWrapper(
     const originalOnPayload = options?.onPayload;
     return underlying(model, context, {
       ...options,
-      onPayload: (payload) => {
+      onPayload: (payload, payloadModel) => {
         try {
           const result = applyAnthropicCacheLayout(payload, cacheControl);
           if (result) {
@@ -397,7 +397,7 @@ export function createAnthropicCacheLayoutWrapper(
         } catch (err) {
           log.warn(`cache layout skipped: ${String(err)}`);
         }
-        originalOnPayload?.(payload);
+        return originalOnPayload?.(payload, payloadModel);
       },
     });
   };

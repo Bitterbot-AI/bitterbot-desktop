@@ -11,11 +11,10 @@
  */
 
 import type { Context, Message, Model, ThinkingLevel, Tool } from "@mariozechner/pi-ai";
-import { transformMessages } from "@mariozechner/pi-ai/dist/providers/transform-messages.js";
-import { sanitizeSurrogates } from "@mariozechner/pi-ai/dist/utils/sanitize-unicode.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { toClaudeCodeName } from "./client.js";
 import { modelSupportsAdaptiveThinking } from "./config.js";
+import { sanitizeSurrogates, transformMessages } from "./pi-ai-vendored.js";
 import {
   filterToolReferences,
   isServerToolUseBlock,

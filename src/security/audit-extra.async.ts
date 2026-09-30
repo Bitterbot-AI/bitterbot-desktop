@@ -733,7 +733,7 @@ export async function collectInstalledSkillsCodeSafetyFindings(params: {
   for (const workspaceDir of workspaceDirs) {
     const entries = loadWorkspaceSkillEntries(workspaceDir, { config: params.cfg });
     for (const entry of entries) {
-      if (entry.skill.source === "bitterbot-bundled") {
+      if (entry.skill.sourceInfo.source === "bitterbot-bundled") {
         continue;
       }
 

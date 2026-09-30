@@ -52,7 +52,8 @@ export function createSkillPipelineDigestTool(options: {
     description:
       "Render a human-readable summary of recent autonomous skill-pipeline activity: dream cycles, auto-generated skills, curiosity targets, marketplace movement, execution stats, and errors. Use this when the user asks 'what did you learn today?' or wants to know what the system has been doing in the background.",
     parameters: DigestSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const lookbackHours = readNumberParam(params, "lookbackHours") ?? 24;
       const deliver = params.deliver === true;
 

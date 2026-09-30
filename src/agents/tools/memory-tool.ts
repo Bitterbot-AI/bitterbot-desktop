@@ -76,7 +76,8 @@ export function createMemorySearchTool(options: {
     description:
       "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines. Exact ground-truth hits from the canonical ledger (repo names, endpoints, identities, standing decisions) are surfaced first under `canonical` — trust those over the fuzzy `results` snippets.",
     parameters: MemorySearchSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
       const maxResults = readNumberParam(params, "maxResults");
       const minScore = readNumberParam(params, "minScore");
@@ -154,7 +155,8 @@ export function createMemoryGetTool(options: {
     description:
       "Safe snippet read from MEMORY.md or memory/*.md with optional from/lines; use after memory_search to pull only the needed lines and keep context small.",
     parameters: MemoryGetSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const relPath = readStringParam(params, "path", { required: true });
       const from = readNumberParam(params, "from", { integer: true });
       const lines = readNumberParam(params, "lines", { integer: true });
@@ -198,7 +200,8 @@ export function createMemoryExpandTool(options: {
     description:
       "Drill from a recalled fact back to its verbatim raw source. Pass an evidenceRefs entry from a memory_search result (kind+path+line for session refs, or kind+runId+seq for journal refs) to recover the exact original text — use when a paraphrased memory is load-bearing or you need to verify it.",
     parameters: MemoryExpandSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const kind = readStringParam(params, "kind", { required: true });
       const window = readNumberParam(params, "window", { integer: true });
       let ref: import("../../memory/session-extractor.js").EvidenceRef;
@@ -257,7 +260,8 @@ export function createMemoryPinTool(options: {
     description:
       "Pin a canonical fact (exact key-value ground truth: repo names, endpoints, identities, standing decisions) into the always-injected ledger. Use when the user states a durable fact, corrects you on one, or says 'remember this'. Actions: pin {key, value, statement?, category?} (add/strengthen/supersede automatically), list (active facts), get {key} (current belief + history), retire {key} (stop injecting; kept for audit). Keys are dot-slugs like 'project.repo'; categories: identity|project|infra|preference|relationship.",
     parameters: MemoryPinSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
       const { manager, error } = await getMemorySearchManager({ cfg, agentId });
       const store = manager?.canonicalFacts?.();
