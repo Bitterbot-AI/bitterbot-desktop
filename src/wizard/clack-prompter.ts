@@ -17,12 +17,15 @@ import { theme } from "../terminal/theme.js";
 import type { WizardProgress, WizardPrompter } from "./prompts.js";
 import { WizardCancelledError } from "./prompts.js";
 
-function guardCancel<T>(value: T | symbol): T {
-  if (isCancel(value)) {
+// @clack/prompts >= 1.8 types isCancel() as narrowing to its own unique
+// CANCEL_SYMBOL, and prompt results infer T with that symbol inside it. Strip
+// any symbol so callers get the plain answer type.
+function guardCancel<T>(value: T | symbol): Exclude<T, symbol> {
+  if (isCancel(value) || typeof value === "symbol") {
     cancel(stylePromptTitle("Setup cancelled.") ?? "Setup cancelled.");
     throw new WizardCancelledError();
   }
-  return value;
+  return value as Exclude<T, symbol>;
 }
 
 export function createClackPrompter(): WizardPrompter {
