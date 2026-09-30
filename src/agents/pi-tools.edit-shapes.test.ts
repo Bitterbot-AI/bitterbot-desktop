@@ -145,4 +145,30 @@ describe("edit tool argument shapes through a real pi session", () => {
     });
     expect(content).toBe("ALPHA beta GAMMA\n");
   });
+
+  it("ignores extra keys pi's strict edit schema would reject (replace_all: false)", async () => {
+    const { content } = await runEdit({
+      file_path: "note.txt",
+      old_string: "beta",
+      new_string: "BETA",
+      replace_all: false,
+    });
+    expect(content).toBe("alpha BETA gamma\n");
+    const nested = await runEdit({
+      path: "note.txt",
+      edits: [{ oldText: "gamma", newText: "GAMMA", replace_all: false }],
+    });
+    expect(nested.content).toBe("alpha beta GAMMA\n");
+  });
+
+  it("refuses replace_all: true with a clear error and leaves the file alone", async () => {
+    const { content, toolResults } = await runEdit({
+      file_path: "note.txt",
+      old_string: "beta",
+      new_string: "BETA",
+      replace_all: true,
+    });
+    expect(content).toBe("alpha beta gamma\n");
+    expect(toolResults.join("\n")).toContain("replace_all is not supported");
+  });
 });

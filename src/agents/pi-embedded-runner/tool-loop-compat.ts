@@ -17,12 +17,23 @@ export const STEERING_SKIP_REASON = "Skipped due to queued user message.";
  * The steering check is chained in front of AgentSession's own beforeToolCall
  * (extension tool_call hooks), which still runs for every call not skipped.
  */
+function hasQueuedSteering(session: AgentSession): boolean {
+  // The Agent's own queue is what 0.52 polled and is updated synchronously.
+  // It is private in the typings, so fall back to the session's UI list.
+  const queue = (session.agent as unknown as { steeringQueue?: { hasItems?: () => boolean } })
+    .steeringQueue;
+  if (typeof queue?.hasItems === "function") {
+    return queue.hasItems();
+  }
+  return session.getSteeringMessages().length > 0;
+}
+
 export function applyToolLoopCompat(session: AgentSession): void {
   const agent = session.agent;
   agent.toolExecution = "sequential";
   const sessionHook = agent.beforeToolCall;
   agent.beforeToolCall = async (context, signal) => {
-    if (session.getSteeringMessages().length > 0) {
+    if (hasQueuedSteering(session)) {
       const calls = context.assistantMessage.content.filter((block) => block.type === "toolCall");
       if (calls.findIndex((call) => call.id === context.toolCall.id) > 0) {
         return { block: true, reason: STEERING_SKIP_REASON };

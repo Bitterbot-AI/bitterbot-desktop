@@ -302,6 +302,43 @@ export function assertRequiredParams(
 }
 
 // Generic wrapper to normalize parameters for any tool
+/**
+ * pi-coding-agent >= 0.73's edit schema has `additionalProperties: false` at
+ * the root and per edit, so keys pi-agent 0.52 (Ajv) simply ignored, such as
+ * Claude Code's `replace_all: false`, now fail validation. Keep only what the
+ * tool reads. `replace_all: true` cannot be honoured, so it is an explicit error.
+ */
+function sanitizeEditArguments(args: unknown): unknown {
+  if (!args || typeof args !== "object") {
+    return args;
+  }
+  const record = args as Record<string, unknown>;
+  const wantsReplaceAll = (value: unknown) =>
+    !!value &&
+    typeof value === "object" &&
+    (value as { replace_all?: unknown }).replace_all === true;
+  if (
+    wantsReplaceAll(record) ||
+    (Array.isArray(record.edits) && record.edits.some((entry) => wantsReplaceAll(entry)))
+  ) {
+    throw new Error(
+      "edit: replace_all is not supported. Give each occurrence its own entry in edits[] with enough surrounding context to be unique.",
+    );
+  }
+  const sanitized: Record<string, unknown> = { path: record.path };
+  if (Array.isArray(record.edits)) {
+    sanitized.edits = record.edits.map((entry) =>
+      entry && typeof entry === "object"
+        ? {
+            oldText: (entry as Record<string, unknown>).oldText,
+            newText: (entry as Record<string, unknown>).newText,
+          }
+        : entry,
+    );
+  }
+  return sanitized;
+}
+
 export function wrapToolParamNormalization(
   tool: AnyAgentTool,
   requiredParamGroups?: readonly RequiredParamGroup[],
@@ -315,7 +352,8 @@ export function wrapToolParamNormalization(
     // into edits[]).
     prepareArguments: (args: unknown) => {
       const normalized = normalizeToolParams(args) ?? args;
-      return basePrepare ? basePrepare(normalized) : normalized;
+      const prepared = basePrepare ? basePrepare(normalized) : normalized;
+      return tool.name === "edit" ? sanitizeEditArguments(prepared) : prepared;
     },
     execute: async (toolCallId, params, signal, onUpdate) => {
       const normalized = normalizeToolParams(params);
