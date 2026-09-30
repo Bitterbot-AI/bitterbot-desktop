@@ -602,7 +602,7 @@ Notes:
 
 - Provider quota data comes directly from provider usage endpoints (no estimates); the
   ledger's costs are computed from provider-reported token counts and a price table.
-- Providers: Anthropic, GitHub Copilot, OpenAI Codex OAuth, plus Gemini CLI/Antigravity when those provider plugins are enabled.
+- Providers: Anthropic, GitHub Copilot, OpenAI Codex OAuth.
 - If no matching credentials exist, usage is hidden.
 - Details: see [Usage tracking](/concepts/usage-tracking).
 

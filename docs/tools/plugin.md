@@ -41,8 +41,6 @@ See [Voice Call](/plugins/voice-call) for a concrete example plugin.
 ## Available plugins (official)
 
 - Memory tools are built-in (memory_search, dream_search, curiosity_state, etc.)
-- Google Antigravity OAuth (provider auth) — bundled as `google-antigravity-auth` (disabled by default)
-- Gemini CLI OAuth (provider auth) — bundled as `google-gemini-cli-auth` (disabled by default)
 - Qwen OAuth (provider auth) — bundled as `qwen-portal-auth` (disabled by default)
 - X (Twitter) posting channel — bundled as `x` (registered by default, posts only after `bitterbot x login`); see [X](/channels/x)
   Bitterbot plugins are **TypeScript modules** loaded at runtime via jiti. **Config

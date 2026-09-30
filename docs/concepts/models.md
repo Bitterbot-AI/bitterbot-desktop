@@ -244,7 +244,7 @@ Discovered IDs are the source of truth for _which_ models exist; capability
 metadata (context window, image support, reasoning) is joined from the vendored
 catalog, and synthesized from the provider's richest known model for IDs the SDK
 has never seen. Providers without a listable endpoint (Bedrock via SigV4, Codex
-/ Gemini-CLI / Antigravity via OAuth) keep their vendored/curated entries.
+via OAuth) keep their vendored/curated entries.
 
 Discovery is **safe by construction**: any missing credential, non-200, timeout,
 or parse failure falls back to the vendored list for that provider — a failed

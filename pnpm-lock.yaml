@@ -457,18 +457,6 @@ importers:
         specifier: workspace:*
         version: link:../..
 
-  extensions/google-antigravity-auth:
-    devDependencies:
-      bitterbot:
-        specifier: workspace:*
-        version: link:../..
-
-  extensions/google-gemini-cli-auth:
-    devDependencies:
-      bitterbot:
-        specifier: workspace:*
-        version: link:../..
-
   extensions/signal:
     devDependencies:
       bitterbot:

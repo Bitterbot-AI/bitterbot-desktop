@@ -248,5 +248,5 @@ window under another model preserves the discount.
 ## Provider quota (separate from the ledger)
 
 `usage.status` / `bitterbot status --usage` pull each provider's own plan-quota windows
-(Anthropic, GitHub Copilot, Gemini CLI, Antigravity, OpenAI Codex, MiniMax, z.ai) when
+(Anthropic, GitHub Copilot, OpenAI Codex, MiniMax, z.ai) when
 matching OAuth or API credentials exist. Those are provider-reported percentages, not tokens.
