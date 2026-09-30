@@ -186,7 +186,7 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "file-type": "^22.1.1",
-    "grammy": "^1.40.0",
+    "grammy": "^1.46.0",
     "https-proxy-agent": "^9.1.0",
     "jiti": "^2.7.0",
     "json5": "^2.2.3",
@@ -214,7 +214,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@grammyjs/types": "^3.24.0",
+    "@grammyjs/types": "^5.0.0",
     "@lit-labs/signals": "^0.3.0",
     "@lit/context": "^1.1.0",
     "@types/express": "^5.0.6",
