@@ -189,8 +189,8 @@ database (`usage:v3`; created on open):
 | `duration_ms`                                    | start to end of the tool execution                                                                                                                                            |
 | `result_chars`, `spilled`                        | size of the result; when it overflowed `tools.resultMaxChars` to a file, `spilled` is 1 and `result_chars` is the original length from the `[truncated: N chars total` marker |
 
-Rows are captured from the agent event stream in `pi-embedded-subscribe.ts`
-(`createToolCallTelemetry` in `pi-embedded-subscribe.tools.ts`), written through the same
+Rows are captured from the agent event stream in `embedded-subscribe.ts`
+(`createToolCallTelemetry` in `embedded-subscribe.tools.ts`), written through the same
 fire-and-forget queue as usage rows, and pruned with the same retention.
 
 Where it shows up:

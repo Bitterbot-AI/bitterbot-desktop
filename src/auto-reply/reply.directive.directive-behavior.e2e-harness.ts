@@ -1,12 +1,12 @@
 import path from "node:path";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
+import { runEmbeddedPiAgent } from "../agents/embedded.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
-import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
 import { loadSessionStore } from "../config/sessions.js";
 
 export { loadModelCatalog } from "../agents/model-catalog.js";
-export { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+export { runEmbeddedPiAgent } from "../agents/embedded.js";
 
 export const MAIN_SESSION_KEY = "agent:main:main";
 

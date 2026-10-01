@@ -9,7 +9,7 @@ import {
   type HarnessPolicy,
   policyDiffSummary,
   serializePolicyForJudge,
-} from "../../agents/pi-embedded-runner/harness-policy.js";
+} from "../../agents/embedded-runner/harness-policy.js";
 import {
   bootstrapPairedCI,
   type ScorePairFn,

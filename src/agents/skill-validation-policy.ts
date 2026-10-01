@@ -14,7 +14,7 @@
  * from untrusted traces and must never get an unconfined host shell).
  * Peer skills (attestation sweep) keep the A2A floor via the `peer-`
  * session flavor. `tools.fs.workspaceOnly` is forced on for these sessions
- * in pi-tools.ts.
+ * in agent-tools.ts.
  */
 
 import type { BitterbotConfig } from "../config/config.js";

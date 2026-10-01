@@ -1,7 +1,7 @@
 /**
  * In-memory event-journal fixture for skill-evolution tests. Builds
  * synthetic runs with the same event shapes the production subscribe
- * handlers emit (see pi-embedded-subscribe.handlers.*).
+ * handlers emit (see embedded-subscribe.handlers.*).
  */
 
 import { EventJournal } from "../../../infra/event-journal.js";
@@ -37,7 +37,7 @@ export interface FixtureRunOptions {
   tsBase?: number;
   /**
    * PLAN-44 Phase 0: emit a `user` stream event (the task header) right
-   * after lifecycle start, like pi-embedded-runner/run.ts does.
+   * after lifecycle start, like embedded-runner/run.ts does.
    */
   task?: { text: string; isHeartbeat?: boolean; channel?: string };
   /** PLAN-45 Phase 3.2: the canary exposure record the run path journals (stream `skills`). */
@@ -68,7 +68,7 @@ export function appendFixtureRun(journal: EventJournal, opts: FixtureRunOptions)
   };
 
   // Production order: the runner journals the task BEFORE the attempt's
-  // lifecycle start (pi-embedded-runner/run.ts).
+  // lifecycle start (embedded-runner/run.ts).
   if (opts.task) {
     emit("user", {
       text: opts.task.text,

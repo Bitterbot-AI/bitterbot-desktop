@@ -29,7 +29,7 @@ hot-set selection:
 - `all`: hot set disabled, nothing to defer, or an empty hot set in native
   mode (never defer everything). Every schema, sorted, no flags, no meta-tools.
 
-The mode is decided once per run in `src/agents/pi-tools.ts`
+The mode is decided once per run in `src/agents/agent-tools.ts`
 (`isNativeToolSearchActive`) and logged at debug as `hot-set exposure`.
 
 ## Native mode (Anthropic tool search)
@@ -94,7 +94,7 @@ PLAN-20 interceptors, the capability enforcer, the abort relay, the result
 cache, and the result spill below. Exec approvals, wallet consent and spend
 grants live inside the tool implementations themselves, so they run
 unchanged. A tool removed by `tools.deny` is not registered at all, so
-`use_tool` reports it as unknown; `src/agents/pi-tools.hot-set.test.ts`
+`use_tool` reports it as unknown; `src/agents/agent-tools.hot-set.test.ts`
 proves both the deny path and the exec security gate through the dispatcher.
 
 ## Lanes and defaults
@@ -158,7 +158,7 @@ Edit `tools.hotSet` in `bitterbot.json` (global) or `agents.list[].tools.hotSet`
 Names are matched case-insensitively and only against tools that survived
 the policy pipeline: a denied tool cannot be promoted back by this block.
 Watch the estimate in the gateway log (`agents/tools/hot-set` at debug) or
-run `src/agents/pi-tools.hot-set.test.ts`, which prints it and fails above
+run `src/agents/agent-tools.hot-set.test.ts`, which prints it and fails above
 5k tokens.
 
 ## Tool results: spill to file

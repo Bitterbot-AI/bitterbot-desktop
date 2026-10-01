@@ -16,7 +16,7 @@
 
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import type { HarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
+import type { HarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { computeDreamTaskAdjustments, scanPendingTasksForDream } from "../tasks/biology.js";
 import {

@@ -10,7 +10,7 @@ vi.mock("@mariozechner/pi-ai", () => ({
   completeSimple: (...args: unknown[]) => completeSimpleMock(...args),
 }));
 
-vi.mock("../agents/pi-embedded-runner/model.js", () => ({
+vi.mock("../agents/embedded-runner/model.js", () => ({
   resolveModel: (...args: unknown[]) => resolveModelMock(...args),
 }));
 

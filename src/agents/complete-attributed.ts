@@ -176,9 +176,9 @@ export async function completeAttributed(
   const [{ completeSimple }, { resolveModel }, modelAuth, { resolveCacheTtlLabel }] =
     await Promise.all([
       import("@mariozechner/pi-ai"),
-      import("./pi-embedded-runner/model.js"),
+      import("./embedded-runner/model.js"),
       import("./model-auth.js"),
-      import("./pi-embedded-runner/extra-params.js"),
+      import("./embedded-runner/extra-params.js"),
     ]);
 
   const resolved = resolveModel(params.provider, params.modelId, params.agentDir, params.cfg);

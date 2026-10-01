@@ -94,7 +94,7 @@ SELECT DISTINCT session_key FROM intervention_records;
 If you see `__anon__`, the runner never received a session key: the tool reached
 `toToolDefinitions` without the before-tool-call marker, so the adapter re-ran the hook
 with no context. That marker is a non-enumerable symbol, and any wrapper rebuilding the
-tool with `{ ...tool }` drops it — use `carryToolMarkers` (`pi-tools.types.ts`) in every
+tool with `{ ...tool }` drops it — use `carryToolMarkers` (`agent-tools.types.ts`) in every
 new tool wrapper. Records written under `__anon__` can never be backfilled and, because
 `interceptor_harvest` wakes only at >=10 tagged records, the harvest mode stays asleep
 forever.

@@ -24,12 +24,12 @@ export {
   resolveSessionReference,
   shouldResolveSessionIdInput,
 } from "./sessions-resolution.js";
-import { sanitizeUserFacingText } from "../pi-embedded-helpers.js";
+import { sanitizeUserFacingText } from "../embedded-helpers.js";
 import {
   stripDowngradedToolCallText,
   stripMinimaxToolCallXml,
   stripThinkingTagsFromText,
-} from "../pi-embedded-utils.js";
+} from "../embedded-utils.js";
 
 export type SessionKind = "main" | "group" | "cron" | "hook" | "node" | "other";
 

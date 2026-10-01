@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PolicyVersionRef } from "../../agents/pi-embedded-runner/harness-policy-store.js";
+import type { PolicyVersionRef } from "../../agents/embedded-runner/harness-policy-store.js";
 import {
   defaultHarnessPolicy,
   type HarnessPolicy,
-} from "../../agents/pi-embedded-runner/harness-policy.js";
+} from "../../agents/embedded-runner/harness-policy.js";
 import type { ScorePairFn } from "../experiment-sandbox.js";
 import type { HeldOutExecution } from "../skill-execution-selection.js";
 import { runHarnessSlowUpdate } from "./harness-evolve.slow-update.js";

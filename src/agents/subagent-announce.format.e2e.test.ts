@@ -55,7 +55,7 @@ vi.mock("../config/sessions.js", () => ({
   recordSessionMetaFromInbound: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("./pi-embedded.js", () => embeddedRunMock);
+vi.mock("./embedded.js", () => embeddedRunMock);
 
 vi.mock("./subagent-registry.js", () => subagentRegistryMock);
 

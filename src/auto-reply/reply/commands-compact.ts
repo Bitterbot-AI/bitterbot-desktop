@@ -3,7 +3,7 @@ import {
   compactEmbeddedPiSession,
   isEmbeddedPiRunActive,
   waitForEmbeddedPiRunEnd,
-} from "../../agents/pi-embedded.js";
+} from "../../agents/embedded.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import {
   resolveFreshSessionTotalTokens,

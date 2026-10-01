@@ -21,7 +21,7 @@ import { isInternalMessageChannel } from "../../utils/message-channel.js";
 import type { AgentCommandOpts } from "./types.js";
 
 type RunResult = Awaited<
-  ReturnType<(typeof import("../../agents/pi-embedded.js"))["runEmbeddedPiAgent"]>
+  ReturnType<(typeof import("../../agents/embedded.js"))["runEmbeddedPiAgent"]>
 >;
 
 const NESTED_LOG_PREFIX = "[agent:nested]";

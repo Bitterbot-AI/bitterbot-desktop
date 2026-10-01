@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../config/config.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { resolveBitterbotAgentDir } from "./agent-paths.js";
+import { isRateLimitErrorMessage } from "./embedded-helpers/errors.js";
 import {
   collectAnthropicApiKeys,
   isAnthropicBillingError,
@@ -12,8 +13,7 @@ import {
 import { isModernModelRef } from "./live-model-filter.js";
 import { getApiKeyForModel, requireApiKey } from "./model-auth.js";
 import { ensureBitterbotModelsJson } from "./models-config.js";
-import { isRateLimitErrorMessage } from "./pi-embedded-helpers/errors.js";
-import { discoverAuthStorage, discoverModels } from "./pi-model-discovery.js";
+import { discoverAuthStorage, discoverModels } from "./runtime/engines/pi/model-discovery.js";
 
 const LIVE =
   isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);

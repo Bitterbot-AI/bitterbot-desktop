@@ -1,10 +1,10 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
-import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import { runEmbeddedPiAgent } from "../agents/embedded.js";
 import { getReplyFromConfig } from "./reply.js";
 
-vi.mock("../agents/pi-embedded.js", () => ({
+vi.mock("../agents/embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: vi.fn(),
   queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),

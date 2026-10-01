@@ -1,5 +1,5 @@
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
-import { abortEmbeddedPiRun } from "../../agents/pi-embedded.js";
+import { abortEmbeddedPiRun } from "../../agents/embedded.js";
 import {
   listSubagentRunsForRequester,
   markSubagentRunTerminated,

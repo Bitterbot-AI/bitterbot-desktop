@@ -7,7 +7,7 @@ import type { BitterbotConfig } from "../../config/config.js";
 import { type SessionEntry, updateSessionStore } from "../../config/sessions.js";
 
 type RunResult = Awaited<
-  ReturnType<(typeof import("../../agents/pi-embedded.js"))["runEmbeddedPiAgent"]>
+  ReturnType<(typeof import("../../agents/embedded.js"))["runEmbeddedPiAgent"]>
 >;
 
 export async function updateSessionStoreAfterAgentRun(params: {

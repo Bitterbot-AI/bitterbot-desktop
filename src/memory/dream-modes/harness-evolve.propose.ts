@@ -8,7 +8,7 @@ import {
   parseHarnessPolicy,
   policyDiffSummary,
   serializePolicyForJudge,
-} from "../../agents/pi-embedded-runner/harness-policy.js";
+} from "../../agents/embedded-runner/harness-policy.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { FailureCluster } from "./harness-evolve.weakness.js";
 

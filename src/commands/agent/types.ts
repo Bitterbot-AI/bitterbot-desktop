@@ -1,4 +1,4 @@
-import type { ClientToolDefinition } from "../../agents/pi-embedded-runner/run/params.js";
+import type { ClientToolDefinition } from "../../agents/embedded-runner/run/params.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 

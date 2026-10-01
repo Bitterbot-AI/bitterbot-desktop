@@ -9,7 +9,7 @@
  * between turns (hormones, canonical facts, runtime line, MEMORY.md ...).
  *
  * Anthropic's prompt cache is a prefix match over tools -> system -> messages,
- * so the payload wrapper (`pi-embedded-runner/anthropic-payload-cache.ts`)
+ * so the payload wrapper (`embedded-runner/anthropic-payload-cache.ts`)
  * splits `system` at the marker into a cached block and an unmarked block.
  * For every other provider the marker stays in the prompt as an HTML
  * comment: constant bytes, no instruction content, ~8 tokens.

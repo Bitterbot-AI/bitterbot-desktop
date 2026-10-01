@@ -150,7 +150,7 @@ async function lookupCatalog(
   cfg: BitterbotConfig | undefined,
 ): Promise<ModelPrice | undefined> {
   try {
-    const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
+    const { resolveModel } = await import("../agents/embedded-runner/model.js");
     const resolved = resolveModel(provider, model, undefined, cfg);
     const cost = resolved.model?.cost as Partial<ModelPrice> | undefined;
     return hasNonzeroPrice(cost) ? toPrice(cost) : undefined;

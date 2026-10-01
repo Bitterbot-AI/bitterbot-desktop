@@ -3,7 +3,7 @@ import type { Context } from "@mariozechner/pi-ai";
 import { AssistantMessageEventStream } from "@mariozechner/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../../../config/config.js";
-import { applyExtraParamsToAgent } from "../../pi-embedded-runner/extra-params.js";
+import { applyExtraParamsToAgent } from "../../embedded-runner/extra-params.js";
 import { CACHE_BOUNDARY_MARKER } from "../../system-prompt-cache-boundary.js";
 import {
   createAnthropicStreamFn,

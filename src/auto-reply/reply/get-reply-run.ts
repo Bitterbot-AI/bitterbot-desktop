@@ -6,7 +6,7 @@ import {
   isEmbeddedPiRunActive,
   isEmbeddedPiRunStreaming,
   resolveEmbeddedSessionLane,
-} from "../../agents/pi-embedded.js";
+} from "../../agents/embedded.js";
 import { buildProjectContext } from "../../agents/project-rag.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import {

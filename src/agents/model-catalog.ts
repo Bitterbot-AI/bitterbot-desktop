@@ -26,11 +26,11 @@ type DiscoveredModel = {
   api?: string;
 };
 
-type PiSdkModule = typeof import("./pi-model-discovery.js");
+type PiSdkModule = typeof import("./runtime/engines/pi/model-discovery.js");
 
 let modelCatalogPromise: Promise<ModelCatalogEntry[]> | null = null;
 let hasLoggedModelCatalogError = false;
-const defaultImportPiSdk = () => import("./pi-model-discovery.js");
+const defaultImportPiSdk = () => import("./runtime/engines/pi/model-discovery.js");
 let importPiSdk = defaultImportPiSdk;
 
 const CODEX_PROVIDER = "openai-codex";
@@ -98,7 +98,7 @@ export async function loadModelCatalog(params?: {
       const cfg = params?.config ?? loadConfig();
       await ensureBitterbotModelsJson(cfg);
       await (
-        await import("./pi-auth-json.js")
+        await import("./runtime/engines/pi/auth-json.js")
       ).ensurePiAuthJsonFromAuthProfiles(resolveBitterbotAgentDir());
       // IMPORTANT: keep the dynamic import *inside* the try/catch.
       // If this fails once (e.g. during a pnpm install that temporarily swaps node_modules),

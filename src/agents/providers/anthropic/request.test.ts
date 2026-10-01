@@ -2,7 +2,7 @@ import fs from "node:fs";
 import type { AnthropicOptions, Context, Message } from "@mariozechner/pi-ai";
 import { streamAnthropic, streamSimpleAnthropic } from "@mariozechner/pi-ai";
 import { describe, expect, it } from "vitest";
-import { applyAnthropicCacheLayout } from "../../pi-embedded-runner/anthropic-payload-cache.js";
+import { applyAnthropicCacheLayout } from "../../embedded-runner/anthropic-payload-cache.js";
 import { CACHE_BOUNDARY_MARKER } from "../../system-prompt-cache-boundary.js";
 import {
   buildParams,

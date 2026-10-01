@@ -2,13 +2,13 @@ import type { BitterbotConfig } from "../config/config.js";
 import { filterHeartbeatOnlyFiles, resolveHeartbeatLightContext } from "../infra/heartbeat-gate.js";
 import { isSkillEvolveValidationSessionKey } from "../sessions/session-key-utils.js";
 import { applyBootstrapHookOverrides } from "./bootstrap-hooks.js";
-import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
+import type { EmbeddedContextFile } from "./embedded-helpers.js";
 import {
   buildBootstrapContextFiles,
   resolveBootstrapMaxChars,
   resolveBootstrapTotalMaxChars,
-} from "./pi-embedded-helpers.js";
-import { WORKING_MEMORY_TRUNCATED_LINE } from "./pi-embedded-helpers/bootstrap.js";
+} from "./embedded-helpers.js";
+import { WORKING_MEMORY_TRUNCATED_LINE } from "./embedded-helpers/bootstrap.js";
 import {
   DEFAULT_HEARTBEAT_FILENAME,
   DEFAULT_MEMORY_FILENAME,
@@ -29,7 +29,7 @@ export { WORKING_MEMORY_TRUNCATED_LINE };
 
 /**
  * Cap MEMORY.md / memory/scratch.md at 200 lines and 25 KB with a stable
- * marker line. The deeper adaptive budget in pi-embedded-helpers/bootstrap
+ * marker line. The deeper adaptive budget in embedded-helpers/bootstrap
  * still applies after this; this cap bounds what can ever reach the prompt.
  */
 export function capWorkingMemoryContent(content: string): string {

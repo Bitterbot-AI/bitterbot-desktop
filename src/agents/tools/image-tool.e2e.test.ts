@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
-import { createBitterbotCodingTools } from "../pi-tools.js";
+import { createBitterbotCodingTools } from "../agent-tools.js";
 import { createHostSandboxFsBridge } from "../test-helpers/host-sandbox-fs-bridge.js";
 import { __testing, createImageTool, resolveImageModelConfigForTool } from "./image-tool.js";
 

@@ -282,7 +282,7 @@ export function stripPluginOnlyAllowlist(
   // When an allowlist contains only plugin tools, we strip it to avoid accidentally
   // disabling core tools. Users who want additive behavior should prefer `tools.alsoAllow`.
   if (strippedAllowlist) {
-    // Note: logging happens in the caller (pi-tools/tools-invoke) after this function returns.
+    // Note: logging happens in the caller (agent-tools/tools-invoke) after this function returns.
     // We keep this note here for future maintainers.
   }
   return {

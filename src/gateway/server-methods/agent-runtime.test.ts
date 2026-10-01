@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { agentRuntimeHandlers } from "./agent-runtime.js";
 
-vi.mock("../../agents/pi-embedded-runner/compaction-circuit-breaker.js", () => ({
+vi.mock("../../agents/embedded-runner/compaction-circuit-breaker.js", () => ({
   getCompactionBreakerSnapshot: vi.fn(),
   listCompactionBreakers: vi.fn(),
 }));
@@ -14,7 +14,7 @@ vi.mock("../../agents/prompt-cache-monitor.js", () => ({
 import {
   getCompactionBreakerSnapshot,
   listCompactionBreakers,
-} from "../../agents/pi-embedded-runner/compaction-circuit-breaker.js";
+} from "../../agents/embedded-runner/compaction-circuit-breaker.js";
 import { getCacheMetrics, listCacheMetrics } from "../../agents/prompt-cache-monitor.js";
 
 type RespondFn = (ok: boolean, payload?: unknown, error?: unknown, meta?: unknown) => void;

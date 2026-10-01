@@ -2,7 +2,7 @@
  * PLAN-20 Phase 1: Pre-action interceptor contract.
  *
  * Each step the embedded agent proposes a tool call, the
- * runBeforeToolCallHook in pi-tools.before-tool-call.ts gets a chance to
+ * runBeforeToolCallHook in agent-tools.before-tool-call.ts gets a chance to
  * inspect, modify, or block it. Until now the only consumers were plugin
  * hooks. PLAN-20 adds a deterministic skill-owned layer in front of those:
  * an interceptor reads a frozen snapshot of the agent's state (hormonal,

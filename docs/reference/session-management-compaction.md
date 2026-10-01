@@ -212,8 +212,8 @@ Bitterbot also enforces a safety floor for embedded runs:
 
 Why: leave enough headroom for multi-turn “housekeeping” (like memory writes) before compaction becomes unavoidable.
 
-Implementation: `ensurePiCompactionReserveTokens()` in `src/agents/pi-settings.ts`
-(called from `src/agents/pi-embedded-runner.ts`).
+Implementation: `ensurePiCompactionReserveTokens()` in `src/agents/runtime/engines/pi/settings.ts`
+(called from `src/agents/embedded-runner.ts`).
 
 ---
 

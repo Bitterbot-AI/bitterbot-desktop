@@ -1,5 +1,5 @@
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
+import { getActiveEmbeddedRunCount } from "../agents/embedded-runner/runs.js";
 import {
   getSkillsSnapshotVersion,
   registerSkillsChangeListener,

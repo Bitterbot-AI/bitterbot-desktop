@@ -28,10 +28,10 @@ import {
   writeCliImages,
 } from "./cli-runner/helpers.js";
 import { resolveBitterbotDocsPath } from "./docs-path.js";
+import { classifyFailoverReason, isFailoverErrorMessage } from "./embedded-helpers.js";
+import type { EmbeddedPiRunResult } from "./embedded-runner.js";
 import { resolveEndocrineState } from "./endocrine-state.js";
 import { FailoverError, resolveFailoverStatus } from "./failover-error.js";
-import { classifyFailoverReason, isFailoverErrorMessage } from "./pi-embedded-helpers.js";
-import type { EmbeddedPiRunResult } from "./pi-embedded-runner.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "./workspace-run.js";
 
 const log = createSubsystemLogger("agent/claude-cli");

@@ -1,0 +1,480 @@
+import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { createEditTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
+import { detectMime } from "../media/mime.js";
+import { sniffMimeFromBase64 } from "../media/sniff-mime-from-base64.js";
+import type { AnyAgentTool } from "./agent-tools.types.js";
+import { assertSandboxPath } from "./sandbox-paths.js";
+import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
+import { sanitizeToolResultImages } from "./tool-images.js";
+
+// NOTE(steipete): Upstream read now does file-magic MIME detection; we keep the wrapper
+// to normalize payloads and sanitize oversized images before they hit providers.
+type ToolContentBlock = AgentToolResult<unknown>["content"][number];
+type ImageContentBlock = Extract<ToolContentBlock, { type: "image" }>;
+type TextContentBlock = Extract<ToolContentBlock, { type: "text" }>;
+
+function rewriteReadImageHeader(text: string, mimeType: string): string {
+  // pi-coding-agent uses: "Read image file [image/png]"
+  if (text.startsWith("Read image file [") && text.endsWith("]")) {
+    return `Read image file [${mimeType}]`;
+  }
+  return text;
+}
+
+async function normalizeReadImageResult(
+  result: AgentToolResult<unknown>,
+  filePath: string,
+): Promise<AgentToolResult<unknown>> {
+  const content = Array.isArray(result.content) ? result.content : [];
+
+  const image = content.find(
+    (b): b is ImageContentBlock =>
+      !!b &&
+      typeof b === "object" &&
+      (b as { type?: unknown }).type === "image" &&
+      typeof (b as { data?: unknown }).data === "string" &&
+      typeof (b as { mimeType?: unknown }).mimeType === "string",
+  );
+  if (!image) {
+    return result;
+  }
+
+  if (!image.data.trim()) {
+    throw new Error(`read: image payload is empty (${filePath})`);
+  }
+
+  const sniffed = await sniffMimeFromBase64(image.data);
+  if (!sniffed) {
+    return result;
+  }
+
+  if (!sniffed.startsWith("image/")) {
+    throw new Error(
+      `read: file looks like ${sniffed} but was treated as ${image.mimeType} (${filePath})`,
+    );
+  }
+
+  if (sniffed === image.mimeType) {
+    return result;
+  }
+
+  const nextContent = content.map((block) => {
+    if (block && typeof block === "object" && (block as { type?: unknown }).type === "image") {
+      const b = block as ImageContentBlock & { mimeType: string };
+      return { ...b, mimeType: sniffed } satisfies ImageContentBlock;
+    }
+    if (
+      block &&
+      typeof block === "object" &&
+      (block as { type?: unknown }).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string"
+    ) {
+      const b = block as TextContentBlock & { text: string };
+      return {
+        ...b,
+        text: rewriteReadImageHeader(b.text, sniffed),
+      } satisfies TextContentBlock;
+    }
+    return block;
+  });
+
+  return { ...result, content: nextContent };
+}
+
+type RequiredParamGroup = {
+  keys: readonly string[];
+  allowEmpty?: boolean;
+  label?: string;
+};
+
+const RETRY_GUIDANCE_SUFFIX = " Supply correct parameters before retrying.";
+
+function parameterValidationError(message: string): Error {
+  return new Error(`${message}.${RETRY_GUIDANCE_SUFFIX}`);
+}
+
+export const CLAUDE_PARAM_GROUPS = {
+  read: [{ keys: ["path", "file_path"], label: "path (path or file_path)" }],
+  write: [
+    { keys: ["path", "file_path"], label: "path (path or file_path)" },
+    { keys: ["content"], label: "content" },
+  ],
+  // pi-coding-agent >= 0.73: {path, edits: [{oldText, newText}]}. The legacy
+  // single-replacement form (and Claude Code's old_string/new_string) is
+  // folded into edits[] by prepareArguments before validation.
+  edit: [
+    { keys: ["path", "file_path"], label: "path (path or file_path)" },
+    { keys: ["edits"], label: "edits (or oldText/newText)" },
+  ],
+} as const;
+
+function extractStructuredText(value: unknown, depth = 0): string | undefined {
+  if (depth > 6) {
+    return undefined;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((entry) => extractStructuredText(entry, depth + 1))
+      .filter((entry): entry is string => typeof entry === "string");
+    return parts.length > 0 ? parts.join("") : undefined;
+  }
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.text === "string") {
+    return record.text;
+  }
+  if (typeof record.content === "string") {
+    return record.content;
+  }
+  if (Array.isArray(record.content)) {
+    return extractStructuredText(record.content, depth + 1);
+  }
+  if (Array.isArray(record.parts)) {
+    return extractStructuredText(record.parts, depth + 1);
+  }
+  if (typeof record.value === "string" && record.value.length > 0) {
+    const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
+    const kind = typeof record.kind === "string" ? record.kind.toLowerCase() : "";
+    if (type.includes("text") || kind === "text") {
+      return record.value;
+    }
+  }
+  return undefined;
+}
+
+function normalizeTextLikeParam(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  if (typeof value === "string") {
+    return;
+  }
+  const extracted = extractStructuredText(value);
+  if (typeof extracted === "string") {
+    record[key] = extracted;
+  }
+}
+
+// Normalize tool parameters from Claude Code conventions to pi-coding-agent conventions.
+// Claude Code uses file_path/old_string/new_string while pi-coding-agent uses path/oldText/newText.
+// This prevents models trained on Claude Code from getting stuck in tool-call loops.
+export function normalizeToolParams(params: unknown): Record<string, unknown> | undefined {
+  if (!params || typeof params !== "object") {
+    return undefined;
+  }
+  const record = params as Record<string, unknown>;
+  const normalized = { ...record };
+  // file_path → path (read, write, edit)
+  if ("file_path" in normalized && !("path" in normalized)) {
+    normalized.path = normalized.file_path;
+    delete normalized.file_path;
+  }
+  // old_string → oldText (edit)
+  if ("old_string" in normalized && !("oldText" in normalized)) {
+    normalized.oldText = normalized.old_string;
+    delete normalized.old_string;
+  }
+  // new_string → newText (edit)
+  if ("new_string" in normalized && !("newText" in normalized)) {
+    normalized.newText = normalized.new_string;
+    delete normalized.new_string;
+  }
+  // Some providers/models emit text payloads as structured blocks instead of raw strings.
+  // Normalize these for write/edit so content matching and writes stay deterministic.
+  normalizeTextLikeParam(normalized, "content");
+  normalizeTextLikeParam(normalized, "oldText");
+  normalizeTextLikeParam(normalized, "newText");
+  if (Array.isArray(normalized.edits)) {
+    normalized.edits = normalized.edits.map((entry: unknown) => {
+      if (!entry || typeof entry !== "object") {
+        return entry;
+      }
+      const edit = { ...(entry as Record<string, unknown>) };
+      if ("old_string" in edit && !("oldText" in edit)) {
+        edit.oldText = edit.old_string;
+        delete edit.old_string;
+      }
+      if ("new_string" in edit && !("newText" in edit)) {
+        edit.newText = edit.new_string;
+        delete edit.new_string;
+      }
+      normalizeTextLikeParam(edit, "oldText");
+      normalizeTextLikeParam(edit, "newText");
+      return edit;
+    });
+  }
+  return normalized;
+}
+
+export function patchToolSchemaForClaudeCompatibility(tool: AnyAgentTool): AnyAgentTool {
+  const schema =
+    tool.parameters && typeof tool.parameters === "object"
+      ? (tool.parameters as Record<string, unknown>)
+      : undefined;
+
+  if (!schema || !schema.properties || typeof schema.properties !== "object") {
+    return tool;
+  }
+
+  const properties = { ...(schema.properties as Record<string, unknown>) };
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((key): key is string => typeof key === "string")
+    : [];
+  let changed = false;
+
+  const aliasPairs: Array<{ original: string; alias: string }> = [
+    { original: "path", alias: "file_path" },
+    { original: "oldText", alias: "old_string" },
+    { original: "newText", alias: "new_string" },
+  ];
+
+  for (const { original, alias } of aliasPairs) {
+    if (!(original in properties)) {
+      continue;
+    }
+    if (!(alias in properties)) {
+      properties[alias] = properties[original];
+      changed = true;
+    }
+    const idx = required.indexOf(original);
+    if (idx !== -1) {
+      required.splice(idx, 1);
+      changed = true;
+    }
+  }
+
+  if (!changed) {
+    return tool;
+  }
+
+  return {
+    ...tool,
+    parameters: {
+      ...schema,
+      properties,
+      required,
+    },
+  };
+}
+
+export function assertRequiredParams(
+  record: Record<string, unknown> | undefined,
+  groups: readonly RequiredParamGroup[],
+  toolName: string,
+): void {
+  if (!record || typeof record !== "object") {
+    throw parameterValidationError(`Missing parameters for ${toolName}`);
+  }
+
+  const missingLabels: string[] = [];
+  for (const group of groups) {
+    const satisfied = group.keys.some((key) => {
+      if (!(key in record)) {
+        return false;
+      }
+      const value = record[key];
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+      if (typeof value !== "string") {
+        return false;
+      }
+      if (group.allowEmpty) {
+        return true;
+      }
+      return value.trim().length > 0;
+    });
+
+    if (!satisfied) {
+      const label = group.label ?? group.keys.join(" or ");
+      missingLabels.push(label);
+    }
+  }
+
+  if (missingLabels.length > 0) {
+    const joined = missingLabels.join(", ");
+    const noun = missingLabels.length === 1 ? "parameter" : "parameters";
+    throw parameterValidationError(`Missing required ${noun}: ${joined}`);
+  }
+}
+
+// Generic wrapper to normalize parameters for any tool
+/**
+ * pi-coding-agent >= 0.73's edit schema has `additionalProperties: false` at
+ * the root and per edit, so keys pi-agent 0.52 (Ajv) simply ignored, such as
+ * Claude Code's `replace_all: false`, now fail validation. Keep only what the
+ * tool reads. `replace_all: true` cannot be honoured, so it is an explicit error.
+ */
+function sanitizeEditArguments(args: unknown): unknown {
+  if (!args || typeof args !== "object") {
+    return args;
+  }
+  const record = args as Record<string, unknown>;
+  const wantsReplaceAll = (value: unknown) =>
+    !!value &&
+    typeof value === "object" &&
+    (value as { replace_all?: unknown }).replace_all === true;
+  if (
+    wantsReplaceAll(record) ||
+    (Array.isArray(record.edits) && record.edits.some((entry) => wantsReplaceAll(entry)))
+  ) {
+    throw new Error(
+      "edit: replace_all is not supported. Give each occurrence its own entry in edits[] with enough surrounding context to be unique.",
+    );
+  }
+  const sanitized: Record<string, unknown> = { path: record.path };
+  if (Array.isArray(record.edits)) {
+    sanitized.edits = record.edits.map((entry) =>
+      entry && typeof entry === "object"
+        ? {
+            oldText: (entry as Record<string, unknown>).oldText,
+            newText: (entry as Record<string, unknown>).newText,
+          }
+        : entry,
+    );
+  }
+  return sanitized;
+}
+
+export function wrapToolParamNormalization(
+  tool: AnyAgentTool,
+  requiredParamGroups?: readonly RequiredParamGroup[],
+): AnyAgentTool {
+  const patched = patchToolSchemaForClaudeCompatibility(tool);
+  const basePrepare = tool.prepareArguments;
+  return {
+    ...patched,
+    // Runs before schema validation (pi-agent-core >= 0.73): map Claude Code
+    // aliases first, then the tool's own shim (edit folds oldText/newText
+    // into edits[]).
+    prepareArguments: (args: unknown) => {
+      const normalized = normalizeToolParams(args) ?? args;
+      const prepared = basePrepare ? basePrepare(normalized) : normalized;
+      return tool.name === "edit" ? sanitizeEditArguments(prepared) : prepared;
+    },
+    execute: async (toolCallId, params, signal, onUpdate) => {
+      const normalized = normalizeToolParams(params);
+      const record =
+        normalized ??
+        (params && typeof params === "object" ? (params as Record<string, unknown>) : undefined);
+      if (requiredParamGroups?.length) {
+        assertRequiredParams(record, requiredParamGroups, tool.name);
+      }
+      return tool.execute(toolCallId, normalized ?? params, signal, onUpdate);
+    },
+  };
+}
+
+export function wrapToolWorkspaceRootGuard(tool: AnyAgentTool, root: string): AnyAgentTool {
+  return {
+    ...tool,
+    execute: async (toolCallId, args, signal, onUpdate) => {
+      const normalized = normalizeToolParams(args);
+      const record =
+        normalized ??
+        (args && typeof args === "object" ? (args as Record<string, unknown>) : undefined);
+      const filePath = record?.path;
+      if (typeof filePath === "string" && filePath.trim()) {
+        await assertSandboxPath({ filePath, cwd: root, root });
+      }
+      return tool.execute(toolCallId, normalized ?? args, signal, onUpdate);
+    },
+  };
+}
+
+type SandboxToolParams = {
+  root: string;
+  bridge: SandboxFsBridge;
+};
+
+export function createSandboxedReadTool(params: SandboxToolParams) {
+  const base = createReadTool(params.root, {
+    operations: createSandboxReadOperations(params),
+  }) as unknown as AnyAgentTool;
+  return createBitterbotReadTool(base);
+}
+
+export function createSandboxedWriteTool(params: SandboxToolParams) {
+  const base = createWriteTool(params.root, {
+    operations: createSandboxWriteOperations(params),
+  }) as unknown as AnyAgentTool;
+  return wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.write);
+}
+
+export function createSandboxedEditTool(params: SandboxToolParams) {
+  const base = createEditTool(params.root, {
+    operations: createSandboxEditOperations(params),
+  }) as unknown as AnyAgentTool;
+  return wrapToolParamNormalization(base, CLAUDE_PARAM_GROUPS.edit);
+}
+
+export function createBitterbotReadTool(base: AnyAgentTool): AnyAgentTool {
+  const patched = patchToolSchemaForClaudeCompatibility(base);
+  return {
+    ...patched,
+    execute: async (toolCallId, params, signal) => {
+      const normalized = normalizeToolParams(params);
+      const record =
+        normalized ??
+        (params && typeof params === "object" ? (params as Record<string, unknown>) : undefined);
+      assertRequiredParams(record, CLAUDE_PARAM_GROUPS.read, base.name);
+      const result = await base.execute(toolCallId, normalized ?? params, signal);
+      const filePath = typeof record?.path === "string" ? String(record.path) : "<unknown>";
+      const normalizedResult = await normalizeReadImageResult(result, filePath);
+      return sanitizeToolResultImages(normalizedResult, `read:${filePath}`);
+    },
+  };
+}
+
+function createSandboxReadOperations(params: SandboxToolParams) {
+  return {
+    readFile: (absolutePath: string) =>
+      params.bridge.readFile({ filePath: absolutePath, cwd: params.root }),
+    access: async (absolutePath: string) => {
+      const stat = await params.bridge.stat({ filePath: absolutePath, cwd: params.root });
+      if (!stat) {
+        throw createFsAccessError("ENOENT", absolutePath);
+      }
+    },
+    detectImageMimeType: async (absolutePath: string) => {
+      const buffer = await params.bridge.readFile({ filePath: absolutePath, cwd: params.root });
+      const mime = await detectMime({ buffer, filePath: absolutePath });
+      return mime && mime.startsWith("image/") ? mime : undefined;
+    },
+  } as const;
+}
+
+function createSandboxWriteOperations(params: SandboxToolParams) {
+  return {
+    mkdir: async (dir: string) => {
+      await params.bridge.mkdirp({ filePath: dir, cwd: params.root });
+    },
+    writeFile: async (absolutePath: string, content: string) => {
+      await params.bridge.writeFile({ filePath: absolutePath, cwd: params.root, data: content });
+    },
+  } as const;
+}
+
+function createSandboxEditOperations(params: SandboxToolParams) {
+  return {
+    readFile: (absolutePath: string) =>
+      params.bridge.readFile({ filePath: absolutePath, cwd: params.root }),
+    writeFile: (absolutePath: string, content: string) =>
+      params.bridge.writeFile({ filePath: absolutePath, cwd: params.root, data: content }),
+    access: async (absolutePath: string) => {
+      const stat = await params.bridge.stat({ filePath: absolutePath, cwd: params.root });
+      if (!stat) {
+        throw createFsAccessError("ENOENT", absolutePath);
+      }
+    },
+  } as const;
+}
+
+function createFsAccessError(code: string, filePath: string): NodeJS.ErrnoException {
+  const error = new Error(`Sandbox FS error (${code}): ${filePath}`) as NodeJS.ErrnoException;
+  error.code = code;
+  return error;
+}

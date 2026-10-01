@@ -1,4 +1,4 @@
-import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
+import { getActiveEmbeddedRunCount } from "../agents/embedded-runner/runs.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
 import type { CliDeps } from "../cli/deps.js";
 import { resolveAgentMaxConcurrent, resolveSubagentMaxConcurrent } from "../config/agent-limits.js";

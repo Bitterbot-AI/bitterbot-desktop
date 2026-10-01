@@ -24,7 +24,7 @@ vi.mock("../../agents/model-fallback.js", () => ({
   }),
 }));
 
-vi.mock("../../agents/pi-embedded.js", () => ({
+vi.mock("../../agents/embedded.js", () => ({
   runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
 }));
 

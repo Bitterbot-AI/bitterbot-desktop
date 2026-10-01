@@ -6,7 +6,7 @@ import {
   resetModelCatalogCacheForTest,
 } from "./model-catalog.js";
 
-type PiSdkModule = typeof import("./pi-model-discovery.js");
+type PiSdkModule = typeof import("./runtime/engines/pi/model-discovery.js");
 
 const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
 

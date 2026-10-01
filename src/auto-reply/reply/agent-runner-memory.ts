@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js";
+import { runEmbeddedPiAgent } from "../../agents/embedded.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { resolveSandboxConfigForAgent, resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import {
