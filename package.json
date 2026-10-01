@@ -231,8 +231,8 @@
     "oxfmt": "0.70.0",
     "oxlint": "^1.85.0",
     "oxlint-tsgolint": "^7.0.2003",
-    "rolldown": "1.0.0-rc.4",
-    "tsdown": "^0.20.3",
+    "rolldown": "1.2.11",
+    "tsdown": "^0.23.0",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
