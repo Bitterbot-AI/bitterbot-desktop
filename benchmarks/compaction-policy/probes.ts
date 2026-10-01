@@ -164,3 +164,91 @@ export async function generateProbes(params: {
   const raw = parseJsonArray(res.text) as Array<Record<string, unknown>>;
   return filterProbes(raw, params.elided, params.kept, params.cutId);
 }
+
+export const NEGATIVE_GENERATION_PROMPT = `You write trap questions for an assistant that is continuing the conversation below. Each trap asks about a SPECIFIC named thing that is NOT mentioned anywhere in the conversation, but that would sound plausible to someone who had not read it carefully (a file name, a person, a product, a number, a date, a decision, an error message).
+
+Produce 5 traps as a JSON array of objects:
+{"question": "...", "key_terms": ["...", "..."]}
+
+Rules:
+- Start every question with What, Which, Who, When, Where or How many. Never a yes/no question.
+- Phrase it in the first person, the way the same user would ask later in the same chat.
+- "key_terms": the 1 to 3 specific strings (names, identifiers, numbers) that would HAVE to appear in the conversation if the thing had been discussed. They must not appear in the conversation.
+- Do not ask about things that are in the conversation.
+- Output ONLY the JSON array.`;
+
+/**
+ * Round 2 negatives: a trap survives only if none of its key terms occurs in
+ * the whole transcript the agent could reach (every role, kept and elided),
+ * and the question is not a yes/no question. Pure; exported for tests.
+ */
+export function filterVerifiedNegatives(
+  raw: Array<{ question?: unknown; key_terms?: unknown }>,
+  fullTranscriptLower: string,
+  cutId: string,
+  max = 2,
+): { probes: Probe[]; rejected: Array<{ reason: string; probe: unknown }> } {
+  const probes: Probe[] = [];
+  const rejected: Array<{ reason: string; probe: unknown }> = [];
+  for (const p of raw) {
+    const question = typeof p.question === "string" ? p.question.trim() : "";
+    const terms = Array.isArray(p.key_terms)
+      ? p.key_terms.filter((t): t is string => typeof t === "string" && t.trim().length >= 3)
+      : [];
+    if (!question || terms.length === 0) {
+      rejected.push({ reason: "malformed", probe: p });
+      continue;
+    }
+    if (!/^(what|which|who|when|where|how many|how much)\b/i.test(question)) {
+      rejected.push({ reason: "not a wh-question", probe: p });
+      continue;
+    }
+    const present = terms.find((t) => fullTranscriptLower.includes(t.trim().toLowerCase()));
+    if (present) {
+      rejected.push({ reason: `key term present in transcript: ${present}`, probe: p });
+      continue;
+    }
+    if (probes.length >= max) {
+      continue;
+    }
+    probes.push({
+      probeId: `${cutId}-n${probes.length + 1}`,
+      cutId,
+      type: "negative",
+      question,
+      gold: "NOT IN TRANSCRIPT",
+      sourceEntryId: null,
+      answerableFromDialogue: false,
+      needsToolOutput: false,
+    });
+  }
+  return { probes, rejected };
+}
+
+export async function generateVerifiedNegatives(params: {
+  cutId: string;
+  /** Text shown to the generator (the conversation so far, tool outputs capped). */
+  conversation: string;
+  /** Lowercased text of everything reachable, for the absence check. */
+  fullTranscriptLower: string;
+  spend: Spend;
+}): Promise<{ probes: Probe[]; rejected: Array<{ reason: string; probe: unknown }> }> {
+  const bounded =
+    params.conversation.length > 200_000
+      ? `${params.conversation.slice(0, 200_000)}\n[... truncated ...]`
+      : params.conversation;
+  const res = await callModel({
+    model: "claude-haiku-4-5",
+    messages: [
+      {
+        role: "user",
+        content: `${NEGATIVE_GENERATION_PROMPT}\n\n<conversation>\n${bounded}\n</conversation>`,
+      },
+    ],
+    maxTokens: 1_200,
+    feature: "eval/compaction/negative-generation",
+    spend: params.spend,
+  });
+  const raw = parseJsonArray(res.text) as Array<Record<string, unknown>>;
+  return filterVerifiedNegatives(raw, params.fullTranscriptLower, params.cutId);
+}

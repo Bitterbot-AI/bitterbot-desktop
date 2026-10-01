@@ -247,3 +247,54 @@ describe("report metrics", () => {
     expect(d).toEqual([1, 0]);
   });
 });
+
+describe("round 2: lexical index and verified negatives", () => {
+  it("BM25 ranks the chunk that shares rare terms and renders within budget", async () => {
+    const { Bm25, chunkDialogue, renderSnippets, tokenize } = await import("./lexical.js");
+    expect(tokenize("What was the DATABASE_URL in config.yaml?")).toEqual([
+      "database_url",
+      "config.yaml",
+    ]);
+    const entries = [
+      mk("u1", "user", "please use the staging relay at relay-7.internal for the demo"),
+      mk("a1", "assistant", "noted, the demo will use the staging relay"),
+      mk("u2", "user", "the budget for the kaggle run is 40 dollars", { turn: 2 }),
+      mk("hb", "user", HB, { isHeartbeatPrompt: true, turn: 3 }),
+    ];
+    const index = new Bm25(chunkDialogue(entries));
+    const hits = index.search("what was the budget for the kaggle run", 2);
+    expect(hits[0]!.chunk.entryId).toBe("u2");
+    expect(index.search("zebra quantum", 3)).toEqual([]);
+    const text = renderSnippets(hits, 120);
+    expect(text.length).toBeLessThanOrEqual(121);
+    expect(text).toContain("[turn 2, eu2");
+  });
+
+  it("keeps only wh-traps whose key terms are absent from the transcript", async () => {
+    const { filterVerifiedNegatives } = await import("./probes.js");
+    const full = "we deployed the relay to staging on tuesday. database_url=postgres://db.internal";
+    const { probes, rejected } = filterVerifiedNegatives(
+      [
+        { question: "What was the Redis password hint?", key_terms: ["redis"] },
+        { question: "Did we deploy to production?", key_terms: ["production"] },
+        { question: "Which host was the relay deployed to?", key_terms: ["relay"] },
+        { question: "Who approved the Zanzibar rollout?", key_terms: ["Zanzibar"] },
+        { question: "When is the Helsinki demo?", key_terms: ["Helsinki"] },
+        { question: "What?", key_terms: [] },
+      ],
+      full,
+      "c9",
+      2,
+    );
+    expect(probes.map((p) => p.probeId)).toEqual(["c9-n1", "c9-n2"]);
+    expect(probes.map((p) => p.question)).toEqual([
+      "What was the Redis password hint?",
+      "Who approved the Zanzibar rollout?",
+    ]);
+    expect(rejected.map((r) => r.reason.split(":")[0])).toEqual([
+      "not a wh-question",
+      "key term present in transcript",
+      "malformed",
+    ]);
+  });
+});
