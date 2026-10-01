@@ -698,7 +698,7 @@ Periodic heartbeat runs.
           recallCrossSession: "off", // off | owner: may recall_range read other sessions of this agent?
           triggerTurnEndFraction: 0.55, // between turns: horizon cut when the prompt exceeds this share of the window
           triggerTurnStartFraction: 0.7, // safety net before the first model call
-          triggerMidTurnFraction: 0.8, // after a tool result: stub older tool outputs
+          triggerMidTurnFraction: 0.8, // before each model call: stub older tool outputs
           targetFraction: 0.35, // window share after a horizon cut
           midTurnTargetFraction: 0.5, // window share after mid-turn stubs
           minKeepUserTurns: 2, // complete real turns always kept

@@ -3,9 +3,15 @@ import os from "node:os";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
+import {
+  createAgentSession,
+  estimateTokens,
+  SessionManager,
+  SettingsManager,
+} from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
+import { emitAgentEvent } from "../../../infra/agent-events.js";
 import {
   filterHeartbeatOnlyFiles,
   resolveHeartbeatLightContext,
@@ -52,9 +58,12 @@ import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { installInRunBudget } from "../../runtime/context-pruning/in-run-budget.js";
 import {
   applyStubsToMessages,
+  buildPruneRecordData,
   collectStubRecords,
+  PRUNE_RECORD_CUSTOM_TYPE,
 } from "../../runtime/context-pruning/offload-stubs.js";
 import {
   ensurePiCompactionReserveTokens,
@@ -739,6 +748,66 @@ export async function runEmbeddedAttempt(
         minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
       });
       applyToolLoopCompat(session);
+      // PLAN-52A: the context budget that reaches the run in flight. The loop
+      // snapshots `transformContext` at run start and calls it before every
+      // model call, so this is where tool-output stubs (and the truncation
+      // fallback) take effect mid-turn. Assigning `agent.state.messages` from
+      // the tool-end handler never did: the loop works on its own snapshot.
+      try {
+        const offloadCfg = params.config?.agents?.defaults?.compaction?.offload;
+        const compressionCfg = params.config?.agents?.defaults?.compression;
+        const contextWindowTokens = params.model.contextWindow ?? 0;
+        if (contextWindowTokens > 0) {
+          installInRunBudget(session.agent as Parameters<typeof installInRunBudget>[0], {
+            contextWindowTokens,
+            fixedTokens: Math.ceil((systemPromptText?.length ?? 0) / 4),
+            estimate: (message) => {
+              try {
+                return estimateTokens(message);
+              } catch {
+                return Math.ceil(JSON.stringify(message ?? "").length / 4);
+              }
+            },
+            settings: {
+              stubsEnabled: offloadCfg?.toolOutputStubs !== false,
+              ...(typeof offloadCfg?.triggerMidTurnFraction === "number"
+                ? { triggerFraction: offloadCfg.triggerMidTurnFraction }
+                : {}),
+              ...(typeof offloadCfg?.midTurnTargetFraction === "number"
+                ? { stubTargetFraction: offloadCfg.midTurnTargetFraction }
+                : {}),
+              ...(typeof offloadCfg?.toolOutputStubMinTokens === "number"
+                ? { stubMinTokens: offloadCfg.toolOutputStubMinTokens }
+                : {}),
+              ...(typeof offloadCfg?.spareRecentToolResults === "number"
+                ? { spareRecent: offloadCfg.spareRecentToolResults }
+                : {}),
+              compressionEnabled: compressionCfg?.enabled !== false,
+              compression: compressionCfg,
+            },
+            recorded: collectStubRecords(sessionManager.getBranch()),
+            persist: (stubs) => {
+              sessionManager.appendCustomEntry(
+                PRUNE_RECORD_CUSTOM_TYPE,
+                buildPruneRecordData(stubs, "mid-turn"),
+              );
+            },
+            onApplied: (event) => {
+              log.info(
+                `[in-run-budget] runId=${params.runId} ${event.tokensBefore}→${event.tokensAfter} est tokens ` +
+                  `(new stubs=${event.newStubs}, recorded=${event.recordedStubs}, compressed=${event.compressed})`,
+              );
+              emitAgentEvent({
+                runId: params.runId,
+                stream: "compaction",
+                data: { phase: "in-run-budget", ...event },
+              });
+            },
+          });
+        }
+      } catch (budgetErr) {
+        log.warn(`[in-run-budget] install failed: ${String(budgetErr)}`);
+      }
       const activeSession = session;
       const cacheTrace = createCacheTrace({
         cfg: params.config,

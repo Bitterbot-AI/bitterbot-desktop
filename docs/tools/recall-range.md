@@ -57,7 +57,7 @@ When a tool-heavy turn passes 80% of the context window, the oldest tool outputs
 [tool output offloaded: read, 104,212 chars; full text: recall_range tool_call_id toolu_01AbC…]
 ```
 
-The two most recent outputs and any output under 1,000 tokens are never stubbed. The transcript keeps the full text; `recall_range` with that `tool_call_id` returns it. Stubs are recorded in the transcript (a `custom` entry of type `bitterbot.offload-prune`) and re-applied at the start of every later turn, so they survive the next turn and a gateway restart. This replaces middle-out truncation as the first mid-turn step; truncation still runs if stubs alone do not free enough. Switch: `agents.defaults.compaction.offload.toolOutputStubs` (default `true`).
+The two most recent outputs and any output under 1,000 tokens are never stubbed. The transcript keeps the full text; `recall_range` with that `tool_call_id` returns it. Stubs are recorded in the transcript (a `custom` entry of type `bitterbot.offload-prune`) and re-applied before every model call, so they hold for the rest of the run, the next turn, and a gateway restart. This replaces middle-out truncation as the first mid-turn step; truncation still runs if stubs alone do not free enough. Switch: `agents.defaults.compaction.offload.toolOutputStubs` (default `true`).
 
 ## Relationship to expand_message
 
