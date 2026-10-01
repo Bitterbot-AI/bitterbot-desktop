@@ -84,11 +84,24 @@ function pathRecords(records: RawRecord[]): RawRecord[] {
   while (cursor && typeof cursor.id === "string" && !seen.has(cursor.id)) {
     seen.add(cursor.id);
     path.push(cursor);
-    const parent = cursor.parentId;
+    const parent: unknown = cursor.parentId;
     cursor = typeof parent === "string" ? byId.get(parent) : undefined;
   }
   path.reverse();
   return path;
+}
+
+/** `usage.input + cacheRead + cacheWrite` of an assistant message, when recorded. */
+export function actualPromptTokens(usage: unknown): number | undefined {
+  if (!usage || typeof usage !== "object") {
+    return undefined;
+  }
+  const u = usage as { input?: unknown; cacheRead?: unknown; cacheWrite?: unknown };
+  const parts = [u.input, u.cacheRead, u.cacheWrite].map((v) =>
+    typeof v === "number" && Number.isFinite(v) ? v : 0,
+  );
+  const total = parts[0]! + parts[1]! + parts[2]!;
+  return total > 0 ? total : undefined;
 }
 
 function toolCallIdsOf(content: unknown): string[] {
@@ -186,6 +199,7 @@ export function buildTranscriptView(params: {
       images,
       isHeartbeatPrompt: role === "user" && isHeartbeatPromptText(text, params.heartbeatPrompts),
       isHeartbeatAck: role === "assistant" && isHeartbeatAckText(text),
+      promptTokensActual: role === "assistant" ? actualPromptTokens(message?.usage) : undefined,
     });
   }
 

@@ -38,6 +38,13 @@ export type PolicyEntry = {
   isHeartbeatPrompt: boolean;
   /** assistant rows: a bare HEARTBEAT_OK acknowledgement. */
   isHeartbeatAck: boolean;
+  /**
+   * assistant rows: the real prompt size of the call that produced this
+   * message (`usage.input + cacheRead + cacheWrite`), when the transcript
+   * recorded it. The runtime prefers it over the estimate for trigger checks,
+   * as pi does; the eval harness uses it to calibrate the estimate.
+   */
+  promptTokensActual?: number;
 };
 
 /** One user turn: the user entry and everything up to the next user entry. */
