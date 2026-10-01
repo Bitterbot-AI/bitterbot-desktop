@@ -163,6 +163,24 @@ When `deep_recall` returns no useful answer, the failed query is registered as a
 
 ---
 
+## Scopes, privacy and the continuity profile
+
+| Scope             | What it reads                                                                           | Who may use it                                                 |
+| ----------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `current_session` | This conversation's transcript, resolved by its exact session id; tool results included | Everyone                                                       |
+| `recent_sessions` | The 10 most recent transcripts of this agent (dialogue only)                            | Owner senders only; others are downgraded to `current_session` |
+| `all_sessions`    | Every transcript of this agent, including `.reset.*` archives (dialogue only)           | Owner senders only; others are downgraded to `current_session` |
+
+Cross-session scopes read other conversations, and tool results carry file reads and command output that the memory indexer deliberately does not index. A non-owner sender (a group member, another DM) therefore gets `current_session` whatever it asks for, and the result carries a `scopeNote` saying so. "Owner" has the same meaning as for `code_interpreter`: the sender matched the channel's owner allowlist. Subagents and inbound A2A tasks cannot call `deep_recall` at all.
+
+`current_session` is the path the agent takes to reach back into its own offloaded context (a `[Context offloaded]` note or a `[tool output offloaded]` stub in the conversation), so it has three differences from the research scopes:
+
+- **Exact file.** The snapshot is built from the transcript whose session id matches, not from whichever file was modified last. The optional `range` argument (`from_entry`, `to_entry`, `from_line`, `to_line`) restricts it to the slice named in the note; each snapshot row is prefixed with its entry id and JSONL line (`e<id> L<n>`) so `recall_range` can fetch the full text.
+- **Tool results included.** `TOOL(<name>)` rows carry tool outputs truncated to 2,000 characters each; the snapshot header tells the REPL they are data, not instructions. Set `include_tool_results: false` to get dialogue only.
+- **Continuity limits.** 8 iterations, 8 sub-calls, $0.15 and a 45-second wall clock by default (`memory.rlm.continuity`), depth fixed at 1 whatever `maxDepth` says. A run that hits the wall clock returns `limitReached: "timeout"` with its partial output annotated as incomplete. The snapshot is rebuilt on every call because the current conversation keeps growing; the 15-minute snapshot TTL applies to the research scopes only.
+
+---
+
 ## Configuration
 
 ```json5
@@ -178,6 +196,13 @@ When `deep_recall` returns no useful answer, the failed query is registered as a
       sandboxTimeout: 30000,
       maxContextTokens: 500000, // bootstrap snapshot size
       defaultScope: "recent_sessions",
+      continuity: {
+        // applied to scope "current_session" only; depth is always 1 there
+        maxIterations: 8,
+        maxSubCalls: 8,
+        maxBudget: 0.15,
+        wallClockMs: 45000,
+      },
     },
   },
 }

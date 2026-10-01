@@ -133,6 +133,40 @@ export class RLMExecutor {
       options.maxSubCalls,
       options.maxIterations,
     );
+    // PLAN-52A: wall-clock cap. `limitReached: "timeout"` existed in the result
+    // type since the tool shipped but nothing ever produced it; only the
+    // per-code-block sandbox timeout was enforced, so one slow provider could
+    // hold a user turn for minutes.
+    const startedAt = Date.now();
+    const wallClockMs =
+      typeof options.wallClockMs === "number" && options.wallClockMs > 0
+        ? options.wallClockMs
+        : undefined;
+    const remainingMs = (): number =>
+      wallClockMs === undefined ? Number.POSITIVE_INFINITY : wallClockMs - (Date.now() - startedAt);
+    const deadlineExceeded = (): boolean => remainingMs() <= 0;
+    const withDeadline = async <T>(work: Promise<T>): Promise<T> => {
+      const left = remainingMs();
+      if (!Number.isFinite(left)) {
+        return work;
+      }
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        return await Promise.race([
+          work,
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(
+              () => reject(new RLMDeadlineError(wallClockMs ?? 0)),
+              Math.max(1, left),
+            );
+          }),
+        ]);
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      }
+    };
 
     /**
      * Run one sub-call. At maxDepth 1 this is a plain LLM completion.
@@ -240,13 +274,18 @@ export class RLMExecutor {
     try {
       // Main REPL loop
       while (costTracker.addIteration()) {
-        // Call root LLM
-        const llmResult = await this.llmCall({
-          messages,
-          model: options.model,
-          provider: options.provider,
-          maxTokens: 4000,
-        });
+        if (deadlineExceeded()) {
+          throw new RLMDeadlineError(wallClockMs ?? 0);
+        }
+        // Call root LLM (raced against the wall clock)
+        const llmResult = await withDeadline(
+          this.llmCall({
+            messages,
+            model: options.model,
+            provider: options.provider,
+            maxTokens: 4000,
+          }),
+        );
         costTracker.addCost(llmResult.cost);
 
         const responseText = llmResult.text;
@@ -282,8 +321,8 @@ export class RLMExecutor {
 
         trace.push({ type: "code", content: code, timestamp: Date.now() });
 
-        // Execute code in sandbox
-        const execResult = await sandbox.execute(code);
+        // Execute code in sandbox (raced against the wall clock: sub-calls run here)
+        const execResult = await withDeadline(sandbox.execute(code));
         trace.push({
           type: "output",
           content: execResult.output || "(no output)",
@@ -363,6 +402,21 @@ export class RLMExecutor {
       finishSandbox();
       const errorMsg = err instanceof Error ? err.message : String(err);
       trace.push({ type: "error", content: errorMsg, timestamp: Date.now() });
+      if (err instanceof RLMDeadlineError) {
+        // Partial output is still useful to the caller, but it is annotated as
+        // incomplete by the tool layer (annotateIncompleteAnswer).
+        const rawLastOutput = trace.filter((t) => t.type === "output").pop()?.content;
+        return {
+          answer: rawLastOutput ? capOutputForFeedback(rawLastOutput) : null,
+          success: false,
+          iterations: costTracker.getIterationCount(),
+          subCalls: costTracker.getSubCallCount(),
+          cost: costTracker.getTotalCost(),
+          trace,
+          limitReached: "timeout",
+          error: errorMsg,
+        };
+      }
       return {
         answer: null,
         success: false,
@@ -373,5 +427,13 @@ export class RLMExecutor {
         error: errorMsg,
       };
     }
+  }
+}
+
+/** Thrown when the whole-run wall clock (`RLMExecutorOptions.wallClockMs`) elapses. */
+export class RLMDeadlineError extends Error {
+  constructor(wallClockMs: number) {
+    super(`deep recall exceeded its wall-clock cap (${wallClockMs} ms)`);
+    this.name = "RLMDeadlineError";
   }
 }

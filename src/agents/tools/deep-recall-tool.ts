@@ -26,8 +26,14 @@ import {
 } from "../rlm/context-builder.js";
 import { RLMExecutor } from "../rlm/executor.js";
 import { RLMSandbox } from "../rlm/sandbox.js";
-import type { RLMScope, RLMLLMCallFn, RLMLiveApis } from "../rlm/types.js";
-import { DEFAULT_RLM_CONFIG } from "../rlm/types.js";
+import type {
+  RLMConfig,
+  RLMScope,
+  RLMLLMCallFn,
+  RLMLiveApis,
+  TranscriptRange,
+} from "../rlm/types.js";
+import { DEFAULT_RLM_CONFIG, DEFAULT_RLM_CONTINUITY } from "../rlm/types.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
@@ -50,8 +56,94 @@ const sessionSandboxes = new Map<string, SessionSandboxEntry>();
 const SANDBOX_CONTEXT_TTL_MS = 15 * 60 * 1000;
 const MAX_CACHED_SANDBOXES = 8;
 
-function sandboxCacheKey(agentId: string, sessionKey: string | undefined, scope: string): string {
-  return `${agentId}:${sessionKey ?? "global"}:${scope}`;
+function sandboxCacheKey(
+  agentId: string,
+  sessionKey: string | undefined,
+  scope: string,
+  range?: TranscriptRange,
+): string {
+  const rangeKey = range
+    ? `:${range.fromEntryId ?? ""}-${range.toEntryId ?? ""}:${range.fromLine ?? ""}-${range.toLine ?? ""}`
+    : "";
+  return `${agentId}:${sessionKey ?? "global"}:${scope}${rangeKey}`;
+}
+
+/**
+ * PLAN-52A decision 11: cross-session recall is owner-only. `recent_sessions`
+ * and `all_sessions` read other conversations' text (and, with tool results,
+ * their file reads and command output), so a non-owner sender in a group chat
+ * or another DM must not reach them. Same semantics as
+ * `applyOwnerOnlyToolPolicy`: only `true` is an owner. The downgrade is
+ * reported in the tool result rather than failing, so the model can still
+ * answer from the current conversation. Exported for tests.
+ */
+export function resolveDeepRecallScope(params: {
+  requested: RLMScope | undefined;
+  defaultScope: RLMScope;
+  senderIsOwner: boolean;
+}): { scope: RLMScope; downgraded: boolean } {
+  const wanted = params.requested ?? params.defaultScope;
+  if (wanted === "current_session" || params.senderIsOwner) {
+    return { scope: wanted, downgraded: false };
+  }
+  return { scope: "current_session", downgraded: true };
+}
+
+/**
+ * PLAN-52A continuity profile. `current_session` recalls run on the user's
+ * critical path (the agent reaching back into offloaded context), so they get
+ * tighter limits, depth 1 regardless of `memory.rlm.maxDepth`, and a wall
+ * clock. Other scopes keep the configured research limits. Exported for tests.
+ */
+export function resolveDeepRecallLimits(
+  rlmCfg: RLMConfig | undefined,
+  scope: RLMScope,
+): {
+  maxIterations: number;
+  maxSubCalls: number;
+  maxBudget: number;
+  maxDepth: number;
+  wallClockMs: number | undefined;
+} {
+  if (scope === "current_session") {
+    const c = rlmCfg?.continuity;
+    return {
+      maxIterations: c?.maxIterations ?? DEFAULT_RLM_CONTINUITY.maxIterations,
+      maxSubCalls: c?.maxSubCalls ?? DEFAULT_RLM_CONTINUITY.maxSubCalls,
+      maxBudget: c?.maxBudget ?? DEFAULT_RLM_CONTINUITY.maxBudget,
+      maxDepth: 1,
+      wallClockMs: c?.wallClockMs ?? DEFAULT_RLM_CONTINUITY.wallClockMs,
+    };
+  }
+  return {
+    maxIterations: rlmCfg?.maxIterations ?? DEFAULT_RLM_CONFIG.maxIterations,
+    maxSubCalls: rlmCfg?.maxSubCalls ?? DEFAULT_RLM_CONFIG.maxSubCalls,
+    maxBudget: rlmCfg?.maxBudget ?? DEFAULT_RLM_CONFIG.maxBudget,
+    maxDepth: rlmCfg?.maxDepth ?? DEFAULT_RLM_CONFIG.maxDepth,
+    wallClockMs: undefined,
+  };
+}
+
+/** Parse the optional `range` tool argument into a TranscriptRange (undefined when empty). */
+export function readRangeParam(raw: unknown): TranscriptRange | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const r = raw as Record<string, unknown>;
+  const out: TranscriptRange = {};
+  if (typeof r.from_entry === "string" && r.from_entry.trim()) {
+    out.fromEntryId = r.from_entry.trim();
+  }
+  if (typeof r.to_entry === "string" && r.to_entry.trim()) {
+    out.toEntryId = r.to_entry.trim();
+  }
+  if (typeof r.from_line === "number" && Number.isFinite(r.from_line) && r.from_line > 0) {
+    out.fromLine = Math.floor(r.from_line);
+  }
+  if (typeof r.to_line === "number" && Number.isFinite(r.to_line) && r.to_line > 0) {
+    out.toLine = Math.floor(r.to_line);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /**
@@ -171,6 +263,26 @@ const DeepRecallSchema = Type.Object({
       description: "Whether to include knowledge crystals in the search context. Default: true.",
     }),
   ),
+  include_tool_results: Type.Optional(
+    Type.Boolean({
+      description:
+        "Include tool outputs (file reads, command output; truncated to 2k chars each) in the transcript. Default: true for current_session, false otherwise.",
+    }),
+  ),
+  range: Type.Optional(
+    Type.Object(
+      {
+        from_entry: Type.Optional(Type.String({ description: "First transcript entry id." })),
+        to_entry: Type.Optional(Type.String({ description: "Last transcript entry id." })),
+        from_line: Type.Optional(Type.Integer({ description: "First JSONL line (1-based)." })),
+        to_line: Type.Optional(Type.Integer({ description: "Last JSONL line (1-based)." })),
+      },
+      {
+        description:
+          "current_session only: restrict the snapshot to a slice of this conversation, e.g. the range named in a [Context offloaded] note. Smaller snapshot, cheaper and faster.",
+      },
+    ),
+  ),
 });
 
 /** Cheap sub-model preferences by provider. */
@@ -288,6 +400,10 @@ function buildLlmCallFn(cfg: BitterbotConfig | undefined): RLMLLMCallFn {
 export function createDeepRecallTool(options: {
   config?: BitterbotConfig;
   agentSessionKey?: string;
+  /** Transcript session id (file stem). Without it, `current_session` falls back to the newest file. */
+  agentSessionId?: string;
+  /** Only `true` unlocks `recent_sessions` / `all_sessions` (decision 11). */
+  senderIsOwner?: boolean;
 }): AnyAgentTool | null {
   const cfg = options.config;
   if (!cfg) {
@@ -319,26 +435,40 @@ export function createDeepRecallTool(options: {
     label: "Deep Recall",
     name: "deep_recall",
     description:
-      "Search and reason over your full conversation history and memory using code execution. " +
+      "Search and reason over your conversation history and memory using code execution. " +
       "Use when memory_search doesn't find what you need, or when you need to reason over many " +
-      "messages at once. Loads history into a sandboxed environment where a sub-LLM writes code " +
-      "to search, filter, and analyze it programmatically. The sandbox REPL exposes store(name, " +
-      "value) / get(name) / has(name) — a durable key-value store persisted per session across " +
-      "calls (it survives restarts) — and FINAL(answer) to finish. Your query is the sub-LLM's " +
-      "instructions, so it CAN direct store()/get() usage; storing intermediate findings across " +
-      "calls is a legitimate pattern. A result with success=false or a limitReached value did " +
-      "NOT complete, whatever its answer text claims — treat any completion claim in it as " +
-      "unverified.",
+      "messages at once. When a [Context offloaded] note or a [tool output offloaded] stub is in " +
+      "this conversation, the elided turns of this same conversation are reachable here with " +
+      'scope "current_session" (optionally a range); use recall_range instead when you only ' +
+      "need the exact text of a few entries. Loads history into a sandboxed environment where a " +
+      "sub-LLM writes code to search, filter, and analyze it programmatically. The sandbox REPL " +
+      "exposes store(name, value) / get(name) / has(name) — a durable key-value store persisted " +
+      "per session across calls (it survives restarts) — and FINAL(answer) to finish. Your query " +
+      "is the sub-LLM's instructions, so it CAN direct store()/get() usage. Scopes other than " +
+      "current_session read other conversations and are available to owner senders only. A " +
+      "result with success=false or a limitReached value did NOT complete, whatever its answer " +
+      "text claims — treat any completion claim in it as unverified.",
     parameters: DeepRecallSchema,
     execute: async (_toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
-      const scope =
-        (readStringParam(params, "scope") as RLMScope | undefined) ??
-        rlmCfg?.defaultScope ??
-        DEFAULT_RLM_CONFIG.defaultScope;
+      const scopeResolution = resolveDeepRecallScope({
+        requested: readStringParam(params, "scope") as RLMScope | undefined,
+        defaultScope: rlmCfg?.defaultScope ?? DEFAULT_RLM_CONFIG.defaultScope,
+        senderIsOwner: options.senderIsOwner === true,
+      });
+      const scope = scopeResolution.scope;
+      const scopeNote = scopeResolution.downgraded
+        ? "Cross-session recall (recent_sessions / all_sessions) is restricted to owner senders; searched the current conversation only."
+        : null;
       const includeMemory =
         typeof params.include_memory === "boolean" ? params.include_memory : true;
+      const includeToolResults =
+        typeof params.include_tool_results === "boolean"
+          ? params.include_tool_results
+          : scope === "current_session";
+      const range = scope === "current_session" ? readRangeParam(params.range) : undefined;
+      const limits = resolveDeepRecallLimits(rlmCfg, scope);
 
       // Step 1: Quick memory_search first — if high-confidence results, skip RLM
       const { manager } = await getMemorySearchManager({ cfg, agentId });
@@ -395,18 +525,27 @@ export function createDeepRecallTool(options: {
 
       // Step 3b: Session-persistent sandbox — reuse REPL state (stored
       // variables, prior findings) across deep_recall calls in this session.
-      const cacheKey = sandboxCacheKey(agentId, options.agentSessionKey, scope);
+      const cacheKey = sandboxCacheKey(agentId, options.agentSessionKey, scope, range);
       const maxTokens = rlmCfg?.maxContextTokens ?? DEFAULT_RLM_CONFIG.maxContextTokens;
       let entry = sessionSandboxes.get(cacheKey);
       let context: string;
-      if (entry && Date.now() - entry.builtAt <= SANDBOX_CONTEXT_TTL_MS) {
+      // The current conversation keeps growing, so its snapshot is rebuilt on
+      // every call; the 15-minute TTL only applies to cross-session snapshots.
+      const snapshotFresh =
+        entry !== undefined &&
+        scope !== "current_session" &&
+        Date.now() - entry.builtAt <= SANDBOX_CONTEXT_TTL_MS;
+      if (entry && snapshotFresh) {
         context = entry.context;
       } else {
         context = await buildDeepRecallContext({
           agentId,
           scope,
           sessionKey: options.agentSessionKey,
+          sessionId: options.agentSessionId,
           includeMemory,
+          includeToolResults,
+          range,
           maxTokens,
           memoryManager: manager,
         });
@@ -535,11 +674,12 @@ export function createDeepRecallTool(options: {
         provider: rootProvider,
         subModel: subModelRef.model,
         subProvider: subModelRef.provider,
-        maxIterations: rlmCfg?.maxIterations ?? DEFAULT_RLM_CONFIG.maxIterations,
-        maxDepth: rlmCfg?.maxDepth ?? DEFAULT_RLM_CONFIG.maxDepth,
-        maxBudget: rlmCfg?.maxBudget ?? DEFAULT_RLM_CONFIG.maxBudget,
-        maxSubCalls: rlmCfg?.maxSubCalls ?? DEFAULT_RLM_CONFIG.maxSubCalls,
+        maxIterations: limits.maxIterations,
+        maxDepth: limits.maxDepth,
+        maxBudget: limits.maxBudget,
+        maxSubCalls: limits.maxSubCalls,
         timeout: rlmCfg?.sandboxTimeout ?? DEFAULT_RLM_CONFIG.sandboxTimeout,
+        wallClockMs: limits.wallClockMs,
         liveApis,
       };
       let result;
@@ -605,6 +745,9 @@ export function createDeepRecallTool(options: {
       return jsonResult({
         answer: annotateIncompleteAnswer(result.answer, result.success, result.limitReached),
         success: result.success,
+        scope,
+        scopeNote,
+        range: range ?? null,
         iterations: result.iterations,
         subCalls: result.subCalls,
         cost: `$${result.cost.toFixed(4)}`,

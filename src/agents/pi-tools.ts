@@ -168,6 +168,8 @@ export function createBitterbotCodingTools(options?: {
   messageThreadId?: string | number;
   sandbox?: SandboxContext | null;
   sessionKey?: string;
+  /** Transcript session id (file stem) so transcript readers target the right file. */
+  sessionId?: string;
   agentDir?: string;
   workspaceDir?: string;
   config?: BitterbotConfig;
@@ -508,6 +510,8 @@ export function createBitterbotCodingTools(options?: {
       sandboxBrowserBridgeUrl: sandbox?.browser?.bridgeUrl,
       allowHostBrowserControl: sandbox ? sandbox.browserAllowHostControl : true,
       agentSessionKey: options?.sessionKey,
+      agentSessionId: options?.sessionId,
+      senderIsOwner: options?.senderIsOwner === true,
       agentChannel: resolveGatewayMessageChannel(options?.messageProvider),
       agentAccountId: options?.agentAccountId,
       agentTo: options?.messageTo,

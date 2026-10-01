@@ -68,6 +68,11 @@ const SUBAGENT_TOOL_DENY_ALWAYS = [
   "dream_status",
   "curiosity_state",
   "curiosity_resolve",
+  // PLAN-52A: transcript readers. A subagent must not read the parent's (or
+  // any other session's) raw history, tool outputs included.
+  "deep_recall",
+  "recall_range",
+  "expand_message",
   // Direct session sends - subagents communicate through announce chain
   "sessions_send",
 ];

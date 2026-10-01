@@ -69,6 +69,10 @@ export function createBitterbotTools(options?: {
   sandboxBrowserBridgeUrl?: string;
   allowHostBrowserControl?: boolean;
   agentSessionKey?: string;
+  /** Transcript session id (file stem); lets transcript readers target the exact file. */
+  agentSessionId?: string;
+  /** Same semantics as applyOwnerOnlyToolPolicy: only `true` is an owner. */
+  senderIsOwner?: boolean;
   agentChannel?: GatewayMessageChannel;
   agentAccountId?: string;
   /** Delivery target (e.g. telegram:group:123:topic:456) for topic/thread routing. */
@@ -236,7 +240,11 @@ export function createBitterbotTools(options?: {
     createCuriosityResolveTool(memoryOpts),
     createEmotionalAnchorTool(memoryOpts),
     createRecallEmotionalAnchorTool(memoryOpts),
-    createDeepRecallTool(memoryOpts),
+    createDeepRecallTool({
+      ...memoryOpts,
+      agentSessionId: options?.agentSessionId,
+      senderIsOwner: options?.senderIsOwner === true,
+    }),
     createSkillSeekersIngestTool(memoryOpts),
     createSkillPipelineDigestTool(memoryOpts),
     createSkillManageTool(memoryOpts),
