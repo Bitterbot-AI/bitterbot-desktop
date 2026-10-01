@@ -732,6 +732,26 @@ Periodic heartbeat runs.
 - `offload.*` trigger and target fractions, `minKeepUserTurns`, stub thresholds, `elideHeartbeats`, `ledgerBudgetTokens`: parameters of the offload planner (`src/agents/runtime/compaction/`). Targets must sit below their triggers; the planner clamps them otherwise. `summary`, `summaryModel`, `proactiveRecall` and `recallBudgetUsdPerDay` take effect when the policy is wired into the runtime (PLAN-52 Phase 3b).
 - `memoryFlush`: silent agentic turn before auto-compaction to store durable memories. Skipped when workspace is read-only.
 
+### `agents.defaults.runtime`
+
+Selects the agent runtime. Per-agent override: `agents.list[].runtime.engine`.
+
+```json5
+{
+  agents: {
+    defaults: {
+      runtime: { engine: "pi" }, // "pi" (default) | "bitterbot"
+    },
+    list: [{ id: "drill-haiku", runtime: { engine: "bitterbot" } }],
+  },
+}
+```
+
+- `pi`: the pi-coding-agent session, loop, and transcript writer.
+- `bitterbot`: the owned runtime under `src/agents/runtime/`. It is being built in phases; a part that is not built yet runs on pi. Today the engine selects the transcript store.
+
+Both engines read and write the same session file format, so an agent can be switched either way between turns. See [Agent runtime development](/reference/agent-runtime-dev).
+
 ### `agents.defaults.contextPruning`
 
 Prunes **old tool results** from in-memory context before sending to the LLM. Does **not** modify session history on disk.

@@ -161,6 +161,12 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    runtime: z
+      .object({
+        engine: z.union([z.literal("pi"), z.literal("bitterbot")]).optional(),
+      })
+      .strict()
+      .optional(),
     thinkingDefault: z
       .union([
         z.literal("off"),
