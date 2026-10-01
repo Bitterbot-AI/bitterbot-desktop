@@ -234,17 +234,33 @@ export async function buildArmContext(params: {
   }
 
   const wrapper = compactionWrapper(replacement);
-  // Cache breakpoint after the replacement so probes on one cut share the prefix.
-  const wrapped: Anthropic.MessageParam = {
-    role: "user",
-    content: [
-      { type: "text", text: wrapper.content as string, cache_control: { type: "ephemeral" } },
-    ],
-  };
+  // Cache breakpoint on the LAST history block, so the whole prefix (system,
+  // replacement, kept region) is cached and probes on one cut share it. A
+  // breakpoint on the replacement alone left the kept region uncached and,
+  // on small contexts, fell under the minimum cacheable prefix (0 cache reads
+  // in the pilot).
+  const history: Anthropic.MessageParam[] = [wrapper, ...keptMessages];
+  const last = history[history.length - 1]!;
+  if (typeof last.content === "string") {
+    history[history.length - 1] = {
+      role: last.role,
+      content: [{ type: "text", text: last.content, cache_control: { type: "ephemeral" } }],
+    };
+  } else if (Array.isArray(last.content) && last.content.length > 0) {
+    const blocks = [...last.content] as Array<Record<string, unknown>>;
+    blocks[blocks.length - 1] = {
+      ...blocks[blocks.length - 1],
+      cache_control: { type: "ephemeral" },
+    };
+    history[history.length - 1] = {
+      role: last.role,
+      content: blocks as unknown as Anthropic.ContentBlockParam[],
+    };
+  }
   return {
     arm: params.arm,
     system: systemFor(params.arm, params.workspaceDir),
-    history: [wrapped, ...keptMessages],
+    history,
     tools: params.arm === 4 ? [RECALL_RANGE_TOOL, DEEP_RECALL_TOOL] : [],
     buildUsage,
     buildCostUsd,

@@ -39,10 +39,17 @@ export function fastVerdict(probe: Probe, answer: string): Verdict | null {
   if (probe.type === "negative") {
     return looksLikeAbstention(answer) ? "correct" : null;
   }
-  if (a.includes(normalizeForMatch(probe.gold))) {
+  const hasGold = a.includes(normalizeForMatch(probe.gold));
+  const abstains = looksLikeAbstention(answer);
+  if (hasGold && !abstains) {
     return "correct";
   }
-  if (looksLikeAbstention(answer) && a.length < 200) {
+  // "I don't have that information, but the summary says X": the fact is
+  // present and denied at once. The judge decides, not a substring match.
+  if (hasGold && abstains) {
+    return null;
+  }
+  if (abstains && a.length < 200) {
     return "abstain";
   }
   return null;
