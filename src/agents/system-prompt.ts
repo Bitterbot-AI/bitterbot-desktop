@@ -61,7 +61,7 @@ function buildMemorySection(params: {
     "- `curiosity_state` / `curiosity_resolve`: knowledge gaps and exploration targets; resolve one after investigating it.",
     ...(params.availableTools.has("recall_range")
       ? [
-          "- `recall_range` / `deep_recall`: when a `[Context offloaded]` note or a `[tool output offloaded …]` stub is in this conversation, that text is on disk; use `recall_range` for exact text (tool outputs included) and `deep_recall(scope current_session)` to reason across many earlier turns. Do not guess what the user said earlier.",
+          "- `recall_range` / `deep_recall`: when a `[Context offloaded]` note or a `[tool output offloaded …]` stub is in this conversation, that text is on disk. Call `recall_range` first (grep a keyword, or pass the entry ids / lines the note names): exact text, tool outputs included, about a second. `deep_recall(scope current_session)` is the slow fallback for questions spanning many earlier turns. Say you do not have something from this conversation only after a recall_range lookup came back empty; a summary in the note is a lossy digest, so confirm names, numbers, paths and quotes.",
         ]
       : []),
     "- MEMORY.md Crystal Pointers (→ search: `keywords`) are memory_search directives for that topic.",

@@ -103,7 +103,7 @@ function renderOnce(
     lines.push("Earlier offloads in this session: none.");
   }
   lines.push(
-    `Reach it: recall_range(entries or turns or lines above) for exact text including tool outputs; memory_search for topics; deep_recall(scope "current_session", range) to reason across many earlier messages. If the user refers to something you cannot see here, look it up before answering.`,
+    `Reach it: call recall_range first (grep a keyword, or pass the entries / lines above); it returns the exact text, tool outputs included, in about a second. deep_recall(scope "current_session", range) is the slow fallback for questions that span many earlier messages; memory_search covers topics. Do not answer "I don't have that" about this conversation before a recall_range lookup.`,
   );
   if (input.heartbeats.count > 0) {
     lines.push(

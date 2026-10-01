@@ -98,7 +98,7 @@ export function summarizeArm(rows: ResultRow[], arm: Arm): ArmSummary {
     ),
     inputMean: mean(r.map((x) => x.inputTokens + x.cacheReadTokens)),
     cacheReadMean: mean(r.map((x) => x.cacheReadTokens)),
-    reachRate: arm === 4 && nonNeg.length ? mean(nonNeg.map((x) => (x.usedRecall ? 1 : 0))) : null,
+    reachRate: arm >= 4 && nonNeg.length ? mean(nonNeg.map((x) => (x.usedRecall ? 1 : 0))) : null,
     toolOutputAccuracy: tool.length ? mean(tool.map((x) => x.correct)) : null,
     dialogueAccuracy: dlg.length ? mean(dlg.map((x) => x.correct)) : null,
     errors: r.filter((x) => x.error).length,
@@ -136,6 +136,8 @@ export function renderReport(params: {
   spendTotal: number;
   spendByFeature: Array<[string, number]>;
   notes: string[];
+  /** Pre-rendered markdown sections appended after the probe mix (e.g. the negative-probe audit). */
+  extraSections?: string[];
   date: string;
 }): string {
   const { rows } = params;
@@ -159,7 +161,7 @@ export function renderReport(params: {
       "| Arm | n | accuracy | partial | abstain | hallucination (neg) | tool-output acc | dialogue acc | reach | cost p50 | cost p95 | latency p50 | latency p95 | input mean | cache read mean | errors |",
     );
     lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
-    for (const arm of [1, 2, 3, 4] as Arm[]) {
+    for (const arm of [1, 2, 3, 4, 5] as Arm[]) {
       const s = summarizeArm(mrows, arm);
       if (!s.n) {
         continue;
@@ -173,7 +175,7 @@ export function renderReport(params: {
     lines.push("");
     lines.push("| Arm | metric | n | mean delta | CI95 low | CI95 high |");
     lines.push("|---|---|---|---|---|---|");
-    for (const arm of [2, 3, 4] as Arm[]) {
+    for (const arm of [2, 3, 4, 5] as Arm[]) {
       const acc = pairedDeltas(
         mrows,
         arm,
@@ -247,5 +249,9 @@ export function renderReport(params: {
     `| answerableFromDialogue | ${params.probes.filter((p) => p.answerableFromDialogue).length} |`,
   );
   lines.push("");
+  for (const section of params.extraSections ?? []) {
+    lines.push(section);
+    lines.push("");
+  }
   return lines.join("\n");
 }

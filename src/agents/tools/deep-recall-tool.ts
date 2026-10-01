@@ -439,8 +439,8 @@ export function createDeepRecallTool(options: {
       "Use when memory_search doesn't find what you need, or when you need to reason over many " +
       "messages at once. When a [Context offloaded] note or a [tool output offloaded] stub is in " +
       "this conversation, the elided turns of this same conversation are reachable here with " +
-      'scope "current_session" (optionally a range); use recall_range instead when you only ' +
-      "need the exact text of a few entries. Loads history into a sandboxed environment where a " +
+      'scope "current_session" (optionally a range), but try recall_range first: it is exact ' +
+      "and takes about a second, while this tool takes 10 to 45 seconds. Loads history into a sandboxed environment where a " +
       "sub-LLM writes code to search, filter, and analyze it programmatically. The sandbox REPL " +
       "exposes store(name, value) / get(name) / has(name) — a durable key-value store persisted " +
       "per session across calls (it survives restarts) — and FINAL(answer) to finish. Your query " +

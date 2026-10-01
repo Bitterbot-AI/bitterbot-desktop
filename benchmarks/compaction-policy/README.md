@@ -24,3 +24,11 @@ Every phase is resumable: cuts, probes and results are JSONL files under the eva
 5. **report** writes `<root>/report.md`: per-arm metrics, paired bootstrap deltas against arm 1, spend by feature, probe mix. Copy it to `docs/reviews/compaction-policy-eval-<date>.md`.
 
 Pass criteria are in PLAN-52A Section 5.6. Known fidelity gaps of this harness: no `memory_search` in any arm, no bootstrap files in the system prompt (they would leak answers), set B's reduced history budget.
+
+## Arm 5 and re-grading
+
+- Arm 5 (`--arms 5`, `offload-full`) is the second iteration: the ledger with recall-first wording, the Haiku summary, and both recall tools with recall-first descriptions. It exists because arm 4 got Opus 4.8 to call a recall tool on only 37% of probes.
+- `rejudge.ts` re-applies the current judge to every row of `results.jsonl` and writes `results.rejudged.jsonl` (resumable). The first run judged with a 5-token cap that cut the judge off on 12% of calls; run it after any change to `judge.ts`, then copy the re-graded file over `results.jsonl` before `report`.
+- The report ends with a negative-probe audit: for every answer the judge flagged on a trap question, are its quoted and numeric specifics present in the transcript the agent could reach? The judge-based column is not a hallucination rate; the audit's upper bound is the number to read.
+
+Results of the 2026-10-01 run are summarised in PLAN-52A Section 5.8.

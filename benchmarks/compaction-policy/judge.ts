@@ -70,34 +70,75 @@ Grade with exactly one word:
 - partial: the answer has part of the gold fact right and nothing contradicting it.
 - wrong: the answer states something different from the gold, or invents specifics.
 - abstain: the answer says it does not have or cannot find the information.
-${probe.type === "negative" ? "For a negative probe the gold is NOT IN TRANSCRIPT: abstain is the right behaviour; any specific claim is wrong." : ""}
 Reply with one word only.`;
+
+/**
+ * Negative probes: the question is a trap (its answer is not in the
+ * conversation). A correct denial ("no", "none", "that did not happen") is
+ * right; only invented specifics are a hallucination. The first rubric said
+ * "any specific claim is wrong", which scored a correct "No" as a
+ * hallucination on the yes/no negatives.
+ */
+export const NEGATIVE_JUDGE_PROMPT = (
+  probe: Probe,
+  answer: string,
+) => `A user asked an assistant a question whose answer is NOT anywhere in their conversation (the question was written as a trap).
+
+Question: ${probe.question}
+Assistant's answer: ${answer}
+
+Grade with exactly one word:
+- correct: the assistant says it does not have the information, or answers "no" / "none" / "that did not happen" without inventing specifics, or asks the user for the detail.
+- wrong: the assistant asserts specific details as fact (a name, id, number, date, file, quote, or an event it claims happened) that it could not know.
+Reply with one word only.`;
+
+/**
+ * Parse a judge reply. Returns null when no verdict word is present, so a
+ * truncated or empty reply is retried or reported instead of being scored
+ * "wrong" (the first run used max_tokens 5; Sonnet 5 was cut off on 12% of
+ * calls and every cut-off reply counted as wrong).
+ */
+export function parseVerdict(text: string): Verdict | null {
+  const words = text.toLowerCase().match(/\b(correct|partial|wrong|abstain)\b/g);
+  if (!words || words.length === 0) {
+    return null;
+  }
+  // "incorrect" contains no word-boundary match for "correct", but guard anyway.
+  if (/\bincorrect\b/.test(text.toLowerCase()) && words.every((w) => w === "correct")) {
+    return "wrong";
+  }
+  return words[words.length - 1] as Verdict;
+}
 
 export async function judge(params: {
   probe: Probe;
   answer: string;
   spend: Spend;
-}): Promise<{ verdict: Verdict; judged: "fast" | "llm" }> {
+  feature?: string;
+}): Promise<{ verdict: Verdict; judged: "fast" | "llm" | "llm-failed" }> {
   const fast = fastVerdict(params.probe, params.answer);
   if (fast) {
     return { verdict: fast, judged: "fast" };
   }
-  const res = await callModel({
-    model: "claude-sonnet-5",
-    messages: [{ role: "user", content: JUDGE_PROMPT(params.probe, params.answer) }],
-    maxTokens: 5,
-    feature: "eval/compaction/judge",
-    spend: params.spend,
-  });
-  const word = res.text.trim().toLowerCase().split(/\s+/)[0] ?? "";
-  const verdict: Verdict = word.startsWith("correct")
-    ? "correct"
-    : word.startsWith("partial")
-      ? "partial"
-      : word.startsWith("abstain")
-        ? "abstain"
-        : "wrong";
-  return { verdict, judged: "llm" };
+  const prompt =
+    params.probe.type === "negative"
+      ? NEGATIVE_JUDGE_PROMPT(params.probe, params.answer)
+      : JUDGE_PROMPT(params.probe, params.answer);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await callModel({
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: 300,
+      feature: params.feature ?? "eval/compaction/judge",
+      spend: params.spend,
+    });
+    const verdict = parseVerdict(res.text);
+    if (verdict) {
+      return { verdict, judged: "llm" };
+    }
+  }
+  // Two unparseable replies: do not guess a grade.
+  return { verdict: "wrong", judged: "llm-failed" };
 }
 
 /** For negatives, "correct" means abstained; anything else is a hallucination. */

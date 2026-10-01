@@ -63,7 +63,7 @@ const { renderReport } = await import("./report.js");
 type CutRecord = Awaited<ReturnType<typeof simulateCuts>>[number];
 type Probe = Awaited<ReturnType<typeof generateProbes>>["probes"][number];
 type ResultRow = Parameters<typeof renderReport>[0]["rows"][number];
-type Arm = 1 | 2 | 3 | 4;
+type Arm = 1 | 2 | 3 | 4 | 5;
 type EvalModel = "claude-haiku-4-5" | "claude-opus-4-8" | "claude-sonnet-5";
 
 const SESSIONS_DIR = path.join(STATE_DIR, "agents", EVAL_AGENT_ID, "sessions");
@@ -339,10 +339,76 @@ async function phaseReport() {
   const cuts = await readJsonl<CutRecord>(FILES.cuts);
   const spend = await loadSpend();
   const notes = [
-    "Replay only: no live agent, isolated state dir, eval ledger. Bootstrap files (MEMORY.md) excluded to avoid answer contamination; memory_search not offered in any arm (see PLAN-52A 5.1 for the production caveat).",
-    "Set B runs at a history budget (trigger 12k, target ~7.6k) with no fixed prompt share; its trigger semantics are not production's. Sets A, C, D run at W=200k with 20k fixed.",
+    "Replay only: no live agent, isolated state dir, eval ledger. Bootstrap files (MEMORY.md) excluded to avoid answer contamination; memory_search not offered in any arm (see PLAN-52A 5.7 for the production caveat).",
+    "Set A runs at W=200k with the real recorded prompt size for the trigger and a one-turn keep floor. Sets B and C run at a 3k history budget, set D at 2k; those trigger regimes are not production's.",
     "Arm 1 summary = pi's summarization prompts verbatim on the session model, thinking off, tool outputs capped at 16k chars each in the summariser input.",
+    "Arm 5 = ledger with recall-first wording + Haiku summary + recall_range and deep_recall with recall-first descriptions (second iteration, after arm 4's low reach on Opus 4.8).",
+    "Verdicts were re-graded after the first run: the judge's 5-token cap cut Sonnet 5 off on 12% of calls and a cut-off reply had been scored wrong.",
+    "The judge-based hallucination column on negative probes is NOT a hallucination rate: the rubric marks any asserted specific as wrong, and arms with recall answer trap questions by quoting real transcript content. See the negative-probe audit at the end.",
   ];
+  // Negative-probe audit: are the specifics in a flagged answer present in the
+  // transcript the agent could reach? Grounded = at least half of the quoted
+  // or numeric specifics appear verbatim in the cut file.
+  const cutText = new Map<string, string>();
+  for (const c of cuts) {
+    try {
+      cutText.set(c.cutId, (await fs.readFile(c.cutFilePath, "utf-8")).toLowerCase());
+    } catch {
+      // cut file missing: audit skips its rows
+    }
+  }
+  const specificsOf = (answer: string): string[] => {
+    const out = new Set<string>();
+    for (const re of [/`([^`]{3,80})`/g, /\*\*([^*]{3,80})\*\*/g, /"([^"]{4,80})"/g]) {
+      for (const m of answer.matchAll(re)) {
+        out.add(m[1]!.toLowerCase());
+      }
+    }
+    for (const m of answer.matchAll(/\b\d[\d,.:/-]{2,}\b/g)) {
+      out.add(m[0].toLowerCase());
+    }
+    return [...out];
+  };
+  const audit: string[] = [
+    "## Negative-probe audit (grounding of flagged answers)",
+    "",
+    "| model | arm | negatives | judge-flagged | specifics grounded in transcript | ungrounded | no extractable specifics | upper bound on invented specifics |",
+    "|---|---|---|---|---|---|---|---|",
+  ];
+  const groups = new Map<string, ResultRow[]>();
+  for (const r of rows) {
+    if (r.probeType === "negative") {
+      const k = `${r.model}|${r.arm}`;
+      groups.set(k, [...(groups.get(k) ?? []), r]);
+    }
+  }
+  for (const k of [...groups.keys()].toSorted()) {
+    const rs = groups.get(k)!;
+    let grounded = 0;
+    let ungrounded = 0;
+    let none = 0;
+    const flagged = rs.filter((r) => r.hallucinated);
+    for (const r of flagged) {
+      const text = cutText.get(r.cutId);
+      const sp = specificsOf(r.answer);
+      if (!text || sp.length === 0) {
+        none++;
+        continue;
+      }
+      const found = sp.filter(
+        (t) => text.includes(t) || text.includes(JSON.stringify(t).slice(1, -1)),
+      );
+      if (found.length / sp.length >= 0.5) {
+        grounded++;
+      } else {
+        ungrounded++;
+      }
+    }
+    const [m, a] = k.split("|");
+    audit.push(
+      `| ${m} | ${a} | ${rs.length} | ${flagged.length} | ${grounded} | ${ungrounded} | ${none} | ${(((ungrounded + none) / rs.length) * 100).toFixed(1)}% |`,
+    );
+  }
   const md = renderReport({
     rows,
     probes,
@@ -350,6 +416,7 @@ async function phaseReport() {
     spendTotal: spend.total,
     spendByFeature: [...spend.byFeature.entries()],
     notes,
+    extraSections: [audit.join("\n")],
     date: new Date().toISOString().slice(0, 10),
   });
   await fs.writeFile(FILES.report, md);
