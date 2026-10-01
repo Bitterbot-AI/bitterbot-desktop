@@ -23,6 +23,8 @@ export type SessionTranscriptMessage = {
   line: number;
   /** Tool name for `toolResult` rows. */
   toolName?: string;
+  /** Tool call id for `toolResult` rows (the address a tool-output stub carries). */
+  toolCallId?: string;
   /**
    * Turn ordinal: the count of user-role entries on the branch path up to and
    * including this row (heartbeats included), so "turn 9" means the same row
@@ -215,6 +217,7 @@ async function parseSessionFile(
           entryId,
           line: idx + 1,
           toolName,
+          toolCallId: typeof msg.toolCallId === "string" ? msg.toolCallId : undefined,
         });
         continue;
       }

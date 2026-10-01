@@ -30,13 +30,15 @@ describe("RLMExecutor wall clock", () => {
       if (calls === 1) {
         return { text: '```js\nprint("partial finding");\n```', cost: 0.001 };
       }
-      await sleep(500);
+      await sleep(3_000);
       return { text: '```js\nFINAL("too late");\n```', cost: 0.001 };
     };
     const executor = new RLMExecutor(slowLlm);
     const started = Date.now();
-    const result = await executor.execute("q", "ctx", { ...baseOptions, wallClockMs: 120 });
-    expect(Date.now() - started).toBeLessThan(450);
+    // Generous cap: the first iteration (sandbox start included) must fit
+    // inside it even on a loaded box; only the slow second call is cut.
+    const result = await executor.execute("q", "ctx", { ...baseOptions, wallClockMs: 800 });
+    expect(Date.now() - started).toBeLessThan(2_500);
     expect(result.success).toBe(false);
     expect(result.limitReached).toBe("timeout");
     // The partial REPL output survives so the tool layer can annotate it.

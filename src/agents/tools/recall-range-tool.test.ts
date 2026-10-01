@@ -250,6 +250,15 @@ describe("createRecallRangeTool (end to end on fixtures)", () => {
     expect(String(all.text)).toContain("[ea5 L7 t2 ");
   });
 
+  it("returns a stubbed tool output in full by tool_call_id", async () => {
+    const out = parse(await make(false).execute("t", { tool_call_id: "c1" }));
+    expect(out.matched).toBe(1);
+    expect(String(out.text)).toContain("TOOL(read)");
+    expect(String(out.text)).toContain(BIG);
+    const none = parse(await make(false).execute("t", { tool_call_id: "nope" }));
+    expect(none.matched).toBe(0);
+  });
+
   it("selects by turns and lines", async () => {
     const t2 = parse(await make(false).execute("t", { turns: "2" }));
     expect(String(t2.text)).toContain("now deploy");

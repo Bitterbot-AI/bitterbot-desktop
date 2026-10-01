@@ -122,6 +122,7 @@ export const AgentDefaultsSchema = z
         offload: z
           .object({
             recallCrossSession: z.union([z.literal("off"), z.literal("owner")]).optional(),
+            toolOutputStubs: z.boolean().optional(),
             triggerTurnEndFraction: z.number().min(0.1).max(0.95).optional(),
             triggerTurnStartFraction: z.number().min(0.1).max(0.98).optional(),
             triggerMidTurnFraction: z.number().min(0.1).max(0.98).optional(),

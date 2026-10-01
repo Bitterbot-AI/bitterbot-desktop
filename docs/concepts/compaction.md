@@ -85,6 +85,10 @@ Use `/compact` (optionally with instructions) to force a compaction pass:
 
 Context window is model-specific. Bitterbot uses the model definition from the configured provider catalog to determine limits.
 
+## Tool-output stubs (mid-turn, lossless)
+
+When a single turn's tool loop passes 80% of the context window, Bitterbot first replaces the oldest tool outputs with a one-line stub that names the tool call id. Nothing is lost: the transcript keeps the full output and the agent fetches it with [`recall_range`](/tools/recall-range). The two most recent outputs and small outputs are left alone. Stubs are recorded in the transcript and re-applied every turn, so they also survive a restart. See `agents.defaults.compaction.offload.toolOutputStubs` (default on).
+
 ## Progressive compression (pre-compaction)
 
 Before expensive LLM-based compaction, Bitterbot runs a **deterministic pre-compression pass** that reduces token count cheaply:

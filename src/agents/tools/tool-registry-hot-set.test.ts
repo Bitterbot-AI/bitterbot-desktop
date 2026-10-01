@@ -169,14 +169,16 @@ describe("selectHotTools per lane", () => {
 
 describe("resolveHotSetConfig", () => {
   it("defaults", () => {
+    // Tool-output stubs are on by default, so recall_range has a slot of its
+    // own in the chat and cron lanes (PLAN-52A).
     expect(defaults).toEqual({
       enabled: true,
-      max: HOT_SET_DEFAULT_MAX,
+      max: HOT_SET_DEFAULT_MAX + 1,
       always: [...HOT_SET_DEFAULT_ALWAYS],
       perLane: {
-        chat: [...HOT_SET_DEFAULT_PER_LANE.chat],
+        chat: [...HOT_SET_DEFAULT_PER_LANE.chat, "recall_range"],
         heartbeat: [...HOT_SET_DEFAULT_PER_LANE.heartbeat],
-        cron: [...HOT_SET_DEFAULT_PER_LANE.cron],
+        cron: [...HOT_SET_DEFAULT_PER_LANE.cron, "recall_range"],
         subagent: [...HOT_SET_DEFAULT_PER_LANE.subagent],
       },
     });

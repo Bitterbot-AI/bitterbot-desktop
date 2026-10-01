@@ -22,6 +22,10 @@ import {
   sanitizeToolResult,
 } from "./embedded-subscribe.tools.js";
 import { inferToolMetaFromArgs } from "./embedded-utils.js";
+import {
+  buildPruneRecordData,
+  PRUNE_RECORD_CUSTOM_TYPE,
+} from "./runtime/context-pruning/offload-stubs.js";
 import { buildToolMutationState, isSameToolMutationAction } from "./tool-mutation.js";
 import { normalizeToolName } from "./tool-policy.js";
 
@@ -394,10 +398,38 @@ export async function handleToolExecutionEnd(
   ) {
     let estimatedTokens: number | undefined;
     try {
+      const offloadCfg = ctx.params.config?.agents?.defaults?.compaction?.offload;
       const result = applyMidTurnBudget({
         session: session as Parameters<typeof applyMidTurnBudget>[0]["session"],
         contextWindowTokens: ctxWindow,
+        // PLAN-52A decision 1(c): tool-output stubs are on by default.
+        stubConfig: {
+          enabled: offloadCfg?.toolOutputStubs !== false,
+          targetFraction: offloadCfg?.midTurnTargetFraction,
+          minTokens: offloadCfg?.toolOutputStubMinTokens,
+          spareRecent: offloadCfg?.spareRecentToolResults,
+        },
       });
+      // Persist the stubs so the next turn (which rebuilds the context from
+      // the transcript) and a restart keep them. Best effort: a failed write
+      // only means the stubs last for this run, as compression always did.
+      if (result.applied && result.stubs && result.stubs.length > 0) {
+        try {
+          const sm = (
+            ctx.params.session as {
+              sessionManager?: { appendCustomEntry?: (type: string, data?: unknown) => string };
+            }
+          ).sessionManager;
+          sm?.appendCustomEntry?.(
+            PRUNE_RECORD_CUSTOM_TYPE,
+            buildPruneRecordData(result.stubs, "mid-turn"),
+          );
+        } catch (err) {
+          ctx.log.warn(
+            `[mid-turn-budget] could not persist ${result.stubs.length} stub(s) runId=${ctx.params.runId}: ${String(err)}`,
+          );
+        }
+      }
       // Capture the most accurate token estimate for the nudge below.
       if (result.applied) {
         estimatedTokens = result.tokensAfter;
@@ -406,7 +438,7 @@ export async function handleToolExecutionEnd(
       }
       if (result.applied) {
         ctx.log.debug(
-          `[mid-turn-budget] runId=${ctx.params.runId} compressed ${result.messagesBefore}→${result.messagesAfter} msgs, ${result.tokensBefore}→${result.tokensAfter} est tokens (passes=${result.passes})`,
+          `[mid-turn-budget] runId=${ctx.params.runId} ${result.method} ${result.messagesBefore}→${result.messagesAfter} msgs, ${result.tokensBefore}→${result.tokensAfter} est tokens (passes=${result.passes}, stubs=${result.stubs?.length ?? 0})`,
         );
         emitAgentEvent({
           runId: ctx.params.runId,
@@ -417,6 +449,8 @@ export async function handleToolExecutionEnd(
             tokensAfter: result.tokensAfter,
             messagesBefore: result.messagesBefore,
             messagesAfter: result.messagesAfter,
+            method: result.method,
+            stubs: result.stubs?.length ?? 0,
           },
         });
       }

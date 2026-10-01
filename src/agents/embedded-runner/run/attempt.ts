@@ -53,6 +53,10 @@ import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
 import {
+  applyStubsToMessages,
+  collectStubRecords,
+} from "../../runtime/context-pruning/offload-stubs.js";
+import {
   ensurePiCompactionReserveTokens,
   resolveCompactionReserveTokensFloor,
 } from "../../runtime/engines/pi/settings.js";
@@ -830,8 +834,30 @@ export async function runEmbeddedAttempt(
           ? sanitizeToolUseResultPairing(truncated)
           : truncated;
         cacheTrace?.recordStage("session:limited", { messages: limited });
-        if (limited.length > 0) {
-          activeSession.agent.state.messages = limited;
+        // PLAN-52A context-pruning stage: re-apply the tool-output stubs that
+        // earlier turns recorded (`bitterbot.offload-prune` entries on this
+        // branch). Without this the full outputs come back every turn, because
+        // the context is rebuilt from the transcript.
+        let pruned = limited;
+        if (params.config?.agents?.defaults?.compaction?.offload?.toolOutputStubs !== false) {
+          try {
+            const recorded = collectStubRecords(sessionManager.getBranch());
+            if (recorded.size > 0) {
+              const res = applyStubsToMessages(limited, recorded);
+              pruned = res.messages;
+              if (res.applied > 0) {
+                log.debug(
+                  `[context-pruning] runId=${params.runId} re-applied ${res.applied} tool-output stub(s)`,
+                );
+              }
+            }
+          } catch (pruneErr) {
+            log.warn(`[context-pruning] stub re-application failed: ${String(pruneErr)}`);
+          }
+        }
+        cacheTrace?.recordStage("session:pruned", { messages: pruned });
+        if (pruned.length > 0) {
+          activeSession.agent.state.messages = pruned;
         }
       } catch (err) {
         await flushPendingToolResultsAfterIdle({

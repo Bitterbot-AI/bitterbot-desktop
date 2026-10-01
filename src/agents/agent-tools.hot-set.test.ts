@@ -53,7 +53,8 @@ describe("createBitterbotCodingTools hot-set exposure", () => {
     expect(exposed).toContain(USE_TOOL_NAME);
     // The fast stubs drop web_search/web_fetch (null), so the hot set is the
     // registered subset of the defaults.
-    const wanted = [...HOT_SET_DEFAULT_ALWAYS, ...HOT_SET_DEFAULT_PER_LANE.chat];
+    // recall_range is hot by default in the chat lane (PLAN-52A stubs).
+    const wanted = [...HOT_SET_DEFAULT_ALWAYS, ...HOT_SET_DEFAULT_PER_LANE.chat, "recall_range"];
     for (const name of exposed) {
       if (name === LIST_TOOLS_NAME || name === USE_TOOL_NAME) {
         continue;
@@ -172,7 +173,11 @@ describe("native tool search exposure through the real factory", () => {
     expect(exposed).not.toContain(LIST_TOOLS_NAME);
     expect(exposed).not.toContain(USE_TOOL_NAME);
     expect(exposed).toContain("message");
-    const hot = new Set([...HOT_SET_DEFAULT_ALWAYS, ...HOT_SET_DEFAULT_PER_LANE.chat]);
+    const hot = new Set([
+      ...HOT_SET_DEFAULT_ALWAYS,
+      ...HOT_SET_DEFAULT_PER_LANE.chat,
+      "recall_range",
+    ]);
     for (const tool of tools) {
       expect(isToolDeferLoading(tool)).toBe(!hot.has(tool.name));
     }
