@@ -695,6 +695,21 @@ Periodic heartbeat runs.
         policy: "summary", // summary | offload (PLAN-52A; offload is flagged until its evaluation passes)
         offload: {
           recallCrossSession: "off", // off | owner: may recall_range read other sessions of this agent?
+          triggerTurnEndFraction: 0.55, // between turns: horizon cut when the prompt exceeds this share of the window
+          triggerTurnStartFraction: 0.7, // safety net before the first model call
+          triggerMidTurnFraction: 0.8, // after a tool result: stub older tool outputs
+          targetFraction: 0.35, // window share after a horizon cut
+          midTurnTargetFraction: 0.5, // window share after mid-turn stubs
+          minKeepUserTurns: 2, // complete real turns always kept
+          toolOutputStubMinTokens: 1000, // smaller tool outputs are never stubbed
+          spareRecentToolResults: 2, // newest tool outputs are never stubbed
+          elideHeartbeats: true, // drop bare HEARTBEAT_OK pairs
+          ledgerBudgetTokens: 1200,
+          minElidedTokens: 2000, // a horizon cut that frees less than this is skipped (overflow/manual excepted)
+          summary: "idle", // off | idle | always: cheap-model summary appended to the ledger
+          summaryModel: "anthropic/claude-haiku-4-5",
+          proactiveRecall: true,
+          recallBudgetUsdPerDay: 1.0,
         },
         reserveTokensFloor: 24000,
         memoryFlush: {
@@ -712,6 +727,7 @@ Periodic heartbeat runs.
 - `mode`: `default` or `safeguard` (chunked summarization for long histories). See [Compaction](/concepts/compaction).
 - `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). The offload policy itself lands with the owned runtime; today the key only selects the hot-set behaviour.
 - `offload.recallCrossSession`: `off` (default) keeps [recall_range](/tools/recall-range) on the current conversation; `owner` lets owner senders read other sessions of this agent.
+- `offload.*` trigger and target fractions, `minKeepUserTurns`, stub thresholds, `elideHeartbeats`, `ledgerBudgetTokens`: parameters of the offload planner (`src/agents/runtime/compaction/`). Targets must sit below their triggers; the planner clamps them otherwise. `summary`, `summaryModel`, `proactiveRecall` and `recallBudgetUsdPerDay` take effect when the policy is wired into the runtime (PLAN-52 Phase 3b).
 - `memoryFlush`: silent agentic turn before auto-compaction to store durable memories. Skipped when workspace is read-only.
 
 ### `agents.defaults.contextPruning`

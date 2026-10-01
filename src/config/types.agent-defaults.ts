@@ -379,6 +379,36 @@ export type AgentCompactionOffloadConfig = {
    * this agent, owner senders only. Decision 11 (2026-10-01).
    */
   recallCrossSession?: "off" | "owner";
+  /** Turn-end (between turns) trigger as a fraction of the context window. Default 0.55. */
+  triggerTurnEndFraction?: number;
+  /** Turn-start safety-net trigger. Default 0.70. */
+  triggerTurnStartFraction?: number;
+  /** Mid-turn (after a tool result) trigger; stubs only. Default 0.80. */
+  triggerMidTurnFraction?: number;
+  /** Target window share after a horizon cut. Default 0.35. */
+  targetFraction?: number;
+  /** Target window share after mid-turn stubs. Default 0.50. */
+  midTurnTargetFraction?: number;
+  /** Complete real user turns always kept (bare heartbeat pairs do not count). Default 2. */
+  minKeepUserTurns?: number;
+  /** Tool outputs below this estimate are never stubbed. Default 1000 tokens. */
+  toolOutputStubMinTokens?: number;
+  /** Most recent tool outputs never stubbed. Default 2. */
+  spareRecentToolResults?: number;
+  /** Drop bare heartbeat prompt-and-ack pairs. Default true. */
+  elideHeartbeats?: boolean;
+  /** Ledger text budget. Default 1200 tokens. */
+  ledgerBudgetTokens?: number;
+  /** A horizon cut must elide at least this many tokens (overflow and manual ignore it). Default 2000. */
+  minElidedTokens?: number;
+  /** Cheap-model summary appended to the ledger: off | idle (between turns, manual) | always. Default idle. */
+  summary?: "off" | "idle" | "always";
+  /** Model for the cheap summary. Default anthropic/claude-haiku-4-5. */
+  summaryModel?: string;
+  /** Inject proactive recall over the elided range at turn start. Default true. */
+  proactiveRecall?: boolean;
+  /** Daily deep_recall budget across offloaded sessions (USD). Default 1.0. */
+  recallBudgetUsdPerDay?: number;
 };
 
 export type AgentCompactionMemoryFlushConfig = {
