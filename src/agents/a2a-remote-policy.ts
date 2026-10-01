@@ -61,6 +61,7 @@ export const A2A_REMOTE_TOOL_DENY_ALWAYS = [
   // Node state: reading is exfiltration, writing is poisoning.
   "memory_*",
   "deep_recall",
+  "recall_range", // raw transcript entries incl. tool outputs (PLAN-52A)
   "*emotional_anchor*",
   "expand_message", // reads the process-global truncated-originals cache
   "*artifact*", // writes attacker HTML/JS into the owner's Control UI panel

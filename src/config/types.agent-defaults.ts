@@ -354,12 +354,31 @@ export type AgentHarnessEvolveConfig = {
 export type AgentCompactionConfig = {
   /** Compaction summarization mode. */
   mode?: AgentCompactionMode;
+  /**
+   * PLAN-52A compaction policy. `summary` = LLM summary (today's behaviour);
+   * `offload` = deterministic context offload with a transcript ledger and the
+   * recall tools. Default: `summary` until the offline evaluation passes.
+   */
+  policy?: AgentCompactionPolicy;
+  /** Settings for the `offload` policy. */
+  offload?: AgentCompactionOffloadConfig;
   /** Minimum reserve tokens enforced for Pi compaction (0 disables the floor). */
   reserveTokensFloor?: number;
   /** Max share of context window for history during safeguard pruning (0.1–0.9, default 0.5). */
   maxHistoryShare?: number;
   /** Pre-compaction memory flush (agentic turn). Default: enabled. */
   memoryFlush?: AgentCompactionMemoryFlushConfig;
+};
+
+export type AgentCompactionPolicy = "summary" | "offload";
+
+export type AgentCompactionOffloadConfig = {
+  /**
+   * Whether `recall_range` may read sessions other than the current one.
+   * `off` (default): current conversation only. `owner`: other sessions of
+   * this agent, owner senders only. Decision 11 (2026-10-01).
+   */
+  recallCrossSession?: "off" | "owner";
 };
 
 export type AgentCompactionMemoryFlushConfig = {

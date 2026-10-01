@@ -692,6 +692,10 @@ Periodic heartbeat runs.
     defaults: {
       compaction: {
         mode: "safeguard", // default | safeguard
+        policy: "summary", // summary | offload (PLAN-52A; offload is flagged until its evaluation passes)
+        offload: {
+          recallCrossSession: "off", // off | owner: may recall_range read other sessions of this agent?
+        },
         reserveTokensFloor: 24000,
         memoryFlush: {
           enabled: true,
@@ -706,6 +710,8 @@ Periodic heartbeat runs.
 ```
 
 - `mode`: `default` or `safeguard` (chunked summarization for long histories). See [Compaction](/concepts/compaction).
+- `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). The offload policy itself lands with the owned runtime; today the key only selects the hot-set behaviour.
+- `offload.recallCrossSession`: `off` (default) keeps [recall_range](/tools/recall-range) on the current conversation; `owner` lets owner senders read other sessions of this agent.
 - `memoryFlush`: silent agentic turn before auto-compaction to store durable memories. Skipped when workspace is read-only.
 
 ### `agents.defaults.contextPruning`

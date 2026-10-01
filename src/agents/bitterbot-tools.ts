@@ -34,6 +34,7 @@ import {
 import { createMessageTool } from "./tools/message-tool.js";
 import { createNetworkStatusTool } from "./tools/network-status-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
+import { createRecallRangeTool } from "./tools/recall-range-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
@@ -241,6 +242,11 @@ export function createBitterbotTools(options?: {
     createEmotionalAnchorTool(memoryOpts),
     createRecallEmotionalAnchorTool(memoryOpts),
     createDeepRecallTool({
+      ...memoryOpts,
+      agentSessionId: options?.agentSessionId,
+      senderIsOwner: options?.senderIsOwner === true,
+    }),
+    createRecallRangeTool({
       ...memoryOpts,
       agentSessionId: options?.agentSessionId,
       senderIsOwner: options?.senderIsOwner === true,

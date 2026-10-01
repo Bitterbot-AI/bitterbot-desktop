@@ -59,6 +59,11 @@ function buildMemorySection(params: {
     '- `working_memory_note`: persist anything worth keeping (user facts, decisions, preferences, corrections, emotional moments, deadlines, "remember this"); optional type=directive|world_fact|mental_model|experience. Err on noting too much.',
     "- `dream_search` / `dream_status`: cross-domain insights from dream cycles.",
     "- `curiosity_state` / `curiosity_resolve`: knowledge gaps and exploration targets; resolve one after investigating it.",
+    ...(params.availableTools.has("recall_range")
+      ? [
+          "- `recall_range` / `deep_recall`: when a `[Context offloaded]` note or a `[tool output offloaded …]` stub is in this conversation, that text is on disk; use `recall_range` for exact text (tool outputs included) and `deep_recall(scope current_session)` to reason across many earlier turns. Do not guess what the user said earlier.",
+        ]
+      : []),
     "- MEMORY.md Crystal Pointers (→ search: `keywords`) are memory_search directives for that topic.",
     "### Rules",
     "- A tool error starting with `INTERCEPTOR:` is a deterministic guardrail, not a failure: run the named prerequisite tool, then re-evaluate. A silently hedged claim was calibrated on purpose; keep it.",

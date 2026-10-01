@@ -765,7 +765,8 @@
                   "tools/thinking",
                   "tools/reactions",
                   "tools/computer-use",
-                  "tools/checkpoints"
+                  "tools/checkpoints",
+                  "tools/recall-range"
                 ]
               },
               {

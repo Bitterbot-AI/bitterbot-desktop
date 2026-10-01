@@ -216,3 +216,4 @@ Cross-session scopes read other conversations, and tool results carry file reads
 - [Working Memory](./working-memory.md) — MEMORY.md provides immediate context
 - [Curiosity & Search](./curiosity-and-search.md) — search infrastructure deep recall builds on
 - [User Knowledge](./user-knowledge.md) — session extraction for long-term facts
+- [recall_range](../tools/recall-range.md) — the deterministic transcript reader for exact text and tool outputs

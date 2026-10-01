@@ -137,6 +137,18 @@ export function resolveHotSetConfig(params: {
       : HOT_SET_DEFAULT_MAX;
   const always = cleanNames(agent?.always) ??
     cleanNames(global?.always) ?? [...HOT_SET_DEFAULT_ALWAYS];
+  // PLAN-52A decision 5: under the `offload` compaction policy the model must
+  // be able to reach offloaded text without a tool-search hop, so the small
+  // deterministic reader is always hot. Static per agent (no per-session
+  // promotion: changing the tools array would invalidate the whole cache
+  // prefix, since tools precede the system prompt). `deep_recall` stays
+  // deferred; the offload note names it, so tool search finds it.
+  if (
+    params.config?.agents?.defaults?.compaction?.policy === "offload" &&
+    !always.includes("recall_range")
+  ) {
+    always.push("recall_range");
+  }
   const perLane = {} as Record<ToolHotSetLane, string[]>;
   for (const lane of ["chat", "heartbeat", "cron", "subagent"] as const) {
     perLane[lane] = cleanNames(agent?.perLane?.[lane]) ??

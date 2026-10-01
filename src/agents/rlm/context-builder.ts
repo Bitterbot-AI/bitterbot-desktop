@@ -23,6 +23,12 @@ export type SessionTranscriptMessage = {
   line: number;
   /** Tool name for `toolResult` rows. */
   toolName?: string;
+  /**
+   * Turn ordinal: the count of user-role entries on the branch path up to and
+   * including this row (heartbeats included), so "turn 9" means the same row
+   * before and after an offload. Set by parseSessionFile.
+   */
+  turn?: number;
 };
 
 /** Tool results are data, not dialogue: cap each one so a 280 KB blob cannot dominate the snapshot. */
@@ -69,12 +75,58 @@ function formatTimestamp(ts: number): string {
  * Parse a session JSONL file into structured messages.
  * Reads the raw JSONL and extracts user/assistant text content.
  */
-type ParseOptions = {
+export type ParseOptions = {
   /** Include `toolResult` rows (truncated). Default false (dialogue only). */
   includeToolResults?: boolean;
   /** Keep only rows inside this slice (entry ids and/or JSONL lines). */
   range?: TranscriptRange;
+  /** Per-tool-result cap in chars. Default TOOL_RESULT_SNAPSHOT_MAX_CHARS; Infinity keeps the full text. */
+  toolResultMaxChars?: number;
+  /**
+   * Keep only entries on the current branch path (leaf back to root through
+   * `parentId`). pi v3 transcripts are trees; a `/fork` leaves sibling
+   * branches in the file that the model never saw on this path. Default false
+   * (file order, every branch), which is what the snapshot always did.
+   */
+  branchPathOnly?: boolean;
 };
+
+/**
+ * Ids on the current branch path: start at the leaf (the last record in file
+ * order that has an id) and follow `parentId` to the root. Returns null when
+ * the file carries no ids (legacy transcripts), meaning "no filtering".
+ * Exported for tests.
+ */
+export function resolveBranchPathIds(
+  records: ReadonlyArray<{ id?: unknown; parentId?: unknown }>,
+): Set<string> | null {
+  const parentById = new Map<string, string | null>();
+  let leaf: string | undefined;
+  for (const r of records) {
+    if (typeof r.id === "string" && r.id) {
+      parentById.set(r.id, typeof r.parentId === "string" ? r.parentId : null);
+      leaf = r.id;
+    }
+  }
+  if (!leaf) {
+    return null;
+  }
+  const onPath = new Set<string>();
+  let cursor: string | null | undefined = leaf;
+  while (cursor && parentById.has(cursor) && !onPath.has(cursor)) {
+    onPath.add(cursor);
+    cursor = parentById.get(cursor);
+  }
+  return onPath;
+}
+
+/** Truncate one tool output for a snapshot row, pointing at the full text. */
+export function truncateToolText(text: string, maxChars: number, entryId?: string): string {
+  if (!Number.isFinite(maxChars) || text.length <= maxChars) {
+    return text;
+  }
+  return `${text.slice(0, maxChars)} [... tool output truncated: ${text.length.toLocaleString()} chars total; recall_range entry ${entryId ?? "?"} has the full text ...]`;
+}
 
 /**
  * Apply a `TranscriptRange` to parsed rows. Entry-id bounds are resolved to
@@ -113,7 +165,9 @@ async function parseSessionFile(
     const raw = await fs.readFile(absPath, "utf-8");
     const lines = raw.split("\n");
     let messages: SessionTranscriptMessage[] = [];
+    const records: Array<{ id?: unknown; parentId?: unknown }> = [];
     let sessionId = transcriptSessionId(path.basename(absPath));
+    const toolMax = opts.toolResultMaxChars ?? TOOL_RESULT_SNAPSHOT_MAX_CHARS;
 
     for (let idx = 0; idx < lines.length; idx++) {
       const line = lines[idx]!;
@@ -132,6 +186,7 @@ async function parseSessionFile(
         sessionId = record.id as string;
         continue;
       }
+      records.push({ id: record.id, parentId: record.parentId });
 
       // Extract messages
       if (record.type !== "message") {
@@ -153,13 +208,9 @@ async function parseSessionFile(
           continue;
         }
         const toolName = typeof msg.toolName === "string" ? msg.toolName : "tool";
-        const truncated =
-          toolText.length > TOOL_RESULT_SNAPSHOT_MAX_CHARS
-            ? `${toolText.slice(0, TOOL_RESULT_SNAPSHOT_MAX_CHARS)} [... tool output truncated: ${toolText.length.toLocaleString()} chars total; recall_range entry ${entryId ?? "?"} has the full text ...]`
-            : toolText;
         messages.push({
           role: "tool",
-          text: truncated,
+          text: toolText,
           timestamp,
           entryId,
           line: idx + 1,
@@ -186,7 +237,27 @@ async function parseSessionFile(
       });
     }
 
+    // Order of operations matters: path filter, then turn ordinals (stable
+    // numbering that a range cannot shift), then the range, then truncation.
+    if (opts.branchPathOnly) {
+      const onPath = resolveBranchPathIds(records);
+      if (onPath) {
+        messages = messages.filter((m) => !m.entryId || onPath.has(m.entryId));
+      }
+    }
+    let turn = 0;
+    for (const m of messages) {
+      if (m.role === "user") {
+        turn++;
+      }
+      m.turn = turn;
+    }
     messages = applyTranscriptRange(messages, opts.range);
+    for (const m of messages) {
+      if (m.role === "tool") {
+        m.text = truncateToolText(m.text, toolMax, m.entryId);
+      }
+    }
     if (messages.length === 0) {
       return null;
     }
@@ -287,6 +358,33 @@ export async function findSessionFile(
     return live ?? exact[0]!;
   }
   return null;
+}
+
+/**
+ * Read one session's rows on the current branch path, with turn ordinals and
+ * entry/line addressing, for `recall_range`. Tool outputs are kept in full by
+ * default (the caller decides how to cap them). Returns null when the session
+ * has no transcript or no readable rows.
+ */
+export async function readTranscriptRows(
+  agentId: string,
+  sessionId: string,
+  opts: Omit<ParseOptions, "branchPathOnly"> = {},
+): Promise<{ sessionId: string; filePath: string; rows: SessionTranscriptMessage[] } | null> {
+  const file = await findSessionFile(agentId, sessionId);
+  if (!file) {
+    return null;
+  }
+  const parsed = await parseSessionFile(file.path, {
+    includeToolResults: opts.includeToolResults ?? true,
+    toolResultMaxChars: opts.toolResultMaxChars ?? Number.POSITIVE_INFINITY,
+    range: opts.range,
+    branchPathOnly: true,
+  });
+  if (!parsed) {
+    return null;
+  }
+  return { sessionId: parsed.sessionId, filePath: parsed.filePath, rows: parsed.messages };
 }
 
 /**
