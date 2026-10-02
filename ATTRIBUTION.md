@@ -18,6 +18,12 @@ Code ported or vendored into the tree keeps a header naming its source:
   License).
 - `src/agents/skills/skill-ignore.ts`: the part of the `ignore` package
   (Kael Zhang, MIT License) that skill discovery uses.
+- `src/agents/runtime/tools/coding/` (the read, write and edit file tools):
+  vendored from pi-coding-agent 0.73.1 by Mario Zechner (pi-mono, MIT
+  License).
+- `src/agents/runtime/tools/coding/line-diff.ts`: the line diff of jsdiff
+  8.0.3 (Kevin Decker, BSD 3-Clause License). The full license notice is in
+  the file header.
 
 ## Original work provenance
 

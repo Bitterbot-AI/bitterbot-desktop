@@ -1,9 +1,3 @@
-import {
-  createCodingTools,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
-} from "@mariozechner/pi-coding-agent";
 import type { BitterbotConfig } from "../config/config.js";
 import type { ToolHotSetLane } from "../config/types.tools.js";
 import { logWarn } from "../logger.js";
@@ -51,6 +45,12 @@ import { createBitterbotTools } from "./bitterbot-tools.js";
 import { listChannelAgentTools } from "./channel-tools.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import { isNativeToolSearchActive } from "./providers/anthropic/config.js";
+import {
+  CODING_FILE_TOOL_NAMES,
+  createEditTool,
+  createReadTool,
+  createWriteTool,
+} from "./runtime/tools/coding/index.js";
 import type { SandboxContext } from "./sandbox.js";
 import {
   resolveSkillValidationToolPolicy,
@@ -170,6 +170,8 @@ export function createBitterbotCodingTools(options?: {
   sessionKey?: string;
   /** Transcript session id (file stem) so transcript readers target the right file. */
   sessionId?: string;
+  /** Transcript file of this run (topic and forked sessions are not named after the id). */
+  sessionFile?: string;
   agentDir?: string;
   workspaceDir?: string;
   config?: BitterbotConfig;
@@ -230,7 +232,6 @@ export function createBitterbotCodingTools(options?: {
   /** Explicit hot-set lane override (tests, callers that already know the lane). */
   toolLane?: ToolHotSetLane;
 }): AnyAgentTool[] {
-  const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
   const {
     agentId,
@@ -344,10 +345,10 @@ export function createBitterbotCodingTools(options?: {
     throw new Error("Sandbox filesystem bridge is unavailable.");
   }
 
-  // read/bash/edit/write; bash is replaced by exec below and the rest are
-  // rebuilt per workspace, so only the names matter here.
-  const base = (createCodingTools(workspaceRoot) as unknown as AnyAgentTool[]).flatMap((tool) => {
-    if (tool.name === "read") {
+  // read/edit/write, rebuilt per workspace, in the order pi's createCodingTools
+  // gave them (its bash tool was always dropped here; exec is added below).
+  const base = CODING_FILE_TOOL_NAMES.flatMap((toolName): AnyAgentTool[] => {
+    if (toolName === "read") {
       if (sandboxRoot) {
         const sandboxed = createSandboxedReadTool({
           root: sandboxRoot,
@@ -359,10 +360,7 @@ export function createBitterbotCodingTools(options?: {
       const wrapped = createBitterbotReadTool(freshReadTool);
       return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
     }
-    if (tool.name === "bash" || tool.name === execToolName) {
-      return [];
-    }
-    if (tool.name === "write") {
+    if (toolName === "write") {
       if (sandboxRoot) {
         return [];
       }
@@ -373,18 +371,16 @@ export function createBitterbotCodingTools(options?: {
       );
       return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
     }
-    if (tool.name === "edit") {
-      if (sandboxRoot) {
-        return [];
-      }
-      // Wrap with param normalization for Claude Code compatibility
-      const wrapped = wrapToolParamNormalization(
-        createEditTool(workspaceRoot),
-        CLAUDE_PARAM_GROUPS.edit,
-      );
-      return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
+    // edit
+    if (sandboxRoot) {
+      return [];
     }
-    return [tool];
+    // Wrap with param normalization for Claude Code compatibility
+    const wrapped = wrapToolParamNormalization(
+      createEditTool(workspaceRoot),
+      CLAUDE_PARAM_GROUPS.edit,
+    );
+    return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
   });
   const { cleanupMs: cleanupMsOverride, ...execDefaults } = options?.exec ?? {};
   // PLAN-44 Phase 2 (adversarial C1/M2): a validation session's shell,
@@ -511,6 +507,7 @@ export function createBitterbotCodingTools(options?: {
       allowHostBrowserControl: sandbox ? sandbox.browserAllowHostControl : true,
       agentSessionKey: options?.sessionKey,
       agentSessionId: options?.sessionId,
+      agentSessionFile: options?.sessionFile,
       senderIsOwner: options?.senderIsOwner === true,
       agentChannel: resolveGatewayMessageChannel(options?.messageProvider),
       agentAccountId: options?.agentAccountId,

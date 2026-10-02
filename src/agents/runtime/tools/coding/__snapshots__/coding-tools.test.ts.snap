@@ -1,0 +1,104 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`tool definitions > match the goldens sent to the model > edit 1`] = `
+{
+  "description": "Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.",
+  "label": "edit",
+  "name": "edit",
+  "parameters": {
+    "additionalProperties": false,
+    "properties": {
+      "edits": {
+        "description": "One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead.",
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "newText": {
+              "description": "Replacement text for this targeted edit.",
+              "type": "string",
+            },
+            "oldText": {
+              "description": "Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
+              "type": "string",
+            },
+          },
+          "required": [
+            "oldText",
+            "newText",
+          ],
+          "type": "object",
+        },
+        "type": "array",
+      },
+      "path": {
+        "description": "Path to the file to edit (relative or absolute)",
+        "type": "string",
+      },
+    },
+    "required": [
+      "path",
+      "edits",
+    ],
+    "type": "object",
+  },
+}
+`;
+
+exports[`tool definitions > match the goldens sent to the model > edit schema bytes 1`] = `"{"type":"object","required":["path","edits"],"properties":{"path":{"type":"string","description":"Path to the file to edit (relative or absolute)"},"edits":{"type":"array","items":{"type":"object","required":["oldText","newText"],"properties":{"oldText":{"type":"string","description":"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call."},"newText":{"type":"string","description":"Replacement text for this targeted edit."}},"additionalProperties":false},"description":"One or more targeted replacements. Each edit is matched against the original file, not incrementally. Do not include overlapping or nested edits. If two changes touch the same block or nearby lines, merge them into one edit instead."}},"additionalProperties":false}"`;
+
+exports[`tool definitions > match the goldens sent to the model > read 1`] = `
+{
+  "description": "Read the contents of a file. Supports text files and images (jpg, png, gif, webp). Images are sent as attachments. For text files, output is truncated to 2000 lines or 50KB (whichever is hit first). Use offset/limit for large files. When you need the full file, continue with offset until complete.",
+  "label": "read",
+  "name": "read",
+  "parameters": {
+    "properties": {
+      "limit": {
+        "description": "Maximum number of lines to read",
+        "type": "number",
+      },
+      "offset": {
+        "description": "Line number to start reading from (1-indexed)",
+        "type": "number",
+      },
+      "path": {
+        "description": "Path to the file to read (relative or absolute)",
+        "type": "string",
+      },
+    },
+    "required": [
+      "path",
+    ],
+    "type": "object",
+  },
+}
+`;
+
+exports[`tool definitions > match the goldens sent to the model > read schema bytes 1`] = `"{"type":"object","required":["path"],"properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}}}"`;
+
+exports[`tool definitions > match the goldens sent to the model > write 1`] = `
+{
+  "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+  "label": "write",
+  "name": "write",
+  "parameters": {
+    "properties": {
+      "content": {
+        "description": "Content to write to the file",
+        "type": "string",
+      },
+      "path": {
+        "description": "Path to the file to write (relative or absolute)",
+        "type": "string",
+      },
+    },
+    "required": [
+      "path",
+      "content",
+    ],
+    "type": "object",
+  },
+}
+`;
+
+exports[`tool definitions > match the goldens sent to the model > write schema bytes 1`] = `"{"type":"object","required":["path","content"],"properties":{"path":{"type":"string","description":"Path to the file to write (relative or absolute)"},"content":{"type":"string","description":"Content to write to the file"}}}"`;
