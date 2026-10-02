@@ -53,6 +53,8 @@ import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { resolveHeartbeatPromptSet } from "../../runtime/compaction/heartbeat.js";
+import { buildProactiveRecallPreface } from "../../runtime/compaction/transcript-recall.js";
 import { installInRunBudget } from "../../runtime/context-pruning/in-run-budget.js";
 import {
   applyStubsToMessages,
@@ -1147,6 +1149,32 @@ export async function runEmbeddedAttempt(
 
         // Run before_agent_start hooks to allow plugins to inject context
         let effectivePrompt = params.prompt;
+        // PLAN-52A L1a: when part of this conversation was offloaded, put the
+        // excerpts of that range that match the new message in front of it.
+        // Never on heartbeats or remote task turns.
+        if (
+          !remoteTaskTurn &&
+          params.isHeartbeat !== true &&
+          params.config?.agents?.defaults?.compaction?.policy === "offload" &&
+          params.config.agents.defaults.compaction.offload?.proactiveRecall !== false
+        ) {
+          try {
+            const preface = buildProactiveRecallPreface({
+              sessionFile: params.sessionFile,
+              sessionIdFallback: params.sessionId,
+              query: params.prompt,
+              heartbeatPrompts: resolveHeartbeatPromptSet(params.config),
+            });
+            if (preface) {
+              effectivePrompt = `${preface}\n\n${effectivePrompt}`;
+              log.info(
+                `[transcript-recall] runId=${params.runId} injected ${preface.length} chars from the offloaded range`,
+              );
+            }
+          } catch (recallErr) {
+            log.warn(`[transcript-recall] failed: ${String(recallErr)}`);
+          }
+        }
         if (hookRunner?.hasHooks("before_agent_start")) {
           try {
             const hookResult = await hookRunner.runBeforeAgentStart(
@@ -1163,7 +1191,7 @@ export async function runEmbeddedAttempt(
               },
             );
             if (hookResult?.prependContext) {
-              effectivePrompt = `${hookResult.prependContext}\n\n${params.prompt}`;
+              effectivePrompt = `${hookResult.prependContext}\n\n${effectivePrompt}`;
               log.debug(
                 `hooks: prepended context to prompt (${hookResult.prependContext.length} chars)`,
               );

@@ -123,6 +123,31 @@ function toolCallIdsOf(content: unknown): string[] {
 }
 
 /**
+ * Offload details of a compaction entry, or null when the entry was written
+ * by another policy or the details are not in the expected shape (a damaged
+ * or future-format entry must not break the view).
+ */
+function offloadDetailsOf(raw: unknown): OffloadCompactionDetails | null {
+  const details = raw as Partial<OffloadCompactionDetails> | null | undefined;
+  if (!details || typeof details !== "object" || details.policy !== "offload") {
+    return null;
+  }
+  const elided = details.elided as Partial<OffloadCompactionDetails["elided"]> | undefined;
+  if (
+    !elided ||
+    typeof elided !== "object" ||
+    typeof elided.firstEntryId !== "string" ||
+    typeof elided.lastEntryId !== "string"
+  ) {
+    return null;
+  }
+  return {
+    ...(details as OffloadCompactionDetails),
+    previousOffloads: Array.isArray(details.previousOffloads) ? details.previousOffloads : [],
+  };
+}
+
+/**
  * Build the view from parsed records. `heartbeatPrompts` is the configured
  * prompt set (`resolveHeartbeatPromptSet`); pass `[]` to disable detection.
  */
@@ -144,17 +169,19 @@ export function buildTranscriptView(params: {
   const stubbedIds = new Map<string, StubKind>();
   const stubbedCallIds = new Map<string, StubKind>();
   let latest: TranscriptView["latestCompaction"] = null;
+  /** Number of message entries on the path before the latest compaction entry. */
+  let entriesBeforeLatest = 0;
   let turn = 0;
 
   for (const r of path) {
     if (r.type === "compaction" && typeof r.id === "string") {
-      const details = r.details as OffloadCompactionDetails | undefined;
       latest = {
         id: r.id,
         firstKeptEntryId: typeof r.firstKeptEntryId === "string" ? r.firstKeptEntryId : "",
         summary: typeof r.summary === "string" ? r.summary : "",
-        details: details && details.policy === "offload" ? details : null,
+        details: offloadDetailsOf(r.details),
       };
+      entriesBeforeLatest = allEntries.length;
       continue;
     }
     if (r.type === "custom" && r.customType === PRUNE_RECORD_CUSTOM_TYPE) {
@@ -220,8 +247,9 @@ export function buildTranscriptView(params: {
   const previousOffloads: PreviousOffload[] = [];
   if (latest) {
     const idx = allEntries.findIndex((e) => e.id === latest!.firstKeptEntryId);
-    // pi semantics: an unknown firstKeptEntryId keeps nothing before the compaction.
-    entries = idx >= 0 ? allEntries.slice(idx) : [];
+    // pi semantics: an unknown firstKeptEntryId keeps nothing before the
+    // compaction; everything after it stays visible.
+    entries = idx >= 0 ? allEntries.slice(idx) : allEntries.slice(entriesBeforeLatest);
     if (latest.details) {
       previousOffloads.push(...latest.details.previousOffloads);
       previousOffloads.push({
