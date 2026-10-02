@@ -175,9 +175,16 @@ Who is an owner:
   `allowFrom` list. With an open channel (`allowFrom` empty or `"*"`) and no
   `commands.ownerAllowFrom`, nobody on that channel is an owner.
 - The Control UI and the CLI: both reach the gateway with its own credentials.
-- Scheduled jobs the operator added (CLI, Control UI, RPC).
+- Isolated scheduled jobs the operator added (CLI, Control UI, RPC).
 
-Not owner turns: heartbeats, webhook-triggered runs (`hooks`), and A2A remote callers.
+Not owner turns: heartbeats (which is also where main-session scheduled jobs run),
+webhook-triggered runs (`hooks`), and A2A remote callers.
+
+A sender admitted by DM pairing alone is allowed, not an owner. To use the owner-only tools from
+your own chat account, list it in `commands.ownerAllowFrom` or the channel's `allowFrom`.
+
+When several queued messages are merged into one turn, that turn is an owner turn only if every
+message in it came from an owner.
 
 A run started on behalf of a non-owner turn stays a non-owner run: a sub-agent it spawns, a message
 it sends to another session, and a task wakeup it schedules all run without the owner-only tools.

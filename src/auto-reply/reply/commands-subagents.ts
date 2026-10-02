@@ -573,6 +573,8 @@ export const handleSubagentsCommand: CommandHandler = async (params, allowTextCo
           channel: INTERNAL_MESSAGE_CHANNEL,
           lane: AGENT_LANE_SUBAGENT,
           timeout: 0,
+          // A sender who may use commands is not necessarily an owner.
+          ...(params.command.senderIsOwner ? {} : { senderIsOwner: false }),
         },
         timeoutMs: 10_000,
       });
@@ -597,6 +599,7 @@ export const handleSubagentsCommand: CommandHandler = async (params, allowTextCo
         nextRunId: runId,
         fallback: resolved.entry,
         runTimeoutSeconds: resolved.entry.runTimeoutSeconds ?? 0,
+        ...(params.command.senderIsOwner ? {} : { requesterIsOwner: false as const }),
       });
       return {
         shouldContinue: false,

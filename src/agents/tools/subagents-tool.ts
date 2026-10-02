@@ -20,7 +20,7 @@ import {
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { abortEmbeddedPiRun } from "../embedded.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
-import { inheritRunOwner } from "../run-owner-context.js";
+import { currentRunIsNonOwner, inheritRunOwner } from "../run-owner-context.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import { getSubagentDepthFromSessionStore } from "../subagent-depth.js";
 import {
@@ -705,6 +705,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
           nextRunId: runId,
           fallback: resolved.entry,
           runTimeoutSeconds: resolved.entry.runTimeoutSeconds ?? 0,
+          ...(currentRunIsNonOwner() ? { requesterIsOwner: false as const } : {}),
         });
 
         return jsonResult({

@@ -359,6 +359,8 @@ export function replaceSubagentRunAfterSteer(params: {
   nextRunId: string;
   fallback?: SubagentRunRecord;
   runTimeoutSeconds?: number;
+  /** `false` when a non-owner steered the run: its announcement is then non-owner too. */
+  requesterIsOwner?: false;
 }) {
   const previousRunId = params.previousRunId.trim();
   const nextRunId = params.nextRunId.trim();
@@ -393,6 +395,7 @@ export function replaceSubagentRunAfterSteer(params: {
     cleanupCompletedAt: undefined,
     cleanupHandled: false,
     suppressAnnounceReason: undefined,
+    ...(params.requesterIsOwner === false ? { requesterIsOwner: false as const } : {}),
     archiveAtMs,
     runTimeoutSeconds,
   };
