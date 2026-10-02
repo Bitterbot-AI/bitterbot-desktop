@@ -133,7 +133,7 @@ Per round and agent, in a fresh session: write and read a file, run a shell pipe
 
 Run the same workload against a twin agent on the other engine to compare like with like. Do not run type checks or test suites on the same machine while it runs: on a small box they starve the gateway's event loop and the latencies mean nothing.
 
-What it found on its first day (2026-10-02), all fixed: a shell command that printed after its turn had ended crashed the gateway on the `pi` engine (pi-agent-core rejects a progress update outside a run, and nothing awaited it); file reads were served from a process-wide five-minute cache with no invalidation and no agent in the key.
+What it found on its first day (2026-10-02), all fixed: a shell command that printed after its turn had ended crashed the gateway on the `pi` engine (pi-agent-core rejects a progress update outside a run, and nothing awaited it); file reads were served from a process-wide five-minute cache with no invalidation and no agent in the key. The cache now holds only `web_search` and `web_fetch` by default, sits inside every gate, and is keyed by agent, workspace, session and sandbox state.
 
 ## Rules
 

@@ -49,7 +49,12 @@ export type CompactionOutcome = {
  * frees enough. The session records and applies the stubs; no compaction
  * entry is written.
  */
-export type StubsOnlyOutcome = { stubsOnly: true; stubs: ToolOutputStub[] };
+export type StubsOnlyOutcome = {
+  stubsOnly: true;
+  stubs: ToolOutputStub[];
+  /** Bare heartbeat pairs to drop from the window (no cut was needed). */
+  heartbeats?: HeartbeatStub[];
+};
 
 export type CompactionPolicyResult = CompactionOutcome | StubsOnlyOutcome;
 

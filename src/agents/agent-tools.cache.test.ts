@@ -40,7 +40,7 @@ describe("tool result cache", () => {
   });
 
   it("keeps two agents' results apart for the same arguments", async () => {
-    const cache = new ToolCache();
+    const cache = new ToolCache({ cacheableTools: ["memory_search"] });
     const a = tool("memory_search", () => "agent A's memory");
     const b = tool("memory_search", () => "agent B's memory");
     const forA = wrapToolWithCache(a.tool, cache, "agent-a\u0000/ws/a");

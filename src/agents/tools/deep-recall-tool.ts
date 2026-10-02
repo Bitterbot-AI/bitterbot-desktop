@@ -496,13 +496,11 @@ export function createDeepRecallTool(options: {
         }
       }
 
-      // The paid path starts here. Recall over the current conversation has a
-      // daily budget (compaction.offload.recallBudgetUsdPerDay).
-      if (scope === "current_session") {
-        const budget = checkRecallBudget({ cfg, agentId });
-        if (budget.exhausted) {
-          return jsonResult({ source: "budget", note: budget.notice });
-        }
+      // The paid path starts here, for every scope: deep_recall has a daily
+      // budget (compaction.offload.recallBudgetUsdPerDay).
+      const budget = checkRecallBudget({ cfg, agentId });
+      if (budget.exhausted) {
+        return jsonResult({ source: "budget", note: budget.notice });
       }
 
       // Step 2: Resolve sub-model

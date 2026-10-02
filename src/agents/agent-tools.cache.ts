@@ -7,6 +7,20 @@ import type { AnyAgentTool } from "./agent-tools.types.js";
 import { carryToolMarkers } from "./agent-tools.types.js";
 import type { ToolCache } from "./tool-cache.js";
 
+/**
+ * A tool that returns its failure instead of throwing (`{ error }`,
+ * `{ status: "error" }`, `{ disabled: true }`). Caching that would repeat a
+ * transient failure for the whole TTL.
+ */
+function reportsFailure(result: unknown): boolean {
+  const details = (result as { details?: unknown } | null | undefined)?.details;
+  if (!details || typeof details !== "object") {
+    return false;
+  }
+  const record = details as Record<string, unknown>;
+  return Boolean(record.error) || record.status === "error" || record.disabled === true;
+}
+
 /** Part of every cache key when a scope is given; not a tool argument. */
 const CACHE_SCOPE_KEY = "\u0000scope";
 
@@ -19,10 +33,11 @@ export function wrapToolWithCache(
   tool: AnyAgentTool,
   cache: ToolCache,
   /**
-   * What the result depends on besides the arguments: the agent and its
-   * workspace. The cache is one per process, so without it two agents asking
-   * the same thing (the same relative path, the same memory query) got each
-   * other's result.
+   * What the result depends on besides the arguments: the agent, its
+   * workspace, the session, and whether the session is sandboxed. The cache
+   * is one per process, so without it two agents asking the same thing got
+   * each other's result, and a sandboxed session could be served what an
+   * unsandboxed one computed.
    */
   scope?: string,
 ): AnyAgentTool {
@@ -50,7 +65,9 @@ export function wrapToolWithCache(
 
       // Execute and cache result
       const result = await execute(toolCallId, params, signal, onUpdate);
-      cache.set(tool.name, args, result);
+      if (!reportsFailure(result)) {
+        cache.set(tool.name, args, result);
+      }
       return result;
     },
   });

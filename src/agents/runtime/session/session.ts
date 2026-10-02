@@ -79,6 +79,7 @@ import {
   collectHeartbeatStubs,
   collectStubRecords,
   PRUNE_RECORD_CUSTOM_TYPE,
+  type HeartbeatStub,
   type ToolOutputStub,
 } from "../context-pruning/offload-stubs.js";
 import {
@@ -916,7 +917,7 @@ export class AgentSession {
         throw new Error("Compaction cancelled");
       }
       if (isStubsOnly(result)) {
-        this.recordStubs(result.stubs, "manual");
+        this.recordStubs(result.stubs, "manual", result.heartbeats);
         throw new Error("Nothing to compact (no turn boundary to cut at)");
       }
       this.applyCompaction(result, "manual");
@@ -985,16 +986,32 @@ export class AgentSession {
     }
   }
 
-  /** Record tool-output stubs in the transcript and apply them to the live context. */
-  private recordStubs(stubs: ToolOutputStub[], trigger: string): void {
-    if (stubs.length === 0 || this.disposed) {
+  /**
+   * Record tool-output stubs (and heartbeat pairs to drop) in the transcript
+   * and apply them to the live context.
+   */
+  private recordStubs(
+    stubs: ToolOutputStub[],
+    trigger: string,
+    heartbeats: HeartbeatStub[] = [],
+  ): void {
+    if ((stubs.length === 0 && heartbeats.length === 0) || this.disposed) {
       return;
     }
     this.sessionManager.appendCustomEntry(
       PRUNE_RECORD_CUSTOM_TYPE,
-      buildPruneRecordData(stubs, trigger),
+      buildPruneRecordData(stubs, trigger, heartbeats),
     );
     this.applyStubsToState(stubs);
+    if (heartbeats.length > 0) {
+      const elided = applyHeartbeatStubs(
+        this.agent.state.messages as unknown as Parameters<typeof applyHeartbeatStubs>[0],
+        heartbeats,
+      );
+      if (elided.removed > 0) {
+        this.agent.state.messages = elided.messages as unknown as AgentMessage[];
+      }
+    }
   }
 
   private applyStubsToState(stubs: ToolOutputStub[]): void {
@@ -1112,7 +1129,7 @@ export class AgentSession {
         return;
       }
       if (isStubsOnly(result)) {
-        this.recordStubs(result.stubs, reason);
+        this.recordStubs(result.stubs, reason, result.heartbeats);
         this.emit({
           type: "compaction_end",
           reason,

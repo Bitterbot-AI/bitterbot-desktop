@@ -1,16 +1,30 @@
 /**
- * Daily budget for `deep_recall` over the current conversation (PLAN-52A
- * 3.9): `compaction.offload.recallBudgetUsdPerDay`, default $1.00.
+ * Daily budget for `deep_recall` (PLAN-52A 3.9):
+ * `compaction.offload.recallBudgetUsdPerDay`, default $1.00.
  *
  * `deep_recall` is the one recall path that costs money (a sub-model loop per
- * call). Once a day's spend on it reaches the budget, the tool answers with a
- * one-line notice instead of running; `recall_range` (exact, free) is still
- * there. The spend comes from the usage ledger (`rlm/deep-recall`), which has
- * no agent on those rows, so the budget is per day for the node.
+ * call). Once the day's spend on it reaches the budget, the tool answers with
+ * a one-line notice instead of running; `recall_range` (exact, free) is still
+ * there.
+ *
+ * What is counted: every `rlm/deep-recall` row in the usage ledger since
+ * 00:00 UTC (the day the PLAN-50 budgets use), for the whole node. Those rows
+ * carry no agent, so the spend cannot be split per agent or per session; the
+ * limit compared against it is the calling agent's setting. The check covers
+ * every scope: a budget that only guarded `current_session` would be passed
+ * by asking for another scope.
+ *
+ * Not enforced when the usage ledger is off, or for a sub-model with no
+ * price (its calls record $0): the per-call cost cap still applies there.
  */
 
 import type { BitterbotConfig } from "../../config/config.js";
-import { getUsageLedger, isUsageLedgerEnabled } from "../../infra/usage-ledger.js";
+import { budgetWindowBounds } from "../../infra/usage-budgets.js";
+import {
+  getUsageLedger,
+  isUsageLedgerEnabled,
+  type UsageLedger,
+} from "../../infra/usage-ledger.js";
 import { resolveAgentCompaction } from "../runtime/compaction/agent-config.js";
 
 export const DEFAULT_RECALL_BUDGET_USD_PER_DAY = 1.0;
@@ -20,18 +34,12 @@ export type RecallBudget =
   | { exhausted: false; budgetUsd: number; spentUsd: number }
   | { exhausted: true; budgetUsd: number; spentUsd: number; notice: string };
 
-function startOfLocalDay(nowMs: number): number {
-  const day = new Date(nowMs);
-  day.setHours(0, 0, 0, 0);
-  return day.getTime();
-}
-
 export function checkRecallBudget(params: {
   cfg?: BitterbotConfig;
   agentId?: string;
   nowMs?: number;
-  /** Test seam; defaults to today's `rlm/deep-recall` spend in the usage ledger. */
-  spentTodayUsd?: () => number;
+  /** Defaults to the process ledger when it is enabled. */
+  ledger?: Pick<UsageLedger, "spend"> | null;
 }): RecallBudget {
   const configured = resolveAgentCompaction(params.cfg, params.agentId).offload
     .recallBudgetUsdPerDay;
@@ -41,19 +49,22 @@ export function checkRecallBudget(params: {
       : DEFAULT_RECALL_BUDGET_USD_PER_DAY;
   let spentUsd = 0;
   try {
-    spentUsd = params.spentTodayUsd
-      ? params.spentTodayUsd()
-      : isUsageLedgerEnabled()
-        ? (getUsageLedger()?.spend({
-            feature: DEEP_RECALL_FEATURE,
-            startMs: startOfLocalDay(params.nowMs ?? Date.now()),
-          }) ?? 0)
-        : 0;
+    const ledger =
+      params.ledger !== undefined
+        ? params.ledger
+        : isUsageLedgerEnabled()
+          ? getUsageLedger()
+          : null;
+    spentUsd =
+      ledger?.spend({
+        feature: DEEP_RECALL_FEATURE,
+        startMs: budgetWindowBounds("daily", params.nowMs ?? Date.now()).startMs,
+      }) ?? 0;
   } catch {
     // No ledger, no enforcement: the per-call cost cap still applies.
     spentUsd = 0;
   }
-  if (spentUsd < budgetUsd) {
+  if (budgetUsd > 0 && spentUsd < budgetUsd) {
     return { exhausted: false, budgetUsd, spentUsd };
   }
   return {

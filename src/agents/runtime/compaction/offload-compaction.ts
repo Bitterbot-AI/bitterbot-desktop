@@ -208,9 +208,14 @@ function toolStubs(plan: OffloadPlan, entries: readonly PolicyEntry[]): ToolOutp
 function heartbeatStubs(
   plan: OffloadPlan,
   entries: readonly PolicyEntry[],
-  firstKeptEntryId: string,
+  firstKeptEntryId?: string,
 ): HeartbeatStub[] {
-  const firstKept = entries.findIndex((entry) => entry.id === firstKeptEntryId);
+  const firstKept = firstKeptEntryId
+    ? entries.findIndex((entry) => entry.id === firstKeptEntryId)
+    : -1;
+  // The turn that just ran stays in the window: the runner reads its last
+  // assistant message (usage, stop reason) after the prompt returns.
+  const lastTurn = entries.at(-1)?.turn;
   const indexOf = new Map(entries.map((entry, index) => [entry.id, index]));
   const out: HeartbeatStub[] = [];
   for (const planned of plan.stubs) {
@@ -223,6 +228,7 @@ function heartbeatStubs(
       !entry ||
       index === undefined ||
       (firstKept >= 0 && index < firstKept) ||
+      entry.turn === lastTurn ||
       typeof entry.timestamp !== "number" ||
       entry.role === "toolResult"
     ) {
@@ -332,9 +338,13 @@ export function createOffloadCompactionPolicy(deps: OffloadCompactionDeps): Comp
         };
       }
       if (plan.kind === "stubs") {
+        // No cut: tool outputs to stub, heartbeat pairs to drop, or both. A
+        // window that is mostly heartbeat pairs "fits" once they are counted
+        // out, so they have to be dropped here or nothing ever shrinks.
         const stubs = toolStubs(plan, view.entries);
-        if (stubs.length > 0) {
-          return { stubsOnly: true, stubs };
+        const heartbeats = heartbeatStubs(plan, view.entries);
+        if (stubs.length > 0 || heartbeats.length > 0) {
+          return { stubsOnly: true, stubs, ...(heartbeats.length > 0 ? { heartbeats } : {}) };
         }
       }
       // Nothing the planner can do. After a turn that is fine; an overflow
