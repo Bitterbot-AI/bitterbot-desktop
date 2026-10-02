@@ -9,11 +9,14 @@
 import {
   type AgentSession,
   createAgentSession,
-  SettingsManager,
   type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import type { AuthStorage, ModelRegistry } from "../../models/index.js";
 import type { TranscriptStore } from "../../transcript/store.js";
+import {
+  createGuardedPiResourceLoader,
+  createGuardedPiSettingsManager,
+} from "./guarded-resources.js";
 import { ensurePiCompactionReserveTokens } from "./settings.js";
 import { applyToolLoopCompat } from "./tool-loop-compat.js";
 
@@ -44,7 +47,7 @@ export function applySystemPromptOverrideToSession(
 export async function createPiSession(params: {
   /** Workspace the session runs in. */
   cwd: string;
-  /** Directory pi reads project settings from (the sandbox-effective workspace). */
+  /** Unused since the workspace guard: pi no longer reads project settings. */
   settingsCwd: string;
   agentDir: string;
   authStorage: AuthStorage;
@@ -60,7 +63,14 @@ export async function createPiSession(params: {
   /** Sequential tools and steering skip, as the runner expects (not needed for compaction-only sessions). */
   toolLoopCompat: boolean;
 }): Promise<AgentSession> {
-  const settingsManager = SettingsManager.create(params.settingsCwd, params.agentDir);
+  // Global settings only, and no pi resource discovery: the workspace is
+  // agent-writable, so nothing under <workspace>/.pi may be loaded.
+  const settingsManager = createGuardedPiSettingsManager(params.agentDir);
+  const resourceLoader = await createGuardedPiResourceLoader({
+    cwd: params.cwd,
+    agentDir: params.agentDir,
+    settingsManager,
+  });
   const { session } = await createAgentSession({
     cwd: params.cwd,
     agentDir: params.agentDir,
@@ -76,6 +86,7 @@ export async function createPiSession(params: {
     customTools: params.customTools,
     sessionManager: params.store as unknown as PiSessionOptions["sessionManager"],
     settingsManager,
+    resourceLoader,
   });
   applySystemPromptOverrideToSession(session, params.systemPrompt);
   // After createAgentSession: pi >= 0.73 reloads settings from disk while
