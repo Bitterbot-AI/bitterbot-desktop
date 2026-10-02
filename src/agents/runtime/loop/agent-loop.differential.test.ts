@@ -55,6 +55,41 @@ const usage = () => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Yield one macrotask. Every pending microtask runs first, so all events of a
+ * tool that has just settled are emitted before the caller goes on.
+ */
+const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/**
+ * Fixes the order in which concurrently running tool bodies finish, without
+ * timers (timer order is a race on a loaded or coarse-clocked machine).
+ * `turn(name)` resolves once the name before it has called `done` and one
+ * macrotask has passed; a tool body awaits its turn, then calls `done` right
+ * before it returns or throws. When the tools run one after the other the
+ * earlier names are done already and only the macrotask remains.
+ */
+function finishOrder(...names: string[]) {
+  const gates = names.map(() => {
+    let open = () => {};
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { opened, open };
+  });
+  return {
+    turn: async (name: string) => {
+      const previous = gates[names.indexOf(name) - 1];
+      if (previous) {
+        await previous.opened;
+      }
+      await tick();
+    },
+    done: (name: string) => {
+      gates[names.indexOf(name)]?.open();
+    },
+  };
+}
 const user = (text: string) => ({ role: "user", content: [{ type: "text", text }], timestamp: 2 });
 const assistantMsg = (text: string, stopReason = "stop") => ({
   role: "assistant",
@@ -504,40 +539,43 @@ describe("differential: tools", () => {
 
   differential("three tools, parallel, out-of-order completion", async (h) => {
     const order: string[] = [];
-    const timed = (name: string, ms: number) =>
+    // Started in source order a, b, c; made to finish in the order b, c, a.
+    const finish = finishOrder("b", "c", "a");
+    const gated = (name: string) =>
       tool(name, async (_id, _args, _signal, onUpdate) => {
         order.push(`${name}:start`);
         onUpdate(ok(`${name} running`));
-        await sleep(ms);
+        await finish.turn(name);
         order.push(`${name}:end`);
+        finish.done(name);
         return ok(name);
       });
-    const agent = h.agent(
-      { initialState: { tools: [timed("a", 40), timed("b", 5), timed("c", 20)] } },
-      [
-        {
-          tools: [
-            { id: "c1", name: "a" },
-            { id: "c2", name: "b" },
-            { id: "c3", name: "missing" },
-            { id: "c4", name: "c" },
-          ],
-        },
-        { text: "done" },
-      ],
-    );
+    const agent = h.agent({ initialState: { tools: [gated("a"), gated("b"), gated("c")] } }, [
+      {
+        tools: [
+          { id: "c1", name: "a" },
+          { id: "c2", name: "b" },
+          { id: "c3", name: "missing" },
+          { id: "c4", name: "c" },
+        ],
+      },
+      { text: "done" },
+    ]);
     await agent.prompt("go");
     return order;
   });
 
   differential("a sequential tool forces a parallel batch sequential", async (h) => {
     const order: string[] = [];
-    const timed = (name: string, ms: number, extra: Json = {}) =>
+    // Run concurrently, b (one macrotask) would finish before a (three).
+    const stepped = (name: string, ticks: number, extra: Json = {}) =>
       tool(
         name,
         async () => {
           order.push(`${name}:start`);
-          await sleep(ms);
+          for (let i = 0; i < ticks; i++) {
+            await tick();
+          }
           order.push(`${name}:end`);
           return ok(name);
         },
@@ -546,7 +584,7 @@ describe("differential: tools", () => {
     const agent = h.agent(
       {
         initialState: {
-          tools: [timed("a", 15), timed("b", 1, { executionMode: "sequential" })],
+          tools: [stepped("a", 3), stepped("b", 1, { executionMode: "sequential" })],
         },
       },
       [
@@ -765,11 +803,13 @@ describe("differential: steering and follow-up", () => {
       async (h) => {
         const order: string[] = [];
         let agent: AnyAgent | undefined;
+        const finish = finishOrder("a", "b", "c");
         const track = (name: string, onRun?: () => void) =>
           tool(name, async () => {
             order.push(name);
             onRun?.();
-            await sleep(2);
+            await finish.turn(name);
+            finish.done(name);
             return ok(name);
           });
         agent = h.agent(
@@ -886,6 +926,9 @@ describe("differential: abort and failures", () => {
     differential(`abort mid-tool runs the remaining calls (${toolExecution})`, async (h) => {
       const order: string[] = [];
       let agent: AnyAgent | undefined;
+      // In parallel mode both tools are running when the abort arrives; `next`
+      // finishes only after `slow` has thrown and its events are out.
+      const finish = finishOrder("slow", "next");
       agent = h.agent(
         {
           toolExecution,
@@ -893,9 +936,10 @@ describe("differential: abort and failures", () => {
             tools: [
               tool("slow", async (_id, _args, signal) => {
                 order.push("slow:start");
-                await sleep(2);
+                await tick();
                 agent?.abort();
-                await sleep(2);
+                await tick();
+                finish.done("slow");
                 if (signal?.aborted) {
                   throw new Error("slow aborted");
                 }
@@ -903,7 +947,7 @@ describe("differential: abort and failures", () => {
               }),
               tool("next", async (_id, _args, signal) => {
                 order.push(`next:start aborted=${signal?.aborted}`);
-                await sleep(8);
+                await finish.turn("next");
                 return ok(`next ran, aborted=${signal?.aborted}`);
               }),
             ],

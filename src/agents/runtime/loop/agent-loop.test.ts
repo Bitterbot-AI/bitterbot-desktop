@@ -43,6 +43,41 @@ const usage = () => ({
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 });
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Yield one macrotask. Every pending microtask runs first, so all events of a
+ * tool that has just settled are emitted before the caller goes on.
+ */
+const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+/**
+ * Fixes the order in which concurrently running tool bodies finish, without
+ * timers (timer order is a race on a loaded or coarse-clocked machine).
+ * `turn(name)` resolves once the name before it has called `done` and one
+ * macrotask has passed; a tool body awaits its turn, then calls `done` right
+ * before it returns or throws. When the tools run one after the other the
+ * earlier names are done already and only the macrotask remains.
+ */
+function finishOrder(...names: string[]) {
+  const gates = names.map(() => {
+    let open = () => {};
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    return { opened, open };
+  });
+  return {
+    turn: async (name: string) => {
+      const previous = gates[names.indexOf(name) - 1];
+      if (previous) {
+        await previous.opened;
+      }
+      await tick();
+    },
+    done: (name: string) => {
+      gates[names.indexOf(name)]?.open();
+    },
+  };
+}
 const user = (text: string) =>
   ({ role: "user", content: [{ type: "text", text }], timestamp: 2 }) as never;
 const assistantMsg = (text: string) =>
@@ -562,13 +597,18 @@ describe("Agent: turns and events", () => {
 
   it("parallel execution: ends in completion order, result messages in source order", async () => {
     const order: string[] = [];
+    // Both are started; b is made to finish first, without timers.
+    const finish = finishOrder("b", "a");
+    const gated = (name: string) =>
+      tool(name, async () => {
+        order.push(`${name}:start`);
+        await finish.turn(name);
+        order.push(`${name}:end`);
+        finish.done(name);
+        return ok(`${name} ok`);
+      });
     const { agent, outline } = setup(
-      {
-        toolExecution: "parallel",
-        initialState: {
-          tools: [tracked("a", order, undefined, 30), tracked("b", order, undefined, 2)],
-        },
-      },
+      { toolExecution: "parallel", initialState: { tools: [gated("a"), gated("b")] } },
       [calls("a", "b"), { text: "done" }],
     );
     await agent.prompt("go");

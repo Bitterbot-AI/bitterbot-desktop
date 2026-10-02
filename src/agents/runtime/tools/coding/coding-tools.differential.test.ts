@@ -161,7 +161,9 @@ beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "bb-coding-tools-diff-"));
   cwd = path.join(root, "ws");
   home = path.join(root, "home");
+  // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
   vi.stubEnv("HOME", home);
+  vi.stubEnv("USERPROFILE", home);
 });
 
 afterEach(() => {
@@ -1586,7 +1588,8 @@ describe("edit vs pi", () => {
           (tools) =>
             edit(tools, { path: "locked.txt", edits: [{ oldText: "alpha", newText: "b" }] }),
         ),
-        "Could not edit file: locked.txt. Error code: EACCES.",
+        // A read-only file fails the W_OK check with EACCES on POSIX and EPERM on Windows.
+        `Could not edit file: locked.txt. Error code: ${process.platform === "win32" ? "EPERM" : "EACCES"}.`,
       );
     }
   });
@@ -2016,7 +2019,9 @@ describe("helpers vs pi", () => {
       expect(resolveToCwd(input, cwd), input).toBe(piResolveToCwd(input, cwd));
       expect(resolveReadPath(input, cwd), input).toBe(piResolveReadPath(input, cwd));
     }
-    expect(expandPath("~/a.txt")).toBe(path.join(home, "a.txt"));
+    // The rest of the path is appended as written, so on Windows the result
+    // mixes separators (which Windows accepts). Same as path.join on POSIX.
+    expect(expandPath("~/a.txt")).toBe(`${home}/a.txt`);
   });
 
   it("diffs random line sets like jsdiff and pi's generateDiffString (fuzz)", () => {

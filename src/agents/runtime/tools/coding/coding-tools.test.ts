@@ -52,7 +52,9 @@ beforeEach(() => {
   home = path.join(root, "home");
   fs.mkdirSync(cwd);
   fs.mkdirSync(home);
+  // os.homedir() reads HOME on POSIX and USERPROFILE on Windows.
   vi.stubEnv("HOME", home);
+  vi.stubEnv("USERPROFILE", home);
 });
 
 afterEach(() => {
@@ -796,7 +798,9 @@ describe("truncateHead", () => {
 describe("path resolution", () => {
   it("expands home, drops a leading @ and normalizes Unicode spaces", () => {
     expect(expandPath("~")).toBe(home);
-    expect(expandPath("~/a.txt")).toBe(path.join(home, "a.txt"));
+    // The rest of the path is appended as written, so on Windows the result
+    // mixes separators (which Windows accepts). Same as path.join on POSIX.
+    expect(expandPath("~/a.txt")).toBe(`${home}/a.txt`);
     expect(expandPath("~user/a.txt")).toBe("~user/a.txt");
     expect(expandPath("@a.txt")).toBe("a.txt");
     expect(expandPath("a\u00A0b\u202Fc.txt")).toBe("a b c.txt");
@@ -809,7 +813,14 @@ describe("path resolution", () => {
     const narrow = file("Shot at 1.00\u202FPM.txt", "x");
     expect(resolveReadPath("Shot at 1.00 PM.txt", cwd)).toBe(narrow);
     const nfd = file("cafe\u0301.txt", "x");
-    expect(resolveReadPath("caf\u00E9.txt", cwd)).toBe(nfd);
+    // APFS and HFS+ treat the NFC and NFD spellings as one file. There the
+    // plain path exists, so it is returned as it is and no variant is tried.
+    const nfcPath = path.join(cwd, "caf\u00E9.txt");
+    const sameFileOnThisFilesystem = fs.existsSync(nfcPath);
+    if (process.platform === "linux") {
+      expect(sameFileOnThisFilesystem).toBe(false);
+    }
+    expect(resolveReadPath("caf\u00E9.txt", cwd)).toBe(sameFileOnThisFilesystem ? nfcPath : nfd);
     const curly = file("d\u2019accord.txt", "x");
     expect(resolveReadPath("d'accord.txt", cwd)).toBe(curly);
     expect(resolveReadPath("nothing.txt", cwd)).toBe(path.join(cwd, "nothing.txt"));
