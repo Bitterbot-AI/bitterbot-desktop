@@ -1307,6 +1307,12 @@ export async function runEmbeddedAttempt(
               });
           }
 
+          // A stop that arrived during setup (hooks, image loading) must not be
+          // followed by a prompt: session.abort() only reaches a run that
+          // already exists, and the run would start with nobody able to stop it.
+          if (runAbortController.signal.aborted) {
+            throw makeAbortError(runAbortController.signal);
+          }
           // Only pass images option if there are actually images to pass
           // This avoids potential issues with models that don't expect the images parameter
           if (imageResult.images.length > 0) {
@@ -1513,6 +1519,11 @@ export async function runEmbeddedAttempt(
       // flushPendingToolResults() fires while tools are still executing, inserting
       // synthetic "missing tool result" errors and causing silent agent failures.
       // See: https://github.com/bitterbot/bitterbot/issues/8643
+      if (runAbortController.signal.aborted) {
+        // Stop anything that started between the abort and this teardown, so
+        // nothing runs or writes once the session lock is released.
+        await session?.abort().catch(() => {});
+      }
       await flushPendingToolResultsAfterIdle({
         agent: session?.agent,
         sessionManager,

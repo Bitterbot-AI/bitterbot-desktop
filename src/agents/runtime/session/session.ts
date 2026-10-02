@@ -31,11 +31,27 @@
  * 8. The compaction summary is requested through the session's stream
  *    function, so the same provider path, auth, and accounting apply as for
  *    turns. pi calls the provider directly.
+ * 9. Nothing starts or is written after a stop: `abort()` also aborts an
+ *    auto-compaction in flight, a prompt that is still in its preflight when
+ *    `abort()` or `dispose()` is called does not start a run, a cancelled
+ *    retry is not followed by a compaction check, and a disposed session
+ *    writes no compaction entry. pi can start a run, call the model, and
+ *    append to the transcript after the caller has torn the session down.
+ * 10. A transcript write that fails is reported (`onPersistenceError`) and
+ *    makes `prompt()` reject; pi drops the error and the turn looks fine.
+ * 11. After a compaction that precedes a retry, every trailing errored
+ *    assistant message is dropped from the context, not only the last one
+ *    (a retried 429 followed by an overflow left pi unable to continue).
+ * 12. The failure reported by `agent_end` wins over an older assistant
+ *    message when deciding to retry, so a stream function that throws on a
+ *    later turn of a run is retried as on the first.
  */
 
 import {
   type Api,
   type AssistantMessage,
+  clampThinkingLevel,
+  cleanupSessionResources,
   type ImageContent,
   isContextOverflow,
   type Model,
@@ -59,6 +75,7 @@ import {
 import {
   applyStubsToMessages,
   buildPruneRecordData,
+  collectStubRecords,
   PRUNE_RECORD_CUSTOM_TYPE,
   type ToolOutputStub,
 } from "../context-pruning/offload-stubs.js";
@@ -171,6 +188,8 @@ export type AgentSessionOptions = {
   compactionPolicy?: CompactionPolicy;
   /** Called when a listener throws; the event is still persisted. */
   onListenerError?: (error: unknown, event: AgentSessionEvent) => void;
+  /** Called when a message could not be written to the transcript. */
+  onPersistenceError?: (error: unknown) => void;
 };
 
 /** Transient provider errors worth a retry (pi-coding-agent 0.73.1, verbatim). */
@@ -207,6 +226,27 @@ function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/** The error `prompt()` rejects with when the session was stopped before the run started. */
+function abortedBeforeStart(): Error {
+  const error = new Error("The run was aborted before it started");
+  error.name = "AbortError";
+  return error;
+}
+
+/**
+ * One tool per name, as pi's registry (a Map keyed by name) had it: a later
+ * definition replaces an earlier one and keeps the earlier one's position.
+ * A client tool therefore shadows a server tool of the same name, and the
+ * model is never sent two tools with one name.
+ */
+export function dedupeToolsByName(tools: readonly AnyAgentTool[]): AnyAgentTool[] {
+  const byName = new Map<string, AnyAgentTool>();
+  for (const tool of tools) {
+    byName.set(tool.name, tool);
+  }
+  return [...byName.values()];
+}
+
 function latestCompactionEntry(
   entries: TranscriptEntry[],
 ): Extract<TranscriptEntry, { type: "compaction" }> | null {
@@ -228,6 +268,7 @@ export class AgentSession {
   private readonly policy: CompactionPolicy;
   private readonly resolveRequestAuth?: (model: Model<Api>) => Promise<RequestAuthResult>;
   private readonly onListenerError?: (error: unknown, event: AgentSessionEvent) => void;
+  private readonly onPersistenceError?: (error: unknown) => void;
 
   private listeners: AgentSessionListener[] = [];
   private unsubscribeAgent: (() => void) | undefined;
@@ -245,6 +286,12 @@ export class AgentSession {
   /** Runs scheduled after a retry delay or a compaction; `prompt()` waits for them. */
   private scheduled = new Set<{ promise: Promise<void>; cancel: () => void }>();
   private disposed = false;
+  /** Incremented by every abort() and dispose(); a prompt in preflight compares it. */
+  private stopEpoch = 0;
+  /** abort() calls that have not resolved yet. */
+  private abortsInFlight = 0;
+  /** First transcript write failure of the current prompt. */
+  private persistenceError: unknown;
 
   constructor(options: AgentSessionOptions) {
     this.sessionManager = options.store;
@@ -258,14 +305,19 @@ export class AgentSession {
     this.policy = options.compactionPolicy ?? createSummaryCompactionPolicy();
     this.resolveRequestAuth = options.resolveRequestAuth;
     this.onListenerError = options.onListenerError;
+    this.onPersistenceError = options.onPersistenceError;
 
-    const thinkingLevel = options.thinkingLevel ?? "off";
+    // As pi: a level the model does not support is moved to the nearest one it does.
+    const thinkingLevel = clampThinkingLevel(
+      options.model,
+      options.thinkingLevel ?? "off",
+    ) as ThinkingLevel;
     this.agent = new Agent({
       initialState: {
         systemPrompt: options.systemPrompt,
         model: options.model,
         thinkingLevel,
-        tools: options.tools,
+        tools: dedupeToolsByName(options.tools),
       },
       convertToLlm: (messages) => this.convertToLlm(messages),
       streamFn: options.streamFn ?? streamSimple,
@@ -332,7 +384,7 @@ export class AgentSession {
   }
   /** Replace the tool set (order is the order sent to the model). */
   setTools(tools: AnyAgentTool[]): void {
-    this.agent.state.tools = tools;
+    this.agent.state.tools = dedupeToolsByName(tools);
   }
 
   // ── events ───────────────────────────────────────────────────────────────
@@ -439,19 +491,26 @@ export class AgentSession {
 
     if (event.type === "message_end") {
       const message = event.message as unknown as TranscriptMessage;
-      if (message.role === "custom") {
-        this.sessionManager.appendCustomMessageEntry(
-          message.customType as string,
-          message.content,
-          message.display as boolean,
-          message.details,
-        );
-      } else if (
-        message.role === "user" ||
-        message.role === "assistant" ||
-        message.role === "toolResult"
-      ) {
-        this.sessionManager.appendMessage(message);
+      try {
+        if (message.role === "custom") {
+          this.sessionManager.appendCustomMessageEntry(
+            message.customType as string,
+            message.content,
+            message.display as boolean,
+            message.details,
+          );
+        } else if (
+          message.role === "user" ||
+          message.role === "assistant" ||
+          message.role === "toolResult"
+        ) {
+          this.sessionManager.appendMessage(message);
+        }
+      } catch (error) {
+        // The message is in memory but not on disk. Keep processing (retry
+        // and compaction bookkeeping must not stall) and make the prompt fail.
+        this.persistenceError ??= error;
+        this.onPersistenceError?.(error);
       }
       if (isAssistant(event.message)) {
         this.lastAssistantMessage = event.message;
@@ -470,19 +529,30 @@ export class AgentSession {
       // function threw) reports its failure only in agent_end. pi ignores it
       // there and leaves a pending retry wait unresolved, which blocks
       // prompt(); here it is retried or checked like any other failure.
-      const message = this.lastAssistantMessage ?? this.failureFromAgentEnd(event.messages);
+      // The failure of this run wins over an assistant message from an
+      // earlier turn of the same run.
+      const message = this.failureFromAgentEnd(event.messages) ?? this.lastAssistantMessage;
       this.lastAssistantMessage = undefined;
       if (!message) {
         this.resolveRetry();
         return;
       }
       if (this.isRetryableError(message)) {
-        const retrying = await this.handleRetryableError(message);
-        if (retrying) {
+        const outcome = await this.handleRetryableError(message);
+        if (outcome === "retrying") {
+          return;
+        }
+        if (outcome === "cancelled") {
+          // The caller stopped the session during the backoff: no compaction
+          // (a model call and a transcript write) may follow.
+          this.resolveRetry();
           return;
         }
       }
       this.resolveRetry();
+      if (this.disposed) {
+        return;
+      }
       await this.checkCompaction(message);
     }
   }
@@ -498,8 +568,19 @@ export class AgentSession {
     if (this.isStreaming) {
       throw new Error(BUSY_MESSAGE);
     }
+    // A stop that arrives before the run exists must still prevent it: the
+    // run would start with a fresh abort controller nobody holds.
+    if (this.disposed || this.abortsInFlight > 0) {
+      throw abortedBeforeStart();
+    }
+    const epoch = this.stopEpoch;
+    const stopped = () => this.disposed || this.stopEpoch !== epoch;
+    this.persistenceError = undefined;
     if (this.resolveRequestAuth) {
       const auth = await this.resolveRequestAuth(this.model);
+      if (stopped()) {
+        throw abortedBeforeStart();
+      }
       if (!auth.ok) {
         throw new Error(auth.error);
       }
@@ -507,6 +588,9 @@ export class AgentSession {
     const lastAssistant = this.findLastAssistantMessage();
     if (lastAssistant) {
       await this.checkCompaction(lastAssistant, false);
+      if (stopped()) {
+        throw abortedBeforeStart();
+      }
     }
     const content: Array<TextContent | ImageContent> = [{ type: "text", text }];
     if (options?.images) {
@@ -514,6 +598,13 @@ export class AgentSession {
     }
     await this.agent.prompt([{ role: "user", content, timestamp: Date.now() }]);
     await this.waitForSettled();
+    if (this.persistenceError !== undefined) {
+      const error = this.persistenceError;
+      this.persistenceError = undefined;
+      const detail =
+        error instanceof Error ? error.message : typeof error === "string" ? error : "unknown";
+      throw new Error(`Transcript write failed: ${detail}`, { cause: error });
+    }
   }
 
   async steer(text: string, images?: ImageContent[]): Promise<void> {
@@ -538,10 +629,19 @@ export class AgentSession {
 
   /** Abort the run in flight, a pending retry, and any scheduled run; resolves when idle. */
   async abort(): Promise<void> {
-    this.abortRetry();
-    this.cancelScheduled();
-    this.agent.abort();
-    await this.agent.waitForIdle();
+    this.stopEpoch += 1;
+    this.abortsInFlight += 1;
+    try {
+      this.abortRetry();
+      this.cancelScheduled();
+      // An auto-compaction in flight would otherwise schedule its retry run
+      // after this call has returned.
+      this.autoCompactionAbort?.abort();
+      this.agent.abort();
+      await this.agent.waitForIdle();
+    } finally {
+      this.abortsInFlight -= 1;
+    }
   }
 
   abortRetry(): void {
@@ -579,9 +679,16 @@ export class AgentSession {
 
   dispose(): void {
     this.disposed = true;
+    this.stopEpoch += 1;
+    // Nothing may run or be written after teardown: resolve a retry wait,
+    // cancel scheduled runs, stop compaction summaries.
+    this.abortRetry();
     this.cancelScheduled();
+    this.abortCompaction();
     this.disconnectFromAgent();
     this.listeners = [];
+    // pi-ai keeps per-session provider resources (the Codex websocket cache).
+    cleanupSessionResources(this.sessionId);
   }
 
   private disconnectFromAgent(): void {
@@ -636,8 +743,12 @@ export class AgentSession {
         return;
       }
       this.agent.continue().then(done, () => {
-        // The run could not start, so no agent_end will resolve a retry wait.
+        // The run could not start, so no agent_end will follow. Resolve the
+        // retry wait and tell listeners the announced retry is over: the
+        // runner's subscriber counts an agent_end against every
+        // compaction_end with willRetry.
         this.resolveRetry();
+        this.emit({ type: "agent_end", messages: this.agent.state.messages });
         done();
       });
     }, delayMs);
@@ -692,12 +803,14 @@ export class AgentSession {
     return RETRYABLE_ERROR.test(message.errorMessage);
   }
 
-  /** Returns true when a retry run was scheduled. */
-  private async handleRetryableError(message: AssistantMessage): Promise<boolean> {
+  /** "retrying": a retry run was scheduled. "cancelled": the backoff was aborted. */
+  private async handleRetryableError(
+    message: AssistantMessage,
+  ): Promise<"retrying" | "cancelled" | "exhausted"> {
     const retry = this.settings.retry;
     if (!retry.enabled) {
       this.resolveRetry();
-      return false;
+      return "exhausted";
     }
     if (!this.retryPromise) {
       this.retryPromise = new Promise((resolve) => {
@@ -714,7 +827,7 @@ export class AgentSession {
       });
       this.retryAttempt = 0;
       this.resolveRetry();
-      return false;
+      return "exhausted";
     }
     const delayMs = retry.baseDelayMs * 2 ** (this.retryAttempt - 1);
     this.emit({
@@ -743,12 +856,12 @@ export class AgentSession {
         finalError: "Retry cancelled",
       });
       this.resolveRetry();
-      return false;
+      return "cancelled";
     }
     this.retryAbort = undefined;
     // The retry promise is resolved by the retried run's agent_end.
     this.scheduleContinue(0);
-    return true;
+    return "retrying";
   }
 
   // ── compaction ───────────────────────────────────────────────────────────
@@ -834,6 +947,11 @@ export class AgentSession {
   }
 
   private applyCompaction(result: CompactionOutcome, trigger: string): void {
+    if (this.disposed) {
+      // The caller tore the session down (and released its lock) while the
+      // summary was being produced.
+      throw new Error("Compaction cancelled");
+    }
     const stubs = result.stubs ?? [];
     if (stubs.length > 0) {
       this.sessionManager.appendCustomEntry(
@@ -850,12 +968,15 @@ export class AgentSession {
     );
     this.agent.state.messages = this.sessionManager.buildSessionContext()
       .messages as unknown as AgentMessage[];
-    this.applyStubsToState(stubs);
+    // The context was rebuilt from the transcript, which holds every tool
+    // output in full: re-apply all stubs recorded on the branch, not only
+    // the ones this compaction added.
+    this.applyStubsToState([...collectStubRecords(this.sessionManager.getBranch()).values()]);
   }
 
   /** Record tool-output stubs in the transcript and apply them to the live context. */
   private recordStubs(stubs: ToolOutputStub[], trigger: string): void {
-    if (stubs.length === 0) {
+    if (stubs.length === 0 || this.disposed) {
       return;
     }
     this.sessionManager.appendCustomEntry(
@@ -975,7 +1096,7 @@ export class AgentSession {
         skipped(false);
         return;
       }
-      if (controller.signal.aborted) {
+      if (controller.signal.aborted || this.disposed) {
         skipped(true);
         return;
       }
@@ -992,11 +1113,25 @@ export class AgentSession {
         this.applyCompaction(result, reason);
         this.emit({ type: "compaction_end", reason, result, aborted: false, willRetry });
       }
+      if (controller.signal.aborted || this.disposed) {
+        // Stopped while the result was being applied: no run may follow.
+        return;
+      }
       if (willRetry) {
-        const messages = this.agent.state.messages;
-        const last = messages[messages.length - 1];
-        if (isAssistant(last) && last.stopReason === "error") {
-          this.agent.state.messages = messages.slice(0, -1);
+        // The transcript keeps every errored attempt (a retried 429, then the
+        // overflow). None of them may be the last message of the retry.
+        let messages = this.agent.state.messages;
+        let end = messages.length;
+        while (end > 0) {
+          const candidate = messages[end - 1];
+          if (!isAssistant(candidate) || candidate.stopReason !== "error") {
+            break;
+          }
+          end -= 1;
+        }
+        if (end !== messages.length) {
+          messages = messages.slice(0, end);
+          this.agent.state.messages = messages;
         }
         this.scheduleContinue(100);
       } else if (this.agent.hasQueuedMessages()) {

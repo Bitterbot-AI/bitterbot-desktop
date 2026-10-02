@@ -130,6 +130,9 @@ export function createOwnedSession(params: CreateOwnedSessionParams): AgentSessi
     onListenerError: (error, event) => {
       params.log?.(`session listener failed on ${event.type}: ${String(error)}`);
     },
+    onPersistenceError: (error) => {
+      params.log?.(`transcript write failed: ${String(error)}`);
+    },
   });
   holder.session = session;
   return session;

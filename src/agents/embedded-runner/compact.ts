@@ -763,7 +763,12 @@ export async function compactEmbeddedPiSessionDirect(
         const compactStartedAt = Date.now();
         const result = await compactWithSafetyTimeout(() =>
           session.compact(params.customInstructions),
-        );
+        ).catch((compactErr: unknown) => {
+          // On a timeout the summary call is still in flight; stop it, or it
+          // appends a compaction entry after this function released the lock.
+          session.abortCompaction();
+          throw compactErr;
+        });
         // Estimate tokens after compaction by summing token estimates for remaining messages
         let tokensAfter: number | undefined;
         try {
