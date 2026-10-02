@@ -13,7 +13,10 @@ import type { ModelRegistry } from "../runtime/engines/pi/model-discovery.js";
  * the in-tree Anthropic provider, receives the resolved key and headers.
  * Explicit per-call headers win over registry headers.
  */
-export function withSessionRequestAuth(streamFn: StreamFn, modelRegistry: ModelRegistry): StreamFn {
+export function withSessionRequestAuth(
+  streamFn: StreamFn,
+  modelRegistry: Pick<ModelRegistry, "getApiKeyAndHeaders">,
+): StreamFn {
   return async (model, context, options) => {
     const auth = await modelRegistry.getApiKeyAndHeaders(model);
     if (!auth.ok) {

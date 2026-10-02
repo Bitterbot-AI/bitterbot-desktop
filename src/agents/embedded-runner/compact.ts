@@ -102,6 +102,8 @@ import type { EmbeddedPiCompactResult } from "./types.js";
 import { describeUnknownError, mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
 
+type PiSessionOptions = NonNullable<Parameters<typeof createAgentSession>[0]>;
+
 export type CompactEmbeddedPiSessionParams = {
   sessionId: string;
   runId?: string;
@@ -643,8 +645,10 @@ export async function compactEmbeddedPiSessionDirect(
         ({ session } = await createAgentSession({
           cwd: resolvedWorkspace,
           agentDir,
-          authStorage,
-          modelRegistry,
+          // The owned registry and auth storage have the methods pi's session
+          // calls; the types differ only in pi's private fields.
+          authStorage: authStorage as unknown as PiSessionOptions["authStorage"],
+          modelRegistry: modelRegistry as unknown as PiSessionOptions["modelRegistry"],
           model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           tools: sessionToolAllowlist(customTools),

@@ -131,6 +131,8 @@ import {
 import { detectAndLoadPromptImages } from "./images.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
 
+type PiSessionOptions = NonNullable<Parameters<typeof createAgentSession>[0]>;
+
 export function injectHistoryImagesIntoMessages(
   messages: AgentMessage[],
   historyImagesByIndex: Map<number, ImageContent[]>,
@@ -750,8 +752,10 @@ export async function runEmbeddedAttempt(
         ({ session } = await createAgentSession({
           cwd: resolvedWorkspace,
           agentDir,
-          authStorage: params.authStorage,
-          modelRegistry: params.modelRegistry,
+          // The owned registry and auth storage have the methods pi's session
+          // calls; the types differ only in pi's private fields.
+          authStorage: params.authStorage as unknown as PiSessionOptions["authStorage"],
+          modelRegistry: params.modelRegistry as unknown as PiSessionOptions["modelRegistry"],
           model: params.model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           tools: sessionToolAllowlist(allCustomTools),
