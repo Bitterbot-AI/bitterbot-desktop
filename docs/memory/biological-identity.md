@@ -14,6 +14,8 @@ The identity system borrows two concepts from genetics:
 
 The **Genome** is the agent's DNA -- the unchangeable core that everything else grows from. It lives in `GENOME.md` at the workspace root and is never modified by the dream engine, the agent itself, or any automated process. Only the human operator edits it.
 
+This is enforced at the tool boundary (`src/agents/genome-guard.ts`), not only by instruction. The `write`, `edit` and `apply_patch` tools refuse a path that names a Genome. Every other tool call, and every CLI-backend run, is bracketed by a snapshot of the file: if the call created, changed or deleted it, or left something unreadable in its place (a shell redirect, a script), the previous content is put back, the rejected version is kept under `~/.bitterbot/genome-guard/`, and the tool result says so. The Genome of every configured agent is guarded, so one agent cannot rewrite another's. Two cases are outside the guard: a process the agent leaves running in the background that writes the file after its tool call has returned, and an edit you save in an external editor while a tool call is in flight, which is rolled back like any other change during the call (a save through the Control UI is recognised and kept).
+
 The Genome defines:
 
 - **What the agent must never do** (Safety Axioms)

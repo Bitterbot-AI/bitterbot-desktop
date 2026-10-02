@@ -32,6 +32,7 @@ import { classifyFailoverReason, isFailoverErrorMessage } from "./embedded-helpe
 import type { EmbeddedPiRunResult } from "./embedded-runner.js";
 import { resolveEndocrineState } from "./endocrine-state.js";
 import { FailoverError, resolveFailoverStatus } from "./failover-error.js";
+import { genomeFileOf, otherAgentGenomeFiles, withGenomeGuard } from "./genome-guard.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "./workspace-run.js";
 
 const log = createSubsystemLogger("agent/claude-cli");
@@ -296,20 +297,30 @@ export async function runCliAgent(params: {
         cliSessionId: useResume ? cliSessionIdToSend : undefined,
       });
 
-      const managedRun = await supervisor.spawn({
-        sessionId: params.sessionId,
-        backendId: backendResolved.id,
-        scopeKey,
-        replaceExistingScope: Boolean(useResume && scopeKey),
-        mode: "child",
-        argv: [backend.command, ...args],
-        timeoutMs: params.timeoutMs,
-        noOutputTimeoutMs,
-        cwd: workspaceDir,
-        env,
-        input: stdinPayload,
-      });
-      const result = await managedRun.wait();
+      // A CLI backend brings its own file tools, so none of ours is there to
+      // refuse a write to GENOME.md. The whole run is bracketed instead.
+      let cliPid: number | undefined;
+      const { result } = await withGenomeGuard(
+        [...new Set([genomeFileOf(workspaceDir), ...otherAgentGenomeFiles(params.config)])],
+        `cli backend "${backendResolved.id}"`,
+        async () => {
+          const managedRun = await supervisor.spawn({
+            sessionId: params.sessionId,
+            backendId: backendResolved.id,
+            scopeKey,
+            replaceExistingScope: Boolean(useResume && scopeKey),
+            mode: "child",
+            argv: [backend.command, ...args],
+            timeoutMs: params.timeoutMs,
+            noOutputTimeoutMs,
+            cwd: workspaceDir,
+            env,
+            input: stdinPayload,
+          });
+          cliPid = managedRun.pid;
+          return await managedRun.wait();
+        },
+      );
 
       const stdout = result.stdout.trim();
       const stderr = result.stderr.trim();
@@ -334,7 +345,7 @@ export async function runCliAgent(params: {
         if (result.reason === "no-output-timeout" || result.noOutputTimedOut) {
           const timeoutReason = `CLI produced no output for ${Math.round(noOutputTimeoutMs / 1000)}s and was terminated.`;
           log.warn(
-            `cli watchdog timeout: provider=${params.provider} model=${modelId} session=${cliSessionIdToSend ?? params.sessionId} noOutputTimeoutMs=${noOutputTimeoutMs} pid=${managedRun.pid ?? "unknown"}`,
+            `cli watchdog timeout: provider=${params.provider} model=${modelId} session=${cliSessionIdToSend ?? params.sessionId} noOutputTimeoutMs=${noOutputTimeoutMs} pid=${cliPid ?? "unknown"}`,
           );
           throw new FailoverError(timeoutReason, {
             reason: "timeout",

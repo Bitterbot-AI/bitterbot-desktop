@@ -5,6 +5,7 @@ import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
 } from "../../agents/agent-scope.js";
+import { noteGenomeWrittenByUser } from "../../agents/genome-guard.js";
 import {
   DEFAULT_GENOME_FILENAME,
   DEFAULT_HEARTBEAT_FILENAME,
@@ -474,6 +475,11 @@ export const agentsHandlers: GatewayRequestHandlers = {
     await fs.mkdir(workspaceDir, { recursive: true });
     const filePath = path.join(workspaceDir, name);
     const content = String(params.content ?? "");
+    if (name === DEFAULT_GENOME_FILENAME) {
+      // Told to the Genome guard BEFORE the write: a tool call in flight
+      // right now must find content the user saved, not undo it.
+      noteGenomeWrittenByUser(filePath, content);
+    }
     await fs.writeFile(filePath, content, "utf-8");
     const meta = await statFile(filePath);
     respond(
