@@ -44,6 +44,7 @@ import type { AnyAgentTool } from "./common.js";
 /** Hard cap on per-task scheduled wakeups to prevent runaway loops. */
 const DEFAULT_MAX_WAKEUPS = 50;
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
+import { currentRunIsNonOwner } from "../run-owner-context.js";
 import {
   jsonResult,
   readNumberParam,
@@ -974,6 +975,7 @@ export function createTaskScheduleWakeupTool(): AnyAgentTool {
           kind: "agentTurn",
           message,
           taskId,
+          ...(currentRunIsNonOwner() ? { senderIsOwner: false as const } : {}),
           ...(typeof effectiveHandoffId === "number" ? { handoffId: effectiveHandoffId } : {}),
           ...(task.checkpoint
             ? {

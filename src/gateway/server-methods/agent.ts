@@ -199,6 +199,7 @@ export const agentHandlers: GatewayRequestHandlers = {
       timeout?: number;
       label?: string;
       spawnedBy?: string;
+      senderIsOwner?: boolean;
       inputProvenance?: InputProvenance;
     };
     const cfg = loadConfig();
@@ -611,6 +612,7 @@ export const agentHandlers: GatewayRequestHandlers = {
         groupChannel: resolvedGroupChannel,
         groupSpace: resolvedGroupSpace,
         spawnedBy: spawnedByValue,
+        ...(request.senderIsOwner === false ? { senderIsOwner: false } : {}),
         timeout: request.timeout?.toString(),
         bestEffortDeliver,
         messageChannel: resolvedChannel,

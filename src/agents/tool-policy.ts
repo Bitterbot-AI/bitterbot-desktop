@@ -80,8 +80,12 @@ const OWNER_ONLY_TOOL_NAMES = new Set<string>([
   // Money. The wallet sends USDC and pays x402 resources with numeric caps as
   // its only limit, so a group member or any other non-owner sender could ask
   // the agent to pay them. Only the owner's own turns get the tool
-  // (PLAN-53 B6, decided 2026-10-02).
+  // (PLAN-53 B6, decided 2026-10-02). a2a_client buys tasks from other agents.
   "wallet",
+  "a2a_client",
+  // Config and lifecycle of the gateway itself: config.patch can raise spend
+  // caps or rewrite the owner list, so it is an owner action by definition.
+  "gateway",
 ]);
 
 const TOOL_PROFILES: Record<ToolProfileId, ToolProfilePolicy> = {

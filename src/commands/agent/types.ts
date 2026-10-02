@@ -67,6 +67,12 @@ export type AgentCommandOpts = {
   groupSpace?: string | null;
   /** Parent session key for subagent policy inheritance. */
   spawnedBy?: string | null;
+  /**
+   * `false` when the run was started on behalf of a sender who is not an
+   * owner (a sub-agent or wakeup of a non-owner run): owner-only tools are
+   * withheld. Absent means owner, as for every CLI and gateway caller.
+   */
+  senderIsOwner?: boolean;
   deliveryTargetMode?: ChannelOutboundTargetMode;
   bestEffortDeliver?: boolean;
   abortSignal?: AbortSignal;

@@ -93,6 +93,12 @@ export const AgentParamsSchema = Type.Object(
     idempotencyKey: NonEmptyString,
     label: Type.Optional(SessionLabelString),
     spawnedBy: Type.Optional(Type.String()),
+    /**
+     * `false` runs the turn without the owner-only tools. Sent by tools that
+     * start a run on behalf of a non-owner sender. Absent means owner: every
+     * gateway client is an operator, so the flag can only lower privilege.
+     */
+    senderIsOwner: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );

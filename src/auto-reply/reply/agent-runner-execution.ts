@@ -292,6 +292,9 @@ export async function runAgentTurnWithFallback(params: {
             senderName: params.sessionCtx.SenderName?.trim() || undefined,
             senderUsername: params.sessionCtx.SenderUsername?.trim() || undefined,
             senderE164: params.sessionCtx.SenderE164?.trim() || undefined,
+            // Owner-only tools are for a turn an owner sent. A heartbeat is
+            // nobody's turn: it digests system events (cron output, hooks).
+            senderIsOwner: params.isHeartbeat ? false : params.followupRun.run.senderIsOwner,
             // Provider threading context for tool auto-injection
             ...buildThreadingToolContext({
               sessionCtx: params.sessionCtx,

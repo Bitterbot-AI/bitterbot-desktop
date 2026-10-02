@@ -54,12 +54,21 @@ The wallet has layered safety limits:
 | Limit                | Default | Description                            |
 | -------------------- | ------- | -------------------------------------- |
 | Session cap          | $50     | Maximum spend per session              |
+| Daily limit          | $50     | Maximum spend per day                  |
 | Per-transaction cap  | $25     | Maximum per single transaction         |
 | x402 per-request cap | $1      | Maximum for automatic paywall payments |
 
-Amounts above these limits are refused; the limits are not an approval prompt.
+Amounts above these limits are refused; the limits are not an approval prompt. Inside the
+limits the agent pays without asking, so set them to amounts you can lose.
 
-The wallet tool is **owner-only**. It is offered to the agent only on turns you start yourself (the Control UI, the CLI, or a channel message from an owner account). A message from anyone else, including other members of a group chat, runs without the wallet tool, so nobody else can ask your agent to pay them. Scheduled and background runs are not owner turns and do not get it either.
+The `wallet` and `a2a_client` tools are **owner-only**, like the tools that run code or drive the
+browser. They are offered to the agent only on turns you start yourself: the Control UI, the CLI,
+or a channel message from an owner account (`commands.ownerAllowFrom`, or the channel's `allowFrom`
+list when that is not set). A message from anyone else, including other members of a group chat,
+runs without them, so nobody else can ask your agent to pay them. Heartbeat turns,
+webhook-triggered runs, and anything a non-owner turn starts (sub-agents, task wakeups) do not get
+them either. An isolated scheduled job you added yourself runs as you. See
+[Owner-only tools](/gateway/security#owner-only-tools).
 
 ## Funding Your Wallet
 

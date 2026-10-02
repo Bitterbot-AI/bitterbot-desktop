@@ -29,6 +29,11 @@ export type SubagentRunRecord = {
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
   suppressAnnounceReason?: "steer-restart" | "killed";
+  /**
+   * `false` when the run that spawned this one was not an owner's. The
+   * announce turn in the requester session is then a non-owner turn too.
+   */
+  requesterIsOwner?: false;
 };
 
 const subagentRuns = new Map<string, SubagentRunRecord>();
@@ -72,6 +77,7 @@ function startSubagentAnnounceCleanupFlow(runId: string, entry: SubagentRunRecor
     endedAt: entry.endedAt,
     label: entry.label,
     outcome: entry.outcome,
+    requesterIsOwner: entry.requesterIsOwner,
   }).then((didAnnounce) => {
     finalizeSubagentCleanup(runId, entry.cleanup, didAnnounce);
   });
@@ -412,6 +418,7 @@ export function registerSubagentRun(params: {
   label?: string;
   model?: string;
   runTimeoutSeconds?: number;
+  requesterIsOwner?: false;
 }) {
   const now = Date.now();
   const cfg = loadConfig();
@@ -435,6 +442,7 @@ export function registerSubagentRun(params: {
     startedAt: now,
     archiveAtMs,
     cleanupHandled: false,
+    ...(params.requesterIsOwner === false ? { requesterIsOwner: false as const } : {}),
   });
   ensureListener();
   persistSubagentRuns();

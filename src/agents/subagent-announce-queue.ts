@@ -23,6 +23,8 @@ export type AnnounceQueueItem = {
   sessionKey: string;
   origin?: DeliveryContext;
   originKey?: string;
+  /** `false`: the announce turn runs without owner-only tools. */
+  senderIsOwner?: false;
 };
 
 export type AnnounceQueueSettings = {

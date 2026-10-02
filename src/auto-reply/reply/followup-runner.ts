@@ -147,6 +147,7 @@ export function createFollowupRunner(params: {
               groupId: queued.run.groupId,
               groupChannel: queued.run.groupChannel,
               groupSpace: queued.run.groupSpace,
+              senderIsOwner: queued.run.senderIsOwner,
               senderId: queued.run.senderId,
               senderName: queued.run.senderName,
               senderUsername: queued.run.senderUsername,

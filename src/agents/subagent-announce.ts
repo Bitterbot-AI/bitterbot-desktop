@@ -137,6 +137,7 @@ async function sendAnnounce(item: AnnounceQueueItem) {
       to: requesterIsSubagent ? undefined : origin?.to,
       threadId: requesterIsSubagent ? undefined : threadId,
       deliver: !requesterIsSubagent,
+      ...(item.senderIsOwner === false ? { senderIsOwner: false } : {}),
       idempotencyKey,
     },
     timeoutMs: 15_000,
@@ -181,6 +182,7 @@ async function maybeQueueSubagentAnnounce(params: {
   triggerMessage: string;
   summaryLine?: string;
   requesterOrigin?: DeliveryContext;
+  requesterIsOwner?: false;
 }): Promise<"steered" | "queued" | "none"> {
   const { cfg, entry } = loadRequesterSessionEntry(params.requesterSessionKey);
   const canonicalKey = resolveRequesterStoreKey(cfg, params.requesterSessionKey);
@@ -220,6 +222,7 @@ async function maybeQueueSubagentAnnounce(params: {
         enqueuedAt: Date.now(),
         sessionKey: canonicalKey,
         origin,
+        ...(params.requesterIsOwner === false ? { senderIsOwner: false as const } : {}),
       },
       settings: queueSettings,
       send: sendAnnounce,
@@ -393,6 +396,8 @@ export async function runSubagentAnnounceFlow(params: {
   label?: string;
   outcome?: SubagentRunOutcome;
   announceType?: SubagentAnnounceType;
+  /** `false` when the sub-agent was spawned by a non-owner run. */
+  requesterIsOwner?: false;
 }): Promise<boolean> {
   let didAnnounce = false;
   let shouldDeleteChildSession = params.cleanup === "delete";
@@ -576,6 +581,7 @@ export async function runSubagentAnnounceFlow(params: {
       triggerMessage,
       summaryLine: taskLabel,
       requesterOrigin: targetRequesterOrigin,
+      requesterIsOwner: params.requesterIsOwner,
     });
     if (queued === "steered") {
       didAnnounce = true;
@@ -602,6 +608,7 @@ export async function runSubagentAnnounceFlow(params: {
       params: {
         sessionKey: targetRequesterSessionKey,
         message: triggerMessage,
+        ...(params.requesterIsOwner === false ? { senderIsOwner: false } : {}),
         deliver: !requesterIsSubagent,
         channel: requesterIsSubagent ? undefined : directOrigin?.channel,
         accountId: requesterIsSubagent ? undefined : directOrigin?.accountId,
