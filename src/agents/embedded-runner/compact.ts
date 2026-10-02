@@ -416,6 +416,7 @@ export async function compactEmbeddedPiSessionDirect(
       agentAccountId: params.agentAccountId,
       sessionKey: params.sessionKey ?? params.sessionId,
       sessionId: params.sessionId,
+      sessionFile: params.sessionFile,
       groupId: params.groupId,
       groupChannel: params.groupChannel,
       groupSpace: params.groupSpace,

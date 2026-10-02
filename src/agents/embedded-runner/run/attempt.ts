@@ -364,6 +364,7 @@ export async function runEmbeddedAttempt(
           senderIsOwner: params.senderIsOwner,
           sessionKey: params.sessionKey ?? params.sessionId,
           sessionId: params.sessionId,
+          sessionFile: params.sessionFile,
           isHeartbeat: params.isHeartbeat === true,
           runId: params.runId,
           agentDir,

@@ -16,6 +16,8 @@
  *    positional arguments. `apiKey` is optional (pi types it as required and
  *    passes it through unchanged, as this port does).
  * 3. `generateTurnPrefixSummary` is exported (private in pi).
+ * 4. `compact` rejects a summary with no text (`rejectEmptySummary`, default
+ *    true). pi writes the empty summary.
  *
  * Kept as in pi, on purpose:
  * - The history summary may use `floor(0.8 * reserveTokens)` output tokens,
@@ -175,7 +177,16 @@ export interface GenerateTurnPrefixSummaryOptions extends SummaryCallOptions {
 export interface CompactOptions extends SummaryCallOptions {
   /** Extra focus for the history summary, appended to the prompt. */
   customInstructions?: string;
+  /**
+   * Throw when a summary call returns no text (default true). pi accepts it
+   * and writes a compaction whose summary is empty, which silently discards
+   * the summarized history; it happens when the whole output budget goes to
+   * thinking, or when the call is aborted.
+   */
+  rejectEmptySummary?: boolean;
 }
+
+export const EMPTY_SUMMARY_ERROR = "Summarization failed: the model returned no text";
 
 /** Stored in `CompactionEntry.details`. */
 export interface CompactionDetails {
@@ -302,6 +313,7 @@ export async function compact(
   const { model, apiKey, headers, signal, thinkingLevel, complete, customInstructions } = options;
   const call: SummaryCallOptions = { model, apiKey, headers, signal, thinkingLevel, complete };
   const reserveTokens = settings.reserveTokens;
+  const rejectEmpty = options.rejectEmptySummary !== false;
 
   let summary: string;
   if (isSplitTurn && turnPrefixMessages.length > 0) {
@@ -317,6 +329,9 @@ export async function compact(
         : Promise.resolve("No prior history."),
       generateTurnPrefixSummary(turnPrefixMessages, { ...call, reserveTokens }),
     ]);
+    if (rejectEmpty && (!historyResult.trim() || !turnPrefixResult.trim())) {
+      throw new Error(EMPTY_SUMMARY_ERROR);
+    }
     summary = `${historyResult}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`;
   } else {
     summary = await generateSummary(messagesToSummarize, {
@@ -325,6 +340,9 @@ export async function compact(
       customInstructions,
       previousSummary,
     });
+    if (rejectEmpty && !summary.trim()) {
+      throw new Error(EMPTY_SUMMARY_ERROR);
+    }
   }
 
   const { readFiles, modifiedFiles } = computeFileLists(fileOps);

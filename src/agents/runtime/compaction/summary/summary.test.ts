@@ -595,7 +595,7 @@ describe("compact", () => {
     }
   });
 
-  it("does not treat an aborted reply as an error", async () => {
+  it("rejects a reply with no text (aborted, or all output spent on thinking) unless asked for pi's behaviour", async () => {
     const preparation = prepareCompaction(SCENARIOS.plain(), settingsFor(40));
     if (!preparation) {
       throw new Error("expected a preparation");
@@ -603,7 +603,17 @@ describe("compact", () => {
     const { complete } = fakeComplete([
       reply("", { content: [], stopReason: "aborted", errorMessage: "Request was aborted" }),
     ]);
-    const result = await compact(preparation, { model: MODEL, complete });
+    await expect(compact(preparation, { model: MODEL, complete })).rejects.toThrow(
+      "Summarization failed: the model returned no text",
+    );
+    const again = fakeComplete([
+      reply("", { content: [], stopReason: "aborted", errorMessage: "Request was aborted" }),
+    ]);
+    const result = await compact(preparation, {
+      model: MODEL,
+      complete: again.complete,
+      rejectEmptySummary: false,
+    });
     expect(result.summary).toBe("");
   });
 

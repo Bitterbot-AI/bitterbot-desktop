@@ -20,6 +20,7 @@
  */
 
 import fs from "node:fs";
+import { userAuthoredText } from "./heartbeat.js";
 import { buildTranscriptView, parseJsonl } from "./transcript-view.js";
 import type { PolicyEntry } from "./types.js";
 export type Chunk = {
@@ -51,7 +52,9 @@ export function chunkDialogue(entries: readonly PolicyEntry[], maxChars = 1_600)
     if ((e.role !== "user" && e.role !== "assistant") || e.isHeartbeatPrompt || e.isHeartbeatAck) {
       continue;
     }
-    const text = e.text.trim();
+    // Index what the user said, not what the runner put in front of it (an
+    // earlier recall block would otherwise be recalled again).
+    const text = (e.role === "user" ? userAuthoredText(e.text) : e.text).trim();
     if (!text) {
       continue;
     }
@@ -173,6 +176,10 @@ export function buildProactiveRecallPreface(params: {
   try {
     raw = fs.readFileSync(params.sessionFile, "utf8");
   } catch {
+    return undefined;
+  }
+  // Most sessions have no offload: skip the parse and the index for them.
+  if (!raw.includes('"policy":"offload"')) {
     return undefined;
   }
   const view = buildTranscriptView({

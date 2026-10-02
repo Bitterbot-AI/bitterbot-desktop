@@ -182,7 +182,12 @@ async function runOurCompact(
   const script = scripted(steps);
   const outcome: Outcome = { calls: script.calls, remaining: 0 };
   try {
-    outcome.result = await compact(preparation, { model: script.model, ...args });
+    outcome.result = await compact(preparation, {
+      model: script.model,
+      // pi accepts an empty summary; parity is checked with the guard off.
+      rejectEmptySummary: false,
+      ...args,
+    });
   } catch (err) {
     outcome.error = (err as Error).message;
   }
@@ -639,6 +644,7 @@ describe("summary compaction vs pi: request options", () => {
           );
           const our = recordingModel(reasoning);
           const ourResult = await compact(ourPreparation, {
+            rejectEmptySummary: false,
             model: our.model,
             apiKey: "sk-fixture",
             headers,

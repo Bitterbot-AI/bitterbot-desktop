@@ -22,16 +22,24 @@ For questions that span many earlier turns ("what did we decide about X across t
 
 ## Arguments
 
-| Argument               | Meaning                                                                                                                                 |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `tool_call_id`         | The tool call id named in a `[tool output offloaded …]` stub. Returns that tool output in full.                                         |
-| `entries.from`, `.to`  | Inclusive entry-id bounds (pi v3 `message` entry ids). A single entry (`from` = `to`) returns the full tool output.                     |
-| `turns`                | `"3-7"` or `"5"`. A turn is a user message and everything until the next one; heartbeats count, so numbering is stable across offloads. |
-| `lines.from`, `.to`    | Inclusive 1-based JSONL line bounds, the same addressing the memory index and offload notes use.                                        |
-| `grep`                 | Case-insensitive regex (or literal) that a row's text must match.                                                                       |
-| `include_tool_results` | Default `true`.                                                                                                                         |
-| `max_chars`            | Output cap, default 12,000, maximum 60,000. When several rows come back, each tool output is capped at 2,000 characters.                |
-| `session_id`           | Another session of this agent. See the privacy rules below.                                                                             |
+| Argument               | Meaning                                                                                                                                                                 |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tool_call_id`         | The tool call id named in a `[tool output offloaded …]` stub. Returns that tool output in full.                                                                         |
+| `entries.from`, `.to`  | Inclusive entry-id bounds, with or without the `e` prefix notes print. A single entry returns the full tool output. An id that is not in this conversation is an error. |
+| `turns`                | `"3-7"` or `"5"`. A turn is a user message and everything until the next one; heartbeats count, so numbering is stable across offloads.                                 |
+| `lines.from`, `.to`    | Inclusive 1-based JSONL line bounds, the same addressing the memory index and offload notes use.                                                                        |
+| `grep`                 | Case-insensitive regex (or literal) that a row's text must match.                                                                                                       |
+| `include_tool_results` | Default `true`.                                                                                                                                                         |
+| `max_chars`            | Output cap, default 12,000, maximum 60,000. When several rows come back, each tool output is capped at 2,000 characters.                                                |
+| `offset`               | For one entry longer than `max_chars`: start at this character. The cut marker of the previous call names the offset to continue from.                                  |
+| `session_id`           | Another session of this agent. See the privacy rules below.                                                                                                             |
+
+Limits worth knowing:
+
+- An entry longer than `max_chars` comes back as its head and its tail with a marker in between that states how many characters were left out and the `offset` to continue from.
+- A `tool_call_id` lookup returns every matching output in full (some providers reuse call ids).
+- Images are not stored as text. An image-only tool result is listed with a note saying so, and tool-output stubs never replace a result that contains an image.
+- The current conversation is read from the run's own transcript file, so forum-topic and forked-thread sessions work like any other.
 
 Every row is prefixed with its address: `[e<entry id> L<line> t<turn> <timestamp>] ROLE:`. Tool rows read `TOOL(<name>)`. Only entries on the current branch path are returned (a `/fork` leaves sibling branches in the file that this path never saw). Output passes through the same sensitive-text redaction as the memory indexer, and the result carries the note that transcript text is data, not instructions.
 

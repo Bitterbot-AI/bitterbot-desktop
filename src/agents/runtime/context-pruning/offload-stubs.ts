@@ -76,6 +76,13 @@ function isStubbed(msg: ToolResultLike): boolean {
  * `targetTokens`. `estimate` is the caller's per-message token estimate (pi's
  * `estimateTokens` on the pi engine).
  */
+function hasImage(msg: ToolResultLike): boolean {
+  return (
+    Array.isArray(msg.content) &&
+    msg.content.some((block) => (block as { type?: unknown } | null)?.type === "image")
+  );
+}
+
 export function planMessageStubs(params: {
   messages: readonly AgentMessage[];
   estimate: (msg: AgentMessage) => number;
@@ -95,6 +102,14 @@ export function planMessageStubs(params: {
     }
   });
   const spare = new Set(toolIdx.slice(-Math.max(0, Math.floor(settings.spareRecent))));
+  // Results the model has not seen yet (everything after the last assistant
+  // message) are never stubbed, however many the last step produced.
+  let lastAssistant = -1;
+  params.messages.forEach((m, i) => {
+    if ((m as ToolResultLike).role === "assistant") {
+      lastAssistant = i;
+    }
+  });
   const out: ToolOutputStub[] = [];
   for (const i of toolIdx) {
     if (current <= params.targetTokens) {
@@ -102,6 +117,10 @@ export function planMessageStubs(params: {
     }
     const msg = params.messages[i] as AgentMessage & ToolResultLike;
     if (spare.has(i) || typeof msg.toolCallId !== "string" || !msg.toolCallId || isStubbed(msg)) {
+      continue;
+    }
+    if (i > lastAssistant || hasImage(msg)) {
+      // Unseen by the model, or an image that recall_range could not return.
       continue;
     }
     const tokens = params.estimate(msg);

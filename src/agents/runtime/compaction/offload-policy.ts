@@ -147,7 +147,35 @@ export type PlanOffloadInput = {
     inputTokens: number;
     outputTokens: number;
   };
+  /** Summary of the compaction being replaced when it was not an offload (carried into the ledger). */
+  priorSummary?: string;
 };
+
+/**
+ * chars/4 can be far below the real prompt size (CJK text, dense JSON). The
+ * triggers use the provider's real count, so an uncalibrated plan would see
+ * "fits" turn after turn and never act. The last assistant entry that
+ * recorded its real prompt size gives the ratio between the two; estimates
+ * are scaled up by it (never down, and at most 6x).
+ */
+export function calibrationRatio(
+  entries: readonly PolicyEntry[],
+  stubbed: ReadonlyMap<string, StubKind>,
+  fixedTokens: number,
+): number {
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const actual = entries[i]!.promptTokensActual;
+    if (typeof actual !== "number" || actual <= 0) {
+      continue;
+    }
+    const estimated = fixedTokens + totalTokens(entries.slice(0, i), stubbed);
+    if (estimated <= 0) {
+      return 1;
+    }
+    return Math.min(6, Math.max(1, actual / estimated));
+  }
+  return 1;
+}
 
 function withStubs(
   base: ReadonlyMap<string, StubKind>,
@@ -223,10 +251,22 @@ function pruneDraft(
 }
 
 /** Plan one offload at the given trigger. Pure. */
-export function planOffload(input: PlanOffloadInput): OffloadPlan {
+export function planOffload(raw: PlanOffloadInput): OffloadPlan {
+  const ratio = calibrationRatio(raw.entries, raw.stubbed, raw.fixedTokens);
+  const input: PlanOffloadInput =
+    ratio > 1.15
+      ? {
+          ...raw,
+          fixedTokens: Math.ceil(raw.fixedTokens * ratio),
+          entries: raw.entries.map((e) => ({ ...e, tokens: Math.ceil(e.tokens * ratio) })),
+        }
+      : raw;
   const { settings: s, entries, trigger } = input;
   const w = input.contextWindow;
   const notes: string[] = [];
+  if (input !== raw) {
+    notes.push(`estimates scaled by ${ratio.toFixed(2)} to match the provider's token count`);
+  }
   const before = input.fixedTokens + totalTokens(entries, input.stubbed);
 
   const historyTarget = (fraction: number) =>
@@ -385,6 +425,7 @@ export function planOffload(input: PlanOffloadInput): OffloadPlan {
     previousOffloads: input.previousOffloads,
     workingMemoryFlushed: input.workingMemoryFlushed,
     summary: summaryText,
+    priorSummary: input.priorSummary,
     budgetTokens: s.ledgerBudgetTokens,
   });
   const keptTokens = totalTokens(kept, stubbed);
