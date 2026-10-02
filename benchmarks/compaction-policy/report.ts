@@ -29,6 +29,10 @@ export type ResultRow = {
   cacheReadTokens: number;
   toolCalls: number;
   usedRecall: boolean;
+  /** Round 2: the memory_search stand-in was called. */
+  usedMemorySearch?: boolean;
+  /** Round 2 arm 6: automatic recall snippets were injected ahead of the probe. */
+  injectedRecall?: boolean;
   error?: string;
 };
 
@@ -98,7 +102,10 @@ export function summarizeArm(rows: ResultRow[], arm: Arm): ArmSummary {
     ),
     inputMean: mean(r.map((x) => x.inputTokens + x.cacheReadTokens)),
     cacheReadMean: mean(r.map((x) => x.cacheReadTokens)),
-    reachRate: arm >= 4 && nonNeg.length ? mean(nonNeg.map((x) => (x.usedRecall ? 1 : 0))) : null,
+    reachRate:
+      arm >= 4 && nonNeg.length
+        ? mean(nonNeg.map((x) => (x.usedRecall || x.injectedRecall ? 1 : 0)))
+        : null,
     toolOutputAccuracy: tool.length ? mean(tool.map((x) => x.correct)) : null,
     dialogueAccuracy: dlg.length ? mean(dlg.map((x) => x.correct)) : null,
     errors: r.filter((x) => x.error).length,
@@ -161,7 +168,7 @@ export function renderReport(params: {
       "| Arm | n | accuracy | partial | abstain | hallucination (neg) | tool-output acc | dialogue acc | reach | cost p50 | cost p95 | latency p50 | latency p95 | input mean | cache read mean | errors |",
     );
     lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
-    for (const arm of [1, 2, 3, 4, 5] as Arm[]) {
+    for (const arm of [1, 2, 3, 4, 5, 6] as Arm[]) {
       const s = summarizeArm(mrows, arm);
       if (!s.n) {
         continue;
@@ -175,7 +182,7 @@ export function renderReport(params: {
     lines.push("");
     lines.push("| Arm | metric | n | mean delta | CI95 low | CI95 high |");
     lines.push("|---|---|---|---|---|---|");
-    for (const arm of [2, 3, 4, 5] as Arm[]) {
+    for (const arm of [2, 3, 4, 5, 6] as Arm[]) {
       const acc = pairedDeltas(
         mrows,
         arm,
@@ -248,6 +255,37 @@ export function renderReport(params: {
   lines.push(
     `| answerableFromDialogue | ${params.probes.filter((p) => p.answerableFromDialogue).length} |`,
   );
+  lines.push("");
+  // Decision 14: session-level cost and latency. Every probe needs elided
+  // content, so a probed turn is the worst case. In a session only a share of
+  // turns refer back; the table scales the measured per-lookup delta by that
+  // share for a 20-turn session.
+  lines.push("## Session-level cost model (decision 14)");
+  lines.push("");
+  lines.push(
+    "Per-lookup delta = median of (arm minus arm 1) over paired probes. Added cost per 20-turn session = share of refer-back turns x 20 x cost delta; added latency applies to those turns only.",
+  );
+  lines.push("");
+  lines.push(
+    "| model | arm | cost delta per refer-back turn | latency delta p50 | added cost per session at 5% | at 10% | at 25% |",
+  );
+  lines.push("|---|---|---|---|---|---|---|");
+  for (const model of models) {
+    const mrows = rows.filter((r) => r.model === model);
+    for (const arm of [4, 5, 6] as Arm[]) {
+      const cost = pairedDeltas(mrows, arm, 1, (r) => r.costUsd);
+      const lat = pairedDeltas(mrows, arm, 1, (r) => r.durationMs);
+      if (!cost.length) {
+        continue;
+      }
+      const c = pctile(cost, 0.5);
+      const l = pctile(lat, 0.5);
+      const per = (share: number) => `$${(share * 20 * c).toFixed(3)}`;
+      lines.push(
+        `| ${model} | ${arm} ${ARM_NAMES[arm]} | $${c.toFixed(4)} | ${(l / 1000).toFixed(1)}s | ${per(0.05)} | ${per(0.1)} | ${per(0.25)} |`,
+      );
+    }
+  }
   lines.push("");
   for (const section of params.extraSections ?? []) {
     lines.push(section);

@@ -27,10 +27,34 @@ import {
   compressOldMessages,
   type ProgressiveCompressionConfig,
 } from "../progressive-compression.js";
+import {
+  applyStubsToMessages,
+  planMessageStubs,
+  type ToolOutputStub,
+} from "../runtime/context-pruning/offload-stubs.js";
 
 const DEFAULT_TRIGGER_FRACTION = 0.8;
 const DEFAULT_MIN_CHARS = 80_000;
 const DEFAULT_TARGET_FRACTION = 0.65;
+/** PLAN-52A T3: tool-output stubs aim lower than compression, so they act less often. */
+const DEFAULT_STUB_TARGET_FRACTION = 0.5;
+
+/**
+ * PLAN-52A tool-output stubs (T3). When enabled, the guard first replaces the
+ * oldest tool outputs with a stub naming the tool call id (the full text stays
+ * in the transcript, `recall_range` returns it). Progressive compression only
+ * runs if stubs alone do not reach its target. The caller persists the
+ * returned stubs as a `bitterbot.offload-prune` entry.
+ */
+export type MidTurnStubConfig = {
+  enabled: boolean;
+  /** Target as a fraction of the context window. Default 0.50. */
+  targetFraction?: number;
+  /** Tool outputs below this estimate are never stubbed. Default 1000. */
+  minTokens?: number;
+  /** Most recent tool outputs never stubbed. Default 2. */
+  spareRecent?: number;
+};
 
 export type MidTurnBudgetConfig = {
   /** Fraction of context window above which the guard fires. Default 0.80. */
@@ -61,6 +85,9 @@ export type MidTurnBudgetResult =
       messagesBefore: number;
       messagesAfter: number;
       passes: number;
+      /** Tool outputs stubbed by this call (persist them as a prune record). */
+      stubs?: ToolOutputStub[];
+      method: "stubs" | "compression" | "stubs+compression";
     };
 
 function getMessageChars(msg: AgentMessage): number {
@@ -108,6 +135,7 @@ export function applyMidTurnBudget(params: {
   contextWindowTokens: number;
   compressionConfig?: ProgressiveCompressionConfig;
   budgetConfig?: MidTurnBudgetConfig;
+  stubConfig?: MidTurnStubConfig;
 }): MidTurnBudgetResult {
   const messages = params.session.messages;
   if (!Array.isArray(messages) || messages.length === 0) {
@@ -139,12 +167,75 @@ export function applyMidTurnBudget(params: {
   }
 
   const targetBudget = Math.floor(params.contextWindowTokens * targetFraction);
-  const result = compressOldMessages([...messages], targetBudget, {
+
+  // Step 1 (PLAN-52A T3): stub the oldest tool outputs. Lossless (the
+  // transcript keeps the text) and persistent (the caller records the stubs).
+  let working: AgentMessage[] = messages;
+  let stubs: ToolOutputStub[] = [];
+  let tokensAfterStubs = tokensBefore;
+  if (params.stubConfig?.enabled) {
+    const stubTarget = Math.floor(
+      params.contextWindowTokens *
+        (params.stubConfig.targetFraction ?? DEFAULT_STUB_TARGET_FRACTION),
+    );
+    stubs = planMessageStubs({
+      messages,
+      estimate: (m) => estimateMessagesTokens([m]),
+      totalTokens: tokensBefore,
+      targetTokens: stubTarget,
+      settings: {
+        ...(typeof params.stubConfig.minTokens === "number"
+          ? { minTokens: params.stubConfig.minTokens }
+          : {}),
+        ...(typeof params.stubConfig.spareRecent === "number"
+          ? { spareRecent: params.stubConfig.spareRecent }
+          : {}),
+      },
+    });
+    if (stubs.length > 0) {
+      working = applyStubsToMessages(
+        messages,
+        new Map(stubs.map((s) => [s.toolCallId, s])),
+      ).messages;
+      tokensAfterStubs = estimateMessagesTokens(working);
+      if (tokensAfterStubs <= targetBudget) {
+        params.session.agent.state.messages = working;
+        return {
+          applied: true,
+          tokensBefore,
+          tokensAfter: tokensAfterStubs,
+          messagesBefore: messages.length,
+          messagesAfter: working.length,
+          passes: 0,
+          stubs,
+          method: "stubs",
+        };
+      }
+    }
+  }
+
+  // Step 2: progressive compression (deterministic truncation), on top of
+  // whatever the stubs already freed.
+  const result = compressOldMessages([...working], targetBudget, {
     enabled: true,
     ...params.compressionConfig,
   });
 
   if (result.totalCompressed === 0 || result.tokensAfter >= result.tokensBefore) {
+    if (stubs.length > 0) {
+      // Stubs made progress even though compression could not add to it.
+      params.session.agent.state.messages = working;
+      return {
+        applied: true,
+        tokensBefore,
+        tokensAfter: tokensAfterStubs,
+        messagesBefore: messages.length,
+        messagesAfter: working.length,
+        passes: 0,
+        stubs,
+        method: "stubs",
+      };
+    }
     return {
       applied: false,
       reason: "compression made no progress",
@@ -158,11 +249,13 @@ export function applyMidTurnBudget(params: {
 
   return {
     applied: true,
-    tokensBefore: result.tokensBefore,
+    tokensBefore,
     tokensAfter: result.tokensAfter,
     messagesBefore: messages.length,
     messagesAfter: result.messages.length,
     passes: result.passesRun,
+    ...(stubs.length > 0 ? { stubs } : {}),
+    method: stubs.length > 0 ? "stubs+compression" : "compression",
   };
 }
 
@@ -171,4 +264,5 @@ export const __midTurnBudgetConsts = Object.freeze({
   DEFAULT_TRIGGER_FRACTION,
   DEFAULT_MIN_CHARS,
   DEFAULT_TARGET_FRACTION,
+  DEFAULT_STUB_TARGET_FRACTION,
 });

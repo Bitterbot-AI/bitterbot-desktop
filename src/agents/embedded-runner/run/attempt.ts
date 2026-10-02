@@ -3,9 +3,15 @@ import os from "node:os";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { createAgentSession, SessionManager, SettingsManager } from "@mariozechner/pi-coding-agent";
+import {
+  createAgentSession,
+  estimateTokens,
+  SessionManager,
+  SettingsManager,
+} from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
+import { emitAgentEvent } from "../../../infra/agent-events.js";
 import {
   filterHeartbeatOnlyFiles,
   resolveHeartbeatLightContext,
@@ -52,6 +58,13 @@ import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { installInRunBudget } from "../../runtime/context-pruning/in-run-budget.js";
+import {
+  applyStubsToMessages,
+  buildPruneRecordData,
+  collectStubRecords,
+  PRUNE_RECORD_CUSTOM_TYPE,
+} from "../../runtime/context-pruning/offload-stubs.js";
 import {
   ensurePiCompactionReserveTokens,
   resolveCompactionReserveTokensFloor,
@@ -735,6 +748,67 @@ export async function runEmbeddedAttempt(
         minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
       });
       applyToolLoopCompat(session);
+      // PLAN-52A: the context budget that reaches the run in flight. The loop
+      // snapshots `transformContext` at run start and calls it before every
+      // model call, so this is where tool-output stubs (and the truncation
+      // fallback) take effect mid-turn. Assigning `agent.state.messages` from
+      // the tool-end handler never did: the loop works on its own snapshot.
+      try {
+        const offloadCfg = params.config?.agents?.defaults?.compaction?.offload;
+        const compressionCfg = params.config?.agents?.defaults?.compression;
+        const contextWindowTokens = params.model.contextWindow ?? 0;
+        const stubStore = sessionManager;
+        if (contextWindowTokens > 0 && stubStore) {
+          installInRunBudget(session.agent as Parameters<typeof installInRunBudget>[0], {
+            contextWindowTokens,
+            fixedTokens: Math.ceil((systemPromptText?.length ?? 0) / 4),
+            estimate: (message) => {
+              try {
+                return estimateTokens(message);
+              } catch {
+                return Math.ceil(JSON.stringify(message ?? "").length / 4);
+              }
+            },
+            settings: {
+              stubsEnabled: offloadCfg?.toolOutputStubs !== false,
+              ...(typeof offloadCfg?.triggerMidTurnFraction === "number"
+                ? { triggerFraction: offloadCfg.triggerMidTurnFraction }
+                : {}),
+              ...(typeof offloadCfg?.midTurnTargetFraction === "number"
+                ? { stubTargetFraction: offloadCfg.midTurnTargetFraction }
+                : {}),
+              ...(typeof offloadCfg?.toolOutputStubMinTokens === "number"
+                ? { stubMinTokens: offloadCfg.toolOutputStubMinTokens }
+                : {}),
+              ...(typeof offloadCfg?.spareRecentToolResults === "number"
+                ? { spareRecent: offloadCfg.spareRecentToolResults }
+                : {}),
+              compressionEnabled: compressionCfg?.enabled !== false,
+              compression: compressionCfg,
+            },
+            recorded: collectStubRecords(stubStore.getBranch()),
+            persist: (stubs) => {
+              stubStore.appendCustomEntry(
+                PRUNE_RECORD_CUSTOM_TYPE,
+                buildPruneRecordData(stubs, "mid-turn"),
+              );
+            },
+            onApplied: (event) => {
+              log.info(
+                `[in-run-budget] runId=${params.runId} ${event.tokensBefore}→${event.tokensAfter} est tokens ` +
+                  `(new stubs=${event.newStubs}, recorded=${event.recordedStubs}, compressed=${event.compressed})`,
+              );
+              emitAgentEvent({
+                runId: params.runId,
+                stream: "compaction",
+                data: { phase: "in-run-budget", ...event },
+              });
+            },
+          });
+        }
+      } catch (budgetErr) {
+        log.warn(`[in-run-budget] install failed: ${String(budgetErr)}`);
+      }
       const activeSession = session;
       const cacheTrace = createCacheTrace({
         cfg: params.config,
@@ -830,8 +904,30 @@ export async function runEmbeddedAttempt(
           ? sanitizeToolUseResultPairing(truncated)
           : truncated;
         cacheTrace?.recordStage("session:limited", { messages: limited });
-        if (limited.length > 0) {
-          activeSession.agent.state.messages = limited;
+        // PLAN-52A context-pruning stage: re-apply the tool-output stubs that
+        // earlier turns recorded (`bitterbot.offload-prune` entries on this
+        // branch). Without this the full outputs come back every turn, because
+        // the context is rebuilt from the transcript.
+        let pruned = limited;
+        if (params.config?.agents?.defaults?.compaction?.offload?.toolOutputStubs !== false) {
+          try {
+            const recorded = collectStubRecords(sessionManager.getBranch());
+            if (recorded.size > 0) {
+              const res = applyStubsToMessages(limited, recorded);
+              pruned = res.messages;
+              if (res.applied > 0) {
+                log.debug(
+                  `[context-pruning] runId=${params.runId} re-applied ${res.applied} tool-output stub(s)`,
+                );
+              }
+            }
+          } catch (pruneErr) {
+            log.warn(`[context-pruning] stub re-application failed: ${String(pruneErr)}`);
+          }
+        }
+        cacheTrace?.recordStage("session:pruned", { messages: pruned });
+        if (pruned.length > 0) {
+          activeSession.agent.state.messages = pruned;
         }
       } catch (err) {
         await flushPendingToolResultsAfterIdle({

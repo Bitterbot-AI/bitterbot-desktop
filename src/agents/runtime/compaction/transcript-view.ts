@@ -142,6 +142,7 @@ export function buildTranscriptView(params: {
 
   const allEntries: PolicyEntry[] = [];
   const stubbedIds = new Map<string, StubKind>();
+  const stubbedCallIds = new Map<string, StubKind>();
   let latest: TranscriptView["latestCompaction"] = null;
   let turn = 0;
 
@@ -157,10 +158,16 @@ export function buildTranscriptView(params: {
       continue;
     }
     if (r.type === "custom" && r.customType === PRUNE_RECORD_CUSTOM_TYPE) {
-      const data = r.data as { stubs?: Array<{ entryId?: unknown; kind?: unknown }> } | undefined;
+      const data = r.data as
+        | { stubs?: Array<{ entryId?: unknown; toolCallId?: unknown; kind?: unknown }> }
+        | undefined;
       for (const s of data?.stubs ?? []) {
+        const kind: StubKind = s.kind === "heartbeat_pair" ? "heartbeat_pair" : "tool_result";
         if (typeof s.entryId === "string") {
-          stubbedIds.set(s.entryId, s.kind === "heartbeat_pair" ? "heartbeat_pair" : "tool_result");
+          stubbedIds.set(s.entryId, kind);
+        } else if (typeof s.toolCallId === "string") {
+          // Engine-side stubs are keyed by tool call id; resolved below.
+          stubbedCallIds.set(s.toolCallId, kind);
         }
       }
       continue;
@@ -201,6 +208,12 @@ export function buildTranscriptView(params: {
       isHeartbeatAck: role === "assistant" && isHeartbeatAckText(text),
       promptTokensActual: role === "assistant" ? actualPromptTokens(message?.usage) : undefined,
     });
+  }
+
+  for (const e of allEntries) {
+    if (e.toolCallId && stubbedCallIds.has(e.toolCallId)) {
+      stubbedIds.set(e.id, stubbedCallIds.get(e.toolCallId)!);
+    }
   }
 
   let entries = allEntries;

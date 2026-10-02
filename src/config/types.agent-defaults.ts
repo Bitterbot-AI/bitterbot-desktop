@@ -379,6 +379,14 @@ export type AgentCompactionOffloadConfig = {
    * this agent, owner senders only. Decision 11 (2026-10-01).
    */
   recallCrossSession?: "off" | "owner";
+  /**
+   * Tool-output stubs (PLAN-52A T3): when a turn passes the mid-turn trigger,
+   * replace the oldest tool outputs with a stub naming the tool call id; the
+   * full text stays in the transcript and `recall_range` returns it. Stubs are
+   * recorded in the transcript and re-applied every turn. Independent of
+   * `policy`. Default true.
+   */
+  toolOutputStubs?: boolean;
   /** Turn-end (between turns) trigger as a fraction of the context window. Default 0.55. */
   triggerTurnEndFraction?: number;
   /** Turn-start safety-net trigger. Default 0.70. */
@@ -401,7 +409,11 @@ export type AgentCompactionOffloadConfig = {
   ledgerBudgetTokens?: number;
   /** A horizon cut must elide at least this many tokens (overflow and manual ignore it). Default 2000. */
   minElidedTokens?: number;
-  /** Cheap-model summary appended to the ledger: off | idle (between turns, manual) | always. Default idle. */
+  /**
+   * Cheap-model summary appended to the ledger: off | idle (between turns,
+   * manual) | always. Default `always` (decision 13, 2026-10-01): the
+   * evaluation showed the ledger alone losing 0.25 accuracy against a summary.
+   */
   summary?: "off" | "idle" | "always";
   /** Model for the cheap summary. Default anthropic/claude-haiku-4-5. */
   summaryModel?: string;

@@ -137,29 +137,40 @@ export function resolveHotSetConfig(params: {
       : HOT_SET_DEFAULT_MAX;
   const always = cleanNames(agent?.always) ??
     cleanNames(global?.always) ?? [...HOT_SET_DEFAULT_ALWAYS];
-  // PLAN-52A decision 5: under the `offload` compaction policy the model must
-  // be able to reach offloaded text without a tool-search hop, so the small
-  // deterministic reader is always hot. Static per agent (no per-session
-  // promotion: changing the tools array would invalidate the whole cache
-  // prefix, since tools precede the system prompt). `deep_recall` stays
-  // deferred; the offload note names it, so tool search finds it.
-  if (
-    params.config?.agents?.defaults?.compaction?.policy === "offload" &&
-    !always.includes("recall_range")
-  ) {
-    always.push("recall_range");
-  }
+  // PLAN-52A: tool-output stubs (on by default) and offload notes point at
+  // `recall_range`, so the model must reach it without a tool-search hop. It
+  // joins the DEFAULT chat and cron lane lists with a slot of its own (the
+  // default max grows by one). An operator's explicit `perLane` or `max` is
+  // respected as written. Static per agent on purpose: promoting per session
+  // would change the tools array, which invalidates the whole cache prefix.
+  // The heartbeat lane stays lean; `deep_recall` stays deferred (notes name it).
+  const compaction = params.config?.agents?.defaults?.compaction;
+  const recallHot =
+    compaction?.policy === "offload" || compaction?.offload?.toolOutputStubs !== false;
   const perLane = {} as Record<ToolHotSetLane, string[]>;
   for (const lane of ["chat", "heartbeat", "cron", "subagent"] as const) {
-    perLane[lane] = cleanNames(agent?.perLane?.[lane]) ??
-      cleanNames(global?.perLane?.[lane]) ?? [...HOT_SET_DEFAULT_PER_LANE[lane]];
+    const explicit = cleanNames(agent?.perLane?.[lane]) ?? cleanNames(global?.perLane?.[lane]);
+    perLane[lane] = explicit ?? defaultLaneTools(lane, recallHot);
   }
   return {
     enabled: agent?.enabled ?? global?.enabled ?? true,
-    max,
+    max: maxRaw === undefined && recallHot ? max + 1 : max,
     always,
     perLane,
   };
+}
+
+/** Lanes whose default hot list carries the transcript reader when stubs or offload are on. */
+const RECALL_HOT_LANES: ReadonlySet<ToolHotSetLane> = new Set(["chat", "cron"]);
+export const HOT_SET_RECALL_TOOL = "recall_range";
+
+/** Default lane list, with `recall_range` appended for chat and cron when `recallHot`. */
+export function defaultLaneTools(lane: ToolHotSetLane, recallHot: boolean): string[] {
+  const base = [...HOT_SET_DEFAULT_PER_LANE[lane]];
+  if (recallHot && RECALL_HOT_LANES.has(lane) && !base.includes(HOT_SET_RECALL_TOOL)) {
+    base.push(HOT_SET_RECALL_TOOL);
+  }
+  return base;
 }
 
 /** ASCII (UTF-16 code unit) sort by name; returns a new array, input untouched. */

@@ -228,6 +228,10 @@ export function renderToolStubMarker(stub: {
   toolName?: string;
   chars: number;
   entryId: string;
+  toolCallId?: string;
 }): string {
+  if (stub.toolCallId) {
+    return `[tool output offloaded: ${stub.toolName ?? "tool"}, ${stub.chars.toLocaleString()} chars; full text: recall_range tool_call_id ${stub.toolCallId}]`;
+  }
   return `[tool output offloaded: ${stub.toolName ?? "tool"}, ${stub.chars.toLocaleString()} chars; full text: recall_range entry ${stub.entryId}]`;
 }

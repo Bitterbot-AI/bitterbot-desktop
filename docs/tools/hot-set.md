@@ -108,17 +108,25 @@ exec 64.8%, read 11.9%, process 4.3%, web_search 3.1%, web_fetch 2.5%,
 memory_search 2.1%, code_interpreter 1.9%, browser 1.3%, write 1.2%,
 edit 1.0%; everything else under 0.7%.
 
-| lane      | always              | lane list                                                                                      | est. tokens |
-| --------- | ------------------- | ---------------------------------------------------------------------------------------------- | ----------- |
-| chat      | read, memory_search | exec, process, write, edit, web_search, web_fetch, code_interpreter, sessions_send             | ~3.3k       |
-| heartbeat | read, memory_search | message                                                                                        | ~3.7k       |
-| cron      | read, memory_search | same as chat minus browser/canvas                                                              | ~3.3k       |
-| subagent  | read, memory_search | chat list minus sessions_send (the subagent policy already denies memory_search/sessions_send) | ~2.9k       |
+| lane      | always              | lane list                                                                                        | est. tokens |
+| --------- | ------------------- | ------------------------------------------------------------------------------------------------ | ----------- |
+| chat      | read, memory_search | exec, process, write, edit, web_search, web_fetch, code_interpreter, sessions_send, recall_range | ~3.4k       |
+| heartbeat | read, memory_search | message                                                                                          | ~3.7k       |
+| cron      | read, memory_search | same as chat minus browser/canvas                                                                | ~3.4k       |
+| subagent  | read, memory_search | chat list minus sessions_send (the subagent policy already denies memory_search/sessions_send)   | ~2.9k       |
 
 `message` (7.1k chars, 85 properties, 0.06% of calls) is deferred in chat and
 hot in heartbeat, where it is the delivery path. `browser` (3.2k chars) is
-deferred everywhere. `max` is 10; the selection is a priority cut, `always`
-first, then the lane list, in the order written.
+deferred everywhere. `max` is 10 (11 with the default `recall_range` slot); the
+selection is a priority cut, `always` first, then the lane list, in the order
+written.
+
+`recall_range` is in the default chat and cron lists because tool-output stubs
+(on by default) and context-offload notes point at it: the model must be able
+to fetch the full text without a tool-search hop. It gets a slot of its own
+rather than evicting a lane tool. Set
+`agents.defaults.compaction.offload.toolOutputStubs: false` (with the default
+`summary` compaction policy) to drop it, or list `perLane` explicitly.
 
 The meta-tools are only added when something is actually deferred. Sessions
 whose policy already narrows the list to a handful of tools (skill-validation

@@ -394,6 +394,10 @@ export async function handleToolExecutionEnd(
   ) {
     let estimatedTokens: number | undefined;
     try {
+      // Bookkeeping only: this keeps `session.messages` bounded and feeds the
+      // handoff nudge below. It does NOT change the context of the run in
+      // flight (the loop works on a snapshot); `in-run-budget.ts`, installed
+      // as the loop's transformContext hook, is what the model sees.
       const result = applyMidTurnBudget({
         session: session as Parameters<typeof applyMidTurnBudget>[0]["session"],
         contextWindowTokens: ctxWindow,
@@ -406,7 +410,7 @@ export async function handleToolExecutionEnd(
       }
       if (result.applied) {
         ctx.log.debug(
-          `[mid-turn-budget] runId=${ctx.params.runId} compressed ${result.messagesBefore}→${result.messagesAfter} msgs, ${result.tokensBefore}→${result.tokensAfter} est tokens (passes=${result.passes})`,
+          `[mid-turn-budget] runId=${ctx.params.runId} ${result.method} ${result.messagesBefore}→${result.messagesAfter} msgs, ${result.tokensBefore}→${result.tokensAfter} est tokens (passes=${result.passes}, stubs=${result.stubs?.length ?? 0})`,
         );
         emitAgentEvent({
           runId: ctx.params.runId,
@@ -417,6 +421,8 @@ export async function handleToolExecutionEnd(
             tokensAfter: result.tokensAfter,
             messagesBefore: result.messagesBefore,
             messagesAfter: result.messagesAfter,
+            method: result.method,
+            stubs: result.stubs?.length ?? 0,
           },
         });
       }

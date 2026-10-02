@@ -37,20 +37,29 @@ durable notes to disk. See [Memory](/concepts/memory) for details and config.
 
 ## Mid-turn budget guard
 
-A long single-turn tool loop (e.g. 50 tool calls each adding 100KB+ of
-output) can grow context unboundedly between LLM calls within one
-agent run. The mid-turn guard fires after every tool result:
+A long single-turn tool loop (for example 50 tool calls each adding 100KB+ of
+output) can grow the context between model calls within one agent run. The
+guard runs before every model call of a run, on the context that call is about
+to send:
 
-1. Cheap char check — skip if total session message chars < 80,000.
-2. Token estimate — skip if estimated tokens < 80% of the model's context window.
-3. Otherwise, run **progressive compression** (deterministic, no LLM call) targeting 65% of the context window, and replace session messages in place via `session.agent.replaceMessages`.
+1. Re-apply the tool-output stubs already recorded for this session.
+2. Cheap char check: skip if the message text is under 80,000 chars.
+3. Token estimate (messages plus the system prompt): skip if under 80% of the model's context window.
+4. Stub the oldest tool outputs toward 50% of the window (see [Tool-output stubs](#tool-output-stubs-mid-turn-lossless)) and record them in the transcript.
+5. If the context is still over the trigger, run **progressive compression** (deterministic truncation, no LLM call) toward 65% of the window, for this call only.
 
-This is the same operation pi-coding-agent uses for its own auto-compaction,
-so it's safe to invoke from inside an active run. Heavy LLM-based summary
-compaction stays in the existing flow and runs between turns.
+The transcript on disk is never modified; only the context sent to the model
+is. Heavy LLM-based summary compaction stays in the existing flow and runs
+between turns.
 
-The guard emits a `compaction` agent event with `phase=mid-turn-budget`
-when it fires, including before/after token and message counts.
+The guard emits a `compaction` agent event with `phase=in-run-budget` when it
+acts, with before/after token estimates, the number of new stubs, and whether
+truncation ran.
+
+Before 2026-10 the guard ran after each tool result and edited the session's
+message list. The agent loop sends a snapshot taken when the run starts, so
+that edit never reached the model during the run in flight; the guard now runs
+on the loop's per-call context hook instead.
 
 ## Compaction circuit breaker
 
@@ -84,6 +93,10 @@ Use `/compact` (optionally with instructions) to force a compaction pass:
 ## Context window source
 
 Context window is model-specific. Bitterbot uses the model definition from the configured provider catalog to determine limits.
+
+## Tool-output stubs (mid-turn, lossless)
+
+When a single turn's tool loop passes 80% of the context window, Bitterbot first replaces the oldest tool outputs with a one-line stub that names the tool call id. Nothing is lost: the transcript keeps the full output and the agent fetches it with [`recall_range`](/tools/recall-range). The two most recent outputs and small outputs are left alone. Stubs are recorded in the transcript and re-applied every turn, so they also survive a restart. See `agents.defaults.compaction.offload.toolOutputStubs` (default on).
 
 ## Progressive compression (pre-compaction)
 

@@ -24,6 +24,7 @@ For questions that span many earlier turns ("what did we decide about X across t
 
 | Argument               | Meaning                                                                                                                                 |
 | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `tool_call_id`         | The tool call id named in a `[tool output offloaded …]` stub. Returns that tool output in full.                                         |
 | `entries.from`, `.to`  | Inclusive entry-id bounds (pi v3 `message` entry ids). A single entry (`from` = `to`) returns the full tool output.                     |
 | `turns`                | `"3-7"` or `"5"`. A turn is a user message and everything until the next one; heartbeats count, so numbering is stable across offloads. |
 | `lines.from`, `.to`    | Inclusive 1-based JSONL line bounds, the same addressing the memory index and offload notes use.                                        |
@@ -46,7 +47,17 @@ The same posture applies to `deep_recall`: its `recent_sessions` and `all_sessio
 
 ## Hot set
 
-Under the `offload` compaction policy (`agents.defaults.compaction.policy: "offload"`), `recall_range` is added to the always-hot tool set so the model can reach offloaded text without a tool-search hop. Its schema is about 150 tokens. `deep_recall` stays deferred; offload notes name it, so tool search finds it. The addition is static per agent on purpose: promoting tools per session would change the tools array, which invalidates the whole prompt cache prefix.
+`recall_range` is hot by default in the chat and cron lanes, with a slot of its own: tool-output stubs (on by default) and context-offload notes point at it, so the model must reach it without a tool-search hop. Its schema is about 150 tokens. `deep_recall` stays deferred; offload notes name it, so tool search finds it. The addition is static per agent on purpose: promoting tools per session would change the tools array, which invalidates the whole prompt cache prefix. It is dropped only when stubs are disabled and the compaction policy is `summary`, or when the operator lists `perLane` explicitly.
+
+## Tool-output stubs
+
+When a tool-heavy turn passes 80% of the context window, the oldest tool outputs are replaced in the window by a one-line stub:
+
+```
+[tool output offloaded: read, 104,212 chars; full text: recall_range tool_call_id toolu_01AbC…]
+```
+
+The two most recent outputs and any output under 1,000 tokens are never stubbed. The transcript keeps the full text; `recall_range` with that `tool_call_id` returns it. Stubs are recorded in the transcript (a `custom` entry of type `bitterbot.offload-prune`) and re-applied before every model call, so they hold for the rest of the run, the next turn, and a gateway restart. This replaces middle-out truncation as the first mid-turn step; truncation still runs if stubs alone do not free enough. Switch: `agents.defaults.compaction.offload.toolOutputStubs` (default `true`).
 
 ## Relationship to expand_message
 

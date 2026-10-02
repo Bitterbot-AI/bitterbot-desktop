@@ -159,7 +159,18 @@ export type PruneRecordDraft = {
   data: {
     version: 1;
     trigger: CompactionTrigger;
-    stubs: Array<{ entryId: string; kind: StubKind; chars: number; toolName?: string }>;
+    /**
+     * `entryId` when the planner works on transcript entries, `toolCallId` when
+     * the engine stubs in-memory messages (tool results carry it in both the
+     * message and the transcript entry). At least one is present.
+     */
+    stubs: Array<{
+      entryId?: string;
+      toolCallId?: string;
+      kind: StubKind;
+      chars: number;
+      toolName?: string;
+    }>;
   };
 };
 

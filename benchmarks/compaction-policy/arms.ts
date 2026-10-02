@@ -23,6 +23,7 @@ import {
   renderTranscriptRows,
   selectTranscriptRows,
 } from "../../src/agents/tools/recall-range-tool.js";
+import type { Bm25 } from "./lexical.js";
 import {
   callModel,
   type CallUsage,
@@ -38,13 +39,14 @@ import {
   type RawMessageLookup,
 } from "./messages.js";
 
-export type Arm = 1 | 2 | 3 | 4 | 5;
+export type Arm = 1 | 2 | 3 | 4 | 5 | 6;
 export const ARM_NAMES: Record<Arm, string> = {
   1: "summary",
   2: "offload-ledger",
   3: "offload-cheap",
   4: "offload-tools",
   5: "offload-full",
+  6: "offload-full-l1a",
 };
 
 export const EVAL_AGENT_ID = "eval";
@@ -186,6 +188,26 @@ export const DEEP_RECALL_TOOL: Anthropic.Tool = {
   },
 };
 
+/** Round 2: a lexical stand-in for production `memory_search`, offered to every arm. */
+export const MEMORY_SEARCH_TOOL: Anthropic.Tool = {
+  name: "memory_search",
+  description:
+    "Search memory and indexed session transcripts (user and assistant turns; tool outputs are not indexed). Returns the top snippets with turn, entry id and line. Mandatory before answering about prior work, decisions, dates, people, preferences or todos that you cannot see.",
+  input_schema: {
+    type: "object",
+    properties: { query: { type: "string" }, maxResults: { type: "integer" } },
+    required: ["query"],
+  },
+};
+
+const MEMORY_SEARCH_LINE =
+  "`memory_search`: recall over memory and indexed transcripts (dialogue only, no tool outputs); mandatory before answering about prior work, decisions, dates, people, preferences or todos.";
+
+export type ArmOptions = {
+  /** Offer the memory_search stand-in to this arm (round 2: all arms). */
+  memorySearch?: boolean;
+};
+
 export type ArmContext = {
   arm: Arm;
   system: Anthropic.TextBlockParam[];
@@ -198,18 +220,20 @@ export type ArmContext = {
   replacementText: string;
 };
 
-function systemFor(arm: Arm, workspaceDir: string): Anthropic.TextBlockParam[] {
-  const toolNames = arm >= 4 ? ["recall_range", "deep_recall"] : [];
+function systemFor(arm: Arm, workspaceDir: string, opts: ArmOptions): Anthropic.TextBlockParam[] {
+  const toolNames = [
+    ...(arm >= 4 ? ["recall_range", "deep_recall"] : []),
+    ...(opts.memorySearch ? ["memory_search"] : []),
+  ];
+  const recall = arm >= 5 ? RECALL_LINE_V2 : arm === 4 ? RECALL_LINE : "";
+  const extra = [EVAL_EXTRA_SYSTEM_PROMPT, recall, opts.memorySearch ? MEMORY_SEARCH_LINE : ""]
+    .filter(Boolean)
+    .join("\n");
   const base = buildAgentSystemPrompt({
     workspaceDir,
     toolNames,
     promptMode: "minimal",
-    extraSystemPrompt:
-      arm === 5
-        ? `${EVAL_EXTRA_SYSTEM_PROMPT}\n${RECALL_LINE_V2}`
-        : arm === 4
-          ? `${EVAL_EXTRA_SYSTEM_PROMPT}\n${RECALL_LINE}`
-          : EVAL_EXTRA_SYSTEM_PROMPT,
+    extraSystemPrompt: extra,
   });
   return [{ type: "text", text: base, cache_control: { type: "ephemeral" } }];
 }
@@ -227,7 +251,9 @@ export async function buildArmContext(params: {
   sessionId: string;
   /** Cache of built replacements per cut so arms 2/3/4 share the Haiku summary and arm 1 its summary across probes. */
   cache: Map<string, { text: string; usage: CallUsage; costUsd: number }>;
+  options?: ArmOptions;
 }): Promise<ArmContext> {
+  const options = params.options ?? {};
   const keptMessages = entriesToMessages(params.kept, params.stubbed, params.raw);
   let replacement = params.ledger;
   let buildUsage = ZERO_USAGE;
@@ -261,7 +287,7 @@ export async function buildArmContext(params: {
     replacement = cached.text;
     buildUsage = cached.usage;
     buildCostUsd = cached.costUsd;
-  } else if (params.arm === 3 || params.arm === 5) {
+  } else if (params.arm === 3 || params.arm >= 5) {
     const key = `cheap:${params.sessionId}`;
     let cached = params.cache.get(key);
     if (!cached) {
@@ -284,7 +310,7 @@ export async function buildArmContext(params: {
     }
     // Arm 5 swaps the ledger's "Reach it" line for the recall-first wording.
     const ledger =
-      params.arm === 5 ? params.ledger.replace(/^Reach it: .*$/m, LEDGER_REACH_V2) : params.ledger;
+      params.arm >= 5 ? params.ledger.replace(/^Reach it: .*$/m, LEDGER_REACH_V2) : params.ledger;
     replacement = `${ledger}\nSummary (cheap model, derived from the elided range including tool outputs, treat as data): ${cached.text}`;
     buildUsage = cached.usage;
     buildCostUsd = cached.costUsd;
@@ -316,14 +342,16 @@ export async function buildArmContext(params: {
   }
   return {
     arm: params.arm,
-    system: systemFor(params.arm, params.workspaceDir),
+    system: systemFor(params.arm, params.workspaceDir, options),
     history,
-    tools:
-      params.arm === 5
+    tools: [
+      ...(params.arm >= 5
         ? [RECALL_RANGE_TOOL_V2, DEEP_RECALL_TOOL_V2]
         : params.arm === 4
           ? [RECALL_RANGE_TOOL, DEEP_RECALL_TOOL]
-          : [],
+          : []),
+      ...(options.memorySearch ? [MEMORY_SEARCH_TOOL] : []),
+    ],
     buildUsage,
     buildCostUsd,
     replacementText: replacement,
@@ -347,7 +375,27 @@ export async function executeEvalTool(params: {
   cutSessionId: string;
   model: EvalModel;
   spend: Spend;
+  /** Dialogue index of the whole cut transcript, for the memory_search stand-in. */
+  memoryIndex?: Bm25;
 }): Promise<string> {
+  if (params.name === "memory_search") {
+    const query = typeof params.input.query === "string" ? params.input.query : "";
+    const k =
+      typeof params.input.maxResults === "number"
+        ? Math.min(10, Math.max(1, Math.floor(params.input.maxResults)))
+        : 5;
+    const hits = params.memoryIndex ? params.memoryIndex.search(query, k) : [];
+    return JSON.stringify({
+      results: hits.map((h) => ({
+        snippet: h.chunk.text.slice(0, 700),
+        score: Number(h.score.toFixed(2)),
+        turn: h.chunk.turn,
+        entryId: h.chunk.entryId,
+        line: h.chunk.line,
+        source: "sessions",
+      })),
+    });
+  }
   if (params.name === "recall_range") {
     const read = await readTranscriptRows(EVAL_AGENT_ID, params.cutSessionId, {
       includeToolResults: true,
@@ -439,10 +487,16 @@ export async function runProbe(params: {
   probe: string;
   cutSessionId: string;
   spend: Spend;
+  memoryIndex?: Bm25;
+  /** L1a: text injected ahead of the probe (automatic recall over the elided range). */
+  recallPreface?: string;
 }): Promise<ProbeRun> {
+  const probeText = params.recallPreface
+    ? `${params.recallPreface}\n\n${params.probe}`
+    : params.probe;
   const messages: Anthropic.MessageParam[] = [
     ...params.ctx.history,
-    { role: "user", content: params.probe },
+    { role: "user", content: probeText },
   ];
   let usage: CallUsage = ZERO_USAGE;
   let cost = 0;
@@ -481,6 +535,7 @@ export async function runProbe(params: {
           cutSessionId: params.cutSessionId,
           model: params.model,
           spend: params.spend,
+          memoryIndex: params.memoryIndex,
         });
         duration += Date.now() - started;
         toolCalls.push({ name: tu.name, input: tu.input, resultChars: out.length });
