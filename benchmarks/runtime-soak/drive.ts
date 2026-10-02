@@ -339,6 +339,9 @@ async function scenarioError(ctx: Ctx): Promise<Check[]> {
   ];
 }
 
+// Kept short on purpose: a longer "read, then write" wording lands in the gray
+// band of the complexity gate (PLAN-22) and the gateway opens a goal task for
+// it on every round, which stays pending.
 async function scenarioChain(ctx: Ctx, state: Record<string, string>): Promise<Check[]> {
   const tok = token("chain");
   const fileB = ctx.rel("b.md");
@@ -346,7 +349,7 @@ async function scenarioChain(ctx: Ctx, state: Record<string, string>): Promise<C
   fs.writeFileSync(path.join(ctx.agent.workspace, fileB), `${tok}\n`);
   const r = await reply(
     ctx,
-    `Read ${state.fileA} and ${fileB}. Then write ${fileC} containing one line: the first line of ${state.fileA}, a plus sign, and the first line of ${fileB}, with no spaces. Reply with the single word done.`,
+    `Join the first lines of ${state.fileA} and ${fileB} with a plus sign (no spaces) into ${fileC}. Reply: done.`,
   );
   const expected = `${state.firstToken}+${tok}`;
   const onDisk = fs.existsSync(path.join(ctx.agent.workspace, fileC))

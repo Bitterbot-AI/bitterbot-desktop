@@ -129,9 +129,13 @@ node --import tsx benchmarks/runtime-soak/drive.ts \
   --rounds 60 --sleep-minutes 5 --max-usd 18 --skip-on-pi abort
 ```
 
-Per round and agent, in a fresh session: write and read a file, run a shell pipeline whose output only the tool can produce, edit, a failing read, a three-file chain, an answer from the conversation, `/compact` through `chat.send` and an answer from the compacted part, an abort, a sub-agent (every third round), and one turn through `chat.send` with the event stream counted. In one long-lived session per agent it reads a generated log in chunks and is asked for the oldest marked id without reading again, so that session crosses the compaction thresholds every few rounds. Rows go to `~/.bitterbot/eval/runtime-soak/results.jsonl`; spend is read from the usage ledger and capped per agent.
+Per round and agent, in a fresh session: write and read a file, run a shell pipeline whose output only the tool can produce, edit, a failing read, a three-file chain, an answer from the conversation, `/compact` through `chat.send` and an answer from the compacted part, an abort, a sub-agent (every third round), and one turn through `chat.send` with the event stream counted. In one long-lived session per agent it reads a generated log in chunks and is asked for the oldest marked id without reading again, so that session crosses the compaction thresholds every few rounds. Rows go to `~/.bitterbot/eval/runtime-soak/results.jsonl`; spend is read from the usage ledger and capped per agent. `node benchmarks/runtime-soak/report.mjs [tag]` summarises them.
 
 Run the same workload against a twin agent on the other engine to compare like with like. Do not run type checks or test suites on the same machine while it runs: on a small box they starve the gateway's event loop and the latencies mean nothing.
+
+On 2026-10-02 the long session of an agent on the `bitterbot` engine with `compaction.policy: offload` crossed the turn-end trigger through the gateway for the first time: turns 1 to 4 (35 messages, about 53k tokens) were replaced by a ledger, and the next probe answered with the value from the offloaded part.
+
+Keep prompts under the complexity gate (PLAN-22): a "read, then write" wording scored in its gray band and the gateway opened a goal task for it on every round.
 
 What it found on its first day (2026-10-02), all fixed: a shell command that printed after its turn had ended crashed the gateway on the `pi` engine (pi-agent-core rejects a progress update outside a run, and nothing awaited it); file reads were served from a process-wide five-minute cache with no invalidation and no agent in the key. The cache now holds only `web_search` and `web_fetch` by default, sits inside every gate, and is keyed by agent, workspace, session and sandbox state.
 
