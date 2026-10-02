@@ -1,7 +1,7 @@
 import {
   getCompactionBreakerSnapshot,
   listCompactionBreakers,
-} from "../../agents/pi-embedded-runner/compaction-circuit-breaker.js";
+} from "../../agents/embedded-runner/compaction-circuit-breaker.js";
 import { getCacheMetrics, listCacheMetrics } from "../../agents/prompt-cache-monitor.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";

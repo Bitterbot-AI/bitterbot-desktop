@@ -31,7 +31,7 @@ import type {
 import { createAssistantMessageEventStream, getEnvApiKey, streamSimple } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../../../config/config.js";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
-import { applyAnthropicCacheLayout } from "../../pi-embedded-runner/anthropic-payload-cache.js";
+import { applyAnthropicCacheLayout } from "../../embedded-runner/anthropic-payload-cache.js";
 import {
   buildCopilotDynamicHeaders,
   hasCopilotVisionInput,

@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createBitterbotTools } from "../agents/bitterbot-tools.js";
 import {
   resolveEffectiveToolPolicy,
   resolveGroupToolPolicy,
   resolveSubagentToolPolicy,
-} from "../agents/pi-tools.policy.js";
+} from "../agents/agent-tools.policy.js";
+import { createBitterbotTools } from "../agents/bitterbot-tools.js";
 import {
   applyToolPolicyPipeline,
   buildDefaultToolPolicyPipelineSteps,

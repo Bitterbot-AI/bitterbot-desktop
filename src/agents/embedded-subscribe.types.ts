@@ -1,0 +1,75 @@
+import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { ReasoningLevel, VerboseLevel } from "../auto-reply/thinking.js";
+import type { BitterbotConfig } from "../config/types.bitterbot.js";
+import type { HookRunner } from "../plugins/hooks.js";
+import type { BlockReplyChunking } from "./embedded-block-chunker.js";
+
+export type ToolResultFormat = "markdown" | "plain";
+
+export type SubscribeEmbeddedPiSessionParams = {
+  session: AgentSession;
+  runId: string;
+  hookRunner?: HookRunner;
+  verboseLevel?: VerboseLevel;
+  reasoningMode?: ReasoningLevel;
+  toolResultFormat?: ToolResultFormat;
+  shouldEmitToolResult?: () => boolean;
+  shouldEmitToolOutput?: () => boolean;
+  onToolResult?: (payload: { text?: string; mediaUrls?: string[] }) => void | Promise<void>;
+  onReasoningStream?: (payload: { text?: string; mediaUrls?: string[] }) => void | Promise<void>;
+  onBlockReply?: (payload: {
+    text?: string;
+    mediaUrls?: string[];
+    audioAsVoice?: boolean;
+    replyToId?: string;
+    replyToTag?: boolean;
+    replyToCurrent?: boolean;
+  }) => void | Promise<void>;
+  /** Flush pending block replies (e.g., before tool execution to preserve message boundaries). */
+  onBlockReplyFlush?: () => void | Promise<void>;
+  blockReplyBreak?: "text_end" | "message_end";
+  blockReplyChunking?: BlockReplyChunking;
+  onPartialReply?: (payload: { text?: string; mediaUrls?: string[] }) => void | Promise<void>;
+  onAssistantMessageStart?: () => void | Promise<void>;
+  onAgentEvent?: (evt: { stream: string; data: Record<string, unknown> }) => void | Promise<void>;
+  enforceFinalTag?: boolean;
+  config?: BitterbotConfig;
+  sessionKey?: string;
+  /**
+   * PLAN-50: transcript file for this session. The usage ledger keys live rows on
+   * `<transcript basename>:<message.timestamp>` so the periodic transcript reconcile never
+   * double counts a turn that was already recorded live.
+   */
+  sessionFile?: string;
+  /** PLAN-50: agent that owns the session, for per-agent usage attribution. */
+  agentId?: string;
+  /** PLAN-50: heartbeat runs are attributed to `agent/heartbeat`. */
+  isHeartbeat?: boolean;
+  /** PLAN-50 Phase 5: prompt-cache TTL the run uses (Anthropic), for cache-write pricing. */
+  cacheTtl?: "5m" | "1h" | "none";
+  /** PLAN-50 Phase 6: messaging channel that carried the turn, for per-channel attribution. */
+  channel?: string;
+  /**
+   * Model context window in tokens. When provided, enables the mid-turn
+   * budget guard that proactively compresses session messages between
+   * tool calls so long tool loops don't overflow context.
+   */
+  contextWindowTokens?: number;
+  /**
+   * Model identity for this run, journaled on the lifecycle `start` event so
+   * every trace, skill-read credit and label can be attributed to the exact
+   * substrate that produced it (2026-09-05 harness review W1). Optional only
+   * for legacy callers; the embedded runner always supplies it.
+   */
+  modelRef?: { provider: string; model: string; thinkLevel?: string };
+  /**
+   * When true, the assistant text stream is passed through a
+   * StreamingContextScrubber that strips <memory-context>...</memory-context>
+   * spans across chunk boundaries. Pairs with
+   * formatProactiveFacts({ wrapInMemoryFence: true }) on the prompt-build
+   * side. Default false — flipping requires both ends in sync.
+   */
+  memoryFenceWrapping?: boolean;
+};
+
+export type { BlockReplyChunking } from "./embedded-block-chunker.js";

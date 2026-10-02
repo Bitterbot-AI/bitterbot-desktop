@@ -2,7 +2,7 @@
  * PLAN-20 Phase 1: runner that drives registered pre-action interceptors
  * for a candidate tool call.
  *
- * Called by `runBeforeToolCallHook` in pi-tools.before-tool-call.ts BEFORE
+ * Called by `runBeforeToolCallHook` in agent-tools.before-tool-call.ts BEFORE
  * plugin hooks. Returns either:
  *  - { kind: "pass", params } — no interceptor fired (or all NOOP)
  *  - { kind: "modify", params, fired }

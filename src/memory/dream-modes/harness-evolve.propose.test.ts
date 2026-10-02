@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultHarnessPolicy } from "../../agents/pi-embedded-runner/harness-policy.js";
+import { defaultHarnessPolicy } from "../../agents/embedded-runner/harness-policy.js";
 import { proposeHarnessCandidates } from "./harness-evolve.propose.js";
 import type { FailureCluster } from "./harness-evolve.weakness.js";
 

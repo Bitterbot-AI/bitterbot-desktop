@@ -10,12 +10,12 @@
 
 This study was commissioned with a brief that assumed a specific Bitterbot architecture (LangGraph orchestration, a Rust harness layer, a Wasm/WASI execution sandbox, and a local "frozen" model acting as proposer). **I verified each assumption against the codebase, and most do not hold.** Rather than write a fictional report on a stack that does not exist, I have re-grounded the entire study in what Bitterbot actually is. The headline finding is _more_ favorable than the brief implies: Bitterbot already ships ~70% of a Self-Harness loop under different names.
 
-| Brief assumed                    | Reality in `/mnt/d/Bitterbot/bitterbot-desktop`                                                                                                                    | Evidence                                                                |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
-| LangGraph orchestration          | **No LangGraph.** Orchestration is TypeScript via `@mariozechner/pi-agent-core` + `pi-coding-agent` (v0.52.12).                                                    | `src/agents/pi-embedded-runner/run/attempt.ts`, `package.json`          |
-| Rust harness layer               | **No Rust in the agent loop.** Rust exists only as a P2P/libp2p relay daemon in `orchestrator/`, unrelated to tool-calling.                                        | `orchestrator/` (Tokio/libp2p)                                          |
-| Wasm/WASI sandbox                | **No WASI/wasmtime/wasmer.** `.wasm` files are vendored deps only (shiki, brotli, pdfjs). Code isolation is **Docker** + static scanners.                          | `src/agents/sandbox/docker.ts`, `src/security/skill-scanner.ts`         |
-| Local "frozen" model as proposer | **Remote multi-provider** via `pi-ai` (Anthropic primary; OpenAI, Bedrock, Ollama-server, etc.). "Frozen" in the codebase refers to _skill crystals_, not weights. | `src/agents/pi-embedded-runner/model.ts`, `src/agents/system-prompt.ts` |
+| Brief assumed                    | Reality in `/mnt/d/Bitterbot/bitterbot-desktop`                                                                                                                    | Evidence                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| LangGraph orchestration          | **No LangGraph.** Orchestration is TypeScript via `@mariozechner/pi-agent-core` + `pi-coding-agent` (v0.52.12).                                                    | `src/agents/embedded-runner/run/attempt.ts`, `package.json`          |
+| Rust harness layer               | **No Rust in the agent loop.** Rust exists only as a P2P/libp2p relay daemon in `orchestrator/`, unrelated to tool-calling.                                        | `orchestrator/` (Tokio/libp2p)                                       |
+| Wasm/WASI sandbox                | **No WASI/wasmtime/wasmer.** `.wasm` files are vendored deps only (shiki, brotli, pdfjs). Code isolation is **Docker** + static scanners.                          | `src/agents/sandbox/docker.ts`, `src/security/skill-scanner.ts`      |
+| Local "frozen" model as proposer | **Remote multi-provider** via `pi-ai` (Anthropic primary; OpenAI, Bedrock, Ollama-server, etc.). "Frozen" in the codebase refers to _skill crystals_, not weights. | `src/agents/embedded-runner/model.ts`, `src/agents/system-prompt.ts` |
 
 The "frozen model" framing is, however, _conceptually_ correct and worth keeping: in Self-Harness the model weights never change — only the non-parametric harness around them does. Bitterbot satisfies this trivially because the model is a remote API; we cannot touch its weights even if we wanted to. The proposer role is just "the same model, prompted to edit configuration."
 
@@ -62,19 +62,19 @@ APEX's explicit critique of Self-Harness: it "optimises only one dimension — t
 
 The pi-framework owns the _mechanical_ loop (LLM call → parse tool calls → execute → feed back). Bitterbot does **not** hand-roll this, which means the loop-control machinery is **library code, not our editable surface.** What _is_ ours and editable maps almost 1:1 onto Self-Harness's definition:
 
-| Self-Harness surface         | Bitterbot artifact                                                           | File                                                                           |
-| ---------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Instructions / system prompt | System prompt assembly                                                       | `src/agents/system-prompt.ts`                                                  |
-| Instructions (modular)       | **Skills** = `SKILL.md` (YAML frontmatter + body), live/staged/archived dirs | `src/agents/skills/*`, `src/agents/tools/skill-manage-tool.ts`                 |
-| Tools available              | Tool registry + adapter                                                      | `src/agents/pi-tools.ts`, `src/agents/pi-tool-definition-adapter.ts`           |
-| Runtime control policies     | **Interceptors** (block/modify/require_prereq/inject)                        | `src/agents/skills/interceptor*.ts`, `src/agents/pi-tools.before-tool-call.ts` |
-| Memory / state mgmt          | Compaction + memory manager                                                  | `src/agents/compaction.ts`, `src/memory/manager.ts`                            |
+| Self-Harness surface         | Bitterbot artifact                                                           | File                                                                                    |
+| ---------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Instructions / system prompt | System prompt assembly                                                       | `src/agents/system-prompt.ts`                                                           |
+| Instructions (modular)       | **Skills** = `SKILL.md` (YAML frontmatter + body), live/staged/archived dirs | `src/agents/skills/*`, `src/agents/tools/skill-manage-tool.ts`                          |
+| Tools available              | Tool registry + adapter                                                      | `src/agents/agent-tools.ts`, `src/agents/runtime/engines/pi/tool-definition-adapter.ts` |
+| Runtime control policies     | **Interceptors** (block/modify/require_prereq/inject)                        | `src/agents/skills/interceptor*.ts`, `src/agents/agent-tools.before-tool-call.ts`       |
+| Memory / state mgmt          | Compaction + memory manager                                                  | `src/agents/compaction.ts`, `src/memory/manager.ts`                                     |
 
 **Conclusion:** the safest, highest-leverage editable surface is **skills + interceptors**, _not_ the pi loop. This is fortunate — it means self-evolution edits versioned `SKILL.md`/interceptor config, never the binary or the orchestration core. The brief's fear ("model rewriting its own loop control") is avoidable: we expose configuration, not control flow.
 
 ### 2.2 The "frozen model" / proposer
 
-Model access is remote and provider-agnostic (`resolveModel()` in `src/agents/pi-embedded-runner/model.ts`; discovery in `pi-model-discovery.ts`; Anthropic payload interception in `anthropic-payload-log.ts`). The proposer is just _a prompted invocation of the same model_ against trace evidence — no new infra needed. Weights are inherently frozen (we don't host them).
+Model access is remote and provider-agnostic (`resolveModel()` in `src/agents/embedded-runner/model.ts`; discovery in `runtime/engines/pi/model-discovery.ts`; Anthropic payload interception in `anthropic-payload-log.ts`). The proposer is just _a prompted invocation of the same model_ against trace evidence — no new infra needed. Weights are inherently frozen (we don't host them).
 
 ### 2.3 Execution sandbox (reality: Docker + scanners, not Wasm)
 

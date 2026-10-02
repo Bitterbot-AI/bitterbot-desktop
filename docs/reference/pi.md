@@ -39,8 +39,8 @@ Bitterbot uses the pi SDK to embed an AI coding agent into its messaging gateway
 
 ```
 src/agents/
-├── pi-embedded-runner.ts          # Re-exports from pi-embedded-runner/
-├── pi-embedded-runner/
+├── embedded-runner.ts          # Re-exports from embedded-runner/
+├── embedded-runner/
 │   ├── run.ts                     # Main entry: runEmbeddedPiAgent()
 │   ├── run/
 │   │   ├── attempt.ts             # Single attempt logic with session setup
@@ -66,25 +66,25 @@ src/agents/
 │   ├── tool-split.ts              # Split tools into builtIn vs custom
 │   ├── types.ts                   # EmbeddedPiAgentMeta, EmbeddedPiRunResult
 │   └── utils.ts                   # ThinkLevel mapping, error description
-├── pi-embedded-subscribe.ts       # Session event subscription/dispatch
-├── pi-embedded-subscribe.types.ts # SubscribeEmbeddedPiSessionParams
-├── pi-embedded-subscribe.handlers.ts # Event handler factory
-├── pi-embedded-subscribe.handlers.lifecycle.ts
-├── pi-embedded-subscribe.handlers.types.ts
-├── pi-embedded-block-chunker.ts   # Streaming block reply chunking
-├── pi-embedded-messaging.ts       # Messaging tool sent tracking
-├── pi-embedded-helpers.ts         # Error classification, turn validation
-├── pi-embedded-helpers/           # Helper modules
-├── pi-embedded-utils.ts           # Formatting utilities
-├── pi-tools.ts                    # createBitterbotCodingTools()
-├── pi-tools.abort.ts              # AbortSignal wrapping for tools
-├── pi-tools.policy.ts             # Tool allowlist/denylist policy
-├── pi-tools.read.ts               # Read tool customizations
-├── pi-tools.schema.ts             # Tool schema normalization
-├── pi-tools.types.ts              # AnyAgentTool type alias
-├── pi-tool-definition-adapter.ts  # AgentTool -> ToolDefinition adapter
-├── pi-settings.ts                 # Settings overrides
-├── pi-extensions/                 # Custom pi extensions
+├── embedded-subscribe.ts       # Session event subscription/dispatch
+├── embedded-subscribe.types.ts # SubscribeEmbeddedPiSessionParams
+├── embedded-subscribe.handlers.ts # Event handler factory
+├── embedded-subscribe.handlers.lifecycle.ts
+├── embedded-subscribe.handlers.types.ts
+├── embedded-block-chunker.ts   # Streaming block reply chunking
+├── embedded-messaging.ts       # Messaging tool sent tracking
+├── embedded-helpers.ts         # Error classification, turn validation
+├── embedded-helpers/           # Helper modules
+├── embedded-utils.ts           # Formatting utilities
+├── agent-tools.ts                    # createBitterbotCodingTools()
+├── agent-tools.abort.ts              # AbortSignal wrapping for tools
+├── agent-tools.policy.ts             # Tool allowlist/denylist policy
+├── agent-tools.read.ts               # Read tool customizations
+├── agent-tools.schema.ts             # Tool schema normalization
+├── agent-tools.types.ts              # AnyAgentTool type alias
+├── runtime/engines/pi/tool-definition-adapter.ts  # AgentTool -> ToolDefinition adapter
+├── runtime/engines/pi/settings.ts                 # Settings overrides
+├── runtime/                 # Custom pi extensions
 │   ├── compaction-safeguard.ts    # Safeguard extension
 │   ├── compaction-safeguard-runtime.ts
 │   ├── context-pruning.ts         # Cache-TTL context pruning extension
@@ -132,10 +132,10 @@ src/agents/
 
 ### 1. Running an Embedded Agent
 
-The main entry point is `runEmbeddedPiAgent()` in `pi-embedded-runner/run.ts`:
+The main entry point is `runEmbeddedPiAgent()` in `embedded-runner/run.ts`:
 
 ```typescript
-import { runEmbeddedPiAgent } from "./agents/pi-embedded-runner.js";
+import { runEmbeddedPiAgent } from "./agents/embedded-runner.js";
 
 const result = await runEmbeddedPiAgent({
   sessionId: "user-123",
@@ -242,7 +242,7 @@ The SDK handles the full agent loop: sending to LLM, executing tool calls, strea
 
 ### Tool Definition Adapter
 
-pi-agent-core's `AgentTool` has a different `execute` signature than pi-coding-agent's `ToolDefinition`. The adapter in `pi-tool-definition-adapter.ts` bridges this:
+pi-agent-core's `AgentTool` has a different `execute` signature than pi-coding-agent's `ToolDefinition`. The adapter in `runtime/engines/pi/tool-definition-adapter.ts` bridges this:
 
 ```typescript
 export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
@@ -342,7 +342,7 @@ const rotated = await advanceAuthProfile();
 ### Model Resolution
 
 ```typescript
-import { resolveModel } from "./pi-embedded-runner/model.js";
+import { resolveModel } from "./embedded-runner/model.js";
 
 const { model, error, authStorage, modelRegistry } = resolveModel(
   provider,
@@ -377,7 +377,7 @@ Bitterbot loads custom pi extensions for specialized behavior:
 
 ### Compaction Safeguard
 
-`pi-extensions/compaction-safeguard.ts` adds guardrails to compaction, including adaptive token budgeting plus tool failure and file operation summaries:
+`runtime/compaction/compaction-safeguard.ts` adds guardrails to compaction, including adaptive token budgeting plus tool failure and file operation summaries:
 
 ```typescript
 if (resolveCompactionMode(params.cfg) === "safeguard") {
@@ -388,7 +388,7 @@ if (resolveCompactionMode(params.cfg) === "safeguard") {
 
 ### Context Pruning
 
-`pi-extensions/context-pruning.ts` implements cache-TTL based context pruning:
+`runtime/context-pruning.ts` implements cache-TTL based context pruning:
 
 ```typescript
 if (cfg?.agents?.defaults?.contextPruning?.mode === "cache-ttl") {
@@ -435,7 +435,7 @@ const { text: cleanedText, mediaUrls, audioAsVoice, replyToId } = consumeReplyDi
 
 ### Error Classification
 
-`pi-embedded-helpers.ts` classifies errors for appropriate handling:
+`embedded-helpers.ts` classifies errors for appropriate handling:
 
 ```typescript
 isContextOverflowError(errorText)     // Context too large
@@ -535,78 +535,78 @@ Areas for potential rework:
 
 All existing tests that cover the pi integration and its extensions:
 
-- `src/agents/pi-embedded-block-chunker.test.ts`
-- `src/agents/pi-embedded-helpers.buildbootstrapcontextfiles.test.ts`
-- `src/agents/pi-embedded-helpers.classifyfailoverreason.test.ts`
-- `src/agents/pi-embedded-helpers.downgradeopenai-reasoning.test.ts`
-- `src/agents/pi-embedded-helpers.formatassistanterrortext.test.ts`
-- `src/agents/pi-embedded-helpers.formatrawassistanterrorforui.test.ts`
-- `src/agents/pi-embedded-helpers.image-dimension-error.test.ts`
-- `src/agents/pi-embedded-helpers.image-size-error.test.ts`
-- `src/agents/pi-embedded-helpers.isautherrormessage.test.ts`
-- `src/agents/pi-embedded-helpers.isbillingerrormessage.test.ts`
-- `src/agents/pi-embedded-helpers.iscloudcodeassistformaterror.test.ts`
-- `src/agents/pi-embedded-helpers.iscompactionfailureerror.test.ts`
-- `src/agents/pi-embedded-helpers.iscontextoverflowerror.test.ts`
-- `src/agents/pi-embedded-helpers.isfailovererrormessage.test.ts`
-- `src/agents/pi-embedded-helpers.islikelycontextoverflowerror.test.ts`
-- `src/agents/pi-embedded-helpers.ismessagingtoolduplicate.test.ts`
-- `src/agents/pi-embedded-helpers.messaging-duplicate.test.ts`
-- `src/agents/pi-embedded-helpers.normalizetextforcomparison.test.ts`
-- `src/agents/pi-embedded-helpers.resolvebootstrapmaxchars.test.ts`
-- `src/agents/pi-embedded-helpers.sanitize-session-messages-images.keeps-tool-call-tool-result-ids-unchanged.test.ts`
-- `src/agents/pi-embedded-helpers.sanitize-session-messages-images.removes-empty-assistant-text-blocks-but-preserves.test.ts`
-- `src/agents/pi-embedded-helpers.sanitizegoogleturnordering.test.ts`
-- `src/agents/pi-embedded-helpers.sanitizesessionmessagesimages-thought-signature-stripping.test.ts`
-- `src/agents/pi-embedded-helpers.sanitizetoolcallid.test.ts`
-- `src/agents/pi-embedded-helpers.sanitizeuserfacingtext.test.ts`
-- `src/agents/pi-embedded-helpers.stripthoughtsignatures.test.ts`
-- `src/agents/pi-embedded-helpers.validate-turns.test.ts`
-- `src/agents/pi-embedded-runner-extraparams.live.test.ts` (live)
-- `src/agents/pi-embedded-runner-extraparams.test.ts`
-- `src/agents/pi-embedded-runner.applygoogleturnorderingfix.test.ts`
-- `src/agents/pi-embedded-runner.buildembeddedsandboxinfo.test.ts`
-- `src/agents/pi-embedded-runner.createsystempromptoverride.test.ts`
-- `src/agents/pi-embedded-runner.get-dm-history-limit-from-session-key.falls-back-provider-default-per-dm-not.test.ts`
-- `src/agents/pi-embedded-runner.get-dm-history-limit-from-session-key.returns-undefined-sessionkey-is-undefined.test.ts`
-- `src/agents/pi-embedded-runner.google-sanitize-thinking.test.ts`
-- `src/agents/pi-embedded-runner.guard.test.ts`
-- `src/agents/pi-embedded-runner.limithistoryturns.test.ts`
-- `src/agents/pi-embedded-runner.resolvesessionagentids.test.ts`
-- `src/agents/pi-embedded-runner.run-embedded-pi-agent.auth-profile-rotation.test.ts`
-- `src/agents/pi-embedded-runner.sanitize-session-history.test.ts`
-- `src/agents/pi-embedded-runner.splitsdktools.test.ts`
-- `src/agents/pi-embedded-runner.test.ts`
-- `src/agents/pi-embedded-subscribe.code-span-awareness.test.ts`
-- `src/agents/pi-embedded-subscribe.reply-tags.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.calls-onblockreplyflush-before-tool-execution-start-preserve.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.does-not-append-text-end-content-is.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.does-not-call-onblockreplyflush-callback-is-not.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.does-not-duplicate-text-end-repeats-full.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.does-not-emit-duplicate-block-replies-text.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.emits-block-replies-text-end-does-not.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.emits-reasoning-as-separate-message-enabled.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.filters-final-suppresses-output-without-start-tag.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.includes-canvas-action-metadata-tool-summaries.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.keeps-assistanttexts-final-answer-block-replies-are.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.keeps-indented-fenced-blocks-intact.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.reopens-fenced-blocks-splitting-inside-them.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.splits-long-single-line-fenced-blocks-reopen.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.streams-soft-chunks-paragraph-preference.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.subscribeembeddedpisession.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.suppresses-message-end-block-replies-message-tool.test.ts`
-- `src/agents/pi-embedded-subscribe.subscribe-embedded-pi-session.waits-multiple-compaction-retries-before-resolving.test.ts`
-- `src/agents/pi-embedded-subscribe.tools.test.ts`
-- `src/agents/pi-embedded-utils.test.ts`
-- `src/agents/pi-extensions/compaction-safeguard.test.ts`
-- `src/agents/pi-extensions/context-pruning.test.ts`
-- `src/agents/pi-settings.test.ts`
-- `src/agents/pi-tool-definition-adapter.test.ts`
-- `src/agents/pi-tools-agent-config.test.ts`
-- `src/agents/pi-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping-b.test.ts`
-- `src/agents/pi-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping-d.test.ts`
-- `src/agents/pi-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping-f.test.ts`
-- `src/agents/pi-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping.test.ts`
-- `src/agents/pi-tools.policy.test.ts`
-- `src/agents/pi-tools.safe-bins.test.ts`
-- `src/agents/pi-tools.workspace-paths.test.ts`
+- `src/agents/embedded-block-chunker.test.ts`
+- `src/agents/embedded-helpers.buildbootstrapcontextfiles.test.ts`
+- `src/agents/embedded-helpers.classifyfailoverreason.test.ts`
+- `src/agents/embedded-helpers.downgradeopenai-reasoning.test.ts`
+- `src/agents/embedded-helpers.formatassistanterrortext.test.ts`
+- `src/agents/embedded-helpers.formatrawassistanterrorforui.test.ts`
+- `src/agents/embedded-helpers.image-dimension-error.test.ts`
+- `src/agents/embedded-helpers.image-size-error.test.ts`
+- `src/agents/embedded-helpers.isautherrormessage.test.ts`
+- `src/agents/embedded-helpers.isbillingerrormessage.test.ts`
+- `src/agents/embedded-helpers.iscloudcodeassistformaterror.test.ts`
+- `src/agents/embedded-helpers.iscompactionfailureerror.test.ts`
+- `src/agents/embedded-helpers.iscontextoverflowerror.test.ts`
+- `src/agents/embedded-helpers.isfailovererrormessage.test.ts`
+- `src/agents/embedded-helpers.islikelycontextoverflowerror.test.ts`
+- `src/agents/embedded-helpers.ismessagingtoolduplicate.test.ts`
+- `src/agents/embedded-helpers.messaging-duplicate.test.ts`
+- `src/agents/embedded-helpers.normalizetextforcomparison.test.ts`
+- `src/agents/embedded-helpers.resolvebootstrapmaxchars.test.ts`
+- `src/agents/embedded-helpers.sanitize-session-messages-images.keeps-tool-call-tool-result-ids-unchanged.test.ts`
+- `src/agents/embedded-helpers.sanitize-session-messages-images.removes-empty-assistant-text-blocks-but-preserves.test.ts`
+- `src/agents/embedded-helpers.sanitizegoogleturnordering.test.ts`
+- `src/agents/embedded-helpers.sanitizesessionmessagesimages-thought-signature-stripping.test.ts`
+- `src/agents/embedded-helpers.sanitizetoolcallid.test.ts`
+- `src/agents/embedded-helpers.sanitizeuserfacingtext.test.ts`
+- `src/agents/embedded-helpers.stripthoughtsignatures.test.ts`
+- `src/agents/embedded-helpers.validate-turns.test.ts`
+- `src/agents/embedded-runner-extraparams.live.test.ts` (live)
+- `src/agents/embedded-runner-extraparams.test.ts`
+- `src/agents/embedded-runner.applygoogleturnorderingfix.test.ts`
+- `src/agents/embedded-runner.buildembeddedsandboxinfo.test.ts`
+- `src/agents/embedded-runner.createsystempromptoverride.test.ts`
+- `src/agents/embedded-runner.get-dm-history-limit-from-session-key.falls-back-provider-default-per-dm-not.test.ts`
+- `src/agents/embedded-runner.get-dm-history-limit-from-session-key.returns-undefined-sessionkey-is-undefined.test.ts`
+- `src/agents/embedded-runner.google-sanitize-thinking.test.ts`
+- `src/agents/embedded-runner.guard.test.ts`
+- `src/agents/embedded-runner.limithistoryturns.test.ts`
+- `src/agents/embedded-runner.resolvesessionagentids.test.ts`
+- `src/agents/embedded-runner.run-embedded-pi-agent.auth-profile-rotation.test.ts`
+- `src/agents/embedded-runner.sanitize-session-history.test.ts`
+- `src/agents/embedded-runner.splitsdktools.test.ts`
+- `src/agents/embedded-runner.test.ts`
+- `src/agents/embedded-subscribe.code-span-awareness.test.ts`
+- `src/agents/embedded-subscribe.reply-tags.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.calls-onblockreplyflush-before-tool-execution-start-preserve.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.does-not-append-text-end-content-is.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.does-not-call-onblockreplyflush-callback-is-not.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.does-not-duplicate-text-end-repeats-full.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.does-not-emit-duplicate-block-replies-text.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.emits-block-replies-text-end-does-not.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.emits-reasoning-as-separate-message-enabled.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.filters-final-suppresses-output-without-start-tag.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.includes-canvas-action-metadata-tool-summaries.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.keeps-assistanttexts-final-answer-block-replies-are.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.keeps-indented-fenced-blocks-intact.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.reopens-fenced-blocks-splitting-inside-them.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.splits-long-single-line-fenced-blocks-reopen.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.streams-soft-chunks-paragraph-preference.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.subscribeembeddedpisession.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.suppresses-message-end-block-replies-message-tool.test.ts`
+- `src/agents/embedded-subscribe.subscribe-embedded-pi-session.waits-multiple-compaction-retries-before-resolving.test.ts`
+- `src/agents/embedded-subscribe.tools.test.ts`
+- `src/agents/embedded-utils.test.ts`
+- `src/agents/runtime/compaction/compaction-safeguard.test.ts`
+- `src/agents/runtime/context-pruning.test.ts`
+- `src/agents/runtime/engines/pi/settings.test.ts`
+- `src/agents/runtime/engines/pi/tool-definition-adapter.test.ts`
+- `src/agents/agent-tools-agent-config.test.ts`
+- `src/agents/agent-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping-b.test.ts`
+- `src/agents/agent-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping-d.test.ts`
+- `src/agents/agent-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping-f.test.ts`
+- `src/agents/agent-tools.create.bitterbot-coding-tools.adds-claude-style-aliases-schemas-without-dropping.test.ts`
+- `src/agents/agent-tools.policy.test.ts`
+- `src/agents/agent-tools.safe-bins.test.ts`
+- `src/agents/agent-tools.workspace-paths.test.ts`

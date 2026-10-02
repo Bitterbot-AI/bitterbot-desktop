@@ -9,7 +9,7 @@
  * heartbeat prompt, up to the next user message, belongs to that heartbeat (tool loops included).
  */
 
-import { resolveCacheTtlLabel } from "../agents/pi-embedded-runner/extra-params.js";
+import { resolveCacheTtlLabel } from "../agents/embedded-runner/extra-params.js";
 import { HEARTBEAT_PROMPT_PREFIX } from "../auto-reply/heartbeat.js";
 import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
 import type { BitterbotConfig } from "../config/config.js";

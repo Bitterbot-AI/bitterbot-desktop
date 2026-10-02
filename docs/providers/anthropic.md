@@ -171,7 +171,7 @@ Anthropic caches a prefix over `tools -> system -> messages`, tiered: a change i
 `system` leaves the `tools` cache entry intact, and at most four `cache_control`
 markers are allowed per request. The request builder places two markers the
 way pi-ai does (the system block and the last user message); the layout in
-`src/agents/pi-embedded-runner/anthropic-payload-cache.ts` then reshapes the
+`src/agents/embedded-runner/anthropic-payload-cache.ts` then reshapes the
 body. The native runtime calls that layout function directly; the vendored
 runtime applies it through pi-ai's `onPayload` hook. Either way the wire shape is:
 

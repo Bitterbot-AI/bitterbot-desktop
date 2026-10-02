@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
 
-vi.mock("../agents/pi-embedded.js", () => ({
+vi.mock("../agents/embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   compactEmbeddedPiSession: vi.fn(),
   runEmbeddedPiAgent: vi.fn(),
@@ -48,7 +48,7 @@ const modelCatalogMocks = vi.hoisted(() => ({
 
 vi.mock("../agents/model-catalog.js", () => modelCatalogMocks);
 
-import { abortEmbeddedPiRun, runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import { abortEmbeddedPiRun, runEmbeddedPiAgent } from "../agents/embedded.js";
 import { getReplyFromConfig } from "./reply.js";
 
 const _MAIN_SESSION_KEY = "agent:main:main";

@@ -32,7 +32,7 @@
  */
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
-import { carryToolMarkers } from "../pi-tools.types.js";
+import { carryToolMarkers } from "../agent-tools.types.js";
 import type { AnyAgentTool } from "../tools/common.js";
 import type { CapabilityAxis } from "./capability-grants.js";
 import { type EffectiveCapabilityProfile, profileAllows } from "./capability-profile.js";
@@ -233,7 +233,7 @@ export function evaluateToolCall(
 /**
  * Wrap a tool's execute() with the runtime capability gate. Mirrors the
  * structure of wrapToolWithBeforeToolCallHook so the wrapper composition
- * site at pi-tools.ts can stack them.
+ * site at agent-tools.ts can stack them.
  */
 export function wrapToolWithCapabilityEnforcer(
   tool: AnyAgentTool,

@@ -4,7 +4,7 @@
  * These functions analyze config-based security properties without I/O.
  */
 
-import { isToolAllowedByPolicies } from "../agents/pi-tools.policy.js";
+import { isToolAllowedByPolicies } from "../agents/agent-tools.policy.js";
 import {
   resolveSandboxConfigForAgent,
   resolveSandboxToolPolicyForAgent,

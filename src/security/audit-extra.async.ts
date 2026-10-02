@@ -6,7 +6,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { isToolAllowedByPolicies } from "../agents/pi-tools.policy.js";
+import { isToolAllowedByPolicies } from "../agents/agent-tools.policy.js";
 import {
   resolveSandboxConfigForAgent,
   resolveSandboxToolPolicyForAgent,

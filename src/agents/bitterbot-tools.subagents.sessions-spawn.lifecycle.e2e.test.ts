@@ -8,7 +8,7 @@ import {
 } from "./bitterbot-tools.subagents.sessions-spawn.test-harness.js";
 import { resetSubagentRegistryForTests } from "./subagent-registry.js";
 
-vi.mock("./pi-embedded.js", () => ({
+vi.mock("./embedded.js", () => ({
   isEmbeddedPiRunActive: () => false,
   isEmbeddedPiRunStreaming: () => false,
   queueEmbeddedPiMessage: () => false,

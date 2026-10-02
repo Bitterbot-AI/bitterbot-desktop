@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
+import { abortEmbeddedPiRun } from "../../agents/embedded.js";
 import { AGENT_LANE_SUBAGENT } from "../../agents/lanes.js";
-import { abortEmbeddedPiRun } from "../../agents/pi-embedded.js";
 import type { SubagentRunRecord } from "../../agents/subagent-registry.js";
 import {
   clearSubagentRunSteerRestart,

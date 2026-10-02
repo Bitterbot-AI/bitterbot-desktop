@@ -20,7 +20,7 @@ type AnyExport = any;
 
 export const TEST_NET_IP = "203.0.113.10";
 
-vi.mock("../agents/pi-embedded.js", () => ({
+vi.mock("../agents/embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   isEmbeddedPiRunActive: vi.fn().mockReturnValue(false),
   isEmbeddedPiRunStreaming: vi.fn().mockReturnValue(false),

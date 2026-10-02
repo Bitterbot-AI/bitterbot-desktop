@@ -13,7 +13,7 @@ const runAnthropicBatchCall = vi.fn();
 vi.mock("@mariozechner/pi-ai", () => ({
   completeSimple: (...a: unknown[]) => completeSimple(...a),
 }));
-vi.mock("./pi-embedded-runner/model.js", () => ({
+vi.mock("./embedded-runner/model.js", () => ({
   resolveModel: (provider: string, modelId: string) => ({
     model: {
       id: modelId,
@@ -28,7 +28,7 @@ vi.mock("./model-auth.js", () => ({
   getApiKeyForModel: async () => ({ apiKey: "sk-test", mode: "api-key", source: "env" }),
   requireApiKey: (auth: { apiKey?: string }) => auth.apiKey,
 }));
-vi.mock("./pi-embedded-runner/extra-params.js", () => ({ resolveCacheTtlLabel: () => "5m" }));
+vi.mock("./embedded-runner/extra-params.js", () => ({ resolveCacheTtlLabel: () => "5m" }));
 vi.mock("../infra/anthropic-batch.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../infra/anthropic-batch.js")>();
   return { ...actual, runAnthropicBatchCall: (...a: unknown[]) => runAnthropicBatchCall(...a) };

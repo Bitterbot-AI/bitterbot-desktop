@@ -3,16 +3,16 @@ import fs from "node:fs";
 import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js";
 import { runCliAgent } from "../../agents/cli-runner.js";
 import { getCliSessionId } from "../../agents/cli-session.js";
-import { runWithModelFallback } from "../../agents/model-fallback.js";
-import { isCliProvider } from "../../agents/model-selection.js";
 import {
   isCompactionFailureError,
   isContextOverflowError,
   isLikelyContextOverflowError,
   isTransientHttpError,
   sanitizeUserFacingText,
-} from "../../agents/pi-embedded-helpers.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+} from "../../agents/embedded-helpers.js";
+import { runEmbeddedPiAgent } from "../../agents/embedded.js";
+import { runWithModelFallback } from "../../agents/model-fallback.js";
+import { isCliProvider } from "../../agents/model-selection.js";
 import {
   resolveAgentIdFromSessionKey,
   resolveGroupSessionKey,
@@ -185,7 +185,7 @@ export async function runAgentTurnWithFallback(params: {
             });
             // PLAN-44 Phase 0: CLI backends never pass through the embedded
             // runner, so the task is journaled here (the embedded path emits
-            // it in pi-embedded-runner/run.ts).
+            // it in embedded-runner/run.ts).
             emitUserTurnEvent({
               runId,
               text: params.commandBody,

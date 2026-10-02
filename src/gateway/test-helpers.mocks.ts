@@ -229,10 +229,10 @@ export const testIsNixMode = hoisted.testIsNixMode;
 export const sessionStoreSaveDelayMs = hoisted.sessionStoreSaveDelayMs;
 export const embeddedRunMock = hoisted.embeddedRunMock;
 
-vi.mock("../agents/pi-model-discovery.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-model-discovery.js")>(
-    "../agents/pi-model-discovery.js",
-  );
+vi.mock("../agents/runtime/engines/pi/model-discovery.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../agents/runtime/engines/pi/model-discovery.js")
+  >("../agents/runtime/engines/pi/model-discovery.js");
 
   type Registry = ReturnType<typeof actual.ModelRegistry.create>;
   // pi-coding-agent 0.73 made the ModelRegistry constructor private, so wrap
@@ -544,10 +544,9 @@ vi.mock("../config/config.js", async () => {
   };
 });
 
-vi.mock("../agents/pi-embedded.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-embedded.js")>(
-    "../agents/pi-embedded.js",
-  );
+vi.mock("../agents/embedded.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../agents/embedded.js")>("../agents/embedded.js");
   return {
     ...actual,
     isEmbeddedPiRunActive: (sessionId: string) => embeddedRunMock.activeIds.has(sessionId),

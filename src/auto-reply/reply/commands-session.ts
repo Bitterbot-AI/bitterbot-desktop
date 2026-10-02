@@ -1,4 +1,4 @@
-import { abortEmbeddedPiRun } from "../../agents/pi-embedded.js";
+import { abortEmbeddedPiRun } from "../../agents/embedded.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { updateSessionStore } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";

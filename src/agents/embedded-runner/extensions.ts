@@ -1,0 +1,112 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { Api, Model } from "@mariozechner/pi-ai";
+import type { SessionManager } from "@mariozechner/pi-coding-agent";
+import type { BitterbotConfig } from "../../config/config.js";
+import { resolveContextWindowInfo } from "../context-window-guard.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
+import { setCompactionSafeguardRuntime } from "../runtime/compaction/compaction-safeguard-runtime.js";
+import { setContextPruningRuntime } from "../runtime/context-pruning/runtime.js";
+import { computeEffectiveSettings } from "../runtime/context-pruning/settings.js";
+import { makeToolPrunablePredicate } from "../runtime/context-pruning/tools.js";
+import { ensurePiCompactionReserveTokens } from "../runtime/engines/pi/settings.js";
+import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "./cache-ttl.js";
+import { loadActiveHarnessPolicy } from "./harness-policy-store.js";
+
+/** Where each extension module lives after the PLAN-52 Phase P rename. */
+const EXTENSION_LOCATIONS: Record<string, string[]> = {
+  "context-pruning": ["runtime", "context-pruning"],
+  "compaction-safeguard": ["runtime", "compaction", "compaction-safeguard"],
+};
+
+function resolvePiExtensionPath(id: string): string {
+  const self = fileURLToPath(import.meta.url);
+  const dir = path.dirname(self);
+  // In dev this file is `.ts` (tsx), in production it's `.js`.
+  const ext = path.extname(self) === ".ts" ? "ts" : "js";
+  const segments = EXTENSION_LOCATIONS[id] ?? ["runtime", id];
+  const last = segments[segments.length - 1]!;
+  return path.join(dir, "..", ...segments.slice(0, -1), `${last}.${ext}`);
+}
+
+function resolveContextWindowTokens(params: {
+  cfg: BitterbotConfig | undefined;
+  provider: string;
+  modelId: string;
+  model: Model<Api> | undefined;
+}): number {
+  return resolveContextWindowInfo({
+    cfg: params.cfg,
+    provider: params.provider,
+    modelId: params.modelId,
+    modelContextWindow: params.model?.contextWindow,
+    defaultTokens: DEFAULT_CONTEXT_TOKENS,
+  }).tokens;
+}
+
+function buildContextPruningExtension(params: {
+  cfg: BitterbotConfig | undefined;
+  sessionManager: SessionManager;
+  provider: string;
+  modelId: string;
+  model: Model<Api> | undefined;
+}): { additionalExtensionPaths?: string[] } {
+  const raw = params.cfg?.agents?.defaults?.contextPruning;
+  if (raw?.mode !== "cache-ttl") {
+    return {};
+  }
+  if (!isCacheTtlEligibleProvider(params.provider, params.modelId)) {
+    return {};
+  }
+
+  const settings = computeEffectiveSettings(raw);
+  if (!settings) {
+    return {};
+  }
+
+  setContextPruningRuntime(params.sessionManager, {
+    settings,
+    contextWindowTokens: resolveContextWindowTokens(params),
+    isToolPrunable: makeToolPrunablePredicate(settings.tools),
+    lastCacheTouchAt: readLastCacheTtlTimestamp(params.sessionManager),
+  });
+
+  return {
+    additionalExtensionPaths: [resolvePiExtensionPath("context-pruning")],
+  };
+}
+
+export function buildEmbeddedExtensionPaths(params: {
+  cfg: BitterbotConfig | undefined;
+  sessionManager: SessionManager;
+  provider: string;
+  modelId: string;
+  model: Model<Api> | undefined;
+}): string[] {
+  const paths: string[] = [];
+  // PLAN-25: compaction is read through the ACTIVE HarnessPolicy (config baseline
+  // overlaid with the latest promoted evolution), so an evolved policy takes
+  // effect here without touching this site. Behavior-neutral until one is promoted.
+  const harnessPolicy = loadActiveHarnessPolicy(params.cfg);
+  if (harnessPolicy.compaction.mode === "safeguard") {
+    const contextWindowInfo = resolveContextWindowInfo({
+      cfg: params.cfg,
+      provider: params.provider,
+      modelId: params.modelId,
+      modelContextWindow: params.model?.contextWindow,
+      defaultTokens: DEFAULT_CONTEXT_TOKENS,
+    });
+    setCompactionSafeguardRuntime(params.sessionManager, {
+      maxHistoryShare: harnessPolicy.compaction.maxHistoryShare,
+      contextWindowTokens: contextWindowInfo.tokens,
+    });
+    paths.push(resolvePiExtensionPath("compaction-safeguard"));
+  }
+  const pruning = buildContextPruningExtension(params);
+  if (pruning.additionalExtensionPaths) {
+    paths.push(...pruning.additionalExtensionPaths);
+  }
+  return paths;
+}
+
+export { ensurePiCompactionReserveTokens };

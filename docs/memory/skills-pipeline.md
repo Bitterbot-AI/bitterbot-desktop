@@ -1493,7 +1493,7 @@ outcome behind every learning signal explicit and grounded.
 
 ### Tool outcomes are read from the result body
 
-`classifyToolResultOutcome` (`src/agents/pi-embedded-subscribe.tools.ts`) returns `ok`,
+`classifyToolResultOutcome` (`src/agents/embedded-subscribe.tools.ts`) returns `ok`,
 `error`, or `pending`. A `jsonResult({ ok: false, error })` body is an error; an
 `approval-pending` placeholder is pending (the action never ran). The journal's tool
 `result` events carry both `isError` and `outcome`, so the trace reconstructor, the
@@ -1543,7 +1543,7 @@ capability tasks), an accepted LLM-counterfactual verdict HOLDS the proposal as
 
 ### Failure signatures and the repeat-call guard
 
-`src/agents/pi-tools.repeat-guard.ts` refuses the fourth identical failing call in a
+`src/agents/agent-tools.repeat-guard.ts` refuses the fourth identical failing call in a
 session with a message naming the failure. Offline, `signatures.ts` clusters every
 fail-labeled run by ⟨terminal cause, agent-causal, mechanism⟩; the iteration log stores
 the counts and `skills.evolution.status` ranks them across iterations.

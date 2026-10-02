@@ -23,9 +23,9 @@ vi.mock("../../agents/model-fallback.js", () => ({
   }) => runWithModelFallbackMock(params),
 }));
 
-vi.mock("../../agents/pi-embedded.js", async () => {
-  const actual = await vi.importActual<typeof import("../../agents/pi-embedded.js")>(
-    "../../agents/pi-embedded.js",
+vi.mock("../../agents/embedded.js", async () => {
+  const actual = await vi.importActual<typeof import("../../agents/embedded.js")>(
+    "../../agents/embedded.js",
   );
   return {
     ...actual,

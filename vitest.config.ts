@@ -99,11 +99,11 @@ export default defineConfig({
 
         // Some agent integrations are intentionally validated via manual/e2e runs.
         "src/agents/model-scan.ts",
-        "src/agents/pi-embedded-runner.ts",
+        "src/agents/embedded-runner.ts",
         "src/agents/sandbox-paths.ts",
         "src/agents/sandbox.ts",
         "src/agents/skills-install.ts",
-        "src/agents/pi-tool-definition-adapter.ts",
+        "src/agents/runtime/engines/pi/tool-definition-adapter.ts",
         "src/agents/tools/discord-actions*.ts",
         "src/agents/tools/slack-actions.ts",
 

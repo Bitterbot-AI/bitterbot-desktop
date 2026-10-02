@@ -8,8 +8,11 @@ import {
   resolveEnvApiKey,
 } from "../../agents/model-auth.js";
 import { ensureBitterbotModelsJson } from "../../agents/models-config.js";
-import type { ModelRegistry } from "../../agents/pi-model-discovery.js";
-import { discoverAuthStorage, discoverModels } from "../../agents/pi-model-discovery.js";
+import type { ModelRegistry } from "../../agents/runtime/engines/pi/model-discovery.js";
+import {
+  discoverAuthStorage,
+  discoverModels,
+} from "../../agents/runtime/engines/pi/model-discovery.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import {
   formatErrorWithStack,

@@ -31,10 +31,10 @@ The script runs all pi related unit tests via these globs:
 
 - `src/agents/pi-*.test.ts`
 - `src/agents/pi-embedded-*.test.ts`
-- `src/agents/pi-tools*.test.ts`
-- `src/agents/pi-settings.test.ts`
-- `src/agents/pi-tool-definition-adapter.test.ts`
-- `src/agents/pi-extensions/*.test.ts`
+- `src/agents/agent-tools*.test.ts`
+- `src/agents/runtime/engines/pi/settings.test.ts`
+- `src/agents/runtime/engines/pi/tool-definition-adapter.test.ts`
+- `src/agents/runtime/*.test.ts`
 
 ## Manual Testing
 

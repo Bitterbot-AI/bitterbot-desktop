@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import { getReplyFromConfig } from "./reply.js";
 
-type RunEmbeddedPiAgent = typeof import("../agents/pi-embedded.js").runEmbeddedPiAgent;
+type RunEmbeddedPiAgent = typeof import("../agents/embedded.js").runEmbeddedPiAgent;
 type RunEmbeddedPiAgentParams = Parameters<RunEmbeddedPiAgent>[0];
 
 const piEmbeddedMock = vi.hoisted(() => ({
@@ -17,8 +17,8 @@ const piEmbeddedMock = vi.hoisted(() => ({
   isEmbeddedPiRunStreaming: vi.fn().mockReturnValue(false),
 }));
 
-vi.mock("/src/agents/pi-embedded.js", () => piEmbeddedMock);
-vi.mock("../agents/pi-embedded.js", () => piEmbeddedMock);
+vi.mock("/src/agents/embedded.js", () => piEmbeddedMock);
+vi.mock("../agents/embedded.js", () => piEmbeddedMock);
 vi.mock("../agents/model-catalog.js", () => ({
   loadModelCatalog: vi.fn(),
 }));

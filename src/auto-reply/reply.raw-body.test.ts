@@ -9,7 +9,7 @@ const agentMocks = vi.hoisted(() => ({
   readWebSelfId: vi.fn().mockReturnValue({ e164: "+1999" }),
 }));
 
-vi.mock("../agents/pi-embedded.js", () => ({
+vi.mock("../agents/embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: agentMocks.runEmbeddedPiAgent,
   queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),

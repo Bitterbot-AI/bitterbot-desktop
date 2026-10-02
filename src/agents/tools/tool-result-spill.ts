@@ -2,7 +2,7 @@
  * Tool-result spill-to-file (token-efficiency W5, item 3).
  *
  * The model receives tool results untruncated from pi-agent's loop; the old
- * 8000-char cap in pi-embedded-subscribe.tools.ts only trimmed the EVENT
+ * 8000-char cap in embedded-subscribe.tools.ts only trimmed the EVENT
  * stream. This wrapper is the model-facing cap: a text block over
  * `tools.resultMaxChars` (default 8000) is written in full to
  * `<agent state dir>/tool-results/<runId>-<n>.txt` and the model gets
@@ -16,7 +16,7 @@ import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { truncateUtf16Safe } from "../../utils.js";
-import { carryToolMarkers } from "../pi-tools.types.js";
+import { carryToolMarkers } from "../agent-tools.types.js";
 import type { AnyAgentTool } from "./common.js";
 
 const log = createSubsystemLogger("agents/tools/result-spill");

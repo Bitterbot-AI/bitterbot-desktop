@@ -37,7 +37,7 @@ If you need transcript storage details, see:
 All transcript hygiene is centralized in the embedded runner:
 
 - Policy selection: `src/agents/transcript-policy.ts`
-- Sanitization/repair application: `sanitizeSessionHistory` in `src/agents/pi-embedded-runner/google.ts`
+- Sanitization/repair application: `sanitizeSessionHistory` in `src/agents/embedded-runner/google.ts`
 
 The policy uses `provider`, `modelApi`, and `modelId` to decide what to apply.
 
@@ -55,7 +55,7 @@ limits (downscale/recompress oversized base64 images).
 
 Implementation:
 
-- `sanitizeSessionMessagesImages` in `src/agents/pi-embedded-helpers/images.ts`
+- `sanitizeSessionMessagesImages` in `src/agents/embedded-helpers/images.ts`
 - `sanitizeContentBlocksImages` in `src/agents/tool-images.ts`
 
 ---
@@ -69,7 +69,7 @@ persisted tool calls (for example, after a rate limit failure).
 Implementation:
 
 - `sanitizeToolCallInputs` in `src/agents/session-transcript-repair.ts`
-- Applied in `sanitizeSessionHistory` in `src/agents/pi-embedded-runner/google.ts`
+- Applied in `sanitizeSessionHistory` in `src/agents/embedded-runner/google.ts`
 
 ---
 

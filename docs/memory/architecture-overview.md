@@ -276,7 +276,7 @@ flowchart TB
 | File                                        | Purpose                                           |
 | ------------------------------------------- | ------------------------------------------------- |
 | `src/agents/tool-cache.ts`                  | In-memory LRU cache for tool results              |
-| `src/agents/pi-tools.cache.ts`              | Cache integration layer for Pi coding tools       |
+| `src/agents/agent-tools.cache.ts`           | Cache integration layer for Pi coding tools       |
 | `src/agents/progressive-compression.ts`     | Deterministic truncation before LLM summarization |
 | `src/agents/tools/expand-message-tool.ts`   | Retrieve full content of truncated messages       |
 | `src/agents/tools/emotional-anchor-tool.ts` | Create/recall persistent emotional bookmarks      |

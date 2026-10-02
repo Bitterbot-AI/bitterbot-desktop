@@ -20,12 +20,12 @@ import {
   buildAnnounceIdempotencyKey,
   resolveQueueAnnounceId,
 } from "./announce-idempotency.js";
-import { renderHandoffEnvelope } from "./handoff-envelope.js";
 import {
   isEmbeddedPiRunActive,
   queueEmbeddedPiMessage,
   waitForEmbeddedPiRunEnd,
-} from "./pi-embedded.js";
+} from "./embedded.js";
+import { renderHandoffEnvelope } from "./handoff-envelope.js";
 import { type AnnounceQueueItem, enqueueAnnounce } from "./subagent-announce-queue.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import { readLatestAssistantReply } from "./tools/agent-step.js";

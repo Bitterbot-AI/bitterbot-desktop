@@ -18,11 +18,11 @@ import {
   readPolicyHistory,
   rollbackPolicy,
   stagePolicy,
-} from "../../agents/pi-embedded-runner/harness-policy-store.js";
+} from "../../agents/embedded-runner/harness-policy-store.js";
 import {
   type HarnessPolicy,
   mergeActivePolicy,
-} from "../../agents/pi-embedded-runner/harness-policy.js";
+} from "../../agents/embedded-runner/harness-policy.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { DreamInsight } from "../dream-types.js";
 import { ExperimentSandbox, type ScorePairFn } from "../experiment-sandbox.js";

@@ -10,8 +10,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveDefaultAgentId } from "../../../src/agents/agent-scope.js";
+import { runEmbeddedPiAgent } from "../../../src/agents/embedded-runner.js";
 import { resolveDefaultModelForAgent } from "../../../src/agents/model-selection.js";
-import { runEmbeddedPiAgent } from "../../../src/agents/pi-embedded-runner.js";
 import { resolveStorageRoots } from "../../../src/agents/skills/skill-storage.js";
 import {
   collectTrialEgress,

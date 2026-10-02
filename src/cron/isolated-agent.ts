@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
+import { runEmbeddedPiAgent } from "../agents/embedded-runner/run.js";
 import { AGENT_LANE_NESTED } from "../agents/lanes.js";
-import { runEmbeddedPiAgent } from "../agents/pi-embedded-runner/run.js";
 import { readLatestAssistantReply } from "../agents/tools/agent-step.js";
 import { loadConfig } from "../config/config.js";
 import { resolveAgentMainSessionKey } from "../config/sessions.js";

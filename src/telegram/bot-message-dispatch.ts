@@ -1,12 +1,12 @@
 import type { Bot } from "grammy";
 import { resolveAgentDir } from "../agents/agent-scope.js";
+import { EmbeddedBlockChunker } from "../agents/embedded-block-chunker.js";
 import {
   findModelInCatalog,
   loadModelCatalog,
   modelSupportsVision,
 } from "../agents/model-catalog.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
-import { EmbeddedBlockChunker } from "../agents/pi-embedded-block-chunker.js";
 import { resolveChunkMode } from "../auto-reply/chunk.js";
 import { clearHistoryEntriesIfEnabled } from "../auto-reply/reply/history.js";
 import { dispatchReplyWithBufferedBlockDispatcher } from "../auto-reply/reply/provider-dispatcher.js";

@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../config/config.js";
 import { isA2aTaskSessionKey } from "../sessions/session-key-utils.js";
 import { resolveA2aRemoteToolPolicy } from "./a2a-remote-policy.js";
-import { isToolAllowedByPolicyName } from "./pi-tools.policy.js";
+import { isToolAllowedByPolicyName } from "./agent-tools.policy.js";
 
 const FLOOR_SAMPLES = [
   "wallet",

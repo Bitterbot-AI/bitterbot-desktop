@@ -10,7 +10,7 @@ import {
   resolveAgentWorkspaceDir,
   resolveAgentDir,
 } from "../agents/agent-scope.js";
-import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
+import { runEmbeddedPiAgent } from "../agents/embedded.js";
 import type { BitterbotConfig } from "../config/config.js";
 
 /**
