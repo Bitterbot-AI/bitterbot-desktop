@@ -34,6 +34,11 @@
  * 3. pi's `photon.ts` loader (WASM path patching for Bun binaries) is not
  *    ported. If `sharp` cannot be loaded the result is `null`, as when Photon
  *    cannot be loaded in pi.
+ * 4. Only JPEG, PNG, GIF and WebP are returned as images. sharp can decode
+ *    more (SVG, TIFF, AVIF); those are omitted, as they were when Photon
+ *    could not decode them. BMP, which Photon passed through, is omitted too.
+ * 5. Without sharp on the host, an image already in one of those four formats
+ *    and under the size limit is passed on unchanged instead of omitted.
  */
 import type { ImageContent } from "@mariozechner/pi-ai";
 
@@ -100,6 +105,10 @@ function loadSharp(): Promise<SharpFn | null> {
   return sharpPromise;
 }
 
+/** Decoded formats that may be sent to a model as an image block. */
+const INLINE_IMAGE_FORMATS = new Set(["jpeg", "png", "gif", "webp"]);
+const INLINE_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
 /** Formats for which pi applies the EXIF orientation. */
 const EXIF_ORIENTED_FORMATS = new Set(["jpeg", "webp"]);
 
@@ -122,6 +131,24 @@ export async function resizeImage(
 
   const sharp = await loadSharp();
   if (!sharp) {
+    // No decoder on this host (the gateway can run on the sips backend).
+    // An image that is already a format providers accept and under the size
+    // limit is passed on as it is; the tool-result sanitizer bounds it.
+    if (
+      img.mimeType &&
+      INLINE_IMAGE_MIME_TYPES.has(img.mimeType) &&
+      inputBase64Size < opts.maxBytes
+    ) {
+      return {
+        data: img.data,
+        mimeType: img.mimeType,
+        originalWidth: 0,
+        originalHeight: 0,
+        width: 0,
+        height: 0,
+        wasResized: false,
+      };
+    }
     return null;
   }
 
@@ -129,13 +156,18 @@ export async function resizeImage(
     const open = () => sharp(inputBuffer, { failOn: "error" });
 
     const meta = await open().metadata();
+    // sharp also decodes SVG, TIFF, AVIF and more. pi's decoder (Photon)
+    // could not, and omitted them; no provider accepts them as image blocks,
+    // and one stored in the transcript would fail every later request.
+    if (!INLINE_IMAGE_FORMATS.has(meta.format)) {
+      return null;
+    }
     const applyOrientation = EXIF_ORIENTED_FORMATS.has(meta.format);
     const originalWidth = applyOrientation ? meta.autoOrient.width : meta.width;
     const originalHeight = applyOrientation ? meta.autoOrient.height : meta.height;
     if (!(originalWidth > 0) || !(originalHeight > 0)) {
       return null;
     }
-    const format = img.mimeType?.split("/")[1] ?? "png";
 
     // Check if already within all limits (dimensions AND encoded size)
     if (
@@ -149,7 +181,11 @@ export async function resizeImage(
       await open().stats();
       return {
         data: img.data,
-        mimeType: img.mimeType ?? `image/${format}`,
+        // The claimed type can come from a file extension; the decoded format wins.
+        mimeType:
+          img.mimeType && INLINE_IMAGE_MIME_TYPES.has(img.mimeType)
+            ? img.mimeType
+            : `image/${meta.format}`,
         originalWidth,
         originalHeight,
         width: originalWidth,

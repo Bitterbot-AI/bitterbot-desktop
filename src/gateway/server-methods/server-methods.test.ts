@@ -234,7 +234,8 @@ describe("gateway chat transcript writes (guardrail)", () => {
 
     expect(src.includes("fs.appendFileSync(transcriptPath")).toBe(false);
 
-    expect(src).toContain("SessionManager.open(transcriptPath)");
+    // The store attaches the entry to the current leaf (parentId); see chat.ts.
+    expect(src).toContain("openTranscriptForAgent(transcriptPath");
     expect(src).toContain("appendMessage(");
   });
 });
