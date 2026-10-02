@@ -1,5 +1,4 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { MemoryCitationsMode } from "../../config/types.memory.js";
 import type { ResolvedTimeFormat } from "../date-time.js";
 import type { EmbeddedContextFile } from "../embedded-helpers.js";
@@ -108,18 +107,4 @@ export function createSystemPromptOverride(
 ): (defaultPrompt?: string) => string {
   const override = systemPrompt.trim();
   return (_defaultPrompt?: string) => override;
-}
-
-export function applySystemPromptOverrideToSession(
-  session: AgentSession,
-  override: string | ((defaultPrompt?: string) => string),
-) {
-  const prompt = typeof override === "function" ? override() : override.trim();
-  session.agent.state.systemPrompt = prompt;
-  const mutableSession = session as unknown as {
-    _baseSystemPrompt?: string;
-    _rebuildSystemPrompt?: (toolNames: string[]) => string;
-  };
-  mutableSession._baseSystemPrompt = prompt;
-  mutableSession._rebuildSystemPrompt = () => prompt;
 }

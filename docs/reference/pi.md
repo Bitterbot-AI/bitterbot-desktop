@@ -4,6 +4,8 @@ title: "Pi Integration Architecture"
 
 # Pi Integration Architecture
 
+> This page describes the `pi` runtime engine, which is being replaced by Bitterbot's own runtime (`agents.defaults.runtime.engine: "bitterbot"`). The transcript store, agent loop, session layer, compaction, file tools, skill discovery, model registry and auth storage are now Bitterbot code; pi-coding-agent is used only by the adapter in `src/agents/runtime/engines/pi/`. See [Agent runtime development](/reference/agent-runtime-dev).
+
 This document describes how Bitterbot integrates with [pi-coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) and its sibling packages (`pi-ai`, `pi-agent-core`, `pi-tui`) to power its AI agent capabilities.
 
 ## Overview
@@ -377,7 +379,7 @@ Bitterbot loads custom pi extensions for specialized behavior:
 
 ### Compaction Safeguard
 
-`runtime/compaction/compaction-safeguard.ts` adds guardrails to compaction, including adaptive token budgeting plus tool failure and file operation summaries:
+`runtime/engines/pi/extensions/compaction-safeguard.ts` adds guardrails to compaction, including adaptive token budgeting plus tool failure and file operation summaries:
 
 ```typescript
 if (resolveCompactionMode(params.cfg) === "safeguard") {
@@ -388,7 +390,7 @@ if (resolveCompactionMode(params.cfg) === "safeguard") {
 
 ### Context Pruning
 
-`runtime/context-pruning.ts` implements cache-TTL based context pruning:
+`runtime/context-pruning/` implements cache-TTL based context pruning (the pi extension that calls it is `runtime/engines/pi/extensions/context-pruning.ts`):
 
 ```typescript
 if (cfg?.agents?.defaults?.contextPruning?.mode === "cache-ttl") {
@@ -598,8 +600,8 @@ All existing tests that cover the pi integration and its extensions:
 - `src/agents/embedded-subscribe.subscribe-embedded-pi-session.waits-multiple-compaction-retries-before-resolving.test.ts`
 - `src/agents/embedded-subscribe.tools.test.ts`
 - `src/agents/embedded-utils.test.ts`
-- `src/agents/runtime/compaction/compaction-safeguard.test.ts`
-- `src/agents/runtime/context-pruning.test.ts`
+- `src/agents/runtime/engines/pi/extensions/compaction-safeguard.e2e.test.ts`
+- `src/agents/runtime/context-pruning.e2e.test.ts`
 - `src/agents/runtime/engines/pi/settings.test.ts`
 - `src/agents/runtime/engines/pi/tool-definition-adapter.test.ts`
 - `src/agents/agent-tools-agent-config.test.ts`

@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { createAgentSession, SettingsManager } from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
 import type { ReasoningLevel, ThinkLevel } from "../../auto-reply/thinking.js";
 import { resolveChannelCapabilities } from "../../config/channel-capabilities.js";
@@ -48,10 +47,8 @@ import { ensureBitterbotModelsJson } from "../models-config.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../ollama-stream.js";
 import { compressOldMessages } from "../progressive-compression.js";
 import { resolveRuntimeEngine } from "../runtime/engine.js";
-import {
-  ensurePiCompactionReserveTokens,
-  resolveCompactionReserveTokensFloor,
-} from "../runtime/engines/pi/settings.js";
+import { createPiSession, type EmbeddedAgentSession } from "../runtime/engines/pi/session.js";
+import { resolveCompactionReserveTokensFloor } from "../runtime/engines/pi/settings.js";
 import { openTranscript } from "../runtime/open-transcript.js";
 import { createOwnedSession } from "../runtime/session/create.js";
 import type { SessionStore } from "../runtime/session/session.js";
@@ -92,17 +89,11 @@ import { buildModelAliasLines, resolveModel } from "./model.js";
 import { buildEmbeddedSandboxInfo } from "./sandbox-info.js";
 import { withSessionRequestAuth } from "./session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "./session-manager-cache.js";
-import {
-  applySystemPromptOverrideToSession,
-  buildEmbeddedSystemPrompt,
-  createSystemPromptOverride,
-} from "./system-prompt.js";
-import { sessionToolAllowlist, splitSdkTools } from "./tool-split.js";
+import { buildEmbeddedSystemPrompt, createSystemPromptOverride } from "./system-prompt.js";
+import { splitSdkTools } from "./tool-split.js";
 import type { EmbeddedPiCompactResult } from "./types.js";
 import { describeUnknownError, mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
-
-type PiSessionOptions = NonNullable<Parameters<typeof createAgentSession>[0]>;
 
 export type CompactEmbeddedPiSessionParams = {
   sessionId: string;
@@ -604,7 +595,7 @@ export async function compactEmbeddedPiSessionDirect(
         model,
       });
 
-      let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
+      let session: EmbeddedAgentSession;
       if (resolveRuntimeEngine(params.config, sessionAgentId) === "bitterbot") {
         // PLAN-52: the owned session. Its summary call goes through the agent's
         // stream function, so install the stack a run uses (provider runtime,
@@ -637,31 +628,23 @@ export async function compactEmbeddedPiSessionDirect(
         owned.agent.streamFn = withSessionRequestAuth(owned.agent.streamFn, modelRegistry);
         session = owned as unknown as typeof session;
       } else {
-        const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
         const { customTools } = splitSdkTools({
           tools,
           sandboxEnabled: !!sandbox?.enabled,
         });
-        ({ session } = await createAgentSession({
+        session = await createPiSession({
           cwd: resolvedWorkspace,
+          settingsCwd: effectiveWorkspace,
           agentDir,
-          // The owned registry and auth storage have the methods pi's session
-          // calls; the types differ only in pi's private fields.
-          authStorage: authStorage as unknown as PiSessionOptions["authStorage"],
-          modelRegistry: modelRegistry as unknown as PiSessionOptions["modelRegistry"],
+          authStorage,
+          modelRegistry,
           model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          tools: sessionToolAllowlist(customTools),
           customTools,
-          sessionManager,
-          settingsManager,
-        }));
-        applySystemPromptOverrideToSession(session, systemPromptOverride());
-        // After createAgentSession: pi >= 0.73 reloads settings from disk while
-        // creating the session, which drops overrides applied earlier.
-        ensurePiCompactionReserveTokens({
-          settingsManager,
+          store: sessionManager,
+          systemPrompt: systemPromptOverride(),
           minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+          toolLoopCompat: false,
         });
       }
 

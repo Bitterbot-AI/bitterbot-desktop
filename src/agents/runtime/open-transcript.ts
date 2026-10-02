@@ -2,19 +2,33 @@
  * PLAN-52 Phase 1: open a session transcript with the store the engine selects.
  *
  * Both stores read and write session JSONL v3 and expose the same methods, so
- * callers (and pi's own session layer, which still drives the turn until
- * Phase 4) take either. The return type is pi's `SessionManager` because that
- * is what `createAgentSession` and the tool-result guard are typed against;
- * the cast is removed with the pi engine.
+ * callers take either. The return type is the owned `TranscriptStore`; pi's
+ * `SessionManager` is adapted to it in `engines/pi/open-transcript.ts`.
  */
 
-import { SessionManager } from "@mariozechner/pi-coding-agent";
-import type { RuntimeEngine } from "./engine.js";
+import { loadConfig, type BitterbotConfig } from "../../config/config.js";
+import { DEFAULT_RUNTIME_ENGINE, resolveRuntimeEngine, type RuntimeEngine } from "./engine.js";
+import { openPiTranscript } from "./engines/pi/open-transcript.js";
 import { TranscriptStore } from "./transcript/store.js";
 
-export function openTranscript(sessionFile: string, engine: RuntimeEngine): SessionManager {
-  if (engine === "bitterbot") {
-    return TranscriptStore.open(sessionFile) as unknown as SessionManager;
+export function openTranscript(sessionFile: string, engine: RuntimeEngine): TranscriptStore {
+  return engine === "bitterbot" ? TranscriptStore.open(sessionFile) : openPiTranscript(sessionFile);
+}
+
+/**
+ * Open a transcript outside a run (delivery mirror, chat inject, thread fork)
+ * with the store of the agent's configured engine. The config is loaded when
+ * the caller does not have it; if that fails the default engine is used.
+ */
+export function openTranscriptForAgent(
+  sessionFile: string,
+  params: { config?: BitterbotConfig; agentId?: string } = {},
+): TranscriptStore {
+  let engine: RuntimeEngine = DEFAULT_RUNTIME_ENGINE;
+  try {
+    engine = resolveRuntimeEngine(params.config ?? loadConfig(), params.agentId);
+  } catch {
+    // Unreadable config: the default engine's store reads the same format.
   }
-  return SessionManager.open(sessionFile);
+  return openTranscript(sessionFile, engine);
 }

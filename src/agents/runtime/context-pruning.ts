@@ -1,11 +1,9 @@
 /**
- * Opt-in context pruning (“microcompact”-style) for Pi sessions.
- *
- * This only affects the in-memory context for the current request; it does not rewrite session
- * history persisted on disk.
+ * Opt-in context pruning ("microcompact"-style): pure pruning of old tool
+ * results in the in-memory context of one request. It does not rewrite
+ * session history on disk. The pi extension that calls it is
+ * `engines/pi/extensions/context-pruning.ts`.
  */
-
-export { default } from "./context-pruning/extension.js";
 
 export { pruneContextMessages } from "./context-pruning/pruner.js";
 export type {

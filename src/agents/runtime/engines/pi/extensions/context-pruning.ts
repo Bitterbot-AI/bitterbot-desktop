@@ -1,6 +1,6 @@
 import type { ContextEvent, ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { pruneContextMessages } from "./pruner.js";
-import { getContextPruningRuntime } from "./runtime.js";
+import { pruneContextMessages } from "../../../context-pruning/pruner.js";
+import { getContextPruningRuntime } from "../../../context-pruning/runtime.js";
 
 export default function contextPruningExtension(api: ExtensionAPI): void {
   api.on("context", (event: ContextEvent, ctx: ExtensionContext) => {

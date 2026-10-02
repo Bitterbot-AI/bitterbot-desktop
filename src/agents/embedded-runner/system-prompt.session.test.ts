@@ -15,7 +15,7 @@ import {
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import { applySystemPromptOverrideToSession } from "./system-prompt.js";
+import { applySystemPromptOverrideToSession } from "../runtime/engines/pi/session.js";
 
 const model = {
   id: "stub-model",

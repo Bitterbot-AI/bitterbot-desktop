@@ -1,8 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
 import { resolveThinkingDefault } from "../../agents/model-selection.js";
+import { openTranscriptForAgent } from "../../agents/runtime/open-transcript.js";
+import {
+  TRANSCRIPT_VERSION,
+  type TranscriptMessage,
+} from "../../agents/runtime/transcript/types.js";
 import { resolveAgentTimeoutMs } from "../../agents/timeout.js";
 import { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
 import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.js";
@@ -50,7 +54,7 @@ type TranscriptAppendResult = {
   error?: string;
 };
 
-type AppendMessageArg = Parameters<SessionManager["appendMessage"]>[0];
+type AppendMessageArg = TranscriptMessage;
 type AbortOrigin = "rpc" | "stop-command";
 
 type AbortedPartialSnapshot = {
@@ -114,7 +118,7 @@ function ensureTranscriptFile(params: { transcriptPath: string; sessionId: strin
     fs.mkdirSync(path.dirname(params.transcriptPath), { recursive: true });
     const header = {
       type: "session",
-      version: CURRENT_SESSION_VERSION,
+      version: TRANSCRIPT_VERSION,
       id: params.sessionId,
       timestamp: new Date().toISOString(),
       cwd: process.cwd(),
@@ -229,7 +233,7 @@ function appendAssistantTranscriptMessage(params: {
   try {
     // IMPORTANT: Use SessionManager so the entry is attached to the current leaf via parentId.
     // Raw jsonl appends break the parent chain and can hide compaction summaries from context.
-    const sessionManager = SessionManager.open(transcriptPath);
+    const sessionManager = openTranscriptForAgent(transcriptPath, { agentId: params.agentId });
     const messageId = sessionManager.appendMessage(messageBody);
     return { ok: true, messageId, message: messageBody };
   } catch (err) {

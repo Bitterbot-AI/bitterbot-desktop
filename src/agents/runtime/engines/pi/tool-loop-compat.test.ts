@@ -16,9 +16,9 @@ import {
   SettingsManager,
 } from "@mariozechner/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
-import { ensurePiCompactionReserveTokens } from "../runtime/engines/pi/settings.js";
+import { sessionToolAllowlist, splitSdkTools } from "../../../embedded-runner/tool-split.js";
+import { ensurePiCompactionReserveTokens } from "./settings.js";
 import { applyToolLoopCompat, STEERING_SKIP_REASON } from "./tool-loop-compat.js";
-import { sessionToolAllowlist, splitSdkTools } from "./tool-split.js";
 
 const model = {
   id: "stub-model",

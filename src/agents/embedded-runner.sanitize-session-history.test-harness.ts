@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import { vi } from "vitest";
+import type { TranscriptStore as SessionManager } from "./runtime/transcript/store.js";
 
 export type SessionEntry = { type: string; customType: string; data: unknown };
 

@@ -23,7 +23,9 @@ The session file format (JSONL v3) is the same on both engines. Switching an age
 | `src/agents/runtime/compaction/`      | Compaction policies (summary, offload) and the transcript view             |
 | `src/agents/runtime/context-pruning/` | In-run context budget and tool-output stubs                                |
 | `src/agents/runtime/contract/`        | Contract suite: scripted model, harness, scenarios, goldens                |
-| `src/agents/runtime/engines/pi/`      | Adapter code that exists only to talk to pi                                |
+| `src/agents/runtime/models/`          | Model registry and auth storage (models.json, auth.json, request auth)     |
+| `src/agents/runtime/tools/coding/`    | The read, write and edit file tools                                        |
+| `src/agents/runtime/engines/pi/`      | The pi engine: the only code that imports pi-coding-agent                  |
 
 ## Contract suite
 
@@ -90,6 +92,12 @@ The owned store differs from pi on purpose in four places, each with a test in `
 2. A damaged file is moved aside (`<file>.corrupt.<timestamp>`), not overwritten.
 3. An empty file is treated like a missing one.
 4. A parent cycle in the entry tree ends the walk instead of hanging.
+
+## What both engines share
+
+Since Phase 5 these parts are Bitterbot code on either engine, each held equal to pi by a differential test that is deleted with the pi dependency: skill discovery and prompt formatting (`src/agents/skills/skill-loader.ts`), the file tools (`runtime/tools/coding/`), token estimates and summary compaction helpers (`runtime/compaction/summary/`), and the model registry and auth storage (`runtime/models/`). The `pi` engine still uses pi's session, loop and transcript writer, created in `runtime/engines/pi/session.ts`.
+
+Type-only imports of `@mariozechner/pi-agent-core` (message, tool and event types) remain across the tree; they are replaced by the loop's own types when the adapter is deleted.
 
 ## Rules
 

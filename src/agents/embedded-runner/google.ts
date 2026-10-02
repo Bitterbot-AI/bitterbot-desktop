@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
-import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import { registerUnhandledRejectionHandler } from "../../infra/unhandled-rejections.js";
 import {
   hasInterSessionUserProvenance,
@@ -14,6 +13,7 @@ import {
   sanitizeGoogleTurnOrdering,
   sanitizeSessionMessagesImages,
 } from "../embedded-helpers.js";
+import type { TranscriptStore as SessionManager } from "../runtime/transcript/store.js";
 import {
   sanitizeToolCallInputs,
   stripToolResultDetails,

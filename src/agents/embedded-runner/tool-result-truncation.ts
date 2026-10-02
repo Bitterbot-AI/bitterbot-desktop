@@ -175,7 +175,8 @@ export async function truncateOversizedToolResultsInSession(params: {
       if (entry.type !== "message") {
         continue;
       }
-      const msg = entry.message;
+      // The store keeps message payloads opaque; they are agent messages.
+      const msg = entry.message as unknown as AgentMessage;
       if ((msg as { role?: string }).role !== "toolResult") {
         continue;
       }
@@ -223,7 +224,7 @@ export async function truncateOversizedToolResultsInSession(params: {
       const entry = branch[i];
 
       if (entry.type === "message") {
-        let message = entry.message;
+        let message = entry.message as unknown as AgentMessage;
 
         if (oversizedSet.has(i)) {
           message = truncateToolResultMessage(message, maxChars);
@@ -240,7 +241,7 @@ export async function truncateOversizedToolResultsInSession(params: {
         remember(
           entry.id,
           sessionManager.appendMessage(
-            message as Parameters<typeof sessionManager.appendMessage>[0],
+            message as unknown as Parameters<typeof sessionManager.appendMessage>[0],
           ),
         );
       } else if (entry.type === "compaction") {

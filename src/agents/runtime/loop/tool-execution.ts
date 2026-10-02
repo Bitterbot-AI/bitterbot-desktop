@@ -22,7 +22,7 @@
  * 2. `skipToolCallsOnSteering` (default true): while steering messages are
  *    queued, every call after the first of the assistant message gets the
  *    immediate result `STEERING_SKIP_REASON`. The check sits where
- *    `embedded-runner/tool-loop-compat.ts` had it: after lookup and
+ *    `engines/pi/tool-loop-compat.ts` had it: after lookup and
  *    validation (an unknown tool or invalid arguments report their own
  *    error), before `beforeToolCall` (the hook is not called for a skipped
  *    call). It is a live check per call, and it does not drain the queue; the

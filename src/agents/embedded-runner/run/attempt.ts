@@ -3,7 +3,6 @@ import os from "node:os";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { createAgentSession, SettingsManager } from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
@@ -63,10 +62,8 @@ import {
   PRUNE_RECORD_CUSTOM_TYPE,
 } from "../../runtime/context-pruning/offload-stubs.js";
 import { resolveRuntimeEngine } from "../../runtime/engine.js";
-import {
-  ensurePiCompactionReserveTokens,
-  resolveCompactionReserveTokensFloor,
-} from "../../runtime/engines/pi/settings.js";
+import { createPiSession, type EmbeddedAgentSession } from "../../runtime/engines/pi/session.js";
+import { resolveCompactionReserveTokensFloor } from "../../runtime/engines/pi/settings.js";
 import { toClientToolDefinitions } from "../../runtime/engines/pi/tool-definition-adapter.js";
 import { openTranscript } from "../../runtime/open-transcript.js";
 import { createOwnedSession } from "../../runtime/session/create.js";
@@ -115,13 +112,8 @@ import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
 import { withSessionRequestAuth } from "../session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { prepareSessionManagerForRun } from "../session-manager-init.js";
-import {
-  applySystemPromptOverrideToSession,
-  buildEmbeddedSystemPrompt,
-  createSystemPromptOverride,
-} from "../system-prompt.js";
-import { applyToolLoopCompat } from "../tool-loop-compat.js";
-import { sessionToolAllowlist, splitSdkTools } from "../tool-split.js";
+import { buildEmbeddedSystemPrompt, createSystemPromptOverride } from "../system-prompt.js";
+import { splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
 import {
@@ -130,8 +122,6 @@ import {
 } from "./compaction-timeout.js";
 import { detectAndLoadPromptImages } from "./images.js";
 import type { EmbeddedRunAttemptParams, EmbeddedRunAttemptResult } from "./types.js";
-
-type PiSessionOptions = NonNullable<Parameters<typeof createAgentSession>[0]>;
 
 export function injectHistoryImagesIntoMessages(
   messages: AgentMessage[],
@@ -661,7 +651,7 @@ export async function runEmbeddedAttempt(
     });
 
     let sessionManager: ReturnType<typeof guardSessionManager> | undefined;
-    let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+    let session: EmbeddedAgentSession | undefined;
     try {
       await repairSessionFileIfNeeded({
         sessionFile: params.sessionFile,
@@ -739,7 +729,6 @@ export async function runEmbeddedAttempt(
         });
         session = owned as unknown as typeof session;
       } else {
-        const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
         const { customTools } = splitSdkTools({
           tools,
           sandboxEnabled: !!sandbox?.enabled,
@@ -747,30 +736,20 @@ export async function runEmbeddedAttempt(
         const clientToolDefs = params.clientTools
           ? toClientToolDefinitions(params.clientTools, onClientToolCall, clientToolHookContext)
           : [];
-        const allCustomTools = [...customTools, ...clientToolDefs];
-
-        ({ session } = await createAgentSession({
+        session = await createPiSession({
           cwd: resolvedWorkspace,
+          settingsCwd: effectiveWorkspace,
           agentDir,
-          // The owned registry and auth storage have the methods pi's session
-          // calls; the types differ only in pi's private fields.
-          authStorage: params.authStorage as unknown as PiSessionOptions["authStorage"],
-          modelRegistry: params.modelRegistry as unknown as PiSessionOptions["modelRegistry"],
+          authStorage: params.authStorage,
+          modelRegistry: params.modelRegistry,
           model: params.model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          tools: sessionToolAllowlist(allCustomTools),
-          customTools: allCustomTools,
-          sessionManager,
-          settingsManager,
-        }));
-        applySystemPromptOverrideToSession(session, systemPromptText);
-        // After createAgentSession: pi >= 0.73 reloads settings from disk while
-        // creating the session, which drops overrides applied earlier.
-        ensurePiCompactionReserveTokens({
-          settingsManager,
+          customTools: [...customTools, ...clientToolDefs],
+          store: sessionManager,
+          systemPrompt: systemPromptText,
           minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+          toolLoopCompat: true,
         });
-        applyToolLoopCompat(session);
       }
       if (!session) {
         throw new Error("Embedded agent session missing");
@@ -1220,10 +1199,11 @@ export async function runEmbeddedAttempt(
           } else {
             sessionManager.resetLeaf();
           }
-          const sessionContext = sessionManager.buildSessionContext();
+          const contextMessages = sessionManager.buildSessionContext()
+            .messages as unknown as AgentMessage[];
           const sanitizedOrphan = transcriptPolicy.normalizeAntigravityThinkingBlocks
-            ? sanitizeAntigravityThinkingBlocks(sessionContext.messages)
-            : sessionContext.messages;
+            ? sanitizeAntigravityThinkingBlocks(contextMessages)
+            : contextMessages;
           activeSession.agent.state.messages = sanitizedOrphan;
           log.warn(
             `Removed orphaned user message to prevent consecutive user turns. ` +

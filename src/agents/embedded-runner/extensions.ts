@@ -1,7 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Api, Model } from "@mariozechner/pi-ai";
-import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import type { BitterbotConfig } from "../../config/config.js";
 import { resolveContextWindowInfo } from "../context-window-guard.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../defaults.js";
@@ -10,13 +9,14 @@ import { setContextPruningRuntime } from "../runtime/context-pruning/runtime.js"
 import { computeEffectiveSettings } from "../runtime/context-pruning/settings.js";
 import { makeToolPrunablePredicate } from "../runtime/context-pruning/tools.js";
 import { ensurePiCompactionReserveTokens } from "../runtime/engines/pi/settings.js";
+import type { TranscriptStore as SessionManager } from "../runtime/transcript/store.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "./cache-ttl.js";
 import { loadActiveHarnessPolicy } from "./harness-policy-store.js";
 
-/** Where each extension module lives after the PLAN-52 Phase P rename. */
+/** Where each pi extension module lives (the pi engine adapter). */
 const EXTENSION_LOCATIONS: Record<string, string[]> = {
-  "context-pruning": ["runtime", "context-pruning"],
-  "compaction-safeguard": ["runtime", "compaction", "compaction-safeguard"],
+  "context-pruning": ["runtime", "engines", "pi", "extensions", "context-pruning"],
+  "compaction-safeguard": ["runtime", "engines", "pi", "extensions", "compaction-safeguard"],
 };
 
 function resolvePiExtensionPath(id: string): string {
