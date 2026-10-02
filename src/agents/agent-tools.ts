@@ -43,8 +43,10 @@ import {
 } from "./bash-tools.js";
 import { createBitterbotTools } from "./bitterbot-tools.js";
 import { listChannelAgentTools } from "./channel-tools.js";
+import { otherAgentGenomeFiles, wrapToolWithGenomeGuard } from "./genome-guard.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import { isNativeToolSearchActive } from "./providers/anthropic/config.js";
+import { wrapToolWithOwnerContext } from "./run-owner-context.js";
 import {
   CODING_FILE_TOOL_NAMES,
   createEditTool,
@@ -573,7 +575,16 @@ export function createBitterbotCodingTools(options?: {
   // Always normalize tool JSON Schemas before handing them to pi-agent/pi-ai.
   // Without this, some providers (notably OpenAI) will reject root-level union schemas.
   const normalized = subagentFiltered.map(normalizeToolParameters);
-  const withHooks = normalized.map((tool) =>
+  // GENOME.md is the user's file: no tool call may leave it changed. Inside
+  // the hook wrapper, so it sees the params after interceptors rewrote them.
+  const otherGenomes = otherAgentGenomeFiles(options?.config);
+  const genomeGuarded = normalized.map((tool) =>
+    wrapToolWithGenomeGuard(tool, workspaceRoot, otherGenomes),
+  );
+  // Runs a tool call starts (sub-agents, messages to other sessions, task
+  // wakeups) inherit a non-owner sender's status; see run-owner-context.ts.
+  const ownerScoped = genomeGuarded.map((tool) => wrapToolWithOwnerContext(tool, senderIsOwner));
+  const withHooks = ownerScoped.map((tool) =>
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,
       sessionKey: options?.sessionKey,

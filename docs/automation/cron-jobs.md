@@ -108,6 +108,10 @@ Jobs are identified by a stable `jobId` (used by CLI/Gateway APIs).
 In agent tool calls, `jobId` is canonical; legacy `id` is accepted for compatibility.
 One-shot jobs auto-delete after success by default; set `deleteAfterRun: false` to keep them.
 
+A one-shot job whose time passed while the gateway was not running is not dropped: it runs shortly after the gateway starts, provided it is at most 7 days late and was never started. A job that had already started when the gateway stopped is not started again. When a one-shot job runs more than five minutes late, its text gets a note with the scheduled time and the delay, so a reminder is not delivered as if it were on time.
+
+A new one-shot job must name a time that has not passed; `cron.add` rejects an `at` more than a minute in the past. A timestamp without an offset is read as UTC.
+
 ### Schedules
 
 Cron supports three schedule kinds:
@@ -140,7 +144,7 @@ Key behaviors:
 
 - Prompt is prefixed with `[cron:<jobId> <job name>]` for traceability.
 - Each run starts a **fresh session id** (no prior conversation carry-over).
-- Default behavior: if `delivery` is omitted, isolated jobs announce a summary (`delivery.mode = "announce"`).
+- Default behavior: if `delivery` is omitted, isolated jobs announce a summary (`delivery.mode = "announce"`) to the main session's last route. If there is no last route (for example you only use the Control UI), the run still succeeds and its result is posted to the main session.
 - `delivery.mode` (isolated-only) chooses what happens:
   - `announce`: deliver a summary to the target channel and post a brief summary to the main session.
   - `none`: internal only (no delivery, no main-session summary).
@@ -188,7 +192,8 @@ Behavior details:
 - Heartbeat-only responses (`HEARTBEAT_OK` with no real content) are not delivered.
 - If the isolated run already sent a message to the same target via the message tool, delivery is
   skipped to avoid duplicates.
-- Missing or invalid delivery targets fail the job unless `delivery.bestEffort = true`.
+- The target is resolved and checked with the channel before the agent turn runs. A job that sets `delivery.mode = "announce"` and has no usable target (none given and no last route, or a route the channel will not deliver to) fails without running the turn, unless `delivery.bestEffort = true`.
+- A job that sets `delivery.to` must set `delivery.channel` too, and is sent exactly there. The last-route fallback applies only when `delivery.to` is omitted; it then uses that route's account and thread.
 - A short summary is posted to the main session only when `delivery.mode = "announce"`.
 - The main-session summary respects `wakeMode`: `now` triggers an immediate heartbeat and
   `next-heartbeat` waits for the next scheduled heartbeat.

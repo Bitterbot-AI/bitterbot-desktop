@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { describeSchedule } from "./schedule.js";
+import { describeSchedule, oneShotTime } from "./schedule.js";
 import {
   type CronDelivery,
   type CronJob,
@@ -18,6 +18,7 @@ export function buildJobFromParams(params: Record<string, unknown>): CronJob {
   const now = Date.now();
   const jobId = pickId(params) ?? `cron_${shortId()}`;
   const schedule = pickSchedule(params);
+  assertOneShotNotInThePast(schedule, now);
   const sessionTarget = pickSessionTarget(params, schedule);
   const payload = pickPayload(params, sessionTarget);
   if (sessionTarget === "main" && payload.kind !== "systemEvent") {
@@ -52,6 +53,23 @@ export function buildJobFromParams(params: Record<string, unknown>): CronJob {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/** Clock skew and a slow caller are fine; "an hour ago" is a mistake. */
+const PAST_ONE_SHOT_TOLERANCE_MS = 60_000;
+
+/**
+ * A new one-shot job must name a time that has not passed. The engine runs a
+ * missed one-shot at the next tick, so a past time would fire at once; the
+ * usual cause is a local time written without an offset (read as UTC).
+ */
+function assertOneShotNotInThePast(schedule: CronSchedule, nowMs: number): void {
+  const at = oneShotTime(schedule);
+  if (at !== null && at < nowMs - PAST_ONE_SHOT_TOLERANCE_MS) {
+    throw new Error(
+      `schedule.at (${new Date(at).toISOString()}) is in the past; a one-shot job needs a future time. A time without an offset is read as UTC.`,
+    );
+  }
 }
 
 export function applyJobPatch(existing: CronJob, patch: Record<string, unknown>): CronJob {

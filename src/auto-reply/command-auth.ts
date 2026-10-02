@@ -3,6 +3,7 @@ import { getChannelDock, listChannelDocks } from "../channels/dock.js";
 import type { ChannelId } from "../channels/plugins/types.js";
 import { normalizeAnyChannelId } from "../channels/registry.js";
 import type { BitterbotConfig } from "../config/config.js";
+import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import type { MsgContext } from "./templating.js";
 
 export type CommandAuthorization = {
@@ -290,7 +291,12 @@ export function resolveCommandAuthorization(params: {
   const senderId = matchedSender ?? senderCandidates[0];
 
   const enforceOwner = Boolean(dock?.commands?.enforceOwnerForCommands);
-  const senderIsOwner = Boolean(matchedSender);
+  // chat.send is the Control UI (and other gateway clients): it is reachable
+  // only with the gateway's own credentials, so its sender is the operator.
+  // No channel monitor builds a context with this provider.
+  const isGatewayOperator =
+    ctx.Provider === INTERNAL_MESSAGE_CHANNEL && ctx.Surface === INTERNAL_MESSAGE_CHANNEL;
+  const senderIsOwner = Boolean(matchedSender) || isGatewayOperator;
   const ownerAllowlistConfigured = ownerAllowAll || explicitOwners.length > 0;
   const requireOwner = enforceOwner || ownerAllowlistConfigured;
   const isOwnerForCommands = !requireOwner

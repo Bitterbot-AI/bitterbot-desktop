@@ -229,12 +229,12 @@ If you find this architecture interesting, please consider starring the repo to 
 
 Every Bitterbot agent ships with a workspace that defines who it is:
 
-- **`GENOME.md`** Immutable DNA. Safety axioms, hormonal baselines, core values, personality constraints. Dream cycles rewrite `MEMORY.md` and never write this file.
+- **`GENOME.md`** Immutable DNA. Safety axioms, hormonal baselines, core values, personality constraints. Dream cycles rewrite `MEMORY.md` and never write this file, and a write guard keeps the agent's own tools from changing it.
 - **`MEMORY.md`** Living working memory, rewritten every dream cycle. Contains the Phenotype (self-concept), the Bond (theory of mind about you), the Niche (ecosystem role), and active context.
 - **`PROTOCOLS.md`** Operating procedures. How the agent behaves in groups, when to speak, when to stay silent.
 - **`TOOLS.md`** Environment-specific notes. Camera names, SSH hosts, voice preferences, the agent's cheat sheet.
 
-The Genome constrains evolution. The Phenotype expresses it. The result: an agent that grows and adapts inside rules you set. One honest gap: the Genome is enforced by the prompt and by the dream engine not writing it; there is no hard write guard on the file yet.
+The Genome constrains evolution. The Phenotype expresses it. The result: an agent that grows and adapts inside rules you set. The agent cannot rewrite it: the file tools refuse to touch `GENOME.md`, and any other tool call that changes it is rolled back.
 
 <details>
 <summary><strong>Example: Real MEMORY.md from a live agent</strong></summary>
@@ -379,7 +379,7 @@ There is no public feed, no follower count, and no public connection graph. No m
 - **A weekly briefing:** A background digest, one per week: reciprocity pulse, presence, conversation counts, the tab's fold, and what is waiting on you. It reports counts and states, never a friend's prose.
 - **A practice partner:** A brand-new node with zero connections gets a clearly labeled bot to learn connect, converse, ask, invite. It retires permanently the moment a real connection forms.
 
-Circles are **on by default** while the connection surface is red-teamed at scale; `circles.enabled: false` opts a node out entirely, at which point every `circle/*` verb answers `METHOD_NOT_FOUND` (invisible, not merely refused). One honest gap: removing a member is node-local and there is no channel-key rotation yet, so a removed member holding the old roster can still read future traffic.
+Circles are **on by default** while the connection surface is red-teamed at scale; `circles.enabled: false` opts a node out entirely, at which point every `circle/*` verb answers `METHOD_NOT_FOUND` (invisible, not merely refused). One honest gap: removing a member is node-local. Your node rotates its own sender key when you remove someone, so they can no longer read what you send; they can still read what other members send until each of those members applies the removal too.
 
 [Circles guide →](docs/network/circles.md) · [Wire format](docs/protocol/circle-v1/SPEC.md)
 
@@ -400,7 +400,7 @@ Persistent identity makes trusted peers possible. Trusted peers make capability 
 > marketplace is early: few nodes have it enabled and it has not yet carried meaningful paid volume.
 > Read this section as the design and the working code, not as a functioning market.
 
-- **Agent Wallet**: Once enabled, your agent has its own USDC wallet on Base. It can pay for paywalled APIs via the **x402 micropayment protocol** and send USDC to other agents or services, inside spend caps the wallet service enforces per transaction, per day, and per session ($25 / $50 / $50 by default). There is no per-payment human approval yet, so keep the caps at amounts you can lose.
+- **Agent Wallet**: Once enabled, your agent has its own USDC wallet on Base. It can pay for paywalled APIs via the **x402 micropayment protocol** and send USDC to other agents or services, inside spend caps the wallet service enforces per transaction, per day, and per session ($25 / $50 / $50 by default). Only owner senders can use the tools that move money. There is no per-payment human approval yet, so keep the caps at amounts you can lose.
 - **P2P Skills Marketplace**: A skill that passed the validation gate and its maturity window can be published to a decentralized network via Gossipsub, signed, with a provenance trailer; receivers quarantine it for review. **EigenTrust reputation** scores peers. Pricing responds to execution success rate, demand signals, peer reputation, and scarcity. Revenue is split 70/20/10 (publisher/author/contributors).
 - **Bounties**: Management nodes can post bounties with USDC rewards for capabilities the network lacks, paid after a quality gate. Off by default.
 - **Earning**: With A2A and payments enabled, external agents can discover your node via the **A2A protocol** and pay per task via **x402**. A 48-hour hold protects buyers before revenue shares are released.
@@ -497,7 +497,7 @@ Bitterbot connects to real messaging surfaces. Inbound DMs are treated as **untr
 - **DM pairing**: Unknown senders receive a pairing code. Approve with `bitterbot pairing approve <channel> <code>`.
 - **Sandbox mode**: Non-main sessions (groups/channels) can run in per-session Docker sandboxes.
 - **Your data on your disk**: Memory is a SQLite database and Markdown files under `~/.bitterbot`. You can read them, back them up, and turn memory off. With a cloud model provider, prompts (including recalled memories) go to that provider.
-- **Approvals**: Shell commands outside the allowlist ask first ([exec approvals](docs/tools/exec-approvals.md)); high-risk tools are owner-only; every agent-initiated write into a circle queues for your approval.
+- **Approvals**: Shell commands outside the allowlist ask first ([exec approvals](docs/tools/exec-approvals.md)); tools that run code, drive the browser or move money are owner-only; every agent-initiated write into a circle queues for your approval.
 - **P2P security**: Ed25519 signed envelopes, per-peer rate limiting, content deduplication, EigenTrust reputation, management node cryptographic authorization via genesis trust list.
 
 **What this node connects to:** every default outbound connection (the P2P

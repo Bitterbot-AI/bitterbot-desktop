@@ -10,6 +10,7 @@ import { resolveAgentConfig } from "../agent-scope.js";
 import { type HandoffEnvelope, validateHandoffEnvelope } from "../handoff-envelope.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
 import { resolveDefaultModelForAgent } from "../model-selection.js";
+import { currentRunIsNonOwner, inheritRunOwner } from "../run-owner-context.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import { buildSubagentSystemPrompt } from "../subagent-announce.js";
 import { getSubagentDepthFromSessionStore } from "../subagent-depth.js";
@@ -334,7 +335,7 @@ export function createSessionsSpawnTool(opts?: {
       try {
         const response = await callGateway<{ runId: string }>({
           method: "agent",
-          params: {
+          params: inheritRunOwner({
             message: task,
             sessionKey: childSessionKey,
             channel: requesterOrigin?.channel,
@@ -353,7 +354,7 @@ export function createSessionsSpawnTool(opts?: {
             groupId: opts?.agentGroupId ?? undefined,
             groupChannel: opts?.agentGroupChannel ?? undefined,
             groupSpace: opts?.agentGroupSpace ?? undefined,
-          },
+          }),
           timeoutMs: 10_000,
         });
         if (typeof response?.runId === "string" && response.runId) {
@@ -381,6 +382,7 @@ export function createSessionsSpawnTool(opts?: {
         label: label || undefined,
         model: resolvedModel,
         runTimeoutSeconds,
+        ...(currentRunIsNonOwner() ? { requesterIsOwner: false as const } : {}),
       });
 
       return jsonResult({

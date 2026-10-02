@@ -90,10 +90,16 @@ export function scheduleFollowupDrain(
 
           const items = queue.items.slice();
           const summary = previewQueueSummaryPrompt(queue);
-          const run = items.at(-1)?.run ?? queue.lastRun;
-          if (!run) {
+          const lastRun = items.at(-1)?.run ?? queue.lastRun;
+          if (!lastRun) {
             break;
           }
+          // One run for several senders' messages: it is an owner turn only
+          // if every message in it came from an owner.
+          const run = {
+            ...lastRun,
+            senderIsOwner: items.every((item) => item.run.senderIsOwner === true),
+          };
 
           // Preserve originating channel from items when collecting same-channel.
           const originatingChannel = items.find((i) => i.originatingChannel)?.originatingChannel;
@@ -129,10 +135,12 @@ export function scheduleFollowupDrain(
 
         const summaryPrompt = previewQueueSummaryPrompt(queue);
         if (summaryPrompt) {
-          const run = queue.lastRun;
-          if (!run) {
+          if (!queue.lastRun) {
             break;
           }
+          // The summary stands for dropped messages whose senders are no
+          // longer known, so it never runs as an owner turn.
+          const run = { ...queue.lastRun, senderIsOwner: false };
           const next = queue.items[0];
           if (!next) {
             break;

@@ -1,5 +1,7 @@
 import { createBitterbotTools } from "../../agents/bitterbot-tools.js";
+import { runInOwnerContext } from "../../agents/run-owner-context.js";
 import type { SkillCommandSpec } from "../../agents/skills.js";
+import { applyOwnerOnlyToolPolicy } from "../../agents/tool-policy.js";
 import { getChannelDock } from "../../channels/dock.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
@@ -227,7 +229,11 @@ export async function handleInlineActions(params: {
         config: cfg,
       });
 
-      const tool = tools.find((candidate) => candidate.name === dispatch.toolName);
+      // Same gate as a model-driven turn: no owner-only tool for a sender who
+      // is not an owner, and anything the tool starts inherits that.
+      const tool = applyOwnerOnlyToolPolicy(tools, command.senderIsOwner).find(
+        (candidate) => candidate.name === dispatch.toolName,
+      );
       if (!tool) {
         typing.cleanup();
         return { kind: "reply", reply: { text: `❌ Tool not available: ${dispatch.toolName}` } };
@@ -235,12 +241,14 @@ export async function handleInlineActions(params: {
 
       const toolCallId = `cmd_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       try {
-        const result = await tool.execute(toolCallId, {
-          command: rawArgs,
-          commandName: skillInvocation.command.name,
-          skillName: skillInvocation.command.skillName,
-          // oxlint-disable-next-line typescript/no-explicit-any
-        } as any);
+        const result = await runInOwnerContext(command.senderIsOwner, () =>
+          tool.execute(toolCallId, {
+            command: rawArgs,
+            commandName: skillInvocation.command.name,
+            skillName: skillInvocation.command.skillName,
+            // oxlint-disable-next-line typescript/no-explicit-any
+          } as any),
+        );
         const text = extractTextFromToolResult(result) ?? "✅ Done.";
         typing.cleanup();
         return { kind: "reply", reply: { text } };

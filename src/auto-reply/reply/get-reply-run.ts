@@ -446,7 +446,9 @@ export async function runPreparedReply(
       senderName: sessionCtx.SenderName?.trim() || undefined,
       senderUsername: sessionCtx.SenderUsername?.trim() || undefined,
       senderE164: sessionCtx.SenderE164?.trim() || undefined,
-      senderIsOwner: command.senderIsOwner,
+      // A heartbeat is nobody's turn: it digests system events (cron output,
+      // hook payloads), whoever the last route points at.
+      senderIsOwner: isHeartbeat ? false : command.senderIsOwner,
       sessionFile,
       workspaceDir,
       config: cfg,

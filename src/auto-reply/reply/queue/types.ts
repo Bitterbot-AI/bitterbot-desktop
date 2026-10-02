@@ -55,6 +55,8 @@ export type FollowupRun = {
     senderName?: string;
     senderUsername?: string;
     senderE164?: string;
+    /** Whether the sender of this turn is an owner (owner-only tools). */
+    senderIsOwner?: boolean;
     sessionFile: string;
     workspaceDir: string;
     config: BitterbotConfig;

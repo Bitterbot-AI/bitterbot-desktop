@@ -9,6 +9,8 @@ type EmbeddedPiQueueHandle = {
   isStreaming: () => boolean;
   isCompacting: () => boolean;
   abort: () => void;
+  /** Whether the running turn is an owner's (it then has the owner-only tools). */
+  senderIsOwner?: boolean;
 };
 
 const ACTIVE_EMBEDDED_RUNS = new Map<string, EmbeddedPiQueueHandle>();
@@ -18,10 +20,22 @@ type EmbeddedRunWaiter = {
 };
 const EMBEDDED_RUN_WAITERS = new Map<string, Set<EmbeddedRunWaiter>>();
 
-export function queueEmbeddedPiMessage(sessionId: string, text: string): boolean {
+export function queueEmbeddedPiMessage(
+  sessionId: string,
+  text: string,
+  opts?: {
+    /** `false`: the text comes from a sender who is not an owner. */ senderIsOwner?: boolean;
+  },
+): boolean {
   const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
   if (!handle) {
     diag.debug(`queue message failed: sessionId=${sessionId} reason=no_active_run`);
+    return false;
+  }
+  if (opts?.senderIsOwner === false && handle.senderIsOwner === true) {
+    // Steering would put a non-owner's text into a turn that holds the
+    // owner-only tools. The caller falls back to a turn of its own.
+    diag.debug(`queue message refused: sessionId=${sessionId} reason=non_owner_into_owner_run`);
     return false;
   }
   if (!handle.isStreaming()) {

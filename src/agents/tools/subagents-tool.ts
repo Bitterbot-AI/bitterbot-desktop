@@ -20,6 +20,7 @@ import {
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { abortEmbeddedPiRun } from "../embedded.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
+import { currentRunIsNonOwner, inheritRunOwner } from "../run-owner-context.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import { getSubagentDepthFromSessionStore } from "../subagent-depth.js";
 import {
@@ -668,7 +669,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
         try {
           const response = await callGateway<{ runId: string }>({
             method: "agent",
-            params: {
+            params: inheritRunOwner({
               message,
               sessionKey: resolved.entry.childSessionKey,
               sessionId,
@@ -677,7 +678,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
               channel: INTERNAL_MESSAGE_CHANNEL,
               lane: AGENT_LANE_SUBAGENT,
               timeout: 0,
-            },
+            }),
             timeoutMs: 10_000,
           });
           if (typeof response?.runId === "string" && response.runId) {
@@ -704,6 +705,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
           nextRunId: runId,
           fallback: resolved.entry,
           runTimeoutSeconds: resolved.entry.runTimeoutSeconds ?? 0,
+          ...(currentRunIsNonOwner() ? { requesterIsOwner: false as const } : {}),
         });
 
         return jsonResult({

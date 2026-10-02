@@ -4,6 +4,7 @@ import { resolveAgentMainSessionKey } from "../config/sessions.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { lateNoteFor } from "./schedule.js";
 import type { CronJob } from "./types.js";
 
 const log = createSubsystemLogger("gateway/cron");
@@ -36,5 +37,6 @@ function formatEventText(job: CronJob): string {
     return "";
   }
   const tag = `[cron:${job.jobId}${job.name ? ` ${job.name}` : ""}]`;
-  return `${tag} ${job.payload.text}`.trim();
+  const note = lateNoteFor(job, Date.now());
+  return `${tag} ${job.payload.text}${note ? `\n\n${note}` : ""}`.trim();
 }
