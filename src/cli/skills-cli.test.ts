@@ -14,7 +14,7 @@ import {
 } from "./skills-cli.format.js";
 
 // Unit tests: don't pay the runtime cost of loading/parsing the real skills loader.
-vi.mock("@mariozechner/pi-coding-agent", () => ({
+vi.mock("../agents/skills/skill-loader.js", () => ({
   loadSkillsFromDir: () => ({ skills: [] }),
   formatSkillsForPrompt: () => "",
 }));

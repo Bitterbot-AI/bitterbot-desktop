@@ -10,6 +10,15 @@ Portions of the channel routing and base agent runner incorporate code from
 OpenClaw (MIT License) and the pi-agent framework by Mario Zechner (MIT
 License). See the Heritage & Attribution section of README.md for details.
 
+Code ported or vendored into the tree keeps a header naming its source:
+
+- `src/agents/runtime/` (transcript store, agent loop, session layer, summary
+  compaction) and `src/agents/skills/skill-loader.ts`: ported from
+  pi-coding-agent and pi-agent-core 0.73.1 by Mario Zechner (pi-mono, MIT
+  License).
+- `src/agents/skills/skill-ignore.ts`: the part of the `ignore` package
+  (Kael Zhang, MIT License) that skill discovery uses.
+
 ## Original work provenance
 
 The following components are original work by Victor Michael Gil and
