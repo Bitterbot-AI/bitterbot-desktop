@@ -19,6 +19,7 @@ The session file format (JSONL v3) is the same on both engines. Switching an age
 | ------------------------------------- | -------------------------------------------------------------------------- |
 | `src/agents/runtime/transcript/`      | Transcript store: session JSONL v3 reader and writer, entry tree, branches |
 | `src/agents/runtime/loop/`            | Agent loop: stream, tool calls, results, steering, abort                   |
+| `src/agents/runtime/session/`         | Session layer: persistence, retry, overflow recovery, compaction, factory  |
 | `src/agents/runtime/compaction/`      | Compaction policies (summary, offload) and the transcript view             |
 | `src/agents/runtime/context-pruning/` | In-run context budget and tool-output stubs                                |
 | `src/agents/runtime/contract/`        | Contract suite: scripted model, harness, scenarios, goldens                |
@@ -47,6 +48,30 @@ Select variants with `BITTERBOT_CONTRACT_VARIANTS=pi,bitterbot`.
 Scenarios cover: plain turn, two turns, sequential multi-tool turn, steering that skips the rest of a tool batch, abort while streaming, abort during a tool call, tool failures (throw, unknown tool, invalid arguments, argument coercion), retry on 429 and on a persistent 503, a non-retryable error, overflow recovery (and a second overflow), threshold compaction, manual compaction, compaction disabled, reload from disk, and a prompt while streaming.
 
 Changing a golden is a behaviour change. Regenerate with `-u` only when the change is intended, and say why in the commit.
+
+## What the owned engine does differently
+
+The contract suite holds the owned engine to pi's behaviour. The differences below are deliberate, each with a test.
+
+Loop (`loop/agent-loop.ts`, tests in `loop/agent-loop.test.ts`; `agent-loop.differential.test.ts` proves parity with pi-agent-core when the options are set to pi's values):
+
+- Tool calls of one assistant message run sequentially by default.
+- A queued steering message skips the rest of the tool batch.
+- After an abort, tool calls that have not started get an error result and are not executed, and the model is not called again.
+- A stream that ends without a final message ends the turn with an error after 100 ms instead of hanging.
+
+Session (`session/session.ts`, tests in `session/session.test.ts`):
+
+- No extension runner, resource loader, skill or prompt-template expansion, and no settings files.
+- `prompt()` resolves when the session has settled: every message is persisted and any retry or post-compaction run has finished.
+- A run that fails before producing an assistant message is retried or reported like any other failure. On pi a pending retry wait is never resolved in that case.
+- `abort()` also cancels a scheduled retry or post-compaction run.
+- A listener that throws does not stop the event from being persisted.
+- The compaction summary goes through the session's stream function.
+
+Compaction is a policy (`compaction/policy.ts`): `summary` is the port of pi's LLM summary (`compaction/summary/`, checked against pi by `summary.differential.test.ts`); `offload` is the PLAN-52A horizon cut (`compaction/offload-compaction.ts`).
+
+`src/agents/embedded-runner.engine.test.ts` runs the full runner (`runEmbeddedPiAgent` and the explicit compaction path) on both engines and requires the same replies, model inputs, and transcript.
 
 ## Transcript differential test
 

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { streamSimple } from "@mariozechner/pi-ai";
 import { createAgentSession, estimateTokens, SettingsManager } from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
 import type { ReasoningLevel, ThinkLevel } from "../../auto-reply/thinking.js";
@@ -44,6 +45,7 @@ import {
 import { resolveEndocrineState } from "../endocrine-state.js";
 import { getApiKeyForModel, resolveModelAuthMode } from "../model-auth.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
+import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../ollama-stream.js";
 import { compressOldMessages } from "../progressive-compression.js";
 import { resolveRuntimeEngine } from "../runtime/engine.js";
 import {
@@ -51,6 +53,9 @@ import {
   resolveCompactionReserveTokensFloor,
 } from "../runtime/engines/pi/settings.js";
 import { openTranscript } from "../runtime/open-transcript.js";
+import { createOwnedSession } from "../runtime/session/create.js";
+import type { SessionStore } from "../runtime/session/session.js";
+import { toRuntimeTools } from "../runtime/session/tools.js";
 import { resolveSandboxContext } from "../sandbox.js";
 import { repairSessionFileIfNeeded } from "../session-file-repair.js";
 import { guardSessionManager } from "../session-tool-result-guard-wrapper.js";
@@ -73,6 +78,7 @@ import {
 } from "./compaction-circuit-breaker.js";
 import { compactWithSafetyTimeout } from "./compaction-safety-timeout.js";
 import { buildEmbeddedExtensionPaths } from "./extensions.js";
+import { applyExtraParamsToAgent } from "./extra-params.js";
 import {
   logToolSchemasForGoogle,
   sanitizeSessionHistory,
@@ -83,6 +89,7 @@ import { resolveGlobalLane, resolveSessionLane } from "./lanes.js";
 import { log } from "./logger.js";
 import { buildModelAliasLines, resolveModel } from "./model.js";
 import { buildEmbeddedSandboxInfo } from "./sandbox-info.js";
+import { withSessionRequestAuth } from "./session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "./session-manager-cache.js";
 import {
   applySystemPromptOverrideToSession,
@@ -584,7 +591,6 @@ export async function compactEmbeddedPiSessionDirect(
         },
       );
       trackSessionManagerAccess(params.sessionFile);
-      const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
       // Call for side effects (sets compaction/pruning runtime state)
       buildEmbeddedExtensionPaths({
         cfg: params.config,
@@ -594,30 +600,64 @@ export async function compactEmbeddedPiSessionDirect(
         model,
       });
 
-      const { customTools } = splitSdkTools({
-        tools,
-        sandboxEnabled: !!sandbox?.enabled,
-      });
-
-      const { session } = await createAgentSession({
-        cwd: resolvedWorkspace,
-        agentDir,
-        authStorage,
-        modelRegistry,
-        model,
-        thinkingLevel: mapThinkingLevel(params.thinkLevel),
-        tools: sessionToolAllowlist(customTools),
-        customTools,
-        sessionManager,
-        settingsManager,
-      });
-      applySystemPromptOverrideToSession(session, systemPromptOverride());
-      // After createAgentSession: pi >= 0.73 reloads settings from disk while
-      // creating the session, which drops overrides applied earlier.
-      ensurePiCompactionReserveTokens({
-        settingsManager,
-        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-      });
+      let session: Awaited<ReturnType<typeof createAgentSession>>["session"];
+      if (resolveRuntimeEngine(params.config, sessionAgentId) === "bitterbot") {
+        // PLAN-52: the owned session. Its summary call goes through the agent's
+        // stream function, so install the stack a run uses (provider runtime,
+        // extra params, request auth). pi calls the provider directly instead,
+        // which is why /compact fails on models only the in-tree provider handles.
+        const owned = createOwnedSession({
+          config: params.config,
+          model,
+          thinkingLevel: mapThinkingLevel(params.thinkLevel),
+          systemPrompt: systemPromptOverride(),
+          tools: toRuntimeTools(tools),
+          store: sessionManager as unknown as SessionStore,
+          resolveRequestAuth: (target) => modelRegistry.getApiKeyAndHeaders(target),
+          findModel: (targetProvider, targetModelId) =>
+            modelRegistry.find(targetProvider, targetModelId),
+          log: (message) => log.info(`[runtime] compaction diagId=${diagId} ${message}`),
+        });
+        if (model.api === "ollama") {
+          const providerConfig = params.config?.models?.providers?.[model.provider];
+          const modelBaseUrl = typeof model.baseUrl === "string" ? model.baseUrl.trim() : "";
+          const providerBaseUrl =
+            typeof providerConfig?.baseUrl === "string" ? providerConfig.baseUrl.trim() : "";
+          owned.agent.streamFn = createOllamaStreamFn(
+            modelBaseUrl || providerBaseUrl || OLLAMA_NATIVE_BASE_URL,
+          );
+        } else {
+          owned.agent.streamFn = streamSimple;
+        }
+        applyExtraParamsToAgent(owned.agent, params.config, provider, modelId);
+        owned.agent.streamFn = withSessionRequestAuth(owned.agent.streamFn, modelRegistry);
+        session = owned as unknown as typeof session;
+      } else {
+        const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
+        const { customTools } = splitSdkTools({
+          tools,
+          sandboxEnabled: !!sandbox?.enabled,
+        });
+        ({ session } = await createAgentSession({
+          cwd: resolvedWorkspace,
+          agentDir,
+          authStorage,
+          modelRegistry,
+          model,
+          thinkingLevel: mapThinkingLevel(params.thinkLevel),
+          tools: sessionToolAllowlist(customTools),
+          customTools,
+          sessionManager,
+          settingsManager,
+        }));
+        applySystemPromptOverrideToSession(session, systemPromptOverride());
+        // After createAgentSession: pi >= 0.73 reloads settings from disk while
+        // creating the session, which drops overrides applied earlier.
+        ensurePiCompactionReserveTokens({
+          settingsManager,
+          minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+        });
+      }
 
       try {
         const prior = await sanitizeSessionHistory({

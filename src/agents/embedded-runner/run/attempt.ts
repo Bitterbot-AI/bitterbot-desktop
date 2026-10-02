@@ -67,6 +67,9 @@ import {
 } from "../../runtime/engines/pi/settings.js";
 import { toClientToolDefinitions } from "../../runtime/engines/pi/tool-definition-adapter.js";
 import { openTranscript } from "../../runtime/open-transcript.js";
+import { createOwnedSession } from "../../runtime/session/create.js";
+import type { SessionStore } from "../../runtime/session/session.js";
+import { toRuntimeClientTools, toRuntimeTools } from "../../runtime/session/tools.js";
 import { resolveSandboxContext } from "../../sandbox.js";
 import { resolveSandboxRuntimeStatus } from "../../sandbox/runtime-status.js";
 import { repairSessionFileIfNeeded } from "../../session-file-repair.js";
@@ -689,8 +692,6 @@ export async function runEmbeddedAttempt(
         cwd: effectiveWorkspace,
       });
 
-      const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
-
       // Call for side effects (sets compaction/pruning runtime state)
       buildEmbeddedExtensionPaths({
         cfg: params.config,
@@ -703,51 +704,69 @@ export async function runEmbeddedAttempt(
       // Get hook runner early so it's available when creating tools
       const hookRunner = getGlobalHookRunner();
 
-      const { customTools } = splitSdkTools({
-        tools,
-        sandboxEnabled: !!sandbox?.enabled,
-      });
-
-      // Add client tools (OpenResponses hosted tools) to customTools
+      // Client tools (OpenResponses hosted tools) are recorded, not executed.
       let clientToolCallDetected: { name: string; params: Record<string, unknown> } | null = null;
-      const clientToolDefs = params.clientTools
-        ? toClientToolDefinitions(
-            params.clientTools,
-            (toolName, toolParams) => {
-              clientToolCallDetected = { name: toolName, params: toolParams };
-            },
-            {
-              agentId: sessionAgentId,
-              sessionKey: params.sessionKey,
-            },
-          )
-        : [];
+      const onClientToolCall = (toolName: string, toolParams: Record<string, unknown>) => {
+        clientToolCallDetected = { name: toolName, params: toolParams };
+      };
+      const clientToolHookContext = { agentId: sessionAgentId, sessionKey: params.sessionKey };
 
-      const allCustomTools = [...customTools, ...clientToolDefs];
+      if (runtimeEngine === "bitterbot") {
+        // PLAN-52: the owned session, loop, and compaction policy. It exposes
+        // the same members and events the code below uses on pi's session.
+        const modelRegistry = params.modelRegistry;
+        const owned = createOwnedSession({
+          config: params.config,
+          model: params.model,
+          thinkingLevel: mapThinkingLevel(params.thinkLevel),
+          systemPrompt: systemPromptText,
+          tools: [
+            ...toRuntimeTools(tools),
+            ...(params.clientTools
+              ? toRuntimeClientTools(params.clientTools, onClientToolCall, clientToolHookContext)
+              : []),
+          ],
+          store: sessionManager as unknown as SessionStore,
+          resolveRequestAuth: (model) => modelRegistry.getApiKeyAndHeaders(model),
+          findModel: (provider, modelId) => modelRegistry.find(provider, modelId),
+          log: (message) => log.info(`[runtime] runId=${params.runId} ${message}`),
+        });
+        session = owned as unknown as typeof session;
+      } else {
+        const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
+        const { customTools } = splitSdkTools({
+          tools,
+          sandboxEnabled: !!sandbox?.enabled,
+        });
+        const clientToolDefs = params.clientTools
+          ? toClientToolDefinitions(params.clientTools, onClientToolCall, clientToolHookContext)
+          : [];
+        const allCustomTools = [...customTools, ...clientToolDefs];
 
-      ({ session } = await createAgentSession({
-        cwd: resolvedWorkspace,
-        agentDir,
-        authStorage: params.authStorage,
-        modelRegistry: params.modelRegistry,
-        model: params.model,
-        thinkingLevel: mapThinkingLevel(params.thinkLevel),
-        tools: sessionToolAllowlist(allCustomTools),
-        customTools: allCustomTools,
-        sessionManager,
-        settingsManager,
-      }));
-      applySystemPromptOverrideToSession(session, systemPromptText);
+        ({ session } = await createAgentSession({
+          cwd: resolvedWorkspace,
+          agentDir,
+          authStorage: params.authStorage,
+          modelRegistry: params.modelRegistry,
+          model: params.model,
+          thinkingLevel: mapThinkingLevel(params.thinkLevel),
+          tools: sessionToolAllowlist(allCustomTools),
+          customTools: allCustomTools,
+          sessionManager,
+          settingsManager,
+        }));
+        applySystemPromptOverrideToSession(session, systemPromptText);
+        // After createAgentSession: pi >= 0.73 reloads settings from disk while
+        // creating the session, which drops overrides applied earlier.
+        ensurePiCompactionReserveTokens({
+          settingsManager,
+          minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+        });
+        applyToolLoopCompat(session);
+      }
       if (!session) {
         throw new Error("Embedded agent session missing");
       }
-      // After createAgentSession: pi >= 0.73 reloads settings from disk while
-      // creating the session, which drops overrides applied earlier.
-      ensurePiCompactionReserveTokens({
-        settingsManager,
-        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-      });
-      applyToolLoopCompat(session);
       // PLAN-52A: the context budget that reaches the run in flight. The loop
       // snapshots `transformContext` at run start and calls it before every
       // model call, so this is where tool-output stubs (and the truncation
