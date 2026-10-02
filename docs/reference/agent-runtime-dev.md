@@ -99,6 +99,17 @@ Since Phase 5 these parts are Bitterbot code on either engine, each held equal t
 
 Type-only imports of `@mariozechner/pi-agent-core` (message, tool and event types) remain across the tree; they are replaced by the loop's own types when the adapter is deleted.
 
+## Live smoke check
+
+`benchmarks/runtime-smoke/smoke.ts` drives the real runner against the Anthropic API on one or both engines, without the gateway. It points `BITTERBOT_STATE_DIR` at a scratch directory, creates its own workspace and agent directory there, and reads only the API key from the real install. It asserts on the transcript, not on what the agent says about itself.
+
+```bash
+node --import tsx benchmarks/runtime-smoke/smoke.ts \
+  --engines pi,bitterbot --model claude-opus-4-8 --compact --think high
+```
+
+Checks: a turn with a tool call (the reply must contain a random token that exists only in a workspace file), a follow-up turn on the same session, and with `--compact` the explicit compaction path. On 2026-10-01 all checks passed on both engines with Haiku 4.5 and with Opus 4.8; with `--think high` on Opus 4.8 the `pi` engine's compaction fails with the provider's 400 (`thinking.type.enabled is not supported for this model`) and the `bitterbot` engine's succeeds.
+
 ## Rules
 
 - A phase is done when the contract suite is green for its variant, CI is green on the three platforms, and a separate adversarial pass has been run.
