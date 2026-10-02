@@ -49,12 +49,6 @@ function guardedRead(): AnyAgentTool {
   );
 }
 
-function textOf(result: { content: unknown }): string {
-  return (result.content as Array<{ type: string; text?: string }>)
-    .map((block) => block.text ?? "")
-    .join("\n");
-}
-
 describe("workspace-only guard vs the '@' prefix the file tools strip", () => {
   it("sanity: the guard rejects the plain absolute path", async () => {
     await expect(
