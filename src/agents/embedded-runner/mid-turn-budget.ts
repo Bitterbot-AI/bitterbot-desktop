@@ -22,7 +22,6 @@
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { estimateTokens } from "@mariozechner/pi-coding-agent";
 import {
   compressOldMessages,
   type ProgressiveCompressionConfig,
@@ -32,6 +31,7 @@ import {
   planMessageStubs,
   type ToolOutputStub,
 } from "../runtime/context-pruning/offload-stubs.js";
+import { estimateTokens } from "../runtime/tokens.js";
 
 const DEFAULT_TRIGGER_FRACTION = 0.8;
 const DEFAULT_MIN_CHARS = 80_000;

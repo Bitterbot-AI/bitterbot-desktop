@@ -3,11 +3,11 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { describe, expect, it } from "vitest";
 import {
   computeEffectiveSettings,
-  default as contextPruningExtension,
   DEFAULT_CONTEXT_PRUNING_SETTINGS,
   pruneContextMessages,
 } from "./context-pruning.js";
 import { getContextPruningRuntime, setContextPruningRuntime } from "./context-pruning/runtime.js";
+import contextPruningExtension from "./engines/pi/extensions/context-pruning.js";
 
 function toolText(msg: AgentMessage): string {
   if (msg.role !== "toolResult") {

@@ -1,11 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  formatSkillsForPrompt,
-  loadSkillsFromDir,
-  type Skill,
-} from "@mariozechner/pi-coding-agent";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR, resolveUserPath } from "../../utils.js";
@@ -22,6 +17,7 @@ import {
 } from "./frontmatter.js";
 import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
+import { formatSkillsForPrompt, loadSkillsFromDir, type Skill } from "./skill-loader.js";
 import type {
   ParsedSkillFrontmatter,
   SkillEligibilityContext,
@@ -249,8 +245,8 @@ function loadSkillEntries(
  * itself it does not stop a determined attacker, but combined with the
  * scanner it noticeably reduces ASR per AgentDojo evaluations.
  *
- * Per-skill marker injection (which would require forking pi-coding-agent's
- * `formatSkillsForPrompt`) is deferred to PLAN-13 Phase B when capability
+ * Per-skill marker injection (which would require changing
+ * `formatSkillsForPrompt` in skill-loader.ts) is deferred to PLAN-13 Phase B when capability
  * declarations land alongside the runtime gate.
  */
 function hasP2PProvenance(skill: { baseDir?: string | null }): boolean {

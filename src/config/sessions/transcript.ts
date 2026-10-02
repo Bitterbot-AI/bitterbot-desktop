@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
+import { openTranscriptForAgent } from "../../agents/runtime/open-transcript.js";
+import { TRANSCRIPT_VERSION } from "../../agents/runtime/transcript/types.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import { resolveDefaultSessionStorePath, resolveSessionFilePath } from "./paths.js";
 import { loadSessionStore, updateSessionStore } from "./store.js";
@@ -67,7 +68,7 @@ async function ensureSessionHeader(params: {
   await fs.promises.mkdir(path.dirname(params.sessionFile), { recursive: true });
   const header = {
     type: "session",
-    version: CURRENT_SESSION_VERSION,
+    version: TRANSCRIPT_VERSION,
     id: params.sessionId,
     timestamp: new Date().toISOString(),
     cwd: process.cwd(),
@@ -118,7 +119,7 @@ export async function appendAssistantMessageToSessionTranscript(params: {
 
   await ensureSessionHeader({ sessionFile, sessionId: entry.sessionId });
 
-  const sessionManager = SessionManager.open(sessionFile);
+  const sessionManager = openTranscriptForAgent(sessionFile, { agentId: params.agentId });
   sessionManager.appendMessage({
     role: "assistant",
     content: [{ type: "text", text: mirrorText }],

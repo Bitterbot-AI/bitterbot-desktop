@@ -1,6 +1,5 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent, TextContent, ToolResultMessage } from "@mariozechner/pi-ai";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { EffectiveContextPruningSettings } from "./settings.js";
 import { makeToolPrunablePredicate } from "./tools.js";
 
@@ -225,7 +224,7 @@ ${tail}`;
 export function pruneContextMessages(params: {
   messages: AgentMessage[];
   settings: EffectiveContextPruningSettings;
-  ctx: Pick<ExtensionContext, "model">;
+  ctx: { model?: { contextWindow?: number } | undefined };
   isToolPrunable?: (toolName: string) => boolean;
   contextWindowTokensOverride?: number;
 }): AgentMessage[] {

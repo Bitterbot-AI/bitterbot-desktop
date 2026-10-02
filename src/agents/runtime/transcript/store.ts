@@ -19,6 +19,15 @@
  *    the first assistant message (pi writes a header immediately).
  * 4. `getBranch` and `buildSessionContext` stop on a parent cycle instead of
  *    looping forever.
+ * 5. An entry whose parent is missing from the file (a damaged line that the
+ *    repair dropped) continues at the previous entry in file order; pi ends
+ *    the path there and hides everything before it.
+ * 6. Lines before the first valid header, and lines that are JSON but not an
+ *    object, are skipped instead of invalidating the file or throwing.
+ * 7. A torn last line (no trailing newline) is closed with a newline before
+ *    the next append, so the new entry is not glued to it.
+ * 8. An entry that cannot be serialized is rejected before it is added, and
+ *    does not block later entries from reaching disk.
  *
  * `fileEntries`, `byId`, `labelsById`, `leafId`, `flushed` and `sessionId`
  * keep pi's names and are writable: `embedded-runner/session-manager-init.ts`
@@ -30,14 +39,19 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import {
   appendFileSync,
+  closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   renameSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { buildSessionContext } from "./context.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
+import { buildSessionContext, parentOf } from "./context.js";
 import { generateEntryId, migrateToCurrentVersion } from "./migrations.js";
 import {
   TRANSCRIPT_VERSION,
@@ -48,6 +62,8 @@ import {
   type TranscriptMessage,
   type TreeNode,
 } from "./types.js";
+
+const log = createSubsystemLogger("agent/transcript");
 
 /** RFC 9562 UUIDv7 (48-bit ms timestamp + random), lowercase, as pi's session ids. */
 export function createSessionId(now: number = Date.now()): string {
@@ -87,19 +103,30 @@ export function loadEntriesFromFile(filePath: string): {
       continue;
     }
     try {
-      entries.push(JSON.parse(line) as FileEntry);
+      const parsed: unknown = JSON.parse(line);
+      // `null`, numbers and arrays are valid JSON but not entries.
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        entries.push(parsed as FileEntry);
+      }
     } catch {
       // skip malformed line
     }
   }
-  if (entries.length === 0) {
+  // The transcript starts at the first valid header. Anything before it (a
+  // stray line from another writer, the remains of a damaged file that could
+  // not be moved aside) stays on disk and is ignored.
+  const headerIndex = entries.findIndex((entry) => {
+    const candidate = entry as { type?: unknown; id?: unknown };
+    return candidate.type === "session" && typeof candidate.id === "string";
+  });
+  if (headerIndex === -1) {
     return { entries: [], valid: false, empty: false };
   }
-  const header = entries[0] as { type?: unknown; id?: unknown };
-  if (header.type !== "session" || typeof header.id !== "string") {
-    return { entries: [], valid: false, empty: false };
-  }
-  return { entries, valid: true, empty: false };
+  return {
+    entries: headerIndex === 0 ? entries : entries.slice(headerIndex),
+    valid: true,
+    empty: false,
+  };
 }
 
 export type TranscriptStoreOptions = {
@@ -131,6 +158,8 @@ export class TranscriptStore {
   private persist: boolean;
   /** Number of leading `fileEntries` already on disk (meaningful while `flushed`). */
   private persistedCount = 0;
+  /** Whether the file's last byte has been checked since this instance opened it. */
+  private tailChecked = false;
 
   constructor(options: TranscriptStoreOptions) {
     this.cwd = options.cwd;
@@ -178,10 +207,17 @@ export class TranscriptStore {
       const aside = `${explicitPath}.corrupt.${new Date().toISOString().replace(/[:.]/g, "-")}`;
       try {
         renameSync(explicitPath, aside);
-      } catch {
+        log.warn(
+          `transcript has no valid session header; moved aside to ${aside} and starting a new session at ${explicitPath}`,
+        );
+      } catch (err) {
         // If the rename fails we still must not write over the original:
         // fall through with an in-memory session whose flush target is the
-        // same path; the first flush appends, it does not truncate.
+        // same path. The first flush appends a header and the entries after
+        // the damaged content, and the loader starts at that header.
+        log.warn(
+          `transcript has no valid session header and could not be moved aside (${String(err)}); appending a new session to ${explicitPath}`,
+        );
       }
       this.newSession();
       this.sessionFile = explicitPath;
@@ -216,6 +252,7 @@ export class TranscriptStore {
     this.leafId = null;
     this.flushed = false;
     this.persistedCount = 0;
+    this.tailChecked = false;
     if (this.persist) {
       const fileTimestamp = timestamp.replace(/[:.]/g, "-");
       this.sessionFile = join(this.getSessionDir(), `${fileTimestamp}_${this.sessionId}.jsonl`);
@@ -291,14 +328,55 @@ export class TranscriptStore {
     if (from === 0) {
       mkdirSync(dirname(this.sessionFile), { recursive: true });
     }
+    this.closeTornTail();
+    if (!this.flushed) {
+      this.flushed = true;
+      this.persistedCount = 0;
+    }
+    // Count each entry as it lands, so a write that throws is retried from
+    // the entry that failed and not from the start.
     for (let i = from; i < this.fileEntries.length; i++) {
       appendFileSync(this.sessionFile, `${JSON.stringify(this.fileEntries[i])}\n`);
+      this.persistedCount = i + 1;
     }
-    this.flushed = true;
-    this.persistedCount = this.fileEntries.length;
+  }
+
+  /**
+   * A crash in the middle of an append leaves a last line without a newline.
+   * Close it once per instance before appending, or the next entry is glued
+   * to the fragment and lost with it.
+   */
+  private closeTornTail(): void {
+    if (this.tailChecked || !this.sessionFile) {
+      return;
+    }
+    this.tailChecked = true;
+    let fd: number | undefined;
+    try {
+      fd = openSync(this.sessionFile, "r");
+      const size = fstatSync(fd).size;
+      if (size === 0) {
+        return;
+      }
+      const last = Buffer.alloc(1);
+      readSync(fd, last, 0, 1, size - 1);
+      if (last[0] !== 0x0a) {
+        appendFileSync(this.sessionFile, "\n");
+      }
+    } catch {
+      // No file yet: nothing to close.
+    } finally {
+      if (fd !== undefined) {
+        closeSync(fd);
+      }
+    }
   }
 
   private appendEntry(entry: TranscriptEntry): void {
+    // Reject what cannot be written before it becomes part of the session
+    // (a BigInt or a cycle in a tool result's details): once in `fileEntries`
+    // it would fail every later flush.
+    JSON.stringify(entry);
     this.fileEntries.push(entry);
     this.byId.set(entry.id, entry);
     this.leafId = entry.id;
@@ -485,10 +563,17 @@ export class TranscriptStore {
     const startId = fromId ?? this.leafId;
     const seen = new Set<string>();
     let current = startId ? this.byId.get(startId) : undefined;
+    let entries: TranscriptEntry[] | undefined;
     while (current && !seen.has(current.id)) {
       seen.add(current.id);
       path.unshift(current);
-      current = current.parentId ? this.byId.get(current.parentId) : undefined;
+      if (current.parentId && !this.byId.has(current.parentId)) {
+        // Damaged file: continue at the previous entry in file order.
+        entries ??= this.getEntries();
+        current = parentOf(current, this.byId, entries);
+      } else {
+        current = current.parentId ? this.byId.get(current.parentId) : undefined;
+      }
     }
     return path;
   }

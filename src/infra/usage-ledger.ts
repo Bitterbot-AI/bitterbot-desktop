@@ -13,6 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { resolveRuntimeEngine } from "../agents/runtime/engine.js";
 import type { NormalizedUsage } from "../agents/usage.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
@@ -123,6 +124,7 @@ CREATE INDEX IF NOT EXISTS idx_tool_calls_run  ON tool_calls(run_id);
  * - `usage:v3` (2026-09-20): cache_write_5m / cache_write_1h (Anthropic per-TTL split),
  *   prefix_digest / tools_digest (prefix-stability telemetry). The `tool_calls` table is
  *   created by the schema block above on the same open.
+ * - `usage:v4` (2026-10-01): engine (PLAN-52: the agent runtime engine, for the soak comparison).
  */
 const MIGRATION_COLUMNS: Array<[string, string]> = [
   ["cost_computed", "REAL"],
@@ -133,6 +135,7 @@ const MIGRATION_COLUMNS: Array<[string, string]> = [
   ["cache_write_1h", "INTEGER"],
   ["prefix_digest", "TEXT"],
   ["tools_digest", "TEXT"],
+  ["engine", "TEXT"],
 ];
 
 export type UsageEventInput = {
@@ -173,6 +176,8 @@ export type UsageEventInput = {
   /** Prefix-stability digests (stable system block, sorted tool names) for this request. */
   prefixDigest?: string | null;
   toolsDigest?: string | null;
+  /** Agent runtime engine; resolved from the config and the agent id when omitted. */
+  engine?: string | null;
   /** Stable key so live rows and transcript reconcile rows never double count. */
   dedupeKey?: string | null;
   source?: "live" | "reconcile";
@@ -225,6 +230,7 @@ type RawRow = {
   cache_write_1h: number | null;
   prefix_digest: string | null;
   tools_digest: string | null;
+  engine: string | null;
 };
 
 type RawToolCallRow = {
@@ -257,6 +263,20 @@ export type ToolCallInput = {
   spilled?: boolean;
   /** Config for `usage.ledger.enabled`; loaded lazily when omitted. */
   config?: BitterbotConfig;
+};
+
+export type EngineComparisonRow = {
+  engine: string;
+  runs: number;
+  modelCalls: number;
+  costUsd: number;
+  costPerRunUsd: number;
+  errorCalls: number;
+  durationP50Ms: number | null;
+  durationP95Ms: number | null;
+  toolCalls: number;
+  toolErrors: number;
+  toolErrorRate: number | null;
 };
 
 export type UsageAggregateRow = {
@@ -296,6 +316,7 @@ export type UsageEventFilters = {
   runId?: string;
   taskId?: string;
   channel?: string;
+  engine?: string;
 };
 
 const nz = (v: number | undefined | null): number =>
@@ -378,6 +399,7 @@ function rowToEvent(row: RawRow): UsageEventRow {
     cacheWrite1h: typeof row.cache_write_1h === "number" ? row.cache_write_1h : null,
     prefixDigest: row.prefix_digest ?? null,
     toolsDigest: row.tools_digest ?? null,
+    engine: row.engine ?? null,
   };
 }
 
@@ -433,6 +455,7 @@ function buildWhere(filters: UsageEventFilters | undefined): {
     ["runId", "run_id"],
     ["taskId", "task_id"],
     ["channel", "channel"],
+    ["engine", "engine"],
   ];
   for (const [key, column] of eq) {
     const value = filters[key];
@@ -532,8 +555,8 @@ export class UsageLedger {
            price_input, price_output, price_cache_read, price_cache_write,
            duration_ms, status, stop_reason, batch, items, source,
            cost_computed, cache_state, cache_bust_reason, cache_ttl,
-           cache_write_5m, cache_write_1h, prefix_digest, tools_digest)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           cache_write_5m, cache_write_1h, prefix_digest, tools_digest, engine)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         evt.ts,
@@ -580,6 +603,7 @@ export class UsageLedger {
         evt.cacheWrite1h ?? null,
         evt.prefixDigest ?? null,
         evt.toolsDigest ?? null,
+        evt.engine ?? null,
       );
     const changes = Number(result.changes ?? 0);
     if (changes === 0) {
@@ -1136,6 +1160,81 @@ export class UsageLedger {
   }
 
   /** Sum of cost_total in a window, optionally scoped. Cheap: SQL-side. */
+  /**
+   * PLAN-52 soak gates (6.7): per runtime engine, the numbers the flip is decided on.
+   * Chat rows only; a "run" is one `run_id`. Tool calls are joined by run id.
+   */
+  engineComparison(params: { startMs?: number; agentId?: string } = {}): EngineComparisonRow[] {
+    const clauses = ["engine IS NOT NULL", "kind = 'chat'", "run_id IS NOT NULL"];
+    const args: Array<string | number> = [];
+    if (typeof params.startMs === "number") {
+      clauses.push("ts >= ?");
+      args.push(params.startMs);
+    }
+    if (params.agentId?.trim()) {
+      clauses.push("agent_id = ?");
+      args.push(params.agentId.trim());
+    }
+    const where = `WHERE ${clauses.join(" AND ")}`;
+    const totals = this.db
+      .prepare(
+        `SELECT engine, COUNT(DISTINCT run_id) AS runs, COUNT(*) AS calls,
+                COALESCE(SUM(cost_total), 0) AS cost,
+                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors
+         FROM usage_events ${where} GROUP BY engine ORDER BY engine`,
+      )
+      .all(...args) as unknown as Array<{
+      engine: string;
+      runs: number;
+      calls: number;
+      cost: number;
+      errors: number;
+    }>;
+    const durations = this.db
+      .prepare(
+        `SELECT engine, duration_ms FROM usage_events ${where} AND duration_ms IS NOT NULL
+         ORDER BY engine, duration_ms`,
+      )
+      .all(...args) as unknown as Array<{ engine: string; duration_ms: number }>;
+    const byEngine = new Map<string, number[]>();
+    for (const row of durations) {
+      const list = byEngine.get(row.engine) ?? [];
+      list.push(row.duration_ms);
+      byEngine.set(row.engine, list);
+    }
+    const percentile = (sorted: number[], p: number): number | null =>
+      sorted.length === 0
+        ? null
+        : sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)]!;
+    const tools = this.db
+      .prepare(
+        `SELECT e.engine AS engine, COUNT(*) AS calls,
+                SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END) AS failed
+         FROM tool_calls t
+         JOIN (SELECT DISTINCT run_id, engine FROM usage_events ${where}) e ON e.run_id = t.run_id
+         GROUP BY e.engine`,
+      )
+      .all(...args) as unknown as Array<{ engine: string; calls: number; failed: number }>;
+    const toolsByEngine = new Map(tools.map((row) => [row.engine, row]));
+    return totals.map((row) => {
+      const sorted = byEngine.get(row.engine) ?? [];
+      const tool = toolsByEngine.get(row.engine);
+      return {
+        engine: row.engine,
+        runs: row.runs,
+        modelCalls: row.calls,
+        costUsd: row.cost,
+        costPerRunUsd: row.runs > 0 ? row.cost / row.runs : 0,
+        errorCalls: row.errors,
+        durationP50Ms: percentile(sorted, 0.5),
+        durationP95Ms: percentile(sorted, 0.95),
+        toolCalls: tool?.calls ?? 0,
+        toolErrors: tool?.failed ?? 0,
+        toolErrorRate: tool && tool.calls > 0 ? tool.failed / tool.calls : null,
+      };
+    });
+  }
+
   spend(filters: UsageEventFilters): number {
     const { where, args } = buildWhere(filters);
     const row = this.db
@@ -1377,6 +1476,15 @@ function providerCacheWriteRescale(params: {
   return { factor, price: { ...base, cacheWrite: published ?? base.cacheWrite * factor } };
 }
 
+/** The runtime engine configured for an agent, or null when the row has no agent. */
+function resolveEngineForAgent(
+  cfg: BitterbotConfig | undefined,
+  agentId: string | null | undefined,
+): string | null {
+  const id = agentId?.trim();
+  return id ? resolveRuntimeEngine(cfg, id) : null;
+}
+
 /** Resolve pricing and cost for an input; exported for the reconciler and tests. */
 export async function resolveUsageEvent(
   input: UsageEventInput,
@@ -1496,6 +1604,7 @@ export async function resolveUsageEvent(
     cacheWrite1h: split ? split.cacheWrite1h : null,
     prefixDigest: input.prefixDigest?.trim() || null,
     toolsDigest: input.toolsDigest?.trim() || null,
+    engine: input.engine?.trim() || resolveEngineForAgent(cfg, input.agentId),
   };
 }
 

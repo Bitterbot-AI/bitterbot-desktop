@@ -72,6 +72,8 @@ export function createBitterbotTools(options?: {
   agentSessionKey?: string;
   /** Transcript session id (file stem); lets transcript readers target the exact file. */
   agentSessionId?: string;
+  /** Transcript file of this run; wins over a lookup by id for the current session. */
+  agentSessionFile?: string;
   /** Same semantics as applyOwnerOnlyToolPolicy: only `true` is an owner. */
   senderIsOwner?: boolean;
   agentChannel?: GatewayMessageChannel;
@@ -249,6 +251,7 @@ export function createBitterbotTools(options?: {
     createRecallRangeTool({
       ...memoryOpts,
       agentSessionId: options?.agentSessionId,
+      agentSessionFile: options?.agentSessionFile,
       senderIsOwner: options?.senderIsOwner === true,
     }),
     createSkillSeekersIngestTool(memoryOpts),

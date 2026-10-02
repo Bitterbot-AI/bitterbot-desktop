@@ -220,6 +220,10 @@ changed mid-session (turns < 60 min apart): <session, turn count, likely tier: t
   turns; run with BITTERBOT_CACHE_TRACE=1 to see which". Rows without digests (older
   releases, reconciled transcripts) never count as changes.
 
+## Runtime engine
+
+Every row that belongs to an agent carries `engine`: the agent runtime configured for that agent when the call was recorded (`pi` or `bitterbot`, see `agents.defaults.runtime.engine`). Rows without an agent leave it empty. The column exists so the two engines can be compared on the same traffic before the default is switched: `bitterbot doctor` prints, per engine and for the last 14 days, the number of runs, cost per run, model-call latency (p50 and p95), the tool error rate, and the number of errored model calls, once both engines have recorded runs.
+
 ## Batch rows
 
 Latency-tolerant hidden lanes (`memory/dream`, `memory/extraction`, `memory/discovery`,

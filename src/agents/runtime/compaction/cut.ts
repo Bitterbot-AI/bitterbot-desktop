@@ -180,6 +180,10 @@ export function planToolOutputStubs(params: {
     if (spare.has(i) || stubbed.has(e.id) || e.tokens < params.minTokens) {
       continue;
     }
+    if (e.images > 0) {
+      // A stub would drop the image for good: recall_range returns text only.
+      continue;
+    }
     const saved = e.tokens - Math.min(e.tokens, STUB_MARKER_TOKENS);
     if (saved <= 0) {
       continue;

@@ -92,6 +92,7 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 ## Project Structure
 
 - `src/agents/` — Agent runtime: runner, tools, system prompt, compaction, model selection, auth, skills, sub-agents, identity, endocrine state
+- `src/agents/runtime/` — Owned agent runtime, selected per agent with `agents.defaults.runtime.engine`: transcript store, agent loop, session layer, compaction policies, model registry and auth storage, file tools; `engines/pi/` is the adapter for the pi engine. See `docs/reference/agent-runtime-dev.md`
 - `src/memory/` — Memory system: dream engine, curiosity/GCCRF, knowledge crystals, consolidation, hormonal state, governance
 - `src/gateway/` — Gateway server, RPC methods, A2A protocol, queue, routing
 - `src/channels/` — Channel plugin system and shared channel logic

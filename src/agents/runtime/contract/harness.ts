@@ -27,19 +27,24 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { withSessionRequestAuth } from "../../embedded-runner/session-auth.js";
 import { prepareSessionManagerForRun } from "../../embedded-runner/session-manager-init.js";
-import { applySystemPromptOverrideToSession } from "../../embedded-runner/system-prompt.js";
-import { applyToolLoopCompat } from "../../embedded-runner/tool-loop-compat.js";
 import { sessionToolAllowlist, splitSdkTools } from "../../embedded-runner/tool-split.js";
 import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
+import type { OffloadPolicySettings } from "../compaction/offload-policy.js";
+import { applySystemPromptOverrideToSession } from "../engines/pi/session.js";
 import { ensurePiCompactionReserveTokens } from "../engines/pi/settings.js";
+import { applyToolLoopCompat } from "../engines/pi/tool-loop-compat.js";
 import { openTranscript } from "../open-transcript.js";
 import { createOwnedContractSession } from "./owned-session.js";
-import { SCRIPTED_PROVIDER, type ScriptedModel } from "./scripted-model.js";
+import {
+  CONTRACT_API_KEY,
+  CONTRACT_SESSION_ID,
+  SCRIPTED_PROVIDER,
+  type ScriptedModel,
+} from "./scripted-model.js";
 
 export type ContractVariant = "pi" | "pi-owned-store" | "bitterbot";
 
-export const CONTRACT_API_KEY = "contract-key";
-export const CONTRACT_SESSION_ID = "contract-session";
+export { CONTRACT_API_KEY, CONTRACT_SESSION_ID } from "./scripted-model.js";
 
 export type ContractOptions = {
   variant: ContractVariant;
@@ -50,6 +55,11 @@ export type ContractOptions = {
   systemPrompt?: string;
   retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number };
   compaction?: { enabled?: boolean; reserveTokens?: number; keepRecentTokens?: number };
+  /** Owned engine only: use the offload compaction policy with these settings. */
+  offload?: {
+    settings?: Partial<OffloadPolicySettings>;
+    summaryMode?: "off" | "idle" | "always";
+  };
 };
 
 /** The session surface the embedded runner uses, engine-independent. */
@@ -289,7 +299,9 @@ async function createPiContractSession(
     thinkingLevel: "off",
     tools: sessionToolAllowlist(customTools),
     customTools,
-    sessionManager: store,
+    sessionManager: store as unknown as NonNullable<
+      Parameters<typeof createAgentSession>[0]
+    >["sessionManager"],
     settingsManager,
   });
   applySystemPromptOverrideToSession(session, options.systemPrompt ?? "contract system prompt");

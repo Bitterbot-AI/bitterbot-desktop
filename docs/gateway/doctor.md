@@ -293,6 +293,10 @@ settlements, overdue revenue payments, x402 gate config), and the
 long-horizon task spine (`tasks.sqlite` orphans, event-journal growth,
 wedged cron jobs). See [/cli/doctor](/cli/doctor) for details.
 
+### 18c) Agent runtime engine
+
+Doctor reports the runtime engine in use (`agents.defaults.runtime.engine`, `pi` by default) and any agent that overrides it. When both engines have recorded runs in the last 14 days it adds one line per engine from the usage ledger: runs, cost per run, model-call latency p50 and p95, tool error rate, and errored model calls. See [Usage tracking](/concepts/usage-tracking#runtime-engine).
+
 ### 19) Workspace tips (backup + memory system)
 
 Doctor suggests a workspace memory system when missing and prints a backup tip

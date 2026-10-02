@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getCompactionSafeguardRuntime,
   setCompactionSafeguardRuntime,
-} from "./compaction-safeguard-runtime.js";
+} from "../../../compaction/compaction-safeguard-runtime.js";
 import { __testing } from "./compaction-safeguard.js";
 
 const {

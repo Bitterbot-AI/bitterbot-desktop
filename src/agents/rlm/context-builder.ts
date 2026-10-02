@@ -205,7 +205,10 @@ async function parseSessionFile(
         if (!opts.includeToolResults) {
           continue;
         }
-        const toolText = extractText(msg.content);
+        // An image-only result still gets a row: a stub or a ledger may
+        // point at it, and "nothing found" would read as a broken pointer.
+        const toolText =
+          extractText(msg.content) ?? (hasImageBlock(msg.content) ? IMAGE_ONLY_TOOL_TEXT : null);
         if (!toolText) {
           continue;
         }
@@ -226,7 +229,16 @@ async function parseSessionFile(
         continue;
       }
 
-      const text = extractText(msg.content);
+      // A user message without text (an image, or empty) still counts as a
+      // turn, as it does in the compaction planner; ledger turn numbers and
+      // `recall_range turns` must agree.
+      const text =
+        extractText(msg.content) ??
+        (msg.role === "user"
+          ? hasImageBlock(msg.content)
+            ? "[image, no text]"
+            : "[no text]"
+          : null);
       if (!text) {
         continue;
       }
@@ -280,6 +292,16 @@ async function parseSessionFile(
 }
 
 /** Extract text content from a message content field (string or content blocks). */
+export const IMAGE_ONLY_TOOL_TEXT =
+  "[image output: images are not stored as text and cannot be recalled]";
+
+function hasImageBlock(content: unknown): boolean {
+  return (
+    Array.isArray(content) &&
+    content.some((block) => (block as { type?: unknown } | null)?.type === "image")
+  );
+}
+
 function extractText(content: unknown): string | null {
   if (typeof content === "string") {
     return content.trim() || null;
@@ -360,7 +382,35 @@ export async function findSessionFile(
     const live = exact.find((f) => path.basename(f.path).endsWith(".jsonl"));
     return live ?? exact[0]!;
   }
+  // Not every session file is named after its id: forum topics are
+  // `<id>-topic-<n>.jsonl`, forked threads `<timestamp>_<uuid>.jsonl`. The
+  // header carries the id. `files` is newest first, so the live file wins.
+  for (const file of files) {
+    if (!file.path.endsWith(".jsonl")) {
+      continue;
+    }
+    if ((await readHeaderSessionId(file.path)) === wanted) {
+      return file;
+    }
+  }
   return null;
+}
+
+/** The session id in a transcript's header line, read from the first 1 KB. */
+async function readHeaderSessionId(filePath: string): Promise<string | undefined> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    handle = await fs.open(filePath, "r");
+    const buffer = Buffer.alloc(1024);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    const firstLine = buffer.subarray(0, bytesRead).toString("utf8").split("\n", 1)[0] ?? "";
+    const header = JSON.parse(firstLine) as { type?: unknown; id?: unknown };
+    return header.type === "session" && typeof header.id === "string" ? header.id : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    await handle?.close();
+  }
 }
 
 /**
@@ -372,9 +422,12 @@ export async function findSessionFile(
 export async function readTranscriptRows(
   agentId: string,
   sessionId: string,
-  opts: Omit<ParseOptions, "branchPathOnly"> = {},
+  opts: Omit<ParseOptions, "branchPathOnly"> & {
+    /** The transcript file itself, when the caller knows it (the current run). */
+    filePath?: string;
+  } = {},
 ): Promise<{ sessionId: string; filePath: string; rows: SessionTranscriptMessage[] } | null> {
-  const file = await findSessionFile(agentId, sessionId);
+  const file = opts.filePath ? { path: opts.filePath } : await findSessionFile(agentId, sessionId);
   if (!file) {
     return null;
   }

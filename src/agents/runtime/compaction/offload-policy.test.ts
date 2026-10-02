@@ -217,6 +217,17 @@ describe("buildTranscriptView", () => {
     const v = view(base + cmp + "\n");
     expect(v.entries).toHaveLength(0);
     expect(v.allEntries.length).toBeGreaterThan(0);
+
+    // Entries after that compaction stay visible.
+    const after = JSON.stringify({
+      type: "message",
+      id: "after1",
+      parentId: "c",
+      timestamp: "",
+      message: { role: "user", content: [{ type: "text", text: "next question" }] },
+    });
+    const later = view(base + cmp + "\n" + after + "\n");
+    expect(later.entries.map((e) => e.id)).toEqual(["after1"]);
   });
 });
 

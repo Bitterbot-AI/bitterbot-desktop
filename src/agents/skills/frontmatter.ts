@@ -1,4 +1,3 @@
-import type { Skill } from "@mariozechner/pi-coding-agent";
 import { parseFrontmatterBlock } from "../../markdown/frontmatter.js";
 import {
   getFrontmatterString,
@@ -9,6 +8,7 @@ import {
   resolveBitterbotManifestOs,
   resolveBitterbotManifestRequires,
 } from "../../shared/frontmatter.js";
+import type { Skill } from "./skill-loader.js";
 import type {
   BitterbotSkillMetadata,
   ParsedSkillFrontmatter,

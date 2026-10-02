@@ -37,7 +37,7 @@ export type TranscriptView = {
     summary: string;
     details: OffloadCompactionDetails | null;
   } | null;
-  /** Roll-up ranges for the ledger (own offloads only; a `summary`-policy entry has none). */
+  /** Roll-up ranges for the ledger: what each compaction on the path hides now, any policy. */
   previousOffloads: PreviousOffload[];
   /** Entry ids already stubbed by earlier prune records on the path. */
   stubbedIds: Map<string, StubKind>;
@@ -123,6 +123,31 @@ function toolCallIdsOf(content: unknown): string[] {
 }
 
 /**
+ * Offload details of a compaction entry, or null when the entry was written
+ * by another policy or the details are not in the expected shape (a damaged
+ * or future-format entry must not break the view).
+ */
+function offloadDetailsOf(raw: unknown): OffloadCompactionDetails | null {
+  const details = raw as Partial<OffloadCompactionDetails> | null | undefined;
+  if (!details || typeof details !== "object" || details.policy !== "offload") {
+    return null;
+  }
+  const elided = details.elided as Partial<OffloadCompactionDetails["elided"]> | undefined;
+  if (
+    !elided ||
+    typeof elided !== "object" ||
+    typeof elided.firstEntryId !== "string" ||
+    typeof elided.lastEntryId !== "string"
+  ) {
+    return null;
+  }
+  return {
+    ...(details as OffloadCompactionDetails),
+    previousOffloads: Array.isArray(details.previousOffloads) ? details.previousOffloads : [],
+  };
+}
+
+/**
  * Build the view from parsed records. `heartbeatPrompts` is the configured
  * prompt set (`resolveHeartbeatPromptSet`); pass `[]` to disable detection.
  */
@@ -144,17 +169,33 @@ export function buildTranscriptView(params: {
   const stubbedIds = new Map<string, StubKind>();
   const stubbedCallIds = new Map<string, StubKind>();
   let latest: TranscriptView["latestCompaction"] = null;
+  /**
+   * For every record on the path (messages and everything else): how many
+   * message entries precede it. A compaction's `firstKeptEntryId` is often a
+   * non-message entry (the cut walks back over custom entries), and the first
+   * kept message is then the one at this index.
+   */
+  const messagesBefore = new Map<string, number>();
+  /** Every compaction on the path, in order, with where its kept range starts. */
+  const compactions: Array<{ id: string; firstKeptEntryId: string; position: number }> = [];
   let turn = 0;
 
   for (const r of path) {
+    if (typeof r.id === "string") {
+      messagesBefore.set(r.id, allEntries.length);
+    }
     if (r.type === "compaction" && typeof r.id === "string") {
-      const details = r.details as OffloadCompactionDetails | undefined;
       latest = {
         id: r.id,
         firstKeptEntryId: typeof r.firstKeptEntryId === "string" ? r.firstKeptEntryId : "",
         summary: typeof r.summary === "string" ? r.summary : "",
-        details: details && details.policy === "offload" ? details : null,
+        details: offloadDetailsOf(r.details),
       };
+      compactions.push({
+        id: r.id,
+        firstKeptEntryId: latest.firstKeptEntryId,
+        position: allEntries.length,
+      });
       continue;
     }
     if (r.type === "custom" && r.customType === PRUNE_RECORD_CUSTOM_TYPE) {
@@ -216,21 +257,37 @@ export function buildTranscriptView(params: {
     }
   }
 
-  let entries = allEntries;
+  // Where a compaction's kept range starts, as an index into `allEntries`.
+  // pi semantics: an id that is not on the path before the compaction keeps
+  // nothing before it; everything after it stays visible.
+  const keptStart = (c: { firstKeptEntryId: string; position: number }): number => {
+    const index = messagesBefore.get(c.firstKeptEntryId);
+    return index !== undefined && index <= c.position ? index : c.position;
+  };
+  // Only the latest compaction decides what is visible (as in buildSessionContext).
+  const lastCompaction = compactions[compactions.length - 1];
+  const visibleStart = lastCompaction ? keptStart(lastCompaction) : 0;
+  const entries = allEntries.slice(visibleStart);
+
+  // Roll-up for the ledger: one range per compaction on the path, whatever
+  // policy wrote it, covering exactly what is hidden now. Built from the path
+  // and not from an earlier ledger's details, so a summary compaction between
+  // two offloads does not erase the earlier ranges.
   const previousOffloads: PreviousOffload[] = [];
-  if (latest) {
-    const idx = allEntries.findIndex((e) => e.id === latest!.firstKeptEntryId);
-    // pi semantics: an unknown firstKeptEntryId keeps nothing before the compaction.
-    entries = idx >= 0 ? allEntries.slice(idx) : [];
-    if (latest.details) {
-      previousOffloads.push(...latest.details.previousOffloads);
+  let covered = 0;
+  for (const c of compactions) {
+    const end = Math.min(keptStart(c), visibleStart);
+    if (end > covered) {
+      const first = allEntries[covered]!;
+      const last = allEntries[end - 1]!;
       previousOffloads.push({
-        compactionId: latest.id,
-        turnFrom: latest.details.elided.turnFrom,
-        turnTo: latest.details.elided.turnTo,
-        firstEntryId: latest.details.elided.firstEntryId,
-        lastEntryId: latest.details.elided.lastEntryId,
+        compactionId: c.id,
+        turnFrom: first.turn,
+        turnTo: last.turn,
+        firstEntryId: first.id,
+        lastEntryId: last.id,
       });
+      covered = end;
     }
   }
 

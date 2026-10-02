@@ -127,8 +127,10 @@ export type LedgerInput = {
   lastExchange?: { user?: string; assistant?: string };
   previousOffloads: PreviousOffload[];
   workingMemoryFlushed: boolean;
-  /** Optional cheap-model summary, already labelled as derived from tool output by the caller. */
+  /** Optional cheap-model summary of the elided range (labelled and flattened by the ledger). */
   summary?: string;
+  /** Summary text of the compaction this ledger replaces, when that was not an offload. */
+  priorSummary?: string;
   /** Ledger budget in tokens (chars/4). Default 1200. */
   budgetTokens?: number;
 };

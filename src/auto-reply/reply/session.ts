@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { openTranscriptForAgent } from "../../agents/runtime/open-transcript.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import {
@@ -61,6 +61,7 @@ function forkSessionFromParent(params: {
   parentEntry: SessionEntry;
   agentId: string;
   sessionsDir: string;
+  cfg?: BitterbotConfig;
 }): { sessionId: string; sessionFile: string } | null {
   const parentSessionFile = resolveSessionFilePath(
     params.parentEntry.sessionId,
@@ -71,7 +72,10 @@ function forkSessionFromParent(params: {
     return null;
   }
   try {
-    const manager = SessionManager.open(parentSessionFile);
+    const manager = openTranscriptForAgent(parentSessionFile, {
+      config: params.cfg,
+      agentId: params.agentId,
+    });
     const leafId = manager.getLeafId();
     if (!leafId) {
       return null;
@@ -330,6 +334,7 @@ export async function initSessionState(params: {
       parentEntry: sessionStore[parentSessionKey],
       agentId,
       sessionsDir: path.dirname(storePath),
+      cfg,
     });
     if (forked) {
       sessionId = forked.sessionId;

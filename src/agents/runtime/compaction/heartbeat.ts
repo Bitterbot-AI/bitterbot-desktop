@@ -26,9 +26,48 @@ export function resolveHeartbeatPromptSet(cfg: BitterbotConfig | undefined): str
   return Array.from(out);
 }
 
+/** First words of the block the runner puts in front of a user message (transcript-recall.ts). */
+export const INJECTED_RECALL_HEADER_PREFIX =
+  "Recalled from earlier in this conversation (automatic";
+
+/**
+ * A persisted user message without what the runner put in front of it: the
+ * proactive recall block and queued `System:` event lines. What is left is
+ * what the user (or the heartbeat) said. Used wherever the text is classified
+ * or quoted (heartbeat detection, ledger threads, the recall index), so that
+ * injected text is never mistaken for, or re-injected as, user text.
+ */
+export function userAuthoredText(text: string): string {
+  const lines = text.split("\n");
+  let i = 0;
+  for (;;) {
+    while (i < lines.length && lines[i]!.trim() === "") {
+      i++;
+    }
+    if (i >= lines.length) {
+      break;
+    }
+    const line = lines[i]!;
+    if (line.startsWith(INJECTED_RECALL_HEADER_PREFIX)) {
+      // The block runs to the first blank line.
+      i++;
+      while (i < lines.length && lines[i]!.trim() !== "") {
+        i++;
+      }
+      continue;
+    }
+    if (line.startsWith("System: ")) {
+      i++;
+      continue;
+    }
+    break;
+  }
+  return i === 0 ? text : lines.slice(i).join("\n");
+}
+
 /** The user turn is a heartbeat prompt (the runner appends a "Current time" line after it). */
 export function isHeartbeatPromptText(text: string, prompts: readonly string[]): boolean {
-  const trimmed = text.trim();
+  const trimmed = userAuthoredText(text).trim();
   if (!trimmed) {
     return false;
   }

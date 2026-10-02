@@ -3,7 +3,6 @@ import os from "node:os";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
-import { createAgentSession, estimateTokens, SettingsManager } from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
@@ -53,6 +52,8 @@ import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { resolveHeartbeatPromptSet } from "../../runtime/compaction/heartbeat.js";
+import { buildProactiveRecallPreface } from "../../runtime/compaction/transcript-recall.js";
 import { installInRunBudget } from "../../runtime/context-pruning/in-run-budget.js";
 import {
   applyStubsToMessages,
@@ -61,12 +62,14 @@ import {
   PRUNE_RECORD_CUSTOM_TYPE,
 } from "../../runtime/context-pruning/offload-stubs.js";
 import { resolveRuntimeEngine } from "../../runtime/engine.js";
-import {
-  ensurePiCompactionReserveTokens,
-  resolveCompactionReserveTokensFloor,
-} from "../../runtime/engines/pi/settings.js";
+import { createPiSession, type EmbeddedAgentSession } from "../../runtime/engines/pi/session.js";
+import { resolveCompactionReserveTokensFloor } from "../../runtime/engines/pi/settings.js";
 import { toClientToolDefinitions } from "../../runtime/engines/pi/tool-definition-adapter.js";
 import { openTranscript } from "../../runtime/open-transcript.js";
+import { createOwnedSession } from "../../runtime/session/create.js";
+import type { SessionStore } from "../../runtime/session/session.js";
+import { toRuntimeClientTools, toRuntimeTools } from "../../runtime/session/tools.js";
+import { estimateTokens } from "../../runtime/tokens.js";
 import { resolveSandboxContext } from "../../sandbox.js";
 import { resolveSandboxRuntimeStatus } from "../../sandbox/runtime-status.js";
 import { repairSessionFileIfNeeded } from "../../session-file-repair.js";
@@ -109,13 +112,8 @@ import { buildEmbeddedSandboxInfo } from "../sandbox-info.js";
 import { withSessionRequestAuth } from "../session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { prepareSessionManagerForRun } from "../session-manager-init.js";
-import {
-  applySystemPromptOverrideToSession,
-  buildEmbeddedSystemPrompt,
-  createSystemPromptOverride,
-} from "../system-prompt.js";
-import { applyToolLoopCompat } from "../tool-loop-compat.js";
-import { sessionToolAllowlist, splitSdkTools } from "../tool-split.js";
+import { buildEmbeddedSystemPrompt, createSystemPromptOverride } from "../system-prompt.js";
+import { splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
 import {
@@ -358,6 +356,7 @@ export async function runEmbeddedAttempt(
           senderIsOwner: params.senderIsOwner,
           sessionKey: params.sessionKey ?? params.sessionId,
           sessionId: params.sessionId,
+          sessionFile: params.sessionFile,
           isHeartbeat: params.isHeartbeat === true,
           runId: params.runId,
           agentDir,
@@ -652,7 +651,7 @@ export async function runEmbeddedAttempt(
     });
 
     let sessionManager: ReturnType<typeof guardSessionManager> | undefined;
-    let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+    let session: EmbeddedAgentSession | undefined;
     try {
       await repairSessionFileIfNeeded({
         sessionFile: params.sessionFile,
@@ -689,8 +688,6 @@ export async function runEmbeddedAttempt(
         cwd: effectiveWorkspace,
       });
 
-      const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
-
       // Call for side effects (sets compaction/pruning runtime state)
       buildEmbeddedExtensionPaths({
         cfg: params.config,
@@ -703,51 +700,60 @@ export async function runEmbeddedAttempt(
       // Get hook runner early so it's available when creating tools
       const hookRunner = getGlobalHookRunner();
 
-      const { customTools } = splitSdkTools({
-        tools,
-        sandboxEnabled: !!sandbox?.enabled,
-      });
-
-      // Add client tools (OpenResponses hosted tools) to customTools
+      // Client tools (OpenResponses hosted tools) are recorded, not executed.
       let clientToolCallDetected: { name: string; params: Record<string, unknown> } | null = null;
-      const clientToolDefs = params.clientTools
-        ? toClientToolDefinitions(
-            params.clientTools,
-            (toolName, toolParams) => {
-              clientToolCallDetected = { name: toolName, params: toolParams };
-            },
-            {
-              agentId: sessionAgentId,
-              sessionKey: params.sessionKey,
-            },
-          )
-        : [];
+      const onClientToolCall = (toolName: string, toolParams: Record<string, unknown>) => {
+        clientToolCallDetected = { name: toolName, params: toolParams };
+      };
+      const clientToolHookContext = { agentId: sessionAgentId, sessionKey: params.sessionKey };
 
-      const allCustomTools = [...customTools, ...clientToolDefs];
-
-      ({ session } = await createAgentSession({
-        cwd: resolvedWorkspace,
-        agentDir,
-        authStorage: params.authStorage,
-        modelRegistry: params.modelRegistry,
-        model: params.model,
-        thinkingLevel: mapThinkingLevel(params.thinkLevel),
-        tools: sessionToolAllowlist(allCustomTools),
-        customTools: allCustomTools,
-        sessionManager,
-        settingsManager,
-      }));
-      applySystemPromptOverrideToSession(session, systemPromptText);
+      if (runtimeEngine === "bitterbot") {
+        // PLAN-52: the owned session, loop, and compaction policy. It exposes
+        // the same members and events the code below uses on pi's session.
+        const modelRegistry = params.modelRegistry;
+        const owned = createOwnedSession({
+          config: params.config,
+          model: params.model,
+          thinkingLevel: mapThinkingLevel(params.thinkLevel),
+          systemPrompt: systemPromptText,
+          tools: [
+            ...toRuntimeTools(tools),
+            ...(params.clientTools
+              ? toRuntimeClientTools(params.clientTools, onClientToolCall, clientToolHookContext)
+              : []),
+          ],
+          store: sessionManager as unknown as SessionStore,
+          resolveRequestAuth: (model) => modelRegistry.getApiKeyAndHeaders(model),
+          findModel: (provider, modelId) => modelRegistry.find(provider, modelId),
+          log: (message) => log.info(`[runtime] runId=${params.runId} ${message}`),
+        });
+        session = owned as unknown as typeof session;
+      } else {
+        const { customTools } = splitSdkTools({
+          tools,
+          sandboxEnabled: !!sandbox?.enabled,
+        });
+        const clientToolDefs = params.clientTools
+          ? toClientToolDefinitions(params.clientTools, onClientToolCall, clientToolHookContext)
+          : [];
+        session = await createPiSession({
+          cwd: resolvedWorkspace,
+          settingsCwd: effectiveWorkspace,
+          agentDir,
+          authStorage: params.authStorage,
+          modelRegistry: params.modelRegistry,
+          model: params.model,
+          thinkingLevel: mapThinkingLevel(params.thinkLevel),
+          customTools: [...customTools, ...clientToolDefs],
+          store: sessionManager,
+          systemPrompt: systemPromptText,
+          minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
+          toolLoopCompat: true,
+        });
+      }
       if (!session) {
         throw new Error("Embedded agent session missing");
       }
-      // After createAgentSession: pi >= 0.73 reloads settings from disk while
-      // creating the session, which drops overrides applied earlier.
-      ensurePiCompactionReserveTokens({
-        settingsManager,
-        minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-      });
-      applyToolLoopCompat(session);
       // PLAN-52A: the context budget that reaches the run in flight. The loop
       // snapshots `transformContext` at run start and calls it before every
       // model call, so this is where tool-output stubs (and the truncation
@@ -1127,6 +1133,32 @@ export async function runEmbeddedAttempt(
 
         // Run before_agent_start hooks to allow plugins to inject context
         let effectivePrompt = params.prompt;
+        // PLAN-52A L1a: when part of this conversation was offloaded, put the
+        // excerpts of that range that match the new message in front of it.
+        // Never on heartbeats or remote task turns.
+        if (
+          !remoteTaskTurn &&
+          params.isHeartbeat !== true &&
+          params.config?.agents?.defaults?.compaction?.policy === "offload" &&
+          params.config.agents.defaults.compaction.offload?.proactiveRecall !== false
+        ) {
+          try {
+            const preface = buildProactiveRecallPreface({
+              sessionFile: params.sessionFile,
+              sessionIdFallback: params.sessionId,
+              query: params.prompt,
+              heartbeatPrompts: resolveHeartbeatPromptSet(params.config),
+            });
+            if (preface) {
+              effectivePrompt = `${preface}\n\n${effectivePrompt}`;
+              log.info(
+                `[transcript-recall] runId=${params.runId} injected ${preface.length} chars from the offloaded range`,
+              );
+            }
+          } catch (recallErr) {
+            log.warn(`[transcript-recall] failed: ${String(recallErr)}`);
+          }
+        }
         if (hookRunner?.hasHooks("before_agent_start")) {
           try {
             const hookResult = await hookRunner.runBeforeAgentStart(
@@ -1143,7 +1175,7 @@ export async function runEmbeddedAttempt(
               },
             );
             if (hookResult?.prependContext) {
-              effectivePrompt = `${hookResult.prependContext}\n\n${params.prompt}`;
+              effectivePrompt = `${hookResult.prependContext}\n\n${effectivePrompt}`;
               log.debug(
                 `hooks: prepended context to prompt (${hookResult.prependContext.length} chars)`,
               );
@@ -1167,10 +1199,11 @@ export async function runEmbeddedAttempt(
           } else {
             sessionManager.resetLeaf();
           }
-          const sessionContext = sessionManager.buildSessionContext();
+          const contextMessages = sessionManager.buildSessionContext()
+            .messages as unknown as AgentMessage[];
           const sanitizedOrphan = transcriptPolicy.normalizeAntigravityThinkingBlocks
-            ? sanitizeAntigravityThinkingBlocks(sessionContext.messages)
-            : sessionContext.messages;
+            ? sanitizeAntigravityThinkingBlocks(contextMessages)
+            : contextMessages;
           activeSession.agent.state.messages = sanitizedOrphan;
           log.warn(
             `Removed orphaned user message to prevent consecutive user turns. ` +
@@ -1259,6 +1292,12 @@ export async function runEmbeddedAttempt(
               });
           }
 
+          // A stop that arrived during setup (hooks, image loading) must not be
+          // followed by a prompt: session.abort() only reaches a run that
+          // already exists, and the run would start with nobody able to stop it.
+          if (runAbortController.signal.aborted) {
+            throw makeAbortError(runAbortController.signal);
+          }
           // Only pass images option if there are actually images to pass
           // This avoids potential issues with models that don't expect the images parameter
           if (imageResult.images.length > 0) {
@@ -1465,6 +1504,11 @@ export async function runEmbeddedAttempt(
       // flushPendingToolResults() fires while tools are still executing, inserting
       // synthetic "missing tool result" errors and causing silent agent failures.
       // See: https://github.com/bitterbot/bitterbot/issues/8643
+      if (runAbortController.signal.aborted) {
+        // Stop anything that started between the abort and this teardown, so
+        // nothing runs or writes once the session lock is released.
+        await session?.abort().catch(() => {});
+      }
       await flushPendingToolResultsAfterIdle({
         agent: session?.agent,
         sessionManager,

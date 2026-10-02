@@ -726,10 +726,10 @@ Periodic heartbeat runs.
 ```
 
 - `mode`: `default` or `safeguard` (chunked summarization for long histories). See [Compaction](/concepts/compaction).
-- `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). The offload policy itself lands with the owned runtime; today the key only selects the hot-set behaviour.
+- `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). The offload horizon cut runs on the `bitterbot` engine (see `agents.defaults.runtime`); on the `pi` engine the key only selects the hot-set behaviour and compaction stays an LLM summary.
 - `offload.toolOutputStubs` (default `true`, independent of `policy`): when a turn passes the mid-turn trigger, the oldest tool outputs are replaced by a stub naming the tool call id; the transcript keeps the text and [recall_range](/tools/recall-range) returns it. Stubs persist across turns and restarts.
 - `offload.recallCrossSession`: `off` (default) keeps [recall_range](/tools/recall-range) on the current conversation; `owner` lets owner senders read other sessions of this agent.
-- `offload.*` trigger and target fractions, `minKeepUserTurns`, stub thresholds, `elideHeartbeats`, `ledgerBudgetTokens`: parameters of the offload planner (`src/agents/runtime/compaction/`). Targets must sit below their triggers; the planner clamps them otherwise. `summary`, `summaryModel`, `proactiveRecall` and `recallBudgetUsdPerDay` take effect when the policy is wired into the runtime (PLAN-52 Phase 3b).
+- `offload.*` trigger and target fractions, `minKeepUserTurns`, stub thresholds, `elideHeartbeats`, `ledgerBudgetTokens`: parameters of the offload planner (`src/agents/runtime/compaction/`). Targets must sit below their triggers; the planner clamps them otherwise. `summary` (`always` by default: a short cheap-model summary of the elided range is appended to the ledger; `idle` skips it during overflow recovery; `off` writes the ledger alone) and `summaryModel` apply on the `bitterbot` engine. `proactiveRecall` (default `true`): once part of a conversation has been offloaded, each new user message is searched against the offloaded dialogue and up to three matching excerpts are placed in front of it (no model call; skipped for heartbeats). `recallBudgetUsdPerDay` is not wired yet.
 - `memoryFlush`: silent agentic turn before auto-compaction to store durable memories. Skipped when workspace is read-only.
 
 ### `agents.defaults.runtime`
@@ -748,7 +748,14 @@ Selects the agent runtime. Per-agent override: `agents.list[].runtime.engine`.
 ```
 
 - `pi`: the pi-coding-agent session, loop, and transcript writer.
-- `bitterbot`: the owned runtime under `src/agents/runtime/`. It is being built in phases; a part that is not built yet runs on pi. Today the engine selects the transcript store.
+- `bitterbot`: the owned runtime under `src/agents/runtime/`: transcript store, agent loop, session layer (persistence, retry, overflow recovery), and compaction policy. Model transports, the model registry, and auth storage still come from pi.
+
+What changes for an agent on `bitterbot`:
+
+- Compaction summaries are requested through the same provider path as turns. On `pi` the summary call bypasses it, which is why `/compact` fails on models only the in-tree Anthropic provider handles.
+- `agents.defaults.compaction.policy: "offload"` takes effect (horizon cut with a ledger; tool-output stubs when a single turn overflows).
+- After an abort no further tool call of the batch is executed and no further model call is made.
+- A retryable provider error thrown before any response is retried like one reported in a response.
 
 Both engines read and write the same session file format, so an agent can be switched either way between turns. See [Agent runtime development](/reference/agent-runtime-dev).
 
