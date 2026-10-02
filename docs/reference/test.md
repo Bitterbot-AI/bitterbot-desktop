@@ -15,6 +15,12 @@ title: "Tests"
 - `pnpm test:e2e`: Runs gateway end-to-end smoke tests (multi-instance WS/HTTP/node pairing). Defaults to `vmForks` + adaptive workers in `vitest.e2e.config.ts`; tune with `BITTERBOT_E2E_WORKERS=<n>` and set `BITTERBOT_E2E_VERBOSE=1` for verbose logs.
 - `pnpm test:live`: Runs provider live tests (minimax/zai). Requires API keys and `LIVE=1` (or provider-specific `*_LIVE_TEST=1`) to unskip.
 
+## State isolation
+
+- Every suite runs with `HOME` pointed at a throwaway directory (`test/test-env.ts`), so tests never read or write `~/.bitterbot`. When a test file finishes, the location variables stay pointed at that directory, so background work a test left running cannot fall back to your real home.
+- As a second line of defence, the memory database refuses to open any path under the real `~/.bitterbot` while running under Vitest. If you see `Refusing to open ... from a test process`, a test resolved real state: fix the test, do not bypass the guard.
+- Live suites (`LIVE=1`, `BITTERBOT_LIVE_TEST=1`, `BITTERBOT_LIVE_GATEWAY=1`) use your real environment on purpose and are exempt. Do not run them against a home directory whose state you care about.
+
 ## Model latency bench (local keys)
 
 Script: [`scripts/bench-model.ts`](https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/scripts/bench-model.ts)
