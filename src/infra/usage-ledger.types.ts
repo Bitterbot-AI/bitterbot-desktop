@@ -85,6 +85,8 @@ export type UsageEventRow = {
    */
   prefixDigest: string | null;
   toolsDigest: string | null;
+  /** Agent runtime engine configured for the row's agent ("pi" | "bitterbot"); null when no agent. */
+  engine: string | null;
   durationMs: number | null;
   status: "ok" | "error";
   stopReason: string | null;

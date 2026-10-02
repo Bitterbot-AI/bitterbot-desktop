@@ -347,7 +347,7 @@ async function runDoctor(
   runSkillsChecks({ config: cfg });
 
   // ── Agent runtime observability (today's considerations log, in-memory state hints) ──
-  await runAgentRuntimeChecks();
+  await runAgentRuntimeChecks(cfg);
 
   // ── Biological Memory Architecture ──
   {
