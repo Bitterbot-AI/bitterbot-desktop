@@ -4,3 +4,6 @@
 
 # style: reformat with oxfmt 0.70 (1,230 files, formatter version bump)
 2a399f2f0713a7a3672d9f2ca257fe03ba0e5b28
+
+# refactor(agents): rename pi-named paths (PLAN-52 Phase P, renames only)
+83981fa3f403cf832b28cc2a07c306545ec10bb9

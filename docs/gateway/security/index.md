@@ -176,6 +176,8 @@ Plugins run **in-process** with the Gateway. Treat them as trusted code:
 
 Details: [Plugins](/tools/plugin)
 
+The agent workspace is not a plugin location. The embedded agent runtime does not load code, settings, skills, prompt templates, or context files from `<workspace>/.pi/` or from `<agentDir>/extensions/`; a file an agent writes into its workspace is never imported by the Gateway. Gateway plugins are the only in-process extension mechanism.
+
 ## DM access model (pairing / allowlist / open / disabled)
 
 All current DM-capable channels support a DM policy (`dmPolicy` or `*.dm.policy`) that gates inbound DMs **before** the message is processed:
