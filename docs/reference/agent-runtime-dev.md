@@ -110,6 +110,15 @@ node --import tsx benchmarks/runtime-smoke/smoke.ts \
 
 Checks: a turn with a tool call (the reply must contain a random token that exists only in a workspace file), a follow-up turn on the same session, and with `--compact` the explicit compaction path. On 2026-10-01 all checks passed on both engines with Haiku 4.5 and with Opus 4.8; with `--think high` on Opus 4.8 the `pi` engine's compaction fails with the provider's 400 (`thinking.type.enabled is not supported for this model`) and the `bitterbot` engine's succeeds.
 
+`--overflow` replaces those checks with an overflow recovery: it seeds the session with a history that fits (72% of `--window`, sized with the provider's token counter), then sends one prompt whose paste takes the request over the window. The provider must refuse the request, a compaction entry must follow, and the run must still answer with a token that exists only in the compacted part.
+
+```bash
+node --import tsx benchmarks/runtime-smoke/smoke.ts \
+  --engines bitterbot --model claude-opus-4-8 --overflow --window 1000000 --think high
+```
+
+On 2026-10-01 this passed on the `bitterbot` engine with Haiku 4.5 (200k window, refused at 219,587 tokens) and with Opus 4.8 with thinking on (1M window, refused at 1,067,928 tokens, recovered in 39 s). The Opus run costs about $6: one summary call over the seeded history and one retry. Opus 4.8 is resolved from the Opus 4.6 catalogue entry, so its window is 1M; a request of 220k tokens is accepted and no compaction runs on either engine.
+
 ## Rules
 
 - A phase is done when the contract suite is green for its variant, CI is green on the three platforms, and a separate adversarial pass has been run.
