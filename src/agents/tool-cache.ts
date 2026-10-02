@@ -35,8 +35,12 @@ export interface ToolCacheConfig {
 
 const DEFAULT_MAX_ENTRIES = 500;
 const DEFAULT_TTL_MS = 5 * 60_000;
+// `read` is deliberately not here. A file read costs a few milliseconds, and
+// nothing invalidates an entry when the file changes: for five minutes an
+// agent got the old content back after an edit, a shell command, or the user
+// saving the file (seen 2026-10-02 in the runtime soak). Operators can still
+// name it in `agents.defaults.toolCache.cacheableTools`.
 const DEFAULT_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([
-  "read",
   "web_search",
   "web_fetch",
   "image",

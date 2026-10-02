@@ -34,6 +34,7 @@ import {
 } from "./agent-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./agent-tools.schema.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
+import { wrapToolWithUpdateGuard } from "./agent-tools.update-guard.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import {
   createExecTool,
@@ -577,8 +578,11 @@ export function createBitterbotCodingTools(options?: {
   const normalized = subagentFiltered.map(normalizeToolParameters);
   // GENOME.md is the user's file: no tool call may leave it changed. Inside
   // the hook wrapper, so it sees the params after interceptors rewrote them.
+  // Innermost: the tool itself gets a progress callback that goes quiet once
+  // the call has returned (a backgrounded command printing later).
+  const updateGuarded = normalized.map(wrapToolWithUpdateGuard);
   const otherGenomes = otherAgentGenomeFiles(options?.config);
-  const genomeGuarded = normalized.map((tool) =>
+  const genomeGuarded = updateGuarded.map((tool) =>
     wrapToolWithGenomeGuard(tool, workspaceRoot, otherGenomes),
   );
   // Runs a tool call starts (sub-agents, messages to other sessions, task
@@ -603,7 +607,7 @@ export function createBitterbotCodingTools(options?: {
 
   // Wrap cacheable tools with the in-memory LRU cache.
   const withCache = options?.toolCache
-    ? wrapToolsWithCache(withAbort, options.toolCache)
+    ? wrapToolsWithCache(withAbort, options.toolCache, `${agentId ?? ""}\u0000${workspaceRoot}`)
     : withAbort;
 
   // W5 item 3: model-facing result cap with spill-to-file (the event-stream

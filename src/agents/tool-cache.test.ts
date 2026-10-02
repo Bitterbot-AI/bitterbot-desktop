@@ -131,7 +131,8 @@ describe("ToolCache", () => {
   describe("isCacheable", () => {
     it("returns true for default cacheable tools", () => {
       const defaultCache = new ToolCache();
-      expect(defaultCache.isCacheable("read")).toBe(true);
+      // Not `read`: nothing invalidates an entry when the file changes.
+      expect(defaultCache.isCacheable("read")).toBe(false);
       expect(defaultCache.isCacheable("web_search")).toBe(true);
       expect(defaultCache.isCacheable("web_fetch")).toBe(true);
       expect(defaultCache.isCacheable("image")).toBe(true);
