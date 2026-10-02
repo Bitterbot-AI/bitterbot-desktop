@@ -91,7 +91,9 @@ describe("genome guard when the file is left unreadable (review)", () => {
     await fs.chmod(genomePath(), 0o640);
     await call(shell(() => fs.chmod(genomePath(), 0o000)));
     expect(await genome()).toBe(ORIGINAL);
-    expect((await fs.stat(genomePath())).mode & 0o777).toBe(0o640);
+    if (process.platform !== "win32") {
+      expect((await fs.stat(genomePath())).mode & 0o777).toBe(0o640);
+    }
   });
 
   it("truncate to 3 GB (sparse): restored without reading the oversized file", async () => {
@@ -170,7 +172,9 @@ describe("genome guard restore keeps the file as it was (review)", () => {
   it("the restored file keeps its mode", async () => {
     await fs.chmod(genomePath(), 0o600);
     await call(shell(() => fs.writeFile(genomePath(), EVIL)));
-    expect((await fs.stat(genomePath())).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect((await fs.stat(genomePath())).mode & 0o777).toBe(0o600);
+    }
   });
 });
 
