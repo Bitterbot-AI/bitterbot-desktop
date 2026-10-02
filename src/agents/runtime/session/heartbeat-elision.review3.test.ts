@@ -135,7 +135,9 @@ describe("heartbeat-pair elision (review 3)", () => {
       }
       await s.prompt("small one");
       await s.prompt("small two");
-      const end = significant(s.events).findLast((e) => e.startsWith("compaction_end"));
+      const end = significant(s.events)
+        .filter((e) => e.startsWith("compaction_end"))
+        .at(-1);
       await s.prompt("small three");
       const sent = script.calls.at(-1)!.messages.filter((m) => m.includes(HEARTBEAT)).length;
       await s.dispose();
