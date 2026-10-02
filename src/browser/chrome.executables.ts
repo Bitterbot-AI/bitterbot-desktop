@@ -462,10 +462,14 @@ function findFirstExecutable(candidates: Array<BrowserExecutable>): BrowserExecu
 /**
  * On Ubuntu, `/usr/bin/chromium-browser` is a shell script that forwards to the
  * chromium snap, and `/snap/bin/<name>` is a link to the `snap` launcher. Both
- * exist whether or not the snap itself is installed, which it usually is not
- * under WSL. Launching one then starts nothing: the gateway waited 15 s for a
- * debugging port that never opened and reported the browser as unreachable.
- * A path is only a browser if there is a browser behind it.
+ * exist whether or not the snap can run. Under WSL it usually cannot: snapd is
+ * not running, so the snap is "installed" (`/snap/chromium/current` is there)
+ * but its image is not mounted and the revision directory is empty. Launching
+ * the script then hangs: the gateway waited 15 s for a debugging port that
+ * never opened and reported the browser as unreachable.
+ *
+ * A path is only a browser if there is a browser behind it. A mounted snap
+ * always has `meta/snap.yaml`; an unmounted one has nothing.
  */
 export function isLaunchableLinuxBrowser(
   candidatePath: string,
@@ -477,15 +481,16 @@ export function isLaunchableLinuxBrowser(
   if (!io.exists(candidatePath)) {
     return false;
   }
-  const snapInstalled = (name: string) => io.exists(path.posix.join("/snap", name, "current"));
+  const snapMounted = (name: string) =>
+    io.exists(path.posix.join("/snap", name, "current", "meta", "snap.yaml"));
   if (candidatePath.startsWith("/snap/bin/")) {
-    return snapInstalled(path.posix.basename(candidatePath));
+    return snapMounted(path.posix.basename(candidatePath));
   }
   const head = io.readHead(candidatePath);
   if (head?.startsWith("#!")) {
     const forwarded = /\/snap\/bin\/([A-Za-z0-9._-]+)/.exec(head);
     if (forwarded?.[1]) {
-      return snapInstalled(forwarded[1]);
+      return snapMounted(forwarded[1]);
     }
   }
   return true;

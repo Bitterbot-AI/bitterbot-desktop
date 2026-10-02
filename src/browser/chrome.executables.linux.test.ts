@@ -39,8 +39,20 @@ describe("isLaunchableLinuxBrowser", () => {
     expect(isLaunchableLinuxBrowser("/snap/bin/chromium", io)).toBe(false);
   });
 
-  it("accepts the same shim once the snap is installed", () => {
-    const io = fsWith(["/snap/bin/chromium", "/snap/chromium/current"], {
+  it("rejects the shim when the snap is installed but not mounted", () => {
+    // The real WSL state, found on the live box after the first version of this
+    // check shipped: snapd is not running, /snap/chromium/current exists and
+    // points at an empty revision directory, and the shim hangs when run.
+    const io = fsWith(["/snap/bin/chromium", "/snap/chromium/current", "/snap/chromium/3396"], {
+      "/usr/bin/chromium-browser": SNAP_SHIM,
+    });
+
+    expect(isLaunchableLinuxBrowser("/usr/bin/chromium-browser", io)).toBe(false);
+    expect(isLaunchableLinuxBrowser("/snap/bin/chromium", io)).toBe(false);
+  });
+
+  it("accepts the same shim once the snap is mounted", () => {
+    const io = fsWith(["/snap/bin/chromium", "/snap/chromium/current/meta/snap.yaml"], {
       "/usr/bin/chromium-browser": SNAP_SHIM,
     });
 
