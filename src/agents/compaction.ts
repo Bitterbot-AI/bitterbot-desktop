@@ -1,7 +1,8 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { estimateTokens, generateSummary } from "@mariozechner/pi-coding-agent";
+import type { Api, Model } from "@mariozechner/pi-ai";
 import { DEFAULT_CONTEXT_TOKENS } from "./defaults.js";
+import { generateSummary, type SessionMessage } from "./runtime/compaction/summary/index.js";
+import { estimateTokens } from "./runtime/tokens.js";
 import { repairToolUseResultPairing, stripToolResultDetails } from "./session-transcript-repair.js";
 
 export const BASE_CHUNK_RATIO = 0.4;
@@ -141,7 +142,7 @@ export function isOversizedForSummary(msg: AgentMessage, contextWindow: number):
 
 async function summarizeChunks(params: {
   messages: AgentMessage[];
-  model: NonNullable<ExtensionContext["model"]>;
+  model: Model<Api>;
   apiKey: string;
   /** Per-request auth headers from ModelRegistry.getApiKeyAndHeaders (pi >= 0.73). */
   headers?: Record<string, string>;
@@ -161,16 +162,15 @@ async function summarizeChunks(params: {
   let summary = params.previousSummary;
 
   for (const chunk of chunks) {
-    summary = await generateSummary(
-      chunk,
-      params.model,
-      params.reserveTokens,
-      params.apiKey,
-      params.headers,
-      params.signal,
-      params.customInstructions,
-      summary,
-    );
+    summary = await generateSummary(chunk as unknown as SessionMessage[], {
+      model: params.model,
+      reserveTokens: params.reserveTokens,
+      apiKey: params.apiKey,
+      headers: params.headers,
+      signal: params.signal,
+      customInstructions: params.customInstructions,
+      previousSummary: summary,
+    });
   }
 
   return summary ?? DEFAULT_SUMMARY_FALLBACK;
@@ -182,7 +182,7 @@ async function summarizeChunks(params: {
  */
 export async function summarizeWithFallback(params: {
   messages: AgentMessage[];
-  model: NonNullable<ExtensionContext["model"]>;
+  model: Model<Api>;
   apiKey: string;
   /** Per-request auth headers from ModelRegistry.getApiKeyAndHeaders (pi >= 0.73). */
   headers?: Record<string, string>;
@@ -252,7 +252,7 @@ export async function summarizeWithFallback(params: {
 
 export async function summarizeInStages(params: {
   messages: AgentMessage[];
-  model: NonNullable<ExtensionContext["model"]>;
+  model: Model<Api>;
   apiKey: string;
   /** Per-request auth headers from ModelRegistry.getApiKeyAndHeaders (pi >= 0.73). */
   headers?: Record<string, string>;
@@ -379,6 +379,6 @@ export function pruneHistoryForContextShare(params: {
   };
 }
 
-export function resolveContextWindowTokens(model?: ExtensionContext["model"]): number {
+export function resolveContextWindowTokens(model?: Model<Api>): number {
   return Math.max(1, Math.floor(model?.contextWindow ?? DEFAULT_CONTEXT_TOKENS));
 }

@@ -11,7 +11,7 @@
 
 import { createHash } from "node:crypto";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { estimateTokens } from "@mariozechner/pi-coding-agent";
+import { estimateTokens } from "./runtime/tokens.js";
 
 export interface ProgressiveCompressionConfig {
   /** Enable progressive compression (default: true). */

@@ -6,16 +6,13 @@ const piCodingAgentMocks = vi.hoisted(() => ({
   estimateTokens: vi.fn(() => 1),
 }));
 
-vi.mock("@mariozechner/pi-coding-agent", async () => {
-  const actual = await vi.importActual<typeof import("@mariozechner/pi-coding-agent")>(
-    "@mariozechner/pi-coding-agent",
+vi.mock("./runtime/compaction/summary/index.js", async () => {
+  const actual = await vi.importActual<typeof import("./runtime/compaction/summary/index.js")>(
+    "./runtime/compaction/summary/index.js",
   );
-  return {
-    ...actual,
-    generateSummary: piCodingAgentMocks.generateSummary,
-    estimateTokens: piCodingAgentMocks.estimateTokens,
-  };
+  return { ...actual, generateSummary: piCodingAgentMocks.generateSummary };
 });
+vi.mock("./runtime/tokens.js", () => ({ estimateTokens: piCodingAgentMocks.estimateTokens }));
 
 import { summarizeWithFallback } from "./compaction.js";
 
