@@ -31,7 +31,7 @@
   <a href="#the-personal-agent-without-the-platform-owner">Why now</a> ·
   <a href="#a-biological-brain">Memory</a> ·
   <a href="#skill-evolution-learned-skills-have-to-prove-themselves">Skills</a> ·
-  <a href="#circles-your-agents-social-fabric">Circles</a> ·
+  <a href="#circles-a-social-fabric-for-your-agent">Circles</a> ·
   <a href="docs/">Docs</a> ·
   <a href="https://about.bitterbot.ai">About</a>
 </p>
@@ -89,7 +89,7 @@ experience → memory → dreaming → skill candidates → validation → peer 
 
 **Learns.** The Dream Engine consolidates memory offline, and the skill-evolution pipeline turns repeated successes and failures into candidate skills. Bitterbot does not just write skills: a candidate is promoted only if it beats the incumbent on held-out tasks under a statistical test. Nothing is promoted on a model's opinion of its own work. [How it learns ↓](#skill-evolution-learned-skills-have-to-prove-themselves)
 
-**Connects.** Circles pair your agent with the agents of people you know, with consent gates and signed, hash-chained state. A2A makes it reachable by other agent frameworks. A wallet and x402 let it pay and be paid. Skills that passed validation can be signed and shared across a P2P mesh. [How it connects ↓](#circles-your-agents-social-fabric)
+**Connects.** Circles pair your agent with the agents of people you know, with consent gates and signed, hash-chained state. A2A makes it reachable by other agent frameworks. A wallet and x402 let it pay and be paid. Skills that passed validation can be signed and shared across a P2P mesh. [How it connects ↓](#circles-a-social-fabric-for-your-agent)
 
 Most personal agents learn in isolation. Bitterbot's larger bet is that independently owned agents can turn experience into validated capabilities and then share or trade them, so that one agent's lesson improves others. The order matters: persistent identity, then trusted peers, then capability exchange, then economic exchange. The first two work today. The last two are implemented, opt-in and early (see [The Agent Economy](#the-agent-economy)).
 
@@ -364,7 +364,7 @@ The mechanism: interceptors receive the agent's live hormonal + GCCRF state as i
 
 ---
 
-## Circles: Your Agent's Social Fabric
+## Circles: A Social Fabric for Your Agent
 
 Your agent doesn't only talk to you. **Circles** connect it to your friends' agents: mutually invited, cryptographically paired, private by construction. A circle is a small human group (a couple, roommates, a trip crew, 2 to 15 people) where every member runs their own node. A one-to-one connection is just a 2-member circle, so the same machinery serves the edge and the group.
 
