@@ -14,7 +14,7 @@
  */
 
 import type { Api, Model } from "@mariozechner/pi-ai";
-import type { ToolOutputStub } from "../context-pruning/offload-stubs.js";
+import type { HeartbeatStub, ToolOutputStub } from "../context-pruning/offload-stubs.js";
 import type { StreamFn, ThinkingLevel } from "../loop/index.js";
 import type { TranscriptEntry } from "../transcript/types.js";
 
@@ -37,6 +37,11 @@ export type CompactionOutcome = {
    * records them (`bitterbot.offload-prune`) and applies them to the context.
    */
   stubs?: ToolOutputStub[];
+  /**
+   * Bare heartbeat pairs in the kept range to drop from the window. Recorded
+   * in the same `bitterbot.offload-prune` entry and re-applied at every build.
+   */
+  heartbeats?: HeartbeatStub[];
 };
 
 /**
@@ -44,7 +49,12 @@ export type CompactionOutcome = {
  * frees enough. The session records and applies the stubs; no compaction
  * entry is written.
  */
-export type StubsOnlyOutcome = { stubsOnly: true; stubs: ToolOutputStub[] };
+export type StubsOnlyOutcome = {
+  stubsOnly: true;
+  stubs: ToolOutputStub[];
+  /** Bare heartbeat pairs to drop from the window (no cut was needed). */
+  heartbeats?: HeartbeatStub[];
+};
 
 export type CompactionPolicyResult = CompactionOutcome | StubsOnlyOutcome;
 

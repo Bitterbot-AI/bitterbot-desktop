@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { AgentModelSchema } from "./zod-schema.agent-model.js";
+import { CompactionOffloadSchema, CompactionPolicySchema } from "./zod-schema.compaction.js";
 import {
   GroupChatSchema,
   HumanDelaySchema,
@@ -586,6 +587,13 @@ export const AgentEntrySchema = z
     runtime: z
       .object({
         engine: z.union([z.literal("pi"), z.literal("bitterbot")]).optional(),
+      })
+      .strict()
+      .optional(),
+    compaction: z
+      .object({
+        policy: CompactionPolicySchema.optional(),
+        offload: CompactionOffloadSchema.optional(),
       })
       .strict()
       .optional(),

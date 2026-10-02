@@ -26,6 +26,7 @@ import {
   type SessionTranscriptMessage,
 } from "../rlm/context-builder.js";
 import type { TranscriptRange } from "../rlm/types.js";
+import { resolveAgentCompaction } from "../runtime/compaction/agent-config.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 import { readRangeParam } from "./deep-recall-tool.js";
@@ -292,8 +293,11 @@ export function renderTranscriptRows(
   return { text: parts.join("\n"), returned, omitted, truncated };
 }
 
-export function resolveRecallCrossSessionMode(cfg?: BitterbotConfig): RecallCrossSessionMode {
-  const mode = cfg?.agents?.defaults?.compaction?.offload?.recallCrossSession;
+export function resolveRecallCrossSessionMode(
+  cfg?: BitterbotConfig,
+  agentId?: string,
+): RecallCrossSessionMode {
+  const mode = resolveAgentCompaction(cfg, agentId).offload.recallCrossSession;
   return mode === "owner" ? "owner" : "off";
 }
 
@@ -312,7 +316,7 @@ export function createRecallRangeTool(options: {
     return null;
   }
   const agentId = resolveSessionAgentId({ sessionKey: options.agentSessionKey, config: cfg });
-  const crossSession = resolveRecallCrossSessionMode(cfg);
+  const crossSession = resolveRecallCrossSessionMode(cfg, agentId);
 
   return {
     label: "Recall Range",

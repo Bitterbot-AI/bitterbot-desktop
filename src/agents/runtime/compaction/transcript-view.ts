@@ -16,7 +16,12 @@
 
 import fs from "node:fs/promises";
 import { estimateMessageTokens } from "./estimate.js";
-import { isHeartbeatAckText, isHeartbeatPromptText, transcriptMessageText } from "./heartbeat.js";
+import {
+  isHeartbeatAckText,
+  isHeartbeatPromptText,
+  transcriptMessageText,
+  userAuthoredText,
+} from "./heartbeat.js";
 import {
   PRUNE_RECORD_CUSTOM_TYPE,
   type OffloadCompactionDetails,
@@ -246,6 +251,7 @@ export function buildTranscriptView(params: {
       toolCallIds: role === "assistant" ? toolCallIdsOf(message?.content) : [],
       images,
       isHeartbeatPrompt: role === "user" && isHeartbeatPromptText(text, params.heartbeatPrompts),
+      ...(role === "user" && userAuthoredText(text) !== text ? { hasInjectedPreface: true } : {}),
       isHeartbeatAck: role === "assistant" && isHeartbeatAckText(text),
       promptTokensActual: role === "assistant" ? actualPromptTokens(message?.usage) : undefined,
     });

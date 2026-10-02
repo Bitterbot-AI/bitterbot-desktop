@@ -73,10 +73,13 @@ import {
   type SessionMessage,
 } from "../compaction/summary/index.js";
 import {
+  applyHeartbeatStubs,
   applyStubsToMessages,
   buildPruneRecordData,
+  collectHeartbeatStubs,
   collectStubRecords,
   PRUNE_RECORD_CUSTOM_TYPE,
+  type HeartbeatStub,
   type ToolOutputStub,
 } from "../context-pruning/offload-stubs.js";
 import {
@@ -914,7 +917,7 @@ export class AgentSession {
         throw new Error("Compaction cancelled");
       }
       if (isStubsOnly(result)) {
-        this.recordStubs(result.stubs, "manual");
+        this.recordStubs(result.stubs, "manual", result.heartbeats);
         throw new Error("Nothing to compact (no turn boundary to cut at)");
       }
       this.applyCompaction(result, "manual");
@@ -953,10 +956,11 @@ export class AgentSession {
       throw new Error("Compaction cancelled");
     }
     const stubs = result.stubs ?? [];
-    if (stubs.length > 0) {
+    const heartbeats = result.heartbeats ?? [];
+    if (stubs.length > 0 || heartbeats.length > 0) {
       this.sessionManager.appendCustomEntry(
         PRUNE_RECORD_CUSTOM_TYPE,
-        buildPruneRecordData(stubs, trigger),
+        buildPruneRecordData(stubs, trigger, heartbeats),
       );
     }
     this.sessionManager.appendCompaction(
@@ -971,19 +975,43 @@ export class AgentSession {
     // The context was rebuilt from the transcript, which holds every tool
     // output in full: re-apply all stubs recorded on the branch, not only
     // the ones this compaction added.
-    this.applyStubsToState([...collectStubRecords(this.sessionManager.getBranch()).values()]);
+    const branch = this.sessionManager.getBranch();
+    this.applyStubsToState([...collectStubRecords(branch).values()]);
+    const elided = applyHeartbeatStubs(
+      this.agent.state.messages as unknown as Parameters<typeof applyHeartbeatStubs>[0],
+      collectHeartbeatStubs(branch),
+    );
+    if (elided.removed > 0) {
+      this.agent.state.messages = elided.messages as unknown as AgentMessage[];
+    }
   }
 
-  /** Record tool-output stubs in the transcript and apply them to the live context. */
-  private recordStubs(stubs: ToolOutputStub[], trigger: string): void {
-    if (stubs.length === 0 || this.disposed) {
+  /**
+   * Record tool-output stubs (and heartbeat pairs to drop) in the transcript
+   * and apply them to the live context.
+   */
+  private recordStubs(
+    stubs: ToolOutputStub[],
+    trigger: string,
+    heartbeats: HeartbeatStub[] = [],
+  ): void {
+    if ((stubs.length === 0 && heartbeats.length === 0) || this.disposed) {
       return;
     }
     this.sessionManager.appendCustomEntry(
       PRUNE_RECORD_CUSTOM_TYPE,
-      buildPruneRecordData(stubs, trigger),
+      buildPruneRecordData(stubs, trigger, heartbeats),
     );
     this.applyStubsToState(stubs);
+    if (heartbeats.length > 0) {
+      const elided = applyHeartbeatStubs(
+        this.agent.state.messages as unknown as Parameters<typeof applyHeartbeatStubs>[0],
+        heartbeats,
+      );
+      if (elided.removed > 0) {
+        this.agent.state.messages = elided.messages as unknown as AgentMessage[];
+      }
+    }
   }
 
   private applyStubsToState(stubs: ToolOutputStub[]): void {
@@ -1101,7 +1129,7 @@ export class AgentSession {
         return;
       }
       if (isStubsOnly(result)) {
-        this.recordStubs(result.stubs, reason);
+        this.recordStubs(result.stubs, reason, result.heartbeats);
         this.emit({
           type: "compaction_end",
           reason,

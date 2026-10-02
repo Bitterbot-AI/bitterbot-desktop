@@ -25,7 +25,7 @@
 
 import fs from "node:fs";
 import type { Api, Context, Model } from "@mariozechner/pi-ai";
-import type { ToolOutputStub } from "../context-pruning/offload-stubs.js";
+import type { HeartbeatStub, ToolOutputStub } from "../context-pruning/offload-stubs.js";
 import {
   type OffloadPolicySettings,
   planOffload,
@@ -200,6 +200,50 @@ function toolStubs(plan: OffloadPlan, entries: readonly PolicyEntry[]): ToolOutp
   return stubs;
 }
 
+/**
+ * The planned heartbeat-pair stubs that lie in the kept range and can be
+ * found again in the window (they need a timestamp). Pairs in the elided
+ * range are gone with the cut and need no record.
+ */
+function heartbeatStubs(
+  plan: OffloadPlan,
+  entries: readonly PolicyEntry[],
+  firstKeptEntryId?: string,
+): HeartbeatStub[] {
+  const firstKept = firstKeptEntryId
+    ? entries.findIndex((entry) => entry.id === firstKeptEntryId)
+    : -1;
+  // The turn that just ran stays in the window: the runner reads its last
+  // assistant message (usage, stop reason) after the prompt returns.
+  const lastTurn = entries.at(-1)?.turn;
+  const indexOf = new Map(entries.map((entry, index) => [entry.id, index]));
+  const out: HeartbeatStub[] = [];
+  for (const planned of plan.stubs) {
+    if (planned.kind !== "heartbeat_pair") {
+      continue;
+    }
+    const index = indexOf.get(planned.entryId);
+    const entry = index === undefined ? undefined : entries[index];
+    if (
+      !entry ||
+      index === undefined ||
+      (firstKept >= 0 && index < firstKept) ||
+      entry.turn === lastTurn ||
+      typeof entry.timestamp !== "number" ||
+      entry.role === "toolResult"
+    ) {
+      continue;
+    }
+    out.push({
+      entryId: entry.id,
+      role: entry.role,
+      timestamp: entry.timestamp,
+      chars: planned.chars,
+    });
+  }
+  return out;
+}
+
 function loadView(deps: OffloadCompactionDeps): TranscriptView | undefined {
   const file = deps.sessionFile();
   if (!file) {
@@ -252,9 +296,7 @@ export function createOffloadCompactionPolicy(deps: OffloadCompactionDeps): Comp
         stubbed: view.stubbedIds,
         fixedTokens: deps.fixedTokens(),
         contextWindow: request.model.contextWindow ?? 0,
-        // Heartbeat-pair stubs have no applier in the runtime yet; planning
-        // them would overstate what the cut frees.
-        settings: { ...deps.settings, elideHeartbeats: false },
+        settings: deps.settings,
         previousCompactionId: view.latestCompaction?.id ?? null,
         previousOffloads: view.previousOffloads,
         openItems: deps.openItems?.() ?? [],
@@ -292,12 +334,17 @@ export function createOffloadCompactionPolicy(deps: OffloadCompactionDeps): Comp
           tokensBefore: plan.compaction.tokensBefore,
           details: plan.compaction.details,
           stubs: toolStubs(plan, view.entries),
+          heartbeats: heartbeatStubs(plan, view.entries, plan.compaction.firstKeptEntryId),
         };
       }
       if (plan.kind === "stubs") {
+        // No cut: tool outputs to stub, heartbeat pairs to drop, or both. A
+        // window that is mostly heartbeat pairs "fits" once they are counted
+        // out, so they have to be dropped here or nothing ever shrinks.
         const stubs = toolStubs(plan, view.entries);
-        if (stubs.length > 0) {
-          return { stubsOnly: true, stubs };
+        const heartbeats = heartbeatStubs(plan, view.entries);
+        if (stubs.length > 0 || heartbeats.length > 0) {
+          return { stubsOnly: true, stubs, ...(heartbeats.length > 0 ? { heartbeats } : {}) };
         }
       }
       // Nothing the planner can do. After a turn that is fine; an overflow

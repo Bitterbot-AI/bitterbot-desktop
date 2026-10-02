@@ -36,6 +36,12 @@ export type PolicyEntry = {
   images: number;
   /** user rows: the configured heartbeat prompt. */
   isHeartbeatPrompt: boolean;
+  /**
+   * user rows: lines were injected in front of the text (queued `System:`
+   * events, a recall preface). Such a heartbeat turn carries information, so
+   * it is never elided as a bare pair.
+   */
+  hasInjectedPreface?: boolean;
   /** assistant rows: a bare HEARTBEAT_OK acknowledgement. */
   isHeartbeatAck: boolean;
   /**

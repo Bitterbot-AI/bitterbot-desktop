@@ -10,6 +10,7 @@
 
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../../../config/config.js";
+import { resolveAgentCompaction } from "../compaction/agent-config.js";
 import { resolveHeartbeatPromptSet } from "../compaction/heartbeat.js";
 import { createOffloadCompactionPolicy } from "../compaction/offload-compaction.js";
 import { resolveOffloadSettings } from "../compaction/offload-policy.js";
@@ -28,6 +29,8 @@ export const DEFAULT_OFFLOAD_SUMMARY_MODEL = "anthropic/claude-haiku-4-5";
 
 export type CreateOwnedSessionParams = {
   config?: BitterbotConfig;
+  /** The agent the session belongs to, for per-agent compaction settings. */
+  agentId?: string;
   model: Model<Api>;
   thinkingLevel: ThinkingLevel;
   systemPrompt: string;
@@ -62,17 +65,18 @@ function parseModelRef(ref: string): { provider: string; modelId: string } | und
   return { provider: ref.slice(0, slash), modelId: ref.slice(slash + 1) };
 }
 
-/** The compaction policy `agents.defaults.compaction.policy` selects. */
+/** The compaction policy the config selects for this agent. */
 export function resolveCompactionPolicy(params: {
   config?: BitterbotConfig;
+  agentId?: string;
   store: SessionStore;
   fixedTokens: () => number;
   findModel?: (provider: string, modelId: string) => Model<Api> | undefined;
   log?: (message: string) => void;
 }): CompactionPolicy {
   const summary = createSummaryCompactionPolicy();
-  const compaction = params.config?.agents?.defaults?.compaction;
-  if (compaction?.policy !== "offload") {
+  const compaction = resolveAgentCompaction(params.config, params.agentId);
+  if (compaction.policy !== "offload") {
     return summary;
   }
   const offload = compaction.offload;
@@ -122,6 +126,7 @@ export function createOwnedSession(params: CreateOwnedSessionParams): AgentSessi
     resolveRequestAuth: params.resolveRequestAuth,
     compactionPolicy: resolveCompactionPolicy({
       config: params.config,
+      agentId: params.agentId,
       store: params.store,
       fixedTokens,
       findModel: params.findModel,

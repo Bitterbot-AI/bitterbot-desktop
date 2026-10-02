@@ -34,6 +34,7 @@ import {
 } from "./agent-tools.read.js";
 import { cleanToolSchemaForGemini, normalizeToolParameters } from "./agent-tools.schema.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
+import { wrapToolWithUpdateGuard } from "./agent-tools.update-guard.js";
 import { createApplyPatchTool } from "./apply-patch.js";
 import {
   createExecTool,
@@ -577,8 +578,24 @@ export function createBitterbotCodingTools(options?: {
   const normalized = subagentFiltered.map(normalizeToolParameters);
   // GENOME.md is the user's file: no tool call may leave it changed. Inside
   // the hook wrapper, so it sees the params after interceptors rewrote them.
+  // The result cache wraps the bare tool, so a hit replaces only the work:
+  // every gate below (hooks, interceptors, the capability enforcer, abort)
+  // still runs for the call. Its key carries the agent, workspace, session
+  // and sandbox state.
+  const cached = options?.toolCache
+    ? wrapToolsWithCache(
+        normalized,
+        options.toolCache,
+        [agentId ?? "", workspaceRoot, options.sessionKey ?? "", sandbox ? "sandbox" : "host"].join(
+          "\u0000",
+        ),
+      )
+    : normalized;
+  // The tool gets a progress callback that goes quiet once the call has
+  // returned (a backgrounded command printing later).
+  const updateGuarded = cached.map(wrapToolWithUpdateGuard);
   const otherGenomes = otherAgentGenomeFiles(options?.config);
-  const genomeGuarded = normalized.map((tool) =>
+  const genomeGuarded = updateGuarded.map((tool) =>
     wrapToolWithGenomeGuard(tool, workspaceRoot, otherGenomes),
   );
   // Runs a tool call starts (sub-agents, messages to other sessions, task
@@ -601,14 +618,9 @@ export function createBitterbotCodingTools(options?: {
     ? withEnforcer.map((tool) => wrapToolWithAbortSignal(tool, options.abortSignal))
     : withEnforcer;
 
-  // Wrap cacheable tools with the in-memory LRU cache.
-  const withCache = options?.toolCache
-    ? wrapToolsWithCache(withAbort, options.toolCache)
-    : withAbort;
-
   // W5 item 3: model-facing result cap with spill-to-file (the event-stream
   // sanitizer in embedded-subscribe.tools.ts never reached the model).
-  const withSpill = wrapToolsWithResultSpill(withCache, {
+  const withSpill = wrapToolsWithResultSpill(withAbort, {
     maxChars: resolveToolResultMaxChars(options?.config),
     dir: resolveToolResultsDir(options?.agentDir),
     runId: options?.runId ?? options?.sessionKey,

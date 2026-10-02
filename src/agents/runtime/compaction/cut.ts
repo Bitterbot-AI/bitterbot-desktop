@@ -64,6 +64,8 @@ export function segmentTurns(
     current.isHeartbeatPair =
       first.role === "user" &&
       first.isHeartbeatPrompt &&
+      // Queued system events ride on the heartbeat prompt: not a bare pair.
+      !first.hasInjectedPreface &&
       ackOnly &&
       !sawTool &&
       current.endIndex > current.startIndex;
