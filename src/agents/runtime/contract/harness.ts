@@ -31,15 +31,20 @@ import { applySystemPromptOverrideToSession } from "../../embedded-runner/system
 import { applyToolLoopCompat } from "../../embedded-runner/tool-loop-compat.js";
 import { sessionToolAllowlist, splitSdkTools } from "../../embedded-runner/tool-split.js";
 import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
+import type { OffloadPolicySettings } from "../compaction/offload-policy.js";
 import { ensurePiCompactionReserveTokens } from "../engines/pi/settings.js";
 import { openTranscript } from "../open-transcript.js";
 import { createOwnedContractSession } from "./owned-session.js";
-import { SCRIPTED_PROVIDER, type ScriptedModel } from "./scripted-model.js";
+import {
+  CONTRACT_API_KEY,
+  CONTRACT_SESSION_ID,
+  SCRIPTED_PROVIDER,
+  type ScriptedModel,
+} from "./scripted-model.js";
 
 export type ContractVariant = "pi" | "pi-owned-store" | "bitterbot";
 
-export const CONTRACT_API_KEY = "contract-key";
-export const CONTRACT_SESSION_ID = "contract-session";
+export { CONTRACT_API_KEY, CONTRACT_SESSION_ID } from "./scripted-model.js";
 
 export type ContractOptions = {
   variant: ContractVariant;
@@ -50,6 +55,11 @@ export type ContractOptions = {
   systemPrompt?: string;
   retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number };
   compaction?: { enabled?: boolean; reserveTokens?: number; keepRecentTokens?: number };
+  /** Owned engine only: use the offload compaction policy with these settings. */
+  offload?: {
+    settings?: Partial<OffloadPolicySettings>;
+    summaryMode?: "off" | "idle" | "always";
+  };
 };
 
 /** The session surface the embedded runner uses, engine-independent. */

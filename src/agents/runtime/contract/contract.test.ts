@@ -37,7 +37,7 @@ type Ctx = { variant: ContractVariant; dir: string };
 
 const VARIANTS: ContractVariant[] = (process.env.BITTERBOT_CONTRACT_VARIANTS?.split(",") as
   | ContractVariant[]
-  | undefined) ?? ["pi", "pi-owned-store"];
+  | undefined) ?? ["pi", "pi-owned-store", "bitterbot"];
 
 /** Scenarios where the owned engine differs from pi on purpose (own golden). */
 const DELIBERATE_DIFFERENCES = new Set<string>(["abort during a tool call"]);

@@ -26,6 +26,8 @@ import {
 
 export const SCRIPTED_API = "bitterbot-contract-scripted";
 export const SCRIPTED_PROVIDER = "contract";
+export const CONTRACT_API_KEY = "contract-key";
+export const CONTRACT_SESSION_ID = "contract-session";
 
 export type ScriptStep =
   /** A plain text answer. `usage.input` drives threshold compaction. */
