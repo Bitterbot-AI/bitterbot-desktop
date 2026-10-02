@@ -14,6 +14,7 @@
 import { validateToolArguments } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import type { ToolHotSetLane } from "../../config/types.tools.js";
+import { withEnumHints } from "../runtime/loop/validation-hints.js";
 import { toPlainJsonSchema } from "../schema/plain-json-schema.js";
 import { normalizeToolName } from "../tool-policy.js";
 import type { AnyAgentTool } from "./common.js";
@@ -174,7 +175,8 @@ export function createUseToolTool(params: { registry: readonly AnyAgentTool[] })
           },
         );
       } catch (err) {
-        return errorResult(err instanceof Error ? err.message : String(err), {
+        const message = err instanceof Error ? err.message : String(err);
+        return errorResult(withEnumHints(message, toPlainJsonSchema(target.parameters), args), {
           tool: target.name,
           hint: `list_tools({ name: "${target.name}" }) returns the schema`,
         });

@@ -89,18 +89,53 @@ function withLoopbackBrowserAuth(
   });
 }
 
+/**
+ * The control service answered, and the answer was an error: an element that
+ * is not there, a tab that closed, a browser that failed to start. The request
+ * arrived. Its message is the diagnosis and is passed on as it is.
+ */
+export class BrowserResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "BrowserResponseError";
+  }
+}
+
+/** A control-service error body is `{ error: "..." }`; show the message, not the JSON. */
+function responseErrorMessage(text: string, status: number): string {
+  try {
+    const parsed = JSON.parse(text) as { error?: unknown };
+    if (typeof parsed?.error === "string" && parsed.error) {
+      return parsed.error;
+    }
+  } catch {
+    // not JSON
+  }
+  return text || `HTTP ${status}`;
+}
+
+/**
+ * Wording for a request that got NO answer. It used to cover every failure,
+ * including ordinary error responses, and always said the control service was
+ * unreachable and the gateway needed a restart. On 2026-10-02 that sent a
+ * person to restart a healthy gateway when the cause was a browser binary that
+ * could not launch. The local service runs inside the gateway process: if this
+ * code is running, the service is too.
+ */
 function enhanceBrowserFetchError(url: string, err: unknown, timeoutMs: number): Error {
+  if (err instanceof BrowserResponseError) {
+    return err;
+  }
   const isLocal = !isAbsoluteHttp(url);
-  // Human-facing hint for logs/diagnostics.
-  const operatorHint = isLocal
-    ? `Restart the Bitterbot gateway (Bitterbot.app menubar, or \`${formatCliCommand("bitterbot gateway")}\`).`
-    : "If this is a sandboxed session, ensure the sandbox browser is running.";
   // Model-facing suffix: explicitly tell the LLM NOT to retry.
   // Without this, models see "try again" and enter an infinite tool-call loop.
   const modelHint =
     "Do NOT retry the browser tool — it will keep failing. " +
     "Use an alternative approach or inform the user that the browser is currently unavailable.";
-  const msg = String(err);
+  const msg = err instanceof Error ? err.message : String(err);
   const msgLower = msg.toLowerCase();
   const looksLikeTimeout =
     msgLower.includes("timed out") ||
@@ -108,6 +143,19 @@ function enhanceBrowserFetchError(url: string, err: unknown, timeoutMs: number):
     msgLower.includes("aborted") ||
     msgLower.includes("abort") ||
     msgLower.includes("aborterror");
+
+  if (isLocal) {
+    const statusHint = `Check it with \`${formatCliCommand("bitterbot browser status")}\`.`;
+    if (looksLikeTimeout) {
+      return new Error(
+        `The browser did not respond within ${timeoutMs}ms. It may have failed to start, ` +
+          `or be stuck on a slow page. ${statusHint} ${modelHint}`,
+      );
+    }
+    return new Error(`The browser request failed: ${msg}. ${statusHint} ${modelHint}`);
+  }
+
+  const operatorHint = "If this is a sandboxed session, ensure the sandbox browser is running.";
   if (looksLikeTimeout) {
     return new Error(
       `Can't reach the Bitterbot browser control service (timed out after ${timeoutMs}ms). ${operatorHint} ${modelHint}`,
@@ -140,7 +188,7 @@ async function fetchHttpJson<T>(
     const res = await fetch(url, { ...init, signal: ctrl.signal });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(text || `HTTP ${res.status}`);
+      throw new BrowserResponseError(responseErrorMessage(text, res.status), res.status);
     }
     return (await res.json()) as T;
   } finally {
@@ -235,7 +283,7 @@ export async function fetchBrowserJson<T>(
         result.body && typeof result.body === "object" && "error" in result.body
           ? String((result.body as { error?: unknown }).error)
           : `HTTP ${result.status}`;
-      throw new Error(message);
+      throw new BrowserResponseError(message, result.status);
     }
     return result.body as T;
   } catch (err) {

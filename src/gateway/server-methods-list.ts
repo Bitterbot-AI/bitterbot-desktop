@@ -130,6 +130,8 @@ const BASE_METHODS = [
   "browser.live.stop",
   "browser.live.control",
   "browser.live.input",
+  "tools.output.subscribe",
+  "tools.output.unsubscribe",
   // WebChat WebSocket-native chat methods
   "chat.history",
   "chat.abort",

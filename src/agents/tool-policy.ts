@@ -77,6 +77,11 @@ const OWNER_ONLY_TOOL_NAMES = new Set<string>([
   "code_interpreter",
   "computer_use",
   "browser",
+  // Money. The wallet sends USDC and pays x402 resources with numeric caps as
+  // its only limit, so a group member or any other non-owner sender could ask
+  // the agent to pay them. Only the owner's own turns get the tool
+  // (PLAN-53 B6, decided 2026-10-02).
+  "wallet",
 ]);
 
 const TOOL_PROFILES: Record<ToolProfileId, ToolProfilePolicy> = {

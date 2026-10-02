@@ -60,6 +60,7 @@ import type {
   AgentToolResult,
   AnyAgentTool,
 } from "./events.js";
+import { withEnumHints } from "./validation-hints.js";
 
 /** Result text of a tool call skipped because a steering message is queued. */
 export const STEERING_SKIP_REASON = "Skipped due to queued user message.";
@@ -331,7 +332,9 @@ async function prepareToolCall(
     }
     return { kind: "prepared", toolCall, tool, args: validatedArgs };
   } catch (error) {
-    return immediateError(errorMessageOf(error));
+    return immediateError(
+      withEnumHints(errorMessageOf(error), tool.parameters, toolCall.arguments),
+    );
   }
 }
 

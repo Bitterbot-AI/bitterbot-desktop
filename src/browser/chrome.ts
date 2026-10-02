@@ -1,4 +1,9 @@
-import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  execFileSync,
+  spawn,
+} from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -366,11 +371,19 @@ export async function launchBitterbotChrome(
   }
 
   const proc = spawnOnce();
-  // Wait for CDP to come up.
-  const readyDeadline = Date.now() + 15_000;
+  const launch = watchBrowserLaunch(proc);
+  // Wait for CDP to come up. Kept under the browser client's 15 s request
+  // timeout, so a failed start is reported as what it is and not as a timeout.
+  let readyDeadline = Date.now() + CDP_READY_WAIT_MS;
   while (Date.now() < readyDeadline) {
     if (await isChromeReachable(cdpReachableUrl, 500)) {
       break;
+    }
+    const ended = launch.ended();
+    if (ended) {
+      // A launcher can exit after handing off to the real browser, so an exit
+      // is not proof of failure. It is a reason to stop waiting soon.
+      readyDeadline = Math.min(readyDeadline, ended.at + EXITED_LAUNCHER_GRACE_MS);
     }
     await new Promise((r) => setTimeout(r, 200));
   }
@@ -382,7 +395,14 @@ export async function launchBitterbotChrome(
       // ignore
     }
     throw new Error(
-      `Failed to start Chrome CDP on port ${profile.cdpPort} for profile "${profile.name}".`,
+      describeBrowserLaunchFailure({
+        port: profile.cdpPort,
+        profile: profile.name,
+        executable: exe.path,
+        ended: launch.ended(),
+        output: launch.outputTail(),
+        waitedMs: CDP_READY_WAIT_MS,
+      }),
     );
   }
 
@@ -401,6 +421,69 @@ export async function launchBitterbotChrome(
     startedAt,
     proc,
   };
+}
+
+/** How long to wait for a started browser to open its debugging port. */
+const CDP_READY_WAIT_MS = 12_000;
+/** After the launched process exits, how much longer a handed-off browser gets. */
+const EXITED_LAUNCHER_GRACE_MS = 3_000;
+const OUTPUT_TAIL_CHARS = 1_500;
+
+type LaunchEnd = { at: number; code: number | null; signal: string | null; error?: string };
+
+/**
+ * Follow a just-spawned browser: when it exits, and the last thing it said.
+ * It also drains both pipes. Chrome writes to stderr for as long as it runs
+ * (D-Bus and GPU complaints), and a pipe nobody reads fills up and blocks it.
+ */
+export function watchBrowserLaunch(proc: Pick<ChildProcess, "stdout" | "stderr" | "once">) {
+  let ended: LaunchEnd | null = null;
+  let tail = "";
+  const keep = (chunk: unknown) => {
+    tail = (tail + String(chunk)).slice(-OUTPUT_TAIL_CHARS);
+  };
+  proc.stdout?.on("data", keep);
+  proc.stderr?.on("data", keep);
+  proc.once("exit", (code, signal) => {
+    ended ??= { at: Date.now(), code, signal };
+  });
+  proc.once("error", (err) => {
+    ended ??= { at: Date.now(), code: null, signal: null, error: err.message };
+  });
+  return {
+    ended: (): LaunchEnd | null => ended,
+    outputTail: (): string => tail.trim(),
+  };
+}
+
+export function describeBrowserLaunchFailure(params: {
+  port: number;
+  profile: string;
+  executable: string;
+  ended: LaunchEnd | null;
+  output: string;
+  waitedMs: number;
+}): string {
+  const { ended } = params;
+  const what = ended?.error
+    ? `The browser could not be started: ${ended.error}.`
+    : ended
+      ? `The browser process exited (${
+          ended.signal ? `signal ${ended.signal}` : `code ${ended.code ?? "unknown"}`
+        }) before opening its debugging port.`
+      : `The browser did not open its debugging port within ${Math.round(params.waitedMs / 1000)}s.`;
+  // D-Bus noise is on every Linux launch and explains nothing.
+  const lines = params.output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !/dbus\/bus\.cc|Failed to connect to the bus/.test(line));
+  const said = lines.length > 0 ? ` It said: ${lines.slice(-4).join(" | ").slice(0, 600)}` : "";
+  return (
+    `Failed to start Chrome CDP on port ${params.port} for profile "${params.profile}". ` +
+    `${what} Executable: ${params.executable}.${said} ` +
+    `If the executable is wrong, set browser.executablePath; if the profile is damaged, ` +
+    `run "bitterbot browser reset-profile".`
+  );
 }
 
 export async function stopBitterbotChrome(running: RunningChrome, timeoutMs = 2500) {

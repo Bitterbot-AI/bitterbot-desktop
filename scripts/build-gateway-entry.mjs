@@ -109,6 +109,13 @@ const NATIVE_EXTERNALS = [
   // external so the import resolves to the real node_modules location at runtime.
   "sqlite-vec",
   "sqlite-vec-*",
+  // sharp loads its native binary from a sibling package
+  // (@img/sharp-<os>-<arch>/lib/sharp-*.node) by a path built at runtime.
+  // Inlined into dist/entry.js it cannot find it and throws 'Could not load the
+  // "sharp" module using the linux-x64 runtime', and every screenshot and image
+  // the agent should see is replaced by an "omitted image payload" note.
+  "sharp",
+  "@img/*",
 ];
 
 const LAZY_EXTERNALS = [
@@ -165,22 +172,22 @@ const result = await build({
 writeFileSync("dist/entry.meta.json", JSON.stringify(result.metafile, null, 2));
 console.log(`[build-gateway-entry] wrote ${outfile}`);
 
-// Regression guard: sqlite-vec MUST stay external (see NATIVE_EXTERNALS above).
-// If it is ever inlined again, getLoadablePath() resolves the platform binary
-// against dist/ and vector search silently degrades to the FTS fallback. Fail
-// the build loudly here rather than discovering it from a runtime warning.
-const inlinedSqliteVec = Object.keys(result.metafile.inputs).filter((p) =>
-  /(^|[\\/])node_modules[\\/]\.pnpm[\\/][^\\/]*[\\/]node_modules[\\/]sqlite-vec[\\/]|(^|[\\/])node_modules[\\/]sqlite-vec[\\/]/.test(
-    p,
-  ),
-);
-if (inlinedSqliteVec.length > 0) {
-  console.error(
-    `[build-gateway-entry] sqlite-vec was bundled into ${outfile} (${inlinedSqliteVec.join(
-      ", ",
-    )}). It must be external — add it to NATIVE_EXTERNALS.`,
-  );
-  process.exit(1);
+// Regression guard: packages that find a native binary relative to their own
+// files MUST stay external (see NATIVE_EXTERNALS above). Inlined, sqlite-vec
+// resolves its extension against dist/ and vector search silently degrades to
+// the FTS fallback; sharp cannot load at all and images are silently dropped.
+// Fail the build loudly here rather than discovering it from a runtime warning.
+for (const pkg of ["sqlite-vec", "sharp"]) {
+  const inNodeModules = new RegExp(`(^|[\\\\/])node_modules[\\\\/]${pkg}[\\\\/]`);
+  const inlined = Object.keys(result.metafile.inputs).filter((p) => inNodeModules.test(p));
+  if (inlined.length > 0) {
+    console.error(
+      `[build-gateway-entry] ${pkg} was bundled into ${outfile} (${inlined
+        .slice(0, 5)
+        .join(", ")}). It must be external — add it to NATIVE_EXTERNALS.`,
+    );
+    process.exit(1);
+  }
 }
 
 // jiti's lazyTransform does `createRequire(import.meta.url)("../dist/babel.cjs")` at

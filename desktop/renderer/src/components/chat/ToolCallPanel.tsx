@@ -15,6 +15,7 @@ import {
   FileEdit,
 } from "lucide-react";
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useToolOutputLease } from "../../lib/tool-output-lease";
 import { cn } from "../../lib/utils";
 import { useArtifactStore, type RightPanelMode } from "../../stores/artifact-store";
 import { useChatStore, type ActiveToolCall } from "../../stores/chat-store";
@@ -152,6 +153,10 @@ export function ToolCallPanel() {
   const [navMode, setNavMode] = useState<NavigationMode>("live");
   const prevLengthRef = useRef(0);
   const hasAutoSwitchedToTasks = useRef(false);
+
+  // While the pane is open, ask the gateway for tool output (command output,
+  // file contents). Without the lease the gateway strips it from tool events.
+  useToolOutputLease(true);
 
   // Auto-follow latest tool call in live mode
   useEffect(() => {

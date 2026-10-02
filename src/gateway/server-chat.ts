@@ -4,6 +4,7 @@ import { loadConfig } from "../config/config.js";
 import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-events.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
 import { loadSessionEntry } from "./session-utils.js";
+import { type ToolOutputLeases, toolOutputLeases } from "./tool-output-leases.js";
 import { formatForLog } from "./ws-log.js";
 
 /**
@@ -216,6 +217,8 @@ export type AgentEventHandlerOptions = {
   resolveSessionKeyForRun: (runId: string) => string | undefined;
   clearAgentRunContext: (runId: string) => void;
   toolEventRecipients: ToolEventRecipientRegistry;
+  /** Who gets tool output with their tool events. Defaults to the gateway's leases. */
+  toolOutputLeases?: ToolOutputLeases;
 };
 
 export function createAgentEventHandler({
@@ -227,6 +230,7 @@ export function createAgentEventHandler({
   resolveSessionKeyForRun,
   clearAgentRunContext,
   toolEventRecipients,
+  toolOutputLeases: outputLeases = toolOutputLeases,
 }: AgentEventHandlerOptions) {
   const emitChatDelta = (sessionKey: string, clientRunId: string, seq: number, text: string) => {
     if (isSilentReplyText(text, SILENT_REPLY_TOKEN)) {
@@ -429,7 +433,19 @@ export function createAgentEventHandler({
       // since the initial commit but never ran in CI.
       const recipients = toolEventRecipients.get(evt.runId);
       if (recipients && recipients.size > 0) {
-        broadcastToConnIds("agent", toolPayload, recipients);
+        if (toolVerbose === "full") {
+          broadcastToConnIds("agent", toolPayload, recipients);
+        } else {
+          // PLAN-53 A4: a Control UI window that holds an output lease gets
+          // the event with its output. Everyone else gets it stripped, as before.
+          const { withOutput, stripped } = outputLeases.split(recipients);
+          if (withOutput.size > 0) {
+            broadcastToConnIds("agent", agentPayload, withOutput);
+          }
+          if (stripped.size > 0) {
+            broadcastToConnIds("agent", toolPayload, stripped);
+          }
+        }
       }
     } else if (evt.stream !== "user") {
       // PLAN-44 (adversarial M2): the `user` stream carries the raw prompt

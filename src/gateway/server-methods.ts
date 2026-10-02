@@ -30,6 +30,7 @@ import { skillsHandlers } from "./server-methods/skills.js";
 import { spendGrantHandlers } from "./server-methods/spend-grants.js";
 import { systemHandlers } from "./server-methods/system.js";
 import { talkHandlers } from "./server-methods/talk.js";
+import { toolOutputHandlers } from "./server-methods/tool-output.js";
 import { ttsHandlers } from "./server-methods/tts.js";
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
 import { updateHandlers } from "./server-methods/update.js";
@@ -339,6 +340,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...agentsHandlers,
   ...browserHandlers,
   ...browserLiveHandlers,
+  ...toolOutputHandlers,
   ...projectsHandlers,
   ...walletHandlers,
   ...workspaceHandlers,

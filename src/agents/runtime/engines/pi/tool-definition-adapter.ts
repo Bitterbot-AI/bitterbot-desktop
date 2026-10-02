@@ -11,6 +11,7 @@ import type { ClientToolDefinition } from "../../../embedded-runner/run/params.j
 import { toPlainJsonSchema } from "../../../schema/plain-json-schema.js";
 import { normalizeToolName } from "../../../tool-policy.js";
 import { jsonResult } from "../../../tools/common.js";
+import { rejectUnknownEnumStrings } from "../../loop/validation-hints.js";
 
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyAgentTool = AgentTool<any, unknown>;
@@ -34,14 +35,21 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
     const name = tool.name || "tool";
     const normalizedName = normalizeToolName(name);
     const beforeHookWrapped = isToolWrappedWithBeforeToolCallHook(tool);
+    const parameters = toPlainJsonSchema(tool.parameters);
     return {
       name,
       label: tool.label ?? name,
       description: tool.description ?? "",
-      parameters: toPlainJsonSchema(tool.parameters),
-      // Argument shims (e.g. pi's edit tool folding legacy oldText/newText into
-      // edits[]) run before validation and must survive the conversion.
-      ...(tool.prepareArguments ? { prepareArguments: tool.prepareArguments } : {}),
+      parameters,
+      // Runs before the library validates. Two jobs: argument shims (e.g. pi's
+      // edit tool folding legacy oldText/newText into edits[]) must survive the
+      // conversion, and a wrong enum string is rejected here with the allowed
+      // values, which the library's own message leaves out.
+      prepareArguments: (raw: unknown) => {
+        const prepared: unknown = tool.prepareArguments ? tool.prepareArguments(raw) : raw;
+        rejectUnknownEnumStrings(name, parameters, prepared);
+        return prepared as never;
+      },
       ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
         const [toolCallId, params, signal, onUpdate] = args;

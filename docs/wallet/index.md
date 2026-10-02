@@ -57,7 +57,9 @@ The wallet has layered safety limits:
 | Per-transaction cap  | $25     | Maximum per single transaction         |
 | x402 per-request cap | $1      | Maximum for automatic paywall payments |
 
-For amounts above these limits, the agent asks for your approval before spending.
+Amounts above these limits are refused; the limits are not an approval prompt.
+
+The wallet tool is **owner-only**. It is offered to the agent only on turns you start yourself (the Control UI, the CLI, or a channel message from an owner account). A message from anyone else, including other members of a group chat, runs without the wallet tool, so nobody else can ask your agent to pay them. Scheduled and background runs are not owner turns and do not get it either.
 
 ## Funding Your Wallet
 

@@ -44,3 +44,29 @@ describe("browser live view RPC scope gating", () => {
     expect(denied?.message).toContain("unauthorized role");
   });
 });
+
+describe("tool output RPC scope gating", () => {
+  // Tool output is command output and file contents: the gate 866c6891 closed.
+  // The lease that reopens it for the owner's pane must not be reachable with
+  // less than operator.admin.
+  const OUTPUT_METHODS = ["tools.output.subscribe", "tools.output.unsubscribe"];
+
+  it("is registered and advertised", () => {
+    for (const method of OUTPUT_METHODS) {
+      expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
+      expect(listGatewayMethods()).toContain(method);
+    }
+  });
+
+  it.each(OUTPUT_METHODS)("%s is allowed with operator.admin", (method) => {
+    expect(authorizeGatewayMethod(method, operatorWith(["operator.admin"]))).toBeNull();
+  });
+
+  it.each(OUTPUT_METHODS)("%s is refused with read and write scope", (method) => {
+    const denied = authorizeGatewayMethod(
+      method,
+      operatorWith(["operator.read", "operator.write"]),
+    );
+    expect(denied?.message).toContain("operator.admin");
+  });
+});
