@@ -155,9 +155,22 @@ export async function truncateOversizedToolResultsInSession(params: {
       return { truncated: false, truncatedCount: 0, reason: "empty session" };
     }
 
+    // Only what the model still sees matters: entries hidden behind the latest
+    // compaction are not in the context, and rewriting the branch from one of
+    // them would move the entries that compaction keeps off the path.
+    let visibleStart = 0;
+    for (let i = branch.length - 1; i >= 0; i--) {
+      const entry = branch[i];
+      if (entry.type === "compaction") {
+        const keptIdx = branch.findIndex((candidate) => candidate.id === entry.firstKeptEntryId);
+        visibleStart = keptIdx >= 0 ? keptIdx : i + 1;
+        break;
+      }
+    }
+
     // Find oversized tool result entries and their indices in the branch
     const oversizedIndices: number[] = [];
-    for (let i = 0; i < branch.length; i++) {
+    for (let i = visibleStart; i < branch.length; i++) {
       const entry = branch[i];
       if (entry.type !== "message") {
         continue;
@@ -197,6 +210,14 @@ export async function truncateOversizedToolResultsInSession(params: {
     // with truncated tool results
     const oversizedSet = new Set(oversizedIndices);
     let truncatedCount = 0;
+    // Re-appended entries get new ids; a compaction re-appended after them
+    // must point at the new id of its first kept entry.
+    const newIds = new Map<string, string>();
+    const remember = (oldId: string, newId: string | undefined) => {
+      if (typeof newId === "string") {
+        newIds.set(oldId, newId);
+      }
+    };
 
     for (let i = firstOversizedIdx; i < branch.length; i++) {
       const entry = branch[i];
@@ -216,27 +237,35 @@ export async function truncateOversizedToolResultsInSession(params: {
         }
 
         // appendMessage expects Message | CustomMessage | BashExecutionMessage
-        sessionManager.appendMessage(message as Parameters<typeof sessionManager.appendMessage>[0]);
+        remember(
+          entry.id,
+          sessionManager.appendMessage(
+            message as Parameters<typeof sessionManager.appendMessage>[0],
+          ),
+        );
       } else if (entry.type === "compaction") {
         sessionManager.appendCompaction(
           entry.summary,
-          entry.firstKeptEntryId,
+          newIds.get(entry.firstKeptEntryId) ?? entry.firstKeptEntryId,
           entry.tokensBefore,
           entry.details,
           entry.fromHook,
         );
       } else if (entry.type === "thinking_level_change") {
-        sessionManager.appendThinkingLevelChange(entry.thinkingLevel);
+        remember(entry.id, sessionManager.appendThinkingLevelChange(entry.thinkingLevel));
       } else if (entry.type === "model_change") {
-        sessionManager.appendModelChange(entry.provider, entry.modelId);
+        remember(entry.id, sessionManager.appendModelChange(entry.provider, entry.modelId));
       } else if (entry.type === "custom") {
-        sessionManager.appendCustomEntry(entry.customType, entry.data);
+        remember(entry.id, sessionManager.appendCustomEntry(entry.customType, entry.data));
       } else if (entry.type === "custom_message") {
-        sessionManager.appendCustomMessageEntry(
-          entry.customType,
-          entry.content,
-          entry.display,
-          entry.details,
+        remember(
+          entry.id,
+          sessionManager.appendCustomMessageEntry(
+            entry.customType,
+            entry.content,
+            entry.display,
+            entry.details,
+          ),
         );
       } else if (entry.type === "branch_summary") {
         // Branch summaries reference specific entry IDs - skip to avoid inconsistency

@@ -4,7 +4,9 @@
  * Ported from pi-coding-agent 0.73.1 `buildSessionContext` (MIT, Mario
  * Zechner / pi-mono); the algorithm must stay identical so every existing
  * session renders the same on both engines (PLAN-52 G3). Differences from the
- * original: typing, and the path walk stops on a parent cycle.
+ * original: typing, the path walk stops on a parent cycle, and an entry whose
+ * parent is missing from the file continues at the previous entry in file
+ * order (see `parentOf`).
  *
  * Rules:
  * - The path is leaf -> root through `parentId`; an unknown or undefined leaf
@@ -54,6 +56,28 @@ export function createCustomMessage(
   return { role: "custom", customType, content, display, details, timestamp: ms(timestamp) };
 }
 
+/**
+ * The parent of an entry. When `parentId` names an entry that is not in the
+ * file (a damaged line was dropped by the repair, or never fully written),
+ * the previous entry in file order stands in for it. Upstream ends the path
+ * there, which hides the whole conversation before the damaged line.
+ */
+export function parentOf(
+  entry: TranscriptEntry,
+  index: Map<string, TranscriptEntry>,
+  entries: readonly TranscriptEntry[],
+): TranscriptEntry | undefined {
+  if (!entry.parentId) {
+    return undefined;
+  }
+  const parent = index.get(entry.parentId);
+  if (parent) {
+    return parent;
+  }
+  const position = entries.indexOf(entry);
+  return position > 0 ? entries[position - 1] : undefined;
+}
+
 export function buildSessionContext(
   entries: readonly TranscriptEntry[],
   leafId?: string | null,
@@ -84,7 +108,7 @@ export function buildSessionContext(
   while (current && !seen.has(current)) {
     seen.add(current);
     path.unshift(current);
-    current = current.parentId ? index.get(current.parentId) : undefined;
+    current = parentOf(current, index, entries);
   }
 
   let thinkingLevel = "off";
