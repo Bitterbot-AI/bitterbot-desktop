@@ -11,6 +11,7 @@ import chokidar, { type FSWatcher } from "chokidar";
 import { isExcludedMemoryPath } from "../agents/memory-search.js";
 import { resolveWatchPaths } from "../agents/skills/refresh.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
+import { assertNotRealStateUnderTest } from "../infra/test-state-guard.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { resolveUserPath } from "../utils.js";
@@ -262,6 +263,7 @@ class MemoryManagerSyncOps {
   }
 
   private openDatabaseAtPath(dbPath: string): DatabaseSync {
+    assertNotRealStateUnderTest(dbPath);
     const dir = path.dirname(dbPath);
     ensureDir(dir);
     const { DatabaseSync } = requireNodeSqlite();
@@ -1329,6 +1331,22 @@ class MemoryManagerSyncOps {
       } catch (err) {
         log.warn(`reindex carry-over unavailable: ${String(err)}`);
       }
+
+      // Everything else in this database is not index data at all: canonical
+      // facts, the knowledge graph, dream history, user preferences, Circles
+      // keys, payment consume-once ledgers. The rebuild starts from an empty
+      // database, so without this the swap below silently drops all of it
+      // (2026-09-30: a provider change left a 113-table database with 9
+      // populated tables). Deliberately NOT best-effort: if the copy fails
+      // the swap must not happen, and the catch below restores the original.
+      const { carryOverAuxiliaryTables } = await import("./reindex-carryover.js");
+      carryOverAuxiliaryTables({
+        to: this.db,
+        fromPath: dbPath,
+        rebuiltTables: ["files", "chunks", EMBEDDING_CACHE_TABLE],
+        rebuiltVirtualTables: [FTS_TABLE, VECTOR_TABLE],
+        indexMetaKey: META_KEY,
+      });
 
       this.lastSyncedAt = Date.now();
 
