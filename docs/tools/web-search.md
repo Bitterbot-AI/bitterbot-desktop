@@ -1,5 +1,5 @@
 ---
-summary: "Web search provider setup: Tavily, Brave, Perplexity, Grok"
+summary: "Web search provider setup: Tavily, Brave, Perplexity, Grok, Parallel"
 read_when:
   - You want to configure a web search provider
   - You need API keys for Tavily, Brave, Perplexity, or Grok
@@ -8,13 +8,14 @@ title: "Web Search Providers"
 
 # Web Search Providers
 
-Bitterbot supports 4 web search providers for the `web_search` tool. Pick one and configure its API key.
+Bitterbot supports 5 web search providers for the `web_search` tool. Pick one and configure its API key, or explicitly select Parallel for free, keyless search.
 
 | Provider       | Env Variable         | Free Tier       | Best For                              |
 | -------------- | -------------------- | --------------- | ------------------------------------- |
 | **Tavily**     | `TAVILY_API_KEY`     | 1,000 req/month | Structured results, AI-optimized      |
 | **Brave**      | `BRAVE_API_KEY`      | 2,000 req/month | Privacy-focused, fast                 |
 | **Perplexity** | `PERPLEXITY_API_KEY` | Pay-per-use     | AI-synthesized answers with citations |
+| **Parallel**   | None                 | Free, keyless   | Web search with source excerpts       |
 | **Grok**       | `XAI_API_KEY`        | Varies          | X/Twitter integration                 |
 
 ## Quick Setup
@@ -40,6 +41,34 @@ Or add to your `.env` file in the Bitterbot root / gateway environment.
 ## Config File Setup
 
 You can also configure the provider in `~/.bitterbot/bitterbot.json`:
+
+### Parallel Search MCP (keyless, opt-in)
+
+Select **Parallel Search MCP** during advanced onboarding or
+`bitterbot configure --section web`, or add:
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        enabled: true,
+        provider: "parallel",
+        maxResults: 5,
+      },
+    },
+  },
+}
+```
+
+The native `web_search` tool and configured non-tool search callers connect to
+`https://search.parallel.ai/mcp` using Streamable HTTP. No API key, signup,
+or separate MCP configuration is needed. See [Parallel Search MCP](https://docs.parallel.ai/integrations/mcp/search-mcp).
+Results include titles, URLs and source excerpts. `maxResults`, `timeoutSeconds`
+and `cacheTtlMinutes` apply. Region, language and `freshness` filters are rejected;
+include preferences in the query instead. The provider uses anonymous free-tier
+limits and reports service errors without switching providers. Parallel is never
+selected automatically; existing defaults and saved settings continue to apply.
 
 ### Tavily
 

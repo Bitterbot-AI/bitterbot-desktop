@@ -28,9 +28,10 @@ import {
   info,
 } from "./doctor-check.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily";
+type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel";
 
 const PROVIDER_ENV_VARS: Record<SearchProvider, readonly string[]> = {
+  parallel: [],
   brave: ["BRAVE_API_KEY"],
   perplexity: ["PERPLEXITY_API_KEY"],
   grok: ["XAI_API_KEY", "GROK_API_KEY"],
@@ -100,6 +101,12 @@ export function runWebSearchChecks(params: { config: BitterbotConfig }): void {
   }
 
   results.push(ok(`Provider: ${provider}`));
+
+  if (provider === "parallel") {
+    results.push(ok("Parallel Search MCP is keyless; no API key needed."));
+    renderSection(results);
+    return;
+  }
 
   const configKey = configKeyForProvider(config, provider);
   const envVar = envHasKey(provider);

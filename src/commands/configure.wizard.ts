@@ -127,12 +127,18 @@ async function promptChannelMode(runtime: RuntimeEnv): Promise<ChannelsWizardMod
   ) as ChannelsWizardMode;
 }
 
-type SearchProviderChoice = "brave" | "perplexity" | "grok" | "tavily";
+type SearchProviderChoice = "brave" | "perplexity" | "grok" | "tavily" | "parallel";
 
 const SEARCH_PROVIDER_META: Record<
   SearchProviderChoice,
   { label: string; hint: string; envVar: string; keyPlaceholder: string }
 > = {
+  parallel: {
+    label: "Parallel Search MCP",
+    hint: "Free, keyless web search",
+    envVar: "",
+    keyPlaceholder: "",
+  },
   brave: {
     label: "Brave Search",
     hint: "Default. Requires BRAVE_API_KEY",
@@ -170,7 +176,7 @@ async function promptWebToolsConfig(
   note(
     [
       "Web search lets your agent look things up online using the `web_search` tool.",
-      "Supported providers: Brave Search, Perplexity, Grok (xAI), and Tavily.",
+      "Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, and Parallel (keyless).",
       "Docs: https://docs.bitterbot.ai/tools/web",
     ].join("\n"),
     "Web search",
@@ -179,7 +185,9 @@ async function promptWebToolsConfig(
   const enableSearch = guardCancel(
     await confirm({
       message: "Enable web_search?",
-      initialValue: existingSearch?.enabled ?? Boolean(existingSearch?.apiKey),
+      initialValue:
+        existingSearch?.enabled ??
+        (existingProvider === "parallel" || Boolean(existingSearch?.apiKey)),
     }),
     runtime,
   );
@@ -204,49 +212,53 @@ async function promptWebToolsConfig(
     );
     nextSearch = { ...nextSearch, provider };
 
-    const meta = SEARCH_PROVIDER_META[provider];
-    const hasExistingKey =
-      provider === "brave"
-        ? Boolean(existingSearch?.apiKey)
-        : Boolean(
-            (existingSearch as Record<string, Record<string, unknown>> | undefined)?.[provider]
-              ?.apiKey,
-          );
+    if (provider === "parallel") {
+      note("Parallel Search MCP needs no API key.", "Web search");
+    } else {
+      const meta = SEARCH_PROVIDER_META[provider];
+      const hasExistingKey =
+        provider === "brave"
+          ? Boolean(existingSearch?.apiKey)
+          : Boolean(
+              (existingSearch as Record<string, Record<string, unknown>> | undefined)?.[provider]
+                ?.apiKey,
+            );
 
-    const keyInput = guardCancel(
-      await text({
-        message: hasExistingKey
-          ? `${meta.label} API key (leave blank to keep current or use ${meta.envVar})`
-          : `${meta.label} API key (paste it here; leave blank to use ${meta.envVar})`,
-        placeholder: hasExistingKey ? "Leave blank to keep current" : meta.keyPlaceholder,
-      }),
-      runtime,
-    );
-    const key = String(keyInput ?? "").trim();
-
-    if (key) {
-      if (provider === "brave") {
-        nextSearch = { ...nextSearch, apiKey: key };
-      } else {
-        nextSearch = {
-          ...nextSearch,
-          [provider]: {
-            ...((nextSearch as Record<string, unknown>)[provider] as
-              | Record<string, unknown>
-              | undefined),
-            apiKey: key,
-          },
-        };
-      }
-    } else if (!hasExistingKey) {
-      note(
-        [
-          `No key stored yet, so web_search (${meta.label}) will stay unavailable.`,
-          `Store a key here or set ${meta.envVar} in the Gateway environment.`,
-          "Docs: https://docs.bitterbot.ai/tools/web",
-        ].join("\n"),
-        "Web search",
+      const keyInput = guardCancel(
+        await text({
+          message: hasExistingKey
+            ? `${meta.label} API key (leave blank to keep current or use ${meta.envVar})`
+            : `${meta.label} API key (paste it here; leave blank to use ${meta.envVar})`,
+          placeholder: hasExistingKey ? "Leave blank to keep current" : meta.keyPlaceholder,
+        }),
+        runtime,
       );
+      const key = String(keyInput ?? "").trim();
+
+      if (key) {
+        if (provider === "brave") {
+          nextSearch = { ...nextSearch, apiKey: key };
+        } else {
+          nextSearch = {
+            ...nextSearch,
+            [provider]: {
+              ...((nextSearch as Record<string, unknown>)[provider] as
+                | Record<string, unknown>
+                | undefined),
+              apiKey: key,
+            },
+          };
+        }
+      } else if (!hasExistingKey) {
+        note(
+          [
+            `No key stored yet, so web_search (${meta.label}) will stay unavailable.`,
+            `Store a key here or set ${meta.envVar} in the Gateway environment.`,
+            "Docs: https://docs.bitterbot.ai/tools/web",
+          ].join("\n"),
+          "Web search",
+        );
+      }
     }
   }
 
