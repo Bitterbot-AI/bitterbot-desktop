@@ -757,7 +757,8 @@ export async function runEmbeddedAttempt(
         const offloadCfg = params.config?.agents?.defaults?.compaction?.offload;
         const compressionCfg = params.config?.agents?.defaults?.compression;
         const contextWindowTokens = params.model.contextWindow ?? 0;
-        if (contextWindowTokens > 0) {
+        const stubStore = sessionManager;
+        if (contextWindowTokens > 0 && stubStore) {
           installInRunBudget(session.agent as Parameters<typeof installInRunBudget>[0], {
             contextWindowTokens,
             fixedTokens: Math.ceil((systemPromptText?.length ?? 0) / 4),
@@ -785,9 +786,9 @@ export async function runEmbeddedAttempt(
               compressionEnabled: compressionCfg?.enabled !== false,
               compression: compressionCfg,
             },
-            recorded: collectStubRecords(sessionManager.getBranch()),
+            recorded: collectStubRecords(stubStore.getBranch()),
             persist: (stubs) => {
-              sessionManager.appendCustomEntry(
+              stubStore.appendCustomEntry(
                 PRUNE_RECORD_CUSTOM_TYPE,
                 buildPruneRecordData(stubs, "mid-turn"),
               );
