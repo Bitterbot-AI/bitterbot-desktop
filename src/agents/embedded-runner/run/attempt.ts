@@ -3,12 +3,7 @@ import os from "node:os";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { ImageContent } from "@mariozechner/pi-ai";
 import { streamSimple } from "@mariozechner/pi-ai";
-import {
-  createAgentSession,
-  estimateTokens,
-  SessionManager,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+import { createAgentSession, estimateTokens, SettingsManager } from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../../auto-reply/heartbeat.js";
 import { resolveChannelCapabilities } from "../../../config/channel-capabilities.js";
 import { emitAgentEvent } from "../../../infra/agent-events.js";
@@ -65,11 +60,13 @@ import {
   collectStubRecords,
   PRUNE_RECORD_CUSTOM_TYPE,
 } from "../../runtime/context-pruning/offload-stubs.js";
+import { resolveRuntimeEngine } from "../../runtime/engine.js";
 import {
   ensurePiCompactionReserveTokens,
   resolveCompactionReserveTokensFloor,
 } from "../../runtime/engines/pi/settings.js";
 import { toClientToolDefinitions } from "../../runtime/engines/pi/tool-definition-adapter.js";
+import { openTranscript } from "../../runtime/open-transcript.js";
 import { resolveSandboxContext } from "../../sandbox.js";
 import { resolveSandboxRuntimeStatus } from "../../sandbox/runtime-status.js";
 import { repairSessionFileIfNeeded } from "../../session-file-repair.js";
@@ -673,7 +670,10 @@ export async function runEmbeddedAttempt(
       });
 
       await prewarmSessionFile(params.sessionFile);
-      sessionManager = guardSessionManager(SessionManager.open(params.sessionFile), {
+      // PLAN-52 Phase 1: the engine picks the transcript store; pi's session
+      // layer drives the turn on either.
+      const runtimeEngine = resolveRuntimeEngine(params.config, sessionAgentId);
+      sessionManager = guardSessionManager(openTranscript(params.sessionFile, runtimeEngine), {
         agentId: sessionAgentId,
         sessionKey: params.sessionKey,
         inputProvenance: params.inputProvenance,

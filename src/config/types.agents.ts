@@ -63,6 +63,8 @@ export type AgentConfig = {
     prune?: SandboxPruneSettings;
   };
   tools?: AgentToolsConfig;
+  /** Per-agent runtime override (PLAN-52); falls back to `agents.defaults.runtime`. */
+  runtime?: AgentDefaultsConfig["runtime"];
 };
 
 export type AgentsConfig = {

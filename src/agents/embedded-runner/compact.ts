@@ -2,12 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import {
-  createAgentSession,
-  estimateTokens,
-  SessionManager,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
+import { createAgentSession, estimateTokens, SettingsManager } from "@mariozechner/pi-coding-agent";
 import { resolveHeartbeatPrompt } from "../../auto-reply/heartbeat.js";
 import type { ReasoningLevel, ThinkLevel } from "../../auto-reply/thinking.js";
 import { resolveChannelCapabilities } from "../../config/channel-capabilities.js";
@@ -50,10 +45,12 @@ import { resolveEndocrineState } from "../endocrine-state.js";
 import { getApiKeyForModel, resolveModelAuthMode } from "../model-auth.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
 import { compressOldMessages } from "../progressive-compression.js";
+import { resolveRuntimeEngine } from "../runtime/engine.js";
 import {
   ensurePiCompactionReserveTokens,
   resolveCompactionReserveTokensFloor,
 } from "../runtime/engines/pi/settings.js";
+import { openTranscript } from "../runtime/open-transcript.js";
 import { resolveSandboxContext } from "../sandbox.js";
 import { repairSessionFileIfNeeded } from "../session-file-repair.js";
 import { guardSessionManager } from "../session-tool-result-guard-wrapper.js";
@@ -578,11 +575,14 @@ export async function compactEmbeddedPiSessionDirect(
         provider,
         modelId,
       });
-      const sessionManager = guardSessionManager(SessionManager.open(params.sessionFile), {
-        agentId: sessionAgentId,
-        sessionKey: params.sessionKey,
-        allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
-      });
+      const sessionManager = guardSessionManager(
+        openTranscript(params.sessionFile, resolveRuntimeEngine(params.config, sessionAgentId)),
+        {
+          agentId: sessionAgentId,
+          sessionKey: params.sessionKey,
+          allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
+        },
+      );
       trackSessionManagerAccess(params.sessionFile);
       const settingsManager = SettingsManager.create(effectiveWorkspace, agentDir);
       // Call for side effects (sets compaction/pruning runtime state)

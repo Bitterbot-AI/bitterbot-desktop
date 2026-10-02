@@ -1,0 +1,1217 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`runtime contract > abort during a tool call > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[slow,b] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[slow,b] key=ok system="contract system prompt" :: user: go | assistant: <call slow#c1><call b#c2> | toolResult: aborted | toolResult: b ok",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[toolUse] "" calls=[slow#c1,b#c2]",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_end assistant[toolUse] "" calls=[slow#c1,b#c2]",
+    "tool_execution_start slow#c1 args={}",
+    "tool_execution_end slow#c1 isError=true "aborted"",
+    "message_start toolResult slow#c1 isError=true "aborted"",
+    "message_end toolResult slow#c1 isError=true "aborted"",
+    "tool_execution_start b#c2 args={}",
+    "tool_execution_end b#c2 isError=false "b ok"",
+    "message_start toolResult b#c2 isError=false "b ok"",
+    "message_end toolResult b#c2 isError=false "b ok"",
+    "turn_end toolResults=2",
+    "turn_start",
+    "message_start assistant[aborted] "" error="Request was aborted"",
+    "message_end assistant[aborted] "" error="Request was aborted"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[toolUse] "" calls=[slow#c1,b#c2]",
+    "toolResult slow#c1 isError=true "aborted"",
+    "toolResult b#c2 isError=false "b ok"",
+    "assistant[aborted] "" error="Request was aborted"",
+  ],
+  "notes": {
+    "executed": [
+      "slow",
+      "b",
+    ],
+    "scriptRemaining": 1,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"slow","arguments":{}},{"type":"toolCall","id":"c2","name":"b","arguments":{}}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c1","toolName":"slow","content":[{"type":"text","text":"aborted"}],"details":{},"isError":true,"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c2","toolName":"b","content":[{"type":"text","text":"b ok"}],"details":{},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#7","parentId":"#6","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"aborted","timestamp":0,"errorMessage":"Request was aborted"}}",
+  ],
+}
+`;
+
+exports[`runtime contract > abort while the model is streaming > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: go | assistant: partial ans | user: again",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[stop] "partial ans"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_end assistant[aborted] "partial ans" error="Request was aborted"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "again"",
+    "message_end user "again"",
+    "message_start assistant[stop] "later"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "later"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[aborted] "partial ans" error="Request was aborted"",
+    "user "again"",
+    "assistant[stop] "later"",
+  ],
+  "notes": {
+    "eventsAtAbort": 10,
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"partial ans"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"aborted","timestamp":0,"errorMessage":"Request was aborted"}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"again"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"later"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > compaction disabled: no threshold or overflow compaction > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: q1",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: q1 | assistant: big | user: q2",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "q1"",
+    "message_end user "q1"",
+    "message_start assistant[stop] "big"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "big"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "q2"",
+    "message_end user "q2"",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="prompt is too long: 250000 tokens > 200000 maximum"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "q1"",
+    "assistant[stop] "big"",
+    "user "q2"",
+    "assistant[error] "" error="prompt is too long: 250000 tokens > 200000 maximum"",
+  ],
+  "notes": {
+    "scriptRemaining": 1,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q1"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"big"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":199000,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":199005,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q2"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"prompt is too long: 250000 tokens > 200000 maximum"}}",
+  ],
+}
+`;
+
+exports[`runtime contract > manual compaction, then 'Already compacted' > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: q1",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: q1 | assistant: a1 | user: q2",
+    "#2 tools=[] key=ok system="You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.\\n\\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary." :: user: <conversation>
+[User]: q1
+
+[Assistant]: a1
+</conversation>
+
+The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+
+Use this EXACT format:
+
+## Goal
+[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+
+## Constraints & Preferences
+- [Any constraints, preferences, or requirements mentioned by user]
+- [Or "(none)" if none were mentioned]
+
+## Progress
+### Done
+- [x] [Completed tasks/changes]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Issues preventing progress, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered list of what should happen next]
+
+## Critical Context
+- [Any data, examples, or references needed to continue]
+- [Or "(none)" if not applicable]
+
+Keep each section concise. Preserve exact file paths, function names, and error messages.
+
+Additional focus: focus on decisions",
+    "#3 tools=[] key=ok system="You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.\\n\\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary." :: user: <conversation>
+[User]: q2
+</conversation>
+
+This is the PREFIX of a turn that was too large to keep. The SUFFIX (recent work) is retained.
+
+Summarize the prefix to provide context for the retained suffix:
+
+## Original Request
+[What did the user ask for in this turn?]
+
+## Early Progress
+- [Key decisions and work done in the prefix]
+
+## Context for Suffix
+- [Information needed to understand the retained recent work]
+
+Be concise. Focus on what's needed to understand the kept suffix.",
+    "#4 tools=[] key=ok system="contract system prompt" :: user: The conversation history before this point was compacted into the following summary:
+
+<summary>
+HISTORY SUMMARY
+
+---
+
+**Turn Context (split turn):**
+
+TURN PREFIX SUMMARY
+</summary> | assistant: a2 | user: q3",
+  ],
+  "errors": [
+    "Already compacted",
+  ],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "q1"",
+    "message_end user "q1"",
+    "message_start assistant[stop] "a1"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "a1"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "q2"",
+    "message_end user "q2"",
+    "message_start assistant[stop] "a2"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "a2"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "compaction_start manual",
+    "compaction_end manual result=yes aborted=false willRetry=false",
+    "compaction_start manual",
+    "compaction_end manual result=no aborted=false willRetry=false error="Compaction failed: Already compacted"",
+    "agent_start",
+    "turn_start",
+    "message_start user "q3"",
+    "message_end user "q3"",
+    "message_start assistant[stop] "a3"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "a3"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "compactionSummary "HISTORY SUMMARY\\n\\n---\\n\\n**Turn Context (split turn):**\\n\\nTURN PREFIX SUMMARY"",
+    "assistant[stop] "a2"",
+    "user "q3"",
+    "assistant[stop] "a3"",
+  ],
+  "notes": {
+    "hasTokensBefore": true,
+    "scriptRemaining": 0,
+    "summary": "HISTORY SUMMARY
+
+---
+
+**Turn Context (split turn):**
+
+TURN PREFIX SUMMARY",
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q1"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"a1"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q2"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"a2"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"compaction","id":"#7","parentId":"#6","timestamp":"TS","summary":"HISTORY SUMMARY\\n\\n---\\n\\n**Turn Context (split turn):**\\n\\nTURN PREFIX SUMMARY","firstKeptEntryId":"#6","tokensBefore":15,"details":{"readFiles":[],"modifiedFiles":[]},"fromHook":false}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q3"}],"timestamp":0}}",
+    "{"type":"message","id":"#9","parentId":"#8","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"a3"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > multi-tool turn runs sequentially > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[a,b] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[a,b] key=ok system="contract system prompt" :: user: go | assistant: <call a#c1><call b#c2><call a#c3> | toolResult: a ok | toolResult: b ok | toolResult: a ok",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[toolUse] "" calls=[a#c1,b#c2,a#c3]",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_end assistant[toolUse] "" calls=[a#c1,b#c2,a#c3]",
+    "tool_execution_start a#c1 args={}",
+    "tool_execution_end a#c1 isError=false "a ok"",
+    "message_start toolResult a#c1 isError=false "a ok"",
+    "message_end toolResult a#c1 isError=false "a ok"",
+    "tool_execution_start b#c2 args={}",
+    "tool_execution_end b#c2 isError=false "b ok"",
+    "message_start toolResult b#c2 isError=false "b ok"",
+    "message_end toolResult b#c2 isError=false "b ok"",
+    "tool_execution_start a#c3 args={}",
+    "tool_execution_end a#c3 isError=false "a ok"",
+    "message_start toolResult a#c3 isError=false "a ok"",
+    "message_end toolResult a#c3 isError=false "a ok"",
+    "turn_end toolResults=3",
+    "turn_start",
+    "message_start assistant[stop] "done"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "done"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[toolUse] "" calls=[a#c1,b#c2,a#c3]",
+    "toolResult a#c1 isError=false "a ok"",
+    "toolResult b#c2 isError=false "b ok"",
+    "toolResult a#c3 isError=false "a ok"",
+    "assistant[stop] "done"",
+  ],
+  "notes": {
+    "executed": [
+      "a",
+      "b",
+      "a",
+    ],
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"a","arguments":{}},{"type":"toolCall","id":"c2","name":"b","arguments":{}},{"type":"toolCall","id":"c3","name":"a","arguments":{}}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c1","toolName":"a","content":[{"type":"text","text":"a ok"}],"details":{},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c2","toolName":"b","content":[{"type":"text","text":"b ok"}],"details":{},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#7","parentId":"#6","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c3","toolName":"a","content":[{"type":"text","text":"a ok"}],"details":{},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > non-retryable provider error > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: go | assistant:  | user: try again",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="400 invalid request body"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "try again"",
+    "message_end user "try again"",
+    "message_start assistant[stop] "next"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "next"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[error] "" error="400 invalid request body"",
+    "user "try again"",
+    "assistant[stop] "next"",
+  ],
+  "notes": {
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"400 invalid request body"}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"try again"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"next"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > overflow: compact once and retry > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: first question",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: first question | assistant: first answer | user: second question",
+    "#2 tools=[] key=ok system="You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.\\n\\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary." :: user: <conversation>
+[User]: first question
+
+[Assistant]: first answer
+</conversation>
+
+The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+
+Use this EXACT format:
+
+## Goal
+[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+
+## Constraints & Preferences
+- [Any constraints, preferences, or requirements mentioned by user]
+- [Or "(none)" if none were mentioned]
+
+## Progress
+### Done
+- [x] [Completed tasks/changes]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Issues preventing progress, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered list of what should happen next]
+
+## Critical Context
+- [Any data, examples, or references needed to continue]
+- [Or "(none)" if not applicable]
+
+Keep each section concise. Preserve exact file paths, function names, and error messages.",
+    "#3 tools=[] key=ok system="contract system prompt" :: user: The conversation history before this point was compacted into the following summary:
+
+<summary>
+SUMMARY OF EARLIER TURNS
+</summary> | user: second question",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "first question"",
+    "message_end user "first question"",
+    "message_start assistant[stop] "first answer"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "first answer"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "second question"",
+    "message_end user "second question"",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="prompt is too long: 250000 tokens > 200000 maximum"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "compaction_start overflow",
+    "compaction_end overflow result=yes aborted=false willRetry=true",
+    "agent_start",
+    "turn_start",
+    "message_start assistant[stop] "recovered"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "recovered"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "compactionSummary "SUMMARY OF EARLIER TURNS"",
+    "user "second question"",
+    "assistant[stop] "recovered"",
+  ],
+  "notes": {
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"first question"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"first answer"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"second question"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"prompt is too long: 250000 tokens > 200000 maximum"}}",
+    "{"type":"compaction","id":"#7","parentId":"#6","timestamp":"TS","summary":"SUMMARY OF EARLIER TURNS","firstKeptEntryId":"#5","tokensBefore":19,"details":{"readFiles":[],"modifiedFiles":[]},"fromHook":false}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"recovered"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > overflow: second overflow after the retry is reported, not retried > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: first question",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: first question | assistant: first answer | user: second question",
+    "#2 tools=[] key=ok system="You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.\\n\\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary." :: user: <conversation>
+[User]: first question
+
+[Assistant]: first answer
+</conversation>
+
+The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+
+Use this EXACT format:
+
+## Goal
+[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+
+## Constraints & Preferences
+- [Any constraints, preferences, or requirements mentioned by user]
+- [Or "(none)" if none were mentioned]
+
+## Progress
+### Done
+- [x] [Completed tasks/changes]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Issues preventing progress, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered list of what should happen next]
+
+## Critical Context
+- [Any data, examples, or references needed to continue]
+- [Or "(none)" if not applicable]
+
+Keep each section concise. Preserve exact file paths, function names, and error messages.",
+    "#3 tools=[] key=ok system="contract system prompt" :: user: The conversation history before this point was compacted into the following summary:
+
+<summary>
+SUMMARY
+</summary> | user: second question",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "first question"",
+    "message_end user "first question"",
+    "message_start assistant[stop] "first answer"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "first answer"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "second question"",
+    "message_end user "second question"",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="prompt is too long: 250000 tokens > 200000 maximum"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "compaction_start overflow",
+    "compaction_end overflow result=yes aborted=false willRetry=true",
+    "agent_start",
+    "turn_start",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="prompt is too long: 250000 tokens > 200000 maximum"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "compaction_end overflow result=no aborted=false willRetry=false error="Context overflow recovery failed after one compact-and-retry attempt. Try reducing context or switching to a larger-context model."",
+  ],
+  "messages": [
+    "compactionSummary "SUMMARY"",
+    "user "second question"",
+    "assistant[error] "" error="prompt is too long: 250000 tokens > 200000 maximum"",
+  ],
+  "notes": {
+    "scriptRemaining": 1,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"first question"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"first answer"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"second question"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"prompt is too long: 250000 tokens > 200000 maximum"}}",
+    "{"type":"compaction","id":"#7","parentId":"#6","timestamp":"TS","summary":"SUMMARY","firstKeptEntryId":"#5","tokensBefore":19,"details":{"readFiles":[],"modifiedFiles":[]},"fromHook":false}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"prompt is too long: 250000 tokens > 200000 maximum"}}",
+  ],
+}
+`;
+
+exports[`runtime contract > plain turn on a new session > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="you are a test" :: user: hi",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "hi"",
+    "message_end user "hi"",
+    "message_start assistant[stop] "hello there"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "hello there"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "hi"",
+    "assistant[stop] "hello there"",
+  ],
+  "notes": {
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"hi"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"hello there"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > prompt while streaming is rejected > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: go",
+  ],
+  "errors": [
+    "Agent is already processing. Specify streamingBehavior ('steer' or 'followUp') to queue the message.",
+  ],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[stop] """,
+    "message_end assistant[aborted] "" error="Request was aborted"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[aborted] "" error="Request was aborted"",
+  ],
+  "notes": {
+    "scriptRemaining": 1,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"aborted","timestamp":0,"errorMessage":"Request was aborted"}}",
+  ],
+}
+`;
+
+exports[`runtime contract > reload from disk continues the same transcript > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[a] key=ok system="contract system prompt" :: user: q1",
+    "#1 tools=[a] key=ok system="contract system prompt" :: user: q1 | assistant: <call a#c1> | toolResult: a ok",
+    "#2 tools=[a] key=ok system="contract system prompt" :: user: q1 | assistant: <call a#c1> | toolResult: a ok | assistant: turn one done | user: q2",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "q2"",
+    "message_end user "q2"",
+    "message_start assistant[stop] "turn two"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "turn two"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "q1"",
+    "assistant[toolUse] "" calls=[a#c1]",
+    "toolResult a#c1 isError=false "a ok"",
+    "assistant[stop] "turn one done"",
+    "user "q2"",
+    "assistant[stop] "turn two"",
+  ],
+  "notes": {
+    "restored": [
+      "user "q1"",
+      "assistant[toolUse] "" calls=[a#c1]",
+      "toolResult a#c1 isError=false "a ok"",
+      "assistant[stop] "turn one done"",
+    ],
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q1"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"a","arguments":{}}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c1","toolName":"a","content":[{"type":"text","text":"a ok"}],"details":{},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"turn one done"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"message","id":"#7","parentId":"#6","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q2"}],"timestamp":0}}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"turn two"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > retry: one 429 then success > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: go",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="429 Too Many Requests"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "auto_retry_start attempt=1/3 delayMs=5 error="429 Too Many Requests"",
+    "agent_start",
+    "turn_start",
+    "message_start assistant[stop] "ok now"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "ok now"",
+    "auto_retry_end success=true attempt=1",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[stop] "ok now"",
+  ],
+  "notes": {
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"429 Too Many Requests"}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"ok now"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > retry: persistent 503 gives up after maxRetries > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: go",
+    "#2 tools=[] key=ok system="contract system prompt" :: user: go",
+    "#3 tools=[] key=ok system="contract system prompt" :: user: go",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="503 service unavailable"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "auto_retry_start attempt=1/3 delayMs=2 error="503 service unavailable"",
+    "agent_start",
+    "turn_start",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="503 service unavailable"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "auto_retry_start attempt=2/3 delayMs=4 error="503 service unavailable"",
+    "agent_start",
+    "turn_start",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="503 service unavailable"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "auto_retry_start attempt=3/3 delayMs=8 error="503 service unavailable"",
+    "agent_start",
+    "turn_start",
+    "message_start assistant[stop] """,
+    "message_end assistant[error] "" error="503 service unavailable"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "auto_retry_end success=false attempt=3 finalError="503 service unavailable"",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[error] "" error="503 service unavailable"",
+  ],
+  "notes": {
+    "scriptRemaining": 1,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"503 service unavailable"}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"503 service unavailable"}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"503 service unavailable"}}",
+    "{"type":"message","id":"#7","parentId":"#6","timestamp":"TS","message":{"role":"assistant","content":[],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"totalTokens":0,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"error","timestamp":0,"errorMessage":"503 service unavailable"}}",
+  ],
+}
+`;
+
+exports[`runtime contract > steering during the first tool skips the rest of the batch > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[a,b,c] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[a,b,c] key=ok system="contract system prompt" :: user: go | assistant: <call a#c1><call b#c2><call c#c3> | toolResult: a ok | toolResult: Skipped due to queued user message. | toolResult: Skipped due to queued user message. | user: stop please",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[toolUse] "" calls=[a#c1,b#c2,c#c3]",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_end assistant[toolUse] "" calls=[a#c1,b#c2,c#c3]",
+    "tool_execution_start a#c1 args={}",
+    "queue_update steering=["stop please"] followUp=[]",
+    "tool_execution_end a#c1 isError=false "a ok"",
+    "message_start toolResult a#c1 isError=false "a ok"",
+    "message_end toolResult a#c1 isError=false "a ok"",
+    "tool_execution_start b#c2 args={}",
+    "tool_execution_end b#c2 isError=true "Skipped due to queued user message."",
+    "message_start toolResult b#c2 isError=true "Skipped due to queued user message."",
+    "message_end toolResult b#c2 isError=true "Skipped due to queued user message."",
+    "tool_execution_start c#c3 args={}",
+    "tool_execution_end c#c3 isError=true "Skipped due to queued user message."",
+    "message_start toolResult c#c3 isError=true "Skipped due to queued user message."",
+    "message_end toolResult c#c3 isError=true "Skipped due to queued user message."",
+    "turn_end toolResults=3",
+    "turn_start",
+    "queue_update steering=[] followUp=[]",
+    "message_start user "stop please"",
+    "message_end user "stop please"",
+    "message_start assistant[stop] "ack stop"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "ack stop"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[toolUse] "" calls=[a#c1,b#c2,c#c3]",
+    "toolResult a#c1 isError=false "a ok"",
+    "toolResult b#c2 isError=true "Skipped due to queued user message."",
+    "toolResult c#c3 isError=true "Skipped due to queued user message."",
+    "user "stop please"",
+    "assistant[stop] "ack stop"",
+  ],
+  "notes": {
+    "executed": [
+      "a",
+    ],
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"a","arguments":{}},{"type":"toolCall","id":"c2","name":"b","arguments":{}},{"type":"toolCall","id":"c3","name":"c","arguments":{}}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c1","toolName":"a","content":[{"type":"text","text":"a ok"}],"details":{},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c2","toolName":"b","content":[{"type":"text","text":"Skipped due to queued user message."}],"details":{},"isError":true,"timestamp":0}}",
+    "{"type":"message","id":"#7","parentId":"#6","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c3","toolName":"c","content":[{"type":"text","text":"Skipped due to queued user message."}],"details":{},"isError":true,"timestamp":0}}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"stop please"}],"timestamp":0}}",
+    "{"type":"message","id":"#9","parentId":"#8","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"ack stop"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > threshold compaction after a large turn > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: q1",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: q1 | assistant: small | user: q2",
+    "#2 tools=[] key=ok system="You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.\\n\\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary." :: user: <conversation>
+[User]: q1
+
+[Assistant]: small
+</conversation>
+
+The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
+
+Use this EXACT format:
+
+## Goal
+[What is the user trying to accomplish? Can be multiple items if the session covers different tasks.]
+
+## Constraints & Preferences
+- [Any constraints, preferences, or requirements mentioned by user]
+- [Or "(none)" if none were mentioned]
+
+## Progress
+### Done
+- [x] [Completed tasks/changes]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Issues preventing progress, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered list of what should happen next]
+
+## Critical Context
+- [Any data, examples, or references needed to continue]
+- [Or "(none)" if not applicable]
+
+Keep each section concise. Preserve exact file paths, function names, and error messages.",
+    "#3 tools=[] key=ok system="You are a context summarization assistant. Your task is to read a conversation between a user and an AI coding assistant, then produce a structured summary following the exact format specified.\\n\\nDo NOT continue the conversation. Do NOT respond to any questions in the conversation. ONLY output the structured summary." :: user: <conversation>
+[User]: q2
+</conversation>
+
+This is the PREFIX of a turn that was too large to keep. The SUFFIX (recent work) is retained.
+
+Summarize the prefix to provide context for the retained suffix:
+
+## Original Request
+[What did the user ask for in this turn?]
+
+## Early Progress
+- [Key decisions and work done in the prefix]
+
+## Context for Suffix
+- [Information needed to understand the retained recent work]
+
+Be concise. Focus on what's needed to understand the kept suffix.",
+    "#4 tools=[] key=ok system="contract system prompt" :: user: The conversation history before this point was compacted into the following summary:
+
+<summary>
+HISTORY SUMMARY
+
+---
+
+**Turn Context (split turn):**
+
+TURN PREFIX SUMMARY
+</summary> | assistant: big answer | user: q3",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "q1"",
+    "message_end user "q1"",
+    "message_start assistant[stop] "small"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "small"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "q2"",
+    "message_end user "q2"",
+    "message_start assistant[stop] "big answer"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "big answer"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "compaction_start threshold",
+    "compaction_end threshold result=yes aborted=false willRetry=false",
+    "agent_start",
+    "turn_start",
+    "message_start user "q3"",
+    "message_end user "q3"",
+    "message_start assistant[stop] "after"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "after"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "compactionSummary "HISTORY SUMMARY\\n\\n---\\n\\n**Turn Context (split turn):**\\n\\nTURN PREFIX SUMMARY"",
+    "assistant[stop] "big answer"",
+    "user "q3"",
+    "assistant[stop] "after"",
+  ],
+  "notes": {
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q1"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"small"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q2"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"big answer"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":190000,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":190005,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"compaction","id":"#7","parentId":"#6","timestamp":"TS","summary":"HISTORY SUMMARY\\n\\n---\\n\\n**Turn Context (split turn):**\\n\\nTURN PREFIX SUMMARY","firstKeptEntryId":"#6","tokensBefore":190005,"details":{"readFiles":[],"modifiedFiles":[]},"fromHook":false}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"q3"}],"timestamp":0}}",
+    "{"type":"message","id":"#9","parentId":"#8","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"after"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > tool failures: throw, unknown tool, invalid arguments, coercion > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[boom,needs] key=ok system="contract system prompt" :: user: go",
+    "#1 tools=[boom,needs] key=ok system="contract system prompt" :: user: go | assistant: <call boom#c1><call missing#c2><call needs#c3><call needs#c4> | toolResult: {
+  "status": "error",
+  "tool": "boom",
+  "error": "kaboom"
+} | toolResult: Tool missing not found | toolResult: Validation failed for tool "needs":
+  - n: must have required properties n
+
+Received arguments:
+{} | toolResult: n=5 (number)",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "go"",
+    "message_end user "go"",
+    "message_start assistant[toolUse] "" calls=[boom#c1,missing#c2,needs#c3,needs#c4]",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_update toolcall_start",
+    "message_update toolcall_end",
+    "message_end assistant[toolUse] "" calls=[boom#c1,missing#c2,needs#c3,needs#c4]",
+    "tool_execution_start boom#c1 args={}",
+    "tool_execution_end boom#c1 isError=false "{\\n  \\"status\\": \\"error\\",\\n  \\"tool\\": \\"boom\\",\\n  \\"error\\": \\"kaboom\\"\\n}"",
+    "message_start toolResult boom#c1 isError=false "{\\n  \\"status\\": \\"error\\",\\n  \\"tool\\": \\"boom\\",\\n  \\"error\\": \\"kaboom\\"\\n}"",
+    "message_end toolResult boom#c1 isError=false "{\\n  \\"status\\": \\"error\\",\\n  \\"tool\\": \\"boom\\",\\n  \\"error\\": \\"kaboom\\"\\n}"",
+    "tool_execution_start missing#c2 args={}",
+    "tool_execution_end missing#c2 isError=true "Tool missing not found"",
+    "message_start toolResult missing#c2 isError=true "Tool missing not found"",
+    "message_end toolResult missing#c2 isError=true "Tool missing not found"",
+    "tool_execution_start needs#c3 args={}",
+    "tool_execution_end needs#c3 isError=true "Validation failed for tool \\"needs\\":\\n  - n: must have required properties n\\n\\nReceived arguments:\\n{}"",
+    "message_start toolResult needs#c3 isError=true "Validation failed for tool \\"needs\\":\\n  - n: must have required properties n\\n\\nReceived arguments:\\n{}"",
+    "message_end toolResult needs#c3 isError=true "Validation failed for tool \\"needs\\":\\n  - n: must have required properties n\\n\\nReceived arguments:\\n{}"",
+    "tool_execution_start needs#c4 args={"n":"5"}",
+    "tool_execution_end needs#c4 isError=false "n=5 (number)"",
+    "message_start toolResult needs#c4 isError=false "n=5 (number)"",
+    "message_end toolResult needs#c4 isError=false "n=5 (number)"",
+    "turn_end toolResults=4",
+    "turn_start",
+    "message_start assistant[stop] "done"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "done"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "go"",
+    "assistant[toolUse] "" calls=[boom#c1,missing#c2,needs#c3,needs#c4]",
+    "toolResult boom#c1 isError=false "{\\n  \\"status\\": \\"error\\",\\n  \\"tool\\": \\"boom\\",\\n  \\"error\\": \\"kaboom\\"\\n}"",
+    "toolResult missing#c2 isError=true "Tool missing not found"",
+    "toolResult needs#c3 isError=true "Validation failed for tool \\"needs\\":\\n  - n: must have required properties n\\n\\nReceived arguments:\\n{}"",
+    "toolResult needs#c4 isError=false "n=5 (number)"",
+    "assistant[stop] "done"",
+  ],
+  "notes": {
+    "scriptRemaining": 0,
+    "seen": [
+      5,
+    ],
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"go"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"toolCall","id":"c1","name":"boom","arguments":{}},{"type":"toolCall","id":"c2","name":"missing","arguments":{}},{"type":"toolCall","id":"c3","name":"needs","arguments":{}},{"type":"toolCall","id":"c4","name":"needs","arguments":{"n":"5"}}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"toolUse","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c1","toolName":"boom","content":[{"type":"text","text":"{\\n  \\"status\\": \\"error\\",\\n  \\"tool\\": \\"boom\\",\\n  \\"error\\": \\"kaboom\\"\\n}"}],"details":{"status":"error","tool":"boom","error":"kaboom"},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c2","toolName":"missing","content":[{"type":"text","text":"Tool missing not found"}],"details":{},"isError":true,"timestamp":0}}",
+    "{"type":"message","id":"#7","parentId":"#6","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c3","toolName":"needs","content":[{"type":"text","text":"Validation failed for tool \\"needs\\":\\n  - n: must have required properties n\\n\\nReceived arguments:\\n{}"}],"details":{},"isError":true,"timestamp":0}}",
+    "{"type":"message","id":"#8","parentId":"#7","timestamp":"TS","message":{"role":"toolResult","toolCallId":"c4","toolName":"needs","content":[{"type":"text","text":"n=5 (number)"}],"details":{},"isError":false,"timestamp":0}}",
+    "{"type":"message","id":"#9","parentId":"#8","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;
+
+exports[`runtime contract > two turns > pi 1`] = `
+{
+  "calls": [
+    "#0 tools=[] key=ok system="contract system prompt" :: user: first",
+    "#1 tools=[] key=ok system="contract system prompt" :: user: first | assistant: one | user: second",
+  ],
+  "errors": [],
+  "events": [
+    "agent_start",
+    "turn_start",
+    "message_start user "first"",
+    "message_end user "first"",
+    "message_start assistant[stop] "one"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "one"",
+    "turn_end toolResults=0",
+    "agent_end",
+    "agent_start",
+    "turn_start",
+    "message_start user "second"",
+    "message_end user "second"",
+    "message_start assistant[stop] "two"",
+    "message_update text_start",
+    "message_update text_delta",
+    "message_update text_end",
+    "message_end assistant[stop] "two"",
+    "turn_end toolResults=0",
+    "agent_end",
+  ],
+  "messages": [
+    "user "first"",
+    "assistant[stop] "one"",
+    "user "second"",
+    "assistant[stop] "two"",
+  ],
+  "notes": {
+    "scriptRemaining": 0,
+  },
+  "transcript": [
+    "{"type":"session","version":3,"id":"#0","timestamp":"TS","cwd":"CWD"}",
+    "{"type":"model_change","id":"#1","parentId":null,"timestamp":"TS","provider":"contract","modelId":"scripted"}",
+    "{"type":"thinking_level_change","id":"#2","parentId":"#1","timestamp":"TS","thinkingLevel":"off"}",
+    "{"type":"message","id":"#3","parentId":"#2","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"first"}],"timestamp":0}}",
+    "{"type":"message","id":"#4","parentId":"#3","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"one"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+    "{"type":"message","id":"#5","parentId":"#4","timestamp":"TS","message":{"role":"user","content":[{"type":"text","text":"second"}],"timestamp":0}}",
+    "{"type":"message","id":"#6","parentId":"#5","timestamp":"TS","message":{"role":"assistant","content":[{"type":"text","text":"two"}],"api":"bitterbot-contract-scripted","provider":"contract","model":"scripted","usage":{"input":10,"output":5,"cacheRead":0,"cacheWrite":0,"totalTokens":15,"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0,"total":0}},"stopReason":"stop","timestamp":0}}",
+  ],
+}
+`;

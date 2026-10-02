@@ -1,0 +1,354 @@
+/**
+ * PLAN-52 Phase 0: harness for the runtime contract suite.
+ *
+ * A contract session is one agent session wired the way the embedded runner
+ * wires it (transcript store + tool-result guard, system prompt override,
+ * sequential tools with steering skip, request auth), driven by a scripted
+ * model. The harness records every session event and reads back the
+ * transcript, both normalized (random ids renamed in order of appearance,
+ * clocks blanked), so two engines can be compared line for line and a golden
+ * can be committed.
+ *
+ * Variants:
+ * - "pi": pi's session, loop, and SessionManager (the reference).
+ * - "pi-owned-store": pi's session and loop over our TranscriptStore.
+ * - "bitterbot": the owned session, loop, and store.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
+import { streamSimple } from "@mariozechner/pi-ai";
+import {
+  AuthStorage,
+  createAgentSession,
+  ModelRegistry,
+  SettingsManager,
+} from "@mariozechner/pi-coding-agent";
+import { withSessionRequestAuth } from "../../embedded-runner/session-auth.js";
+import { prepareSessionManagerForRun } from "../../embedded-runner/session-manager-init.js";
+import { applySystemPromptOverrideToSession } from "../../embedded-runner/system-prompt.js";
+import { applyToolLoopCompat } from "../../embedded-runner/tool-loop-compat.js";
+import { sessionToolAllowlist, splitSdkTools } from "../../embedded-runner/tool-split.js";
+import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
+import { ensurePiCompactionReserveTokens } from "../engines/pi/settings.js";
+import { openTranscript } from "../open-transcript.js";
+import { createOwnedContractSession } from "./owned-session.js";
+import { SCRIPTED_PROVIDER, type ScriptedModel } from "./scripted-model.js";
+
+export type ContractVariant = "pi" | "pi-owned-store" | "bitterbot";
+
+export const CONTRACT_API_KEY = "contract-key";
+export const CONTRACT_SESSION_ID = "contract-session";
+
+export type ContractOptions = {
+  variant: ContractVariant;
+  /** Scratch directory (workspace, agent dir, and transcript live here). */
+  dir: string;
+  script: ScriptedModel;
+  tools?: AgentTool[];
+  systemPrompt?: string;
+  retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number };
+  compaction?: { enabled?: boolean; reserveTokens?: number; keepRecentTokens?: number };
+};
+
+/** The session surface the embedded runner uses, engine-independent. */
+export type SessionLike = {
+  prompt(text: string): Promise<void>;
+  steer(text: string): Promise<void>;
+  abort(): Promise<void>;
+  compact(customInstructions?: string): Promise<unknown>;
+  subscribe(listener: (event: unknown) => void): () => void;
+  dispose(): void;
+  readonly isStreaming: boolean;
+  readonly isCompacting: boolean;
+  readonly messages: AgentMessage[];
+  readonly agent: { waitForIdle(): Promise<void> };
+};
+
+export type ContractSession = {
+  variant: ContractVariant;
+  file: string;
+  /** Normalized session events, in emission order. */
+  events: string[];
+  session: SessionLike;
+  prompt(text: string): Promise<void>;
+  steer(text: string): Promise<void>;
+  abort(): Promise<void>;
+  compact(customInstructions?: string): Promise<unknown>;
+  /** Wait until the session is idle and has stopped emitting events. */
+  settle(): Promise<void>;
+  /** Normalized in-memory messages. */
+  messages(): string[];
+  /** Normalized transcript lines, or [] when no file was written. */
+  transcript(): string[];
+  dispose(): Promise<void>;
+};
+
+// ── normalization ────────────────────────────────────────────────────────
+
+function textOf(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (!Array.isArray(content)) {
+    return "";
+  }
+  let out = "";
+  for (const block of content) {
+    const b = block as { type?: string; text?: string };
+    if (b.type === "text" && typeof b.text === "string") {
+      out += b.text;
+    } else if (b.type === "image") {
+      out += "<image>";
+    }
+  }
+  return out;
+}
+
+/** One-line description of a message, stable across engines. */
+export function describeMessage(message: unknown): string {
+  const m = (message ?? {}) as {
+    role?: string;
+    content?: unknown;
+    stopReason?: string;
+    errorMessage?: string;
+    toolName?: string;
+    toolCallId?: string;
+    isError?: boolean;
+    summary?: string;
+    customType?: string;
+  };
+  switch (m.role) {
+    case "user":
+      return `user ${JSON.stringify(textOf(m.content))}`;
+    case "assistant": {
+      const calls = Array.isArray(m.content)
+        ? m.content
+            .filter((b) => (b as { type?: string }).type === "toolCall")
+            .map((b) => {
+              const call = b as { name?: string; id?: string };
+              return `${call.name}#${call.id}`;
+            })
+        : [];
+      return (
+        `assistant[${m.stopReason ?? "?"}] ${JSON.stringify(textOf(m.content))}` +
+        (calls.length > 0 ? ` calls=[${calls.join(",")}]` : "") +
+        (m.errorMessage ? ` error=${JSON.stringify(m.errorMessage)}` : "")
+      );
+    }
+    case "toolResult":
+      return `toolResult ${m.toolName}#${m.toolCallId} isError=${m.isError === true} ${JSON.stringify(textOf(m.content))}`;
+    case "compactionSummary":
+      return `compactionSummary ${JSON.stringify(m.summary ?? "")}`;
+    case "branchSummary":
+      return `branchSummary ${JSON.stringify(m.summary ?? "")}`;
+    case "custom":
+      return `custom:${m.customType ?? "?"} ${JSON.stringify(textOf(m.content))}`;
+    default:
+      return m.role ?? "unknown";
+  }
+}
+
+/** One-line description of a session event. */
+export function describeEvent(event: unknown): string {
+  const e = (event ?? {}) as Record<string, unknown> & { type?: string };
+  switch (e.type) {
+    case "message_start":
+    case "message_end":
+      return `${e.type} ${describeMessage(e.message)}`;
+    case "message_update": {
+      const inner = e.assistantMessageEvent as { type?: string } | undefined;
+      return `message_update ${inner?.type ?? "?"}`;
+    }
+    case "turn_end": {
+      const results = Array.isArray(e.toolResults) ? e.toolResults.length : 0;
+      return `turn_end toolResults=${results}`;
+    }
+    case "tool_execution_start":
+      return `tool_execution_start ${String(e.toolName)}#${String(e.toolCallId)} args=${JSON.stringify(e.args)}`;
+    case "tool_execution_update":
+      return `tool_execution_update ${String(e.toolName)}#${String(e.toolCallId)}`;
+    case "tool_execution_end": {
+      const result = e.result as { content?: unknown } | undefined;
+      return `tool_execution_end ${String(e.toolName)}#${String(e.toolCallId)} isError=${e.isError === true} ${JSON.stringify(textOf(result?.content))}`;
+    }
+    case "queue_update":
+      return `queue_update steering=${JSON.stringify(e.steering ?? [])} followUp=${JSON.stringify(e.followUp ?? [])}`;
+    case "compaction_start":
+      return `compaction_start ${String(e.reason)}`;
+    case "compaction_end":
+      return (
+        `compaction_end ${String(e.reason)} result=${e.result ? "yes" : "no"} aborted=${e.aborted === true} willRetry=${e.willRetry === true}` +
+        (e.errorMessage ? ` error=${JSON.stringify(e.errorMessage)}` : "")
+      );
+    case "auto_retry_start":
+      return `auto_retry_start attempt=${String(e.attempt)}/${String(e.maxAttempts)} delayMs=${String(e.delayMs)} error=${JSON.stringify(e.errorMessage)}`;
+    case "auto_retry_end":
+      return (
+        `auto_retry_end success=${e.success === true} attempt=${String(e.attempt)}` +
+        (e.finalError ? ` finalError=${JSON.stringify(e.finalError)}` : "")
+      );
+    default:
+      return String(e.type ?? "unknown");
+  }
+}
+
+const ID_KEYS = new Set(["id", "parentId", "firstKeptEntryId", "targetId", "fromId"]);
+
+/** Normalized transcript lines: ids renamed by first appearance, clocks and cwd blanked. */
+export function normalizeTranscript(file: string): string[] {
+  if (!fs.existsSync(file)) {
+    return [];
+  }
+  const ids = new Map<string, string>();
+  const walk = (value: unknown, key?: string, inMessage = false): unknown => {
+    if (typeof value === "string") {
+      if (!inMessage && key && ID_KEYS.has(key) && value !== "root") {
+        if (!ids.has(value)) {
+          ids.set(value, `#${ids.size}`);
+        }
+        return ids.get(value);
+      }
+      if (key === "timestamp") {
+        return "TS";
+      }
+      if (key === "cwd") {
+        return "CWD";
+      }
+      return value;
+    }
+    if (typeof value === "number" && key === "timestamp") {
+      return 0;
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => walk(item, undefined, inMessage));
+    }
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, child] of Object.entries(value)) {
+        out[k] = walk(child, k, inMessage || k === "message");
+      }
+      return out;
+    }
+    return value;
+  };
+  return fs
+    .readFileSync(file, "utf8")
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.stringify(walk(JSON.parse(line))));
+}
+
+// ── session construction ─────────────────────────────────────────────────
+
+async function createPiContractSession(
+  options: ContractOptions,
+  file: string,
+): Promise<SessionLike> {
+  const cwd = path.join(options.dir, "workspace");
+  const agentDir = path.join(options.dir, "agent");
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.mkdirSync(agentDir, { recursive: true });
+  const hadSessionFile = fs.existsSync(file);
+  const store = guardSessionManager(
+    openTranscript(file, options.variant === "pi" ? "pi" : "bitterbot"),
+    { agentId: "main", allowSyntheticToolResults: true },
+  );
+  await prepareSessionManagerForRun({
+    sessionManager: store,
+    sessionFile: file,
+    hadSessionFile,
+    sessionId: CONTRACT_SESSION_ID,
+    cwd,
+  });
+  const reserveTokens = options.compaction?.reserveTokens ?? 20_000;
+  const settingsManager = SettingsManager.inMemory({
+    retry: {
+      enabled: options.retry?.enabled ?? true,
+      maxRetries: options.retry?.maxRetries ?? 3,
+      baseDelayMs: options.retry?.baseDelayMs ?? 5,
+    },
+    compaction: {
+      enabled: options.compaction?.enabled ?? true,
+      reserveTokens,
+      keepRecentTokens: options.compaction?.keepRecentTokens ?? 20_000,
+    },
+  });
+  const authStorage = AuthStorage.inMemory({
+    [SCRIPTED_PROVIDER]: { type: "api_key", key: CONTRACT_API_KEY },
+  });
+  const modelRegistry = ModelRegistry.inMemory(authStorage);
+  const { customTools } = splitSdkTools({ tools: options.tools ?? [], sandboxEnabled: false });
+  const { session } = await createAgentSession({
+    cwd,
+    agentDir,
+    authStorage,
+    modelRegistry,
+    model: options.script.model,
+    thinkingLevel: "off",
+    tools: sessionToolAllowlist(customTools),
+    customTools,
+    sessionManager: store,
+    settingsManager,
+  });
+  applySystemPromptOverrideToSession(session, options.systemPrompt ?? "contract system prompt");
+  ensurePiCompactionReserveTokens({ settingsManager, minReserveTokens: reserveTokens });
+  applyToolLoopCompat(session);
+  session.agent.streamFn = withSessionRequestAuth(streamSimple, modelRegistry);
+  return session as unknown as SessionLike;
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+export async function createContractSession(options: ContractOptions): Promise<ContractSession> {
+  const file = path.join(options.dir, "session.jsonl");
+  const session =
+    options.variant === "bitterbot"
+      ? await createOwnedContractSession(options, file)
+      : await createPiContractSession(options, file);
+  const events: string[] = [];
+  const unsubscribe = session.subscribe((event) => {
+    events.push(describeEvent(event));
+  });
+
+  const settle = async (): Promise<void> => {
+    const deadline = Date.now() + 15_000;
+    let quiet = 0;
+    let last = -1;
+    while (Date.now() < deadline) {
+      await sleep(25);
+      const busy = session.isStreaming || session.isCompacting;
+      if (!busy && events.length === last) {
+        quiet += 1;
+        // 10 x 25 ms of silence covers the 100 ms delay before a post-compaction retry.
+        if (quiet >= 10) {
+          return;
+        }
+      } else {
+        quiet = 0;
+      }
+      last = events.length;
+    }
+    throw new Error(`contract session (${options.variant}) did not settle`);
+  };
+
+  return {
+    variant: options.variant,
+    file,
+    events,
+    session,
+    prompt: (text) => session.prompt(text),
+    steer: (text) => session.steer(text),
+    abort: () => session.abort(),
+    compact: (customInstructions) => session.compact(customInstructions),
+    settle,
+    messages: () => session.messages.map((m) => describeMessage(m)),
+    transcript: () => normalizeTranscript(file),
+    dispose: async () => {
+      await session.agent.waitForIdle();
+      unsubscribe();
+      session.dispose();
+    },
+  };
+}

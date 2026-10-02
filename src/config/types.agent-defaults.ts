@@ -145,6 +145,18 @@ export type AgentAnthropicRuntimeConfig = {
   runtimeStatePlacement?: "auto" | "user-tail" | "system-message";
 };
 
+/**
+ * Which agent runtime drives a session (PLAN-52).
+ * - "pi": the pi-coding-agent session, loop, and transcript writer (default).
+ * - "bitterbot": the owned runtime under `src/agents/runtime/`. Parts that are
+ *   not built yet fall back to pi; the transcript format is identical.
+ */
+export type AgentRuntimeEngine = "pi" | "bitterbot";
+
+export type AgentRuntimeConfig = {
+  engine?: AgentRuntimeEngine;
+};
+
 export type AgentDefaultsConfig = {
   /** Primary model and fallbacks (provider/model). */
   model?: AgentModelListConfig;
@@ -197,6 +209,8 @@ export type AgentDefaultsConfig = {
   contextPruning?: AgentContextPruningConfig;
   /** Compaction tuning and pre-compaction memory flush behavior. */
   compaction?: AgentCompactionConfig;
+  /** Agent runtime selection (PLAN-52). */
+  runtime?: AgentRuntimeConfig;
   /** PLAN-25 self-optimizing harness loop. On by default; set enabled:false to disable. */
   harnessEvolve?: AgentHarnessEvolveConfig;
   /** Tool result caching (in-memory LRU with TTL). */

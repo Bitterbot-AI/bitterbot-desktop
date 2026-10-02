@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { TextContent } from "@mariozechner/pi-ai";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
+import { DEFAULT_RUNTIME_ENGINE, type RuntimeEngine } from "../runtime/engine.js";
+import { openTranscript } from "../runtime/open-transcript.js";
 import { log } from "./logger.js";
 
 /**
@@ -140,12 +141,14 @@ export async function truncateOversizedToolResultsInSession(params: {
   contextWindowTokens: number;
   sessionId?: string;
   sessionKey?: string;
+  /** Transcript store to use (PLAN-52); defaults to pi's. */
+  engine?: RuntimeEngine;
 }): Promise<{ truncated: boolean; truncatedCount: number; reason?: string }> {
   const { sessionFile, contextWindowTokens } = params;
   const maxChars = calculateMaxToolResultChars(contextWindowTokens);
 
   try {
-    const sessionManager = SessionManager.open(sessionFile);
+    const sessionManager = openTranscript(sessionFile, params.engine ?? DEFAULT_RUNTIME_ENGINE);
     const branch = sessionManager.getBranch();
 
     if (branch.length === 0) {

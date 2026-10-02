@@ -583,6 +583,12 @@ export const AgentEntrySchema = z
       .optional(),
     sandbox: AgentSandboxSchema,
     tools: AgentToolsSchema,
+    runtime: z
+      .object({
+        engine: z.union([z.literal("pi"), z.literal("bitterbot")]).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
