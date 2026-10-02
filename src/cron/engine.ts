@@ -2,7 +2,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { applyBackoff } from "./backoff.js";
 import { runIsolatedJob } from "./isolated-agent.js";
 import { runMainSessionJob } from "./main-session.js";
-import { computeNextRunAt } from "./schedule.js";
+import { computeNextRunAt, oneShotTime } from "./schedule.js";
 import {
   appendRun,
   loadJobsFile,
@@ -156,7 +156,8 @@ export class CronEngine {
       throw new Error(`cron job not found: ${jobId}`);
     }
     if (mode === "due") {
-      const due = (job.nextRunAt ?? 0) <= this.nowMs();
+      // A job with no next run is not scheduled, so it is not due.
+      const due = typeof job.nextRunAt === "number" && job.nextRunAt <= this.nowMs();
       if (!due) {
         return this.recordSkip(jobId, "not-due", "manual-due");
       }
@@ -216,6 +217,15 @@ export class CronEngine {
   private async runOne(job: CronJob, trigger: CronRun["trigger"]): Promise<CronRun> {
     this.inFlight.add(job.jobId);
     const startedAt = this.nowMs();
+    // Recorded and flushed before the run: if the process dies mid-run, the
+    // next start must see that this job was started (see isMissedOneShot).
+    job.lastStartedAt = startedAt;
+    this.replaceJob(job);
+    try {
+      await this.flush();
+    } catch (err) {
+      log.warn(`could not persist the start of ${job.jobId}: ${formatErr(err)}`);
+    }
     let outcome: RunOutcome;
     try {
       outcome = await this.dispatch(job);
@@ -350,11 +360,21 @@ export class CronEngine {
     }
     if (next.enabled) {
       try {
-        const computed = computeNextRunAt(next.schedule, this.nowMs());
-        next.nextRunAt =
-          computed === null
-            ? undefined
-            : applyBackoff(computed, next.consecutiveErrors ?? 0, this.nowMs());
+        const now = this.nowMs();
+        const computed = computeNextRunAt(next.schedule, now);
+        if (computed === null && isMissedOneShot(next, now)) {
+          // Its time passed while the gateway was down (or it was created
+          // with a time already in the past). Dropping it silently left
+          // reminders unsent and task wakeups hanging forever: run it at the
+          // next tick instead.
+          log.info(`one-shot job ${next.jobId} missed its time; running it at the next tick`);
+          next.nextRunAt = now;
+        } else {
+          next.nextRunAt =
+            computed === null
+              ? undefined
+              : applyBackoff(computed, next.consecutiveErrors ?? 0, now);
+        }
       } catch (err) {
         log.warn(`could not compute next run for job ${next.jobId}: ${formatErr(err)}`);
         next.nextRunAt = undefined;
@@ -389,4 +409,29 @@ function formatErr(err: unknown): string {
     return err.message;
   }
   return String(err);
+}
+
+/**
+ * How far behind a one-shot may be and still be caught up. Older than this it
+ * stays inert, as every missed one-shot did before: a reminder from last
+ * spring should not fire on the first start after an upgrade.
+ */
+export const MISSED_ONE_SHOT_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * A one-shot job that is enabled, was never started, and whose time is at
+ * most a week behind us. "Never started" rather than "never finished": a run
+ * that was interrupted (a restart, a crash, a job whose own turn restarts the
+ * gateway) must not start again, or it could repeat its side effects on
+ * every boot.
+ */
+function isMissedOneShot(job: CronJob, nowMs: number): boolean {
+  if (job.schedule.kind !== "at" || !job.enabled) {
+    return false;
+  }
+  if (job.lastRunAt !== undefined || job.lastStartedAt !== undefined) {
+    return false;
+  }
+  const scheduledAt = oneShotTime(job.schedule);
+  return scheduledAt !== null && nowMs - scheduledAt <= MISSED_ONE_SHOT_MAX_AGE_MS;
 }

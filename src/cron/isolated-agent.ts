@@ -4,7 +4,12 @@ import { runEmbeddedPiAgent } from "../agents/embedded-runner/run.js";
 import { AGENT_LANE_NESTED } from "../agents/lanes.js";
 import { readLatestAssistantReply } from "../agents/tools/agent-step.js";
 import { loadConfig } from "../config/config.js";
-import { resolveAgentMainSessionKey } from "../config/sessions.js";
+import {
+  loadSessionStore,
+  resolveAgentMainSessionKey,
+  resolveStorePath,
+  type SessionEntry,
+} from "../config/sessions.js";
 import { resolveSessionTranscriptPath } from "../config/sessions/paths.js";
 import { getCronEngine } from "../cron/active.js";
 import { callGateway } from "../gateway/call.js";
@@ -15,6 +20,8 @@ import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { acquireTaskSlot, releaseTaskSlot } from "../tasks/active-task-tracker.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
+import { type AnnouncePlan, resolveAnnouncePlan } from "./announce-plan.js";
+import { lateNoteFor } from "./schedule.js";
 import type { CronJob, CronPayloadAgentTurn } from "./types.js";
 
 const log = createSubsystemLogger("gateway/cron");
@@ -32,6 +39,14 @@ export async function runIsolatedJob(job: CronJob): Promise<void> {
   const cfg = loadConfig();
   const agentId = job.agentId ?? resolveDefaultAgentId(cfg);
 
+  // Where the reply goes is decided before the turn: a job that cannot
+  // deliver fails here, without paying for a model call first.
+  const plan = resolveAnnouncePlan({
+    delivery: job.delivery,
+    mainEntry: job.delivery?.mode === "none" ? undefined : readMainSessionEntry(cfg, agentId),
+    cfg,
+  });
+
   // PLAN-17 Phase 2 E.3: when this is a long-horizon task wakeup,
   // gate on the hormonal concurrency policy. If we're at capacity,
   // re-schedule the wakeup 60s out and exit cleanly so other tasks can
@@ -48,10 +63,17 @@ export async function runIsolatedJob(job: CronJob): Promise<void> {
       if (engine) {
         const nextAtMs = Date.now() + 60_000;
         try {
+          // A NEW job id: this run ends "ok", and the engine then deletes the
+          // one-shot it just ran. Re-using the id had the deferred wakeup
+          // deleted with it, so the task never resumed.
           await engine.upsertJob({
             ...job,
+            jobId: deferredJobId(job.jobId),
             schedule: { kind: "at", at: new Date(nextAtMs).toISOString() },
             nextRunAt: nextAtMs,
+            lastRunAt: undefined,
+            lastStartedAt: undefined,
+            lastRunStatus: undefined,
           });
           log.info(
             `cron ${job.jobId}: deferring task wakeup (${slot.reason}, inflight=${slot.inflight}/${slot.policy.maxConcurrent}, policy=${slot.policy.rationale})`,
@@ -77,61 +99,91 @@ export async function runIsolatedJob(job: CronJob): Promise<void> {
       releaseTaskSlot(job.jobId);
     }
   }
-  const delivery = job.delivery;
-  const mode = delivery?.mode ?? "announce";
-  if (mode === "none") {
+  await finishIsolatedRun({ job, plan, reply, agentId, sessionKey });
+}
+
+function readMainSessionEntry(
+  cfg: ReturnType<typeof loadConfig>,
+  agentId: string,
+): SessionEntry | undefined {
+  try {
+    const storePath = resolveStorePath(cfg.session?.store, { agentId });
+    return loadSessionStore(storePath)[resolveAgentMainSessionKey({ cfg, agentId })];
+  } catch (err) {
+    log.warn(`could not read the main session entry for ${agentId}: ${formatErr(err)}`);
+    return undefined;
+  }
+}
+
+async function finishIsolatedRun(args: {
+  job: CronJob;
+  plan: AnnouncePlan;
+  reply: string | undefined;
+  agentId: string;
+  sessionKey: string;
+}): Promise<void> {
+  const { job, plan, reply, agentId, sessionKey } = args;
+  if (plan.kind === "none") {
     log.info(`isolated cron run ${job.jobId} (delivery=none, len=${reply?.length ?? 0})`);
     return;
   }
 
   if (!reply || !reply.trim()) {
-    if (delivery?.bestEffort) {
-      log.info(`isolated cron run ${job.jobId} produced no reply (best-effort, skipping announce)`);
+    if (plan.kind === "main-only" || job.delivery?.bestEffort) {
+      log.info(`isolated cron run ${job.jobId} produced no reply (nothing to announce)`);
       return;
     }
     throw new Error("isolated cron job produced no assistant reply to announce");
   }
 
-  const channel = pickAnnounceChannel(delivery?.channel);
-  const to = delivery?.to?.trim();
-  if (!channel || !to) {
-    if (delivery?.bestEffort) {
-      log.warn(`cron job ${job.jobId} announce skipped: missing channel/to (best-effort)`);
-      return;
-    }
-    throw new Error("announce delivery requires both delivery.channel and delivery.to");
+  if (plan.kind === "main-only") {
+    log.info(`cron ${job.jobId}: ${plan.reason}; result kept in the main session`);
+    postMainSessionSummary({
+      job,
+      reply,
+      agentId,
+      where: `finished (not sent to a channel; full reply in session ${sessionKey})`,
+    });
+    return;
   }
 
   await deliverOutboundPayloads({
-    cfg,
-    channel: channel as Exclude<typeof channel, "none">,
-    to,
+    cfg: loadConfig(),
+    channel: plan.channel,
+    to: plan.to,
+    ...(plan.accountId ? { accountId: plan.accountId } : {}),
+    ...(plan.threadId != null ? { threadId: plan.threadId } : {}),
     payloads: [{ text: reply }],
     agentId,
-    bestEffort: delivery?.bestEffort,
+    bestEffort: job.delivery?.bestEffort,
   });
-  log.info(`cron ${job.jobId} delivered to ${channel}:${to}`);
+  log.info(`cron ${job.jobId} delivered to ${plan.channel}:${plan.to}`);
 
   // Per docs/automation/cron-jobs.md: announce mode also posts a brief summary
   // to the agent's main session, respecting wakeMode. This keeps the operator
   // aware of what the cron run did even when the answer landed elsewhere.
-  postMainSessionSummary({ job, reply, agentId, channel, to });
+  postMainSessionSummary({
+    job,
+    reply,
+    agentId,
+    where: `delivered to ${plan.channel}:${plan.to}`,
+  });
 }
 
 function postMainSessionSummary(args: {
   job: CronJob;
   reply: string;
   agentId: string;
-  channel: string;
-  to: string;
+  /** What happened to the reply, e.g. "delivered to telegram:123". */
+  where: string;
 }): void {
-  const { job, reply, agentId, channel, to } = args;
+  const { job, reply, agentId, where } = args;
   try {
     const cfg = loadConfig();
     const sessionKey = resolveAgentMainSessionKey({ cfg, agentId });
     const summary = truncate(reply, 280);
     const tag = `[cron:${job.jobId}${job.name ? ` ${job.name}` : ""}]`;
-    const text = `${tag} delivered to ${channel}:${to} — ${summary}`;
+    const text = `${tag} ${where} — ${summary}`;
     enqueueSystemEvent(text, { sessionKey, contextKey: `cron:${job.jobId}` });
     if (job.wakeMode === "now") {
       requestHeartbeatNow({ reason: `cron:${job.jobId}:summary` });
@@ -169,6 +221,8 @@ export function buildIsolatedAgentTurnParams(args: {
   idempotencyKey: string;
   model?: string;
   thinking?: string;
+  /** `false` for a job scheduled by a non-owner run. */
+  senderIsOwner?: false;
 }): Record<string, unknown> {
   const params: Record<string, unknown> = {
     message: args.message,
@@ -197,6 +251,9 @@ export function buildIsolatedAgentTurnParams(args: {
   if (args.thinking) {
     params.thinking = args.thinking;
   }
+  if (args.senderIsOwner === false) {
+    params.senderIsOwner = false;
+  }
   return params;
 }
 
@@ -220,6 +277,7 @@ async function invokeAgentTurn(args: {
     idempotencyKey: idem,
     model: payload.model,
     thinking: payload.thinking,
+    senderIsOwner: payload.senderIsOwner,
   });
 
   const response = await callGateway<{ runId?: string }>({
@@ -242,15 +300,15 @@ async function invokeAgentTurn(args: {
 
 function formatTurnMessage(job: CronJob, payload: CronPayloadAgentTurn): string {
   const tag = `[cron:${job.jobId}${job.name ? ` ${job.name}` : ""}]`;
-  return `${tag} ${payload.message}`.trim();
+  const note = lateNoteFor(job, Date.now());
+  return `${tag} ${payload.message}${note ? `\n\n${note}` : ""}`.trim();
 }
 
-function pickAnnounceChannel(input: string | undefined): string | undefined {
-  const trimmed = typeof input === "string" ? input.trim() : "";
-  if (!trimmed || trimmed === "last") {
-    return undefined;
-  }
-  return trimmed;
+const DEFERRED_SUFFIX = /-d[0-9a-z]+$/;
+
+/** `<id>-d<time>`: one suffix however many times a wakeup is deferred. */
+export function deferredJobId(jobId: string): string {
+  return `${jobId.replace(DEFERRED_SUFFIX, "")}-d${Date.now().toString(36)}`;
 }
 
 // Shared "run an isolated agent turn" entrypoint used by the hooks dispatcher
