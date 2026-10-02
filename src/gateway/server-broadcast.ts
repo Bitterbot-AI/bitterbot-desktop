@@ -5,6 +5,7 @@ import { logWs, shouldLogWs, summarizeAgentEventForWsLog } from "./ws-log.js";
 const ADMIN_SCOPE = "operator.admin";
 const APPROVALS_SCOPE = "operator.approvals";
 const PAIRING_SCOPE = "operator.pairing";
+const WRITE_SCOPE = "operator.write";
 
 const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "exec.approval.requested": [APPROVALS_SCOPE],
@@ -15,6 +16,10 @@ const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "node.pair.resolved": [PAIRING_SCOPE],
   // Node identity (branch/sha/version drift) is operator information.
   update: [ADMIN_SCOPE],
+  // The agent's browser, logged-in pages included. Already targeted at lease
+  // holders; the scope guard is the second lock, matching browser.request.
+  "browser.frame": [WRITE_SCOPE],
+  "browser.live": [WRITE_SCOPE],
 };
 
 export type GatewayBroadcastStateVersion = {

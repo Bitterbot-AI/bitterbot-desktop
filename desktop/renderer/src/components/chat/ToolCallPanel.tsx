@@ -23,6 +23,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { CoworkPanel } from "../cowork/CoworkPanel";
 import { WorkspaceFilesPanel } from "../workspace/WorkspaceFilesPanel";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { BrowserLiveView } from "./BrowserLiveView";
 import {
   extractFilePath,
   parseExitCode,
@@ -48,6 +49,9 @@ function getToolMeta(name: string): { icon: typeof Terminal; color: string; grad
       gradient: "from-brand/20 to-brand/10",
     };
   if (
+    lower === "exec" ||
+    lower === "process" ||
+    lower === "bash" ||
     lower.includes("command") ||
     lower.includes("execute") ||
     lower.includes("shell") ||
@@ -229,6 +233,12 @@ export function ToolCallPanel() {
               label="Tools"
               onClick={() => setPanelMode("tools")}
             />
+            <TabButton
+              active={panelMode === "browser"}
+              icon={<Globe className="w-3.5 h-3.5" />}
+              label="Browser"
+              onClick={() => setPanelMode("browser")}
+            />
             {hasArtifacts && (
               <TabButton
                 active={panelMode === "artifact"}
@@ -272,6 +282,8 @@ export function ToolCallPanel() {
       {/* Panel content */}
       {panelMode === "artifact" ? (
         <ArtifactPanel />
+      ) : panelMode === "browser" ? (
+        <BrowserLiveView />
       ) : panelMode === "tasks" ? (
         <CoworkPanel />
       ) : panelMode === "files" ? (

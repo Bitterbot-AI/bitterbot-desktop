@@ -12,6 +12,14 @@ export type BrowserSnapshotDefaults = {
   /** Default snapshot mode (applies when mode is not provided). */
   mode?: "efficient";
 };
+export type BrowserLiveViewConfig = {
+  /** Stream the agent's browser to the Control UI's computer pane. Default: true */
+  enabled?: boolean;
+  /** Upper bound on frames per second sent to viewers (1-30). Default: 8 */
+  maxFps?: number;
+  /** JPEG quality of the stream (10-95). Default: 60 */
+  quality?: number;
+};
 export type BrowserConfig = {
   enabled?: boolean;
   /** If false, disable browser act:evaluate (arbitrary JS). Default: true */
@@ -38,4 +46,6 @@ export type BrowserConfig = {
   profiles?: Record<string, BrowserProfileConfig>;
   /** Default snapshot options (applied by the browser tool/CLI when unset). */
   snapshotDefaults?: BrowserSnapshotDefaults;
+  /** Live view of the agent's browser in the Control UI. */
+  liveView?: BrowserLiveViewConfig;
 };

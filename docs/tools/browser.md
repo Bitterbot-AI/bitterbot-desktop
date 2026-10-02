@@ -187,6 +187,41 @@ Notes:
 - Replace `<BROWSERLESS_API_KEY>` with your real Browserless token.
 - Choose the region endpoint that matches your Browserless account (see their docs).
 
+## Live view and take over
+
+The Control UI's side panel ("BitterBot's Computer") has a **Browser** tab that shows the agent's real page as it works. While a browser tool call is running, the same picture appears in the Tools tab in place of a placeholder.
+
+How it behaves:
+
+- **It only watches until you take over.** Opening the tab never launches a browser. If none is running it says so and picks the page up as soon as the agent opens one. It follows the tab the agent is working in.
+- **Take over** gives you the mouse and keyboard: click, type, paste and scroll on the picture and the input goes to the page. Use it for logins, CAPTCHAs and payment challenges, so the agent never needs your credentials.
+- **While you have control the agent is held.** Its actions that drive the page (navigate, click, type, open or close tabs) are refused with a message telling it you have control. It can still read the page (snapshot, screenshot).
+- **Hand back** returns the browser to the agent. Control also returns by itself if you close the panel, lose the connection, or do nothing for five minutes, so the agent is never left locked out.
+- The stream stops when nobody is looking: a viewer that stops renewing its lease is dropped after 30 seconds.
+
+Limits today:
+
+- It streams one page at a time, the one the agent is using, and it shows the page, not the browser's own toolbar or dialogs.
+- It is not available when browser calls are routed to a paired node, or for the sandboxed browser.
+- It has been verified with the managed `bitterbot` profile. With the `chrome` extension relay the browser may refuse the session the stream needs; the tab then says the live view is not available and gives the reason.
+- The gateway needs Playwright (see [Playwright requirement](#playwright-requirement)).
+
+Configuration:
+
+```json5
+{
+  browser: {
+    liveView: {
+      enabled: true, // default: true. Set false to turn the stream off.
+      maxFps: 8, // 1-30. Lower it for remote or metered connections.
+      quality: 60, // JPEG quality, 10-95.
+    },
+  },
+}
+```
+
+The live view shows whatever the browser shows, logged-in pages included. It needs the same `operator.write` scope as `browser.request`, frames go only to the connection that asked for them, and keystrokes sent during a take over are not logged.
+
 ## Security
 
 Key ideas:

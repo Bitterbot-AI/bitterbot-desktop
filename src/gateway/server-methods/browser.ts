@@ -79,7 +79,7 @@ function resolveBrowserNode(nodes: NodeSession[], query: string): NodeSession | 
   );
 }
 
-function resolveBrowserNodeTarget(params: {
+export function resolveBrowserNodeTarget(params: {
   cfg: ReturnType<typeof loadConfig>;
   nodes: NodeSession[];
 }): NodeSession | null {

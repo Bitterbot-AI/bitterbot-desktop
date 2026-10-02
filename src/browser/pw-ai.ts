@@ -16,6 +16,8 @@ export {
   type WithSnapshotForAI,
 } from "./pw-session.js";
 
+export { startScreencastViaPlaywright } from "./pw-screencast.js";
+
 export {
   armDialogViaPlaywright,
   armFileUploadViaPlaywright,

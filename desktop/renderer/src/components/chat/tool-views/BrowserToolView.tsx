@@ -8,22 +8,34 @@ import {
   Image,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
+import { useBrowserLive } from "../../../hooks/useBrowserLive";
 import { cn } from "../../../lib/utils";
+import { useArtifactStore } from "../../../stores/artifact-store";
 import { extractScreenshot, extractDomain } from "./tool-view-utils";
 import type { ToolViewProps } from "./ToolViewRegistry";
 
 export function BrowserToolView({ toolCall }: ToolViewProps) {
   const args = toolCall.args as Record<string, unknown> | undefined;
-  const url =
-    typeof args?.url === "string"
-      ? args.url
-      : typeof args?.target_url === "string"
-        ? args.target_url
-        : null;
+  // The browser tool names its URL parameter `targetUrl`; the other spellings
+  // are from older tool vocabularies this view also renders.
+  const argUrl =
+    typeof args?.targetUrl === "string"
+      ? args.targetUrl
+      : typeof args?.url === "string"
+        ? args.url
+        : typeof args?.target_url === "string"
+          ? args.target_url
+          : null;
   const action = typeof args?.action === "string" ? args.action : null;
 
   const output = toolCall.result ?? toolCall.partialResult;
   const isRunning = toolCall.status === "running";
+  // While the call runs, show the real page. Tool results never carry a
+  // screenshot to the UI, so without this the pane has nothing to draw.
+  const live = useBrowserLive(isRunning);
+  const liveFrame = isRunning && live.state === "streaming" ? live.frame : null;
+  const url = (isRunning && live.url) || argUrl;
+  const setPanelMode = useArtifactStore((s) => s.setPanelMode);
   const isError = toolCall.status === "error";
   const isCompleted = toolCall.status === "completed";
 
@@ -134,7 +146,14 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
 
       {/* Content area */}
       <div className="flex-1 overflow-auto bg-card/60 relative">
-        {screenshotSrc && !imgError ? (
+        {liveFrame ? (
+          <img
+            src={liveFrame.src}
+            alt={live.title ? `Agent's browser: ${live.title}` : "Agent's browser"}
+            className="w-full h-auto object-contain select-none"
+            draggable={false}
+          />
+        ) : screenshotSrc && !imgError ? (
           <img
             src={screenshotSrc}
             alt="Browser screenshot"
@@ -170,6 +189,12 @@ export function BrowserToolView({ toolCall }: ToolViewProps) {
             </div>
             <span className="text-sm text-foreground font-medium">Browser action completed</span>
             {url && <span className="text-xs text-muted-foreground font-mono">{url}</span>}
+            <button
+              onClick={() => setPanelMode("browser")}
+              className="mt-1 px-3 py-1.5 rounded-md text-xs font-medium text-brand border border-brand/20 bg-brand/10 hover:bg-brand/15 transition-colors"
+            >
+              Watch the browser live
+            </button>
           </div>
         ) : (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

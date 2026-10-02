@@ -126,6 +126,10 @@ const BASE_METHODS = [
   "agent.runtime.health",
   "agent.wait",
   "browser.request",
+  "browser.live.start",
+  "browser.live.stop",
+  "browser.live.control",
+  "browser.live.input",
   // WebChat WebSocket-native chat methods
   "chat.history",
   "chat.abort",
@@ -249,4 +253,8 @@ export const GATEWAY_EVENTS = [
   // PLAN-50: one event per recorded usage-ledger row, and budget threshold crossings.
   "usage",
   "usage.budget",
+  // PLAN-53 A2: live view of the agent's browser. Sent only to connections
+  // that hold a lease from browser.live.start.
+  "browser.frame",
+  "browser.live",
 ];

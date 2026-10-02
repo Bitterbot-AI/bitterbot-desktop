@@ -224,6 +224,14 @@ export const BitterbotSchema = z
         attachOnly: z.boolean().optional(),
         defaultProfile: z.string().optional(),
         snapshotDefaults: BrowserSnapshotDefaultsSchema,
+        liveView: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxFps: z.number().int().min(1).max(30).optional(),
+            quality: z.number().int().min(10).max(95).optional(),
+          })
+          .strict()
+          .optional(),
         profiles: z
           .record(
             z

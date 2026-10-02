@@ -102,6 +102,11 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.nodes.browser.mode":
     'Node browser routing ("auto" = pick single connected browser node, "manual" = require node param, "off" = disable).',
   "gateway.nodes.browser.node": "Pin browser routing to a specific node id or name (optional).",
+  "browser.liveView.enabled":
+    "Stream the agent's browser to the Control UI's computer pane while it is open (default: true). Set false to turn the stream off.",
+  "browser.liveView.maxFps":
+    "Upper bound on live view frames per second (1-30, default: 8). Lower it for remote or metered connections.",
+  "browser.liveView.quality": "JPEG quality of the live view stream (10-95, default: 60).",
   "gateway.nodes.allowCommands":
     "Extra node.invoke commands to allow beyond the gateway defaults (array of command strings).",
   "gateway.nodes.denyCommands":

@@ -1971,11 +1971,13 @@ See [Plugins](/tools/plugin).
     // noSandbox: false,
     // executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
     // attachOnly: false,
+    // liveView: { enabled: true, maxFps: 8, quality: 60 },
   },
 }
 ```
 
 - `evaluateEnabled: false` disables `act:evaluate` and `wait --fn`.
+- `liveView` controls the stream of the agent's page in the Control UI's side panel. `enabled: false` turns it off; `maxFps` (1-30) and `quality` (10-95) trade smoothness for bandwidth. See [Live view and take over](/tools/browser#live-view-and-take-over).
 - Remote profiles are attach-only (start/stop/reset disabled).
 - Auto-detect order: default browser if Chromium-based → Chrome → Brave → Edge → Chromium → Chrome Canary.
 - Control service: loopback only (port derived from `gateway.port`, default `18791`).

@@ -3,6 +3,7 @@ import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { agentRuntimeHandlers } from "./server-methods/agent-runtime.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
+import { browserLiveHandlers } from "./server-methods/browser-live.js";
 import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
@@ -172,6 +173,12 @@ const WRITE_METHODS = new Set([
   "chat.send",
   "chat.abort",
   "browser.request",
+  // The live view shows whatever the agent's browser shows, logged-in pages
+  // included, so it sits with browser.request, not with the read methods.
+  "browser.live.start",
+  "browser.live.stop",
+  "browser.live.control",
+  "browser.live.input",
   "projects.create",
   "projects.update",
   "projects.delete",
@@ -331,6 +338,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...agentRuntimeHandlers,
   ...agentsHandlers,
   ...browserHandlers,
+  ...browserLiveHandlers,
   ...projectsHandlers,
   ...walletHandlers,
   ...workspaceHandlers,
