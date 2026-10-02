@@ -52,12 +52,15 @@ import { isTimeoutError } from "../../failover-error.js";
 import { resolveModelAuthMode } from "../../model-auth.js";
 import { resolveDefaultModelForAgent } from "../../model-selection.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../../ollama-stream.js";
+import { resolveAgentCompaction } from "../../runtime/compaction/agent-config.js";
 import { resolveHeartbeatPromptSet } from "../../runtime/compaction/heartbeat.js";
 import { buildProactiveRecallPreface } from "../../runtime/compaction/transcript-recall.js";
 import { installInRunBudget } from "../../runtime/context-pruning/in-run-budget.js";
 import {
+  applyHeartbeatStubs,
   applyStubsToMessages,
   buildPruneRecordData,
+  collectHeartbeatStubs,
   collectStubRecords,
   PRUNE_RECORD_CUSTOM_TYPE,
 } from "../../runtime/context-pruning/offload-stubs.js";
@@ -672,6 +675,7 @@ export async function runEmbeddedAttempt(
       // PLAN-52 Phase 1: the engine picks the transcript store; pi's session
       // layer drives the turn on either.
       const runtimeEngine = resolveRuntimeEngine(params.config, sessionAgentId);
+      const agentCompaction = resolveAgentCompaction(params.config, sessionAgentId);
       sessionManager = guardSessionManager(openTranscript(params.sessionFile, runtimeEngine), {
         agentId: sessionAgentId,
         sessionKey: params.sessionKey,
@@ -713,6 +717,7 @@ export async function runEmbeddedAttempt(
         const modelRegistry = params.modelRegistry;
         const owned = createOwnedSession({
           config: params.config,
+          agentId: sessionAgentId,
           model: params.model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           systemPrompt: systemPromptText,
@@ -760,7 +765,7 @@ export async function runEmbeddedAttempt(
       // fallback) take effect mid-turn. Assigning `agent.state.messages` from
       // the tool-end handler never did: the loop works on its own snapshot.
       try {
-        const offloadCfg = params.config?.agents?.defaults?.compaction?.offload;
+        const offloadCfg = agentCompaction.offload;
         const compressionCfg = params.config?.agents?.defaults?.compression;
         const contextWindowTokens = params.model.contextWindow ?? 0;
         const stubStore = sessionManager;
@@ -915,7 +920,7 @@ export async function runEmbeddedAttempt(
         // branch). Without this the full outputs come back every turn, because
         // the context is rebuilt from the transcript.
         let pruned = limited;
-        if (params.config?.agents?.defaults?.compaction?.offload?.toolOutputStubs !== false) {
+        if (agentCompaction.offload.toolOutputStubs !== false) {
           try {
             const recorded = collectStubRecords(sessionManager.getBranch());
             if (recorded.size > 0) {
@@ -930,6 +935,22 @@ export async function runEmbeddedAttempt(
           } catch (pruneErr) {
             log.warn(`[context-pruning] stub re-application failed: ${String(pruneErr)}`);
           }
+        }
+        // Bare heartbeat pairs an offload cut recorded are dropped again. They
+        // are only ever recorded by that policy, so no setting gates this.
+        try {
+          const heartbeats = collectHeartbeatStubs(sessionManager.getBranch());
+          if (heartbeats.length > 0) {
+            const res = applyHeartbeatStubs(pruned, heartbeats);
+            pruned = res.messages;
+            if (res.removed > 0) {
+              log.debug(
+                `[context-pruning] runId=${params.runId} dropped ${res.removed} heartbeat message(s)`,
+              );
+            }
+          }
+        } catch (pruneErr) {
+          log.warn(`[context-pruning] heartbeat elision failed: ${String(pruneErr)}`);
         }
         cacheTrace?.recordStage("session:pruned", { messages: pruned });
         if (pruned.length > 0) {
@@ -1140,8 +1161,8 @@ export async function runEmbeddedAttempt(
         if (
           !remoteTaskTurn &&
           params.isHeartbeat !== true &&
-          params.config?.agents?.defaults?.compaction?.policy === "offload" &&
-          params.config.agents.defaults.compaction.offload?.proactiveRecall !== false
+          agentCompaction.policy === "offload" &&
+          agentCompaction.offload.proactiveRecall !== false
         ) {
           try {
             const preface = buildProactiveRecallPreface({

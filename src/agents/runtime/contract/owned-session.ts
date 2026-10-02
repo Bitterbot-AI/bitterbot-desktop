@@ -68,7 +68,7 @@ export async function createOwnedContractSession(
             summaryMode: options.offload.summaryMode ?? "always",
             sessionFile: () => file,
             sessionId: () => CONTRACT_SESSION_ID,
-            heartbeatPrompts: [],
+            heartbeatPrompts: options.offload.heartbeatPrompts ?? [],
             fixedTokens: () => 0,
             fallback: createSummaryCompactionPolicy(),
           }),

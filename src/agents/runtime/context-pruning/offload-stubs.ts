@@ -171,21 +171,128 @@ export function applyStubsToMessages(
   return { messages: out, applied };
 }
 
+type EntryLike = { type?: unknown; customType?: unknown; data?: unknown };
+
+/**
+ * One message of a bare heartbeat pair (the prompt, or the acknowledgement)
+ * that a horizon cut left in the kept range. The pair carries no information
+ * the ledger does not already count, so it is dropped from the window.
+ *
+ * Keyed by role, message timestamp and text length: the in-memory message
+ * has no entry id, and both it and the transcript entry carry those three.
+ */
+export type HeartbeatStub = {
+  entryId: string;
+  role: "user" | "assistant";
+  timestamp: number;
+  chars: number;
+};
+
 /** The `data` payload of a `bitterbot.offload-prune` custom entry for these stubs. */
-export function buildPruneRecordData(stubs: readonly ToolOutputStub[], trigger: string) {
+export function buildPruneRecordData(
+  stubs: readonly ToolOutputStub[],
+  trigger: string,
+  heartbeats: readonly HeartbeatStub[] = [],
+) {
   return {
     version: 1 as const,
     trigger,
-    stubs: stubs.map((s) => ({
-      toolCallId: s.toolCallId,
-      kind: "tool_result" as const,
-      chars: s.chars,
-      ...(s.toolName ? { toolName: s.toolName } : {}),
-    })),
+    stubs: [
+      ...stubs.map((s) => ({
+        toolCallId: s.toolCallId,
+        kind: "tool_result" as const,
+        chars: s.chars,
+        ...(s.toolName ? { toolName: s.toolName } : {}),
+      })),
+      ...heartbeats.map((h) => ({
+        entryId: h.entryId,
+        kind: "heartbeat_pair" as const,
+        chars: h.chars,
+        role: h.role,
+        timestamp: h.timestamp,
+      })),
+    ],
   };
 }
 
-type EntryLike = { type?: unknown; customType?: unknown; data?: unknown };
+/** Collect every heartbeat-pair stub recorded on a branch path. */
+export function collectHeartbeatStubs(entries: readonly EntryLike[]): HeartbeatStub[] {
+  const out: HeartbeatStub[] = [];
+  for (const e of entries) {
+    if (e.type !== "custom" || e.customType !== PRUNE_RECORD_CUSTOM_TYPE) {
+      continue;
+    }
+    const data = e.data as { stubs?: unknown } | undefined;
+    if (!Array.isArray(data?.stubs)) {
+      continue;
+    }
+    for (const raw of data.stubs as Array<Record<string, unknown>>) {
+      if (
+        raw?.kind !== "heartbeat_pair" ||
+        (raw.role !== "user" && raw.role !== "assistant") ||
+        typeof raw.timestamp !== "number" ||
+        typeof raw.entryId !== "string"
+      ) {
+        continue;
+      }
+      out.push({
+        entryId: raw.entryId,
+        role: raw.role,
+        timestamp: raw.timestamp,
+        chars: typeof raw.chars === "number" ? raw.chars : 0,
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Drop recorded heartbeat pairs from the window. Only a whole turn goes: a
+ * recorded prompt followed by nothing but recorded acknowledgements, up to the
+ * next user message. Anything else is left alone, so the roles still
+ * alternate. Returns a new array; idempotent.
+ */
+export function applyHeartbeatStubs(
+  messages: readonly AgentMessage[],
+  stubs: readonly HeartbeatStub[],
+): { messages: AgentMessage[]; removed: number } {
+  if (stubs.length === 0) {
+    return { messages: [...messages], removed: 0 };
+  }
+  // Role, timestamp and text length together: two messages of one role can
+  // share a millisecond, and a wrong match would drop a real turn.
+  const recorded = new Set(stubs.map((stub) => `${stub.role}:${stub.timestamp}:${stub.chars}`));
+  const isRecorded = (message: AgentMessage | undefined, role: "user" | "assistant") => {
+    const typed = message as (ToolResultLike & { timestamp?: unknown }) | undefined;
+    return (
+      typed?.role === role &&
+      typeof typed.timestamp === "number" &&
+      recorded.has(`${role}:${typed.timestamp}:${textOf(typed).length}`)
+    );
+  };
+  const out: AgentMessage[] = [];
+  let removed = 0;
+  for (let i = 0; i < messages.length; i++) {
+    if (!isRecorded(messages[i], "user")) {
+      out.push(messages[i]!);
+      continue;
+    }
+    let end = i + 1;
+    while (end < messages.length && isRecorded(messages[end], "assistant")) {
+      end++;
+    }
+    const acked = end > i + 1;
+    const turnEndsThere =
+      end === messages.length || (messages[end] as { role?: unknown }).role === "user";
+    if (acked && turnEndsThere) {
+      removed += end - i;
+      i = end - 1;
+      continue;
+    }
+    out.push(messages[i]!);
+  }
+  return { messages: out, removed };
+}
 
 /** Collect every tool-output stub recorded on a branch path (pi `getBranch()` entries). */
 export function collectStubRecords(entries: readonly EntryLike[]): Map<string, ToolOutputStub> {

@@ -73,8 +73,10 @@ import {
   type SessionMessage,
 } from "../compaction/summary/index.js";
 import {
+  applyHeartbeatStubs,
   applyStubsToMessages,
   buildPruneRecordData,
+  collectHeartbeatStubs,
   collectStubRecords,
   PRUNE_RECORD_CUSTOM_TYPE,
   type ToolOutputStub,
@@ -953,10 +955,11 @@ export class AgentSession {
       throw new Error("Compaction cancelled");
     }
     const stubs = result.stubs ?? [];
-    if (stubs.length > 0) {
+    const heartbeats = result.heartbeats ?? [];
+    if (stubs.length > 0 || heartbeats.length > 0) {
       this.sessionManager.appendCustomEntry(
         PRUNE_RECORD_CUSTOM_TYPE,
-        buildPruneRecordData(stubs, trigger),
+        buildPruneRecordData(stubs, trigger, heartbeats),
       );
     }
     this.sessionManager.appendCompaction(
@@ -971,7 +974,15 @@ export class AgentSession {
     // The context was rebuilt from the transcript, which holds every tool
     // output in full: re-apply all stubs recorded on the branch, not only
     // the ones this compaction added.
-    this.applyStubsToState([...collectStubRecords(this.sessionManager.getBranch()).values()]);
+    const branch = this.sessionManager.getBranch();
+    this.applyStubsToState([...collectStubRecords(branch).values()]);
+    const elided = applyHeartbeatStubs(
+      this.agent.state.messages as unknown as Parameters<typeof applyHeartbeatStubs>[0],
+      collectHeartbeatStubs(branch),
+    );
+    if (elided.removed > 0) {
+      this.agent.state.messages = elided.messages as unknown as AgentMessage[];
+    }
   }
 
   /** Record tool-output stubs in the transcript and apply them to the live context. */

@@ -207,6 +207,52 @@ describe("owned AgentSession", () => {
 describe("offload compaction policy on the owned session (PLAN-52A 3b)", () => {
   const filler = (label: string) => `${label} ${"lorem ipsum dolor sit amet ".repeat(150)}`;
 
+  it("a bare heartbeat pair in the kept range is dropped from the window, not from the transcript", async () => {
+    const HEARTBEAT = "HEARTBEAT: check your task list.";
+    const script = new ScriptedModel(
+      [
+        text("answer one"),
+        text("answer two"),
+        text("answer three"),
+        text("HEARTBEAT_OK"),
+        // Reported prompt size above 55% of the 10k window.
+        text("answer four", 6_000),
+        text("CHEAP SUMMARY: filler questions."),
+        text("answer five"),
+      ],
+      { contextWindow: 10_000 },
+    );
+    const s = await owned(script, {
+      offload: { settings: { minElidedTokens: 0 }, heartbeatPrompts: [HEARTBEAT] },
+    });
+    for (const n of ["one", "two", "three"]) {
+      await s.prompt(filler(`question ${n}`));
+    }
+    await s.prompt(HEARTBEAT);
+    await s.prompt(filler("question four"));
+    expect(significant(s.events).slice(-1)).toEqual([
+      "compaction_end threshold result=yes aborted=false willRetry=false",
+    ]);
+
+    // The prune record names both halves of the pair.
+    const entries = transcriptEntries(s.file);
+    const prune = entries.find(
+      (e) => e.type === "custom" && e.customType === "bitterbot.offload-prune",
+    ) as { data: { stubs: Array<{ kind: string; role?: string }> } } | undefined;
+    const recorded = (prune?.data.stubs ?? []).filter((stub) => stub.kind === "heartbeat_pair");
+    expect(recorded.map((stub) => stub.role)).toEqual(["user", "assistant"]);
+    // The transcript still has the heartbeat turn.
+    expect(JSON.stringify(entries)).toContain(HEARTBEAT);
+
+    await s.prompt("question five");
+    const next = script.calls.at(-1)!;
+    expect(next.messages.some((m) => m.includes(HEARTBEAT))).toBe(false);
+    expect(next.messages.some((m) => m.includes("HEARTBEAT_OK"))).toBe(false);
+    // The real turns around it are still there, in order.
+    expect(next.messages.some((m) => m.startsWith("user: question four"))).toBe(true);
+    expect(next.messages.at(-1)).toBe("user: question five");
+  });
+
   it("turn end over the trigger: horizon cut with a ledger and a cheap summary", async () => {
     const script = new ScriptedModel(
       [

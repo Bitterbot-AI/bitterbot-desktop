@@ -31,6 +31,7 @@ import { isSubagentSessionKey } from "../../routing/session-key.js";
 import { isCronSessionKey } from "../../sessions/session-key-utils.js";
 import { resolveAgentConfig } from "../agent-scope.js";
 import { markToolDeferLoading, registerDeferralPlan } from "../providers/anthropic/tool-search.js";
+import { resolveAgentCompaction } from "../runtime/compaction/agent-config.js";
 import { normalizeToolName } from "../tool-policy.js";
 import type { AnyAgentTool } from "./common.js";
 import { createListToolsTool, createUseToolTool } from "./tool-dispatcher-tool.js";
@@ -144,9 +145,8 @@ export function resolveHotSetConfig(params: {
   // respected as written. Static per agent on purpose: promoting per session
   // would change the tools array, which invalidates the whole cache prefix.
   // The heartbeat lane stays lean; `deep_recall` stays deferred (notes name it).
-  const compaction = params.config?.agents?.defaults?.compaction;
-  const recallHot =
-    compaction?.policy === "offload" || compaction?.offload?.toolOutputStubs !== false;
+  const compaction = resolveAgentCompaction(params.config, params.agentId);
+  const recallHot = compaction.policy === "offload" || compaction.offload.toolOutputStubs !== false;
   const perLane = {} as Record<ToolHotSetLane, string[]>;
   for (const lane of ["chat", "heartbeat", "cron", "subagent"] as const) {
     const explicit = cleanNames(agent?.perLane?.[lane]) ?? cleanNames(global?.perLane?.[lane]);

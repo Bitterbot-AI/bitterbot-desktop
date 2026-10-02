@@ -36,6 +36,7 @@ import type {
 import { DEFAULT_RLM_CONFIG, DEFAULT_RLM_CONTINUITY } from "../rlm/types.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
+import { checkRecallBudget } from "./deep-recall-budget.js";
 
 // ---------------------------------------------------------------------------
 // Session-persistent sandboxes (state survives across deep_recall calls)
@@ -492,6 +493,15 @@ export function createDeepRecallTool(options: {
           }
         } catch {
           // Continue to RLM
+        }
+      }
+
+      // The paid path starts here. Recall over the current conversation has a
+      // daily budget (compaction.offload.recallBudgetUsdPerDay).
+      if (scope === "current_session") {
+        const budget = checkRecallBudget({ cfg, agentId });
+        if (budget.exhausted) {
+          return jsonResult({ source: "budget", note: budget.notice });
         }
       }
 

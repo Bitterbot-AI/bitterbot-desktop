@@ -32,6 +32,11 @@ export type AgentConfig = {
   humanDelay?: HumanDelayConfig;
   /** Optional per-agent heartbeat overrides. */
   heartbeat?: AgentDefaultsConfig["heartbeat"];
+  /**
+   * Per-agent compaction policy and offload settings, layered field-wise over
+   * `agents.defaults.compaction`. The other compaction keys stay global.
+   */
+  compaction?: Pick<NonNullable<AgentDefaultsConfig["compaction"]>, "policy" | "offload">;
   identity?: IdentityConfig;
   groupChat?: GroupChatConfig;
   subagents?: {

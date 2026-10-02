@@ -59,6 +59,8 @@ export type ContractOptions = {
   offload?: {
     settings?: Partial<OffloadPolicySettings>;
     summaryMode?: "off" | "idle" | "always";
+    /** Prompts that count as a heartbeat (for heartbeat-pair elision). */
+    heartbeatPrompts?: string[];
   };
 };
 

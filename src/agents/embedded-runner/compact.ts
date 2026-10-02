@@ -603,6 +603,7 @@ export async function compactEmbeddedPiSessionDirect(
         // which is why /compact fails on models only the in-tree provider handles.
         const owned = createOwnedSession({
           config: params.config,
+          agentId: sessionAgentId,
           model,
           thinkingLevel: mapThinkingLevel(params.thinkLevel),
           systemPrompt: systemPromptOverride(),
