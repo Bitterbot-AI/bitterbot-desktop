@@ -1,15 +1,16 @@
 # Known limitations
 
-The precise limits of what this software guarantees, stated plainly. If a
-limitation here surprises you after install, that's a bug in this file —
+The places where this software does less than it appears to, stated plainly.
+If a limitation here surprises you after install, that's a bug in this file:
 open an issue.
 
 ## Circles (agent group messaging)
 
-- **No channel-key rotation on membership change.** Removing a member is
-  node-local: a removed member who kept the old roster material can still
-  read future circle traffic. Treat removal as "stop sending", not
-  revocation, until key rotation ships.
+- **Removing a member does not fully cut them off.** Removal is node-local.
+  Your node rotates its own sender key when you remove someone, so they can no
+  longer read what you send. They can still read what other members send until
+  each of those members applies the removal too, and nothing forces them to.
+  Treat removal as "stop sending", not revocation.
 - Circle membership and consent state are per-node views converged over
   gossip; brief inconsistencies between nodes during propagation are
   expected.
@@ -17,33 +18,85 @@ open an issue.
 ## Wallet, x402, and the skills marketplace
 
 - **Experimental, real money.** The wallet holds real USDC on Base; x402
-  makes real micropayments. Spend caps are enforced by the wallet service
-  (per-tx / daily / per-session), but the layer as a whole has not had a
-  third-party audit. Start on testnet, fund with amounts you can lose. Full
-  disclaimer in [ATTRIBUTION.md](ATTRIBUTION.md).
+  makes real micropayments. The layer as a whole has not had a third-party
+  audit. Start on testnet, fund with amounts you can lose. Full disclaimer in
+  [ATTRIBUTION.md](ATTRIBUTION.md).
+- **Caps, not approvals.** Spend caps are enforced by the wallet service
+  (per transaction, per day, per session), and only owner senders get the
+  tools that move money. Inside the caps the agent pays without asking: there
+  is no per-payment approval step. Keep the caps low.
 - The wallet is disabled by default and never enabled without an explicit
   opt-in.
+- **The marketplace is early.** It is off by default, few nodes have it
+  enabled, and it has not carried meaningful paid volume. Bounties are off by
+  default.
+
+## Memory and identity
+
+- **Your prompts go where your model is.** Memory lives on your disk. With a
+  cloud model provider, each prompt (including the memories recalled into it)
+  is sent to that provider. Only a local model keeps it on the machine.
+- **Memory governance is not active.** The code for sensitivity tagging,
+  per-memory TTL and access audit exists, but nothing calls it: every memory
+  is treated the same. You can turn memory off, and you can read or delete
+  the files, but there is no per-memory delete or export command yet.
+- **Changing the embedding provider, model or API key rebuilds the index.**
+  Memories that come from files are re-embedded. Extracted facts, dream
+  insights and notes are carried over as stored, not re-embedded with the new
+  model.
+- The bundled local embedding model (used when no remote key is set) is
+  smaller than remote embedding models; recall quality is somewhat lower.
+- **The Genome guard covers tool calls.** The agent's tools cannot leave
+  `GENOME.md` changed. A process the agent left running in the background
+  that writes the file after its tool call returned is not caught. An edit
+  you save in an external editor while a tool call is in flight is rolled
+  back with it (your version is kept under `~/.bitterbot/genome-guard/`);
+  save through the Control UI, or while the agent is idle.
+- Several dream modes are off until a node has enough data to feed them, and
+  the mode that explores curiosity targets on its own is opt-in. See the
+  table in the [README](README.md#the-dream-engine).
+
+## Execution and isolation
+
+- **The sandbox is off by default.** Tools run on the host with your user's
+  permissions unless you turn on `agents.defaults.sandbox`. The code
+  interpreter's Python runs as the host `python3`.
+- **Owner-only tools are a filter, not a boundary.** The browser, code,
+  wallet and gateway tools are withheld from senders who are not owners, but
+  `exec` is not: a sender you allow who can make the agent run shell commands
+  on the host can reach whatever your user account can. Sandbox senders you
+  do not fully trust.
+- The browser tool drives a real Chromium profile that all agents on the node
+  share.
+- The sandbox browser image (`Dockerfile.sandbox-browser`) does not build
+  from this repository: its entrypoint script is missing.
+- `agents.defaults.compaction.mode: "safeguard"` and
+  `agents.defaults.contextPruning` are accepted by the config and have no
+  effect.
+
+## Automations
+
+- **A failed scheduled job does not tell you.** The failure is recorded in the
+  job's run history and the log (and sent to the webhook if you set one), but
+  nothing is sent to your chat.
+- Scheduled jobs and dream cycles only run while the gateway is running. A
+  one-shot job whose time passed in the meantime runs late, after the next
+  start, if it is at most 7 days late; older ones stay unrun. A one-shot that
+  was interrupted mid-run by a restart is not run again.
 
 ## Orchestrator (P2P binary)
 
 - **Release signing is in rollout.** The fetcher already verifies a
   minisign signature over release checksums when one is present, and
-  refuses a bad signature — but until the first signed release lands, the
+  refuses a bad signature. Until the first signed release lands, the
   published binaries are integrity-checked by SHA-256 only. Building from
   source (`cargo build --release --manifest-path orchestrator/Cargo.toml`)
   sidesteps the question entirely.
 
-## Memory
-
-- The bundled local embedding model (used when no remote key is set) is
-  smaller than remote embedding models; recall quality is somewhat lower.
-  Adding a remote key upgrades new embeddings but does not re-embed old
-  memories automatically.
-
 ## Platform
 
 - **Windows means WSL2.** Native Windows is not a supported gateway host.
-  Keep the checkout on the Linux filesystem (`~`), not `/mnt/c` — the 9p
+  Keep the checkout on the Linux filesystem (`~`), not `/mnt/c`: the 9p
   mount makes boots dramatically slower (measured 43x on one machine).
 - The Tauri desktop shell is experimental and not part of this release;
   the supported UI is the Control UI served by the gateway.
