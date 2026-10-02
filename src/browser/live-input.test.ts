@@ -144,10 +144,8 @@ describe("live view input", () => {
     ];
     const methods = new Set(samples.map((s) => toCdpInput(s, viewport)?.method));
 
-    expect([...methods].toSorted()).toEqual([
-      "Input.dispatchKeyEvent",
-      "Input.dispatchMouseEvent",
-      "Input.insertText",
-    ]);
+    expect(methods).toEqual(
+      new Set(["Input.dispatchKeyEvent", "Input.dispatchMouseEvent", "Input.insertText"]),
+    );
   });
 });
