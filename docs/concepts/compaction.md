@@ -105,6 +105,8 @@ When a single turn's tool loop passes 80% of the context window, Bitterbot first
 - `summary` (default): an LLM summary of the history before a token-based cut point replaces that history.
 - `offload`: a horizon cut at a user-turn boundary. The replaced history becomes a ledger: what range was moved out, where it is in the transcript (entry ids and JSONL lines), the user's threads, and how to reach it ([`recall_range`](/tools/recall-range), `deep_recall`), followed by a short cheap-model summary. When there is no boundary to cut at (one long turn), old tool outputs are stubbed instead. `/compact` still produces an LLM summary.
 
+After an offload, each new user message is searched against the offloaded dialogue and up to three matching excerpts are placed in front of it automatically (`compaction.offload.proactiveRecall`), so the model does not have to decide to look. Tool outputs are not included; `recall_range` returns those on request.
+
 The offload policy runs on the `bitterbot` runtime engine (`agents.defaults.runtime.engine`). It triggers after a turn when the prompt exceeds 55% of the context window and before a turn at 70%; the summary policy triggers when less than the reserve is left.
 
 ## Progressive compression (pre-compaction)
