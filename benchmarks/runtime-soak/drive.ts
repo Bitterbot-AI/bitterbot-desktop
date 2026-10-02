@@ -223,7 +223,7 @@ function transcriptCounts(file: string | undefined) {
       };
       if (entry.type === "compaction") {
         counts.compactions += 1;
-        if (entry.details) {
+        if ((entry.details as { policy?: string } | undefined)?.policy === "offload") {
           counts.offloadCompactions += 1;
         }
       } else if (entry.type === "custom" && entry.customType === "bitterbot.offload-prune") {

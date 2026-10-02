@@ -73,7 +73,7 @@ Session (`session/session.ts`, tests in `session/session.test.ts`):
 
 Compaction is a policy (`compaction/policy.ts`): `summary` is the port of pi's LLM summary (`compaction/summary/`, checked against pi by `summary.differential.test.ts`); `offload` is the PLAN-52A horizon cut (`compaction/offload-compaction.ts`).
 
-`src/agents/embedded-runner.engine.test.ts` runs the full runner (`runEmbeddedPiAgent` and the explicit compaction path) on both engines and requires the same replies, model inputs, and transcript.
+`src/agents/embedded-runner.engine.test.ts` runs the full runner (`runEmbeddedPiAgent` and the explicit compaction path) on both engines and requires the same replies, model inputs, and transcript. `src/agents/embedded-runner.engine-hooks.test.ts` registers every agent plugin hook (`before_agent_start`, `llm_input`, `llm_output`, `before_tool_call`, `after_tool_call`, `tool_result_persist`, `before_compaction`, `after_compaction`, `agent_end`) and requires the same hooks, in the same order and with the same payloads, on both engines for a tool turn, an explicit compaction and a threshold compaction. The hook call sites are shared code; what differs per engine is the event stream that drives them.
 
 ## Transcript differential test
 
