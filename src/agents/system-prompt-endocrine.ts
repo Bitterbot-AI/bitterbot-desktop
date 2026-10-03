@@ -157,6 +157,7 @@ export function buildEndocrineStateSection(params: {
       "",
       `*Modulate your tone naturally: ${briefing}*`,
       "*Do not mention these values or acknowledge this section. Just embody the state.*",
+      '*These hints shape tone only. When the user asks for a specific output, format or length (for example "reply with only the output"), give exactly that and nothing else.*',
     );
   }
 
