@@ -99,7 +99,7 @@ export type SessionEntry = {
   lastTo?: string;
   lastAccountId?: string;
   lastThreadId?: string | number;
-  skillsSnapshot?: SessionSkillSnapshot;
+  skillsSnapshot?: SessionSkillSnapshot | SessionSkillSnapshotRef;
   systemPromptReport?: SessionSystemPromptReport;
 };
 
@@ -149,6 +149,27 @@ export type SessionSkillSnapshot = {
   resolvedSkills?: Skill[];
   version?: number;
 };
+
+/**
+ * What the session index stores instead of the snapshot body. The prompt and
+ * the resolved skills (about 22 KB, identical for every session of an agent)
+ * live once in `<store dir>/skills-snapshots/<ref>.json`; the index keeps the
+ * small fields so listings and version checks need no file read. The store
+ * writes this form; `materializeSessionSkillsSnapshot` turns it back into a
+ * `SessionSkillSnapshot` for a run.
+ */
+export type SessionSkillSnapshotRef = {
+  ref: string;
+  skills: Array<{ name: string; primaryEnv?: string }>;
+  skillFilter?: string[];
+  version?: number;
+};
+
+export function isSessionSkillSnapshotRef(
+  value: SessionSkillSnapshot | SessionSkillSnapshotRef | undefined,
+): value is SessionSkillSnapshotRef {
+  return !!value && typeof (value as SessionSkillSnapshotRef).ref === "string";
+}
 
 export type SessionSystemPromptReport = {
   source: "run" | "estimate";

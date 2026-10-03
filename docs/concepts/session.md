@@ -68,6 +68,7 @@ All session state is **owned by the gateway** (the “master” Bitterbot). UI c
 - The store is a map `sessionKey -> { sessionId, updatedAt, ... }`. Deleting entries is safe; they are recreated on demand.
 - Group entries may include `displayName`, `channel`, `subject`, `room`, and `space` to label sessions in UIs.
 - Session entries include `origin` metadata (label + routing hints) so UIs can explain where a session came from.
+- Each entry pins the skills it was started with as `skillsSnapshot`. The body of that snapshot (the skills prompt and the resolved skill records, about 22 KB and identical across an agent's sessions) is stored once per distinct content in `.../sessions/skills-snapshots/<ref>.json`; the entry keeps `{ ref, skills, version }`. Unreferenced bodies are removed when the store is saved. An index written by an older version (bodies inline) still loads and is converted on its next save.
 - Bitterbot does **not** read legacy Pi/Tau session folders.
 
 ## Session pruning

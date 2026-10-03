@@ -42,6 +42,7 @@ import { formatCliCommand } from "../cli/command-format.js";
 import { type CliDeps, createDefaultDeps } from "../cli/deps.js";
 import { loadConfig } from "../config/config.js";
 import {
+  materializeSessionSkillsSnapshot,
   resolveAgentIdFromSessionKey,
   resolveSessionFilePath,
   type SessionEntry,
@@ -356,11 +357,17 @@ export async function agentCommand(
     }
 
     const skillsSnapshotVersion = getSkillsSnapshotVersion(workspaceDir);
-    const cachedSnapshotVersion = sessionEntry?.skillsSnapshot?.version ?? -1;
+    // The stored entry holds a ref to the snapshot body; join it here. A ref
+    // whose body is gone counts as no snapshot and is rebuilt.
+    const storedSnapshot = materializeSessionSkillsSnapshot(
+      storePath,
+      sessionEntry?.skillsSnapshot,
+    );
+    const cachedSnapshotVersion = storedSnapshot?.version ?? -1;
     const snapshotIsStale = cachedSnapshotVersion < skillsSnapshotVersion;
-    const needsSkillsSnapshot = isNewSession || !sessionEntry?.skillsSnapshot || snapshotIsStale;
+    const needsSkillsSnapshot = isNewSession || !storedSnapshot || snapshotIsStale;
     const skillFilter = resolveAgentSkillsFilter(cfg, sessionAgentId);
-    const previousSnapshot = sessionEntry?.skillsSnapshot;
+    const previousSnapshot = storedSnapshot;
     // PLAN-29 Phase 0.3: same load-time capability gate as the reply runner
     // (session-updates.ts) so the CLI agent path can't load P2P skills the
     // chat path would have blocked. Null runtime degrades to ungated.
@@ -380,7 +387,7 @@ export async function agentCommand(
           skillFilter,
           capabilityGate: cliCapabilityGate,
         })
-      : sessionEntry?.skillsSnapshot;
+      : storedSnapshot;
 
     // Hot-toggle awareness: if we rebuilt mid-session because the user (or
     // marketplace) changed skills, surface the diff to the agent so its next

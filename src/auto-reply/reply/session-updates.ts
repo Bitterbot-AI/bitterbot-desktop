@@ -5,7 +5,12 @@ import type { CapabilityGateContext } from "../../agents/skills/capability-gate.
 import { createCapabilityRuntimeFromMemory } from "../../agents/skills/capability-runtime.js";
 import { ensureSkillsWatcher, getSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
 import type { BitterbotConfig } from "../../config/config.js";
-import { type SessionEntry, updateSessionStore } from "../../config/sessions.js";
+import {
+  materializeSessionSkillsSnapshot,
+  type SessionEntry,
+  type SessionSkillSnapshot,
+  updateSessionStore,
+} from "../../config/sessions.js";
 import { buildChannelSummary } from "../../infra/channel-summary.js";
 import {
   resolveTimezone,
@@ -154,7 +159,8 @@ export async function ensureSkillSnapshot(params: {
   agentId?: string;
 }): Promise<{
   sessionEntry?: SessionEntry;
-  skillsSnapshot?: SessionEntry["skillsSnapshot"];
+  /** The full snapshot for this run (a stored ref is joined with its body here). */
+  skillsSnapshot?: SessionSkillSnapshot;
   systemSent: boolean;
 }> {
   if (process.env.BITTERBOT_TEST_FAST === "1") {
@@ -162,7 +168,10 @@ export async function ensureSkillSnapshot(params: {
     // Dedicated skills tests cover snapshot generation behavior.
     return {
       sessionEntry: params.sessionEntry,
-      skillsSnapshot: params.sessionEntry?.skillsSnapshot,
+      skillsSnapshot: materializeSessionSkillsSnapshot(
+        params.storePath,
+        params.sessionEntry?.skillsSnapshot,
+      ),
       systemSent: params.sessionEntry?.systemSent ?? false,
     };
   }
@@ -184,16 +193,21 @@ export async function ensureSkillSnapshot(params: {
   const remoteEligibility = getRemoteSkillEligibility();
   const snapshotVersion = getSkillsSnapshotVersion(workspaceDir);
   ensureSkillsWatcher({ workspaceDir, config: cfg });
+  // The entry may hold a ref to a stored body. Resolve it once; a ref whose
+  // body is gone counts as no snapshot, so the session builds a fresh one.
+  const storedSnapshot = materializeSessionSkillsSnapshot(storePath, nextEntry?.skillsSnapshot);
+  if (nextEntry && nextEntry.skillsSnapshot && !storedSnapshot) {
+    nextEntry = { ...nextEntry, skillsSnapshot: undefined };
+  }
   const shouldRefreshSnapshot =
-    snapshotVersion > 0 && (nextEntry?.skillsSnapshot?.version ?? 0) < snapshotVersion;
+    snapshotVersion > 0 && (storedSnapshot?.version ?? 0) < snapshotVersion;
 
   // PLAN-29 Phase 0.3: load-time capability gate for P2P-ingested skills,
   // on by default. Resolved once per call, and only when a snapshot build
   // can actually happen (gate resolution touches the memory manager). A
   // null runtime (cold start, no memory) degrades to ungated — same
   // behavior as before the gate existed.
-  const willBuildSnapshot =
-    isFirstTurnInSession || shouldRefreshSnapshot || !sessionEntry?.skillsSnapshot;
+  const willBuildSnapshot = isFirstTurnInSession || shouldRefreshSnapshot || !storedSnapshot;
   let capabilityGate: CapabilityGateContext | undefined;
   if (willBuildSnapshot && cfg.skills?.p2p?.loadTimeCapabilityGate !== false) {
     const runtime = await createCapabilityRuntimeFromMemory({
@@ -210,7 +224,7 @@ export async function ensureSkillSnapshot(params: {
         updatedAt: Date.now(),
       };
     const skillSnapshot =
-      isFirstTurnInSession || !current.skillsSnapshot || shouldRefreshSnapshot
+      isFirstTurnInSession || !storedSnapshot || shouldRefreshSnapshot
         ? buildWorkspaceSkillSnapshot(workspaceDir, {
             config: cfg,
             skillFilter,
@@ -218,7 +232,7 @@ export async function ensureSkillSnapshot(params: {
             snapshotVersion,
             capabilityGate,
           })
-        : current.skillsSnapshot;
+        : storedSnapshot;
     nextEntry = {
       ...current,
       sessionId: sessionId ?? current.sessionId ?? crypto.randomUUID(),
@@ -235,7 +249,7 @@ export async function ensureSkillSnapshot(params: {
     systemSent = true;
   }
 
-  const skillsSnapshot = shouldRefreshSnapshot
+  const skillsSnapshot: SessionSkillSnapshot | undefined = shouldRefreshSnapshot
     ? buildWorkspaceSkillSnapshot(workspaceDir, {
         config: cfg,
         skillFilter,
@@ -243,7 +257,7 @@ export async function ensureSkillSnapshot(params: {
         snapshotVersion,
         capabilityGate,
       })
-    : (nextEntry?.skillsSnapshot ??
+    : (materializeSessionSkillsSnapshot(storePath, nextEntry?.skillsSnapshot) ??
       (isFirstTurnInSession
         ? undefined
         : buildWorkspaceSkillSnapshot(workspaceDir, {
