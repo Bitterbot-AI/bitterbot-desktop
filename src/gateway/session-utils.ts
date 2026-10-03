@@ -13,6 +13,7 @@ import {
   buildGroupDisplayName,
   canonicalizeMainSessionAlias,
   loadSessionStore,
+  peekSessionStore,
   resolveAgentMainSessionKey,
   resolveFreshSessionTotalTokens,
   resolveMainSessionKey,
@@ -182,16 +183,24 @@ export function deriveSessionTitle(
   return undefined;
 }
 
+/**
+ * Look up one session entry. The lookup runs on the shared cached store and
+ * only the matched entry is copied, so the cost is one entry, not the whole
+ * index (which held hundreds of 30 KB entries on the 2026-10-03 soak node and
+ * was being deep-copied on every agent event). Writers go through
+ * `updateSessionStore`, which takes the lock and its own copy.
+ */
 export function loadSessionEntry(sessionKey: string) {
   const cfg = loadConfig();
   const sessionCfg = cfg.session;
   const canonicalKey = resolveSessionStoreKey({ cfg, sessionKey });
   const agentId = resolveSessionStoreAgentId(cfg, canonicalKey);
   const storePath = resolveStorePath(sessionCfg?.store, { agentId });
-  const store = loadSessionStore(storePath);
+  const store = peekSessionStore(storePath);
   const match = findStoreMatch(store, canonicalKey, sessionKey.trim());
   const legacyKey = match?.key !== canonicalKey ? match?.key : undefined;
-  return { cfg, storePath, store, entry: match?.entry, canonicalKey, legacyKey };
+  const entry = match ? structuredClone(match.entry) : undefined;
+  return { cfg, storePath, entry, canonicalKey, legacyKey };
 }
 
 /**
