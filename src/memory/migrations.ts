@@ -2418,6 +2418,27 @@ const MIGRATIONS: Migration[] = [
       db.exec(`UPDATE peer_reputation SET anomaly_flag = 0 WHERE anomaly_flag = 1`);
     },
   },
+  {
+    version: 70,
+    description:
+      "Maintenance-tick cold scans (2026-10-03 soak): every 30-minute tick ran two full " +
+      "scans of chunks that matched nothing. scorePendingChunks filters on " +
+      "curiosity_reward IS NULL, which the v35 partial index (IS NOT NULL) cannot serve; " +
+      "governance.enforceLifespan filters on governance_json LIKE '%ttl%' and this install " +
+      "has no TTL crystal. On a cold page cache each scan of the 6k-row table cost about " +
+      "5 s of synchronous I/O on the gateway loop (16 ms warm). Partial indexes on exactly " +
+      "those predicates make both queries touch only the matching rows.",
+    up: (db: DatabaseSync) => {
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_curiosity_pending ` +
+          `ON chunks(id) WHERE curiosity_reward IS NULL`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_governance_ttl ` +
+          `ON chunks(id) WHERE governance_json LIKE '%ttl%'`,
+      );
+    },
+  },
 ];
 
 /**

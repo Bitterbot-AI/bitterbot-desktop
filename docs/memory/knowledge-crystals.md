@@ -298,6 +298,8 @@ await orchestratorBridge.publishWeather(0.9, 300_000, "suspicious skill burst fr
 
 The `ConsolidationEngine` (`consolidation.ts`) runs periodically (default: every 30 minutes) and performs 4 phases:
 
+It runs in the gateway process on the event loop with the synchronous SQLite driver, so it loads the live set in batches of 50 rows with a yield between batches, and the two per-tick lookups that usually match nothing (pending GCCRF scores, TTL-governed crystals) are served by partial indexes. Before that (2026-10-03 soak), each tick ran three cold full scans of `chunks`, about 5 seconds of blocked I/O each on a 6,000-crystal store with a small page cache.
+
 ### Phase 1: Score All Chunks (Ebbinghaus Decay)
 
 Every crystal's importance is recalculated from scratch using `calculateImportance()`:
