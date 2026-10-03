@@ -31,7 +31,7 @@ beforeAll(async () => {
   ({ runEmbeddedPiAgent } = await import("./embedded-runner.js"));
   ({ compactEmbeddedPiSessionDirect } = await import("./embedded-runner/compact.js"));
   tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-engine-"));
-}, 120_000);
+}, 300_000);
 
 afterAll(async () => {
   await fs.rm(tempRoot, { recursive: true, force: true });
@@ -152,6 +152,8 @@ describe("embedded runner on both engines", () => {
     return outcome;
   };
 
+  // Per-test timeouts: a cold pi engine run took 79 s on the macOS runner while
+  // the rest of the suite ran in parallel; 120 s was not enough.
   for (const engine of ["pi", "bitterbot"] as const) {
     it(`${engine}: a tool turn and a follow-up turn through runEmbeddedPiAgent`, async () => {
       const outcome = await get(engine, false);
@@ -167,7 +169,7 @@ describe("embedded runner on both engines", () => {
         .filter((entry) => entry.type === "message")
         .map((entry) => entry.message!.role);
       expect(roles).toEqual(["user", "assistant", "toolResult", "assistant", "user", "assistant"]);
-    }, 120_000);
+    }, 300_000);
   }
 
   it("both engines send the model the same thing and write the same transcript", async () => {
@@ -178,7 +180,7 @@ describe("embedded runner on both engines", () => {
     expect(owned.calls.map((c) => c.messages)).toEqual(pi.calls.map((c) => c.messages));
     expect(owned.calls.map((c) => c.system)).toEqual(pi.calls.map((c) => c.system));
     expect(owned.transcript).toEqual(pi.transcript);
-  }, 120_000);
+  }, 300_000);
 
   it("explicit compaction works on both engines and produces the same entry", async () => {
     const pi = await get("pi", true);
@@ -195,5 +197,5 @@ describe("embedded runner on both engines", () => {
     expect(owned.calls.at(-1)!.messages.join("\n")).toContain(
       "Additional focus: keep the note content",
     );
-  }, 180_000);
+  }, 300_000);
 });

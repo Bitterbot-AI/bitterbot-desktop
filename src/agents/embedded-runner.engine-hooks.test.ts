@@ -87,7 +87,7 @@ beforeAll(async () => {
       })),
     ),
   );
-}, 120_000);
+}, 300_000);
 
 afterAll(async () => {
   resetGlobalHookRunner();
@@ -221,6 +221,8 @@ describe("plugin hooks on both engines", () => {
   };
   const names = (list: Fired[]) => list.map((entry) => entry.hook);
 
+  // Per-test timeouts: a cold pi engine run took 79 s on the macOS runner while
+  // the rest of the suite ran in parallel; 120 s was not enough.
   for (const engine of ["pi", "bitterbot"] as const) {
     it(`${engine}: a tool turn fires the agent, model and tool hooks`, async () => {
       const list = await get(engine, toolTurn);
@@ -243,19 +245,19 @@ describe("plugin hooks on both engines", () => {
       expect(after.detail).toMatchObject({ tool: "read", error: null });
       const ends = list.filter((entry) => entry.hook === "agent_end");
       expect(ends.map((entry) => entry.detail.success)).toEqual([true, true]);
-    }, 120_000);
+    }, 300_000);
 
     it(`${engine}: explicit compaction fires before_compaction and after_compaction`, async () => {
       const list = await get(engine, manualCompaction);
       const compaction = list.filter((entry) => entry.hook.endsWith("_compaction"));
       expect(names(compaction)).toEqual(["before_compaction", "after_compaction"]);
-    }, 120_000);
+    }, 300_000);
 
     it(`${engine}: threshold compaction fires before_compaction and after_compaction`, async () => {
       const list = await get(engine, thresholdCompaction);
       const compaction = list.filter((entry) => entry.hook.endsWith("_compaction"));
       expect(names(compaction)).toEqual(["before_compaction", "after_compaction"]);
-    }, 120_000);
+    }, 300_000);
   }
 
   for (const scenario of [toolTurn, manualCompaction, thresholdCompaction]) {
@@ -263,6 +265,6 @@ describe("plugin hooks on both engines", () => {
       const pi = await get("pi", scenario);
       const owned = await get("bitterbot", scenario);
       expect(owned).toEqual(pi);
-    }, 180_000);
+    }, 300_000);
   }
 });
