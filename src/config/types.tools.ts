@@ -435,8 +435,8 @@ export type ToolsConfig = {
     search?: {
       /** Enable web search tool (default: true when API key is present). */
       enabled?: boolean;
-      /** Search provider ("brave", "perplexity", "grok", or "tavily"). */
-      provider?: "brave" | "perplexity" | "grok" | "tavily";
+      /** Search provider ("brave", "perplexity", "grok", "tavily", or "parallel"). */
+      provider?: "brave" | "perplexity" | "grok" | "tavily" | "parallel";
       /** Brave Search API key (optional; defaults to BRAVE_API_KEY env var). */
       apiKey?: string;
       /** Default search results count (1-10). */

@@ -419,7 +419,7 @@ export async function finalizeOnboardingWizard(
             ?.apiKey;
     const webSearchKey = (typeof configKey === "string" ? configKey : "").trim();
     const webSearchEnv = (process.env[envVar] ?? "").trim();
-    const hasWebSearchKey = Boolean(webSearchKey || webSearchEnv);
+    const hasWebSearchKey = searchProvider === "parallel" || Boolean(webSearchKey || webSearchEnv);
     if (!hasWebSearchKey) {
       await prompter.note(
         [

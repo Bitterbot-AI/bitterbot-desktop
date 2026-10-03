@@ -61,4 +61,23 @@ describe("setupWebSearchForOnboarding (PLAN-41 D-M)", () => {
       ?.tavily;
     expect(tavily?.apiKey).toBe("tvly-abc");
   });
+  it("advanced Parallel selection enables keyless search without a key prompt", async () => {
+    clearEnv();
+    const p = prompter("parallel");
+    const out = await setupWebSearchForOnboarding({ config: {}, flow: "advanced", prompter: p });
+    expect(out.tools?.web?.search).toEqual({ provider: "parallel", enabled: true });
+    expect((p as { text: ReturnType<typeof vi.fn> }).text).not.toHaveBeenCalled();
+  });
+  it("preserves a saved Parallel selection even when incumbent keys are present", async () => {
+    clearEnv();
+    process.env.BRAVE_API_KEY = "test-existing";
+    const config = {
+      tools: { web: { search: { provider: "parallel" as const, enabled: false } } },
+    };
+    const p = prompter();
+    expect(await setupWebSearchForOnboarding({ config, flow: "quickstart", prompter: p })).toEqual(
+      config,
+    );
+    expect((p as { select: ReturnType<typeof vi.fn> }).select).not.toHaveBeenCalled();
+  });
 });

@@ -18,12 +18,18 @@ import type { BitterbotConfig } from "../config/config.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily";
+type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel";
 
 const PROVIDERS: Record<
   SearchProvider,
   { label: string; hint: string; envVar: string; keyPlaceholder: string }
 > = {
+  parallel: {
+    label: "Parallel Search MCP",
+    hint: "Free, keyless web search",
+    envVar: "",
+    keyPlaceholder: "",
+  },
   brave: {
     label: "Brave Search",
     hint: "Free tier available — https://brave.com/search/api/",
@@ -83,6 +89,11 @@ export async function setupWebSearchForOnboarding(params: {
 }): Promise<BitterbotConfig> {
   const { config, flow, prompter } = params;
 
+  if (config.tools?.web?.search?.provider === "parallel") {
+    await prompter.note("Parallel Search MCP is configured. No API key is needed.", "Web search");
+    return config;
+  }
+
   // ── Check for existing key ──
   const existing = detectExistingKey(config);
 
@@ -123,7 +134,7 @@ export async function setupWebSearchForOnboarding(params: {
       "`web_search` tool silently fails and the agent can't learn from the web.",
       "",
       "Supported: Brave Search (free tier), Tavily (built for AI agents),",
-      "Perplexity (Sonar API), Grok (xAI). Pick one and paste your API key.",
+      "Perplexity (Sonar API), Grok (xAI), or Parallel (free, keyless).",
       "",
       "You can also set the key as an env var and skip this step:",
       "  BRAVE_API_KEY, TAVILY_API_KEY, PERPLEXITY_API_KEY, or XAI_API_KEY",
@@ -162,6 +173,23 @@ export async function setupWebSearchForOnboarding(params: {
   })) as SearchProvider;
 
   const meta = PROVIDERS[provider];
+
+  if (provider === "parallel") {
+    await prompter.note(
+      "Parallel Search MCP configured. No API key is needed.",
+      "Web search ready",
+    );
+    return {
+      ...config,
+      tools: {
+        ...config.tools,
+        web: {
+          ...config.tools?.web,
+          search: { ...config.tools?.web?.search, provider, enabled: true },
+        },
+      },
+    };
+  }
 
   // ── Paste key ──
   const keyInput = await prompter.text({
