@@ -27,6 +27,7 @@ import type { NodeHostConfig } from "./types.node-host.js";
 import type { P2pConfig } from "./types.p2p.js";
 import type { PaymentsConfig } from "./types.payments.js";
 import type { PluginsConfig } from "./types.plugins.js";
+import type { ReviewConfig } from "./types.review.js";
 import type { SkillsConfig } from "./types.skills.js";
 import type { ToolsConfig } from "./types.tools.js";
 import type { UsageConfig } from "./types.usage.js";
@@ -175,6 +176,8 @@ export type BitterbotConfig = {
   a2a?: A2aConfig;
   /** PLAN-49: fiat bridge / bank connectors (Phase 1: dollar-denominated UI). */
   payments?: PaymentsConfig;
+  /** PLAN-53 Track B: which agent actions wait for the owner's approval. */
+  review?: ReviewConfig;
   commerce?: CommerceConfig;
   /** PLAN-31: Circles, the agent social fabric. ON by default since the 2026-07-09 red-team phase (§8). */
   circles?: CirclesConfig;

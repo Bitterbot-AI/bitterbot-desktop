@@ -58,8 +58,10 @@ The wallet has layered safety limits:
 | Per-transaction cap  | $25     | Maximum per single transaction         |
 | x402 per-request cap | $1      | Maximum for automatic paywall payments |
 
-Amounts above these limits are refused; the limits are not an approval prompt. Inside the
-limits the agent pays without asking, so set them to amounts you can lose.
+Amounts above these limits are refused. Inside the limits, every send and x402 payment still
+waits for your approval unless a standing spend grant covers it: see
+[Action review](/tools/action-review). Set `review.spend: "allow"` to go back to caps only, and
+then set the caps to amounts you can lose.
 
 The `wallet` and `a2a_client` tools are **owner-only**, like the tools that run code or drive the
 browser. They are offered to the agent only on turns you start yourself: the Control UI, the CLI,

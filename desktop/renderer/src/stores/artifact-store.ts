@@ -11,7 +11,7 @@ export interface Artifact {
   updatedAt: number;
 }
 
-export type RightPanelMode = "tools" | "browser" | "artifact" | "tasks" | "files";
+export type RightPanelMode = "tools" | "browser" | "artifact" | "tasks" | "files" | "activity";
 
 interface ArtifactState {
   /** All known artifacts keyed by id */

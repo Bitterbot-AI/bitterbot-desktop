@@ -70,3 +70,28 @@ describe("tool output RPC scope gating", () => {
     expect(denied?.message).toContain("operator.admin");
   });
 });
+
+describe("review RPC scope gating", () => {
+  // Deciding what the agent may spend or publish is an approvals power.
+  const REVIEW_METHODS = ["review.list", "review.get", "review.resolve"];
+
+  it("is registered and advertised", () => {
+    for (const method of REVIEW_METHODS) {
+      expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
+      expect(listGatewayMethods()).toContain(method);
+    }
+  });
+
+  it.each(REVIEW_METHODS)("%s is allowed with operator.approvals or admin", (method) => {
+    expect(authorizeGatewayMethod(method, operatorWith(["operator.approvals"]))).toBeNull();
+    expect(authorizeGatewayMethod(method, operatorWith(["operator.admin"]))).toBeNull();
+  });
+
+  it.each(REVIEW_METHODS)("%s is refused with read and write scope only", (method) => {
+    const denied = authorizeGatewayMethod(
+      method,
+      operatorWith(["operator.read", "operator.write"]),
+    );
+    expect(denied?.message).toContain("operator.approvals");
+  });
+});

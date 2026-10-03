@@ -18,6 +18,7 @@ import { UsageStatusStrip } from "../usage/UsageStatusStrip";
 import { ChatInput } from "./ChatInput";
 import { MessageList } from "./MessageList";
 import { ModelPicker } from "./ModelPicker";
+import { ReviewRequests } from "./ReviewRequests";
 import { SessionSelector } from "./SessionSelector";
 
 const ARTIFACT_TOOL_NAMES = new Set(["create_artifact", "create-artifact"]);
@@ -406,6 +407,7 @@ export function ChatView() {
       </div>
 
       {/* Messages */}
+      <ReviewRequests />
       <MessageList />
 
       {/* Input */}

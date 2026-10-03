@@ -102,6 +102,11 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.nodes.browser.mode":
     'Node browser routing ("auto" = pick single connected browser node, "manual" = require node param, "off" = disable).',
   "gateway.nodes.browser.node": "Pin browser routing to a specific node id or name (optional).",
+  "review.spend":
+    'Money leaving the wallet (send_usdc, send_to_peer, x402). "ask" (default) holds the call until you approve it in the Control UI or with /approve; a standing spend grant covering the payee and amount passes without asking. "allow" keeps only the wallet caps.',
+  "review.publish":
+    'Public posts on the X channel. "ask" (default) holds the post for your approval; "allow" posts straight away.',
+  "review.ttlHours": "How long a held action waits for a decision before it expires (default: 24).",
   "browser.liveView.enabled":
     "Stream the agent's browser to the Control UI's computer pane while it is open (default: true). Set false to turn the stream off.",
   "browser.liveView.maxFps":

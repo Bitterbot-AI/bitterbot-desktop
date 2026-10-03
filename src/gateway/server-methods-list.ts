@@ -132,6 +132,9 @@ const BASE_METHODS = [
   "browser.live.input",
   "tools.output.subscribe",
   "tools.output.unsubscribe",
+  "review.list",
+  "review.get",
+  "review.resolve",
   // WebChat WebSocket-native chat methods
   "chat.history",
   "chat.abort",
@@ -259,4 +262,7 @@ export const GATEWAY_EVENTS = [
   // that hold a lease from browser.live.start.
   "browser.frame",
   "browser.live",
+  // PLAN-53 Track B: an action is waiting for the owner / was decided.
+  "review.requested",
+  "review.resolved",
 ];

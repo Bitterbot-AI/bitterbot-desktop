@@ -1,4 +1,5 @@
 import {
+  Activity,
   X,
   ChevronLeft,
   ChevronRight,
@@ -20,9 +21,11 @@ import { cn } from "../../lib/utils";
 import { useArtifactStore, type RightPanelMode } from "../../stores/artifact-store";
 import { useChatStore, type ActiveToolCall } from "../../stores/chat-store";
 import { useCoworkStore } from "../../stores/cowork-store";
+import { useReviewStore } from "../../stores/review-store";
 import { useUIStore } from "../../stores/ui-store";
 import { CoworkPanel } from "../cowork/CoworkPanel";
 import { WorkspaceFilesPanel } from "../workspace/WorkspaceFilesPanel";
+import { ActivityPanel } from "./ActivityPanel";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { BrowserLiveView } from "./BrowserLiveView";
 import {
@@ -149,6 +152,7 @@ export function ToolCallPanel() {
   const setPanelMode = useArtifactStore((s) => s.setPanelMode);
   const hasArtifacts = useArtifactStore((s) => s.artifacts.size > 0);
   const hasTasks = useCoworkStore((s) => s.tasks.size > 0);
+  const pendingReviews = useReviewStore((s) => s.pending.length);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [navMode, setNavMode] = useState<NavigationMode>("live");
   const prevLengthRef = useRef(0);
@@ -266,6 +270,12 @@ export function ToolCallPanel() {
               label="Files"
               onClick={() => setPanelMode("files")}
             />
+            <TabButton
+              active={panelMode === "activity"}
+              icon={<Activity className="w-3.5 h-3.5" />}
+              label={pendingReviews > 0 ? `Activity (${pendingReviews})` : "Activity"}
+              onClick={() => setPanelMode("activity")}
+            />
           </div>
 
           <div className="flex items-center gap-2">
@@ -293,6 +303,8 @@ export function ToolCallPanel() {
         <CoworkPanel />
       ) : panelMode === "files" ? (
         <WorkspaceFilesPanel />
+      ) : panelMode === "activity" ? (
+        <ActivityPanel />
       ) : (
         <>
           {/* Tool call content */}

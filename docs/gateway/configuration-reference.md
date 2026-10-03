@@ -1954,6 +1954,23 @@ See [Plugins](/tools/plugin).
 
 ---
 
+## Review
+
+```json5
+{
+  review: {
+    spend: "ask", // "ask" (default) | "allow"
+    publish: "ask", // "ask" (default) | "allow"
+    ttlHours: 24,
+  },
+}
+```
+
+- `spend: "ask"` holds wallet sends and x402 payments until you approve them; a standing spend grant that covers the payee and amount passes without asking. `"allow"` keeps only the wallet caps.
+- `publish: "ask"` holds posts to the X channel. See [Action review](/tools/action-review).
+
+---
+
 ## Browser
 
 ```json5

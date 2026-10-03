@@ -809,6 +809,7 @@
                 "group": "More tools",
                 "pages": [
                   "tools/creating-skills",
+                  "tools/action-review",
                   "tools/exec-approvals",
                   "tools/bash-command-sanitizer",
                   "tools/firecrawl",
