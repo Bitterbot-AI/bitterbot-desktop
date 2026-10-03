@@ -96,7 +96,9 @@ below in one step.
 
 ## Everything else is opt-in
 
-Web search (Brave/Tavily/Perplexity/xAI), Skill Seekers ingestion
+Web search (Brave/Tavily/Perplexity/xAI with your key; Parallel Search MCP at
+`search.parallel.ai` keyless and anonymous, so each query reaches Parallel with
+only a Bitterbot User-Agent), Skill Seekers ingestion
 (`skills.skillSeekers.enabled`, default off), channels (WhatsApp, Telegram,
 …), the wallet/x402 layer, and agent-to-agent HTTP (`a2a.enabled`, default
 off) all require you to configure or enable them explicitly, and each has
