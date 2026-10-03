@@ -274,6 +274,21 @@ describe("control UI helpers", () => {
     expect(candidates.some((c) => c.endsWith(path.join("dist", "control-ui")))).toBe(true);
   });
 
+  it("finds dist/control-ui next to the bundle whatever the process cwd is", () => {
+    // Live finding 2026-10-03: the gateway runs as the single-file bundle
+    // dist/entry.js, so the module directory IS dist/. Started from an unrelated
+    // cwd, the only candidates were <repo>/control-ui and <cwd>/dist/control-ui,
+    // both missing, and the Control UI answered 404 for a day while the
+    // WebSocket API kept working.
+    const candidates = controlUiRootCandidates({
+      env: {},
+      moduleDir: "/repo/dist",
+      cwd: "/somewhere/else",
+      execPath: "/usr/bin/node",
+    });
+    expect(candidates[0]).toBe(path.resolve("/repo/dist", "control-ui"));
+  });
+
   it("notices a UI staged after the first miss", async () => {
     // Regression, found by live testing: a negative result was cached for the
     // process lifetime, so a UI staged after boot (which is exactly what
