@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import {
   clearSessionStoreCacheForTest,
   loadSessionStore,
+  peekSessionStore,
   type SessionEntry,
   saveSessionStore,
 } from "./sessions.js";
@@ -216,5 +217,47 @@ describe("Session Store Cache", () => {
     // Should return empty store
     const loaded = loadSessionStore(storePath);
     expect(loaded).toEqual({});
+  });
+
+  describe("peekSessionStore (read-only, no copy)", () => {
+    it("returns the cached object itself on a hit and a fresh copy from loadSessionStore", async () => {
+      await saveSessionStore(storePath, {
+        "agent:a:one": { sessionId: "id-1", updatedAt: 1 },
+        "agent:a:two": { sessionId: "id-2", updatedAt: 2 },
+      });
+      const first = peekSessionStore(storePath);
+      const second = peekSessionStore(storePath);
+      // Same object: the hot read path does not pay for a deep copy.
+      expect(second).toBe(first);
+      expect(Object.keys(first)).toEqual(["agent:a:one", "agent:a:two"]);
+      // loadSessionStore still hands out a copy that is safe to mutate.
+      const copy = loadSessionStore(storePath);
+      expect(copy).not.toBe(first);
+      expect(copy).toEqual(first);
+      copy["agent:a:one"]!.updatedAt = 999;
+      expect(peekSessionStore(storePath)["agent:a:one"]!.updatedAt).toBe(1);
+    });
+
+    it("sees a store rewritten on disk (mtime change) without a stale hit", async () => {
+      await saveSessionStore(storePath, { "agent:a:one": { sessionId: "id-1", updatedAt: 1 } });
+      expect(Object.keys(peekSessionStore(storePath))).toEqual(["agent:a:one"]);
+      // Rewrite with a different mtime.
+      await new Promise((r) => setTimeout(r, 20));
+      await saveSessionStore(storePath, {
+        "agent:a:one": { sessionId: "id-1", updatedAt: 1 },
+        "agent:a:three": { sessionId: "id-3", updatedAt: 3 },
+      });
+      fs.utimesSync(storePath, new Date(), new Date(Date.now() + 5_000));
+      expect(Object.keys(peekSessionStore(storePath))).toContain("agent:a:three");
+    });
+
+    it("falls back to a disk load when the cache is disabled", async () => {
+      process.env.BITTERBOT_SESSION_CACHE_TTL_MS = "0";
+      await saveSessionStore(storePath, { "agent:a:one": { sessionId: "id-1", updatedAt: 1 } });
+      const a = peekSessionStore(storePath);
+      const b = peekSessionStore(storePath);
+      expect(a).toEqual(b);
+      expect(a).not.toBe(b);
+    });
   });
 });

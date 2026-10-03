@@ -212,12 +212,39 @@ export function loadSessionStore(
   return structuredClone(store);
 }
 
+/**
+ * The cached store object itself, for read-only lookups.
+ *
+ * `loadSessionStore` returns a deep copy so callers may mutate freely; with
+ * hundreds of sessions that copy is tens of milliseconds of synchronous work,
+ * and the gateway asked for it on every agent event, every health snapshot and
+ * most RPCs (2026-10-03 profile: 35 s of structuredClone in a 7-minute window,
+ * 9.7 MB store). Callers that only read one entry or count keys use this and
+ * copy what they keep. The returned object MUST NOT be mutated.
+ */
+export function peekSessionStore(storePath: string): Readonly<Record<string, SessionEntry>> {
+  if (isSessionStoreCacheEnabled()) {
+    const cached = SESSION_STORE_CACHE.get(storePath);
+    if (
+      cached &&
+      isSessionStoreCacheValid(cached) &&
+      getFileMtimeMs(storePath) === cached.mtimeMs
+    ) {
+      return cached.store;
+    }
+  }
+  // Miss: load from disk (which fills the cache) and hand out the cached object
+  // so the next peek is the same reference; without a cache the copy is ours.
+  const loaded = loadSessionStore(storePath);
+  return SESSION_STORE_CACHE.get(storePath)?.store ?? loaded;
+}
+
 export function readSessionUpdatedAt(params: {
   storePath: string;
   sessionKey: string;
 }): number | undefined {
   try {
-    const store = loadSessionStore(params.storePath);
+    const store = peekSessionStore(params.storePath);
     return store[params.sessionKey]?.updatedAt;
   } catch {
     return undefined;
