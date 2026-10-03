@@ -6,6 +6,7 @@ import {
 } from "../../agents/embedded.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import {
+  materializeSessionSkillsSnapshot,
   resolveFreshSessionTotalTokens,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
@@ -93,7 +94,10 @@ export const handleCompactCommand: CommandHandler = async (params) => {
     ),
     workspaceDir: params.workspaceDir,
     config: params.cfg,
-    skillsSnapshot: params.sessionEntry.skillsSnapshot,
+    skillsSnapshot: materializeSessionSkillsSnapshot(
+      params.storePath,
+      params.sessionEntry.skillsSnapshot,
+    ),
     provider: params.provider,
     model: params.model,
     thinkLevel: params.resolvedThinkLevel ?? (await params.resolveDefaultThinkingLevel()),

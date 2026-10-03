@@ -17,6 +17,7 @@ import { getFileMtimeMs, isCacheEnabled, resolveCacheTtlMs } from "../cache-util
 import { loadConfig } from "../config.js";
 import type { SessionMaintenanceConfig, SessionMaintenanceMode } from "../types.base.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
+import { externalizeSkillsSnapshots, pruneSkillsSnapshotFiles } from "./skills-snapshot-store.js";
 import { mergeSessionEntry, type SessionEntry } from "./types.js";
 
 const log = createSubsystemLogger("sessions/store");
@@ -546,7 +547,13 @@ async function saveSessionStoreUnlocked(
   }
 
   await fs.promises.mkdir(path.dirname(storePath), { recursive: true });
-  const json = JSON.stringify(store, null, 2);
+  // Skills snapshot bodies go to side files, one per distinct content; the
+  // index keeps refs. See skills-snapshot-store.ts.
+  const toWrite = externalizeSkillsSnapshots(storePath, store);
+  if (toWrite !== store) {
+    pruneSkillsSnapshotFiles(storePath, toWrite);
+  }
+  const json = JSON.stringify(toWrite, null, 2);
 
   // Windows: avoid atomic rename swaps (can be flaky under concurrent access).
   // We serialize writers via the session-store lock instead.
