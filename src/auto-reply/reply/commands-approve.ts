@@ -60,6 +60,27 @@ function parseApproveCommand(raw: string): ParsedApproveCommand | null {
   return { ok: false, error: "Usage: /approve <id> allow-once|allow-always|deny" };
 }
 
+export function isReviewId(id: string): boolean {
+  return /^rv-[0-9a-f]{8}$/i.test(id.trim());
+}
+
+export function describeReviewOutcome(
+  id: string,
+  outcome: { status?: string; preview?: string; resultSummary?: string | null } | null,
+): string {
+  const what = outcome?.preview ? ` ${outcome.preview}` : "";
+  switch (outcome?.status) {
+    case "executed":
+      return `✅ Approved and done (${id}):${what}${outcome?.resultSummary ? `\n${outcome.resultSummary}` : ""}`;
+    case "failed":
+      return `⚠️ Approved, but it failed (${id}):${what}${outcome?.resultSummary ? `\n${outcome.resultSummary}` : ""}`;
+    case "denied":
+      return `🚫 Denied (${id}):${what}`;
+    default:
+      return `Decision recorded for ${id}${outcome?.status ? ` (${outcome.status})` : ""}.`;
+  }
+}
+
 function buildResolvedByLabel(params: Parameters<CommandHandler>[0]): string {
   const channel = params.command.channel;
   const sender = params.command.senderId ?? "unknown";
@@ -101,6 +122,29 @@ export const handleApproveCommand: CommandHandler = async (params, allowTextComm
   }
 
   const resolvedBy = buildResolvedByLabel(params);
+
+  // PLAN-53 Track B: ids that start with "rv-" are held actions (a spend or a
+  // public post), decided through review.resolve. Approving one makes the
+  // gateway carry the action out, so the reply says what happened.
+  if (isReviewId(parsed.id)) {
+    const decision = parsed.decision === "deny" ? "deny" : "approve";
+    try {
+      const outcome = (await callGateway({
+        method: "review.resolve",
+        params: { id: parsed.id, decision, decidedBy: resolvedBy, via: "chat" },
+        clientName: GATEWAY_CLIENT_NAMES.GATEWAY_CLIENT,
+        clientDisplayName: `Chat approval (${resolvedBy})`,
+        mode: GATEWAY_CLIENT_MODES.BACKEND,
+      })) as { status?: string; preview?: string; resultSummary?: string | null } | null;
+      return { shouldContinue: false, reply: { text: describeReviewOutcome(parsed.id, outcome) } };
+    } catch (err) {
+      return {
+        shouldContinue: false,
+        reply: { text: `❌ Could not decide ${parsed.id}: ${String(err)}` },
+      };
+    }
+  }
+
   try {
     await callGateway({
       method: "exec.approval.resolve",

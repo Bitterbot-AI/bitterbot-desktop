@@ -5,6 +5,7 @@ import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/
 import type { CliDeps } from "../cli/deps.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginRegistry } from "../plugins/registry.js";
+import { setReviewBroadcast } from "../review/runtime.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { createA2aHttpHandler } from "./a2a/a2a-http.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
@@ -105,6 +106,8 @@ export async function createGatewayRuntimeState(params: {
 
   const clients = new Set<GatewayWsClient>();
   const { broadcast, broadcastToConnIds } = createGatewayBroadcaster({ clients });
+  // PLAN-53 Track B: held actions and their decisions reach every approvals-scoped window.
+  setReviewBroadcast((event, payload) => broadcast(event, payload));
 
   const handleHooksRequest = createGatewayHooksRequestHandler({
     deps: params.deps,

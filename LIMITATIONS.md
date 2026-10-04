@@ -21,10 +21,11 @@ open an issue.
   makes real micropayments. The layer as a whole has not had a third-party
   audit. Start on testnet, fund with amounts you can lose. Full disclaimer in
   [ATTRIBUTION.md](ATTRIBUTION.md).
-- **Caps, not approvals.** Spend caps are enforced by the wallet service
-  (per transaction, per day, per session), and only owner senders get the
-  tools that move money. Inside the caps the agent pays without asking: there
-  is no per-payment approval step. Keep the caps low.
+- **Approval covers the wallet, not everything.** Every wallet send and x402
+  payment waits for your approval unless a spend grant you signed covers it
+  (`review.spend`, see [Action review](docs/tools/action-review.md)); spend
+  caps still apply underneath. Paid A2A tasks go through spend grants, not
+  this review, and only owner senders get the tools that move money.
 - The wallet is disabled by default and never enabled without an explicit
   opt-in.
 - **The marketplace is early.** It is off by default, few nodes have it

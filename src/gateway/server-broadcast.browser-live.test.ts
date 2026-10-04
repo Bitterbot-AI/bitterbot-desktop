@@ -49,3 +49,23 @@ describe("live view event scope", () => {
     expect(other.send).not.toHaveBeenCalled();
   });
 });
+
+describe("review event scope", () => {
+  it.each(["review.requested", "review.resolved"])(
+    "%s needs operator.approvals or admin",
+    (event) => {
+      const reader = client("c-read", ["operator.read", "operator.write"]);
+      const approver = client("c-approvals", ["operator.approvals"]);
+      const admin = client("c-admin", ["operator.admin"]);
+      const { broadcast } = createGatewayBroadcaster({
+        clients: new Set([reader.ws, approver.ws, admin.ws]),
+      });
+
+      broadcast(event, { id: "rv-00000001" });
+
+      expect(approver.send).toHaveBeenCalledTimes(1);
+      expect(admin.send).toHaveBeenCalledTimes(1);
+      expect(reader.send).not.toHaveBeenCalled();
+    },
+  );
+});

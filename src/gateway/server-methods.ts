@@ -24,6 +24,7 @@ import { modelsAuthHandlers } from "./server-methods/models-auth.js";
 import { modelsHandlers } from "./server-methods/models.js";
 import { nodeHandlers } from "./server-methods/nodes.js";
 import { projectsHandlers } from "./server-methods/projects.js";
+import { reviewHandlers } from "./server-methods/review.js";
 import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
@@ -51,6 +52,10 @@ const APPROVAL_METHODS = new Set([
   "exec.approval.request",
   "exec.approval.waitDecision",
   "exec.approval.resolve",
+  // PLAN-53 Track B: held spend / publish actions.
+  "review.list",
+  "review.get",
+  "review.resolve",
 ]);
 const NODE_ROLE_METHODS = new Set(["node.invoke.result", "node.event", "skills.bins"]);
 const PAIRING_METHODS = new Set([
@@ -341,6 +346,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...browserHandlers,
   ...browserLiveHandlers,
   ...toolOutputHandlers,
+  ...reviewHandlers,
   ...projectsHandlers,
   ...walletHandlers,
   ...workspaceHandlers,

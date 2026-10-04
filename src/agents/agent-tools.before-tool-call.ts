@@ -1,5 +1,6 @@
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+import { runReviewStage } from "../review/stage.js";
 import { isPlainObject } from "../utils.js";
 import { checkRepeatedCall } from "./agent-tools.repeat-guard.js";
 import { runInterceptors } from "./skills/interceptor-runner.js";
@@ -41,6 +42,18 @@ export async function runBeforeToolCallHook(args: {
   });
   if (egress.block) {
     return { blocked: true, reason: egress.block };
+  }
+
+  // PLAN-53 Track B: money and public posts wait for the owner. Before the
+  // interceptors so nothing reshapes a spend on its way to the person, and
+  // failing closed for the few tools it classifies.
+  const review = await runReviewStage({
+    toolName,
+    params,
+    ctx: { sessionKey: args.ctx?.sessionKey, agentId: args.ctx?.agentId, runId: args.toolCallId },
+  });
+  if (review.blocked) {
+    return { blocked: true, reason: review.reason };
   }
 
   // PLAN-20: skill-owned interceptors run BEFORE plugin hooks so they can

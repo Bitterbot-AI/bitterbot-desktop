@@ -1114,6 +1114,18 @@ export const BitterbotSchema = z
       })
       .strict()
       .optional(),
+    review: z
+      .object({
+        spend: z.union([z.literal("ask"), z.literal("allow")]).optional(),
+        publish: z.union([z.literal("ask"), z.literal("allow")]).optional(),
+        ttlHours: z
+          .number()
+          .positive()
+          .max(24 * 30)
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
