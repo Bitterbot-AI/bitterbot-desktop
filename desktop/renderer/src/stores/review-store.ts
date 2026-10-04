@@ -85,7 +85,7 @@ export const useReviewStore = create<ReviewStore>((set, get) => ({
     const gateway = useGatewayStore.getState();
     set((s) => ({ busy: new Set([...s.busy, id]) }));
     try {
-      const action = await gateway.request<unknown>("review.resolve", { id, decision });
+      const action = await gateway.request("review.resolve", { id, decision });
       if (isAction(action)) {
         set((s) => ({
           pending: s.pending.filter((a) => a.id !== id),
