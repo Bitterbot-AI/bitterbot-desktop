@@ -47,6 +47,13 @@ interface BrowserLiveStore extends BrowserLiveStatus {
   takeControl: () => Promise<void>;
   /** Give the browser back to the agent. */
   handBack: () => Promise<void>;
+  /**
+   * Someone asked to take over before the view was up (the handoff card).
+   * The live view takes control as soon as it is streaming.
+   */
+  takeoverWanted: boolean;
+  requestTakeover: () => void;
+  clearTakeoverWanted: () => void;
   /** Send one pointer or key event. Dropped unless this window has control. */
   sendInput: (event: LiveInputEvent) => void;
 }
@@ -54,6 +61,9 @@ interface BrowserLiveStore extends BrowserLiveStatus {
 /** True when this window, not another one, is the one driving the browser. */
 export const hasBrowserControl = (s: Pick<BrowserLiveStore, "control" | "controller" | "viewer">) =>
   s.control === "user" && s.controller !== undefined && s.controller === s.viewer;
+
+/** How long a "take over" asked for before the view is up stays wanted. */
+export const TAKEOVER_WISH_MS = 20_000;
 
 /** The gateway drops a viewer after 30 s without a renewal. */
 export const BROWSER_LIVE_RENEW_MS = 10_000;
@@ -236,6 +246,13 @@ export const useBrowserLiveStore = create<BrowserLiveStore>((set, get) => {
     watchers: 0,
     takeControl: () => requestControl("user"),
     handBack: () => requestControl("agent"),
+    takeoverWanted: false,
+    requestTakeover: () => {
+      set({ takeoverWanted: true });
+      // A wish nobody could grant must not fire minutes later.
+      setTimeout(() => set({ takeoverWanted: false }), TAKEOVER_WISH_MS);
+    },
+    clearTakeoverWanted: () => set({ takeoverWanted: false }),
     sendInput: (event) => {
       const gateway = useGatewayStore.getState();
       if (gateway.status !== "connected" || !hasBrowserControl(get())) {

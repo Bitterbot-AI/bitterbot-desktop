@@ -151,6 +151,7 @@ export function createBitterbotTools(options?: {
     createBrowserTool({
       sandboxBridgeUrl: options?.sandboxBrowserBridgeUrl,
       allowHostControl: options?.allowHostBrowserControl,
+      agentSessionKey: options?.agentSessionKey,
     }),
     createComputerUseTool(),
     createNetworkStatusTool(),

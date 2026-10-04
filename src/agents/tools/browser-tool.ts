@@ -221,6 +221,8 @@ function resolveBrowserBaseUrl(params: {
 export function createBrowserTool(opts?: {
   sandboxBridgeUrl?: string;
   allowHostControl?: boolean;
+  /** The session the tool runs for, so a handoff request can name it. */
+  agentSessionKey?: string;
 }): AnyAgentTool {
   const targetDefault = opts?.sandboxBridgeUrl ? "sandbox" : "host";
   const hostHint =
@@ -237,11 +239,12 @@ export function createBrowserTool(opts?: {
       "When using refs from snapshot (e.g. e12), keep the same tab: prefer passing targetId from the snapshot response into subsequent actions (act/click/type/etc).",
       'For stable, self-resolving refs across calls, use snapshot with refs="aria" (Playwright aria-ref ids). Default refs="role" are role+name-based.',
       "Use snapshot+act for UI automation. Avoid act:wait by default; use only in exceptional cases when no reliable UI state exists.",
+      'When a page needs the person (a login, a CAPTCHA, a verification code, a payment confirmation), use action="handoff" with a short reason: it asks them to take over the browser in the Control UI, waits while they work, and returns when they hand it back. Never ask for a password in chat and never try to get past a CAPTCHA yourself.',
       `target selects browser location (sandbox|host|node). Default: ${targetDefault}.`,
       hostHint,
     ].join(" "),
     parameters: BrowserToolSchema,
-    execute: async (_toolCallId, args) => {
+    execute: async (toolCallId, args, signal) => {
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
       const profile = readStringParam(params, "profile");
@@ -297,6 +300,49 @@ export function createBrowserTool(opts?: {
         : null;
 
       switch (action) {
+        case "handoff": {
+          const reason = readStringParam(params, "reason", { required: true });
+          // The live view and the takeover live in this process; a browser on a
+          // paired node or in the sandbox has no one who can take it over yet.
+          if (proxyRequest || (resolvedTarget ?? targetDefault) === "sandbox") {
+            throw new Error(
+              'handoff is only available for the browser on this machine (target="host").',
+            );
+          }
+          if (loadConfig().browser?.liveView?.enabled === false) {
+            throw new Error(
+              "handoff needs the live view, which is turned off (browser.liveView.enabled).",
+            );
+          }
+          const pages = (await browserTabs(baseUrl, { profile })).filter(
+            (tab) => (tab.type ?? "page") === "page",
+          );
+          if (pages.length === 0) {
+            throw new Error(
+              "handoff needs an open page: open the page the person should see first.",
+            );
+          }
+          const { createBrowserControlContext, getBrowserControlState } =
+            await import("../../browser/control-service.js");
+          const profileName = createBrowserControlContext().forProfile(profile).profile.name;
+          const sticky = getBrowserControlState()?.profiles.get(profileName)?.lastTargetId;
+          const page = pages.find((tab) => tab.targetId === sticky) ?? pages[0];
+          const { describeHandoffOutcome, runBrowserHandoff } =
+            await import("../../review/handoff.js");
+          const outcome = await runBrowserHandoff({
+            reason,
+            profile: profileName,
+            url: page.url,
+            ctx: { sessionKey: opts?.agentSessionKey, runId: toolCallId },
+            signal,
+          });
+          return jsonResult({
+            ok: outcome.kind === "completed",
+            status: outcome.kind,
+            id: outcome.id,
+            message: describeHandoffOutcome(outcome),
+          });
+        }
         case "status":
           if (proxyRequest) {
             return jsonResult(

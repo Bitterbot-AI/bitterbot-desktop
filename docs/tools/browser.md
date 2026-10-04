@@ -199,6 +199,18 @@ How it behaves:
 - **Hand back** returns the browser to the agent. Control also returns by itself if you close the panel, lose the connection, or do nothing for five minutes, so the agent is never left locked out.
 - The stream stops when nobody is looking: a viewer that stops renewing its lease is dropped after 30 seconds.
 
+### When the agent asks you to take over
+
+The agent can ask for the browser to be taken over when a page needs you: a login, a CAPTCHA, a verification code, a payment confirmation. It calls the `browser` tool with `action: "handoff"` and a short reason.
+
+1. A card appears above the chat: "Your agent needs you in the browser", with the reason.
+2. **Take over** opens the Browser tab and gives you the controls in one step. **Not now** declines, and the agent is told to stop and explain what is blocking it.
+3. The agent waits while you work. When you press **Hand back**, its tool call returns and it carries on in the same turn, starting with a fresh look at the page.
+
+The waits are bounded. If nobody takes over within 3 minutes the agent is told so and asks you in chat. If you are still working after 8 minutes the agent stops waiting, leaves the browser with you, and asks you to message it when you are done. Each handoff is recorded in the Activity tab (see [Action review](/tools/action-review)).
+
+A handoff needs the Control UI open on this gateway. It is not available for a browser on a paired node or in the sandbox, or when the live view is turned off.
+
 Limits today:
 
 - It streams one page at a time, the one the agent is using, and it shows the page, not the browser's own toolbar or dialogs.

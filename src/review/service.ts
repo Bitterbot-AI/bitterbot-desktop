@@ -157,6 +157,13 @@ export class ReviewService {
     if (!action) {
       return null;
     }
+    if (action.cls === "handoff") {
+      // Nothing to execute: the agent's own tool call is waiting on this row
+      // (see handoff.ts) and reads the decision from it.
+      log.info(`${id} handoff ${status} by ${by.decidedBy}`);
+      this.deps.broadcast?.("review.resolved", publicView(action));
+      return action;
+    }
     if (decision === "approve") {
       const outcome = await this.execute(action);
       this.deps.store.markExecution(id, outcome);
@@ -183,6 +190,75 @@ export class ReviewService {
       return await runAsApproved(action.fingerprint, () => executor(action));
     } catch (err) {
       return { ok: false, summary: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /**
+   * The agent asks the owner to take over the browser. Not an approval of a
+   * tool call: the row is how the request reaches the owner and how the
+   * handoff shows up in the activity record.
+   */
+  openHandoff(input: {
+    reason: string;
+    profile: string;
+    url?: string;
+    ctx: ReviewContext;
+    ttlMs: number;
+  }): { action: ReviewAction; created: boolean } {
+    // The page address travels with the request so the card can say where the
+    // person is being sent: the reason is the agent's wording, the address is not.
+    const params = {
+      action: "handoff",
+      reason: input.reason,
+      profile: input.profile,
+      ...(input.url ? { url: input.url } : {}),
+    };
+    const where = input.url ? ` (${input.url.slice(0, 120)})` : "";
+    const requested = this.deps.store.request({
+      id: this.newId(),
+      cls: "handoff",
+      tool: "browser",
+      params,
+      fingerprint: toolCallFingerprint("browser", params),
+      preview: `Take over the browser: ${input.reason.slice(0, 200)}${where}`,
+      sessionKey: input.ctx.sessionKey ?? null,
+      agentId: input.ctx.agentId ?? null,
+      runId: input.ctx.runId ?? null,
+      ttlMs: input.ttlMs,
+    });
+    if (requested.created) {
+      log.info(`handoff requested ${requested.action.id}: ${requested.action.preview}`);
+      this.deps.broadcast?.("review.requested", publicView(requested.action));
+    }
+    return requested;
+  }
+
+  /** The owner took the browser. False if the row was already decided. */
+  acceptHandoff(id: string, by: { decidedBy: string; decidedVia: string }): boolean {
+    const changed = this.deps.store.decide(id, "approved", by);
+    if (changed) {
+      this.announce(id);
+    }
+    return changed;
+  }
+
+  /** The handoff is over, one way or the other. */
+  finishHandoff(id: string, outcome: ExecutionResult): void {
+    this.deps.store.markExecution(id, outcome);
+    this.announce(id);
+  }
+
+  /** Nobody answered the handoff request in time. */
+  expireHandoff(id: string): void {
+    if (this.deps.store.expire(id)) {
+      this.announce(id);
+    }
+  }
+
+  private announce(id: string): void {
+    const action = this.deps.store.get(id);
+    if (action) {
+      this.deps.broadcast?.("review.resolved", publicView(action));
     }
   }
 
