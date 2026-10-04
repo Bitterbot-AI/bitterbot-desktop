@@ -9,16 +9,18 @@
  * This step:
  *   1. Checks if a key is already present (config or env var)
  *   2. If not, asks the user to pick a provider and paste a key
- *   3. On quickstart, auto-detects from env vars and skips if found
+ *   3. On quickstart, auto-detects from env vars, stores the detected
+ *      provider, and skips if found
  *
- * Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily.
+ * Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply,
+ * and keyless Parallel.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel";
+type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
 
 const PROVIDERS: Record<
   SearchProvider,
@@ -54,6 +56,12 @@ const PROVIDERS: Record<
     envVar: "XAI_API_KEY",
     keyPlaceholder: "xai-...",
   },
+  serply: {
+    label: "Serply",
+    hint: "Google results — https://serply.io",
+    envVar: "SERPLY_API_KEY",
+    keyPlaceholder: "",
+  },
 };
 
 function detectExistingKey(config: BitterbotConfig): {
@@ -72,9 +80,15 @@ function detectExistingKey(config: BitterbotConfig): {
     return { provider, source: "config" };
   }
 
-  // Check env vars
+  // Check env vars. The runtime never infers a provider from the environment
+  // (an unset provider means Brave), so an explicit selection only counts its
+  // own env var.
+  if (search?.provider) {
+    const envVar = PROVIDERS[provider]?.envVar;
+    return envVar && process.env[envVar]?.trim() ? { provider, source: "env" } : null;
+  }
   for (const [p, meta] of Object.entries(PROVIDERS)) {
-    if (process.env[meta.envVar]?.trim()) {
+    if (meta.envVar && process.env[meta.envVar]?.trim()) {
       return { provider: p as SearchProvider, source: "env" };
     }
   }
@@ -106,6 +120,20 @@ export async function setupWebSearchForOnboarding(params: {
       ].join("\n"),
       "Web search",
     );
+    // Persist a provider detected from the environment; otherwise the runtime
+    // would still default to Brave and the note above would be wrong.
+    if (existing.source === "env" && config.tools?.web?.search?.provider !== existing.provider) {
+      return {
+        ...config,
+        tools: {
+          ...config.tools,
+          web: {
+            ...config.tools?.web,
+            search: { ...config.tools?.web?.search, provider: existing.provider },
+          },
+        },
+      };
+    }
     return config;
   }
 
@@ -134,10 +162,11 @@ export async function setupWebSearchForOnboarding(params: {
       "`web_search` tool silently fails and the agent can't learn from the web.",
       "",
       "Supported: Brave Search (free tier), Tavily (built for AI agents),",
-      "Perplexity (Sonar API), Grok (xAI), or Parallel (free, keyless).",
+      "Perplexity (Sonar API), Grok (xAI), Serply (Google results),",
+      "or Parallel (free, keyless).",
       "",
       "You can also set the key as an env var and skip this step:",
-      "  BRAVE_API_KEY, TAVILY_API_KEY, PERPLEXITY_API_KEY, or XAI_API_KEY",
+      "  BRAVE_API_KEY, TAVILY_API_KEY, PERPLEXITY_API_KEY, XAI_API_KEY, or SERPLY_API_KEY",
     ].join("\n"),
     "Web search",
   );

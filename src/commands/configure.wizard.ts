@@ -127,7 +127,7 @@ async function promptChannelMode(runtime: RuntimeEnv): Promise<ChannelsWizardMod
   ) as ChannelsWizardMode;
 }
 
-type SearchProviderChoice = "brave" | "perplexity" | "grok" | "tavily" | "parallel";
+type SearchProviderChoice = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
 
 const SEARCH_PROVIDER_META: Record<
   SearchProviderChoice,
@@ -163,6 +163,12 @@ const SEARCH_PROVIDER_META: Record<
     envVar: "TAVILY_API_KEY",
     keyPlaceholder: "tvly-...",
   },
+  serply: {
+    label: "Serply",
+    hint: "Uses SERPLY_API_KEY",
+    envVar: "SERPLY_API_KEY",
+    keyPlaceholder: "",
+  },
 };
 
 async function promptWebToolsConfig(
@@ -176,7 +182,7 @@ async function promptWebToolsConfig(
   note(
     [
       "Web search lets your agent look things up online using the `web_search` tool.",
-      "Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, and Parallel (keyless).",
+      "Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply, and Parallel (keyless).",
       "Docs: https://docs.bitterbot.ai/tools/web",
     ].join("\n"),
     "Web search",

@@ -1,14 +1,14 @@
 ---
-summary: "Web search provider setup: Tavily, Brave, Perplexity, Grok, Parallel"
+summary: "Web search provider setup: Tavily, Brave, Perplexity, Grok, Serply, Parallel"
 read_when:
   - You want to configure a web search provider
-  - You need API keys for Tavily, Brave, Perplexity, or Grok
+  - You need API keys for Tavily, Brave, Perplexity, Grok, or Serply
 title: "Web Search Providers"
 ---
 
 # Web Search Providers
 
-Bitterbot supports 5 web search providers for the `web_search` tool. Pick one and configure its API key, or explicitly select Parallel for free, keyless search.
+Bitterbot supports 6 web search providers for the `web_search` tool. Pick one and configure its API key, or explicitly select Parallel for free, keyless search.
 
 | Provider       | Env Variable         | Free Tier       | Best For                              |
 | -------------- | -------------------- | --------------- | ------------------------------------- |
@@ -17,10 +17,13 @@ Bitterbot supports 5 web search providers for the `web_search` tool. Pick one an
 | **Perplexity** | `PERPLEXITY_API_KEY` | Pay-per-use     | AI-synthesized answers with citations |
 | **Parallel**   | None                 | Free, keyless   | Web search with source excerpts       |
 | **Grok**       | `XAI_API_KEY`        | Varies          | X/Twitter integration                 |
+| **Serply**     | `SERPLY_API_KEY`     | Trial credits   | Google results, country and freshness |
 
 ## Quick Setup
 
-The fastest path: pick a provider, set the env variable, done.
+The fastest path: export one key before running `bitterbot onboard`, which stores
+the matching provider. On an existing install, also set
+`tools.web.search.provider` (Brave is the default and needs no provider setting).
 
 ```bash
 # Option 1: Tavily (recommended for most users)
@@ -34,6 +37,9 @@ export PERPLEXITY_API_KEY="pplx-..."
 
 # Option 4: Grok
 export XAI_API_KEY="xai-..."
+
+# Option 5: Serply
+export SERPLY_API_KEY="..."
 ```
 
 Or add to your `.env` file in the Bitterbot root / gateway environment.
@@ -144,16 +150,48 @@ Get your key at [perplexity.ai](https://www.perplexity.ai/). Also available via 
 
 Uses your `XAI_API_KEY` environment variable.
 
+### Serply
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        provider: "serply",
+        maxResults: 5,
+        serply: {
+          apiKey: "...", // or set SERPLY_API_KEY
+        },
+      },
+    },
+  },
+}
+```
+
+Returns Google web results (titles, URLs and snippets) from
+`https://api.serply.io/v1/search`, with the key sent in an `X-Api-Key` header.
+`country` maps to Google's region (`gl`) and `freshness` accepts `pd`, `pw`, `pm`
+and `py`. Date ranges, `search_lang` and `ui_lang` are rejected; put language
+preferences in the query instead. Serply is only used when `provider` is
+`"serply"`. Get a key at [serply.io](https://serply.io)
+([API docs](https://serply.io/docs)); see their site for current trial terms.
+
 ## Auto-Detection
 
-If no provider is explicitly set, Bitterbot checks for API keys in this order:
+At runtime, `web_search` uses the configured `provider`. If none is set it uses
+Brave, so a key for any other provider also needs `provider` set.
 
-1. `TAVILY_API_KEY` → Tavily
-2. `BRAVE_API_KEY` → Brave
+Onboarding (`bitterbot onboard`) does this for you. When no provider is
+configured, it checks the environment in this order and stores the first match
+as `tools.web.search.provider`:
+
+1. `BRAVE_API_KEY` → Brave
+2. `TAVILY_API_KEY` → Tavily
 3. `PERPLEXITY_API_KEY` → Perplexity
 4. `XAI_API_KEY` → Grok
+5. `SERPLY_API_KEY` → Serply
 
-Set the key and it just works.
+Parallel is never selected automatically.
 
 ## See Also
 

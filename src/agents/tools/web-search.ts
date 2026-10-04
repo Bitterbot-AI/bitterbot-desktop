@@ -9,6 +9,7 @@ import { withOpenRouterAttribution } from "../openrouter-attribution.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 import { runParallelSearch } from "./web-search-parallel.js";
+import { runSerplySearch, serplySupportsFreshness } from "./web-search-serply.js";
 import {
   CacheEntry,
   DEFAULT_CACHE_TTL_MINUTES,
@@ -22,7 +23,7 @@ import {
   writeCache,
 } from "./web-shared.js";
 
-const SEARCH_PROVIDERS = ["brave", "perplexity", "grok", "tavily", "parallel"] as const;
+const SEARCH_PROVIDERS = ["brave", "perplexity", "grok", "tavily", "parallel", "serply"] as const;
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
 
@@ -71,7 +72,7 @@ const WebSearchSchema = Type.Object({
   freshness: Type.Optional(
     Type.String({
       description:
-        "Filter results by discovery time. Brave supports 'pd', 'pw', 'pm', 'py', and date range 'YYYY-MM-DDtoYYYY-MM-DD'. Perplexity supports 'pd', 'pw', 'pm', and 'py'.",
+        "Filter results by discovery time. Brave supports 'pd', 'pw', 'pm', 'py', and date range 'YYYY-MM-DDtoYYYY-MM-DD'. Perplexity and Serply support 'pd', 'pw', 'pm', and 'py'.",
     }),
   ),
 });
@@ -148,6 +149,10 @@ type TavilySearchResult = {
 type TavilySearchResponse = {
   answer?: string;
   results?: TavilySearchResult[];
+};
+
+type SerplyConfig = {
+  apiKey?: string;
 };
 
 type PerplexitySearchResponse = {
@@ -238,6 +243,14 @@ function missingSearchKeyPayload(provider: (typeof SEARCH_PROVIDERS)[number]) {
       docs: "https://docs.bitterbot.ai/tools/web",
     };
   }
+  if (provider === "serply") {
+    return {
+      error: "missing_serply_api_key",
+      message:
+        "web_search (serply) needs a Serply API key. Set SERPLY_API_KEY in the Gateway environment, or configure tools.web.search.serply.apiKey.",
+      docs: "https://docs.bitterbot.ai/tools/web",
+    };
+  }
   return {
     error: "missing_brave_api_key",
     message: `web_search needs a Brave Search API key. Run \`${formatCliCommand("bitterbot configure --section web")}\` to store it, or set BRAVE_API_KEY in the Gateway environment.`,
@@ -261,6 +274,9 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
   }
   if (raw === "tavily") {
     return "tavily";
+  }
+  if (raw === "serply") {
+    return "serply";
   }
   if (raw === "brave") {
     return "brave";
@@ -413,6 +429,26 @@ function resolveTavilyApiKey(tavily?: TavilyConfig): string | undefined {
     return fromConfig;
   }
   const fromEnv = normalizeApiKey(process.env.TAVILY_API_KEY);
+  return fromEnv || undefined;
+}
+
+function resolveSerplyConfig(search?: WebSearchConfig): SerplyConfig {
+  if (!search || typeof search !== "object") {
+    return {};
+  }
+  const serply = "serply" in search ? search.serply : undefined;
+  if (!serply || typeof serply !== "object") {
+    return {};
+  }
+  return serply as SerplyConfig;
+}
+
+function resolveSerplyApiKey(serply?: SerplyConfig): string | undefined {
+  const fromConfig = normalizeApiKey(serply?.apiKey);
+  if (fromConfig) {
+    return fromConfig;
+  }
+  const fromEnv = normalizeApiKey(process.env.SERPLY_API_KEY);
   return fromEnv || undefined;
 }
 
@@ -709,7 +745,7 @@ async function runWebSearch(params: {
 }): Promise<Record<string, unknown>> {
   params.signal?.throwIfAborted();
   const cacheKey = normalizeCacheKey(
-    params.provider === "brave" || params.provider === "parallel"
+    params.provider === "brave" || params.provider === "parallel" || params.provider === "serply"
       ? `${params.provider}:${params.query}:${params.count}:${params.country || "default"}:${params.search_lang || "default"}:${params.ui_lang || "default"}:${params.freshness || "default"}`
       : params.provider === "perplexity"
         ? `${params.provider}:${params.query}:${params.perplexityBaseUrl ?? DEFAULT_PERPLEXITY_BASE_URL}:${params.perplexityModel ?? DEFAULT_PERPLEXITY_MODEL}:${params.freshness || "default"}`
@@ -724,8 +760,11 @@ async function runWebSearch(params: {
 
   const start = Date.now();
 
-  if (params.provider === "parallel") {
-    const results = await runParallelSearch(params);
+  if (params.provider === "parallel" || params.provider === "serply") {
+    const results =
+      params.provider === "serply"
+        ? await runSerplySearch(params)
+        : await runParallelSearch(params);
     const mapped = results.map((entry) => ({
       title: entry.title ? wrapWebContent(entry.title, "web_search") : "",
       url: entry.url,
@@ -929,6 +968,7 @@ export function createWebSearchTool(options?: {
   const perplexityConfig = resolvePerplexityConfig(search);
   const grokConfig = resolveGrokConfig(search);
   const tavilyConfig = resolveTavilyConfig(search);
+  const serplyConfig = resolveSerplyConfig(search);
 
   const description =
     provider === "parallel"
@@ -939,7 +979,9 @@ export function createWebSearchTool(options?: {
           ? "Search the web using xAI Grok. Returns AI-synthesized answers with citations from real-time web search."
           : provider === "tavily"
             ? "Search the web using Tavily. Returns structured search results with titles, URLs, and content, plus an AI-synthesized answer."
-            : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
+            : provider === "serply"
+              ? "Search the web using Serply (Google results). Supports region-specific results via country and freshness via pd/pw/pm/py. Returns titles, URLs, and snippets."
+              : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
 
   return {
     label: "Web Search",
@@ -956,7 +998,9 @@ export function createWebSearchTool(options?: {
             ? resolveGrokApiKey(grokConfig)
             : provider === "tavily"
               ? resolveTavilyApiKey(tavilyConfig)
-              : resolveSearchApiKey(search);
+              : provider === "serply"
+                ? resolveSerplyApiKey(serplyConfig)
+                : resolveSearchApiKey(search);
 
       if (!apiKey && provider !== "parallel") {
         return jsonResult(missingSearchKeyPayload(provider));
@@ -975,11 +1019,24 @@ export function createWebSearchTool(options?: {
             "Parallel web_search does not support country, search_lang, or ui_lang. Include preferences in the query instead.",
         });
       }
+      if (provider === "serply" && (search_lang || ui_lang)) {
+        return jsonResult({
+          error: "unsupported_search_filter",
+          message:
+            "Serply web_search does not support search_lang or ui_lang. Use country, or include language preferences in the query instead.",
+        });
+      }
       const rawFreshness = readStringParam(params, "freshness");
-      if (rawFreshness && provider !== "brave" && provider !== "perplexity") {
+      if (
+        rawFreshness &&
+        provider !== "brave" &&
+        provider !== "perplexity" &&
+        provider !== "serply"
+      ) {
         return jsonResult({
           error: "unsupported_freshness",
-          message: "freshness is only supported by the Brave and Perplexity web_search providers.",
+          message:
+            "freshness is only supported by the Brave, Perplexity, and Serply web_search providers.",
           docs: "https://docs.bitterbot.ai/tools/web",
         });
       }
@@ -989,6 +1046,13 @@ export function createWebSearchTool(options?: {
           error: "invalid_freshness",
           message:
             "freshness must be one of pd, pw, pm, py, or a range like YYYY-MM-DDtoYYYY-MM-DD.",
+          docs: "https://docs.bitterbot.ai/tools/web",
+        });
+      }
+      if (provider === "serply" && freshness && !serplySupportsFreshness(freshness)) {
+        return jsonResult({
+          error: "unsupported_freshness",
+          message: "Serply web_search supports freshness pd, pw, pm, or py, but not date ranges.",
           docs: "https://docs.bitterbot.ai/tools/web",
         });
       }
@@ -1022,7 +1086,7 @@ export function createWebSearchTool(options?: {
 /**
  * PLAN-34 Phase 2c: provider-agnostic search for non-tool callers (the
  * Skill-Seekers URL finder). Resolves the CONFIGURED provider — brave,
- * perplexity, grok, tavily, or parallel — exactly like the web_search tool (same
+ * perplexity, grok, tavily, parallel, or serply — exactly like the web_search tool (same
  * keys, caching, timeouts) and returns normalized {title, url} results.
  * Null when web search is unavailable (disabled or no API key).
  */
@@ -1039,6 +1103,7 @@ export async function runConfiguredWebSearch(
   const perplexityConfig = resolvePerplexityConfig(search);
   const grokConfig = resolveGrokConfig(search);
   const tavilyConfig = resolveTavilyConfig(search);
+  const serplyConfig = resolveSerplyConfig(search);
   const perplexityAuth =
     provider === "perplexity" ? resolvePerplexityApiKey(perplexityConfig) : undefined;
   const apiKey =
@@ -1048,7 +1113,9 @@ export async function runConfiguredWebSearch(
         ? resolveGrokApiKey(grokConfig)
         : provider === "tavily"
           ? resolveTavilyApiKey(tavilyConfig)
-          : resolveSearchApiKey(search);
+          : provider === "serply"
+            ? resolveSerplyApiKey(serplyConfig)
+            : resolveSearchApiKey(search);
   if (!apiKey && provider !== "parallel") {
     return null;
   }
@@ -1093,4 +1160,5 @@ export const __testing = {
   extractGrokContent,
   resolveTavilyApiKey,
   resolveTavilySearchDepth,
+  resolveSerplyApiKey,
 } as const;

@@ -410,6 +410,7 @@ export async function finalizeOnboardingWizard(
       perplexity: "PERPLEXITY_API_KEY",
       grok: "XAI_API_KEY",
       tavily: "TAVILY_API_KEY",
+      serply: "SERPLY_API_KEY",
     };
     const envVar = providerEnvVars[searchProvider] ?? "BRAVE_API_KEY";
     const configKey =
