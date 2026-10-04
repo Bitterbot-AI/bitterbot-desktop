@@ -14,7 +14,8 @@ export type ReviewStatus = "pending" | "approved" | "denied" | "expired" | "exec
 export interface ReviewAction {
   id: string;
   status: ReviewStatus;
-  cls: "spend" | "publish";
+  /** "handoff" is the agent asking the owner to take over the browser. */
+  cls: "spend" | "publish" | "handoff";
   tool: string;
   preview: string;
   params: unknown;

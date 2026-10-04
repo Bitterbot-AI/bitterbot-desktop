@@ -57,7 +57,8 @@ function ActivityRow({ action }: { action: ReviewAction }) {
               {meta.label}
             </span>
             <span className="text-2xs text-muted-foreground">
-              {action.cls === "spend" ? "spend" : "post"} · {action.id}
+              {action.cls === "spend" ? "spend" : action.cls === "handoff" ? "handoff" : "post"} ·{" "}
+              {action.id}
             </span>
           </div>
           <p className="text-xs text-foreground break-words">{action.preview}</p>

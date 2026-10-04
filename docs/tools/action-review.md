@@ -51,6 +51,10 @@ Asking the same thing again does not create a second request: the agent retrying
 - Requests and decisions: `~/.bitterbot/review.sqlite`, separate from the memory database.
 - Gateway methods: `review.list`, `review.get`, `review.resolve`; events `review.requested`, `review.resolved`. All need `operator.approvals`.
 
+## Browser handoffs
+
+The same queue carries one request that is not an approval: the agent asking you to take over the browser for a login, a CAPTCHA or a payment confirmation. It shows as a card with **Take over** and **Not now**, and it is recorded in Activity as a `handoff` with how it ended. Taking control of the browser is what accepts it. See [When the agent asks you to take over](/tools/browser#when-the-agent-asks-you-to-take-over).
+
 ## Limits today
 
 - Only the two classes above. Sends to third parties and other publish surfaces are not held.

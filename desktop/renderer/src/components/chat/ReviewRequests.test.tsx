@@ -10,6 +10,22 @@ const state = vi.hoisted(() => ({
   listen: vi.fn(() => () => {}),
 }));
 
+const ui = vi.hoisted(() => ({
+  setToolPanelOpen: vi.fn(),
+  setPanelMode: vi.fn(),
+  requestTakeover: vi.fn(),
+}));
+
+vi.mock("../../stores/ui-store", () => ({
+  useUIStore: { getState: () => ({ setToolPanelOpen: ui.setToolPanelOpen }) },
+}));
+vi.mock("../../stores/artifact-store", () => ({
+  useArtifactStore: { getState: () => ({ setPanelMode: ui.setPanelMode }) },
+}));
+vi.mock("../../stores/browser-live-store", () => ({
+  useBrowserLiveStore: { getState: () => ({ requestTakeover: ui.requestTakeover }) },
+}));
+
 vi.mock("../../stores/review-store", () => ({
   useReviewStore: (selector: (s: typeof state) => unknown) => selector(state),
 }));
@@ -21,6 +37,19 @@ const spend = {
   tool: "wallet",
   preview: "Send 5 USDC to 0xabc",
   createdAt: 1,
+};
+const handoff = {
+  ...spend,
+  id: "rv-00000003",
+  cls: "handoff",
+  tool: "browser",
+  preview: "Take over the browser: Log in to the shop",
+  params: {
+    action: "handoff",
+    reason: "Log in to the shop",
+    profile: "bitterbot",
+    url: "https://shop.test/login?next=/cart",
+  },
 };
 const post = { ...spend, id: "rv-00000002", cls: "publish", preview: 'Post to X: "hello"' };
 
@@ -86,5 +115,31 @@ describe("ReviewRequests", () => {
       true,
     );
     expect((screen.getByText("Deny").closest("button") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("opens the live browser and takes control from a handoff card", async () => {
+    state.pending = [handoff];
+    render(<ReviewRequests />);
+    const user = userEvent.setup();
+
+    expect(screen.getByText("Log in to the shop")).toBeTruthy();
+    // The site comes from the page, not from the agent's wording.
+    expect(screen.getByText("shop.test")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /take over/i }));
+
+    expect(ui.setToolPanelOpen).toHaveBeenCalledWith(true);
+    expect(ui.setPanelMode).toHaveBeenCalledWith("browser");
+    expect(ui.requestTakeover).toHaveBeenCalled();
+    // Taking control accepts the request; the card does not approve it itself.
+    expect(state.resolve).not.toHaveBeenCalled();
+  });
+
+  it("declines a handoff with Not now", async () => {
+    state.pending = [handoff];
+    render(<ReviewRequests />);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: /not now/i }));
+
+    expect(state.resolve).toHaveBeenCalledWith("rv-00000003", "deny");
   });
 });

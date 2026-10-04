@@ -27,6 +27,20 @@ export function BrowserLiveView({ className }: { className?: string }) {
   const streaming = state === "streaming";
   const showing = streaming && frame !== null;
 
+  // The handoff card asks for control before this view exists; grant it once
+  // there is a page to control.
+  const takeoverWanted = useBrowserLiveStore((s) => s.takeoverWanted);
+  const clearTakeoverWanted = useBrowserLiveStore((s) => s.clearTakeoverWanted);
+  useEffect(() => {
+    if (!takeoverWanted || !showing) {
+      return;
+    }
+    clearTakeoverWanted();
+    if (control === "agent") {
+      void takeControl();
+    }
+  }, [takeoverWanted, showing, control, takeControl, clearTakeoverWanted]);
+
   return (
     <div className={cn("flex flex-col h-full min-h-0", className)}>
       <div className="flex items-center gap-2 px-3 py-1.5 bg-muted/50 border-b border-border/30">

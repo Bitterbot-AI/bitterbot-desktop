@@ -19,6 +19,12 @@ import { assertNotRealStateUnderTest } from "../infra/test-state-guard.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
 import type { ReviewClass } from "./classify.js";
 
+/**
+ * What kind of request a row is. "spend" and "publish" are approvals of a held
+ * tool call; "handoff" is the agent asking the owner to take over the browser.
+ */
+export type ReviewKind = ReviewClass | "handoff";
+
 export type ReviewStatus = "pending" | "approved" | "denied" | "expired" | "executed" | "failed";
 
 export type ReviewAction = {
@@ -26,7 +32,7 @@ export type ReviewAction = {
   createdAt: number;
   expiresAt: number;
   status: ReviewStatus;
-  cls: ReviewClass;
+  cls: ReviewKind;
   tool: string;
   params: unknown;
   /** Canonical hash of (tool, params); one pending row per fingerprint and session. */
@@ -49,7 +55,7 @@ type Row = {
   created_at: number;
   expires_at: number;
   status: ReviewStatus;
-  cls: ReviewClass;
+  cls: ReviewKind;
   tool: string;
   params_json: string;
   fingerprint: string;
@@ -154,7 +160,7 @@ export class ReviewStore {
    */
   request(input: {
     id: string;
-    cls: ReviewClass;
+    cls: ReviewKind;
     tool: string;
     params: unknown;
     fingerprint: string;
@@ -260,6 +266,17 @@ export class ReviewStore {
         .prepare(`SELECT COUNT(*) AS c FROM review_actions WHERE status = 'pending'`)
         .get() as { c: number }
     ).c;
+  }
+
+  /** Close one pending request that nobody answered in time. */
+  expire(id: string): boolean {
+    const result = this.db
+      .prepare(
+        `UPDATE review_actions SET status = 'expired', decided_at = ?
+          WHERE id = ? AND status = 'pending'`,
+      )
+      .run(this.now(), id);
+    return Number(result.changes) === 1;
   }
 
   /** Pending requests past their deadline are not approvals waiting to happen. */

@@ -32,6 +32,7 @@ const BROWSER_TOOL_ACTIONS = [
   "upload",
   "dialog",
   "act",
+  "handoff",
 ] as const;
 
 const BROWSER_TARGETS = ["sandbox", "host", "node"] as const;
@@ -108,5 +109,11 @@ export const BrowserToolSchema = Type.Object({
   timeoutMs: Type.Optional(Type.Number()),
   accept: Type.Optional(Type.Boolean()),
   promptText: Type.Optional(Type.String()),
+  reason: Type.Optional(
+    Type.String({
+      description:
+        "For handoff: what the person needs to do on the page, in a few words (shown to them).",
+    }),
+  ),
   request: Type.Optional(BrowserActSchema),
 });
