@@ -21,7 +21,9 @@ Bitterbot supports 6 web search providers for the `web_search` tool. Pick one an
 
 ## Quick Setup
 
-The fastest path: pick a provider, set the env variable, done.
+The fastest path: export one key before running `bitterbot onboard`, which stores
+the matching provider. On an existing install, also set
+`tools.web.search.provider` (Brave is the default and needs no provider setting).
 
 ```bash
 # Option 1: Tavily (recommended for most users)
@@ -36,7 +38,7 @@ export PERPLEXITY_API_KEY="pplx-..."
 # Option 4: Grok
 export XAI_API_KEY="xai-..."
 
-# Option 5: Serply (also set provider: "serply", see below)
+# Option 5: Serply
 export SERPLY_API_KEY="..."
 ```
 
@@ -170,20 +172,26 @@ Returns Google web results (titles, URLs and snippets) from
 `https://api.serply.io/v1/search`, with the key sent in an `X-Api-Key` header.
 `country` maps to Google's region (`gl`) and `freshness` accepts `pd`, `pw`, `pm`
 and `py`. Date ranges, `search_lang` and `ui_lang` are rejected; put language
-preferences in the query instead. Serply is never selected automatically.
-Get a key at [serply.io](https://serply.io) ([API docs](https://serply.io/docs));
-new accounts get 2,500 free credits for 30 days.
+preferences in the query instead. Serply is only used when `provider` is
+`"serply"`. Get a key at [serply.io](https://serply.io)
+([API docs](https://serply.io/docs)); see their site for current trial terms.
 
 ## Auto-Detection
 
-If no provider is explicitly set, Bitterbot checks for API keys in this order:
+At runtime, `web_search` uses the configured `provider`. If none is set it uses
+Brave, so a key for any other provider also needs `provider` set.
 
-1. `TAVILY_API_KEY` → Tavily
-2. `BRAVE_API_KEY` → Brave
+Onboarding (`bitterbot onboard`) does this for you. When no provider is
+configured, it checks the environment in this order and stores the first match
+as `tools.web.search.provider`:
+
+1. `BRAVE_API_KEY` → Brave
+2. `TAVILY_API_KEY` → Tavily
 3. `PERPLEXITY_API_KEY` → Perplexity
 4. `XAI_API_KEY` → Grok
+5. `SERPLY_API_KEY` → Serply
 
-Set the key and it just works.
+Parallel is never selected automatically.
 
 ## See Also
 

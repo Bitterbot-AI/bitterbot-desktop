@@ -9,9 +9,11 @@
  * This step:
  *   1. Checks if a key is already present (config or env var)
  *   2. If not, asks the user to pick a provider and paste a key
- *   3. On quickstart, auto-detects from env vars and skips if found
+ *   3. On quickstart, auto-detects from env vars, stores the detected
+ *      provider, and skips if found
  *
- * Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply.
+ * Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply,
+ * and keyless Parallel.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
@@ -78,9 +80,15 @@ function detectExistingKey(config: BitterbotConfig): {
     return { provider, source: "config" };
   }
 
-  // Check env vars
+  // Check env vars. The runtime never infers a provider from the environment
+  // (an unset provider means Brave), so an explicit selection only counts its
+  // own env var.
+  if (search?.provider) {
+    const envVar = PROVIDERS[provider]?.envVar;
+    return envVar && process.env[envVar]?.trim() ? { provider, source: "env" } : null;
+  }
   for (const [p, meta] of Object.entries(PROVIDERS)) {
-    if (process.env[meta.envVar]?.trim()) {
+    if (meta.envVar && process.env[meta.envVar]?.trim()) {
       return { provider: p as SearchProvider, source: "env" };
     }
   }
@@ -112,6 +120,20 @@ export async function setupWebSearchForOnboarding(params: {
       ].join("\n"),
       "Web search",
     );
+    // Persist a provider detected from the environment; otherwise the runtime
+    // would still default to Brave and the note above would be wrong.
+    if (existing.source === "env" && config.tools?.web?.search?.provider !== existing.provider) {
+      return {
+        ...config,
+        tools: {
+          ...config.tools,
+          web: {
+            ...config.tools?.web,
+            search: { ...config.tools?.web?.search, provider: existing.provider },
+          },
+        },
+      };
+    }
     return config;
   }
 

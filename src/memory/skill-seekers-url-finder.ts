@@ -63,7 +63,7 @@ export interface SkillSeekersUrlFinder {
  * fallback entirely rather than failing loudly.
  *
  * PLAN-34 Phase 2c: generalized beyond Brave. Brave keeps its lean native
- * path; every other configured provider (perplexity/grok/tavily) rides the
+ * path; every other configured provider (perplexity/grok/tavily/parallel/serply) rides the
  * web_search tool's own provider dispatch (same keys, caching, timeouts)
  * via runConfiguredWebSearch, with the same authoritative-result picker.
  */
