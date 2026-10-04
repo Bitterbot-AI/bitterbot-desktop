@@ -16,8 +16,19 @@ export async function runReviewStage(args: {
 }): Promise<StageOutcome> {
   // The pure classifier decides whether this call is any of our business, so
   // an unclassified tool never pays for the store or the config.
-  if (!classifyToolCall(args.toolName, args.params)) {
+  const classification = classifyToolCall(args.toolName, args.params);
+  if (!classification) {
     return { blocked: false };
+  }
+  // A call the tool would reject is the agent's to fix, not the owner's to
+  // decide: asking a person to approve "send to (no address)" helps nobody.
+  if (classification.missing?.length) {
+    return {
+      blocked: true,
+      reason:
+        `The ${args.toolName} call is missing required parameter(s): ${classification.missing.join(", ")}. ` +
+        "Nothing was sent and nothing was queued for approval. Check the tool's parameter names and call it again.",
+    };
   }
   try {
     const outcome = await getReviewService().consider(

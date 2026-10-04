@@ -76,4 +76,17 @@ describe("runReviewStage", () => {
     expect(out.blocked && out.reason).toContain("review service failed");
     expect(out.blocked && out.reason).toContain("not performed");
   });
+
+  it("sends a malformed spend back to the agent without queuing it", async () => {
+    svc.consider.mockReset();
+
+    const outcome = await runReviewStage({
+      toolName: "wallet",
+      params: { action: "send_usdc", to: "0xabc", amount: 0.01 },
+    });
+
+    expect(outcome.blocked).toBe(true);
+    expect(outcome.blocked && outcome.reason).toContain("missing required parameter(s): address");
+    expect(svc.consider).not.toHaveBeenCalled();
+  });
 });

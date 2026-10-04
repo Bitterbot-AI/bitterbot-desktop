@@ -72,4 +72,18 @@ describe("classifyToolCall", () => {
 
     expect(long?.preview.length).toBeLessThan(260);
   });
+
+  it("names the required parameters a spend call left out", () => {
+    // Seen live: the model passed `to` where the wallet tool takes `address`.
+    expect(
+      classifyToolCall("wallet", { action: "send_usdc", to: "0xabc", amount: 0.01 })?.missing,
+    ).toEqual(["address"]);
+    expect(classifyToolCall("wallet", { action: "send_to_peer" })?.missing).toEqual([
+      "peer_id",
+      "amount",
+    ]);
+    expect(
+      classifyToolCall("wallet", { action: "send_usdc", address: "0xabc", amount: 1 })?.missing,
+    ).toBeUndefined();
+  });
 });
