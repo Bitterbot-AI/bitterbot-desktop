@@ -8,7 +8,7 @@
  *
  * What we check (config-only, no network):
  *   1. `tools.web.search` block is present and not disabled
- *   2. A provider is selected (brave / perplexity / grok / tavily)
+ *   2. A provider is selected (brave / perplexity / grok / tavily / serply)
  *   3. A key is reachable for that provider — either in config or via
  *      the provider's well-known env var
  *
@@ -28,7 +28,7 @@ import {
   info,
 } from "./doctor-check.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel";
+type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
 
 const PROVIDER_ENV_VARS: Record<SearchProvider, readonly string[]> = {
   parallel: [],
@@ -36,6 +36,7 @@ const PROVIDER_ENV_VARS: Record<SearchProvider, readonly string[]> = {
   perplexity: ["PERPLEXITY_API_KEY"],
   grok: ["XAI_API_KEY", "GROK_API_KEY"],
   tavily: ["TAVILY_API_KEY"],
+  serply: ["SERPLY_API_KEY"],
 };
 
 function envHasKey(provider: SearchProvider): string | null {
@@ -90,9 +91,10 @@ export function runWebSearchChecks(params: { config: BitterbotConfig }): void {
           "No web search provider configured.",
           "  Fix: " +
             formatCliCommand("bitterbot config set tools.web.search.provider brave") +
-            " (or perplexity / grok / tavily)",
+            " (or perplexity / grok / tavily / serply)",
           "  Then either paste a key via `bitterbot configure` or export the",
-          "  provider's env var (BRAVE_API_KEY / PERPLEXITY_API_KEY / XAI_API_KEY / TAVILY_API_KEY).",
+          "  provider's env var (BRAVE_API_KEY / PERPLEXITY_API_KEY / XAI_API_KEY / TAVILY_API_KEY /",
+          "  SERPLY_API_KEY).",
         ].join("\n"),
       ),
     );

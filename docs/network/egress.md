@@ -96,7 +96,7 @@ below in one step.
 
 ## Everything else is opt-in
 
-Web search (Brave/Tavily/Perplexity/xAI with your key; Parallel Search MCP at
+Web search (Brave/Tavily/Perplexity/xAI/Serply with your key; Parallel Search MCP at
 `search.parallel.ai` keyless and anonymous, so each query reaches Parallel with
 only a Bitterbot User-Agent), Skill Seekers ingestion
 (`skills.skillSeekers.enabled`, default off), channels (WhatsApp, Telegram,

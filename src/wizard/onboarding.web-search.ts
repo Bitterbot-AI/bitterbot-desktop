@@ -11,14 +11,14 @@
  *   2. If not, asks the user to pick a provider and paste a key
  *   3. On quickstart, auto-detects from env vars and skips if found
  *
- * Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily.
+ * Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel";
+type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
 
 const PROVIDERS: Record<
   SearchProvider,
@@ -53,6 +53,12 @@ const PROVIDERS: Record<
     hint: "Uses xAI API — https://x.ai",
     envVar: "XAI_API_KEY",
     keyPlaceholder: "xai-...",
+  },
+  serply: {
+    label: "Serply",
+    hint: "Google results — https://serply.io",
+    envVar: "SERPLY_API_KEY",
+    keyPlaceholder: "",
   },
 };
 
@@ -134,10 +140,11 @@ export async function setupWebSearchForOnboarding(params: {
       "`web_search` tool silently fails and the agent can't learn from the web.",
       "",
       "Supported: Brave Search (free tier), Tavily (built for AI agents),",
-      "Perplexity (Sonar API), Grok (xAI), or Parallel (free, keyless).",
+      "Perplexity (Sonar API), Grok (xAI), Serply (Google results),",
+      "or Parallel (free, keyless).",
       "",
       "You can also set the key as an env var and skip this step:",
-      "  BRAVE_API_KEY, TAVILY_API_KEY, PERPLEXITY_API_KEY, or XAI_API_KEY",
+      "  BRAVE_API_KEY, TAVILY_API_KEY, PERPLEXITY_API_KEY, XAI_API_KEY, or SERPLY_API_KEY",
     ].join("\n"),
     "Web search",
   );
