@@ -19,6 +19,11 @@ export type Classification = {
   payee?: string;
   /** For spend: the amount in USD-equivalent (USDC is 1:1). */
   amountUsd?: number;
+  /**
+   * Required parameters the call left out. Such a call can never execute, so
+   * it is sent back to the agent to correct instead of being put to the owner.
+   */
+  missing?: string[];
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -47,6 +52,14 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
       return null;
     }
     const amountUsd = amount(params.amount);
+    // The wallet tool requires these; name the ones the call left out.
+    const target =
+      action === "send_usdc" ? "address" : action === "send_to_peer" ? "peer_id" : "resource_url";
+    const missing = [
+      ...(text(params[target]) ? [] : [target]),
+      ...(amountUsd === undefined ? ["amount"] : []),
+    ];
+    const invalid = missing.length > 0 ? { missing } : {};
     if (action === "send_usdc") {
       const payee = text(params.address) || "(no address)";
       return {
@@ -54,6 +67,7 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
         preview: `Send ${money(amountUsd)} to ${payee}`,
         payee,
         amountUsd,
+        ...invalid,
       };
     }
     if (action === "send_to_peer") {
@@ -63,6 +77,7 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
         preview: `Send ${money(amountUsd)} to peer ${payee}`,
         payee,
         amountUsd,
+        ...invalid,
       };
     }
     const url = text(params.resource_url) || "(no URL)";
@@ -72,6 +87,7 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
       preview: `Pay ${money(amountUsd)} for ${url}${reason ? ` (${reason})` : ""}`,
       payee: url,
       amountUsd,
+      ...invalid,
     };
   }
 
