@@ -21,9 +21,11 @@ import type { ReviewClass } from "./classify.js";
 
 /**
  * What kind of request a row is. "spend" and "publish" are approvals of a held
- * tool call; "handoff" is the agent asking the owner to take over the browser.
+ * tool call; "handoff" is the agent asking the owner to take over the browser;
+ * "command" mirrors a shell-command approval, which the exec tool itself is
+ * waiting on, so it has one place to be answered and one record.
  */
-export type ReviewKind = ReviewClass | "handoff";
+export type ReviewKind = ReviewClass | "handoff" | "command";
 
 export type ReviewStatus = "pending" | "approved" | "denied" | "expired" | "executed" | "failed";
 

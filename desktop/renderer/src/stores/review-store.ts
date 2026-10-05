@@ -15,7 +15,7 @@ export interface ReviewAction {
   id: string;
   status: ReviewStatus;
   /** "handoff" is the agent asking the owner to take over the browser. */
-  cls: "spend" | "publish" | "contact" | "handoff";
+  cls: "spend" | "publish" | "contact" | "handoff" | "command";
   tool: string;
   preview: string;
   params: unknown;
@@ -38,7 +38,12 @@ interface ReviewStore {
   unsupported: boolean;
   busy: Set<string>;
   load: () => Promise<void>;
-  resolve: (id: string, decision: "approve" | "deny") => Promise<ReviewAction | null>;
+  /** `always` applies to a shell command: allow it from now on, not only once. */
+  resolve: (
+    id: string,
+    decision: "approve" | "deny",
+    opts?: { always?: boolean },
+  ) => Promise<ReviewAction | null>;
   /** Mirror gateway events. Returns the unsubscribe. */
   listen: () => () => void;
 }
@@ -82,11 +87,15 @@ export const useReviewStore = create<ReviewStore>((set, get) => ({
     }
   },
 
-  resolve: async (id, decision) => {
+  resolve: async (id, decision, opts) => {
     const gateway = useGatewayStore.getState();
     set((s) => ({ busy: new Set([...s.busy, id]) }));
     try {
-      const action = await gateway.request("review.resolve", { id, decision });
+      const action = await gateway.request("review.resolve", {
+        id,
+        decision,
+        ...(opts?.always ? { always: true } : {}),
+      });
       if (isAction(action)) {
         set((s) => ({
           pending: s.pending.filter((a) => a.id !== id),

@@ -53,6 +53,9 @@ export type ReviewOutcome =
   | { kind: "pass"; reason: "unclassified" | "allowed" | "grant" | "approved" | "known" }
   | { kind: "hold"; action: ReviewAction; created: boolean };
 
+/** The answers a shell-command approval takes. */
+export type CommandDecision = "allow-once" | "allow-always" | "deny";
+
 /**
  * Whether a standing permission covers the call. When it reserved something
  * to say yes (a grant's allowance), `release` gives that back if the call fails.
@@ -82,6 +85,11 @@ export type ReviewServiceDeps = {
    * the stored call can be carried out later, outside that run.
    */
   completeParams?: (toolName: string, params: unknown, ctx: ReviewContext) => unknown;
+  /**
+   * Answer the shell-command approval a "command" row mirrors. False when the
+   * exec tool is no longer waiting for it.
+   */
+  resolveCommand?: (action: ReviewAction, decision: CommandDecision, decidedBy: string) => boolean;
   /** Tell every listening Control UI window. */
   broadcast?: (event: "review.requested" | "review.resolved", payload: unknown) => void;
   /** Put a line in front of a session's next turn. */
@@ -190,9 +198,24 @@ export class ReviewService {
   async resolve(
     id: string,
     decision: "approve" | "deny",
-    by: { decidedBy: string; decidedVia: string; note?: string },
+    by: { decidedBy: string; decidedVia: string; note?: string; always?: boolean },
   ): Promise<ReviewAction | null> {
     const status = decision === "approve" ? "approved" : "denied";
+    const before = this.deps.store.get(id);
+    if (before?.cls === "command") {
+      if (before.status !== "pending") {
+        return null;
+      }
+      // The exec tool holds the real approval; answer that, then record it.
+      const answer: CommandDecision =
+        decision === "deny" ? "deny" : by.always ? "allow-always" : "allow-once";
+      if (!this.deps.resolveCommand?.(before, answer, by.decidedBy)) {
+        this.deps.store.expire(id);
+        this.announce(id);
+        return null;
+      }
+      return this.settleCommand(id, answer, by);
+    }
     if (!this.deps.store.decide(id, status, by)) {
       return null;
     }
@@ -263,6 +286,71 @@ export class ReviewService {
     } catch (err) {
       return { ok: false, summary: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /** A shell command is waiting for approval: put it in the queue. */
+  openCommand(input: {
+    approvalId: string;
+    command: string;
+    cwd?: string | null;
+    host?: string | null;
+    ctx: ReviewContext;
+    ttlMs: number;
+  }): ReviewAction {
+    const params = {
+      command: input.command,
+      ...(input.cwd ? { cwd: input.cwd } : {}),
+      ...(input.host ? { host: input.host } : {}),
+      approvalId: input.approvalId,
+    };
+    const { action, created } = this.deps.store.request({
+      id: this.newId(),
+      cls: "command",
+      tool: "exec",
+      params,
+      // One row per approval, not per command text: the same command asked
+      // twice is two questions.
+      fingerprint: `command:${input.approvalId}`,
+      preview: `Run: ${input.command.slice(0, 300)}${input.cwd ? ` (in ${input.cwd})` : ""}`,
+      sessionKey: input.ctx.sessionKey ?? null,
+      agentId: input.ctx.agentId ?? null,
+      runId: input.ctx.runId ?? null,
+      ttlMs: input.ttlMs,
+    });
+    if (created) {
+      this.deps.broadcast?.("review.requested", publicView(action));
+    }
+    return action;
+  }
+
+  /**
+   * Record how a shell-command approval ended, whichever surface answered it.
+   * `null` means nobody did. Safe to call twice.
+   */
+  settleCommand(
+    id: string,
+    decision: CommandDecision | null,
+    by: { decidedBy: string; decidedVia: string },
+  ): ReviewAction | null {
+    if (decision === null) {
+      this.expireHandoff(id);
+      return this.deps.store.get(id);
+    }
+    const changed = this.deps.store.decide(id, decision === "deny" ? "denied" : "approved", by);
+    if (changed) {
+      if (decision !== "deny") {
+        this.deps.store.markExecution(id, {
+          ok: true,
+          summary:
+            decision === "allow-always"
+              ? "Allowed, and added to the allowlist for next time."
+              : "Allowed once.",
+        });
+      }
+      log.info(`${id} command ${decision} by ${by.decidedBy}`);
+      this.announce(id);
+    }
+    return this.deps.store.get(id);
   }
 
   /**

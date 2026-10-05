@@ -49,6 +49,7 @@ import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
+import { setCommandApprovalResolver } from "../review/runtime.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { registerTaskCheckContext } from "../tasks/checks.js";
 import { startCompletionNotifier } from "../tasks/completion-notifier.js";
@@ -596,6 +597,11 @@ export async function startGatewayServer(
 
   const execApprovalManager = new ExecApprovalManager();
   const execApprovalForwarder = createExecApprovalForwarder();
+  // PLAN-53 B6: a command answered from the review queue resolves the same
+  // approval the exec tool is waiting on.
+  setCommandApprovalResolver((approvalId, decision, by) =>
+    execApprovalManager.resolve(approvalId, decision, by),
+  );
   const execApprovalHandlers = createExecApprovalHandlers(execApprovalManager, {
     forwarder: execApprovalForwarder,
   });
