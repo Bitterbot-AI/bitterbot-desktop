@@ -18,6 +18,7 @@ import { resolveStateDir } from "../config/paths.js";
 import { assertNotRealStateUnderTest } from "../infra/test-state-guard.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
 import type { SpendDecision } from "../payments/ap2/gate.js";
+import { scrubCardData, scrubCardDataDeep } from "../security/card-data.js";
 import type { ReviewClass } from "./classify.js";
 
 /**
@@ -238,7 +239,7 @@ export class ReviewStore {
         at + (input.ttlMs ?? REVIEW_DEFAULT_TTL_MS),
         input.cls,
         input.tool,
-        JSON.stringify(input.params ?? null),
+        JSON.stringify(scrubCardDataDeep(input.params ?? null)),
         input.fingerprint,
         input.preview,
         input.sessionKey ?? null,
@@ -282,7 +283,12 @@ export class ReviewStore {
         `UPDATE review_actions SET status = ?, result_summary = ?, executed_at = ?
           WHERE id = ? AND status = 'approved'`,
       )
-      .run(outcome.ok ? "executed" : "failed", outcome.summary.slice(0, 4000), this.now(), id);
+      .run(
+        outcome.ok ? "executed" : "failed",
+        scrubCardData(outcome.summary).slice(0, 4000),
+        this.now(),
+        id,
+      );
   }
 
   list(opts?: { status?: ReviewStatus | "all"; limit?: number }): ReviewAction[] {

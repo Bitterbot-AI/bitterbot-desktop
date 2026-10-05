@@ -77,6 +77,10 @@ to others (royalties, bounties) do not wait; they are limited, recorded, and you
 they go out. Set `review.spend: "allow"` to go back to caps only, and
 then set the caps to amounts you can lose.
 
+### Card data is never kept
+
+Payment card numbers and security codes are scrubbed from everything the agent keeps or sees: tool results before the model reads them, session transcripts, the event journal, tool events shown in the Control UI, and the review queue. A card number is replaced with its last four digits, a security code with `[removed]`. This holds whatever the `logging.redactSensitive` setting says. Fiat purchases with a card are not built yet; this is the floor they will stand on.
+
 The `wallet` and `a2a_client` tools are **owner-only**, like the tools that run code or drive the
 browser. They are offered to the agent only on turns you start yourself: the Control UI, the CLI,
 or a channel message from an owner account (`commands.ownerAllowFrom`, or the channel's `allowFrom`

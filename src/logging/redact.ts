@@ -1,5 +1,6 @@
 import { createRequire } from "node:module";
 import type { BitterbotConfig } from "../config/config.js";
+import { scrubCardData } from "../security/card-data.js";
 
 const requireConfig = createRequire(import.meta.url);
 
@@ -127,15 +128,17 @@ export function redactSensitiveText(text: string, options?: RedactOptions): stri
   if (!text) {
     return text;
   }
+  // Card data is scrubbed whatever the redaction mode says (PLAN-53 C2).
+  const base = scrubCardData(text);
   const resolved = options ?? resolveConfigRedaction();
   if (normalizeMode(resolved.mode) === "off") {
-    return text;
+    return base;
   }
   const patterns = resolvePatterns(resolved.patterns);
   if (!patterns.length) {
-    return text;
+    return base;
   }
-  return redactText(text, patterns);
+  return redactText(base, patterns);
 }
 
 export function redactToolDetail(detail: string): string {

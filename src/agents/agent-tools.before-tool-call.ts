@@ -1,6 +1,7 @@
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { runReviewStage } from "../review/stage.js";
+import { scrubCardDataDeep } from "../security/card-data.js";
 import { isPlainObject } from "../utils.js";
 import { checkRepeatedCall } from "./agent-tools.repeat-guard.js";
 import { runInterceptors } from "./skills/interceptor-runner.js";
@@ -205,7 +206,9 @@ export function wrapToolWithBeforeToolCallHook(
           }
         }
       }
-      return await execute(toolCallId, outcome.params, signal, onUpdate);
+      // PLAN-53 C2: a card number or security code in a result never reaches
+      // the model, the transcript or anything downstream of this call.
+      return scrubCardDataDeep(await execute(toolCallId, outcome.params, signal, onUpdate));
     },
   };
   Object.defineProperty(wrappedTool, BEFORE_TOOL_CALL_WRAPPED, {

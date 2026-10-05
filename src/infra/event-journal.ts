@@ -33,6 +33,7 @@ import type { DatabaseSync } from "node:sqlite";
 import zlib from "node:zlib";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
+import { scrubCardDataDeep } from "../security/card-data.js";
 import { resolveUserPath } from "../utils.js";
 import type { AgentEventPayload, AgentEventStream } from "./agent-events.js";
 import { onAgentEvent } from "./agent-events.js";
@@ -107,7 +108,9 @@ export class EventJournal {
   }
 
   append(evt: AgentEventPayload): void {
-    const dataBlob = zlib.gzipSync(JSON.stringify(evt.data ?? {}));
+    // PLAN-53 C2: the journal is replayed into traces and skill evolution;
+    // card data must not be in it.
+    const dataBlob = zlib.gzipSync(JSON.stringify(scrubCardDataDeep(evt.data ?? {})));
     this.db
       .prepare(
         `INSERT INTO event_log
