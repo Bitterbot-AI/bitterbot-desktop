@@ -5,6 +5,7 @@ import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js
 import type { CirclesSchedulerHandle } from "../circles/scheduler.js";
 import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
+import { flushSystemEventPersistence } from "../infra/system-events.js";
 import { flushUsageLedger, stopUsageLedger } from "../infra/usage-ledger.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
@@ -115,6 +116,8 @@ export function createGatewayCloseHandler(params: {
       // Drain queued rows (embeddings/hidden lanes have no reconcile safety net) before closing.
       await Promise.race([flushUsageLedger(), new Promise((r) => setTimeout(r, 2_000))]);
       stopUsageLedger();
+      // PLAN-53 E7: whatever is still queued for a session is on disk before exit.
+      flushSystemEventPersistence();
     } catch {
       // ignore
     }

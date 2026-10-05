@@ -1,3 +1,4 @@
+import path from "node:path";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { getActiveEmbeddedRunCount } from "../agents/embedded-runner/runs.js";
 import {
@@ -20,6 +21,7 @@ import {
   readConfigFileSnapshot,
   writeConfigFile,
 } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
 import { recordBootDurationMs } from "../infra/boot-duration.js";
@@ -38,6 +40,7 @@ import {
   refreshRemoteBinsForConnectedNodes,
   setSkillsRemoteRegistry,
 } from "../infra/skills-remote.js";
+import { enableSystemEventPersistence } from "../infra/system-events.js";
 import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
 import { checkUsageBudgetAlerts, onUsageBudgetAlert } from "../infra/usage-budgets.js";
 import { getUsageLedger, onUsageEvent, startUsageLedger } from "../infra/usage-ledger.js";
@@ -209,6 +212,19 @@ export async function startGatewayServer(
   // and long-horizon task progress streams. On by default; disable with
   // BITTERBOT_EVENT_JOURNAL=0.
   startEventJournal();
+
+  // PLAN-53 E7: notices queued for a session (a reminder, an approval's
+  // outcome, a finished task) survive a restart.
+  try {
+    const restored = enableSystemEventPersistence(
+      path.join(resolveStateDir(), "system-events.json"),
+    );
+    if (restored > 0) {
+      log.info(`restored ${restored} queued system event(s) from before the restart`);
+    }
+  } catch (err) {
+    log.warn(`system event persistence is off: ${String(err)}`);
+  }
 
   // PLAN-16 Phase B: long-horizon Task store. Hosts `task_*` agent tools'
   // backing rows. On by default; override path with BITTERBOT_TASKS_DB.
