@@ -74,6 +74,22 @@ type Row = {
   executed_at: number | null;
 };
 
+type SpendRow = {
+  id: string;
+  ts: number;
+  origin: SpendDecision["origin"];
+  rail: SpendDecision["rail"];
+  payee: string;
+  amount_usd: number;
+  verdict: SpendDecision["verdict"];
+  reason: string;
+  outcome: SpendDecision["outcome"];
+  tx_hash: string | null;
+  error: string | null;
+  session_key: string | null;
+  purpose: string | null;
+};
+
 /** A request nobody decides on is dropped after this long. */
 export const REVIEW_DEFAULT_TTL_MS = 24 * 60 * 60_000;
 
@@ -353,21 +369,21 @@ export class ReviewStore {
   listSpendDecisions(limit = 50): SpendDecision[] {
     const rows = this.db
       .prepare(`SELECT * FROM spend_decisions ORDER BY ts DESC LIMIT ?`)
-      .all(Math.max(1, Math.min(limit, 500))) as unknown as Array<Record<string, unknown>>;
+      .all(Math.max(1, Math.min(limit, 500))) as unknown as SpendRow[];
     return rows.map((r) => ({
-      id: String(r.id),
-      ts: Number(r.ts),
-      origin: r.origin as SpendDecision["origin"],
-      rail: r.rail as SpendDecision["rail"],
-      payee: String(r.payee),
-      amountUsd: Number(r.amount_usd),
-      verdict: r.verdict as SpendDecision["verdict"],
-      reason: String(r.reason),
-      outcome: r.outcome as SpendDecision["outcome"],
-      ...(r.tx_hash ? { txHash: String(r.tx_hash) } : {}),
-      ...(r.error ? { error: String(r.error) } : {}),
-      ...(r.session_key ? { sessionKey: String(r.session_key) } : {}),
-      ...(r.purpose ? { purpose: String(r.purpose) } : {}),
+      id: r.id,
+      ts: r.ts,
+      origin: r.origin,
+      rail: r.rail,
+      payee: r.payee,
+      amountUsd: r.amount_usd,
+      verdict: r.verdict,
+      reason: r.reason,
+      outcome: r.outcome,
+      ...(r.tx_hash ? { txHash: r.tx_hash } : {}),
+      ...(r.error ? { error: r.error } : {}),
+      ...(r.session_key ? { sessionKey: r.session_key } : {}),
+      ...(r.purpose ? { purpose: r.purpose } : {}),
     }));
   }
 
