@@ -2,6 +2,7 @@ import { getChannelPlugin, normalizeChannelId } from "../channels/plugins/index.
 import { normalizeTargetForProvider } from "../infra/outbound/target-normalization.js";
 import type { ToolCallVia } from "../infra/usage-ledger.types.js";
 import { MEDIA_TOKEN_RE } from "../media/parse.js";
+import { scrubCardDataDeep } from "../security/card-data.js";
 import { truncateUtf16Safe } from "../utils.js";
 import { type MessagingToolSend } from "./embedded-messaging.js";
 import {
@@ -76,7 +77,7 @@ export function sanitizeToolResult(result: unknown, maxChars?: number): unknown 
   if (!result || typeof result !== "object") {
     return result;
   }
-  const record = result as Record<string, unknown>;
+  const record = scrubCardDataDeep(result as Record<string, unknown>);
   const content = Array.isArray(record.content) ? record.content : null;
   if (!content) {
     return record;
