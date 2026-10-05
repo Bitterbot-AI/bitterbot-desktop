@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -86,5 +86,55 @@ describe("daily spend limit under concurrent sends", () => {
     await expect(wallet.sendUsdc(RECIPIENT, 1)).rejects.toThrow(/Failed to send USDC/);
     await expect(wallet.sendUsdc(RECIPIENT, 1)).resolves.toMatchObject({ status: "pending" });
     expect(sendTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  // The app builds a wallet service per agent run, per paid A2A task, per
+  // payout tick and for the gateway RPC. They share one budget, so they have
+  // to share the hold.
+  it("holds the limit across separate wallet services on the same store", async () => {
+    const wallets = [];
+    for (let i = 0; i < 10; i += 1) {
+      const wallet = service(5);
+      await wallet.getAddress();
+      wallets.push(wallet);
+    }
+
+    const results = await Promise.allSettled(wallets.map((w) => w.sendUsdc(RECIPIENT, 1)));
+
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(5);
+    expect(sendTransaction).toHaveBeenCalledTimes(5);
+    for (const r of results) {
+      if (r.status === "rejected") {
+        expect(String(r.reason)).toMatch(/Daily spend limit would be exceeded/);
+      }
+    }
+    const history = await service(5).getTransactionHistory(100);
+    expect(history.reduce((sum, r) => sum + Number(r.amount), 0)).toBe(5);
+  });
+
+  // Once sendTransaction returns, the money has moved. Reporting a failure
+  // then is how a spend gets made twice: an agent retries, and the payout
+  // queue re-sends the same payment on its next tick.
+  it("reports a send that went through as sent even when it cannot be written down", async () => {
+    const wallet = service(5);
+    await wallet.getAddress();
+    const historyPath = path.join(storePath, "tx-history.json");
+    // A directory where the history file should be: every read and write fails.
+    await mkdir(historyPath);
+
+    await expect(wallet.sendUsdc(RECIPIENT, 3)).resolves.toMatchObject({ status: "pending" });
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
+
+    // It still counts against the limit, from any wallet service on the store.
+    await expect(service(5).sendUsdc(RECIPIENT, 3)).rejects.toThrow(
+      /Daily spend limit would be exceeded: \$3\.00 spent/,
+    );
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
+
+    // And it is written with the next spend that can be.
+    await rm(historyPath, { recursive: true });
+    await wallet.sendUsdc(RECIPIENT, 1);
+    const history = await wallet.getTransactionHistory(100);
+    expect(history.map((r) => Number(r.amount)).toSorted((a, b) => a - b)).toEqual([1, 3]);
   });
 });

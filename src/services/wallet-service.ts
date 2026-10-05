@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import lockfile from "proper-lockfile";
 import type { WalletConfig } from "../config/types.wallet.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 
 export type BalanceResult = {
   token: string;
@@ -84,6 +85,35 @@ export interface SmartAccountConfigView {
 }
 
 const DEFAULT_WALLET_STORE = path.join(os.homedir(), ".bitterbot", "wallet");
+
+const log = createSubsystemLogger("wallet");
+
+/**
+ * Spend bookkeeping shared by every wallet service on the same store: what is
+ * held for sends in flight, the order the history is read and written in, and
+ * spends that went through but could not be written down yet.
+ */
+type StoreLedger = {
+  reservedUsd: number;
+  queue: Promise<void>;
+  unrecorded: TransactionRecord[];
+};
+const ledgers = new Map<string, StoreLedger>();
+
+function ledgerFor(storePath: string): StoreLedger {
+  const key = path.resolve(storePath);
+  let ledger = ledgers.get(key);
+  if (!ledger) {
+    ledger = { reservedUsd: 0, queue: Promise.resolve(), unrecorded: [] };
+    ledgers.set(key, ledger);
+  }
+  return ledger;
+}
+
+/** Test seam: forget holds and unwritten spends for every store. */
+export function resetWalletLedgersForTest(): void {
+  ledgers.clear();
+}
 
 // Persistence shape. v1 stored an encrypted blob; v2 only needs the
 // smart-account name and addresses — CDP holds the wallet state server-side,
@@ -217,52 +247,92 @@ export function createWalletService(config: WalletConfig): WalletService {
   //
   // The check also holds the amount until the spend is recorded (or abandoned).
   // Concurrent spends otherwise all read the same history before any of them is
-  // written, and all pass the cap. The hold is taken with no await between the
-  // check and the increment. Holds are in-process only; the history file is
-  // what survives restarts.
-  let reservedUsd = 0;
+  // written, and all pass the cap (#157).
+  //
+  // The hold, and the order history is read and written in, belong to the
+  // wallet store, not to this instance: the app builds a wallet service per
+  // agent run, per paid A2A task, per payout tick and for the gateway RPC, and
+  // they all spend from the same budget. Holds are in-process only; the
+  // history file is what survives restarts.
+  const ledger = ledgerFor(storePath);
 
-  async function reserveDailyLimit(amount: number): Promise<() => void> {
-    const historyPath = path.join(storePath, "tx-history.json");
-    let history: TransactionRecord[] = [];
+  /** One thing at a time per store: a cap check never reads around a write. */
+  function inOrder<T>(work: () => Promise<T>): Promise<T> {
+    const run = ledger.queue.then(work);
+    ledger.queue = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  function reserveDailyLimit(amount: number): Promise<() => void> {
+    return inOrder(async () => {
+      const historyPath = path.join(storePath, "tx-history.json");
+      let history: TransactionRecord[] = [];
+      try {
+        history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
+      } catch {
+        // no history yet — nothing spent
+      }
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const isSpend = (r: TransactionRecord) =>
+        r.timestamp >= cutoff && (r.type === "send" || r.type === "x402_payment");
+      const sum = (rows: TransactionRecord[]) =>
+        rows.filter(isSpend).reduce((total, r) => total + (Number(r.amount) || 0), 0);
+      // Money that left but could not be written down still counts.
+      const spent = sum(history) + sum(ledger.unrecorded);
+      if (spent + ledger.reservedUsd + amount > dailyLimit) {
+        const inFlight =
+          ledger.reservedUsd > 0 ? ` plus $${ledger.reservedUsd.toFixed(2)} in flight` : "";
+        throw new Error(
+          `Daily spend limit would be exceeded: $${spent.toFixed(2)} spent in the last 24h${inFlight}, ` +
+            `$${amount.toFixed(2)} requested, cap is $${dailyLimit} ` +
+            `(tools.wallet.dailySpendLimitUsd)`,
+        );
+      }
+      ledger.reservedUsd += amount;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        ledger.reservedUsd -= amount;
+      };
+    });
+  }
+
+  // History writes run one at a time per store, so concurrent spends don't
+  // fail on our own lockfile after the money has already moved. The lockfile
+  // still guards against other processes.
+
+  /**
+   * Write down a spend that has ALREADY happened. This never throws: by the
+   * time it is called the money has moved, and a caller told "failed" will
+   * pay again (an agent retries; the payout queue re-sends next tick). If the
+   * history cannot be written the spend is kept in memory, still counted
+   * against the cap, and written with the next record that succeeds.
+   */
+  async function recordSpend(record: TransactionRecord): Promise<void> {
     try {
-      history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
-    } catch {
-      // no history yet — nothing spent
-    }
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const spent = history
-      .filter((r) => r.timestamp >= cutoff && (r.type === "send" || r.type === "x402_payment"))
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    if (spent + reservedUsd + amount > dailyLimit) {
-      const inFlight = reservedUsd > 0 ? ` plus $${reservedUsd.toFixed(2)} in flight` : "";
-      throw new Error(
-        `Daily spend limit would be exceeded: $${spent.toFixed(2)} spent in the last 24h${inFlight}, ` +
-          `$${amount.toFixed(2)} requested, cap is $${dailyLimit} ` +
-          `(tools.wallet.dailySpendLimitUsd)`,
+      await inOrder(async () => {
+        const pending = ledger.unrecorded.splice(0);
+        try {
+          await writeTransactions([...pending, record]);
+        } catch (err) {
+          ledger.unrecorded.push(...pending);
+          throw err;
+        }
+      });
+    } catch (err) {
+      ledger.unrecorded.push(record);
+      log.error(
+        `spend ${record.txHash} ($${record.amount} ${record.type}) went through but could not be written to the wallet history: ` +
+          `${err instanceof Error ? err.message : String(err)}. It still counts against the daily limit.`,
       );
     }
-    reservedUsd += amount;
-    let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      reservedUsd -= amount;
-    };
   }
 
-  // History writes from this process run one at a time, so concurrent spends
-  // don't fail on our own lockfile after the money has already moved. The
-  // lockfile still guards against other processes.
-  let historyWrites: Promise<void> = Promise.resolve();
-
-  function recordTransaction(record: TransactionRecord): Promise<void> {
-    const write = historyWrites.then(() => writeTransaction(record));
-    historyWrites = write.catch(() => {});
-    return write;
-  }
-
-  async function writeTransaction(record: TransactionRecord): Promise<void> {
+  async function writeTransactions(records: TransactionRecord[]): Promise<void> {
     await ensureStoreDir();
     const historyPath = path.join(storePath, "tx-history.json");
 
@@ -282,7 +352,7 @@ export function createWalletService(config: WalletConfig): WalletService {
       try {
         history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
       } catch {}
-      history.push(record);
+      history.push(...records);
       if (history.length > 500) {
         history = history.slice(-500);
       }
@@ -404,35 +474,37 @@ export function createWalletService(config: WalletConfig): WalletService {
         throw new Error(`No USDC contract for network: ${network}`);
       }
 
+      let tx: string;
       try {
         const smallestUnit = opts?.rawSmallestUnit ?? BigInt(Math.round(amount * 1e6));
-        const tx = await provider.sendTransaction({
+        tx = await provider.sendTransaction({
           to: usdcContract as `0x${string}`,
           value: BigInt(0),
           data: encodeSendUsdcData(to, smallestUnit),
         });
-
-        await recordTransaction({
-          txHash: tx,
-          type: "send",
-          amount: amount.toString(),
-          token: "USDC",
-          timestamp: Date.now(),
-        });
-
-        return {
-          txHash: tx,
-          status: "pending",
-        };
       } catch (err) {
+        releaseHold();
         throw new Error(
           `Failed to send USDC: ${err instanceof Error ? err.message : String(err)}`,
           { cause: err },
         );
-      } finally {
-        // A recorded send now counts through the history instead
-        releaseHold();
       }
+      // The money has moved. From here on this call reports success whatever
+      // happens to the bookkeeping: saying "failed" now is how a spend gets
+      // made twice.
+      await recordSpend({
+        txHash: tx,
+        type: "send",
+        amount: amount.toString(),
+        token: "USDC",
+        timestamp: Date.now(),
+      });
+      // Recorded (in the history, or held in memory): it counts there now.
+      releaseHold();
+      return {
+        txHash: tx,
+        status: "pending",
+      };
     },
 
     async getTransactionHistory(limit?: number): Promise<TransactionRecord[]> {
@@ -577,7 +649,9 @@ export function createWalletService(config: WalletConfig): WalletService {
           paid.paymentProof?.transaction ??
           paid.paymentProof?.txHash ??
           `x402-${Date.now().toString(36)}`;
-        await recordTransaction({
+        // Paid: record it without letting a bookkeeping failure turn a
+        // payment that went through into a reported failure.
+        await recordSpend({
           txHash,
           type: "x402_payment",
           amount: requiredUsd.toString(),
