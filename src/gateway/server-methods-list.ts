@@ -123,6 +123,8 @@ const BASE_METHODS = [
   "monitors.update",
   "monitors.remove",
   "monitors.check",
+  "tasks.list",
+  "tasks.stop",
   "system-presence",
   "system-event",
   "send",

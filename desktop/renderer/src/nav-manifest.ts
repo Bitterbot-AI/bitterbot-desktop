@@ -51,7 +51,7 @@ const NAV_MANIFEST_LITERAL = [
   { id: "channels", label: "Channels", icon: Radio, group: "main" },
   { id: "agents", label: "Agents", icon: Bot, group: "main" },
   { id: "skills", label: "Skills", icon: Puzzle, group: "main" },
-  { id: "cron", label: "Cron", icon: Clock, group: "main" },
+  { id: "cron", label: "Automations", icon: Clock, group: "main" },
   { id: "models", label: "Models & Keys", icon: KeyRound, group: "main" },
   { id: "config", label: "Settings", icon: Settings, group: "main" },
   // ── Advanced ──

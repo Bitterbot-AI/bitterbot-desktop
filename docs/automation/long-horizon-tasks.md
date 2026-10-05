@@ -331,3 +331,14 @@ Judge machinery described above.
 
 See `research/plans/PLAN-16-LONG-HORIZON-TASK-EXECUTION.md` in the
 repository for the design rationale.
+
+## Seeing and stopping tasks
+
+The **Automations** page in the Control UI lists the tasks in progress and those finished in the last week, with a **Stop** button. A task that has not moved for over a day and has nothing scheduled to resume it is marked as stuck.
+
+The gateway checks for stuck tasks itself (ten minutes after start, then every six hours) and tells you once per task: in the main session, as a notice in the Control UI, and on your chat channel subject to [`notifications`](/gateway/configuration-reference#notifications). A restart that interrupts running tasks is reported the same way.
+
+```bash
+bitterbot gateway call tasks.list
+bitterbot gateway call tasks.stop --params '{"id":"task-..."}'
+```

@@ -54,7 +54,7 @@ describe("ownerNoticeForCronEvent", () => {
 
     expect(notice?.kind).toBe("cron-disabled");
     expect(notice?.text).toContain("failed 8 times in a row and has been turned off");
-    expect(notice?.text).toContain("Cron page");
+    expect(notice?.text).toContain("Automations page");
   });
 
   it("says when a one-shot will not run again, and does not also report the run", () => {

@@ -141,7 +141,7 @@ A failed job is never silent.
 - **Recurring jobs** retry on a backoff (30 s, 1 min, 5 min, 15 min, then hourly). After `cron.autoDisableAfterErrors` failures in a row (default 8) the job is turned off.
 - **One-shot jobs** run once. Set `retryUntilMs` (unix ms, or an ISO time) on the job to keep retrying on the same backoff until that deadline.
 - **You are told** when a failure streak starts, when a job is turned off, and when a one-shot will not run again: in the main session, as a notice in the Control UI, and on your chat channel subject to [`notifications`](/gateway/configuration-reference#notifications) quiet hours and rate limit.
-- The Cron page shows each job's state ("Last run OK", "Failing (3 in a row)", "Turned off after 8 failures in a row"), where its result is sent, and its recent run history. It updates as runs finish.
+- The Automations page shows each job's state ("Last run OK", "Failing (3 in a row)", "Turned off after 8 failures in a row"), where its result is sent, and its recent run history. It updates as runs finish.
 
 ### Main vs isolated execution
 

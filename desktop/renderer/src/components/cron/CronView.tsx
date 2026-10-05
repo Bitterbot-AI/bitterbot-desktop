@@ -12,6 +12,8 @@ import {
 } from "../../stores/cron-store";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useConfirm } from "../ui/confirm-dialog";
+import { MonitorsSection } from "./MonitorsSection";
+import { TasksSection } from "./TasksSection";
 
 const HEALTH_TONE = {
   ok: "text-success",
@@ -170,7 +172,7 @@ function AddCronForm({ onAdd }: { onAdd: (params: Record<string, unknown>) => vo
       onSubmit={handleSubmit}
       className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4 space-y-3"
     >
-      <h3 className="text-sm font-medium text-foreground">Add Cron Job</h3>
+      <h3 className="text-sm font-medium text-foreground">Add a scheduled job</h3>
       <div className="grid grid-cols-2 gap-3">
         <input
           value={label}
@@ -385,9 +387,9 @@ export function CronView() {
     <div className="h-full overflow-y-auto p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Cron</h1>
+          <h1 className="text-2xl font-bold text-foreground">Automations</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {jobs.length} scheduled job{jobs.length !== 1 ? "s" : ""}
+            What your agent does without being asked: scheduled jobs, monitors and longer tasks.
           </p>
         </div>
         <button
@@ -404,12 +406,18 @@ export function CronView() {
         </button>
       </div>
 
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">Scheduled jobs</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {jobs.length} job{jobs.length !== 1 ? "s" : ""}. Things that happen at a set time.
+        </p>
+      </div>
       <AddCronForm onAdd={handleAdd} />
 
       <div className="space-y-3">
         {jobs.length === 0 && !loading ? (
           <div className="p-8 text-center text-muted-foreground text-sm rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm">
-            No cron jobs configured
+            No scheduled jobs yet
           </div>
         ) : (
           jobs.map((job) => (
@@ -425,6 +433,8 @@ export function CronView() {
           ))
         )}
       </div>
+      <MonitorsSection />
+      <TasksSection />
       {confirmElement}
     </div>
   );
