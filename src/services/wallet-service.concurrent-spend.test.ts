@@ -135,6 +135,6 @@ describe("daily spend limit under concurrent sends", () => {
     await rm(historyPath, { recursive: true });
     await wallet.sendUsdc(RECIPIENT, 1);
     const history = await wallet.getTransactionHistory(100);
-    expect(history.map((r) => Number(r.amount)).toSorted()).toEqual([1, 3]);
+    expect(history.map((r) => Number(r.amount)).toSorted((a, b) => a - b)).toEqual([1, 3]);
   });
 });
