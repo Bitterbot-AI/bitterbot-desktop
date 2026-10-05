@@ -1,4 +1,3 @@
-import { cn } from "../../lib/utils";
 import { useUIStore, type TabId } from "../../stores/ui-store";
 import { AgentsView } from "../agents/AgentsView";
 import { ChannelsView } from "../channels/ChannelsView";
@@ -52,6 +51,7 @@ export function AppShell() {
   const activeTab = useUIStore((s) => s.activeTab);
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const toolPanelOpen = useUIStore((s) => s.toolPanelOpen);
+  const toolPanelWidth = useUIStore((s) => s.toolPanelWidth);
 
   const isChat = activeTab === "chat";
 
@@ -62,10 +62,10 @@ export function AppShell() {
       <CirclesGlobalSync />
       {sidebarOpen && <Sidebar />}
       <main
-        className={cn(
-          "flex-1 flex flex-col min-w-0 transition-all duration-200",
-          isChat && toolPanelOpen && "mr-[550px]",
-        )}
+        className="flex-1 flex flex-col min-w-0"
+        // The pane is fixed over the right edge; make room for it at its
+        // current width, which the person can drag.
+        style={isChat && toolPanelOpen ? { marginRight: toolPanelWidth } : undefined}
       >
         {/* Title bar area for drag region */}
         <div className="h-8 flex-shrink-0 flex items-center justify-end px-4 drag-region">

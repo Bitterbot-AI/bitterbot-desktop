@@ -63,6 +63,7 @@ import { resolveSendPolicy } from "../sessions/send-policy.js";
 import { isSkillEvolveValidationSessionKey } from "../sessions/session-key-utils.js";
 import { resolveMessageChannel } from "../utils/message-channel.js";
 import { deliverAgentCommandResult } from "./agent/delivery.js";
+import { withQueuedSystemEvents } from "./agent/queued-events.js";
 import { resolveAgentRunContext } from "./agent/run-context.js";
 import { updateSessionStoreAfterAgentRun } from "./agent/session-store.js";
 import { resolveSession } from "./agent/session.js";
@@ -606,6 +607,12 @@ export async function agentCommand(
         hasSessionModelOverride: Boolean(storedModelOverride),
       });
 
+      // Notices queued for this session (an approval's outcome, a finished
+      // background task) ride in with the next prompt. Chat turns got them
+      // through the reply pipeline; turns started here never did. Drained once,
+      // before the fallback loop, so a retry does not lose them.
+      const promptBody = await withQueuedSystemEvents({ cfg, sessionKey, body });
+
       // Track model fallback attempts so retries on an existing session don't
       // re-inject the original prompt as a duplicate user message.
       let fallbackAttemptIndex = 0;
@@ -628,7 +635,7 @@ export async function agentCommand(
             sessionAgentId,
             sessionFile,
             workspaceDir,
-            body,
+            body: promptBody,
             isFallbackRetry,
             resolvedThinkLevel,
             timeoutMs,

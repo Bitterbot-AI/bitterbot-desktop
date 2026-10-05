@@ -24,6 +24,7 @@ vi.mock("./routes/dispatcher.js", () => ({
 }));
 
 import { BrowserResponseError, fetchBrowserJson } from "./client-fetch.js";
+import { resetBrowserLaunchActivityForTest, trackBrowserLaunch } from "./launch-activity.js";
 
 const failure = async (run: Promise<unknown>): Promise<Error> => {
   try {
@@ -36,6 +37,7 @@ const failure = async (run: Promise<unknown>): Promise<Error> => {
 
 beforeEach(() => {
   dispatch.mockReset();
+  resetBrowserLaunchActivityForTest();
 });
 
 afterEach(() => {
@@ -85,6 +87,24 @@ describe("browser request errors: the in-process control service", () => {
     expect(err.message).not.toMatch(/Can't reach|restart/i);
     // Still told not to loop on it.
     expect(err.message).toContain("Do NOT retry the browser tool");
+  });
+
+  it("says a cold start is a cold start, and allows one more try", async () => {
+    vi.useFakeTimers();
+    dispatch.mockReturnValue(new Promise(() => {}));
+    // A launch that is still running when the call gives up.
+    let finishLaunch = () => {};
+    const launch = trackBrowserLaunch(() => new Promise<void>((r) => (finishLaunch = r)));
+
+    const pending = failure(fetchBrowserJson("/tabs/open", { method: "POST", timeoutMs: 15_000 }));
+    await vi.advanceTimersByTimeAsync(15_000);
+    const err = await pending;
+    finishLaunch();
+    await launch;
+
+    expect(err.message).toContain("still starting");
+    expect(err.message).toContain("ONE more time");
+    expect(err.message).not.toContain("Do NOT retry the browser tool");
   });
 
   it("reports an internal failure without inventing an outage", async () => {

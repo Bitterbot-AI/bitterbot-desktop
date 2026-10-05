@@ -118,11 +118,18 @@ export async function browserProfiles(baseUrl?: string): Promise<ProfileStatus[]
   return res.profiles ?? [];
 }
 
+/**
+ * Budget for the calls that may have to launch the browser first. A cold
+ * launch waits up to 10 s for the profile and 12 s for the debugging port
+ * before the request itself runs, so 15 s lost the race on a slow machine.
+ */
+export const BROWSER_LAUNCHING_CALL_TIMEOUT_MS = 45_000;
+
 export async function browserStart(baseUrl?: string, opts?: { profile?: string }): Promise<void> {
   const q = buildProfileQuery(opts?.profile);
   await fetchBrowserJson(withBaseUrl(baseUrl, `/start${q}`), {
     method: "POST",
-    timeoutMs: 15000,
+    timeoutMs: BROWSER_LAUNCHING_CALL_TIMEOUT_MS,
   });
 }
 
@@ -223,7 +230,7 @@ export async function browserOpenTab(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
-    timeoutMs: 15000,
+    timeoutMs: BROWSER_LAUNCHING_CALL_TIMEOUT_MS,
   });
 }
 
