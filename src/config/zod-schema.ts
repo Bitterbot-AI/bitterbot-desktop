@@ -1115,6 +1115,7 @@ export const BitterbotSchema = z
       })
       .strict()
       .optional(),
+    monitors: z.object({ enabled: z.boolean().optional() }).strict().optional(),
     notifications: z
       .object({
         owner: z

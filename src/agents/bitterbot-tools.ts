@@ -33,6 +33,7 @@ import {
   createMemorySearchTool,
 } from "./tools/memory-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
+import { createMonitorTool } from "./tools/monitor-tool.js";
 import { createNetworkStatusTool } from "./tools/network-status-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createRecallRangeTool } from "./tools/recall-range-tool.js";
@@ -174,6 +175,7 @@ export function createBitterbotTools(options?: {
       config: options?.config,
     }),
     createCronTool({ agentSessionKey: options?.agentSessionKey }),
+    createMonitorTool(),
     createAgentsListTool({
       agentSessionKey: options?.agentSessionKey,
       requesterAgentIdOverride: options?.requesterAgentIdOverride,

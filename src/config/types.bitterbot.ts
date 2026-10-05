@@ -179,6 +179,8 @@ export type BitterbotConfig = {
   payments?: PaymentsConfig;
   /** PLAN-53 Track B: which agent actions wait for the owner's approval. */
   review?: ReviewConfig;
+  /** Monitors: watch a page or API and wake the agent on change. Default: on. */
+  monitors?: { enabled?: boolean };
   /** Notices the gateway sends the owner: push target, quiet hours, rate limit. */
   notifications?: NotificationsConfig;
   commerce?: CommerceConfig;

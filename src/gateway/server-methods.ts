@@ -22,6 +22,7 @@ import { logsHandlers } from "./server-methods/logs.js";
 import { managementHandlers } from "./server-methods/management.js";
 import { modelsAuthHandlers } from "./server-methods/models-auth.js";
 import { modelsHandlers } from "./server-methods/models.js";
+import { monitorHandlers } from "./server-methods/monitors.js";
 import { nodeHandlers } from "./server-methods/nodes.js";
 import { projectsHandlers } from "./server-methods/projects.js";
 import { reviewHandlers } from "./server-methods/review.js";
@@ -162,6 +163,7 @@ const READ_METHODS = new Set([
   "cron.list",
   "cron.status",
   "cron.runs",
+  "monitors.list",
   "guards.status",
 ]);
 const WRITE_METHODS = new Set([
@@ -240,6 +242,10 @@ const WRITE_METHODS = new Set([
   "cron.update",
   "cron.remove",
   "cron.run",
+  "monitors.add",
+  "monitors.update",
+  "monitors.remove",
+  "monitors.check",
 ]);
 
 /** Exported for tests: the scope gate every gateway RPC passes through. */
@@ -356,6 +362,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...spendGrantHandlers,
   ...managementHandlers,
   ...cronHandlers,
+  ...monitorHandlers,
 };
 
 export async function handleGatewayRequest(
