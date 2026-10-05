@@ -13,6 +13,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import crypto from "node:crypto";
 import { toolCallFingerprint } from "../agents/agent-tools.repeat-guard.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { SpendDecision } from "../payments/ap2/gate.js";
 import {
   type Classification,
   classifyToolCall,
@@ -99,6 +100,11 @@ export type ReviewServiceDeps = {
 };
 
 const approvedExecution = new AsyncLocalStorage<{ fingerprint: string }>();
+
+/** True while the gateway is carrying out something the owner approved. */
+export function isApprovedExecution(): boolean {
+  return approvedExecution.getStore() !== undefined;
+}
 
 /** The hook stage lets an approved call through only inside this scope. */
 export function runAsApproved<T>(fingerprint: string, fn: () => Promise<T>): Promise<T> {
@@ -286,6 +292,46 @@ export class ReviewService {
     } catch (err) {
       return { ok: false, summary: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /**
+   * Hold a spend whose need for approval only became known mid-call (a paid
+   * task for another agent learns its price from the seller). The whole tool
+   * call is stored; approving it runs the call again with the approval in
+   * force. Returns the message for the agent.
+   */
+  holdSpend(input: {
+    toolName: string;
+    params: unknown;
+    preview: string;
+    ctx: ReviewContext;
+    ttlMs?: number;
+  }): string {
+    const { action, created } = this.deps.store.request({
+      id: this.newId(),
+      cls: "spend",
+      tool: input.toolName,
+      params: input.params,
+      fingerprint: toolCallFingerprint(input.toolName, input.params),
+      preview: input.preview,
+      sessionKey: input.ctx.sessionKey ?? null,
+      agentId: input.ctx.agentId ?? null,
+      runId: input.ctx.runId ?? null,
+      ttlMs: input.ttlMs,
+    });
+    if (created) {
+      log.info(`held for approval ${action.id}: spend ${action.preview}`);
+      this.deps.broadcast?.("review.requested", publicView(action));
+    }
+    return holdMessage(action, created);
+  }
+
+  recordSpendDecision(decision: SpendDecision): void {
+    this.deps.store.recordSpendDecision(decision);
+  }
+
+  listSpendDecisions(limit?: number): SpendDecision[] {
+    return this.deps.store.listSpendDecisions(limit);
   }
 
   /** A shell command is waiting for approval: put it in the queue. */

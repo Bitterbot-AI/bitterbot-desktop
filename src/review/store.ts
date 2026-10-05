@@ -17,6 +17,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { resolveStateDir } from "../config/paths.js";
 import { assertNotRealStateUnderTest } from "../infra/test-state-guard.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
+import type { SpendDecision } from "../payments/ap2/gate.js";
 import type { ReviewClass } from "./classify.js";
 
 /**
@@ -100,6 +101,22 @@ CREATE TABLE IF NOT EXISTS review_actions (
 CREATE INDEX IF NOT EXISTS idx_review_actions_status ON review_actions(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_review_actions_fingerprint ON review_actions(fingerprint, session_key, status);
 
+CREATE TABLE IF NOT EXISTS spend_decisions (
+  id TEXT PRIMARY KEY,
+  ts INTEGER NOT NULL,
+  origin TEXT NOT NULL,
+  rail TEXT NOT NULL,
+  payee TEXT NOT NULL,
+  amount_usd REAL NOT NULL,
+  verdict TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  tx_hash TEXT,
+  error TEXT,
+  session_key TEXT,
+  purpose TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_spend_decisions_ts ON spend_decisions (ts);
 CREATE TABLE IF NOT EXISTS review_contacts (
   key TEXT PRIMARY KEY,
   address TEXT NOT NULL,
@@ -305,6 +322,53 @@ export class ReviewStore {
         .prepare(`SELECT 1 AS found FROM review_contacts WHERE address = ? LIMIT 1`)
         .get(address) !== undefined
     );
+  }
+
+  /** One row per outbound payment the gate allowed or refused (PLAN-53 C0). */
+  recordSpendDecision(d: SpendDecision): void {
+    this.db
+      .prepare(
+        `INSERT OR REPLACE INTO spend_decisions
+           (id, ts, origin, rail, payee, amount_usd, verdict, reason, outcome, tx_hash, error,
+            session_key, purpose)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        d.id,
+        d.ts,
+        d.origin,
+        d.rail,
+        d.payee,
+        d.amountUsd,
+        d.verdict,
+        d.reason,
+        d.outcome,
+        d.txHash ?? null,
+        d.error ?? null,
+        d.sessionKey ?? null,
+        d.purpose ?? null,
+      );
+  }
+
+  listSpendDecisions(limit = 50): SpendDecision[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM spend_decisions ORDER BY ts DESC LIMIT ?`)
+      .all(Math.max(1, Math.min(limit, 500))) as unknown as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: String(r.id),
+      ts: Number(r.ts),
+      origin: r.origin as SpendDecision["origin"],
+      rail: r.rail as SpendDecision["rail"],
+      payee: String(r.payee),
+      amountUsd: Number(r.amount_usd),
+      verdict: r.verdict as SpendDecision["verdict"],
+      reason: String(r.reason),
+      outcome: r.outcome as SpendDecision["outcome"],
+      ...(r.tx_hash ? { txHash: String(r.tx_hash) } : {}),
+      ...(r.error ? { error: String(r.error) } : {}),
+      ...(r.session_key ? { sessionKey: String(r.session_key) } : {}),
+      ...(r.purpose ? { purpose: String(r.purpose) } : {}),
+    }));
   }
 
   /** Close one pending request that nobody answered in time. */

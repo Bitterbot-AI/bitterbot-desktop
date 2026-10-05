@@ -4995,7 +4995,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       (walletCfg?.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET) &&
       process.env.CDP_WALLET_SECRET,
     );
-    if (walletCfg?.enabled === false || !hasWalletCreds) {
+    // A wallet pays only when it was switched on. This used to pay whenever
+    // credentials were present and the wallet was not explicitly switched off.
+    if (walletCfg?.enabled !== true || !hasWalletCreds) {
       return;
     }
     const payments = this.marketplaceEconomics.getReleasedPayments();
@@ -5008,7 +5010,19 @@ export class MemoryIndexManager implements MemorySearchManager {
         import("../services/wallet-service.js"),
         import("../infra/wallet-discovery.js"),
       ]);
-      const wallet = createWalletService(walletCfg ?? {});
+      const [{ gatedWallet }, { notifyOwner }] = await Promise.all([
+        import("../review/spend.js"),
+        import("../infra/owner-notify.js"),
+      ]);
+      // PLAN-53 C0: payouts are money already owed, so they do not wait for
+      // approval. They do go through the gate: recorded, limited, and the
+      // owner is told what went out.
+      const wallet = gatedWallet(createWalletService(walletCfg), {
+        origin: "payout",
+        purpose: "revenue share / bounty payout",
+      });
+      const perTxCap = walletCfg.perTransactionCapUsd ?? 25;
+      const paid: Array<{ usd: number; role: string }> = [];
       const MAX_DISPATCH_PER_TICK = 10;
       for (const payment of payments.slice(0, MAX_DISPATCH_PER_TICK)) {
         const address =
@@ -5021,8 +5035,22 @@ export class MemoryIndexManager implements MemorySearchManager {
           );
           continue;
         }
+        if (payment.amountUsdc > perTxCap) {
+          // Sending it would be refused by the per-transaction limit, the
+          // payment marked failed, and the same thing would happen every tick
+          // for ever. Leave it queued and say so once a day.
+          void notifyOwner({
+            kind: "payout-held",
+            dedupeKey: `payout-over-cap:${payment.id}:${new Date().toISOString().slice(0, 10)}`,
+            text:
+              `A payout of $${payment.amountUsdc.toFixed(2)} USDC (${payment.role}) to ${payment.recipientPeerId} is above your per-transaction limit of $${perTxCap} and is waiting. ` +
+              "Raise tools.wallet.perTransactionCapUsd to let it go out.",
+          }).catch(() => {});
+          continue;
+        }
         try {
           const result = await wallet.sendUsdc(address, payment.amountUsdc);
+          paid.push({ usd: payment.amountUsdc, role: payment.role });
           this.marketplaceEconomics.markPaymentProcessed(payment.id, result.txHash);
           log.info(
             `revenue dispatch: paid ${payment.amountUsdc.toFixed(4)} USDC (${payment.role}) to ${address} tx=${result.txHash}`,
@@ -5034,6 +5062,16 @@ export class MemoryIndexManager implements MemorySearchManager {
           this.marketplaceEconomics.markPaymentFailed(payment.id, String(err));
           log.warn(`revenue dispatch failed for payment ${payment.id}: ${String(err)}`);
         }
+      }
+      if (paid.length > 0) {
+        const total = paid.reduce((sum, p) => sum + p.usd, 0);
+        const roles = [...new Set(paid.map((p) => p.role))].join(", ");
+        void notifyOwner({
+          kind: "payout-sent",
+          text:
+            `Paid out $${total.toFixed(2)} USDC in ${paid.length} payment${paid.length === 1 ? "" : "s"} owed to others (${roles}). ` +
+            "Each one is in the Activity record.",
+        }).catch(() => {});
       }
     } catch (err) {
       log.debug(`revenue dispatch skipped: ${String(err)}`);

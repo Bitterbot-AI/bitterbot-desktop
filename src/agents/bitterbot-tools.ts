@@ -278,7 +278,10 @@ export function createBitterbotTools(options?: {
     tools.push(walletTool);
   }
 
-  const a2aClientTool = createA2aClientTool({ config: options?.config });
+  const a2aClientTool = createA2aClientTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
   if (a2aClientTool) {
     tools.push(a2aClientTool);
   }

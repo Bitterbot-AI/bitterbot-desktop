@@ -34,7 +34,11 @@ const A2aClientSchema = Type.Object({
   maxCost: Type.Optional(Type.Number()),
 });
 
-export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyAgentTool | null {
+export function createA2aClientTool(options: {
+  config?: BitterbotConfig;
+  /** The session the tool runs for; spends are attributed and capped by it. */
+  agentSessionKey?: string;
+}): AnyAgentTool | null {
   const cfg = options.config;
   if (!cfg?.a2a?.enabled) {
     return null;
@@ -152,8 +156,25 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
         let walletService: import("../../services/wallet-service.js").WalletService | undefined;
         try {
           const { createWalletService } = await import("../../services/wallet-service.js");
-          if (cfg.tools?.wallet) {
-            walletService = createWalletService(cfg.tools.wallet);
+          // A wallet that is not switched on does not pay, for another agent's
+          // task or anything else. (This used to build one whenever a wallet
+          // block existed in config, enabled or not.)
+          if (cfg.tools?.wallet?.enabled === true) {
+            const { gatedWallet } = await import("../../review/spend.js");
+            walletService = gatedWallet(createWalletService(cfg.tools.wallet), {
+              origin: "a2a",
+              sessionKey: options.agentSessionKey,
+              sessionCapUsd: cfg.tools.wallet.sessionSpendCapUsd ?? 50,
+              purpose: `A2A task at ${agentUrl}`,
+              // The price is only known once the seller answers, so approval
+              // is asked for at that point; approving runs this call again.
+              hold: {
+                toolName: "a2a_client",
+                params: rawParams,
+                describe: (spend) =>
+                  `Pay ${spend.amountUsd} USDC to ${spend.payee} for a task from the agent at ${agentUrl}: "${message.slice(0, 120)}"`,
+              },
+            });
           }
         } catch {
           // No wallet — execute without payment capability

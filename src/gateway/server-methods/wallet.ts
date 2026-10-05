@@ -1,4 +1,5 @@
 import { loadConfig, writeConfigFile } from "../../config/config.js";
+import { gatedWallet } from "../../review/spend.js";
 import { createHostedOnrampSession, DEFAULT_ONRAMP_URL } from "../../services/hosted-onramp.js";
 import { createOnrampSession } from "../../services/stripe-onramp.js";
 import { resolveWalletProvisioning } from "../../services/wallet-provisioning.js";
@@ -263,7 +264,22 @@ export const walletHandlers: GatewayRequestHandlers = {
         );
         return;
       }
-      const svc = getWalletService();
+      // Paying needs a wallet that was switched on, not merely one that was
+      // not switched off (reads above are more lenient on purpose).
+      if (walletConfig.enabled !== true) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, "the wallet is not enabled (tools.wallet.enabled)"),
+        );
+        return;
+      }
+      // PLAN-53 C0: the owner paying directly still goes through the gate, so
+      // it is recorded and counts against the same limits.
+      const svc = gatedWallet(getWalletService(), {
+        origin: "rpc",
+        purpose: "x402 from the gateway API",
+      });
       const resourceUrl = typeof params.resourceUrl === "string" ? params.resourceUrl.trim() : "";
       const amount =
         typeof params.amount === "number" && Number.isFinite(params.amount) ? params.amount : 0;
@@ -274,6 +290,19 @@ export const walletHandlers: GatewayRequestHandlers = {
           errorShape(
             ErrorCodes.UNAVAILABLE,
             "resourceUrl (string) and amount (positive number) are required",
+          ),
+        );
+        return;
+      }
+      // The same per-request ceiling the agent's tool has. It was missing here.
+      const maxPerRequest = walletConfig.x402.maxCostPerRequestUsd ?? 1;
+      if (amount > maxPerRequest) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            `amount $${amount} exceeds the x402 per-request cap of $${maxPerRequest} (tools.wallet.x402.maxCostPerRequestUsd)`,
           ),
         );
         return;
