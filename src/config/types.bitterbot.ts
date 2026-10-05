@@ -24,6 +24,7 @@ import type {
 } from "./types.messages.js";
 import type { ModelsConfig } from "./types.models.js";
 import type { NodeHostConfig } from "./types.node-host.js";
+import type { NotificationsConfig } from "./types.notifications.js";
 import type { P2pConfig } from "./types.p2p.js";
 import type { PaymentsConfig } from "./types.payments.js";
 import type { PluginsConfig } from "./types.plugins.js";
@@ -178,6 +179,8 @@ export type BitterbotConfig = {
   payments?: PaymentsConfig;
   /** PLAN-53 Track B: which agent actions wait for the owner's approval. */
   review?: ReviewConfig;
+  /** Notices the gateway sends the owner: push target, quiet hours, rate limit. */
+  notifications?: NotificationsConfig;
   commerce?: CommerceConfig;
   /** PLAN-31: Circles, the agent social fabric. ON by default since the 2026-07-09 red-team phase (§8). */
   circles?: CirclesConfig;

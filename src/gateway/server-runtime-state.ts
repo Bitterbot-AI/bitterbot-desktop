@@ -3,6 +3,8 @@ import { WebSocketServer } from "ws";
 import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
 import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/server.js";
 import type { CliDeps } from "../cli/deps.js";
+import { setCronBroadcast } from "../cron/runtime.js";
+import { setOwnerNoticeBroadcast } from "../infra/owner-notify.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import { setReviewBroadcast } from "../review/runtime.js";
@@ -108,6 +110,9 @@ export async function createGatewayRuntimeState(params: {
   const { broadcast, broadcastToConnIds } = createGatewayBroadcaster({ clients });
   // PLAN-53 Track B: held actions and their decisions reach every approvals-scoped window.
   setReviewBroadcast((event, payload) => broadcast(event, payload));
+  // PLAN-53 Track E: scheduled-job runs and gateway notices for the owner.
+  setCronBroadcast((payload) => broadcast("cron", payload, { dropIfSlow: true }));
+  setOwnerNoticeBroadcast((payload) => broadcast("owner.notice", payload));
 
   const handleHooksRequest = createGatewayHooksRequestHandler({
     deps: params.deps,

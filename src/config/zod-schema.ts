@@ -919,6 +919,7 @@ export const BitterbotSchema = z
         maxConcurrentRuns: z.number().int().positive().optional(),
         webhook: z.string().optional(),
         webhookToken: z.string().optional(),
+        autoDisableAfterErrors: z.number().int().min(0).max(1000).optional(),
       })
       .strict()
       .optional(),
@@ -1111,6 +1112,28 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+      })
+      .strict()
+      .optional(),
+    notifications: z
+      .object({
+        owner: z
+          .object({
+            channel: z.string().optional(),
+            to: z.string().optional(),
+            accountId: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        quietHours: z
+          .object({
+            start: z.string().optional(),
+            end: z.string().optional(),
+            timezone: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        maxPerHour: z.number().int().min(0).max(1000).optional(),
       })
       .strict()
       .optional(),

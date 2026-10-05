@@ -265,4 +265,5 @@ export const GATEWAY_EVENTS = [
   // PLAN-53 Track B: an action is waiting for the owner / was decided.
   "review.requested",
   "review.resolved",
+  "owner.notice",
 ];

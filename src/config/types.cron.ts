@@ -12,4 +12,9 @@ export type CronConfig = {
   webhook?: string;
   /** Optional bearer token sent with webhook deliveries. */
   webhookToken?: string;
+  /**
+   * Turn a recurring job off after this many failed runs in a row, and tell
+   * the owner. Default: 8. 0 never turns a job off.
+   */
+  autoDisableAfterErrors?: number;
 };
