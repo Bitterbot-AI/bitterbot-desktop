@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { settleGrantReservation } from "./grant-reservations.js";
 import {
   DEFAULT_REVIEW_POLICY,
   holdMessage,
@@ -246,5 +247,150 @@ describe("ReviewService.resolve", () => {
     await expect(
       runAsApproved("fp-other", async () => (await service.consider("wallet", SEND, CTX)).kind),
     ).resolves.toBe("hold");
+  });
+
+  it("gives a grant's reserved allowance back when the send fails, and keeps it when it works", async () => {
+    let released = 0;
+    const withGrant = new ReviewService({
+      store,
+      executors: new Map(),
+      standingPermission: () => ({ release: () => (released += 1) }),
+    });
+
+    expect(await withGrant.consider("wallet", SEND, CTX)).toEqual({
+      kind: "pass",
+      reason: "grant",
+    });
+    settleGrantReservation({
+      sessionKey: CTX.sessionKey,
+      toolName: "wallet",
+      args: SEND,
+      failed: true,
+    });
+    expect(released).toBe(1);
+    // Settled once: a second report of the same call does nothing.
+    settleGrantReservation({
+      sessionKey: CTX.sessionKey,
+      toolName: "wallet",
+      args: SEND,
+      failed: true,
+    });
+    expect(released).toBe(1);
+
+    await withGrant.consider("wallet", SEND, CTX);
+    settleGrantReservation({
+      sessionKey: CTX.sessionKey,
+      toolName: "wallet",
+      args: SEND,
+      failed: false,
+    });
+    expect(released).toBe(1);
+  });
+
+  describe("messages to named recipients", () => {
+    const MSG = { channel: "telegram", target: "999", message: "hello" };
+    let known: string[];
+    let sent: unknown[];
+    let contactService: ReviewService;
+    let contactIds = 0;
+
+    beforeEach(() => {
+      known = [];
+      sent = [];
+      contactService = new ReviewService({
+        store,
+        executors: new Map([
+          [
+            "message",
+            async (action) => {
+              sent.push(action.params);
+              return { ok: true, summary: "sent" };
+            },
+          ],
+        ]),
+        knownContact: (recipient) => known.includes(recipient.target),
+        completeParams: (_tool, params) => ({ ...(params as object), completed: true }),
+        newId: () => `rv-000001${String(++contactIds).padStart(2, "0")}`,
+      });
+    });
+
+    it("holds the first message to someone new, and stores a call it can carry out later", async () => {
+      const outcome = await contactService.consider("message", MSG, CTX);
+
+      expect(outcome.kind).toBe("hold");
+      expect(outcome.kind === "hold" && outcome.action).toMatchObject({
+        cls: "contact",
+        preview: 'Message telegram 999: "hello"',
+        params: { ...MSG, completed: true },
+      });
+    });
+
+    it("lets a message through to someone the agent already deals with", async () => {
+      known = ["999"];
+
+      expect(await contactService.consider("message", MSG, CTX)).toEqual({
+        kind: "pass",
+        reason: "known",
+      });
+    });
+
+    it("asks once: an approved recipient is not a first contact again", async () => {
+      const held = await contactService.consider("message", MSG, CTX);
+      const id = held.kind === "hold" ? held.action.id : "";
+
+      const resolved = await contactService.resolve(id, "approve", {
+        decidedBy: "owner",
+        decidedVia: "test",
+      });
+
+      expect(resolved?.status).toBe("executed");
+      expect(sent).toHaveLength(1);
+      expect(
+        await contactService.consider("message", { ...MSG, message: "a second one" }, CTX),
+      ).toEqual({ kind: "pass", reason: "known" });
+      // The same address named without its channel is covered too.
+      expect(
+        await contactService.consider("message", { target: "999", message: "third" }, CTX),
+      ).toEqual({ kind: "pass", reason: "known" });
+    });
+
+    it("a denied recipient stays unknown", async () => {
+      const held = await contactService.consider("message", MSG, CTX);
+      await contactService.resolve(held.kind === "hold" ? held.action.id : "", "deny", {
+        decidedBy: "owner",
+        decidedVia: "test",
+      });
+
+      expect(sent).toHaveLength(0);
+      expect((await contactService.consider("message", MSG, CTX)).kind).toBe("hold");
+    });
+
+    it("holds a broadcast when any recipient is new", async () => {
+      known = ["1"];
+      const broadcast = {
+        action: "broadcast",
+        channel: "telegram",
+        targets: ["1", "2"],
+        message: "x",
+      };
+
+      expect((await contactService.consider("message", broadcast, CTX)).kind).toBe("hold");
+      known = ["1", "2"];
+      expect(
+        (await contactService.consider("message", { ...broadcast, message: "y" }, CTX)).kind,
+      ).toBe("pass");
+    });
+
+    it("follows the policy: every message, or none", async () => {
+      known = ["999"];
+      const ask = { ...DEFAULT_REVIEW_POLICY, contact: "ask" as const };
+      const allow = { ...DEFAULT_REVIEW_POLICY, contact: "allow" as const };
+
+      expect((await contactService.consider("message", MSG, CTX, ask)).kind).toBe("hold");
+      known = [];
+      expect(
+        await contactService.consider("message", { ...MSG, message: "other" }, CTX, allow),
+      ).toEqual({ kind: "pass", reason: "allowed" });
+    });
   });
 });

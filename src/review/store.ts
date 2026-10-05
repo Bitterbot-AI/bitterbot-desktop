@@ -97,6 +97,14 @@ CREATE TABLE IF NOT EXISTS review_actions (
 );
 CREATE INDEX IF NOT EXISTS idx_review_actions_status ON review_actions(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_review_actions_fingerprint ON review_actions(fingerprint, session_key, status);
+
+CREATE TABLE IF NOT EXISTS review_contacts (
+  key TEXT PRIMARY KEY,
+  address TEXT NOT NULL,
+  approved_at INTEGER NOT NULL,
+  review_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_review_contacts_address ON review_contacts (address);
 `;
 
 function toAction(row: Row): ReviewAction {
@@ -266,6 +274,35 @@ export class ReviewStore {
         .prepare(`SELECT COUNT(*) AS c FROM review_actions WHERE status = 'pending'`)
         .get() as { c: number }
     ).c;
+  }
+
+  /**
+   * The owner approved a message to this recipient; later ones need no asking.
+   * `key` is channel plus address; `address` alone answers a call that left
+   * the channel to the run.
+   */
+  rememberContact(contact: { key: string; address: string }, reviewId?: string): void {
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO review_contacts (key, address, approved_at, review_id)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(contact.key, contact.address, this.now(), reviewId ?? null);
+  }
+
+  hasContact(key: string): boolean {
+    return (
+      this.db.prepare(`SELECT 1 AS found FROM review_contacts WHERE key = ?`).get(key) !== undefined
+    );
+  }
+
+  /** Approved on any channel. */
+  hasContactAddress(address: string): boolean {
+    return (
+      this.db
+        .prepare(`SELECT 1 AS found FROM review_contacts WHERE address = ? LIMIT 1`)
+        .get(address) !== undefined
+    );
   }
 
   /** Close one pending request that nobody answered in time. */

@@ -52,7 +52,11 @@ function ReviewCard({ action }: { action: ReviewAction }) {
         <ShieldAlert className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-warning">
-            {isSpend ? "Spending needs your approval" : "A public post needs your approval"}
+            {isSpend
+              ? "Spending needs your approval"
+              : action.cls === "contact"
+                ? "A message to someone new needs your approval"
+                : "A public post needs your approval"}
             <span className="ml-2 font-mono text-2xs text-muted-foreground">{action.id}</span>
           </p>
           <p className="text-sm text-foreground mt-0.5 break-words">{action.preview}</p>

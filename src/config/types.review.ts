@@ -17,6 +17,14 @@ export type ReviewConfig = {
    * "allow" posts straight away, subject to the channel's own policy gate.
    */
   publish?: ReviewMode;
+  /**
+   * Messages the agent addresses to a named recipient. "first" (default) holds
+   * only a message to someone it has never dealt with: no session with them,
+   * not the owner, not allow-listed or paired, not approved before. "ask"
+   * holds every such message; "allow" holds none. Replies in the current
+   * conversation are never held.
+   */
+  contact?: "first" | "ask" | "allow";
   /** How long a request waits for a decision before it expires. Default: 24. */
   ttlHours?: number;
 };

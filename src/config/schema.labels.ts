@@ -245,6 +245,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "browser.snapshotDefaults.mode": "Browser Snapshot Mode",
   "review.spend": "Review: Spending",
   "review.publish": "Review: Public Posts",
+  "review.contact": "Review: Messages to New Recipients",
   "review.ttlHours": "Review Request Lifetime (hours)",
   "browser.liveView.enabled": "Browser Live View Enabled",
   "browser.liveView.maxFps": "Browser Live View Max FPS",

@@ -13,7 +13,14 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import crypto from "node:crypto";
 import { toolCallFingerprint } from "../agents/agent-tools.repeat-guard.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { type Classification, classifyToolCall, type ReviewClass } from "./classify.js";
+import {
+  type Classification,
+  classifyToolCall,
+  type ContactRecipient,
+  type ReviewClass,
+} from "./classify.js";
+import { contactKey, normalizeContact } from "./contacts.js";
+import { holdGrantReservation } from "./grant-reservations.js";
 import { REVIEW_DEFAULT_TTL_MS, type ReviewAction, type ReviewStore } from "./store.js";
 
 const log = createSubsystemLogger("review");
@@ -21,12 +28,18 @@ const log = createSubsystemLogger("review");
 export type ReviewPolicy = {
   spend: "ask" | "allow";
   publish: "ask" | "allow";
+  /**
+   * Messages to named recipients: "first" asks only for someone the agent has
+   * never dealt with, "ask" for every one, "allow" for none.
+   */
+  contact: "first" | "ask" | "allow";
   ttlMs: number;
 };
 
 export const DEFAULT_REVIEW_POLICY: ReviewPolicy = {
   spend: "ask",
   publish: "ask",
+  contact: "first",
   ttlMs: REVIEW_DEFAULT_TTL_MS,
 };
 
@@ -37,8 +50,14 @@ export type ReviewContext = {
 };
 
 export type ReviewOutcome =
-  | { kind: "pass"; reason: "unclassified" | "allowed" | "grant" | "approved" }
+  | { kind: "pass"; reason: "unclassified" | "allowed" | "grant" | "approved" | "known" }
   | { kind: "hold"; action: ReviewAction; created: boolean };
+
+/**
+ * Whether a standing permission covers the call. When it reserved something
+ * to say yes (a grant's allowance), `release` gives that back if the call fails.
+ */
+export type StandingPermission = boolean | { release: () => void };
 
 export type ExecutionResult = { ok: boolean; summary: string };
 
@@ -49,7 +68,20 @@ export type ReviewServiceDeps = {
   store: ReviewStore;
   executors: Map<string, ApprovedExecutor>;
   /** A standing permission (a spend grant) that covers this call. */
-  standingPermission?: (c: Classification, ctx: ReviewContext) => Promise<boolean> | boolean;
+  standingPermission?: (
+    c: Classification,
+    ctx: ReviewContext,
+  ) => Promise<StandingPermission> | StandingPermission;
+  /**
+   * Recipients the agent already deals with, beyond the ones the owner has
+   * approved here: people with a session, the owner, allow-listed senders.
+   */
+  knownContact?: (recipient: ContactRecipient, ctx: ReviewContext) => Promise<boolean> | boolean;
+  /**
+   * Fill in what a held call left to the run (the channel of a message), so
+   * the stored call can be carried out later, outside that run.
+   */
+  completeParams?: (toolName: string, params: unknown, ctx: ReviewContext) => unknown;
   /** Tell every listening Control UI window. */
   broadcast?: (event: "review.requested" | "review.resolved", payload: unknown) => void;
   /** Put a line in front of a session's next turn. */
@@ -110,14 +142,25 @@ export class ReviewService {
     if (approved && approved.fingerprint === fingerprint) {
       return { kind: "pass", reason: "approved" };
     }
-    if (this.deps.standingPermission && (await this.deps.standingPermission(classification, ctx))) {
+    if (classification.cls === "contact" && policy.contact === "first") {
+      if (await this.knowsAll(classification.recipients ?? [], ctx)) {
+        return { kind: "pass", reason: "known" };
+      }
+    }
+    const standing = this.deps.standingPermission
+      ? await this.deps.standingPermission(classification, ctx)
+      : false;
+    if (standing) {
+      if (typeof standing === "object") {
+        holdGrantReservation(ctx.sessionKey, fingerprint, standing.release);
+      }
       return { kind: "pass", reason: "grant" };
     }
     const { action, created } = this.deps.store.request({
       id: this.newId(),
       cls: classification.cls,
       tool: toolName,
-      params,
+      params: this.deps.completeParams?.(toolName, params, ctx) ?? params,
       fingerprint,
       preview: classification.preview,
       sessionKey: ctx.sessionKey ?? null,
@@ -167,6 +210,15 @@ export class ReviewService {
     if (decision === "approve") {
       const outcome = await this.execute(action);
       this.deps.store.markExecution(id, outcome);
+      if (outcome.ok && action.cls === "contact") {
+        // Approved and delivered: this recipient is no longer a first contact.
+        for (const recipient of classifyToolCall(action.tool, action.params)?.recipients ?? []) {
+          this.deps.store.rememberContact(
+            { key: contactKey(recipient), address: normalizeContact(recipient.target) },
+            id,
+          );
+        }
+      }
       action = this.deps.store.get(id) ?? action;
       log.info(
         `${id} approved by ${by.decidedBy}: ${outcome.ok ? "done" : "FAILED"} ${outcome.summary.slice(0, 120)}`,
@@ -179,6 +231,26 @@ export class ReviewService {
       this.deps.notifySession?.(action.sessionKey, sessionOutcomeText(action), `review:${id}`);
     }
     return action;
+  }
+
+  private async knowsAll(recipients: ContactRecipient[], ctx: ReviewContext): Promise<boolean> {
+    if (recipients.length === 0) {
+      return false;
+    }
+    for (const recipient of recipients) {
+      // An approval is for a channel. A call that leaves the channel to the
+      // run is covered by an approval on any of them.
+      const remembered = recipient.channel
+        ? this.deps.store.hasContact(contactKey(recipient))
+        : this.deps.store.hasContactAddress(normalizeContact(recipient.target));
+      if (remembered) {
+        continue;
+      }
+      if (!(this.deps.knownContact && (await this.deps.knownContact(recipient, ctx)))) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private async execute(action: ReviewAction): Promise<ExecutionResult> {
