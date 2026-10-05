@@ -1,15 +1,17 @@
 /**
  * Which tool calls need a person's approval, and how to show them (PLAN-53 B3).
  *
- * A pure function from (tool, params) to a class and a one-line preview. Only
- * two classes exist in version 1:
+ * A pure function from (tool, params) to a class and a one-line preview. The
+ * classes:
  *   - spend:   the wallet moving money (send_usdc, send_to_peer, pay_for_resource)
  *   - publish: a post to the X channel through the message tool
- * Everything else is unclassified and never reviewed here. Sends to other
- * people and shell commands are deliberately not in this version.
+ *   - contact: a message the agent addresses to a named recipient. Whether
+ *              that recipient is new is not decided here (see contacts.ts).
+ * Everything else is unclassified and never reviewed here; shell commands
+ * have their own approvals.
  */
 
-export type ReviewClass = "spend" | "publish";
+export type ReviewClass = "spend" | "publish" | "contact";
 
 export type Classification = {
   cls: ReviewClass;
@@ -24,7 +26,24 @@ export type Classification = {
    * it is sent back to the agent to correct instead of being put to the owner.
    */
   missing?: string[];
+  /** For contact: who the message goes to, as the call named them. */
+  recipients?: ContactRecipient[];
 };
+
+/** One addressee of a message. `channel` is absent when the call left it to the run. */
+export type ContactRecipient = { channel?: string; target: string };
+
+/** Message-tool actions that put new content in front of someone. */
+const CONTACT_ACTIONS = new Set([
+  "send",
+  "sendwitheffect",
+  "sendattachment",
+  "reply",
+  "thread-reply",
+  "poll",
+  "sticker",
+  "broadcast",
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -94,11 +113,41 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
   if (name === "message") {
     const channel = text(params.channel).toLowerCase();
     const action = text(params.action).toLowerCase() || "send";
-    if (channel !== "x" || action !== "send") {
+    if (channel === "x") {
+      if (action !== "send") {
+        return null;
+      }
+      const post = text(params.message, 200) || "(empty post)";
+      return { cls: "publish", preview: `Post to X: "${post}"` };
+    }
+    // A dry run sends nothing.
+    if (!CONTACT_ACTIONS.has(action) || params.dryRun === true) {
       return null;
     }
-    const body = text(params.message, 200) || "(empty post)";
-    return { cls: "publish", preview: `Post to X: "${body}"` };
+    // Broadcast names its recipients in `targets`; everything else in `target`
+    // (or the older `to` / `channelId`). With none of them the message goes to
+    // the conversation the agent is already in, which is not a new contact.
+    const named =
+      action === "broadcast"
+        ? Array.isArray(params.targets)
+          ? params.targets.map((t) => text(t))
+          : []
+        : [text(params.target) || text(params.to) || text(params.channelId)];
+    const targets = named.filter((t) => t.length > 0);
+    if (targets.length === 0) {
+      return null;
+    }
+    const where = channel && channel !== "all" ? channel : undefined;
+    const recipients = targets.map((target) => ({
+      ...(where ? { channel: where } : {}),
+      target,
+    }));
+    const body = text(params.message, 160) || text(params.caption, 160) || `(${action}, no text)`;
+    const to =
+      recipients.length === 1
+        ? `${where ? `${where} ` : ""}${recipients[0].target}`
+        : `${recipients.length} recipients${where ? ` on ${where}` : ""} (${targets.slice(0, 3).join(", ")}${targets.length > 3 ? ", ..." : ""})`;
+    return { cls: "contact", preview: `Message ${to}: "${body}"`, recipients };
   }
 
   return null;

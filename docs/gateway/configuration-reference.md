@@ -1961,13 +1961,15 @@ See [Plugins](/tools/plugin).
   review: {
     spend: "ask", // "ask" (default) | "allow"
     publish: "ask", // "ask" (default) | "allow"
+    contact: "first", // "first" (default) | "ask" | "allow"
     ttlHours: 24,
   },
 }
 ```
 
 - `spend: "ask"` holds wallet sends and x402 payments until you approve them; a standing spend grant that covers the payee and amount passes without asking. `"allow"` keeps only the wallet caps.
-- `publish: "ask"` holds posts to the X channel. See [Action review](/tools/action-review).
+- `publish: "ask"` holds posts to the X channel.
+- `contact: "first"` holds the first message the agent addresses to a recipient it has never dealt with; `"ask"` holds every message to a named recipient; `"allow"` holds none. Replies in the current conversation are never held. See [Action review](/tools/action-review).
 
 ---
 

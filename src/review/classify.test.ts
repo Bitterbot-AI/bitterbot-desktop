@@ -56,10 +56,10 @@ describe("classifyToolCall", () => {
     );
   });
 
-  it("does not review ordinary messages or X actions other than posting", () => {
-    expect(
-      classifyToolCall("message", { channel: "telegram", to: "123", message: "hi" }),
-    ).toBeNull();
+  it("does not review replies in the current conversation or X actions other than posting", () => {
+    // No recipient named: the message goes where the agent already is.
+    expect(classifyToolCall("message", { channel: "telegram", message: "hi" })).toBeNull();
+    expect(classifyToolCall("message", { action: "send", message: "hi" })).toBeNull();
     expect(
       classifyToolCall("message", { channel: "x", action: "delete", messageId: "1" }),
     ).toBeNull();
@@ -85,5 +85,59 @@ describe("classifyToolCall", () => {
     expect(
       classifyToolCall("wallet", { action: "send_usdc", address: "0xabc", amount: 1 })?.missing,
     ).toBeUndefined();
+  });
+
+  it("classifies a message to a named recipient as contact", () => {
+    expect(
+      classifyToolCall("message", { channel: "Telegram", to: "123", message: "hi there" }),
+    ).toEqual({
+      cls: "contact",
+      preview: 'Message telegram 123: "hi there"',
+      recipients: [{ channel: "telegram", target: "123" }],
+    });
+    // The channel may be left to the run.
+    expect(
+      classifyToolCall("message", {
+        action: "sendAttachment",
+        target: "+15550100",
+        caption: "the file",
+      }),
+    ).toMatchObject({
+      cls: "contact",
+      preview: 'Message +15550100: "the file"',
+      recipients: [{ target: "+15550100" }],
+    });
+  });
+
+  it("names every recipient of a broadcast", () => {
+    const c = classifyToolCall("message", {
+      action: "broadcast",
+      channel: "all",
+      targets: ["+15550100", "+15550101", "+15550102", "+15550103"],
+      message: "hello all",
+    });
+
+    expect(c?.cls).toBe("contact");
+    expect(c?.recipients).toHaveLength(4);
+    expect(c?.preview).toBe(
+      'Message 4 recipients (+15550100, +15550101, +15550102, ...): "hello all"',
+    );
+  });
+
+  it("does not treat reads, reactions or dry runs as contact", () => {
+    expect(
+      classifyToolCall("message", { action: "react", channel: "discord", target: "1", emoji: "x" }),
+    ).toBeNull();
+    expect(
+      classifyToolCall("message", { action: "read", channel: "slack", target: "C1" }),
+    ).toBeNull();
+    expect(
+      classifyToolCall("message", {
+        channel: "telegram",
+        target: "123",
+        message: "hi",
+        dryRun: true,
+      }),
+    ).toBeNull();
   });
 });

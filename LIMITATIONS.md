@@ -21,11 +21,14 @@ open an issue.
   makes real micropayments. The layer as a whole has not had a third-party
   audit. Start on testnet, fund with amounts you can lose. Full disclaimer in
   [ATTRIBUTION.md](ATTRIBUTION.md).
-- **Approval covers the wallet, not everything.** Every wallet send and x402
+- **Approval covers money, public posts and first contact, not everything.** Every wallet send and x402
   payment waits for your approval unless a spend grant you signed covers it
   (`review.spend`, see [Action review](docs/tools/action-review.md)); spend
   caps still apply underneath. Paid A2A tasks go through spend grants, not
   this review, and only owner senders get the tools that move money.
+  The first message the agent addresses to someone it has never dealt with
+  also waits for you (`review.contact`); later messages to that recipient,
+  shell commands and file writes do not go through this review.
 - The wallet is disabled by default and never enabled without an explicit
   opt-in.
 - **The marketplace is early.** It is off by default, few nodes have it

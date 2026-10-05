@@ -142,4 +142,16 @@ describe("ReviewRequests", () => {
 
     expect(state.resolve).toHaveBeenCalledWith("rv-00000003", "deny");
   });
+
+  it("says a first message to someone new is what is waiting", async () => {
+    state.pending = [
+      { ...post, id: "rv-00000004", cls: "contact", preview: 'Message telegram 999: "hello"' },
+    ];
+    render(<ReviewRequests />);
+
+    expect(screen.getByText("A message to someone new needs your approval")).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole("button", { name: /approve/i }));
+    // Only money asks twice.
+    expect(state.resolve).toHaveBeenCalledWith("rv-00000004", "approve");
+  });
 });

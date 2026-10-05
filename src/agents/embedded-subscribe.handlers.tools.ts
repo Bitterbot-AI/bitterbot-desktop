@@ -3,6 +3,7 @@ import { emitAgentEvent } from "../infra/agent-events.js";
 import { startSpan } from "../observability/otel.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { PluginHookAfterToolCallEvent } from "../plugins/types.js";
+import { settleGrantReservation } from "../review/grant-reservations.js";
 import { maybeNudgeTaskHandoff } from "../tasks/handoff-nudge.js";
 import { recordToolCallOutcome } from "./agent-tools.repeat-guard.js";
 import { normalizeTextForComparison } from "./embedded-helpers.js";
@@ -342,6 +343,15 @@ export async function handleToolExecutionEnd(
     toolName,
     args: startDataForGuard?.args,
     error: isToolError ? (extractToolErrorMessage(sanitizedResult) ?? "error") : undefined,
+  });
+
+  // PLAN-53: a spend that passed on a standing grant reserved its amount; a
+  // failed send gives it back.
+  settleGrantReservation({
+    sessionKey: ctx.params.sessionKey,
+    toolName,
+    args: startDataForGuard?.args,
+    failed: isToolError,
   });
 
   // Run after_tool_call plugin hook (fire-and-forget)

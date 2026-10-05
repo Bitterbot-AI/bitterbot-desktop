@@ -3,6 +3,13 @@ import { useEffect } from "react";
 import { cn } from "../../lib/utils";
 import { type ReviewAction, type ReviewStatus, useReviewStore } from "../../stores/review-store";
 
+const CLASS_LABEL: Record<string, string> = {
+  spend: "spend",
+  publish: "post",
+  contact: "message",
+  handoff: "handoff",
+};
+
 /**
  * What the agent asked to do on the owner's behalf and what came of it
  * (PLAN-53 B5). One list, newest first, from the review store.
@@ -57,8 +64,7 @@ function ActivityRow({ action }: { action: ReviewAction }) {
               {meta.label}
             </span>
             <span className="text-2xs text-muted-foreground">
-              {action.cls === "spend" ? "spend" : action.cls === "handoff" ? "handoff" : "post"} ·{" "}
-              {action.id}
+              {CLASS_LABEL[action.cls] ?? action.cls} · {action.id}
             </span>
           </div>
           <p className="text-xs text-foreground break-words">{action.preview}</p>
