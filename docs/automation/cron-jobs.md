@@ -61,7 +61,16 @@ bitterbot cron add \
   --to "channel:C1234567890"
 ```
 
-## Tool-call equivalents (Gateway cron tool)
+## The agent's cron tool
+
+The agent has a `cron` tool, so you can ask for a reminder or recurring work in plain words ("remind me to call the dentist in 20 minutes", "every Friday at 4 PM summarize this project's open tasks"). Its actions are `status`, `list`, `add`, `update`, `remove`, `run`, `runs` and `wake`.
+
+In `add`, the job says what kind of thing it is:
+
+- `text`: a note delivered into the main session at that time. Use it for reminders.
+- `message`: a prompt run as its own agent turn at that time. Use it for work to carry out.
+
+The rest of the job has the same shape as the gateway API below. A job the agent creates while working for someone who is not the owner runs later without the owner-only tools.
 
 For the canonical JSON shapes and examples, see [JSON schema for tool calls](/automation/cron-jobs#json-schema-for-tool-calls).
 

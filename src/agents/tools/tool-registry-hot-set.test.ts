@@ -29,6 +29,7 @@ const LIVE_TOOL_NAMES = [
   "a2a_status",
   "canvas",
   "create_artifact",
+  "cron",
   "code_interpreter",
   "nodes",
   "message",
@@ -119,6 +120,7 @@ describe("selectHotTools per lane", () => {
     expect(sel.hot.length).toBeLessThanOrEqual(HOT_SET_DEFAULT_MAX);
     // What draws in the person's side panel must not need a search hop.
     expect(names(sel.hot)).toContain("create_artifact");
+    expect(names(sel.hot)).toContain("cron");
     expect(names(sel.hot)).not.toContain("message");
     expect(names(sel.hot)).not.toContain("browser");
     expect(names(sel.deferred)).toContain("message");
@@ -139,6 +141,7 @@ describe("selectHotTools per lane", () => {
     const sub = selectHotTools({ tools: registry, lane: "subagent", hotSet: defaults });
     expect(names(sub.hot)).not.toContain("sessions_send");
     expect(names(sub.hot)).not.toContain("create_artifact");
+    expect(names(sub.hot)).not.toContain("cron");
     expect(names(sub.hot)).toContain("write");
   });
 

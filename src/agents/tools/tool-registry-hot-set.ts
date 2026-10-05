@@ -38,7 +38,7 @@ import { createListToolsTool, createUseToolTool } from "./tool-dispatcher-tool.j
 
 const log = createSubsystemLogger("agents/tools/hot-set");
 
-export const HOT_SET_DEFAULT_MAX = 11;
+export const HOT_SET_DEFAULT_MAX = 12;
 /** chars / 2.6 is the estimate the audit uses for tool definitions. */
 export const TOOL_DEFINITION_CHARS_PER_TOKEN = 2.6;
 
@@ -59,6 +59,7 @@ export const HOT_SET_DEFAULT_ALWAYS: readonly string[] = ["read", "memory_search
  * file and told the user to double-click it. The definition is about 300 tokens.
  */
 export const HOT_SET_ARTIFACT_TOOL = "create_artifact";
+export const HOT_SET_CRON_TOOL = "cron";
 const CHAT_HOT: readonly string[] = [
   "exec",
   "process",
@@ -68,6 +69,9 @@ const CHAT_HOT: readonly string[] = [
   "web_fetch",
   "code_interpreter",
   HOT_SET_ARTIFACT_TOOL,
+  // "Remind me on Friday" is a core request, and with the tool deferred the
+  // model has no near substitute to fall back on: it just says it cannot.
+  HOT_SET_CRON_TOOL,
   "sessions_send",
 ];
 /** Lanes with nobody watching a canvas do not carry the tools that draw on one. */
@@ -80,7 +84,10 @@ export const HOT_SET_DEFAULT_PER_LANE: Readonly<Record<ToolHotSetLane, readonly 
   cron: CHAT_HOT.filter((name) => !NO_SCREEN.has(name)),
   // The subagent policy already denies memory_search / sessions_send; the
   // selection only picks from what survived the policy pipeline.
-  subagent: CHAT_HOT.filter((name) => name !== "sessions_send" && name !== HOT_SET_ARTIFACT_TOOL),
+  subagent: CHAT_HOT.filter(
+    (name) =>
+      name !== "sessions_send" && name !== HOT_SET_ARTIFACT_TOOL && name !== HOT_SET_CRON_TOOL,
+  ),
 };
 
 export type ResolvedHotSet = {

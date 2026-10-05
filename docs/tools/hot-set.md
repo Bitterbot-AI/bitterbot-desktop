@@ -108,19 +108,20 @@ exec 64.8%, read 11.9%, process 4.3%, web_search 3.1%, web_fetch 2.5%,
 memory_search 2.1%, code_interpreter 1.9%, browser 1.3%, write 1.2%,
 edit 1.0%; everything else under 0.7%.
 
-| lane      | always              | lane list                                                                                                          | est. tokens |
-| --------- | ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------- |
-| chat      | read, memory_search | exec, process, write, edit, web_search, web_fetch, code_interpreter, create_artifact, sessions_send, recall_range  | ~3.7k       |
-| heartbeat | read, memory_search | message                                                                                                            | ~3.7k       |
-| cron      | read, memory_search | same as chat minus browser/canvas/create_artifact                                                                  | ~3.4k       |
-| subagent  | read, memory_search | chat list minus sessions_send and create_artifact (the subagent policy already denies memory_search/sessions_send) | ~2.9k       |
+| lane      | always              | lane list                                                                                                                | est. tokens |
+| --------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- |
+| chat      | read, memory_search | exec, process, write, edit, web_search, web_fetch, code_interpreter, create_artifact, cron, sessions_send, recall_range  | ~3.7k       |
+| heartbeat | read, memory_search | message                                                                                                                  | ~3.7k       |
+| cron      | read, memory_search | same as chat minus browser/canvas/create_artifact                                                                        | ~3.4k       |
+| subagent  | read, memory_search | chat list minus sessions_send, create_artifact and cron (the subagent policy already denies memory_search/sessions_send) | ~2.9k       |
 
 `message` (7.1k chars, 85 properties, 0.06% of calls) is deferred in chat and
 hot in heartbeat, where it is the delivery path. `browser` (3.2k chars) is
 deferred everywhere. `create_artifact` is hot in chat although it is rarely
 called: it is what puts a page, chart or game in the person's side panel, and
 when it was deferred the model wrote an HTML file with `write` and told the
-user to open it themselves. `max` is 11 (12 with the default `recall_range` slot); the
+user to open it themselves. `cron` is hot in chat for a similar reason:
+scheduling a reminder is a core request with no near substitute. `max` is 12 (13 with the default `recall_range` slot); the
 selection is a priority cut, `always` first, then the lane list, in the order
 written.
 
@@ -145,7 +146,7 @@ Edit `tools.hotSet` in `bitterbot.json` (global) or `agents.list[].tools.hotSet`
   tools: {
     hotSet: {
       enabled: true, // default true; false = every schema on every call
-      max: 11,
+      max: 12,
       always: ["read", "memory_search"],
       perLane: {
         chat: [
@@ -157,6 +158,7 @@ Edit `tools.hotSet` in `bitterbot.json` (global) or `agents.list[].tools.hotSet`
           "web_fetch",
           "code_interpreter",
           "create_artifact",
+          "cron",
           "sessions_send",
           "message",
         ],
