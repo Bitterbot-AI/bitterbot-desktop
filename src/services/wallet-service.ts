@@ -214,28 +214,55 @@ export function createWalletService(config: WalletConfig): WalletService {
    * persisted tx history (send + x402_payment rows), so the cap survives
    * restarts — unlike per-session counters.
    */
-  async function assertDailyLimit(amount: number): Promise<void> {
+  //
+  // The check also holds the amount until the spend is recorded (or abandoned).
+  // Concurrent spends otherwise all read the same history before any of them is
+  // written, and all pass the cap. The hold is taken with no await between the
+  // check and the increment. Holds are in-process only; the history file is
+  // what survives restarts.
+  let reservedUsd = 0;
+
+  async function reserveDailyLimit(amount: number): Promise<() => void> {
     const historyPath = path.join(storePath, "tx-history.json");
     let history: TransactionRecord[] = [];
     try {
       history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
     } catch {
-      return; // no history yet — nothing spent
+      // no history yet — nothing spent
     }
     const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     const spent = history
       .filter((r) => r.timestamp >= cutoff && (r.type === "send" || r.type === "x402_payment"))
       .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    if (spent + amount > dailyLimit) {
+    if (spent + reservedUsd + amount > dailyLimit) {
+      const inFlight = reservedUsd > 0 ? ` plus $${reservedUsd.toFixed(2)} in flight` : "";
       throw new Error(
-        `Daily spend limit would be exceeded: $${spent.toFixed(2)} spent in the last 24h, ` +
+        `Daily spend limit would be exceeded: $${spent.toFixed(2)} spent in the last 24h${inFlight}, ` +
           `$${amount.toFixed(2)} requested, cap is $${dailyLimit} ` +
           `(tools.wallet.dailySpendLimitUsd)`,
       );
     }
+    reservedUsd += amount;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      reservedUsd -= amount;
+    };
   }
 
-  async function recordTransaction(record: TransactionRecord): Promise<void> {
+  // History writes from this process run one at a time, so concurrent spends
+  // don't fail on our own lockfile after the money has already moved. The
+  // lockfile still guards against other processes.
+  let historyWrites: Promise<void> = Promise.resolve();
+
+  function recordTransaction(record: TransactionRecord): Promise<void> {
+    const write = historyWrites.then(() => writeTransaction(record));
+    historyWrites = write.catch(() => {});
+    return write;
+  }
+
+  async function writeTransaction(record: TransactionRecord): Promise<void> {
     await ensureStoreDir();
     const historyPath = path.join(storePath, "tx-history.json");
 
@@ -362,11 +389,18 @@ export function createWalletService(config: WalletConfig): WalletService {
 
     async sendUsdc(to: string, amount: number, opts?: SendUsdcOptions): Promise<SendResult> {
       validateTransactionAmount(amount);
-      await assertDailyLimit(amount);
-      const provider = await getProvider();
+      const releaseHold = await reserveDailyLimit(amount);
+      let provider: Awaited<ReturnType<typeof getProvider>>;
+      try {
+        provider = await getProvider();
+      } catch (err) {
+        releaseHold();
+        throw err;
+      }
 
       const usdcContract = USDC_CONTRACTS[network];
       if (!usdcContract) {
+        releaseHold();
         throw new Error(`No USDC contract for network: ${network}`);
       }
 
@@ -395,6 +429,9 @@ export function createWalletService(config: WalletConfig): WalletService {
           `Failed to send USDC: ${err instanceof Error ? err.message : String(err)}`,
           { cause: err },
         );
+      } finally {
+        // A recorded send now counts through the history instead
+        releaseHold();
       }
     },
 
@@ -440,6 +477,7 @@ export function createWalletService(config: WalletConfig): WalletService {
       const { X402ActionProvider } = await import("@coinbase/agentkit");
       const x402 = new X402ActionProvider();
 
+      let releaseHold: (() => void) | undefined;
       try {
         // Pre-flight: discover the payment requirements WITHOUT paying. The
         // auto-pay wrapper would settle whatever the server demands; we must
@@ -510,7 +548,7 @@ export function createWalletService(config: WalletConfig): WalletService {
 
         // Within cap: enforce the daily budget against the ACTUAL price
         // (the probe above was free), then pay and settle on-chain.
-        await assertDailyLimit(requiredUsd);
+        releaseHold = await reserveDailyLimit(requiredUsd);
         const paidRaw = await x402.makeHttpRequestWithX402(payer, {
           url: resourceUrl,
           method: "GET",
@@ -560,6 +598,8 @@ export function createWalletService(config: WalletConfig): WalletService {
           success: false,
           error: `x402 payment failed: ${err instanceof Error ? err.message : String(err)}`,
         };
+      } finally {
+        releaseHold?.();
       }
     },
   };
