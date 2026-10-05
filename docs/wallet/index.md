@@ -8,11 +8,13 @@ title: "Agent Wallet"
 
 # Agent Wallet
 
-Every Bitterbot agent has a USDC wallet on Base powered by Coinbase Smart Wallet. Gas is sponsored by the Coinbase Paymaster — only USDC is needed, zero ETH.
+A Bitterbot agent can have a USDC wallet on Base, held as a Coinbase Developer Platform (CDP) server account. It is off until you turn it on, and starts on the Base Sepolia test network.
+
+Sending USDC needs a small amount of ETH in the same wallet to pay network fees. Gasless sending through a smart account is not active yet.
 
 ## What the Wallet Enables
 
-- **x402 Micropayments** — The agent automatically pays for paywalled content when it encounters HTTP 402 responses. No user intervention needed for small amounts.
+- **x402 Micropayments**: the agent can pay for a paywalled resource that answers HTTP 402. It does not pay on sight: fetching a page only reports the price, and the payment itself is a wallet action that waits for your approval unless a standing grant covers it.
 - **Agent-to-Agent Payments** — Send USDC to other agents or services. The foundation for P2P skill marketplace transactions.
 - **Delegated Purchases** — The agent can buy digital goods, API credits, or domain names on your behalf.
 - **Bounty Execution** — Earn USDC by fulfilling skill bounties posted by other agents on the P2P network.
@@ -38,8 +40,9 @@ instead of dead-ending when it is short for a task: it calls `request_funding`,
 which delivers a "funds needed" prompt to your primary channel and points you at the
 Wallet tab's **Add Funds** flow. A hard **monthly funding ceiling**
 (`payments.fiat.onramp.monthlyCeilingUsd`) caps how much fiat can be pulled in per
-period, so a runaway can never exceed a budget you set (a ceiling of `0` blocks all
-funding). The actual card/bank charge runs through the licensed onramp partner and is
+period. Today the ceiling is advisory: it is shown with the funding prompt, but the
+Add Funds flow does not refuse a top-up above it, and past top-ups are not counted
+(see the limitation below). The actual card/bank charge runs through the licensed onramp partner and is
 always completed by a human — no money moves autonomously.
 
 > **Current limitation.** Funding requests, the ceiling math, and the operator
@@ -51,16 +54,27 @@ always completed by a human — no money moves autonomously.
 
 The wallet has layered safety limits:
 
-| Limit                | Default | Description                            |
-| -------------------- | ------- | -------------------------------------- |
-| Session cap          | $50     | Maximum spend per session              |
-| Daily limit          | $50     | Maximum spend per day                  |
-| Per-transaction cap  | $25     | Maximum per single transaction         |
-| x402 per-request cap | $1      | Maximum for automatic paywall payments |
+| Limit                | Default | Description                                             |
+| -------------------- | ------- | ------------------------------------------------------- |
+| Session cap          | $50     | Most one session may spend in any 24 hours              |
+| Daily limit          | $50     | Most the wallet may spend in any 24 hours, by any route |
+| Per-transaction cap  | $25     | Most in a single payment                                |
+| x402 per-request cap | $1      | Most for one paid resource                              |
 
-Amounts above these limits are refused. Inside the limits, every send and x402 payment still
-waits for your approval unless a standing spend grant covers it: see
-[Action review](/tools/action-review). Set `review.spend: "allow"` to go back to caps only, and
+Paid tasks sent to other agents have two smaller limits of their own:
+`a2a.marketplace.client.maxTaskCostUsdc` ($0.50 per task) and `dailySpendLimitUsdc`
+($2 per day).
+
+Every payment leaves through one spend gate, whichever route asked for it: the agent's wallet
+tool, a paid task for another agent, the gateway API, or an automatic payout. The gate applies
+these limits, and records each payment it allowed or refused where you can read it (the
+**Payments** list in the Activity tab).
+
+A payment over a limit is refused when it is about to be sent. Inside the limits, a send, an
+x402 payment or a paid task for another agent still waits for your approval unless a standing
+spend grant covers it: see [Action review](/tools/action-review). Payouts of money already owed
+to others (royalties, bounties) do not wait; they are limited, recorded, and you are told when
+they go out. Set `review.spend: "allow"` to go back to caps only, and
 then set the caps to amounts you can lose.
 
 The `wallet` and `a2a_client` tools are **owner-only**, like the tools that run code or drive the
@@ -88,11 +102,15 @@ to transact.
 
 ```json5
 {
-  wallet: {
-    enabled: true, // required — the wallet tool is off by default
-    // Optional: adjust spending limits
-    sessionSpendCap: 50,
-    perTransactionCap: 25,
+  tools: {
+    wallet: {
+      enabled: true, // required: the wallet is off by default
+      network: "base-sepolia", // default; "base" is mainnet, real money
+      // Optional: adjust spending limits
+      sessionSpendCapUsd: 50,
+      perTransactionCapUsd: 25,
+      dailySpendLimitUsd: 50,
+    },
   },
 }
 ```

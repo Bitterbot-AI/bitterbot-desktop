@@ -142,6 +142,7 @@ const BASE_METHODS = [
   "review.list",
   "review.get",
   "review.resolve",
+  "review.spends",
   // WebChat WebSocket-native chat methods
   "chat.history",
   "chat.abort",

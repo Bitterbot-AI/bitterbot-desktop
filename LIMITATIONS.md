@@ -24,8 +24,10 @@ open an issue.
 - **Approval covers money, public posts and first contact, not everything.** Every wallet send and x402
   payment waits for your approval unless a spend grant you signed covers it
   (`review.spend`, see [Action review](docs/tools/action-review.md)); spend
-  caps still apply underneath. Paid A2A tasks go through spend grants, not
-  this review, and only owner senders get the tools that move money.
+  caps still apply underneath. A paid task for another agent is held the
+  same way when its price comes back. Only owner senders get the tools that
+  move money. Payouts already owed to others (royalties, bounties) are not
+  held: they are limited, recorded and reported to you.
   The first message the agent addresses to someone it has never dealt with
   also waits for you (`review.contact`); later messages to that recipient,
   shell commands and file writes do not go through this review.

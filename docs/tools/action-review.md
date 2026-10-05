@@ -38,6 +38,16 @@ Addresses are compared loosely (`+1 555 010 0100`, `whatsapp:+15550100100` and `
 
 A standing spend grant that covers the payee and the amount counts as a decision already made: the spend passes without asking and the grant records the usage.
 
+### Paid tasks for other agents
+
+A task sent to another agent with `a2a_client` may come back with a price. Because the price is only known at that point, the hold happens there: the task is not paid for, a request appears in the queue ("Pay 0.30 USDC to 0x... for a task from the agent at ..."), and approving it runs the task again and pays. A standing grant that covers the seller and the amount pays without asking.
+
+### What is not held
+
+Payouts of money already owed to other people (skill royalties, bounty rewards) go out without waiting for you. They pass through the same spend gate as everything else: the per-transaction and daily limits apply, each one is recorded, and you get a notice when a batch goes out or when one is waiting because it is above your per-transaction limit.
+
+The `wallet` and `a2a_client` tools cannot be invoked over the gateway's HTTP `POST /tools/invoke` endpoint. Calls made that way skip the review stage, so they are denied there.
+
 ## What happens
 
 1. The agent calls the tool. The call is held before the tool runs; the agent is told the request id and that it must not retry or route around it.
@@ -61,6 +71,10 @@ Asking the same thing again does not create a second request: the agent retrying
   },
 }
 ```
+
+## The payment record
+
+Every outbound payment the spend gate allowed or refused is kept, with the amount, the payee, which route asked for it, the reason it was allowed ("passed review", "approved by the owner", "standing grant ...", "payout of an amount already owed") and what happened. The Activity tab lists them under **Payments**; `bitterbot gateway call review.spends` returns them.
 
 ## Where things live
 
