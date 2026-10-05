@@ -796,6 +796,7 @@
                 "pages": [
                   "automation/hooks",
                   "automation/cron-jobs",
+                  "automation/monitors",
                   "automation/cron-vs-heartbeat",
                   "automation/long-horizon-tasks",
                   "automation/troubleshooting",

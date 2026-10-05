@@ -118,6 +118,11 @@ const BASE_METHODS = [
   "cron.remove",
   "cron.run",
   "cron.runs",
+  "monitors.list",
+  "monitors.add",
+  "monitors.update",
+  "monitors.remove",
+  "monitors.check",
   "system-presence",
   "system-event",
   "send",
@@ -266,4 +271,5 @@ export const GATEWAY_EVENTS = [
   "review.requested",
   "review.resolved",
   "owner.notice",
+  "monitor",
 ];

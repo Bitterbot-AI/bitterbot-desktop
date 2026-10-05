@@ -6,6 +6,7 @@ import type { CliDeps } from "../cli/deps.js";
 import { setCronBroadcast } from "../cron/runtime.js";
 import { setOwnerNoticeBroadcast } from "../infra/owner-notify.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
+import { setMonitorBroadcast } from "../monitors/runtime.js";
 import type { PluginRegistry } from "../plugins/registry.js";
 import { setReviewBroadcast } from "../review/runtime.js";
 import type { RuntimeEnv } from "../runtime.js";
@@ -113,6 +114,7 @@ export async function createGatewayRuntimeState(params: {
   // PLAN-53 Track E: scheduled-job runs and gateway notices for the owner.
   setCronBroadcast((payload) => broadcast("cron", payload, { dropIfSlow: true }));
   setOwnerNoticeBroadcast((payload) => broadcast("owner.notice", payload));
+  setMonitorBroadcast((payload) => broadcast("monitor", payload, { dropIfSlow: true }));
 
   const handleHooksRequest = createGatewayHooksRequestHandler({
     deps: params.deps,

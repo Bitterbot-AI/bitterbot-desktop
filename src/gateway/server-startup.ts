@@ -18,6 +18,7 @@ import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { getP2pStatus, patchP2pStatus } from "../infra/p2p-status.js";
 import { recordPeerWalletCapability, setLocalWalletCapability } from "../infra/wallet-discovery.js";
+import { startMonitorEngine } from "../monitors/runtime.js";
 import type { loadBitterbotPlugins } from "../plugins/loader.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
 import { createSkillReceivedHandler } from "./p2p-skill-receive.js";
@@ -504,6 +505,11 @@ export async function startGatewaySidecars(params: {
   // gateway should boot even if cron jobs fail to load.
   void startCronEngine(params.cfg).catch((err) => {
     params.log.warn(`cron engine failed to start: ${String(err)}`);
+  });
+
+  // Monitors (PLAN-53 E5). Non-fatal, like cron.
+  void startMonitorEngine(params.cfg).catch((err) => {
+    params.log.warn(`monitor engine failed to start: ${String(err)}`);
   });
 
   return { browserControl, pluginServices, orchestratorBridge, skillNetworkBridge };

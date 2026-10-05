@@ -1954,6 +1954,16 @@ See [Plugins](/tools/plugin).
 
 ---
 
+## Monitors
+
+```json5
+{
+  monitors: { enabled: true }, // default true
+}
+```
+
+[Monitors](/automation/monitors) watch a page or an API with a plain fetch and wake the agent only on change. `enabled: false` (or `BITTERBOT_SKIP_MONITORS=1`) stops the engine; saved monitors are kept.
+
 ## Notifications
 
 Notices the gateway sends you on its own account: a scheduled job that failed or was turned off, a task interrupted by a restart. Every notice is kept in the main session and shown in the Control UI whatever these settings say; they govern the extra push to a chat channel.

@@ -243,6 +243,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "browser.evaluateEnabled": "Browser Evaluate Enabled",
   "browser.snapshotDefaults": "Browser Snapshot Defaults",
   "browser.snapshotDefaults.mode": "Browser Snapshot Mode",
+  "monitors.enabled": "Monitors: Enabled",
   "notifications.owner.channel": "Owner Notices: Channel",
   "notifications.owner.to": "Owner Notices: Recipient",
   "notifications.owner.accountId": "Owner Notices: Account",

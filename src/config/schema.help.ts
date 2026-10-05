@@ -102,6 +102,8 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.nodes.browser.mode":
     'Node browser routing ("auto" = pick single connected browser node, "manual" = require node param, "off" = disable).',
   "gateway.nodes.browser.node": "Pin browser routing to a specific node id or name (optional).",
+  "monitors.enabled":
+    "Run monitors: watches on a page or API that are checked with a plain fetch and wake the agent only when something changes (default: true).",
   "notifications.owner.channel":
     "Channel to push gateway notices to (a failed or turned-off scheduled job, a stranded task). Without it, notices go where the heartbeat would deliver. Every notice is also kept in the main session.",
   "notifications.owner.to": "Recipient on that channel for gateway notices.",
