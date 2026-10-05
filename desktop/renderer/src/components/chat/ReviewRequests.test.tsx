@@ -154,4 +154,27 @@ describe("ReviewRequests", () => {
     // Only money asks twice.
     expect(state.resolve).toHaveBeenCalledWith("rv-00000004", "approve");
   });
+
+  it("answers a shell command once, always, or not at all", async () => {
+    state.pending = [
+      {
+        ...spend,
+        id: "rv-00000005",
+        cls: "command",
+        tool: "exec",
+        preview: "Run: rm -rf build (in /repo)",
+        params: { command: "rm -rf build", cwd: "/repo", approvalId: "a1" },
+      },
+    ];
+    render(<ReviewRequests />);
+    const user = userEvent.setup();
+
+    expect(screen.getByText("rm -rf build")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: /allow once/i }));
+    expect(state.resolve).toHaveBeenLastCalledWith("rv-00000005", "approve");
+    await user.click(screen.getByRole("button", { name: /always allow/i }));
+    expect(state.resolve).toHaveBeenLastCalledWith("rv-00000005", "approve", { always: true });
+    await user.click(screen.getByRole("button", { name: /deny/i }));
+    expect(state.resolve).toHaveBeenLastCalledWith("rv-00000005", "deny");
+  });
 });

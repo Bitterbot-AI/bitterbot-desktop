@@ -112,6 +112,16 @@ describe("review.resolve", () => {
     });
   });
 
+  it("passes on always-allow for a shell command", async () => {
+    await call("review.resolve", { id: "rv-00000001", decision: "approve", always: true });
+
+    expect(svc.resolve).toHaveBeenCalledWith(
+      "rv-00000001",
+      "approve",
+      expect.objectContaining({ always: true }),
+    );
+  });
+
   it("rejects a missing id or an unknown decision", async () => {
     expect((await call("review.resolve", { id: "rv-00000001", decision: "maybe" }))[0]).toBe(false);
     expect((await call("review.resolve", { decision: "approve" }))[0]).toBe(false);

@@ -3,6 +3,7 @@ import {
   DEFAULT_EXEC_APPROVAL_TIMEOUT_MS,
   type ExecApprovalDecision,
 } from "../../infra/exec-approvals.js";
+import { mirrorCommandRequested, mirrorCommandSettled } from "../../review/command-mirror.js";
 import type { ExecApprovalManager } from "../exec-approval-manager.js";
 import {
   ErrorCodes,
@@ -86,6 +87,8 @@ export function createExecApprovalHandlers(
         );
         return;
       }
+      // PLAN-53 B6: the same request, in the review queue.
+      mirrorCommandRequested(record);
       context.broadcast(
         "exec.approval.requested",
         {
@@ -123,6 +126,7 @@ export function createExecApprovalHandlers(
       }
 
       const decision = await decisionPromise;
+      mirrorCommandSettled(record.id, decision, manager.getSnapshot(record.id)?.resolvedBy);
       // Send final response with decision for callers using expectFinal:true.
       respond(
         true,

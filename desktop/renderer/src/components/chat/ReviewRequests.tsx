@@ -1,4 +1,4 @@
-import { Check, MousePointerClick, ShieldAlert, X } from "lucide-react";
+import { Check, MousePointerClick, ShieldAlert, Terminal, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useArtifactStore } from "../../stores/artifact-store";
@@ -24,6 +24,8 @@ export function ReviewRequests() {
       {pending.map((action) =>
         action.cls === "handoff" ? (
           <HandoffCard key={action.id} action={action} />
+        ) : action.cls === "command" ? (
+          <CommandCard key={action.id} action={action} />
         ) : (
           <ReviewCard key={action.id} action={action} />
         ),
@@ -166,6 +168,69 @@ function HandoffCard({ action }: { action: ReviewAction }) {
               className="px-3 py-1 rounded-md text-xs font-medium border border-border/40 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             >
               Not now
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A shell command the agent wants to run. The exec tool is waiting on the
+ * answer: once runs this one, always also adds it to the allowlist.
+ */
+function CommandCard({ action }: { action: ReviewAction }) {
+  const resolve = useReviewStore((s) => s.resolve);
+  const busy = useReviewStore((s) => s.busy.has(action.id));
+  const params = action.params as { command?: unknown; cwd?: unknown; host?: unknown } | null;
+  const command = typeof params?.command === "string" ? params.command : action.preview;
+  const where = [
+    typeof params?.host === "string" ? params.host : null,
+    typeof params?.cwd === "string" ? params.cwd : null,
+  ].filter(Boolean);
+
+  return (
+    <div
+      className="rounded-lg border border-warning/30 bg-warning/5 p-3"
+      data-testid="command-card"
+    >
+      <div className="flex items-start gap-2">
+        <Terminal className="w-4 h-4 text-warning flex-shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-warning">
+            A command needs your approval
+            <span className="ml-2 font-mono text-2xs text-muted-foreground">{action.id}</span>
+          </p>
+          <pre className="text-xs font-mono text-foreground mt-1 whitespace-pre-wrap break-all max-h-32 overflow-auto">
+            {command}
+          </pre>
+          {where.length > 0 && (
+            <p className="text-2xs font-mono text-muted-foreground mt-0.5">{where.join(" · ")}</p>
+          )}
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={() => void resolve(action.id, "approve")}
+              disabled={busy}
+              className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border bg-success/15 text-success border-success/30 hover:bg-success/25 transition-colors disabled:opacity-50"
+            >
+              <Check className="w-3.5 h-3.5" />
+              Allow once
+            </button>
+            <button
+              onClick={() => void resolve(action.id, "approve", { always: true })}
+              disabled={busy}
+              className="px-3 py-1 rounded-md text-xs font-medium border border-border/40 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Always allow
+            </button>
+            <button
+              onClick={() => void resolve(action.id, "deny")}
+              disabled={busy}
+              className="flex items-center gap-1 px-3 py-1 rounded-md text-xs font-medium border border-danger/30 bg-danger/10 text-danger hover:bg-danger/20 transition-colors disabled:opacity-50"
+            >
+              <X className="w-3.5 h-3.5" />
+              Deny
             </button>
           </div>
         </div>

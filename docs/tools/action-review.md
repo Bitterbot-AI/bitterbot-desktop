@@ -19,7 +19,7 @@ Some of what the agent can do should not happen without you. Action review holds
 | `publish` | `message` posting to the X channel                                                                | ask     |
 | `contact` | `message` sending to a named recipient the agent has never dealt with                             | first   |
 
-Everything else runs as before. Shell commands and file writes are not reviewed by this feature; exec approvals and the sandbox cover commands.
+Everything else runs as before. File writes are not reviewed. Shell commands keep their own rules (exec approvals and the sandbox) and are answered from this queue; see [Shell commands](#shell-commands).
 
 ### Messages to someone new
 
@@ -66,6 +66,16 @@ Asking the same thing again does not create a second request: the agent retrying
 
 - Requests and decisions: `~/.bitterbot/review.sqlite`, separate from the memory database.
 - Gateway methods: `review.list`, `review.get`, `review.resolve`; events `review.requested`, `review.resolved`. All need `operator.approvals`.
+
+## Shell commands
+
+Commands that need approval under [exec approvals](/tools/exec-approvals) show up in the same queue. The exec tool still does the asking and the waiting; the queue is one more place to answer, and the place the answer is recorded.
+
+- The card shows the command, the directory and the host, with **Allow once**, **Always allow** (adds it to the allowlist) and **Deny**.
+- `/approve <id> allow-once|allow-always|deny` in chat keeps working, and an answer given there or from another client is recorded in Activity the same way.
+- If nobody answers before the exec approval times out, the request closes itself.
+
+Which commands need approval is still decided by the exec approval settings, not by `review.*`.
 
 ## Browser handoffs
 
