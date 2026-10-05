@@ -71,13 +71,13 @@ const CHAT_HOT: readonly string[] = [
   "sessions_send",
 ];
 /** Lanes with nobody watching a canvas do not carry the tools that draw on one. */
-const NO_SCREEN: readonly string[] = ["browser", "canvas", HOT_SET_ARTIFACT_TOOL];
+const NO_SCREEN: ReadonlySet<string> = new Set(["browser", "canvas", HOT_SET_ARTIFACT_TOOL]);
 export const HOT_SET_DEFAULT_PER_LANE: Readonly<Record<ToolHotSetLane, readonly string[]>> = {
   chat: CHAT_HOT,
   heartbeat: ["message"],
   // Same as chat minus browser/canvas (neither is hot in chat either; kept
   // explicit so a chat promotion of browser does not leak into cron).
-  cron: CHAT_HOT.filter((name) => !NO_SCREEN.includes(name)),
+  cron: CHAT_HOT.filter((name) => !NO_SCREEN.has(name)),
   // The subagent policy already denies memory_search / sessions_send; the
   // selection only picks from what survived the policy pipeline.
   subagent: CHAT_HOT.filter((name) => name !== "sessions_send" && name !== HOT_SET_ARTIFACT_TOOL),
