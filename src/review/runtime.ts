@@ -13,6 +13,7 @@ import type { Classification } from "./classify.js";
 import { addressesFromConfig, addressesFromSessions, KnownContacts } from "./contacts.js";
 import { createDefaultExecutors } from "./executors.js";
 import {
+  type CommandDecision,
   DEFAULT_REVIEW_POLICY,
   type ReviewContext,
   type ReviewPolicy,
@@ -142,6 +143,14 @@ function completeMessageParams(toolName: string, params: unknown, ctx: ReviewCon
   }
 }
 
+type CommandResolver = (approvalId: string, decision: CommandDecision, by: string) => boolean;
+let commandResolver: CommandResolver | null = null;
+
+/** The gateway installs the way to answer a waiting shell-command approval. */
+export function setCommandApprovalResolver(fn: CommandResolver | null): void {
+  commandResolver = fn;
+}
+
 export function getReviewService(): ReviewService {
   service ??= new ReviewService({
     store: ReviewStore.open(),
@@ -150,6 +159,12 @@ export function getReviewService(): ReviewService {
     // Unknown on any failure: the owner is asked, which is the safe side.
     knownContact: async (recipient) => (await loadKnownContacts()).has(recipient),
     completeParams: completeMessageParams,
+    resolveCommand: (action, decision, decidedBy) => {
+      const approvalId = (action.params as { approvalId?: unknown } | null)?.approvalId;
+      return typeof approvalId === "string" && commandResolver
+        ? commandResolver(approvalId, decision, decidedBy)
+        : false;
+    },
     broadcast: (event, payload) => broadcastFn?.(event, payload),
     notifySession: (sessionKey, text, contextKey) => {
       try {

@@ -8,6 +8,7 @@ const CLASS_LABEL: Record<string, string> = {
   publish: "post",
   contact: "message",
   handoff: "handoff",
+  command: "command",
 };
 
 /**
