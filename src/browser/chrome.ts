@@ -28,6 +28,7 @@ import {
   DEFAULT_BITTERBOT_BROWSER_COLOR,
   DEFAULT_BITTERBOT_BROWSER_PROFILE_NAME,
 } from "./constants.js";
+import { trackBrowserLaunch } from "./launch-activity.js";
 
 const log = createSubsystemLogger("browser").child("chrome");
 
@@ -227,6 +228,13 @@ export async function isChromeCdpReady(
 }
 
 export async function launchBitterbotChrome(
+  resolved: ResolvedBrowserConfig,
+  profile: ResolvedBrowserProfile,
+): Promise<RunningChrome> {
+  return await trackBrowserLaunch(() => launchChrome(resolved, profile));
+}
+
+async function launchChrome(
   resolved: ResolvedBrowserConfig,
   profile: ResolvedBrowserProfile,
 ): Promise<RunningChrome> {

@@ -22,7 +22,7 @@ import { useArtifactStore, type RightPanelMode } from "../../stores/artifact-sto
 import { useChatStore, type ActiveToolCall } from "../../stores/chat-store";
 import { useCoworkStore } from "../../stores/cowork-store";
 import { useReviewStore } from "../../stores/review-store";
-import { useUIStore } from "../../stores/ui-store";
+import { TOOL_PANEL_DEFAULT_WIDTH, useUIStore } from "../../stores/ui-store";
 import { CoworkPanel } from "../cowork/CoworkPanel";
 import { WorkspaceFilesPanel } from "../workspace/WorkspaceFilesPanel";
 import { ActivityPanel } from "./ActivityPanel";
@@ -148,6 +148,27 @@ type NavigationMode = "live" | "manual";
 export function ToolCallPanel() {
   const toolCalls = useChatStore((s) => s.toolCalls);
   const setToolPanelOpen = useUIStore((s) => s.setToolPanelOpen);
+  const toolPanelWidth = useUIStore((s) => s.toolPanelWidth);
+  const setToolPanelWidth = useUIStore((s) => s.setToolPanelWidth);
+  const [resizing, setResizing] = useState(false);
+
+  // The pane sits on the right, so dragging its left edge leftwards widens it.
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = toolPanelWidth;
+    const onMove = (ev: MouseEvent) => setToolPanelWidth(startWidth + (startX - ev.clientX));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = "";
+      setResizing(false);
+    };
+    document.body.style.userSelect = "none";
+    setResizing(true);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
   const panelMode = useArtifactStore((s) => s.panelMode);
   const setPanelMode = useArtifactStore((s) => s.setPanelMode);
   const hasArtifacts = useArtifactStore((s) => s.artifacts.size > 0);
@@ -224,7 +245,23 @@ export function ToolCallPanel() {
   }, [displayIndex, hasPrev, hasNext, navigateTo, setToolPanelOpen, panelMode]);
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[550px] z-30 flex flex-col bg-card/95 backdrop-blur-xl border-l border-border/50">
+    <div
+      style={{ width: toolPanelWidth }}
+      className="fixed inset-y-0 right-0 z-30 flex flex-col bg-card/95 backdrop-blur-xl border-l border-border/50"
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize pane"
+        data-testid="tool-panel-resize"
+        onMouseDown={startResize}
+        onDoubleClick={() => setToolPanelWidth(TOOL_PANEL_DEFAULT_WIDTH)}
+        title="Drag to resize · double-click to reset"
+        className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize z-40 hover:bg-brand/40"
+      />
+      {/* An artifact or the live browser is an iframe or an image that would
+          swallow the mouse mid-drag; cover the pane while resizing. */}
+      {resizing && <div className="absolute inset-0 z-30 cursor-col-resize" />}
       {/* Header with tab bar */}
       <div className="flex-shrink-0 border-b border-border/30">
         {/* Branding */}

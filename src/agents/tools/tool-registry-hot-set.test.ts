@@ -117,6 +117,8 @@ describe("selectHotTools per lane", () => {
       [...HOT_SET_DEFAULT_ALWAYS, ...HOT_SET_DEFAULT_PER_LANE.chat].toSorted(),
     );
     expect(sel.hot.length).toBeLessThanOrEqual(HOT_SET_DEFAULT_MAX);
+    // What draws in the person's side panel must not need a search hop.
+    expect(names(sel.hot)).toContain("create_artifact");
     expect(names(sel.hot)).not.toContain("message");
     expect(names(sel.hot)).not.toContain("browser");
     expect(names(sel.deferred)).toContain("message");
@@ -132,9 +134,11 @@ describe("selectHotTools per lane", () => {
     const cron = selectHotTools({ tools: registry, lane: "cron", hotSet: defaults });
     expect(names(cron.hot)).not.toContain("browser");
     expect(names(cron.hot)).not.toContain("canvas");
+    expect(names(cron.hot)).not.toContain("create_artifact");
     expect(names(cron.hot)).toContain("exec");
     const sub = selectHotTools({ tools: registry, lane: "subagent", hotSet: defaults });
     expect(names(sub.hot)).not.toContain("sessions_send");
+    expect(names(sub.hot)).not.toContain("create_artifact");
     expect(names(sub.hot)).toContain("write");
   });
 

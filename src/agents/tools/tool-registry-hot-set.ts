@@ -38,7 +38,7 @@ import { createListToolsTool, createUseToolTool } from "./tool-dispatcher-tool.j
 
 const log = createSubsystemLogger("agents/tools/hot-set");
 
-export const HOT_SET_DEFAULT_MAX = 10;
+export const HOT_SET_DEFAULT_MAX = 11;
 /** chars / 2.6 is the estimate the audit uses for tool definitions. */
 export const TOOL_DEFINITION_CHARS_PER_TOKEN = 2.6;
 
@@ -51,6 +51,14 @@ export const TOOL_DEFINITION_CHARS_PER_TOKEN = 2.6;
  * where it is the delivery path. `browser` (3.2k chars) stays deferred.
  */
 export const HOT_SET_DEFAULT_ALWAYS: readonly string[] = ["read", "memory_search"];
+/**
+ * `create_artifact` is hot in chat although it is rarely called: it is what
+ * puts a page, chart or game in front of the person, and a deferred tool the
+ * model has to think to search for loses to `write`, which is always there.
+ * Seen on 2026-10-04: asked for a fireworks display, the agent wrote an HTML
+ * file and told the user to double-click it. The definition is about 300 tokens.
+ */
+export const HOT_SET_ARTIFACT_TOOL = "create_artifact";
 const CHAT_HOT: readonly string[] = [
   "exec",
   "process",
@@ -59,17 +67,20 @@ const CHAT_HOT: readonly string[] = [
   "web_search",
   "web_fetch",
   "code_interpreter",
+  HOT_SET_ARTIFACT_TOOL,
   "sessions_send",
 ];
+/** Lanes with nobody watching a canvas do not carry the tools that draw on one. */
+const NO_SCREEN: readonly string[] = ["browser", "canvas", HOT_SET_ARTIFACT_TOOL];
 export const HOT_SET_DEFAULT_PER_LANE: Readonly<Record<ToolHotSetLane, readonly string[]>> = {
   chat: CHAT_HOT,
   heartbeat: ["message"],
   // Same as chat minus browser/canvas (neither is hot in chat either; kept
   // explicit so a chat promotion of browser does not leak into cron).
-  cron: CHAT_HOT.filter((name) => name !== "browser" && name !== "canvas"),
+  cron: CHAT_HOT.filter((name) => !NO_SCREEN.includes(name)),
   // The subagent policy already denies memory_search / sessions_send; the
   // selection only picks from what survived the policy pipeline.
-  subagent: CHAT_HOT.filter((name) => name !== "sessions_send"),
+  subagent: CHAT_HOT.filter((name) => name !== "sessions_send" && name !== HOT_SET_ARTIFACT_TOOL),
 };
 
 export type ResolvedHotSet = {

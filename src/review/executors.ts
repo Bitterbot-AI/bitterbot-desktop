@@ -44,6 +44,36 @@ export function summarizeToolResult(result: unknown): ExecutionResult {
   return { ok: !failed, summary: summary.slice(0, 2000) };
 }
 
+/**
+ * A wallet send answers with a JSON blob. The person who approved it reads the
+ * result in the Activity tab and in chat, so say it in a sentence; anything
+ * that is not a recognisable send is left as it came.
+ */
+export function describeWalletResult(result: ExecutionResult): ExecutionResult {
+  if (!result.ok) {
+    return result;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(result.summary);
+  } catch {
+    return result;
+  }
+  if (!parsed || typeof parsed !== "object") {
+    return result;
+  }
+  const r = parsed as Record<string, unknown>;
+  if (typeof r.txHash !== "string" || !r.txHash) {
+    return result;
+  }
+  const amount = typeof r.amount === "number" ? `${r.amount} USDC` : "The payment";
+  const to = typeof r.to === "string" && r.to ? ` to ${r.to}` : "";
+  const verb = typeof r.amount === "number" ? "Sent " : "";
+  const state = typeof r.status === "string" && r.status ? ` (${r.status})` : "";
+  const sent = verb ? `${verb}${amount}${to}.` : `${amount}${to} was sent.`;
+  return { ok: true, summary: `${sent} Transaction ${r.txHash}${state}.` };
+}
+
 async function runTool(tool: ToolLike | undefined, action: ReviewAction): Promise<ExecutionResult> {
   if (!tool) {
     return { ok: false, summary: `the ${action.tool} tool is not available on this node` };
@@ -60,7 +90,7 @@ export function createDefaultExecutors(
   executors.set("wallet", async (action) => {
     const { createWalletTool } = await import("../agents/tools/wallet-tool.js");
     const tool = createWalletTool({ config: getConfig() }) as ToolLike | undefined;
-    return runTool(tool, action);
+    return describeWalletResult(await runTool(tool, action));
   });
 
   executors.set("message", async (action) => {

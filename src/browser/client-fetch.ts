@@ -6,6 +6,7 @@ import {
   createBrowserControlContext,
   startBrowserControlServiceFromConfig,
 } from "./control-service.js";
+import { isBrowserStarting } from "./launch-activity.js";
 import { createBrowserRouteDispatcher } from "./routes/dispatcher.js";
 
 type LoopbackBrowserAuthDeps = {
@@ -146,6 +147,17 @@ function enhanceBrowserFetchError(url: string, err: unknown, timeoutMs: number):
 
   if (isLocal) {
     const statusHint = `Check it with \`${formatCliCommand("bitterbot browser status")}\`.`;
+    if (looksLikeTimeout && isBrowserStarting()) {
+      // Not a broken browser: a cold start that outlasted this call. Telling
+      // the model never to retry here made it give up on a browser that was
+      // ready a moment later.
+      return new Error(
+        `The browser was still starting when this call gave up after ${timeoutMs}ms ` +
+          "(a cold start can take 20 to 30 seconds). It should be ready now or very shortly: " +
+          "try this call ONE more time. If that fails too, do not keep retrying; " +
+          `tell the user the browser is unavailable. ${statusHint}`,
+      );
+    }
     if (looksLikeTimeout) {
       return new Error(
         `The browser did not respond within ${timeoutMs}ms. It may have failed to start, ` +
