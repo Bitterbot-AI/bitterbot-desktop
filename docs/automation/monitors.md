@@ -67,6 +67,8 @@ bitterbot gateway call monitors.list
 bitterbot gateway call monitors.check --params '{"id":"mon_..."}'
 ```
 
+The **Automations** page in the Control UI lists every monitor with its current value and health, and has Check now, Pause and Remove. The same page shows scheduled jobs and the agent's longer tasks.
+
 ## Limits
 
 - Public `http` and `https` addresses only. Requests go through the same guard as `web_fetch`: private and loopback addresses are refused.

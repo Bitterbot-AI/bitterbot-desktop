@@ -58,6 +58,7 @@ import { registerTaskCheckContext } from "../tasks/checks.js";
 import { startCompletionNotifier } from "../tasks/completion-notifier.js";
 import { startHormonalAccessor } from "../tasks/hormonal-accessor.js";
 import { registerJudgeFromConfig } from "../tasks/judge-provider.js";
+import { startTaskStallSweep } from "../tasks/stall-sweep.js";
 import { startTaskStore } from "../tasks/store.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
@@ -234,6 +235,8 @@ export async function startGatewayServer(
   // terminal status. Channel monitor relays the next system-event reply.
   // Disable with BITTERBOT_TASKS_COMPLETION_NOTIFY=0.
   startCompletionNotifier();
+  // PLAN-53 E4: tell the owner about tasks nothing will resume.
+  startTaskStallSweep();
   bootStep("early-subsystems");
 
   let configSnapshot = await readConfigFileSnapshot();

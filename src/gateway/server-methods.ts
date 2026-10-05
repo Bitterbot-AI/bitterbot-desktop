@@ -32,6 +32,7 @@ import { skillsHandlers } from "./server-methods/skills.js";
 import { spendGrantHandlers } from "./server-methods/spend-grants.js";
 import { systemHandlers } from "./server-methods/system.js";
 import { talkHandlers } from "./server-methods/talk.js";
+import { taskHandlers } from "./server-methods/tasks.js";
 import { toolOutputHandlers } from "./server-methods/tool-output.js";
 import { ttsHandlers } from "./server-methods/tts.js";
 import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
@@ -164,6 +165,7 @@ const READ_METHODS = new Set([
   "cron.status",
   "cron.runs",
   "monitors.list",
+  "tasks.list",
   "guards.status",
 ]);
 const WRITE_METHODS = new Set([
@@ -246,6 +248,7 @@ const WRITE_METHODS = new Set([
   "monitors.update",
   "monitors.remove",
   "monitors.check",
+  "tasks.stop",
 ]);
 
 /** Exported for tests: the scope gate every gateway RPC passes through. */
@@ -363,6 +366,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...managementHandlers,
   ...cronHandlers,
   ...monitorHandlers,
+  ...taskHandlers,
 };
 
 export async function handleGatewayRequest(

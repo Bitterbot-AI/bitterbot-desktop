@@ -32,7 +32,7 @@ export function ownerNoticeForCronEvent(event: CronEngineEvent): OwnerNotice | n
       dedupeKey: `cron-disabled:${job.jobId}`,
       text:
         `Scheduled job ${nameOf(job)} failed ${job.consecutiveErrors} times in a row and has been turned off. ` +
-        `Last error: ${errorOf(run.error)}. Turn it back on from the Cron page once the cause is fixed.`,
+        `Last error: ${errorOf(run.error)}. Turn it back on from the Automations page once the cause is fixed.`,
     };
   }
   if (event.kind === "gave-up") {
