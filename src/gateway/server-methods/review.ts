@@ -66,7 +66,7 @@ export const reviewHandlers: GatewayRequestHandlers = {
       decidedVia: typeof params.via === "string" ? params.via.slice(0, 40) : "control-ui",
       note: typeof params.note === "string" ? params.note.slice(0, 500) : undefined,
       // For a shell command: allow it from now on, not only this once.
-      always: params.always === true,
+      ...(params.always === true ? { always: true } : {}),
     });
     if (!action) {
       respond(
