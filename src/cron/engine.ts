@@ -145,7 +145,13 @@ export class CronEngine {
 
   async upsertJob(job: CronJob): Promise<CronJob> {
     const existingIndex = this.jobs.findIndex((entry) => entry.jobId === job.jobId);
-    const next = this.refreshDerived(job);
+    const wasOff = existingIndex >= 0 && !this.jobs[existingIndex].enabled;
+    // Turning a job back on is a fresh start. Carrying the old failure count
+    // over would put it on a long backoff and turn it off again at the very
+    // next failure.
+    const next = this.refreshDerived(
+      wasOff && job.enabled ? { ...job, consecutiveErrors: 0 } : job,
+    );
     if (existingIndex >= 0) {
       this.jobs[existingIndex] = next;
     } else {

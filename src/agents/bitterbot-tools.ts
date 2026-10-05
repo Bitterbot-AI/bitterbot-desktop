@@ -13,6 +13,7 @@ import { createCirclesTool } from "./tools/circles-tool.js";
 import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
 import type { AnyAgentTool } from "./tools/common.js";
 import { createComputerUseTool } from "./tools/computer-use-tool.js";
+import { createCronTool } from "./tools/cron-tool.js";
 import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
 import { createDeepRecallTool } from "./tools/deep-recall-tool.js";
 import { createDreamSearchTool, createDreamStatusTool } from "./tools/dream-tool.js";
@@ -172,6 +173,7 @@ export function createBitterbotTools(options?: {
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
     }),
+    createCronTool({ agentSessionKey: options?.agentSessionKey }),
     createAgentsListTool({
       agentSessionKey: options?.agentSessionKey,
       requesterAgentIdOverride: options?.requesterAgentIdOverride,
