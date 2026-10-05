@@ -2,6 +2,8 @@ import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { WalletConfig } from "../../config/types.wallet.js";
 import { getPeerWalletCapability } from "../../infra/wallet-discovery.js";
+import { sessionSpentUsd } from "../../payments/ap2/gate.js";
+import { gatedWallet } from "../../review/spend.js";
 import { createWalletService, type WalletService } from "../../services/wallet-service.js";
 import { stringEnum } from "../schema/typebox.js";
 import {
@@ -84,27 +86,23 @@ export function createWalletTool(opts?: WalletToolOptions): AnyAgentTool | undef
   let service: WalletService | null = null;
   function getService(): WalletService {
     if (!service) {
-      service = createWalletService(effectiveConfig);
+      // Every payment from this tool goes through the spend gate (PLAN-53 C0):
+      // the session cap, the decision record, and the limits underneath.
+      service = gatedWallet(createWalletService(effectiveConfig), {
+        origin: "wallet-tool",
+        sessionKey: spendSessionKey,
+        sessionCapUsd: sessionSpendCapUsd,
+      });
     }
     return service;
   }
 
-  // Session spend tracking
+  // The session cap is kept by the gate, per session over 24 hours. It used
+  // to live here, in a counter that started again with every run and every
+  // approved action.
   const sessionSpendCapUsd = effectiveConfig.sessionSpendCapUsd ?? 50;
-  let sessionSpentUsd = 0;
-
-  function checkSessionCap(amountUsd: number): void {
-    if (sessionSpentUsd + amountUsd > sessionSpendCapUsd) {
-      throw new ToolInputError(
-        `Session spend cap exceeded. Cap: $${sessionSpendCapUsd}, spent: $${sessionSpentUsd.toFixed(2)}, ` +
-          `requested: $${amountUsd.toFixed(2)}. Remaining: $${(sessionSpendCapUsd - sessionSpentUsd).toFixed(2)}.`,
-      );
-    }
-  }
-
-  function recordSpend(amountUsd: number): void {
-    sessionSpentUsd += amountUsd;
-  }
+  const spendSessionKey = opts?.agentSessionKey?.trim() || "wallet-tool";
+  const sessionSpent = () => sessionSpentUsd(spendSessionKey);
 
   const network = effectiveConfig.network ?? "base-sepolia";
 
@@ -151,17 +149,15 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
             label: "recipient address",
           });
           const amount = readNumberParam(params, "amount", { required: true });
-          checkSessionCap(amount);
 
           const result = await svc.sendUsdc(address, amount);
-          recordSpend(amount);
 
           return jsonResult({
             ...result,
             amount,
             to: address,
-            sessionSpent: sessionSpentUsd,
-            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
+            sessionSpent: sessionSpent(),
+            sessionRemaining: Math.max(0, sessionSpendCapUsd - sessionSpent()),
           });
         }
 
@@ -191,18 +187,15 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
                 `"${svc.getNetwork()}". Cross-network sends are not supported.`,
             );
           }
-
-          checkSessionCap(amount);
           const result = await svc.sendUsdc(capability.address, amount);
-          recordSpend(amount);
 
           return jsonResult({
             ...result,
             amount,
             peerId,
             to: capability.address,
-            sessionSpent: sessionSpentUsd,
-            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
+            sessionSpent: sessionSpent(),
+            sessionRemaining: Math.max(0, sessionSpendCapUsd - sessionSpent()),
           });
         }
 
@@ -291,19 +284,14 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
             );
           }
 
-          checkSessionCap(amount);
-
           const result = await svc.payForResource(resourceUrl, amount);
-          if (result.success) {
-            recordSpend(result.amountPaid ?? amount);
-          }
 
           return jsonResult({
             ...result,
             resource_url: resourceUrl,
             reason: readStringParam(params, "reason") ?? "",
-            sessionSpent: sessionSpentUsd,
-            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
+            sessionSpent: sessionSpent(),
+            sessionRemaining: Math.max(0, sessionSpendCapUsd - sessionSpent()),
           });
         }
 

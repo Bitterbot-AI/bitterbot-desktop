@@ -1,6 +1,7 @@
 import { Activity, Check, Clock, ShieldAlert, X } from "lucide-react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
+import { useGatewayStore } from "../../stores/gateway-store";
 import { type ReviewAction, type ReviewStatus, useReviewStore } from "../../stores/review-store";
 
 const CLASS_LABEL: Record<string, string> = {
@@ -28,17 +29,100 @@ export function ActivityPanel() {
       <Empty text="This gateway build does not record reviewed actions yet. Update the gateway." />
     );
   }
-  if (loaded && history.length === 0) {
-    return <Empty text="Nothing has needed your approval yet." />;
-  }
   return (
     <div className="flex-1 overflow-auto">
-      <ul className="divide-y divide-border/30">
-        {history.map((action) => (
-          <ActivityRow key={action.id} action={action} />
-        ))}
-      </ul>
+      <Payments />
+      {loaded && history.length === 0 ? (
+        <Empty text="Nothing has needed your approval yet." />
+      ) : (
+        <ul className="divide-y divide-border/30">
+          {history.map((action) => (
+            <ActivityRow key={action.id} action={action} />
+          ))}
+        </ul>
+      )}
     </div>
+  );
+}
+
+export type SpendDecision = {
+  id: string;
+  ts: number;
+  origin: "wallet-tool" | "a2a" | "rpc" | "payout";
+  payee: string;
+  amountUsd: number;
+  verdict: "allow" | "deny";
+  reason: string;
+  outcome: "sent" | "failed" | "refused";
+  txHash?: string;
+  error?: string;
+};
+
+const ORIGIN: Record<SpendDecision["origin"], string> = {
+  "wallet-tool": "the agent",
+  a2a: "a task for another agent",
+  rpc: "you, directly",
+  payout: "an automatic payout",
+};
+
+/** One line for a payment: what happened, how much, to whom, and on what authority. */
+export function describeSpend(d: SpendDecision): { tone: string; text: string } {
+  const amount = `$${d.amountUsd.toFixed(2)}`;
+  if (d.outcome === "sent") {
+    return { tone: "text-success", text: `Sent ${amount} to ${d.payee} (${d.reason})` };
+  }
+  if (d.outcome === "refused") {
+    return { tone: "text-warning", text: `Refused ${amount} to ${d.payee}: ${d.reason}` };
+  }
+  return {
+    tone: "text-danger",
+    text: `Failed to send ${amount} to ${d.payee}${d.error ? `: ${d.error}` : ""}`,
+  };
+}
+
+/** Money out, from the spend gate's record. Shown only when there is any. */
+function Payments() {
+  const status = useGatewayStore((s) => s.status);
+  const request = useGatewayStore((s) => s.request);
+  const [decisions, setDecisions] = useState<SpendDecision[]>([]);
+
+  const load = useCallback(async () => {
+    if (status !== "connected") return;
+    try {
+      const res = (await request("review.spends", { limit: 20 })) as {
+        decisions?: SpendDecision[];
+      };
+      setDecisions(res?.decisions ?? []);
+    } catch {
+      // An older gateway: no payment record to show.
+    }
+  }, [status, request]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  if (decisions.length === 0) return null;
+  return (
+    <details className="border-b border-border/30" open data-testid="activity-payments">
+      <summary className="px-3 py-2 text-2xs font-semibold uppercase tracking-wide text-muted-foreground cursor-pointer">
+        Payments ({decisions.length})
+      </summary>
+      <ul className="divide-y divide-border/20">
+        {decisions.map((d) => {
+          const line = describeSpend(d);
+          return (
+            <li key={d.id} className="px-3 py-1.5">
+              <p className={cn("text-xs break-words", line.tone)}>{line.text}</p>
+              <p className="text-2xs text-muted-foreground">
+                {new Date(d.ts).toLocaleString()} · from {ORIGIN[d.origin] ?? d.origin}
+                {d.txHash ? ` · ${d.txHash.slice(0, 14)}…` : ""}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
   );
 }
 

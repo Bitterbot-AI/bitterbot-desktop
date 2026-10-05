@@ -15,6 +15,10 @@ export const DEFAULT_GATEWAY_HTTP_TOOL_DENY = [
   "gateway",
   // Interactive setup — requires terminal QR scan, hangs on HTTP
   "whatsapp_login",
+  // Money. Tools invoked over HTTP skip the agent loop's review stage, so a
+  // gateway token alone could move funds with no approval (PLAN-53 C0).
+  "wallet",
+  "a2a_client",
 ] as const;
 
 /**

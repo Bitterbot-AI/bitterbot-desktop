@@ -58,6 +58,7 @@ const APPROVAL_METHODS = new Set([
   "review.list",
   "review.get",
   "review.resolve",
+  "review.spends",
 ]);
 const NODE_ROLE_METHODS = new Set(["node.invoke.result", "node.event", "skills.bins"]);
 const PAIRING_METHODS = new Set([

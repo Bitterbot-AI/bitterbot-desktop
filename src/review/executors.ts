@@ -89,8 +89,23 @@ export function createDefaultExecutors(
 
   executors.set("wallet", async (action) => {
     const { createWalletTool } = await import("../agents/tools/wallet-tool.js");
-    const tool = createWalletTool({ config: getConfig() }) as ToolLike | undefined;
+    const tool = createWalletTool({
+      config: getConfig(),
+      // The approved spend counts against the session that asked for it.
+      agentSessionKey: action.sessionKey ?? undefined,
+    }) as ToolLike | undefined;
     return describeWalletResult(await runTool(tool, action));
+  });
+
+  // A paid task for another agent that was held at the moment its price
+  // became known. Running the call again inside the approval pays this time.
+  executors.set("a2a_client", async (action) => {
+    const { createA2aClientTool } = await import("../agents/tools/a2a-client-tool.js");
+    const tool = createA2aClientTool({
+      config: getConfig(),
+      agentSessionKey: action.sessionKey ?? undefined,
+    }) as unknown as ToolLike | null;
+    return runTool(tool ?? undefined, action);
   });
 
   executors.set("message", async (action) => {

@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CommerceReputationLedger, type CommerceOutcome } from "../memory/commerce-reputation.js";
+import type { GatedSendOptions } from "../payments/ap2/gate.js";
 import type { WalletService } from "./wallet-service.js";
 
 const log = createSubsystemLogger("a2a-client");
@@ -432,7 +433,12 @@ export class A2aClient {
       // Pay via wallet
       let payment: { txHash: string };
       try {
-        payment = await params.walletService.sendUsdc(payTo, price);
+        payment = await params.walletService.sendUsdc(
+          payTo,
+          price,
+          // A standing grant the owner signed is their approval (spend gate).
+          grantRef ? ({ authorizedByGrant: grantRef } as GatedSendOptions) : undefined,
+        );
       } catch (err) {
         return { success: false, error: `Payment failed: ${String(err)}` };
       }

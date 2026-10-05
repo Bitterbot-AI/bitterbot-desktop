@@ -32,6 +32,12 @@ export const reviewHandlers: GatewayRequestHandlers = {
     });
   },
 
+  /** Every outbound payment the spend gate allowed or refused (PLAN-53 C0). */
+  "review.spends": ({ params, respond }) => {
+    const limit = typeof params.limit === "number" ? params.limit : 50;
+    respond(true, { decisions: getReviewService().listSpendDecisions(limit) });
+  },
+
   "review.get": ({ params, respond }) => {
     const id = typeof params.id === "string" ? params.id.trim() : "";
     const action = id ? getReviewService().get(id) : null;
