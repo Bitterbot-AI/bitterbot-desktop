@@ -1,5 +1,5 @@
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { applyBackoff } from "./backoff.js";
+import { applyBackoff, backoffDelayMs } from "./backoff.js";
 import { runIsolatedJob } from "./isolated-agent.js";
 import { runMainSessionJob } from "./main-session.js";
 import { computeNextRunAt, oneShotTime } from "./schedule.js";
@@ -33,7 +33,25 @@ export type CronEngineOptions = {
     isolated?: typeof runIsolatedJob;
   };
   nowMs?: () => number;
+  /**
+   * Something the owner or the UI should hear about: every finished run, a
+   * job turned off after failing repeatedly, a one-shot that failed for good.
+   */
+  onEvent?: (event: CronEngineEvent) => void;
+  /**
+   * Turn a recurring job off after this many failures in a row. It would
+   * otherwise fail every hour for ever with nobody told. 0 never turns it off.
+   */
+  autoDisableAfterErrors?: number;
 };
+
+export const DEFAULT_AUTO_DISABLE_AFTER_ERRORS = 8;
+
+export type CronEngineEvent =
+  /** `job` is null when the run deleted it (a one-shot that succeeded). */
+  | { kind: "run"; run: CronRun; job: CronJob | null }
+  | { kind: "disabled"; run: CronRun; job: CronJob }
+  | { kind: "gave-up"; run: CronRun; job: CronJob };
 
 type RunOutcome = {
   status: CronRunStatus;
@@ -279,15 +297,35 @@ export class CronEngine {
     const isOneShot = job.schedule.kind === "at";
     const isTerminal = run.status === "ok" || run.status === "error" || run.status === "skipped";
 
+    let outcome: "disabled" | "gave-up" | null = null;
+    let deleted = false;
     if (isOneShot && isTerminal) {
       const shouldDelete = job.deleteAfterRun !== false && run.status === "ok";
+      const errors = run.status === "error" ? (job.consecutiveErrors ?? 0) + 1 : 0;
+      const retryAt = run.status === "error" ? this.nowMs() + backoffDelayMs(errors) : null;
       if (shouldDelete) {
         this.jobs = this.jobs.filter((entry) => entry.jobId !== job.jobId);
+        deleted = true;
+      } else if (
+        retryAt !== null &&
+        typeof job.retryUntilMs === "number" &&
+        retryAt <= job.retryUntilMs
+      ) {
+        // Asked to keep trying until a deadline, and there is still time.
+        job.consecutiveErrors = errors;
+        job.nextRunAt = retryAt;
+        job.updatedAt = this.nowMs();
+        this.replaceJob(job);
       } else {
         job.enabled = false;
         job.nextRunAt = undefined;
-        job.consecutiveErrors = 0;
+        // Keep the count: resetting it made a failed one-shot look clean.
+        job.consecutiveErrors = errors;
+        job.updatedAt = this.nowMs();
         this.replaceJob(job);
+        if (run.status === "error") {
+          outcome = "gave-up";
+        }
       }
     } else {
       if (run.status === "error") {
@@ -295,9 +333,17 @@ export class CronEngine {
       } else if (run.status === "ok") {
         job.consecutiveErrors = 0;
       }
-      const next = computeNextRunAt(job.schedule, this.nowMs() + 1);
-      job.nextRunAt =
-        next === null ? undefined : applyBackoff(next, job.consecutiveErrors, this.nowMs());
+      const limit = this.opts.autoDisableAfterErrors ?? DEFAULT_AUTO_DISABLE_AFTER_ERRORS;
+      if (run.status === "error" && limit > 0 && job.consecutiveErrors >= limit) {
+        job.enabled = false;
+        job.nextRunAt = undefined;
+        outcome = "disabled";
+        log.warn(`job ${job.jobId} turned off after ${job.consecutiveErrors} failures in a row`);
+      } else {
+        const next = this.nextFor(job, this.nowMs() + 1);
+        job.nextRunAt =
+          next === null ? undefined : applyBackoff(next, job.consecutiveErrors, this.nowMs());
+      }
       job.updatedAt = this.nowMs();
       this.replaceJob(job);
     }
@@ -309,6 +355,10 @@ export class CronEngine {
     }
     await this.flush();
     this.opts.onRunFinished?.(run);
+    this.emit({ kind: "run", run, job: deleted ? null : { ...job } });
+    if (outcome) {
+      this.emit({ kind: outcome, run, job: { ...job } });
+    }
     if (job.notify && this.opts.webhook) {
       const cfg: CronWebhookConfig = {
         webhook: this.opts.webhook,
@@ -323,6 +373,24 @@ export class CronEngine {
         trigger: run.trigger,
       });
     }
+  }
+
+  private emit(event: CronEngineEvent): void {
+    try {
+      this.opts.onEvent?.(event);
+    } catch (err) {
+      log.warn(`cron event handler failed: ${formatErr(err)}`);
+    }
+  }
+
+  /** The next time a job is due after `from`; `every` jobs count from their anchor. */
+  private nextFor(job: CronJob, from: number): number | null {
+    if (job.schedule.kind === "every" && typeof job.everyAnchorMs === "number") {
+      const every = job.schedule.everyMs;
+      const steps = Math.floor((from - job.everyAnchorMs) / every) + 1;
+      return job.everyAnchorMs + Math.max(1, steps) * every;
+    }
+    return computeNextRunAt(job.schedule, from);
   }
 
   private replaceJob(job: CronJob): void {
@@ -361,8 +429,28 @@ export class CronEngine {
     if (next.enabled) {
       try {
         const now = this.nowMs();
-        const computed = computeNextRunAt(next.schedule, now);
-        if (computed === null && isMissedOneShot(next, now)) {
+        if (next.schedule.kind === "every" && typeof next.everyAnchorMs !== "number") {
+          // Anchored the first time the engine sees it, so the first run is a
+          // full interval away, as it always was.
+          next.everyAnchorMs = now;
+        }
+        const computed = this.nextFor(next, now);
+        const savedNext = job.nextRunAt;
+        if (next.schedule.kind === "every" && typeof savedNext === "number" && savedNext <= now) {
+          // Its slot came and went while the gateway was down. Recomputing
+          // from now used to push it a whole interval out on every restart,
+          // so a job with a long interval on a node that restarts could never
+          // run. Run it once now; the following run is back on the grid.
+          next.nextRunAt = now;
+        } else if (
+          next.schedule.kind === "at" &&
+          next.consecutiveErrors > 0 &&
+          typeof next.retryUntilMs === "number" &&
+          now < next.retryUntilMs
+        ) {
+          // A one-shot in the middle of its retries keeps its retry time.
+          next.nextRunAt = Math.max(typeof savedNext === "number" ? savedNext : now, now);
+        } else if (computed === null && isMissedOneShot(next, now)) {
           // Its time passed while the gateway was down (or it was created
           // with a time already in the past). Dropping it silently left
           // reminders unsent and task wakeups hanging forever: run it at the

@@ -788,6 +788,33 @@ export function defaultTaskStoreDbPath(): string {
   return process.env.BITTERBOT_TASKS_DB ?? path.join(os.homedir(), ".bitterbot", "tasks.sqlite");
 }
 
+/**
+ * A restart found tasks mid-run. They are parked as waiting, and unless a
+ * wakeup was already scheduled nothing will pick them up again, so say so:
+ * before this the returned ids were dropped and the tasks just stopped.
+ */
+function reportStrandedTasks(store: TaskStore, ids: string[]): void {
+  const titles = ids
+    .slice(0, 5)
+    .map((id) => {
+      const task = store.get(id);
+      return `"${(task?.goal ?? id).slice(0, 60)}" (${id})`;
+    })
+    .join(", ");
+  const more = ids.length > 5 ? ` and ${ids.length - 5} more` : "";
+  void import("../infra/owner-notify.js")
+    .then(({ notifyOwner }) =>
+      notifyOwner({
+        kind: "task-stalled",
+        dedupeKey: `task-stalled:${ids.join(",").slice(0, 200)}`,
+        text:
+          `The gateway restarted while ${ids.length === 1 ? "a task was" : `${ids.length} tasks were`} running: ${titles}${more}. ` +
+          "They are paused, not lost. Ask the agent to continue them, or cancel them.",
+      }),
+    )
+    .catch((err) => log.warn(`could not report stranded tasks: ${String(err)}`));
+}
+
 export function startTaskStore(opts?: { dbPath?: string }): TaskStore | null {
   if (active) return active;
   const dbPath = opts?.dbPath ?? defaultTaskStoreDbPath();
@@ -795,7 +822,10 @@ export function startTaskStore(opts?: { dbPath?: string }): TaskStore | null {
     active = TaskStore.open(dbPath);
     log.info(`task store active dbPath=${dbPath}`);
     try {
-      active.reconcileOrphanedRunning();
+      const stranded = active.reconcileOrphanedRunning();
+      if (stranded.length > 0) {
+        reportStrandedTasks(active, stranded);
+      }
     } catch (err) {
       log.warn(`task store reconcile failed: ${err instanceof Error ? err.message : String(err)}`);
     }

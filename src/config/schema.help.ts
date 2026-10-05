@@ -102,6 +102,19 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.nodes.browser.mode":
     'Node browser routing ("auto" = pick single connected browser node, "manual" = require node param, "off" = disable).',
   "gateway.nodes.browser.node": "Pin browser routing to a specific node id or name (optional).",
+  "notifications.owner.channel":
+    "Channel to push gateway notices to (a failed or turned-off scheduled job, a stranded task). Without it, notices go where the heartbeat would deliver. Every notice is also kept in the main session.",
+  "notifications.owner.to": "Recipient on that channel for gateway notices.",
+  "notifications.quietHours.start":
+    'Start of the window with no pushed notices, 24-hour "HH:MM". Notices raised in the window wait in the main session.',
+  "notifications.quietHours.end":
+    'End of the quiet window, 24-hour "HH:MM". May be earlier than the start to run past midnight.',
+  "notifications.quietHours.timezone":
+    "IANA timezone for quiet hours (default: the gateway host's).",
+  "notifications.maxPerHour":
+    "Most notices pushed to a channel in any hour (default: 6). The rest wait in the main session.",
+  "cron.autoDisableAfterErrors":
+    "Turn a recurring job off after this many failed runs in a row and tell the owner (default: 8; 0 never turns a job off).",
   "review.spend":
     'Money leaving the wallet (send_usdc, send_to_peer, x402). "ask" (default) holds the call until you approve it in the Control UI or with /approve; a standing spend grant covering the payee and amount passes without asking. "allow" keeps only the wallet caps.',
   "review.publish":

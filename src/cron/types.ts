@@ -77,7 +77,17 @@ export type CronJob = {
   lastRunAt?: number;
   lastRunStatus?: CronRunStatus;
   nextRunAt?: number;
+  /**
+   * A one-shot that fails is retried, with backoff, until this time (unix ms).
+   * Without it a failed one-shot is not run again.
+   */
   retryUntilMs?: number;
+  /**
+   * The fixed point an `every` schedule counts from, saved with the job. Runs
+   * fall on anchor + k * everyMs, so a restart does not push the next run a
+   * full interval into the future.
+   */
+  everyAnchorMs?: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -118,6 +128,7 @@ export type CronJobWire = {
   delivery?: CronDelivery;
   notify?: boolean;
   deleteAfterRun?: boolean;
+  retryUntilMs?: number;
   consecutiveErrors?: number;
   lastRunStatus?: CronRunStatus;
 };

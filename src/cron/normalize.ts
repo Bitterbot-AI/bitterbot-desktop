@@ -35,6 +35,7 @@ export function buildJobFromParams(params: Record<string, unknown>): CronJob {
   const delivery = pickDelivery(params, sessionTarget);
   const notify = params.notify === undefined ? undefined : Boolean(params.notify);
   const deleteAfterRun = pickDeleteAfterRun(params, schedule);
+  const retryUntilMs = pickRetryUntil(params.retryUntilMs);
 
   return {
     jobId,
@@ -49,6 +50,7 @@ export function buildJobFromParams(params: Record<string, unknown>): CronJob {
     delivery,
     notify,
     deleteAfterRun,
+    ...(schedule.kind === "at" && retryUntilMs !== undefined ? { retryUntilMs } : {}),
     consecutiveErrors: 0,
     createdAt: now,
     updatedAt: now,
@@ -102,6 +104,9 @@ export function applyJobPatch(existing: CronJob, patch: Record<string, unknown>)
   if ("notify" in patch) {
     out.notify = patch.notify === null ? undefined : Boolean(patch.notify);
   }
+  if ("retryUntilMs" in patch) {
+    out.retryUntilMs = pickRetryUntil(patch.retryUntilMs);
+  }
   if ("deleteAfterRun" in patch) {
     out.deleteAfterRun = patch.deleteAfterRun === null ? undefined : Boolean(patch.deleteAfterRun);
   }
@@ -150,7 +155,20 @@ export function jobToWire(job: CronJob): CronJobWire {
     deleteAfterRun: job.deleteAfterRun,
     consecutiveErrors: job.consecutiveErrors,
     lastRunStatus: job.lastRunStatus,
+    retryUntilMs: job.retryUntilMs,
   };
+}
+
+/** A retry deadline as unix ms; an ISO time is accepted too. */
+function pickRetryUntil(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function pickId(params: Record<string, unknown>): string | undefined {

@@ -123,6 +123,17 @@ Cron supports three schedule kinds:
 Cron expressions use `croner`. If a timezone is omitted, the Gateway host’s
 local timezone is used.
 
+An `every` job counts from a fixed anchor saved with the job, so its runs fall on anchor + k × interval and a gateway restart does not push the next run a whole interval into the future. If a run's time passed while the gateway was down, the job runs once at the next tick and then returns to its grid.
+
+### When a job fails
+
+A failed job is never silent.
+
+- **Recurring jobs** retry on a backoff (30 s, 1 min, 5 min, 15 min, then hourly). After `cron.autoDisableAfterErrors` failures in a row (default 8) the job is turned off.
+- **One-shot jobs** run once. Set `retryUntilMs` (unix ms, or an ISO time) on the job to keep retrying on the same backoff until that deadline.
+- **You are told** when a failure streak starts, when a job is turned off, and when a one-shot will not run again: in the main session, as a notice in the Control UI, and on your chat channel subject to [`notifications`](/gateway/configuration-reference#notifications) quiet hours and rate limit.
+- The Cron page shows each job's state ("Last run OK", "Failing (3 in a row)", "Turned off after 8 failures in a row"), where its result is sent, and its recent run history. It updates as runs finish.
+
 ### Main vs isolated execution
 
 #### Main session jobs (system events)
@@ -341,6 +352,7 @@ Notes:
     maxConcurrentRuns: 1, // default 1
     webhook: "https://example.invalid/cron-finished", // optional finished-run webhook endpoint
     webhookToken: "replace-with-dedicated-webhook-token", // optional, do not reuse gateway auth token
+    autoDisableAfterErrors: 8, // default 8; 0 never turns a failing job off
   },
 }
 ```

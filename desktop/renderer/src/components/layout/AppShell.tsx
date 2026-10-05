@@ -13,6 +13,7 @@ import { LogsView } from "../logs/LogsView";
 import { ManagementView } from "../management/ManagementView";
 import { ModelsView } from "../models/ModelsView";
 import { NodesView } from "../nodes/NodesView";
+import { OwnerNoticeToasts } from "../notices/OwnerNoticeToasts";
 import { OverviewView } from "../overview/OverviewView";
 import { P2pDashboard } from "../p2p/P2pDashboard";
 import { SkillsView } from "../skills/SkillsView";
@@ -73,6 +74,7 @@ export function AppShell() {
         </div>
         <UpdateBanner />
         <UsageBudgetToasts />
+        <OwnerNoticeToasts />
         {/* Main content */}
         <div className="flex-1 overflow-hidden">{VIEW_MAP[activeTab]()}</div>
       </main>

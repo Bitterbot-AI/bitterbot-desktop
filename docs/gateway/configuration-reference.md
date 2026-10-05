@@ -1954,6 +1954,26 @@ See [Plugins](/tools/plugin).
 
 ---
 
+## Notifications
+
+Notices the gateway sends you on its own account: a scheduled job that failed or was turned off, a task interrupted by a restart. Every notice is kept in the main session and shown in the Control UI whatever these settings say; they govern the extra push to a chat channel.
+
+```json5
+{
+  notifications: {
+    owner: { channel: "telegram", to: "123456789" }, // default: where the heartbeat delivers
+    quietHours: { start: "22:00", end: "07:00", timezone: "America/New_York" },
+    maxPerHour: 6, // default 6; 0 pushes nothing
+  },
+}
+```
+
+- `owner`: where to push. Without it, notices go to the heartbeat's target, or the main session's most recent conversation.
+- `quietHours`: no pushes in this window (24-hour `HH:MM`; may run past midnight). Notices raised in it wait in the main session.
+- `maxPerHour`: most pushes in any hour. The rest wait in the main session.
+
+The same notice is not repeated within 30 minutes.
+
 ## Review
 
 ```json5
