@@ -8,7 +8,10 @@ import {
   isSkillEvolveValidationSessionKey,
   isSubagentSessionKey,
 } from "../routing/session-key.js";
-import { INTERNAL_MESSAGE_CHANNEL, resolveGatewayMessageChannel } from "../utils/message-channel.js";
+import {
+  INTERNAL_MESSAGE_CHANNEL,
+  resolveGatewayMessageChannel,
+} from "../utils/message-channel.js";
 import { resolveA2aRemoteToolPolicy } from "./a2a-remote-policy.js";
 import { resolveAgentConfig } from "./agent-scope.js";
 import { wrapToolWithAbortSignal } from "./agent-tools.abort.js";
