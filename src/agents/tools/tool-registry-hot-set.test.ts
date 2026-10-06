@@ -127,6 +127,15 @@ describe("selectHotTools per lane", () => {
     expect(sel.hot.length + sel.deferred.length).toBe(registry.length);
   });
 
+  it("makes message_owner hot on a guest turn, outside the cap", () => {
+    const guest = [...registry, stub("message_owner")];
+    const sel = selectHotTools({ tools: guest, lane: "chat", hotSet: defaults });
+    expect(names(sel.hot)).toContain("message_owner");
+    expect(sel.hot.length).toBe(
+      selectHotTools({ tools: registry, lane: "chat", hotSet: defaults }).hot.length + 1,
+    );
+  });
+
   it("heartbeat: read, memory_search, message only", () => {
     const sel = selectHotTools({ tools: registry, lane: "heartbeat", hotSet: defaults });
     expect(names(sel.hot)).toEqual(["memory_search", "message", "read"]);

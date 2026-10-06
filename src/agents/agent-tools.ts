@@ -522,6 +522,9 @@ export function createBitterbotCodingTools(options?: {
       agentSessionFile: options?.sessionFile,
       senderIsOwner: options?.senderIsOwner === true,
       memoryGuest,
+      guestSender: memoryGuest
+        ? { name: options?.senderName, id: options?.senderId, channel: options?.messageProvider }
+        : undefined,
       agentChannel: resolveGatewayMessageChannel(options?.messageProvider),
       agentAccountId: options?.agentAccountId,
       agentTo: options?.messageTo,

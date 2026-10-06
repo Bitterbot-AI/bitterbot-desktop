@@ -135,6 +135,36 @@ Heartbeats and scheduled runs are the agent's own work and keep full recall.
 Memories with no tag, such as dream insights and extracted facts, stay with the
 owner.
 
+### What a guest's agent is told
+
+The memory tools are only half of it: much of what the agent knows about its
+owner normally sits in its instructions before anyone says a word. On a guest
+turn those instructions change too. The agent keeps its character and loses its
+owner's private life.
+
+| Kept                                                  | Left out                                                                                                                                    |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| The genome (values, safety axioms) and `PROTOCOLS.md` | `MEMORY.md`: self-portrait, the Bond (its picture of you), the Niche, active context, curiosity gaps                                        |
+| `PUBLIC.md`, the public card                          | The scratch log, `TOOLS.md`, `HEARTBEAT.md`                                                                                                 |
+| Its mood as one word (upbeat, focused, warm, calm)    | The reasons behind the mood                                                                                                                 |
+| Who it is talking to, and that they are not you       | Canonical facts, preferences, proactive recall, the last-session brief, knowledge gaps, research findings, dream briefs, your phone numbers |
+
+**The public card.** `PUBLIC.md` in the workspace is everything a guest's agent
+knows about you: write who you are, what you do in public, how to reach you, or
+"away until Friday". It is created the first time a guest talks to the agent,
+holding only the agent's voice (the communication line from its self-portrait)
+and nothing about you. Text inside `<!-- -->` is a note to you and is not shown
+to the agent.
+
+**Private questions.** The agent neither confirms nor denies anything about you
+beyond the card, in its own voice. When a guest wants something only you can
+answer, it offers to pass it on with `message_owner`, which reaches you as a
+notice ("Alex (telegram) asks: ..."), at most 3 an hour and 10 a day per person.
+
+**Learning.** A direct chat in which someone else talked to the agent is marked
+as a guest session, so nothing said there becomes a preference or a canonical
+fact about you. Group chats were already treated this way.
+
 ## Knowing Why Recall Failed — The Blame Router
 
 When a search comes back empty, that is a signal, not just a dead end. The question is _why_ it failed, because the fix is different in each case. Either the answer was never stored in the first place, or it was stored but retrieval did not surface it. Improving the wrong half wastes effort.

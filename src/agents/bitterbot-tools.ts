@@ -32,6 +32,7 @@ import {
   createMemoryPinTool,
   createMemorySearchTool,
 } from "./tools/memory-tool.js";
+import { createMessageOwnerTool } from "./tools/message-owner-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createMonitorTool } from "./tools/monitor-tool.js";
 import { createNetworkStatusTool } from "./tools/network-status-tool.js";
@@ -116,6 +117,8 @@ export function createBitterbotTools(options?: {
    * cron run). Memory recall is limited to what a guest may see.
    */
   memoryGuest?: boolean;
+  /** On a guest turn: who is talking, for message_owner. */
+  guestSender?: { name?: string | null; id?: string | null; channel?: string | null };
   agentChannel?: GatewayMessageChannel;
   agentAccountId?: string;
   /** Delivery target (e.g. telegram:group:123:topic:456) for topic/thread routing. */
@@ -310,6 +313,17 @@ export function createBitterbotTools(options?: {
     if (tool) {
       tools.push(memoryOpts.memoryGuest ? refuseForGuest(tool) : tool);
     }
+  }
+
+  // A guest can ask the agent to pass something on to its owner.
+  if (options?.memoryGuest === true) {
+    tools.push(
+      createMessageOwnerTool({
+        senderName: options.guestSender?.name,
+        senderId: options.guestSender?.id,
+        channel: options.guestSender?.channel ?? options.agentChannel,
+      }),
+    );
   }
 
   const walletTool = createWalletTool({
