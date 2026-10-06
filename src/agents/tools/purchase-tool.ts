@@ -80,6 +80,8 @@ const Schema = Type.Object({
   profile: Type.Optional(Type.String()),
 });
 
+let lastPrivacySweep = 0;
+
 export function createPurchaseTool(opts: {
   config?: BitterbotConfig;
   agentSessionKey?: string;
@@ -95,6 +97,13 @@ export function createPurchaseTool(opts: {
   }
   const rail = new LinkRail(settings, createLinkCliRunner(settings));
   const privacy = new PrivacyRail(privacySettings);
+  // Cards approved but never used are closed after a day. Swept at most hourly,
+  // whenever a run loads this tool, so an abandoned card does not wait for
+  // someone to check that purchase again.
+  if (privacySettings.enabled && Date.now() - lastPrivacySweep > 60 * 60 * 1000) {
+    lastPrivacySweep = Date.now();
+    void privacy.closeStale().catch(() => {});
+  }
 
   const type = async (
     ref: string | undefined,
@@ -136,6 +145,37 @@ export function createPurchaseTool(opts: {
     return filled;
   };
 
+  /** The card goes only into a page on the shop the owner approved. */
+  const requireTabOnShop = async (params: Record<string, unknown>, merchantUrl?: string) => {
+    let shopSite = "";
+    try {
+      shopSite = merchantUrl ? siteOf(new URL(merchantUrl).hostname) : "";
+    } catch {
+      shopSite = "";
+    }
+    if (!shopSite) {
+      throw new Error(
+        "This purchase has no shop address to check the checkout page against. Nothing was filled.",
+      );
+    }
+    const targetId = readStringParam(params, "targetId", { required: true });
+    const tabs = await browserTabs(undefined, {
+      profile: readStringParam(params, "profile"),
+    }).catch(() => []);
+    const tab = tabs.find((t) => t.targetId === targetId);
+    let tabSite = "";
+    try {
+      tabSite = tab ? siteOf(new URL(tab.url).hostname) : "";
+    } catch {
+      tabSite = "";
+    }
+    if (!tabSite || tabSite !== shopSite) {
+      throw new Error(
+        `The checkout tab is not on ${shopSite}, the shop this purchase was approved for. Nothing was filled.`,
+      );
+    }
+  };
+
   const runPrivacy = async (action: string, params: Record<string, unknown>) => {
     switch (action) {
       case "status":
@@ -166,24 +206,7 @@ export function createPurchaseTool(opts: {
           throw new Error(`Privacy purchase ${id} is ${request.status}. Nothing was filled.`);
         }
         readStringParam(params, "number_ref", { required: true });
-        // The card goes only into a page on the shop the owner approved.
-        const targetId = readStringParam(params, "targetId", { required: true });
-        const tabs = await browserTabs(undefined, {
-          profile: readStringParam(params, "profile"),
-        }).catch(() => []);
-        const tab = tabs.find((t) => t.targetId === targetId);
-        let tabSite = "";
-        try {
-          tabSite = tab ? siteOf(new URL(tab.url).hostname) : "";
-        } catch {
-          tabSite = "";
-        }
-        const shopSite = siteOf(new URL(request.merchantUrl).hostname);
-        if (!tabSite || tabSite !== shopSite) {
-          throw new Error(
-            `The checkout tab is not on ${shopSite}, the shop this purchase was approved for. Nothing was filled.`,
-          );
-        }
+        await requireTabOnShop(params, request.merchantUrl);
         configureSpendGateForReview();
         gateCardPurchase(
           {
@@ -287,6 +310,8 @@ export function createPurchaseTool(opts: {
             );
           }
           readStringParam(params, "number_ref", { required: true });
+          // Same rule as the Privacy rail: only the approved shop's pages.
+          await requireTabOnShop(params, request.merchantUrl);
           configureSpendGateForReview();
           gateCardPurchase(
             {

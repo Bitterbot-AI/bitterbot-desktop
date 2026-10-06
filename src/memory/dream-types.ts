@@ -169,7 +169,7 @@ export type DreamEngineConfig = {
   initialDelayMinutes?: number;
   /** PLAN-11 Gap 5: adaptive interval driven by smoothed marketplace activity. */
   adaptiveInterval?: {
-    /** Enable adaptive scheduling (default: false — falls back to fixed interval). */
+    /** Enable adaptive scheduling (default: true; false falls back to the fixed interval). */
     enabled?: boolean;
     /** Minimum interval in minutes (floor). Default: 30. */
     minMinutes?: number;

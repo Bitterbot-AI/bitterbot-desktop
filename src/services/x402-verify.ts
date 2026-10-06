@@ -90,12 +90,18 @@ export async function verifyX402Payment(params: {
   network?: "base" | "base-sepolia";
   /** Optional: pass DB to check for replay attacks */
   db?: import("node:sqlite").DatabaseSync;
+  /**
+   * Accept proofs with no payer signature (legacy clients). Off by default:
+   * an unsigned proof is just a transaction hash, so anyone who sees the
+   * payment on-chain could redeem it before the payer does.
+   */
+  allowUnsigned?: boolean;
 }): Promise<X402VerificationResult> {
   // Parse the payment token
   // x402 tokens are base64-encoded JSON with:
   //   { txHash, amount, sender, recipient?, timestamp, version?, signature? }
   // `recipient` and `version` were added when signed tokens shipped; legacy
-  // unsigned tokens omit them and are still accepted (with a warning).
+  // unsigned tokens omit them and are refused unless allowUnsigned is set.
   try {
     const decoded = JSON.parse(Buffer.from(params.paymentToken, "base64").toString("utf-8")) as {
       txHash?: string;
@@ -186,9 +192,16 @@ export async function verifyX402Payment(params: {
         return { valid: false, error: `Signature verification failed: ${String(err)}` };
       }
     } else if (!decoded.signature) {
-      // Legacy unsigned token. Defer to on-chain recipient match (below) and
-      // log a deprecation warning so operators can plan client upgrades.
-      log.debug("legacy unsigned x402 token accepted (signature recommended)");
+      if (!params.allowUnsigned) {
+        return {
+          valid: false,
+          error:
+            "Payment proof is not signed by the payer. Upgrade the client, or the seller can set a2a.payment.allowUnsignedProofs.",
+        };
+      }
+      // Legacy unsigned token, accepted by the seller's choice. Defer to the
+      // on-chain recipient match below.
+      log.debug("legacy unsigned x402 token accepted (a2a.payment.allowUnsignedProofs)");
     }
 
     // Single-use enforcement — reject already-consumed payment tokens.
