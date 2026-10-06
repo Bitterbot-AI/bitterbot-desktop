@@ -11,6 +11,7 @@
  * have their own approvals.
  */
 
+import { WEBCHAT_IS_NOT_A_ROUTE } from "../infra/outbound/channel-selection.js";
 import { getConnectorTool } from "./connectors.js";
 
 export type ReviewClass = "spend" | "publish" | "contact" | "connector";
@@ -28,6 +29,11 @@ export type Classification = {
    * it is sent back to the agent to correct instead of being put to the owner.
    */
   missing?: string[];
+  /**
+   * Why the call can never execute as written (a route that does not exist).
+   * Like `missing`, it goes back to the agent instead of to the owner.
+   */
+  invalid?: string;
   /**
    * A standing spend grant does not cover this: it must be approved one by
    * one. Set for Privacy cards, whose payee is a name the agent typed and
@@ -185,6 +191,15 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
     const targets = named.filter((t) => t.length > 0);
     if (targets.length === 0) {
       return null;
+    }
+    // The Control UI conversation cannot carry a message to someone else; do
+    // not ask the owner to approve a send that cannot be delivered.
+    if (channel === "webchat") {
+      return {
+        cls: "contact",
+        preview: `Message ${targets.join(", ")} via webchat`,
+        invalid: WEBCHAT_IS_NOT_A_ROUTE,
+      };
     }
     const where = channel && channel !== "all" ? channel : undefined;
     const recipients = targets.map((target) => ({

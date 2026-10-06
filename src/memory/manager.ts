@@ -74,6 +74,7 @@ import {
   mergeHybridResultsRRF,
   type HybridGraphResult,
 } from "./hybrid.js";
+import { resolveEmotionDecayResistance } from "./importance.js";
 import { embeddingToBlob, isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
 import { backfillTypedRelationships } from "./kg-backfill.js";
 import * as kgAdmission from "./kg-entity-admission.js";
@@ -119,6 +120,7 @@ import {
 } from "./retrieval-trace.js";
 import { sageRetrieve, DEFAULT_SAGE_CONFIG, type SageConfig } from "./sage-memory.js";
 import { MemoryScheduler } from "./scheduler.js";
+import { attachResultMetadata } from "./search-result-metadata.js";
 import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
 import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
@@ -795,6 +797,7 @@ export class MemoryIndexManager implements MemorySearchManager {
             recentlySurfaced: this.proactiveRecallCooldown,
             currentTurn: this.turnCount,
             hormonalModulation: this.hormonalManager?.getRetrievalModulation() ?? null,
+            hormonalState: this.hormonalManager?.getState() ?? null,
             // PLAN-27: graph-anchored recall for entity/identity turns.
             kg: this.knowledgeGraph,
             userName: this.resolveUserName(),
@@ -1450,6 +1453,12 @@ export class MemoryIndexManager implements MemorySearchManager {
         })),
         graph: graphChannel,
       });
+
+      // The boosts below key on a memory's type, epistemic layer and age, which
+      // the search channels do not select. Look them up once for the merged
+      // set (without this the mood bonus never saw a type, every result aged at
+      // the default rate, and age was measured from "now").
+      attachResultMetadata(this.db, merged);
 
       // Hormonal retrieval modulation: emotional state influences what memories surface.
       // Cortisol (stress) sharpens focus on recent memories via recency bias.
@@ -2320,11 +2329,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       promoteThreshold: consolidationCfg?.promoteThreshold,
       forgetThreshold: scaledForgetThreshold,
       mergeOverlapThreshold: hormonalMod?.mergeThreshold ?? consolidationCfg?.mergeOverlapThreshold,
-      emotionDecayResistance: hormonalMod
-        ? hormonalMod.decayResistance
-        : emotionalCfg?.enabled !== false
-          ? (emotionalCfg?.decayResistance ?? 0.5)
-          : 0,
+      emotionDecayResistance: resolveEmotionDecayResistance({
+        enabled: emotionalCfg?.enabled,
+        configured: emotionalCfg?.decayResistance,
+        hormonal: hormonalMod?.decayResistance,
+      }),
     });
     return engine.run();
   }

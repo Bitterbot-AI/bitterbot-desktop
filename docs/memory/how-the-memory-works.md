@@ -35,7 +35,7 @@ But raw access count isn't the whole story.
 
 **Spacing matters.** Accessing a memory five times in one sitting gives less benefit than accessing it once a week for five weeks. The system tracks the timestamps of each access and computes a spacing score. Properly spaced repetition earns up to a 30% importance boost over cramming. This is the same principle behind every spaced repetition flashcard app, but applied to an agent's entire knowledge base.
 
-**Emotions extend survival.** Memories created during emotionally significant moments — high dopamine from a breakthrough, high cortisol from a crisis — decay more slowly. At maximum emotional valence, a memory's half-life doubles. This means the agent naturally preserves what mattered, not just what was recent.
+**Emotions extend survival.** Memories created during emotionally significant moments — high dopamine from a breakthrough, high cortisol from a crisis — decay more slowly. The baseline resistance (`memory.emotional.decayResistance`, default 0.5) roughly doubles a strongly charged memory's half-life, and the current hormone levels add to it, up to 0.8. This means the agent naturally preserves what mattered, not just what was recent.
 
 **Unfinished business resists decay.** The agent detects open loops — tasks started but not completed, questions asked but not answered, errors encountered but not fixed. These get flagged and refuse to be forgotten, even if their raw importance score would normally let them fade. When the user returns, the agent proactively surfaces them: "Last time, you were stuck on the Docker port conflict." When the task is done, the flag clears and normal forgetting resumes. This is the Zeigarnik effect, one of the most robust findings in memory psychology, and no other agent memory system implements it.
 
@@ -71,7 +71,7 @@ These aren't cosmetic. They influence four critical systems:
 
 **Consolidation:** High dopamine protects reward-associated memories from decay. High cortisol increases decay resistance for task-related memories (the brain preserves threat information). High oxytocin protects relational memories.
 
-**Retrieval:** The agent's current mood biases which memories surface. When dopamine is elevated, positive-valence memories get a retrieval bonus. When cortisol is high, the agent naturally focuses on task-related and goal-oriented memories. When oxytocin is elevated, personal and relational memories surface more easily. This is mood-congruent retrieval — one of the most well-documented phenomena in memory psychology — and it creates a genuine feedback loop: your emotional state shapes what you remember, and what you remember shapes your emotional state.
+**Retrieval:** The agent's current mood biases which memories surface. When dopamine is elevated, positive-valence memories get a retrieval bonus. When cortisol is high, the agent naturally focuses on task-related and goal-oriented memories. When oxytocin is elevated, personal and relational memories surface more easily. This is mood-congruent retrieval — one of the most well-documented phenomena in memory psychology — and it creates a genuine feedback loop: your emotional state shapes what you remember, and what you remember shapes your emotional state. It applies both to deliberate searches and to the memories that come to mind unprompted before each reply.
 
 **Dream scheduling:** Emotional spikes can trigger immediate mini-dreams outside the normal timer cycle. A dopamine spike above 0.7 or a cortisol spike above 0.8 triggers an emergency processing cycle — the agent's subconscious fires up because something significant just happened.
 
@@ -87,11 +87,9 @@ In real brains, remembering something doesn't just replay it — it briefly make
 
 When the agent retrieves a memory during search, that memory enters a 30-minute labile window. During this window:
 
-- If the user **confirms or uses** the information, the memory is strengthened (importance boost)
-- If the user **contradicts** the information, the memory is flagged for review in the next dream cycle
-- If **nothing happens** and the window expires, the memory restabilizes with a small boost — just being recalled made it slightly more durable
+- When the window closes, the memory restabilizes and counts as one more rehearsal. Importance is recomputed from use at every consolidation, so this is what makes being recalled leave a lasting mark.
 
-Over time, this means frequently-recalled memories become increasingly robust, while memories that surface but get contradicted are naturally corrected. The agent's knowledge doesn't just accumulate — it self-corrects through use.
+Over time, this means frequently-recalled memories become increasingly robust. (Strengthening on explicit confirmation and flagging on contradiction during the window are designed but not yet wired.)
 
 ---
 

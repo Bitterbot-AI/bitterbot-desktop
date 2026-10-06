@@ -14,7 +14,9 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import type { HormonalState } from "./hormonal.js";
 import type { KnowledgeGraphManager } from "./knowledge-graph.js";
+import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import { graphAnchoredFacts } from "./proactive-recall-graph.js";
 import type { UserModelManager, UserPreference } from "./user-model.js";
 import { getActiveOpenLoops } from "./zeigarnik-effect.js";
@@ -248,6 +250,13 @@ export function proactiveRecall(params: {
   currentTurn: number;
   config?: Partial<ProactiveRecallConfig>;
   hormonalModulation?: { importanceBoost: number; recencyBias: number } | null;
+  /**
+   * Current hormone levels. When present, semantic candidates are re-ranked
+   * by similarity times the mood-congruent bonus memory_search uses, so the
+   * agent's mood colors which memories come to mind unprompted. The minScore
+   * gate still applies to plain similarity.
+   */
+  hormonalState?: HormonalState | null;
   /** PLAN-27: knowledge graph for entity-anchored family-edge recall. */
   kg?: KnowledgeGraphManager | null;
   /** Resolved user name, so graph facts can phrase "your <relation>". */
@@ -373,7 +382,24 @@ export function proactiveRecall(params: {
           distance: number;
         }>;
 
-        for (const row of candidateRows) {
+        const hState = params.hormonalState;
+        const ranked = hState
+          ? candidateRows
+              .map((row) => ({
+                row,
+                rank:
+                  (1 - row.distance) *
+                  (1 +
+                    moodCongruentBonus({
+                      hormonalState: hState,
+                      emotionalValence: row.emotional_valence,
+                      semanticType: row.semantic_type,
+                    })),
+              }))
+              .toSorted((a, b) => b.rank - a.rank)
+              .map((x) => x.row)
+          : candidateRows;
+        for (const row of ranked) {
           if (facts.length >= cfg.maxFacts) {
             break;
           }
