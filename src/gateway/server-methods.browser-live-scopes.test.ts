@@ -95,3 +95,23 @@ describe("review RPC scope gating", () => {
     expect(denied?.message).toContain("operator.approvals");
   });
 });
+
+describe("memory control scopes (PLAN-53 G1)", () => {
+  it("lets a reader look, and only an admin change or export", () => {
+    for (const method of ["memory.list", "memory.get", "memory.facts", "memory.preferences"]) {
+      expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
+      expect(authorizeGatewayMethod(method, operatorWith(["operator.read"]))).toBeNull();
+    }
+    for (const method of [
+      "memory.edit",
+      "memory.forget",
+      "memory.forgetPreference",
+      "memory.retireFact",
+      "memory.export",
+    ]) {
+      expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
+      expect(authorizeGatewayMethod(method, operatorWith(["operator.write"]))).not.toBeNull();
+      expect(authorizeGatewayMethod(method, operatorWith(["operator.admin"]))).toBeNull();
+    }
+  });
+});

@@ -12,6 +12,7 @@ import { DreamsView } from "../dreams/DreamsView";
 import { ActiveGuardsView } from "../guards/ActiveGuardsView";
 import { LogsView } from "../logs/LogsView";
 import { ManagementView } from "../management/ManagementView";
+import { MemoryView } from "../memory/MemoryView";
 import { ModelsView } from "../models/ModelsView";
 import { NodesView } from "../nodes/NodesView";
 import { OwnerNoticeToasts } from "../notices/OwnerNoticeToasts";
@@ -34,6 +35,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   usage: () => <UsageView />,
   cron: () => <CronView />,
   connectors: () => <ConnectorsView />,
+  memory: () => <MemoryView />,
   agents: () => <AgentsView />,
   skills: () => <SkillsView />,
   guards: () => <ActiveGuardsView />,

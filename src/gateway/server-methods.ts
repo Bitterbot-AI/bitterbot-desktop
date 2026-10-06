@@ -20,6 +20,7 @@ import { guardsHandlers } from "./server-methods/guards.js";
 import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
 import { managementHandlers } from "./server-methods/management.js";
+import { memoryHandlers } from "./server-methods/memory.js";
 import { modelsAuthHandlers } from "./server-methods/models-auth.js";
 import { modelsHandlers } from "./server-methods/models.js";
 import { monitorHandlers } from "./server-methods/monitors.js";
@@ -143,6 +144,10 @@ const READ_METHODS = new Set([
   "dream.suggestSkills",
   "dream.trigger",
   "memory.retrievalHealth",
+  "memory.list",
+  "memory.get",
+  "memory.preferences",
+  "memory.facts",
   "forage.tape",
   "forage.stats",
   "forage.post",
@@ -362,6 +367,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...walletHandlers,
   ...workspaceHandlers,
   ...dreamHandlers,
+  ...memoryHandlers,
   ...circlesHandlers,
   ...forageHandlers,
   ...spendGrantHandlers,
