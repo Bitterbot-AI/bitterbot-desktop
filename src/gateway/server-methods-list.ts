@@ -230,6 +230,8 @@ const BASE_METHODS = [
   "wallet.fund",
   "wallet.x402Pay",
   "wallet.stripeOnramp",
+  "wallet.recordTopUp",
+  "wallet.listTopUps",
 ];
 
 export function listGatewayMethods(): string[] {

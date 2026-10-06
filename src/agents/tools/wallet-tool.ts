@@ -248,9 +248,12 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
 
           const { checkFundingWithinCeiling } =
             await import("../../payments/fiat/funding-policy.js");
+          const { defaultTopUpLedgerPath, listTopUps } =
+            await import("../../payments/fiat/topup-ledger.js");
           const ceiling = checkFundingWithinCeiling({
             requestUsd: amount,
             ceilingUsd: onramp.monthlyCeilingUsd,
+            priorTopUps: await listTopUps(defaultTopUpLedgerPath(effectiveConfig.walletStorePath)),
           });
           const { notifyFundingNeeded } = await import("../../payments/fiat/funding-notifier.js");
           await notifyFundingNeeded({ amountUsd: amount, reason, balanceUsd });

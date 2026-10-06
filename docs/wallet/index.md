@@ -40,15 +40,16 @@ instead of dead-ending when it is short for a task: it calls `request_funding`,
 which delivers a "funds needed" prompt to your primary channel and points you at the
 Wallet tab's **Add Funds** flow. A hard **monthly funding ceiling**
 (`payments.fiat.onramp.monthlyCeilingUsd`) caps how much fiat can be pulled in per
-period. Today the ceiling is advisory: it is shown with the funding prompt, but the
-Add Funds flow does not refuse a top-up above it, and past top-ups are not counted
-(see the limitation below). The actual card/bank charge runs through the licensed onramp partner and is
+period. Completed top-ups are recorded (read back from Stripe when local Stripe keys
+are configured) and counted against it. Once the ceiling for the last 30 days is used
+up, Add Funds refuses to start a new session; a ceiling of `0` turns funding off.
+Because the amount is chosen inside Stripe's widget, a single top-up can still go
+past what remained. The actual card/bank charge runs through the licensed onramp partner and is
 always completed by a human — no money moves autonomously.
 
-> **Current limitation.** Funding requests, the ceiling math, and the operator
-> prompt are wired and tested, but completed top-ups are not yet recorded back, so
-> the ceiling headroom shown assumes a fresh period. Automatic top-up (staying above
-> a target balance within the ceiling) and completion tracking are the next phase.
+> **Current limitation.** A top-up is recorded when the Add Funds page sees it
+> complete. One finished with the page closed is not counted. Automatic top-up
+> (staying above a target balance within the ceiling) is the next phase.
 
 ## Spending Controls
 

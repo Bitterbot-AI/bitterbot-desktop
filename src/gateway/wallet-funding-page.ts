@@ -203,6 +203,16 @@ export function renderWalletFundingPage(gatewayWsUrl: string, gatewayToken?: str
         session.addEventListener("onramp_session_updated", async (e) => {
           if (e.payload?.session?.status === "fulfillment_complete") {
             showStatus("Funding complete! Refreshing balance…", "success");
+            // Count it against the monthly funding ceiling (PLAN-53 C5).
+            const done = e.payload.session;
+            const sessionId = done.id || resp.sessionId;
+            const amount = Number(done.transaction_details?.destination_amount);
+            if (sessionId) {
+              rpc("wallet.recordTopUp", {
+                sessionId,
+                amountUsd: Number.isFinite(amount) ? amount : undefined,
+              }).catch(() => {});
+            }
             // Refresh balance after a short delay for chain confirmation
             setTimeout(async () => {
               try {
