@@ -71,24 +71,50 @@ function defaultBoxKeyPath(): string {
   return path.join(resolveStateDir(), "identity", "box.json");
 }
 
-/** Load (or create + persist, 0600) the node's box keypair. */
-export function loadOrCreateBoxKeys(filePath: string = defaultBoxKeyPath()): BoxKeyPair {
+/**
+ * Load the node's box keypair, or null when no key file exists yet. A file
+ * that exists but does not parse THROWS (security pass M4): silently minting
+ * a new key there would rotate this node's mailbox identity out from under
+ * every peer (their sealed blobs stop opening) and destroy a key that may be
+ * recoverable — and the A2A handlers reach this path on remote requests.
+ */
+export function loadBoxKeys(filePath: string = defaultBoxKeyPath()): BoxKeyPair | null {
+  let raw: string;
   try {
-    if (fs.existsSync(filePath)) {
-      const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as StoredBoxKeys;
-      if (
-        parsed?.version === 1 &&
-        typeof parsed.publicKeyB64 === "string" &&
-        typeof parsed.privateKeyPem === "string"
-      ) {
-        return {
-          publicKeyB64: parsed.publicKeyB64,
-          privateKey: crypto.createPrivateKey(parsed.privateKeyPem),
-        };
-      }
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
+  try {
+    const parsed = JSON.parse(raw) as StoredBoxKeys;
+    if (
+      parsed?.version === 1 &&
+      typeof parsed.publicKeyB64 === "string" &&
+      typeof parsed.privateKeyPem === "string"
+    ) {
+      return {
+        publicKeyB64: parsed.publicKeyB64,
+        privateKey: crypto.createPrivateKey(parsed.privateKeyPem),
+      };
     }
   } catch {
-    // fall through to regenerate
+    // reported below
+  }
+  throw new Error(
+    `circle box key at ${filePath} is unreadable; refusing to replace it. ` +
+      `Restore it from a backup, or move it aside to mint a new box key ` +
+      `(friends pick up the new key from your next presence beat).`,
+  );
+}
+
+/** Load the node's box keypair, creating + persisting (0600) one only when none exists. */
+export function loadOrCreateBoxKeys(filePath: string = defaultBoxKeyPath()): BoxKeyPair {
+  const existing = loadBoxKeys(filePath);
+  if (existing) {
+    return existing;
   }
   const pair = generateBoxKeyPair();
   const stored: StoredBoxKeys = {
@@ -98,7 +124,21 @@ export function loadOrCreateBoxKeys(filePath: string = defaultBoxKeyPath()): Box
     createdAtMs: Date.now(),
   };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(stored, null, 2)}\n`, { mode: 0o600 });
+  try {
+    // `wx`: never clobber a key another process created a moment ago.
+    fs.writeFileSync(filePath, `${JSON.stringify(stored, null, 2)}\n`, {
+      mode: 0o600,
+      flag: "wx",
+    });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      const winner = loadBoxKeys(filePath);
+      if (winner) {
+        return winner;
+      }
+    }
+    throw err;
+  }
   try {
     fs.chmodSync(filePath, 0o600);
   } catch {

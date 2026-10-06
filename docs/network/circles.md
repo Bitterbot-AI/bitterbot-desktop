@@ -362,7 +362,9 @@ remaining members (a `circle/message` with a `system: "member_removed"`
 marker, stored as a `system`-kind chat line, @agent summon suppressed on
 receipt): informed consent, so the other humans learn of the eviction and
 can prune their own rosters, while their nodes change nothing
-automatically. The redundant `suspendMember` primitive was deleted the same
+automatically. The notice carries a two-tap **Remove on my node too**
+button (shown while the named member is still on your roster) that runs the
+same removal on your node, including the sender-key rotation below. The redundant `suspendMember` primitive was deleted the same
 day (removal is already reversible via re-pair; legacy `suspended` rows
 stay default-denied). Channel-key rotation on membership change remains
 unbuilt: `key_epoch` blinds the gossip topic id (topic naming, not
@@ -449,8 +451,8 @@ agent answer action — surface or disable before advertising ask),
 per-circle briefings (the compiled briefing is one node-wide digest; the
 schema, cadence gate, and digest side-effect are all global),
 message-history sync for late joiners (no `circle/messages.since` verb; a
-fresh device has no chat history and `events.since` is a single capped
-sweep), Phase 4 channels, chat-channel delivery of the briefing
+fresh device has no chat history; `events.since` now pages up to 10
+responses of at most 1 MB each per peer per sync), Phase 4 channels, chat-channel delivery of the briefing
 (Telegram/Discord), the consented friend-of-friend graph and PeerMap
 (Phase 6, no code), libp2p request-response transport with device↔PeerId
 binding (Phase 5), shared-key confidentiality for the gossip topic (the

@@ -829,6 +829,102 @@ describe("circle A2A verbs", () => {
     expect(store.getMember(circleId, pubkeyId(bob))?.displayName).toBe("Bobby");
   });
 
+  it("M3: a replayed OLDER presence beat cannot roll endpoints back", () => {
+    joinBob();
+    const beat = (url: string, ts: number) =>
+      makeCircleEnvelope("presence", circleId, { a2a_url: url, status: "online" }, bob, ts);
+    const older = beat("https://old.bob.example.com", NOW_S + 1);
+    const newer = beat("https://new.bob.example.com", NOW_S + 5);
+    expect(handleCircleMethod("circle/presence", { envelope: older }, db, NOW + 1000).ok).toBe(
+      true,
+    );
+    expect(handleCircleMethod("circle/presence", { envelope: newer }, db, NOW + 5000).ok).toBe(
+      true,
+    );
+    expect(store.getMember(circleId, pubkeyId(bob))?.a2aUrl).toBe("https://new.bob.example.com");
+    // The captured older beat replayed inside the skew window: refused.
+    const replay = handleCircleMethod("circle/presence", { envelope: older }, db, NOW + 6000);
+    expect(replay.ok).toBe(false);
+    expect(store.getMember(circleId, pubkeyId(bob))?.a2aUrl).toBe("https://new.bob.example.com");
+    // The same beat arriving twice (mesh + HTTP copy) stays idempotent.
+    expect(handleCircleMethod("circle/presence", { envelope: newer }, db, NOW + 6000).ok).toBe(
+      true,
+    );
+  });
+
+  it("MED-7: a member cannot claim another member's peer_id", () => {
+    joinBob();
+    const carol = generateKeyPair();
+    store.addMember({ circleId, memberPubkey: pubkeyId(carol), now: NOW });
+    const bobPeer = "12D3KooWBobsBobsBobsBobsBobsBobsBobsBobsBobs";
+    const ok = handleCircleMethod(
+      "circle/presence",
+      {
+        envelope: makeCircleEnvelope("presence", circleId, { peer_id: bobPeer }, bob, NOW_S + 1),
+      },
+      db,
+      NOW + 1000,
+    );
+    expect(ok.ok).toBe(true);
+    expect(store.getMember(circleId, pubkeyId(bob))?.peerId).toBe(bobPeer);
+    // Carol claims Bob's peer id: the beat lands, the claim does not.
+    handleCircleMethod(
+      "circle/presence",
+      {
+        envelope: makeCircleEnvelope("presence", circleId, { peer_id: bobPeer }, carol, NOW_S + 2),
+      },
+      db,
+      NOW + 2000,
+    );
+    expect(store.getMember(circleId, pubkeyId(carol))?.peerId ?? null).toBeNull();
+    // Removal clears Bob's dial target, freeing it.
+    store.removeMember(circleId, pubkeyId(bob), NOW + 3000);
+    expect(store.getMember(circleId, pubkeyId(bob))?.peerId ?? null).toBeNull();
+  });
+
+  it("M2: a removal notice records the member it names for the one-tap follow-through", () => {
+    joinBob();
+    const removed = "ed25519:" + "f".repeat(64);
+    const notice = makeCircleEnvelope(
+      "message",
+      circleId,
+      { text: "Removed member.", system: "member_removed", removed_pubkey: removed },
+      bob,
+      NOW_S,
+    );
+    expect(handleCircleMethod("circle/message", { envelope: notice }, db, NOW).ok).toBe(true);
+    const row = db
+      .prepare(`SELECT kind, system_target FROM circle_messages WHERE direction = 'in'`)
+      .get() as { kind: string; system_target: string | null };
+    expect(row).toEqual({ kind: "system", system_target: removed });
+  });
+
+  it("LOW-11: events.since stops at its byte budget and says so", () => {
+    joinBob();
+    const big = JSON.stringify({ blob: "x".repeat(400_000) });
+    const insert = db.prepare(
+      `INSERT INTO circle_events
+         (event_id, circle_id, author_pubkey, seq, prev_hash, event_type, body_json,
+          envelope_json, event_hash, claimed_at, received_at)
+       VALUES (?, ?, ?, ?, NULL, 'note', ?, '{}', ?, ?, ?)`,
+    );
+    for (let i = 0; i < 4; i += 1) {
+      insert.run(`ev${i}`, circleId, pubkeyId(ana), i, big, `h${i}`, NOW, NOW + i);
+    }
+    const page = handleCircleMethod(
+      "circle/events.since",
+      { envelope: makeCircleEnvelope("presence", circleId, { since: 0 }, bob, NOW_S) },
+      db,
+      NOW,
+    );
+    expect(page.ok).toBe(true);
+    if (page.ok) {
+      const result = page.result as { truncated: boolean; events: unknown[] };
+      expect(result.truncated).toBe(true);
+      expect(result.events.length).toBe(2);
+    }
+  });
+
   it("serves events.since to ledger.read holders and enforces presence + roster", () => {
     joinBob();
     const presence = handleCircleMethod(

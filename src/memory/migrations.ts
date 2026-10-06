@@ -2439,6 +2439,25 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 71,
+    description:
+      "Circles security pass (2026-10-06). M3: circle_members.last_presence_ts is the " +
+      "per-(circle, member) high-water mark of signed presence beats, so a replayed older " +
+      "beat can no longer roll a member's endpoints back. M2: circle_messages.system_target " +
+      "holds the pubkey a removal notice names, so the UI can offer the one-tap 'remove on " +
+      "my node too' that completes a removal (and rotates this node's sender key).",
+    up: (db: DatabaseSync) => {
+      const has = (name: string) =>
+        db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name);
+      if (has("circle_members")) {
+        addColumnIfMissing(db, "circle_members", "last_presence_ts", "INTEGER");
+      }
+      if (has("circle_messages")) {
+        addColumnIfMissing(db, "circle_messages", "system_target", "TEXT");
+      }
+    },
+  },
 ];
 
 /**

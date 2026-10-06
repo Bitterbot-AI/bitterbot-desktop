@@ -105,7 +105,12 @@ prebuilt to every node.
   can't evict live circles (C3); `is_circle_topic` requires the exact
   `bitterbot/circle/<64-hex>/v1` shape, killing the unbounded-topic relay OOM
   (C4/C5); `unsubscribe_topic` is gated like subscribe/publish (C7); the IPC
-  socket is chmod 0600 (C7).
+  socket is chmod 0600 (C7). On Windows, where the control channel is
+  loopback TCP 19002 and a chmod has no equivalent, the gateway hands the
+  daemon a per-install secret (`BITTERBOT_IPC_TOKEN`, stored 0600 as
+  `ipc.token` next to the node key) and every IPC connection must open with
+  an `auth` line carrying it, or the daemon closes it (HIGH-5, orchestrator
+  0.2.3+; an older daemon ignores the line).
 - **Circle-RPC held channels** are capped (256) and swept every 5s against the
   30s TTL (HIGH-4).
 
@@ -126,10 +131,24 @@ per-member sender keys** (`src/circles/sender-keys.ts`, migration v61):
   until every boxed member holds the current key, and hands new members every
   sender's key the same way.
 - **Rotation on removal**: a node that removes a member rotates its sending
-  key (`rotateOwnSenderKey`) — the evictee cannot read that node's future
-  frames. Other members rotate when they process the removal on their own
-  roster (informed consent, same as removal itself). Old keys are retired,
-  not deleted, so in-flight frames still decrypt.
+  key (`rotateOwnSenderKey`) and deletes the evictee's keys — the evictee
+  cannot read that node's future frames. Other members rotate when they
+  process the removal on their own roster (informed consent, same as removal
+  itself): the signed removal notice renders with a two-tap **Remove on my
+  node too** button that runs the same removal locally (M2). Until a member
+  does that, the evictee can still read THAT member's frames.
+- **Key lifecycle** (M5/M7): an own key rotates after 30 days, retired own
+  keys are deleted 7 days after retirement, a received key is deleted once
+  its sender's newer key has been held for 7 days, at most 4 keys are kept
+  per (circle, sender), and deleting a circle deletes all of its key
+  material. Keys live in the memory DB, which is chmod 0600 on open (M6).
+- **Replay**: message/ask/answer dedupe on envelope id; event appends are
+  chain-checked; sender_key ingest is idempotent per key id; presence keeps a
+  per-(circle, member) high-water mark on the signed timestamp, so a replayed
+  older beat cannot roll a member's endpoints back (M3).
+- **peer_id claims** are refused when another active member of the circle
+  already holds that peer_id, and cleared on removal (MED-7, partial: a
+  libp2p-signed proof of the claim is still open).
 - **Frame binding**: the blinded topic id is the GCM AAD, so a frame lifted
   from one topic cannot be replayed onto another. Wrapper carries only
   `{enc, sender, keyId, iv, ct, tag}` — key lookup metadata, no content.
@@ -142,7 +161,10 @@ per-member sender keys** (`src/circles/sender-keys.ts`, migration v61):
 
 What `key_epoch` still does NOT give you: topic-name rotation on removal
 (unchanged, §5.5). The read-exclusion guarantee now comes from the sender-key
-rotation above, not from the topic name.
+rotation above, not from the topic name. Because `key_epoch` bumps on member
+add, a node also listens on (and resolves) the previous epoch's topic, so a
+member who has not yet seen the newest join is not dropped from the mesh
+(L2).
 
 ## Where it fits
 

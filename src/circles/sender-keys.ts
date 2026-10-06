@@ -26,7 +26,9 @@
  * evictee on their own node (removal is informed consent, not global
  * revocation — PLAN-31 §5.5). So immediately after one node evicts, the
  * evictee can still read the OTHER members' frames until each of them acts.
- * There is no mechanism that forces the others to rotate.
+ * Nothing forces the others to rotate; the signed removal notice offers each
+ * of them a two-tap "remove on my node too" (security pass M2), which runs
+ * the same removal + rotation on their node.
  *
  * The gossip TOPIC name stays keyed by key_epoch exactly as before (naming,
  * not encryption) — this layer is deliberately orthogonal, so it introduces
@@ -39,11 +41,15 @@
  * fleet transition (the mesh is additive and default-off; plaintext
  * acceptance is the status quo, not a regression). Sender-key material lives
  * as base64 in the circles sqlite (`circle_own_sender_keys` /
- * `circle_sender_keys`). NOTE: that DB is NOT chmod'd 0600 the way
- * `identity/box.json` is — it lands at the process umask (typically 0644). So
- * the custody is the DB file's, which today is WEAKER than the box key's, not
- * equal. Tightening the DB perms (or wrapping key_b64 under the box key) is a
- * tracked follow-up (security pass M6).
+ * `circle_sender_keys`) in the memory DB, which is chmod'd 0600 on open like
+ * `identity/box.json` (security pass M6).
+ *
+ * Key lifecycle (security pass M5/M7): an own key older than
+ * OWN_KEY_MAX_AGE_MS rotates on the next distribution sweep, retired own keys
+ * are deleted RETIRED_KEY_GRACE_MS after retirement, a received key is
+ * deleted once a newer key from the same sender has been held for that same
+ * grace, at most MAX_KEYS_PER_SENDER are kept per (circle, sender), and
+ * removal / circle deletion drop the material outright (circles-store).
  */
 
 import crypto from "node:crypto";
@@ -72,7 +78,11 @@ export type OwnSenderKey = { keyId: string; keyB64: string };
 // ---------------------------------------------------------------------------
 
 /** Current (non-retired) sending key for a circle, creating one if absent. */
-export function getOrCreateOwnSenderKey(db: DatabaseSync, circleId: string): OwnSenderKey {
+export function getOrCreateOwnSenderKey(
+  db: DatabaseSync,
+  circleId: string,
+  now: number = Date.now(),
+): OwnSenderKey {
   const row = db
     .prepare(
       `SELECT key_id, key_b64 FROM circle_own_sender_keys
@@ -90,7 +100,7 @@ export function getOrCreateOwnSenderKey(db: DatabaseSync, circleId: string): Own
   db.prepare(
     `INSERT INTO circle_own_sender_keys (circle_id, key_id, key_b64, created_at, delivered_json)
      VALUES (?, ?, ?, ?, '[]')`,
-  ).run(circleId, fresh.keyId, fresh.keyB64, Date.now());
+  ).run(circleId, fresh.keyId, fresh.keyB64, now);
   return fresh;
 }
 
@@ -104,6 +114,52 @@ export function rotateOwnSenderKey(db: DatabaseSync, circleId: string): OwnSende
     `UPDATE circle_own_sender_keys SET retired_at = ? WHERE circle_id = ? AND retired_at IS NULL`,
   ).run(Date.now(), circleId);
   return getOrCreateOwnSenderKey(db, circleId);
+}
+
+/** An own sending key this old rotates on the next sweep (bounds exposure of one key). */
+export const OWN_KEY_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** How long a superseded key is kept for frames still in flight. */
+export const RETIRED_KEY_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+/** Received keys kept per (circle, sender) — a flood cap, not a working set (M7). */
+export const MAX_KEYS_PER_SENDER = 4;
+
+/**
+ * Periodic key hygiene for one circle (called by the distribution sweep):
+ * age-rotate this node's key, then delete superseded material past its grace.
+ * Returns true when the own key rotated (the sweep then redistributes).
+ */
+export function maintainSenderKeys(
+  db: DatabaseSync,
+  circleId: string,
+  now: number = Date.now(),
+): boolean {
+  const current = db
+    .prepare(
+      `SELECT created_at FROM circle_own_sender_keys
+        WHERE circle_id = ? AND retired_at IS NULL
+        ORDER BY created_at DESC LIMIT 1`,
+    )
+    .get(circleId) as { created_at: number } | undefined;
+  const rotated = current !== undefined && now - current.created_at >= OWN_KEY_MAX_AGE_MS;
+  if (rotated) {
+    db.prepare(
+      `UPDATE circle_own_sender_keys SET retired_at = ? WHERE circle_id = ? AND retired_at IS NULL`,
+    ).run(now, circleId);
+    getOrCreateOwnSenderKey(db, circleId, now);
+  }
+  const cutoff = now - RETIRED_KEY_GRACE_MS;
+  db.prepare(
+    `DELETE FROM circle_own_sender_keys
+      WHERE circle_id = ? AND retired_at IS NOT NULL AND retired_at < ?`,
+  ).run(circleId, cutoff);
+  db.prepare(
+    `DELETE FROM circle_sender_keys AS k
+      WHERE k.circle_id = ?
+        AND EXISTS (SELECT 1 FROM circle_sender_keys AS n
+                     WHERE n.circle_id = k.circle_id AND n.sender_pubkey = k.sender_pubkey
+                       AND n.created_at > k.created_at AND n.created_at < ?)`,
+  ).run(circleId, cutoff);
+  return rotated;
 }
 
 /** Members already sent the current key (delivery bookkeeping). */
@@ -190,6 +246,21 @@ export function ingestSenderKeyBody(
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(circle_id, sender_pubkey, key_id) DO NOTHING`,
       ).run(args.circleId, args.senderPubkey, keyId, keyB64, Date.now());
+      // M7: a member re-keying in a loop must not grow this table without
+      // bound. Keep only their newest few keys.
+      db.prepare(
+        `DELETE FROM circle_sender_keys
+          WHERE circle_id = ? AND sender_pubkey = ?
+            AND key_id NOT IN (SELECT key_id FROM circle_sender_keys
+                                WHERE circle_id = ? AND sender_pubkey = ?
+                                ORDER BY created_at DESC, rowid DESC LIMIT ?)`,
+      ).run(
+        args.circleId,
+        args.senderPubkey,
+        args.circleId,
+        args.senderPubkey,
+        MAX_KEYS_PER_SENDER,
+      );
       return true;
     }
   }

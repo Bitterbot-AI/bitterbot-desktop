@@ -296,10 +296,31 @@ export class CirclesStore {
   removeMember(circleId: string, memberPubkey: string, now: number = Date.now()): void {
     this.db
       .prepare(
-        `UPDATE circle_members SET status = 'left', updated_at = ?
+        `UPDATE circle_members SET status = 'left', peer_id = NULL, updated_at = ?
           WHERE circle_id = ? AND member_pubkey = ? AND status != 'left'`,
       )
       .run(now, circleId, memberPubkey);
+    // M5: their sending keys only decrypt frames this node now refuses anyway
+    // (writes are default-denied for a 'left' member). Drop the material.
+    this.db
+      .prepare(`DELETE FROM circle_sender_keys WHERE circle_id = ? AND sender_pubkey = ?`)
+      .run(circleId, memberPubkey);
+  }
+
+  /**
+   * Stage4 MED-7 (partial): is `peerId` already the dial target of a DIFFERENT
+   * active member of this circle? A peer_id is a self-claimed hint, so a
+   * collision means someone is trying to capture another member's dials.
+   */
+  peerIdHeldByOther(circleId: string, memberPubkey: string, peerId: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM circle_members
+          WHERE circle_id = ? AND peer_id = ? AND member_pubkey != ? AND status = 'active'
+          LIMIT 1`,
+      )
+      .get(circleId, peerId, memberPubkey);
+    return row !== undefined && row !== null;
   }
 
   getCircle(circleId: string): Circle | null {
@@ -420,6 +441,9 @@ export class CirclesStore {
       "circle_pending_outbound",
       "circle_disclosure_grants",
       "circle_agent_drafts",
+      // M5: key material must not outlive the circle it encrypted.
+      "circle_sender_keys",
+      "circle_own_sender_keys",
     ];
     this.db.exec("BEGIN");
     try {

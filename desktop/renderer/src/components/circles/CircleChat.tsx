@@ -50,6 +50,7 @@ export function CircleChat({ circle, selfPubkey }: Props) {
   const send = useCirclesStore((s) => s.send);
   const react = useCirclesStore((s) => s.react);
   const setPinned = useCirclesStore((s) => s.setPinned);
+  const removeMember = useCirclesStore((s) => s.removeMember);
   const deleteMessage = useCirclesStore((s) => s.deleteMessage);
   const putCard = useCirclesStore((s) => s.putCard);
   const requestChatDraft = useCirclesStore((s) => s.requestChatDraft);
@@ -295,6 +296,11 @@ export function CircleChat({ circle, selfPubkey }: Props) {
         annotations={annotations}
         onToggleReaction={circle.status === "active" ? toggleReaction : undefined}
         onJoinInvite={(code) => void previewInvite(code)}
+        onRemoveMember={
+          circle.status === "active"
+            ? (memberPubkey) => removeMember(circle.circleId, memberPubkey)
+            : undefined
+        }
         onTogglePin={
           circle.status === "active"
             ? (m, pinned) => {
