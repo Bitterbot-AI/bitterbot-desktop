@@ -108,6 +108,10 @@ export const FIELD_HELP: Record<string, string> = {
   "payments.link.command":
     'How to run Stripe\'s Link CLI (default: ["npx", "-y", "@stripe/link-cli@0.26.0"]).',
   "payments.link.authFile": "Where the Link login is kept (default: ~/.bitterbot/link/auth.json).",
+  "shop.enabled":
+    "Let the agent shop on stores that support agent shopping (most Shopify stores): search, build a cart, and send you the checkout link. It never pays (default: true).",
+  "shop.ucpProfileUrl":
+    "The public agent profile stores fetch to identify this agent. Defaults to the profile published in the Bitterbot repository.",
   "monitors.enabled":
     "Run monitors: watches on a page or API that are checked with a plain fetch and wake the agent only when something changes (default: true).",
   "notifications.owner.channel":

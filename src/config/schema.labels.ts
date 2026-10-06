@@ -244,6 +244,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "browser.snapshotDefaults": "Browser Snapshot Defaults",
   "browser.snapshotDefaults.mode": "Browser Snapshot Mode",
   "monitors.enabled": "Monitors: Enabled",
+  "shop.enabled": "Shop: Enabled",
+  "shop.ucpProfileUrl": "Shop: Agent Profile URL",
   "payments.link.enabled": "Link Purchases: Enabled",
   "payments.link.perPurchaseCapUsd": "Link Purchases: Most per Purchase (USD)",
   "payments.link.command": "Link Purchases: CLI Command",

@@ -43,6 +43,7 @@ import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
 import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
+import { createShopTool } from "./tools/shop-tool.js";
 import { createSkillManageTool } from "./tools/skill-manage-tool.js";
 import { createSkillPipelineDigestTool } from "./tools/skill-pipeline-digest-tool.js";
 import { createSkillSeekersIngestTool } from "./tools/skill-seekers-tool.js";
@@ -294,6 +295,10 @@ export function createBitterbotTools(options?: {
   });
   if (purchaseTool) {
     tools.push(purchaseTool);
+  }
+  const shopTool = createShopTool({ config: options?.config });
+  if (shopTool) {
+    tools.push(shopTool);
   }
   const a2aClientTool = createA2aClientTool({
     config: options?.config,
