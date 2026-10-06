@@ -98,6 +98,7 @@ import {
   type IndexTables,
   listMemories as ownerListMemories,
   type ListOptions as OwnerListOptions,
+  listAuditLog as ownerListAuditLog,
   listPreferences as ownerListPreferences,
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
@@ -5759,6 +5760,10 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   ownerListPreferences() {
     return ownerListPreferences(this.db);
+  }
+
+  ownerAuditLog(opts: { limit?: number; before?: number; event?: string } = {}) {
+    return ownerListAuditLog(this.db, opts);
   }
 
   async ownerDeletePreference(category: string, key: string): Promise<boolean> {

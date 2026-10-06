@@ -22,6 +22,29 @@ export type MemorySummary = {
 type MemoryDetail = MemorySummary & { text: string; sensitivity: string | null };
 type Fact = { key: string; value: string; statement: string; category: string; source: string };
 type Preference = { category: string; key: string; value: string };
+type AuditEntry = { id: string; event: string; actor: string; timestamp: number };
+
+const AUDIT_WORDS: Record<string, string> = {
+  owner_forget: "You deleted a memory",
+  owner_edit: "You corrected a memory",
+  forgotten: "Faded out (not used in a long time)",
+  expired: "Expired (its keep-until date passed)",
+  merged: "Merged into a similar memory",
+  consolidated: "Merged into a similar memory",
+  archived: "Archived",
+  reconsolidation: "Updated after being recalled",
+  session_extraction: "Learned from a conversation",
+  owner_forget_preference: "You removed something it had learned about you",
+  rewrite: "Rewritten while dreaming",
+  mutated: "Changed while dreaming",
+  imported: "Imported",
+  restore: "Restored",
+};
+
+/** An audit event, in words; null for internal bookkeeping the owner need not see. */
+export function describeAuditEvent(e: { event: string }): string | null {
+  return AUDIT_WORDS[e.event] ?? null;
+}
 
 /** Where a memory came from, in words. */
 export function describeOrigin(m: MemorySummary): string {
@@ -50,6 +73,7 @@ export function MemoryView() {
   const [draft, setDraft] = useState<string | null>(null);
   const [facts, setFacts] = useState<Fact[]>([]);
   const [prefs, setPrefs] = useState<Preference[]>([]);
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [unavailable, setUnavailable] = useState(false);
 
   const load = useCallback(
@@ -81,6 +105,12 @@ export function MemoryView() {
       ]);
       setFacts(f.facts ?? []);
       setPrefs(p.preferences ?? []);
+    } catch {
+      // older gateway
+    }
+    try {
+      const a = (await request("memory.audit", { limit: 100 })) as { entries: AuditEntry[] };
+      setAudit((a.entries ?? []).filter((e) => describeAuditEvent(e) !== null));
     } catch {
       // older gateway
     }
@@ -348,6 +378,24 @@ export function MemoryView() {
                 >
                   Remove
                 </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {audit.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold text-foreground">Recent changes</h2>
+          <p className="text-xs text-muted-foreground">
+            What happened to memories lately, including what your agent let go of on its own.
+          </p>
+          <ul className="space-y-1">
+            {audit.map((e) => (
+              <li key={e.id} className="flex items-center gap-3 text-sm">
+                <span className="flex-1">{describeAuditEvent(e)}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatRelativeTime(e.timestamp)}
+                </span>
               </li>
             ))}
           </ul>

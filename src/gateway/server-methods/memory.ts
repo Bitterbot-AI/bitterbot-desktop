@@ -114,6 +114,23 @@ export const memoryHandlers: GatewayRequestHandlers = {
     }
   },
 
+  /** What happened to memories, newest first: forgotten, merged, edited (PLAN-53 G2). */
+  "memory.audit": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      respond(true, {
+        entries: m.ownerAuditLog({
+          limit: num(params.limit),
+          before: num(params.before),
+          event: str(params.event),
+        }),
+      });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
   /** The facts the agent treats as settled (the pinned ledger). */
   "memory.facts": async ({ params, respond }) => {
     try {

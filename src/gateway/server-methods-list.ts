@@ -179,6 +179,7 @@ const BASE_METHODS = [
   "memory.edit",
   "memory.forget",
   "memory.preferences",
+  "memory.audit",
   "memory.forgetPreference",
   "memory.facts",
   "memory.retireFact",

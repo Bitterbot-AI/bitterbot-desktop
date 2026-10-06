@@ -40,3 +40,15 @@ bitterbot gateway call memory.export
 - SQLite keeps deleted text in free pages of the database file until it is compacted.
 
 Every change is written to the memory audit log as "the owner forgot / edited this", without the text.
+
+## Recent changes
+
+The bottom of the Memory page lists what happened to memories lately: what you
+deleted or corrected, what faded out because it was not used, what was merged
+into a similar memory, and what changed while the agent was dreaming. Internal
+bookkeeping is left out, and so is the text of the memory. The same list is
+available from the CLI:
+
+```bash
+bitterbot gateway call memory.audit --params '{"limit": 50}'
+```

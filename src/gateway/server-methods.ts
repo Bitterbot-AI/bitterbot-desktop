@@ -148,6 +148,7 @@ const READ_METHODS = new Set([
   "memory.list",
   "memory.get",
   "memory.preferences",
+  "memory.audit",
   "memory.facts",
   "forage.tape",
   "forage.stats",
