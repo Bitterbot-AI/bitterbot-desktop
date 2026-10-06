@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeOrigin, type MemorySummary } from "./MemoryView";
+import { describeAuditEvent, describeOrigin, type MemorySummary } from "./MemoryView";
 
 const m = (o: Partial<MemorySummary>): MemorySummary => ({
   id: "x",
@@ -21,5 +21,13 @@ describe("describeOrigin", () => {
     expect(describeOrigin(m({ kind: "file", source: "memory", path: "MEMORY.md" }))).toBe(
       "from MEMORY.md",
     );
+  });
+});
+
+describe("describeAuditEvent", () => {
+  it("puts owner-facing events in words and hides internal bookkeeping", () => {
+    expect(describeAuditEvent({ event: "owner_forget" })).toBe("You deleted a memory");
+    expect(describeAuditEvent({ event: "forgotten" })).toMatch(/Faded out/);
+    expect(describeAuditEvent({ event: "plan21_slow_update_fired" })).toBeNull();
   });
 });

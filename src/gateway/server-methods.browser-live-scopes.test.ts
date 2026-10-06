@@ -98,7 +98,13 @@ describe("review RPC scope gating", () => {
 
 describe("memory control scopes (PLAN-53 G1)", () => {
   it("lets a reader look, and only an admin change or export", () => {
-    for (const method of ["memory.list", "memory.get", "memory.facts", "memory.preferences"]) {
+    for (const method of [
+      "memory.list",
+      "memory.get",
+      "memory.facts",
+      "memory.preferences",
+      "memory.audit",
+    ]) {
       expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
       expect(authorizeGatewayMethod(method, operatorWith(["operator.read"]))).toBeNull();
     }
