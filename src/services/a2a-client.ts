@@ -383,6 +383,7 @@ export class A2aClient {
       // approval request and refuses, so the human can approve out-of-scope
       // spends (Phase 2) instead of the agent spending unbidden.
       let grantRef: string | undefined;
+      let releaseGrantHold: (() => void) | undefined;
       if (this.db) {
         try {
           const { SpendGrantStore } = await import("../payments/grants/spend-grant-store.js");
@@ -405,7 +406,13 @@ export class A2aClient {
             cov.reason = "one-time approval already used";
           }
           if (cov.grant) {
-            grantRef = cov.grant.claims.grant_id;
+            const grantId = cov.grant.claims.grant_id;
+            grantRef = grantId;
+            // Count the spend against the period allowance now, before paying, so
+            // concurrent hires can't all pass the same remaining allowance. A
+            // failed payment hands it back as an offsetting usage row.
+            store.recordUsage(grantId, price);
+            releaseGrantHold = () => store.recordUsage(grantId, -price);
           } else if (this.config.grantsRequired) {
             store.requestApproval({
               payee: payTo,
@@ -440,18 +447,8 @@ export class A2aClient {
           grantRef ? ({ authorizedByGrant: grantRef } as GatedSendOptions) : undefined,
         );
       } catch (err) {
+        releaseGrantHold?.();
         return { success: false, error: `Payment failed: ${String(err)}` };
-      }
-
-      // PLAN-48: record the spend against its grant's period allowance so the
-      // next in-scope spend sees the reduced remaining budget.
-      if (grantRef && this.db) {
-        try {
-          const { SpendGrantStore } = await import("../payments/grants/spend-grant-store.js");
-          new SpendGrantStore(this.db).recordUsage(grantRef, price);
-        } catch (err) {
-          log.debug(`grant usage record skipped: ${String(err)}`);
-        }
       }
 
       // Record the spend immediately — money has left the wallet even if the

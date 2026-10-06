@@ -186,3 +186,73 @@ describe("A2aClient spend-grant gate (PLAN-48 Phase 1)", () => {
     expect(new SpendGrantStore(db).listApprovals("pending")).toHaveLength(0);
   });
 });
+
+describe("A2aClient spend-grant allowance under concurrent hires", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    vi.restoreAllMocks();
+  });
+
+  async function grantedClient(allowanceUsd: number) {
+    const db = new DatabaseSync(":memory:");
+    const signer = await loadNodeCircleSigner();
+    const grant = buildSpendGrant({
+      ownerPubkey: signer.pubkey,
+      scope: { allowed_payees: [PAYTO] },
+      allowance: usdc(allowanceUsd),
+      periodSeconds: 86_400,
+      ttlMs: 3_600_000,
+      signOwner: signer.signEd25519,
+    });
+    new SpendGrantStore(db).setGrant(grant, verifyEd25519);
+    return { db, client: new A2aClient({ grantsRequired: true, taskTimeoutMs: 1000 }, db) };
+  }
+
+  it("concurrent hires cannot spend past the grant's period allowance", async () => {
+    const { client } = await grantedClient(0.1);
+    const restore = mock402(0.05);
+    // The transfer takes time, as an on-chain send does
+    const sendUsdc = vi.fn(
+      () => new Promise<{ txHash: string }>((r) => setTimeout(() => r({ txHash: "0xok" }), 20)),
+    );
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        client.executeTask({ agentUrl: PEER, message: "hi", walletService: walletStub(sendUsdc) }),
+      ),
+    );
+    restore();
+
+    // $0.10 allowance at $0.05 a hire: exactly two payments
+    expect(sendUsdc).toHaveBeenCalledTimes(2);
+  });
+
+  it("a failed payment gives its allowance back", async () => {
+    const { db, client } = await grantedClient(0.05);
+    const restore = mock402(0.05);
+    const sendUsdc = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("nonce too low"))
+      .mockResolvedValue({ txHash: "0xok" });
+    const first = await client.executeTask({
+      agentUrl: PEER,
+      message: "hi",
+      walletService: walletStub(sendUsdc),
+    });
+    expect(first.error).toMatch(/Payment failed/);
+
+    await client.executeTask({
+      agentUrl: PEER,
+      message: "hi",
+      walletService: walletStub(sendUsdc),
+    });
+    restore();
+    expect(sendUsdc).toHaveBeenCalledTimes(2);
+    const res = new SpendGrantStore(db).activeGrantFor({
+      payee: PAYTO,
+      amountUsd: 0.01,
+      verifyEd25519,
+    });
+    expect(res.grant).toBeNull(); // the one successful $0.05 used the allowance
+  });
+});
