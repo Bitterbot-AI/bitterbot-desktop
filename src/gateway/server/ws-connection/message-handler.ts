@@ -11,6 +11,7 @@ import {
   approveDevicePairing,
   ensureDeviceToken,
   getPairedDevice,
+  listDevicePairing,
   requestDevicePairing,
   updatePairedDeviceMetadata,
   verifyDeviceToken,
@@ -29,6 +30,12 @@ import {
 } from "../../auth-rate-limit.js";
 import type { GatewayAuthResult, ResolvedGatewayAuth } from "../../auth.js";
 import { authorizeGatewayConnect, isLocalDirectRequest } from "../../auth.js";
+import {
+  bootstrapPairingAllowed,
+  bootstrapPairingEnabled,
+  bootstrapPairingUsed,
+  markBootstrapPairingUsed,
+} from "../../bootstrap-pairing.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
 import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from "../../net.js";
 import { resolveHostName } from "../../net.js";
@@ -670,6 +677,22 @@ export function attachGatewayWsMessageHandler(params: {
         const skipPairing = allowControlUiBypass && sharedAuthOk;
         if (device && devicePublicKey && !skipPairing) {
           const requirePairing = async (reason: string, _paired?: { deviceId: string }) => {
+            const bootstrap =
+              !isLocalClient &&
+              bootstrapPairingAllowed({
+                isControlUi,
+                sharedAuthOk,
+                enabled: bootstrapPairingEnabled(
+                  configSnapshot.gateway?.controlUi?.bootstrapPairing,
+                ),
+                reason,
+                pairedCount: isControlUi
+                  ? (await listDevicePairing()).paired.length
+                  : Number.POSITIVE_INFINITY,
+                role,
+                scopes,
+                alreadyUsed: bootstrapPairingUsed(),
+              });
             const pairing = await requestDevicePairing({
               deviceId: device.id,
               publicKey: devicePublicKey,
@@ -680,14 +703,17 @@ export function attachGatewayWsMessageHandler(params: {
               role,
               scopes,
               remoteIp: reportedClientIp,
-              silent: isLocalClient,
+              silent: isLocalClient || bootstrap,
             });
             const context = buildRequestContext();
             if (pairing.request.silent === true) {
               const approved = await approveDevicePairing(pairing.request.requestId);
               if (approved) {
+                if (bootstrap) {
+                  markBootstrapPairingUsed();
+                }
                 logGateway.info(
-                  `device pairing auto-approved device=${approved.device.deviceId} role=${approved.device.role ?? "unknown"}`,
+                  `device pairing auto-approved device=${approved.device.deviceId} role=${approved.device.role ?? "unknown"}${bootstrap ? " (first device, gateway token)" : ""}`,
                 );
                 context.broadcast(
                   "device.pair.resolved",

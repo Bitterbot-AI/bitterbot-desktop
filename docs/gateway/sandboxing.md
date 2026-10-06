@@ -136,7 +136,7 @@ By default, sandbox containers run with **no network**.
 Override with `agents.defaults.sandbox.docker.network`.
 
 Docker installs and the containerized gateway live here:
-[Docker](/install/docker)
+[Docker](/platforms/docker)
 
 ## setupCommand (one-time container setup)
 

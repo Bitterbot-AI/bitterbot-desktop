@@ -102,6 +102,29 @@ jobs:
           docker logs bb 2>&1 | tail -30
           [ "$code" = "200" ]
 
+      - name: Smoke test — Fly template boots on a root-owned volume
+        # PLAN-53 F1: Fly mounts volumes owned by root; the template's
+        # entrypoint must hand the data dir to `node` and drop privileges.
+        run: |
+          docker build -t bitterbot-fly:ci --build-arg BITTERBOT_IMAGE=bitterbot:ci deploy/fly
+          mkdir -p /tmp/flydata && sudo chown root:root /tmp/flydata
+          docker run -d --name bbfly -p 19002:19001 -v /tmp/flydata:/home/node/.bitterbot \
+            -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token bitterbot-fly:ci
+          code=000
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19002/ || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "GET / -> $code"
+          docker logs bbfly 2>&1 | tail -20
+          [ "$code" = "200" ]
+          # The gateway process runs as node, not root.
+          docker top bbfly -o pid,user,args
+          [ "$(docker top bbfly -o pid,user | tail -n +2 | awk '{print $2}' | grep -c '^root$')" = "0" ]
+          [ "$(stat -c %u /tmp/flydata)" = "1000" ]
+
   sandbox-images:
     # PLAN-53 A5: the sandbox build scripts and the browser entrypoint were
     # missing, so Dockerfile.sandbox-browser could not build. Build both images

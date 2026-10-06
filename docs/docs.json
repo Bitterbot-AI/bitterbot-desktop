@@ -906,7 +906,12 @@
             "groups": [
               {
                 "group": "Platforms overview",
-                "pages": ["platforms/index", "platforms/linux", "platforms/windows"]
+                "pages": [
+                  "platforms/index",
+                  "platforms/linux",
+                  "platforms/windows",
+                  "platforms/docker"
+                ]
               }
             ]
           },
