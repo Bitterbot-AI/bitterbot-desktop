@@ -43,3 +43,5 @@ The gateway runs Stripe's Link CLI, pinned to `@stripe/link-cli@0.26.0`, through
 - Typing into card fields works for ordinary checkout forms. Card fields that live inside a payment provider's embedded frame may not be reachable from a page snapshot; the agent then hands the browser to you to enter the card details.
 - A purchase that needs 3-D Secure or another step in Link shows the step Link asks for; the agent hands it to you.
 - The `purchase` tool is owner-only and cannot be called over the gateway's HTTP tool endpoint.
+
+No Link account? See [Card purchases with Privacy.com](/wallet/privacy-purchases).

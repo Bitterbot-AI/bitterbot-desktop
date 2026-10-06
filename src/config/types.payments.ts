@@ -19,6 +19,21 @@ export type PaymentsConfig = {
     /** Where the Link login is kept. Default: ~/.bitterbot/link/auth.json. */
     authFile?: string;
   };
+  /**
+   * Card purchases with single-use cards from your own Privacy.com account
+   * (PLAN-53 C4), for when Link is not available. You approve each purchase in
+   * Bitterbot's review queue; the card is created only then, capped at the
+   * approved amount. Needs a Privacy plan with API access. Off by default.
+   */
+  privacy?: {
+    enabled?: boolean;
+    /** API key from privacy.com/account. Or set PRIVACY_API_KEY. */
+    apiKey?: string;
+    /** Most one purchase may be, in US dollars. Default: 100. */
+    perPurchaseCapUsd?: number;
+    /** Use Privacy's sandbox API (no real cards). Default: false. */
+    sandbox?: boolean;
+  };
   /** Fiat bridge (PLAN-49). Money-moving legs default OFF; Phase 1 is display-only. */
   fiat?: {
     /**

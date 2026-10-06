@@ -883,6 +883,7 @@
                   "wallet/index",
                   "wallet/wallet-funding",
                   "wallet/link-purchases",
+                  "wallet/privacy-purchases",
                   "wallet/shopping"
                 ]
               },

@@ -1116,6 +1116,15 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        privacy: z
+          .object({
+            enabled: z.boolean().optional(),
+            apiKey: z.string().optional().register(sensitive),
+            perPurchaseCapUsd: z.number().positive().max(100_000).optional(),
+            sandbox: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
         fiat: z
           .object({
             uiDollars: z.boolean().optional(),

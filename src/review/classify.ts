@@ -79,6 +79,27 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
   }
   const name = toolName.trim().toLowerCase();
 
+  // A Privacy.com purchase (C4): Privacy has no approval of its own, so the
+  // request that creates the card is the owner's decision. Link requests are
+  // approved in the Link app and are not held here.
+  if (name === "purchase" && text(params.action) === "request" && text(params.rail) === "privacy") {
+    const amountUsd = amount(params.amount_usd);
+    const merchant = text(params.merchant_name) || "(no merchant)";
+    const missing = [
+      ...(text(params.merchant_name) ? [] : ["merchant_name"]),
+      ...(text(params.merchant_url) ? [] : ["merchant_url"]),
+      ...(amountUsd === undefined ? ["amount_usd"] : []),
+    ];
+    const why = text(params.context, 120);
+    return {
+      cls: "spend",
+      preview: `Buy from ${merchant} for up to $${amountUsd?.toFixed(2) ?? "?"} with a single-use Privacy card${why ? `: ${why}` : ""}`,
+      payee: merchant,
+      amountUsd,
+      ...(missing.length > 0 ? { missing } : {}),
+    };
+  }
+
   if (name === "wallet") {
     const action = text(params.action);
     if (!SPEND_ACTIONS.has(action)) {

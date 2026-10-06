@@ -104,6 +104,14 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.nodes.browser.node": "Pin browser routing to a specific node id or name (optional).",
   "payments.link.enabled":
     "Let the agent buy things with a one-time card from your Stripe Link account. You approve each purchase in the Link app (default: false).",
+  "payments.privacy.enabled":
+    "Let the agent buy things with single-use cards from your Privacy.com account. You approve each purchase in Bitterbot first; the card is created only then, capped at that amount (default: false).",
+  "payments.privacy.apiKey":
+    "Privacy.com API key (privacy.com/account; needs a plan with API access). Or set PRIVACY_API_KEY.",
+  "payments.privacy.perPurchaseCapUsd":
+    "Most one Privacy purchase may be, in US dollars (default: 100).",
+  "payments.privacy.sandbox":
+    "Use Privacy.com's sandbox, which issues no real cards (default: false).",
   "payments.link.perPurchaseCapUsd": "Most one Link purchase may be, in US dollars (default: 100).",
   "payments.link.command":
     'How to run Stripe\'s Link CLI (default: ["npx", "-y", "@stripe/link-cli@0.26.0"]).',
