@@ -8,6 +8,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { setChunkLifecycle, setChunkProvenance } from "./chunk-writer.js";
 import type { ProvenanceNode } from "./crystal-types.js";
+import { tagSensitivity } from "./guest-access.js";
 import { ensureColumn } from "./memory-schema.js";
 const log = createSubsystemLogger("memory/governance");
 
@@ -96,30 +97,7 @@ export class MemoryGovernance {
    * Detect and tag sensitive content.
    */
   tagSensitivity(text: string): "normal" | "personal" | "confidential" {
-    const lower = text.toLowerCase();
-
-    // Confidential patterns
-    if (
-      /\b(?:password|secret|api[_\s]?key|token|credential|private[_\s]?key|ssh[_\s]?key)\b/i.test(
-        lower,
-      )
-    ) {
-      return "confidential";
-    }
-
-    // Personal patterns
-    if (
-      /\b(?:my name|my email|my phone|my address|birthday|social security|ssn|credit card)\b/i.test(
-        lower,
-      )
-    ) {
-      return "personal";
-    }
-    if (/\b(?:i feel|i think|personally|my opinion|my preference)\b/i.test(lower)) {
-      return "personal";
-    }
-
-    return "normal";
+    return tagSensitivity(text);
   }
 
   /**

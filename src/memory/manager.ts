@@ -65,6 +65,7 @@ import {
 import { MemoryGovernance } from "./governance.js";
 import { detectGraphGaps, emitGraphBridgeSignal } from "./graph-bridge-target.js";
 import { insertTrainingPair } from "./graph-optimizer.js";
+import { filterGuestResults, guestMayReadPath } from "./guest-access.js";
 import { HormonalStateManager } from "./hormonal.js";
 import {
   bm25RankToScore,
@@ -1136,6 +1137,20 @@ export class MemoryIndexManager implements MemorySearchManager {
         // findSimilarAnchors not available yet — non-critical
       }
     }
+  }
+
+  /** PLAN-53 G2: search for a non-owner sender. Over-fetches, then filters. */
+  async guestSearch(
+    query: string,
+    opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
+  ): Promise<MemorySearchResult[]> {
+    const want = opts?.maxResults ?? this.settings.query.maxResults;
+    const results = await this.search(query, { ...opts, maxResults: want * 3 });
+    return filterGuestResults(this.db, results).slice(0, want);
+  }
+
+  guestMayRead(relPath: string): boolean {
+    return guestMayReadPath(this.db, relPath);
   }
 
   async search(

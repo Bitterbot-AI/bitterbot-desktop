@@ -90,6 +90,13 @@ export interface MemorySearchManager {
     ref: import("./session-extractor.js").EvidenceRef,
     window?: number,
   ): Promise<import("./evidence-expand.js").ExpandedEvidence>;
+  /** PLAN-53 G2: search as a non-owner; only memories safe to show a guest. */
+  guestSearch?(
+    query: string,
+    opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
+  ): Promise<MemorySearchResult[]>;
+  /** PLAN-53 G2: whether a non-owner may read this memory file. */
+  guestMayRead?(relPath: string): boolean;
   /** PLAN-33: the canonical facts ledger (null when disabled). */
   canonicalFacts?(): import("./canonical-facts.js").CanonicalFactsStore | null;
   status(): MemoryProviderStatus;

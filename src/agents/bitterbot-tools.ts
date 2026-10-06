@@ -79,6 +79,11 @@ export function createBitterbotTools(options?: {
   agentSessionFile?: string;
   /** Same semantics as applyOwnerOnlyToolPolicy: only `true` is an owner. */
   senderIsOwner?: boolean;
+  /**
+   * PLAN-53 G2: a non-owner person is driving this turn (not a heartbeat or
+   * cron run). Memory recall is limited to what a guest may see.
+   */
+  memoryGuest?: boolean;
   agentChannel?: GatewayMessageChannel;
   agentAccountId?: string;
   /** Delivery target (e.g. telegram:group:123:topic:456) for topic/thread routing. */
@@ -236,7 +241,11 @@ export function createBitterbotTools(options?: {
   ];
 
   // Memory tools — hardwired (no plugin indirection)
-  const memoryOpts = { config: options?.config, agentSessionKey: options?.agentSessionKey };
+  const memoryOpts = {
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+    memoryGuest: options?.memoryGuest === true,
+  };
   for (const tool of [
     createMemorySearchTool(memoryOpts),
     createMemoryGetTool(memoryOpts),

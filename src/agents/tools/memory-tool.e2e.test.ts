@@ -15,6 +15,8 @@ let readFileImpl: () => Promise<string> = async () => "";
 
 const stubManager = {
   search: vi.fn(async () => await searchImpl()),
+  guestSearch: vi.fn(async () => [] as unknown[]),
+  guestMayRead: vi.fn((relPath: string) => relPath === "memory/public.md"),
   readFile: vi.fn(async () => await readFileImpl()),
   status: () => ({
     backend,
@@ -40,7 +42,12 @@ vi.mock("../../memory/index.js", () => {
   };
 });
 
-import { createMemoryGetTool, createMemorySearchTool } from "./memory-tool.js";
+import {
+  createMemoryExpandTool,
+  createMemoryGetTool,
+  createMemoryPinTool,
+  createMemorySearchTool,
+} from "./memory-tool.js";
 
 beforeEach(() => {
   backend = "builtin";
@@ -161,5 +168,47 @@ describe("memory tools", () => {
       disabled: true,
       error: "path required",
     });
+  });
+});
+
+describe("memory tools for a guest (PLAN-53 G2)", () => {
+  const cfg = { agents: { list: [{ id: "main", default: true }] } };
+
+  it("searches through the guest filter, never the full index", async () => {
+    const tool = createMemorySearchTool({ config: cfg, memoryGuest: true });
+    const result = await tool!.execute("g1", { query: "anything" });
+    expect(stubManager.guestSearch).toHaveBeenCalledTimes(1);
+    expect(stubManager.search).not.toHaveBeenCalled();
+    expect(
+      (result.details as { results: unknown[]; canonical?: unknown }).canonical,
+    ).toBeUndefined();
+  });
+
+  it("reads only files the guest may see", async () => {
+    const tool = createMemoryGetTool({ config: cfg, memoryGuest: true });
+    const refused = await tool!.execute("g2", { path: "MEMORY.md" });
+    expect((refused.details as { error?: string }).error).toMatch(/not the owner/);
+    expect(stubManager.readFile).not.toHaveBeenCalled();
+    await tool!.execute("g3", { path: "memory/public.md" });
+    expect(stubManager.readFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses raw transcripts and the facts ledger", async () => {
+    const expand = await createMemoryExpandTool({ config: cfg, memoryGuest: true })!.execute("g4", {
+      kind: "session",
+      path: "s.jsonl",
+      line: 1,
+    });
+    expect((expand.details as { error?: string }).error).toMatch(/not the owner/);
+    const pin = await createMemoryPinTool({ config: cfg, memoryGuest: true })!.execute("g5", {
+      action: "list",
+    });
+    expect((pin.details as { error?: string }).error).toMatch(/not the owner/);
+  });
+
+  it("leaves the owner's search untouched", async () => {
+    await createMemorySearchTool({ config: cfg })!.execute("o1", { query: "notes" });
+    expect(stubManager.search).toHaveBeenCalledTimes(1);
+    expect(stubManager.guestSearch).not.toHaveBeenCalled();
   });
 });
