@@ -19,6 +19,7 @@ and process access when the model does something dumb.
 ## What gets sandboxed
 
 - Tool execution (`exec`, `read`, `write`, `edit`, `apply_patch`, `process`, etc.).
+- Python run by `code_interpreter` (inside the same container, as `python3`). JavaScript keeps running in the gateway's hardened VM.
 - Optional sandboxed browser (`agents.defaults.sandbox.browser`).
   - By default, the sandbox browser auto-starts (ensures CDP is reachable) when the browser tool needs it.
     Configure via `agents.defaults.sandbox.browser.autoStart` and `agents.defaults.sandbox.browser.autoStartTimeoutMs`.
@@ -191,6 +192,46 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
   },
 }
 ```
+
+## Isolated computer
+
+To keep the agent off your own machine entirely, give it a computer of its own:
+a sandbox container for its commands and code, and a sandboxed Chromium for its
+browsing. The browser has its own profile inside the container, so it never sees
+your cookies or logins. (The side panel's live view follows the host browser,
+not this one.)
+
+1. Build the two images (needs Docker):
+
+   ```bash
+   scripts/sandbox-setup.sh
+   scripts/sandbox-browser-setup.sh
+   ```
+
+2. Turn it on:
+
+   ```json5
+   {
+     agents: {
+       defaults: {
+         sandbox: {
+           mode: "all", // or "non-main" to keep your own chats on the host
+           workspaceAccess: "rw",
+           browser: { enabled: true },
+         },
+       },
+     },
+   }
+   ```
+
+`scripts/sandbox-common-setup.sh` builds a larger image with Node, Go, Rust and
+other toolchains for agents that build software; point
+`agents.defaults.sandbox.docker.image` at `bitterbot-sandbox-common:bookworm-slim`
+to use it.
+
+Without the sandbox, agents share the host browser. Each agent other than the
+default one still gets its own browser profile (`agent-<id>`), so agents never
+share logins; turn that off with `browser.perAgentProfiles: false`.
 
 ## Related docs
 

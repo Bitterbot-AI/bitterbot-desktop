@@ -513,6 +513,9 @@ export function createBitterbotCodingTools(options?: {
     ...listChannelAgentTools({ cfg: options?.config }),
     ...createBitterbotTools({
       sandboxBrowserBridgeUrl: sandbox?.browser?.bridgeUrl,
+      codeSandbox: sandbox
+        ? { containerName: sandbox.containerName, containerWorkdir: sandbox.containerWorkdir }
+        : undefined,
       allowHostBrowserControl: sandbox ? sandbox.browserAllowHostControl : true,
       agentSessionKey: options?.sessionKey,
       agentSessionId: options?.sessionId,

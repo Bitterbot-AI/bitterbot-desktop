@@ -48,6 +48,12 @@ export type BrowserConfig = {
   attachOnly?: boolean;
   /** Default profile to use when profile param is omitted. Default: "chrome" */
   defaultProfile?: string;
+  /**
+   * Give each agent other than the default one its own host browser profile
+   * ("agent-<id>"), created on first use, so agents never share cookies or
+   * logins. The default agent keeps defaultProfile. Default: true
+   */
+  perAgentProfiles?: boolean;
   /** Named browser profiles with explicit CDP ports or URLs. */
   profiles?: Record<string, BrowserProfileConfig>;
   /** Default snapshot options (applied by the browser tool/CLI when unset). */

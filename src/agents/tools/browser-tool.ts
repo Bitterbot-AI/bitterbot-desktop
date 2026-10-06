@@ -11,6 +11,7 @@ import {
 } from "../../browser/client-actions.js";
 import {
   browserCloseTab,
+  browserCreateProfile,
   browserFocusTab,
   browserOpenTab,
   browserProfiles,
@@ -26,7 +27,9 @@ import { DEFAULT_UPLOAD_DIR, resolvePathsWithinRoot } from "../../browser/paths.
 import { applyBrowserProxyPaths, persistBrowserProxyFiles } from "../../browser/proxy-files.js";
 import { createReplayRecorder, REPLAY_ACTIONS, type ReplayRecorder } from "../../browser/replay.js";
 import { loadConfig } from "../../config/config.js";
+import { resolveAgentIdFromSessionKey } from "../../routing/session-key.js";
 import { wrapExternalContent } from "../../security/external-content.js";
+import { resolveDefaultAgentId } from "../agent-scope.js";
 import { BrowserToolSchema } from "./browser-tool.schema.js";
 import { type AnyAgentTool, imageResultFromFile, jsonResult, readStringParam } from "./common.js";
 import { callGatewayTool } from "./gateway.js";
@@ -251,6 +254,46 @@ function getReplayRecorder(): ReplayRecorder {
   return replayRecorder;
 }
 
+const ensuredAgentProfiles = new Set<string>();
+
+/** "agent-<id>" for a non-default agent; undefined keeps the configured default profile. */
+export function agentBrowserProfileName(
+  cfg: ReturnType<typeof loadConfig>,
+  sessionKey: string | undefined,
+): string | undefined {
+  if (!sessionKey || cfg.browser?.perAgentProfiles === false) {
+    return undefined;
+  }
+  const agentId = resolveAgentIdFromSessionKey(sessionKey);
+  if (!agentId || agentId === resolveDefaultAgentId(cfg)) {
+    return undefined;
+  }
+  const slug = agentId
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return slug ? `agent-${slug}` : undefined;
+}
+
+async function resolveAgentBrowserProfile(sessionKey: string | undefined) {
+  const name = agentBrowserProfileName(loadConfig(), sessionKey);
+  if (!name || ensuredAgentProfiles.has(name)) {
+    return name;
+  }
+  const existing = await browserProfiles(undefined).catch(() => []);
+  if (!existing.some((p) => p.name === name)) {
+    await browserCreateProfile(undefined, { name }).catch((err: unknown) => {
+      // Two calls can race to create it; the loser finds it there.
+      if (!String(err).includes("already exists")) {
+        throw err;
+      }
+    });
+  }
+  ensuredAgentProfiles.add(name);
+  return name;
+}
+
 export function createBrowserTool(opts?: {
   sandboxBridgeUrl?: string;
   allowHostControl?: boolean;
@@ -311,7 +354,7 @@ export function createBrowserTool(opts?: {
   ): ReturnType<AnyAgentTool["execute"]> {
     const params = args as Record<string, unknown>;
     const action = readStringParam(params, "action", { required: true });
-    const profile = readStringParam(params, "profile");
+    let profile = readStringParam(params, "profile");
     const requestedNode = readStringParam(params, "node");
     let target = readStringParam(params, "target") as "sandbox" | "host" | "node" | undefined;
 
@@ -338,6 +381,12 @@ export function createBrowserTool(opts?: {
           sandboxBridgeUrl: opts?.sandboxBridgeUrl,
           allowHostControl: opts?.allowHostControl,
         });
+
+    // PLAN-53 A5: an agent other than the default one gets its own host
+    // browser profile (cookies, logins, history), created the first time.
+    if (!profile && !nodeTarget && baseUrl === undefined && action !== "profiles") {
+      profile = await resolveAgentBrowserProfile(opts?.agentSessionKey);
+    }
 
     if (!nodeTarget && opts?.agentSessionKey && REPLAY_ACTIONS.has(action)) {
       replayCalls.set(toolCallId, { baseUrl, profile });

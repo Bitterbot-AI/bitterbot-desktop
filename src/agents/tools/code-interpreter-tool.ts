@@ -151,6 +151,39 @@ function formatArg(a: unknown): string {
   return typeof a === "string" ? a : String(a as string | number | boolean);
 }
 
+export type CodeSandbox = { containerName: string; containerWorkdir: string };
+
+/**
+ * Run Python inside the agent's sandbox container (PLAN-53 A5). The code goes
+ * in on stdin, so nothing is interpreted by a shell on either side.
+ */
+function executePythonInSandbox(
+  code: string,
+  sandbox: CodeSandbox,
+): Promise<{ stdout: string; stderr: string; returnValue: string | null; error: string | null }> {
+  return new Promise((resolve) => {
+    const child = execFile(
+      "docker",
+      ["exec", "-i", "-w", sandbox.containerWorkdir, sandbox.containerName, "python3", "-"],
+      { timeout: EXEC_TIMEOUT_MS, maxBuffer: 1024 * 1024 },
+      (err, stdout, stderr) => {
+        resolve({
+          stdout: truncate(stdout, MAX_OUTPUT_CHARS),
+          stderr: truncate(stderr, MAX_OUTPUT_CHARS),
+          returnValue: null,
+          error:
+            err && (err as NodeJS.ErrnoException).code === "ENOENT"
+              ? "The sandbox is on but docker is not available to run Python in it."
+              : err
+                ? err.message
+                : null,
+        });
+      },
+    );
+    child.stdin?.end(code);
+  });
+}
+
 /**
  * Execute Python code server-side using child_process.
  * Requires python3 to be available on PATH.
@@ -267,14 +300,16 @@ function resolveCodeExecDir(): string {
   return path.join(resolveStateDir(), "canvas", "code-exec");
 }
 
-export function createCodeInterpreterTool(): AnyAgentTool {
+export function createCodeInterpreterTool(opts: { sandbox?: CodeSandbox } = {}): AnyAgentTool {
   return {
     label: "Code Interpreter",
     name: "code_interpreter",
     description:
       "Execute Python or JavaScript code and return the output. " +
       "JavaScript runs in a sandboxed Node.js VM with session persistence (variables survive across calls). " +
-      "Python runs via the system python3 interpreter. " +
+      (opts.sandbox
+        ? "Python runs in this agent's sandbox container. "
+        : "Python runs via the system python3 interpreter. ") +
       "Use this for calculations, data analysis, algorithms, and verifying logic. " +
       "Output includes stdout, stderr, return values, and any errors.",
     parameters: CodeInterpreterSchema,
@@ -290,7 +325,9 @@ export function createCodeInterpreterTool(): AnyAgentTool {
       const result =
         language === "javascript"
           ? await executeJavaScript(code, sessionId)
-          : await executePython(code);
+          : opts.sandbox
+            ? await executePythonInSandbox(code, opts.sandbox)
+            : await executePython(code);
 
       // Write an HTML artifact for UI-side rendering in the ToolCallPanel
       const execId = `exec_${Date.now()}_${toolCallId.slice(0, 8)}`;
