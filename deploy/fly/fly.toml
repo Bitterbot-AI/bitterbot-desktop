@@ -16,6 +16,8 @@ dockerfile = "Dockerfile"
 
 [env]
 HOME = "/home/node"
+# Pair the first browser that signs in with the token (once). See docs/platforms/docker.md.
+BITTERBOT_BOOTSTRAP_PAIRING = "1"
 
 [[mounts]]
 source = "bitterbot_data"

@@ -32,9 +32,12 @@ The image runs as the `node` user (uid 1000). The gateway reads its token from
 
 1. Open the Control UI at your server's address and paste the gateway token.
 2. The first browser that connects with the token is paired automatically, so
-   you do not need the CLI. Every browser after that asks for approval, which you
-   give from an already-paired one or with `bitterbot devices approve`. Turn the
-   first-device pairing off with `gateway.controlUi.bootstrapPairing: false`.
+   you do not need the CLI. This happens once, only while no device is paired,
+   and only for the Control UI. The Fly and VPS templates turn it on with
+   `BITTERBOT_BOOTSTRAP_PAIRING=1`; elsewhere set
+   `gateway.controlUi.bootstrapPairing: true`. Every browser after that asks for
+   approval, which you give from an already-paired one or with
+   `bitterbot devices approve`.
 3. Add a model key under **Models & Keys**, then start chatting. Connect chat
    apps under **Channels**.
 
@@ -96,3 +99,12 @@ newer image instead:
 
 State lives on the volume, so updating or rolling back the image keeps memory,
 sessions and settings.
+
+## Network notes
+
+- Port 9100 (P2P) is published on all interfaces in the templates and the
+  Compose file. Docker publishes ports past host firewalls such as ufw; delete
+  the port line if you want the agent off the mesh.
+- Behind Caddy or the Fly proxy, every connection reaches the gateway from the
+  proxy. Set `gateway.trustedProxies` to the proxy's address so rate limits and
+  device records see the real client.

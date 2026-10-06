@@ -92,7 +92,7 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.controlUi.allowedOrigins":
     "Allowed browser origins for Control UI/WebChat websocket connections (full origins only, e.g. https://control.example.com).",
   "gateway.controlUi.bootstrapPairing":
-    "Pair the first Control UI device that proves the gateway token while no device is paired yet, so a cloud-hosted gateway can be set up from the browser alone. Later devices still need approval (default: true).",
+    "Pair the first Control UI device that proves the gateway token, once, while no device is paired, so a cloud-hosted gateway can be set up from the browser alone. Later devices still need approval (default: off, unless BITTERBOT_BOOTSTRAP_PAIRING=1, which the deploy templates set).",
   "gateway.controlUi.allowInsecureAuth":
     "Allow Control UI auth over insecure HTTP (token-only; not recommended).",
   "gateway.controlUi.dangerouslyDisableDeviceAuth":

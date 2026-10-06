@@ -27,6 +27,8 @@ write_files:
           environment:
             HOME: /home/node
             BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN}
+            # Pair the first browser that signs in with the token (once).
+            BITTERBOT_BOOTSTRAP_PAIRING: "1"
           volumes:
             - /opt/bitterbot/data:/home/node/.bitterbot
           ports:
@@ -106,6 +108,8 @@ write_files:
       mkdir -p /opt/bitterbot/data /opt/bitterbot/caddy
       # The image runs as uid 1000 (node).
       chown -R 1000:1000 /opt/bitterbot/data
+      # uid 1000 may also be a login user on the host; keep everyone else out.
+      chmod 700 /opt/bitterbot/data
       umask 077
       if [ ! -f /opt/bitterbot/secrets.env ]; then
         echo "BITTERBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)" > /opt/bitterbot/secrets.env
@@ -128,7 +132,7 @@ write_files:
       Type=oneshot
       RemainAfterExit=yes
       ExecStart=/opt/bitterbot/up.sh
-      ExecStop=/usr/bin/docker compose -f /opt/bitterbot/docker-compose.yml --profile https down
+      ExecStop=/bin/sh -c 'cd /opt/bitterbot && set -a && . ./settings.env && . ./secrets.env && set +a && docker compose --profile https down'
 
       [Install]
       WantedBy=multi-user.target

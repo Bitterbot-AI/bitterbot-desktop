@@ -30,7 +30,12 @@ import {
 } from "../../auth-rate-limit.js";
 import type { GatewayAuthResult, ResolvedGatewayAuth } from "../../auth.js";
 import { authorizeGatewayConnect, isLocalDirectRequest } from "../../auth.js";
-import { bootstrapPairingAllowed } from "../../bootstrap-pairing.js";
+import {
+  bootstrapPairingAllowed,
+  bootstrapPairingEnabled,
+  bootstrapPairingUsed,
+  markBootstrapPairingUsed,
+} from "../../bootstrap-pairing.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
 import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from "../../net.js";
 import { resolveHostName } from "../../net.js";
@@ -677,11 +682,16 @@ export function attachGatewayWsMessageHandler(params: {
               bootstrapPairingAllowed({
                 isControlUi,
                 sharedAuthOk,
-                enabled: configSnapshot.gateway?.controlUi?.bootstrapPairing,
+                enabled: bootstrapPairingEnabled(
+                  configSnapshot.gateway?.controlUi?.bootstrapPairing,
+                ),
                 reason,
                 pairedCount: isControlUi
                   ? (await listDevicePairing()).paired.length
                   : Number.POSITIVE_INFINITY,
+                role,
+                scopes,
+                alreadyUsed: bootstrapPairingUsed(),
               });
             const pairing = await requestDevicePairing({
               deviceId: device.id,
@@ -699,6 +709,9 @@ export function attachGatewayWsMessageHandler(params: {
             if (pairing.request.silent === true) {
               const approved = await approveDevicePairing(pairing.request.requestId);
               if (approved) {
+                if (bootstrap) {
+                  markBootstrapPairingUsed();
+                }
                 logGateway.info(
                   `device pairing auto-approved device=${approved.device.deviceId} role=${approved.device.role ?? "unknown"}${bootstrap ? " (first device, gateway token)" : ""}`,
                 );
