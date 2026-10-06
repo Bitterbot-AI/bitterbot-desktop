@@ -114,7 +114,7 @@ A cron job is a stored record with:
   missing or unknown, the gateway falls back to the default agent.
 
 Jobs are identified by a stable `jobId` (used by CLI/Gateway APIs).
-In agent tool calls, `jobId` is canonical; legacy `id` is accepted for compatibility.
+The agent's `cron` tool takes `id`; the `cron.*` gateway methods accept `jobId` (or `id`).
 One-shot jobs auto-delete after success by default; set `deleteAfterRun: false` to keep them.
 
 A one-shot job whose time passed while the gateway was not running is not dropped: it runs shortly after the gateway starts, provided it is at most 7 days late and was never started. A job that had already started when the gateway stopped is not started again. When a one-shot job runs more than five minutes late, its text gets a note with the scheduled time and the delay, so a reminder is not delivered as if it were on time.
@@ -225,10 +225,6 @@ Isolated jobs (`agentTurn`) can override the model and thinking level:
 - `model`: Provider/model string (e.g., `anthropic/claude-sonnet-4-20250514`) or alias (e.g., `opus`)
 - `thinking`: Thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`; GPT-5.2 + Codex models only)
 
-Note: You can set `model` on main-session jobs too, but it changes the shared main
-session model. We recommend model overrides only for isolated jobs to avoid
-unexpected context shifts.
-
 Resolution priority:
 
 1. Job payload override (highest)
@@ -240,7 +236,7 @@ Resolution priority:
 Isolated jobs can deliver output to a channel via the top-level `delivery` config:
 
 - `delivery.mode`: `announce` (deliver a summary) or `none`.
-- `delivery.channel`: `whatsapp` / `telegram` / `discord` / `slack` / `signal` / `last`.
+- `delivery.channel`: any configured channel id (for example `whatsapp`, `telegram`, `discord`, `slack`, `signal`, `email`), or `last`.
 - `delivery.to`: channel-specific recipient target.
 
 Delivery config is only valid for isolated jobs (`sessionTarget: "isolated"`).
@@ -268,7 +264,7 @@ Prefixed targets like `telegram:...` / `telegram:group:...` are also accepted:
 
 ## JSON schema for tool calls
 
-Use these shapes when calling Gateway `cron.*` tools directly (agent tool calls or RPC).
+Use these shapes when calling the `cron.*` gateway methods directly (RPC). The agent's `cron` tool is simpler: `{ action: "add", job: { name, schedule, text | message, delivery?, retryUntilMs? } }`, and `{ action: "update", id, patch }`. `retryUntilMs` has no CLI flag; set it through the tool or RPC.
 CLI flags accept human durations like `20m`, but tool calls should use an ISO 8601 string
 for `schedule.at` and milliseconds for `schedule.everyMs`.
 
@@ -505,7 +501,7 @@ bitterbot system event --mode now --text "Next heartbeat: check battery."
 - Bitterbot applies exponential retry backoff for recurring jobs after consecutive errors:
   30s, 1m, 5m, 15m, then 60m between retries.
 - Backoff resets automatically after the next successful run.
-- One-shot (`at`) jobs disable after a terminal run (`ok`, `error`, or `skipped`) and do not retry.
+- One-shot (`at`) jobs disable after a terminal run (`ok`, `error`, or `skipped`) and do not retry, unless `retryUntilMs` is set.
 
 ### Telegram delivers to the wrong place
 

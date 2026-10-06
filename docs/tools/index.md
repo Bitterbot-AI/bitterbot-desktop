@@ -142,10 +142,10 @@ Use these in `tools.allow` / `tools.deny`.
 
 Available groups:
 
-- `group:runtime`: `exec`, `bash`, `process`
+- `group:runtime`: `exec`, `process` (`bash` is accepted as an alias of `exec`)
 - `group:fs`: `read`, `write`, `edit`, `apply_patch`
-- `group:sessions`: `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, `session_status`
-- `group:memory`: `memory_search`, `memory_get`
+- `group:sessions`: `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, `subagents`, `session_status`
+- `group:memory`: `memory_search`, `memory_get`, `memory_status`, `dream_search`, `dream_status`, `curiosity_state`, `curiosity_resolve`
 - `group:web`: `web_search`, `web_fetch`
 - `group:ui`: `browser`, `canvas`
 - `group:automation`: `cron`, `gateway`
@@ -169,6 +169,57 @@ Plugins can register **additional tools** (and CLI commands) beyond the core set
 See [Plugins](/tools/plugin) for install + config, and [Skills](/tools/skills) for how
 tool usage guidance is injected into prompts. Some plugins ship their own skills
 alongside tools (for example, the voice-call plugin).
+
+## All tools
+
+Every tool the agent can be given, with where it is documented. Which ones a given run actually has depends on tool policy, the sender (owner-only tools below), sandbox mode and which features are enabled.
+
+| Tool                                                                                                                                                                                                                                                   | What it does                                                                                                                                   | Docs                                                                                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `read`, `write`, `edit`, `apply_patch`                                                                                                                                                                                                                 | Workspace files                                                                                                                                | [apply_patch](/tools/apply-patch)                                                            |
+| `exec`, `process`                                                                                                                                                                                                                                      | Shell commands and background processes                                                                                                        | [exec](/tools/exec), [exec approvals](/tools/exec-approvals)                                 |
+| `code_interpreter`                                                                                                                                                                                                                                     | Run Python or JavaScript and return the output. Python runs in the run's sandbox container when there is one; JavaScript runs in a hardened VM | [sandboxing](/gateway/sandboxing)                                                            |
+| `browser`                                                                                                                                                                                                                                              | Drive the agent's browser; live view, take over and handoff                                                                                    | [browser](/tools/browser)                                                                    |
+| `computer_use`                                                                                                                                                                                                                                         | Control the desktop                                                                                                                            | [computer use](/tools/computer-use)                                                          |
+| `canvas`, `create_artifact`                                                                                                                                                                                                                            | Show pages, charts and apps in the side panel                                                                                                  | below                                                                                        |
+| `web_search`, `web_fetch`                                                                                                                                                                                                                              | Search and fetch the web                                                                                                                       | [web](/tools/web), [web search](/tools/web-search)                                           |
+| `image`                                                                                                                                                                                                                                                | Analyze images with the image model                                                                                                            | below                                                                                        |
+| `message`                                                                                                                                                                                                                                              | Send and manage messages on chat channels                                                                                                      | below                                                                                        |
+| `message_owner`                                                                                                                                                                                                                                        | On a guest turn, pass a message to the owner                                                                                                   | [who can see what](/memory/how-the-memory-works)                                             |
+| `tts`                                                                                                                                                                                                                                                  | Turn text into speech                                                                                                                          | [TTS](/tools/tts)                                                                            |
+| `nodes`                                                                                                                                                                                                                                                | Paired devices: notify, camera, screen, location, run                                                                                          | below                                                                                        |
+| `cron`                                                                                                                                                                                                                                                 | Scheduled jobs and reminders                                                                                                                   | [cron jobs](/automation/cron-jobs)                                                           |
+| `monitor`                                                                                                                                                                                                                                              | Watch a page or API and wake the agent on change                                                                                               | [monitors](/automation/monitors)                                                             |
+| `task_create`, `task_get`, `task_list`, `task_update`, `task_stop`, `task_output`, `task_monitor`, `task_write_handoff`, `task_read_handoff`, `task_workspace_get`, `task_workspace_merge`, `task_schedule_wakeup`, `task_resume_inline`, `task_judge` | Long-horizon tasks                                                                                                                             | [long-horizon tasks](/automation/long-horizon-tasks)                                         |
+| `plan`, `complete`                                                                                                                                                                                                                                     | Record a work plan; report what was accomplished                                                                                               | below                                                                                        |
+| `sessions_list`, `sessions_history`, `sessions_send`, `sessions_spawn`, `session_status`, `subagents`                                                                                                                                                  | Sessions and sub-agents                                                                                                                        | below, [sub-agents](/tools/subagents)                                                        |
+| `agents_list`                                                                                                                                                                                                                                          | List agents this one may target                                                                                                                | below                                                                                        |
+| `gateway`                                                                                                                                                                                                                                              | Restart and configure the gateway                                                                                                              | below                                                                                        |
+| `memory_search`, `memory_get`, `memory_expand`, `memory_pin`, `memory_status`                                                                                                                                                                          | Search, read and pin memories                                                                                                                  | [how the memory works](/memory/how-the-memory-works)                                         |
+| `working_memory_note`                                                                                                                                                                                                                                  | Jot a note into working memory                                                                                                                 | [working memory](/memory/working-memory)                                                     |
+| `deep_recall`, `recall_range`, `expand_message`                                                                                                                                                                                                        | Search and reread past conversations                                                                                                           | [deep recall](/memory/deep-recall), [recall_range](/tools/recall-range)                      |
+| `dream_search`, `dream_status`                                                                                                                                                                                                                         | Dream insights and status                                                                                                                      | [dream engine](/memory/dream-engine)                                                         |
+| `curiosity_state`, `curiosity_resolve`                                                                                                                                                                                                                 | Curiosity targets                                                                                                                              | [curiosity](/memory/curiosity-and-search)                                                    |
+| `create_emotional_anchor`, `recall_emotional_anchor`                                                                                                                                                                                                   | Bookmark and recall emotional moments                                                                                                          | [emotional system](/memory/emotional-system)                                                 |
+| `skill_manage`, `skill_pipeline_digest`, `skill_seekers_ingest`                                                                                                                                                                                        | Skills lifecycle and ingestion                                                                                                                 | [skills](/tools/skills), [skills pipeline](/memory/skills-pipeline)                          |
+| `wallet`                                                                                                                                                                                                                                               | USDC wallet and x402 payments (opt-in)                                                                                                         | [wallet](/wallet/index)                                                                      |
+| `purchase`                                                                                                                                                                                                                                             | Card purchases with Link or Privacy.com (opt-in)                                                                                               | [Link purchases](/wallet/link-purchases), [Privacy.com purchases](/wallet/privacy-purchases) |
+| `shop`                                                                                                                                                                                                                                                 | Search Shopify stores and build carts                                                                                                          | [shopping](/wallet/shopping)                                                                 |
+| `a2a_client`                                                                                                                                                                                                                                           | Hire other agents over A2A                                                                                                                     | [A2A](/marketplace/a2a-integration)                                                          |
+| `forage`                                                                                                                                                                                                                                               | Post and hunt bounties                                                                                                                         | [A2A](/marketplace/a2a-integration)                                                          |
+| `circles`                                                                                                                                                                                                                                              | Talk with your Circles                                                                                                                         | [Circles](/network/circles)                                                                  |
+| `network_status`                                                                                                                                                                                                                                       | P2P network status                                                                                                                             | [core systems](/network/core-systems)                                                        |
+| `mcp__<server>__<tool>`                                                                                                                                                                                                                                | Tools from connected MCP servers                                                                                                               | [connectors](/tools/connectors)                                                              |
+
+## Owner-only tools
+
+These are given to the agent only when the owner is the one talking. A group member, an approved contact or any other non-owner sender never gets them, whatever the tool policy says:
+
+- `code_interpreter`, `computer_use`, `browser` (they run code or drive the host)
+- `wallet`, `a2a_client`, `purchase` (money)
+- `gateway` (config and lifecycle)
+- every connector tool (`mcp__*`)
+- `whatsapp_login`
 
 ## Tool inventory
 
@@ -221,7 +272,7 @@ Notes:
 
 ### `web_search`
 
-Search the web using Brave Search API.
+Search the web with the configured provider (`tools.web.search.provider`: `brave` by default, or `perplexity`, `grok`, `tavily`, `parallel`, `serply`).
 
 Core parameters:
 
@@ -230,7 +281,7 @@ Core parameters:
 
 Notes:
 
-- Requires a Brave API key (recommended: `bitterbot configure --section web`, or set `BRAVE_API_KEY`).
+- Needs an API key for the chosen provider (Brave: `bitterbot configure --section web`, or set `BRAVE_API_KEY`). See [Web search](/tools/web-search).
 - Enable via `tools.web.search.enabled`.
 - Responses are cached (default 15 min).
 - See [Web tools](/tools/web) for setup.
@@ -265,13 +316,10 @@ Core actions:
 - `screenshot` (returns image block + `MEDIA:<path>`)
 - `act` (UI actions: click/type/press/hover/drag/select/fill/resize/wait/evaluate)
 - `navigate`, `console`, `pdf`, `upload`, `dialog`
+- `handoff` (ask the person to take over the browser for a login, CAPTCHA or payment step)
+- `profiles` (list all browser profiles with status)
 
-Profile management:
-
-- `profiles` — list all browser profiles with status
-- `create-profile` — create new profile with auto-allocated port (or `cdpUrl`)
-- `delete-profile` — stop browser, delete user data, remove from config (local only)
-- `reset-profile` — kill orphan process on profile's port (local only)
+Creating, deleting and resetting profiles are CLI commands, not tool actions: `bitterbot browser create-profile`, `delete-profile`, `reset-profile`.
 
 Common parameters:
 
@@ -281,7 +329,7 @@ Common parameters:
   Notes:
 - Requires `browser.enabled=true` (default is `true`; set `false` to disable).
 - All actions accept optional `profile` parameter for multi-instance support.
-- When `profile` is omitted, uses `browser.defaultProfile` (defaults to "chrome").
+- When `profile` is omitted, uses `browser.defaultProfile` (defaults to "chrome"). An agent other than the default one gets its own profile, `agent-<id>`, created on first use (turn off with `browser.perAgentProfiles: false`).
 - Profile names: lowercase alphanumeric + hyphens only (max 64 chars).
 - Port range: 18800-18899 (~100 profiles max).
 - Remote profiles are attach-only (no start/stop/reset).
@@ -320,8 +368,9 @@ Core actions:
 - `pending`, `approve`, `reject` (pairing)
 - `notify` (`system.notify`)
 - `run` (`system.run`)
-- `camera_snap`, `camera_clip`, `screen_record`
+- `camera_snap`, `camera_list`, `camera_clip`, `screen_record`
 - `location_get`
+- `invoke` (call any node command by name)
 
 Notes:
 
@@ -363,12 +412,12 @@ Notes:
 
 ### `message`
 
-Send messages and channel actions across Discord/Google Chat/Slack/Telegram/WhatsApp/Signal/iMessage/MS Teams.
+Send messages and channel actions across Discord/Slack/Telegram/WhatsApp/Signal, plus extension channels such as email and X. To message someone in your Circles, use the `circles` tool (`action=send`) instead.
 
 Core actions:
 
-- `send` (text + optional media; MS Teams also supports `card` for Adaptive Cards)
-- `poll` (WhatsApp/Discord/MS Teams polls)
+- `send` (text + optional media)
+- `poll` (WhatsApp/Discord polls)
 - `react` / `reactions` / `read` / `edit` / `delete`
 - `pin` / `unpin` / `list-pins`
 - `permissions`
@@ -386,7 +435,7 @@ Core actions:
 Notes:
 
 - `send` routes WhatsApp via the Gateway; other channels go direct.
-- `poll` uses the Gateway for WhatsApp and MS Teams; Discord polls go direct.
+- `poll` uses the Gateway for WhatsApp; Discord polls go direct.
 - When a message tool call is bound to an active chat session, sends are constrained to that session’s target to avoid cross-context leaks.
 
 ### `cron`
@@ -401,8 +450,9 @@ Core actions:
 
 Notes:
 
-- `add` expects a full cron job object (same schema as `cron.add` RPC).
-- `update` uses `{ jobId, patch }` (`id` accepted for compatibility).
+- `add` takes `job`: `{ name, schedule, text | message, delivery?, retryUntilMs? }`. `text` is a reminder put into the main session; `message` runs its own agent turn.
+- `update` uses `{ id, patch }`; `remove`, `run` and `runs` take `id`; `wake` takes `text` and `mode`; `list` takes `includeDisabled`; `runs` takes `limit`.
+- See [Cron jobs](/automation/cron-jobs).
 
 ### `gateway`
 
@@ -430,7 +480,7 @@ Core parameters:
 - `sessions_list`: `kinds?`, `limit?`, `activeMinutes?`, `messageLimit?` (0 = none)
 - `sessions_history`: `sessionKey` (or `sessionId`), `limit?`, `includeTools?`
 - `sessions_send`: `sessionKey` (or `sessionId`), `message`, `timeoutSeconds?` (0 = fire-and-forget)
-- `sessions_spawn`: `task`, `label?`, `agentId?`, `model?`, `runTimeoutSeconds?`, `cleanup?`
+- `sessions_spawn`: `task`, `label?`, `agentId?`, `model?`, `thinking?`, `handoff?`, `runTimeoutSeconds?`, `timeoutSeconds?`, `cleanup?`
 - `session_status`: `sessionKey?` (default current; accepts `sessionId`), `model?` (`default` clears override)
 
 Notes:
@@ -479,7 +529,7 @@ Notes:
 
 ## Parameters (common)
 
-Gateway-backed tools (`canvas`, `nodes`, `cron`):
+Gateway-backed tools (`canvas`, `nodes`, `gateway`, `message`):
 
 - `gatewayUrl` (default `ws://127.0.0.1:19001`)
 - `gatewayToken` (if auth enabled)

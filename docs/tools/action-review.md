@@ -13,11 +13,15 @@ Some of what the agent can do should not happen without you. Action review holds
 
 ## What is reviewed
 
-| Class     | Tool calls                                                                                        | Default |
-| --------- | ------------------------------------------------------------------------------------------------- | ------- |
-| `spend`   | `wallet` sending USDC (`send_usdc`, `send_to_peer`) or paying for a resource (`pay_for_resource`) | ask     |
-| `publish` | `message` posting to the X channel                                                                | ask     |
-| `contact` | `message` sending to a named recipient the agent has never dealt with                             | first   |
+| Class       | Tool calls                                                                                                       | Default |
+| ----------- | ---------------------------------------------------------------------------------------------------------------- | ------- |
+| `spend`     | `wallet` sending USDC (`send_usdc`, `send_to_peer`) or paying for a resource (`pay_for_resource`)                | ask     |
+| `publish`   | `message` posting to the X channel                                                                               | ask     |
+| `contact`   | `message` sending to a named recipient the agent has never dealt with                                            | first   |
+| `spend`     | `purchase` with `rail: "privacy"`, `action: "request"` (creates a Privacy.com card; no standing grant covers it) | ask     |
+| `connector` | Connector (MCP) tools that change something                                                                      | ask     |
+
+Link purchases (`purchase` with the Link rail) are approved in the Link app, not here. A message aimed at `webchat` is sent back to the agent rather than queued: webchat is the Control UI conversation, not a way to reach anyone.
 
 Everything else runs as before. File writes are not reviewed. Shell commands keep their own rules (exec approvals and the sandbox) and are answered from this queue; see [Shell commands](#shell-commands).
 
@@ -67,7 +71,9 @@ Asking the same thing again does not create a second request: the agent retrying
   review: {
     spend: "ask", // or "allow": only the wallet's numeric caps apply
     publish: "ask", // or "allow": posts go straight out
-    ttlHours: 24, // how long a request waits before it expires
+    contact: "first", // "ask": every named recipient; "allow": none
+    connector: "ask", // or "allow": connector writes run unreviewed
+    ttlHours: 24, // how long a request waits before it expires (max 720)
   },
 }
 ```
@@ -79,7 +85,7 @@ Every outbound payment the spend gate allowed or refused is kept, with the amoun
 ## Where things live
 
 - Requests and decisions: `~/.bitterbot/review.sqlite`, separate from the memory database.
-- Gateway methods: `review.list`, `review.get`, `review.resolve`; events `review.requested`, `review.resolved`. All need `operator.approvals`.
+- Gateway methods: `review.list`, `review.get`, `review.resolve`, `review.spends`; events `review.requested`, `review.resolved`. All need `operator.approvals`.
 
 ## Connectors
 

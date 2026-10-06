@@ -355,7 +355,7 @@ After configuring multi-agent sandbox and tools:
 2. **Verify sandbox containers:**
 
    ```exec
-   docker ps --filter "name.bitterbot-sbx-"
+   docker ps --filter "name=bitterbot-sbx-"
    ```
 
 3. **Test tool restrictions:**

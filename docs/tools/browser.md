@@ -59,10 +59,11 @@ Browser settings live in `~/.bitterbot/bitterbot.json`.
 {
   browser: {
     enabled: true, // default: true
-    // cdpUrl: "http://127.0.0.1:18792", // legacy single-profile override
+    // cdpUrl: "http://127.0.0.1:19004", // legacy single-profile override
     remoteCdpTimeoutMs: 1500, // remote CDP HTTP timeout (ms)
     remoteCdpHandshakeTimeoutMs: 3000, // remote CDP WebSocket handshake timeout (ms)
     defaultProfile: "chrome",
+    perAgentProfiles: true, // default: true
     color: "#FF4500",
     headless: false,
     noSandbox: false,
@@ -80,7 +81,7 @@ Browser settings live in `~/.bitterbot/bitterbot.json`.
 Notes:
 
 - The browser control service binds to loopback on a port derived from `gateway.port`
-  (default: `18791`, which is gateway + 2). The relay uses the next port (`18792`).
+  (gateway + 2: `19003` with the default gateway port `19001`). The relay uses the next port (`19004`).
 - If you override the Gateway port (`gateway.port` or `BITTERBOT_GATEWAY_PORT`),
   the derived browser ports shift to stay in the same “family”.
 - `cdpUrl` defaults to the relay port when unset.
@@ -91,6 +92,7 @@ Notes:
 - Default profile is `chrome` (extension relay). Use `defaultProfile: "bitterbot"` for the managed browser.
 - Auto-detect order: system default browser if Chromium-based; otherwise Chrome → Brave → Edge → Chromium → Chrome Canary.
 - Local `bitterbot` profiles auto-assign `cdpPort`/`cdpUrl` — set those only for remote CDP.
+- `perAgentProfiles` (default `true`): an agent other than the default one that does not name a profile gets its own host profile, `agent-<id>`, created on first use, so agents never share cookies or logins. The default agent keeps `defaultProfile`. Set `false` to share one profile.
 
 ## Use Brave (or another Chromium-based browser)
 
@@ -280,7 +282,7 @@ Bitterbot supports multiple named profiles (routing configs). Profiles can be:
 Defaults:
 
 - The `bitterbot` profile is auto-created if missing.
-- The `chrome` profile is built-in for the Chrome extension relay (points at `http://127.0.0.1:18792` by default).
+- The `chrome` profile is built-in for the Chrome extension relay (points at `http://127.0.0.1:19004` by default).
 - Local CDP ports allocate from **18800–18899** by default.
 - Deleting a profile moves its local data directory to Trash.
 
@@ -295,7 +297,7 @@ Full guide: [Chrome extension](/tools/chrome-extension)
 Flow:
 
 - The Gateway runs locally (same machine) or a node host runs on the browser machine.
-- A local **relay server** listens at a loopback `cdpUrl` (default: `http://127.0.0.1:18792`).
+- A local **relay server** listens at a loopback `cdpUrl` (default: `http://127.0.0.1:19004`).
 - You click the **Bitterbot Browser Relay** extension icon on a tab to attach (it does not auto-attach).
 - The agent controls that tab via the normal `browser` tool, by selecting the right profile.
 
@@ -332,7 +334,7 @@ Optional: if you want a different name or relay port, create your own profile:
 bitterbot browser create-profile \
   --name my-chrome \
   --driver extension \
-  --cdp-url http://127.0.0.1:18792 \
+  --cdp-url http://127.0.0.1:19004 \
   --color "#00AA00"
 ```
 

@@ -57,7 +57,7 @@ Flags:
 ## Notes
 
 - Requires a running Gateway reachable by your current config (local or remote).
-- System events are ephemeral and not persisted across restarts.
+- Queued system events are saved by the gateway and restored after a restart if they are less than a day old.
 
 ## See also
 
