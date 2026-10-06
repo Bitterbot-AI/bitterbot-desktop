@@ -121,8 +121,8 @@ jobs:
           docker logs bbfly 2>&1 | tail -20
           [ "$code" = "200" ]
           # The gateway process runs as node, not root.
-          docker top bbfly -o user,args
-          [ "$(docker top bbfly -o user | tail -n +2 | grep -c '^root')" = "0" ]
+          docker top bbfly -o pid,user,args
+          [ "$(docker top bbfly -o pid,user | tail -n +2 | awk '{print $2}' | grep -c '^root$')" = "0" ]
           [ "$(stat -c %u /tmp/flydata)" = "1000" ]
 
   sandbox-images:
