@@ -23,13 +23,15 @@ class FakeRecorder {
 }
 
 class FakeAudio {
-  onended: (() => void) | null = null;
-  onerror: (() => void) | null = null;
+  listeners: Record<string, () => void> = {};
   src = "";
   paused = false;
   constructor(src: string) {
     this.src = src;
     playing.push(this);
+  }
+  addEventListener(type: string, cb: () => void) {
+    this.listeners[type] = cb;
   }
   play() {
     return Promise.resolve();

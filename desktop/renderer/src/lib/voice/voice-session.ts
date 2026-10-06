@@ -91,8 +91,8 @@ export async function startVoiceSession(onPhase: (p: VoicePhase, detail?: string
       if (gen !== generation || stopped) return;
       audio = new Audio(`data:${res.mimeType};base64,${res.audio}`);
       await new Promise<void>((resolve) => {
-        audio!.onended = () => resolve();
-        audio!.onerror = () => resolve();
+        audio!.addEventListener("ended", () => resolve(), { once: true });
+        audio!.addEventListener("error", () => resolve(), { once: true });
         void audio!.play().catch(() => resolve());
       });
     } catch (err) {
