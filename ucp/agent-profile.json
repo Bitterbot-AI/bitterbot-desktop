@@ -4,11 +4,18 @@
     "version": "2026-08-25",
     "services": {},
     "capabilities": {
-      "dev.ucp.shopping.catalog": [
+      "dev.ucp.shopping.catalog.search": [
         {
           "version": "2026-08-25",
           "spec": "https://ucp.dev/2026-08-25/specification/shopping/catalog",
-          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/catalog.json"
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/catalog_search.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/catalog",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/catalog_lookup.json"
         }
       ],
       "dev.ucp.shopping.cart": [
@@ -16,6 +23,13 @@
           "version": "2026-08-25",
           "spec": "https://ucp.dev/2026-08-25/specification/shopping/cart",
           "schema": "https://ucp.dev/2026-08-25/schemas/shopping/cart.json"
+        }
+      ],
+      "dev.ucp.shopping.permalink": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/permalink",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/permalink.json"
         }
       ]
     },
