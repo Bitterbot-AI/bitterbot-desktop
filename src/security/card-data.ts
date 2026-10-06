@@ -15,7 +15,7 @@
 
 const CARD_RUN = /(?<![\d])(?:\d[ -]?){12,18}\d(?![\d])/g;
 const SECURITY_CODE =
-  /\b(cvv2?|cvc2?|csc|cid|security\s*code|card\s*code|verification\s*(?:code|value))\b([\s"']*(?:is\s+|[:=#])?[\s"']*)(\d{3,4})(?!\d)/gi;
+  /\b(cvv2?|cvc2?|csc|cid|security\s*code|card\s*code|verification\s*(?:code|value))\b((?:[\s"']|\[ref=[^\]]*\])*(?:is\s+|[:=#])?[\s"']*)(\d{3,4})(?!\d)/gi;
 
 export function luhnValid(digits: string): boolean {
   let sum = 0;

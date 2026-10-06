@@ -140,4 +140,31 @@ describe("classifyToolCall", () => {
       }),
     ).toBeNull();
   });
+
+  it("holds a Privacy.com purchase request as a spend, and leaves Link requests to the Link app", () => {
+    expect(
+      classifyToolCall("purchase", {
+        action: "request",
+        rail: "privacy",
+        merchant_name: "Shop",
+        merchant_url: "https://shop.com",
+        amount_usd: 25,
+        context: "Running shoes, men's 9",
+      }),
+    ).toMatchObject({
+      cls: "spend",
+      payee: "Shop",
+      amountUsd: 25,
+      // Never covered by a standing grant, and the approver sees the real site.
+      noStandingGrant: true,
+      preview: expect.stringContaining("(shop.com)"),
+    });
+    expect(
+      classifyToolCall("purchase", { action: "request", rail: "privacy", merchant_name: "Shop" }),
+    ).toMatchObject({ missing: ["merchant_url", "amount_usd"] });
+    expect(classifyToolCall("purchase", { action: "request", amount_usd: 25 })).toBeNull();
+    expect(
+      classifyToolCall("purchase", { action: "fill_card", rail: "privacy", id: "prq_1" }),
+    ).toBeNull();
+  });
 });

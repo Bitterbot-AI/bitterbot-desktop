@@ -28,6 +28,12 @@ export type Classification = {
    * it is sent back to the agent to correct instead of being put to the owner.
    */
   missing?: string[];
+  /**
+   * A standing spend grant does not cover this: it must be approved one by
+   * one. Set for Privacy cards, whose payee is a name the agent typed and
+   * whose card works at any merchant.
+   */
+  noStandingGrant?: boolean;
   /** For contact: who the message goes to, as the call named them. */
   recipients?: ContactRecipient[];
 };
@@ -78,6 +84,35 @@ export function classifyToolCall(toolName: string, params: unknown): Classificat
     return null;
   }
   const name = toolName.trim().toLowerCase();
+
+  // A Privacy.com purchase (C4): Privacy has no approval of its own, so the
+  // request that creates the card is the owner's decision. Link requests are
+  // approved in the Link app and are not held here.
+  if (name === "purchase" && text(params.action) === "request" && text(params.rail) === "privacy") {
+    const amountUsd = amount(params.amount_usd);
+    const merchant = text(params.merchant_name) || "(no merchant)";
+    const missing = [
+      ...(text(params.merchant_name) ? [] : ["merchant_name"]),
+      ...(text(params.merchant_url) ? [] : ["merchant_url"]),
+      ...(amountUsd === undefined ? ["amount_usd"] : []),
+    ];
+    const why = text(params.context, 120);
+    let host = "";
+    try {
+      host = new URL(text(params.merchant_url, 400)).hostname;
+    } catch {
+      host = "(no valid URL)";
+    }
+    return {
+      cls: "spend",
+      // The site the card will be typed into, not only the name the agent gave it.
+      preview: `Buy from ${merchant} (${host}) for up to $${amountUsd?.toFixed(2) ?? "?"} with a single-use Privacy card${why ? `: ${why}` : ""}`,
+      payee: merchant,
+      amountUsd,
+      noStandingGrant: true,
+      ...(missing.length > 0 ? { missing } : {}),
+    };
+  }
 
   if (name === "wallet") {
     const action = text(params.action);
