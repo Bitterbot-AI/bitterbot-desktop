@@ -9,10 +9,12 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import type { FileOAuthProvider } from "./oauth.js";
 import type { McpServerSpec, McpServerStatus, McpToolSummary } from "./types.js";
 
 type Connection = {
   spec: McpServerSpec;
+  auth?: FileOAuthProvider;
   client: Client | null;
   tools: McpToolSummary[];
   state: McpServerStatus["state"];
@@ -22,12 +24,13 @@ type Connection = {
 
 export type McpClientFactory = (
   spec: McpServerSpec,
+  authProvider?: FileOAuthProvider,
 ) => Promise<Pick<Client, "listTools" | "callTool" | "close">>;
 
 const CONNECT_TIMEOUT_MS = 30_000;
 const CALL_TIMEOUT_MS = 120_000;
 
-export const defaultClientFactory: McpClientFactory = async (spec) => {
+export const defaultClientFactory: McpClientFactory = async (spec, authProvider) => {
   const client = new Client({ name: "bitterbot", version: "1.0.0" });
   const transport =
     spec.transport === "stdio"
@@ -39,6 +42,7 @@ export const defaultClientFactory: McpClientFactory = async (spec) => {
         })
       : new StreamableHTTPClientTransport(new URL(spec.url ?? ""), {
           requestInit: spec.headers ? { headers: spec.headers } : undefined,
+          ...(authProvider ? { authProvider } : {}),
         });
   await client.connect(transport, { timeout: CONNECT_TIMEOUT_MS });
   return client;
@@ -67,7 +71,20 @@ export class McpManager {
   private readonly connections = new Map<string, Connection>();
   private readonly listeners = new Set<() => void>();
 
-  constructor(private readonly factory: McpClientFactory = defaultClientFactory) {}
+  constructor(
+    private readonly factory: McpClientFactory = defaultClientFactory,
+    /** Builds the sign-in state holder for a server that uses OAuth. */
+    private readonly authFor?: (spec: McpServerSpec) => FileOAuthProvider,
+  ) {}
+
+  /** The sign-in state holder of a server, if it uses OAuth. */
+  authOf(name: string): FileOAuthProvider | undefined {
+    return this.connections.get(name)?.auth;
+  }
+
+  specOf(name: string): McpServerSpec | undefined {
+    return this.connections.get(name)?.spec;
+  }
 
   /** Called after any change to which tools exist. */
   onChange(fn: () => void): () => void {
@@ -101,8 +118,11 @@ export class McpManager {
   }
 
   async connect(spec: McpServerSpec): Promise<void> {
+    const auth =
+      spec.transport === "http" && spec.auth === "oauth" ? this.authFor?.(spec) : undefined;
     const conn: Connection = {
       spec,
+      auth,
       client: null,
       tools: [],
       state: spec.enabled ? "connecting" : "off",
@@ -110,13 +130,21 @@ export class McpManager {
     this.connections.set(spec.name, conn);
     if (!spec.enabled) return;
     try {
-      conn.client = (await this.factory(spec)) as Client;
+      conn.client = (await this.factory(spec, auth)) as Client;
       const listed = await conn.client.listTools();
       conn.tools = (listed.tools ?? []).map(summarize);
       conn.state = "connected";
       conn.connectedAt = Date.now();
       conn.error = undefined;
     } catch (err) {
+      if (auth?.pendingAuthorizationUrl) {
+        // The server wants the owner to sign in first. Not an error.
+        conn.state = "needs-sign-in";
+        conn.error = undefined;
+        await conn.client?.close().catch(() => {});
+        conn.client = null;
+        return;
+      }
       conn.state = "error";
       conn.error = (err instanceof Error ? err.message : String(err)).slice(0, 300);
       await conn.client?.close().catch(() => {});
@@ -147,6 +175,10 @@ export class McpManager {
       trustWrites: c.spec.trustWrites === true,
       state: c.state,
       ...(c.error ? { error: c.error } : {}),
+      ...(c.state === "needs-sign-in" && c.auth?.pendingAuthorizationUrl
+        ? { signInUrl: c.auth.pendingAuthorizationUrl }
+        : {}),
+      ...(c.auth ? { signedIn: c.auth.signedIn() } : {}),
       ...(c.connectedAt ? { connectedAt: c.connectedAt } : {}),
       tools: c.tools.map((t) => ({
         name: t.name,

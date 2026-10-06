@@ -9,6 +9,8 @@ export type McpServerSpec = {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /** "oauth": the server needs the owner to sign in (remote servers only). */
+  auth?: "none" | "oauth";
   enabled: boolean;
   /** Let this connector change things without asking each time. Default false. */
   trustWrites?: boolean;
@@ -26,8 +28,11 @@ export type McpServerStatus = {
   transport: McpServerSpec["transport"];
   enabled: boolean;
   trustWrites: boolean;
-  state: "connected" | "connecting" | "error" | "off";
+  state: "connected" | "connecting" | "error" | "off" | "needs-sign-in";
   error?: string;
+  /** Open this to sign in, when state is "needs-sign-in". */
+  signInUrl?: string;
+  signedIn?: boolean;
   tools: Array<{ name: string; readOnly: boolean; description?: string }>;
   connectedAt?: number;
 };

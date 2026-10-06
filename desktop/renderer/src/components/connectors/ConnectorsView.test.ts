@@ -32,4 +32,10 @@ describe("describeConnector", () => {
       text: "Not connected: 401 Unauthorized",
     });
   });
+
+  it("asks for a sign-in instead of calling it an error", () => {
+    expect(describeConnector(c({ state: "needs-sign-in", signInUrl: "https://a" })).text).toBe(
+      "Needs you to sign in",
+    );
+  });
 });

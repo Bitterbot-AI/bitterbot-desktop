@@ -26,6 +26,12 @@ bitterbot gateway call mcp.list
 
 Connectors are kept in `~/.bitterbot/mcp/servers.json` (mode 0600, since headers and environment can hold keys). The page shows whether each one is connected, its tools, and which of them change things.
 
+## Servers that need a sign-in
+
+Tick **This server needs me to sign in** when adding a remote server that uses OAuth. The card then shows **Sign in to …**: it opens the server's sign-in page in your browser, and after you approve you are sent back to the gateway (`http://127.0.0.1:<port>/mcp/oauth/callback`), which finishes the sign-in and connects. Tokens are refreshed automatically and kept per connector in `~/.bitterbot/mcp/oauth/` (0600). **Sign out** forgets them.
+
+The return address is on this machine, so sign in from a browser on the machine running the gateway, or through an SSH tunnel to its port.
+
 ## Reads and changes
 
 A tool the server declares read-only (`readOnlyHint`) runs straight away. Any other tool is treated as one that changes something: the call waits in the approval queue with the connector, the tool and its arguments, and runs once you approve it. A server that does not say counts as one that changes things.
@@ -41,6 +47,5 @@ To let one connector change things without asking, tick **Let this connector cha
 
 ## Limits
 
-- No sign-in flow yet: a server that needs OAuth cannot be connected. Servers that take an API key in a header work.
 - No built-in catalogue of servers; you add each one by address or command.
 - The agent sees text results; images and other content are described, not shown.
