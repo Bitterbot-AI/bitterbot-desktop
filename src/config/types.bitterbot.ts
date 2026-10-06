@@ -181,6 +181,11 @@ export type BitterbotConfig = {
   review?: ReviewConfig;
   /** Monitors: watch a page or API and wake the agent on change. Default: on. */
   monitors?: { enabled?: boolean };
+  /**
+   * Shopping on stores that support agent shopping (Shopify UCP): search,
+   * carts, and a checkout link for the owner. Default: on.
+   */
+  shop?: { enabled?: boolean; ucpProfileUrl?: string };
   /** Notices the gateway sends the owner: push target, quiet hours, rate limit. */
   notifications?: NotificationsConfig;
   commerce?: CommerceConfig;
