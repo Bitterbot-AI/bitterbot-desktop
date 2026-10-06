@@ -102,6 +102,12 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.nodes.browser.mode":
     'Node browser routing ("auto" = pick single connected browser node, "manual" = require node param, "off" = disable).',
   "gateway.nodes.browser.node": "Pin browser routing to a specific node id or name (optional).",
+  "payments.link.enabled":
+    "Let the agent buy things with a one-time card from your Stripe Link account. You approve each purchase in the Link app (default: false).",
+  "payments.link.perPurchaseCapUsd": "Most one Link purchase may be, in US dollars (default: 100).",
+  "payments.link.command":
+    'How to run Stripe\'s Link CLI (default: ["npx", "-y", "@stripe/link-cli@0.26.0"]).',
+  "payments.link.authFile": "Where the Link login is kept (default: ~/.bitterbot/link/auth.json).",
   "monitors.enabled":
     "Run monitors: watches on a page or API that are checked with a plain fetch and wake the agent only when something changes (default: true).",
   "notifications.owner.channel":

@@ -876,7 +876,7 @@
             "groups": [
               {
                 "group": "Wallet",
-                "pages": ["wallet/index", "wallet/wallet-funding"]
+                "pages": ["wallet/index", "wallet/wallet-funding", "wallet/link-purchases"]
               },
               {
                 "group": "Marketplace",

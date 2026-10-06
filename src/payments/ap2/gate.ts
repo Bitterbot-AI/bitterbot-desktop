@@ -57,7 +57,7 @@ export type SpendDecision = {
   id: string;
   ts: number;
   origin: SpendOrigin;
-  rail: "usdc" | "x402";
+  rail: "usdc" | "x402" | "card";
   payee: string;
   amountUsd: number;
   verdict: "allow" | "deny";
@@ -210,7 +210,12 @@ export function gateWallet(
   ctx: SpendContext,
   overrides?: Partial<GateDeps>,
 ): WalletService {
-  const base = (rail: "usdc" | "x402", payee: string, amountUsd: number, deps: GateDeps) => ({
+  const base = (
+    rail: "usdc" | "x402" | "card",
+    payee: string,
+    amountUsd: number,
+    deps: GateDeps,
+  ) => ({
     id: `sd-${crypto.randomBytes(5).toString("hex")}`,
     ts: deps.now(),
     origin: ctx.origin,
@@ -286,6 +291,38 @@ export function gateWallet(
       return result;
     },
   };
+}
+
+/**
+ * A card purchase through Link (PLAN-53 C1). The owner approves each one in
+ * the Link app, so the gate's part is the session cap and the record. Call it
+ * just before the card is used; it throws SpendRefusedError if refused.
+ */
+export function gateCardPurchase(
+  ctx: SpendContext,
+  spend: { payee: string; amountUsd: number; requestId: string },
+  overrides?: Partial<GateDeps>,
+): void {
+  const deps = resolveDeps(overrides);
+  const record = {
+    id: `sd-${crypto.randomBytes(5).toString("hex")}`,
+    ts: deps.now(),
+    origin: ctx.origin,
+    rail: "card" as const,
+    payee: spend.payee,
+    amountUsd: spend.amountUsd,
+    ...(ctx.sessionKey ? { sessionKey: ctx.sessionKey } : {}),
+    purpose: `Link spend request ${spend.requestId}${ctx.purpose ? `: ${ctx.purpose.slice(0, 200)}` : ""}`,
+  };
+  const auth = authorize({ ...ctx, approvalRequired: false }, spend, deps);
+  if (!auth.ok) {
+    safeRecord(deps, { ...record, verdict: "deny", reason: auth.reason, outcome: "refused" });
+    throw new SpendRefusedError(auth.message);
+  }
+  if (ctx.sessionKey) {
+    addSessionSpend(ctx.sessionKey, spend.amountUsd, deps.now());
+  }
+  safeRecord(deps, { ...record, verdict: "allow", reason: "approved in Link", outcome: "sent" });
 }
 
 export function resetSpendGateForTest(): void {

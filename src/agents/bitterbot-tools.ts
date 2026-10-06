@@ -36,6 +36,7 @@ import { createMessageTool } from "./tools/message-tool.js";
 import { createMonitorTool } from "./tools/monitor-tool.js";
 import { createNetworkStatusTool } from "./tools/network-status-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
+import { createPurchaseTool } from "./tools/purchase-tool.js";
 import { createRecallRangeTool } from "./tools/recall-range-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
@@ -278,6 +279,13 @@ export function createBitterbotTools(options?: {
     tools.push(walletTool);
   }
 
+  const purchaseTool = createPurchaseTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
+  if (purchaseTool) {
+    tools.push(purchaseTool);
+  }
   const a2aClientTool = createA2aClientTool({
     config: options?.config,
     agentSessionKey: options?.agentSessionKey,

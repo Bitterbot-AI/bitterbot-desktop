@@ -223,3 +223,30 @@ describe("gateWallet", () => {
     expect(sendUsdc).not.toHaveBeenCalled();
   });
 });
+
+describe("gateCardPurchase", () => {
+  it("records a Link purchase and counts it against the session", async () => {
+    const { gateCardPurchase } = await import("./gate.js");
+    gateCardPurchase(
+      { origin: "wallet-tool", sessionKey: "s9", sessionCapUsd: 50 },
+      { payee: "Mug Shop", amountUsd: 24.5, requestId: "lsrq_1" },
+      deps(),
+    );
+
+    expect(decisions[0]).toMatchObject({
+      rail: "card",
+      verdict: "allow",
+      reason: "approved in Link",
+      outcome: "sent",
+      amountUsd: 24.5,
+    });
+    expect(sessionSpentUsd("s9", now)).toBe(24.5);
+    expect(() =>
+      gateCardPurchase(
+        { origin: "wallet-tool", sessionKey: "s9", sessionCapUsd: 50 },
+        { payee: "Mug Shop", amountUsd: 30, requestId: "lsrq_2" },
+        deps(),
+      ),
+    ).toThrow(SpendRefusedError);
+  });
+});

@@ -1099,6 +1099,15 @@ export const BitterbotSchema = z
       .optional(),
     payments: z
       .object({
+        link: z
+          .object({
+            enabled: z.boolean().optional(),
+            perPurchaseCapUsd: z.number().positive().max(100_000).optional(),
+            command: z.array(z.string()).min(1).optional(),
+            authFile: z.string().optional(),
+          })
+          .strict()
+          .optional(),
         fiat: z
           .object({
             uiDollars: z.boolean().optional(),

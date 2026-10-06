@@ -19,6 +19,7 @@ export const DEFAULT_GATEWAY_HTTP_TOOL_DENY = [
   // gateway token alone could move funds with no approval (PLAN-53 C0).
   "wallet",
   "a2a_client",
+  "purchase",
 ] as const;
 
 /**

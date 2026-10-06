@@ -77,6 +77,8 @@ const OWNER_ONLY_TOOL_NAMES = new Set<string>([
   "code_interpreter",
   "computer_use",
   "browser",
+  // Card purchases from the owner's Link account (PLAN-53 C1).
+  "purchase",
   // Money. The wallet sends USDC and pays x402 resources with numeric caps as
   // its only limit, so a group member or any other non-owner sender could ask
   // the agent to pay them. Only the owner's own turns get the tool
