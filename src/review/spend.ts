@@ -34,6 +34,11 @@ export type GatedWalletContext = Omit<SpendContext, "requestApproval" | "approva
   };
 };
 
+/** Make the gate record into the review store, for callers that use it directly. */
+export function configureSpendGateForReview(): void {
+  ensureConfigured();
+}
+
 export function gatedWallet(wallet: WalletService, ctx: GatedWalletContext): WalletService {
   ensureConfigured();
   const { hold, ...rest } = ctx;

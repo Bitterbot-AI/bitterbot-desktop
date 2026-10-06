@@ -5,6 +5,20 @@
  * phases under `fiat`, each behind its own default-off kill switch.
  */
 export type PaymentsConfig = {
+  /**
+   * Card purchases through Stripe Link Agent Wallet (PLAN-53 C1). The agent
+   * asks for a one-time card for one merchant and amount; you approve each
+   * purchase in the Link app. Off by default.
+   */
+  link?: {
+    enabled?: boolean;
+    /** Most one purchase may be, in US dollars. Default: 100. */
+    perPurchaseCapUsd?: number;
+    /** How to run Stripe's Link CLI. Default: ["npx", "-y", "@stripe/link-cli@0.26.0"]. */
+    command?: string[];
+    /** Where the Link login is kept. Default: ~/.bitterbot/link/auth.json. */
+    authFile?: string;
+  };
   /** Fiat bridge (PLAN-49). Money-moving legs default OFF; Phase 1 is display-only. */
   fiat?: {
     /**
