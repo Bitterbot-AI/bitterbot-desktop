@@ -148,3 +148,33 @@ describe("tool names and results", () => {
     });
   });
 });
+
+describe("servers that need a sign-in", () => {
+  it("reports needs-sign-in with the address to open, instead of an error", async () => {
+    const { FileOAuthProvider } = await import("./oauth.js");
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const dir = await mkdtemp(path.join(tmpdir(), "mcp-oauth-"));
+    const factory: McpClientFactory = async (_spec, authProvider) => {
+      authProvider?.redirectToAuthorization(new URL("https://auth.example/authorize?x=1"));
+      throw new Error("Unauthorized");
+    };
+    const m = new McpManager(
+      factory,
+      (s) =>
+        new FileOAuthProvider(
+          path.join(dir, `${s.name}.json`),
+          "http://127.0.0.1:19001/mcp/oauth/callback",
+        ),
+    );
+
+    await m.sync([spec("cal", { auth: "oauth" })]);
+
+    expect(m.status()[0]).toMatchObject({
+      state: "needs-sign-in",
+      signInUrl: "https://auth.example/authorize?x=1",
+      signedIn: false,
+    });
+  });
+});

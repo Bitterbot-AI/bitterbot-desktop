@@ -81,6 +81,7 @@ export function parseServerSpec(input: Record<string, unknown>): McpServerSpec {
     }
     spec.url = url.toString();
     spec.headers = stringMap(input.headers, "headers");
+    if (input.auth === "oauth") spec.auth = "oauth";
   }
   return spec;
 }

@@ -11,8 +11,10 @@ export type ConnectorStatus = {
   transport: "stdio" | "http";
   enabled: boolean;
   trustWrites: boolean;
-  state: "connected" | "connecting" | "error" | "off";
+  state: "connected" | "connecting" | "error" | "off" | "needs-sign-in";
   error?: string;
+  signInUrl?: string;
+  signedIn?: boolean;
   connectedAt?: number;
   tools: Array<{ name: string; readOnly: boolean; description?: string }>;
 };
@@ -20,6 +22,7 @@ export type ConnectorStatus = {
 /** Plain words for a connector's state and what its tools can do. */
 export function describeConnector(c: ConnectorStatus): { tone: string; text: string } {
   if (!c.enabled) return { tone: "text-muted-foreground/60", text: "Off" };
+  if (c.state === "needs-sign-in") return { tone: "text-warning", text: "Needs you to sign in" };
   if (c.state === "error")
     return { tone: "text-danger", text: `Not connected: ${c.error ?? "unknown error"}` };
   if (c.state === "connecting") return { tone: "text-muted-foreground", text: "Connecting…" };
@@ -51,6 +54,7 @@ export function ConnectorsView() {
   const [kind, setKind] = useState<"http" | "stdio">("http");
   const [target, setTarget] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [useOAuth, setUseOAuth] = useState(false);
 
   const refresh = useCallback(async () => {
     if (status !== "connected") return;
@@ -90,7 +94,10 @@ export function ConnectorsView() {
         ...(kind === "http"
           ? {
               url: target.trim(),
-              ...(apiKey.trim() ? { headers: { Authorization: `Bearer ${apiKey.trim()}` } } : {}),
+              ...(useOAuth ? { auth: "oauth" } : {}),
+              ...(apiKey.trim() && !useOAuth
+                ? { headers: { Authorization: `Bearer ${apiKey.trim()}` } }
+                : {}),
             }
           : { command, args }),
       });
@@ -149,6 +156,16 @@ export function ConnectorsView() {
               className="md:col-span-2 h-8 px-3 text-sm font-mono rounded-lg border border-border/30 bg-transparent focus:border-brand focus:outline-none"
             />
             {kind === "http" && (
+              <label className="md:col-span-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={useOAuth}
+                  onChange={(e) => setUseOAuth(e.target.checked)}
+                />
+                This server needs me to sign in
+              </label>
+            )}
+            {kind === "http" && !useOAuth && (
               <input
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
@@ -193,6 +210,26 @@ export function ConnectorsView() {
                   </span>
                 </div>
                 <p className={cn("text-xs mt-0.5 break-words", state.tone)}>{state.text}</p>
+                {c.state === "needs-sign-in" && c.signInUrl && (
+                  <a
+                    href={c.signInUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block mt-1 px-3 py-1 text-xs rounded-lg font-medium bg-brand text-white hover:bg-brand/90"
+                  >
+                    Sign in to {c.name}
+                  </a>
+                )}
+                {c.signedIn && (
+                  <button
+                    onClick={() =>
+                      void run("Sign out failed", () => request("mcp.signOut", { name: c.name }))
+                    }
+                    className="block mt-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Sign out
+                  </button>
+                )}
                 {c.connectedAt && (
                   <p className="text-2xs text-muted-foreground/60">
                     Connected {formatRelativeTime(c.connectedAt)}
