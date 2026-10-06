@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { markCardEntry, resetCardEntryForTest } from "./card-entry.js";
 import {
   createReplayRecorder,
   deleteReplaySession,
@@ -21,7 +22,10 @@ beforeEach(() => {
   stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-replay-"));
   clock = 1_700_000_000_000;
 });
-afterEach(() => fs.rmSync(stateDir, { recursive: true, force: true }));
+afterEach(() => {
+  fs.rmSync(stateDir, { recursive: true, force: true });
+  resetCardEntryForTest();
+});
 
 const recorder = (over: Partial<Parameters<typeof createReplayRecorder>[0]> = {}) =>
   createReplayRecorder({
@@ -94,6 +98,18 @@ describe("replay recorder", () => {
     clock += 2 * 24 * 60 * 60 * 1000;
     await r.record({ sessionKey: "new", action: "act" });
     expect(listReplaySessions(stateDir).map((s) => s.sessionKey)).toEqual(["new"]);
+  });
+});
+
+describe("card entry", () => {
+  it("records nothing while a card may be on the page, and resumes after the window", async () => {
+    const capture = vi.fn(async () => jpeg);
+    const r = recorder({ capture });
+    markCardEntry(clock);
+    expect(await r.record({ sessionKey: "s", action: "act" })).toBeNull();
+    clock += 10 * 60 * 1000 + 1;
+    expect(await r.record({ sessionKey: "s", action: "act" })).not.toBeNull();
+    expect(capture).toHaveBeenCalledTimes(1);
   });
 });
 

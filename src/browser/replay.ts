@@ -13,6 +13,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { cardEntryActive } from "./card-entry.js";
 
 export const REPLAY_MIN_GAP_MS = 1_500;
 export const REPLAY_MAX_FRAMES_PER_SESSION = 300;
@@ -169,6 +170,10 @@ export function createReplayRecorder(deps: ReplayRecorderDeps) {
       return null;
     }
     if (!REPLAY_ACTIONS.has(params.action)) {
+      return null;
+    }
+    // A card was just typed into the page: it must not end up on disk.
+    if (cardEntryActive(now())) {
       return null;
     }
     const id = replaySessionId(params.sessionKey);

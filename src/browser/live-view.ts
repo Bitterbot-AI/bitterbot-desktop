@@ -18,6 +18,7 @@
  *     drop-if-slow so a slow client cannot back up the socket.
  */
 
+import { cardEntryActive } from "./card-entry.js";
 import { toCdpInput } from "./live-input.js";
 import type { ScreencastFrame, ScreencastHandle } from "./pw-screencast.js";
 import {
@@ -169,6 +170,10 @@ export function createBrowserLiveView(deps: LiveViewDeps) {
   };
 
   const onFrame = (targetId: string, frame: ScreencastFrame) => {
+    // Nobody sees a card being typed, not even the owner's own pane.
+    if (cardEntryActive()) {
+      return;
+    }
     if (!attached || attached.target.targetId !== targetId) {
       return;
     }
