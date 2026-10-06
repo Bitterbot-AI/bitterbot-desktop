@@ -523,7 +523,9 @@ export async function runEmbeddedAttempt(
       guestFace.isGuestTurn({
         senderIsOwner: params.senderIsOwner,
         isHeartbeat: params.isHeartbeat,
-        messageProvider: params.messageProvider,
+        // The same resolution as runtimeChannel: the gateway's agent call sets
+        // only messageChannel, inbound channel runs set messageProvider.
+        messageProvider: params.messageChannel ?? params.messageProvider,
         prompt: params.prompt,
       });
     if (guestTurn && params.sessionKey) {
@@ -553,7 +555,7 @@ export async function runEmbeddedAttempt(
             publicCard: await guestFace.loadPublicCard(effectiveWorkspace),
             mood: guestFace.moodWord(hormones),
             senderName: params.senderName ?? undefined,
-            channel: params.messageProvider ?? undefined,
+            channel: params.messageChannel ?? params.messageProvider ?? undefined,
             group: /:(group|channel):/.test(params.sessionKey ?? ""),
             canMessageOwner: true,
           });
