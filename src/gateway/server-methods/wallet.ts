@@ -152,7 +152,9 @@ export const walletHandlers: GatewayRequestHandlers = {
       const ceiling = checkFundingWithinCeiling({
         requestUsd: amountUsd,
         ceilingUsd: onramp.monthlyCeilingUsd,
-        priorTopUps: await listTopUps(defaultTopUpLedgerPath(loadConfig().tools?.wallet?.walletStorePath)),
+        priorTopUps: await listTopUps(
+          defaultTopUpLedgerPath(loadConfig().tools?.wallet?.walletStorePath),
+        ),
       });
 
       const svc = getWalletService();
