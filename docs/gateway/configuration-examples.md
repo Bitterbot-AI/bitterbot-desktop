@@ -124,7 +124,6 @@ Save to `~/.bitterbot/bitterbot.json` and you can DM the bot from that number.
         discord: "collect",
         slack: "collect",
         signal: "collect",
-        imessage: "collect",
         webchat: "collect",
       },
     },
@@ -317,7 +316,6 @@ Save to `~/.bitterbot/bitterbot.json` and you can DM the bot from that number.
         discord: ["steipete"],
         slack: ["U123"],
         signal: ["+15555550123"],
-        imessage: ["user@example.com"],
         webchat: ["session:demo"],
       },
     },
@@ -616,5 +614,5 @@ If more than one person can DM your bot (multiple entries in `allowFrom`, pairin
 
 - If you set `dmPolicy: "open"`, the matching `allowFrom` list must include `"*"`.
 - Provider IDs differ (phone numbers, user IDs, channel IDs). Use the provider docs to confirm the format.
-- Optional sections to add later: `web`, `browser`, `ui`, `discovery`, `canvasHost`, `talk`, `signal`, `imessage`.
+- Optional sections to add later: `web`, `browser`, `ui`, `discovery`, `canvasHost`, `talk`, `signal`.
 - See [Providers](/channels/whatsapp) and [Troubleshooting](/gateway/troubleshooting) for deeper setup notes.

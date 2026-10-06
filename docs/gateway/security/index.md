@@ -271,8 +271,8 @@ Bitterbot has two separate “who can trigger me?” layers:
   - When `dmPolicy="pairing"`, approvals are written to `~/.bitterbot/credentials/<channel>-allowFrom.json` (merged with config allowlists).
 - **Group allowlist** (channel-specific): which groups/channels/guilds the bot will accept messages from at all.
   - Common patterns:
-    - `channels.whatsapp.groups`, `channels.telegram.groups`, `channels.imessage.groups`: per-group defaults like `requireMention`; when set, it also acts as a group allowlist (include `"*"` to keep allow-all behavior).
-    - `groupPolicy="allowlist"` + `groupAllowFrom`: restrict who can trigger the bot _inside_ a group session (WhatsApp/Telegram/Signal/iMessage/Microsoft Teams).
+    - `channels.whatsapp.groups`, `channels.telegram.groups`: per-group defaults like `requireMention`; when set, it also acts as a group allowlist (include `"*"` to keep allow-all behavior).
+    - `groupPolicy="allowlist"` + `groupAllowFrom`: restrict who can trigger the bot _inside_ a group session (WhatsApp/Telegram/Signal).
     - `channels.discord.guilds` / `channels.slack.channels`: per-surface allowlists + mention defaults.
   - **Security note:** treat `dmPolicy="open"` and `groupPolicy="open"` as last-resort settings. They should be barely used; prefer pairing + allowlists unless you fully trust every member of the room.
 

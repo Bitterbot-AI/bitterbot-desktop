@@ -16,8 +16,8 @@ option here uses the same container image and keeps all state on a volume.
 ## The image
 
 `ghcr.io/bitterbot-ai/bitterbot-desktop` is published for `linux/amd64` and
-`linux/arm64` on every release, tagged `latest`, the full version (`1.2.0`),
-`1.2` and `1`. Pin a full version for predictable updates.
+`linux/arm64` on every release, tagged `latest`, the full version (`X.Y.Z`),
+`X.Y`, `X` and `sha-<commit>`. Pin a full version for predictable updates.
 
 | Path in the container   | What it holds                                         |
 | ----------------------- | ----------------------------------------------------- |
@@ -35,7 +35,8 @@ The image runs as the `node` user (uid 1000). The gateway reads its token from
    you do not need the CLI. This happens once, only while no device is paired,
    and only for the Control UI. The Fly and VPS templates turn it on with
    `BITTERBOT_BOOTSTRAP_PAIRING=1`; elsewhere set
-   `gateway.controlUi.bootstrapPairing: true`. Every browser after that asks for
+   `gateway.controlUi.bootstrapPairing: true` (the repository's
+   `docker-compose.yml` sets the env var too). Every browser after that asks for
    approval, which you give from an already-paired one or with
    `bitterbot devices approve`.
 3. Add a model key under **Models & Keys**, then start chatting. Connect chat
@@ -51,8 +52,12 @@ export BITTERBOT_GATEWAY_TOKEN="$(openssl rand -hex 32)"
 docker compose up -d bitterbot-gateway
 ```
 
-The Control UI is on `http://127.0.0.1:19001`. To serve your network, set
-`BITTERBOT_BIND_HOST=0.0.0.0` (with a strong token).
+The gateway starts unconfigured on a fresh directory (`--allow-unconfigured`),
+so you finish setup in the browser. The Control UI is on
+`http://127.0.0.1:19001`. To serve your network, set
+`BITTERBOT_BIND_HOST=0.0.0.0` (with a strong token). If the first browser is not
+paired automatically, approve it with
+`docker compose run --rm bitterbot-cli devices approve <requestId>`.
 
 ## Fly.io
 
@@ -92,7 +97,10 @@ newer image instead:
 - **VPS:** `/opt/bitterbot/update.sh` pulls the image, restarts, and waits for the
   gateway to answer. If it does not, it switches back to the previous image.
   `/opt/bitterbot/update.sh rollback` goes back by hand.
-- **Fly.io:** `fly deploy` builds on the newest image. `fly releases` lists past
+- **Fly.io:** `fly deploy` rebuilds on `latest`; a cached builder can reuse an
+  older `latest`, so pin a version with
+  `fly deploy --build-arg BITTERBOT_IMAGE=ghcr.io/bitterbot-ai/bitterbot-desktop:X.Y.Z`
+  (or add `--no-cache`). `fly releases` lists past
   releases; `fly deploy --image <previous image>` goes back to one.
 - **Compose:** `docker compose pull && docker compose up -d`. To go back, set
   `BITTERBOT_IMAGE` to the previous version tag and run `up -d` again.

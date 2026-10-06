@@ -93,4 +93,5 @@ continues your last thread.
 | `maxRepliesPerHour`    | `20`    | Most replies to one sender per hour           |
 | `mailbox`              | `INBOX` | Folder to watch                               |
 | `maxBodyChars`         | `20000` | Longest message body the agent reads          |
+| `responsePrefix`       |         | Text put before each reply                    |
 | `enabled`              | `true`  | Set `false` to stop without removing settings |

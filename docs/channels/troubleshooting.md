@@ -88,13 +88,3 @@ Full troubleshooting: [/channels/slack#troubleshooting](/channels/slack#troubles
 | Group replies do not trigger    | Check group allowlist and mention patterns | Add sender/group or loosen gating.                       |
 
 Full troubleshooting: [/channels/signal#troubleshooting](/channels/signal#troubleshooting)
-
-## Matrix
-
-### Matrix failure signatures
-
-| Symptom                             | Fastest check                                | Fix                                             |
-| ----------------------------------- | -------------------------------------------- | ----------------------------------------------- |
-| Logged in but ignores room messages | `bitterbot channels status --probe`          | Check `groupPolicy` and room allowlist.         |
-| DMs do not process                  | `bitterbot pairing list matrix`              | Approve sender or adjust DM policy.             |
-| Encrypted rooms fail                | Verify crypto module and encryption settings | Enable encryption support and rejoin/sync room. |

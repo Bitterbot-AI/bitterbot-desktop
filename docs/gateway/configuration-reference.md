@@ -236,18 +236,6 @@ WhatsApp runs through the gateway's web channel (Baileys Web). It starts automat
 
 **Reaction notification modes:** `off` (none), `own` (bot's messages, default), `all` (all messages), `allowlist` (from `guilds.<id>.users` on all messages).
 
-### Google Chat
-
-```json5
-{
-  channels: {},
-}
-```
-
-- Service account JSON: inline (`serviceAccount`) or file-based (`serviceAccountFile`).
-- Env fallbacks: `GOOGLE_CHAT_SERVICE_ACCOUNT` or `GOOGLE_CHAT_SERVICE_ACCOUNT_FILE`.
-- Use `spaces/<spaceId>` or `users/<userId|email>` for delivery targets.
-
 ### Slack
 
 ```json5
@@ -401,7 +389,7 @@ Run multiple accounts per channel (each with its own `accountId`):
 
 ### Group chat mention gating
 
-Group messages default to **require mention** (metadata mention or regex patterns). Applies to WhatsApp, Telegram, Discord, Google Chat, and iMessage group chats.
+Group messages default to **require mention** (metadata mention or regex patterns). Applies to WhatsApp, Telegram, Discord, and iMessage group chats.
 
 **Mention types:**
 
@@ -821,7 +809,7 @@ See [Session Pruning](/concepts/session-pruning) for behavior details.
 ```
 
 - Non-Telegram channels require explicit `*.blockStreaming: true` to enable block replies.
-- Channel overrides: `channels.<channel>.blockStreamingCoalesce` (and per-account variants). Signal/Slack/Discord/Google Chat default `minChars: 1500`.
+- Channel overrides: `channels.<channel>.blockStreamingCoalesce` (and per-account variants). Signal/Slack/Discord default `minChars: 1500`.
 - `humanDelay`: randomized pause between block replies. `natural` = 800–2500ms. Per-agent override: `agents.list[].humanDelay`.
 
 See [Streaming](/concepts/streaming) for behavior + chunking details.
@@ -1249,7 +1237,7 @@ Variables are case-insensitive. `{think}` is an alias for `{thinkingLevel}`.
 - Per-channel overrides: `channels.<channel>.ackReaction`, `channels.<channel>.accounts.<id>.ackReaction`.
 - Resolution order: account → channel → `messages.ackReaction` → identity fallback.
 - Scope: `group-mentions` (default), `group-all`, `direct`, `all`.
-- `removeAckAfterReply`: removes ack after reply (Slack/Discord/Telegram/Google Chat only).
+- `removeAckAfterReply`: removes ack after reply (Slack/Discord/Telegram only).
 
 ### Inbound debounce
 
@@ -2032,7 +2020,7 @@ The same notice is not repeated within 30 minutes.
 - `replay` keeps a screenshot after each page action the agent takes, for playback in the Activity panel. `enabled: false` stops recording; `retentionDays` (1-90, default 7) sets how long a recording is kept after its last frame. See [Session replay](/tools/browser#session-replay).
 - Remote profiles are attach-only (start/stop/reset disabled).
 - Auto-detect order: default browser if Chromium-based → Chrome → Brave → Edge → Chromium → Chrome Canary.
-- Control service: loopback only (port derived from `gateway.port`, default `18791`).
+- Control service: loopback only, on `gateway.port + 2` (19003 by default).
 
 ---
 
@@ -2130,7 +2118,7 @@ The Control UI is served by the gateway itself at `http://127.0.0.1:19001/` and 
 **Shared token auth (normal path):**
 The Control UI authenticates using `gateway.auth.token` — the same shared token the CLI uses. The UI obtains it automatically from the gateway's same-origin loopback handoff endpoint (`/auth/session-token`); for a remote gateway, the first-run screen accepts the token manually. The onboarding wizard generates the token automatically; nothing is baked into the UI build.
 
-**Device auth is NOT required for the Control UI.** Device identity (Ed25519 keypair pairing) is only used by non-browser clients: the CLI, iOS/Android apps, and remote gateways. The Control UI authenticates purely with the shared token.
+**Device pairing.** A Control UI connecting over loopback skips device pairing. A remote Control UI (LAN, tailnet, a hosted server) also proves a device identity and needs a one-time approval, or bootstrap pairing (below) for the very first device.
 
 **`controlUi` fields:**
 
@@ -2138,6 +2126,7 @@ The Control UI authenticates using `gateway.auth.token` — the same shared toke
 - `basePath`: optional prefix path for the gateway's built-in dashboard endpoint.
 - `allowedOrigins`: browser origins allowed to open WebSocket connections. When unset, the gateway allows loopback origins and origins matching the request Host header (including `http://localhost:5173`) automatically.
 - `allowedHosts`: extra hostnames the token handoff endpoint answers for (for example a Tailscale Serve name). Loopback names are always allowed; anything else is refused to block DNS-rebinding.
+- `bootstrapPairing` (default `false`, or on when `BITTERBOT_BOOTSTRAP_PAIRING=1`): pair the first Control UI device that proves the gateway token, once, while no device is paired. The Fly, VPS and Compose setups turn it on.
 - `allowInsecureAuth` (default `false`): allow shared-token auth over plain HTTP from non-loopback origins. Not recommended.
 - `dangerouslyDisableDeviceAuth` (default `false`): break-glass flag that strips device identity checks. Not needed for normal browser access — only use for emergency recovery.
 
