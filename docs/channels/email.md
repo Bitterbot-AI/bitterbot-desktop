@@ -53,16 +53,24 @@ The agent only answers mail that passes all of these:
 - The sender is in `allowFrom`: an address, `@domain.com` for a whole domain, or
   `*` for anyone. Nobody is allowed until you set it.
 - **Your mail server verified the sender.** A From line is easy to forge, so the
-  channel reads the `Authentication-Results` header your provider adds and
-  requires DMARC to pass, or a DKIM signature from the sender's own domain. Turn
-  this off with `requireAuthenticated: false` only for a server that adds no such
-  header.
+  channel reads the `Authentication-Results` header your provider adds (only the
+  topmost one: anything lower down could have been written by the sender) and
+  requires DMARC to pass for the sender's domain, or a DKIM signature from that
+  domain. Set `authservId` to your provider's name in that header (for Gmail,
+  `mx.google.com`) to trust only its verdict. Turn the check off with
+  `requireAuthenticated: false` only for a server that adds no such header.
 - A person wrote it: auto-replies, bounces, mailing lists and bulk mail are
   ignored, and the agent's own replies say `Auto-Submitted: auto-replied` so
   other auto-responders leave them alone.
 
 Every message it looks at is marked read, whether it answers or not, so nothing
-is handled twice.
+is handled twice. Messages over 5 MB are marked read and never downloaded. The
+agent sends at most `maxRepliesPerHour` replies to one sender, so a misbehaving
+auto-responder cannot start a mail loop.
+
+An exact address in `allowFrom` is treated as the owner, with the owner's tools,
+unless `commands.ownerAllowFrom` names someone else. Put only your own addresses
+there, or set `commands.ownerAllowFrom`.
 
 ## How replies look
 
@@ -81,6 +89,8 @@ continues your last thread.
 | `imap`, `smtp`         |         | `host`, `port`, `secure`, `user`, `password`  |
 | `allowFrom`            | nobody  | Addresses, `@domains`, or `*`                 |
 | `requireAuthenticated` | `true`  | Require DMARC or same-domain DKIM to pass     |
+| `authservId`           |         | Trust only this server's verdict              |
+| `maxRepliesPerHour`    | `20`    | Most replies to one sender per hour           |
 | `mailbox`              | `INBOX` | Folder to watch                               |
 | `maxBodyChars`         | `20000` | Longest message body the agent reads          |
 | `enabled`              | `true`  | Set `false` to stop without removing settings |
