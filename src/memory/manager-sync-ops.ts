@@ -270,6 +270,7 @@ class MemoryManagerSyncOps {
     const db = new DatabaseSync(dbPath, {
       allowExtension: this.settings.store.vector.enabled,
     });
+    restrictDbFilePermissions(dbPath);
     // Tune for concurrent writer workload. Without WAL, the default
     // rollback journal + synchronous=FULL + busy_timeout=0 serialized
     // every writer and failed reads on contention — dream cycles,
@@ -1496,3 +1497,24 @@ class MemoryManagerSyncOps {
 }
 
 export const memoryManagerSyncOps = MemoryManagerSyncOps.prototype;
+
+/**
+ * Owner-only perms on the memory database (security pass M6). It holds every
+ * memory chunk plus the circles sender keys and roster, yet landed at the
+ * process umask (typically 0644) while `identity/box.json` was 0600. Chmod
+ * the main file BEFORE journal_mode=WAL creates -wal/-shm (SQLite gives those
+ * the main file's mode) and fix any that already exist. Best-effort; POSIX
+ * modes mean nothing on Windows, where the per-user profile ACL applies.
+ */
+export function restrictDbFilePermissions(dbPath: string): void {
+  if (process.platform === "win32" || dbPath === ":memory:") {
+    return;
+  }
+  for (const file of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    try {
+      fsSync.chmodSync(file, 0o600);
+    } catch {
+      // absent sidecar or a read-only mount: nothing to tighten
+    }
+  }
+}

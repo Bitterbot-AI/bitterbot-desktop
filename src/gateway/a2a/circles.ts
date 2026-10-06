@@ -359,7 +359,14 @@ export function handleCircleJoin(
     typeof body.mailbox_url === "string" && /^https?:\/\//.test(body.mailbox_url)
       ? body.mailbox_url
       : undefined;
-  const peerId = validPeerId(body.peer_id);
+  // Stage4 MED-7 (partial): a peer_id is a self-claimed dial hint. Refuse
+  // one another member of this circle already holds, so a member cannot
+  // redirect dials (and fake delivery receipts) meant for someone else.
+  const claimedPeerId = validPeerId(body.peer_id);
+  const peerId =
+    claimedPeerId && !store.peerIdHeldByOther(env.circle_id, env.author_pubkey, claimedPeerId)
+      ? claimedPeerId
+      : undefined;
   store.addMember({
     circleId: env.circle_id,
     memberPubkey: env.author_pubkey,
@@ -463,6 +470,27 @@ export function handleCirclePresence(
   if (!auth.ok) {
     return { ok: false, error: auth.error };
   }
+  // Security pass M3: presence REPLACES state (endpoints, box key, peer_id),
+  // so a captured older beat replayed inside the skew window could roll a
+  // member's endpoints back. Signed envelope ts is monotonic per sender, so
+  // keep a per-(circle, member) high-water mark and drop anything OLDER. An
+  // equal ts is the same beat arriving twice (mesh + HTTP copies) and stays
+  // idempotent rather than surfacing an error to the sender.
+  const presenceTs = auth.envelope.ts;
+  const hwm = db
+    .prepare(
+      `SELECT last_presence_ts FROM circle_members WHERE circle_id = ? AND member_pubkey = ?`,
+    )
+    .get(auth.envelope.circle_id, auth.envelope.author_pubkey) as
+    | { last_presence_ts: number | null }
+    | undefined;
+  if (hwm?.last_presence_ts != null && presenceTs < hwm.last_presence_ts) {
+    return err(A2aErrorCodes.INVALID_REQUEST, "stale presence (replay)");
+  }
+  db.prepare(
+    `UPDATE circle_members SET last_presence_ts = MAX(COALESCE(last_presence_ts, 0), ?)
+      WHERE circle_id = ? AND member_pubkey = ?`,
+  ).run(presenceTs, auth.envelope.circle_id, auth.envelope.author_pubkey);
   const body = auth.envelope.body as Record<string, unknown>;
   const a2aUrl =
     typeof body.a2a_url === "string" && /^https?:\/\//.test(body.a2a_url) ? body.a2a_url : null;
@@ -514,7 +542,10 @@ export function handleCirclePresence(
   // is signed-envelope-bound like everything above; it is a dial hint, never
   // authentication).
   const beatPeerId = validPeerId(body.peer_id);
-  if (beatPeerId) {
+  if (
+    beatPeerId &&
+    !auth.store.peerIdHeldByOther(auth.envelope.circle_id, auth.envelope.author_pubkey, beatPeerId)
+  ) {
     auth.store.setMemberPeerId(auth.envelope.circle_id, auth.envelope.author_pubkey, beatPeerId);
   }
   return { ok: true, result: { seenAt: now } };
@@ -598,8 +629,8 @@ function storeInboundMessage(
   db.prepare(
     `INSERT INTO circle_messages
        (message_id, circle_id, author_pubkey, direction, kind, thread_id, content,
-        scan_severity, envelope_id, created_at, reply_to, agent_authored)
-     VALUES (?, ?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        scan_severity, envelope_id, created_at, reply_to, agent_authored, system_target)
+     VALUES (?, ?, ?, 'in', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     messageId,
     env.circle_id,
@@ -612,6 +643,8 @@ function storeInboundMessage(
     now,
     replyTo,
     agentAuthored,
+    // M2: the named member, so the UI can offer "remove on my node too".
+    systemNotice ? (body.removed_pubkey as string) : null,
   );
   // Out-of-order retraction: the author's `message.delete` event can arrive
   // BEFORE the message it targets (mailbox drain lag, sync from a third
@@ -931,7 +964,7 @@ export function handleCircleEventsSince(
   params: { envelope?: unknown },
   db: DatabaseSync,
   now: number = Date.now(),
-): CircleOutcome<{ events: CircleEventRecord[] }> {
+): CircleOutcome<{ events: CircleEventRecord[]; truncated: boolean }> {
   const auth = authorizeCircleEnvelope(db, params.envelope, KNOWN_SCOPES.ledgerRead, { now });
   if (!auth.ok) {
     return { ok: false, error: auth.error };
@@ -960,10 +993,22 @@ export function handleCircleEventsSince(
     claimed_at: number;
     received_at: number;
   }>;
+  // Security pass LOW-11: 500 rows of peer-authored bodies can be many MB.
+  // Stop at a byte budget; the caller pages on with the last receivedAt.
+  let budget = EVENTS_SINCE_MAX_BYTES;
+  let kept = 0;
+  for (const r of rows) {
+    budget -= r.body_json.length + r.envelope_json.length;
+    if (budget < 0 && kept > 0) break;
+    kept += 1;
+  }
+  // More may exist when the byte budget cut the page OR the row limit filled.
+  const truncated = kept < rows.length || rows.length === limit;
   return {
     ok: true,
     result: {
-      events: rows.map((r) => ({
+      truncated,
+      events: rows.slice(0, kept).map((r) => ({
         eventId: r.event_id,
         circleId: r.circle_id,
         authorPubkey: r.author_pubkey,
@@ -981,6 +1026,9 @@ export function handleCircleEventsSince(
     },
   };
 }
+
+/** Response budget for one circle/events.since page (LOW-11). */
+const EVENTS_SINCE_MAX_BYTES = 1_000_000;
 
 function safeJsonRecord(json: string): Record<string, JsonValue> {
   try {
@@ -1028,6 +1076,9 @@ export function handleCircleSenderKey(
     senderPubkey: auth.envelope.author_pubkey,
     boxKeys: keys,
     body: auth.envelope.body as { key_id?: unknown; sealed?: unknown },
+    // Order keys by the sender's signed time, not arrival: a mailboxed old
+    // key drained after its successor must not look newer.
+    sentAt: auth.envelope.ts * 1000,
   });
   return { ok: true, result: { stored } };
 }

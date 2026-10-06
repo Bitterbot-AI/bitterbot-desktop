@@ -87,6 +87,13 @@ export function resolveTopicCircle(db: DatabaseSync, topic: string): string | nu
       return r.circle_id;
     }
   }
+  // L2: a sender that has not yet seen the newest member add publishes one
+  // epoch behind. Exact matches win above; this only rescues lagging frames.
+  for (const r of rows) {
+    if (r.key_epoch > 0 && circleTopicId(r.circle_id, r.key_epoch - 1) === topic) {
+      return r.circle_id;
+    }
+  }
   return null;
 }
 

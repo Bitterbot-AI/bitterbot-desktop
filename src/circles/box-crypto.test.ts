@@ -1,5 +1,14 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { generateBoxKeyPair, openBox, sealToBox } from "./box-crypto.js";
+import {
+  generateBoxKeyPair,
+  loadBoxKeys,
+  loadOrCreateBoxKeys,
+  openBox,
+  sealToBox,
+} from "./box-crypto.js";
 
 // PLAN-31 C1 §3.2: sealed-box crypto for the mailbox. The property under
 // test: only the recipient's box private key opens a blob; any tamper or
@@ -41,5 +50,37 @@ describe("mailbox sealed boxes", () => {
 
   it("rejects malformed pubkeys at seal time", () => {
     expect(() => sealToBox("dG9vLXNob3J0", "x")).toThrow(/32 raw bytes/);
+  });
+});
+
+describe("box key custody (security pass M4)", () => {
+  const tmpFile = () =>
+    path.join(fs.mkdtempSync(path.join(os.tmpdir(), "box-keys-")), "identity", "box.json");
+
+  it("creates once, then loads the same key", () => {
+    const file = tmpFile();
+    expect(loadBoxKeys(file)).toBeNull();
+    const a = loadOrCreateBoxKeys(file);
+    expect(loadOrCreateBoxKeys(file).publicKeyB64).toBe(a.publicKeyB64);
+    if (process.platform !== "win32") {
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it("refuses to replace a corrupt key file and leaves its bytes alone", () => {
+    const file = tmpFile();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, "{ truncated");
+    expect(() => loadOrCreateBoxKeys(file)).toThrow(/unreadable/);
+    expect(fs.readFileSync(file, "utf8")).toBe("{ truncated");
+  });
+
+  it("never leaves temp files behind and keeps the path out of the error", () => {
+    const file = tmpFile();
+    loadOrCreateBoxKeys(file);
+    expect(fs.readdirSync(path.dirname(file))).toEqual(["box.json"]);
+    fs.writeFileSync(file, "");
+    expect(() => loadBoxKeys(file)).toThrow(/^circle box key is unreadable/);
+    expect(() => loadBoxKeys(file)).not.toThrow(new RegExp(path.dirname(file)));
   });
 });
