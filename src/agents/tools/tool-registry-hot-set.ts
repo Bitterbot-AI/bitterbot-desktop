@@ -52,6 +52,12 @@ export const TOOL_DEFINITION_CHARS_PER_TOKEN = 2.6;
  */
 export const HOT_SET_DEFAULT_ALWAYS: readonly string[] = ["read", "memory_search"];
 /**
+ * `message_owner` exists only on guest turns (someone other than the owner is
+ * talking). There, offering to pass a message on is the agent's answer to
+ * anything private, so whenever it is registered it is hot, outside the cap.
+ */
+export const HOT_WHEN_PRESENT: readonly string[] = ["message_owner"];
+/**
  * `create_artifact` is hot in chat although it is rarely called: it is what
  * puts a page, chart or game in front of the person, and a deferred tool the
  * model has to think to search for loses to `write`, which is always there.
@@ -230,6 +236,13 @@ export function selectHotTools(params: {
     if (hot.length >= hotSet.max) {
       break;
     }
+    const tool = byName.get(name);
+    if (tool && !hotKeys.has(name)) {
+      hot.push(tool);
+      hotKeys.add(name);
+    }
+  }
+  for (const name of HOT_WHEN_PRESENT) {
     const tool = byName.get(name);
     if (tool && !hotKeys.has(name)) {
       hot.push(tool);

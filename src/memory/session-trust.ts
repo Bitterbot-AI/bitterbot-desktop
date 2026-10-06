@@ -23,6 +23,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isGuestSession } from "./guest-sessions.js";
 import { classifyRunOrigin, isLearnableOrigin } from "./skill-evolution/run-origin.js";
 
 const log = createSubsystemLogger("memory/session-trust");
@@ -47,6 +48,10 @@ export function classifySessionKeyTrust(sessionKey: string): SessionTrust {
   const origin = classifyRunOrigin(sessionKey);
   if (origin === "unknown") {
     return "unknown";
+  }
+  // A direct chat where someone other than the owner talked (guest turn).
+  if (isGuestSession(sessionKey)) {
+    return "untrusted";
   }
   return isLearnableOrigin(origin) ? "first_party" : "untrusted";
 }
