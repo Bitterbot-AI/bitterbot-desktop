@@ -63,6 +63,12 @@ export type GatewayControlUiConfig = {
    * DNS-rebinding control described in control-ui-session-token.ts.
    */
   allowedHosts?: string[];
+  /**
+   * Pair the first Control UI device that proves the gateway token, while no
+   * device is paired yet, so a cloud-hosted gateway can be set up from the
+   * browser alone. Later devices still need approval. Default: true.
+   */
+  bootstrapPairing?: boolean;
   /** Allow token-only auth over insecure HTTP (default: false). */
   allowInsecureAuth?: boolean;
   /** DANGEROUS: Disable device identity checks for the Control UI (default: false). */

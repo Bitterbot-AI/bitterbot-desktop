@@ -51,6 +51,9 @@ COPY . .
 RUN pnpm build
 
 ENV NODE_ENV=production
+# Tells the gateway it lives in a container, so the in-app updater points at
+# pulling a newer image instead of updating code that the image would replace.
+ENV BITTERBOT_INSTALL_KIND=container
 
 # Allow non-root user to write temp files during runtime/tests.
 RUN chown -R node:node /app

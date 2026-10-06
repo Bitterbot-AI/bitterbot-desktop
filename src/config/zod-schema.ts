@@ -408,6 +408,7 @@ export const BitterbotSchema = z
             // (a Tailscale Serve name, say). Loopback names are always allowed.
             // This is a DNS-rebinding control: see control-ui-session-token.ts.
             allowedHosts: z.array(z.string()).optional(),
+            bootstrapPairing: z.boolean().optional(),
             allowInsecureAuth: z.boolean().optional(),
             dangerouslyDisableDeviceAuth: z.boolean().optional(),
           })

@@ -1,0 +1,137 @@
+#cloud-config
+# Bitterbot on a plain VPS (PLAN-53 F1): Ubuntu 22.04/24.04 or Debian 12.
+#
+# Paste this as the server's user data. Optionally set BITTERBOT_DOMAIN below
+# to a DNS name that points at the server: Caddy then serves the Control UI
+# over HTTPS with a certificate from Let's Encrypt. Without a domain the
+# gateway listens on 127.0.0.1 only; reach it with
+#   ssh -L 19001:127.0.0.1:19001 root@<server>   and open http://127.0.0.1:19001
+#
+# The gateway token is written to /root/bitterbot-token.txt (and shown at
+# login). Full guide: docs/platforms/docker.md.
+
+write_files:
+  - path: /opt/bitterbot/settings.env
+    permissions: "0600"
+    content: |
+      # Edit before first boot, or later and run: systemctl restart bitterbot
+      BITTERBOT_DOMAIN=
+      BITTERBOT_IMAGE=ghcr.io/bitterbot-ai/bitterbot-desktop:latest
+
+  - path: /opt/bitterbot/docker-compose.yml
+    permissions: "0644"
+    content: |
+      services:
+        gateway:
+          image: ${BITTERBOT_IMAGE}
+          environment:
+            HOME: /home/node
+            BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN}
+          volumes:
+            - /opt/bitterbot/data:/home/node/.bitterbot
+          ports:
+            - "127.0.0.1:19001:19001"
+            # P2P mesh (skills, circles). Remove the line to stay off the mesh.
+            - "9100:9100"
+          init: true
+          restart: unless-stopped
+          command: ["node", "bitterbot.mjs", "gateway", "--bind", "lan", "--port", "19001"]
+        caddy:
+          image: caddy:2
+          profiles: ["https"]
+          command: ["caddy", "reverse-proxy", "--from", "${BITTERBOT_DOMAIN}", "--to", "gateway:19001"]
+          ports:
+            - "80:80"
+            - "443:443"
+          volumes:
+            - /opt/bitterbot/caddy:/data
+          restart: unless-stopped
+
+  - path: /opt/bitterbot/up.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Start (or restart) Bitterbot with the current settings.
+      set -eu
+      cd /opt/bitterbot
+      set -a; . ./settings.env; . ./secrets.env; set +a
+      if [ -n "${BITTERBOT_DOMAIN}" ]; then
+        exec docker compose --profile https up -d --remove-orphans
+      fi
+      exec docker compose up -d --remove-orphans
+
+  - path: /opt/bitterbot/update.sh
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Update to the newest image; roll back if the new one does not come up.
+      #   /opt/bitterbot/update.sh            newest image for the configured tag
+      #   /opt/bitterbot/update.sh rollback   go back to the image before the last update
+      set -eu
+      cd /opt/bitterbot
+      set -a; . ./settings.env; set +a
+      healthy() {
+        for _ in $(seq 1 60); do
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:19001/ || true)
+          case "$code" in 2*|3*|401|403) return 0 ;; esac
+          sleep 3
+        done
+        return 1
+      }
+      if [ "${1:-}" = "rollback" ]; then
+        prev=$(cat previous-image 2>/dev/null || true)
+        [ -n "$prev" ] || { echo "No previous image recorded."; exit 1; }
+        docker tag "$prev" "$BITTERBOT_IMAGE"
+        ./up.sh
+        healthy && echo "Rolled back to $prev." || { echo "Rolled back, but the gateway is not answering."; exit 1; }
+        exit 0
+      fi
+      current=$(docker image inspect --format '{{.Id}}' "$BITTERBOT_IMAGE" 2>/dev/null || true)
+      docker pull "$BITTERBOT_IMAGE"
+      latest=$(docker image inspect --format '{{.Id}}' "$BITTERBOT_IMAGE")
+      if [ "$current" = "$latest" ]; then echo "Already up to date."; exit 0; fi
+      [ -n "$current" ] && echo "$current" > previous-image
+      ./up.sh
+      if healthy; then echo "Updated."; exit 0; fi
+      echo "The new image did not come up; rolling back."
+      [ -n "$current" ] && docker tag "$current" "$BITTERBOT_IMAGE" && ./up.sh
+      exit 1
+
+  - path: /opt/bitterbot/first-boot.sh
+    permissions: "0700"
+    content: |
+      #!/bin/sh
+      set -eu
+      command -v docker >/dev/null 2>&1 || curl -fsSL https://get.docker.com | sh
+      mkdir -p /opt/bitterbot/data /opt/bitterbot/caddy
+      # The image runs as uid 1000 (node).
+      chown -R 1000:1000 /opt/bitterbot/data
+      umask 077
+      if [ ! -f /opt/bitterbot/secrets.env ]; then
+        echo "BITTERBOT_GATEWAY_TOKEN=$(openssl rand -hex 32)" > /opt/bitterbot/secrets.env
+      fi
+      sed -n 's/^BITTERBOT_GATEWAY_TOKEN=//p' /opt/bitterbot/secrets.env > /root/bitterbot-token.txt
+      umask 022
+      printf '\nBitterbot: gateway token in /root/bitterbot-token.txt\n  update: /opt/bitterbot/update.sh  (rollback: update.sh rollback)\n  settings: /opt/bitterbot/settings.env, then systemctl restart bitterbot\n\n' > /etc/motd
+      systemctl daemon-reload
+      systemctl enable --now bitterbot.service
+
+  - path: /etc/systemd/system/bitterbot.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Bitterbot gateway
+      After=docker.service network-online.target
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/opt/bitterbot/up.sh
+      ExecStop=/usr/bin/docker compose -f /opt/bitterbot/docker-compose.yml --profile https down
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - [sh, /opt/bitterbot/first-boot.sh]

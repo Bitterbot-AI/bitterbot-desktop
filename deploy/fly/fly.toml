@@ -1,0 +1,44 @@
+# Bitterbot on Fly.io (PLAN-53 F1). Always on, state on a volume.
+#
+#   fly launch --copy-config --no-deploy --name <your-app>   (from deploy/fly)
+#   fly volumes create bitterbot_data --size 3
+#   fly secrets set BITTERBOT_GATEWAY_TOKEN="$(openssl rand -hex 32)"
+#   fly deploy
+#
+# Then open https://<your-app>.fly.dev, paste the token, and add a model key
+# under Models & Keys. Full guide: docs/platforms/docker.md.
+
+app = "bitterbot-change-me"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  HOME = "/home/node"
+
+[[mounts]]
+  source = "bitterbot_data"
+  destination = "/home/node/.bitterbot"
+
+# The Control UI and gateway API over HTTPS.
+[http_service]
+  internal_port = 19001
+  force_https = true
+  # An agent that sleeps cannot run its schedules, dreams or monitors.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+# P2P mesh (skills, circles). Optional; remove if you do not want it.
+[[services]]
+  protocol = "tcp"
+  internal_port = 9100
+
+  [[services.ports]]
+    port = 9100
+
+[[vm]]
+  memory = "2gb"
+  cpu_kind = "shared"
+  cpus = 2

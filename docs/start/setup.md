@@ -25,7 +25,7 @@ Last updated: 2026-01-01
 
 - Node `>=22`
 - `pnpm`
-- Docker (optional; only for containerized setup/e2e — see [Docker](/install/docker))
+- Docker (optional; only for containerized setup/e2e — see [Docker](/platforms/docker))
 
 ### System dependencies (one-time setup)
 
