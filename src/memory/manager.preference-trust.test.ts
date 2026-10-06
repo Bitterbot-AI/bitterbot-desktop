@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { getMemorySearchManager } from "./index.js";
 import { buildSessionEntry } from "./session-files.js";
 
@@ -47,7 +48,9 @@ async function indexSessionAs(sessionKey: string): Promise<number> {
   process.env.HOME = root;
   process.env.USERPROFILE = root;
   const workspaceDir = path.join(root, "workspace");
-  const sessionsDir = path.join(root, ".bitterbot", "agents", "main", "sessions");
+  // Ask the code where the session store lives (on Windows, and with a state
+  // dir override, it is not simply $HOME/.bitterbot).
+  const sessionsDir = resolveSessionTranscriptsDirForAgent("main");
   await fs.mkdir(path.join(workspaceDir, "memory"), { recursive: true });
   await fs.mkdir(sessionsDir, { recursive: true });
   const sessionFile = path.join(sessionsDir, "session-a.jsonl");
