@@ -62,6 +62,8 @@ Each extracted fact is classified into one of four epistemic types:
 
 ### Layer 3: User Model
 
+Only the owner's own conversations teach preferences. Group chats, guests (anyone else in a direct chat), agent-to-agent tasks and subagents never do, whether the preference is found by the extraction model or by the simpler pattern match run at indexing time.
+
 The `UserModelManager` aggregates directive-type facts into a `user_preferences` table organized by category:
 
 | Category                | Examples                                      |

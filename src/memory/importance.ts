@@ -111,3 +111,20 @@ export function computeImportanceBoost(importanceScore: number, weight: number):
   }
   return 1 - weight + weight * importanceScore;
 }
+
+/**
+ * How much emotional charge slows forgetting. The configured value (default
+ * 0.5) is the baseline and the hormones add to it; the hormonal figure used
+ * to replace it, which at resting levels left charged memories about 0.08.
+ * Capped at 0.8 so even the most charged memory still fades without use.
+ */
+export function resolveEmotionDecayResistance(params: {
+  enabled?: boolean;
+  configured?: number;
+  hormonal?: number;
+}): number {
+  if (params.enabled === false) {
+    return 0;
+  }
+  return Math.min(0.8, (params.configured ?? 0.5) + (params.hormonal ?? 0));
+}
