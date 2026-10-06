@@ -107,6 +107,10 @@ async function fetchJson(
   }
 }
 
+/** A string or number field as text; anything else is empty. */
+const text = (v: unknown): string =>
+  typeof v === "string" ? v : typeof v === "number" ? String(v) : "";
+
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -138,7 +142,7 @@ export async function discoverEndpoint(
       `${new URL(origin).hostname} does not offer agent shopping (no UCP endpoint). Send the owner the store's link instead.`,
     );
   }
-  const endpoint = String(mcp.endpoint);
+  const endpoint = text(mcp.endpoint);
   if (!endpointAllowed(origin, endpoint)) {
     throw new ShopError(
       `${new URL(origin).hostname} points its shopping endpoint somewhere else; not using it.`,
@@ -190,7 +194,7 @@ export async function callStore(
           ? body.error.data
           : "";
     throw new ShopError(
-      `The store refused: ${String(body.error.message ?? "error")}${detail ? ` (${detail})` : ""}`,
+      `The store refused: ${text(body.error.message) || "error"}${detail ? ` (${detail})` : ""}`,
       typeof data.continue_url === "string" ? data.continue_url : undefined,
     );
   }
@@ -244,13 +248,13 @@ export function summarizeProduct(p: Record<string, unknown>, maxVariants = 12): 
   const hi = money(range.max);
   const variants = Array.isArray(p.variants) ? p.variants.filter(isRecord) : [];
   return {
-    id: String(p.id ?? ""),
-    title: String(p.title ?? ""),
+    id: text(p.id),
+    title: text(p.title),
     url: typeof p.url === "string" ? p.url : null,
     price: lo && hi && lo !== hi ? `${lo} to ${hi}` : lo,
     variants: variants.slice(0, maxVariants).map((v) => ({
-      id: String(v.id ?? ""),
-      title: String(v.title ?? ""),
+      id: text(v.id),
+      title: text(v.title),
       price: money(v.price),
       available:
         isRecord(v.availability) && typeof v.availability.available === "boolean"
@@ -276,12 +280,12 @@ export function summarizeCart(c: Record<string, unknown>): CartSummary {
   const total = totals.find((t) => t.type === "total") ?? totals.find((t) => t.type === "subtotal");
   const messages = Array.isArray(c.messages) ? c.messages.filter(isRecord) : [];
   return {
-    cartId: String(c.id ?? ""),
+    cartId: text(c.id),
     items: lines.map((l) => {
       const item = isRecord(l.item) ? l.item : {};
       return {
-        variantId: String(item.id ?? ""),
-        title: String(item.title ?? ""),
+        variantId: text(item.id),
+        title: text(item.title),
         quantity: typeof l.quantity === "number" ? l.quantity : 0,
         price: formatMoney(item.price, currency),
       };

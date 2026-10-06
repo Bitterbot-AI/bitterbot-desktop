@@ -42,12 +42,13 @@ describe("store addresses", () => {
 describe("calling a store", () => {
   it("discovers the endpoint, names the agent profile, and returns structured content", async () => {
     const calls: Array<{ url: string; body?: unknown }> = [];
-    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
       calls.push({
-        url: String(url),
-        body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        url,
+        body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
       });
-      if (String(url).endsWith("/.well-known/ucp")) {
+      if (url.endsWith("/.well-known/ucp")) {
         return json(discovery("https://shop-a.myshopify.com/api/ucp/mcp"));
       }
       return json({ jsonrpc: "2.0", id: 1, result: { structuredContent: { products: [] } } });
@@ -91,8 +92,10 @@ describe("calling a store", () => {
   });
 
   it("passes the store's refusal and its continue_url through", async () => {
-    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
-      String(url).endsWith("/.well-known/ucp")
+    const fetchImpl = vi.fn(async (input: string | URL | Request) =>
+      (typeof input === "string" ? input : input instanceof URL ? input.href : input.url).endsWith(
+        "/.well-known/ucp",
+      )
         ? json(discovery("https://shop-c.com/api/ucp/mcp"))
         : json({
             jsonrpc: "2.0",
