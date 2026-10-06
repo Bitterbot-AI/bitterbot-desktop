@@ -20,6 +20,7 @@ import {
   type ContactRecipient,
   type ReviewClass,
 } from "./classify.js";
+import { getConnectorExecutor } from "./connectors.js";
 import { contactKey, normalizeContact } from "./contacts.js";
 import { holdGrantReservation } from "./grant-reservations.js";
 import { REVIEW_DEFAULT_TTL_MS, type ReviewAction, type ReviewStore } from "./store.js";
@@ -34,6 +35,8 @@ export type ReviewPolicy = {
    * never dealt with, "ask" for every one, "allow" for none.
    */
   contact: "first" | "ask" | "allow";
+  /** Connector tools that change things (D5): "ask" (default) or "allow". */
+  connector: "ask" | "allow";
   ttlMs: number;
 };
 
@@ -41,6 +44,7 @@ export const DEFAULT_REVIEW_POLICY: ReviewPolicy = {
   spend: "ask",
   publish: "ask",
   contact: "first",
+  connector: "ask",
   ttlMs: REVIEW_DEFAULT_TTL_MS,
 };
 
@@ -283,7 +287,12 @@ export class ReviewService {
   }
 
   private async execute(action: ReviewAction): Promise<ExecutionResult> {
-    const executor = this.deps.executors.get(action.tool);
+    const connector = getConnectorExecutor();
+    const executor =
+      this.deps.executors.get(action.tool) ??
+      (action.cls === "connector" && connector
+        ? (a: ReviewAction) => connector(a.tool, a.params)
+        : undefined);
     if (!executor) {
       return { ok: false, summary: `no executor is registered for the ${action.tool} tool` };
     }

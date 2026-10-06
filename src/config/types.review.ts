@@ -25,6 +25,12 @@ export type ReviewConfig = {
    * conversation are never held.
    */
   contact?: "first" | "ask" | "allow";
+  /**
+   * Connector tools (MCP servers) that change something: "ask" (default) holds
+   * the call for approval; "allow" runs it. Tools a server declares read-only
+   * always run, and a connector marked trustWrites skips this.
+   */
+  connector?: "ask" | "allow";
   /** How long a request waits for a decision before it expires. Default: 24. */
   ttlHours?: number;
 };

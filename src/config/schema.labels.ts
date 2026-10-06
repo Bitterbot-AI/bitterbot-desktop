@@ -259,6 +259,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "review.spend": "Review: Spending",
   "review.publish": "Review: Public Posts",
   "review.contact": "Review: Messages to New Recipients",
+  "review.connector": "Review: Connector Changes",
   "review.ttlHours": "Review Request Lifetime (hours)",
   "browser.liveView.enabled": "Browser Live View Enabled",
   "browser.liveView.maxFps": "Browser Live View Max FPS",

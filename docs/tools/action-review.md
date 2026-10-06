@@ -81,6 +81,10 @@ Every outbound payment the spend gate allowed or refused is kept, with the amoun
 - Requests and decisions: `~/.bitterbot/review.sqlite`, separate from the memory database.
 - Gateway methods: `review.list`, `review.get`, `review.resolve`; events `review.requested`, `review.resolved`. All need `operator.approvals`.
 
+## Connectors
+
+A connector tool that changes something (anything an MCP server does not declare read-only) waits here with the connector, the tool and its arguments. Read-only tools run. See [Connectors](/tools/connectors) for trusting one connector, and `review.connector: "allow"` to turn this off.
+
 ## Shell commands
 
 Commands that need approval under [exec approvals](/tools/exec-approvals) show up in the same queue. The exec tool still does the asking and the waiting; the queue is one more place to answer, and the place the answer is recorded.

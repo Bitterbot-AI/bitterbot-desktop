@@ -1152,6 +1152,7 @@ export const BitterbotSchema = z
         spend: z.union([z.literal("ask"), z.literal("allow")]).optional(),
         publish: z.union([z.literal("ask"), z.literal("allow")]).optional(),
         contact: z.union([z.literal("first"), z.literal("ask"), z.literal("allow")]).optional(),
+        connector: z.union([z.literal("ask"), z.literal("allow")]).optional(),
         ttlHours: z
           .number()
           .positive()

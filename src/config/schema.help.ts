@@ -129,6 +129,8 @@ export const FIELD_HELP: Record<string, string> = {
     'Public posts on the X channel. "ask" (default) holds the post for your approval; "allow" posts straight away.',
   "review.contact":
     'Messages the agent addresses to a named recipient. "first" (default) holds only a message to someone it has never dealt with; "ask" holds every one; "allow" holds none. Replies in the current conversation are never held.',
+  "review.connector":
+    'Connector (MCP) tools that change something: "ask" (default) holds them for your approval; "allow" runs them. Read-only tools always run.',
   "review.ttlHours": "How long a held action waits for a decision before it expires (default: 24).",
   "browser.liveView.enabled":
     "Stream the agent's browser to the Control UI's computer pane while it is open (default: true). Set false to turn the stream off.",

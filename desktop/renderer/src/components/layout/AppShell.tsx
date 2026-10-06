@@ -6,6 +6,7 @@ import { ToolCallPanel } from "../chat/ToolCallPanel";
 import { CirclesGlobalSync } from "../circles/CirclesGlobalSync";
 import { CirclesView } from "../circles/CirclesView";
 import { ConfigView } from "../config/ConfigView";
+import { ConnectorsView } from "../connectors/ConnectorsView";
 import { CronView } from "../cron/CronView";
 import { DreamsView } from "../dreams/DreamsView";
 import { ActiveGuardsView } from "../guards/ActiveGuardsView";
@@ -32,6 +33,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   channels: () => <ChannelsView />,
   usage: () => <UsageView />,
   cron: () => <CronView />,
+  connectors: () => <ConnectorsView />,
   agents: () => <AgentsView />,
   skills: () => <SkillsView />,
   guards: () => <ActiveGuardsView />,

@@ -114,8 +114,12 @@ export function normalizeToolName(name: string) {
   return TOOL_NAME_ALIASES[normalized] ?? normalized;
 }
 
+/** Connector (MCP) tools reach the owner's own accounts: owner-only (PLAN-53 D2). */
+export const CONNECTOR_TOOL_PREFIX = "mcp__";
+
 export function isOwnerOnlyToolName(name: string) {
-  return OWNER_ONLY_TOOL_NAMES.has(normalizeToolName(name));
+  const normalized = normalizeToolName(name);
+  return OWNER_ONLY_TOOL_NAMES.has(normalized) || normalized.startsWith(CONNECTOR_TOOL_PREFIX);
 }
 
 export function applyOwnerOnlyToolPolicy(tools: AnyAgentTool[], senderIsOwner: boolean) {
