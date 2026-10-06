@@ -36,4 +36,16 @@ describe("connector tools in review", () => {
     setConnectorTools("cal", []);
     expect(classifyToolCall("mcp__cal__create_event", {})).toBeNull();
   });
+
+  it("is shared with a second copy of this module, as the plugin SDK bundle has", async () => {
+    // A fresh module instance stands in for the copy inside dist/plugin-sdk.
+    const { vi } = await import("vitest");
+    vi.resetModules();
+    const other = await import("./connectors.js?copy");
+    other.setConnectorTools("mail", [
+      ["mcp__mail__send", { server: "mail", tool: "send", readOnly: false, trustWrites: false }],
+    ]);
+
+    expect(classifyToolCall("mcp__mail__send", { to: "x" })?.cls).toBe("connector");
+  });
 });

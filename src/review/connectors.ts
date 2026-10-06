@@ -24,11 +24,29 @@ export type ConnectorExecutor = (
   params: unknown,
 ) => Promise<{ ok: boolean; summary: string }>;
 
-const tools = new Map<string, ConnectorToolInfo>();
-let executor: ConnectorExecutor | null = null;
+/**
+ * Kept on a process-wide symbol, not in module scope. Extensions load the
+ * plugin SDK from its own bundle (dist/plugin-sdk), so a module-level map
+ * there and the one the review stage reads in the gateway bundle were two
+ * different maps: the connector's "this tool changes things" never reached
+ * the approval check, and connector writes ran unreviewed.
+ */
+type ConnectorState = { tools: Map<string, ConnectorToolInfo>; executor: ConnectorExecutor | null };
+const STATE_KEY = Symbol.for("bitterbot.connectorReviewState");
+
+function state(): ConnectorState {
+  const g = globalThis as unknown as Record<symbol, ConnectorState | undefined>;
+  let s = g[STATE_KEY];
+  if (!s) {
+    s = { tools: new Map(), executor: null };
+    g[STATE_KEY] = s;
+  }
+  return s;
+}
 
 /** Replace every registered tool of one connector (on connect or refresh). */
 export function setConnectorTools(server: string, list: Array<[string, ConnectorToolInfo]>): void {
+  const { tools } = state();
   for (const [name, info] of tools) {
     if (info.server === server) tools.delete(name);
   }
@@ -38,19 +56,19 @@ export function setConnectorTools(server: string, list: Array<[string, Connector
 }
 
 export function getConnectorTool(toolName: string): ConnectorToolInfo | undefined {
-  return tools.get(toolName);
+  return state().tools.get(toolName);
 }
 
 /** How an approved connector write is carried out: installed by the connector plugin. */
 export function setConnectorExecutor(fn: ConnectorExecutor | null): void {
-  executor = fn;
+  state().executor = fn;
 }
 
 export function getConnectorExecutor(): ConnectorExecutor | null {
-  return executor;
+  return state().executor;
 }
 
 export function resetConnectorsForTest(): void {
-  tools.clear();
-  executor = null;
+  state().tools.clear();
+  state().executor = null;
 }
