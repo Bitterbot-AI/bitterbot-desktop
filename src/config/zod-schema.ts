@@ -1006,6 +1006,7 @@ export const BitterbotSchema = z
         payment: z
           .object({
             enabled: z.boolean().optional(),
+            allowUnsignedProofs: z.boolean().optional(),
             x402: z
               .object({
                 address: z

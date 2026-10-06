@@ -9,6 +9,11 @@ const browser = vi.hoisted(() => ({
 }));
 vi.mock("../../browser/client.js", () => ({ browserTabs: browser.tabs }));
 vi.mock("../../browser/client-actions.js", () => ({ browserAct: browser.act }));
+const linkCli = vi.hoisted(() => ({ run: vi.fn() }));
+vi.mock("../../payments/link/cli.js", async (orig) => ({
+  ...(await orig<typeof import("../../payments/link/cli.js")>()),
+  createLinkCliRunner: () => linkCli.run,
+}));
 import { createPurchaseTool } from "./purchase-tool.js";
 
 const privacyOnly = { payments: { privacy: { enabled: true, apiKey: "pk_test" } } };
@@ -76,5 +81,22 @@ describe("purchase tool rails", () => {
       process.env.USERPROFILE = prevProfile;
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("types a Link card only into a tab on the approved shop", async () => {
+    linkCli.run.mockResolvedValue({
+      id: "lsrq_1",
+      status: "approved",
+      merchant_name: "Mug Shop",
+      merchant_url: "https://mugs.example",
+      amount: 2500,
+    });
+    const tool = createPurchaseTool({ config: { payments: { link: { enabled: true } } } })!;
+    await expect(
+      tool.execute("4", { action: "fill_card", id: "lsrq_1", number_ref: "e1", targetId: "t1" }),
+    ).rejects.toThrow(/not on mugs\.example/);
+    expect(browser.act).not.toHaveBeenCalled();
+    // The card was never fetched from Link either.
+    expect(linkCli.run.mock.calls.some((c) => (c[0] as string[]).includes("card"))).toBe(false);
   });
 });
