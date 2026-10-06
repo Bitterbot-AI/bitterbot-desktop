@@ -167,4 +167,15 @@ describe("classifyToolCall", () => {
       classifyToolCall("purchase", { action: "fill_card", rail: "privacy", id: "prq_1" }),
     ).toBeNull();
   });
+
+  it("sends a webchat message back to the agent instead of asking the owner", () => {
+    expect(
+      classifyToolCall("message", {
+        action: "send",
+        channel: "webchat",
+        to: "sylvia",
+        message: "hi",
+      }),
+    ).toMatchObject({ cls: "contact", invalid: expect.stringContaining("circles tool") });
+  });
 });

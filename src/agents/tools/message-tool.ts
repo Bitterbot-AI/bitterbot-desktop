@@ -448,7 +448,10 @@ function buildMessageToolDescription(options?: {
   currentChannel?: string;
   currentChannelId?: string;
 }): string {
-  const baseDescription = "Send, delete, and manage messages via channel plugins.";
+  // A Circles friend is not on a channel plugin; seen 2026-10-06, the agent
+  // tried message(channel: "webchat", to: "sylvia") and it could never deliver.
+  const baseDescription =
+    "Send, delete, and manage messages via channel plugins (Telegram, WhatsApp, Discord, Slack, Signal, email and so on). To message someone in your Circles, use the circles tool (action=send) instead.";
 
   // If we have a current channel, show only its supported actions
   if (options?.currentChannel) {
