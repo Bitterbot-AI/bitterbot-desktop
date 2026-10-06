@@ -87,7 +87,10 @@ const plugin = {
       await manager.sync(next);
       return manager.status();
     };
-    const fail = (respond: (ok: boolean, p?: unknown, e?: unknown) => void, err: unknown) =>
+    type Respond = Parameters<
+      Parameters<BitterbotPluginApi["registerGatewayMethod"]>[1]
+    >[0]["respond"];
+    const fail = (respond: Respond, err: unknown) =>
       respond(false, undefined, {
         code: "INVALID_REQUEST",
         message: err instanceof Error ? err.message : String(err),
