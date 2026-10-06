@@ -12,33 +12,33 @@ app = "bitterbot-change-me"
 primary_region = "iad"
 
 [build]
-  dockerfile = "Dockerfile"
+dockerfile = "Dockerfile"
 
 [env]
-  HOME = "/home/node"
+HOME = "/home/node"
 
 [[mounts]]
-  source = "bitterbot_data"
-  destination = "/home/node/.bitterbot"
+source = "bitterbot_data"
+destination = "/home/node/.bitterbot"
 
 # The Control UI and gateway API over HTTPS.
 [http_service]
-  internal_port = 19001
-  force_https = true
-  # An agent that sleeps cannot run its schedules, dreams or monitors.
-  auto_stop_machines = "off"
-  auto_start_machines = true
-  min_machines_running = 1
+internal_port = 19001
+force_https = true
+# An agent that sleeps cannot run its schedules, dreams or monitors.
+auto_stop_machines = "off"
+auto_start_machines = true
+min_machines_running = 1
 
 # P2P mesh (skills, circles). Optional; remove if you do not want it.
 [[services]]
-  protocol = "tcp"
-  internal_port = 9100
+protocol = "tcp"
+internal_port = 9100
 
-  [[services.ports]]
-    port = 9100
+[[services.ports]]
+port = 9100
 
 [[vm]]
-  memory = "2gb"
-  cpu_kind = "shared"
-  cpus = 2
+memory = "2gb"
+cpu_kind = "shared"
+cpus = 2
