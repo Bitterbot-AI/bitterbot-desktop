@@ -121,6 +121,7 @@ const READ_METHODS = new Set([
   "wallet.getBalance",
   "wallet.getHistory",
   "wallet.getConfig",
+  "wallet.listTopUps",
   "wallet.fund",
   "dream.status",
   "dream.history",

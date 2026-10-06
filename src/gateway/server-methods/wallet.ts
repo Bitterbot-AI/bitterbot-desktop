@@ -1,4 +1,10 @@
 import { loadConfig, writeConfigFile } from "../../config/config.js";
+import {
+  defaultTopUpLedgerPath,
+  listTopUps,
+  recordTopUp,
+  sessionIdFromClientSecret,
+} from "../../payments/fiat/topup-ledger.js";
 import { gatedWallet } from "../../review/spend.js";
 import { createHostedOnrampSession, DEFAULT_ONRAMP_URL } from "../../services/hosted-onramp.js";
 import { createOnrampSession } from "../../services/stripe-onramp.js";
@@ -146,6 +152,9 @@ export const walletHandlers: GatewayRequestHandlers = {
       const ceiling = checkFundingWithinCeiling({
         requestUsd: amountUsd,
         ceilingUsd: onramp.monthlyCeilingUsd,
+        priorTopUps: await listTopUps(
+          defaultTopUpLedgerPath(loadConfig().tools?.wallet?.walletStorePath),
+        ),
       });
 
       const svc = getWalletService();
@@ -318,6 +327,79 @@ export const walletHandlers: GatewayRequestHandlers = {
     }
   },
 
+  /**
+   * A funding session finished (PLAN-53 C5). Records the top-up once so the
+   * monthly ceiling counts it. With local Stripe keys the amount is read back
+   * from Stripe; otherwise the amount the funding page reports is used.
+   */
+  "wallet.recordTopUp": async ({ params, respond }) => {
+    const sessionId = typeof params.sessionId === "string" ? params.sessionId.trim() : "";
+    const reported =
+      typeof params.amountUsd === "number" && Number.isFinite(params.amountUsd)
+        ? params.amountUsd
+        : NaN;
+    if (!/^cos_[A-Za-z0-9]+$/.test(sessionId)) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.INVALID_REQUEST, "a Stripe onramp sessionId (cos_...) is required"),
+      );
+      return;
+    }
+    try {
+      const config = loadConfig();
+      const walletConfig = config.tools?.wallet;
+      const secretKey = walletConfig?.stripe?.secretKey ?? process.env.STRIPE_SECRET_KEY ?? "";
+      let amountUsd = reported;
+      let source: "stripe-verified" | "reported" = "reported";
+      if (secretKey) {
+        const { readOnrampSession } = await import("../../services/stripe-onramp.js");
+        const session = await readOnrampSession(secretKey, sessionId);
+        if (session.status !== "fulfillment_complete") {
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.INVALID_REQUEST, `session is ${session.status}, not complete`),
+          );
+          return;
+        }
+        if (session.amountUsd !== null) {
+          amountUsd = session.amountUsd;
+          source = "stripe-verified";
+        }
+      }
+      if (!(amountUsd > 0)) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "amountUsd (positive number) required"),
+        );
+        return;
+      }
+      const recorded = await recordTopUp(defaultTopUpLedgerPath(walletConfig?.walletStorePath), {
+        sessionId,
+        amountUsd,
+        atMs: Date.now(),
+        source,
+        network: walletConfig?.network ?? "base-sepolia",
+      });
+      respond(true, { recorded, amountUsd, source });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+
+  "wallet.listTopUps": async ({ respond }) => {
+    const walletConfig = loadConfig().tools?.wallet;
+    respond(true, {
+      topUps: await listTopUps(defaultTopUpLedgerPath(walletConfig?.walletStorePath)),
+    });
+  },
+
   "wallet.stripeOnramp": async ({ respond }) => {
     try {
       const config = loadConfig();
@@ -326,6 +408,33 @@ export const walletHandlers: GatewayRequestHandlers = {
       const svc = getWalletService();
       const walletAddress = await svc.getAddress();
       const network = (walletConfig?.network ?? "base-sepolia") as "base" | "base-sepolia";
+
+      // PLAN-53 C5: the monthly funding ceiling is enforced here, where money
+      // comes in, against the top-ups already completed this period. The
+      // amount is chosen inside Stripe's widget, so a session is refused once
+      // the ceiling is used up; one top-up can still go past what remains.
+      const ceilingUsd = config.payments?.fiat?.onramp?.monthlyCeilingUsd;
+      if (ceilingUsd !== undefined) {
+        const { checkFundingWithinCeiling } = await import("../../payments/fiat/funding-policy.js");
+        const headroom = checkFundingWithinCeiling({
+          requestUsd: 0.01,
+          ceilingUsd,
+          priorTopUps: await listTopUps(defaultTopUpLedgerPath(walletConfig?.walletStorePath)),
+        });
+        if (!headroom.allowed) {
+          respond(
+            false,
+            undefined,
+            errorShape(
+              ErrorCodes.INVALID_REQUEST,
+              ceilingUsd === 0
+                ? "Funding is turned off (payments.fiat.onramp.monthlyCeilingUsd is 0)."
+                : `The monthly funding ceiling of $${ceilingUsd} has been reached. It frees up as top-ups pass 30 days old (payments.fiat.onramp.monthlyCeilingUsd).`,
+            ),
+          );
+          return;
+        }
+      }
 
       // ── Tier 2: Local Stripe keys — create session locally ──
       const secretKey = walletConfig?.stripe?.secretKey ?? process.env.STRIPE_SECRET_KEY ?? "";
@@ -338,6 +447,7 @@ export const walletHandlers: GatewayRequestHandlers = {
           clientSecret: session.clientSecret,
           publishableKey,
           tier: "local",
+          sessionId: session.sessionId,
         });
         return;
       }
@@ -355,6 +465,7 @@ export const walletHandlers: GatewayRequestHandlers = {
         clientSecret: hosted.clientSecret,
         publishableKey: hosted.publishableKey,
         tier: onrampUrl === DEFAULT_ONRAMP_URL ? "hosted" : "custom",
+        sessionId: sessionIdFromClientSecret(hosted.clientSecret),
       });
     } catch (err) {
       respond(
