@@ -287,7 +287,7 @@ export function createBrowserTool(opts?: {
           const details = (result.details ?? {}) as { targetId?: unknown; url?: unknown };
           void getReplayRecorder().record({
             sessionKey: opts.agentSessionKey,
-            action: String(params.action),
+            action: readStringParam(params, "action") ?? "",
             targetId:
               typeof details.targetId === "string"
                 ? details.targetId
