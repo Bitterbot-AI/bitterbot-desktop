@@ -36,6 +36,19 @@ open an issue.
 - **The marketplace is early.** It is off by default, few nodes have it
   enabled, and it has not carried meaningful paid volume. Bounties are off by
   default.
+- **Spend caps have gaps.** The per-session spend cap is kept in memory and
+  resets when the gateway restarts (the daily wallet limit does not). Card
+  purchases (Link, Privacy.com) count toward the session cap and their own
+  per-purchase cap, not the wallet's daily limit.
+- **Card purchases.** Link and Privacy.com cards are typed only into a browser
+  tab on the approved merchant's registrable domain, which on shared hosting
+  domains also matches other tenants. With `review.spend: "allow"`, Privacy cards
+  are created without asking. A Privacy card left unused is closed after about a
+  day, checked at most hourly while the gateway is in use. Card-data scrubbing is
+  pattern-based and can miss an unlabeled security code.
+- **Selling over x402.** Unsigned payment proofs are rejected by default.
+  `a2a.payment.allowUnsignedProofs: true` accepts them for old clients, but then
+  anyone who sees a payment to your wallet on-chain can redeem it first.
 
 ## Memory and identity
 
@@ -111,7 +124,8 @@ open an issue.
 
 ## Operational honesty
 
-- Everything the node dials out to by default is listed with its off
-  switch in [docs/network/egress.md](docs/network/egress.md).
+- Everything the node dials out to or publishes by default, and what it
+  listens on, is listed with its off switch in
+  [docs/network/egress.md](docs/network/egress.md).
 - The changelog is generated per release by release-please
   ([CHANGELOG.md](CHANGELOG.md), starting at v1.0.0).

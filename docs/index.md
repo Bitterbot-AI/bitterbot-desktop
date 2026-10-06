@@ -49,8 +49,9 @@ its memory on their disk, its network behavior documented and switchable.
   whether its outputs actually get used ([dream engine](/memory/dream-engine))
 - **Hormonal modulation** — dopamine/cortisol/oxytocin dynamics shape mood,
   risk appetite, and recall ([emotional system](/memory/emotional-system))
-- **An economy** — publish skills, earn USDC, pay for paywalled APIs via
-  x402 micropayments ([skills marketplace](/marketplace/skill-marketplace))
+- **An experimental economy** (opt-in, off by default, testnet first):
+  publish skills, earn USDC, pay for paywalled APIs via x402 micropayments
+  ([skills marketplace](/marketplace/skill-marketplace))
 - **Self-hosted and inspectable** — MIT licensed; every outbound connection
   is documented with its off switch ([what this node connects to](/network/egress))
 

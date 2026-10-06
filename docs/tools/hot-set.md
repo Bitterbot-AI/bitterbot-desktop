@@ -54,12 +54,15 @@ discovered tool stays visible for the session without re-searching. See
 For a chat turn the tool array is, sorted by name:
 
 ```text
-code_interpreter, edit, exec, list_tools, memory_search, process, read,
-sessions_send, use_tool, web_fetch, web_search, write
+code_interpreter, create_artifact, cron, edit, exec, list_tools,
+memory_search, process, read, sessions_send, use_tool, web_fetch,
+web_search, write
 ```
 
-That is ~3.3k tokens instead of ~20.6k (chars/2.6 estimate; measured
-2026-09-19 against the live registry). The prose "Tooling" list in the system
+plus `recall_range` when conversation offload or stubs are on. On 2026-09-19,
+before `create_artifact` and `cron` joined the hot set, this was ~3.3k tokens
+instead of ~20.6k (chars/2.6 estimate against the live registry); the two
+additions add a few hundred tokens. The prose "Tooling" list in the system
 prompt lists tool **names only**, so the model still knows every registered
 tool exists.
 
@@ -115,6 +118,10 @@ edit 1.0%; everything else under 0.7%.
 | cron      | read, memory_search | same as chat minus browser/canvas/create_artifact                                                                        | ~3.4k       |
 | subagent  | read, memory_search | chat list minus sessions_send, create_artifact and cron (the subagent policy already denies memory_search/sessions_send) | ~2.9k       |
 
+`message_owner` exists only on guest turns (someone other than the owner is
+talking). Whenever it is registered it is hot, in every lane, and it does not
+count against `max`.
+
 `message` (7.1k chars, 85 properties, 0.06% of calls) is deferred in chat and
 hot in heartbeat, where it is the delivery path. `browser` (3.2k chars) is
 deferred everywhere. `create_artifact` is hot in chat although it is rarely
@@ -146,7 +153,9 @@ Edit `tools.hotSet` in `bitterbot.json` (global) or `agents.list[].tools.hotSet`
   tools: {
     hotSet: {
       enabled: true, // default true; false = every schema on every call
-      max: 12,
+      // 2 always + 11 chat tools = 13. Entries past `max` are dropped, and an
+      // explicit `max` also cancels the automatic extra slot for recall_range.
+      max: 14,
       always: ["read", "memory_search"],
       perLane: {
         chat: [

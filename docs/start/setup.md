@@ -130,7 +130,7 @@ Use this when debugging auth or deciding what to back up:
 - **Model auth profiles**: `~/.bitterbot/agents/<agentId>/agent/auth-profiles.json`
 - **Legacy OAuth import**: `~/.bitterbot/credentials/oauth.json`
 - **Coinbase Developer Platform (wallet)**:
-  - API Key pair: `wallet.cdpApiKeyId` + `wallet.cdpApiKeySecret` in `~/.bitterbot/bitterbot.json` (or `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` env vars)
+  - API Key pair: `tools.wallet.cdpApiKeyId` + `tools.wallet.cdpApiKeySecret` in `~/.bitterbot/bitterbot.json` (or `CDP_API_KEY_ID` / `CDP_API_KEY_SECRET` env vars)
   - Wallet Secret: `CDP_WALLET_SECRET` in `~/.bitterbot/.env` (env-only; not stored in config JSON)
   - Smart wallet metadata (address, owner): `~/.bitterbot/wallet/wallet-data.json`
     More detail: [Security](/gateway/security#credential-storage-map).

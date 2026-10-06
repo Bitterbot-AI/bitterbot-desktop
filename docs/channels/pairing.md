@@ -36,7 +36,7 @@ bitterbot pairing list telegram
 bitterbot pairing approve telegram <CODE>
 ```
 
-Supported channels: `telegram`, `whatsapp`, `signal`, `discord`, `slack`, `feishu`.
+Supported channels: `telegram`, `whatsapp`, `signal`, `discord`, `slack`, `twitch`.
 
 ### Where the state lives
 
@@ -53,6 +53,12 @@ Nodes connect to the Gateway as **devices** with `role: node`. The Gateway
 creates a device pairing request that must be approved.
 
 ### Pair via Telegram
+
+With the `device-pair` plugin enabled, you can pair a node from Telegram:
+
+1. `/pair` generates a setup code (and a phone-ready URL).
+2. Paste the code in the node's gateway settings.
+3. `/pair approve` approves the latest pending request.
 
 ### Approve a node device
 
@@ -71,6 +77,9 @@ Stored under `~/.bitterbot/devices/`:
 
 ### Notes
 
+- The Control UI pairs the same way. On a fresh remote gateway, bootstrap pairing
+  can approve the first browser automatically; see
+  [first run from the browser](/platforms/docker#first-run-from-the-browser).
 - The legacy `node.pair.*` API (CLI: `bitterbot nodes pending/approve`) is a
   separate gateway-owned pairing store. WS nodes still require device pairing.
 - The `/pair` chat command also emits a phone-ready URL alongside the iOS setup
@@ -79,7 +88,8 @@ Stored under `~/.bitterbot/devices/`:
 ## Related docs
 
 - Security model + prompt injection: [Security](/gateway/security)
-- Updating safely (run doctor): [Updating](/install/updating)
+- Updating safely: run `bitterbot doctor`; for containers see
+  [Updates and rollback](/platforms/docker#updates-and-rollback)
 - Channel configs:
   - Telegram: [Telegram](/channels/telegram)
   - WhatsApp: [WhatsApp](/channels/whatsapp)

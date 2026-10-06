@@ -173,7 +173,7 @@ flowchart LR
 2. **Weight adjustment** — `getDreamModeWeightAdjustments()` shifts dream mode selection based on curiosity state:
    - Many knowledge gaps -> boost `exploration` mode weight
    - Many contradictions -> boost `simulation` mode weight
-   - Many frontiers -> boost `mutation` mode weight
+   - Many frontiers -> boost `distillation` mode weight
 
 ### Dream -> Curiosity
 
@@ -209,7 +209,7 @@ flowchart TB
     H --> K[Return results]
 ```
 
-**Hybrid merging** uses configurable weights (default: 0.7 vector + 0.3 text). BM25 ranks are converted to [0,1] scores via `bm25RankToScore()`.
+**Hybrid merging** uses reciprocal rank fusion by default (`mergeStrategy: "rrf"`); the configurable weights (0.7 vector + 0.3 text) apply only with `mergeStrategy: "weighted"`. BM25 ranks are converted to [0,1] scores via `bm25RankToScore()`.
 
 **Importance boost** applies a multiplicative factor:
 

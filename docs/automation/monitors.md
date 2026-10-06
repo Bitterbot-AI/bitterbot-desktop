@@ -74,6 +74,6 @@ The **Automations** page in the Control UI lists every monitor with its current 
 - Public `http` and `https` addresses only. Requests go through the same guard as `web_fetch`: private and loopback addresses are refused.
 - The page is fetched, not rendered. Content that only appears after JavaScript runs is not seen; point the monitor at the API the page calls instead.
 - The shortest interval is one minute (a shorter one is raised to it); the default is 15. Up to 50 monitors.
-- Responses over 2 MB are not watched.
+- Responses that declare more than 2 MB are refused; longer bodies without that header are cut to 2 MB.
 - Only the owner can add, change, remove or run monitors.
 - Turn the feature off with `monitors.enabled: false`.

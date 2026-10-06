@@ -73,7 +73,7 @@ If what interests you about Muse or dots is a persistent AI that remembers you a
 
 _Vendor columns reflect each company's public launch material as of October 2026. Corrections welcome in an issue._
 
-To be straight about the other direction: Muse and dots offer zero-setup hosting, first-party frontier models, mobile apps, large catalogs of prebuilt app connectors, and (Muse) card checkout. Bitterbot is a source install today, and its gaps are listed in [LIMITATIONS.md](LIMITATIONS.md).
+To be straight about the other direction: Muse and dots offer zero-setup hosting, first-party frontier models, mobile apps, large catalogs of prebuilt app connectors, and (Muse) card checkout. Bitterbot runs from source or as a self-hosted container today, and its gaps are listed in [LIMITATIONS.md](LIMITATIONS.md).
 
 "Local-first" here means the runtime, the state and the memory are yours. If you configure a cloud model provider, your prompts (including recalled memories) go to that provider; with a local model they stay on the machine. Every default outbound connection is listed with its off switch in [docs/network/egress.md](docs/network/egress.md).
 
@@ -97,7 +97,7 @@ Most personal agents learn in isolation. Bitterbot's larger bet is that independ
 
 ## Quick Start
 
-**Runtime: Node ≥ 22** · **Package manager: pnpm**
+**Runtime: Node ≥ 22.12** · **Package manager: pnpm**
 
 No pnpm yet? It ships with Node via corepack:
 
@@ -114,6 +114,8 @@ pnpm exec playwright install --with-deps chromium   # browser automation
 
 > **Windows:** use WSL2, and clone into the Linux filesystem (`~/bitterbot-desktop`),
 > not `/mnt/c/...`: the 9p mount makes boots dramatically slower (43x measured).
+>
+> **Always-on server?** Run the public container image `ghcr.io/bitterbot-ai/bitterbot-desktop`, or the Fly.io and VPS templates, and finish setup in the browser: [docs/platforms/docker.md](docs/platforms/docker.md).
 
 Run the onboarding wizard. It walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.
 
@@ -400,7 +402,8 @@ Persistent identity makes trusted peers possible. Trusted peers make capability 
 > marketplace is early: few nodes have it enabled and it has not yet carried meaningful paid volume.
 > Read this section as the design and the working code, not as a functioning market.
 
-- **Agent Wallet**: Once enabled, your agent has its own USDC wallet on Base. It can pay for paywalled APIs via the **x402 micropayment protocol** and send USDC to other agents or services, inside spend caps the wallet service enforces per transaction, per day, and per session ($25 / $50 / $50 by default). Only owner senders can use the tools that move money. There is no per-payment human approval yet, so keep the caps at amounts you can lose.
+- **Agent Wallet**: Once enabled, your agent has its own USDC wallet on Base. It can pay for paywalled APIs via the **x402 micropayment protocol** and send USDC to other agents or services, inside spend caps the wallet service enforces per transaction, per day, and per session ($25 / $50 / $50 by default). Only owner senders can use the tools that move money, and each payment waits for your approval (`review.spend: "ask"` by default) unless a standing grant you signed covers it; the caps apply underneath. The session cap resets when the gateway restarts.
+- **Card purchases and shopping**: With your own Stripe Link or Privacy.com account, the agent can buy on a website with a one-time card you approve (in the Link app, or in Bitterbot's review queue for Privacy, where no standing grant applies). The `shop` tool, on by default, searches Shopify stores and builds a cart you pay for yourself. See [Shopping](docs/wallet/shopping.md) and [Action review](docs/tools/action-review.md).
 - **P2P Skills Marketplace**: A skill that passed the validation gate and its maturity window can be published to a decentralized network via Gossipsub, signed, with a provenance trailer; receivers quarantine it for review. **EigenTrust reputation** scores peers. Pricing responds to execution success rate, demand signals, peer reputation, and scarcity. Revenue is split 70/20/10 (publisher/author/contributors).
 - **Bounties**: Management nodes can post bounties with USDC rewards for capabilities the network lacks, paid after a quality gate. Off by default.
 - **Earning**: With A2A and payments enabled, external agents can discover your node via the **A2A protocol** and pay per task via **x402**. A 48-hour hold protects buyers before revenue shares are released.
@@ -416,7 +419,7 @@ Persistent identity makes trusted peers possible. Trusted peers make capability 
 
 Before it dreams, it executes. Bitterbot works today as a full-featured personal AI.
 
-- **Multi-Surface Presence** Talk to your agent on WhatsApp, Telegram, Discord, Signal, Slack, and the built-in WebChat. One agent, one identity, everywhere you are.
+- **Multi-Surface Presence** Talk to your agent on WhatsApp, Telegram, Discord, Signal, Slack, Email, and the built-in WebChat (X is supported for outbound posts). One agent, one identity, everywhere you are.
 - **Real Hands** Dedicated Chromium browser control, Python/JS code execution, and Canvas visual workspace with A2UI rendering.
 - **Background Work** Scheduled jobs, heartbeats, and [long-horizon tasks](docs/agents/long-horizon.md) that persist across sessions, alongside the dream cycles.
 
@@ -497,7 +500,7 @@ Bitterbot connects to real messaging surfaces. Inbound DMs are treated as **untr
 - **DM pairing**: Unknown senders receive a pairing code. Approve with `bitterbot pairing approve <channel> <code>`.
 - **Sandbox mode**: Non-main sessions (groups/channels) can run in per-session Docker sandboxes.
 - **Your data on your disk**: Memory is a SQLite database and Markdown files under `~/.bitterbot`. You can read them, back them up, and turn memory off. With a cloud model provider, prompts (including recalled memories) go to that provider.
-- **Approvals**: Shell commands outside the allowlist ask first ([exec approvals](docs/tools/exec-approvals.md)); tools that run code, drive the browser or move money are owner-only; every agent-initiated write into a circle queues for your approval.
+- **Approvals**: Shell commands outside the allowlist ask first ([exec approvals](docs/tools/exec-approvals.md)); tools that run code, drive the browser or move money are owner-only; payments, public posts, first messages to new people and connector writes wait in the [review queue](docs/tools/action-review.md); every agent-initiated write into a circle queues for your approval.
 - **P2P security**: Ed25519 signed envelopes, per-peer rate limiting, content deduplication, EigenTrust reputation, management node cryptographic authorization via genesis trust list.
 
 **What this node connects to:** every default outbound connection (the P2P

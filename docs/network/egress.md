@@ -37,9 +37,20 @@ below in one step.
   connections to the discovered relays; hardcoded fallbacks if DNS fails:
   `142.93.113.64:9100` (nyc1), `46.101.181.98:9100` (fra1),
   `139.59.233.83:9100` (sgp1), `metro.proxy.rlwy.net:12838`.
-- **What:** libp2p/gossipsub traffic — skill announcements, reputation
-  scores, weather/bounty broadcasts, census pings. Your node is identified
-  by its Ed25519 peer id.
+- **What:** libp2p/gossipsub traffic: skill announcements, reputation
+  scores, weather/bounty broadcasts, census pings. Also:
+  - knowledge queries on `bitterbot/queries/v1`: the text of your agent's
+    top curiosity target (a description derived from its memory), at most
+    once per consolidation cycle;
+  - experience telemetry on `bitterbot/telemetry/v1`: scores only, once per
+    dream cycle;
+  - skill publications in answer to other nodes' queries, limited to skill
+    crystals marked shared or public.
+
+  Your node is identified by its Ed25519 peer id.
+
+- **Inbound:** the orchestrator also accepts libp2p connections on TCP 9100
+  on all interfaces (change with `p2p.listenAddrs`).
 - **Off switch:** `p2p.enabled: false` (Settings → P2P, or decline the
   wizard's network consent).
 
@@ -75,8 +86,10 @@ below in one step.
 
 - **When:** only once you create or accept a circle invite; never on a
   fresh install.
-- **Where:** `https://mailbox.bitterbot.ai` (store-and-forward fallback
-  when a peer is offline; the mesh is the primary transport).
+- **Where:** first a direct HTTPS dial to each circle member's A2A URL, then
+  `https://mailbox.bitterbot.ai` (store-and-forward fallback when a peer is
+  offline). The mesh dial (`circles.p2pDial`) and the circle gossip topic
+  (`circles.meshTopic`) are both off by default.
 - **What:** end-to-end circle envelopes addressed to circle members.
 - **Off switch:** `circles.enabled: false`, or simply never join a circle.
 
@@ -93,6 +106,16 @@ below in one step.
   `docs/concepts/usage-tracking.md`).
 - **Off switch:** `usage.pricing.liveRefresh: false` in `bitterbot.json`.
   With it off, unknown models are marked "unpriced" instead of guessed.
+
+## 8. Shopping on stores (runtime, on by default)
+
+- **When:** only when the agent uses the `shop` tool, for a store you asked about.
+- **Where:** the store's own domain (its `/.well-known/ucp` file, then the
+  shopping endpoint it names, on the store's host or a `myshopify.com` host).
+- **What:** catalog searches and cart contents, plus the URL of a public agent
+  profile on `cdn.jsdelivr.net` (tracking the repository's `main` branch) that
+  the store fetches to identify the agent. No card or account details.
+- **Off switch:** `shop.enabled: false`.
 
 ## Everything else is opt-in
 

@@ -74,10 +74,11 @@ Bootstrap files are trimmed and injected under **Project Context** so the agent 
 | `PROTOCOLS.md`      | Operating procedures, group behavior, heartbeat rules    | Always (above the cache boundary); `## Group Chats` only in group/channel sessions, `## Heartbeats` only on heartbeat runs       |
 | `TOOLS.md`          | Environment-specific notes (devices, SSH, voice prefs)   | Always (above the cache boundary); `## GitHub` only when `gh` is available                                                       |
 | `HEARTBEAT.md`      | Periodic task instructions                               | Heartbeat runs only (`includeHeartbeatFile`); other turns read it on demand, as the heartbeat prompt instructs                   |
+| `PUBLIC.md`         | What anyone other than the owner may know                | Guest turns only (someone other than the owner is talking)                                                                       |
 | `memory/scratch.md` | Unsynthesized notes (write-ahead log)                    | Main session only, below the boundary, same cap as MEMORY.md                                                                     |
 | `memory/*.md`       | Daily logs                                               | NOT injected — accessed via `memory_search` on demand                                                                            |
 
-**Security note:** `MEMORY.md` is only loaded in the main, private session. It's never injected in group chats, Discord channels, or shared contexts to prevent personal information leakage.
+**Guest turns:** when someone other than the owner is talking (a group-chat member, an approved contact), the prompt keeps only `GENOME.md` and `PROTOCOLS.md` plus `PUBLIC.md`; `MEMORY.md`, the scratch log, `TOOLS.md` and `HEARTBEAT.md` are left out, along with canonical facts, proactive recall and the session brief. See [Who Can See What](../memory/how-the-memory-works.md#who-can-see-what-owner-and-guests). On the owner's own turns, including in a group chat, the files above are injected as listed.
 
 Large files are truncated with a marker. Limits:
 

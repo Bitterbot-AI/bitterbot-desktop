@@ -612,7 +612,8 @@
                   "channels/slack",
                   "channels/signal",
                   "channels/email",
-                  "channels/x"
+                  "channels/x",
+                  "channels/twitch"
                 ]
               },
               {
