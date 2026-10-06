@@ -7,4 +7,5 @@ COPY entrypoint.sh /usr/local/bin/bitterbot-fly-entrypoint
 RUN chmod +x /usr/local/bin/bitterbot-fly-entrypoint
 ENV HOME=/home/node NODE_ENV=production
 ENTRYPOINT ["/usr/local/bin/bitterbot-fly-entrypoint"]
-CMD ["node", "bitterbot.mjs", "gateway", "--bind", "lan", "--port", "19001"]
+# --allow-unconfigured: a fresh volume has no config yet; setup happens in the browser.
+CMD ["node", "bitterbot.mjs", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "19001"]

@@ -37,7 +37,7 @@ write_files:
             - "9100:9100"
           init: true
           restart: unless-stopped
-          command: ["node", "bitterbot.mjs", "gateway", "--bind", "lan", "--port", "19001"]
+          command: ["node", "bitterbot.mjs", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "19001"]
         caddy:
           image: caddy:2
           profiles: ["https"]
