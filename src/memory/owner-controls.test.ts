@@ -5,7 +5,6 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
-import { UserModelManager } from "./user-model.js";
 import {
   deletePreference,
   editMemory,
@@ -16,6 +15,7 @@ import {
   listPreferences,
   OwnerEditRefused,
 } from "./owner-controls.js";
+import { UserModelManager } from "./user-model.js";
 
 const TABLES = { ftsTable: "chunks_fts", vectorTable: null };
 let db: DatabaseSync;
