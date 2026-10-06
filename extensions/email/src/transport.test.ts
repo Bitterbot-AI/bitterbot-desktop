@@ -36,7 +36,8 @@ describe("parseMail", () => {
       messageId: "<reply-2@example.com>",
       references: ["<start-0@example.com>", "<ask-1@example.net>"],
     });
-    expect(mail.headers["authentication-results"]).toContain("dmarc=pass");
+    expect(mail.authResults).toHaveLength(1);
+    expect(mail.authResults[0]).toContain("dmarc=pass");
     expect(senderAuthenticated(mail)).toBe(true);
     expect(stripQuoted(mail.text)).toBe("7pm works, book it.");
   });

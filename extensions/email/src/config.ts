@@ -28,6 +28,13 @@ export const EmailConfigSchema = z
     allowFrom: z.array(z.string()).optional(),
     /** Accept mail only when the receiving server verified the sender (DMARC or DKIM). Default: true. */
     requireAuthenticated: z.boolean().optional(),
+    /**
+     * The receiving server's name in Authentication-Results (e.g. "mx.google.com").
+     * When set, only that server's verdict counts.
+     */
+    authservId: z.string().optional(),
+    /** Most replies to one sender per hour. Default: 20. */
+    maxRepliesPerHour: z.number().int().positive().optional(),
     mailbox: z.string().optional(),
     /** Longest message body passed to the agent, in characters. Default: 20000. */
     maxBodyChars: z.number().int().positive().optional(),
@@ -52,6 +59,8 @@ export type ResolvedEmail = {
   smtp: ResolvedServer;
   allowFrom: string[];
   requireAuthenticated: boolean;
+  authservId?: string;
+  maxRepliesPerHour: number;
   mailbox: string;
   maxBodyChars: number;
   responsePrefix?: string;
@@ -89,6 +98,8 @@ export function resolveEmailConfig(cfg: unknown): ResolvedEmail | null {
     smtp: server(c.smtp, fallback, { port: 465, securePorts: [465] }),
     allowFrom: c.allowFrom ?? [],
     requireAuthenticated: c.requireAuthenticated !== false,
+    authservId: c.authservId?.trim() || undefined,
+    maxRepliesPerHour: c.maxRepliesPerHour ?? 20,
     mailbox: c.mailbox ?? "INBOX",
     maxBodyChars: c.maxBodyChars ?? 20_000,
     responsePrefix: c.responsePrefix,

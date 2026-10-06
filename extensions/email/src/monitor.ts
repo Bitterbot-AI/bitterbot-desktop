@@ -38,6 +38,15 @@ export type MonitorDeps = {
 /** Last thread per sender, so a later message to them continues it. */
 export const lastThreadBySender = new Map<string, InboundMail>();
 
+/** Reply times per sender, for the hourly cap that stops mail loops. */
+const repliesBySender = new Map<string, number[]>();
+
+export function underReplyCap(sender: string, cap: number, now = Date.now()): boolean {
+  const recent = (repliesBySender.get(sender) ?? []).filter((t) => now - t < 60 * 60 * 1000);
+  repliesBySender.set(sender, recent);
+  return recent.length < cap;
+}
+
 /** Why a message is not given to the agent, or null when it is. */
 export function rejectReason(mail: InboundMail, e: ResolvedEmail): string | null {
   const from = normalizeAddress(mail.from);
@@ -45,7 +54,7 @@ export function rejectReason(mail: InboundMail, e: ResolvedEmail): string | null
   if (from === e.address) return "sent by this mailbox";
   if (!senderAllowed(from, e.allowFrom)) return "sender not in allowFrom";
   if (isAutomated(mail)) return "automated mail";
-  if (e.requireAuthenticated && !senderAuthenticated(mail)) {
+  if (e.requireAuthenticated && !senderAuthenticated(mail, e.authservId)) {
     return "sender not verified by the mail server (no DMARC or DKIM pass)";
   }
   return null;
@@ -70,6 +79,13 @@ export async function processInbox(
     }
     const body = stripQuoted(mail.text, e.maxBodyChars);
     if (!body) continue;
+    const fromAddr = normalizeAddress(mail.from);
+    if (!underReplyCap(fromAddr, e.maxRepliesPerHour)) {
+      deps.log.warn(
+        `email: skipped uid=${mail.uid} from=${fromAddr}: reply limit reached for this hour`,
+      );
+      continue;
+    }
     lastThreadBySender.set(normalizeAddress(mail.from), mail);
     const headers = replyHeaders(mail);
     try {
@@ -78,6 +94,7 @@ export async function processInbox(
         body,
         reply: async (text) => {
           if (!text.trim()) return;
+          repliesBySender.get(fromAddr)?.push(Date.now());
           await sender.send({
             to: normalizeAddress(mail.from),
             subject: replySubject(mail.subject),

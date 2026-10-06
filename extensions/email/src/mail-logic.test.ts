@@ -16,6 +16,7 @@ const mail = (o: Partial<InboundMail> = {}): InboundMail => ({
   text: "Book us a table",
   references: [],
   headers: {},
+  authResults: [],
   ...o,
 });
 
@@ -28,32 +29,44 @@ describe("who may write", () => {
     expect(senderAllowed("x@y.z", [])).toBe(false);
   });
 
-  it("trusts only what the receiving server verified", () => {
+  it("trusts only the receiving server's own verdict", () => {
+    const ar = (...authResults: string[]) => mail({ authResults });
     expect(senderAuthenticated(mail())).toBe(false);
     expect(
-      senderAuthenticated(
-        mail({
-          headers: {
-            "authentication-results": "mx.google.com; dmarc=pass (p=NONE) header.from=example.com",
-          },
-        }),
-      ),
+      senderAuthenticated(ar("mx.google.com; dmarc=pass (p=NONE) header.from=example.com")),
     ).toBe(true);
-    expect(
-      senderAuthenticated(
-        mail({
-          headers: { "authentication-results": "mx; dkim=pass header.d=example.com; spf=fail" },
-        }),
-      ),
-    ).toBe(true);
+    expect(senderAuthenticated(ar("mx; dkim=pass header.d=example.com; spf=fail"))).toBe(true);
     // A valid signature from someone else's domain proves nothing about the sender.
+    expect(senderAuthenticated(ar("mx; dkim=pass header.d=evil.com; dmarc=fail"))).toBe(false);
+  });
+
+  it("is not fooled by a forged header below the real one", () => {
+    const forged = mail({
+      authResults: [
+        "mx.google.com; dmarc=fail header.from=example.com",
+        "evil; dmarc=pass header.from=example.com",
+      ],
+    });
+    expect(senderAuthenticated(forged)).toBe(false);
+  });
+
+  it("ignores pass in comments, other properties and header.i", () => {
+    const ar = (v: string) => mail({ authResults: [v] });
+    expect(senderAuthenticated(ar("mx; spf=pass smtp.mailfrom=dmarc=pass@evil.com"))).toBe(false);
+    expect(senderAuthenticated(ar("mx; dmarc=fail (dmarc=pass) header.from=example.com"))).toBe(
+      false,
+    );
+    expect(senderAuthenticated(ar("mx; dmarc=pass header.from=evil.com"))).toBe(false);
     expect(
-      senderAuthenticated(
-        mail({
-          headers: { "authentication-results": "mx; dkim=pass header.d=evil.com; dmarc=fail" },
-        }),
-      ),
+      senderAuthenticated(ar("mx; dkim=pass header.i=example.com@evil.com header.d=evil.com")),
     ).toBe(false);
+  });
+
+  it("with authservId, needs exactly one verdict from that server, on top", () => {
+    const real = "mx.google.com; dmarc=pass header.from=example.com";
+    expect(senderAuthenticated(mail({ authResults: [real] }), "mx.google.com")).toBe(true);
+    expect(senderAuthenticated(mail({ authResults: [real] }), "other.server")).toBe(false);
+    expect(senderAuthenticated(mail({ authResults: [real, real] }), "mx.google.com")).toBe(false);
   });
 
   it("recognises mail no person wrote", () => {

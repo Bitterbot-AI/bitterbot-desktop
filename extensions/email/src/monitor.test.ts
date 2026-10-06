@@ -11,11 +11,12 @@ const e: ResolvedEmail = {
   smtp: { host: "smtp", port: 465, secure: true, user: "agent@example.com", password: "p" },
   allowFrom: ["@example.com"],
   requireAuthenticated: true,
+  maxRepliesPerHour: 20,
   mailbox: "INBOX",
   maxBodyChars: 20_000,
 };
 
-const verified = { "authentication-results": "mx; dmarc=pass header.from=example.com" };
+const verified = ["mx; dmarc=pass header.from=example.com"];
 const mail = (uid: number, o: Partial<InboundMail> = {}): InboundMail => ({
   uid,
   from: "alice@example.com",
@@ -23,7 +24,8 @@ const mail = (uid: number, o: Partial<InboundMail> = {}): InboundMail => ({
   text: "Book us a table for two at 7.",
   messageId: `<m${uid}@example.com>`,
   references: [],
-  headers: verified,
+  headers: {},
+  authResults: verified,
   ...o,
 });
 
@@ -50,8 +52,8 @@ describe("processInbox", () => {
     const { box, seen } = fakeMailbox([
       mail(1),
       mail(2, { from: "mallory@evil.com" }),
-      mail(3, { headers: {} }),
-      mail(4, { headers: { ...verified, "auto-submitted": "auto-replied" } }),
+      mail(3, { authResults: [] }),
+      mail(4, { headers: { "auto-submitted": "auto-replied" } }),
       mail(5, { from: "agent@example.com" }),
     ]);
     const sent: OutboundMail[] = [];
@@ -139,5 +141,31 @@ describe("runEmailMonitor", () => {
     await vi.waitFor(() => expect(attempts).toBe(2));
     ac.abort();
     await done;
+  });
+});
+
+describe("reply cap", () => {
+  it("stops answering a sender after the hourly limit", async () => {
+    const { box } = fakeMailbox([
+      mail(10, { from: "loop@example.com" }),
+      mail(11, { from: "loop@example.com" }),
+      mail(12, { from: "loop@example.com" }),
+    ]);
+    const sent: OutboundMail[] = [];
+    await processInbox(
+      box,
+      {
+        send: async (m) => {
+          sent.push(m);
+          return {};
+        },
+      },
+      { ...e, maxRepliesPerHour: 2 },
+      {
+        dispatch: async ({ reply }) => reply("ok"),
+        log: { info: () => {}, warn: () => {} },
+      },
+    );
+    expect(sent).toHaveLength(2);
   });
 });

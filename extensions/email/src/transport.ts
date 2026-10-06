@@ -37,7 +37,7 @@ type Parsed = {
   date?: Date;
   headerLines?: Header[];
 };
-type ImapMessage = { uid: number; source?: Buffer };
+type ImapMessage = { uid: number; source?: Buffer; size?: number };
 type ImapClient = {
   connect(): Promise<void>;
   getMailboxLock(path: string): Promise<{ release(): void }>;
@@ -53,16 +53,23 @@ type ImapClient = {
 };
 
 // Specifiers in variables: the libraries resolve at run time only.
+/** Larger messages are marked read and never downloaded. */
+export const MAX_MESSAGE_BYTES = 5 * 1024 * 1024;
+
 const IMAPFLOW = "imapflow";
 const MAILPARSER = "mailparser";
 const NODEMAILER = "nodemailer";
+
+function headerValue(h: Header): string {
+  return (h.line ?? "").replace(/^[^:]*:\s*/, "").replace(/\r?\n\s+/g, " ");
+}
 
 function headerMap(lines: Header[] | undefined): Record<string, string> {
   const out: Record<string, string> = {};
   for (const h of lines ?? []) {
     const key = h.key?.toLowerCase();
     if (!key) continue;
-    const value = (h.line ?? "").replace(/^[^:]*:\s*/, "").replace(/\r?\n\s+/g, " ");
+    const value = headerValue(h);
     out[key] = out[key] ? `${out[key]}; ${value}` : value;
   }
   return out;
@@ -85,6 +92,9 @@ export async function parseMail(uid: number, source: Buffer): Promise<InboundMai
     references: refs,
     date: p.date,
     headers: headerMap(p.headerLines),
+    authResults: (p.headerLines ?? [])
+      .filter((h) => h.key?.toLowerCase() === "authentication-results")
+      .map(headerValue),
   };
 }
 
@@ -111,6 +121,12 @@ export async function openMailbox(e: ResolvedEmail): Promise<Mailbox> {
       const uids = (await client.search({ seen: false }, { uid: true })) || [];
       const out: InboundMail[] = [];
       for (const uid of uids.toSorted((a, b) => a - b)) {
+        // Size first: a stranger must not make the gateway download 50 MB.
+        const meta = await client.fetchOne(String(uid), { size: true }, { uid: true });
+        if (!meta || (meta.size ?? 0) > MAX_MESSAGE_BYTES) {
+          await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
+          continue;
+        }
         const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
         if (msg && msg.source) out.push(await parseMail(uid, msg.source));
       }

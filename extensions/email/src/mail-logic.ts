@@ -12,8 +12,10 @@ export type InboundMail = {
   messageId?: string;
   references: string[];
   date?: Date;
-  /** Raw header values, lower-cased names. */
+  /** Raw header values, lower-cased names (repeated headers joined). */
   headers: Record<string, string>;
+  /** Every Authentication-Results header, top (newest, added by the receiving server) first. */
+  authResults: string[];
 };
 
 export function normalizeAddress(value: string): string {
@@ -44,22 +46,60 @@ export function isAutomated(mail: InboundMail): boolean {
   return /^(mailer-daemon|postmaster|no-?reply|do-?not-?reply)@/i.test(normalizeAddress(mail.from));
 }
 
+type AuthResult = { method: string; result: string; props: Record<string, string> };
+
+/** Parse one Authentication-Results value (RFC 8601): authserv-id, then results. */
+export function parseAuthResults(value: string): { authservId: string; results: AuthResult[] } {
+  // Comments carry free text (and some servers echo the envelope sender);
+  // nothing inside them counts.
+  let clean = value.toLowerCase();
+  for (let i = 0; i < 5 && /\([^()]*\)/.test(clean); i++) {
+    clean = clean.replace(/\([^()]*\)/g, " ");
+  }
+  const [head = "", ...rest] = clean.split(";");
+  const results: AuthResult[] = [];
+  for (const part of rest) {
+    const tokens = part.trim().split(/\s+/).filter(Boolean);
+    const first = tokens.shift();
+    const m = first?.match(/^([a-z0-9-]+)=([a-z]+)$/);
+    if (!m) continue;
+    const props: Record<string, string> = {};
+    for (const t of tokens) {
+      const kv = t.match(/^([a-z0-9-]+\.[a-z0-9-]+)=(.+)$/);
+      if (kv) props[kv[1]] = kv[2].replace(/^"|"$/g, "");
+    }
+    results.push({ method: m[1], result: m[2], props });
+  }
+  return { authservId: head.trim().split(/\s+/)[0] ?? "", results };
+}
+
 /**
  * Whether the receiving server vouched for the sender's domain. A From header
- * is trivial to forge; Authentication-Results, added by the owner's own mail
- * server, says whether DMARC passed or DKIM passed for that domain.
+ * is trivial to forge, and so is an Authentication-Results header inside the
+ * message, so only the topmost one counts: the receiving server adds it last.
+ * With `authservId` set, that header must also come from the named server and
+ * be the only one claiming that name.
  */
-export function senderAuthenticated(mail: InboundMail): boolean {
-  const results = (mail.headers["authentication-results"] ?? "").toLowerCase();
-  if (!results) return false;
-  if (/\bdmarc=pass\b/.test(results)) return true;
+export function senderAuthenticated(mail: InboundMail, authservId?: string): boolean {
   const domain = normalizeAddress(mail.from).split("@")[1] ?? "";
   if (!domain) return false;
-  for (const m of results.matchAll(/\bdkim=pass\b[^;]*?header\.(?:d|i)=@?([a-z0-9.-]+)/g)) {
-    const signer = m[1];
-    if (signer === domain || domain.endsWith(`.${signer}`)) return true;
+  const parsed = mail.authResults.map(parseAuthResults);
+  let trusted = parsed[0];
+  if (authservId) {
+    const id = authservId.toLowerCase();
+    const mine = parsed.filter((p) => p.authservId === id);
+    if (mine.length !== 1 || parsed[0]?.authservId !== id) return false;
+    trusted = mine[0];
   }
-  return false;
+  if (!trusted) return false;
+  const aligned = (d: string | undefined) =>
+    Boolean(d) && (d === domain || domain.endsWith(`.${d}`));
+  return trusted.results.some(
+    (r) =>
+      r.result === "pass" &&
+      ((r.method === "dmarc" && r.props["header.from"] === domain) ||
+        (r.method === "dkim" && aligned(r.props["header.d"]))),
+  );
 }
 
 /** The new part of a reply: quoted history and signatures cut off. */
