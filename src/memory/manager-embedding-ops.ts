@@ -17,6 +17,7 @@ import { inferSemanticType, defaultGovernance } from "./crystal.js";
 import { enforceEmbeddingMaxInputTokens } from "./embedding-chunk-limits.js";
 import { estimateUtf8Bytes } from "./embedding-input-limits.js";
 import { yieldToEventLoop } from "./event-loop.js";
+import { maxSensitivity, tagSensitivity } from "./guest-access.js";
 import {
   chunkMarkdown,
   hashText,
@@ -995,7 +996,8 @@ class MemoryManagerEmbeddingOps {
             accessScope: governance.accessScope,
             lifespanPolicy: governance.lifespanPolicy,
             priority: governance.priority,
-            sensitivity: governance.sensitivity,
+            // PLAN-53 G2: the source default, raised by what the text says.
+            sensitivity: maxSensitivity(governance.sensitivity, tagSensitivity(chunk.text)),
           }),
           hormonal.dopamine,
           hormonal.cortisol,

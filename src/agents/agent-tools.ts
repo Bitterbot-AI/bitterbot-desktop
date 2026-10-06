@@ -480,6 +480,12 @@ export function createBitterbotCodingTools(options?: {
               : undefined,
           workspaceOnly: applyPatchWorkspaceOnly,
         });
+  // PLAN-53 G2: a non-owner person drives this turn (not a heartbeat or
+  // cron run); memory recall is limited to what a guest may see.
+  const memoryGuest =
+    options?.senderIsOwner !== true &&
+    options?.isHeartbeat !== true &&
+    Boolean(options?.senderId || options?.spawnedBy);
   const tools: AnyAgentTool[] = [
     ...base,
     ...(sandboxRoot
@@ -512,6 +518,7 @@ export function createBitterbotCodingTools(options?: {
       agentSessionId: options?.sessionId,
       agentSessionFile: options?.sessionFile,
       senderIsOwner: options?.senderIsOwner === true,
+      memoryGuest,
       agentChannel: resolveGatewayMessageChannel(options?.messageProvider),
       agentAccountId: options?.agentAccountId,
       agentTo: options?.messageTo,
@@ -582,13 +589,19 @@ export function createBitterbotCodingTools(options?: {
   // every gate below (hooks, interceptors, the capability enforcer, abort)
   // still runs for the call. Its key carries the agent, workspace, session
   // and sandbox state.
+  // A group chat shares one session between the owner and guests, so who is
+  // asking is part of the key too (PLAN-53 G2).
   const cached = options?.toolCache
     ? wrapToolsWithCache(
         normalized,
         options.toolCache,
-        [agentId ?? "", workspaceRoot, options.sessionKey ?? "", sandbox ? "sandbox" : "host"].join(
-          "\u0000",
-        ),
+        [
+          agentId ?? "",
+          workspaceRoot,
+          options.sessionKey ?? "",
+          sandbox ? "sandbox" : "host",
+          memoryGuest ? "guest" : "owner",
+        ].join("\u0000"),
       )
     : normalized;
   // The tool gets a progress callback that goes quiet once the call has

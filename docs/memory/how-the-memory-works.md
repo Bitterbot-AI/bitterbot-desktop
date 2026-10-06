@@ -110,6 +110,29 @@ Provenance is on by default; set `memory.provenance.enabled: false` to turn it o
 
 ---
 
+## Who Can See What: Owner and Guests
+
+Every memory carries a sensitivity tag: `normal`, `personal`, or `confidential`.
+The tag is set when the memory is written, from where it came from (conversation
+transcripts are `personal`) and from what it says (passwords, keys and tokens are
+`confidential`; health, money, contact details and opinions are `personal`). The
+more restrictive of the two wins.
+
+When the owner talks to the agent, recall sees everything. When someone else
+does (a group chat member, a DM from a contact), the memory tools switch to guest
+mode for that turn:
+
+- `memory_search` returns only memories tagged `normal` whose text still tags
+  `normal`, never conversation transcripts or the working memory file, and
+  leaves out the canonical facts ledger.
+- `memory_get` reads a file only when every memory in it is safe for a guest.
+  `MEMORY.md` is never readable.
+- `memory_expand` (raw transcripts) and `memory_pin` (the facts ledger) refuse.
+
+Heartbeats and scheduled runs are the agent's own work and keep full recall.
+Memories with no tag, such as dream insights and extracted facts, stay with the
+owner.
+
 ## Knowing Why Recall Failed — The Blame Router
 
 When a search comes back empty, that is a signal, not just a dead end. The question is _why_ it failed, because the fix is different in each case. Either the answer was never stored in the first place, or it was stored but retrieval did not surface it. Improving the wrong half wastes effort.
