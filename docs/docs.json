@@ -696,6 +696,7 @@
                 "group": "Architecture",
                 "pages": [
                   "memory/architecture-overview",
+                  "memory/controls",
                   "memory/how-the-memory-works",
                   "memory/working-memory",
                   "memory/sage-graph-memory",

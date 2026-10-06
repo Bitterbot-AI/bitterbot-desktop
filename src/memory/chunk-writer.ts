@@ -238,6 +238,26 @@ export function setChunkEmbedding(
   });
 }
 
+/**
+ * The owner edited a memory's text (PLAN-53 G1). The embedding is cleared and
+ * the model marked "pending" so the embedding backfill re-embeds it; the
+ * caller replaces the keyword-index row and drops the vector row.
+ */
+export function setChunkText(
+  db: DatabaseSync,
+  id: string,
+  fields: { text: string; hash: string; updatedAt: number; version: number },
+): number {
+  return updateFields(db, id, {
+    text: fields.text,
+    hash: fields.hash,
+    model: "pending",
+    embedding: new Uint8Array(0),
+    updated_at: fields.updatedAt,
+    version: fields.version,
+  });
+}
+
 // ── Skills ──────────────────────────────────────────────────────────────────
 
 export function setChunkSkillCategory(db: DatabaseSync, id: string, category: string): number {

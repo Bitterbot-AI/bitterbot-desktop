@@ -88,6 +88,17 @@ import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
 import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
+import {
+  deletePreference as ownerDeletePreference,
+  editMemory as ownerEditMemory,
+  exportMemories as ownerExportMemories,
+  forgetMemory as ownerForgetMemory,
+  getMemory as ownerGetMemory,
+  type IndexTables,
+  listMemories as ownerListMemories,
+  type ListOptions as OwnerListOptions,
+  listPreferences as ownerListPreferences,
+} from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { truncateAtSentence } from "./proactive-recall.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
@@ -5649,6 +5660,69 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   canonicalFacts(): CanonicalFactsStore | null {
     return this.canonicalFactsStore;
+  }
+
+  // ── PLAN-53 G1: the owner's controls over what the agent remembers ──────
+
+  private ownerIndexTables(): IndexTables {
+    return {
+      ftsTable: this.fts.enabled && this.fts.available ? FTS_TABLE : null,
+      vectorTable: this.vector.available ? VECTOR_TABLE : null,
+    };
+  }
+
+  /**
+   * A change the owner asked for: after any running index sync (a reindex
+   * swaps the database mid-flight), and inside the maintenance lock so it does
+   * not interleave with consolidation or dreaming.
+   */
+  private async ownerChange<T>(label: string, fn: () => T | Promise<T>): Promise<T> {
+    if (this.syncing) {
+      await this.syncing.catch(() => {});
+    }
+    return await this.maintenanceMutex.run(`owner:${label}`, async () => await fn(), 30_000);
+  }
+
+  ownerListMemories(opts: OwnerListOptions = {}) {
+    return ownerListMemories(this.db, opts);
+  }
+
+  ownerGetMemory(id: string) {
+    return ownerGetMemory(this.db, id);
+  }
+
+  async ownerForgetMemory(id: string): Promise<void> {
+    await this.ownerChange("forget", () => ownerForgetMemory(this.db, id, this.ownerIndexTables()));
+  }
+
+  async ownerEditMemory(id: string, text: string) {
+    const edited = await this.ownerChange("edit", () =>
+      ownerEditMemory(this.db, id, text, this.ownerIndexTables()),
+    );
+    // Re-embed now when possible so it is found by meaning again; the regular
+    // backfill catches it otherwise.
+    void this.backfillPendingEmbeddings({ limit: 5 }).catch(() => {});
+    return edited;
+  }
+
+  async ownerExportMemories(outFile: string) {
+    let workingMemory: string | null = null;
+    try {
+      workingMemory = await fs.readFile(path.join(this.workspaceDir, "MEMORY.md"), "utf8");
+    } catch {
+      workingMemory = null;
+    }
+    return await ownerExportMemories(this.db, outFile, { agentId: this.agentId, workingMemory });
+  }
+
+  ownerListPreferences() {
+    return ownerListPreferences(this.db);
+  }
+
+  async ownerDeletePreference(category: string, key: string): Promise<boolean> {
+    return await this.ownerChange("forget-preference", () =>
+      ownerDeletePreference(this.db, category, key),
+    );
   }
 
   /**

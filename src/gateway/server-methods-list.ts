@@ -170,6 +170,15 @@ const BASE_METHODS = [
   "dream.curiosityReward",
   // PLAN-28 B4: retrieval-layer health
   "memory.retrievalHealth",
+  "memory.list",
+  "memory.get",
+  "memory.edit",
+  "memory.forget",
+  "memory.preferences",
+  "memory.forgetPreference",
+  "memory.facts",
+  "memory.retireFact",
+  "memory.export",
   // PLAN-29 Phase 3: Forage spectator layer
   "forage.tape",
   "forage.stats",
