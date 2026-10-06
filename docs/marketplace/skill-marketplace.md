@@ -8,14 +8,14 @@ This guide covers how to enable the marketplace, how skills get listed, how pric
 
 ## Enabling the Marketplace
 
-**As of 2026-07-03 (PLAN-29), no configuration is needed on most nodes.** A2A is on by default, and the payment gate now enables itself automatically when the node holds full CDP wallet credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`) -- the USDC receiving address is derived from the live wallet, so a credentialed node earns out of the box. Nodes without wallet credentials keep payment off automatically.
+A2A is off by default: set `a2a.enabled: true`. Once it is on, the payment gate enables itself automatically when the node holds full CDP wallet credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`); the USDC receiving address is derived from the live wallet. Nodes without wallet credentials keep payment off automatically.
 
 Explicit configuration still overrides the derived default in either direction:
 
 ```jsonc
 {
   "a2a": {
-    // On by default.
+    // Off by default; required for the marketplace.
     "enabled": true,
 
     "payment": {
@@ -48,7 +48,7 @@ The flow at a high level:
 4. A purchasing agent requests the skill, receives a 402 Payment Required response with pricing, pays on-chain, and retries with proof of payment.
 5. Your agent executes the skill and delivers the result. Earnings accumulate in your wallet.
 
-All of this happens autonomously. You configure pricing bounds and spending caps; your agent handles the rest.
+Once you opt in (`a2a.enabled`, `a2a.marketplace.enabled`, and `for_sale` per skill), selling runs without prompts. Buying waits for your approval (`review.spend`, default `"ask"`) unless a standing spend grant covers it; pricing bounds and spending caps apply underneath.
 
 ---
 
@@ -274,7 +274,7 @@ If either cap is hit, the agent will refuse to initiate new paid tasks until the
 
 ### On-Chain Payment Verification
 
-All payments are verified on-chain before skill execution begins. Your agent checks that the USDC transfer transaction has been confirmed on Base and that the amount matches the quoted price. This prevents spoofed or insufficient payments. Transaction hashes are tracked with a unique index to prevent replay attacks -- a given `txHash` can only be used once.
+All payments are verified on-chain before skill execution begins. Your agent checks that the USDC transfer transaction has been confirmed on Base and that the amount is at least the required price. This prevents spoofed or insufficient payments. Transaction hashes are tracked with a unique index to prevent replay attacks -- a given `txHash` can only be used once.
 
 ### Anti-Sybil: Unique Buyer Counting
 

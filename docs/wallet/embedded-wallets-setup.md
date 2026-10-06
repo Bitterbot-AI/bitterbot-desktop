@@ -1,13 +1,18 @@
 # Embedded Wallets setup (PLAN-49 Phase 0.5, Path B)
 
-Per-user, non-custodial wallets so a new user gets a wallet by signing in with
+> **Planned, partially wired.** Only the config and the provisioning-mode reporting
+> are live today. The Control UI sign-in flow and the delegated signer described
+> below are not built yet (see [Status](#status)).
+
+Planned: per-user, non-custodial wallets so a new user gets a wallet by signing in with
 email, with no CDP secrets to paste. The user owns and can export the key (it lives
 in Coinbase's TEE); the agent signs autonomously within a time-bound delegation the
 user grants, bounded by the usual spend caps and grants.
 
 This page is the one-time setup only you can do (it needs your Coinbase login). The
-code reads what you configure here; once the Project ID is set, the Control UI shows
-a "Sign in to create your wallet" flow instead of the paste-three-secrets step.
+code reads what you configure here; once the sign-in surface lands and the Project ID
+is set, the Control UI will show a "Sign in to create your wallet" flow instead of the
+paste-three-secrets step.
 
 ## Prerequisites
 

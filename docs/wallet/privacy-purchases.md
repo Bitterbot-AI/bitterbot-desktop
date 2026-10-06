@@ -22,8 +22,10 @@ purchase in Bitterbot, the same way you approve a payment from the wallet.
    account with a spending limit of exactly that amount.
 4. The agent fills the shop's checkout form. The gateway types the card into the
    page; the agent only ever sees "Privacy card ending 4242".
-5. The card closes after one charge. If it is not used within a day, Bitterbot
-   closes it.
+5. The card closes after one charge. A card left unused for more than a day is
+   closed by Bitterbot, which checks at most hourly whenever the purchase tool is
+   loaded for a run (so about a day, plus up to an hour, while the gateway is in
+   use). If you abandon a purchase, you can also close the card in Privacy.
 
 The charge appears in your Privacy account like any other card. Bitterbot keeps
 only the card's token, the shop and the amount, never the card number.
@@ -52,10 +54,14 @@ use. To stop all purchases, turn `enabled` off or delete the key in Privacy.
 ## Limits
 
 - One purchase may not exceed `perPurchaseCapUsd`.
-- Card purchases also count toward the wallet's per-session spending cap.
+- Card purchases also count toward the wallet's per-session spending cap, which is
+  kept in memory and resets when the gateway restarts. They do not count toward
+  the wallet's daily limit.
 - Approvals follow `review.spend`. If you set spends to go through without
   asking, Privacy cards are created without asking too.
 - Standing spend grants never cover a Privacy card: each card is approved on its
   own. The approval shows the shop's name and its web address.
 - The card is typed only into a browser tab on the shop you approved (the same
-  site, any subdomain). Anywhere else, nothing is filled.
+  registrable domain, so any subdomain; on shared hosting domains such as
+  `*.myshopify.com` or `*.github.io` that also includes other tenants). Anywhere
+  else, nothing is filled.

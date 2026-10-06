@@ -16,10 +16,10 @@ Off by default. US and Canada only, as Link Agent Wallet is.
 
 1. **Request.** The agent asks Link for a card for one merchant and one amount, with a description of at least 100 characters saying what it is buying and why.
 2. **You approve in Link.** The Link app shows the merchant, the amount and that description. Nothing happens until you approve.
-3. **The card goes into the page, not to the agent.** Once approved, the gateway fetches the one-time card into a private file, types it into the checkout form's fields, and deletes the file. The agent is told only "visa ending 4242". The number never appears in its context, the transcript, or any log.
+3. **The card goes into the page, not to the agent.** Once approved, the gateway fetches the one-time card into a private file, types it into the checkout form's fields, and deletes the file. It types the card only into a browser tab on the approved merchant's site (the same registrable domain, so any subdomain, and also other tenants on shared hosting domains such as `*.myshopify.com`). The agent is told only "visa ending 4242". If the number shows up later, for example in a snapshot of the filled page, it is scrubbed (pattern-based) from the agent's context, transcripts, events and logs.
 4. **The agent submits the order** in the browser, after checking the total matches what you approved. You can watch, and take over, in the Browser tab.
 
-Each purchase is recorded in the **Payments** list of the Activity tab and counts against your session spending cap.
+Each purchase is recorded in the **Payments** list of the Activity tab and counts against your session spending cap. That cap is kept in memory and resets when the gateway restarts, and card purchases do not count toward the wallet's daily limit.
 
 ## Setting it up
 
