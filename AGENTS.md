@@ -101,9 +101,6 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - `src/discord/` — Discord
 - `src/signal/` — Signal (signal-cli)
 - `src/slack/` — Slack (Bolt SDK)
-- `src/irc/` — IRC
-- `src/googlechat/` — Google Chat
-- `src/msteams/` — Microsoft Teams
 - `src/webchat/` — WebChat (WebSocket)
 - `src/cli/` — CLI commands
 - `src/commands/` — CLI command implementations (onboarding, configure, etc.)

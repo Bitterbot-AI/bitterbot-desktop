@@ -140,6 +140,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Keep a low-rate screenshot record of the agent's browser after each page action, stored only on this machine, so you can see later what it did (default: true).",
   "browser.replay.retentionDays":
     "Days to keep a session's browser recording after its last frame (default: 7).",
+  "browser.perAgentProfiles":
+    "Give each agent other than the default one its own browser profile (agent-<id>), so agents never share cookies or logins (default: true).",
   "browser.liveView.enabled":
     "Stream the agent's browser to the Control UI's computer pane while it is open (default: true). Set false to turn the stream off.",
   "browser.liveView.maxFps":

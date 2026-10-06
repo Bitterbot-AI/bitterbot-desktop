@@ -266,6 +266,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "browser.liveView.enabled": "Browser Live View Enabled",
   "browser.replay.enabled": "Browser Replay: Enabled",
   "browser.replay.retentionDays": "Browser Replay: Retention (days)",
+  "browser.perAgentProfiles": "Browser: Separate Profile per Agent",
   "browser.liveView.maxFps": "Browser Live View Max FPS",
   "browser.liveView.quality": "Browser Live View JPEG Quality",
   "browser.remoteCdpTimeoutMs": "Remote CDP Timeout (ms)",

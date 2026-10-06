@@ -101,6 +101,8 @@ export function refuseForGuest(tool: AnyAgentTool): AnyAgentTool {
 
 export function createBitterbotTools(options?: {
   sandboxBrowserBridgeUrl?: string;
+  /** The run's sandbox container: code_interpreter's Python runs there (PLAN-53 A5). */
+  codeSandbox?: { containerName: string; containerWorkdir: string };
   allowHostBrowserControl?: boolean;
   agentSessionKey?: string;
   /** Transcript session id (file stem); lets transcript readers target the exact file. */
@@ -196,7 +198,7 @@ export function createBitterbotTools(options?: {
     createA2aStatusTool(),
     createCanvasTool(),
     createArtifactTool(),
-    createCodeInterpreterTool(),
+    createCodeInterpreterTool({ sandbox: options?.codeSandbox }),
     createNodesTool({
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,

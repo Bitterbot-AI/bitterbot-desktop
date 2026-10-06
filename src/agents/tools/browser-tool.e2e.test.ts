@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const browserClientMocks = vi.hoisted(() => ({
   browserCloseTab: vi.fn(async () => ({})),
+  browserCreateProfile: vi.fn(async () => ({ ok: true })),
   browserFocusTab: vi.fn(async () => ({})),
   browserOpenTab: vi.fn(async () => ({})),
   browserProfiles: vi.fn(async () => []),
@@ -96,7 +97,7 @@ vi.mock("../../browser/replay.js", async (orig) => ({
 }));
 
 import { DEFAULT_AI_SNAPSHOT_MAX_CHARS } from "../../browser/constants.js";
-import { createBrowserTool } from "./browser-tool.js";
+import { agentBrowserProfileName, createBrowserTool } from "./browser-tool.js";
 
 describe("browser tool snapshot maxChars", () => {
   afterEach(() => {
@@ -458,5 +459,63 @@ describe("browser session replay (PLAN-53 A6)", () => {
     await createBrowserTool({ agentSessionKey: "s" }).execute?.("c2", { action: "status" });
     await createBrowserTool().execute?.("c3", { action: "navigate", targetUrl: "https://a.com" });
     expect(replayRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe("per-agent browser profiles (PLAN-53 A5)", () => {
+  const twoAgents = {
+    browser: {},
+    agents: { list: [{ id: "main", default: true }, { id: "research" }] },
+  };
+
+  it("names a profile for agents other than the default, and none for the default", () => {
+    expect(agentBrowserProfileName(twoAgents as never, "agent:research:main")).toBe(
+      "agent-research",
+    );
+    expect(agentBrowserProfileName(twoAgents as never, "agent:main:main")).toBeUndefined();
+    expect(agentBrowserProfileName(twoAgents as never, undefined)).toBeUndefined();
+    expect(
+      agentBrowserProfileName(
+        { ...twoAgents, browser: { perAgentProfiles: false } } as never,
+        "agent:research:main",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("creates the agent's profile once and drives the browser in it", async () => {
+    configMocks.loadConfig.mockReturnValue(twoAgents as never);
+    try {
+      const tool = createBrowserTool({ agentSessionKey: "agent:research:main" });
+      await tool.execute?.("p1", { action: "navigate", targetUrl: "https://a.com" });
+      await tool.execute?.("p2", { action: "navigate", targetUrl: "https://b.com" });
+      expect(browserClientMocks.browserCreateProfile).toHaveBeenCalledTimes(1);
+      expect(browserClientMocks.browserCreateProfile).toHaveBeenCalledWith(undefined, {
+        name: "agent-research",
+      });
+      expect(browserActionsMocks.browserNavigate).toHaveBeenLastCalledWith(
+        undefined,
+        expect.objectContaining({ url: "https://b.com", profile: "agent-research" }),
+      );
+    } finally {
+      configMocks.loadConfig.mockReturnValue({ browser: {} });
+    }
+  });
+
+  it("leaves an explicitly named profile alone", async () => {
+    configMocks.loadConfig.mockReturnValue(twoAgents as never);
+    try {
+      const tool = createBrowserTool({ agentSessionKey: "agent:research:main" });
+      await tool.execute?.("p3", {
+        action: "navigate",
+        targetUrl: "https://a.com",
+        profile: "chrome",
+      });
+      expect(browserActionsMocks.browserNavigate).toHaveBeenLastCalledWith(
+        undefined,
+        expect.objectContaining({ profile: "chrome" }),
+      );
+    } finally {
+      configMocks.loadConfig.mockReturnValue({ browser: {} });
+    }
   });
 });

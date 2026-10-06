@@ -223,6 +223,7 @@ export const BitterbotSchema = z
         noSandbox: z.boolean().optional(),
         attachOnly: z.boolean().optional(),
         defaultProfile: z.string().optional(),
+        perAgentProfiles: z.boolean().optional(),
         snapshotDefaults: BrowserSnapshotDefaultsSchema,
         liveView: z
           .object({
