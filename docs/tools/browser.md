@@ -234,6 +234,25 @@ Configuration:
 
 The live view shows whatever the browser shows, logged-in pages included. It needs the same `operator.write` scope as `browser.request`, frames go only to the connection that asked for them, and keystrokes sent during a take over are not logged.
 
+## Session replay
+
+The live view only streams while you watch. Session replay keeps a record for later: after each page action the agent takes (open, navigate, act, upload, dialog, focus), the gateway saves one screenshot, at most one every 1.5 seconds per conversation. Reads such as snapshots and screenshots are not recorded, and neither is a browser on another node.
+
+Recordings appear under **Browser recordings** in the Activity panel. Step through one frame by frame, or open it from an activity item with **Replay** to land on the moment of that action. Delete a recording from the same list.
+
+Frames stay on this machine under `~/.bitterbot/replays/`, readable only by your user. Each conversation keeps its newest 300 frames, and a recording is removed 7 days after its last frame. Reading or deleting recordings needs the same `operator.write` scope as the live view.
+
+```json5
+{
+  browser: {
+    replay: {
+      enabled: true, // default: true. Set false to stop recording.
+      retentionDays: 7, // 1-90
+    },
+  },
+}
+```
+
 ## Security
 
 Key ideas:

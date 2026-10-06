@@ -17,6 +17,11 @@ const METHODS = [
   "browser.live.stop",
   "browser.live.control",
   "browser.live.input",
+  // Recordings show the same pages as the live view (PLAN-53 A6).
+  "browser.replay.list",
+  "browser.replay.frames",
+  "browser.replay.frame",
+  "browser.replay.delete",
 ];
 
 describe("browser live view RPC scope gating", () => {

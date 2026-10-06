@@ -89,6 +89,12 @@ vi.mock("./common.js", async () => {
   };
 });
 
+const replayRecord = vi.hoisted(() => vi.fn(async () => null));
+vi.mock("../../browser/replay.js", async (orig) => ({
+  ...(await orig<typeof import("../../browser/replay.js")>()),
+  createReplayRecorder: () => ({ record: replayRecord }),
+}));
+
 import { DEFAULT_AI_SNAPSHOT_MAX_CHARS } from "../../browser/constants.js";
 import { createBrowserTool } from "./browser-tool.js";
 
@@ -424,5 +430,33 @@ describe("browser tool external content wrapping", () => {
         kind: "console",
       }),
     });
+  });
+});
+
+describe("browser session replay (PLAN-53 A6)", () => {
+  afterEach(() => replayRecord.mockClear());
+
+  it("records a frame after a page action in a session", async () => {
+    browserActionsMocks.browserNavigate.mockResolvedValueOnce({
+      ok: true,
+      targetId: "t1",
+      url: "https://a.com/",
+    } as never);
+    const tool = createBrowserTool({ agentSessionKey: "agent:main:main" });
+    await tool.execute?.("call-1", { action: "navigate", targetUrl: "https://a.com" });
+    expect(replayRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionKey: "agent:main:main",
+        action: "navigate",
+        targetId: "t1",
+        url: "https://a.com/",
+      }),
+    );
+  });
+
+  it("does not record reads, or runs without a session", async () => {
+    await createBrowserTool({ agentSessionKey: "s" }).execute?.("c2", { action: "status" });
+    await createBrowserTool().execute?.("c3", { action: "navigate", targetUrl: "https://a.com" });
+    expect(replayRecord).not.toHaveBeenCalled();
   });
 });

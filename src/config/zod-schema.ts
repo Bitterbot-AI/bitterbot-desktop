@@ -232,6 +232,13 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        replay: z
+          .object({
+            enabled: z.boolean().optional(),
+            retentionDays: z.number().int().min(1).max(90).optional(),
+          })
+          .strict()
+          .optional(),
         profiles: z
           .record(
             z
