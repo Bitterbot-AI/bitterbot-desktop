@@ -1,0 +1,10 @@
+{
+  "id": "mcp",
+  "name": "Connectors",
+  "description": "Connect MCP servers (local or remote) and give their tools to the agent. Changes made through a connector wait for your approval.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

@@ -11,7 +11,9 @@
  * have their own approvals.
  */
 
-export type ReviewClass = "spend" | "publish" | "contact";
+import { getConnectorTool } from "./connectors.js";
+
+export type ReviewClass = "spend" | "publish" | "contact" | "connector";
 
 export type Classification = {
   cls: ReviewClass;
@@ -60,6 +62,18 @@ const money = (value: number | undefined): string =>
 const SPEND_ACTIONS = new Set(["send_usdc", "send_to_peer", "pay_for_resource"]);
 
 export function classifyToolCall(toolName: string, params: unknown): Classification | null {
+  // A connector tool that changes something (D5). Registered by the connector.
+  const connector = getConnectorTool(toolName.trim());
+  if (connector) {
+    if (connector.readOnly || connector.trustWrites) {
+      return null;
+    }
+    const args = isRecord(params) ? JSON.stringify(params) : "";
+    return {
+      cls: "connector",
+      preview: `${connector.server}: ${connector.tool}${args && args !== "{}" ? ` ${args.slice(0, 200)}` : ""}`,
+    };
+  }
   if (!isRecord(params)) {
     return null;
   }

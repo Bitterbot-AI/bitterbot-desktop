@@ -15,7 +15,7 @@ export interface ReviewAction {
   id: string;
   status: ReviewStatus;
   /** "handoff" is the agent asking the owner to take over the browser. */
-  cls: "spend" | "publish" | "contact" | "handoff" | "command";
+  cls: "spend" | "publish" | "contact" | "connector" | "handoff" | "command";
   tool: string;
   preview: string;
   params: unknown;

@@ -401,3 +401,11 @@ export { stripMarkdown } from "../utils/strip-markdown.js";
 
 // Media utilities
 export { loadWebMedia, type WebMediaResult } from "../web/media.js";
+
+// PLAN-53 D5: connector tools declare read or write; writes go through review.
+export {
+  setConnectorExecutor,
+  setConnectorTools,
+  type ConnectorExecutor,
+  type ConnectorToolInfo,
+} from "../review/connectors.js";

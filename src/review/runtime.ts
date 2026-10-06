@@ -40,6 +40,7 @@ export function resolveReviewPolicy(cfg = loadConfig()): ReviewPolicy {
     spend: review.spend ?? DEFAULT_REVIEW_POLICY.spend,
     publish: review.publish ?? DEFAULT_REVIEW_POLICY.publish,
     contact: review.contact ?? DEFAULT_REVIEW_POLICY.contact,
+    connector: review.connector ?? DEFAULT_REVIEW_POLICY.connector,
     ttlMs:
       typeof review.ttlHours === "number" && review.ttlHours > 0
         ? review.ttlHours * 3_600_000

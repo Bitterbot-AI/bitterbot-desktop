@@ -58,7 +58,9 @@ function ReviewCard({ action }: { action: ReviewAction }) {
               ? "Spending needs your approval"
               : action.cls === "contact"
                 ? "A message to someone new needs your approval"
-                : "A public post needs your approval"}
+                : action.cls === "connector"
+                  ? "A change through a connector needs your approval"
+                  : "A public post needs your approval"}
             <span className="ml-2 font-mono text-2xs text-muted-foreground">{action.id}</span>
           </p>
           <p className="text-sm text-foreground mt-0.5 break-words">{action.preview}</p>

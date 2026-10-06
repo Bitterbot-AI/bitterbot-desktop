@@ -14,6 +14,7 @@ import {
   mergeAlsoAllowPolicy,
   resolveToolProfilePolicy,
 } from "../agents/tool-policy.js";
+import { CONNECTOR_TOOL_PREFIX } from "../agents/tool-policy.js";
 import { ToolInputError } from "../agents/tools/common.js";
 import { loadConfig } from "../config/config.js";
 import { resolveMainSessionKey } from "../config/sessions.js";
@@ -284,7 +285,13 @@ export async function handleToolsInvokeHttpRequest(
     Array.isArray(gatewayToolsCfg?.deny) ? gatewayToolsCfg.deny : [],
   );
   const gatewayDenySet = new Set(gatewayDenyNames);
-  const gatewayFiltered = subagentFiltered.filter((t) => !gatewayDenySet.has(t.name));
+  // Connector tools skip the review stage when invoked here, like the money
+  // tools: denied over HTTP unless explicitly allowed (PLAN-53 D2).
+  const gatewayFiltered = subagentFiltered.filter(
+    (t) =>
+      !gatewayDenySet.has(t.name) &&
+      !(t.name.startsWith(CONNECTOR_TOOL_PREFIX) && !gatewayToolsCfg?.allow?.includes(t.name)),
+  );
 
   const tool = gatewayFiltered.find((t) => t.name === toolName);
   if (!tool) {
