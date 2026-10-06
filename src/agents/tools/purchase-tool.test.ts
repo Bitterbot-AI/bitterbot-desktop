@@ -39,8 +39,11 @@ describe("purchase tool rails", () => {
 
   it("types a Privacy card only into a tab on the approved shop", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-purchase-"));
+    // os.homedir() reads USERPROFILE on Windows.
     const prevHome = process.env.HOME;
+    const prevProfile = process.env.USERPROFILE;
     process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
     try {
       const store = path.join(dir, ".bitterbot", "payments", "privacy-cards.json");
       fs.mkdirSync(path.dirname(store), { recursive: true });
@@ -70,6 +73,7 @@ describe("purchase tool rails", () => {
       expect(browser.act).not.toHaveBeenCalled();
     } finally {
       process.env.HOME = prevHome;
+      process.env.USERPROFILE = prevProfile;
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
