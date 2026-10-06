@@ -1,0 +1,86 @@
+---
+summary: "Write to your agent by email; it replies on the same thread"
+read_when:
+  - You want to reach the agent by email
+  - Setting up IMAP and SMTP for the agent's mailbox
+title: "Email"
+---
+
+# Email
+
+Give the agent a mailbox and you can write to it like a person: it reads new
+mail, answers on the same thread, and remembers the conversation per sender.
+It uses plain IMAP and SMTP, so any provider works (Gmail, Fastmail, iCloud,
+Proton Mail Bridge, Outlook.com, a company server) with no cloud console or
+tunnel to set up.
+
+Use a mailbox made for the agent, not your own inbox: everything that arrives
+there is read by it.
+
+## Setup
+
+1. Create the mailbox and an **app password** for it (Gmail, iCloud and Outlook
+   need one when two-step sign-in is on).
+2. Add the channel:
+
+   ```json5
+   {
+     channels: {
+       email: {
+         address: "agent@example.com",
+         password: "app-password", // used for both IMAP and SMTP
+         imap: { host: "imap.gmail.com" }, // port 993, TLS
+         smtp: { host: "smtp.gmail.com" }, // port 465, TLS
+         allowFrom: ["you@example.com"], // who may write to the agent
+       },
+     },
+   }
+   ```
+
+3. Restart the gateway. It connects, reads unseen mail, and waits for new mail
+   with IMAP IDLE.
+
+Common servers: Fastmail `imap.fastmail.com` / `smtp.fastmail.com`, iCloud
+`imap.mail.me.com` / `smtp.mail.me.com` (SMTP on port 587 with
+`secure: false`), Outlook.com `outlook.office365.com` / `smtp-mail.outlook.com`
+(587, `secure: false`). Give `imap` and `smtp` their own `user` and `password`
+when they differ.
+
+## Who the agent answers
+
+The agent only answers mail that passes all of these:
+
+- The sender is in `allowFrom`: an address, `@domain.com` for a whole domain, or
+  `*` for anyone. Nobody is allowed until you set it.
+- **Your mail server verified the sender.** A From line is easy to forge, so the
+  channel reads the `Authentication-Results` header your provider adds and
+  requires DMARC to pass, or a DKIM signature from the sender's own domain. Turn
+  this off with `requireAuthenticated: false` only for a server that adds no such
+  header.
+- A person wrote it: auto-replies, bounces, mailing lists and bulk mail are
+  ignored, and the agent's own replies say `Auto-Submitted: auto-replied` so
+  other auto-responders leave them alone.
+
+Every message it looks at is marked read, whether it answers or not, so nothing
+is handled twice.
+
+## How replies look
+
+The agent sees only the new part of your message: quoted history and your
+signature are cut off. Its reply goes back as one email on the same thread
+(`Re:` subject, `In-Reply-To` and `References`). When the agent writes to you
+on its own (the message tool with channel `email` and your address), it
+continues your last thread.
+
+## Settings
+
+| Key                    | Default | Meaning                                       |
+| ---------------------- | ------- | --------------------------------------------- |
+| `address`              |         | The agent's address; replies come from it     |
+| `password`             |         | Shared IMAP and SMTP password                 |
+| `imap`, `smtp`         |         | `host`, `port`, `secure`, `user`, `password`  |
+| `allowFrom`            | nobody  | Addresses, `@domains`, or `*`                 |
+| `requireAuthenticated` | `true`  | Require DMARC or same-domain DKIM to pass     |
+| `mailbox`              | `INBOX` | Folder to watch                               |
+| `maxBodyChars`         | `20000` | Longest message body the agent reads          |
+| `enabled`              | `true`  | Set `false` to stop without removing settings |

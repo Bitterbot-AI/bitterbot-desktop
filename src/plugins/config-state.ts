@@ -36,6 +36,10 @@ export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   // Control UI and the `bitterbot x` CLI. Nothing posts until an OAuth token
   // exists AND the policy gate passes (extensions/x/src/policy.ts).
   "x",
+  // Email (PLAN-53 F4): connects only once channels.email has a mailbox and
+  // password, and answers only senders in allowFrom whom the mail server
+  // verified.
+  "email",
 ]);
 
 const normalizeList = (value: unknown): string[] => {

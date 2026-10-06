@@ -27,6 +27,7 @@ COPY desktop/package.json ./desktop/
 # extension gains a package.json and is missed here, --frozen-lockfile fails
 # and the CI docker job catches it.
 COPY extensions/discord/package.json ./extensions/discord/
+COPY extensions/email/package.json ./extensions/email/
 COPY extensions/signal/package.json ./extensions/signal/
 COPY extensions/slack/package.json ./extensions/slack/
 COPY extensions/telegram/package.json ./extensions/telegram/

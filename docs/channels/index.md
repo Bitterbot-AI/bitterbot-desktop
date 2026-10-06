@@ -18,6 +18,7 @@ Text is supported everywhere; media and reactions vary by channel.
 - [Discord](/channels/discord) — Discord Bot API + Gateway; supports servers, channels, and DMs.
 - [Slack](/channels/slack) — Bolt SDK; workspace apps.
 - [Signal](/channels/signal) — signal-cli; privacy-focused.
+- [Email](/channels/email) — Any mailbox over IMAP and SMTP; replies on the same thread.
 - [Twitch](/channels/twitch) — Twitch chat via IRC connection (plugin, installed separately).
 - [X (Twitter)](/channels/x) — Outbound-only: policy-gated original posts to the bot's own X account.
 - [WebChat](/web/webchat) — Gateway WebChat UI over WebSocket.
