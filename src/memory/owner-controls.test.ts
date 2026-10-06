@@ -159,7 +159,10 @@ describe("export", () => {
     );
     expect(JSON.stringify(parsed)).not.toContain("embedding");
     expect(parsed.workingMemory).toBe("# MEMORY");
-    expect(fs.statSync(out).mode & 0o777).toBe(0o600);
+    // Windows has no POSIX modes.
+    if (process.platform !== "win32") {
+      expect(fs.statSync(out).mode & 0o777).toBe(0o600);
+    }
   });
 });
 
