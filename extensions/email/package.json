@@ -1,0 +1,21 @@
+{
+  "name": "@bitterbot/email",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Bitterbot email channel: read a mailbox over IMAP, reply over SMTP",
+  "type": "module",
+  "dependencies": {
+    "imapflow": "^2.2.0",
+    "mailparser": "^3.9.0",
+    "nodemailer": "^10.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "bitterbot": "workspace:*"
+  },
+  "bitterbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}
