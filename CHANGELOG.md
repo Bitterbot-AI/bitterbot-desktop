@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.3.0...v1.4.0) (2026-10-06)
+
+
+### Features
+
+* **agents:** a guest gets the agent's character, not its owner's private life ([#190](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/190)) ([7401db8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7401db810d5353b0441360993814471bb32d1953))
+
+
+### Bug Fixes
+
+* **agents:** detect guest turns on runs that set only messageChannel ([#192](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/192)) ([f77d28a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f77d28a89b9da297a6429297bab029cdf8572b9b))
+
 ## [1.3.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.2.0...v1.3.0) (2026-10-06)
 
 
