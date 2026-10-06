@@ -53,7 +53,7 @@ export function resolveReviewPolicy(cfg = loadConfig()): ReviewPolicy {
  * means the owner already decided; asking again would be noise.
  */
 async function coveredByStandingGrant(c: Classification): Promise<StandingPermission> {
-  if (c.cls !== "spend" || !c.payee || c.amountUsd === undefined) {
+  if (c.cls !== "spend" || !c.payee || c.amountUsd === undefined || c.noStandingGrant) {
     return false;
   }
   try {

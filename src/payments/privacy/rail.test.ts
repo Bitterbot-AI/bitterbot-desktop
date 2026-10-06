@@ -2,7 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { PRIVACY_API, PrivacyRail, type PrivacySettings, UNUSED_CARD_TTL_MS } from "./rail.js";
+import {
+  PRIVACY_API,
+  PrivacyRail,
+  type PrivacySettings,
+  siteOf,
+  UNUSED_CARD_TTL_MS,
+} from "./rail.js";
 
 let dir: string;
 let settings: PrivacySettings;
@@ -130,5 +136,22 @@ describe("Privacy rail", () => {
       body: { state: "CLOSED" },
     });
     await expect(r.takeCard(id)).rejects.toThrow(/not open/);
+  });
+
+  it("hands a card over at most once, even to two fills at the same time", async () => {
+    const r = rail();
+    const { id } = await r.request({
+      merchantName: "Shop",
+      merchantUrl: "https://shop.com",
+      amountUsd: 10,
+    });
+    const results = await Promise.allSettled([r.takeCard(id), r.takeCard(id)]);
+    expect(results.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+  });
+
+  it("names the site a host belongs to", () => {
+    expect(siteOf("checkout.shop.com")).toBe("shop.com");
+    expect(siteOf("www.shop.co.uk")).toBe("shop.co.uk");
+    expect(siteOf("shop.com")).toBe("shop.com");
   });
 });

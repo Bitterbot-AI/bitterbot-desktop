@@ -13,11 +13,12 @@
 import { Type } from "@sinclair/typebox";
 import { markCardEntry } from "../../browser/card-entry.js";
 import { browserAct } from "../../browser/client-actions.js";
+import { browserTabs } from "../../browser/client.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import { gateCardPurchase } from "../../payments/ap2/gate.js";
 import { createLinkCliRunner, resolveLinkSettings } from "../../payments/link/cli.js";
 import { type CardForEntry, LinkRail } from "../../payments/link/rail.js";
-import { PrivacyRail, resolvePrivacySettings } from "../../payments/privacy/rail.js";
+import { PrivacyRail, resolvePrivacySettings, siteOf } from "../../payments/privacy/rail.js";
 import { configureSpendGateForReview } from "../../review/spend.js";
 import { stringEnum } from "../schema/typebox.js";
 import { type AnyAgentTool, jsonResult, readNumberParam, readStringParam } from "./common.js";
@@ -165,6 +166,24 @@ export function createPurchaseTool(opts: {
           throw new Error(`Privacy purchase ${id} is ${request.status}. Nothing was filled.`);
         }
         readStringParam(params, "number_ref", { required: true });
+        // The card goes only into a page on the shop the owner approved.
+        const targetId = readStringParam(params, "targetId", { required: true });
+        const tabs = await browserTabs(undefined, {
+          profile: readStringParam(params, "profile"),
+        }).catch(() => []);
+        const tab = tabs.find((t) => t.targetId === targetId);
+        let tabSite = "";
+        try {
+          tabSite = tab ? siteOf(new URL(tab.url).hostname) : "";
+        } catch {
+          tabSite = "";
+        }
+        const shopSite = siteOf(new URL(request.merchantUrl).hostname);
+        if (!tabSite || tabSite !== shopSite) {
+          throw new Error(
+            `The checkout tab is not on ${shopSite}, the shop this purchase was approved for. Nothing was filled.`,
+          );
+        }
         configureSpendGateForReview();
         gateCardPurchase(
           {

@@ -151,7 +151,14 @@ describe("classifyToolCall", () => {
         amount_usd: 25,
         context: "Running shoes, men's 9",
       }),
-    ).toMatchObject({ cls: "spend", payee: "Shop", amountUsd: 25 });
+    ).toMatchObject({
+      cls: "spend",
+      payee: "Shop",
+      amountUsd: 25,
+      // Never covered by a standing grant, and the approver sees the real site.
+      noStandingGrant: true,
+      preview: expect.stringContaining("(shop.com)"),
+    });
     expect(
       classifyToolCall("purchase", { action: "request", rail: "privacy", merchant_name: "Shop" }),
     ).toMatchObject({ missing: ["merchant_url", "amount_usd"] });

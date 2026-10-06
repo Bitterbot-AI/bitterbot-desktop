@@ -56,6 +56,7 @@ export type PrivacyRequestView = {
   id: string;
   status: "approved" | "used" | "closed";
   merchantName: string;
+  merchantUrl: string;
   amountUsd: number;
   card?: { last4?: string };
 };
@@ -76,9 +77,29 @@ function readStore(file: string): PrivacyRequest[] {
 
 function writeStore(file: string, list: PrivacyRequest[]): void {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(list, null, 2), { mode: 0o600 });
   fs.renameSync(tmp, file);
+}
+
+/** One writer at a time per store file: every change re-reads inside the lock. */
+const storeLocks = new Map<string, Promise<unknown>>();
+function withStoreLock<T>(file: string, fn: () => Promise<T>): Promise<T> {
+  const prev = storeLocks.get(file) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  storeLocks.set(
+    file,
+    next.catch(() => {}),
+  );
+  return next;
+}
+
+/** The registrable part of a host, roughly: shop.example.co.uk -> example.co.uk. */
+export function siteOf(host: string): string {
+  const labels = host.toLowerCase().replace(/\.$/, "").split(".");
+  const take =
+    labels.length >= 3 && labels.at(-1)!.length === 2 && labels.at(-2)!.length <= 3 ? 3 : 2;
+  return labels.slice(-take).join(".");
 }
 
 export class PrivacyRail {
@@ -170,7 +191,9 @@ export class PrivacyRail {
       amountUsd: cents / 100,
       createdAt: this.now(),
     };
-    writeStore(this.settings.storeFile, [...readStore(this.settings.storeFile), entry]);
+    await withStoreLock(this.settings.storeFile, async () => {
+      writeStore(this.settings.storeFile, [...readStore(this.settings.storeFile), entry]);
+    });
     return this.view(entry, str(card.last_four));
   }
 
@@ -179,6 +202,7 @@ export class PrivacyRail {
       id: r.id,
       status: r.closedAt ? "closed" : r.filledAt ? "used" : "approved",
       merchantName: r.merchantName,
+      merchantUrl: r.merchantUrl,
       amountUsd: r.amountUsd,
       ...(last4 ? { card: { last4 } } : {}),
     };
@@ -197,11 +221,17 @@ export class PrivacyRail {
 
   /** Read the card for typing into a checkout page. Never return it to the model. */
   async takeCard(id: string): Promise<CardForEntry> {
-    const list = readStore(this.settings.storeFile);
-    const r = list.find((x) => x.id === id);
-    if (!r || r.closedAt) {
-      throw new Error(`Privacy purchase ${id} is not open.`);
-    }
+    const r = await withStoreLock(this.settings.storeFile, async () => {
+      const list = readStore(this.settings.storeFile);
+      const found = list.find((x) => x.id === id);
+      if (!found || found.closedAt || found.filledAt) {
+        throw new Error(`Privacy purchase ${id} is not open.`);
+      }
+      // Claimed before the card is read, so it is handed over at most once.
+      found.filledAt = this.now();
+      writeStore(this.settings.storeFile, list);
+      return found;
+    });
     const card = await this.api("GET", `/cards/${encodeURIComponent(r.cardToken)}`);
     const number = str(card.pan)?.replace(/\s+/g, "");
     const expMonth = Number(str(card.exp_month));
@@ -214,8 +244,6 @@ export class PrivacyRail {
     ) {
       throw new Error("Privacy.com returned no open card for this purchase.");
     }
-    r.filledAt = this.now();
-    writeStore(this.settings.storeFile, list);
     return {
       number,
       cvc: str(card.cvv),
@@ -228,23 +256,29 @@ export class PrivacyRail {
 
   /** Close cards that were approved but not used within a day. */
   async closeStale(): Promise<number> {
-    const list = readStore(this.settings.storeFile);
     const at = this.now();
-    let closed = 0;
-    for (const r of list) {
-      if (!r.closedAt && !r.filledAt && at - r.createdAt > UNUSED_CARD_TTL_MS) {
-        try {
-          await this.api("PATCH", `/cards/${encodeURIComponent(r.cardToken)}`, { state: "CLOSED" });
-          r.closedAt = at;
-          closed++;
-        } catch {
-          // Try again next time.
-        }
+    const stale = readStore(this.settings.storeFile).filter(
+      (r) => !r.closedAt && !r.filledAt && at - r.createdAt > UNUSED_CARD_TTL_MS,
+    );
+    const closedIds: string[] = [];
+    for (const r of stale) {
+      try {
+        await this.api("PATCH", `/cards/${encodeURIComponent(r.cardToken)}`, { state: "CLOSED" });
+        closedIds.push(r.id);
+      } catch {
+        // Try again next time.
       }
     }
-    if (closed > 0) {
-      writeStore(this.settings.storeFile, list);
+    if (closedIds.length > 0) {
+      // Re-read inside the lock: a card created meanwhile must not be lost.
+      await withStoreLock(this.settings.storeFile, async () => {
+        const list = readStore(this.settings.storeFile);
+        for (const r of list) {
+          if (closedIds.includes(r.id)) r.closedAt = at;
+        }
+        writeStore(this.settings.storeFile, list);
+      });
     }
-    return closed;
+    return closedIds.length;
   }
 }

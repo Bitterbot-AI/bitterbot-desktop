@@ -55,3 +55,7 @@ use. To stop all purchases, turn `enabled` off or delete the key in Privacy.
 - Card purchases also count toward the wallet's per-session spending cap.
 - Approvals follow `review.spend`. If you set spends to go through without
   asking, Privacy cards are created without asking too.
+- Standing spend grants never cover a Privacy card: each card is approved on its
+  own. The approval shows the shop's name and its web address.
+- The card is typed only into a browser tab on the shop you approved (the same
+  site, any subdomain). Anywhere else, nothing is filled.
