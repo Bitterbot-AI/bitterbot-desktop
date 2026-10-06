@@ -21,8 +21,7 @@ services:
       - "${BITTERBOT_P2P_PORT:-9100}:9100"
     init: true
     restart: unless-stopped
-    command:
-      [
+    command: [
         "node",
         "bitterbot.mjs",
         "gateway",
