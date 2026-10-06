@@ -3103,6 +3103,32 @@ export class MemoryIndexManager implements MemorySearchManager {
     });
   }
 
+  /** PLAN-53 G4: tell the owner what the agent dreamed and learned today. */
+  async sendDreamBrief(opts: { force?: boolean } = {}): Promise<string | null> {
+    if (this.cfg.memory?.dreamBrief?.enabled === false && !opts.force) {
+      return null;
+    }
+    try {
+      const { buildDreamBrief, briefIsWorthSending, renderDreamBrief } =
+        await import("./dream-brief.js");
+      const brief = buildDreamBrief(this.db, Date.now() - 24 * 60 * 60 * 1000);
+      if (!briefIsWorthSending(brief) && !opts.force) {
+        return null;
+      }
+      const text = renderDreamBrief(brief);
+      const { notifyOwner } = await import("../infra/owner-notify.js");
+      await notifyOwner({
+        kind: "dream-brief",
+        dedupeKey: `dream-brief:${this.agentId}:${new Date().toISOString().slice(0, 10)}`,
+        text,
+      });
+      return text;
+    } catch (err) {
+      log.warn(`dream brief failed: ${String(err)}`);
+      return null;
+    }
+  }
+
   private scheduleDigestFire(msUntilNext: number): void {
     this.digestTimer = setTimeout(() => {
       this.digestTimer = null;
@@ -3111,6 +3137,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         .catch((err) => {
           log.warn(`digest delivery failed: ${String(err)}`);
         })
+        .then(() => this.sendDreamBrief())
         .finally(() => {
           // Reschedule for the same time next day.
           this.ensureDigestInterval();
