@@ -52,7 +52,7 @@ stateDiagram-v2
 type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAKENING";
 ```
 
-A cycle is triggered by a timer (default: every 120 minutes), manually via `MemoryIndexManager.dream()`, or by an **emotional mini-dream** (see below).
+A cycle is triggered by a timer (default tick every 120 minutes, adaptive between 30 and 240 minutes by default), manually via `MemoryIndexManager.dream()`, or by an **emotional mini-dream** (see below). A scheduled full cycle also needs at least one new conversation, 60 minutes idle and 8 hours since the last full cycle (`minNewSessions`, `minIdleMinutes`, `minHoursBetween`).
 
 The minimum chunks required to trigger a dream cycle is **5**, so the dream engine activates within a single conversation session rather than requiring days of accumulated data.
 
@@ -94,7 +94,7 @@ Each mode serves a different purpose and has a default weight controlling how of
 | `compression`   | 0.18   | `none`       | Generalize into higher abstractions; consume near-merge hints       |
 | `simulation`    | 0.14   | `cloud`      | Cross-domain creative recombination via farthest-point sampling     |
 | `extrapolation` | 0.09   | `cloud`      | Predict future patterns from user behavior                          |
-| `exploration`   | 0.09   | `local`      | Gap-filling from curiosity targets                                  |
+| `exploration`   | 0.09   | `local`      | Gap-filling from curiosity targets (disabled by default)            |
 
 **Retired in PLAN-45 Phase 1 (2026-09-05):** `mutation` and `research`. Both were disabled by default since PLAN-40 / PLAN-34 and are now deleted from `DreamMode`. A `bitterbot.json` that still lists either key under `memory.dream.modes` or `modelTiers.modeTiers` keeps working: the engine logs `dream mode X was retired in PLAN-45 Phase 1; ignoring` once per key at construction and drops it.
 
@@ -352,7 +352,7 @@ Market demand signals feed into dream mode selection as the fourth signal, enabl
 - Demand targets are injected into the curiosity engine as exploration targets with a **24-hour TTL**, ensuring stale market signals expire naturally
 - When marketplace activity is detected (any signal within the last 24h), the four-signal weighting activates (0.25/0.25/0.30/0.20); when no marketplace activity exists, the system falls back to the original three-signal weights (0.30/0.30/0.40)
 
-**Virtuous cycle:** marketplace purchases surface demand → dream engine explores and mutates toward that demand → new skills crystallize → marketplace lists them → sales generate dopamine → reinforcement loop closes.
+**Virtuous cycle:** marketplace purchases surface demand → dream engine distills toward that demand → new skills crystallize → marketplace lists them → sales generate dopamine → reinforcement loop closes.
 
 ---
 
@@ -547,11 +547,11 @@ type DreamEngineConfig = {
   hormonalTriggerDelta?: number; // Default: 0.15
   synthesisMaxTokens?: number; // Default: 6144 (RLM working-memory synthesis output cap)
   maxChunksPerCycle?: number; // Default: 50
-  maxLlmCallsPerCycle?: number; // Default: 5
+  maxLlmCallsPerCycle?: number; // Default: 8
   clusterSimilarityThreshold?: number; // Default: 0.65
-  minImportanceForDream?: number; // Default: 0.3
+  minImportanceForDream?: number; // Default: 0.1
   synthesisMode?: "heuristic" | "llm" | "both"; // Default: "both"
-  model?: string; // Default: "openai/gpt-4o-mini"
+  model?: string; // Default: key-aware (Haiku on Anthropic-only installs, else "openai/gpt-4o-mini")
   maxInsights?: number; // Default: 200
   minChunksForDream?: number; // Default: 5
   llmCall?: (prompt: string) => Promise<string>;
@@ -588,7 +588,7 @@ This creates a virtuous cycle: the agent's daily work generates episodes → dre
 
 ## Relationship reconsolidation (PLAN-23 SABM)
 
-A 9th dream mode, `relationship_reconsolidation`, runs each cycle and is the only place the memory system performs a destructive belief revision. The write path merely _flags_ conflicting relationship edges (both stay active); this mode drains those flags and closes the losing edge only after (1) the supporting evidence has exited its labile window and (2) a hormonally-gated confidence floor is cleared (high cortisol makes it more conservative). Closed beliefs are retained and remain queryable. See `docs/memory/sabm-belief-adjudication.md`.
+A 9th dream mode, `relationship_reconsolidation`, runs each cycle when enabled (it is off by default) and is the only place the memory system performs a destructive belief revision. The write path merely _flags_ conflicting relationship edges (both stay active); this mode drains those flags and closes the losing edge only after (1) the supporting evidence has exited its labile window and (2) a hormonally-gated confidence floor is cleared (high cortisol makes it more conservative). Closed beliefs are retained and remain queryable. See `docs/memory/sabm-belief-adjudication.md`.
 
 ## Relationship mining (PLAN-28 A2)
 
@@ -607,7 +607,8 @@ tells you what happened while you were away:
 
 The brief arrives like other owner notices: in the main session, in the Control
 UI, and on your chat channel (subject to quiet hours). It is skipped on days
-with nothing new to say. If something in it is wrong, correct or forget it on
+with nothing new to say. It is sent from the daily digest timer, so it needs the
+digest on (`memory.digest.enabled`, default on). If something in it is wrong, correct or forget it on
 the **Memory** page.
 
 Turn it off with:

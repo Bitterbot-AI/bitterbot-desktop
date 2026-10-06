@@ -44,7 +44,7 @@ The Phenotype can never contradict the Genome. The dream engine receives Phenoty
 
 ## 2. How Identity Evolves
 
-Identity evolution happens during **dream cycles** -- offline processing periods that fire every 2 hours (configurable). The dream engine is the agent's subconscious.
+Identity evolution happens during **dream cycles** -- offline processing periods. A dream tick runs every 2 hours (adaptive, configurable); a full cycle runs at most every 8 hours, after new input and an hour idle. The dream engine is the agent's subconscious.
 
 ### The RLM State Update
 
@@ -142,7 +142,7 @@ value = homeostasis + (value - homeostasis) * decay_factor
 - **Want a warmer, more relational agent?** Raise `oxytocin` to 0.5-0.6.
 - **Want a stoic, task-focused agent?** Lower all three and raise `cortisol` slightly.
 
-The values are clamped to [0, 1]. If GENOME.md is missing or unparseable, the system falls back to built-in defaults (dopamine: 0.15, cortisol: 0.02, oxytocin: 0.10).
+The values are clamped to [0, 1]. If GENOME.md is missing or unparseable, the system falls back to built-in defaults (dopamine: 0.15, cortisol: 0.02, oxytocin: 0.20).
 
 Half-lives control how quickly hormones return to baseline after a spike:
 
@@ -326,7 +326,7 @@ As the agent matures, it develops an ecosystem identity through participation in
 
 ### Skill Publishing
 
-When a skill candidate (from `SkillCrystallizer` or the wiki-skill pipeline; the dream engine's mutation mode was retired in PLAN-45 Phase 1 (2026-09-05)) passes all three verification checks (dangerous pattern scan, structural validation, semantic drift check), the skill is crystallized (`lifecycle: 'frozen'`) and published to the P2P swarm via the `SkillNetworkBridge`.
+When a skill candidate (from the wiki-skill pipeline; `SkillCrystallizer` was retired in PLAN-45 Phase 0, and the dream engine's mutation mode was retired in PLAN-45 Phase 1 (2026-09-05)) passes all three verification checks (dangerous pattern scan, structural validation, semantic drift check), the skill is crystallized (`lifecycle: 'frozen'`) and published to the P2P swarm via the `SkillNetworkBridge`.
 
 Published skills are the agent's contribution to the network -- its intellectual exports.
 

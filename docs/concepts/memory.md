@@ -12,27 +12,28 @@ Bitterbot's memory is a biological cognitive architecture, not a vector database
 
 ## Core Components
 
-| Component                      | What It Does                                                                                                                                                                                                                                    | Docs                                                    |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **Knowledge Crystals**         | Memories that naturally decay via Ebbinghaus curves. Frequently accessed facts become permanent; unused info fades.                                                                                                                             | [Knowledge Crystals](../memory/knowledge-crystals.md)   |
-| **Dream Engine**               | Every 2 hours, the agent goes offline to dream — running 7 specialized modes to consolidate, mutate, and optimize knowledge.                                                                                                                    | [Dream Engine](../memory/dream-engine.md)               |
-| **Curiosity Engine**           | Unified intrinsic motivation with GCCRF reward scoring. Maps what the agent _doesn't_ know. Detects gaps, contradictions, and semantic frontiers. Developmental alpha annealing shifts curiosity from common knowledge to frontier exploration. | [Curiosity & Search](../memory/curiosity-and-search.md) |
-| **Hormonal System**            | Three neuromodulators (dopamine, cortisol, oxytocin) shape personality in real-time and determine what's worth remembering.                                                                                                                     | [Emotional System](../memory/emotional-system.md)       |
-| **Working Memory (MEMORY.md)** | Dream-synthesized identity: the Phenotype (self-concept), Bond (theory of mind), Niche (ecosystem role), and active context. Rewritten every dream cycle.                                                                                       | [Working Memory](../memory/working-memory.md)           |
-| **Skills Pipeline**            | Successful task patterns are crystallized into tradeable skills, published to the P2P marketplace.                                                                                                                                              | [Skills Pipeline](../memory/skills-pipeline.md)         |
-| **Deep Recall (RLM)**          | For massive context (10M+ tokens), spawns a sub-LLM that writes and executes search code against full history.                                                                                                                                  | [Deep Recall](../memory/deep-recall.md)                 |
+| Component                      | What It Does                                                                                                                                                                                                                                                                                                        | Docs                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **Knowledge Crystals**         | Memories that naturally decay via Ebbinghaus curves. Frequently accessed facts become permanent; unused info fades.                                                                                                                                                                                                 | [Knowledge Crystals](../memory/knowledge-crystals.md)   |
+| **Dream Engine**               | A dream tick runs every 2 hours (adaptive, 30 to 240 minutes). A full cycle runs at most every 8 hours, only after new input and an hour idle, and picks from replay, compression, simulation, extrapolation and the utility lanes (hygiene, distillation, anticipation, relationship mining, canonical promotion). | [Dream Engine](../memory/dream-engine.md)               |
+| **Curiosity Engine**           | Unified intrinsic motivation with GCCRF reward scoring. Maps what the agent _doesn't_ know. Detects gaps, contradictions, and semantic frontiers. Developmental alpha annealing shifts curiosity from common knowledge to frontier exploration.                                                                     | [Curiosity & Search](../memory/curiosity-and-search.md) |
+| **Hormonal System**            | Three neuromodulators (dopamine, cortisol, oxytocin) shape personality in real-time and determine what's worth remembering.                                                                                                                                                                                         | [Emotional System](../memory/emotional-system.md)       |
+| **Working Memory (MEMORY.md)** | Dream-synthesized identity: the Phenotype (self-concept), Bond (theory of mind), Niche (ecosystem role), and active context. Rewritten every dream cycle.                                                                                                                                                           | [Working Memory](../memory/working-memory.md)           |
+| **Skills Pipeline**            | Successful task patterns are validated by the skill evolution pipeline; publishing them to the P2P marketplace is opt-in.                                                                                                                                                                                           | [Skills Pipeline](../memory/skills-pipeline.md)         |
+| **Deep Recall (RLM)**          | For massive context (10M+ tokens), spawns a sub-LLM that writes and executes search code against full history.                                                                                                                                                                                                      | [Deep Recall](../memory/deep-recall.md)                 |
 
 ## Agent Identity Files
 
 Every agent ships with a workspace that defines who it is:
 
-| File           | Purpose                                                                      | Mutability                            |
-| -------------- | ---------------------------------------------------------------------------- | ------------------------------------- |
-| `GENOME.md`    | Safety axioms, hormonal baselines, core values, personality constraints      | Immutable — dreams can never override |
-| `MEMORY.md`    | Living working memory — Phenotype, Bond, Niche, active context               | Rewritten every dream cycle           |
-| `PROTOCOLS.md` | Operating procedures — how the agent behaves in groups, sessions, heartbeats | User-editable                         |
-| `TOOLS.md`     | Environment-specific notes — camera names, SSH hosts, device nicknames       | User-editable                         |
-| `HEARTBEAT.md` | Periodic tasks the agent checks on a schedule                                | User-editable                         |
+| File           | Purpose                                                                                                                                             | Mutability                                     |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `GENOME.md`    | Safety axioms, hormonal baselines, core values, personality constraints                                                                             | Immutable — dreams can never override          |
+| `MEMORY.md`    | Living working memory — Phenotype, Bond, Niche, active context                                                                                      | Rewritten every dream cycle                    |
+| `PROTOCOLS.md` | Operating procedures — how the agent behaves in groups, sessions, heartbeats                                                                        | User-editable                                  |
+| `TOOLS.md`     | Environment-specific notes — camera names, SSH hosts, device nicknames                                                                              | User-editable                                  |
+| `HEARTBEAT.md` | Periodic tasks the agent checks on a schedule                                                                                                       | User-editable                                  |
+| `PUBLIC.md`    | What the agent may tell people other than you (guests); see [Who Can See What](../memory/how-the-memory-works.md#who-can-see-what-owner-and-guests) | User-editable; created on the first guest turn |
 
 ## What the agent is told
 
@@ -60,19 +61,17 @@ Session → Chunk indexing → Embedding → Crystal creation
                               ├── SNN near-merge discovery (cosine 0.82-0.91)
                               ├── Orphan cluster detection → replay queue
                               ├── Curiosity region mapping
-                              ├── Hormonal modulation
-                              └── Skill crystallization
+                              └── Hormonal modulation
                                             ↓
-                                Dream Engine (every 2 hours + emotional triggers)
+                                Dream Engine (tick every 2 h; full cycle at most every 8 h; emotional triggers)
                                 ├── Readiness check (skip if nothing new)
                                 ├── CuriosityEngine signals + self-validating FSHO → mode selection
                                 ├── Replay (ripple-enhanced, orphan priority)
-                                ├── Mutation (evolve skills)
                                 ├── Extrapolation (anticipate needs)
                                 ├── Compression (consume near-merge hints)
                                 ├── Simulation (cross-domain recombination)
-                                ├── Exploration (investigate knowledge gaps)
-                                └── Research (autonomous skill optimization)
+                                ├── Utility lanes (hygiene, distillation, anticipation, ...)
+                                └── Exploration (knowledge gaps; off by default)
                                             ↓
                               Working Memory rewrite (MEMORY.md)
                               ├── Phenotype evolution
