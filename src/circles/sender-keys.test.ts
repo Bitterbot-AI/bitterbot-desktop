@@ -230,4 +230,28 @@ describe("key lifecycle (security pass M5/M7)", () => {
     maintainSenderKeys(db, CIRCLE, t0 + 1000 + RETIRED_KEY_GRACE_MS + 1);
     expect(countReceived(db)).toBe(1);
   });
+
+  it("orders keys by the sender's signed time, so a late mailboxed old key never outranks the live one", () => {
+    const db = openDb();
+    const me = generateBoxKeyPair();
+    const t0 = 1_800_000_000_000;
+    const ingest = (keyId: string, sentAt: number) =>
+      ingestSenderKeyBody(db, {
+        circleId: CIRCLE,
+        senderPubkey: SENDER,
+        boxKeys: me,
+        sentAt,
+        body: buildSenderKeyBody({ keyId, keyB64: Buffer.alloc(32, 1).toString("base64") }, [
+          { memberPubkey: "me", boxPubkey: me.publicKeyB64 },
+        ]),
+      });
+    // K2 (newer) arrives first; the mailbox drains K1 (older) afterwards.
+    ingest("K2", t0 + 60_000);
+    ingest("K1", t0);
+    maintainSenderKeys(db, CIRCLE, t0 + 60_000 + RETIRED_KEY_GRACE_MS + 1);
+    const left = db
+      .prepare(`SELECT key_id FROM circle_sender_keys WHERE sender_pubkey = ?`)
+      .all(SENDER) as Array<{ key_id: string }>;
+    expect(left.map((r) => r.key_id)).toEqual(["K2"]);
+  });
 });

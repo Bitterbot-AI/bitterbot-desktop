@@ -47,8 +47,8 @@
  * Key lifecycle (security pass M5/M7): an own key older than
  * OWN_KEY_MAX_AGE_MS rotates on the next distribution sweep, retired own keys
  * are deleted RETIRED_KEY_GRACE_MS after retirement, a received key is
- * deleted once a newer key from the same sender has been held for that same
- * grace, at most MAX_KEYS_PER_SENDER are kept per (circle, sender), and
+ * deleted once the same sender signed a newer key more than that grace ago
+ * (ordered by the sender's signed envelope time, never local arrival), at most MAX_KEYS_PER_SENDER are kept per (circle, sender), and
  * removal / circle deletion drop the material outright (circles-store).
  */
 
@@ -231,6 +231,12 @@ export function ingestSenderKeyBody(
     senderPubkey: string;
     boxKeys: BoxKeyPair;
     body: { key_id?: unknown; sealed?: unknown };
+    /**
+     * The sender's signed envelope time (ms). Stored as `created_at` so key
+     * order is the SENDER's rotation order: a mailboxed or replayed old key
+     * that arrives after its successor must not outrank it in the cap/purge.
+     */
+    sentAt?: number;
   },
 ): boolean {
   const keyId = typeof args.body.key_id === "string" ? args.body.key_id : "";
@@ -245,7 +251,7 @@ export function ingestSenderKeyBody(
         `INSERT INTO circle_sender_keys (circle_id, sender_pubkey, key_id, key_b64, created_at)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(circle_id, sender_pubkey, key_id) DO NOTHING`,
-      ).run(args.circleId, args.senderPubkey, keyId, keyB64, Date.now());
+      ).run(args.circleId, args.senderPubkey, keyId, keyB64, args.sentAt ?? Date.now());
       // M7: a member re-keying in a loop must not grow this table without
       // bound. Keep only their newest few keys.
       db.prepare(

@@ -923,6 +923,21 @@ describe("circle A2A verbs", () => {
       expect(result.truncated).toBe(true);
       expect(result.events.length).toBe(2);
     }
+    // A FULL row-limit page also says "more may exist", so syncEvents pages
+    // past the first 200 small events; a short page does not.
+    const small = (limit: number) =>
+      handleCircleMethod(
+        "circle/events.since",
+        {
+          envelope: makeCircleEnvelope("presence", circleId, { since: NOW + 1, limit }, bob, NOW_S),
+        },
+        db,
+        NOW,
+      );
+    const full = small(2);
+    const short = small(5);
+    expect(full.ok && (full.result as { truncated: boolean }).truncated).toBe(true);
+    expect(short.ok && (short.result as { truncated: boolean }).truncated).toBe(false);
   });
 
   it("serves events.since to ledger.read holders and enforces presence + roster", () => {

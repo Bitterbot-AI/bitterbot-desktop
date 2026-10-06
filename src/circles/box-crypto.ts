@@ -19,6 +19,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+
+const log = createSubsystemLogger("circles/box-crypto");
 
 const HKDF_INFO = "circle-mailbox/v1 sealed box";
 
@@ -103,11 +106,14 @@ export function loadBoxKeys(filePath: string = defaultBoxKeyPath()): BoxKeyPair 
   } catch {
     // reported below
   }
-  throw new Error(
+  // The path stays in the local log only: this error can travel back to a
+  // remote peer inside an RPC error string, and the path names the OS user.
+  log.error(
     `circle box key at ${filePath} is unreadable; refusing to replace it. ` +
       `Restore it from a backup, or move it aside to mint a new box key ` +
       `(friends pick up the new key from your next presence beat).`,
   );
+  throw new Error("circle box key is unreadable (see the gateway log)");
 }
 
 /** Load the node's box keypair, creating + persisting (0600) one only when none exists. */
@@ -124,12 +130,19 @@ export function loadOrCreateBoxKeys(filePath: string = defaultBoxKeyPath()): Box
     createdAtMs: Date.now(),
   };
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  // Write the whole key to a private temp file, then hard-link it into place:
+  // link() is atomic and fails with EEXIST if another process won the race,
+  // so a crash mid-write can never leave a truncated box.json that the
+  // strict loader above would then refuse forever.
+  const tmp = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(stored, null, 2)}\n`, { mode: 0o600 });
   try {
-    // `wx`: never clobber a key another process created a moment ago.
-    fs.writeFileSync(filePath, `${JSON.stringify(stored, null, 2)}\n`, {
-      mode: 0o600,
-      flag: "wx",
-    });
+    fs.chmodSync(tmp, 0o600);
+  } catch {
+    // best-effort
+  }
+  try {
+    fs.linkSync(tmp, filePath);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "EEXIST") {
       const winner = loadBoxKeys(filePath);
@@ -138,11 +151,8 @@ export function loadOrCreateBoxKeys(filePath: string = defaultBoxKeyPath()): Box
       }
     }
     throw err;
-  }
-  try {
-    fs.chmodSync(filePath, 0o600);
-  } catch {
-    // best-effort
+  } finally {
+    fs.rmSync(tmp, { force: true });
   }
   return pair;
 }

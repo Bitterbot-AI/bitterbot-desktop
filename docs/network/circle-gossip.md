@@ -139,7 +139,8 @@ per-member sender keys** (`src/circles/sender-keys.ts`, migration v61):
   does that, the evictee can still read THAT member's frames.
 - **Key lifecycle** (M5/M7): an own key rotates after 30 days, retired own
   keys are deleted 7 days after retirement, a received key is deleted once
-  its sender's newer key has been held for 7 days, at most 4 keys are kept
+  its sender signed a newer key more than 7 days ago (sender time, so a
+  late mailboxed old key never outranks the live one), at most 4 keys are kept
   per (circle, sender), and deleting a circle deletes all of its key
   material. Keys live in the memory DB, which is chmod 0600 on open (M6).
 - **Replay**: message/ask/answer dedupe on envelope id; event appends are

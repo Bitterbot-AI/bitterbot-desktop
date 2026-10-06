@@ -71,7 +71,16 @@ describe("box key custody (security pass M4)", () => {
     const file = tmpFile();
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, "{ truncated");
-    expect(() => loadOrCreateBoxKeys(file)).toThrow(/refusing to replace/);
+    expect(() => loadOrCreateBoxKeys(file)).toThrow(/unreadable/);
     expect(fs.readFileSync(file, "utf8")).toBe("{ truncated");
+  });
+
+  it("never leaves temp files behind and keeps the path out of the error", () => {
+    const file = tmpFile();
+    loadOrCreateBoxKeys(file);
+    expect(fs.readdirSync(path.dirname(file))).toEqual(["box.json"]);
+    fs.writeFileSync(file, "");
+    expect(() => loadBoxKeys(file)).toThrow(/^circle box key is unreadable/);
+    expect(() => loadBoxKeys(file)).not.toThrow(new RegExp(path.dirname(file)));
   });
 });

@@ -964,7 +964,7 @@ export function handleCircleEventsSince(
   params: { envelope?: unknown },
   db: DatabaseSync,
   now: number = Date.now(),
-): CircleOutcome<{ events: CircleEventRecord[] }> {
+): CircleOutcome<{ events: CircleEventRecord[]; truncated: boolean }> {
   const auth = authorizeCircleEnvelope(db, params.envelope, KNOWN_SCOPES.ledgerRead, { now });
   if (!auth.ok) {
     return { ok: false, error: auth.error };
@@ -1002,7 +1002,8 @@ export function handleCircleEventsSince(
     if (budget < 0 && kept > 0) break;
     kept += 1;
   }
-  const truncated = kept < rows.length;
+  // More may exist when the byte budget cut the page OR the row limit filled.
+  const truncated = kept < rows.length || rows.length === limit;
   return {
     ok: true,
     result: {
@@ -1075,6 +1076,9 @@ export function handleCircleSenderKey(
     senderPubkey: auth.envelope.author_pubkey,
     boxKeys: keys,
     body: auth.envelope.body as { key_id?: unknown; sealed?: unknown },
+    // Order keys by the sender's signed time, not arrival: a mailboxed old
+    // key drained after its successor must not look newer.
+    sentAt: auth.envelope.ts * 1000,
   });
   return { ok: true, result: { stored } };
 }
