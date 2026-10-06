@@ -43,7 +43,7 @@ function insert(id: string, text: string, extra: Record<string, unknown> = {}) {
   ).run(...(Object.values(row) as Array<string | number>));
   db.prepare(
     "INSERT INTO chunks_fts (text, id, path, source, model, start_line, end_line) VALUES (?, ?, ?, ?, 'm', 0, 0)",
-  ).run(text, id, String(row.path), String(row.source));
+  ).run(text, id, row.path as string, row.source as string);
 }
 
 const ftsIds = (term: string) =>
