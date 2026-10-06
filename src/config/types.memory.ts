@@ -154,6 +154,14 @@ export type MemoryConfig = {
     time?: string;
   };
   /** PLAN-11 Gap 6: daily digest of autonomous skill-pipeline activity. */
+  /**
+   * The daily "what I dreamed" brief sent to the owner at the digest time
+   * (PLAN-53 G4): insights, changes in what the agent holds true about them,
+   * open loops. Sent only when there is something to say; delivered like other
+   * owner notices (main session, Control UI, chat channel subject to quiet
+   * hours). Default: enabled.
+   */
+  dreamBrief?: { enabled?: boolean };
   digest?: {
     /** Enable the daily digest (default: true). */
     enabled?: boolean;

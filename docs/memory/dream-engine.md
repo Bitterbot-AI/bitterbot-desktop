@@ -593,3 +593,25 @@ A 9th dream mode, `relationship_reconsolidation`, runs each cycle and is the onl
 ## Relationship mining (PLAN-28 A2)
 
 The `relationship_mining` mode is the offline, high-recall counterpart to the deterministic hot-path extractor (`extractTypedRelationshipFromFact`). During calm cycles it batches unprocessed fact-like crystals through a cheap LLM (Haiku, strict JSON), extracts typed triples, validates them against the graph's relation/entity vocabulary, and ingests them via `KnowledgeGraphManager.ingestExtraction` — populating the substrate the SAGE reader traverses and SABM adjudicates. It is hormonally gated (`cortisol > 0.7` skips — don't restructure memory under stress) and drains the backlog incrementally via an idempotent `meta` rowid cursor, so re-runs never double-scan. Behind the `BITTERBOT_KG_RELATIONSHIPS` population flag (default on); see `docs/plans/PLAN-28-GRAPH-POPULATION-AND-RETRIEVAL-OBSERVABILITY.md`.
+
+## The daily dream brief
+
+Once a day, at the digest time (`memory.digest.time`, default `09:00`), the agent
+tells you what happened while you were away:
+
+- how many dream cycles ran and how many stale memories were let go,
+- the strongest insights from those dreams,
+- what changed in what it holds true about you (new, updated, and retired facts,
+  and updated preferences),
+- loops it has left open.
+
+The brief arrives like other owner notices: in the main session, in the Control
+UI, and on your chat channel (subject to quiet hours). It is skipped on days
+with nothing new to say. If something in it is wrong, correct or forget it on
+the **Memory** page.
+
+Turn it off with:
+
+```json5
+{ memory: { dreamBrief: { enabled: false } } }
+```
