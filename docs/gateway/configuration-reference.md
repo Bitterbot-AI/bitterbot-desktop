@@ -2022,12 +2022,14 @@ The same notice is not repeated within 30 minutes.
     // executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
     // attachOnly: false,
     // liveView: { enabled: true, maxFps: 8, quality: 60 },
+    // replay: { enabled: true, retentionDays: 7 },
   },
 }
 ```
 
 - `evaluateEnabled: false` disables `act:evaluate` and `wait --fn`.
 - `liveView` controls the stream of the agent's page in the Control UI's side panel. `enabled: false` turns it off; `maxFps` (1-30) and `quality` (10-95) trade smoothness for bandwidth. See [Live view and take over](/tools/browser#live-view-and-take-over).
+- `replay` keeps a screenshot after each page action the agent takes, for playback in the Activity panel. `enabled: false` stops recording; `retentionDays` (1-90, default 7) sets how long a recording is kept after its last frame. See [Session replay](/tools/browser#session-replay).
 - Remote profiles are attach-only (start/stop/reset disabled).
 - Auto-detect order: default browser if Chromium-based → Chrome → Brave → Edge → Chromium → Chrome Canary.
 - Control service: loopback only (port derived from `gateway.port`, default `18791`).

@@ -136,6 +136,10 @@ export const FIELD_HELP: Record<string, string> = {
   "review.connector":
     'Connector (MCP) tools that change something: "ask" (default) holds them for your approval; "allow" runs them. Read-only tools always run.',
   "review.ttlHours": "How long a held action waits for a decision before it expires (default: 24).",
+  "browser.replay.enabled":
+    "Keep a low-rate screenshot record of the agent's browser after each page action, stored only on this machine, so you can see later what it did (default: true).",
+  "browser.replay.retentionDays":
+    "Days to keep a session's browser recording after its last frame (default: 7).",
   "browser.liveView.enabled":
     "Stream the agent's browser to the Control UI's computer pane while it is open (default: true). Set false to turn the stream off.",
   "browser.liveView.maxFps":

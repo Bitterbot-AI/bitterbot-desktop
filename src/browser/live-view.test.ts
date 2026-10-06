@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { markCardEntry, resetCardEntryForTest } from "./card-entry.js";
 import type { CdpInputCommand } from "./live-input.js";
 import {
   createBrowserLiveView,
@@ -125,6 +126,18 @@ describe("browser live view", () => {
       expect.objectContaining({ data: "AAAA", targetId: "tab-a", deviceWidth: 1280, seq: 1 }),
     ]);
     expect(h.emitted.at(-1)?.connIds).toEqual(["conn-1"]);
+  });
+
+  it("sends no frames while a card is being typed into the page", async () => {
+    const h = harness(page("tab-a"));
+    await h.view.start("conn-1");
+    markCardEntry();
+    try {
+      h.casts[0].push(frame("CARD"));
+      expect(h.frames()).toEqual([]);
+    } finally {
+      resetCardEntryForTest();
+    }
   });
 
   it("picks the browser up when the agent starts it after the pane was opened", async () => {

@@ -8,6 +8,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
+import { markCardEntry } from "../../browser/card-entry.js";
 import { browserAct } from "../../browser/client-actions.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import { gateCardPurchase } from "../../payments/ap2/gate.js";
@@ -87,6 +88,9 @@ export function createPurchaseTool(opts: {
     profile?: string,
   ) => {
     if (!ref) return false;
+    // Before the first keystroke: no frame of this page is sent or recorded
+    // while a card may be on it.
+    markCardEntry();
     await browserAct(undefined, { kind: "type", ref, text, targetId }, { profile });
     return true;
   };
