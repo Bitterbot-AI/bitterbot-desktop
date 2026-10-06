@@ -109,6 +109,26 @@ Cron jobs panel notes:
   - Gateway persists aborted partial assistant text into transcript history when buffered output exists
   - Persisted entries include abort metadata so transcript consumers can tell abort partials from normal completion output
 
+## Talking to the agent
+
+Click the microphone in the chat box to talk instead of type. Voice mode keeps
+listening until you click it again:
+
+- When you stop talking (about a second of silence), what you said is turned into
+  text and sent as a chat message.
+- The reply is read aloud sentence by sentence as it streams in, so the agent starts
+  talking before it has finished writing. Code blocks are skipped and links are
+  read as "a link".
+- Talk over it to interrupt: its voice stops and the run is stopped (`chat.abort`),
+  and what you say next becomes the new message.
+
+Speech to text uses the same providers as voice notes from chat apps: an OpenAI,
+Groq, Deepgram or Google key, or whatever `tools.media.audio` names. Speech uses
+your [text-to-speech](/tools/tts) settings; Edge TTS works with no key. The browser
+asks for microphone access the first time, which needs `https` or `localhost`.
+
+Voice mode uses `talk.transcribe` and `talk.speak`, which need `operator.write`.
+
 ## Tailnet access (recommended)
 
 ### Integrated Tailscale Serve (preferred)

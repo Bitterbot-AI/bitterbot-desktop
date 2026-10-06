@@ -181,6 +181,9 @@ const WRITE_METHODS = new Set([
   "agent.wait",
   "wake",
   "talk.mode",
+  // Each call spends speech provider credit.
+  "talk.transcribe",
+  "talk.speak",
   "tts.enable",
   "tts.disable",
   "tts.convert",
