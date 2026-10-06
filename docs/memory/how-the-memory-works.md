@@ -128,6 +128,8 @@ mode for that turn:
 - `memory_get` reads a file only when every memory in it is safe for a guest.
   `MEMORY.md` is never readable.
 - `memory_expand` (raw transcripts) and `memory_pin` (the facts ledger) refuse.
+- `dream_search`, the emotional anchor tools and the curiosity tools refuse: they
+  show or change what the agent has made of the owner's life.
 
 Heartbeats and scheduled runs are the agent's own work and keep full recall.
 Memories with no tag, such as dream insights and extracted facts, stay with the
