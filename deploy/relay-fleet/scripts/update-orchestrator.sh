@@ -34,10 +34,10 @@ VERSION_MARKER="$STATE_DIR/orchestrator.version"
 SERVICE=bitterbot-orchestrator
 
 # --- The fleet signing public key (minisign). PUBLIC by design; committed. ---
-# Replace the placeholder with the real key: `minisign -G -W -p relay.pub -s
-# relay.key`, then paste the last line of relay.pub here. Until it is real,
-# verification fails closed and no update installs.
-MINISIGN_PUBKEY="RWQ__REPLACE_WITH_REAL_MINISIGN_PUBLIC_KEY__PLACEHOLDER"
+# Generated 2026-10-06 (`minisign -G -W`); the secret half lives only in the
+# MINISIGN_SECRET_KEY Actions secret and the maintainer's offline copy. To
+# rotate, follow deploy/relay-fleet/SIGNING.md "Key rotation".
+MINISIGN_PUBKEY="RWTU9k8zQeEQA5GbldCYMA7kgR3nwoLbtjhw5FWMGiwu+h72OMk2Ne04"
 
 log() { echo "[update-orchestrator] $*"; }
 die() { echo "[update-orchestrator] ERROR: $*" >&2; exit 1; }
