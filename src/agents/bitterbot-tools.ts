@@ -11,7 +11,7 @@ import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCirclesTool } from "./tools/circles-tool.js";
 import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
-import type { AnyAgentTool } from "./tools/common.js";
+import { type AnyAgentTool, jsonResult } from "./tools/common.js";
 import { createComputerUseTool } from "./tools/computer-use-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
@@ -69,6 +69,35 @@ import { createWalletTool } from "./tools/wallet-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { createCompleteTool, createPlanTool } from "./tools/workflow-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
+
+/**
+ * Tools that read or change what the agent has made of the owner's life:
+ * dream insights, emotional anchors, curiosity about their knowledge. A
+ * guest turn (PLAN-53 G2) gets a refusal instead. The memory_* tools filter
+ * rather than refuse, and deep_recall / recall_range scope by sender.
+ */
+const GUEST_REFUSED_TOOLS = new Set([
+  "dream_search",
+  "create_emotional_anchor",
+  "recall_emotional_anchor",
+  "curiosity_state",
+  "curiosity_resolve",
+]);
+
+export function refuseForGuest(tool: AnyAgentTool): AnyAgentTool {
+  if (!GUEST_REFUSED_TOOLS.has(tool.name)) {
+    return tool;
+  }
+  return {
+    ...tool,
+    execute: async () =>
+      jsonResult({
+        ok: false,
+        error:
+          "Not available in this conversation: the person messaging is not the owner, and this would show or change the owner's private memory.",
+      }),
+  };
+}
 
 export function createBitterbotTools(options?: {
   sandboxBrowserBridgeUrl?: string;
@@ -277,7 +306,7 @@ export function createBitterbotTools(options?: {
     createCirclesTool(memoryOpts),
   ]) {
     if (tool) {
-      tools.push(tool);
+      tools.push(memoryOpts.memoryGuest ? refuseForGuest(tool) : tool);
     }
   }
 
