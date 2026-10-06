@@ -266,6 +266,7 @@ function SkillCard({
         {skill.description && (
           <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{skill.description}</p>
         )}
+        {skill.primaryEnv && <SkillApiKeyField skill={skill} />}
         {skill.requires?.bins && skill.requires.bins.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1">
             {skill.requires.bins.map((bin) => (
@@ -725,5 +726,94 @@ function InstalledSkillsView() {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * A skill that needs an API key (its `primaryEnv`) can take it here
+ * (PLAN-53 D1). The gateway stores it as skills.entries.<key>.apiKey and
+ * never sends it back; the card only says whether one is set.
+ */
+export function SkillApiKeyField({ skill }: { skill: SkillStatus }) {
+  const request = useGatewayStore((s) => s.request);
+  const updateSkill = useSkillsStore((s) => s.updateSkill);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+
+  const save = async (apiKey: string) => {
+    setSaving(true);
+    try {
+      await request("skills.update", { skillKey: skill.key, apiKey });
+      setValue("");
+      setEditing(false);
+      updateSkill(skill.key, { hasApiKey: Boolean(apiKey) });
+      toast.success(
+        apiKey ? `Saved the key for ${skill.name}` : `Removed the key for ${skill.name}`,
+      );
+    } catch (err) {
+      toast.error("Could not save the key", { description: describeError(err) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div className="mt-1 flex items-center gap-2 text-xs" data-testid="skill-api-key">
+        <span className="text-muted-foreground">
+          {skill.hasApiKey ? "API key set" : "Needs an API key"} (
+          <span className="font-mono">{skill.primaryEnv}</span>)
+        </span>
+        <button onClick={() => setEditing(true)} className="text-brand hover:underline">
+          {skill.hasApiKey ? "Change" : "Add key"}
+        </button>
+        {skill.hasApiKey && (
+          <button
+            onClick={() => void save("")}
+            disabled={saving}
+            className="text-muted-foreground hover:text-danger"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+    );
+  }
+  return (
+    <form
+      className="mt-1 flex items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (value.trim()) void save(value.trim());
+      }}
+    >
+      <input
+        type="password"
+        autoComplete="off"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder={skill.primaryEnv}
+        aria-label={`API key for ${skill.name}`}
+        className="h-7 px-2 text-xs font-mono rounded border border-border/30 bg-transparent focus:border-brand focus:outline-none"
+      />
+      <button
+        type="submit"
+        disabled={saving || !value.trim()}
+        className="px-2 py-1 text-xs rounded bg-brand text-white disabled:opacity-50"
+      >
+        Save
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setEditing(false);
+          setValue("");
+        }}
+        className="text-xs text-muted-foreground hover:text-foreground"
+      >
+        Cancel
+      </button>
+    </form>
   );
 }
