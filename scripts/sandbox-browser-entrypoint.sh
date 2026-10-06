@@ -11,6 +11,10 @@ CDP_PORT="${BITTERBOT_BROWSER_CDP_PORT:-9222}"
 VNC_PORT="${BITTERBOT_BROWSER_VNC_PORT:-5900}"
 NOVNC_PORT="${BITTERBOT_BROWSER_NOVNC_PORT:-6080}"
 HEADLESS="${BITTERBOT_BROWSER_HEADLESS:-1}"
+# Chromium's own sandbox needs user namespaces an unprivileged container does
+# not have; the container is the isolation boundary here. Set to 0 when the
+# container runs with a seccomp profile that allows Chromium's sandbox.
+NO_SANDBOX="${BITTERBOT_BROWSER_NO_SANDBOX:-1}"
 ENABLE_NOVNC="${BITTERBOT_BROWSER_ENABLE_NOVNC:-0}"
 # Chromium's own DevTools port, inside the container only.
 INNER_CDP_PORT=$((CDP_PORT + 1))
@@ -35,6 +39,10 @@ chromium_args=(
   --password-store=basic
   --window-size=1280,800
 )
+
+if [[ "${NO_SANDBOX}" == "1" ]]; then
+  chromium_args+=(--no-sandbox)
+fi
 
 if [[ "${HEADLESS}" == "1" ]]; then
   chromium_args+=(--headless=new)
