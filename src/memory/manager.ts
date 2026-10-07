@@ -3327,7 +3327,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       const rows = this.db
         .prepare(
           `SELECT name FROM entities
-            WHERE lower(entity_type) IN ('person', 'people', 'human', 'contact', 'friend', 'family', 'organization')
+            WHERE lower(entity_type) IN ('person', 'people', 'human', 'contact', 'friend', 'family', 'organization', 'project')
             LIMIT 500`,
         )
         .all() as unknown as Array<{ name: string }>;

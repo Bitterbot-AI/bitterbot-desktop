@@ -53,6 +53,14 @@ export type CuriosityResearchConfig = {
   blockedDomains?: string[];
   /** Attempts before a question is closed as unanswered. Default 2. */
   maxAttempts?: number;
+  /**
+   * Strict egress: no capitalized term from the question may appear in the
+   * search phrase, even one the model marks as a public subject ("libp2p",
+   * "ProbeLab"). Default false: public subjects the model declares pass,
+   * private names (owner, knowledge-graph people/organizations/projects) and
+   * copied fragments never do.
+   */
+  strictEgress?: boolean;
 };
 
 export const DEFAULT_CURIOSITY_RESEARCH: Required<CuriosityResearchConfig> = {
@@ -64,6 +72,7 @@ export const DEFAULT_CURIOSITY_RESEARCH: Required<CuriosityResearchConfig> = {
   minConfidence: 0.55,
   blockedDomains: [],
   maxAttempts: 2,
+  strictEgress: false,
 };
 
 export type SearchHit = { title: string; url: string; snippet?: string };
@@ -183,15 +192,106 @@ const tokensOf = (s: string): string[] =>
     .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean);
 
-export function phraseLeaks(question: string, phrase: string, ownerNames: string[] = []): boolean {
+export type LeakCheckOptions = {
+  /**
+   * Terms the model declared as the public subject (widely known
+   * technologies, standards, public organizations). Each must appear in the
+   * question, be at most 4 words, and not be a private name; they are masked
+   * out before the fragment checks so the subject can survive abstraction.
+   */
+  publicTerms?: string[];
+  /** Ignore publicTerms entirely (config strictEgress). */
+  strict?: boolean;
+};
+
+const MAX_PUBLIC_TERMS = 4;
+
+/** The declared public terms that are admissible: in the question, short, and not a private name. */
+export function admissiblePublicTerms(
+  question: string,
+  terms: string[] | undefined,
+  ownerNames: string[],
+): string[] {
+  const q = question.toLowerCase();
+  const privateTokens = new Set(ownerNames.flatMap((n) => tokensOf(n)));
+  const out: string[] = [];
+  for (const raw of terms ?? []) {
+    const t = raw.trim();
+    const toks = tokensOf(t);
+    if (!t || toks.length === 0 || toks.length > 4 || !q.includes(t.toLowerCase())) {
+      continue;
+    }
+    if (toks.some((tok) => privateTokens.has(tok))) {
+      continue;
+    }
+    out.push(t);
+    if (out.length >= MAX_PUBLIC_TERMS) {
+      break;
+    }
+  }
+  return out;
+}
+
+/** Drop the admissible public terms from a text so the fragment checks see only what is left. */
+function withoutTerms(text: string, terms: string[]): string {
+  let out = text;
+  for (const t of terms) {
+    out = out.split(new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")).join(" ");
+  }
+  return out;
+}
+
+/** Tokens the question capitalizes mid-sentence: the entity shapes a strict check must not pass. */
+function capitalizedTokens(question: string): Set<string> {
+  const out = new Set<string>();
+  const words = question.trim().split(/\s+/);
+  for (let i = 1; i < words.length; i += 1) {
+    const w = words[i]!.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    if (w.length >= 2 && /^\p{Lu}/u.test(w)) {
+      out.add(w.toLowerCase());
+    }
+  }
+  return out;
+}
+
+export function phraseLeaks(
+  question: string,
+  phrase: string,
+  ownerNames: string[] = [],
+  opts: LeakCheckOptions = {},
+): boolean {
   if (EMAIL_OR_URL.test(phrase)) {
     return true;
   }
-  if (containsSourceLeak(question, phrase)) {
+  // Private names are checked on the RAW phrase, before any masking: a
+  // declared "public term" can never launder one.
+  const rawTokens = new Set(tokensOf(phrase));
+  const lowerRaw = phrase.toLowerCase();
+  for (const name of ownerNames) {
+    const trimmed = name.trim().toLowerCase();
+    if (trimmed.length >= 2 && lowerRaw.includes(trimmed)) {
+      return true;
+    }
+    for (const token of tokensOf(name)) {
+      if (token.length >= 2 && rawTokens.has(token)) {
+        return true;
+      }
+    }
+  }
+  if (opts.strict) {
+    const caps = capitalizedTokens(question);
+    if ([...rawTokens].some((t) => caps.has(t))) {
+      return true;
+    }
+  }
+  const terms = opts.strict ? [] : admissiblePublicTerms(question, opts.publicTerms, ownerNames);
+  const maskedQ = withoutTerms(question, terms);
+  const maskedP = withoutTerms(phrase, terms);
+  if (containsSourceLeak(maskedQ, maskedP)) {
     return true;
   }
-  const qTokens = tokensOf(question);
-  const pTokens = tokensOf(phrase);
+  const qTokens = tokensOf(maskedQ);
+  const pTokens = tokensOf(maskedP);
   // Consecutive words copied from the question (not both stopwords) are a
   // fragment whatever their case: containsSourceLeak only catches
   // capitalized entities and 3-grams, and owners type in lowercase. Names
@@ -219,19 +319,6 @@ export function phraseLeaks(question: string, phrase: string, ownerNames: string
   if (pTokens.some((t) => qNonAscii.has(t))) {
     return true;
   }
-  const pSet = new Set(pTokens);
-  const lowerPhrase = phrase.toLowerCase();
-  for (const name of ownerNames) {
-    const trimmed = name.trim().toLowerCase();
-    if (trimmed.length >= 2 && lowerPhrase.includes(trimmed)) {
-      return true;
-    }
-    for (const token of tokensOf(name)) {
-      if (token.length >= 2 && pSet.has(token)) {
-        return true;
-      }
-    }
-  }
   return false;
 }
 
@@ -243,24 +330,61 @@ function abstractionPrompt(question: string): string {
     "Postgres, the EU, Linus Torvalds) are fine and usually necessary. REMOVE everything " +
     "specific to the author: people they know, their employer, clients, partners, project " +
     "names, numbers, dates, prices, email addresses, URLs, and any quoted fragment of the note. " +
-    "Output ONLY the phrase.\n\n" +
+    'Answer with ONE line of JSON: {"phrase": "...", "public_terms": ["..."]} where ' +
+    "public_terms lists the widely known public names you kept, copied exactly from the note " +
+    "(at most 4; empty if none). A person the author knows, their employer, client or project " +
+    "is never a public term.\n\n" +
     `Note: ${question}`
   );
+}
+
+function parseAbstraction(text: string): { phrase: string; publicTerms: string[] } | null {
+  const cleaned = text.replace(/```[a-z]*\n?/gi, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const v = JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
+      const phrase = typeof v.phrase === "string" ? v.phrase : "";
+      const publicTerms = Array.isArray(v.public_terms)
+        ? v.public_terms.filter((t): t is string => typeof t === "string")
+        : [];
+      if (phrase) {
+        return { phrase, publicTerms };
+      }
+    } catch {
+      // fall through: a bare phrase is still usable, with no public terms
+    }
+  }
+  const line = cleaned.split("\n")[0] ?? "";
+  return line ? { phrase: line, publicTerms: [] } : null;
 }
 
 export async function abstractQuestion(
   question: string,
   llm: (prompt: string) => Promise<LlmResult>,
   ownerNames: string[] = [],
+  opts: { strict?: boolean } = {},
 ): Promise<{ phrase: string | null; costUsd: number }> {
   const { text, costUsd } = await llm(abstractionPrompt(question));
-  const phrase = text
-    .trim()
-    .split("\n")[0]!
+  const parsed = parseAbstraction(text);
+  const phrase = (parsed?.phrase ?? "")
     .replace(/^["'`]+|["'`.]+$/g, "")
     .trim()
     .slice(0, 120);
-  if (phrase.length < 3 || phraseLeaks(question, phrase, ownerNames)) {
+  if (
+    phrase.length < 3 ||
+    phraseLeaks(question, phrase, ownerNames, {
+      publicTerms: parsed?.publicTerms,
+      strict: opts.strict,
+    })
+  ) {
+    if (phrase.length >= 3) {
+      log.info(
+        `curiosity: search phrase held back for "${question.slice(0, 60)}" (would reveal too much)`,
+      );
+      log.debug(`held-back phrase: ${phrase}`);
+    }
     return { phrase: null, costUsd };
   }
   return { phrase, costUsd };
@@ -581,6 +705,7 @@ async function researchOne(
         target.description,
         deps.llmLocal ?? deps.llm,
         deps.ownerNames ?? [],
+        { strict: cfg.strictEgress },
       );
       summary.costUsd += abstracted.costUsd;
       phrase = abstracted.phrase;
