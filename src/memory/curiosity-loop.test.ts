@@ -201,6 +201,15 @@ describe("abstraction keeps private context on the node", () => {
         publicTerms: pub,
       }),
     ).toBe(true);
+    // The real case: a phrase about a public subject shares its plain words.
+    expect(
+      phraseLeaks(
+        "How does the ProbeLab IPFS DHT crawler estimate the number of reachable libp2p nodes?",
+        "IPFS DHT crawler estimate reachable libp2p nodes",
+        ["Victor"],
+        { publicTerms: ["ProbeLab", "IPFS", "DHT", "libp2p"] },
+      ),
+    ).toBe(false);
     // Only terms actually in the question are admissible.
     expect(
       admissiblePublicTerms(q, ["ProbeLab", "Kubernetes", "a b c d e", "Aubaine"], names),
@@ -268,7 +277,7 @@ describe("distillation and verification", () => {
 function deps(db: DatabaseSync, over: Partial<CuriosityResearchDeps> = {}): CuriosityResearchDeps {
   return {
     db,
-    config: { intervalMinutes: 60, maxPerDay: 3, minConfidence: 0.55 },
+    config: { intervalMinutes: 60, maxPerDay: 3, minConfidence: 0.55, maxAttempts: 2 },
     search: async () => [
       { title: "A", url: "https://a.example.org/x" },
       { title: "B", url: "https://b.example.net/y" },
@@ -379,6 +388,10 @@ describe("the loop", () => {
     expect(
       (db.prepare(`SELECT COUNT(*) n FROM research_egress_log`).get() as { n: number }).n,
     ).toBe(0);
+    // The owner can see exactly what was refused; nothing left the node.
+    expect(listCuriosity(db, { now: NOW }).wondering[0]?.heldPhrase).toBe(
+      "libp2p relay reservations limited per peer",
+    );
 
     await insertNovelTargets(db, {
       targets: [
@@ -526,6 +539,12 @@ describe("the loop", () => {
     expect(curiosityRoiByRegion(db).size).toBe(0);
     // Legacy flag still turns it off.
     expect(resolveCuriosityResearchConfig(undefined, false).enabled).toBe(false);
+    // Defaults lean toward learning: 10 a day, three attempts, 0.45 floor.
+    expect(resolveCuriosityResearchConfig({})).toMatchObject({
+      maxPerDay: 10,
+      maxAttempts: 3,
+      minConfidence: 0.45,
+    });
     expect(resolveCuriosityResearchConfig({ enabled: true }, false).enabled).toBe(true);
   });
 });

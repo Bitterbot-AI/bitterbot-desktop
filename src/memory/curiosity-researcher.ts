@@ -41,17 +41,17 @@ export type CuriosityResearchConfig = {
   enabled?: boolean;
   /** Minutes between research passes. Default 240. */
   intervalMinutes?: number;
-  /** Questions researched per day. Default 6 (hormones shift it by up to 2). */
+  /** Questions researched per day. Default 10 (hormones shift it by up to 2). */
   maxPerDay?: number;
   /** Default 2. */
   maxSearchesPerTarget?: number;
   /** Pages fetched per question. Default 3. */
   maxPagesPerTarget?: number;
-  /** Confidence floor for a finding to become a fact. Default 0.55. */
+  /** Confidence floor for a finding to become a fact. Default 0.45. */
   minConfidence?: number;
   /** Hosts never fetched. */
   blockedDomains?: string[];
-  /** Attempts before a question is closed as unanswered. Default 2. */
+  /** Attempts before a question is closed as unanswered. Default 3. */
   maxAttempts?: number;
   /**
    * Strict egress: no capitalized term from the question may appear in the
@@ -66,12 +66,12 @@ export type CuriosityResearchConfig = {
 export const DEFAULT_CURIOSITY_RESEARCH: Required<CuriosityResearchConfig> = {
   enabled: true,
   intervalMinutes: 240,
-  maxPerDay: 6,
+  maxPerDay: 10,
   maxSearchesPerTarget: 2,
   maxPagesPerTarget: 3,
-  minConfidence: 0.55,
+  minConfidence: 0.45,
   blockedDomains: [],
-  maxAttempts: 2,
+  maxAttempts: 3,
   strictEgress: false,
 };
 
@@ -302,8 +302,11 @@ export function phraseLeaks(
       qBigrams.add(`${qTokens[i]} ${qTokens[i + 1]}`);
     }
   }
-  // One shared topical bigram ("node count") is how a subject survives; two
-  // distinct ones is copying.
+  // Shared bigrams of plain words ("crawler estimate", "reachable nodes")
+  // are how a search phrase about a public subject is built; three distinct
+  // ones is a copied sentence. Private names never rely on this rule: they
+  // are checked above by name, and a verbatim run of three words is caught
+  // by containsSourceLeak.
   const shared = new Set<string>();
   for (let i = 0; i + 1 < pTokens.length; i += 1) {
     const bg = `${pTokens[i]} ${pTokens[i + 1]}`;
@@ -311,7 +314,7 @@ export function phraseLeaks(
       shared.add(bg);
     }
   }
-  if (shared.size >= 2) {
+  if (shared.size >= 3) {
     return true;
   }
   // A non-ASCII token copied from the question (names the ASCII fold erases).
@@ -365,7 +368,7 @@ export async function abstractQuestion(
   llm: (prompt: string) => Promise<LlmResult>,
   ownerNames: string[] = [],
   opts: { strict?: boolean } = {},
-): Promise<{ phrase: string | null; costUsd: number }> {
+): Promise<{ phrase: string | null; heldPhrase?: string; costUsd: number }> {
   const { text, costUsd } = await llm(abstractionPrompt(question));
   const parsed = parseAbstraction(text);
   const phrase = (parsed?.phrase ?? "")
@@ -384,6 +387,9 @@ export async function abstractQuestion(
         `curiosity: search phrase held back for "${question.slice(0, 60)}" (would reveal too much)`,
       );
       log.debug(`held-back phrase: ${phrase}`);
+      // Kept on the target (never sent anywhere) so the page can show the
+      // owner exactly what was refused.
+      return { phrase: null, heldPhrase: phrase, costUsd };
     }
     return { phrase: null, costUsd };
   }
@@ -461,7 +467,7 @@ export function findingIsVerified(d: Distilled, floor: number): boolean {
   if (d.confidence < floor) {
     return false;
   }
-  return d.supportingSources.length >= 2 || d.confidence >= Math.min(0.95, floor + 0.2);
+  return d.supportingSources.length >= 2 || d.confidence >= Math.min(0.95, floor + 0.15);
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -619,7 +625,7 @@ export async function runCuriosityResearch(
 
   const targets = researchableTargets(deps.db, {
     now,
-    limit: Math.min(3, budget - doneToday),
+    limit: Math.min(4, budget - doneToday),
     maxAttempts: cfg.maxAttempts,
     regionRoi: curiosityRoiByRegion(deps.db),
   });
@@ -700,6 +706,7 @@ async function researchOne(
       return;
     }
     let phrase: string | null;
+    let heldPhrase: string | undefined;
     try {
       const abstracted = await abstractQuestion(
         target.description,
@@ -709,13 +716,14 @@ async function researchOne(
       );
       summary.costUsd += abstracted.costUsd;
       phrase = abstracted.phrase;
+      heldPhrase = abstracted.heldPhrase;
     } catch (err) {
       log.debug(`abstraction failed for ${target.id.slice(0, 8)}: ${String(err)}`);
       finish("transient_error", false);
       return;
     }
     if (!phrase) {
-      finish("containment_rejected", false);
+      finish("containment_rejected", false, heldPhrase ?? null);
       return;
     }
     // Search (bounded), then read a few pages from distinct hosts.
@@ -1033,6 +1041,8 @@ export type CuriosityListing = {
     attempts: number;
     lastOutcome: string | null;
     source: string | null;
+    /** The search phrase the last attempt refused to send (containment). */
+    heldPhrase: string | null;
   }>;
   learned: Array<{
     id: string;
@@ -1091,6 +1101,10 @@ export function listCuriosity(
       createdAt: r.created_at,
       attempts: r.attempts,
       lastOutcome: typeof meta.researchOutcome === "string" ? meta.researchOutcome : null,
+      heldPhrase:
+        meta.researchOutcome === "containment_rejected" && typeof meta.queryPhrase === "string"
+          ? meta.queryPhrase
+          : null,
       source: typeof meta.source === "string" ? meta.source : null,
     };
   });

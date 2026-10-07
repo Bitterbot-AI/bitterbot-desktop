@@ -36,6 +36,7 @@ export type CuriosityListing = {
     attempts: number;
     lastOutcome: string | null;
     source: string | null;
+    heldPhrase: string | null;
   }>;
   learned: Array<{
     id: string;
@@ -287,6 +288,11 @@ export function CuriosityView() {
                 <div className="text-xs text-muted-foreground mt-0.5">
                   {describeQuestionSource(q)} · {formatRelativeTime(q.createdAt)}
                 </div>
+                {q.heldPhrase && (
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Refused to send: <span className="italic">“{q.heldPhrase}”</span>
+                  </div>
+                )}
               </div>
               <button
                 type="button"
