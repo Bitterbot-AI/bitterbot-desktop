@@ -277,7 +277,7 @@ describe("distillation and verification", () => {
 function deps(db: DatabaseSync, over: Partial<CuriosityResearchDeps> = {}): CuriosityResearchDeps {
   return {
     db,
-    config: { intervalMinutes: 60, maxPerDay: 3, minConfidence: 0.55 },
+    config: { intervalMinutes: 60, maxPerDay: 3, minConfidence: 0.55, maxAttempts: 2 },
     search: async () => [
       { title: "A", url: "https://a.example.org/x" },
       { title: "B", url: "https://b.example.net/y" },
@@ -539,6 +539,12 @@ describe("the loop", () => {
     expect(curiosityRoiByRegion(db).size).toBe(0);
     // Legacy flag still turns it off.
     expect(resolveCuriosityResearchConfig(undefined, false).enabled).toBe(false);
+    // Defaults lean toward learning: 10 a day, three attempts, 0.45 floor.
+    expect(resolveCuriosityResearchConfig({})).toMatchObject({
+      maxPerDay: 10,
+      maxAttempts: 3,
+      minConfidence: 0.45,
+    });
     expect(resolveCuriosityResearchConfig({ enabled: true }, false).enabled).toBe(true);
   });
 });

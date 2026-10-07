@@ -50,7 +50,7 @@ below in one step.
   Your node is identified by its Ed25519 peer id.
 
 - **Curiosity research (default on when web search is configured):** on a
-  schedule (`memory.curiosity.research`, every 4 h, at most 6 questions a
+  schedule (`memory.curiosity.research`, every 4 h, at most 10 questions a
   day) the agent rewrites one of its open questions as a generic topic
   phrase, checks the phrase for names, addresses and fragments of the
   original (anything that fails is never sent; your name and every person,

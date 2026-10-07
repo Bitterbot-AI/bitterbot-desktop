@@ -62,7 +62,7 @@ export const FIELD_HELP: Record<string, string> = {
   "memory.curiosity.research.enabled":
     "Let the agent research its own open questions on a schedule: the question is rewritten as a generic topic phrase (checked for names and fragments) before anything leaves the node, then searched, read, and remembered with sources. Everything it does is on the Curiosity page, where it can be paused. Default on when web search is configured.",
   "memory.curiosity.research.maxPerDay":
-    "How many questions the agent may research per day (default 6). Dopamine adds up to 2, cortisol removes up to 2.",
+    "How many questions the agent may research per day (default 10). Dopamine adds up to 2, cortisol removes up to 2.",
   "memory.curiosity.research.intervalMinutes": "Minutes between research passes (default 240).",
   "memory.curiosity.research.strictEgress":
     "When true, no capitalized term from a question may appear in the outgoing search phrase, even a public one like libp2p; most technical questions then cannot be searched. Default false: public subjects the model declares pass, while the owner's name, people, organizations and projects from the knowledge graph, and copied fragments never do.",

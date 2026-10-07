@@ -41,17 +41,17 @@ export type CuriosityResearchConfig = {
   enabled?: boolean;
   /** Minutes between research passes. Default 240. */
   intervalMinutes?: number;
-  /** Questions researched per day. Default 6 (hormones shift it by up to 2). */
+  /** Questions researched per day. Default 10 (hormones shift it by up to 2). */
   maxPerDay?: number;
   /** Default 2. */
   maxSearchesPerTarget?: number;
   /** Pages fetched per question. Default 3. */
   maxPagesPerTarget?: number;
-  /** Confidence floor for a finding to become a fact. Default 0.55. */
+  /** Confidence floor for a finding to become a fact. Default 0.45. */
   minConfidence?: number;
   /** Hosts never fetched. */
   blockedDomains?: string[];
-  /** Attempts before a question is closed as unanswered. Default 2. */
+  /** Attempts before a question is closed as unanswered. Default 3. */
   maxAttempts?: number;
   /**
    * Strict egress: no capitalized term from the question may appear in the
@@ -66,12 +66,12 @@ export type CuriosityResearchConfig = {
 export const DEFAULT_CURIOSITY_RESEARCH: Required<CuriosityResearchConfig> = {
   enabled: true,
   intervalMinutes: 240,
-  maxPerDay: 6,
+  maxPerDay: 10,
   maxSearchesPerTarget: 2,
   maxPagesPerTarget: 3,
-  minConfidence: 0.55,
+  minConfidence: 0.45,
   blockedDomains: [],
-  maxAttempts: 2,
+  maxAttempts: 3,
   strictEgress: false,
 };
 
@@ -467,7 +467,7 @@ export function findingIsVerified(d: Distilled, floor: number): boolean {
   if (d.confidence < floor) {
     return false;
   }
-  return d.supportingSources.length >= 2 || d.confidence >= Math.min(0.95, floor + 0.2);
+  return d.supportingSources.length >= 2 || d.confidence >= Math.min(0.95, floor + 0.15);
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -625,7 +625,7 @@ export async function runCuriosityResearch(
 
   const targets = researchableTargets(deps.db, {
     now,
-    limit: Math.min(3, budget - doneToday),
+    limit: Math.min(4, budget - doneToday),
     maxAttempts: cfg.maxAttempts,
     regionRoi: curiosityRoiByRegion(deps.db),
   });
