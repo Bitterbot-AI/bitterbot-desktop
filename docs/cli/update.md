@@ -114,6 +114,10 @@ The Control UI (Overview tab) exposes the same machinery:
   "Update now" runs the full safe-update flow above via the `update.run`
   gateway RPC, then the gateway restarts itself; the UI reconnects when the
   node is back.
+- **Stale page prompt**: a Control UI tab left open across an update
+  reconnects to the new gateway but keeps running the old page. When the
+  gateway reports a different version than the page was built with, the UI
+  shows a dismissible "Reload" banner.
 - **Staleness prompt**: the gateway re-checks for drift at boot and every
   6 hours and broadcasts the result (`update` gateway event). Once a git
   node falls `update.promptBehindCommits` commits behind upstream
