@@ -6,7 +6,9 @@ import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   bumpChunkDreamCount,
+  deriveLifecycle,
   deriveLifecycleState,
+  liveChunkPredicate,
   setChunkCuriosityReward,
   setChunkLifecycle,
   setChunkProvenance,
@@ -35,10 +37,10 @@ describe("chunk-writer facade (PLAN-46 Phase 0)", () => {
       lifecycle_state: string;
     };
     expect(row).toEqual({ lifecycle: "consolidated", lifecycle_state: "consolidated" });
-    // expired derives to archived unless an explicit state is passed
+    // expired derives to forgotten (scheduled for purge), never merely archived
     setChunkLifecycle(db, "c1", { lifecycle: "expired" });
     row = db.prepare(`SELECT lifecycle, lifecycle_state FROM chunks WHERE id='c1'`).get() as never;
-    expect(row).toEqual({ lifecycle: "expired", lifecycle_state: "archived" });
+    expect(row).toEqual({ lifecycle: "expired", lifecycle_state: "forgotten" });
     // explicit state wins (forget-on-expire path)
     setChunkLifecycle(db, "c1", {
       lifecycle: "expired",
@@ -54,9 +56,34 @@ describe("chunk-writer facade (PLAN-46 Phase 0)", () => {
   it("deriveLifecycleState maps every lifecycle value", () => {
     expect(deriveLifecycleState("consolidated")).toBe("consolidated");
     expect(deriveLifecycleState("archived")).toBe("archived");
-    expect(deriveLifecycleState("expired")).toBe("archived");
+    expect(deriveLifecycleState("expired")).toBe("forgotten");
     expect(deriveLifecycleState("generated")).toBe("active");
     expect(deriveLifecycleState(undefined)).toBeUndefined();
+  });
+
+  it("setting only the coarse state also sets the fine one (forgotten round-trips)", () => {
+    setChunkLifecycle(db, "c1", { lifecycleState: "forgotten" });
+    const row = db.prepare(`SELECT lifecycle, lifecycle_state FROM chunks WHERE id='c1'`).get();
+    expect(row).toEqual({ lifecycle: "expired", lifecycle_state: "forgotten" });
+    expect(deriveLifecycleState(deriveLifecycle("forgotten"))).toBe("forgotten");
+    expect(deriveLifecycle("active")).toBeUndefined(); // sub-state not derivable: keep it
+  });
+
+  it("liveChunkPredicate excludes forgotten and expired, keeps NULLs (atlas review)", () => {
+    db.exec(`DELETE FROM chunks`);
+    const ins = db.prepare(`INSERT INTO chunks (id, lifecycle, lifecycle_state) VALUES (?, ?, ?)`);
+    ins.run("live", "generated", "active");
+    ins.run("nulls", null, null);
+    ins.run("expired", "expired", "active"); // inconsistent legacy row
+    ins.run("forgotten", "archived", "forgotten"); // merge loser
+    ins.run("archived", "archived", "archived");
+    const ids = (
+      db.prepare(`SELECT id FROM chunks WHERE ${liveChunkPredicate()} ORDER BY id`).all() as Array<{
+        id: string;
+      }>
+    ).map((r) => r.id);
+    expect(ids).toEqual(["archived", "live", "nulls"]);
+    expect(liveChunkPredicate("c")).toContain("c.lifecycle_state");
   });
 
   it("scoped writers touch only their own columns", () => {

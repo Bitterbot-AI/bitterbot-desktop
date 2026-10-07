@@ -19,6 +19,7 @@
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { liveChunkPredicate } from "./chunk-writer.js";
 
 const log = createSubsystemLogger("memory/skill-version-resolver");
 
@@ -254,7 +255,7 @@ export class SkillVersionResolver {
          FROM chunks
          WHERE stable_skill_id = ?
            AND deprecated = 0
-           AND lifecycle_state != 'expired'
+           AND ${liveChunkPredicate()}
          ORDER BY skill_version DESC`,
       )
       .all(stableSkillId) as Array<{
@@ -301,7 +302,7 @@ export class SkillVersionResolver {
          FROM chunks
          WHERE stable_skill_id = ?
            AND skill_version = ?
-           AND lifecycle_state != 'expired'`,
+           AND ${liveChunkPredicate()}`,
       )
       .all(stableSkillId, version) as Array<{
       id: string;
