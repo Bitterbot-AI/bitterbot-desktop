@@ -353,7 +353,7 @@ export async function setupWalletForOnboarding(params: {
         "CDP credentials already present (env or config) — reusing them.",
         "",
         "To rotate: delete CDP_* values from ~/.bitterbot/.env and/or clear",
-        "wallet.cdpApiKeyId / wallet.cdpApiKeySecret in ~/.bitterbot/bitterbot.json,",
+        "tools.wallet.cdpApiKeyId / tools.wallet.cdpApiKeySecret in ~/.bitterbot/bitterbot.json,",
         "then re-run `bitterbot configure --section wallet`.",
       ].join("\n"),
       "CDP credentials detected",

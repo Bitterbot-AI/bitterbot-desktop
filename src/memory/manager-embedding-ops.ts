@@ -813,11 +813,35 @@ class MemoryManagerEmbeddingOps {
     return this.batch.enabled ? this.batch.concurrency : EMBEDDING_INDEX_CONCURRENCY;
   }
 
+  /** Session trust, re-read at most once a minute while indexing. */
+  private sessionTrustCache: {
+    at: number;
+    resolve: (absPath: string) => "first_party" | "untrusted" | "unknown";
+  } | null = null;
+
+  private async sessionIsFirstParty(absPath: string): Promise<boolean> {
+    if (!this.sessionTrustCache || Date.now() - this.sessionTrustCache.at > 60_000) {
+      const { buildSessionTrustResolver } = await import("./session-trust.js");
+      this.sessionTrustCache = {
+        at: Date.now(),
+        resolve: await buildSessionTrustResolver(this.agentId),
+      };
+    }
+    return this.sessionTrustCache.resolve(absPath) === "first_party";
+  }
+
   private async indexFile(
     entry: MemoryFileEntry | SessionFileEntry,
     options: { source: MemorySource; content?: string },
   ) {
     const content = options.content ?? (await fs.readFile(entry.absPath, "utf-8"));
+    // Only the owner's own conversations may teach preferences about the owner;
+    // group chats, guests, A2A and subagents may not (the LLM extractor already
+    // had this gate; this pattern-based one did not).
+    const learnPreferences =
+      options.source === "sessions" && this.userModelManager
+        ? await this.sessionIsFirstParty(entry.absPath).catch(() => false)
+        : false;
     const chunks = enforceEmbeddingMaxInputTokens(
       this.provider,
       chunkMarkdown(content, this.settings.chunking).filter(
@@ -1011,7 +1035,7 @@ class MemoryManagerEmbeddingOps {
           options.source === "skills" ? skillCategoryFromPath(entry.path) : null,
         );
       // Extract user preferences from session content
-      if (options.source === "sessions" && this.userModelManager) {
+      if (learnPreferences && this.userModelManager) {
         try {
           this.userModelManager.extractPreferences(chunk.text, id);
         } catch (err) {

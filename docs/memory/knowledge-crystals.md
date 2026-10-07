@@ -252,7 +252,7 @@ Hormones decay toward homeostasis (a personality-defining resting state), not to
 hormone(t) = homeostasis + (hormone(t₀) - homeostasis) * 0.5^((t - t₀) / halflife)
 ```
 
-Default homeostasis: dopamine=0.15, cortisol=0.02, oxytocin=0.10. Values below 0.001 are clamped to 0.
+Default homeostasis: dopamine=0.15, cortisol=0.02, oxytocin=0.20. Values below 0.001 are clamped to 0.
 
 ### How Hormones Influence Memory
 
@@ -310,12 +310,12 @@ I(t) = S(t) * f(accessCount) * e^(-λ_eff * Δt)
 
 Where:
 
-- **S(t)** = `1.0` (fixed base — avoids compounding decay)
-- **f(n)** = `1 - e^(-0.1 * (n + 1))` — saturating frequency factor
+- **S(t)** = a per-type relevance: preference and goal 1.2; task_pattern, insight and relationship 1.1; fact and skill 1.0; episode and general 0.8
+- **f(n)** = `1 - e^(-0.2 * (n + 1))` — saturating frequency factor
 - **Δt** = milliseconds since last access
 - **λ_eff** = `decayRate * (1 - |emotionalValence| * emotionDecayResistance)`
 
-The key insight: `semanticRelevance` is always `1.0` so importance is determined solely by access patterns and time. Emotional valence slows decay but doesn't inflate scores.
+Importance is determined by the memory's type, its access pattern and time. Emotional valence slows decay but doesn't inflate scores. Two adjustments follow: well-spaced reuse multiplies the score by up to 1.3 (spacing effect), and open loops are held at no less than twice the forget threshold.
 
 ### Phase 2: Identify Forgotten Chunks
 
@@ -336,8 +336,8 @@ type ConsolidationConfig = {
   decayRate: number; // Default: 5e-10 (~16-day half-life)
   promoteThreshold: number; // Default: 0.7
   forgetThreshold: number; // Default: 0.02
-  mergeOverlapThreshold: number; // Default: 0.92
-  emotionDecayResistance: number; // Default: 0.5
+  mergeOverlapThreshold: number; // Default: 0.92 (raised by 0.03 × cortisol at run time)
+  emotionDecayResistance: number; // Default: 0.5 baseline; the current hormones add to it, up to 0.8
 };
 ```
 

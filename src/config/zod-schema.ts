@@ -223,12 +223,20 @@ export const BitterbotSchema = z
         noSandbox: z.boolean().optional(),
         attachOnly: z.boolean().optional(),
         defaultProfile: z.string().optional(),
+        perAgentProfiles: z.boolean().optional(),
         snapshotDefaults: BrowserSnapshotDefaultsSchema,
         liveView: z
           .object({
             enabled: z.boolean().optional(),
             maxFps: z.number().int().min(1).max(30).optional(),
             quality: z.number().int().min(10).max(95).optional(),
+          })
+          .strict()
+          .optional(),
+        replay: z
+          .object({
+            enabled: z.boolean().optional(),
+            retentionDays: z.number().int().min(1).max(90).optional(),
           })
           .strict()
           .optional(),
@@ -400,6 +408,7 @@ export const BitterbotSchema = z
             // (a Tailscale Serve name, say). Loopback names are always allowed.
             // This is a DNS-rebinding control: see control-ui-session-token.ts.
             allowedHosts: z.array(z.string()).optional(),
+            bootstrapPairing: z.boolean().optional(),
             allowInsecureAuth: z.boolean().optional(),
             dangerouslyDisableDeviceAuth: z.boolean().optional(),
           })
@@ -997,6 +1006,7 @@ export const BitterbotSchema = z
         payment: z
           .object({
             enabled: z.boolean().optional(),
+            allowUnsignedProofs: z.boolean().optional(),
             x402: z
               .object({
                 address: z
@@ -1105,6 +1115,15 @@ export const BitterbotSchema = z
             perPurchaseCapUsd: z.number().positive().max(100_000).optional(),
             command: z.array(z.string()).min(1).optional(),
             authFile: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        privacy: z
+          .object({
+            enabled: z.boolean().optional(),
+            apiKey: z.string().optional().register(sensitive),
+            perPurchaseCapUsd: z.number().positive().max(100_000).optional(),
+            sandbox: z.boolean().optional(),
           })
           .strict()
           .optional(),

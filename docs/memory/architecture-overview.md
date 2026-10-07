@@ -162,7 +162,7 @@ flowchart TB
         SE --> UPR[(user_preferences table)]
         SE --> HB[Handover Briefs]
         HB --> NEXT[Next session system prompt]
-        EMT[Emotional Spike] -->|dopamine > 0.7 or cortisol > 0.8| MINI[Mini-Dream - immediate]
+        EMT[Emotional Spike] -->|hormone rises 0.15+ since last check, 90 min cooldown| MINI[Mini-Dream - immediate]
     end
 
     subgraph "P2P Network (Two-Tiered)"
@@ -197,7 +197,7 @@ flowchart TB
 | `src/memory/manager.ts`               | Central orchestrator. Creates all subsystems, runs search, exposes public API |
 | `src/memory/manager-sync-ops.ts`      | File-watching sync logic (mixin)                                              |
 | `src/memory/manager-embedding-ops.ts` | Embedding batch operations (mixin)                                            |
-| `src/memory/migrations.ts`            | Schema versioning: 9 migration versions                                       |
+| `src/memory/migrations.ts`            | Schema versioning: 70 migration versions                                      |
 | `src/memory/memory-schema.ts`         | Base table creation, `ensureColumn()` helper                                  |
 | `src/memory/crystal-types.ts`         | All type definitions: `KnowledgeCrystal`, lifecycle, governance, etc.         |
 | `src/memory/crystal.ts`               | `CrystalStore` — CRUD operations on knowledge crystals                        |
@@ -209,7 +209,7 @@ flowchart TB
 
 | File                                   | Purpose                                                                                 |
 | -------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/memory/dream-engine.ts`           | `DreamEngine` — state machine, 7 mode runners, FSHO integration, emotional triggering   |
+| `src/memory/dream-engine.ts`           | `DreamEngine` — state machine, 13 mode runners, FSHO integration, emotional triggering  |
 | `src/memory/dream-oscillator.ts`       | FSHO oscillator — Kuramoto coupling, order parameter for mode selection                 |
 | `src/memory/dream-types.ts`            | Dream types: modes, tiers, configs, `DreamInsight`                                      |
 | `src/memory/dream-schema.ts`           | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
@@ -403,6 +403,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | v11     | Skill curator follow-ups (PLAN-15 staging gate columns)                                                                                                                                                                 |
 | v12     | PLAN-15 procedural-memory curator — `skill_lifecycle` table backfilled from `skill_executions`                                                                                                                          |
 | v13     | **PLAN-18 SAGE graph memory** — `gate_value` + `gate_features` BLOB columns on `relationships`, `graph_gate_training_pairs` table, `graph_reward_delta` column on `dream_cycles`                                        |
+| v14–v70 | Later migrations (lifecycle columns, canonical facts, skill evolution, review and usage tables, and more); see `src/memory/migrations.ts`                                                                               |
 
 **Key tables:**
 
@@ -486,6 +487,14 @@ accumulating:
   negative disables). This runs right after the forget pass each consolidation
   cycle and logs `memory GC: purged N forgotten/expired chunk(s)`. Note that row
   deletion frees pages but does not shrink the file — run `VACUUM` for that.
+- **Two lifecycle columns.** `lifecycle` (generated, activated, frozen,
+  consolidated, archived, expired) is the fine-grained state machine;
+  `lifecycle_state` (active, archived, consolidated, forgotten) is the coarse
+  retrieval gate. They are not one-to-one (a merge loser is `archived` +
+  `forgotten`), so "is this chunk live?" checks both, each with its own values:
+  `liveChunkPredicate()` in `chunk-writer.ts`. `expired` derives to `forgotten`,
+  and `lifecycle-vocabulary.test.ts` fails on SQL that compares a column with the
+  other column's values.
 
 Health check from the DB directly:
 
@@ -626,7 +635,7 @@ npx vitest run src/memory/
 
 - [How the Memory Works](./how-the-memory-works.md) — plain-language guide to the complete memory system
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model, lifecycle, epistemic layers
-- [Dream Engine](./dream-engine.md) — 7 modes, FSHO selector, ripple replay, emotional triggering
+- [Dream Engine](./dream-engine.md) — 13 modes (some off by default), FSHO selector, ripple replay, emotional triggering
 - [Emotional System](./emotional-system.md) — hormones, anchors, limbic bridge
 - [Deep Recall](./deep-recall.md) — RLM infinite memory via sub-LLM REPL
 - [User Knowledge](./user-knowledge.md) — session extraction, Bond drift guard, handover briefs

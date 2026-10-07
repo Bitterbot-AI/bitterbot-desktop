@@ -8,7 +8,7 @@ title: "Web"
 
 # Web (Gateway)
 
-The Gateway serves a small **browser Control UI** (Vite + Lit) from the same port as the Gateway WebSocket:
+The Gateway serves a small **browser Control UI** (Vite + React) from the same port as the Gateway WebSocket:
 
 - default: `http://127.0.0.1:19001` (Control UI, served by the gateway; Vite on 5173 is the dev workflow)
 - optional prefix: set `gateway.controlUi.basePath` (e.g. `/bitterbot`)
@@ -118,5 +118,6 @@ Open:
 The Gateway serves static files from `dist/control-ui`. Build them with:
 
 ```bash
-pnpm build # auto-installs UI deps on first run
+pnpm install # at the repo root, once
+pnpm build
 ```

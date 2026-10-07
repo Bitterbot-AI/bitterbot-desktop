@@ -397,3 +397,63 @@ export function deletePreference(db: DatabaseSync, category: string, key: string
   }
   return false;
 }
+
+export type AuditEntry = {
+  id: string;
+  chunkId: string | null;
+  event: string;
+  operation: string | null;
+  actor: string;
+  timestamp: number;
+};
+
+/**
+ * The memory audit log, newest first (PLAN-53 G2). Metadata is left out: some
+ * writers put memory text there, and this list is for seeing what happened,
+ * not re-reading what was forgotten.
+ */
+export function listAuditLog(
+  db: DatabaseSync,
+  opts: { limit?: number; before?: number; event?: string } = {},
+): AuditEntry[] {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
+  const where: string[] = [];
+  const args: Array<string | number> = [];
+  if (opts.before != null) {
+    where.push("timestamp < ?");
+    args.push(opts.before);
+  }
+  if (opts.event) {
+    where.push("event = ?");
+    args.push(opts.event);
+  }
+  const hasOperation = (
+    db.prepare("PRAGMA table_info(memory_audit_log)").all() as Array<{ name: string }>
+  ).some((c) => c.name === "operation");
+  try {
+    const rows = db
+      .prepare(
+        `SELECT id, chunk_id, event, ${hasOperation ? "operation" : "NULL AS operation"}, actor, timestamp
+           FROM memory_audit_log ${where.length > 0 ? `WHERE ${where.join(" AND ")}` : ""}
+          ORDER BY timestamp DESC LIMIT ?`,
+      )
+      .all(...args, limit) as unknown as Array<{
+      id: string;
+      chunk_id: string | null;
+      event: string;
+      operation: string | null;
+      actor: string;
+      timestamp: number;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      chunkId: r.chunk_id,
+      event: r.event,
+      operation: r.operation,
+      actor: r.actor,
+      timestamp: r.timestamp,
+    }));
+  } catch {
+    return [];
+  }
+}

@@ -160,7 +160,7 @@ The agent reads the pointer in its prompt. If the user asks about it, the agent 
 
 ### The Problem
 
-The agent is a stateless LLM. If it learns something important mid-session (a name, a deadline, a preference) but the dream cycle is 2 hours away and the session might end, that information is lost. This creates trust-destroying amnesia.
+The agent is a stateless LLM. If it learns something important mid-session (a name, a deadline, a preference) but the next full dream cycle may be hours away (full cycles run at most every 8 hours) and the session might end, that information is lost. This creates trust-destroying amnesia.
 
 ### The Solution
 
@@ -194,7 +194,7 @@ When the next dream cycle fires, scratch notes are:
 
 ### Belt AND Suspenders: Auto-Scratch from Hormonal Spikes
 
-Even if the agent forgets to call `working_memory_note`, the hormonal system provides backup. During each consolidation cycle (every 30 min), if hormonal levels are elevated (dopamine > 0.7, cortisol > 0.7, or oxytocin > 0.7), an automatic scratch note is generated:
+Even if the agent forgets to call `working_memory_note`, the hormonal system provides backup. During each consolidation cycle (every 30 min), if a hormone has risen by 0.15 or more since the last check (`hormonalTriggerDelta`), an automatic scratch note is generated (deduplicated against the previous automatic note):
 
 ```markdown
 - [2026-03-12T15:30:00Z] (importance: 0.8) [AUTO] Hormonal event: dopamine spike
@@ -338,7 +338,7 @@ flowchart TD
         Scratch --> Prompt
     end
 
-    subgraph Dream ["Dream Cycle (every 2hrs)"]
+    subgraph Dream ["Dream Cycle (full cycle at most every 8 h)"]
         MEMORY --> RLM["RLM State Update<br/>f(Old + Scratch + Crystals + Insights)"]
         Scratch --> RLM
         Crystals --> RLM
@@ -351,7 +351,7 @@ flowchart TD
     end
 
     subgraph Consolidation ["Consolidation (every 30min)"]
-        HormCheck{"Hormones > 0.7?"} -->|Yes| AutoScratch["Auto-scratch note"]
+        HormCheck{"Hormone rose by 0.15+?"} -->|Yes| AutoScratch["Auto-scratch note"]
         AutoScratch --> Scratch
     end
 ```

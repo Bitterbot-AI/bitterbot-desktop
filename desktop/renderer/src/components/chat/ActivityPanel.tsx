@@ -1,8 +1,9 @@
-import { Activity, Check, Clock, ShieldAlert, X } from "lucide-react";
+import { Activity, Check, Clock, Film, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { type ReviewAction, type ReviewStatus, useReviewStore } from "../../stores/review-store";
+import { BrowserReplays, ReplayPlayer, type ReplaySession } from "./BrowserReplays";
 
 const CLASS_LABEL: Record<string, string> = {
   spend: "spend",
@@ -24,6 +25,19 @@ export function ActivityPanel() {
   const listen = useReviewStore((s) => s.listen);
 
   useEffect(() => listen(), [listen]);
+  const status = useGatewayStore((s) => s.status);
+  const request = useGatewayStore((s) => s.request);
+  const [replays, setReplays] = useState<ReplaySession[]>([]);
+  const [playing, setPlaying] = useState<{ session: ReplaySession; at?: number } | null>(null);
+
+  useEffect(() => {
+    if (status !== "connected") return;
+    void (request("browser.replay.list", {}) as Promise<{ sessions?: ReplaySession[] }>)
+      .then((res) => setReplays(res?.sessions ?? []))
+      .catch(() => {
+        // An older gateway, or no access: no recordings to show.
+      });
+  }, [status, request]);
 
   if (unsupported) {
     return (
@@ -33,12 +47,27 @@ export function ActivityPanel() {
   return (
     <div className="flex-1 overflow-auto">
       <Payments />
+      <BrowserReplays
+        sessions={replays}
+        onOpen={(session) => setPlaying({ session })}
+        onDeleted={(id) => setReplays((l) => l.filter((r) => r.id !== id))}
+      />
+      <ReplayPlayer
+        session={playing?.session ?? null}
+        at={playing?.at}
+        onClose={() => setPlaying(null)}
+      />
       {loaded && history.length === 0 ? (
         <Empty text="Nothing has needed your approval yet." />
       ) : (
         <ul className="divide-y divide-border/30">
           {history.map((action) => (
-            <ActivityRow key={action.id} action={action} />
+            <ActivityRow
+              key={action.id}
+              action={action}
+              replay={replayFor(replays, action)}
+              onReplay={(session) => setPlaying({ session, at: action.createdAt })}
+            />
           ))}
         </ul>
       )}
@@ -136,7 +165,29 @@ const STATUS: Record<ReviewStatus, { label: string; tone: string; icon: typeof C
   expired: { label: "Expired", tone: "text-muted-foreground", icon: Clock },
 };
 
-function ActivityRow({ action }: { action: ReviewAction }) {
+/** The recording of the session an action came from, if it covers that moment. */
+export function replayFor(
+  replays: ReplaySession[],
+  action: Pick<ReviewAction, "sessionKey" | "createdAt">,
+): ReplaySession | undefined {
+  const margin = 10 * 60 * 1000;
+  return replays.find(
+    (r) =>
+      r.sessionKey === action.sessionKey &&
+      action.createdAt >= r.firstTs - margin &&
+      action.createdAt <= r.lastTs + margin,
+  );
+}
+
+function ActivityRow({
+  action,
+  replay,
+  onReplay,
+}: {
+  action: ReviewAction;
+  replay?: ReplaySession;
+  onReplay: (session: ReplaySession) => void;
+}) {
   const meta = STATUS[action.status];
   const Icon = meta.icon;
   const when = new Date(action.decidedAt ?? action.createdAt).toLocaleString();
@@ -157,6 +208,14 @@ function ActivityRow({ action }: { action: ReviewAction }) {
           <p className="text-2xs text-muted-foreground">
             {when}
             {action.decidedBy ? ` · by ${action.decidedBy}` : ""}
+            {replay && (
+              <button
+                onClick={() => onReplay(replay)}
+                className="ml-2 inline-flex items-center gap-1 hover:text-foreground"
+              >
+                <Film className="w-3 h-3" /> Replay
+              </button>
+            )}
           </p>
           {action.resultSummary && (
             <p className="text-2xs text-muted-foreground font-mono break-words mt-0.5 line-clamp-3">

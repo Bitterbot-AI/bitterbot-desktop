@@ -13,14 +13,16 @@ deployments work at a high level.
 
 ## Pick a provider
 
-- **Railway** (one‑click + browser setup)
-- **Northflank** (one‑click + browser setup)
-- **Fly.io**
-- **Hetzner (Docker)**
-- **GCP (Compute Engine)**
-- **exe.dev** (VM + HTTPS proxy)
-- **AWS (EC2/Lightsail/free tier)**: works well too. Video guide:
-  [https://x.com/techfrenAJ/status/2014934471095812547](https://x.com/techfrenAJ/status/2014934471095812547)
+Two setups ship with the repository; both are covered in
+[Docker and always-on hosting](/platforms/docker):
+
+- **Fly.io**: `deploy/fly/` (always-on machine, volume, HTTPS).
+- **Any Ubuntu or Debian VPS** (Hetzner, DigitalOcean, AWS, GCP and so on):
+  `deploy/vps/cloud-init.yaml` (Docker, systemd service, optional HTTPS through
+  Caddy, update with rollback).
+
+Other hosts that run a container image (`ghcr.io/bitterbot-ai/bitterbot-desktop`)
+work too, but have no template.
 
 ## How cloud setups work
 

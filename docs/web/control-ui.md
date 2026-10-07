@@ -8,7 +8,7 @@ title: "Control UI"
 
 # Control UI (browser)
 
-The Control UI is a small **Vite + Lit** single-page app served by the Gateway:
+The Control UI is a small **Vite + React** single-page app served by the Gateway:
 
 - default: `http://127.0.0.1:19001` (served by the gateway; Vite on 5173 is the dev workflow)
 - optional prefix: set `gateway.controlUi.basePath` (e.g. `/bitterbot`)
@@ -57,6 +57,10 @@ you revoke it with `bitterbot devices revoke --device <id> --role <role>`. See
 
 - Local connections (`127.0.0.1`) are auto-approved.
 - Remote connections (LAN, Tailnet, etc.) require explicit approval.
+- On a fresh remote gateway with `gateway.controlUi.bootstrapPairing: true` (or
+  `BITTERBOT_BOOTSTRAP_PAIRING=1`, which the Fly, VPS and Compose setups set), the
+  first Control UI that proves the gateway token is paired automatically, once,
+  while no device is paired. See [Docker and always-on hosting](/platforms/docker).
 - Each browser profile generates a unique device ID, so switching browsers or
   clearing browser data will require re-pairing.
 
@@ -69,7 +73,7 @@ you revoke it with `bitterbot devices revoke --device <id> --role <role>`. See
 - Side panel ("BitterBot's Computer"): a **Browser** tab with a live view of the agent's page and a **Take over** control (see [Live view and take over](/tools/browser#live-view-and-take-over)), and a terminal view for shell commands. While the panel is open the window holds a tool output lease (`tools.output.subscribe`, `operator.admin`), so command output and file contents are shown there. The lease applies to that one connection: other clients and chat channels still get tool events without output unless the session runs at verbose `full`.
 - Channels: WhatsApp/Telegram/Discord/Slack/Signal status + QR login + per-channel config (`channels.status`, `web.login.*`, `config.patch`)
 - Channels on/off mid-session (`channels.update`): each account row has an enable/disable switch; the gateway flips the config flag and stops/starts just that account in-process - no gateway restart, other channels untouched. Channels the gateway host cannot run (wrong OS, missing binary like signal-cli) render greyed with the reason ("Requires a darwin gateway host...") via the `channelCapabilities` block in `channels.status`. Note the capability check reflects the GATEWAY host's OS, not the machine running the browser.
-- Bundled channels (Telegram, WhatsApp, Discord, Slack, Signal, Twitch) appear on the Channels tab out of the box, even on a fresh node with nothing configured - registration is boot-time only and nothing connects until credentials exist and the account is enabled. Set `plugins.entries.<id>.enabled=false` to hide one.
+- Bundled channels (Telegram, WhatsApp, Discord, Slack, Signal, Email, X) appear on the Channels tab out of the box, even on a fresh node with nothing configured - registration is boot-time only and nothing connects until credentials exist and the account is enabled. Set `plugins.entries.<id>.enabled=false` to hide one. Twitch is bundled but opt-in (`plugins.entries.twitch.enabled=true`).
 - Guided channel setup ("Set up" / "Edit setup" on each card): a per-channel credential form (Telegram bot token with BotFather help, Discord bot token, Slack bot + app tokens, Signal number/cli/daemon) with **Validate** - `channels.validate` probes the draft live against the provider without persisting anything - and **Save & Enable** - `channels.configure` writes the fields, hot-restarts just that channel, and returns a post-save probe. Redacted placeholders never overwrite stored secrets.
 - QR device linking for WhatsApp AND Signal (`web.login.start` / `web.login.wait` now accept a `channel` param): the dialog renders the QR, waits for the phone scan, and brings the channel up. Signal drives `signal-cli link` under the hood and reports the linked number.
 - Instances: presence list + refresh (`system-presence`)
@@ -85,7 +89,7 @@ you revoke it with `bitterbot devices revoke --device <id> --role <role>`. See
 - Config schema + form rendering (`config.schema`, including plugin + channel schemas); Raw JSON editor remains available
 - Debug: status/health/models snapshots + event log + manual RPC calls (`status`, `health`, `models.list`)
 - Logs: live tail of gateway file logs with filter/export (`logs.tail`)
-- Update: run a package/git update + restart (`update.run`) with a restart report
+- Update: run a package/git update + restart (`update.run`) with a restart report. In a container the update is refused; pull a newer image instead (VPS: `/opt/bitterbot/update.sh`, Fly: `fly deploy`)
 
 Cron jobs panel notes:
 
@@ -108,6 +112,26 @@ Cron jobs panel notes:
   - When a run is aborted, partial assistant text can still be shown in the UI
   - Gateway persists aborted partial assistant text into transcript history when buffered output exists
   - Persisted entries include abort metadata so transcript consumers can tell abort partials from normal completion output
+
+## Talking to the agent
+
+Click the microphone in the chat box to talk instead of type. Voice mode keeps
+listening until you click it again:
+
+- When you stop talking (about a second of silence), what you said is turned into
+  text and sent as a chat message.
+- The reply is read aloud sentence by sentence as it streams in, so the agent starts
+  talking before it has finished writing. Code blocks are skipped and links are
+  read as "a link".
+- Talk over it to interrupt: its voice stops and the run is stopped (`chat.abort`),
+  and what you say next becomes the new message.
+
+Speech to text uses the same providers as voice notes from chat apps: an OpenAI,
+Groq, Deepgram or Google key, or whatever `tools.media.audio` names. Speech uses
+your [text-to-speech](/tools/tts) settings; Edge TTS works with no key. The browser
+asks for microphone access the first time, which needs `https` or `localhost`.
+
+Voice mode uses `talk.transcribe` and `talk.speak`, which need `operator.write`.
 
 ## Tailnet access (recommended)
 
@@ -176,19 +200,18 @@ See [Tailscale](/gateway/tailscale) for HTTPS setup guidance.
 The Gateway serves static files from `dist/control-ui`. Build them with:
 
 ```bash
-pnpm build # auto-installs UI deps on first run
+pnpm install # at the repo root, once
+pnpm build
 ```
 
-Optional absolute base (when you want fixed asset URLs):
-
-```bash
-BITTERBOT_CONTROL_UI_BASE_PATH=/bitterbot/ pnpm build
-```
+To serve the UI under a path prefix, set `gateway.controlUi.basePath` (for
+example `/bitterbot`); the build itself uses relative asset URLs.
 
 To run the Control UI locally:
 
 ```bash
-cd desktop && pnpm dev # auto-installs UI deps on first run
+pnpm install # at the repo root, once
+cd desktop && pnpm dev
 ```
 
 Then point the UI at your Gateway WS URL (e.g. `ws://127.0.0.1:19001`).

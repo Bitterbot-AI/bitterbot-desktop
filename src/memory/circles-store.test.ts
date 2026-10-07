@@ -165,6 +165,19 @@ describe("CirclesStore", () => {
     rawDb
       .prepare(`INSERT INTO circle_read_state (circle_id, last_read_at) VALUES (?, ?)`)
       .run(circleId, NOW);
+    // M5: key material must not outlive the circle.
+    rawDb
+      .prepare(
+        `INSERT INTO circle_sender_keys (circle_id, sender_pubkey, key_id, key_b64, created_at)
+         VALUES (?, 'x', 'k', 'b', ?)`,
+      )
+      .run(circleId, NOW);
+    rawDb
+      .prepare(
+        `INSERT INTO circle_own_sender_keys (circle_id, key_id, key_b64, created_at, delivered_json)
+         VALUES (?, 'k', 'b', ?, '[]')`,
+      )
+      .run(circleId, NOW);
     const other = store.createCircle({ name: "Other", creatorPubkey: ALICE });
     seedMsg(other); // a row in a DIFFERENT circle
 
@@ -181,6 +194,8 @@ describe("CirclesStore", () => {
     expect(count("circle_messages", circleId)).toBe(0);
     expect(count("circle_read_state", circleId)).toBe(0);
     expect(count("circle_members", circleId)).toBe(0);
+    expect(count("circle_sender_keys", circleId)).toBe(0);
+    expect(count("circle_own_sender_keys", circleId)).toBe(0);
     // The other circle's data survived — delete is scoped to one circle.
     expect(count("circle_messages", other)).toBe(1);
   });

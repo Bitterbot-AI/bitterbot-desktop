@@ -10,6 +10,11 @@ Until the steps below are done, the updater **fails closed** — it installs
 nothing (the embedded key is a placeholder), and fresh droplets fall back to a
 from-source build. Do these once to activate.
 
+**Status (2026-10-06):** steps 1-4 are done. The fleet key is embedded, the
+`MINISIGN_SECRET_KEY` / `MINISIGN_PUBLIC_KEY` secrets are set, and the
+`release` environment requires maintainer approval. Steps 5-6 follow with the
+first signed release (orchestrator 0.2.3).
+
 ## One-time setup (maintainer)
 
 ### 1. Generate the fleet signing keypair
@@ -23,7 +28,7 @@ minisign -G -W -p relay.pub -s relay.key      # -W = no password (for CI)
 
 ### 2. Embed the public key in the updater
 
-In `scripts/update-orchestrator.sh`, replace the `MINISIGN_PUBKEY` placeholder
+In `deploy/relay-fleet/scripts/update-orchestrator.sh`, replace the `MINISIGN_PUBKEY` placeholder
 with the last line of `relay.pub`. Commit that (public keys are public).
 
 ### 3. Add the CI secrets (repo → Settings → Secrets and variables → Actions)
@@ -55,7 +60,7 @@ The updated `cloud-init.yaml` handles fresh droplets. For the existing relays
 for ip in 46.101.181.98 142.93.113.64 139.59.233.83; do
   ssh -i ~/.ssh/bitterbot-relay root@$ip \
     "apt-get update && apt-get install -y minisign"
-  scp -i ~/.ssh/bitterbot-relay scripts/update-orchestrator.sh \
+  scp -i ~/.ssh/bitterbot-relay deploy/relay-fleet/scripts/update-orchestrator.sh \
     root@$ip:/usr/local/sbin/bitterbot-orchestrator-update.sh
   ssh -i ~/.ssh/bitterbot-relay root@$ip \
     "chmod 755 /usr/local/sbin/bitterbot-orchestrator-update.sh && \

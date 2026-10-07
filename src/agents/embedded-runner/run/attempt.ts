@@ -514,6 +514,53 @@ export async function runEmbeddedAttempt(
       heartbeatLight
         ? "minimal"
         : "full";
+    // Someone other than the owner is talking (group member, approved contact):
+    // the agent keeps its character but none of the owner's private memory.
+    const guestFace = await import("../../guest-face.js");
+    const guestTurn =
+      !remoteTaskTurn &&
+      promptMode === "full" &&
+      guestFace.isGuestTurn({
+        senderIsOwner: params.senderIsOwner,
+        isHeartbeat: params.isHeartbeat,
+        // The same resolution as runtimeChannel: the gateway's agent call sets
+        // only messageChannel, inbound channel runs set messageProvider.
+        messageProvider: params.messageChannel ?? params.messageProvider,
+        prompt: params.prompt,
+      });
+    if (guestTurn && params.sessionKey) {
+      // What a guest says never becomes a preference or fact about the owner.
+      const { markGuestSession } = await import("../../../memory/guest-sessions.js");
+      markGuestSession(params.sessionKey);
+    }
+    // A guest's prompt carries the genome and protocols only, never MEMORY.md.
+    const promptContextFiles = guestTurn
+      ? guestFace.filterGuestContextFiles(contextFiles)
+      : contextFiles;
+    const guestPrompt = guestTurn
+      ? await (async () => {
+          let hormones: { dopamine: number; cortisol: number; oxytocin: number } | undefined;
+          try {
+            const { MemoryIndexManager } = await import("../../../memory/manager.js");
+            const manager = await MemoryIndexManager.get({
+              cfg: params.config ?? {},
+              agentId: sessionAgentId,
+              purpose: "status",
+            });
+            hormones = manager?.hormonalState() ?? undefined;
+          } catch {
+            hormones = undefined;
+          }
+          return guestFace.buildGuestPrompt({
+            publicCard: await guestFace.loadPublicCard(effectiveWorkspace),
+            mood: guestFace.moodWord(hormones),
+            senderName: params.senderName ?? undefined,
+            channel: params.messageChannel ?? params.messageProvider ?? undefined,
+            group: /:(group|channel):/.test(params.sessionKey ?? ""),
+            canMessageOwner: true,
+          });
+        })().catch(() => undefined)
+      : undefined;
     const docsPath = await resolveBitterbotDocsPath({
       workspaceDir: effectiveWorkspace,
       argv1: process.argv[1],
@@ -525,36 +572,38 @@ export async function runEmbeddedAttempt(
     // Resolve endocrine state for personality modulation in system prompt.
     // Skipped entirely for remote task turns: its proactive-recall block is
     // keyed off the caller's message and its session brief is fail-open.
-    const endocrineState = remoteTaskTurn
-      ? undefined
-      : await resolveEndocrineState({
-          config: params.config,
-          agentId: sessionAgentId,
-          workspaceDir: effectiveWorkspace,
-          // Drives involuntary proactive recall: surface what we already know about
-          // this message's topic into the system prompt before the model answers.
-          userMessage: params.prompt,
-          // Scopes the recall cooldown to this conversation so a fresh session in
-          // a warm process is not suppressed by the previous session's window.
-          sessionKey: params.sessionKey ?? params.sessionId,
-          // PLAN-40 funnel: dream-fact consumption stamps only in full mode
-          // (minimal assembly drops the proactive block after selection).
-          promptMode,
-          // Heartbeat ticks must not spend embeddings on proactive recall or
-          // drain the continuity gate (token-efficiency build, W2 contract).
-          isHeartbeat: params.isHeartbeat === true,
-        }).catch(() => undefined);
+    const endocrineState =
+      remoteTaskTurn || guestTurn
+        ? undefined
+        : await resolveEndocrineState({
+            config: params.config,
+            agentId: sessionAgentId,
+            workspaceDir: effectiveWorkspace,
+            // Drives involuntary proactive recall: surface what we already know about
+            // this message's topic into the system prompt before the model answers.
+            userMessage: params.prompt,
+            // Scopes the recall cooldown to this conversation so a fresh session in
+            // a warm process is not suppressed by the previous session's window.
+            sessionKey: params.sessionKey ?? params.sessionId,
+            // PLAN-40 funnel: dream-fact consumption stamps only in full mode
+            // (minimal assembly drops the proactive block after selection).
+            promptMode,
+            // Heartbeat ticks must not spend embeddings on proactive recall or
+            // drain the continuity gate (token-efficiency build, W2 contract).
+            isHeartbeat: params.isHeartbeat === true,
+          }).catch(() => undefined);
 
     // PLAN-33: canonical facts resolve independently of endocrine state so a
     // hormonal/recall failure can never drop the ground-truth block. Never
     // resolved for remote task turns (node-private ground truth).
-    const canonicalFacts = remoteTaskTurn
-      ? undefined
-      : await resolveCanonicalFactsBlock({
-          config: params.config,
-          agentId: sessionAgentId,
-          promptMode,
-        }).catch(() => undefined);
+    const canonicalFacts =
+      remoteTaskTurn || guestTurn
+        ? undefined
+        : await resolveCanonicalFactsBlock({
+            config: params.config,
+            agentId: sessionAgentId,
+            promptMode,
+          }).catch(() => undefined);
 
     // PLAN-34 Phase 2b: idle-research findings surface deterministically on
     // the next live turn — same independence contract as canonical facts.
@@ -575,20 +624,24 @@ export async function runEmbeddedAttempt(
       senderIsOwner: params.senderIsOwner,
       messageProvider: params.messageProvider,
     });
-    const researchFindings = await resolveResearchFindingsBlock({
-      config: params.config,
-      agentId: sessionAgentId,
-      promptMode,
-      liveUserTurn,
-      ownerTurn,
-    }).catch(() => undefined);
+    const researchFindings = guestTurn
+      ? undefined
+      : await resolveResearchFindingsBlock({
+          config: params.config,
+          agentId: sessionAgentId,
+          promptMode,
+          liveUserTurn,
+          ownerTurn,
+        }).catch(() => undefined);
 
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
       reasoningLevel: params.reasoningLevel ?? "off",
-      extraSystemPrompt: params.extraSystemPrompt,
-      ownerNumbers: params.ownerNumbers,
+      extraSystemPrompt: guestPrompt
+        ? [params.extraSystemPrompt, guestPrompt].filter(Boolean).join("\n\n")
+        : params.extraSystemPrompt,
+      ownerNumbers: guestTurn ? undefined : params.ownerNumbers,
       reasoningTagHint,
       heartbeatPrompt: isDefaultAgent
         ? resolveHeartbeatPrompt(params.config?.agents?.defaults?.heartbeat?.prompt)
@@ -612,7 +665,7 @@ export async function runEmbeddedAttempt(
       userTimezone,
       userTime,
       userTimeFormat,
-      contextFiles,
+      contextFiles: promptContextFiles,
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
       canonicalFacts,
@@ -642,7 +695,7 @@ export async function runEmbeddedAttempt(
       })(),
       systemPrompt: effectiveAppendPrompt,
       bootstrapFiles: hookAdjustedBootstrapFiles,
-      injectedFiles: contextFiles,
+      injectedFiles: promptContextFiles,
       skillsPrompt,
       tools,
     });

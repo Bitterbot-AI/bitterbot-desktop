@@ -24,7 +24,7 @@ Intended use: point your phone at a Tailscale-reachable or LAN-reachable gateway
 
 2. The phone opens `https://<host>/m?t=<token>` and handshakes over WebSocket.
 
-3. Send a message. Replies stream back into the chat.
+3. Send a message. The reply appears when the turn completes.
 
 ## How the URL is built
 

@@ -8,7 +8,10 @@ import {
   isSkillEvolveValidationSessionKey,
   isSubagentSessionKey,
 } from "../routing/session-key.js";
-import { resolveGatewayMessageChannel } from "../utils/message-channel.js";
+import {
+  INTERNAL_MESSAGE_CHANNEL,
+  resolveGatewayMessageChannel,
+} from "../utils/message-channel.js";
 import { resolveA2aRemoteToolPolicy } from "./a2a-remote-policy.js";
 import { resolveAgentConfig } from "./agent-scope.js";
 import { wrapToolWithAbortSignal } from "./agent-tools.abort.js";
@@ -482,10 +485,17 @@ export function createBitterbotCodingTools(options?: {
         });
   // PLAN-53 G2: a non-owner person drives this turn (not a heartbeat or
   // cron run); memory recall is limited to what a guest may see.
+  // Same rule as the run's guest turn (agents/guest-face.ts isGuestTurn): an
+  // external channel with no owner flag is a guest even without a sender id.
+  const guestProvider = options?.messageProvider?.trim().toLowerCase() ?? "";
   const memoryGuest =
     options?.senderIsOwner !== true &&
     options?.isHeartbeat !== true &&
-    Boolean(options?.senderId || options?.spawnedBy);
+    Boolean(
+      options?.senderId ||
+      options?.spawnedBy ||
+      (guestProvider !== "" && guestProvider !== INTERNAL_MESSAGE_CHANNEL),
+    );
   const tools: AnyAgentTool[] = [
     ...base,
     ...(sandboxRoot
@@ -513,12 +523,18 @@ export function createBitterbotCodingTools(options?: {
     ...listChannelAgentTools({ cfg: options?.config }),
     ...createBitterbotTools({
       sandboxBrowserBridgeUrl: sandbox?.browser?.bridgeUrl,
+      codeSandbox: sandbox
+        ? { containerName: sandbox.containerName, containerWorkdir: sandbox.containerWorkdir }
+        : undefined,
       allowHostBrowserControl: sandbox ? sandbox.browserAllowHostControl : true,
       agentSessionKey: options?.sessionKey,
       agentSessionId: options?.sessionId,
       agentSessionFile: options?.sessionFile,
       senderIsOwner: options?.senderIsOwner === true,
       memoryGuest,
+      guestSender: memoryGuest
+        ? { name: options?.senderName, id: options?.senderId, channel: options?.messageProvider }
+        : undefined,
       agentChannel: resolveGatewayMessageChannel(options?.messageProvider),
       agentAccountId: options?.agentAccountId,
       agentTo: options?.messageTo,

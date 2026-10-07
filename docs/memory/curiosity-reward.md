@@ -45,8 +45,8 @@ Each GCCRF component also influences which _mode_ the Dream Engine uses:
 - High prediction error --> Exploration mode
 - High learning progress --> Compression mode (consolidate what's being learned)
 - High novelty --> Simulation mode (cross-domain connections)
-- High empowerment --> Mutation mode (optimize skills)
-- High strategic alignment --> Research mode (goal-directed investigation)
+
+(The empowerment → Mutation and strategic alignment → Research couplings were retired with those modes in PLAN-45 Phase 1.)
 
 ### Hormonal Feedback
 

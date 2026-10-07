@@ -32,6 +32,10 @@ describe("scrubCardData", () => {
     expect(scrubCardData("room 123 on floor 4")).toBe("room 123 on floor 4");
   });
 
+  it("removes a security code in a browser snapshot line", () => {
+    expect(scrubCardData('textbox "CVC" [ref=e5]: 123')).toBe('textbox "CVC" [ref=e5]: [removed]');
+  });
+
   it("is cheap on text with no digits", () => {
     const text = "no numbers here at all";
     expect(scrubCardData(text)).toBe(text);

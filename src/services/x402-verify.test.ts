@@ -112,6 +112,7 @@ describe("verifyX402Payment", () => {
 
   it("rejects token with missing txHash", async () => {
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({ amount: 0.05 }),
       expectedRecipient: recipient,
       minimumAmount: 0.01,
@@ -124,6 +125,7 @@ describe("verifyX402Payment", () => {
   it("rejects token with amount below minimum", async () => {
     setReceipt("0xabc1");
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({ txHash: "0xabc1", amount: 0.001 }),
       expectedRecipient: recipient,
       minimumAmount: 0.01,
@@ -136,6 +138,7 @@ describe("verifyX402Payment", () => {
   it("rejects token with timestamp older than 5 minutes", async () => {
     const old = Date.now() - 6 * 60 * 1000;
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({ txHash: "0xabc2", amount: 0.05, timestamp: old }),
       expectedRecipient: recipient,
       minimumAmount: 0.01,
@@ -149,6 +152,7 @@ describe("verifyX402Payment", () => {
     const otherRecipient = "0x" + "33".repeat(20);
     setReceipt("0xabc3", { transferTo: otherRecipient });
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xabc3",
         amount: 0.05,
@@ -162,9 +166,22 @@ describe("verifyX402Payment", () => {
     expect(r.error).toMatch(/No USDC Transfer log to expected recipient/);
   });
 
-  it("accepts valid unsigned legacy token (with deprecation warning)", async () => {
+  it("rejects an unsigned token by default: anyone watching the chain could redeem it", async () => {
+    setReceipt("0xabc5");
+    const r = await verifyX402Payment({
+      paymentToken: encodeToken({ txHash: "0xabc5", amount: 0.05, sender, timestamp: Date.now() }),
+      expectedRecipient: recipient,
+      minimumAmount: 0.01,
+      network: "base",
+    });
+    expect(r.valid).toBe(false);
+    expect(r.error).toMatch(/not signed by the payer/);
+  });
+
+  it("accepts an unsigned legacy token when the seller allows unsigned proofs", async () => {
     setReceipt("0xabc4");
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xabc4",
         amount: 0.05,
@@ -182,6 +199,7 @@ describe("verifyX402Payment", () => {
   it("verifies a signed v1 token whose signature recovers to declared sender", async () => {
     setReceipt("0xabc5");
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         version: "v1",
         txHash: "0xabc5",
@@ -202,6 +220,7 @@ describe("verifyX402Payment", () => {
   it("rejects a signed v1 token whose signature recovers to a different address", async () => {
     setReceipt("0xabc6");
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         version: "v1",
         txHash: "0xabc6",
@@ -223,6 +242,7 @@ describe("verifyX402Payment", () => {
     const otherRecipient = "0x" + "44".repeat(20);
     setReceipt("0xabc7");
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         version: "v1",
         txHash: "0xabc7",
@@ -246,6 +266,7 @@ describe("verifyX402Payment", () => {
     // accounting, inflating revenue shares.
     setReceipt("0xinflate", { transferValue: 0.0001 });
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xinflate",
         amount: 1.0,
@@ -263,6 +284,7 @@ describe("verifyX402Payment", () => {
   it("accepts when on-chain Transfer value equals declared amount", async () => {
     setReceipt("0xexact", { transferValue: 0.05 });
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xexact",
         amount: 0.05,
@@ -279,6 +301,7 @@ describe("verifyX402Payment", () => {
   it("accepts when on-chain Transfer value exceeds declared amount (overpayment)", async () => {
     setReceipt("0xover", { transferValue: 0.5 });
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xover",
         amount: 0.05,
@@ -299,6 +322,7 @@ describe("verifyX402Payment", () => {
     const fakeToken = "0x" + "ff".repeat(20);
     setReceipt("0xfake", { tokenAddress: fakeToken, transferValue: 1.0 });
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xfake",
         amount: 0.05,
@@ -340,6 +364,7 @@ describe("verifyX402Payment", () => {
     const ts = Date.now();
     const m = mandate(1);
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         version: "v2",
         txHash: "0xv2ok",
@@ -362,6 +387,7 @@ describe("verifyX402Payment", () => {
     setReceipt("0xv2tamper");
     const ts = Date.now();
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         version: "v2",
         txHash: "0xv2tamper",
@@ -386,6 +412,7 @@ describe("verifyX402Payment", () => {
     setReceipt("0xv2strip");
     const ts = Date.now();
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         version: "v2",
         txHash: "0xv2strip",
@@ -408,6 +435,7 @@ describe("verifyX402Payment", () => {
     setReceipt("0xv2down");
     const ts = Date.now();
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         // Downgraded to v1 (so the verifier drops mandateHash from the canonical)
         // and the mandate stripped — but the signature was bound over the v2
@@ -442,6 +470,7 @@ describe("verifyX402Payment", () => {
       Date.now(),
     );
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xreplay",
         amount: 0.05,
@@ -460,6 +489,7 @@ describe("verifyX402Payment", () => {
   it("requires a timestamp — token omitting it is rejected (F1: expiry bypass)", async () => {
     setReceipt("0xnots");
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       // No `timestamp` field at all. Pre-fix this skipped the expiry check and
       // an unsigned token was accepted, allowing replay of an old transfer.
       paymentToken: encodeToken({ txHash: "0xnots", amount: 0.05, sender }),
@@ -474,6 +504,7 @@ describe("verifyX402Payment", () => {
   it("rejects a token timestamped in the future (F1: pre-dating)", async () => {
     setReceipt("0xfuture");
     const r = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: encodeToken({
         txHash: "0xfuture",
         amount: 0.05,
@@ -503,6 +534,7 @@ describe("verifyX402Payment", () => {
       timestamp: Date.now(),
     });
     const first = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: token,
       expectedRecipient: recipient,
       minimumAmount: 0.01,
@@ -510,6 +542,7 @@ describe("verifyX402Payment", () => {
       db,
     });
     const second = await verifyX402Payment({
+      allowUnsigned: true,
       paymentToken: token,
       expectedRecipient: recipient,
       minimumAmount: 0.01,
@@ -538,6 +571,7 @@ describe("verifyX402Payment", () => {
     const results = await Promise.all(
       Array.from({ length: 8 }, () =>
         verifyX402Payment({
+          allowUnsigned: true,
           paymentToken: token,
           expectedRecipient: recipient,
           minimumAmount: 0.01,

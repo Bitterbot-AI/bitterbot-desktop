@@ -20,6 +20,12 @@ export type BrowserLiveViewConfig = {
   /** JPEG quality of the stream (10-95). Default: 60 */
   quality?: number;
 };
+export type BrowserReplayConfig = {
+  /** Keep a low-rate screenshot record of the agent's browser per session. Default: true */
+  enabled?: boolean;
+  /** Days to keep a session's recording after its last frame (1-90). Default: 7 */
+  retentionDays?: number;
+};
 export type BrowserConfig = {
   enabled?: boolean;
   /** If false, disable browser act:evaluate (arbitrary JS). Default: true */
@@ -42,10 +48,18 @@ export type BrowserConfig = {
   attachOnly?: boolean;
   /** Default profile to use when profile param is omitted. Default: "chrome" */
   defaultProfile?: string;
+  /**
+   * Give each agent other than the default one its own host browser profile
+   * ("agent-<id>"), created on first use, so agents never share cookies or
+   * logins. The default agent keeps defaultProfile. Default: true
+   */
+  perAgentProfiles?: boolean;
   /** Named browser profiles with explicit CDP ports or URLs. */
   profiles?: Record<string, BrowserProfileConfig>;
   /** Default snapshot options (applied by the browser tool/CLI when unset). */
   snapshotDefaults?: BrowserSnapshotDefaults;
   /** Live view of the agent's browser in the Control UI. */
   liveView?: BrowserLiveViewConfig;
+  /** Session replay: screenshots after the agent's page actions (PLAN-53 A6). */
+  replay?: BrowserReplayConfig;
 };

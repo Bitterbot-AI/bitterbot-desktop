@@ -29,6 +29,33 @@ export async function runBeforeToolCallHook(args: {
   toolCallId?: string;
   ctx?: HookContext;
 }): Promise<HookOutcome> {
+  const outcome = await runBeforeToolCallStages(args);
+  // Review saw the call as the agent made it. An interceptor or plugin hook
+  // that rewrote it (a "check" turned into a purchase, a new amount) gets
+  // the rewritten call reviewed too, so nothing reaches money unreviewed.
+  if (
+    !outcome.blocked &&
+    "params" in outcome &&
+    JSON.stringify(outcome.params ?? null) !== JSON.stringify(args.params ?? null)
+  ) {
+    const again = await runReviewStage({
+      toolName: normalizeToolName(args.toolName || "tool"),
+      params: outcome.params,
+      ctx: { sessionKey: args.ctx?.sessionKey, agentId: args.ctx?.agentId, runId: args.toolCallId },
+    });
+    if (again.blocked) {
+      return { blocked: true, reason: again.reason };
+    }
+  }
+  return outcome;
+}
+
+async function runBeforeToolCallStages(args: {
+  toolName: string;
+  params: unknown;
+  toolCallId?: string;
+  ctx?: HookContext;
+}): Promise<HookOutcome> {
   const toolName = normalizeToolName(args.toolName || "tool");
   let params = args.params;
 

@@ -30,8 +30,8 @@ a background digest, not the centerpiece.
 > converges the relay droplets onto release binaries — the broadcast path
 > stays behind `circles.meshTopic.enabled` (default off) until the fleet has
 > converged. Point-to-point circle RPC over the mesh (orchestrator v0.2.2,
-> `circles.p2pDial`, default ON) dials members by their signed PeerId ahead
-> of HTTP.
+> `circles.p2pDial.enabled`, default OFF until the mesh-ingress rate limit
+> lands) dials members by their signed PeerId ahead of HTTP when turned on.
 > See `docs/plans/PLAN-36-CIRCLES-SOCIAL-GRAPH.md` and
 > `docs/network/circle-gossip.md`.
 
@@ -276,18 +276,19 @@ ever auto-disclosed.
 Delivery order per member (Stage 4, 2026-08-14): a **P2P mesh dial** over
 libp2p request-response when the member's SIGNED join/presence envelope
 carried a PeerId (`/bitterbot/circle-rpc/1`, noise-encrypted
-point-to-point, counts toward the delivery report; kill switch
-`circles.p2pDial.enabled`), then a **direct HTTP dial** to their A2A URL,
+point-to-point, counts toward the delivery report; off by default, turn on
+with `circles.p2pDial.enabled: true` once the mesh-ingress rate limit lands),
+then a **direct HTTP dial** to their A2A URL,
 then the **relay mailbox** (presence beats skip the mailbox fallback; stale
 presence is noise). `circle/join` tries the inviter's PeerId from the
 invite first too — two nodes can pair with no public URL on either side.
 Independently, sends also publish to the per-circle **gossip topic**
 (additively; topic id = `sha256(circleId:keyEpoch)`, sender-key-encrypted
 frames over the P2P swarm). The gossip path is behind the **`circles.meshTopic.enabled` kill
-switch, default OFF since 2026-08-13**: topic frames are signed but NOT
-encrypted (the blinded topic id hides only the circle id), so the mesh path
-stays dark until per-circle shared-key encryption lands — delivery never
-depended on it. Both gossip halves are wired in-repo (the TS transport
+switch, default OFF since 2026-08-13**: topic frames are sender-key
+encrypted (legacy plaintext frames are still accepted during the
+transition), and the topic stays off until the relay fleet has converged.
+Delivery never depended on it. Both gossip halves are wired in-repo (the TS transport
 starts at gateway boot when the switch is on, the Rust handlers exist in
 the orchestrator); see `docs/network/circle-gossip.md` for the full
 transport picture. Inbound,
@@ -361,7 +362,9 @@ remaining members (a `circle/message` with a `system: "member_removed"`
 marker, stored as a `system`-kind chat line, @agent summon suppressed on
 receipt): informed consent, so the other humans learn of the eviction and
 can prune their own rosters, while their nodes change nothing
-automatically. The redundant `suspendMember` primitive was deleted the same
+automatically. The notice carries a two-tap **Remove on my node too**
+button (shown while the named member is still on your roster) that runs the
+same removal on your node, including the sender-key rotation below. The redundant `suspendMember` primitive was deleted the same
 day (removal is already reversible via re-pair; legacy `suspended` rows
 stay default-denied). Channel-key rotation on membership change remains
 unbuilt: `key_epoch` blinds the gossip topic id (topic naming, not
@@ -448,8 +451,8 @@ agent answer action — surface or disable before advertising ask),
 per-circle briefings (the compiled briefing is one node-wide digest; the
 schema, cadence gate, and digest side-effect are all global),
 message-history sync for late joiners (no `circle/messages.since` verb; a
-fresh device has no chat history and `events.since` is a single capped
-sweep), Phase 4 channels, chat-channel delivery of the briefing
+fresh device has no chat history; `events.since` now pages up to 10
+responses of at most 1 MB each per peer per sync), Phase 4 channels, chat-channel delivery of the briefing
 (Telegram/Discord), the consented friend-of-friend graph and PeerMap
 (Phase 6, no code), libp2p request-response transport with device↔PeerId
 binding (Phase 5), shared-key confidentiality for the gossip topic (the

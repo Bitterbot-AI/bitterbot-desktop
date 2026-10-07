@@ -34,10 +34,10 @@ VERSION_MARKER="$STATE_DIR/orchestrator.version"
 SERVICE=bitterbot-orchestrator
 
 # --- The fleet signing public key (minisign). PUBLIC by design; committed. ---
-# Replace the placeholder with the real key: `minisign -G -W -p relay.pub -s
-# relay.key`, then paste the last line of relay.pub here. Until it is real,
-# verification fails closed and no update installs.
-MINISIGN_PUBKEY="RWQ__REPLACE_WITH_REAL_MINISIGN_PUBLIC_KEY__PLACEHOLDER"
+# Generated 2026-10-06 (`minisign -G -W`); the secret half lives only in the
+# MINISIGN_SECRET_KEY Actions secret and the maintainer's offline copy. To
+# rotate, follow deploy/relay-fleet/SIGNING.md "Key rotation".
+MINISIGN_PUBKEY="RWTU9k8zQeEQA5GbldCYMA7kgR3nwoLbtjhw5FWMGiwu+h72OMk2Ne04"
 
 log() { echo "[update-orchestrator] $*"; }
 die() { echo "[update-orchestrator] ERROR: $*" >&2; exit 1; }
@@ -89,7 +89,7 @@ verify_out=$(minisign -V -P "$MINISIGN_PUBKEY" -m "$TMP/checksums.txt" 2>&1) ||
   die "SIGNATURE INVALID for $TAG checksums — refusing to install"
 # Bind the signature to this tag: the signed trusted comment must name it, so a
 # validly-signed checksums.txt from a DIFFERENT release cannot be substituted.
-echo "$verify_out" | grep -q "$TAG" ||
+echo "$verify_out" | grep "$TAG" >/dev/null ||
   die "signature trusted-comment does not name $TAG — possible cross-release replay"
 
 # --- 4. sha256 against the verified checksums ---------------------------------
@@ -116,8 +116,12 @@ systemctl restart "$SERVICE"
 healthy=0
 for _ in 1 2 3 4 5 6; do
   sleep 5
+  # NOT `grep -q`: it exits on the first match, journalctl takes SIGPIPE
+  # (141), and under `set -o pipefail` the healthy case reads as a failure,
+  # so every good update was reverted. Plain grep drains the pipe.
   if systemctl is-active --quiet "$SERVICE" &&
-     journalctl -u "$SERVICE" --since '-40 sec' --no-pager 2>/dev/null | grep -q 'Local peer ID'; then
+     journalctl -u "$SERVICE" --since '-40 sec' --no-pager 2>/dev/null |
+       grep 'Local peer ID' >/dev/null; then
     healthy=1; break
   fi
 done

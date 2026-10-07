@@ -108,6 +108,17 @@ export function createDefaultExecutors(
     return runTool(tool ?? undefined, action);
   });
 
+  // A Privacy.com purchase the owner approved (C4): running the request now
+  // creates the single-use card.
+  executors.set("purchase", async (action) => {
+    const { createPurchaseTool } = await import("../agents/tools/purchase-tool.js");
+    const tool = createPurchaseTool({
+      config: getConfig(),
+      agentSessionKey: action.sessionKey ?? undefined,
+    }) as unknown as ToolLike | null;
+    return runTool(tool ?? undefined, action);
+  });
+
   executors.set("message", async (action) => {
     const { createMessageTool } = await import("../agents/tools/message-tool.js");
     const tool = createMessageTool({ config: getConfig() }) as unknown as ToolLike;

@@ -71,6 +71,12 @@ export type A2aConfig = {
   /** x402 payment gate configuration. */
   payment?: {
     /**
+     * Accept x402 payment proofs that carry no payer signature (legacy
+     * clients). Default false: an unsigned proof is only a transaction hash,
+     * so anyone watching the chain could redeem the payment first.
+     */
+    allowUnsignedProofs?: boolean;
+    /**
      * Enable payment requirement for A2A tasks. Default: true when the node
      * is earning-capable (full CDP credentials present and wallet not
      * disabled — see isEarningCapable in defaults.ts), false otherwise.

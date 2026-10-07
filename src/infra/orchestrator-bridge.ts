@@ -12,6 +12,7 @@ import type { P2pConfig } from "../config/types.p2p.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveBootstrapDns, mergeBootstrapPeers } from "./dns-bootstrap.js";
 import { formatBinaryNotFoundMessage, probeOrchestratorBinary } from "./orchestrator-binary.js";
+import { ipcAuthLine, loadOrCreateIpcToken } from "./orchestrator-ipc-token.js";
 import {
   assertManagementKeyPresent,
   migrateLegacyP2pKeys,
@@ -134,6 +135,8 @@ export class OrchestratorBridge {
   private process: ChildProcess | null = null;
   private socket: Socket | null = null;
   private ipcPath: string;
+  /** Control-channel secret handed to the daemon at spawn (security pass HIGH-5). */
+  private ipcToken: string | null = null;
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private closed = false;
@@ -249,6 +252,12 @@ export class OrchestratorBridge {
       log.warn(`P2P key-dir migration failed (continuing): ${String(err)}`);
     }
     assertManagementKeyPresent({ targetDir: keyDir, nodeTier: this.config.nodeTier });
+    try {
+      this.ipcToken = loadOrCreateIpcToken(keyDir);
+    } catch (err) {
+      // Without a token the daemon runs unauthenticated, as before this fix.
+      log.warn(`orchestrator IPC token unavailable (continuing without): ${String(err)}`);
+    }
 
     const args = this.buildArgs();
 
@@ -266,7 +275,11 @@ export class OrchestratorBridge {
 
     const child = spawn(binary, args, {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, RUST_LOG: "info" },
+      env: {
+        ...process.env,
+        RUST_LOG: "info",
+        ...(this.ipcToken ? { BITTERBOT_IPC_TOKEN: this.ipcToken } : {}),
+      },
     });
     this.process = child;
 
@@ -874,6 +887,12 @@ export class OrchestratorBridge {
         process.platform === "win32" ? { host: "127.0.0.1", port: 19002 } : { path: this.ipcPath };
       let settled = false;
       const socket = createConnection(connectTarget, () => {
+        // HIGH-5: authenticate before anything else rides the connection. A
+        // daemon started without a token answers this with "unknown verb",
+        // which no pending request is waiting on.
+        if (this.ipcToken) {
+          socket.write(ipcAuthLine(this.ipcToken));
+        }
         settled = true;
         log.info("Connected to orchestrator IPC");
         this.reconnectAttempts = 0;

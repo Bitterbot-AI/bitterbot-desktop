@@ -11,6 +11,7 @@ import {
   exportMemories,
   forgetMemory,
   getMemory,
+  listAuditLog,
   listMemories,
   listPreferences,
   OwnerEditRefused,
@@ -176,5 +177,21 @@ describe("preferences", () => {
     ]);
     expect(deletePreference(db, "style", "tone")).toBe(true);
     expect(listPreferences(db)).toEqual([]);
+  });
+});
+
+describe("audit log reader", () => {
+  it("lists what happened newest first, without memory text", () => {
+    forgetMemory(db, "fact_1", TABLES);
+    db.prepare(
+      "INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata) VALUES ('old', 'x', 'forgotten', 1, 'consolidation', '{\"text\":\"secret\"}')",
+    ).run();
+
+    const entries = listAuditLog(db);
+
+    expect(entries.map((e) => e.event)).toEqual(["owner_forget", "forgotten"]);
+    expect(JSON.stringify(entries)).not.toContain("secret");
+    expect(listAuditLog(db, { event: "forgotten" }).map((e) => e.id)).toEqual(["old"]);
+    expect(listAuditLog(db, { before: 2 }).map((e) => e.id)).toEqual(["old"]);
   });
 });

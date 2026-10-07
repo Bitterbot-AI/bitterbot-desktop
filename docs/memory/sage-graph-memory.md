@@ -248,17 +248,25 @@ The migration is additive only; every new column has a safe default and `addColu
 
 ## 8. Configuration surface
 
-| Key                                        | Phase | Default                   | Effect                                   |
-| ------------------------------------------ | ----- | ------------------------- | ---------------------------------------- |
-| `memory.graphReader.queryPlanning`         | 1     | `true`                    | Structured query planning                |
-| `memory.graphReader.enabled`               | 2     | `true` once Phase 2 ships | Graph-reader RRF channel                 |
-| `memory.graphReader.hops`                  | 2     | `2`                       | Message-passing depth                    |
-| `memory.graphReader.maxFrontier`           | 2     | `200`                     | Cap on frontier per hop                  |
-| `memory.graphReader.structuralGating`      | 3     | `false`                   | Load gate file, apply learned δ-tanh-MLP |
-| `memory.graphReader.curiosityCoupling`     | 4     | `false`                   | Emit `graph_bridge` signals              |
-| `memory.graphReader.hormonalModulation`    | 5     | `false`                   | Cortisol/dopamine/oxytocin modulate δ    |
-| `dream.graphOptimization.cooldownMs`       | 3     | `6h`                      | Minimum gap between optimizer runs       |
-| `dream.graphOptimization.minTrainingPairs` | 3     | `50`                      | Floor before optimization starts         |
+These settings are not user-configurable; the manager uses the built-in
+`DEFAULT_SAGE_CONFIG` (`src/memory/sage-memory.ts`).
+
+| Setting                   | Phase | Default | Effect                                   |
+| ------------------------- | ----- | ------- | ---------------------------------------- |
+| `queryPlanning`           | 1     | on      | Structured query planning                |
+| `graphReader`             | 2     | on      | Graph-reader RRF channel                 |
+| `graphReader.hops`        | 2     | `2`     | Message-passing depth                    |
+| `graphReader.maxFrontier` | 2     | `200`   | Cap on frontier per hop                  |
+| `graphReader.topK`        | 2     | `50`    | Results taken from the graph channel     |
+| `structuralGating`        | 3     | on      | Load gate file, apply learned δ-tanh-MLP |
+| `hormonalModulation`      | 5     | on      | Cortisol/dopamine/oxytocin modulate δ    |
+
+Planned (not yet implemented as config):
+
+| Key                                        | Phase | Default | Effect                             |
+| ------------------------------------------ | ----- | ------- | ---------------------------------- |
+| `dream.graphOptimization.cooldownMs`       | 3     | `6h`    | Minimum gap between optimizer runs |
+| `dream.graphOptimization.minTrainingPairs` | 3     | `50`    | Floor before optimization starts   |
 
 ---
 

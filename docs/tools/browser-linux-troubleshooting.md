@@ -102,14 +102,14 @@ Enable with: `systemctl --user enable --now.bitterbot-browser.service`
 Check status:
 
 ```bash
-curl -s http://127.0.0.1:18791/ | jq '{running, pid, chosenBrowser}'
+curl -s http://127.0.0.1:19003/ | jq '{running, pid, chosenBrowser}'
 ```
 
 Test browsing:
 
 ```bash
-curl -s -X POST http://127.0.0.1:18791/start
-curl -s http://127.0.0.1:18791/tabs
+curl -s -X POST http://127.0.0.1:19003/start
+curl -s http://127.0.0.1:19003/tabs
 ```
 
 ### Config Reference

@@ -219,6 +219,7 @@ export async function verifyA2aPayment(
       minimumAmount: requiredAmount,
       network: network as "base" | "base-sepolia",
       db: marketplace?.getDb?.(),
+      allowUnsigned: config.a2a?.payment?.allowUnsignedProofs === true,
     });
 
     if (verification.valid) {

@@ -22,6 +22,8 @@ export type SpendRequestView = {
   id: string;
   status: string;
   merchantName?: string;
+  /** The shop's address the request was approved for. */
+  merchantUrl?: string;
   amountUsd?: number;
   approvalUrl?: string;
   /** What the owner or the agent has to do next, in Link's words. */
@@ -61,6 +63,7 @@ function toView(raw: unknown): SpendRequestView {
     id: str(r.id) ?? "",
     status: str(r.status) ?? "unknown",
     merchantName: str(r.merchant_name),
+    merchantUrl: str(r.merchant_url),
     amountUsd: amount !== undefined ? amount / 100 : undefined,
     approvalUrl: str(r.approval_url),
     nextAction: str(next.display_message),

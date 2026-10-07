@@ -51,5 +51,6 @@ agents, so heavy use may be slowed down.
 }
 ```
 
-The gateway only connects to a store's own host or its `myshopify.com` host,
-and refuses private and local addresses.
+The gateway only connects to the shopping endpoint a store's own `/.well-known/ucp`
+file names, and only when that endpoint is on the store's own host or any
+`myshopify.com` host. It refuses private and local addresses.

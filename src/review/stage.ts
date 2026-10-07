@@ -20,6 +20,12 @@ export async function runReviewStage(args: {
   if (!classification) {
     return { blocked: false };
   }
+  if (classification.invalid) {
+    return {
+      blocked: true,
+      reason: `${classification.invalid} Nothing was sent and nothing was queued for approval.`,
+    };
+  }
   // A call the tool would reject is the agent's to fix, not the owner's to
   // decide: asking a person to approve "send to (no address)" helps nobody.
   if (classification.missing?.length) {

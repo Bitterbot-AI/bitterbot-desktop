@@ -27,6 +27,7 @@ COPY desktop/package.json ./desktop/
 # extension gains a package.json and is missed here, --frozen-lockfile fails
 # and the CI docker job catches it.
 COPY extensions/discord/package.json ./extensions/discord/
+COPY extensions/email/package.json ./extensions/email/
 COPY extensions/signal/package.json ./extensions/signal/
 COPY extensions/slack/package.json ./extensions/slack/
 COPY extensions/telegram/package.json ./extensions/telegram/
@@ -50,6 +51,9 @@ COPY . .
 RUN pnpm build
 
 ENV NODE_ENV=production
+# Tells the gateway it lives in a container, so the in-app updater points at
+# pulling a newer image instead of updating code that the image would replace.
+ENV BITTERBOT_INSTALL_KIND=container
 
 # Allow non-root user to write temp files during runtime/tests.
 RUN chown -R node:node /app

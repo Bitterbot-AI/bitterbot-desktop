@@ -10,7 +10,11 @@ import {
   encryptTopicFrame,
   getOrCreateOwnSenderKey,
   ingestSenderKeyBody,
+  maintainSenderKeys,
   markDelivered,
+  MAX_KEYS_PER_SENDER,
+  OWN_KEY_MAX_AGE_MS,
+  RETIRED_KEY_GRACE_MS,
   parseEncryptedTopicFrame,
   rotateOwnSenderKey,
 } from "./sender-keys.js";
@@ -164,5 +168,90 @@ describe("frame encryption", () => {
       iv: Buffer.alloc(16).toString("base64"),
     });
     expect(parseEncryptedTopicFrame(longIv)).toBeNull();
+  });
+});
+
+describe("key lifecycle (security pass M5/M7)", () => {
+  const countReceived = (db: DatabaseSync) =>
+    (
+      db
+        .prepare(`SELECT COUNT(*) AS n FROM circle_sender_keys WHERE sender_pubkey = ?`)
+        .get(SENDER) as { n: number }
+    ).n;
+
+  it("caps how many keys one sender can park on this node", () => {
+    const db = openDb();
+    const me = generateBoxKeyPair();
+    for (let i = 0; i < MAX_KEYS_PER_SENDER + 5; i += 1) {
+      const body = buildSenderKeyBody(
+        { keyId: `k${i}`, keyB64: Buffer.alloc(32, i).toString("base64") },
+        [{ memberPubkey: "me", boxPubkey: me.publicKeyB64 }],
+      );
+      expect(
+        ingestSenderKeyBody(db, { circleId: CIRCLE, senderPubkey: SENDER, boxKeys: me, body }),
+      ).toBe(true);
+    }
+    expect(countReceived(db)).toBe(MAX_KEYS_PER_SENDER);
+    // The newest key survived the cap.
+    const newest = db
+      .prepare(`SELECT 1 FROM circle_sender_keys WHERE key_id = ?`)
+      .get(`k${MAX_KEYS_PER_SENDER + 4}`);
+    expect(newest).toBeDefined();
+  });
+
+  it("age-rotates the own key and purges superseded material after the grace", () => {
+    const db = openDb();
+    const t0 = 1_800_000_000_000;
+    const k1 = getOrCreateOwnSenderKey(db, CIRCLE);
+    db.prepare(`UPDATE circle_own_sender_keys SET created_at = ?`).run(t0);
+    // Young key: nothing happens.
+    expect(maintainSenderKeys(db, CIRCLE, t0 + 1000)).toBe(false);
+    // Old key: rotates; the retired one is kept through the grace…
+    const t1 = t0 + OWN_KEY_MAX_AGE_MS;
+    expect(maintainSenderKeys(db, CIRCLE, t1)).toBe(true);
+    expect(getOrCreateOwnSenderKey(db, CIRCLE).keyId).not.toBe(k1.keyId);
+    const own = () =>
+      (db.prepare(`SELECT COUNT(*) AS n FROM circle_own_sender_keys`).get() as { n: number }).n;
+    expect(own()).toBe(2);
+    // …and deleted after it.
+    maintainSenderKeys(db, CIRCLE, t1 + RETIRED_KEY_GRACE_MS + 1);
+    expect(own()).toBe(1);
+
+    // Received keys: a superseded one goes once its successor has been held
+    // for the grace; the newest is always kept.
+    const ins = db.prepare(
+      `INSERT INTO circle_sender_keys (circle_id, sender_pubkey, key_id, key_b64, created_at)
+       VALUES (?, ?, ?, 'x', ?)`,
+    );
+    ins.run(CIRCLE, SENDER, "old", t0);
+    ins.run(CIRCLE, SENDER, "new", t0 + 1000);
+    maintainSenderKeys(db, CIRCLE, t0 + 2000);
+    expect(countReceived(db)).toBe(2);
+    maintainSenderKeys(db, CIRCLE, t0 + 1000 + RETIRED_KEY_GRACE_MS + 1);
+    expect(countReceived(db)).toBe(1);
+  });
+
+  it("orders keys by the sender's signed time, so a late mailboxed old key never outranks the live one", () => {
+    const db = openDb();
+    const me = generateBoxKeyPair();
+    const t0 = 1_800_000_000_000;
+    const ingest = (keyId: string, sentAt: number) =>
+      ingestSenderKeyBody(db, {
+        circleId: CIRCLE,
+        senderPubkey: SENDER,
+        boxKeys: me,
+        sentAt,
+        body: buildSenderKeyBody({ keyId, keyB64: Buffer.alloc(32, 1).toString("base64") }, [
+          { memberPubkey: "me", boxPubkey: me.publicKeyB64 },
+        ]),
+      });
+    // K2 (newer) arrives first; the mailbox drains K1 (older) afterwards.
+    ingest("K2", t0 + 60_000);
+    ingest("K1", t0);
+    maintainSenderKeys(db, CIRCLE, t0 + 60_000 + RETIRED_KEY_GRACE_MS + 1);
+    const left = db
+      .prepare(`SELECT key_id FROM circle_sender_keys WHERE sender_pubkey = ?`)
+      .all(SENDER) as Array<{ key_id: string }>;
+    expect(left.map((r) => r.key_id)).toEqual(["K2"]);
   });
 });

@@ -12,6 +12,7 @@ import {
   onBridgeCircleFrame,
   publishCircleFrame,
   receiveCircleFrame,
+  resolveTopicCircle,
   type CircleTopicBridge,
   type CircleTopicBus,
 } from "./circle-topic.js";
@@ -214,5 +215,18 @@ describe("circle messaging over a gossip topic (prototype)", () => {
     expect(
       receiveCircleFrame(JSON.stringify({ method: "circle/message", envelope: msg }), bobDb).ok,
     ).toBe(true);
+  });
+});
+
+describe("topic resolution across one epoch of lag (L2)", () => {
+  it("maps the current and the previous epoch's topic, nothing older", () => {
+    const db = openDb();
+    db.prepare(
+      `INSERT INTO circles (circle_id, name, kind, creator_pubkey, key_epoch, status, created_at, updated_at)
+       VALUES ('c1', 'n', 'connection', 'x', 3, 'active', 0, 0)`,
+    ).run();
+    expect(resolveTopicCircle(db, circleTopicId("c1", 3))).toBe("c1");
+    expect(resolveTopicCircle(db, circleTopicId("c1", 2))).toBe("c1");
+    expect(resolveTopicCircle(db, circleTopicId("c1", 1))).toBeNull();
   });
 });

@@ -19,7 +19,7 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 
 ## Prereqs
 
-- Node 22 or newer
+- Node 22.12 or newer
 - pnpm — ships with Node via corepack: `corepack enable pnpm || npm install -g pnpm`
 
 <Tip>
@@ -42,9 +42,12 @@ Check your Node version with `node --version` if you are unsure.
     ```
 
     <Note>
-    There is no npm package or hosted installer yet — installing from source is
-    the supported path today. On Windows, use WSL2 and keep the checkout on the
-    Linux filesystem (`~`), not `/mnt/c` — boot is dramatically faster there.
+    There is no npm package or hosted installer yet; installing from source is
+    the supported path on your own machine. For an always-on server, use the
+    container image `ghcr.io/bitterbot-ai/bitterbot-desktop` (see
+    [Docker and always-on hosting](/platforms/docker)). On Windows, use WSL2 and
+    keep the checkout on the Linux filesystem (`~`), not `/mnt/c`; boot is
+    dramatically faster there.
     </Note>
 
   </Step>

@@ -4,6 +4,7 @@ import { agentRuntimeHandlers } from "./server-methods/agent-runtime.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
 import { browserLiveHandlers } from "./server-methods/browser-live.js";
+import { browserReplayHandlers } from "./server-methods/browser-replay.js";
 import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
@@ -147,6 +148,7 @@ const READ_METHODS = new Set([
   "memory.list",
   "memory.get",
   "memory.preferences",
+  "memory.audit",
   "memory.facts",
   "forage.tape",
   "forage.stats",
@@ -181,6 +183,9 @@ const WRITE_METHODS = new Set([
   "agent.wait",
   "wake",
   "talk.mode",
+  // Each call spends speech provider credit.
+  "talk.transcribe",
+  "talk.speak",
   "tts.enable",
   "tts.disable",
   "tts.convert",
@@ -196,6 +201,10 @@ const WRITE_METHODS = new Set([
   "browser.live.stop",
   "browser.live.control",
   "browser.live.input",
+  "browser.replay.list",
+  "browser.replay.frames",
+  "browser.replay.frame",
+  "browser.replay.delete",
   "projects.create",
   "projects.update",
   "projects.delete",
@@ -361,6 +370,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...agentsHandlers,
   ...browserHandlers,
   ...browserLiveHandlers,
+  ...browserReplayHandlers,
   ...toolOutputHandlers,
   ...reviewHandlers,
   ...projectsHandlers,

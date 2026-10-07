@@ -13,11 +13,15 @@ where long lead times make an always-on agent's patience genuinely useful.
 
 ## Status
 
-The coordination layer is built and tested; it is **off by default**.
+The coordination layer is built and tested as library code, but it is **not
+wired into the gateway yet**: the `group_buy` tool is never registered and the
+`/aubaine` HTTP router is never mounted, so setting `commerce.groupbuy.enabled`
+currently has no effect. The sections below describe the intended surface.
 
-- Landed: SKU canonicalization, signed-envelope protocol, offer/intent
-  directory, demand matcher, the clearinghouse service + HTTP surface, the
-  `group_buy` agent tool, and commerce-scoped counterparty reputation.
+- Landed (library code): SKU canonicalization, signed-envelope protocol,
+  offer/intent directory, demand matcher, the clearinghouse service and its HTTP
+  router, the `group_buy` tool definition, and commerce-scoped counterparty
+  reputation.
 - In progress: the non-custodial settlement money-path (EIP-3009 sign-at-strike)
   and the live gateway / gossip wiring. Settlement stays disabled until a legal
   review of the non-custodial and dispute-liability invariants completes.
@@ -42,7 +46,7 @@ points (200 = 2%, the default).
 
 ## The `group_buy` agent tool
 
-When enabled, the agent gets a `group_buy` tool with three actions:
+Once wired, the agent will get a `group_buy` tool with three actions:
 
 - `list_offers` (requires `sku`): suppliers' current offers for a SKU.
 - `list_syndicates` (requires `sku`): forming / active group buys for a SKU and
@@ -56,8 +60,8 @@ When enabled, the agent gets a `group_buy` tool with three actions:
 
 ## The clearinghouse HTTP surface
 
-The agnostic surface (any agent, no libp2p, no Bitterbot binary) mounts under
-`/aubaine`:
+The agnostic surface (any agent, no libp2p, no Bitterbot binary) is meant to
+mount under `/aubaine` once wired:
 
 ```text
 POST /aubaine/intent       { signed intent envelope }   -> 202 { ok, matched }

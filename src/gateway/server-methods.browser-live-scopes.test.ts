@@ -17,6 +17,11 @@ const METHODS = [
   "browser.live.stop",
   "browser.live.control",
   "browser.live.input",
+  // Recordings show the same pages as the live view (PLAN-53 A6).
+  "browser.replay.list",
+  "browser.replay.frames",
+  "browser.replay.frame",
+  "browser.replay.delete",
 ];
 
 describe("browser live view RPC scope gating", () => {
@@ -98,7 +103,13 @@ describe("review RPC scope gating", () => {
 
 describe("memory control scopes (PLAN-53 G1)", () => {
   it("lets a reader look, and only an admin change or export", () => {
-    for (const method of ["memory.list", "memory.get", "memory.facts", "memory.preferences"]) {
+    for (const method of [
+      "memory.list",
+      "memory.get",
+      "memory.facts",
+      "memory.preferences",
+      "memory.audit",
+    ]) {
       expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
       expect(authorizeGatewayMethod(method, operatorWith(["operator.read"]))).toBeNull();
     }

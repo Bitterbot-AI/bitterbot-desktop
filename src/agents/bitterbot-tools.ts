@@ -11,7 +11,7 @@ import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCirclesTool } from "./tools/circles-tool.js";
 import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
-import type { AnyAgentTool } from "./tools/common.js";
+import { type AnyAgentTool, jsonResult } from "./tools/common.js";
 import { createComputerUseTool } from "./tools/computer-use-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
@@ -32,6 +32,7 @@ import {
   createMemoryPinTool,
   createMemorySearchTool,
 } from "./tools/memory-tool.js";
+import { createMessageOwnerTool } from "./tools/message-owner-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
 import { createMonitorTool } from "./tools/monitor-tool.js";
 import { createNetworkStatusTool } from "./tools/network-status-tool.js";
@@ -70,8 +71,39 @@ import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { createCompleteTool, createPlanTool } from "./tools/workflow-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
+/**
+ * Tools that read or change what the agent has made of the owner's life:
+ * dream insights, emotional anchors, curiosity about their knowledge. A
+ * guest turn (PLAN-53 G2) gets a refusal instead. The memory_* tools filter
+ * rather than refuse, and deep_recall / recall_range scope by sender.
+ */
+const GUEST_REFUSED_TOOLS = new Set([
+  "dream_search",
+  "create_emotional_anchor",
+  "recall_emotional_anchor",
+  "curiosity_state",
+  "curiosity_resolve",
+]);
+
+export function refuseForGuest(tool: AnyAgentTool): AnyAgentTool {
+  if (!GUEST_REFUSED_TOOLS.has(tool.name)) {
+    return tool;
+  }
+  return {
+    ...tool,
+    execute: async () =>
+      jsonResult({
+        ok: false,
+        error:
+          "Not available in this conversation: the person messaging is not the owner, and this would show or change the owner's private memory.",
+      }),
+  };
+}
+
 export function createBitterbotTools(options?: {
   sandboxBrowserBridgeUrl?: string;
+  /** The run's sandbox container: code_interpreter's Python runs there (PLAN-53 A5). */
+  codeSandbox?: { containerName: string; containerWorkdir: string };
   allowHostBrowserControl?: boolean;
   agentSessionKey?: string;
   /** Transcript session id (file stem); lets transcript readers target the exact file. */
@@ -85,6 +117,8 @@ export function createBitterbotTools(options?: {
    * cron run). Memory recall is limited to what a guest may see.
    */
   memoryGuest?: boolean;
+  /** On a guest turn: who is talking, for message_owner. */
+  guestSender?: { name?: string | null; id?: string | null; channel?: string | null };
   agentChannel?: GatewayMessageChannel;
   agentAccountId?: string;
   /** Delivery target (e.g. telegram:group:123:topic:456) for topic/thread routing. */
@@ -167,7 +201,7 @@ export function createBitterbotTools(options?: {
     createA2aStatusTool(),
     createCanvasTool(),
     createArtifactTool(),
-    createCodeInterpreterTool(),
+    createCodeInterpreterTool({ sandbox: options?.codeSandbox }),
     createNodesTool({
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
@@ -277,8 +311,19 @@ export function createBitterbotTools(options?: {
     createCirclesTool(memoryOpts),
   ]) {
     if (tool) {
-      tools.push(tool);
+      tools.push(memoryOpts.memoryGuest ? refuseForGuest(tool) : tool);
     }
+  }
+
+  // A guest can ask the agent to pass something on to its owner.
+  if (options?.memoryGuest === true) {
+    tools.push(
+      createMessageOwnerTool({
+        senderName: options.guestSender?.name,
+        senderId: options.guestSender?.id,
+        channel: options.guestSender?.channel ?? options.agentChannel,
+      }),
+    );
   }
 
   const walletTool = createWalletTool({

@@ -122,9 +122,11 @@ The x402 v2 protocol defines three standard HTTP headers for the payment handsha
    bitterbot-x402:v1:<recipient-lower>:<txHash-lower>:<amount>:<sender-lower>:<timestamp-ms>
    ```
 
-   with EIP-191 `personal_sign`. The seller recovers the signer with `recoverMessageAddress` and confirms it matches the on-chain `Transfer.from`. This binds the proof to the specific (recipient, txHash, amount) tuple, so a leaked txHash cannot be replayed against a different recipient. Tokens without a signature are still accepted by the verifier (with a deprecation warning) for transition compatibility -- new clients should always sign.
+   with EIP-191 `personal_sign`. The seller recovers the signer with `recoverMessageAddress` and confirms it matches the on-chain `Transfer.from`. This binds the proof to the specific (recipient, txHash, amount) tuple, so a leaked txHash cannot be replayed against a different recipient.
 
-5. **Verification and execution.** The selling agent verifies the transaction on-chain (see "On-Chain Verification" below), confirms the amount and recipient match, and then creates and executes the task.
+Unsigned proofs are rejected by default. `a2a.payment.allowUnsignedProofs: true` accepts legacy unsigned proofs from older clients, but then anyone who sees a payment to your wallet on-chain can redeem it before the payer does: the consume-once check stops reuse, not that theft. Bitterbot's own client always signs.
+
+5. **Verification and execution.** The selling agent verifies the transaction on-chain (see "On-Chain Verification" below), confirms the recipient matches and the amount is at least the required price, and then creates and executes the task.
 
 6. **Result delivery.** The task result is returned in the JSON-RPC response. The `PAYMENT-RESPONSE` header is included on the 200 OK response, containing a Base64-encoded JSON object with `transactionHash`, `payer`, and `network`.
 
@@ -645,7 +647,7 @@ The initial `message/send` response returns the task in `working` state. Poll wi
 
 ## Daily Spend Limits and Safety Guards
 
-The A2A client enforces configurable spending limits to prevent runaway costs when making outbound purchases:
+Before these caps apply, `review.spend` (default `"ask"`) holds each paid task for your approval when the price comes back, unless a standing spend grant covers it. The A2A client then enforces configurable spending limits to prevent runaway costs when making outbound purchases:
 
 ```jsonc
 {
@@ -899,7 +901,8 @@ period_seconds, per_tx_max?, exp}`), signed by the node's owner/device Ed25519 k
   on the next resolution, and never unwinds a spend that already settled.
 
 This is gated by `a2a.payment.consent.grantsRequired` (default **false**). With it
-off, spends behave as before and a covering grant merely back-references the consent;
+off, `review.spend` still applies: under the default `"ask"`, each paid task is held for
+your approval unless a covering grant lets it through (the grant back-references the consent);
 with it on, a spend with no covering grant is refused and escalated rather than paid —
 the "can't spend unbidden" safe posture. Grant enforcement is app-side today; binding
 the same grant to an on-chain spend permission (CDP Smart Account / ERC-7710) is the

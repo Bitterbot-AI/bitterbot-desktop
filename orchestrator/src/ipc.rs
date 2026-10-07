@@ -277,15 +277,46 @@ pub async fn start_ipc_listener(
         debug!("IPC event forwarder stopped (swarm event channel closed)");
     });
 
+    // Security pass HIGH-5: on Windows the control channel is a loopback TCP
+    // port, which ANY local process (any user) can reach — the 0600 chmod that
+    // guards the Unix socket has no TCP equivalent. The gateway that spawns us
+    // passes a per-install secret in BITTERBOT_IPC_TOKEN; when it is set, a
+    // client's first line must be an `auth` message carrying it, or the
+    // connection is closed before any verb is read. Unset (a hand-started
+    // daemon, an older gateway) keeps the previous behaviour.
+    let ipc_token: Option<String> = std::env::var("BITTERBOT_IPC_TOKEN")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
+    if ipc_token.is_some() {
+        info!("IPC clients must authenticate (BITTERBOT_IPC_TOKEN set)");
+    }
+
     let handle = tokio::spawn(async move {
         loop {
             match listener.accept().await {
                 Ok((stream, _addr)) => {
                     let cmd_tx = cmd_tx.clone();
                     let mut event_sub = event_broadcast_tx.subscribe();
+                    let ipc_token = ipc_token.clone();
                     tokio::spawn(async move {
                         let (reader, mut writer) = stream.into_split();
                         let mut lines = BufReader::new(reader).lines();
+                        if let Some(expected) = ipc_token.as_deref() {
+                            let first = tokio::time::timeout(
+                                std::time::Duration::from_secs(5),
+                                lines.next_line(),
+                            )
+                            .await;
+                            let authed = matches!(
+                                first,
+                                Ok(Ok(Some(ref line))) if auth_line_matches(line, expected)
+                            );
+                            if !authed {
+                                warn!("IPC client rejected: missing or wrong auth token");
+                                return;
+                            }
+                        }
 
                         // Use select! to interleave:
                         // 1. Reading commands from the client
@@ -350,6 +381,25 @@ pub async fn start_ipc_listener(
     });
 
     Ok((handle, cmd_rx))
+}
+
+/// True when `line` is `{"type":"auth","payload":{"token":<expected>}}`.
+/// Constant-time over the token bytes so the comparison leaks no prefix.
+fn auth_line_matches(line: &str, expected: &str) -> bool {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+        return false;
+    };
+    if v.get("type").and_then(|t| t.as_str()) != Some("auth") {
+        return false;
+    }
+    let Some(got) = v.pointer("/payload/token").and_then(|t| t.as_str()) else {
+        return false;
+    };
+    let (a, b) = (got.as_bytes(), expected.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 /// Write an error response for a request that cannot be dispatched (unknown
@@ -726,4 +776,23 @@ async fn handle_client_line(
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auth_line_matches;
+
+    #[test]
+    fn auth_line_accepts_only_the_exact_token() {
+        let ok = r#"{"type":"auth","id":"a1","payload":{"token":"s3cret"}}"#;
+        assert!(auth_line_matches(ok, "s3cret"));
+        assert!(!auth_line_matches(ok, "s3cre"));
+        assert!(!auth_line_matches(ok, "s3cretX"));
+        assert!(!auth_line_matches(
+            r#"{"type":"get_peers","id":"a1","payload":{"token":"s3cret"}}"#,
+            "s3cret"
+        ));
+        assert!(!auth_line_matches(r#"{"type":"auth","id":"a1"}"#, "s3cret"));
+        assert!(!auth_line_matches("not json", "s3cret"));
+    }
 }

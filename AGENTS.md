@@ -18,21 +18,21 @@ A consciousness-inspired memory pipeline with no equivalent in any other agent f
 
 ### 2. Dream Engine (`src/memory/dream-engine.ts`)
 
-The agent thinks while it sleeps. Every 2 hours, the dream engine runs autonomous cycles with 7 modes:
+The agent thinks while it sleeps. A dream tick runs every 2 hours (adaptive, 30 to 240 minutes); a full cycle runs at most every 8 hours, after new input and an hour idle. Its creative modes:
 
 - **Replay**: Re-process recent high-importance memories to strengthen retention.
-- **Mutation**: LLM-driven creative variation of existing knowledge — "what if?" thinking.
 - **Extrapolation**: Project existing patterns forward to anticipate future needs.
 - **Compression**: Merge redundant or overlapping memories into denser representations.
 - **Simulation**: Test hypothetical scenarios against accumulated knowledge.
-- **Exploration**: Investigate knowledge frontiers — areas where the agent's understanding is thin.
-- **Research**: Autonomous web research driven by curiosity targets (autoresearch integration from Karpathy's loop).
+- **Exploration**: Investigate knowledge frontiers — areas where the agent's understanding is thin (off by default).
+
+Utility lanes run alongside: hygiene, distillation, anticipation, relationship mining and canonical promotion. Mutation and Research were retired in PLAN-45 Phase 1 (2026-09-05).
 
 Dreams rewrite the agent's working memory (`MEMORY.md`), updating its self-concept (Phenotype), theory of mind about the user (Bond), ecosystem identity (Niche), and active context. FSHO oscillators modulate dream mode selection based on criticality state. SNN merge discovery identifies near-duplicate memories. Limbic memory bridge connects emotional state to dream triggering.
 
-Mutation outcomes pass through a two-gate validation pipeline (PLAN-21): a faithfulness gate verifies that key operational concepts survive the edit, then a paired-bootstrap performance gate scores both versions against a fixed held-out 20% of real `skill_executions`. Mutations clear the gate only when the 95% CI on the per-trial delta is strictly above zero. Across each cycle, surviving candidates are Pareto-ranked over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget so mature skills tighten while young ones still have room to move. Every K cycles, an epoch-wise slow update re-evaluates the live SKILL.md against the last three archived versions, classifies per-task outcomes (improvement / regression / persistent-failure / stable-success), and clusters regressions by the hormonal state captured on the original trajectory — yielding a falsifiable claim Bitterbot can make and no other framework can: skill regressions cluster non-randomly in hormonal-state space.
+Skill improvement runs through the skill evolution pipeline (`src/memory/skill-evolution/`): candidates are validated against real executions before promotion, with canary exposure and rollback. The earlier PLAN-21 mutation gate was retired with the Mutation mode.
 
-### 3. Curiosity Engine — GCCRF (`src/memory/gccrf.ts`)
+### 3. Curiosity Engine — GCCRF (`src/memory/gccrf-reward.ts`, `src/memory/curiosity-engine.ts`)
 
 The Geodesic Crystal-Field Curiosity Reward Function — a novel intrinsic motivation system that drives self-directed learning:
 
@@ -73,14 +73,14 @@ USDC wallet on Base with Coinbase Smart Wallet. Sponsored gas (zero ETH needed):
 - Spending caps, per-transaction limits, and user approval flows for safety.
 - Foundation for the P2P skill marketplace economy — agents can charge for skill execution.
 
-### 7. P2P Skills Marketplace (`orchestrator/`, `src/memory/p2p/`)
+### 7. P2P Skills Marketplace (`orchestrator/`, `src/memory/skill-network-bridge.ts`)
 
 Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 
 - **Skill Propagation**: Agents share crystallized skills via Gossipsub pubsub.
 - **EigenTrust Reputation**: Peer reputation scoring determines skill trustworthiness.
 - **Bounty Routing**: Agents can post bounties for capabilities they lack; other agents bid and execute.
-- **Skill Refiner**: Dream mutation → evaluation → crystallization pipeline for discovering new skills from experience.
+- **Skill evolution**: candidate skills from experience are validated and promoted by the skill evolution pipeline (`src/memory/skill-evolution/`).
 - **Procedural-Memory Curator**: Per-SKILL.md lifecycle store + heuristic-then-LLM-judge pass that archives, patches, or consolidates agent-authored skills based on usage/error telemetry. Mutations route through a SICA-style staging → behavioural-gate → publish/rollback pipeline with a versioned archive. The agent can drive this via the `skill_manage` tool. (`src/memory/skill-lifecycle.ts`, `src/memory/skill-curator{,-heuristics,-judge}.ts`, `src/agents/skills/skill-{storage,gate,manage,promote}.ts`, `src/agents/tools/skill-manage-tool.ts`.)
 - **Network Bridge**: TypeScript interface between the memory system and the Rust P2P sidecar.
 
@@ -101,9 +101,6 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - `src/discord/` — Discord
 - `src/signal/` — Signal (signal-cli)
 - `src/slack/` — Slack (Bolt SDK)
-- `src/irc/` — IRC
-- `src/googlechat/` — Google Chat
-- `src/msteams/` — Microsoft Teams
 - `src/webchat/` — WebChat (WebSocket)
 - `src/cli/` — CLI commands
 - `src/commands/` — CLI command implementations (onboarding, configure, etc.)

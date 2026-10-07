@@ -97,6 +97,19 @@ export const updateHandlers: GatewayRequestHandlers = {
     if (!assertValidParams(params, validateUpdateRunParams, "update.run", respond)) {
       return;
     }
+    // A container cannot update itself in place: its code is the image, and
+    // the next restart would bring the old one back (PLAN-53 F1).
+    if (process.env.BITTERBOT_INSTALL_KIND === "container") {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          "This gateway runs in a container. Update it by pulling a newer image (on a VPS from the template: /opt/bitterbot/update.sh; on Fly.io: fly deploy).",
+        ),
+      );
+      return;
+    }
     const { sessionKey, note, restartDelayMs } = parseRestartRequestParams(params);
     const timeoutMsRaw = (params as { timeoutMs?: unknown }).timeoutMs;
     const timeoutMs =

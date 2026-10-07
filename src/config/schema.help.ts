@@ -91,6 +91,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Optional filesystem root for Control UI assets (defaults to dist/control-ui).",
   "gateway.controlUi.allowedOrigins":
     "Allowed browser origins for Control UI/WebChat websocket connections (full origins only, e.g. https://control.example.com).",
+  "gateway.controlUi.bootstrapPairing":
+    "Pair the first Control UI device that proves the gateway token, once, while no device is paired, so a cloud-hosted gateway can be set up from the browser alone. Later devices still need approval (default: off, unless BITTERBOT_BOOTSTRAP_PAIRING=1, which the deploy templates set).",
   "gateway.controlUi.allowInsecureAuth":
     "Allow Control UI auth over insecure HTTP (token-only; not recommended).",
   "gateway.controlUi.dangerouslyDisableDeviceAuth":
@@ -104,6 +106,14 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.nodes.browser.node": "Pin browser routing to a specific node id or name (optional).",
   "payments.link.enabled":
     "Let the agent buy things with a one-time card from your Stripe Link account. You approve each purchase in the Link app (default: false).",
+  "payments.privacy.enabled":
+    "Let the agent buy things with single-use cards from your Privacy.com account. You approve each purchase in Bitterbot first; the card is created only then, capped at that amount (default: false).",
+  "payments.privacy.apiKey":
+    "Privacy.com API key (privacy.com/account; needs a plan with API access). Or set PRIVACY_API_KEY.",
+  "payments.privacy.perPurchaseCapUsd":
+    "Most one Privacy purchase may be, in US dollars (default: 100).",
+  "payments.privacy.sandbox":
+    "Use Privacy.com's sandbox, which issues no real cards (default: false).",
   "payments.link.perPurchaseCapUsd": "Most one Link purchase may be, in US dollars (default: 100).",
   "payments.link.command":
     'How to run Stripe\'s Link CLI (default: ["npx", "-y", "@stripe/link-cli@0.26.0"]).',
@@ -136,6 +146,12 @@ export const FIELD_HELP: Record<string, string> = {
   "review.connector":
     'Connector (MCP) tools that change something: "ask" (default) holds them for your approval; "allow" runs them. Read-only tools always run.',
   "review.ttlHours": "How long a held action waits for a decision before it expires (default: 24).",
+  "browser.replay.enabled":
+    "Keep a low-rate screenshot record of the agent's browser after each page action, stored only on this machine, so you can see later what it did (default: true).",
+  "browser.replay.retentionDays":
+    "Days to keep a session's browser recording after its last frame (default: 7).",
+  "browser.perAgentProfiles":
+    "Give each agent other than the default one its own browser profile (agent-<id>), so agents never share cookies or logins (default: true).",
   "browser.liveView.enabled":
     "Stream the agent's browser to the Control UI's computer pane while it is open (default: true). Set false to turn the stream off.",
   "browser.liveView.maxFps":

@@ -89,4 +89,17 @@ describe("runReviewStage", () => {
     expect(outcome.blocked && outcome.reason).toContain("missing required parameter(s): address");
     expect(svc.consider).not.toHaveBeenCalled();
   });
+
+  it("sends a message to a Circles friend via webchat back to the agent, pointing at the circles tool", async () => {
+    svc.consider.mockReset();
+
+    const outcome = await runReviewStage({
+      toolName: "message",
+      params: { action: "send", to: "sylvia", message: "the count is ~116K", channel: "webchat" },
+    });
+
+    expect(outcome.blocked).toBe(true);
+    expect(outcome.blocked && outcome.reason).toContain("circles tool (action=send)");
+    expect(svc.consider).not.toHaveBeenCalled();
+  });
 });

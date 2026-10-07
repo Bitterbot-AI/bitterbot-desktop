@@ -17,7 +17,12 @@ export type TemporalFilter = {
   validRange?: { start: number; end: number };
   /** Only return facts as known at this transaction time (time-travel query). */
   asOf?: number;
-  /** Exclude superseded facts where valid_time_end IS NOT NULL. Default: true. */
+  /**
+   * Exclude superseded facts where valid_time_end IS NOT NULL. Default: true,
+   * EXCEPT when `validAt`, `validRange` or `asOf` is set: a point-in-time read
+   * asks "what was true then", and a fact superseded since then was true then.
+   * Pass it explicitly to override either way.
+   */
   excludeSuperseded?: boolean;
 };
 
@@ -40,8 +45,10 @@ export function buildTemporalWhereClause(filter: TemporalFilter, alias = "c"): T
   const conditions: string[] = [];
   const params: number[] = [];
 
-  // Default: exclude superseded facts (valid_time_end IS NOT NULL)
-  if (filter.excludeSuperseded !== false) {
+  // Default: exclude superseded facts (valid_time_end IS NOT NULL) — but not
+  // for historical reads, where the superseded row is exactly the answer.
+  const historical = filter.validAt != null || filter.validRange != null || filter.asOf != null;
+  if (filter.excludeSuperseded ?? !historical) {
     conditions.push(`(${alias}.valid_time_end IS NULL)`);
   }
 

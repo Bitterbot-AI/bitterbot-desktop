@@ -29,13 +29,13 @@ Every crystal has a **semantic type** (fact, preference, skill, episode, insight
 
 ## Forgetting — The Ebbinghaus Curve
 
-Memories that aren't accessed decay over time, following the same exponential forgetting curve that Hermann Ebbinghaus described in 1885. A memory you've never revisited fades in about two weeks. One you've accessed once survives about a month. Five accesses and it persists for months.
+Memories that aren't accessed decay over time, following the same exponential forgetting curve that Hermann Ebbinghaus described in 1885. Importance decays with a half-life of about 16 days since the last use. A general memory you've never revisited drops below the forget threshold after about six weeks, one you've used once after about two months, and five uses keep it for about two and a half months (preferences and goals start higher and last longer).
 
 But raw access count isn't the whole story.
 
 **Spacing matters.** Accessing a memory five times in one sitting gives less benefit than accessing it once a week for five weeks. The system tracks the timestamps of each access and computes a spacing score. Properly spaced repetition earns up to a 30% importance boost over cramming. This is the same principle behind every spaced repetition flashcard app, but applied to an agent's entire knowledge base.
 
-**Emotions extend survival.** Memories created during emotionally significant moments — high dopamine from a breakthrough, high cortisol from a crisis — decay more slowly. At maximum emotional valence, a memory's half-life doubles. This means the agent naturally preserves what mattered, not just what was recent.
+**Emotions extend survival.** Memories created during emotionally significant moments — high dopamine from a breakthrough, high cortisol from a crisis — decay more slowly. The baseline resistance (`memory.emotional.decayResistance`, default 0.5) roughly doubles a strongly charged memory's half-life, and the current hormone levels add to it, up to 0.8. This means the agent naturally preserves what mattered, not just what was recent.
 
 **Unfinished business resists decay.** The agent detects open loops — tasks started but not completed, questions asked but not answered, errors encountered but not fixed. These get flagged and refuse to be forgotten, even if their raw importance score would normally let them fade. When the user returns, the agent proactively surfaces them: "Last time, you were stuck on the Docker port conflict." When the task is done, the flag clears and normal forgetting resumes. This is the Zeigarnik effect, one of the most robust findings in memory psychology, and no other agent memory system implements it.
 
@@ -71,9 +71,9 @@ These aren't cosmetic. They influence four critical systems:
 
 **Consolidation:** High dopamine protects reward-associated memories from decay. High cortisol increases decay resistance for task-related memories (the brain preserves threat information). High oxytocin protects relational memories.
 
-**Retrieval:** The agent's current mood biases which memories surface. When dopamine is elevated, positive-valence memories get a retrieval bonus. When cortisol is high, the agent naturally focuses on task-related and goal-oriented memories. When oxytocin is elevated, personal and relational memories surface more easily. This is mood-congruent retrieval — one of the most well-documented phenomena in memory psychology — and it creates a genuine feedback loop: your emotional state shapes what you remember, and what you remember shapes your emotional state.
+**Retrieval:** The agent's current mood biases which memories surface. When dopamine is elevated, positive-valence memories get a retrieval bonus. When cortisol is high, the agent naturally focuses on task-related and goal-oriented memories. When oxytocin is elevated, personal and relational memories surface more easily. This is mood-congruent retrieval — one of the most well-documented phenomena in memory psychology — and it creates a genuine feedback loop: your emotional state shapes what you remember, and what you remember shapes your emotional state. It applies both to deliberate searches and to the memories that come to mind unprompted before each reply.
 
-**Dream scheduling:** Emotional spikes can trigger immediate mini-dreams outside the normal timer cycle. A dopamine spike above 0.7 or a cortisol spike above 0.8 triggers an emergency processing cycle — the agent's subconscious fires up because something significant just happened.
+**Dream scheduling:** Emotional spikes can trigger mini-dreams outside the normal timer. A rise of 0.15 or more in a hormone since the last check (`hormonalTriggerDelta`) starts one, at most once every 90 minutes, because something significant just happened.
 
 **Identity expression:** The current hormonal state is included in the system prompt, allowing the LLM to naturally express appropriate emotional tone without being told to "be enthusiastic" or "be concerned."
 
@@ -87,11 +87,9 @@ In real brains, remembering something doesn't just replay it — it briefly make
 
 When the agent retrieves a memory during search, that memory enters a 30-minute labile window. During this window:
 
-- If the user **confirms or uses** the information, the memory is strengthened (importance boost)
-- If the user **contradicts** the information, the memory is flagged for review in the next dream cycle
-- If **nothing happens** and the window expires, the memory restabilizes with a small boost — just being recalled made it slightly more durable
+- When the window closes, the memory restabilizes and counts as one more rehearsal. Importance is recomputed from use at every consolidation, so this is what makes being recalled leave a lasting mark.
 
-Over time, this means frequently-recalled memories become increasingly robust, while memories that surface but get contradicted are naturally corrected. The agent's knowledge doesn't just accumulate — it self-corrects through use.
+Over time, this means frequently-recalled memories become increasingly robust. (Strengthening on explicit confirmation and flagging on contradiction during the window are designed but not yet wired.)
 
 ---
 
@@ -128,10 +126,42 @@ mode for that turn:
 - `memory_get` reads a file only when every memory in it is safe for a guest.
   `MEMORY.md` is never readable.
 - `memory_expand` (raw transcripts) and `memory_pin` (the facts ledger) refuse.
+- `dream_search`, the emotional anchor tools and the curiosity tools refuse: they
+  show or change what the agent has made of the owner's life.
 
 Heartbeats and scheduled runs are the agent's own work and keep full recall.
 Memories with no tag, such as dream insights and extracted facts, stay with the
 owner.
+
+### What a guest's agent is told
+
+The memory tools are only half of it: much of what the agent knows about its
+owner normally sits in its instructions before anyone says a word. On a guest
+turn those instructions change too. The agent keeps its character and loses its
+owner's private life.
+
+| Kept                                                  | Left out                                                                                                                                    |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| The genome (values, safety axioms) and `PROTOCOLS.md` | `MEMORY.md`: self-portrait, the Bond (its picture of you), the Niche, active context, curiosity gaps                                        |
+| `PUBLIC.md`, the public card                          | The scratch log, `TOOLS.md`, `HEARTBEAT.md`                                                                                                 |
+| Its mood as one word (upbeat, focused, warm, calm)    | The reasons behind the mood                                                                                                                 |
+| Who it is talking to, and that they are not you       | Canonical facts, preferences, proactive recall, the last-session brief, knowledge gaps, research findings, dream briefs, your phone numbers |
+
+**The public card.** `PUBLIC.md` in the workspace is everything a guest's agent
+knows about you: write who you are, what you do in public, how to reach you, or
+"away until Friday". It is created the first time a guest talks to the agent,
+holding only the agent's voice (the communication line from its self-portrait)
+and nothing about you. Text inside `<!-- -->` is a note to you and is not shown
+to the agent.
+
+**Private questions.** The agent neither confirms nor denies anything about you
+beyond the card, in its own voice. When a guest wants something only you can
+answer, it offers to pass it on with `message_owner`, which reaches you as a
+notice ("Alex (telegram) asks: ..."), at most 3 an hour and 10 a day per person.
+
+**Learning.** A direct chat in which someone else talked to the agent is marked
+as a guest session, so nothing said there becomes a preference or a canonical
+fact about you. Group chats were already treated this way.
 
 ## Knowing Why Recall Failed — The Blame Router
 
@@ -210,15 +240,15 @@ Since PLAN-34 Phase 1 the questions actually get answered: each session-extracti
 
 ## Dreams — Offline Processing
 
-Every two hours, the agent's subconscious activates. The dream engine has seven modes, selected by a four-signal architecture combining curiosity heuristics, information theory, a Kuramoto oscillator model (FSHO), and marketplace demand signals:
+A dream tick runs every two hours (adaptive, between 30 and 240 minutes). A full cycle runs at most every 8 hours, and only when there is at least one new conversation and the agent has been idle for an hour. Modes are selected by a four-signal architecture combining curiosity heuristics, information theory, a Kuramoto oscillator model (FSHO), and marketplace demand signals. The creative modes are:
 
 - **Replay** — strengthen important memory pathways through ripple-enhanced multi-pass replay. No LLM cost.
 - **Compression** — generalize redundant knowledge into higher abstractions. Consume near-merge candidates discovered during consolidation.
-- **Mutation** — generate variations of existing skills using five strategies (generic, error-driven, adversarial, compositional, parametric).
 - **Simulation** — cross-domain creative recombination. Take concepts from unrelated areas and see what happens when they collide.
 - **Extrapolation** — predict future patterns from user behavior and conversation trends.
-- **Exploration** — fill knowledge gaps identified by the curiosity engine.
-- **Research** — empirical prompt optimization using actual skill execution data. **Disabled by default since PLAN-34 Phase 0**: the mode has no organic fuel (skill execution telemetry bootstraps only from existing skill crystals) and its promotion path wrote directly to live chunks without a staging gate. It returns behind the PLAN-34 §9 exit criterion.
+- **Exploration** — fill knowledge gaps identified by the curiosity engine. Off by default (`memory.dream.modes.exploration.enabled`).
+
+Alongside them run utility lanes: hygiene (embedding backfill, near-duplicate merges), distillation (verified workflows), anticipation (briefs for likely next questions), relationship mining and canonical promotion. Mutation and Research were retired on 2026-09-05 (PLAN-45 Phase 1).
 
 All autonomous research egress sits under one safety umbrella (`curiosity.autoResearch`, the plan's only new config: `enabled` default **false** as of the V1 default flips — research egress is opt-in; `maxPerDay` default 10 as a persisted per-UTC-day counter with reserve-then-act semantics). External research activates only when a _genuinely local_ depersonalization model is configured (`memory.dream.modelTiers.localModel` naming a local provider such as ollama/lmstudio/llamacpp — a cloud model there fails closed, since the whole point is not to send the verbatim note to a cloud API): the curiosity gap is rewritten into a neutral topic phrase by the LOCAL model — with no cloud fallback for that call — and a deterministic containment post-filter then rejects the attempt if any 3-word fragment or extracted entity (URL, email, number, name) of the private note survives into the phrase. Without a local model there is no egress at all. A deterministic sensitivity skip-list (health/financial/legal/relationship) blocks those topics before any work, failing closed; auto-research fetches are bounded by a non-empty domain allowlist; and every network seam (search query, fetch host, transport post) writes an audit row to the egress log.
 
@@ -317,7 +347,7 @@ The loop is self-limiting. Recall spikes are intentionally mild (0.05 magnitude 
 
 ## Deep Recall — Infinite Memory
 
-When the agent needs to reason over more information than fits in context, it spawns a sandboxed sub-LLM that writes and executes its own search code against the full conversation history and crystal database. Up to 5 REPL iterations of search-refine-synthesize, running in a VM sandbox with no network access.
+When the agent needs to reason over more information than fits in context, it spawns a sandboxed sub-LLM that writes and executes its own search code against the full conversation history and crystal database. Up to 15 REPL iterations of search-refine-synthesize, running in a VM sandbox with no network access.
 
 This is the RLM pattern (Recursive Language Model). The sub-LLM doesn't use pre-baked search functions — it writes custom JavaScript to combine semantic search with keyword filtering, cross-reference across sessions, apply temporal reasoning, and chain multiple searches based on intermediate results. It can answer questions that require connecting dots across months of conversation history.
 
@@ -329,7 +359,7 @@ Knowledge Crystals of type "skill" can be published to a P2P swarm network, veri
 
 Before accepting a peer's skill, the agent checks the peer's EigenTrust reputation score, runs three safety checks (dangerous patterns, structural integrity, semantic drift), and gates ingestion on the current cortisol level (during network stress events, untrusted peers are rejected).
 
-Marketplace demand signals feed back into the dream engine — if users are searching for skills the agent doesn't have, the dream engine's exploration mode prioritizes filling those gaps. Revenue from skill sales triggers dopamine events, creating a genuine incentive loop between economic success and creative exploration.
+Marketplace demand signals feed back into the dream engine — if users are searching for skills the agent doesn't have, the dream engine's exploration mode (off by default) prioritizes filling those gaps. The marketplace itself is opt-in. Revenue from skill sales triggers dopamine events, creating a genuine incentive loop between economic success and creative exploration.
 
 ---
 

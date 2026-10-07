@@ -5,6 +5,9 @@ services:
       HOME: /home/node
       TERM: xterm-256color
       BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN}
+      # Pair the first browser that signs in with the token (once), so a fresh
+      # install is set up from the browser. See docs/platforms/docker.md.
+      BITTERBOT_BOOTSTRAP_PAIRING: "1"
     volumes:
       - ${BITTERBOT_CONFIG_DIR}:/home/node/.bitterbot
       - ${BITTERBOT_WORKSPACE_DIR}:/home/node/.bitterbot/workspace
@@ -13,13 +16,17 @@ services:
       # the port mapping to function, so exposure is governed HERE. Set
       # BITTERBOT_BIND_HOST=0.0.0.0 (and a strong token) to serve the LAN.
       - "${BITTERBOT_BIND_HOST:-127.0.0.1}:${BITTERBOT_GATEWAY_PORT:-19001}:19001"
+      # P2P mesh (skill sharing, circles). Peers dial in on this port; set
+      # BITTERBOT_P2P_PORT to move it, or delete the line to stay off the mesh.
+      - "${BITTERBOT_P2P_PORT:-9100}:9100"
     init: true
     restart: unless-stopped
-    command:
-      [
+    command: [
         "node",
         "bitterbot.mjs",
         "gateway",
+        # A fresh config dir has no config yet; setup happens in the browser.
+        "--allow-unconfigured",
         "--bind",
         "${BITTERBOT_GATEWAY_BIND:-lan}",
         "--port",

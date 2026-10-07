@@ -2,6 +2,7 @@ import { listChannelPlugins } from "../../channels/plugins/index.js";
 import type { ChannelPlugin } from "../../channels/plugins/types.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import {
+  INTERNAL_MESSAGE_CHANNEL,
   listDeliverableMessageChannels,
   type DeliverableMessageChannel,
   normalizeMessageChannel,
@@ -64,6 +65,10 @@ export async function listConfiguredMessageChannels(
   return channels;
 }
 
+/** Said when an agent tries to reach someone through the Control UI conversation. */
+export const WEBCHAT_IS_NOT_A_ROUTE =
+  "webchat is the Control UI conversation itself, not a way to reach other people. To message someone in your Circles, use the circles tool (action=send). To reach someone on a chat app, name that channel (telegram, whatsapp, discord, slack, signal, email).";
+
 export async function resolveMessageChannelSelection(params: {
   cfg: BitterbotConfig;
   channel?: string | null;
@@ -71,6 +76,9 @@ export async function resolveMessageChannelSelection(params: {
   const normalized = normalizeMessageChannel(params.channel);
   if (normalized) {
     if (!isKnownChannel(normalized)) {
+      if (normalized === INTERNAL_MESSAGE_CHANNEL) {
+        throw new Error(WEBCHAT_IS_NOT_A_ROUTE);
+      }
       throw new Error(`Unknown channel: ${String(normalized)}`);
     }
     return {

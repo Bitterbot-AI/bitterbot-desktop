@@ -127,6 +127,7 @@ import {
   encryptTopicFrame,
   getOrCreateOwnSenderKey,
   markDelivered,
+  maintainSenderKeys,
   rotateOwnSenderKey,
 } from "./sender-keys.js";
 import { listStudyState, recordStudyResult, type StudySectionState } from "./study.js";
@@ -162,6 +163,8 @@ const DIAL_TIMEOUT_MS = 5000;
  * the head-of-line blocking of the old serial fan-out.
  */
 const FANOUT_CONCURRENCY = 8;
+/** Upper bound on circle/events.since pages pulled from one peer per sync. */
+const EVENTS_SYNC_MAX_PAGES = 10;
 
 /** Run `fn` over `items` with at most `limit` in flight at once. */
 async function runBounded<T>(
@@ -886,6 +889,13 @@ export class CirclesService {
       if (c.kind === PRACTICE_KIND) continue;
       try {
         await bus.subscribe(circleTopicId(c.circleId, c.keyEpoch));
+        // L2: key_epoch bumps on member add, so a member who has not yet
+        // learned of the newest join publishes one epoch behind us. Keep
+        // listening there (resolveTopicCircle accepts it) so their mesh
+        // frames are not dropped until the HTTP copy lands.
+        if (c.keyEpoch > 0) {
+          await bus.subscribe(circleTopicId(c.circleId, c.keyEpoch - 1));
+        }
       } catch (err) {
         log.debug(`topic subscribe for ${c.circleId} failed: ${String(err)}`);
       }
@@ -903,6 +913,8 @@ export class CirclesService {
   async ensureSenderKeyDistribution(): Promise<void> {
     for (const c of this.listCircles()) {
       if (c.kind === PRACTICE_KIND || c.status !== "active") continue;
+      // M5: age-rotate and purge superseded keys before deciding who needs ours.
+      maintainSenderKeys(this.db, c.circleId);
       const key = getOrCreateOwnSenderKey(this.db, c.circleId);
       const done = deliveredMembers(this.db, c.circleId, key.keyId);
       const recipients = this.peerMembers(c.circleId).filter(
@@ -2528,37 +2540,53 @@ export class CirclesService {
       if (!member.a2aUrl && !canP2p) {
         continue;
       }
-      const ask = makeCircleEnvelope("presence", circleId, { since: 0 }, this.key);
-      // Stage 4: mesh dial first; transport failures (not refusals) fall back
-      // to the HTTP dial when the member advertises one.
-      let rpc: Awaited<ReturnType<typeof dialCircleRpc>> = canP2p
-        ? await dialCircleRpc(member.peerId as string, "circle/events.since", { envelope: ask })
-        : { ok: false, error: "p2p unavailable" };
-      if (!rpc.ok && !rpc.refused && member.a2aUrl) {
-        rpc = (await circleRpc(
-          this.fetchImpl,
-          member.a2aUrl,
-          "circle/events.since",
-          { envelope: ask },
-          this.dialOpts,
-        )) as Awaited<ReturnType<typeof dialCircleRpc>>;
-      }
-      if (!rpc.ok || !rpc.result) {
-        continue;
-      }
-      const events = (rpc.result as { events?: Array<{ envelope?: unknown }> }).events ?? [];
-      for (const ev of events) {
-        if (!ev.envelope) {
-          continue;
+      // Page through the peer's ledger. A page ends early when it hits the
+      // responder's byte budget (LOW-11) or row limit; the next page starts
+      // just before the last receivedAt so same-millisecond ties are re-read
+      // (appends are idempotent) rather than skipped. Bounded per sync.
+      let since = 0;
+      for (let page = 0; page < EVENTS_SYNC_MAX_PAGES; page += 1) {
+        const ask = makeCircleEnvelope("presence", circleId, { since }, this.key);
+        // Stage 4: mesh dial first; transport failures (not refusals) fall back
+        // to the HTTP dial when the member advertises one.
+        let rpc: Awaited<ReturnType<typeof dialCircleRpc>> = canP2p
+          ? await dialCircleRpc(member.peerId as string, "circle/events.since", { envelope: ask })
+          : { ok: false, error: "p2p unavailable" };
+        if (!rpc.ok && !rpc.refused && member.a2aUrl) {
+          rpc = (await circleRpc(
+            this.fetchImpl,
+            member.a2aUrl,
+            "circle/events.since",
+            { envelope: ask },
+            this.dialOpts,
+          )) as Awaited<ReturnType<typeof dialCircleRpc>>;
         }
-        const outcome = handleCircleMethod(
-          "circle/event.append",
-          { envelope: ev.envelope },
-          this.db,
-        );
-        if (outcome.ok && !(outcome.result as { duplicate?: boolean }).duplicate) {
-          applied += 1;
+        if (!rpc.ok || !rpc.result) {
+          break;
         }
+        const result = rpc.result as {
+          truncated?: boolean;
+          events?: Array<{ envelope?: unknown; receivedAt?: unknown }>;
+        };
+        const events = result.events ?? [];
+        for (const ev of events) {
+          if (!ev.envelope) {
+            continue;
+          }
+          const outcome = handleCircleMethod(
+            "circle/event.append",
+            { envelope: ev.envelope },
+            this.db,
+          );
+          if (outcome.ok && !(outcome.result as { duplicate?: boolean }).duplicate) {
+            applied += 1;
+          }
+        }
+        const last = events.at(-1)?.receivedAt;
+        if (result.truncated !== true || typeof last !== "number" || last - 1 <= since) {
+          break;
+        }
+        since = last - 1;
       }
     }
     return { applied };
@@ -2716,6 +2744,8 @@ export class CirclesService {
     deleted: boolean;
     /** The tombstone was a LOCAL hide by this node's human (vs an author retraction). */
     deletedByMe: boolean;
+    /** M2: for a member-removal notice, the member it names. */
+    systemTarget: string | null;
   }> {
     // Keyset pagination on (created_at, message_id): the ORDER BY carries the
     // same tiebreak so window membership is deterministic across polls, and
@@ -2727,7 +2757,8 @@ export class CirclesService {
     const rows = this.db
       .prepare(
         `SELECT message_id, envelope_id, author_pubkey, direction, kind, thread_id, content,
-                created_at, delivery_status, reply_to, agent_authored, deleted_at, deleted_by
+                created_at, delivery_status, reply_to, agent_authored, deleted_at, deleted_by,
+                system_target
            FROM circle_messages
           WHERE circle_id = ? AND (created_at < ? OR (created_at = ? AND message_id < ?))
           ORDER BY created_at DESC, message_id DESC LIMIT ?`,
@@ -2746,6 +2777,7 @@ export class CirclesService {
       agent_authored: number | null;
       deleted_at: number | null;
       deleted_by: string | null;
+      system_target: string | null;
     }>;
     return rows.map((r) => ({
       messageId: r.message_id,
@@ -2762,6 +2794,7 @@ export class CirclesService {
       deleted: r.deleted_at != null,
       deletedByMe:
         r.deleted_at != null && r.deleted_by === this.pubkey && r.author_pubkey !== this.pubkey,
+      systemTarget: r.kind === "system" ? r.system_target : null,
     }));
   }
 
