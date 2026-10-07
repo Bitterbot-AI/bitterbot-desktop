@@ -67,6 +67,7 @@ const OUTCOME_WORDS: Record<string, string> = {
   dismissed: "You told it not to bother",
   sensitive_skipped: "Kept off the web (sensitive topic)",
   containment_rejected: "Held back (the search phrase would have revealed too much)",
+  not_web_answerable: "Not something the web can answer (it is about your own life)",
   no_results: "Nothing readable found",
   inconclusive: "First attempt inconclusive",
 };

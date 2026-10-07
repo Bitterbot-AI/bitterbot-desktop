@@ -54,6 +54,34 @@ export function recordCuriosityUse(
   }
 }
 
+/**
+ * A finding the agent voiced ("while you were away, I looked into X") was
+ * used, whether or not retrieval also returned its chunk. Keyed by target.
+ */
+export function recordCuriosityUseByTarget(
+  db: DatabaseSync,
+  targetIds: string[],
+  now: number = Date.now(),
+): number {
+  if (targetIds.length === 0) {
+    return 0;
+  }
+  try {
+    const res = db
+      .prepare(
+        `UPDATE curiosity_findings
+            SET used_count = used_count + 1,
+                first_used_at = COALESCE(first_used_at, ?)
+          WHERE COALESCE(verified, 1) = 1
+            AND target_id IN (${targetIds.map(() => "?").join(",")})`,
+      )
+      .run(now, ...targetIds);
+    return Number(res.changes);
+  } catch {
+    return 0;
+  }
+}
+
 /** Share of self-learned facts per region that a conversation went on to use. */
 export function curiosityRoiByRegion(db: DatabaseSync): Map<string, number> {
   const out = new Map<string, number>();
