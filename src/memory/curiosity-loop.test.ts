@@ -23,6 +23,7 @@ import {
   dismissCuriosityTarget,
   findingIsVerified,
   listCuriosity,
+  ownQuestionShape,
   parseDistilled,
   phraseLeaks,
   resolveCuriosityResearchConfig,
@@ -31,7 +32,12 @@ import {
   type CuriosityResearchDeps,
 } from "./curiosity-researcher.js";
 import { ensureCuriositySchema } from "./curiosity-schema.js";
-import { curiosityRoiByRegion, curiosityUtility, recordCuriosityUse } from "./curiosity-use.js";
+import {
+  curiosityRoiByRegion,
+  curiosityUtility,
+  recordCuriosityUse,
+  recordCuriosityUseByTarget,
+} from "./curiosity-use.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
 
@@ -214,6 +220,30 @@ describe("abstraction keeps private context on the node", () => {
     expect(
       admissiblePublicTerms(q, ["ProbeLab", "Kubernetes", "a b c d e", "Aubaine"], names),
     ).toEqual(["ProbeLab"]);
+  });
+
+  it("closes questions the web cannot answer without searching", async () => {
+    const saysNo = async () => ({
+      text: '{"phrase":"sprint retrospective timing","web_answerable":false,"public_terms":[]}',
+      costUsd: 0,
+    });
+    expect(
+      (await abstractQuestion("when is the sprint retro and the infra sync call", saysNo))
+        .notWebAnswerable,
+    ).toBe(true);
+    const saysYes = async () => ({
+      text: '{"phrase":"libp2p relay reservation limits","web_answerable":true,"public_terms":["libp2p"]}',
+      costUsd: 0,
+    });
+    expect(
+      (await abstractQuestion("How do libp2p relays limit reservations?", saysYes)).phrase,
+    ).toBe("libp2p relay reservation limits");
+    // First-person questions never go out, whatever the model says.
+    expect(
+      (await abstractQuestion("What did I decide about my relay budget?", saysYes))
+        .notWebAnswerable,
+    ).toBe(true);
+    expect(ownQuestionShape("How do libp2p relays limit reservations?")).toBe(false);
   });
 
   it("abstractQuestion reads the JSON form and falls back to a bare line", async () => {
@@ -515,6 +545,18 @@ describe("the loop", () => {
       now: NOW,
     });
     expect(ids).toHaveLength(1);
+  });
+
+  it("voicing a finding counts as a use", async () => {
+    await runCuriosityResearch(deps(db));
+    const f = listCuriosity(db, { now: NOW }).learned[0]!;
+    const target = (
+      db.prepare(`SELECT target_id FROM curiosity_findings WHERE id = ?`).get(f.id) as {
+        target_id: string;
+      }
+    ).target_id;
+    expect(recordCuriosityUseByTarget(db, [target, "nope"], NOW + 9)).toBe(1);
+    expect(curiosityUtility(db)).toMatchObject({ learned: 1, used: 1 });
   });
 
   it("hormones widen or narrow the day's budget and the owner can dismiss", async () => {

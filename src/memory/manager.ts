@@ -32,7 +32,7 @@ import {
 } from "./curiosity-gaps.js";
 import { resolveCuriosityResearchConfig } from "./curiosity-researcher.js";
 import type { CuriosityState } from "./curiosity-types.js";
-import { recordCuriosityUse } from "./curiosity-use.js";
+import { recordCuriosityUse, recordCuriosityUseByTarget } from "./curiosity-use.js";
 import { applyDirectiveResolutions, finalizeAnsweredDirectives } from "./directive-resolution.js";
 import {
   DiscoveryAgent,
@@ -3308,6 +3308,11 @@ export class MemoryIndexManager implements MemorySearchManager {
         `curiosity research: attempted ${summary.attempted}, learned ${summary.learned}` +
           (summary.costUsd > 0 ? ` ($${summary.costUsd.toFixed(4)})` : ""),
       );
+      if (summary.learned > 0) {
+        // Make what it just learned retrievable now, not at the next index
+        // sync: the new chunk is stored with a pending embedding.
+        void this.backfillPendingEmbeddings({ limit: 5 }).catch(() => {});
+      }
     }
     return summary;
   }
@@ -6324,10 +6329,15 @@ export class MemoryIndexManager implements MemorySearchManager {
     try {
       const rows = this.db
         .prepare(
-          `SELECT id, finding, source_url FROM research_findings
+          `SELECT id, target_id, finding, source_url FROM research_findings
            WHERE surfaced_at IS NULL ORDER BY created_at DESC LIMIT ?`,
         )
-        .all(limit) as Array<{ id: string; finding: string; source_url: string | null }>;
+        .all(limit) as Array<{
+        id: string;
+        target_id: string;
+        finding: string;
+        source_url: string | null;
+      }>;
       if (rows.length === 0) {
         return [];
       }
@@ -6336,6 +6346,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       for (const row of rows) {
         mark.run(now, row.id);
       }
+      // PLAN-54: voicing a self-learned finding to the owner is a use of it.
+      recordCuriosityUseByTarget(
+        this.db,
+        rows.map((r) => r.target_id),
+        now,
+      );
       return rows.map((r) => ({ finding: r.finding, sourceUrl: r.source_url }));
     } catch {
       return [];

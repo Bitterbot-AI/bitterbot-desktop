@@ -113,6 +113,7 @@ export type ResearchOutcome =
   | "sensitive_skipped"
   | "containment_rejected"
   | "transient_error"
+  | "not_web_answerable"
   | "dismissed";
 
 export type CuriosityRunSummary = {
@@ -333,7 +334,9 @@ function abstractionPrompt(question: string): string {
     "Postgres, the EU, Linus Torvalds) are fine and usually necessary. REMOVE everything " +
     "specific to the author: people they know, their employer, clients, partners, project " +
     "names, numbers, dates, prices, email addresses, URLs, and any quoted fragment of the note. " +
-    'Answer with ONE line of JSON: {"phrase": "...", "public_terms": ["..."]} where ' +
+    'Answer with ONE line of JSON: {"phrase": "...", "web_answerable": true, "public_terms": ["..."]} where ' +
+    "web_answerable is false when the note asks about the author's own life, schedule, " +
+    "people, projects or files (the web cannot know), true when a public source could answer; " +
     "public_terms lists the widely known public names you kept, copied exactly from the note " +
     "(at most 4; empty if none). A person the author knows, their employer, client or project " +
     "is never a public term.\n\n" +
@@ -341,7 +344,9 @@ function abstractionPrompt(question: string): string {
   );
 }
 
-function parseAbstraction(text: string): { phrase: string; publicTerms: string[] } | null {
+function parseAbstraction(
+  text: string,
+): { phrase: string; publicTerms: string[]; webAnswerable: boolean } | null {
   const cleaned = text.replace(/```[a-z]*\n?/gi, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
@@ -353,14 +358,23 @@ function parseAbstraction(text: string): { phrase: string; publicTerms: string[]
         ? v.public_terms.filter((t): t is string => typeof t === "string")
         : [];
       if (phrase) {
-        return { phrase, publicTerms };
+        return { phrase, publicTerms, webAnswerable: v.web_answerable !== false };
       }
     } catch {
       // fall through: a bare phrase is still usable, with no public terms
     }
   }
   const line = cleaned.split("\n")[0] ?? "";
-  return line ? { phrase: line, publicTerms: [] } : null;
+  return line ? { phrase: line, publicTerms: [], webAnswerable: true } : null;
+}
+
+/**
+ * Deterministic half of the gate: questions about the author's OWN things
+ * ("my calendar", "our relay budget"). "Should I…" / "how do I…" stay
+ * eligible; those are often answerable in general.
+ */
+export function ownQuestionShape(question: string): boolean {
+  return /\b(my|our|mine|ours)\b/i.test(question);
 }
 
 export async function abstractQuestion(
@@ -368,9 +382,19 @@ export async function abstractQuestion(
   llm: (prompt: string) => Promise<LlmResult>,
   ownerNames: string[] = [],
   opts: { strict?: boolean } = {},
-): Promise<{ phrase: string | null; heldPhrase?: string; costUsd: number }> {
+): Promise<{
+  phrase: string | null;
+  heldPhrase?: string;
+  notWebAnswerable?: boolean;
+  costUsd: number;
+}> {
   const { text, costUsd } = await llm(abstractionPrompt(question));
   const parsed = parseAbstraction(text);
+  // "When is the sprint retro?" has no public answer; the web would hand
+  // back a generic page and the agent would remember it as a fact.
+  if ((parsed && !parsed.webAnswerable) || ownQuestionShape(question)) {
+    return { phrase: null, notWebAnswerable: true, costUsd };
+  }
   const phrase = (parsed?.phrase ?? "")
     .replace(/^["'`]+|["'`.]+$/g, "")
     .trim()
@@ -717,6 +741,10 @@ async function researchOne(
       summary.costUsd += abstracted.costUsd;
       phrase = abstracted.phrase;
       heldPhrase = abstracted.heldPhrase;
+      if (abstracted.notWebAnswerable) {
+        finish("not_web_answerable", true);
+        return;
+      }
     } catch (err) {
       log.debug(`abstraction failed for ${target.id.slice(0, 8)}: ${String(err)}`);
       finish("transient_error", false);
