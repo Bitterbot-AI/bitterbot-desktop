@@ -16,6 +16,10 @@ export type DreamBrief = {
   preferences: Array<{ key: string; value: string }>;
   openLoops: string[];
   forgotten: number;
+  /** PLAN-54: what the agent went and learned on its own (question, one-line answer, host). */
+  learned: Array<{ question: string; answer: string; host: string | null }>;
+  /** Questions still open in the curiosity queue. */
+  wondering: string[];
 };
 
 const all = <T>(db: DatabaseSync, sql: string, ...args: Array<number | string>): T[] => {
@@ -85,12 +89,37 @@ export function buildDreamBrief(db: DatabaseSync, sinceMs: number): DreamBrief {
       "SELECT count(*) AS n FROM memory_audit_log WHERE event = 'forgotten' AND timestamp >= ?",
       sinceMs,
     )[0]?.n ?? 0;
-  return { cycles, insights, facts, preferences, openLoops, forgotten };
+  const learned = all<{ question: string; answer: string; sources_json: string }>(
+    db,
+    `SELECT question, answer, sources_json FROM curiosity_findings
+      WHERE created_at >= ? ORDER BY confidence DESC LIMIT 3`,
+    sinceMs,
+  ).map((r) => {
+    let host: string | null = null;
+    try {
+      const first = (JSON.parse(r.sources_json) as Array<{ url?: string }>)[0]?.url;
+      host = first ? new URL(first).hostname : null;
+    } catch {
+      host = null;
+    }
+    return { question: one(r.question, 120), answer: one(r.answer, 200), host };
+  });
+  const wondering = all<{ description: string }>(
+    db,
+    `SELECT description FROM curiosity_targets
+      WHERE resolved_at IS NULL AND expires_at > ?
+        AND (type = 'question' OR json_extract(metadata, '$.researchable') = 1)
+      ORDER BY priority DESC LIMIT 3`,
+    Date.now(),
+  ).map((r) => one(r.description, 120));
+  return { cycles, insights, facts, preferences, openLoops, forgotten, learned, wondering };
 }
 
 /** True when the brief has something the owner would want to read. */
 export function briefIsWorthSending(b: DreamBrief): boolean {
-  return b.insights.length > 0 || b.facts.length > 0 || b.preferences.length > 0;
+  return (
+    b.insights.length > 0 || b.facts.length > 0 || b.preferences.length > 0 || b.learned.length > 0
+  );
 }
 
 export function renderDreamBrief(b: DreamBrief): string {
@@ -114,10 +143,23 @@ export function renderDreamBrief(b: DreamBrief): string {
     }
     for (const p of b.preferences) lines.push(`- ${p.key}: ${p.value}`);
   }
+  if (b.learned.length > 0) {
+    lines.push("", "What I went and learned on my own:");
+    for (const l of b.learned) {
+      lines.push(`- ${l.question} ${l.answer}${l.host ? ` (${l.host})` : ""}`);
+    }
+  }
+  if (b.wondering.length > 0) {
+    lines.push("", "Still wondering about:");
+    for (const w of b.wondering) lines.push(`- ${w}`);
+  }
   if (b.openLoops.length > 0) {
     lines.push("", "Still open:");
     for (const o of b.openLoops) lines.push(`- ${o}`);
   }
-  lines.push("", "Anything wrong? Correct or forget it on the Memory page.");
+  lines.push(
+    "",
+    "Anything wrong? Correct or forget it on the Memory page; pause or steer my curiosity on the Curiosity page.",
+  );
   return lines.join("\n");
 }

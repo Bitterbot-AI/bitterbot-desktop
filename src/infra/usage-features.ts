@@ -31,6 +31,7 @@ export const USAGE_FEATURES = {
   memoryIndex: "memory/index",
   memoryIndexBatch: "memory/index-batch",
   memoryDream: "memory/dream",
+  memoryCuriosity: "memory/curiosity",
   memoryExtraction: "memory/extraction",
   memoryProbe: "memory/probe",
   memoryEmbeddings: "memory/embeddings",

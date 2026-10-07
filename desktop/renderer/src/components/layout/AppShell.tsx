@@ -8,6 +8,7 @@ import { CirclesView } from "../circles/CirclesView";
 import { ConfigView } from "../config/ConfigView";
 import { ConnectorsView } from "../connectors/ConnectorsView";
 import { CronView } from "../cron/CronView";
+import { CuriosityView } from "../curiosity/CuriosityView";
 import { DreamsView } from "../dreams/DreamsView";
 import { ActiveGuardsView } from "../guards/ActiveGuardsView";
 import { LogsView } from "../logs/LogsView";
@@ -37,6 +38,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   cron: () => <CronView />,
   connectors: () => <ConnectorsView />,
   memory: () => <MemoryView />,
+  curiosity: () => <CuriosityView />,
   agents: () => <AgentsView />,
   skills: () => <SkillsView />,
   guards: () => <ActiveGuardsView />,

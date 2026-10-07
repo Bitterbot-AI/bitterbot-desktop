@@ -25,7 +25,10 @@ import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
+import { insertNovelTargets, parseCuriosityGaps } from "./curiosity-gaps.js";
+import { resolveCuriosityResearchConfig } from "./curiosity-researcher.js";
 import type { CuriosityState } from "./curiosity-types.js";
+import { recordCuriosityUse } from "./curiosity-use.js";
 import { applyDirectiveResolutions, finalizeAnsweredDirectives } from "./directive-resolution.js";
 import {
   DiscoveryAgent,
@@ -837,6 +840,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       // minimal-mode assembly discards this block after selection, and a
       // selection-time stamp would re-create the vanity-metric disease.
       const includedDreamChunkIds: string[] = [];
+      // PLAN-54: a self-learned fact that comes to mind unprompted counts as used.
+      recordCuriosityUse(
+        this.db,
+        result.facts
+          .filter((f) => f.origin === "curiosity" && typeof f.chunkId === "string")
+          .map((f) => f.chunkId as string),
+      );
       const facts =
         result.facts.length > 0
           ? formatProactiveFacts(result.facts, { includedDreamChunkIds })
@@ -1459,6 +1469,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       // set (without this the mood bonus never saw a type, every result aged at
       // the default rate, and age was measured from "now").
       attachResultMetadata(this.db, merged);
+      // PLAN-54: a self-learned fact that search returns counts as used.
+      recordCuriosityUse(
+        this.db,
+        merged.map((m) => m.id),
+      );
 
       // Hormonal retrieval modulation: emotional state influences what memories surface.
       // Cortisol (stress) sharpens focus on recent memories via recency bias.
@@ -2416,6 +2431,12 @@ export class MemoryIndexManager implements MemorySearchManager {
         }
         // 3c. PLAN-11 Gap 1: convert repeated user queries into knowledge_gap targets
         void this.runRequestFrequencyAnalyzer();
+        // 3d. PLAN-54: one target per weak search query, then go and learn.
+        //     Network + model work, so it runs under the maintenance mutex
+        //     and never blocks this tick.
+        void this.maintenanceMutex
+          .run("curiosity", () => this.curiosityResearchTick(), 10 * 60 * 1000)
+          .catch((err) => log.debug(`curiosity research tick failed: ${String(err)}`));
         // 4. Governance: enforce TTL lifespan policies
         this.governance?.enforceLifespan();
         // 5. Task memory: mark stalled goals
@@ -3139,6 +3160,191 @@ export class MemoryIndexManager implements MemorySearchManager {
     });
   }
 
+  // ── PLAN-54: the curiosity loop ─────────────────────────────────────────
+
+  private curiosityEmbed(): (text: string) => Promise<number[] | null> {
+    return async (text) => {
+      try {
+        return (await this.embedQueryWithTimeout(text, USAGE_FEATURES.memoryCuriosity)) as number[];
+      } catch {
+        return null;
+      }
+    };
+  }
+
+  private curiosityResearchConfig() {
+    return resolveCuriosityResearchConfig(
+      this.cfg.memory?.curiosity?.research,
+      this.cfg.memory?.curiosity?.autoResearch?.enabled,
+    );
+  }
+
+  /** Queue the `## Curiosity Gaps` bullets of a fresh MEMORY.md as questions. */
+  async ingestCuriosityGaps(memoryMd: string): Promise<number> {
+    if (this.cfg.memory?.curiosity?.enabled === false) {
+      return 0;
+    }
+    const questions = parseCuriosityGaps(memoryMd);
+    if (questions.length === 0) {
+      return 0;
+    }
+    const ids = await insertNovelTargets(this.db, {
+      targets: questions.map((q) => ({
+        type: "question" as const,
+        description: q,
+        priority: 0.75,
+        metadata: { source: "working_memory" },
+      })),
+      embed: this.curiosityEmbed(),
+    });
+    if (ids.length > 0) {
+      log.info(`curiosity: ${ids.length} new question(s) from working memory`);
+    }
+    return ids.length;
+  }
+
+  /** One target per search query that kept scoring poorly (the owner asked; memory had nothing). */
+  private async ingestKnowledgeGapTargets(): Promise<number> {
+    const threshold = this.cfg.memory?.curiosity?.gapScoreThreshold ?? 0.5;
+    let rows: Array<{ query: string; region_id: string | null; n: number }> = [];
+    try {
+      rows = this.db
+        .prepare(
+          `SELECT query, region_id, COUNT(*) AS n FROM curiosity_queries
+            WHERE top_score < ? AND length(query) >= 12
+            GROUP BY query ORDER BY n DESC, MAX(timestamp) DESC LIMIT 5`,
+        )
+        .all(threshold) as unknown as typeof rows;
+    } catch {
+      return 0;
+    }
+    if (rows.length === 0) {
+      return 0;
+    }
+    const ids = await insertNovelTargets(this.db, {
+      targets: rows.map((r) => ({
+        type: "knowledge_gap" as const,
+        description: r.query,
+        priority: Math.min(0.9, 0.55 + 0.1 * Math.log1p(r.n)),
+        regionId: r.region_id,
+        metadata: { source: "weak_search", queryCount: r.n },
+      })),
+      embed: this.curiosityEmbed(),
+    });
+    return ids.length;
+  }
+
+  private async curiosityResearchTick(
+    opts: { force?: boolean } = {},
+  ): Promise<import("./curiosity-researcher.js").CuriosityRunSummary> {
+    const { runCuriosityResearch } = await import("./curiosity-researcher.js");
+    const { runConfiguredWebSearch, isWebSearchConfigured } =
+      await import("../agents/tools/web-search.js");
+    const { fetchReadablePage } = await import("./curiosity-fetch.js");
+    await this.ingestKnowledgeGapTargets();
+    const cfg = this.curiosityResearchConfig();
+    const modelSpec = this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec();
+    const llm = modelSpec ? this.buildCostedLlmCall(modelSpec) : null;
+    if (!llm) {
+      return { ran: false, reason: "no model", attempted: 0, learned: 0, outcomes: {}, costUsd: 0 };
+    }
+    const localSpec = this.cfg.memory?.dream?.modelTiers?.localModel;
+    const llmLocal =
+      localSpec && isLocalModelSpec(localSpec) ? this.buildCostedLlmCall(localSpec) : null;
+    const searchConfigured = isWebSearchConfigured(this.cfg);
+    const summary = await runCuriosityResearch(
+      {
+        db: this.db,
+        config: cfg,
+        search: searchConfigured ? (q, n) => runConfiguredWebSearch(this.cfg, q, n) : null,
+        fetchPage: fetchReadablePage,
+        llm,
+        llmLocal,
+        embed: this.curiosityEmbed(),
+        hormonal: () => this.hormonalManager?.getState() ?? null,
+        onEvent: (event) => this.hormonalManager?.stimulate(event),
+        ownerNames: [this.resolveUserName() ?? ""].filter((n) => n.length > 0),
+        searchProvider: String(this.cfg.tools?.web?.search?.provider ?? "web-search"),
+      },
+      opts,
+    );
+    if (summary.ran) {
+      log.info(
+        `curiosity research: attempted ${summary.attempted}, learned ${summary.learned}` +
+          (summary.costUsd > 0 ? ` ($${summary.costUsd.toFixed(4)})` : ""),
+      );
+    }
+    return summary;
+  }
+
+  /** Like buildLlmCallFn, but the ledger cost rides back so a finding can carry it. */
+  private buildCostedLlmCall(
+    modelSpec: string,
+  ): ((prompt: string) => Promise<{ text: string; costUsd: number }>) | null {
+    const parts = modelSpec.split("/");
+    if (parts.length < 2) {
+      return null;
+    }
+    const provider = parts[0]!;
+    const modelId = parts.slice(1).join("/");
+    const agentDir = resolveAgentDir(this.cfg, this.agentId);
+    return async (prompt) => {
+      const { completeAttributed } = await import("../agents/complete-attributed.js");
+      const { text, costUsd } = await completeAttributed({
+        provider,
+        modelId,
+        cfg: this.cfg,
+        agentDir,
+        prompt,
+        maxTokens: 1024,
+        feature: USAGE_FEATURES.memoryCuriosity,
+        agentId: this.agentId,
+        errorPrefix: `curiosity llm error (${modelSpec})`,
+        batch: false,
+      });
+      return { text, costUsd };
+    };
+  }
+
+  async curiosityStatus() {
+    const { curiosityStatus } = await import("./curiosity-researcher.js");
+    const { isWebSearchConfigured } = await import("../agents/tools/web-search.js");
+    return curiosityStatus(this.db, this.curiosityResearchConfig(), {
+      searchConfigured: isWebSearchConfigured(this.cfg),
+      hormonal: this.hormonalManager?.getState() ?? null,
+    });
+  }
+
+  async curiosityList(limit?: number) {
+    const { listCuriosity } = await import("./curiosity-researcher.js");
+    return listCuriosity(this.db, { limit });
+  }
+
+  async curiosityPause(paused: boolean): Promise<void> {
+    const { setCuriosityPaused } = await import("./curiosity-researcher.js");
+    setCuriosityPaused(this.db, paused);
+    log.info(`curiosity research ${paused ? "paused" : "resumed"} by the owner`);
+  }
+
+  async curiosityDismiss(id: string): Promise<boolean> {
+    const { dismissCuriosityTarget } = await import("./curiosity-researcher.js");
+    return dismissCuriosityTarget(this.db, id);
+  }
+
+  async curiosityAsk(question: string): Promise<string | null> {
+    const { askCuriosity } = await import("./curiosity-researcher.js");
+    return askCuriosity(this.db, question, this.curiosityEmbed());
+  }
+
+  /** Owner-triggered pass: ignores the interval, honors pause and the daily budget. */
+  async curiosityRunNow() {
+    return this.maintenanceMutex.run(
+      "curiosity",
+      () => this.curiosityResearchTick({ force: true }),
+      10 * 60 * 1000,
+    );
+  }
+
   /** PLAN-53 G4: tell the owner what the agent dreamed and learned today. */
   async sendDreamBrief(opts: { force?: boolean } = {}): Promise<string | null> {
     if (this.cfg.memory?.dreamBrief?.enabled === false && !opts.force) {
@@ -3677,36 +3883,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
     }
 
-    // Create curiosity targets from emerging skill patterns to deepen weak skills
-    if (this.curiosityEngine) {
-      try {
-        const emergingSkills = this.getEmergingSkillsForSynthesis();
-        for (const skill of emergingSkills) {
-          if (skill.confidence > 0.6 && skill.occurrences < 5) {
-            const now = Date.now();
-            this.db
-              .prepare(
-                `INSERT OR IGNORE INTO curiosity_targets
-                 (id, type, description, priority, region_id, metadata, created_at, resolved_at, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              )
-              .run(
-                crypto.randomUUID(),
-                "frontier",
-                `Deepen emerging skill: ${skill.pattern}`,
-                Math.min(1, skill.confidence * 0.8),
-                null,
-                JSON.stringify({ source: "emerging_skill", occurrences: skill.occurrences }),
-                now,
-                null,
-                now + 48 * 60 * 60 * 1000,
-              );
-          }
-        }
-      } catch (err) {
-        log.debug(`emerging skill curiosity targets failed: ${String(err)}`);
-      }
-    }
+    // PLAN-54: the "deepen emerging skill" frontier generator was deleted.
+    // It mistook handover briefs and READMEs for skills and produced 16 of
+    // the 18 open targets on the reference node, none researchable.
 
     // Experience signal collection: package dream cycle data into training signals
     if (stats && this.experienceCollector) {
@@ -4670,6 +4849,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     });
 
     await fs.writeFile(memoryMdPath, finalContent, "utf-8");
+    // PLAN-54: the Curiosity Gaps the rewrite just wrote are the best
+    // questions the agent has; queue the new ones for research.
+    void this.ingestCuriosityGaps(finalContent).catch((err) =>
+      log.debug(`curiosity gap ingest failed: ${String(err)}`),
+    );
     if (hasUserContent) {
       log.info(
         "RLM: first synthesis — appended dream-generated section below existing MEMORY.md content",

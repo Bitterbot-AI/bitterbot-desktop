@@ -72,8 +72,12 @@ open an issue.
   back with it (your version is kept under `~/.bitterbot/genome-guard/`);
   save through the Control UI, or while the agent is idle.
 - Several dream modes are off until a node has enough data to feed them, and
-  the mode that explores curiosity targets on its own is opt-in. See the
-  table in the [README](README.md#the-dream-engine).
+  the internal exploration mode is opt-in. Curiosity research (the agent
+  looking up its own questions on the web) is on by default when a web search
+  provider is configured; it never asks first, and the Curiosity page is where
+  you see what it did and pause it. Only a topic phrase leaves the node, never
+  the question, but a search provider still sees that phrase. See the table in
+  the [README](README.md#the-dream-engine).
 
 ## Execution and isolation
 

@@ -58,7 +58,12 @@ export const FIELD_HELP: Record<string, string> = {
   "memory.architectEvolution.enabled":
     "Learn extraction rules from failures and inject them into future extractions (HORMA). Experimental.",
   "memory.curiosity.autoResearch.enabled":
-    "Allow dream-cycle research to egress depersonalized queries for curiosity gaps. Requires a local depersonalization model; off by default.",
+    "Legacy switch. Setting it to false also turns off memory.curiosity.research.",
+  "memory.curiosity.research.enabled":
+    "Let the agent research its own open questions on a schedule: the question is rewritten as a generic topic phrase (checked for names and fragments) before anything leaves the node, then searched, read, and remembered with sources. Everything it does is on the Curiosity page, where it can be paused. Default on when web search is configured.",
+  "memory.curiosity.research.maxPerDay":
+    "How many questions the agent may research per day (default 6). Dopamine adds up to 2, cortisol removes up to 2.",
+  "memory.curiosity.research.intervalMinutes": "Minutes between research passes (default 240).",
   "tools.wallet.enabled":
     "Expose the USDC wallet tool to the agent (x402 payments, transfers). Off by default; requires CDP credentials to transact.",
   "models.liveDiscovery.enabled":

@@ -680,8 +680,11 @@ export function formatProactiveFacts(
       }
       continue;
     }
+    // PLAN-54: a fact the agent went and learned on its own is said so. The
+    // owner never told it this; it may be worth saying where it came from.
+    const learned = f.origin === "curiosity" ? "(learned on my own) " : "";
     const prefix = f.confidence < 0.4 ? "(uncertain) " : "";
-    lines.push(`- ${prefix}${f.text}`);
+    lines.push(`- ${learned}${prefix}${f.text}`);
   }
   const header = anyDream
     ? "What you already know (act on this naturally, never announce it). Items marked as hypotheses may be shared as hunches, not facts:"

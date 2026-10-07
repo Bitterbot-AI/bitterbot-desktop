@@ -12,6 +12,7 @@ import { circlesHandlers } from "./server-methods/circles.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
+import { curiosityHandlers } from "./server-methods/curiosity.js";
 import { deviceHandlers } from "./server-methods/devices.js";
 import { doctorHandlers } from "./server-methods/doctor.js";
 import { dreamHandlers } from "./server-methods/dream.js";
@@ -378,6 +379,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...workspaceHandlers,
   ...dreamHandlers,
   ...memoryHandlers,
+  ...curiosityHandlers,
   ...circlesHandlers,
   ...forageHandlers,
   ...spendGrantHandlers,
