@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   cosineSimilarity,
   insertNovelTargets,
+  looksLikeOwnerQuestion,
   parseCuriosityGaps,
   researchableTargets,
 } from "./curiosity-gaps.js";
@@ -154,16 +155,39 @@ describe("abstraction keeps private context on the node", () => {
     expect(phraseLeaks(q, "contact me@example.com", [])).toBe(true);
   });
 
-  it("catches lowercase fragments, short names and non-ASCII names the fold would erase", () => {
+  it("catches copied fragments, known names, and non-ASCII names, but lets one topical bigram through", () => {
     const q = "when is lena's birthday and what should i get her";
-    expect(phraseLeaks(q, "lena birthday gift ideas")).toBe(true); // shared bigram, lowercase
+    expect(phraseLeaks(q, "lena birthday gift ideas", ["Lena"])).toBe(true); // a known name
     expect(phraseLeaks(q, "birthday gift ideas for a friend")).toBe(false);
     expect(phraseLeaks("where does Bo live now", "bo relocation", ["Bo"])).toBe(true); // 2-letter name
     expect(phraseLeaks("did 李雷 finish the report", "report deadline 李雷")).toBe(true); // non-ASCII token
-    expect(phraseLeaks("what is the best way to learn piano", "learn piano fast")).toBe(true);
+    expect(phraseLeaks("how is the weather in the city", "weather in the city")).toBe(true); // 3 shared bigrams
+    // The subject must survive abstraction: one shared bigram is a topic, not a leak.
     expect(
-      phraseLeaks("what is the best way to learn piano", "beginner piano practice methods"),
+      phraseLeaks("what is the libp2p public network node count", "libp2p node count measurement"),
     ).toBe(false);
+    expect(
+      phraseLeaks(
+        "what is the libp2p public network node count",
+        "libp2p public network node count",
+      ),
+    ).toBe(true);
+  });
+
+  it("parses JSON inside code fences and ignores trailing remarks", () => {
+    const d = parseDistilled(
+      'Here you go:\n```json\n{"answer":"A","confidence":0.7,"supporting_sources":[1]}\n```\nHope that helps.',
+    );
+    expect(d).toEqual({ answer: "A", confidence: 0.7, supportingSources: [1] });
+  });
+
+  it("only owner-shaped questions become weak-search targets", () => {
+    expect(looksLikeOwnerQuestion("Who and what is associated with Aubaine?")).toBe(true);
+    expect(looksLikeOwnerQuestion("how do I rotate the relay signing key")).toBe(true);
+    expect(looksLikeOwnerQuestion("recent goals tasks projects")).toBe(false);
+    expect(looksLikeOwnerQuestion("technical patterns skills workflows")).toBe(false);
+    expect(looksLikeOwnerQuestion('FINAL the value of get("scope_bridge")')).toBe(false);
+    expect(looksLikeOwnerQuestion("Victor profile preferences work identity")).toBe(false);
   });
 
   it("abstractQuestion returns null when the model leaks", async () => {

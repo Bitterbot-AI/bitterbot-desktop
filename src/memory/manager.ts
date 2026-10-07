@@ -25,7 +25,11 @@ import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
-import { insertNovelTargets, parseCuriosityGaps } from "./curiosity-gaps.js";
+import {
+  insertNovelTargets,
+  looksLikeOwnerQuestion,
+  parseCuriosityGaps,
+} from "./curiosity-gaps.js";
 import { resolveCuriosityResearchConfig } from "./curiosity-researcher.js";
 import type { CuriosityState } from "./curiosity-types.js";
 import { recordCuriosityUse } from "./curiosity-use.js";
@@ -3222,6 +3226,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch {
       return 0;
     }
+    // curiosity_queries records EVERY search, including the dream engine's and
+    // the working-memory synthesis's own probes ("recent goals tasks
+    // projects"). Only something shaped like a question a person asked is a
+    // gap worth researching.
+    rows = rows.filter((r) => looksLikeOwnerQuestion(r.query));
     if (rows.length === 0) {
       return 0;
     }
@@ -3289,7 +3298,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         embed: this.curiosityEmbed(),
         hormonal: () => this.hormonalManager?.getState() ?? null,
         onEvent: (event) => this.hormonalManager?.stimulate(event),
-        ownerNames: [this.resolveUserName() ?? ""].filter((n) => n.length > 0),
+        ownerNames: this.curiosityOwnerNames(),
         searchProvider: String(this.cfg.tools?.web?.search?.provider ?? "web-search"),
       },
       opts,
@@ -3301,6 +3310,36 @@ export class MemoryIndexManager implements MemorySearchManager {
       );
     }
     return summary;
+  }
+
+  /**
+   * Names that must never appear in an outgoing search phrase: the owner, and
+   * every person the knowledge graph knows (owners type their friends' names
+   * in lowercase, which the entity-case check cannot see).
+   */
+  private curiosityOwnerNames(): string[] {
+    const names = new Set<string>();
+    const me = this.resolveUserName();
+    if (me) {
+      names.add(me);
+    }
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT name FROM entities
+            WHERE lower(entity_type) IN ('person', 'people', 'human', 'contact', 'friend', 'family', 'organization')
+            LIMIT 500`,
+        )
+        .all() as unknown as Array<{ name: string }>;
+      for (const r of rows) {
+        if (typeof r.name === "string" && r.name.trim().length >= 2) {
+          names.add(r.name.trim());
+        }
+      }
+    } catch {
+      // no knowledge graph on this node
+    }
+    return [...names];
   }
 
   /** Like buildLlmCallFn, but the ledger cost rides back so a finding can carry it. */
