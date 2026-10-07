@@ -2467,10 +2467,12 @@ const MIGRATIONS: Migration[] = [
       "lifecycle_state 'forgotten', and a NULL in either column is filled from the other " +
       "so single-column reads no longer drop rows under three-valued logic.",
     up: (db: DatabaseSync) => {
-      const cols = (db.prepare(`PRAGMA table_info(chunks)`).all() as Array<{ name: string }>).map(
-        (r) => r.name,
+      const cols = new Set(
+        (db.prepare(`PRAGMA table_info(chunks)`).all() as Array<{ name: string }>).map(
+          (r) => r.name,
+        ),
       );
-      if (!cols.includes("lifecycle") || !cols.includes("lifecycle_state")) {
+      if (!cols.has("lifecycle") || !cols.has("lifecycle_state")) {
         return;
       }
       db.exec(
