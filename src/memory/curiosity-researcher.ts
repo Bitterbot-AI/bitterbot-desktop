@@ -192,20 +192,27 @@ export function phraseLeaks(question: string, phrase: string, ownerNames: string
   }
   const qTokens = tokensOf(question);
   const pTokens = tokensOf(phrase);
-  // Any two consecutive words copied from the question (not both stopwords)
-  // is a fragment, whatever its case: "lena birthday" from "when is lena's
-  // birthday". containsSourceLeak only catches capitalized entities and
-  // 3-grams; owners type their questions in lowercase.
+  // Consecutive words copied from the question (not both stopwords) are a
+  // fragment whatever their case: containsSourceLeak only catches
+  // capitalized entities and 3-grams, and owners type in lowercase. Names
+  // of people the owner knows arrive via ownerNames (knowledge graph).
   const qBigrams = new Set<string>();
   for (let i = 0; i + 1 < qTokens.length; i += 1) {
     if (!(STOPWORDS.has(qTokens[i]!) && STOPWORDS.has(qTokens[i + 1]!))) {
       qBigrams.add(`${qTokens[i]} ${qTokens[i + 1]}`);
     }
   }
+  // One shared topical bigram ("node count") is how a subject survives; two
+  // distinct ones is copying.
+  const shared = new Set<string>();
   for (let i = 0; i + 1 < pTokens.length; i += 1) {
-    if (qBigrams.has(`${pTokens[i]} ${pTokens[i + 1]}`)) {
-      return true;
+    const bg = `${pTokens[i]} ${pTokens[i + 1]}`;
+    if (qBigrams.has(bg)) {
+      shared.add(bg);
     }
+  }
+  if (shared.size >= 2) {
+    return true;
   }
   // A non-ASCII token copied from the question (names the ASCII fold erases).
   const qNonAscii = new Set(qTokens.filter((t) => /\P{ASCII}/u.test(t)));
@@ -230,10 +237,13 @@ export function phraseLeaks(question: string, phrase: string, ownerNames: string
 
 function abstractionPrompt(question: string): string {
   return (
-    "Rewrite the private note below as a short, generic web-search phrase of 3 to 10 words " +
-    "about its underlying topic. Output ONLY the phrase. Never include names of people, " +
-    "companies or products the note mentions, numbers, dates, email addresses, URLs, or any " +
-    "quoted fragment of the note. Prefer the general subject someone else could also search.\n\n" +
+    "Rewrite the private note below as a web-search phrase of 3 to 10 words that would find " +
+    "the answer. KEEP the public subject of the question: names of widely known technologies, " +
+    "software, standards, places, public organizations and public figures (e.g. libp2p, " +
+    "Postgres, the EU, Linus Torvalds) are fine and usually necessary. REMOVE everything " +
+    "specific to the author: people they know, their employer, clients, partners, project " +
+    "names, numbers, dates, prices, email addresses, URLs, and any quoted fragment of the note. " +
+    "Output ONLY the phrase.\n\n" +
     `Note: ${question}`
   );
 }
@@ -278,11 +288,27 @@ function distillPrompt(question: string, pages: Array<{ url: string; text: strin
 }
 
 export function parseDistilled(text: string): Distilled | null {
-  const match = text.match(/\{[\s\S]*\}\s*$/);
-  const candidates = match ? [match[0]] : [];
-  const firstBrace = text.indexOf("{");
+  // Models wrap JSON in ``` fences or add a closing remark; take the last
+  // balanced object, then fall back to everything from the first brace.
+  const cleaned = text.replace(/```[a-z]*\n?/gi, "").trim();
+  const candidates: string[] = [];
+  const lastClose = cleaned.lastIndexOf("}");
+  if (lastClose >= 0) {
+    let depth = 0;
+    for (let i = lastClose; i >= 0; i -= 1) {
+      if (cleaned[i] === "}") depth += 1;
+      else if (cleaned[i] === "{") {
+        depth -= 1;
+        if (depth === 0) {
+          candidates.push(cleaned.slice(i, lastClose + 1));
+          break;
+        }
+      }
+    }
+  }
+  const firstBrace = cleaned.indexOf("{");
   if (firstBrace >= 0) {
-    candidates.push(text.slice(firstBrace));
+    candidates.push(cleaned.slice(firstBrace));
   }
   for (const c of candidates) {
     try {

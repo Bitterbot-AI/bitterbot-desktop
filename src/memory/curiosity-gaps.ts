@@ -238,3 +238,46 @@ export function researchableTargets(
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, params.limit).map((s) => s.target);
 }
+
+/**
+ * PLAN-54: a weak search query is a curiosity target only when a person could
+ * have asked it: a question word or a trailing "?", at least four words, and
+ * none of the internal probe shapes (code fragments, bare keyword lists).
+ */
+export function looksLikeOwnerQuestion(query: string): boolean {
+  const q = query.trim();
+  if (q.length < 12 || q.length > 300 || /[{}()[\]<>=;`]/.test(q)) {
+    return false;
+  }
+  const words = q.split(/\s+/);
+  if (words.length < 4) {
+    return false;
+  }
+  const first = words[0]!.toLowerCase().replace(/[^a-z']/g, "");
+  const QUESTION_WORDS = new Set([
+    "who",
+    "what",
+    "when",
+    "where",
+    "why",
+    "how",
+    "which",
+    "whose",
+    "should",
+    "could",
+    "would",
+    "will",
+    "can",
+    "does",
+    "do",
+    "did",
+    "is",
+    "are",
+    "was",
+    "were",
+    "has",
+    "have",
+    "any",
+  ]);
+  return q.endsWith("?") || QUESTION_WORDS.has(first);
+}
