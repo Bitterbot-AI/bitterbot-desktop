@@ -1,6 +1,6 @@
 # Curiosity & Search — Curiosity Engine and Retrieval System
 
-The curiosity engine identifies knowledge gaps by tracking what the system knows (knowledge regions), what surprises it (novelty assessment), and what the user searches for but can't find (gap detection). It feeds exploration targets into the dream engine's exploration mode and receives dream insights back, forming a continuous curiosity-dream feedback loop. Since PLAN-34 Phase 2, exploration attempts real external research on `knowledge_gap`, `market_demand`, and `frontier` targets (via Skill-Seekers) and stamps each target with an outcome code (`no_url` | `domain_blocked` | `irrelevant` | `resolved`); targets resolve only when the research product is embedding-relevant to them, so "explored" can never silently masquerade as "answered". The search system combines BM25 keyword matching with multi-perspective vector search for robust retrieval.
+The curiosity engine identifies knowledge gaps by tracking what the system knows (knowledge regions), what surprises it (novelty assessment), and what the user searches for but can't find (gap detection). Since PLAN-54 (2026-10-07) the loop is closed: open questions are researched on the web on a schedule, verified against at least two sources, stored with provenance, surfaced in conversation marked "learned on my own", and counted when a conversation uses them, so the agent learns where learning pays off. The search system combines BM25 keyword matching with multi-perspective vector search for robust retrieval.
 
 **Key source files:** `curiosity-engine.ts`, `curiosity-types.ts`, `gccrf-reward.ts`, `mem-store.ts`, `user-model.ts`, `task-memory.ts`
 
@@ -66,13 +66,17 @@ The GCCRF reward is written directly to `chunks.curiosity_reward`. The system al
 
 The engine detects knowledge gaps from two signals:
 
-1. **Low-score searches** — When a search query returns results below `gapScoreThreshold` (default 0.4), a `knowledge_gap` exploration target is generated
-2. **Search prediction error** — `recordSearchSurprise()` tracks the gap between expected and actual search scores. Large surprises (> 0.4) trigger new `knowledge_gap` targets
+1. **Low-score searches** — A query that returns results below `gapScoreThreshold` (default 0.5) becomes its own `knowledge_gap` target (one per query, embedding-deduped against everything open or answered in the last 30 days).
+2. **Working-memory questions** — The `## Curiosity Gaps` bullets the dream rewrite writes into `MEMORY.md` become `question` targets after every rewrite. These are the best questions the agent has: grounded in the owner's actual life and work.
+3. **Owner questions** — `curiosity.ask` (the Curiosity page) queues a question at top priority.
+
+The former "emerging skill" frontier generator was deleted: it mistook handover briefs and READMEs for skills.
 
 ### Exploration Targets
 
 ```typescript
 type ExplorationTargetType =
+  | "question" // A question the agent wants answered (working memory, owner)
   | "knowledge_gap" // Missing knowledge detected from search
   | "contradiction" // Conflicting information found
   | "stale_region" // Region with declining learning progress
@@ -87,11 +91,28 @@ type ExplorationTarget = {
   metadata: Record<string, unknown>;
   createdAt: number;
   resolvedAt: number | null;
-  expiresAt: number; // Default TTL: 7 days
+  expiresAt: number; // 48h for engine targets, 14 days for questions
+  attempts: number; // research attempts (closed as unanswered after 2)
+  embeddingJson: string | null; // for dedupe
 };
 ```
 
 Maximum active targets: 10 (configurable). Expired targets are cleaned up during `run()`.
+
+### The research loop (PLAN-54)
+
+`src/memory/curiosity-researcher.ts`, on the maintenance tick, every `intervalMinutes` (240):
+
+1. Pick up to 3 researchable targets (`question`, or `metadata.researchable = 1`), ranked by priority plus 0.25 × the region's curiosity ROI, minus 0.1 per prior attempt.
+2. Skip sensitive topics on the node (`isSensitiveTopic`). Rewrite the question as a generic topic phrase with the agent's own model (a genuinely local model when configured); reject the phrase if it contains an email, a URL, any 3-token fragment of the question, or the owner's name. A rejected phrase is never sent.
+3. Search (`runConfiguredWebSearch`, one retry with "explained"), fetch up to `maxPagesPerTarget` (3) pages from distinct hosts through the SSRF guard, log every egress to `research_egress_log`.
+4. Distill a ≤120-word answer with `confidence` and `supporting_sources`. Verified when confidence ≥ `minConfidence` (0.55) and two sources support it, or one does at confidence ≥ floor + 0.2.
+5. Store: a `world_fact` chunk (`origin = curiosity`, `path = curiosity/<target>`, evidence URLs, `valid_time_start`), a `curiosity_findings` row (question, phrase, answer, confidence, sources, hormonal state, cost, chunk), and a `research_findings` line the system prompt voices once. An earlier answer to the same target gets `valid_time_end` and is archived, never deleted. The target resolves with `researchOutcome = learned`; a dopamine `curiosity_progress` event fires.
+6. Otherwise the outcome is `inconclusive` (retry later) or, on the last attempt, `unanswered`.
+
+Budget: `maxPerDay` (6) questions per UTC day, +2 when dopamine > 0.65, −2 when cortisol > 0.65 (cortisol also raises the confidence floor by 0.1). Pause state lives in `memory_meta`.
+
+Use ledger (`src/memory/curiosity-use.ts`): memory search and proactive recall call `recordCuriosityUse` for any self-learned chunk they return; `curiosityRoiByRegion` feeds step 1. RPCs: `curiosity.status`, `curiosity.list`, `curiosity.pause`, `curiosity.resume`, `curiosity.dismiss`, `curiosity.ask`, `curiosity.runNow`.
 
 ### Bounty System (Phase 3)
 
@@ -169,7 +190,7 @@ flowchart LR
 
 ### Curiosity -> Dream
 
-1. **Target feeding** — The dream engine's exploration mode loads unresolved `knowledge_gap` targets and generates content to fill them
+1. **Target feeding** — The dream engine's exploration mode (off by default, no web) reflects on unresolved targets; the research loop above is what actually answers them
 2. **Weight adjustment** — `getDreamModeWeightAdjustments()` shifts dream mode selection based on curiosity state:
    - Many knowledge gaps -> boost `exploration` mode weight
    - Many contradictions -> boost `simulation` mode weight
@@ -308,9 +329,19 @@ type CuriosityConfig = {
   boostMultiplier?: number; // Default: 1.3
   maxRegions?: number; // Default: 50
   maxTargets?: number; // Default: 10
-  targetTtlHours?: number; // Default: 168 (7 days)
+  targetTtlHours?: number; // Default: 48
   maxQueryHistory?: number; // Default: 200
-  gapScoreThreshold?: number; // Default: 0.4
+  gapScoreThreshold?: number; // Default: 0.5
+  research?: {
+    enabled?: boolean; // Default: true (legacy autoResearch.enabled=false also disables)
+    intervalMinutes?: number; // Default: 240
+    maxPerDay?: number; // Default: 6
+    maxSearchesPerTarget?: number; // Default: 2
+    maxPagesPerTarget?: number; // Default: 3
+    minConfidence?: number; // Default: 0.55
+    blockedDomains?: string[]; // Default: []
+    maxAttempts?: number; // Default: 2
+  };
 };
 
 // Default weights

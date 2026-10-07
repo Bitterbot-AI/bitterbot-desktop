@@ -87,4 +87,33 @@ describe("buildDreamBrief", () => {
     expect(text).toContain("- Now: Lives in Austin");
     expect(text).toContain("- No longer: Lives in Denver");
   });
+
+  it("tells the owner what the agent went and learned on its own, and what it still wonders (PLAN-54)", () => {
+    db.prepare(
+      `INSERT INTO curiosity_findings (id, target_id, question, query_phrase, answer, confidence,
+         sources_json, created_at)
+       VALUES ('f1', 't1', 'How do relays cap reservations?', 'relay reservation limits',
+         'Per peer, with a fixed quota.', 0.8, '[{"url":"https://docs.libp2p.io/x"}]', ?)`,
+    ).run(now - 1000);
+    db.prepare(
+      `INSERT INTO curiosity_targets (id, type, description, priority, metadata, created_at, expires_at)
+       VALUES ('t2', 'question', 'What is the APIMart review process?', 0.7,
+         '{"source":"working_memory"}', ?, ?)`,
+    ).run(now, now + DAY);
+    const brief = buildDreamBrief(db, since);
+    expect(brief.learned).toEqual([
+      {
+        question: "How do relays cap reservations?",
+        answer: "Per peer, with a fixed quota.",
+        host: "docs.libp2p.io",
+      },
+    ]);
+    expect(brief.wondering).toEqual(["What is the APIMart review process?"]);
+    expect(briefIsWorthSending(brief)).toBe(true);
+    const text = renderDreamBrief(brief);
+    expect(text).toContain("What I went and learned on my own:");
+    expect(text).toContain("(docs.libp2p.io)");
+    expect(text).toContain("Still wondering about:");
+    expect(text).toContain("Curiosity page");
+  });
 });

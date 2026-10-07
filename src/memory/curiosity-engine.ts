@@ -73,17 +73,6 @@ type RegionRow = {
   last_updated_at: number;
 };
 
-type QueryRow = {
-  id: string;
-  query: string;
-  query_embedding: string;
-  result_count: number;
-  top_score: number;
-  mean_score: number;
-  region_id: string | null;
-  timestamp: number;
-};
-
 /**
  * Deterministic region id from a region label (audit 2026-08-09, F8). Regions
  * MUST keep a stable identity across rebuildRegions cycles — random UUIDs
@@ -1389,26 +1378,10 @@ export class CuriosityEngine {
       metadata: Record<string, unknown>;
     }> = [];
 
-    // 1. Knowledge gaps: low-score queries
-    if (!existingTypes.has("knowledge_gap")) {
-      const lowScoreQueries = this.db
-        .prepare(
-          `SELECT query, top_score, mean_score, region_id FROM curiosity_queries
-           WHERE top_score < ? ORDER BY timestamp DESC LIMIT 20`,
-        )
-        .all(this.config.gapScoreThreshold) as QueryRow[];
-
-      if (lowScoreQueries.length >= 3) {
-        const queries = lowScoreQueries.slice(0, 5).map((q) => q.query);
-        targets.push({
-          type: "knowledge_gap",
-          description: `Knowledge gap detected: queries yielding poor results: ${queries.join("; ")}`,
-          priority: 0.7,
-          regionId: lowScoreQueries[0]?.region_id ?? null,
-          metadata: { queryCount: lowScoreQueries.length, sampleQueries: queries },
-        });
-      }
-    }
+    // 1. Knowledge gaps: PLAN-54 moved these to the manager, which makes ONE
+    //    target per weak query (embedding-deduped) instead of a lumped
+    //    "queries yielding poor results: a; b; c" row that re-created itself
+    //    daily and could never be researched.
 
     // 2. Stale regions: low learning progress
     if (!existingTypes.has("stale_region")) {

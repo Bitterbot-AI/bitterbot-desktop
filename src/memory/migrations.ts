@@ -2496,6 +2496,50 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 73,
+    description:
+      "PLAN-54 curiosity loop (2026-10-07). curiosity_findings holds what the agent went and " +
+      "learned on its own: the question, the depersonalized query that left the node, the " +
+      "cited answer, confidence, hormonal state at acquisition, cost, the chunk it became, and " +
+      "whether a conversation ever used it. curiosity_targets gains an attempt counter and an " +
+      "embedding for dedupe, so the same question is never asked twice.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS curiosity_findings (
+          id            TEXT PRIMARY KEY,
+          target_id     TEXT NOT NULL,
+          question      TEXT NOT NULL,
+          query_phrase  TEXT NOT NULL,
+          answer        TEXT NOT NULL,
+          confidence    REAL NOT NULL,
+          sources_json  TEXT NOT NULL DEFAULT '[]',
+          hormonal_json TEXT,
+          cost_usd      REAL NOT NULL DEFAULT 0,
+          chunk_id      TEXT,
+          region_id     TEXT,
+          created_at    INTEGER NOT NULL,
+          first_used_at INTEGER,
+          used_count    INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_curiosity_findings_chunk ON curiosity_findings (chunk_id);
+        CREATE INDEX IF NOT EXISTS idx_curiosity_findings_created ON curiosity_findings (created_at);
+      `);
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'curiosity_targets'`)
+        .get();
+      if (has) {
+        addColumnIfMissing(db, "curiosity_targets", "attempts", "INTEGER NOT NULL DEFAULT 0");
+        addColumnIfMissing(db, "curiosity_targets", "embedding_json", "TEXT");
+        // The emerging-skill "frontier" generator is deleted in this release;
+        // its open rows were never researchable (handover briefs, READMEs).
+        db.exec(
+          `DELETE FROM curiosity_targets WHERE resolved_at IS NULL
+             AND json_extract(metadata, '$.source') = 'emerging_skill'`,
+        );
+      }
+    },
+  },
 ];
 
 /**

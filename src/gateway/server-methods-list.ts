@@ -186,6 +186,14 @@ const BASE_METHODS = [
   "memory.facts",
   "memory.retireFact",
   "memory.export",
+  // PLAN-54: the curiosity loop (visible, stoppable, never needs approval)
+  "curiosity.status",
+  "curiosity.list",
+  "curiosity.pause",
+  "curiosity.resume",
+  "curiosity.dismiss",
+  "curiosity.ask",
+  "curiosity.runNow",
   // PLAN-29 Phase 3: Forage spectator layer
   "forage.tape",
   "forage.stats",

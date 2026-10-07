@@ -42,6 +42,7 @@ The Geodesic Crystal-Field Curiosity Reward Function — a novel intrinsic motiv
 - **Frontier Exploration**: Identifies the edges of known semantic space and generates exploration targets.
 - **Emergence Events**: Detects bridge chunks that connect previously disconnected knowledge regions.
 - Translates information-theoretic concepts (geodesic distances, field potentials) from the GCCRF research paper into operations over text embeddings in SQLite with sqlite-vec.
+- **The curiosity loop** (`src/memory/curiosity-researcher.ts`, `curiosity-gaps.ts`, `curiosity-use.ts`, PLAN-54): open questions (working-memory Curiosity Gaps, weak searches, the owner) are researched on the web on a schedule with a depersonalized phrase, verified against two sources, stored with provenance and the hormonal state at acquisition, voiced once, surfaced "learned on my own", and counted when used. Per-region ROI feeds back into what gets researched next. Visible and pausable on the Curiosity page; never asks permission.
 
 ### 4. Hormonal System (`src/memory/hormonal.ts`)
 

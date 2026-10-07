@@ -201,7 +201,8 @@ On a timer (every 2 hours by default, skipped when there is nothing new to proce
 | **Anticipation**                 | Prepares grounded briefs for questions you are likely to ask next                         | on      |
 | **Relationship Mining**          | Extracts typed relationship edges (people, projects, roles) into the knowledge graph      | on      |
 | **Canonical Promotion**          | Promotes durable, repeatedly-confirmed facts into the always-injected canonical ledger    | on      |
-| **Exploration**                  | Investigates unexplored knowledge frontiers identified by the Curiosity Engine            | opt-in  |
+| **Exploration**                  | Reflects on knowledge frontiers inside its own memory (no web)                            | opt-in  |
+| **Curiosity research**           | Goes and looks up its own open questions on the web, with sources, on a schedule          | on      |
 | **Interceptor Harvest**          | Watches what fails and drafts new executable guard skills for one-click promotion         | held    |
 | **Relationship Reconsolidation** | Revisits stored relationships and repairs them as new context refines or contradicts them | held    |
 | **Harness Evolution**            | Evolves the agent's own prompt fragments and tool descriptions, behind a validation gate  | held    |

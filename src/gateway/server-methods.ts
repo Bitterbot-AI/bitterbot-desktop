@@ -12,6 +12,7 @@ import { circlesHandlers } from "./server-methods/circles.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
+import { curiosityHandlers } from "./server-methods/curiosity.js";
 import { deviceHandlers } from "./server-methods/devices.js";
 import { doctorHandlers } from "./server-methods/doctor.js";
 import { dreamHandlers } from "./server-methods/dream.js";
@@ -79,6 +80,8 @@ const PAIRING_METHODS = new Set([
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
 const READ_METHODS = new Set([
   "health",
+  "curiosity.status",
+  "curiosity.list",
   "doctor.findings",
   "logs.tail",
   "channels.status",
@@ -179,6 +182,11 @@ const READ_METHODS = new Set([
 ]);
 const WRITE_METHODS = new Set([
   "send",
+  "curiosity.pause",
+  "curiosity.resume",
+  "curiosity.dismiss",
+  "curiosity.ask",
+  "curiosity.runNow",
   "agent",
   "agent.wait",
   "wake",
@@ -378,6 +386,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...workspaceHandlers,
   ...dreamHandlers,
   ...memoryHandlers,
+  ...curiosityHandlers,
   ...circlesHandlers,
   ...forageHandlers,
   ...spendGrantHandlers,

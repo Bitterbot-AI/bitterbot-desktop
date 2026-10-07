@@ -49,6 +49,20 @@ below in one step.
 
   Your node is identified by its Ed25519 peer id.
 
+- **Curiosity research (default on when web search is configured):** on a
+  schedule (`memory.curiosity.research`, every 4 h, at most 6 questions a
+  day) the agent rewrites one of its open questions as a generic topic
+  phrase, checks the phrase for names, addresses and fragments of the
+  original (anything that fails is never sent), sends it to your configured
+  web search provider, and fetches up to 3 of the result pages with the same
+  SSRF guard as `web_fetch`. Every search and fetch is a row in
+  `research_egress_log`; the question, the phrase, the sources and the
+  answer are on the Curiosity page, where you can pause it. The agent's own
+  model writes the phrase (the party that already holds the note); a
+  genuinely local model is used instead when `memory.dream.modelTiers.localModel`
+  names one. Sensitive topics (health, finances, legal, intimate) are never
+  researched.
+
 - **Inbound:** the orchestrator also accepts libp2p connections on TCP 9100
   on all interfaces (change with `p2p.listenAddrs`).
 - **Off switch:** `p2p.enabled: false` (Settings → P2P, or decline the
