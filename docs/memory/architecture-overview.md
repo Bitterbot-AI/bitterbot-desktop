@@ -487,6 +487,14 @@ accumulating:
   negative disables). This runs right after the forget pass each consolidation
   cycle and logs `memory GC: purged N forgotten/expired chunk(s)`. Note that row
   deletion frees pages but does not shrink the file — run `VACUUM` for that.
+- **Two lifecycle columns.** `lifecycle` (generated, activated, frozen,
+  consolidated, archived, expired) is the fine-grained state machine;
+  `lifecycle_state` (active, archived, consolidated, forgotten) is the coarse
+  retrieval gate. They are not one-to-one (a merge loser is `archived` +
+  `forgotten`), so "is this chunk live?" checks both, each with its own values:
+  `liveChunkPredicate()` in `chunk-writer.ts`. `expired` derives to `forgotten`,
+  and `lifecycle-vocabulary.test.ts` fails on SQL that compares a column with the
+  other column's values.
 
 Health check from the DB directly:
 

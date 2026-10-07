@@ -215,3 +215,32 @@ describe("SkillVersionResolver.resolveConflict", () => {
     expect(result.reason).toContain("2 variants");
   });
 });
+
+// ── lifecycle filtering (Agent Memory Atlas review, 2026-09-19) ─────────────
+
+describe("SkillVersionResolver lifecycle filtering", () => {
+  it("selectBestVariant never returns an expired or forgotten variant", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(":memory:");
+    db.exec(`CREATE TABLE chunks (id TEXT, stable_skill_id TEXT, skill_version INTEGER,
+      hash TEXT, peer_origin TEXT, lineage_hash TEXT, importance_score REAL, created_at INTEGER,
+      deprecated INTEGER DEFAULT 0, lifecycle TEXT, lifecycle_state TEXT)`);
+    const ins = db.prepare(
+      `INSERT INTO chunks (id, stable_skill_id, skill_version, hash, created_at, lifecycle, lifecycle_state)
+       VALUES (?, 's1', ?, ?, 0, ?, ?)`,
+    );
+    // The expired variant is the fittest on purpose: before the fix the
+    // `lifecycle_state != 'expired'` filter matched nothing and it won.
+    ins.run("expired-v3", 3, "h3", "expired", "archived");
+    ins.run("forgotten-v2", 2, "h2", "archived", "forgotten");
+    ins.run("live-v1", 1, "h1", "frozen", "active");
+    const resolver = new SkillVersionResolver(db);
+    const fit = (id: string): FitnessInput => ({
+      executionSuccessRate: id === "live-v1" ? 0.5 : 1,
+      executionCount: 10,
+      peerTrust: 1,
+      ageMs: 0,
+    });
+    expect(resolver.selectBestVariant("s1", fit)?.crystalId).toBe("live-v1");
+  });
+});

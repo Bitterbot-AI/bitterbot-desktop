@@ -44,7 +44,23 @@ function updateFields(
 
 // ── Lifecycle (the tangled cluster the audit's C1 bug lived in) ──────────────
 
+// Two columns, two vocabularies, one concept (kept for migration history).
+// `lifecycle` is the fine-grained state machine; `lifecycle_state` is the
+// coarse retrieval gate. They are NOT a bijection (a merge loser is
+// `archived` + `forgotten`), so a read that means "is this chunk live?" must
+// check BOTH, and only with each column's own vocabulary. Use
+// liveChunkPredicate() rather than writing the check by hand: the skill
+// resolver once tested lifecycle_state for "expired", a value only `lifecycle`
+// can hold, so the filter matched nothing and returned expired skills (Agent Memory Atlas review,
+// 2026-09-19). lifecycle-vocabulary.test.ts fails on any SQL that compares a
+// column with the other column's vocabulary.
 export type LifecycleState = "active" | "archived" | "consolidated" | "forgotten";
+export const LIFECYCLE_STATE_VALUES: readonly LifecycleState[] = [
+  "active",
+  "archived",
+  "consolidated",
+  "forgotten",
+];
 export type Lifecycle =
   | "generated"
   | "activated"
@@ -52,6 +68,27 @@ export type Lifecycle =
   | "consolidated"
   | "archived"
   | "expired";
+export const LIFECYCLE_VALUES: readonly Lifecycle[] = [
+  "generated",
+  "activated",
+  "frozen",
+  "consolidated",
+  "archived",
+  "expired",
+];
+
+/**
+ * SQL condition: the chunk is live (neither forgotten nor expired). NULL in
+ * either column means "not set" and stays live; `col <> 'x'` alone would drop
+ * those rows under three-valued logic.
+ */
+export function liveChunkPredicate(alias?: string): string {
+  const a = alias ? `${alias}.` : "";
+  return (
+    `(${a}lifecycle_state IS NULL OR ${a}lifecycle_state <> 'forgotten') ` +
+    `AND (${a}lifecycle IS NULL OR ${a}lifecycle <> 'expired')`
+  );
+}
 
 /**
  * Set lifecycle. `lifecycle` and `lifecycle_state` are kept consistent: if you
@@ -73,7 +110,7 @@ export function setChunkLifecycle(
 ): number {
   const derived = opts.lifecycleState ?? deriveLifecycleState(opts.lifecycle);
   const fields: Record<string, SqlValue | undefined> = {
-    lifecycle: opts.lifecycle,
+    lifecycle: opts.lifecycle ?? deriveLifecycle(opts.lifecycleState),
     lifecycle_state: derived,
     parent_id: opts.parentId,
     hygiene_done: opts.hygieneDone === undefined ? undefined : opts.hygieneDone ? 1 : 0,
@@ -97,12 +134,35 @@ export function deriveLifecycleState(lifecycle: Lifecycle | undefined): Lifecycl
     case "consolidated":
       return "consolidated";
     case "archived":
-    case "expired":
       return "archived";
+    // Expired = scheduled for purge, which is what `forgotten` means on the
+    // coarse axis. Mapping it to `archived` (as before) made a forgotten chunk
+    // that round-tripped through `lifecycle` come back merely archived.
+    case "expired":
+      return "forgotten";
     case "generated":
     case "activated":
     case "frozen":
       return "active";
+  }
+}
+
+/**
+ * The lifecycle for a lifecycle_state, when a caller sets only the coarse
+ * state. Undefined for `active`: which active sub-state applies (generated /
+ * activated / frozen) is not derivable, so the existing value is kept.
+ */
+export function deriveLifecycle(state: LifecycleState | undefined): Lifecycle | undefined {
+  switch (state) {
+    case "forgotten":
+      return "expired";
+    case "archived":
+      return "archived";
+    case "consolidated":
+      return "consolidated";
+    case "active":
+    case undefined:
+      return undefined;
   }
 }
 

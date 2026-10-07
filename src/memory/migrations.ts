@@ -2458,6 +2458,44 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 72,
+    description:
+      "Lifecycle column repair (Agent Memory Atlas review, 2026-09-19). The coarse " +
+      "lifecycle_state used to be derived from lifecycle 'expired' as 'archived', so a " +
+      "forgotten chunk that round-tripped came back merely archived. Expired rows get " +
+      "lifecycle_state 'forgotten', and a NULL in either column is filled from the other " +
+      "so single-column reads no longer drop rows under three-valued logic.",
+    up: (db: DatabaseSync) => {
+      const cols = new Set(
+        (db.prepare(`PRAGMA table_info(chunks)`).all() as Array<{ name: string }>).map(
+          (r) => r.name,
+        ),
+      );
+      if (!cols.has("lifecycle") || !cols.has("lifecycle_state")) {
+        return;
+      }
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = 'forgotten'
+          WHERE lifecycle = 'expired' AND COALESCE(lifecycle_state, '') <> 'forgotten'`,
+      );
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = CASE lifecycle
+            WHEN 'consolidated' THEN 'consolidated'
+            WHEN 'archived' THEN 'archived'
+            ELSE 'active' END
+          WHERE lifecycle_state IS NULL AND lifecycle IS NOT NULL`,
+      );
+      db.exec(
+        `UPDATE chunks SET lifecycle = CASE lifecycle_state
+            WHEN 'forgotten' THEN 'expired'
+            WHEN 'archived' THEN 'archived'
+            WHEN 'consolidated' THEN 'consolidated'
+            ELSE 'generated' END
+          WHERE lifecycle IS NULL`,
+      );
+    },
+  },
 ];
 
 /**
