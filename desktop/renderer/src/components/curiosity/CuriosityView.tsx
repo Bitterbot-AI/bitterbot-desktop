@@ -49,6 +49,7 @@ export type CuriosityListing = {
     costUsd: number;
     chunkId: string | null;
     current: boolean;
+    verified: boolean;
   }>;
   closed: Array<{ id: string; description: string; outcome: string | null; resolvedAt: number }>;
 };
@@ -316,7 +317,7 @@ export function CuriosityView() {
               key={f.id}
               className={cn(
                 "p-3 rounded-xl border border-border/20 bg-card/60",
-                !f.current && "opacity-60",
+                (!f.current || !f.verified) && "opacity-60",
               )}
             >
               <div className="text-sm font-medium text-foreground break-words">{f.question}</div>
@@ -330,7 +331,8 @@ export function CuriosityView() {
                   {f.usedCount > 0 ? `came up ${f.usedCount}× in conversation` : "not used yet"}
                 </span>
                 {f.costUsd > 0 && <span>${f.costUsd.toFixed(3)}</span>}
-                {!f.current && <span>superseded by a newer answer</span>}
+                {!f.verified && <span>found, but not confident enough to remember</span>}
+                {f.verified && !f.current && <span>superseded by a newer answer</span>}
                 {f.sources.map((s) => (
                   <a
                     key={s.url}

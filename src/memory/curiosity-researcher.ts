@@ -646,6 +646,24 @@ async function researchOne(
     }
     if (!distilled || !findingIsVerified(distilled, floor)) {
       const last = target.attempts + 1 >= cfg.maxAttempts;
+      log.info(
+        `curiosity: "${target.description.slice(0, 60)}" ${distilled ? `confidence ${distilled.confidence.toFixed(2)}, ${distilled.supportingSources.length} supporting of ${pages.length}` : "no parseable answer"} (floor ${floor.toFixed(2)}): ${last ? "unanswered" : "inconclusive"}`,
+      );
+      // Keep what it saw, unverified: visible on the page, never in memory.
+      if (distilled && distilled.answer.length > 0) {
+        storeUnverifiedFinding(deps.db, {
+          target,
+          phrase,
+          answer: distilled.answer,
+          confidence: distilled.confidence,
+          sources: distilled.supportingSources
+            .map((n) => pages[n - 1])
+            .filter((p): p is NonNullable<typeof p> => !!p)
+            .map((p) => ({ url: p.url, title: p.title ?? null })),
+          costUsd: costSoFar(),
+          now,
+        });
+      }
       finish(last ? "unanswered" : "inconclusive", last, phrase);
       if (last) {
         deps.onEvent?.("curiosity_stagnant");
@@ -681,6 +699,41 @@ async function researchOne(
     log.info(
       `learned on my own: "${target.description.slice(0, 80)}" (confidence ${distilled.confidence.toFixed(2)}, ${sources.length} source(s), chunk ${chunkId.slice(0, 12)})`,
     );
+  }
+}
+
+/** An answer below the bar: recorded for the owner to see, not remembered. */
+function storeUnverifiedFinding(
+  db: DatabaseSync,
+  p: {
+    target: { id: string; description: string };
+    phrase: string;
+    answer: string;
+    confidence: number;
+    sources: Array<{ url: string; title: string | null }>;
+    costUsd: number;
+    now: number;
+  },
+): void {
+  try {
+    db.prepare(
+      `INSERT INTO curiosity_findings
+         (id, target_id, question, query_phrase, answer, confidence, sources_json, hormonal_json,
+          cost_usd, chunk_id, region_id, created_at, verified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, 0)`,
+    ).run(
+      crypto.randomUUID(),
+      p.target.id,
+      p.target.description,
+      p.phrase,
+      p.answer,
+      p.confidence,
+      JSON.stringify(p.sources),
+      p.costUsd,
+      p.now,
+    );
+  } catch (err) {
+    log.debug(`unverified finding insert failed: ${String(err)}`);
   }
 }
 
@@ -868,6 +921,8 @@ export type CuriosityListing = {
     costUsd: number;
     chunkId: string | null;
     current: boolean;
+    /** False: found but not confident enough to remember (not in memory). */
+    verified: boolean;
   }>;
   closed: Array<{ id: string; description: string; outcome: string | null; resolvedAt: number }>;
 };
@@ -921,6 +976,7 @@ export function listCuriosity(
         .prepare(
           `SELECT f.id, f.question, f.answer, f.confidence, f.sources_json, f.created_at,
                   f.used_count, f.first_used_at, f.cost_usd, f.chunk_id,
+                  COALESCE(f.verified, 1) AS verified,
                   (c.valid_time_end IS NULL) AS current
              FROM curiosity_findings f LEFT JOIN chunks c ON c.id = f.chunk_id
             ORDER BY f.created_at DESC LIMIT ?`,
@@ -937,6 +993,7 @@ export function listCuriosity(
         cost_usd: number;
         chunk_id: string | null;
         current: number | null;
+        verified: number;
       }>
     ).map((r) => {
       let sources: Array<{ url: string; title: string | null }> = [];
@@ -957,6 +1014,7 @@ export function listCuriosity(
         costUsd: r.cost_usd,
         chunkId: r.chunk_id,
         current: r.current !== 0,
+        verified: r.verified !== 0,
       };
     });
   } catch {

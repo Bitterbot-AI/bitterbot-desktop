@@ -108,7 +108,7 @@ Maximum active targets: 10 (configurable). Expired targets are cleaned up during
 3. Search (`runConfiguredWebSearch`, one retry with "explained"), fetch up to `maxPagesPerTarget` (3) pages from distinct hosts through the SSRF guard, log every egress to `research_egress_log`.
 4. Distill a ≤120-word answer with `confidence` and `supporting_sources`. Verified when confidence ≥ `minConfidence` (0.55) and two sources support it, or one does at confidence ≥ floor + 0.2.
 5. Store: a `world_fact` chunk (`origin = curiosity`, `path = curiosity/<target>`, evidence URLs, `valid_time_start`), a `curiosity_findings` row (question, phrase, answer, confidence, sources, hormonal state, cost, chunk), and a `research_findings` line the system prompt voices once. An earlier answer to the same target gets `valid_time_end` and is archived, never deleted. The target resolves with `researchOutcome = learned`; a dopamine `curiosity_progress` event fires.
-6. Otherwise the outcome is `inconclusive` (retry later) or, on the last attempt, `unanswered`.
+6. Otherwise the outcome is `inconclusive` (retry later) or, on the last attempt, `unanswered`. The answer it did find is kept as an unverified finding (`curiosity_findings.verified = 0`, no chunk, never voiced, excluded from utility and the brief) and shown dimmed on the Curiosity page as "found, but not confident enough to remember", so a miss is never silent.
 
 Budget: `maxPerDay` (6) questions per UTC day, +2 when dopamine > 0.65, −2 when cortisol > 0.65 (cortisol also raises the confidence floor by 0.1). Pause state lives in `memory_meta`.
 

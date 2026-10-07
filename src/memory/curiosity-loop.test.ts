@@ -308,6 +308,17 @@ describe("the loop", () => {
     expect((await runCuriosityResearch(weak)).outcomes).toEqual({ inconclusive: 1 });
     expect(listCuriosity(db, { now: NOW }).wondering[0]?.attempts).toBe(1);
     expect(curiosityUtility(db).learned).toBe(0);
+    // What it saw is kept for the owner, unverified, and never becomes memory.
+    const seen = listCuriosity(db, { now: NOW }).learned;
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ verified: false, chunkId: null, answer: "unclear" });
+    expect(
+      (
+        db.prepare(`SELECT COUNT(*) n FROM chunks WHERE origin = 'curiosity'`).get() as {
+          n: number;
+        }
+      ).n,
+    ).toBe(0);
     const second = await runCuriosityResearch({ ...weak, now: () => NOW + 2 * 3_600_000 });
     expect(second.outcomes).toEqual({ unanswered: 1 });
     expect(listCuriosity(db, { now: NOW }).closed[0]?.outcome).toBe("unanswered");

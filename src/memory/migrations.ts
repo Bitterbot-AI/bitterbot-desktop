@@ -2540,6 +2540,22 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 74,
+    description:
+      "PLAN-54 follow-up (2026-10-07): curiosity_findings.verified marks findings that cleared " +
+      "the two-source / confidence gate and became memory. An answer the agent found but was " +
+      "not confident enough to remember is kept (verified = 0, no chunk) so the Curiosity page " +
+      "can show what it saw instead of a bare 'unanswered'.",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'curiosity_findings'`)
+        .get();
+      if (has) {
+        addColumnIfMissing(db, "curiosity_findings", "verified", "INTEGER NOT NULL DEFAULT 1");
+      }
+    },
+  },
 ];
 
 /**
