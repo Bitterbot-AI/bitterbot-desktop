@@ -95,8 +95,41 @@ export function sessionSpentUsd(sessionKey: string, now = Date.now()): number {
 }
 
 function addSessionSpend(sessionKey: string, usd: number, now: number): void {
+  addSessionRow(sessionKey, { at: now, usd });
+}
+
+/**
+ * Count `usd` against the session now, while the payment is in flight, so
+ * concurrent payments in one session can't all pass the cap. Settle it at what
+ * was actually charged, or release it if nothing was.
+ */
+function holdSessionSpend(
+  sessionKey: string | undefined,
+  usd: number,
+  now: number,
+): { settle: (chargedUsd: number) => void; release: () => void } {
+  if (!sessionKey) {
+    return { settle: () => {}, release: () => {} };
+  }
+  const row = { at: now, usd };
+  addSessionRow(sessionKey, row);
+  return {
+    settle: (chargedUsd) => {
+      row.usd = chargedUsd;
+    },
+    release: () => {
+      const rows = sessionSpend.get(sessionKey);
+      const i = rows?.indexOf(row) ?? -1;
+      if (rows && i >= 0) {
+        rows.splice(i, 1);
+      }
+    },
+  };
+}
+
+function addSessionRow(sessionKey: string, row: { at: number; usd: number }): void {
   const rows = sessionSpend.get(sessionKey) ?? [];
-  rows.push({ at: now, usd });
+  rows.push(row);
   sessionSpend.set(sessionKey, rows);
 }
 
@@ -240,11 +273,10 @@ export function gateWallet(
         safeRecord(deps, { ...record, verdict: "deny", reason: auth.reason, outcome: "refused" });
         throw new SpendRefusedError(auth.message);
       }
+      const hold = holdSessionSpend(ctx.sessionKey, amount, deps.now());
       try {
         const result = await wallet.sendUsdc(to, amount, opts);
-        if (ctx.sessionKey) {
-          addSessionSpend(ctx.sessionKey, amount, deps.now());
-        }
+        hold.settle(amount);
         safeRecord(deps, {
           ...record,
           verdict: "allow",
@@ -254,6 +286,7 @@ export function gateWallet(
         });
         return result;
       } catch (err) {
+        hold.release();
         safeRecord(deps, {
           ...record,
           verdict: "allow",
@@ -273,10 +306,19 @@ export function gateWallet(
         safeRecord(deps, { ...record, verdict: "deny", reason: auth.reason, outcome: "refused" });
         return { success: false, error: auth.message };
       }
-      const result = await wallet.payForResource(resourceUrl, amountUsdc);
+      const hold = holdSessionSpend(ctx.sessionKey, amountUsdc, deps.now());
+      let result: X402PaymentResult;
+      try {
+        result = await wallet.payForResource(resourceUrl, amountUsdc);
+      } catch (err) {
+        hold.release();
+        throw err;
+      }
       const paid = result.success ? (result.amountPaid ?? amountUsdc) : 0;
-      if (result.success && ctx.sessionKey) {
-        addSessionSpend(ctx.sessionKey, paid, deps.now());
+      if (result.success) {
+        hold.settle(paid);
+      } else {
+        hold.release();
       }
       safeRecord(deps, {
         ...record,

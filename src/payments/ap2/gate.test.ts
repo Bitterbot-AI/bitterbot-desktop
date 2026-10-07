@@ -250,3 +250,53 @@ describe("gateCardPurchase", () => {
     ).toThrow(SpendRefusedError);
   });
 });
+
+describe("session cap under concurrent payments", () => {
+  // The send takes time, as an on-chain transfer does
+  const slow = <T>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), 20));
+
+  it("concurrent sends in one session cannot pass the cap", async () => {
+    sendUsdc.mockImplementation(() => slow({ txHash: "0xabc", status: "pending" }));
+    const ctx = { origin: "wallet-tool" as const, sessionKey: "s1", sessionCapUsd: 10 };
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 5 }, () => gateWallet(wallet(), ctx, deps()).sendUsdc("0xbob", 4)),
+    );
+
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    expect(sendUsdc).toHaveBeenCalledTimes(2);
+    expect(sessionSpentUsd("s1", now)).toBe(8);
+  });
+
+  it("concurrent x402 payments hold the cap, then count what was charged", async () => {
+    payForResource.mockImplementation(() =>
+      slow({ success: true, amountPaid: 0.4, txHash: "0xdef" }),
+    );
+    const ctx = { origin: "wallet-tool" as const, sessionKey: "s1", sessionCapUsd: 2 };
+
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        gateWallet(wallet(), ctx, deps()).payForResource("https://api.test/data", 1),
+      ),
+    );
+
+    // Each is held at its $1 approval while in flight, so only two start
+    expect(payForResource).toHaveBeenCalledTimes(2);
+    expect(sessionSpentUsd("s1", now)).toBeCloseTo(0.8);
+  });
+
+  it("a failed x402 payment releases its hold", async () => {
+    payForResource.mockResolvedValueOnce({ success: false, error: "no funds" });
+    const gated = gateWallet(
+      wallet(),
+      { origin: "wallet-tool", sessionKey: "s1", sessionCapUsd: 1 },
+      deps(),
+    );
+
+    await gated.payForResource("https://api.test/data", 1);
+    expect(sessionSpentUsd("s1", now)).toBe(0);
+    await expect(gated.payForResource("https://api.test/data", 1)).resolves.toMatchObject({
+      success: true,
+    });
+  });
+});
