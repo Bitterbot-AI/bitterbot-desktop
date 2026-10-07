@@ -538,6 +538,12 @@ async function researchOne(
   costSoFar: () => number,
 ): Promise<void> {
   const now = deps.now?.() ?? Date.now();
+  // The pass already refused to run without search; narrow for the type.
+  const search = deps.search;
+  if (!search) {
+    finish("transient_error", false);
+    return;
+  }
   {
     if (isSensitiveTopic(target.description)) {
       finish("sensitive_skipped", true);
@@ -565,10 +571,10 @@ async function researchOne(
     let hits: SearchHit[] = [];
     try {
       logEgress(deps.db, "curiosity-search", deps.searchProvider ?? "web-search", phrase, now);
-      const first = await deps.search(phrase, Math.max(3, cfg.maxPagesPerTarget + 2));
+      const first = await search(phrase, Math.max(3, cfg.maxPagesPerTarget + 2));
       hits = first ?? [];
       if (hits.length === 0 && cfg.maxSearchesPerTarget >= 2) {
-        const second = await deps.search(`${phrase} explained`, cfg.maxPagesPerTarget + 2);
+        const second = await search(`${phrase} explained`, cfg.maxPagesPerTarget + 2);
         hits = second ?? [];
       }
     } catch (err) {
