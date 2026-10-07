@@ -89,7 +89,7 @@ verify_out=$(minisign -V -P "$MINISIGN_PUBKEY" -m "$TMP/checksums.txt" 2>&1) ||
   die "SIGNATURE INVALID for $TAG checksums — refusing to install"
 # Bind the signature to this tag: the signed trusted comment must name it, so a
 # validly-signed checksums.txt from a DIFFERENT release cannot be substituted.
-echo "$verify_out" | grep -q "$TAG" ||
+echo "$verify_out" | grep "$TAG" >/dev/null ||
   die "signature trusted-comment does not name $TAG — possible cross-release replay"
 
 # --- 4. sha256 against the verified checksums ---------------------------------
@@ -116,8 +116,12 @@ systemctl restart "$SERVICE"
 healthy=0
 for _ in 1 2 3 4 5 6; do
   sleep 5
+  # NOT `grep -q`: it exits on the first match, journalctl takes SIGPIPE
+  # (141), and under `set -o pipefail` the healthy case reads as a failure,
+  # so every good update was reverted. Plain grep drains the pipe.
   if systemctl is-active --quiet "$SERVICE" &&
-     journalctl -u "$SERVICE" --since '-40 sec' --no-pager 2>/dev/null | grep -q 'Local peer ID'; then
+     journalctl -u "$SERVICE" --since '-40 sec' --no-pager 2>/dev/null |
+       grep 'Local peer ID' >/dev/null; then
     healthy=1; break
   fi
 done
