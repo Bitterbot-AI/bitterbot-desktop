@@ -35,6 +35,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "memory.curiosity.research.enabled": "Curiosity Research",
   "memory.curiosity.research.maxPerDay": "Curiosity Questions Per Day",
   "memory.curiosity.research.intervalMinutes": "Curiosity Research Interval",
+  "memory.curiosity.research.strictEgress": "Curiosity Strict Egress",
   "tools.wallet.enabled": "Wallet Tool",
   "models.liveDiscovery.enabled": "Live Model Discovery",
   "meta.lastTouchedVersion": "Config Last Touched Version",

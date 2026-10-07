@@ -17,6 +17,7 @@ import {
 } from "./curiosity-gaps.js";
 import {
   abstractQuestion,
+  admissiblePublicTerms,
   askCuriosity,
   curiosityStatus,
   dismissCuriosityTarget,
@@ -172,6 +173,52 @@ describe("abstraction keeps private context on the node", () => {
         "libp2p public network node count",
       ),
     ).toBe(true);
+  });
+
+  it("lets a declared public subject through, never a private name, and never a fragment beyond it", () => {
+    const q =
+      "How does the ProbeLab IPFS DHT crawler estimate the number of reachable libp2p nodes?";
+    const names = ["Victor Gil", "Aubaine"];
+    const pub = ["ProbeLab", "IPFS DHT", "libp2p"];
+    expect(
+      phraseLeaks(q, "ProbeLab IPFS DHT crawler libp2p node estimate", names, { publicTerms: pub }),
+    ).toBe(false);
+    expect(
+      phraseLeaks(q, "ProbeLab IPFS DHT crawler libp2p node estimate", names, {
+        publicTerms: pub,
+        strict: true,
+      }),
+    ).toBe(true);
+    // A private name declared "public" is still private.
+    expect(
+      phraseLeaks("What did Aubaine decide about pricing?", "Aubaine pricing decision", names, {
+        publicTerms: ["Aubaine"],
+      }),
+    ).toBe(true);
+    // Fragments outside the public terms still count.
+    expect(
+      phraseLeaks(q, "ProbeLab estimate the number of reachable nodes", names, {
+        publicTerms: pub,
+      }),
+    ).toBe(true);
+    // Only terms actually in the question are admissible.
+    expect(
+      admissiblePublicTerms(q, ["ProbeLab", "Kubernetes", "a b c d e", "Aubaine"], names),
+    ).toEqual(["ProbeLab"]);
+  });
+
+  it("abstractQuestion reads the JSON form and falls back to a bare line", async () => {
+    const json = async () => ({
+      text: '{"phrase":"ProbeLab libp2p crawler node estimate","public_terms":["ProbeLab","libp2p"]}',
+      costUsd: 0,
+    });
+    const q = "How does the ProbeLab crawler estimate reachable libp2p nodes?";
+    expect((await abstractQuestion(q, json, ["Victor Gil"])).phrase).toBe(
+      "ProbeLab libp2p crawler node estimate",
+    );
+    expect((await abstractQuestion(q, json, ["Victor Gil"], { strict: true })).phrase).toBeNull();
+    const bare = async () => ({ text: "peer crawler node estimation\n", costUsd: 0 });
+    expect((await abstractQuestion(q, bare, [])).phrase).toBe("peer crawler node estimation");
   });
 
   it("parses JSON inside code fences and ignores trailing remarks", () => {

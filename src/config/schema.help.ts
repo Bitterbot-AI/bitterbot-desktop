@@ -64,6 +64,8 @@ export const FIELD_HELP: Record<string, string> = {
   "memory.curiosity.research.maxPerDay":
     "How many questions the agent may research per day (default 6). Dopamine adds up to 2, cortisol removes up to 2.",
   "memory.curiosity.research.intervalMinutes": "Minutes between research passes (default 240).",
+  "memory.curiosity.research.strictEgress":
+    "When true, no capitalized term from a question may appear in the outgoing search phrase, even a public one like libp2p; most technical questions then cannot be searched. Default false: public subjects the model declares pass, while the owner's name, people, organizations and projects from the knowledge graph, and copied fragments never do.",
   "tools.wallet.enabled":
     "Expose the USDC wallet tool to the agent (x402 payments, transfers). Off by default; requires CDP credentials to transact.",
   "models.liveDiscovery.enabled":

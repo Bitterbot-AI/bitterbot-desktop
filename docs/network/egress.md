@@ -53,7 +53,10 @@ below in one step.
   schedule (`memory.curiosity.research`, every 4 h, at most 6 questions a
   day) the agent rewrites one of its open questions as a generic topic
   phrase, checks the phrase for names, addresses and fragments of the
-  original (anything that fails is never sent), sends it to your configured
+  original (anything that fails is never sent; your name and every person,
+  organization and project in the knowledge graph are checked on the raw
+  phrase, and public subjects the model declares, such as a technology
+  name, may pass unless `research.strictEgress` is true), sends it to your configured
   web search provider, and fetches up to 3 of the result pages with the same
   SSRF guard as `web_fetch`. Every search and fetch is a row in
   `research_egress_log`; the question, the phrase, the sources and the
