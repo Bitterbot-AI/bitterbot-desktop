@@ -26,6 +26,7 @@ import { WalletView } from "../wallet/WalletView";
 import { WorkspaceView } from "../workspace/WorkspaceView";
 import { ConnectionBadge } from "./ConnectionBadge";
 import { Sidebar } from "./Sidebar";
+import { StaleBundleBanner } from "./StaleBundleBanner";
 import { UpdateBanner } from "./UpdateBanner";
 
 const VIEW_MAP: Record<TabId, () => JSX.Element> = {
@@ -76,6 +77,7 @@ export function AppShell() {
         <div className="h-8 flex-shrink-0 flex items-center justify-end px-4 drag-region">
           <ConnectionBadge />
         </div>
+        <StaleBundleBanner />
         <UpdateBanner />
         <UsageBudgetToasts />
         <OwnerNoticeToasts />
