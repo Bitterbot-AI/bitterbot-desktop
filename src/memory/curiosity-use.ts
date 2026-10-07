@@ -61,7 +61,8 @@ export function curiosityRoiByRegion(db: DatabaseSync): Map<string, number> {
     const rows = db
       .prepare(
         `SELECT region_id, COUNT(*) AS n, SUM(CASE WHEN used_count > 0 THEN 1 ELSE 0 END) AS used
-           FROM curiosity_findings WHERE region_id IS NOT NULL GROUP BY region_id`,
+           FROM curiosity_findings WHERE region_id IS NOT NULL AND COALESCE(verified, 1) = 1
+          GROUP BY region_id`,
       )
       .all() as unknown as Array<{ region_id: string; n: number; used: number }>;
     for (const r of rows) {
@@ -85,13 +86,15 @@ export function curiosityUtility(db: DatabaseSync, sinceMs = 0): CuriosityUtilit
   try {
     const r = db
       .prepare(
-        `SELECT COUNT(*) AS n, SUM(CASE WHEN used_count > 0 THEN 1 ELSE 0 END) AS used,
+        `SELECT SUM(CASE WHEN COALESCE(verified, 1) = 1 THEN 1 ELSE 0 END) AS n,
+                SUM(CASE WHEN used_count > 0 THEN 1 ELSE 0 END) AS used,
                 COALESCE(SUM(cost_usd), 0) AS cost
            FROM curiosity_findings WHERE created_at >= ?`,
       )
-      .get(sinceMs) as { n: number; used: number | null; cost: number };
+      .get(sinceMs) as { n: number | null; used: number | null; cost: number };
     const used = r.used ?? 0;
-    return { learned: r.n, used, roi: r.n > 0 ? used / r.n : 0, costUsd: r.cost };
+    const n = r.n ?? 0;
+    return { learned: n, used, roi: n > 0 ? used / n : 0, costUsd: r.cost };
   } catch {
     return { learned: 0, used: 0, roi: 0, costUsd: 0 };
   }

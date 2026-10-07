@@ -92,7 +92,7 @@ export function buildDreamBrief(db: DatabaseSync, sinceMs: number): DreamBrief {
   const learned = all<{ question: string; answer: string; sources_json: string }>(
     db,
     `SELECT question, answer, sources_json FROM curiosity_findings
-      WHERE created_at >= ? ORDER BY confidence DESC LIMIT 3`,
+      WHERE created_at >= ? AND COALESCE(verified, 1) = 1 ORDER BY confidence DESC LIMIT 3`,
     sinceMs,
   ).map((r) => {
     let host: string | null = null;
