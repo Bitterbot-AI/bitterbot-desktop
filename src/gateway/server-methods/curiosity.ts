@@ -103,7 +103,7 @@ export const curiosityHandlers: GatewayRequestHandlers = {
 
   "curiosity.runNow": async ({ params, respond }) => {
     try {
-      respond(true, await (await memoryManager(str(params.agentId))).curiosityRunNow());
+      respond(true, (await memoryManager(str(params.agentId))).curiosityRunNow());
     } catch (err) {
       fail(respond, err);
     }

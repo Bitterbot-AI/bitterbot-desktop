@@ -25,7 +25,13 @@ import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { containsSourceLeak, isSensitiveTopic } from "./auto-research-egress.js";
-import { cosineSimilarity, insertNovelTargets, researchableTargets } from "./curiosity-gaps.js";
+import { setChunkLifecycle } from "./chunk-writer.js";
+import {
+  cosineSimilarity,
+  insertNovelTargets,
+  researchableTargets,
+  type ResearchableTarget,
+} from "./curiosity-gaps.js";
 import { curiosityRoiByRegion, curiosityUtility } from "./curiosity-use.js";
 
 const log = createSubsystemLogger("memory/curiosity");
@@ -68,8 +74,13 @@ export type CuriosityResearchDeps = {
   config: CuriosityResearchConfig;
   /** Configured web search; null when no provider/key is set. */
   search: ((query: string, count: number) => Promise<SearchHit[] | null>) | null;
-  /** SSRF-guarded page fetch returning readable text, or null. */
-  fetchPage: (url: string) => Promise<{ text: string; title?: string } | null>;
+  /** SSRF-guarded page fetch returning readable text, or null; must honor blocked hosts after redirects. */
+  fetchPage: (
+    url: string,
+    blockedDomains?: string[],
+  ) => Promise<{ text: string; title?: string } | null>;
+  /** Wall-clock cap for one pass; targets not started by then wait for the next. Default 8 min. */
+  passDeadlineMs?: number;
   /** The agent's own model, attributed to the usage ledger as memory/curiosity. */
   llm: (prompt: string) => Promise<LlmResult>;
   /** A genuinely local model, preferred for the abstraction step when present. */
@@ -158,14 +169,20 @@ export function resolveCuriosityResearchConfig(
 
 const EMAIL_OR_URL = /[\w.+-]+@[\w-]+\.[\w.]+|https?:\/\/|www\./i;
 
-function normalizeName(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
 /** True when the phrase carries a fragment of the note, a name, an address, or a URL. */
+const STOPWORDS = new Set(
+  "a an the and or of to in on for with is are was were be been do does did how what when where why which who whom whose my your our their his her its this that these those it i you we they at by from as if than then so not no any some about into over under up down out off".split(
+    " ",
+  ),
+);
+
+const tokensOf = (s: string): string[] =>
+  s
+    .toLowerCase()
+    .replace(/['’]s\b/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
 export function phraseLeaks(question: string, phrase: string, ownerNames: string[] = []): boolean {
   if (EMAIL_OR_URL.test(phrase)) {
     return true;
@@ -173,10 +190,37 @@ export function phraseLeaks(question: string, phrase: string, ownerNames: string
   if (containsSourceLeak(question, phrase)) {
     return true;
   }
-  const folded = ` ${normalizeName(phrase)} `;
+  const qTokens = tokensOf(question);
+  const pTokens = tokensOf(phrase);
+  // Any two consecutive words copied from the question (not both stopwords)
+  // is a fragment, whatever its case: "lena birthday" from "when is lena's
+  // birthday". containsSourceLeak only catches capitalized entities and
+  // 3-grams; owners type their questions in lowercase.
+  const qBigrams = new Set<string>();
+  for (let i = 0; i + 1 < qTokens.length; i += 1) {
+    if (!(STOPWORDS.has(qTokens[i]!) && STOPWORDS.has(qTokens[i + 1]!))) {
+      qBigrams.add(`${qTokens[i]} ${qTokens[i + 1]}`);
+    }
+  }
+  for (let i = 0; i + 1 < pTokens.length; i += 1) {
+    if (qBigrams.has(`${pTokens[i]} ${pTokens[i + 1]}`)) {
+      return true;
+    }
+  }
+  // A non-ASCII token copied from the question (names the ASCII fold erases).
+  const qNonAscii = new Set(qTokens.filter((t) => /\P{ASCII}/u.test(t)));
+  if (pTokens.some((t) => qNonAscii.has(t))) {
+    return true;
+  }
+  const pSet = new Set(pTokens);
+  const lowerPhrase = phrase.toLowerCase();
   for (const name of ownerNames) {
-    for (const token of normalizeName(name).split(" ")) {
-      if (token.length >= 3 && folded.includes(` ${token} `)) {
+    const trimmed = name.trim().toLowerCase();
+    if (trimmed.length >= 2 && lowerPhrase.includes(trimmed)) {
+      return true;
+    }
+    for (const token of tokensOf(name)) {
+      if (token.length >= 2 && pSet.has(token)) {
         return true;
       }
     }
@@ -342,12 +386,23 @@ function recordOutcome(
   db: DatabaseSync,
   targetId: string,
   outcome: ResearchOutcome,
-  opts: { resolve: boolean; countAttempt: boolean; now: number; phrase?: string | null },
+  opts: {
+    resolve: boolean;
+    countAttempt: boolean;
+    now: number;
+    phrase?: string | null;
+    /** Current attempts before this one; with maxAttempts, the last counted attempt closes the target. */
+    attempts: number;
+    maxAttempts: number;
+  },
 ): void {
+  const exhausted = opts.countAttempt && opts.attempts + 1 >= opts.maxAttempts;
+  const resolve = opts.resolve || exhausted;
   db.prepare(
     `UPDATE curiosity_targets
         SET metadata = json_set(COALESCE(metadata, '{}'),
-              '$.researchOutcome', ?, '$.researchedAt', ?, '$.queryPhrase', ?),
+              '$.researchOutcome', ?, '$.researchedAt', ?, '$.queryPhrase', ?,
+              '$.transientErrors', CASE WHEN ? THEN COALESCE(json_extract(metadata, '$.transientErrors'), 0) + 1 ELSE 0 END),
             attempts = attempts + ?,
             resolved_at = CASE WHEN ? THEN COALESCE(resolved_at, ?) ELSE resolved_at END
       WHERE id = ?`,
@@ -355,12 +410,16 @@ function recordOutcome(
     outcome,
     opts.now,
     opts.phrase ?? null,
+    outcome === "transient_error" ? 1 : 0,
     opts.countAttempt ? 1 : 0,
-    opts.resolve ? 1 : 0,
+    resolve ? 1 : 0,
     opts.now,
     targetId,
   );
 }
+
+/** Three transient errors in a row count as one real attempt, so a target cannot be re-picked forever. */
+const TRANSIENT_ERRORS_PER_ATTEMPT = 3;
 
 // ── the pass ────────────────────────────────────────────────────────────────
 
@@ -415,22 +474,74 @@ export async function runCuriosityResearch(
     regionRoi: curiosityRoiByRegion(deps.db),
   });
   let countedToday = doneToday;
+  const deadline = now + (deps.passDeadlineMs ?? 8 * 60 * 1000);
   for (const target of targets) {
+    if ((deps.now?.() ?? Date.now()) > deadline) {
+      summary.reason = "pass deadline reached";
+      break;
+    }
     summary.attempted += 1;
-    countedToday += 1;
-    setMeta(deps.db, dayKey, String(countedToday));
+    const costBefore = summary.costUsd;
+    const transientSoFar = Number(target.metadata.transientErrors ?? 0);
     const finish = (o: ResearchOutcome, resolve: boolean, phrase?: string | null) => {
       bump(o);
+      // A transient error (provider outage) is not the agent's attempt and
+      // does not spend the day's budget, but three in a row do.
+      const transientCounts =
+        o === "transient_error" && transientSoFar + 1 >= TRANSIENT_ERRORS_PER_ATTEMPT;
+      const countAttempt = o !== "transient_error" || transientCounts;
+      if (countAttempt) {
+        countedToday += 1;
+        setMeta(deps.db, dayKey, String(countedToday));
+      }
       recordOutcome(deps.db, target.id, o, {
         resolve,
-        countAttempt: o !== "transient_error",
+        countAttempt,
         now,
         phrase,
+        attempts: target.attempts,
+        maxAttempts: cfg.maxAttempts,
       });
     };
+    try {
+      await researchOne(
+        deps,
+        cfg,
+        target,
+        floor,
+        h,
+        finish,
+        summary,
+        () => summary.costUsd - costBefore,
+      );
+    } catch (err) {
+      // A closed database handle (reindex swapped it) or a bug: stop the pass, never the gateway.
+      log.warn(`curiosity research pass stopped: ${String(err)}`);
+      summary.reason = "error";
+      break;
+    }
+    if (countedToday >= budget) {
+      break;
+    }
+  }
+  return summary;
+}
+
+async function researchOne(
+  deps: CuriosityResearchDeps,
+  cfg: Required<CuriosityResearchConfig>,
+  target: ResearchableTarget,
+  floor: number,
+  h: { dopamine: number; cortisol: number; oxytocin: number } | null,
+  finish: (o: ResearchOutcome, resolve: boolean, phrase?: string | null) => void,
+  summary: CuriosityRunSummary,
+  costSoFar: () => number,
+): Promise<void> {
+  const now = deps.now?.() ?? Date.now();
+  {
     if (isSensitiveTopic(target.description)) {
       finish("sensitive_skipped", true);
-      continue;
+      return;
     }
     let phrase: string | null;
     try {
@@ -444,11 +555,11 @@ export async function runCuriosityResearch(
     } catch (err) {
       log.debug(`abstraction failed for ${target.id.slice(0, 8)}: ${String(err)}`);
       finish("transient_error", false);
-      continue;
+      return;
     }
     if (!phrase) {
       finish("containment_rejected", false);
-      continue;
+      return;
     }
     // Search (bounded), then read a few pages from distinct hosts.
     let hits: SearchHit[] = [];
@@ -463,7 +574,7 @@ export async function runCuriosityResearch(
     } catch (err) {
       log.debug(`search failed for ${target.id.slice(0, 8)}: ${String(err)}`);
       finish("transient_error", false, phrase);
-      continue;
+      return;
     }
     const seenHosts = new Set<string>();
     const pages: Array<{ url: string; title?: string; text: string }> = [];
@@ -473,12 +584,12 @@ export async function runCuriosityResearch(
       }
       const host = hostOf(hit.url);
       if (!host || seenHosts.has(host) || hostBlocked(host, cfg.blockedDomains)) {
-        continue;
+        return;
       }
       seenHosts.add(host);
       try {
         logEgress(deps.db, "curiosity-fetch", host, hit.url, now);
-        const page = await deps.fetchPage(hit.url);
+        const page = await deps.fetchPage(hit.url, cfg.blockedDomains);
         const text = page?.text?.trim() ?? hit.snippet?.trim() ?? "";
         if (text.length >= 200) {
           pages.push({ url: hit.url, title: page?.title ?? hit.title, text });
@@ -489,7 +600,7 @@ export async function runCuriosityResearch(
     }
     if (pages.length === 0) {
       finish("no_results", target.attempts + 1 >= cfg.maxAttempts, phrase);
-      continue;
+      return;
     }
     let distilled: Distilled | null = null;
     try {
@@ -499,7 +610,7 @@ export async function runCuriosityResearch(
     } catch (err) {
       log.debug(`distillation failed for ${target.id.slice(0, 8)}: ${String(err)}`);
       finish("transient_error", false, phrase);
-      continue;
+      return;
     }
     if (!distilled || !findingIsVerified(distilled, floor)) {
       const last = target.attempts + 1 >= cfg.maxAttempts;
@@ -507,7 +618,7 @@ export async function runCuriosityResearch(
       if (last) {
         deps.onEvent?.("curiosity_stagnant");
       }
-      continue;
+      return;
     }
     const sources = distilled.supportingSources
       .map((n) => pages[n - 1])
@@ -528,7 +639,7 @@ export async function runCuriosityResearch(
       confidence: distilled.confidence,
       sources,
       hormonal: h,
-      costUsd: summary.costUsd,
+      costUsd: costSoFar(),
       regionId,
       now,
     });
@@ -539,7 +650,6 @@ export async function runCuriosityResearch(
       `learned on my own: "${target.description.slice(0, 80)}" (confidence ${distilled.confidence.toFixed(2)}, ${sources.length} source(s), chunk ${chunkId.slice(0, 12)})`,
     );
   }
-  return summary;
 }
 
 function storeFinding(
@@ -575,9 +685,9 @@ function storeFinding(
       .all(p.target.id) as unknown as Array<{ chunk_id: string }>;
     for (const row of prior) {
       db.prepare(
-        `UPDATE chunks SET valid_time_end = ?, lifecycle = 'archived', lifecycle_state = 'archived',
-                updated_at = ? WHERE id = ? AND valid_time_end IS NULL`,
-      ).run(p.now, p.now, row.chunk_id);
+        `UPDATE chunks SET valid_time_end = ? WHERE id = ? AND valid_time_end IS NULL`,
+      ).run(p.now, row.chunk_id);
+      setChunkLifecycle(db, row.chunk_id, { lifecycle: "archived", updatedAt: p.now });
     }
     db.prepare(
       `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
@@ -642,6 +752,8 @@ function storeFinding(
 
 export type CuriosityStatus = {
   enabled: boolean;
+  /** Which config key turned it off, when disabled. */
+  disabledBy: string | null;
   paused: boolean;
   searchConfigured: boolean;
   intervalMinutes: number;
@@ -661,6 +773,7 @@ export function curiosityStatus(
     searchConfigured: boolean;
     now?: number;
     hormonal?: { dopamine: number; cortisol: number } | null;
+    disabledBy?: string | null;
   },
 ): CuriosityStatus {
   const now = opts.now ?? Date.now();
@@ -686,6 +799,7 @@ export function curiosityStatus(
   }
   return {
     enabled: cfg.enabled,
+    disabledBy: opts.disabledBy ?? null,
     paused: isCuriosityPaused(db),
     searchConfigured: opts.searchConfigured,
     intervalMinutes: cfg.intervalMinutes,

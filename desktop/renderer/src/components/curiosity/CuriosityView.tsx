@@ -13,6 +13,7 @@ import { useGatewayStore } from "../../stores/gateway-store";
 
 export type CuriosityStatus = {
   enabled: boolean;
+  disabledBy: string | null;
   paused: boolean;
   searchConfigured: boolean;
   intervalMinutes: number;
@@ -155,7 +156,16 @@ export function CuriosityView() {
             <button
               type="button"
               disabled={busy || off}
-              onClick={() => void act("curiosity.runNow", {}, "Looking into something now")}
+              onClick={() => {
+                void act(
+                  "curiosity.runNow",
+                  {},
+                  "Looking into something now; this takes a few minutes",
+                );
+                // The pass runs in the background; pick up what it learned.
+                setTimeout(() => void refresh(), 60_000);
+                setTimeout(() => void refresh(), 180_000);
+              }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground disabled:opacity-50"
               title="Research one question now (counts against today's budget)"
             >
@@ -221,6 +231,13 @@ export function CuriosityView() {
         <div className="p-4 text-sm rounded-xl border border-border/20 bg-card/60 text-muted-foreground">
           Add a web search key under Settings (tools.web.search) and the agent will start looking
           things up on its own.
+        </div>
+      )}
+
+      {info && !info.enabled && info.disabledBy && (
+        <div className="p-4 text-sm rounded-xl border border-border/20 bg-card/60 text-muted-foreground">
+          Turned off by <code>{info.disabledBy}: false</code> in your config. Set{" "}
+          <code>memory.curiosity.research.enabled: true</code> to turn it on.
         </div>
       )}
 

@@ -119,7 +119,9 @@ export async function insertNovelTargets(
     (
       db
         .prepare(
-          `SELECT COUNT(*) AS c FROM curiosity_targets WHERE resolved_at IS NULL AND expires_at > ?`,
+          `SELECT COUNT(*) AS c FROM curiosity_targets
+            WHERE resolved_at IS NULL AND expires_at > ?
+              AND (type = 'question' OR json_extract(metadata, '$.researchable') = 1)`,
         )
         .get(now) as { c: number }
     ).c;

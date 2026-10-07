@@ -2432,11 +2432,12 @@ export class MemoryIndexManager implements MemorySearchManager {
         // 3c. PLAN-11 Gap 1: convert repeated user queries into knowledge_gap targets
         void this.runRequestFrequencyAnalyzer();
         // 3d. PLAN-54: one target per weak search query, then go and learn.
-        //     Network + model work, so it runs under the maintenance mutex
-        //     and never blocks this tick.
-        void this.maintenanceMutex
-          .run("curiosity", () => this.curiosityResearchTick(), 10 * 60 * 1000)
-          .catch((err) => log.debug(`curiosity research tick failed: ${String(err)}`));
+        //     Network + model work, OUTSIDE the maintenance mutex (a slow
+        //     provider must never stall dreams or Memory-page edits); one
+        //     pass at a time, never blocks this tick.
+        void this.curiosityResearchTick().catch((err) =>
+          log.debug(`curiosity research tick failed: ${String(err)}`),
+        );
         // 4. Governance: enforce TTL lifespan policies
         this.governance?.enforceLifespan();
         // 5. Task memory: mark stalled goals
@@ -3212,9 +3213,12 @@ export class MemoryIndexManager implements MemorySearchManager {
         .prepare(
           `SELECT query, region_id, COUNT(*) AS n FROM curiosity_queries
             WHERE top_score < ? AND length(query) >= 12
+              AND NOT EXISTS (SELECT 1 FROM curiosity_targets t
+                               WHERE t.description = curiosity_queries.query
+                                 AND (t.resolved_at IS NULL OR t.resolved_at >= ?))
             GROUP BY query ORDER BY n DESC, MAX(timestamp) DESC LIMIT 5`,
         )
-        .all(threshold) as unknown as typeof rows;
+        .all(threshold, Date.now() - 30 * 24 * 60 * 60 * 1000) as unknown as typeof rows;
     } catch {
       return 0;
     }
@@ -3234,9 +3238,31 @@ export class MemoryIndexManager implements MemorySearchManager {
     return ids.length;
   }
 
-  private async curiosityResearchTick(
+  /** One pass at a time: a tick or a click while a pass runs joins it instead of queueing another. */
+  private curiosityPassInFlight: Promise<
+    import("./curiosity-researcher.js").CuriosityRunSummary
+  > | null = null;
+
+  private curiosityResearchTick(
     opts: { force?: boolean } = {},
   ): Promise<import("./curiosity-researcher.js").CuriosityRunSummary> {
+    if (this.curiosityPassInFlight) {
+      return this.curiosityPassInFlight;
+    }
+    const run = this.curiosityResearchPass(opts).finally(() => {
+      this.curiosityPassInFlight = null;
+    });
+    this.curiosityPassInFlight = run;
+    return run;
+  }
+
+  private async curiosityResearchPass(
+    opts: { force?: boolean } = {},
+  ): Promise<import("./curiosity-researcher.js").CuriosityRunSummary> {
+    const idle = { ran: false, attempted: 0, learned: 0, outcomes: {}, costUsd: 0 };
+    if (this.cfg.memory?.curiosity?.enabled === false) {
+      return { ...idle, reason: "memory.curiosity.enabled is false" };
+    }
     const { runCuriosityResearch } = await import("./curiosity-researcher.js");
     const { runConfiguredWebSearch, isWebSearchConfigured } =
       await import("../agents/tools/web-search.js");
@@ -3246,7 +3272,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const modelSpec = this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec();
     const llm = modelSpec ? this.buildCostedLlmCall(modelSpec) : null;
     if (!llm) {
-      return { ran: false, reason: "no model", attempted: 0, learned: 0, outcomes: {}, costUsd: 0 };
+      return { ...idle, reason: "no model" };
     }
     const localSpec = this.cfg.memory?.dream?.modelTiers?.localModel;
     const llmLocal =
@@ -3301,6 +3327,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         agentId: this.agentId,
         errorPrefix: `curiosity llm error (${modelSpec})`,
         batch: false,
+        // A hung provider must not hold a pass open.
+        signal: AbortSignal.timeout(90_000),
       });
       return { text, costUsd };
     };
@@ -3309,9 +3337,19 @@ export class MemoryIndexManager implements MemorySearchManager {
   async curiosityStatus() {
     const { curiosityStatus } = await import("./curiosity-researcher.js");
     const { isWebSearchConfigured } = await import("../agents/tools/web-search.js");
+    const c = this.cfg.memory?.curiosity;
+    const disabledBy =
+      c?.enabled === false
+        ? "memory.curiosity.enabled"
+        : c?.research?.enabled === false
+          ? "memory.curiosity.research.enabled"
+          : c?.autoResearch?.enabled === false && c?.research?.enabled !== true
+            ? "memory.curiosity.autoResearch.enabled"
+            : null;
     return curiosityStatus(this.db, this.curiosityResearchConfig(), {
       searchConfigured: isWebSearchConfigured(this.cfg),
       hormonal: this.hormonalManager?.getState() ?? null,
+      disabledBy,
     });
   }
 
@@ -3336,13 +3374,17 @@ export class MemoryIndexManager implements MemorySearchManager {
     return askCuriosity(this.db, question, this.curiosityEmbed());
   }
 
-  /** Owner-triggered pass: ignores the interval, honors pause and the daily budget. */
-  async curiosityRunNow() {
-    return this.maintenanceMutex.run(
-      "curiosity",
-      () => this.curiosityResearchTick({ force: true }),
-      10 * 60 * 1000,
+  /**
+   * Owner-triggered pass: ignores the interval, honors pause and the daily
+   * budget. Returns at once (a pass can take minutes; the Control UI request
+   * times out at 30 s); the page polls status to watch it.
+   */
+  curiosityRunNow(): { started: boolean } {
+    const started = this.curiosityPassInFlight === null;
+    void this.curiosityResearchTick({ force: true }).catch((err) =>
+      log.debug(`curiosity run-now failed: ${String(err)}`),
     );
+    return { started };
   }
 
   /** PLAN-53 G4: tell the owner what the agent dreamed and learned today. */

@@ -11,8 +11,16 @@ const MAX_CHARS = 12_000;
 const TIMEOUT_MS = 20_000;
 const USER_AGENT = "Mozilla/5.0 (compatible; Bitterbot-curiosity/1.0; +https://bitterbot.ai)";
 
+function hostBlocked(host: string, blocked: string[]): boolean {
+  return blocked.some((b) => {
+    const d = b.toLowerCase().replace(/^\*\./, "");
+    return host === d || host.endsWith(`.${d}`);
+  });
+}
+
 export async function fetchReadablePage(
   url: string,
+  blockedDomains: string[] = [],
 ): Promise<{ text: string; title?: string } | null> {
   let parsed: URL;
   try {
@@ -38,7 +46,14 @@ export async function fetchReadablePage(
   });
   try {
     const res = guarded.response;
-    if (!res.ok) {
+    // Redirects may land on a host the owner blocked.
+    let finalHost = "";
+    try {
+      finalHost = new URL(guarded.finalUrl).hostname.toLowerCase();
+    } catch {
+      return null;
+    }
+    if (!res.ok || hostBlocked(finalHost, blockedDomains)) {
       return null;
     }
     const contentType = (res.headers.get("content-type") ?? "").toLowerCase();

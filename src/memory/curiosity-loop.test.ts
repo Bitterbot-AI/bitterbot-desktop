@@ -154,6 +154,18 @@ describe("abstraction keeps private context on the node", () => {
     expect(phraseLeaks(q, "contact me@example.com", [])).toBe(true);
   });
 
+  it("catches lowercase fragments, short names and non-ASCII names the fold would erase", () => {
+    const q = "when is lena's birthday and what should i get her";
+    expect(phraseLeaks(q, "lena birthday gift ideas")).toBe(true); // shared bigram, lowercase
+    expect(phraseLeaks(q, "birthday gift ideas for a friend")).toBe(false);
+    expect(phraseLeaks("where does Bo live now", "bo relocation", ["Bo"])).toBe(true); // 2-letter name
+    expect(phraseLeaks("did 李雷 finish the report", "report deadline 李雷")).toBe(true); // non-ASCII token
+    expect(phraseLeaks("what is the best way to learn piano", "learn piano fast")).toBe(true);
+    expect(
+      phraseLeaks("what is the best way to learn piano", "beginner piano practice methods"),
+    ).toBe(false);
+  });
+
   it("abstractQuestion returns null when the model leaks", async () => {
     const leaky = async () => ({ text: "Should I tell Sylvia Martin about it", costUsd: 0.001 });
     const r = await abstractQuestion("Should I tell Sylvia Martin about it?", leaky);
@@ -338,6 +350,76 @@ describe("the loop", () => {
       .get(old.chunkId) as Record<string, unknown>;
     expect(oldChunk.valid_time_end).not.toBeNull();
     expect(oldChunk.lifecycle_state).toBe("archived");
+  });
+
+  it("transient errors do not spend the budget, but three in a row count as an attempt", async () => {
+    const flaky = deps(db, {
+      llm: async () => {
+        throw new Error("provider down");
+      },
+    });
+    for (let i = 0; i < 3; i += 1) {
+      const r = await runCuriosityResearch({ ...flaky, now: () => NOW + i * 3_600_000 * 2 });
+      expect(r.outcomes).toEqual({ transient_error: 1 });
+    }
+    const st = curiosityStatus(db, resolveCuriosityResearchConfig({}), {
+      searchConfigured: true,
+      now: NOW + 4 * 3_600_000,
+    });
+    expect(st.today.attempted).toBe(1); // only the third one counted
+    expect(listCuriosity(db, { now: NOW }).wondering[0]?.attempts).toBe(1);
+  });
+
+  it("a question whose phrase keeps leaking closes after the attempt limit instead of sitting open", async () => {
+    const leaky = deps(db, {
+      llm: async () => ({ text: "libp2p relay reservations limited per peer", costUsd: 0 }),
+    });
+    await runCuriosityResearch(leaky);
+    await runCuriosityResearch({ ...leaky, now: () => NOW + 2 * 3_600_000 });
+    const l = listCuriosity(db, { now: NOW + 2 * 3_600_000 });
+    expect(l.wondering).toEqual([]);
+    expect(l.closed[0]?.outcome).toBe("containment_rejected");
+  });
+
+  it("records each finding's own cost, not the running total", async () => {
+    await insertNovelTargets(db, {
+      targets: [
+        {
+          type: "question",
+          description: "What is the capital of Mongolia?",
+          priority: 0.7,
+          metadata: {},
+        },
+      ],
+      embed: fakeEmbed,
+      now: NOW,
+    });
+    const s = await runCuriosityResearch(deps(db));
+    expect(s.learned).toBe(2);
+    const costs = listCuriosity(db, { now: NOW }).learned.map((f) => f.costUsd);
+    expect(costs).toEqual([0.005, 0.005]);
+    expect(curiosityUtility(db).costUsd).toBeCloseTo(0.01, 6);
+  });
+
+  it("maxOpen counts only researchable questions, so engine rows cannot starve ingestion", async () => {
+    const ins = db.prepare(
+      `INSERT INTO curiosity_targets (id, type, description, priority, metadata, created_at, expires_at)
+       VALUES (?, 'stale_region', ?, 0.5, '{"source":"gccrf"}', ?, ?)`,
+    );
+    for (let i = 0; i < 20; i += 1) ins.run(`r${i}`, `region ${i} stuck`, NOW, NOW + 1e6);
+    const ids = await insertNovelTargets(db, {
+      targets: [
+        {
+          type: "question",
+          description: "Why do relays drop idle circuits?",
+          priority: 0.6,
+          metadata: {},
+        },
+      ],
+      embed: fakeEmbed,
+      now: NOW,
+    });
+    expect(ids).toHaveLength(1);
   });
 
   it("hormones widen or narrow the day's budget and the owner can dismiss", async () => {

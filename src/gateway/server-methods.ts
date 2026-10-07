@@ -80,6 +80,8 @@ const PAIRING_METHODS = new Set([
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
 const READ_METHODS = new Set([
   "health",
+  "curiosity.status",
+  "curiosity.list",
   "doctor.findings",
   "logs.tail",
   "channels.status",
@@ -180,6 +182,11 @@ const READ_METHODS = new Set([
 ]);
 const WRITE_METHODS = new Set([
   "send",
+  "curiosity.pause",
+  "curiosity.resume",
+  "curiosity.dismiss",
+  "curiosity.ask",
+  "curiosity.runNow",
   "agent",
   "agent.wait",
   "wake",
