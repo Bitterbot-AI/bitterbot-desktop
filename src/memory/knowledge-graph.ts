@@ -94,6 +94,12 @@ const NOT_A_PERSON = new Set([
   "the",
   "a",
   "an",
+  // The product and its parts are not people, however the extractor files them.
+  "bitterbot",
+  "gateway",
+  "orchestrator",
+  "circles",
+  "openclaw",
 ]);
 
 /**
