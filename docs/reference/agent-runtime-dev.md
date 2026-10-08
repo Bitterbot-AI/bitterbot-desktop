@@ -42,7 +42,7 @@ Changing a golden is a behaviour change. Regenerate with `-u` only when the chan
 
 The runtime was held to pi's behaviour by the contract suite and by differential tests that ran the same operations through both implementations. The differential tests were deleted with the pi dependency; the differences they documented are the ones below, each still covered by a test of its own.
 
-Loop (`loop/agent-loop.ts`, tests in `loop/agent-loop.test.ts`; `agent-loop.differential.test.ts` compares against pi-agent-core, which remains a type-level dependency):
+Loop (`loop/agent-loop.ts`, tests in `loop/agent-loop.test.ts`; `agent-loop.differential.test.ts` compares against pi-agent-core, which `src/` imports only for types; that one test is its only runtime use):
 
 - Tool calls of one assistant message run sequentially by default.
 - A queued steering message skips the rest of the tool batch.

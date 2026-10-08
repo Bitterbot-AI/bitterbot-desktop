@@ -43,6 +43,7 @@ import {
 } from "../model-auth.js";
 import { normalizeProviderId } from "../model-selection.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
+import { resolveRuntimeEngine } from "../runtime/engine.js";
 import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { compactEmbeddedPiSessionDirect } from "./compact.js";
@@ -197,6 +198,9 @@ export async function runEmbeddedPiAgent(
           `[workspace-fallback] caller=runEmbeddedPiAgent reason=${workspaceResolution.fallbackReason} run=${params.runId} session=${redactedSessionId} sessionKey=${redactedSessionKey} agent=${workspaceResolution.agentId} workspace=${redactedWorkspace}`,
         );
       }
+      // There is one engine. A config that still names the removed "pi"
+      // engine gets its one warning here, on the run path (warn-once per scope).
+      resolveRuntimeEngine(params.config, workspaceResolution.agentId);
       const prevCwd = process.cwd();
 
       // PLAN-44 Phase 0 (D-6): journal WHAT this run was asked, once per run

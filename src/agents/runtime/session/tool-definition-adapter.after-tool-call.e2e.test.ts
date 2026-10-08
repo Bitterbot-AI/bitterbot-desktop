@@ -9,7 +9,7 @@ import { toToolDefinitions } from "./tool-definition-adapter.js";
 // live rows were sub-1s duplicate pairs, one per pair with NULL duration
 // because the adapter passed no durationMs) and double-dosed the hormonal
 // reward/error signal on every tool call. The adapter is used ONLY inside the
-// embedded runner (tool-split.ts → compact.ts), whose tool-end handler always
+// owned session (runtime/session/tools.ts), whose tool-end handler always
 // fires after_tool_call with the full event. So the adapter must NOT fire it.
 // The subscribe handler is the single owner.
 

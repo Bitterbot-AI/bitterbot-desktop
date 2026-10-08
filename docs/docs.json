@@ -48,6 +48,14 @@
   },
   "redirects": [
     {
+      "source": "/reference/pi",
+      "destination": "/reference/agent-runtime"
+    },
+    {
+      "source": "/reference/pi-dev",
+      "destination": "/reference/agent-runtime-dev"
+    },
+    {
       "source": "/concepts/sessions",
       "destination": "/concepts/session"
     },
