@@ -256,6 +256,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "curiosity",
+    description: "What the agent wonders about and learns on its own; pause, ask, or run a pass",
+    register: async (program) => {
+      const mod = await import("../curiosity-cli.js");
+      mod.registerCuriosityCli(program);
+    },
+  },
+  {
     name: "checkpoints",
     description: "Inspect, fork, and replay session checkpoint graphs",
     hidden: true,
