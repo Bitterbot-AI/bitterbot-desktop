@@ -2572,13 +2572,47 @@ const MIGRATIONS: Migration[] = [
         return;
       }
       const rows = db
-        .prepare(`SELECT id, name FROM entities WHERE entity_type = 'person'`)
-        .all() as Array<{ id: string; name: string }>;
+        .prepare(`SELECT id, name, mention_count FROM entities WHERE entity_type = 'person'`)
+        .all() as Array<{ id: string; name: string; mention_count: number }>;
+      const findConcept = db.prepare(
+        `SELECT id FROM entities WHERE name = ? AND entity_type = 'concept'`,
+      );
       const demote = db.prepare(`UPDATE entities SET entity_type = 'concept' WHERE id = ?`);
+      // (name, entity_type) is unique: when a concept of that name already
+      // exists, fold the person row into it and keep every edge.
+      const repointSource = db.prepare(
+        `UPDATE OR IGNORE relationships SET source_entity_id = ? WHERE source_entity_id = ?`,
+      );
+      const repointTarget = db.prepare(
+        `UPDATE OR IGNORE relationships SET target_entity_id = ? WHERE target_entity_id = ?`,
+      );
+      const dropOrphanEdges = db.prepare(
+        `DELETE FROM relationships WHERE source_entity_id = ? OR target_entity_id = ?`,
+      );
+      const repointParent = db.prepare(
+        `UPDATE entities SET parent_entity_id = ? WHERE parent_entity_id = ?`,
+      );
+      const bump = db.prepare(`UPDATE entities SET mention_count = mention_count + ? WHERE id = ?`);
+      const remove = db.prepare(`DELETE FROM entities WHERE id = ?`);
       for (const r of rows) {
-        if (!looksLikePersonName(r.name)) {
-          demote.run(r.id);
+        if (looksLikePersonName(r.name)) {
+          continue;
         }
+        const concept = findConcept.get(r.name) as { id: string } | undefined;
+        if (!concept) {
+          demote.run(r.id);
+          continue;
+        }
+        repointSource.run(concept.id, r.id);
+        repointTarget.run(concept.id, r.id);
+        dropOrphanEdges.run(r.id, r.id);
+        try {
+          repointParent.run(concept.id, r.id);
+        } catch {
+          // parent_entity_id arrived in a later migration on some nodes
+        }
+        bump.run(r.mention_count ?? 1, concept.id);
+        remove.run(r.id);
       }
     },
   },
