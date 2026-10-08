@@ -153,10 +153,41 @@ export const DEFAULT_APPROVAL_REQUEST_TIMEOUT_MS = 130_000;
 const DEFAULT_APPROVAL_RUNNING_NOTICE_MS = 10_000;
 const APPROVAL_SLUG_LENGTH = 8;
 
+/** `env` values a model may send; every value is converted to a string before use. */
+export type ExecEnvOverrideValue = string | number | boolean;
+
+/**
+ * Models send `env: { PORT: 3000, DEBUG: true }` as readily as strings. The
+ * schema the model and the validator see is the Gemini-cleaned one, which
+ * drops the Record value schema entirely (a bare `{type: "object"}`), so such
+ * values were never rejected: they reached `validateHostEnv`, the sandbox env
+ * builder and the node host as non-strings. Convert here, once, so every
+ * downstream consumer gets the `Record<string, string>` it is typed for.
+ */
+export function coerceExecEnvOverrides(
+  env: Record<string, ExecEnvOverrideValue> | undefined,
+): Record<string, string> | undefined {
+  if (!env) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    out[key] = typeof value === "string" ? value : String(value);
+  }
+  return out;
+}
+
 export const execSchema = Type.Object({
   command: Type.String({ description: "Shell command to execute" }),
   workdir: Type.Optional(Type.String({ description: "Working directory (defaults to cwd)" })),
-  env: Type.Optional(Type.Record(Type.String(), Type.String())),
+  // A type list, not a Union: tool schemas stay anyOf-free (see schema/typebox.ts).
+  env: Type.Optional(
+    Type.Record(
+      Type.String(),
+      Type.Unsafe<ExecEnvOverrideValue>({ type: ["string", "number", "boolean"] }),
+      { description: "Environment overrides; numbers and booleans are converted to strings" },
+    ),
+  ),
   yieldMs: Type.Optional(
     Type.Number({
       description: "Milliseconds to wait before backgrounding (default 10000)",

@@ -3,7 +3,13 @@ import type { BitterbotConfig } from "../config/config.js";
 import "./test-helpers/fast-coding-tools.js";
 import { createBitterbotCodingTools } from "./agent-tools.js";
 
-const defaultTools = createBitterbotCodingTools();
+// Hot-set off: these tests look tools up by name, which the default hot set
+// (list_tools/use_tool deferral) would hide behind use_tool. Owner turn:
+// browser/gateway are owner-only (PLAN-53) and absent from a guest registry.
+const defaultTools = createBitterbotCodingTools({
+  config: { tools: { hotSet: { enabled: false } } },
+  senderIsOwner: true,
+});
 
 describe("createBitterbotCodingTools", () => {
   it("preserves action enums in normalized schemas", () => {
@@ -59,6 +65,7 @@ describe("createBitterbotCodingTools", () => {
   it("gates apply_patch behind tools.exec.applyPatch for OpenAI models", () => {
     const config: BitterbotConfig = {
       tools: {
+        hotSet: { enabled: false },
         exec: {
           applyPatch: { enabled: true },
         },
@@ -81,6 +88,7 @@ describe("createBitterbotCodingTools", () => {
   it("respects apply_patch allowModels", () => {
     const config: BitterbotConfig = {
       tools: {
+        hotSet: { enabled: false },
         exec: {
           applyPatch: { enabled: true, allowModels: ["gpt-5.2"] },
         },

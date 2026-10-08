@@ -22,7 +22,11 @@ describe("whatsapp_login tool gating", () => {
   });
 
   it("keeps whatsapp_login for authorized senders", () => {
-    const tools = createBitterbotCodingTools({ senderIsOwner: true });
+    // Hot-set off: whatsapp_login is not hot, so by default it sits behind use_tool.
+    const tools = createBitterbotCodingTools({
+      senderIsOwner: true,
+      config: { tools: { hotSet: { enabled: false } } },
+    });
     const toolNames = tools.map((tool) => tool.name);
     expect(toolNames).toContain("whatsapp_login");
   });

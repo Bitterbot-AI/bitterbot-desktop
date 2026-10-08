@@ -10,7 +10,10 @@ import { describe, expect, it } from "vitest";
 import "./test-helpers/fast-coding-tools.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { createBitterbotCodingTools } from "./agent-tools.js";
-import { SKILL_VALIDATION_TOOL_ALLOW } from "./skill-validation-policy.js";
+import {
+  SKILL_VALIDATION_SHELL_TOOLS,
+  SKILL_VALIDATION_TOOL_ALLOW,
+} from "./skill-validation-policy.js";
 
 const A2A_SESSION_KEY = "agent:main:a2a-task:00000000-0000-0000-0000-000000000000";
 
@@ -20,40 +23,54 @@ describe("a2a remote floor (e2e through createBitterbotCodingTools)", () => {
     expect(tools.map((t) => t.name)).toEqual([]);
   });
 
-  it("a skill-evolution validation session gets ONLY workspace-scoped file tools by default (PLAN-44 D-4)", () => {
+  // What a validation session may hold: the workspace-scoped file tools, the
+  // confined shell (PLAN-45 D-2: on by default), and the hot-set meta-tools,
+  // which only ever dispatch over this same filtered list.
+  const VALIDATION_REACHABLE = new Set<string>([
+    ...SKILL_VALIDATION_TOOL_ALLOW,
+    ...SKILL_VALIDATION_SHELL_TOOLS,
+    "list_tools",
+    "use_tool",
+  ]);
+  const VALIDATION_FORBIDDEN = [
+    "web_fetch",
+    "web_search",
+    "message",
+    "skill_manage",
+    "wallet",
+    "circles",
+    "browser",
+  ];
+
+  it("a skill-evolution validation session gets ONLY workspace-scoped file tools + the confined shell by default (PLAN-44 D-4, PLAN-45 D-2)", () => {
     const tools = createBitterbotCodingTools({
       sessionKey: "agent:main:skill-evolve-val-deadbeef",
     });
     const names = tools.map((t) => t.name);
     expect(names.length).toBeGreaterThan(0);
     for (const name of names) {
-      expect(SKILL_VALIDATION_TOOL_ALLOW as readonly string[]).toContain(name);
+      expect(VALIDATION_REACHABLE.has(name), `unclassified tool in validation: ${name}`).toBe(true);
     }
     expect(names).toContain("read");
-    for (const forbidden of [
-      "exec",
-      "process",
-      "web_fetch",
-      "web_search",
-      "message",
-      "skill_manage",
-      "wallet",
-      "circles",
-      "browser",
-    ]) {
+    expect(names).toContain("exec");
+    for (const forbidden of VALIDATION_FORBIDDEN) {
       expect(names).not.toContain(forbidden);
     }
   });
 
-  it("exec is granted to validation sessions only with skills.evolution.validationTools.exec (adversarial C1)", () => {
+  it("skills.evolution.validationTools.exec: false removes the shell and nothing else (adversarial C1)", () => {
     const tools = createBitterbotCodingTools({
       sessionKey: "agent:main:skill-evolve-val-deadbeef",
-      config: { skills: { evolution: { validationTools: { exec: true } } } } as BitterbotConfig,
+      config: { skills: { evolution: { validationTools: { exec: false } } } } as BitterbotConfig,
     });
     const names = tools.map((t) => t.name);
-    expect(names).toContain("exec");
-    expect(names).not.toContain("web_fetch");
-    expect(names).not.toContain("message");
+    expect(names).toContain("read");
+    for (const shell of SKILL_VALIDATION_SHELL_TOOLS) {
+      expect(names).not.toContain(shell);
+    }
+    for (const forbidden of VALIDATION_FORBIDDEN) {
+      expect(names).not.toContain(forbidden);
+    }
   });
 
   it("the PEER validation flavor (attestation sweep) keeps the no-tools floor", () => {
@@ -81,7 +98,19 @@ describe("a2a remote floor (e2e through createBitterbotCodingTools)", () => {
     // tools are stubbed out in this harness; web and image are floor-denied
     // by name regardless. Plugin tools are outside the floor's claim — an
     // operator who wildcards grants their own plugins knowingly.)
-    const EXPECTED_SAFE = new Set(["read", "edit", "write", "complete", "plan"]);
+    // list_tools/use_tool are the hot-set meta-tools. They are classified safe
+    // here because they operate over the registry AFTER the floor has filtered
+    // it (applyHotSetExposure is the last step in createBitterbotCodingTools):
+    // use_tool can only dispatch to a tool this same list already contains.
+    const EXPECTED_SAFE = new Set([
+      "read",
+      "edit",
+      "write",
+      "complete",
+      "plan",
+      "list_tools",
+      "use_tool",
+    ]);
     const config = {
       a2a: { remoteExecution: { tools: { allow: ["*"] } } },
     } as unknown as BitterbotConfig;

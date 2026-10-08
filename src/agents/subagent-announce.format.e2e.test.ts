@@ -246,6 +246,9 @@ describe("subagent announce formatting", () => {
     expect(embeddedRunMock.queueEmbeddedPiMessage).toHaveBeenCalledWith(
       "session-123",
       expect.stringContaining("[System Message]"),
+      // The requester's owner flag rides along so the steered turn keeps its
+      // authorization (requesterIsOwner unset counts as owner).
+      { senderIsOwner: true },
     );
     expect(agentSpy).not.toHaveBeenCalled();
   });
