@@ -1000,6 +1000,7 @@
                   "cli/channels",
                   "cli/configure",
                   "cli/cron",
+                  "cli/curiosity",
                   "cli/dashboard",
                   "cli/directory",
                   "cli/dns",

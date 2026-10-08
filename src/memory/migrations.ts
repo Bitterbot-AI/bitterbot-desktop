@@ -24,6 +24,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { looksLikePersonName } from "./knowledge-graph.js";
 import { ensureColumn } from "./memory-schema.js";
 import { backfillSkillCategories } from "./skill-category.js";
 
@@ -2553,6 +2554,31 @@ const MIGRATIONS: Migration[] = [
         .get();
       if (has) {
         addColumnIfMissing(db, "curiosity_findings", "verified", "INTEGER NOT NULL DEFAULT 1");
+      }
+    },
+  },
+  {
+    version: 75,
+    description:
+      "Knowledge-graph person hygiene (2026-10-07): entities filed as 'person' that are not " +
+      "names ('here', 'commands', a peer id) are reclassified as 'concept'. The curiosity " +
+      "egress filter blocks every known person's name from outgoing search phrases, so noise " +
+      "there blocked ordinary words; identity recall read the same rows.",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entities'`)
+        .get();
+      if (!has) {
+        return;
+      }
+      const rows = db
+        .prepare(`SELECT id, name FROM entities WHERE entity_type = 'person'`)
+        .all() as Array<{ id: string; name: string }>;
+      const demote = db.prepare(`UPDATE entities SET entity_type = 'concept' WHERE id = ?`);
+      for (const r of rows) {
+        if (!looksLikePersonName(r.name)) {
+          demote.run(r.id);
+        }
       }
     },
   },
