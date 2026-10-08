@@ -68,8 +68,28 @@ describe("person-name hygiene", () => {
     );
     ins.run("e1", "here");
     ins.run("e2", "sylvia");
+    // The live failure: a "person" whose name already exists as a concept
+    // (UNIQUE(name, entity_type)) must fold into it, edges included.
+    ins.run("e3", "bitterbot");
+    db.prepare(
+      `INSERT INTO entities (id, name, entity_type, properties, first_seen_at, last_seen_at, mention_count, importance)
+       VALUES ('c1', 'bitterbot', 'concept', '{}', 0, 0, 4, 0.5)`,
+    ).run();
+    db.prepare(
+      `INSERT INTO relationships (id, source_entity_id, target_entity_id, relation_type, created_at, updated_at)
+       VALUES ('r1', 'e3', 'e2', 'knows', 0, 0)`,
+    ).run();
     db.prepare(`UPDATE meta SET value = ? WHERE key = 'schema_version'`).run("74");
     runMigrations(db);
+    expect(db.prepare(`SELECT COUNT(*) n FROM entities WHERE name = 'bitterbot'`).get()).toEqual({
+      n: 1,
+    });
+    expect(db.prepare(`SELECT mention_count FROM entities WHERE id = 'c1'`).get()).toEqual({
+      mention_count: 5,
+    });
+    expect(db.prepare(`SELECT source_entity_id FROM relationships WHERE id = 'r1'`).get()).toEqual({
+      source_entity_id: "c1",
+    });
     const types = Object.fromEntries(
       (
         db.prepare(`SELECT id, entity_type FROM entities`).all() as Array<{
@@ -78,6 +98,6 @@ describe("person-name hygiene", () => {
         }>
       ).map((r) => [r.id, r.entity_type]),
     );
-    expect(types).toEqual({ e1: "concept", e2: "person" });
+    expect(types).toEqual({ e1: "concept", e2: "person", c1: "concept" });
   });
 });
