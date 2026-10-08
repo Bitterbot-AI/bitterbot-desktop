@@ -2,47 +2,23 @@
  * PLAN-52 Phase 0: harness for the runtime contract suite.
  *
  * A contract session is one agent session wired the way the embedded runner
- * wires it (transcript store + tool-result guard, system prompt override,
- * sequential tools with steering skip, request auth), driven by a scripted
- * model. The harness records every session event and reads back the
- * transcript, both normalized (random ids renamed in order of appearance,
- * clocks blanked), so two engines can be compared line for line and a golden
- * can be committed.
+ * wires it (transcript store + tool-result guard, system prompt, sequential
+ * tools with steering skip, request auth), driven by a scripted model. The
+ * harness records every session event and reads back the transcript, both
+ * normalized (random ids renamed in order of appearance, clocks blanked), so
+ * a run can be compared line for line with the committed golden.
  *
- * Variants:
- * - "pi": pi's session, loop, and SessionManager (the reference).
- * - "pi-owned-store": pi's session and loop over our TranscriptStore.
- * - "bitterbot": the owned session, loop, and store.
+ * The goldens were recorded on the pi engine before it was removed (Phase 6);
+ * the one variant left, "bitterbot", is held to them.
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import type { AgentMessage, AgentTool } from "@mariozechner/pi-agent-core";
-import { streamSimple } from "@mariozechner/pi-ai";
-import {
-  AuthStorage,
-  createAgentSession,
-  ModelRegistry,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
-import { withSessionRequestAuth } from "../../embedded-runner/session-auth.js";
-import { prepareSessionManagerForRun } from "../../embedded-runner/session-manager-init.js";
-import { sessionToolAllowlist, splitSdkTools } from "../../embedded-runner/tool-split.js";
-import { guardSessionManager } from "../../session-tool-result-guard-wrapper.js";
 import type { OffloadPolicySettings } from "../compaction/offload-policy.js";
-import { applySystemPromptOverrideToSession } from "../engines/pi/session.js";
-import { ensurePiCompactionReserveTokens } from "../engines/pi/settings.js";
-import { applyToolLoopCompat } from "../engines/pi/tool-loop-compat.js";
-import { openTranscript } from "../open-transcript.js";
 import { createOwnedContractSession } from "./owned-session.js";
-import {
-  CONTRACT_API_KEY,
-  CONTRACT_SESSION_ID,
-  SCRIPTED_PROVIDER,
-  type ScriptedModel,
-} from "./scripted-model.js";
+import type { ScriptedModel } from "./scripted-model.js";
 
-export type ContractVariant = "pi" | "pi-owned-store" | "bitterbot";
+export type ContractVariant = "bitterbot";
 
 export { CONTRACT_API_KEY, CONTRACT_SESSION_ID } from "./scripted-model.js";
 
@@ -55,7 +31,7 @@ export type ContractOptions = {
   systemPrompt?: string;
   retry?: { enabled?: boolean; maxRetries?: number; baseDelayMs?: number };
   compaction?: { enabled?: boolean; reserveTokens?: number; keepRecentTokens?: number };
-  /** Owned engine only: use the offload compaction policy with these settings. */
+  /** Use the offload compaction policy with these settings. */
   offload?: {
     settings?: Partial<OffloadPolicySettings>;
     summaryMode?: "off" | "idle" | "always";
@@ -254,73 +230,11 @@ export function normalizeTranscript(file: string): string[] {
 
 // ── session construction ─────────────────────────────────────────────────
 
-async function createPiContractSession(
-  options: ContractOptions,
-  file: string,
-): Promise<SessionLike> {
-  const cwd = path.join(options.dir, "workspace");
-  const agentDir = path.join(options.dir, "agent");
-  fs.mkdirSync(cwd, { recursive: true });
-  fs.mkdirSync(agentDir, { recursive: true });
-  const hadSessionFile = fs.existsSync(file);
-  const store = guardSessionManager(
-    openTranscript(file, options.variant === "pi" ? "pi" : "bitterbot"),
-    { agentId: "main", allowSyntheticToolResults: true },
-  );
-  await prepareSessionManagerForRun({
-    sessionManager: store,
-    sessionFile: file,
-    hadSessionFile,
-    sessionId: CONTRACT_SESSION_ID,
-    cwd,
-  });
-  const reserveTokens = options.compaction?.reserveTokens ?? 20_000;
-  const settingsManager = SettingsManager.inMemory({
-    retry: {
-      enabled: options.retry?.enabled ?? true,
-      maxRetries: options.retry?.maxRetries ?? 3,
-      baseDelayMs: options.retry?.baseDelayMs ?? 5,
-    },
-    compaction: {
-      enabled: options.compaction?.enabled ?? true,
-      reserveTokens,
-      keepRecentTokens: options.compaction?.keepRecentTokens ?? 20_000,
-    },
-  });
-  const authStorage = AuthStorage.inMemory({
-    [SCRIPTED_PROVIDER]: { type: "api_key", key: CONTRACT_API_KEY },
-  });
-  const modelRegistry = ModelRegistry.inMemory(authStorage);
-  const { customTools } = splitSdkTools({ tools: options.tools ?? [], sandboxEnabled: false });
-  const { session } = await createAgentSession({
-    cwd,
-    agentDir,
-    authStorage,
-    modelRegistry,
-    model: options.script.model,
-    thinkingLevel: "off",
-    tools: sessionToolAllowlist(customTools),
-    customTools,
-    sessionManager: store as unknown as NonNullable<
-      Parameters<typeof createAgentSession>[0]
-    >["sessionManager"],
-    settingsManager,
-  });
-  applySystemPromptOverrideToSession(session, options.systemPrompt ?? "contract system prompt");
-  ensurePiCompactionReserveTokens({ settingsManager, minReserveTokens: reserveTokens });
-  applyToolLoopCompat(session);
-  session.agent.streamFn = withSessionRequestAuth(streamSimple, modelRegistry);
-  return session as unknown as SessionLike;
-}
-
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export async function createContractSession(options: ContractOptions): Promise<ContractSession> {
-  const file = path.join(options.dir, "session.jsonl");
-  const session =
-    options.variant === "bitterbot"
-      ? await createOwnedContractSession(options, file)
-      : await createPiContractSession(options, file);
+  const file = `${options.dir}/session.jsonl`;
+  const session = await createOwnedContractSession(options, file);
   const events: string[] = [];
   const unsubscribe = session.subscribe((event) => {
     events.push(describeEvent(event));

@@ -109,7 +109,7 @@ After an offload, each new user message is searched against the offloaded dialog
 
 The offload policy also drops bare heartbeat pairs (the heartbeat prompt and a plain acknowledgement) from the window; they stay in the transcript, and a heartbeat that carried system events or ran tools is kept. `deep_recall` has a daily budget (`compaction.offload.recallBudgetUsdPerDay`, default $1, counted for the node per UTC day); beyond it the tool points at `recall_range`, which is free.
 
-The policy can be set per agent (`agents.list[].compaction.policy`). The offload policy runs on the `bitterbot` runtime engine (`agents.defaults.runtime.engine`). It triggers after a turn when the prompt exceeds 55% of the context window and before a turn at 70%; the summary policy triggers when less than the reserve is left.
+The policy can be set per agent (`agents.list[].compaction.policy`). The offload policy triggers after a turn when the prompt exceeds 55% of the context window and before a turn at 70%; the summary policy triggers when less than the reserve is left.
 
 ## Progressive compression (pre-compaction)
 

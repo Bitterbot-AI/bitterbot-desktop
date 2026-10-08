@@ -2,7 +2,7 @@ import type { ReasoningLevel, VerboseLevel } from "../auto-reply/thinking.js";
 import type { BitterbotConfig } from "../config/types.bitterbot.js";
 import type { HookRunner } from "../plugins/hooks.js";
 import type { BlockReplyChunking } from "./embedded-block-chunker.js";
-import type { EmbeddedAgentSession as AgentSession } from "./runtime/engines/pi/session.js";
+import type { EmbeddedAgentSession as AgentSession } from "./runtime/session/index.js";
 
 export type ToolResultFormat = "markdown" | "plain";
 

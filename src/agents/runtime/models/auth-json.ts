@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ensureAuthProfileStore, listProfilesForProvider } from "../../../auth-profiles.js";
+import { ensureAuthProfileStore, listProfilesForProvider } from "../../auth-profiles.js";
 
 type AuthJsonCredential =
   | {
@@ -31,16 +31,15 @@ async function readAuthJson(filePath: string): Promise<AuthJsonShape> {
 }
 
 /**
- * pi-coding-agent's ModelRegistry/AuthStorage expects OAuth credentials in auth.json.
- *
- * Bitterbot stores OAuth credentials in auth-profiles.json instead. This helper
- * bridges a subset of credentials into agentDir/auth.json so pi-coding-agent can
- * (a) consider the provider authenticated and (b) include built-in models in its
- * registry/catalog output.
+ * The model registry reads OAuth credentials from `<agentDir>/auth.json`
+ * (`AuthStorage`), but Bitterbot stores them in auth-profiles.json. This helper
+ * bridges a subset of credentials into auth.json so the registry (a) considers
+ * the provider authenticated and (b) includes its built-in models in the
+ * catalog output.
  *
  * Currently used for openai-codex.
  */
-export async function ensurePiAuthJsonFromAuthProfiles(agentDir: string): Promise<{
+export async function ensureAuthJsonFromAuthProfiles(agentDir: string): Promise<{
   wrote: boolean;
   authPath: string;
 }> {

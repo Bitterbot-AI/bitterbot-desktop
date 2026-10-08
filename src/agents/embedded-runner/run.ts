@@ -43,7 +43,6 @@ import {
 } from "../model-auth.js";
 import { normalizeProviderId } from "../model-selection.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
-import { resolveRuntimeEngine } from "../runtime/engine.js";
 import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { compactEmbeddedPiSessionDirect } from "./compact.js";
@@ -650,7 +649,6 @@ export async function runEmbeddedPiAgent(
                   contextWindowTokens,
                   sessionId: params.sessionId,
                   sessionKey: params.sessionKey,
-                  engine: resolveRuntimeEngine(params.config, workspaceResolution.agentId),
                 });
                 if (truncResult.truncated) {
                   log.info(

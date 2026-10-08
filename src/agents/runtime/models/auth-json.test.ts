@@ -2,11 +2,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { saveAuthProfileStore } from "../../../auth-profiles.js";
-import { ensurePiAuthJsonFromAuthProfiles } from "./auth-json.js";
+import { saveAuthProfileStore } from "../../auth-profiles.js";
+import { ensureAuthJsonFromAuthProfiles } from "./auth-json.js";
 
-describe("ensurePiAuthJsonFromAuthProfiles", () => {
-  it("writes openai-codex oauth credentials into auth.json for pi-coding-agent discovery", async () => {
+describe("ensureAuthJsonFromAuthProfiles", () => {
+  it("writes openai-codex oauth credentials into auth.json so the model registry sees the provider as authenticated", async () => {
     const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-agent-"));
 
     saveAuthProfileStore(
@@ -25,7 +25,7 @@ describe("ensurePiAuthJsonFromAuthProfiles", () => {
       agentDir,
     );
 
-    const first = await ensurePiAuthJsonFromAuthProfiles(agentDir);
+    const first = await ensureAuthJsonFromAuthProfiles(agentDir);
     expect(first.wrote).toBe(true);
 
     const authPath = path.join(agentDir, "auth.json");
@@ -36,7 +36,7 @@ describe("ensurePiAuthJsonFromAuthProfiles", () => {
       refresh: "refresh-token",
     });
 
-    const second = await ensurePiAuthJsonFromAuthProfiles(agentDir);
+    const second = await ensureAuthJsonFromAuthProfiles(agentDir);
     expect(second.wrote).toBe(false);
   });
 });

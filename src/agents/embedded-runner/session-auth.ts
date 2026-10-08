@@ -1,13 +1,12 @@
 import type { StreamFn } from "@mariozechner/pi-agent-core";
-import type { ModelRegistry } from "../runtime/engines/pi/model-discovery.js";
+import type { ModelRegistry } from "../runtime/models/index.js";
 
 /**
- * pi-coding-agent >= 0.73 resolves request auth only inside the default
- * `streamFn` that createAgentSession installs (ModelRegistry
+ * Request auth for a turn's model calls. The owned session checks that auth
+ * resolves before a prompt and passes it to the compaction summary itself,
+ * but the agent loop calls `agent.streamFn` for turns without it (ModelRegistry
  * .getApiKeyAndHeaders: runtime key overrides, stored auth profiles,
- * models.json apiKey/headers/authHeader), and no longer gives the Agent a
- * `getApiKey` callback. Replacing `agent.streamFn`, as the embedded runner
- * does, therefore dropped the API key and headers for every provider.
+ * models.json apiKey/headers/authHeader).
  *
  * Wrap the final (outermost) stream function so every inner layer, including
  * the in-tree Anthropic provider, receives the resolved key and headers.

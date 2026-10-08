@@ -295,7 +295,7 @@ wedged cron jobs). See [/cli/doctor](/cli/doctor) for details.
 
 ### 18c) Agent runtime engine
 
-Doctor reports the runtime engine in use (`agents.defaults.runtime.engine`, `pi` by default) and any agent that overrides it. When both engines have recorded runs in the last 14 days it adds one line per engine from the usage ledger: runs, cost per run, model-call latency p50 and p95, tool error rate, and errored model calls. See [Usage tracking](/concepts/usage-tracking#runtime-engine).
+Doctor reports the runtime engine in use. Since the pi engine was removed this is always `bitterbot`; a config that still sets `agents.defaults.runtime.engine: "pi"` is accepted, ignored, and logged once at startup. When the usage ledger still holds runs of more than one engine in the last 14 days (rows written before the switch), doctor adds one line per engine: runs, cost per run, model-call latency p50 and p95, tool error rate, and errored model calls. See [Usage tracking](/concepts/usage-tracking#runtime-engine).
 
 ### 19) Workspace tips (backup + memory system)
 

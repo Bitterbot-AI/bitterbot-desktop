@@ -310,7 +310,7 @@ async function resolveSubModel(
 
   // Auto-detect: try providers in cost order
   try {
-    const { discoverAuthStorage } = await import("../runtime/engines/pi/model-discovery.js");
+    const { discoverAuthStorage } = await import("../runtime/models/index.js");
     const { resolveBitterbotAgentDir } = await import("../agent-paths.js");
     const agentDir = resolveBitterbotAgentDir();
     const authStorage = discoverAuthStorage(agentDir);

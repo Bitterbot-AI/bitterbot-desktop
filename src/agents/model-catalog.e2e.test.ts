@@ -6,7 +6,7 @@ import {
   resetModelCatalogCacheForTest,
 } from "./model-catalog.js";
 
-type PiSdkModule = typeof import("./runtime/engines/pi/model-discovery.js");
+type ModelsModule = typeof import("./runtime/models/index.js");
 
 vi.mock("./models-config.js", () => ({
   ensureBitterbotModelsJson: vi.fn().mockResolvedValue({ agentDir: "/tmp", wrote: false }),
@@ -43,7 +43,7 @@ describe("loadModelCatalog e2e smoke", () => {
             },
           }),
         },
-      } as unknown as PiSdkModule;
+      } as unknown as ModelsModule;
     });
 
     const cfg = {} as BitterbotConfig;

@@ -1,5 +1,4 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { SessionManager } from "@mariozechner/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as helpers from "./embedded-helpers.js";
 import {
@@ -7,6 +6,7 @@ import {
   makeModelSnapshotEntry,
   makeReasoningAssistantMessages,
 } from "./embedded-runner.sanitize-session-history.test-harness.js";
+import type { TranscriptStore as SessionManager } from "./runtime/transcript/store.js";
 
 type SanitizeSessionHistory = typeof import("./embedded-runner/google.js").sanitizeSessionHistory;
 let sanitizeSessionHistory: SanitizeSessionHistory;

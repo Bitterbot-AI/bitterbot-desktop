@@ -1073,8 +1073,7 @@
                   "reference/api-usage-costs",
                   "reference/date-time",
                   "reference/transcript-hygiene",
-                  "reference/pi",
-                  "reference/pi-dev",
+                  "reference/agent-runtime",
                   "reference/agent-runtime-dev",
                   "web/mobile"
                 ]

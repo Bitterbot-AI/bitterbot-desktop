@@ -3,7 +3,7 @@ import type { Api, AssistantMessage, Model } from "@mariozechner/pi-ai";
 import type { ThinkLevel } from "../../../auto-reply/thinking.js";
 import type { SessionSystemPromptReport } from "../../../config/sessions/types.js";
 import type { MessagingToolSend } from "../../embedded-messaging.js";
-import type { AuthStorage, ModelRegistry } from "../../runtime/engines/pi/model-discovery.js";
+import type { AuthStorage, ModelRegistry } from "../../runtime/models/index.js";
 import type { NormalizedUsage } from "../../usage.js";
 import type { RunEmbeddedPiAgentParams } from "./params.js";
 

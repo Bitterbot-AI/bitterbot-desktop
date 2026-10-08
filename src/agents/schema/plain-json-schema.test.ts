@@ -4,7 +4,7 @@ import AjvModule from "ajv";
 import { describe, expect, it } from "vitest";
 import "../test-helpers/fast-coding-tools.js";
 import { createBitterbotCodingTools } from "../agent-tools.js";
-import { toToolDefinitions } from "../runtime/engines/pi/tool-definition-adapter.js";
+import { toToolDefinitions } from "../runtime/session/tool-definition-adapter.js";
 import { toPlainJsonSchema } from "./plain-json-schema.js";
 import { stringEnum } from "./typebox.js";
 

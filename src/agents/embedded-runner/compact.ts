@@ -46,11 +46,9 @@ import { getApiKeyForModel, resolveModelAuthMode } from "../model-auth.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../ollama-stream.js";
 import { compressOldMessages } from "../progressive-compression.js";
-import { resolveRuntimeEngine } from "../runtime/engine.js";
-import { createPiSession, type EmbeddedAgentSession } from "../runtime/engines/pi/session.js";
-import { resolveCompactionReserveTokensFloor } from "../runtime/engines/pi/settings.js";
 import { openTranscript } from "../runtime/open-transcript.js";
 import { createOwnedSession } from "../runtime/session/create.js";
+import type { EmbeddedAgentSession } from "../runtime/session/index.js";
 import type { SessionStore } from "../runtime/session/session.js";
 import { toRuntimeTools } from "../runtime/session/tools.js";
 import { estimateTokens } from "../runtime/tokens.js";
@@ -75,7 +73,6 @@ import {
   recordCompactionSuccess,
 } from "./compaction-circuit-breaker.js";
 import { compactWithSafetyTimeout } from "./compaction-safety-timeout.js";
-import { buildEmbeddedExtensionPaths } from "./extensions.js";
 import { applyExtraParamsToAgent } from "./extra-params.js";
 import {
   logToolSchemasForGoogle,
@@ -90,7 +87,6 @@ import { buildEmbeddedSandboxInfo } from "./sandbox-info.js";
 import { withSessionRequestAuth } from "./session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "./session-manager-cache.js";
 import { buildEmbeddedSystemPrompt, createSystemPromptOverride } from "./system-prompt.js";
-import { splitSdkTools } from "./tool-split.js";
 import type { EmbeddedPiCompactResult } from "./types.js";
 import { describeUnknownError, mapThinkingLevel } from "./utils.js";
 import { flushPendingToolResultsAfterIdle } from "./wait-for-idle-before-flush.js";
@@ -577,77 +573,43 @@ export async function compactEmbeddedPiSessionDirect(
         provider,
         modelId,
       });
-      const sessionManager = guardSessionManager(
-        openTranscript(params.sessionFile, resolveRuntimeEngine(params.config, sessionAgentId)),
-        {
-          agentId: sessionAgentId,
-          sessionKey: params.sessionKey,
-          allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
-        },
-      );
-      trackSessionManagerAccess(params.sessionFile);
-      // Call for side effects (sets compaction/pruning runtime state)
-      buildEmbeddedExtensionPaths({
-        cfg: params.config,
-        sessionManager,
-        provider,
-        modelId,
-        model,
+      const sessionManager = guardSessionManager(openTranscript(params.sessionFile), {
+        agentId: sessionAgentId,
+        sessionKey: params.sessionKey,
+        allowSyntheticToolResults: transcriptPolicy.allowSyntheticToolResults,
       });
+      trackSessionManagerAccess(params.sessionFile);
 
-      let session: EmbeddedAgentSession;
-      if (resolveRuntimeEngine(params.config, sessionAgentId) === "bitterbot") {
-        // PLAN-52: the owned session. Its summary call goes through the agent's
-        // stream function, so install the stack a run uses (provider runtime,
-        // extra params, request auth). pi calls the provider directly instead,
-        // which is why /compact fails on models only the in-tree provider handles.
-        const owned = createOwnedSession({
-          config: params.config,
-          agentId: sessionAgentId,
-          model,
-          thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          systemPrompt: systemPromptOverride(),
-          tools: toRuntimeTools(tools),
-          store: sessionManager as unknown as SessionStore,
-          resolveRequestAuth: (target) => modelRegistry.getApiKeyAndHeaders(target),
-          findModel: (targetProvider, targetModelId) =>
-            modelRegistry.find(targetProvider, targetModelId),
-          log: (message) => log.info(`[runtime] compaction diagId=${diagId} ${message}`),
-        });
-        if (model.api === "ollama") {
-          const providerConfig = params.config?.models?.providers?.[model.provider];
-          const modelBaseUrl = typeof model.baseUrl === "string" ? model.baseUrl.trim() : "";
-          const providerBaseUrl =
-            typeof providerConfig?.baseUrl === "string" ? providerConfig.baseUrl.trim() : "";
-          owned.agent.streamFn = createOllamaStreamFn(
-            modelBaseUrl || providerBaseUrl || OLLAMA_NATIVE_BASE_URL,
-          );
-        } else {
-          owned.agent.streamFn = streamSimple;
-        }
-        applyExtraParamsToAgent(owned.agent, params.config, provider, modelId);
-        owned.agent.streamFn = withSessionRequestAuth(owned.agent.streamFn, modelRegistry);
-        session = owned as unknown as typeof session;
+      // PLAN-52: the owned session. Its summary call goes through the agent's
+      // stream function, so install the stack a run uses (provider runtime,
+      // extra params, request auth); models only the in-tree provider handles
+      // compact the same way they answer.
+      const session: EmbeddedAgentSession = createOwnedSession({
+        config: params.config,
+        agentId: sessionAgentId,
+        model,
+        thinkingLevel: mapThinkingLevel(params.thinkLevel),
+        systemPrompt: systemPromptOverride(),
+        tools: toRuntimeTools(tools),
+        store: sessionManager as unknown as SessionStore,
+        resolveRequestAuth: (target) => modelRegistry.getApiKeyAndHeaders(target),
+        findModel: (targetProvider, targetModelId) =>
+          modelRegistry.find(targetProvider, targetModelId),
+        log: (message) => log.info(`[runtime] compaction diagId=${diagId} ${message}`),
+      });
+      if (model.api === "ollama") {
+        const providerConfig = params.config?.models?.providers?.[model.provider];
+        const modelBaseUrl = typeof model.baseUrl === "string" ? model.baseUrl.trim() : "";
+        const providerBaseUrl =
+          typeof providerConfig?.baseUrl === "string" ? providerConfig.baseUrl.trim() : "";
+        session.agent.streamFn = createOllamaStreamFn(
+          modelBaseUrl || providerBaseUrl || OLLAMA_NATIVE_BASE_URL,
+        );
       } else {
-        const { customTools } = splitSdkTools({
-          tools,
-          sandboxEnabled: !!sandbox?.enabled,
-        });
-        session = await createPiSession({
-          cwd: resolvedWorkspace,
-          settingsCwd: effectiveWorkspace,
-          agentDir,
-          authStorage,
-          modelRegistry,
-          model,
-          thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          customTools,
-          store: sessionManager,
-          systemPrompt: systemPromptOverride(),
-          minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-          toolLoopCompat: false,
-        });
+        session.agent.streamFn = streamSimple;
       }
+      applyExtraParamsToAgent(session.agent, params.config, provider, modelId);
+      session.agent.streamFn = withSessionRequestAuth(session.agent.streamFn, modelRegistry);
 
       try {
         const prior = await sanitizeSessionHistory({
@@ -827,8 +789,8 @@ export async function compactEmbeddedPiSessionDirect(
           );
         }
         recordCompactionSuccess(breakerSessionKey);
-        // PLAN-50 Phase 5: the summary call runs inside pi-coding-agent with no usage callback,
-        // so it is recorded as an estimate (context summarized in, summary text out) and tagged.
+        // PLAN-50 Phase 5: the summary call runs inside the compaction policy with no usage
+        // callback, so it is recorded as an estimate (context summarized in, summary text out).
         recordUsage({
           kind: "chat",
           feature: USAGE_FEATURES.agentCompaction,

@@ -3,13 +3,10 @@
  *
  * Each scenario drives one agent session with a scripted model and records
  * the normalized event sequence, the transcript, the in-memory messages, and
- * what the model was sent. The pi engine's result is the golden (committed as
- * a snapshot); every other variant must produce exactly the same result,
- * except for the scenarios listed in DELIBERATE_DIFFERENCES, which have a
- * golden of their own.
- *
- * When the pi engine is removed, the "pi" and "pi-owned-store" variants go
- * and the snapshots stay as the contract of the owned engine.
+ * what the model was sent. The committed snapshots are the contract: they
+ * were recorded on the pi engine before Phase 6 removed it, except for the
+ * scenarios listed in DELIBERATE_DIFFERENCES, whose golden was recorded on
+ * the owned engine. Changing a golden is a behaviour change.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -35,12 +32,10 @@ type Result = {
 
 type Ctx = { variant: ContractVariant; dir: string };
 
-const VARIANTS: ContractVariant[] = (process.env.BITTERBOT_CONTRACT_VARIANTS?.split(",") as
-  | ContractVariant[]
-  | undefined) ?? ["pi", "pi-owned-store", "bitterbot"];
+const VARIANTS: ContractVariant[] = ["bitterbot"];
 
-/** Scenarios where the owned engine differs from pi on purpose (own golden). */
-const DELIBERATE_DIFFERENCES = new Set<string>(["abort during a tool call"]);
+/** Scenarios where the owned engine differs from pi on purpose (golden recorded on it). */
+export const DELIBERATE_DIFFERENCES = new Set<string>(["abort during a tool call"]);
 
 const roots: string[] = [];
 afterAll(() => {
@@ -441,16 +436,8 @@ describe("runtime contract", () => {
               result.notes.scriptRemaining,
               "unused script steps are part of the golden",
             ).toBeDefined();
-            if (variant === "pi") {
-              expect(result).toMatchSnapshot();
-            } else if (variant === "bitterbot" && DELIBERATE_DIFFERENCES.has(name)) {
-              expect(result).toMatchSnapshot();
-            } else if (VARIANTS.includes("pi")) {
-              expect(result).toEqual(await run(name, "pi"));
-            } else {
-              // pi is gone: the committed golden is the contract.
-              expect(result).toMatchSnapshot();
-            }
+            // The committed golden is the contract.
+            expect(result).toMatchSnapshot();
           },
           30_000,
         );

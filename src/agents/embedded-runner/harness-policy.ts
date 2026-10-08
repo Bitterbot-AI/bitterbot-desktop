@@ -12,7 +12,7 @@
 // forbidden surface — there is no field for it to land in.
 //
 // Wired surfaces (enforced at runtime):
-//   - compaction      → extensions.ts (buildEmbeddedExtensionPaths)
+//   - compaction      → mode "safeguard" is accepted and inert (see LIMITATIONS.md)
 //   - prompt.fragments → appended to the system prompt (renderPromptFragments)
 //   - tools.descriptionOverrides → applied to tool defs (applyToolDescriptionOverrides)
 

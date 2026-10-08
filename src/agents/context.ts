@@ -1,5 +1,5 @@
-// Lazy-load pi-coding-agent model metadata so we can infer context windows when
-// the agent reports a model id. This includes custom models.json entries.
+// Lazy-load the model registry so we can infer context windows when the agent
+// reports a model id. This includes custom models.json entries.
 
 import { loadConfig } from "../config/config.js";
 import { resolveBitterbotAgentDir } from "./agent-paths.js";
@@ -77,8 +77,7 @@ const loadPromise = (async () => {
   }
 
   try {
-    const { discoverAuthStorage, discoverModels } =
-      await import("./runtime/engines/pi/model-discovery.js");
+    const { discoverAuthStorage, discoverModels } = await import("./runtime/models/index.js");
     const agentDir = resolveBitterbotAgentDir();
     const authStorage = discoverAuthStorage(agentDir);
     const modelRegistry = discoverModels(authStorage, agentDir) as unknown as ModelRegistryLike;

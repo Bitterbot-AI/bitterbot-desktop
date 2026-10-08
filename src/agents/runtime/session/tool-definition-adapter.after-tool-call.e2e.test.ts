@@ -26,11 +26,11 @@ const hookMocks = vi.hoisted(() => ({
   })),
 }));
 
-vi.mock("../../../../plugins/hook-runner-global.js", () => ({
+vi.mock("../../../plugins/hook-runner-global.js", () => ({
   getGlobalHookRunner: () => hookMocks.runner,
 }));
 
-vi.mock("../../../agent-tools.before-tool-call.js", () => ({
+vi.mock("../../agent-tools.before-tool-call.js", () => ({
   consumeAdjustedParamsForToolCall: hookMocks.consumeAdjustedParamsForToolCall,
   isToolWrappedWithBeforeToolCallHook: hookMocks.isToolWrappedWithBeforeToolCallHook,
   runBeforeToolCallHook: hookMocks.runBeforeToolCallHook,

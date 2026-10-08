@@ -4,7 +4,7 @@ import { wrapToolWithBeforeToolCallHook } from "./agent-tools.before-tool-call.j
 import {
   toClientToolDefinitions,
   toToolDefinitions,
-} from "./runtime/engines/pi/tool-definition-adapter.js";
+} from "./runtime/session/tool-definition-adapter.js";
 
 vi.mock("../plugins/hook-runner-global.js");
 

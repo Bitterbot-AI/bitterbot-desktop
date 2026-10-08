@@ -15,7 +15,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createReadTool as createPiReadTool } from "@mariozechner/pi-coding-agent";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("sharp", () => {
@@ -42,12 +41,7 @@ afterAll(async () => {
 });
 
 describe("read tool when sharp cannot be loaded", () => {
-  it("pi returns the image (Photon does not depend on sharp)", async () => {
-    const result = await createPiReadTool(dir).execute("call-1", { path: "pixel.png" });
-    const blocks = result.content as Block[];
-    expect(blocks.some((block) => block.type === "image")).toBe(true);
-  });
-
+  // pi's read tool (Photon, WASM) returned the image here; the port must too.
   it("the port still returns an image that is already within the limits", async () => {
     const { createReadTool } = await import("./read.js");
     const result = await createReadTool(dir).execute("call-1", { path: "pixel.png" });

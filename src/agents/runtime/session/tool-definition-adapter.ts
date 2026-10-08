@@ -1,22 +1,46 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
-import { logDebug, logError } from "../../../../logger.js";
-import { isPlainObject } from "../../../../utils.js";
+import { logDebug, logError } from "../../../logger.js";
+import { isPlainObject } from "../../../utils.js";
 import {
   consumeAdjustedParamsForToolCall,
   isToolWrappedWithBeforeToolCallHook,
   runBeforeToolCallHook,
-} from "../../../agent-tools.before-tool-call.js";
-import type { ClientToolDefinition } from "../../../embedded-runner/run/params.js";
-import { toPlainJsonSchema } from "../../../schema/plain-json-schema.js";
-import { normalizeToolName } from "../../../tool-policy.js";
-import { jsonResult } from "../../../tools/common.js";
-import { rejectUnknownEnumStrings } from "../../loop/validation-hints.js";
+} from "../../agent-tools.before-tool-call.js";
+import type { ClientToolDefinition } from "../../embedded-runner/run/params.js";
+import { toPlainJsonSchema } from "../../schema/plain-json-schema.js";
+import { normalizeToolName } from "../../tool-policy.js";
+import { jsonResult } from "../../tools/common.js";
+import { rejectUnknownEnumStrings } from "../loop/validation-hints.js";
+
+/**
+ * The wrapper between an agent tool and the owned session: the
+ * before-tool-call hook runs here, and a thrown error becomes a JSON error
+ * result (`{status: "error", tool, error}`, reported with `isError: false`),
+ * which the subscriber and the model both rely on. `session/tools.ts` turns
+ * these definitions back into agent tools for the loop.
+ */
 
 // oxlint-disable-next-line typescript/no-explicit-any
 type AnyAgentTool = AgentTool<any, unknown>;
 
-// pi-coding-agent >= 0.73 calls ToolDefinition.execute(toolCallId, params, signal, onUpdate, ctx).
+/** A wrapped tool: the shape of pi-coding-agent's `ToolDefinition`, which the owned session keeps. */
+export type ToolDefinition = {
+  name: string;
+  label: string;
+  description: string;
+  parameters: AnyAgentTool["parameters"];
+  /** Runs before argument validation; may reshape or reject the raw arguments. */
+  prepareArguments?: (args: unknown) => unknown;
+  executionMode?: "sequential" | "parallel";
+  execute: (
+    toolCallId: string,
+    params: unknown,
+    signal?: AbortSignal,
+    onUpdate?: (partial: AgentToolResult<unknown>) => void,
+    ctx?: unknown,
+  ) => Promise<AgentToolResult<unknown>>;
+};
+
 type ToolExecuteArgs = Parameters<ToolDefinition["execute"]>;
 
 function describeToolExecutionError(err: unknown): {
@@ -41,14 +65,14 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
       label: tool.label ?? name,
       description: tool.description ?? "",
       parameters,
-      // Runs before the library validates. Two jobs: argument shims (e.g. pi's
+      // Runs before the loop validates. Two jobs: argument shims (e.g. the
       // edit tool folding legacy oldText/newText into edits[]) must survive the
       // conversion, and a wrong enum string is rejected here with the allowed
-      // values, which the library's own message leaves out.
+      // values, which the validator's own message leaves out.
       prepareArguments: (raw: unknown) => {
         const prepared: unknown = tool.prepareArguments ? tool.prepareArguments(raw) : raw;
         rejectUnknownEnumStrings(name, parameters, prepared);
-        return prepared as never;
+        return prepared;
       },
       ...(tool.executionMode ? { executionMode: tool.executionMode } : {}),
       execute: async (...args: ToolExecuteArgs): Promise<AgentToolResult<unknown>> => {
@@ -68,8 +92,8 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
           }
           const result = await tool.execute(toolCallId, executeParams, signal, onUpdate);
           // NOTE: after_tool_call is intentionally NOT fired here. This adapter
-          // is used only inside the embedded runner (tool-split.ts →
-          // compact.ts), whose tool-end handler
+          // is used only inside the embedded runner (session/tools.ts →
+          // attempt.ts and compact.ts), whose tool-end handler
           // (embedded-subscribe.handlers.tools.ts) already fires
           // after_tool_call with the full event (durationMs, sanitized result).
           // Firing it here too double-recorded every skill_execution and

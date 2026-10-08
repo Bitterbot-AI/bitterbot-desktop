@@ -382,7 +382,7 @@ By default, Bitterbot watches skill folders and bumps the skills snapshot when `
 
 ## Token impact (skills list)
 
-When skills are eligible, Bitterbot injects a compact XML list of available skills into the system prompt (via `formatSkillsForPrompt` in `pi-coding-agent`). The cost is deterministic:
+When skills are eligible, Bitterbot injects a compact XML list of available skills into the system prompt (via `formatSkillsForPrompt` in `src/agents/skills/skill-loader.ts`). The cost is deterministic:
 
 - **Base overhead (only when ≥1 skill):** 195 characters.
 - **Per skill:** 97 characters + the length of the XML-escaped `<name>`, `<description>`, and `<location>` values.
