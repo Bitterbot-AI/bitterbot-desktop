@@ -54,9 +54,15 @@ describe("sandbox explain helpers", () => {
     };
 
     const policy = resolveSandboxToolPolicyForAgent(cfg, "work");
+    // group:memory and group:fs in TOOL_GROUPS order, then the implicit image allow.
     expect(policy.allow).toEqual([
       "memory_search",
       "memory_get",
+      "memory_status",
+      "dream_search",
+      "dream_status",
+      "curiosity_state",
+      "curiosity_resolve",
       "read",
       "write",
       "edit",

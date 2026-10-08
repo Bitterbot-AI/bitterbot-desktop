@@ -10,7 +10,17 @@ import { createBitterbotTools } from "./bitterbot-tools.js";
 import { createHostSandboxFsBridge } from "./test-helpers/host-sandbox-fs-bridge.js";
 import { createBrowserTool } from "./tools/browser-tool.js";
 
-const defaultTools = createBitterbotCodingTools();
+// Hot-set off: these tests inspect individual tool schemas by name, which the
+// default hot set (list_tools/use_tool deferral) would hide behind use_tool.
+// Owner turn: browser/gateway/wallet are owner-only (PLAN-53), so a guest
+// registry would not contain them at all.
+const defaultTools = createBitterbotCodingTools({
+  config: { tools: { hotSet: { enabled: false } } },
+  senderIsOwner: true,
+});
+// The default shape the model actually sees (hot set on): list_tools + use_tool
+// + the hot tools. Schema-hygiene checks run over this too.
+const hotSetTools = createBitterbotCodingTools();
 
 function findUnionKeywordOffenders(
   tools: Array<{ name: string; parameters: unknown }>,
@@ -136,6 +146,15 @@ describe("createBitterbotCodingTools", () => {
     });
   });
 
+  it("a guest registry (no owner flag) omits the owner-only browser and gateway tools", () => {
+    const guest = createBitterbotCodingTools({
+      config: { tools: { hotSet: { enabled: false } } },
+    });
+    const names = new Set(guest.map((tool) => tool.name));
+    expect(names.has("browser")).toBe(false);
+    expect(names.has("gateway")).toBe(false);
+    expect(names.has("read")).toBe(true);
+  });
   it("keeps browser tool schema OpenAI-compatible without normalization", () => {
     const browser = createBrowserTool();
     const schema = browser.parameters as { type?: unknown; anyOf?: unknown };
@@ -306,6 +325,7 @@ describe("createBitterbotCodingTools", () => {
   it("filters session tools for sub-agent sessions by default", () => {
     const tools = createBitterbotCodingTools({
       sessionKey: "agent:main:subagent:test",
+      config: { tools: { hotSet: { enabled: false } } },
     });
     const names = new Set(tools.map((tool) => tool.name));
     expect(names.has("sessions_list")).toBe(false);
@@ -344,6 +364,7 @@ describe("createBitterbotCodingTools", () => {
     const tools = createBitterbotCodingTools({
       sessionKey: "agent:main:subagent:flat",
       config: {
+        tools: { hotSet: { enabled: false } },
         session: {
           store: storeTemplate,
         },
@@ -382,7 +403,7 @@ describe("createBitterbotCodingTools", () => {
 
   it("applies tool profiles before allow/deny policies", () => {
     const tools = createBitterbotCodingTools({
-      config: { tools: { profile: "messaging" } },
+      config: { tools: { profile: "messaging", hotSet: { enabled: false } } },
     });
     const names = new Set(tools.map((tool) => tool.name));
     expect(names.has("message")).toBe(true);
@@ -416,7 +437,7 @@ describe("createBitterbotCodingTools", () => {
     const tools = createBitterbotCodingTools({
       sessionKey: "agent:work:main",
       config: {
-        tools: { profile: "coding" },
+        tools: { profile: "coding", hotSet: { enabled: false } },
         agents: {
           list: [{ id: "work", tools: { profile: "messaging" } }],
         },
@@ -491,7 +512,8 @@ describe("createBitterbotCodingTools", () => {
       return found;
     };
 
-    for (const tool of defaultTools) {
+    // Both the full registry and the hot-set shape (list_tools/use_tool included).
+    for (const tool of [...defaultTools, ...hotSetTools]) {
       const violations = findUnsupportedKeywords(tool.parameters, `${tool.name}.parameters`);
       expect(violations).toEqual([]);
     }

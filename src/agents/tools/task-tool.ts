@@ -493,7 +493,12 @@ export function createTaskGetTool(): AnyAgentTool {
 // ---------------------------------------------------------------------------
 
 const ListSchema = Type.Object({
-  status: Type.Optional(Type.Union([StatusSchema, Type.Array(StatusSchema)])),
+  // Array only: a `Union([Status, Array(Status)])` cannot flatten to an enum,
+  // so it leaked `anyOf` to providers that reject unions (every other tool
+  // schema is union-free). execute() still accepts a bare string at runtime.
+  status: Type.Optional(
+    Type.Array(StatusSchema, { description: "Only tasks in one of these statuses" }),
+  ),
   parent_task_id: Type.Optional(Type.String()),
   source: Type.Optional(
     Type.Union([

@@ -47,7 +47,9 @@ import {
   renderExecHostLabel,
   resolveApprovalRunningNoticeMs,
   runExecProcess,
+  coerceExecEnvOverrides,
   execSchema,
+  type ExecEnvOverrideValue,
   type ExecProcessHandle,
   validateHostEnv,
 } from "./bash-tools.exec-runtime.js";
@@ -167,7 +169,7 @@ export function createExecTool(
       const params = args as {
         command: string;
         workdir?: string;
-        env?: Record<string, string>;
+        env?: Record<string, ExecEnvOverrideValue>;
         yieldMs?: number;
         background?: boolean;
         timeout?: number;
@@ -178,6 +180,7 @@ export function createExecTool(
         ask?: string;
         node?: string;
       };
+      const envOverrides = coerceExecEnvOverrides(params.env);
 
       if (!params.command) {
         throw new Error("Provide a command to start.");
@@ -346,22 +349,22 @@ export function createExecTool(
 
       // Logic: Sandbox gets raw env. Host (gateway/node) must pass validation.
       // We validate BEFORE merging to prevent any dangerous vars from entering the stream.
-      if (host !== "sandbox" && params.env) {
-        validateHostEnv(params.env);
+      if (host !== "sandbox" && envOverrides) {
+        validateHostEnv(envOverrides);
       }
 
-      const mergedEnv = params.env ? { ...baseEnv, ...params.env } : baseEnv;
+      const mergedEnv = envOverrides ? { ...baseEnv, ...envOverrides } : baseEnv;
 
       const env = sandbox
         ? buildSandboxEnv({
             defaultPath: DEFAULT_PATH,
-            paramsEnv: params.env,
+            paramsEnv: envOverrides,
             sandboxEnv: sandbox.env,
             containerWorkdir: containerWorkdir ?? sandbox.containerWorkdir,
           })
         : mergedEnv;
 
-      if (!sandbox && host === "gateway" && !params.env?.PATH) {
+      if (!sandbox && host === "gateway" && !envOverrides?.PATH) {
         const shellPath = getShellPathFromLoginShell({
           env: process.env,
           timeoutMs: resolveShellEnvFallbackTimeoutMs(process.env),
@@ -422,7 +425,7 @@ export function createExecTool(
         }
         const argv = buildNodeShellCommand(params.command, nodeInfo?.platform);
 
-        const nodeEnv = params.env ? { ...params.env } : undefined;
+        const nodeEnv = envOverrides ? { ...envOverrides } : undefined;
         const baseAllowlistEval = evaluateShellAllowlist({
           command: params.command,
           allowlist: [],
