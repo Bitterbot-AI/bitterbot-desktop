@@ -31,9 +31,9 @@
  *
  * `fileEntries`, `byId`, `labelsById`, `leafId`, `flushed` and `sessionId`
  * keep pi's names and are writable: `embedded-runner/session-manager-init.ts`
- * and the tool-result guard mutate them today. `appendMessage` is an
- * overridable instance member for the same reason. Those seams go away in
- * Phase 6; `setHeaderIdentity` and `resetUnflushed` are their replacements.
+ * (`prepareSessionManagerForRun`) and the tool-result guard mutate them.
+ * `appendMessage` is an overridable instance member for the same reason.
+ * `setHeaderIdentity` is the typed form of the first mutation.
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
@@ -137,7 +137,7 @@ export type TranscriptStoreOptions = {
 };
 
 export class TranscriptStore {
-  /** @internal pi-compatible field names; mutated by session-manager-init.ts until Phase 6. */
+  /** @internal pi-compatible field names; mutated by session-manager-init.ts and the tool-result guard. */
   sessionId = "";
   /** @internal */
   fileEntries: FileEntry[] = [];

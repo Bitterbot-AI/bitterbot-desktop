@@ -48,6 +48,14 @@
   },
   "redirects": [
     {
+      "source": "/reference/pi",
+      "destination": "/reference/agent-runtime"
+    },
+    {
+      "source": "/reference/pi-dev",
+      "destination": "/reference/agent-runtime-dev"
+    },
+    {
       "source": "/concepts/sessions",
       "destination": "/concepts/session"
     },
@@ -1073,8 +1081,7 @@
                   "reference/api-usage-costs",
                   "reference/date-time",
                   "reference/transcript-hygiene",
-                  "reference/pi",
-                  "reference/pi-dev",
+                  "reference/agent-runtime",
                   "reference/agent-runtime-dev",
                   "web/mobile"
                 ]

@@ -103,7 +103,7 @@ async function ownedDirect(params: {
   const file = path.join(dir, "session.jsonl");
   const cwd = path.join(dir, "workspace");
   fs.mkdirSync(cwd, { recursive: true });
-  const store = guardSessionManager(openTranscript(file, "bitterbot"), {
+  const store = guardSessionManager(openTranscript(file), {
     agentId: "main",
     allowSyntheticToolResults: true,
   });

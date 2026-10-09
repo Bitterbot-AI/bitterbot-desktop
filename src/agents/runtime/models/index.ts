@@ -6,9 +6,9 @@
  * and `resolve-config-value.ts` for what each file ports, every difference
  * from the original, and what is deliberately not ported.
  *
- * `discoverAuthStorage` and `discoverModels` have the same signatures as the
- * helpers in `engines/pi/model-discovery.ts`, so that module's exports can be
- * repointed here.
+ * `discoverAuthStorage` and `discoverModels` open `<agentDir>/auth.json` and
+ * `<agentDir>/models.json`; `auth-json.ts` bridges OAuth profiles into the
+ * former.
  */
 
 import path from "node:path";

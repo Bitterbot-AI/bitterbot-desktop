@@ -93,7 +93,7 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 ## Project Structure
 
 - `src/agents/` — Agent runtime: runner, tools, system prompt, compaction, model selection, auth, skills, sub-agents, identity, endocrine state
-- `src/agents/runtime/` — Owned agent runtime, selected per agent with `agents.defaults.runtime.engine`: transcript store, agent loop, session layer, compaction policies, model registry and auth storage, file tools; `engines/pi/` is the adapter for the pi engine. See `docs/reference/agent-runtime-dev.md`
+- `src/agents/runtime/` — The agent runtime: transcript store (session JSONL v3), agent loop, session layer (persistence, retry, overflow recovery), compaction policies (summary, offload), in-run context budget, model registry and auth storage, file tools, contract suite. See `docs/reference/agent-runtime.md` and `docs/reference/agent-runtime-dev.md`
 - `src/memory/` — Memory system: dream engine, curiosity/GCCRF, knowledge crystals, consolidation, hormonal state, governance
 - `src/gateway/` — Gateway server, RPC methods, A2A protocol, queue, routing
 - `src/channels/` — Channel plugin system and shared channel logic
@@ -145,4 +145,4 @@ bitterbot nodes list       # List paired devices
 
 ## Heritage & Attribution
 
-Bitterbot uses [OpenClaw](https://github.com/nicepkg/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing) and the base embedded Pi agent runner. Everything else — the memory system, dream engine, curiosity engine (GCCRF), hormonal system, evolving identity (Genome/Phenotype/Bond), economic layer, P2P skills marketplace, A2A/ACP interoperability, desktop app, and the biological identity framework — is original Bitterbot work.
+Bitterbot uses [OpenClaw](https://github.com/nicepkg/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing), and `@mariozechner/pi-ai` (pi-mono, MIT License) for provider transports and the model catalog. The agent runtime under `src/agents/runtime/` is original Bitterbot work; its transcript store, agent loop, session layer, summary compaction, model registry and file tools were ported from pi-coding-agent and pi-agent-core 0.73.1 (MIT) and carry attribution headers (see `ATTRIBUTION.md`); the pi engine itself was removed in PLAN-52 Phase 6. Everything else — the memory system, dream engine, curiosity engine (GCCRF), hormonal system, evolving identity (Genome/Phenotype/Bond), economic layer, P2P skills marketplace, A2A/ACP interoperability, desktop app, and the biological identity framework — is original Bitterbot work.

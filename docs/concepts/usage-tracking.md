@@ -222,7 +222,7 @@ changed mid-session (turns < 60 min apart): <session, turn count, likely tier: t
 
 ## Runtime engine
 
-Every row that belongs to an agent carries `engine`: the agent runtime configured for that agent when the call was recorded (`pi` or `bitterbot`, see `agents.defaults.runtime.engine`). Rows without an agent leave it empty. The column exists so the two engines can be compared on the same traffic before the default is switched: `bitterbot doctor` prints, per engine and for the last 14 days, the number of runs, cost per run, model-call latency (p50 and p95), the tool error rate, and the number of errored model calls, once both engines have recorded runs.
+Every row that belongs to an agent carries `engine`: the agent runtime that recorded the call. Since the pi engine was removed every new row says `bitterbot`; rows written earlier may say `pi`. Rows without an agent leave it empty. The column was added so the two engines could be compared on the same traffic before the default was switched, and the comparison is still readable: `bitterbot doctor` prints, per engine and for the last 14 days, the number of runs, cost per run, model-call latency (p50 and p95), the tool error rate, and the number of errored model calls, when more than one engine has recorded runs.
 
 ## Batch rows
 

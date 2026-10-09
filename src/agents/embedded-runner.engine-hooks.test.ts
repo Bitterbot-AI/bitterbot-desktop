@@ -1,10 +1,10 @@
 /**
- * PLAN-52 Phase 6: plugin hooks on both engines.
+ * PLAN-52 Phase 6: plugin hooks on the owned runtime.
  *
  * A plugin registers every agent hook. The embedded runner then runs a tool
  * turn, a follow-up turn, an explicit compaction and a threshold compaction
- * with a scripted model (no network), once per engine. The hooks that fire,
- * their order and what they are given must be the same on `pi` and `bitterbot`.
+ * with a scripted model (no network). The hooks that fire, their order and
+ * what they are given are the ones the pi engine fired before it was removed.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -208,7 +208,7 @@ const thresholdCompaction: Scenario = {
   ],
 };
 
-describe("plugin hooks on both engines", () => {
+describe("plugin hooks on the owned runtime", () => {
   const results = new Map<string, Fired[]>();
   const get = async (engine: RuntimeEngine, scenario: Scenario) => {
     const key = `${engine}:${scenario.name}`;
@@ -221,9 +221,9 @@ describe("plugin hooks on both engines", () => {
   };
   const names = (list: Fired[]) => list.map((entry) => entry.hook);
 
-  // Per-test timeouts: a cold pi engine run took 79 s on the macOS runner while
-  // the rest of the suite ran in parallel; 120 s was not enough.
-  for (const engine of ["pi", "bitterbot"] as const) {
+  // Per-test timeouts: a cold run took 79 s on the macOS runner while the rest
+  // of the suite ran in parallel; 120 s was not enough.
+  for (const engine of ["bitterbot"] as const) {
     it(`${engine}: a tool turn fires the agent, model and tool hooks`, async () => {
       const list = await get(engine, toolTurn);
       expect(names(list)).toEqual([
@@ -257,14 +257,6 @@ describe("plugin hooks on both engines", () => {
       const list = await get(engine, thresholdCompaction);
       const compaction = list.filter((entry) => entry.hook.endsWith("_compaction"));
       expect(names(compaction)).toEqual(["before_compaction", "after_compaction"]);
-    }, 300_000);
-  }
-
-  for (const scenario of [toolTurn, manualCompaction, thresholdCompaction]) {
-    it(`${scenario.name}: the same hooks with the same payloads on both engines`, async () => {
-      const pi = await get("pi", scenario);
-      const owned = await get("bitterbot", scenario);
-      expect(owned).toEqual(pi);
     }, 300_000);
   }
 });

@@ -1,42 +1,76 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
 import { BitterbotSchema } from "../../config/zod-schema.js";
-import { DEFAULT_RUNTIME_ENGINE, resolveRuntimeEngine } from "./engine.js";
-import { openTranscript } from "./open-transcript.js";
+import {
+  __resetRuntimeEngineWarningsForTest,
+  DEFAULT_RUNTIME_ENGINE,
+  resolveRuntimeEngine,
+} from "./engine.js";
+import { openTranscript, openTranscriptForAgent } from "./open-transcript.js";
 import { TranscriptStore } from "./transcript/store.js";
 
+const warnSpy = vi.hoisted(() => vi.fn());
+vi.mock("../../logging/subsystem.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../logging/subsystem.js")>();
+  return {
+    ...actual,
+    createSubsystemLogger: () => ({
+      ...actual.createSubsystemLogger("test"),
+      warn: warnSpy,
+    }),
+  };
+});
+
 describe("resolveRuntimeEngine", () => {
-  it("defaults to pi", () => {
-    expect(DEFAULT_RUNTIME_ENGINE).toBe("pi");
-    expect(resolveRuntimeEngine(undefined)).toBe("pi");
-    expect(resolveRuntimeEngine({}, "main")).toBe("pi");
+  beforeEach(() => {
+    warnSpy.mockClear();
+    __resetRuntimeEngineWarningsForTest();
   });
 
-  it("uses agents.defaults.runtime.engine, overridden per agent", () => {
+  it("is always the owned runtime", () => {
+    expect(DEFAULT_RUNTIME_ENGINE).toBe("bitterbot");
+    expect(resolveRuntimeEngine(undefined)).toBe("bitterbot");
+    expect(resolveRuntimeEngine({}, "main")).toBe("bitterbot");
     const cfg: BitterbotConfig = {
       agents: {
         defaults: { runtime: { engine: "bitterbot" } },
+        list: [{ id: "main" }],
+      },
+    };
+    expect(resolveRuntimeEngine(cfg, "main")).toBe("bitterbot");
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it("warns once per scope when a config still says pi, and ignores it", () => {
+    const cfg: BitterbotConfig = {
+      agents: {
+        defaults: { runtime: { engine: "pi" } },
         list: [{ id: "Drill-Haiku", runtime: { engine: "pi" } }, { id: "main" }],
       },
     };
     expect(resolveRuntimeEngine(cfg)).toBe("bitterbot");
     expect(resolveRuntimeEngine(cfg, "main")).toBe("bitterbot");
-    expect(resolveRuntimeEngine(cfg, "drill-haiku")).toBe("pi");
-    expect(resolveRuntimeEngine(cfg, "unknown-agent")).toBe("bitterbot");
+    expect(resolveRuntimeEngine(cfg, "drill-haiku")).toBe("bitterbot");
+    expect(resolveRuntimeEngine(cfg, "drill-haiku")).toBe("bitterbot");
+    expect(resolveRuntimeEngine(cfg)).toBe("bitterbot");
+    expect(warnSpy.mock.calls.map((call) => call[0])).toEqual([
+      "the pi engine was removed; agents.defaults runs the owned runtime",
+      "the pi engine was removed; agent drill-haiku runs the owned runtime",
+    ]);
   });
 
   it("ignores values that are not an engine name", () => {
     const cfg = {
       agents: { defaults: { runtime: { engine: "rust" } }, list: [{ id: "a", runtime: {} }] },
     } as unknown as BitterbotConfig;
-    expect(resolveRuntimeEngine(cfg, "a")).toBe("pi");
+    expect(resolveRuntimeEngine(cfg, "a")).toBe("bitterbot");
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it("the config schema accepts the key in both places and rejects other values", () => {
+  it("the config schema still accepts the key in both places and rejects other values", () => {
     const ok = BitterbotSchema.safeParse({
       agents: {
         defaults: { runtime: { engine: "bitterbot" } },
@@ -61,11 +95,11 @@ describe("openTranscript", () => {
     }
   });
 
-  it("returns the store the engine selects, over the same file format", () => {
+  it("opens the owned store, and a reopen sees what was appended", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-open-"));
     dirs.push(dir);
     const file = path.join(dir, "s.jsonl");
-    const ours = openTranscript(file, "bitterbot");
+    const ours = openTranscript(file);
     expect(ours).toBeInstanceOf(TranscriptStore);
     ours.appendMessage({ role: "user", content: "hi", timestamp: 1 });
     ours.appendMessage({
@@ -75,10 +109,10 @@ describe("openTranscript", () => {
       model: "m",
       timestamp: 2,
     } as never);
-    const pi = openTranscript(file, "pi");
-    expect(pi).toBeInstanceOf(SessionManager);
-    expect(pi.getEntries()).toHaveLength(2);
-    pi.appendMessage({ role: "user", content: "again", timestamp: 3 });
-    expect(openTranscript(file, "bitterbot").getBranch()).toHaveLength(3);
+    const again = openTranscriptForAgent(file, { config: {}, agentId: "main" });
+    expect(again).toBeInstanceOf(TranscriptStore);
+    expect(again.getEntries()).toHaveLength(2);
+    again.appendMessage({ role: "user", content: "again", timestamp: 3 });
+    expect(openTranscript(file).getBranch()).toHaveLength(3);
   });
 });

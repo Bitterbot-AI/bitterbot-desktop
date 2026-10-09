@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { CURRENT_SESSION_VERSION } from "@mariozechner/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TRANSCRIPT_VERSION } from "../../agents/runtime/transcript/types.js";
 
 type TranscriptLine = {
   message?: Record<string, unknown>;
@@ -45,7 +45,7 @@ function createActiveRun(sessionKey: string, sessionId: string) {
 async function writeTranscriptHeader(transcriptPath: string, sessionId: string) {
   const header = {
     type: "session",
-    version: CURRENT_SESSION_VERSION,
+    version: TRANSCRIPT_VERSION,
     id: sessionId,
     timestamp: new Date(0).toISOString(),
     cwd: "/tmp",

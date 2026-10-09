@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import { TranscriptStore as SessionManager } from "../runtime/transcript/store.js";
 import { sanitizeSessionHistory } from "./google.js";
 
 describe("sanitizeSessionHistory toolResult details stripping", () => {

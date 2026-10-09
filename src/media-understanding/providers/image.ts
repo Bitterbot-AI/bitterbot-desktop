@@ -4,10 +4,7 @@ import { minimaxUnderstandImage } from "../../agents/minimax-vlm.js";
 import { getApiKeyForModel, requireApiKey } from "../../agents/model-auth.js";
 import { ensureBitterbotModelsJson } from "../../agents/models-config.js";
 import { withOpenRouterAttribution } from "../../agents/openrouter-attribution.js";
-import {
-  discoverAuthStorage,
-  discoverModels,
-} from "../../agents/runtime/engines/pi/model-discovery.js";
+import { discoverAuthStorage, discoverModels } from "../../agents/runtime/models/index.js";
 import { coerceImageAssistantText } from "../../agents/tools/image-tool.helpers.js";
 import { USAGE_FEATURES } from "../../infra/usage-features.js";
 import { recordUsage } from "../../infra/usage-ledger.js";

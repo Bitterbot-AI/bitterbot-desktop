@@ -123,7 +123,7 @@ The store is safe to edit, but the Gateway is the authority: it may rewrite or r
 
 ## Transcript structure (`*.jsonl`)
 
-Transcripts are managed by `@mariozechner/pi-coding-agent`’s `SessionManager`.
+Transcripts are managed by the owned transcript store (`src/agents/runtime/transcript/store.ts`, see [Agent runtime](/reference/agent-runtime)).
 
 The file is JSONL:
 
@@ -212,8 +212,8 @@ Bitterbot also enforces a safety floor for embedded runs:
 
 Why: leave enough headroom for multi-turn “housekeeping” (like memory writes) before compaction becomes unavoidable.
 
-Implementation: `ensurePiCompactionReserveTokens()` in `src/agents/runtime/engines/pi/settings.ts`
-(called from `src/agents/embedded-runner.ts`).
+Implementation: `resolveCompactionReserveTokensFloor()` in `src/agents/runtime/session/compaction-reserve.ts`,
+applied when the session is created (`src/agents/runtime/session/create.ts`).
 
 ---
 

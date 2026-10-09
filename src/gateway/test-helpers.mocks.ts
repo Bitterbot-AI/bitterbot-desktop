@@ -229,13 +229,13 @@ export const testIsNixMode = hoisted.testIsNixMode;
 export const sessionStoreSaveDelayMs = hoisted.sessionStoreSaveDelayMs;
 export const embeddedRunMock = hoisted.embeddedRunMock;
 
-vi.mock("../agents/runtime/engines/pi/model-discovery.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../agents/runtime/engines/pi/model-discovery.js")
-  >("../agents/runtime/engines/pi/model-discovery.js");
+vi.mock("../agents/runtime/models/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../agents/runtime/models/index.js")>(
+    "../agents/runtime/models/index.js",
+  );
 
   type Registry = ReturnType<typeof actual.ModelRegistry.create>;
-  // pi-coding-agent 0.73 made the ModelRegistry constructor private, so wrap
+  // The ModelRegistry constructor is private, so wrap
   // the factories and override getAll on each instance instead of subclassing.
   const withMockGetAll = (registry: Registry): Registry => {
     const realGetAll = registry.getAll.bind(registry);

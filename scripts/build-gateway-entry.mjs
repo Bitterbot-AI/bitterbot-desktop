@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 /**
@@ -191,19 +192,27 @@ for (const pkg of ["sqlite-vec", "sharp"]) {
 }
 
 // jiti's lazyTransform does `createRequire(import.meta.url)("../dist/babel.cjs")` at
-// runtime — an opaque string require that esbuild can't statically rewrite. esbuild
-// does inline babel.cjs into entry.js, but the runtime call still goes to disk
-// looking for `dist/babel.cjs` next to entry.js. Drop a copy alongside so any TS
-// plugin loaded by the gateway can transpile.
-// jiti is a transitive dep nested under pnpm's hashed .pnpm/ tree, so a top-
-// level require.resolve("@mariozechner/jiti") doesn't find it. esbuild already
-// resolved the path via its own walker — pull it back out of the metafile so
-// we don't duplicate resolution logic or hard-code the pnpm hash.
-const babelInput = Object.keys(result.metafile.inputs).find((p) =>
+// runtime — an opaque string require that esbuild can't statically rewrite, so
+// the runtime call goes to disk looking for `dist/babel.cjs` next to entry.js.
+// Drop a copy alongside so any TS plugin loaded by the gateway can transpile.
+// Our own import (src/plugins/loader.ts) is jiti's ESM build, which never
+// references babel.cjs statically; the file only appeared in the metafile
+// while the pi engine bundled jiti's CJS build. Prefer the metafile when it
+// has it, otherwise resolve the file from the jiti package itself
+// (`jiti/dist/babel.cjs` is not in its exports map, `jiti/package.json` is).
+const babelFromMetafile = Object.keys(result.metafile.inputs).find((p) =>
   p.endsWith("jiti/dist/babel.cjs"),
 );
+const babelFromPackage = resolve(
+  dirname(createRequire(import.meta.url).resolve("jiti/package.json")),
+  "dist/babel.cjs",
+);
+const babelInput =
+  babelFromMetafile ?? (existsSync(babelFromPackage) ? babelFromPackage : undefined);
 if (!babelInput) {
-  console.error("[build-gateway-entry] could not locate jiti/dist/babel.cjs in metafile");
+  console.error(
+    `[build-gateway-entry] could not locate jiti/dist/babel.cjs (metafile or ${babelFromPackage})`,
+  );
   process.exit(1);
 }
 copyFileSync(babelInput, "dist/babel.cjs");

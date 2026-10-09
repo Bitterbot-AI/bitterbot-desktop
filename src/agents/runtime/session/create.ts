@@ -1,11 +1,10 @@
 /**
  * PLAN-52 Phase 4: build the owned session from the gateway config, the way
- * the embedded runner needs it (the "bitterbot" engine's counterpart of pi's
- * `createAgentSession` plus the patches the runner applied on top of it).
+ * the embedded runner needs it.
  *
  * The caller still installs the stream function stack on `session.agent`
- * (provider runtime, extra params, tracing, request auth), exactly as it does
- * on the pi engine; compaction summaries then take the same path as turns.
+ * (provider runtime, extra params, tracing, request auth); compaction
+ * summaries then take the same path as turns.
  */
 
 import type { Api, Model } from "@mariozechner/pi-ai";
@@ -16,8 +15,8 @@ import { createOffloadCompactionPolicy } from "../compaction/offload-compaction.
 import { resolveOffloadSettings } from "../compaction/offload-policy.js";
 import type { CompactionPolicy } from "../compaction/policy.js";
 import { createSummaryCompactionPolicy } from "../compaction/summary-policy.js";
-import { resolveCompactionReserveTokensFloor } from "../engines/pi/settings.js";
 import type { AnyAgentTool, ThinkingLevel } from "../loop/index.js";
+import { resolveCompactionReserveTokensFloor } from "./compaction-reserve.js";
 import {
   AgentSession,
   DEFAULT_SESSION_SETTINGS,
@@ -116,7 +115,7 @@ export function createOwnedSession(params: CreateOwnedSessionParams): AgentSessi
     store: params.store,
     settings: {
       compaction: {
-        // Same floor the pi engine applies after session creation.
+        // Floor from `agents.defaults.compaction.reserveTokensFloor`.
         reserveTokens: Math.max(
           DEFAULT_SESSION_SETTINGS.compaction.reserveTokens,
           resolveCompactionReserveTokensFloor(params.config),

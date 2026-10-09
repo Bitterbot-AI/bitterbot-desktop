@@ -181,7 +181,6 @@ describe("REVIEW TranscriptStore", () => {
     const res = await truncateOversizedToolResultsInSession({
       sessionFile: file,
       contextWindowTokens: 16_000,
-      engine: "bitterbot",
     });
     // Fixed: a result the compaction already hides is left alone.
     expect(res.truncated).toBe(false);
@@ -214,7 +213,6 @@ describe("REVIEW TranscriptStore", () => {
     const second = await truncateOversizedToolResultsInSession({
       sessionFile: file,
       contextWindowTokens: 16_000,
-      engine: "bitterbot",
     });
     expect(second.truncated).toBe(true);
     const after = TranscriptStore.open(file);

@@ -64,12 +64,9 @@ import {
   collectStubRecords,
   PRUNE_RECORD_CUSTOM_TYPE,
 } from "../../runtime/context-pruning/offload-stubs.js";
-import { resolveRuntimeEngine } from "../../runtime/engine.js";
-import { createPiSession, type EmbeddedAgentSession } from "../../runtime/engines/pi/session.js";
-import { resolveCompactionReserveTokensFloor } from "../../runtime/engines/pi/settings.js";
-import { toClientToolDefinitions } from "../../runtime/engines/pi/tool-definition-adapter.js";
 import { openTranscript } from "../../runtime/open-transcript.js";
 import { createOwnedSession } from "../../runtime/session/create.js";
+import type { EmbeddedAgentSession } from "../../runtime/session/index.js";
 import type { SessionStore } from "../../runtime/session/session.js";
 import { toRuntimeClientTools, toRuntimeTools } from "../../runtime/session/tools.js";
 import { estimateTokens } from "../../runtime/tokens.js";
@@ -93,7 +90,6 @@ import { getGlobalToolCache } from "../../tool-cache.js";
 import { resolveTranscriptPolicy } from "../../transcript-policy.js";
 import { isRunnerAbortError } from "../abort.js";
 import { appendCacheTtlTimestamp, isCacheTtlEligibleProvider } from "../cache-ttl.js";
-import { buildEmbeddedExtensionPaths } from "../extensions.js";
 import { applyExtraParamsToAgent, resolveCacheTtlLabel } from "../extra-params.js";
 import {
   logToolSchemasForGoogle,
@@ -116,7 +112,6 @@ import { withSessionRequestAuth } from "../session-auth.js";
 import { prewarmSessionFile, trackSessionManagerAccess } from "../session-manager-cache.js";
 import { prepareSessionManagerForRun } from "../session-manager-init.js";
 import { buildEmbeddedSystemPrompt, createSystemPromptOverride } from "../system-prompt.js";
-import { splitSdkTools } from "../tool-split.js";
 import { describeUnknownError, mapThinkingLevel } from "../utils.js";
 import { flushPendingToolResultsAfterIdle } from "../wait-for-idle-before-flush.js";
 import {
@@ -725,11 +720,8 @@ export async function runEmbeddedAttempt(
       });
 
       await prewarmSessionFile(params.sessionFile);
-      // PLAN-52 Phase 1: the engine picks the transcript store; pi's session
-      // layer drives the turn on either.
-      const runtimeEngine = resolveRuntimeEngine(params.config, sessionAgentId);
       const agentCompaction = resolveAgentCompaction(params.config, sessionAgentId);
-      sessionManager = guardSessionManager(openTranscript(params.sessionFile, runtimeEngine), {
+      sessionManager = guardSessionManager(openTranscript(params.sessionFile), {
         agentId: sessionAgentId,
         sessionKey: params.sessionKey,
         inputProvenance: params.inputProvenance,
@@ -745,15 +737,6 @@ export async function runEmbeddedAttempt(
         cwd: effectiveWorkspace,
       });
 
-      // Call for side effects (sets compaction/pruning runtime state)
-      buildEmbeddedExtensionPaths({
-        cfg: params.config,
-        sessionManager,
-        provider: params.provider,
-        modelId: params.modelId,
-        model: params.model,
-      });
-
       // Get hook runner early so it's available when creating tools
       const hookRunner = getGlobalHookRunner();
 
@@ -764,54 +747,25 @@ export async function runEmbeddedAttempt(
       };
       const clientToolHookContext = { agentId: sessionAgentId, sessionKey: params.sessionKey };
 
-      if (runtimeEngine === "bitterbot") {
-        // PLAN-52: the owned session, loop, and compaction policy. It exposes
-        // the same members and events the code below uses on pi's session.
-        const modelRegistry = params.modelRegistry;
-        const owned = createOwnedSession({
-          config: params.config,
-          agentId: sessionAgentId,
-          model: params.model,
-          thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          systemPrompt: systemPromptText,
-          tools: [
-            ...toRuntimeTools(tools),
-            ...(params.clientTools
-              ? toRuntimeClientTools(params.clientTools, onClientToolCall, clientToolHookContext)
-              : []),
-          ],
-          store: sessionManager as unknown as SessionStore,
-          resolveRequestAuth: (model) => modelRegistry.getApiKeyAndHeaders(model),
-          findModel: (provider, modelId) => modelRegistry.find(provider, modelId),
-          log: (message) => log.info(`[runtime] runId=${params.runId} ${message}`),
-        });
-        session = owned as unknown as typeof session;
-      } else {
-        const { customTools } = splitSdkTools({
-          tools,
-          sandboxEnabled: !!sandbox?.enabled,
-        });
-        const clientToolDefs = params.clientTools
-          ? toClientToolDefinitions(params.clientTools, onClientToolCall, clientToolHookContext)
-          : [];
-        session = await createPiSession({
-          cwd: resolvedWorkspace,
-          settingsCwd: effectiveWorkspace,
-          agentDir,
-          authStorage: params.authStorage,
-          modelRegistry: params.modelRegistry,
-          model: params.model,
-          thinkingLevel: mapThinkingLevel(params.thinkLevel),
-          customTools: [...customTools, ...clientToolDefs],
-          store: sessionManager,
-          systemPrompt: systemPromptText,
-          minReserveTokens: resolveCompactionReserveTokensFloor(params.config),
-          toolLoopCompat: true,
-        });
-      }
-      if (!session) {
-        throw new Error("Embedded agent session missing");
-      }
+      // PLAN-52: the owned session, loop, and compaction policy.
+      const modelRegistry = params.modelRegistry;
+      session = createOwnedSession({
+        config: params.config,
+        agentId: sessionAgentId,
+        model: params.model,
+        thinkingLevel: mapThinkingLevel(params.thinkLevel),
+        systemPrompt: systemPromptText,
+        tools: [
+          ...toRuntimeTools(tools),
+          ...(params.clientTools
+            ? toRuntimeClientTools(params.clientTools, onClientToolCall, clientToolHookContext)
+            : []),
+        ],
+        store: sessionManager as unknown as SessionStore,
+        resolveRequestAuth: (model) => modelRegistry.getApiKeyAndHeaders(model),
+        findModel: (provider, modelId) => modelRegistry.find(provider, modelId),
+        log: (message) => log.info(`[runtime] runId=${params.runId} ${message}`),
+      });
       // PLAN-52A: the context budget that reaches the run in flight. The loop
       // snapshots `transformContext` at run start and calls it before every
       // model call, so this is where tool-output stubs (and the truncation
@@ -933,8 +887,8 @@ export async function runEmbeddedAttempt(
           activeSession.agent.streamFn,
         );
       }
-      // Outermost: pi >= 0.73 only resolves the API key and headers inside the
-      // default streamFn we replaced above.
+      // Outermost: the loop calls streamFn without the request auth; this
+      // layer resolves the key and headers for every inner layer.
       activeSession.agent.streamFn = withSessionRequestAuth(
         activeSession.agent.streamFn,
         params.modelRegistry,
@@ -1573,11 +1527,10 @@ export async function runEmbeddedAttempt(
     } finally {
       // Always tear down the session (and release the lock) before we leave this attempt.
       //
-      // BUGFIX: Wait for the agent to be truly idle before flushing pending tool results.
-      // pi-agent-core's auto-retry resolves waitForRetry() on assistant message receipt,
-      // *before* tool execution completes in the retried agent loop. Without this wait,
-      // flushPendingToolResults() fires while tools are still executing, inserting
-      // synthetic "missing tool result" errors and causing silent agent failures.
+      // Wait for the agent to be truly idle before flushing pending tool results.
+      // A retry or post-compaction run can still be executing tools when the
+      // prompt settles after an abort or timeout; flushing then would insert
+      // synthetic "missing tool result" errors and cause silent agent failures.
       // See: https://github.com/bitterbot/bitterbot/issues/8643
       if (runAbortController.signal.aborted) {
         // Stop anything that started between the abort and this teardown, so

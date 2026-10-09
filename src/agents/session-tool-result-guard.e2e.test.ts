@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it } from "vitest";
+import { TranscriptStore as SessionManager } from "./runtime/transcript/store.js";
 import { installSessionToolResultGuard } from "./session-tool-result-guard.js";
 
 type AppendMessage = Parameters<SessionManager["appendMessage"]>[0];

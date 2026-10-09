@@ -20,10 +20,7 @@ import {
 import { isModernModelRef } from "../agents/live-model-filter.js";
 import { getApiKeyForModel } from "../agents/model-auth.js";
 import { ensureBitterbotModelsJson } from "../agents/models-config.js";
-import {
-  discoverAuthStorage,
-  discoverModels,
-} from "../agents/runtime/engines/pi/model-discovery.js";
+import { discoverAuthStorage, discoverModels } from "../agents/runtime/models/index.js";
 import { loadConfig } from "../config/config.js";
 import type { BitterbotConfig, ModelProviderConfig } from "../config/types.js";
 import { isTruthyEnvValue } from "../infra/env.js";
