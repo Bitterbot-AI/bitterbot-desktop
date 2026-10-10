@@ -13,7 +13,8 @@ import {
 } from "../../scripts/orchestrator-signature.mjs";
 
 // PLAN-56 Phase 0: the postinstall fetcher must (a) say out loud when it
-// cannot verify, (b) tolerate pre-signing tags once a key is pinned, and
+// cannot verify, (b) REFUSE when a key is pinned and the signature is missing
+// or unfetchable (no downgrade to SHA-256 only), and
 // (c) fail closed on a bad or cross-release signature. The keypair is a
 // throwaway generated per test run; the on-disk formats are minisign's.
 
@@ -89,21 +90,25 @@ describe("checkChecksumsSignature", () => {
     expect(out.warns[0]).toContain("signature not verified (no pinned key)");
   });
 
-  it("key pinned, tag unsigned: warns and continues", async () => {
+  it("key pinned, signature missing or unfetchable: refuses (no downgrade to SHA-256)", async () => {
     const kp = makeKeypair();
-    const out = collect();
-    const result = await checkChecksumsSignature({
-      pubkeyB64: kp.pubkeyB64,
-      version: "0.2.2",
-      checksumsBody: CHECKSUMS,
-      fetchMinisig: async () => {
-        throw new Error("HTTP 404 Not Found");
-      },
-      ...out,
-    });
-    expect(result).toEqual({ ok: true, verified: false });
-    expect(out.warns[0]).toContain("orchestrator-v0.2.2 has no checksums.txt.minisig");
-    expect(out.warns[0]).toContain("HTTP 404");
+    for (const message of ["HTTP 404 Not Found", "fetch failed: ECONNRESET"]) {
+      const out = collect();
+      const result = await checkChecksumsSignature({
+        pubkeyB64: kp.pubkeyB64,
+        version: "0.2.3",
+        checksumsBody: CHECKSUMS,
+        fetchMinisig: async () => {
+          throw new Error(message);
+        },
+        ...out,
+      });
+      expect(result.ok, message).toBe(false);
+      expect(result.verified).toBe(false);
+      expect(result.reason).toContain("could not be fetched");
+      expect(result.reason).toContain(message);
+      expect(out.warns[0]).toContain("refusing to install");
+    }
   });
 
   it("key pinned, valid signature for the tag: verified", async () => {
@@ -154,15 +159,23 @@ describe("checkChecksumsSignature", () => {
 
   it("key pinned, signature replayed from another release: fails closed", async () => {
     const kp = makeKeypair();
-    const minisig = signMinisig(kp, CHECKSUMS, "orchestrator-v0.2.2 checksums");
-    const result = await checkChecksumsSignature({
-      pubkeyB64: kp.pubkeyB64,
-      version: "0.2.3",
-      checksumsBody: CHECKSUMS,
-      fetchMinisig: async () => minisig,
-    });
-    expect(result.ok).toBe(false);
-    expect(result.reason).toContain("cross-release replay");
+    // 0.2.30 and 0.2.3-rc1 both CONTAIN "orchestrator-v0.2.3": the match must be exact.
+    for (const other of ["0.2.2", "0.2.30", "0.2.3-rc1"]) {
+      const minisig = signMinisig(kp, CHECKSUMS, `orchestrator-v${other} checksums`);
+      const result = await checkChecksumsSignature({
+        pubkeyB64: kp.pubkeyB64,
+        version: "0.2.3",
+        checksumsBody: CHECKSUMS,
+        fetchMinisig: async () => minisig,
+      });
+      expect(result.ok, other).toBe(false);
+      expect(result.reason).toContain("cross-release replay");
+    }
+  });
+
+  it("the environment override is honoured only while no key is pinned in the repo", () => {
+    expect(resolvePinnedMinisignPubkey({})).toBe("");
+    expect(resolvePinnedMinisignPubkey({ [MINISIGN_PUBKEY_ENV]: "  RWabc  " })).toBe("RWabc");
   });
 });
 

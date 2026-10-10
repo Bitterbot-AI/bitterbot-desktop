@@ -4,10 +4,14 @@
  * Shared by scripts/fetch-orchestrator.mjs (postinstall) and its unit test.
  * Pure node:crypto, no minisign binary needed at install time.
  *
- * Three regimes, decided by checkChecksumsSignature():
- *   - no pinned key            -> one clear warning, SHA-256 remains the only gate
- *   - key + no .minisig        -> warn (older, pre-signing tag), continue
- *   - key + .minisig present   -> verify; FAIL CLOSED on any mismatch
+ * Two regimes, decided by checkChecksumsSignature():
+ *   - no pinned key  -> one clear warning, SHA-256 remains the only gate
+ *   - key pinned     -> the .minisig MUST be fetched and MUST verify for this
+ *                       exact release; a missing or unfetchable signature is
+ *                       a refusal, not a downgrade (an attacker who can forge
+ *                       checksums.txt can also serve a 404 for its signature).
+ *                       Tags older than FIRST_SIGNED_VERSION never had one and
+ *                       are not fetched by this script (Cargo.toml pins 0.2.3+).
  */
 
 import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto";
@@ -23,15 +27,30 @@ import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto
  */
 export const ORCHESTRATOR_MINISIGN_PUBKEY = "";
 
-/** Environment override, mainly for operators who pin ahead of the repo. */
+/** First orchestrator release that shipped checksums.txt.minisig. */
+export const FIRST_SIGNED_VERSION = "0.2.3";
+
+/**
+ * Environment override for operators who pin AHEAD of the repo. It is
+ * honoured only while the constant above is empty: once the repo pins a key,
+ * the environment cannot swap it for another (that would let whoever controls
+ * the install environment sign their own release).
+ */
 export const MINISIGN_PUBKEY_ENV = "BITTERBOT_ORCHESTRATOR_MINISIGN_PUBKEY";
 
 /**
- * The key to verify with: the env override when set, else the pinned
- * constant, else "" (no verification possible).
+ * The key to verify with: the pinned constant when set, else the env
+ * override, else "" (no verification possible).
  */
-export function resolvePinnedMinisignPubkey(env = process.env) {
-  return env[MINISIGN_PUBKEY_ENV]?.trim() || ORCHESTRATOR_MINISIGN_PUBKEY;
+export function resolvePinnedMinisignPubkey(env = process.env, warn = () => {}) {
+  const fromEnv = env[MINISIGN_PUBKEY_ENV]?.trim() || "";
+  if (ORCHESTRATOR_MINISIGN_PUBKEY) {
+    if (fromEnv && fromEnv !== ORCHESTRATOR_MINISIGN_PUBKEY) {
+      warn(`${MINISIGN_PUBKEY_ENV} ignored: the repo pins the orchestrator signing key`);
+    }
+    return ORCHESTRATOR_MINISIGN_PUBKEY;
+  }
+  return fromEnv;
 }
 
 /**
@@ -124,11 +143,13 @@ export async function checkChecksumsSignature({
   try {
     minisig = await fetchMinisig();
   } catch (err) {
-    warn(
-      `orchestrator-v${version} has no checksums.txt.minisig (${err?.message ?? err}); ` +
-        "pre-signing release, proceeding on SHA-256 only",
-    );
-    return { ok: true, verified: false };
+    // Fail closed: with a pinned key, "no signature" is indistinguishable
+    // from "signature withheld". Never downgrade to SHA-256 only here.
+    const reason =
+      `checksums.txt.minisig for orchestrator-v${version} could not be fetched ` +
+      `(${err?.message ?? err}); releases since ${FIRST_SIGNED_VERSION} are signed`;
+    warn(`${reason} — refusing to install`);
+    return { ok: false, verified: false, reason };
   }
 
   let trustedComment;
@@ -139,7 +160,10 @@ export async function checkChecksumsSignature({
     warn(`${reason} — refusing to install`);
     return { ok: false, verified: false, reason };
   }
-  if (!trustedComment.includes(`orchestrator-v${version}`)) {
+  // Exact match: a substring test would accept orchestrator-v0.2.30 (or
+  // 0.2.3-rc1) for 0.2.3, which is the replay this check exists to stop. The
+  // release workflow signs with `-t "orchestrator-v<tag> checksums"`.
+  if (trustedComment.trim() !== `orchestrator-v${version} checksums`) {
     const reason =
       `checksums signature is for "${trustedComment}", not orchestrator-v${version} ` +
       "(cross-release replay?)";

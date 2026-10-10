@@ -107,7 +107,7 @@ if [[ -n "$NODE_VERSION" && ( "$NODE_MAJOR" -gt "$NODE_MIN_MAJOR" || ( "$NODE_MA
 else
   echo "   ⚠️  node ${NODE_VERSION:-not found} (need >= $NODE_MIN, the 22 LTS line)"
   echo "      Install: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs"
-  echo "      Or with nvm/fnm: nvm install 22 (reads .node-version)"
+  echo "      Or with a version manager: nvm install 22 / fnm install 22 (fnm and mise read .node-version)"
 fi
 
 echo ""

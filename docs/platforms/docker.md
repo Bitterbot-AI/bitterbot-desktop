@@ -31,11 +31,14 @@ The image runs as the `node` user (uid 1000). The gateway reads its token from
 What is in the image, and what is not:
 
 - The P2P orchestrator binary ships inside the image (fetched at build time
-  from the matching `orchestrator-v*` release and SHA-256 checked), so the
-  node joins the mesh without a Rust toolchain. Images before 1.5.0 did not
-  carry it and ran isolated.
-- Playwright and Chromium are **not** in the image. The `browser` tool is
-  unavailable in a container; use the sandboxed browser image
+  from the matching `orchestrator-v*` release, SHA-256 checked, and
+  signature-verified once the release key is pinned; see
+  [LIMITATIONS.md](https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/LIMITATIONS.md)),
+  so the node joins the mesh without a Rust toolchain. Images 1.0.0 through
+  1.4.0 did not carry it and ran isolated.
+- Chromium is **not** in the image (the Playwright package is, without
+  browser binaries). The `browser` tool is unavailable in a container; use
+  the sandboxed browser image
   (`scripts/sandbox-browser-setup.sh`, see [Sandboxing](/gateway/sandboxing))
   or run the browser tool from a source install.
 - `docker-setup.sh` in the repository root builds a local image

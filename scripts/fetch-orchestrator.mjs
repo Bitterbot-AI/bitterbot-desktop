@@ -204,10 +204,11 @@ async function main() {
   }
 
   // Signature gate BEFORE trusting checksums (PLAN-41 D-B, PLAN-56 Phase 0).
-  // No pinned key -> one clear warning; key + unsigned tag -> warn; key +
-  // .minisig -> verify or REFUSE. See scripts/orchestrator-signature.mjs.
+  // No pinned key -> one clear warning, SHA-256 only; key pinned -> the
+  // .minisig must be fetched and must verify for this exact release, or we
+  // REFUSE (no downgrade). See scripts/orchestrator-signature.mjs.
   const signature = await checkChecksumsSignature({
-    pubkeyB64: resolvePinnedMinisignPubkey(),
+    pubkeyB64: resolvePinnedMinisignPubkey(process.env, warn),
     version,
     checksumsBody,
     fetchMinisig: () => fetchJsonOrText(`${checksumUrl}.minisig`),
