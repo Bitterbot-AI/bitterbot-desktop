@@ -100,7 +100,14 @@ jobs:
 
       - name: Smoke test — gateway boots and serves the Control UI
         run: |
-          docker run -d --name bb -p 19001:19001             -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token             bitterbot:ci             node bitterbot.mjs gateway --allow-unconfigured --bind lan
+          # A one-line config, as every real container has one: with no
+          # bitterbot.json, loadConfig() returns {} without defaults, so an
+          # unconfigured gateway never reaches the P2P block and the
+          # orchestrator assertion below could not be exercised.
+          mkdir -p /tmp/bbdata && chmod 777 /tmp/bbdata
+          printf '{ "p2p": { "enabled": true } }\n' > /tmp/bbdata/bitterbot.json
+          chmod 666 /tmp/bbdata/bitterbot.json
+          docker run -d --name bb -p 19001:19001 -v /tmp/bbdata:/home/node/.bitterbot             -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token             bitterbot:ci             node bitterbot.mjs gateway --allow-unconfigured --bind lan
           code=000
           for i in $(seq 1 90); do
             code=$(curl -s -o /dev/null -w '%{http_code}'               -H "Authorization: Bearer ci-smoke-token"               http://127.0.0.1:19001/ || true)
