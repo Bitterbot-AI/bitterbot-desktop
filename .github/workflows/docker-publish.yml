@@ -63,6 +63,10 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          # OCI labels in the Dockerfile (version, revision, source).
+          build-args: |
+            BITTERBOT_VERSION=${{ inputs.version }}
+            BITTERBOT_REVISION=${{ github.sha }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=docker-${{ matrix.slug }}
           # ignore-error: the layer-cache export to the Actions cache service is an

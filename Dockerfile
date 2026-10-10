@@ -32,8 +32,14 @@ COPY extensions/signal/package.json ./extensions/signal/
 COPY extensions/slack/package.json ./extensions/slack/
 COPY extensions/telegram/package.json ./extensions/telegram/
 COPY extensions/twitch/package.json ./extensions/twitch/
+COPY extensions/mcp/package.json ./extensions/mcp/
 COPY extensions/whatsapp/package.json ./extensions/whatsapp/
+COPY extensions/x/package.json ./extensions/x/
 COPY scripts ./scripts
+# postinstall reads the orchestrator version from this manifest. Copying it
+# only with `COPY . .` (after install) is why images v1.0.0-v1.4.0 shipped
+# without the P2P binary (`could not read orchestrator version: ENOENT`).
+COPY orchestrator/Cargo.toml ./orchestrator/
 
 # postinstall fetches the orchestrator binary. Point it INSIDE the image at the
 # repo-relative path the resolver probes, not the default ~/.bitterbot/bin:
@@ -60,6 +66,14 @@ RUN chown -R node:node /app
 
 # Security hardening: run as the non-root `node` user (uid 1000).
 USER node
+
+# OCI labels (PLAN-56 Phase 0). docker-publish.yml passes the release version
+# and commit as build args; a local `docker build` leaves them empty.
+ARG BITTERBOT_VERSION=""
+ARG BITTERBOT_REVISION=""
+LABEL org.opencontainers.image.source="https://github.com/Bitterbot-AI/bitterbot-desktop" \
+      org.opencontainers.image.version="${BITTERBOT_VERSION}" \
+      org.opencontainers.image.revision="${BITTERBOT_REVISION}"
 
 # Start gateway server with default config. Binds to loopback (127.0.0.1) by
 # default for security; the Control UI is served by the gateway at /.

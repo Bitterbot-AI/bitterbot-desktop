@@ -28,6 +28,21 @@ option here uses the same container image and keeps all state on a volume.
 The image runs as the `node` user (uid 1000). The gateway reads its token from
 `BITTERBOT_GATEWAY_TOKEN`.
 
+What is in the image, and what is not:
+
+- The P2P orchestrator binary ships inside the image (fetched at build time
+  from the matching `orchestrator-v*` release and SHA-256 checked), so the
+  node joins the mesh without a Rust toolchain. Images before 1.5.0 did not
+  carry it and ran isolated.
+- Playwright and Chromium are **not** in the image. The `browser` tool is
+  unavailable in a container; use the sandboxed browser image
+  (`scripts/sandbox-browser-setup.sh`, see [Sandboxing](/gateway/sandboxing))
+  or run the browser tool from a source install.
+- `docker-setup.sh` in the repository root builds a local image
+  (`bitterbot:local`) from your checkout, runs the terminal onboarding wizard
+  in the CLI container, and starts the gateway with Compose. Use it to run
+  unreleased changes; for a release, pull the published image instead.
+
 ## First run, from the browser
 
 1. Open the Control UI at your server's address and paste the gateway token.
