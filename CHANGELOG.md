@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.5.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.4.0...v1.5.0) (2026-10-10)
+
+
+### Features
+
+* **cli:** `bitterbot curiosity`; knowledge-graph person hygiene for the egress filter ([#210](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/210)) ([9098ae8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9098ae8946338912e55a90635734112c39d4cebc))
+* **memory:** keep what curiosity saw but could not verify, visibly and out of memory ([#206](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/206)) ([bd07786](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bd077866d31e21b9c6692f47fa3ac81f7ebfaa3a))
+* **memory:** the curiosity loop (PLAN-54) ([#204](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/204)) ([fdc5ab9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fdc5ab93e7b3fbd999c0927f1f58edae53f26d73))
+* **ui:** offer a reload when the page is older than the gateway ([#203](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/203)) ([d51d19b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d51d19b5dfc303d33b96dedce0d6c2d967b8728b))
+
+
+### Bug Fixes
+
+* **agents:** Wave 3 follow-ups: edit legacy args via use_tool, temperature 400s, exec env coercion, stale e2e, nightly e2e job ([c75cae8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c75cae8fbccb63750764276e4571ee73466fb5bd))
+* **agents:** Wave 3 follow-ups: edit legacy args via use_tool, temperature 400s, exec env coercion, stale e2e, nightly e2e job ([786c5b7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/786c5b713a7cbcb9eb3dcbf52a7b952b3e456e10))
+* Circles messages via webchat, and make the memory biology work as designed ([#193](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/193)) ([522b816](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/522b816166792f99ed391b22dc47df1287624c95))
+* **circles:** close the remaining mesh security findings (M2-M7, MED-7, HIGH-5, LOW-11, L2) ([#197](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/197)) ([2345af6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2345af6cb70c076b2ca7c80f82ce84f28be5d352))
+* close gaps found in the docs-vs-code audit (x402 unsigned proofs, Link site check, compose start) ([#194](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/194)) ([f09d6ca](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f09d6ca1a23934fcbd0ef4fcde63b7c725a437d4))
+* **gate:** hold the session spend cap while a payment is in flight ([#186](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/186)) ([290644d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/290644db47e3e718cb444796dc6ac9745deacd56))
+* **memory:** a search phrase about a public subject may share its plain words ([#208](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/208)) ([24d44bf](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/24d44bf76374acad295b2cba54ba1d62c7d0ce02))
+* **memory:** curiosity egress can keep a public subject without ever passing a private name ([#207](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/207)) ([91fe5b6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/91fe5b68b1c02abde5ea814fa8d48aef13bd5c75))
+* **memory:** curiosity loop, first live pass ([#205](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/205)) ([605b21f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/605b21f857135eca4843757836db09f1726c8045))
+* **memory:** curiosity never asks the web about the owner's own life; voicing counts as use; embed at once ([#209](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/209)) ([bcb8fb9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bcb8fb940fe47a457441e2af1ce133fb62ffcad4))
+* **memory:** lifecycle column mismatch from the Agent Memory Atlas review ([#200](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/200)) ([5e5a9e4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5e5a9e4f913f4b30ad013e6a3a984f19ab19ba5e))
+* **memory:** v75 folds a misfiled person into an existing concept instead of colliding ([#211](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/211)) ([4e2e5ee](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4e2e5eedcd23cf1da932558f4d5cc9ec9ccdad30))
+* **relay-fleet:** updater canary reverted every healthy update (pipefail + grep -q) ([#199](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/199)) ([32b6494](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/32b649451de8876598655e2ff8c9af4542cb7ae9))
+* **release:** PLAN-56 Phase 0, one version, Docker carries the orchestrator, signature-ready fetch ([#220](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/220)) ([a2bc220](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a2bc220def023ec42ade64e89bf9e3c25912da9f))
+* **runtime:** review round for the pi-engine removal ([1585d01](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/1585d01b3deb0e481adc2bc079853f3c27ffcea2))
+
 ## [1.4.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.3.0...v1.4.0) (2026-10-06)
 
 
