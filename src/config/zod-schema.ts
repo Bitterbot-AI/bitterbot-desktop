@@ -41,8 +41,44 @@ const MemorySchema = z
       })
       .strict()
       .optional(),
+    // PLAN-56 Phase 1: the curiosity keys the Settings form labels. Mirrors
+    // src/memory/curiosity-types.ts and curiosity-researcher.ts; passthrough
+    // because the rest of CuriosityConfig is still typed only in TS.
+    curiosity: z
+      .object({
+        enabled: z.boolean().optional(),
+        research: z
+          .object({
+            enabled: z.boolean().optional(),
+            intervalMinutes: z.number().positive().optional(),
+            maxPerDay: z.number().int().nonnegative().optional(),
+            maxSearchesPerTarget: z.number().int().positive().optional(),
+            maxPagesPerTarget: z.number().int().positive().optional(),
+            minConfidence: z.number().min(0).max(1).optional(),
+            blockedDomains: z.array(z.string()).optional(),
+            maxAttempts: z.number().int().positive().optional(),
+            strictEgress: z.boolean().optional(),
+          })
+          .passthrough()
+          .optional(),
+        autoResearch: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxPerDay: z.number().int().nonnegative().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+    architectEvolution: z
+      .object({
+        enabled: z.boolean().optional(),
+      })
+      .passthrough()
+      .optional(),
   })
-  // Memory subsystems (dream, curiosity, consolidation, digest, requestFrequency, etc.)
+  // Memory subsystems (dream, consolidation, digest, requestFrequency, etc.)
   // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.
   // Passthrough keeps user configs from being rejected for those fields until the
   // schema catches up; strong typing at the code-read sites still applies.

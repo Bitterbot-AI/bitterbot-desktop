@@ -4,6 +4,7 @@ import { updateAuthProfileStoreWithLock } from "../../agents/auth-profiles/store
 import type { AuthProfileCredential, AuthProfileStore } from "../../agents/auth-profiles/types.js";
 import { resolveApiKeyForProvider, resolveEnvApiKey } from "../../agents/model-auth.js";
 import { normalizeProviderId } from "../../agents/model-selection.js";
+import { retiredProviderLabel } from "../../agents/retired-providers.js";
 import { buildTokenProfileId } from "../../commands/auth-token.js";
 import { loadConfig } from "../../config/config.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
@@ -134,7 +135,10 @@ export const modelsAuthHandlers: GatewayRequestHandlers = {
         providers.add(normalizeProviderId(id));
       }
       const now = Date.now();
+      // PLAN-56 Phase 1: retired providers (removed upstream) are refused at
+      // run time, so listing them here only invites dead key entry.
       const result = [...providers]
+        .filter((provider) => !retiredProviderLabel(provider))
         .toSorted((a, b) => a.localeCompare(b))
         .map((provider) => summarizeProvider({ provider, store, cfg, now }));
       respond(true, { providers: result }, undefined);

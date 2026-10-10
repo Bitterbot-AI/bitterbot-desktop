@@ -121,6 +121,32 @@ describe("models.auth.list", () => {
     expect(JSON.stringify(payload)).not.toContain(SECRET);
     expect(JSON.stringify(payload)).not.toContain("cfg-key");
   });
+
+  it("hides retired providers even when a stale profile for one is stored (PLAN-56 Phase 1)", async () => {
+    const store = makeStore();
+    store.profiles["google-gemini-cli:default"] = {
+      type: "oauth",
+      provider: "google-gemini-cli",
+      access: "stale",
+      refresh: "stale",
+      expires: Date.now() + 60_000,
+    } as never;
+    store.profiles["google-antigravity:default"] = {
+      type: "api_key",
+      provider: "google-antigravity",
+      key: SECRET,
+    };
+    vi.mocked(ensureAuthProfileStore).mockReturnValue(store);
+    const { calls, respond } = capture();
+    await modelsAuthHandlers["models.auth.list"]!({ params: {}, respond, context } as never);
+    expect(calls[0].ok).toBe(true);
+    const providers = (
+      calls[0].payload as { providers: Array<{ provider: string }> }
+    ).providers.map((p) => p.provider);
+    expect(providers).not.toContain("google-gemini-cli");
+    expect(providers).not.toContain("google-antigravity");
+    expect(providers).toContain("anthropic");
+  });
 });
 
 describe("models.auth.test", () => {
