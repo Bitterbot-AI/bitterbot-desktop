@@ -93,14 +93,21 @@ echo ""
 
 echo "── Node.js ──"
 
+# Floor is engines.node in package.json (>=22.12.0): compare major AND minor,
+# a bare "22" check let 22.0-22.11 through and the install failed later.
+NODE_MIN="22.12.0"
 NODE_VERSION=$(node --version 2>/dev/null | sed 's/v//')
 NODE_MAJOR=$(echo "$NODE_VERSION" | cut -d. -f1)
+NODE_MINOR=$(echo "$NODE_VERSION" | cut -d. -f2)
+NODE_MIN_MAJOR=$(echo "$NODE_MIN" | cut -d. -f1)
+NODE_MIN_MINOR=$(echo "$NODE_MIN" | cut -d. -f2)
 
-if [[ "$NODE_MAJOR" -ge 22 ]]; then
-  echo "   ✅ node $NODE_VERSION"
+if [[ -n "$NODE_VERSION" && ( "$NODE_MAJOR" -gt "$NODE_MIN_MAJOR" || ( "$NODE_MAJOR" -eq "$NODE_MIN_MAJOR" && "$NODE_MINOR" -ge "$NODE_MIN_MINOR" ) ) ]]; then
+  echo "   ✅ node $NODE_VERSION (>= $NODE_MIN)"
 else
-  echo "   ⚠️  node $NODE_VERSION (need ≥22)"
+  echo "   ⚠️  node ${NODE_VERSION:-not found} (need >= $NODE_MIN, the 22 LTS line)"
   echo "      Install: curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs"
+  echo "      Or with nvm/fnm: nvm install 22 (reads .node-version)"
 fi
 
 echo ""
