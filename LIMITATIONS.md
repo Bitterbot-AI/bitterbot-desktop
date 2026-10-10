@@ -109,11 +109,17 @@ open an issue.
 
 ## Orchestrator (P2P binary)
 
-- **Release signing is in rollout.** The fetcher already verifies a
-  minisign signature over release checksums when one is present, and
-  refuses a bad signature. Until the first signed release lands, the
-  published binaries are integrity-checked by SHA-256 only. Building from
-  source (`cargo build --release --manifest-path orchestrator/Cargo.toml`)
+- **Signature verification is off until the public key is pinned.**
+  Orchestrator releases (since `orchestrator-v0.2.3`) are signed: every
+  release carries `checksums.txt.minisig`, and the binaries carry GitHub
+  build-provenance attestations (`gh attestation verify`). The postinstall
+  fetcher verifies the minisign signature and refuses a bad or replayed one,
+  but only once the public key is pinned in
+  `scripts/orchestrator-signature.mjs` (or set in
+  `BITTERBOT_ORCHESTRATOR_MINISIGN_PUBKEY`). Until then it says so in one
+  warning (`signature not verified (no pinned key)`) and the published
+  binaries are integrity-checked by SHA-256 only. Building from source
+  (`cargo build --release --manifest-path orchestrator/Cargo.toml`)
   sidesteps the question entirely.
 
 ## Platform
