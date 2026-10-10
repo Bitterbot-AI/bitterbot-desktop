@@ -12,6 +12,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
+// Report the version of the tree that produced the numbers (root package.json
+// is the single source of truth, see src/version-consistency.test.ts).
+const systemVersion = (
+  JSON.parse(fs.readFileSync(path.resolve(dir, "../../package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
 const inputPath = path.join(dir, "results", "vitest-results.json");
 const outputPath = path.join(dir, "results", "biomemeval-report.json");
 
@@ -70,7 +77,7 @@ try {
     benchmark: "BioMemEval",
     version: "1.0.0",
     system: "Bitterbot",
-    systemVersion: "2026.2.15-beta",
+    systemVersion,
     timestamp: new Date().toISOString(),
     suites,
     compositeScore: Math.round(composite * 100) / 100,

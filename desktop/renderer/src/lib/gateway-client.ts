@@ -239,7 +239,9 @@ export class GatewayClient {
       maxProtocol: 3,
       client: {
         id: this.opts.clientName ?? "bitterbot-desktop",
-        version: this.opts.clientVersion ?? "dev",
+        // Injected at build time from the root package.json (vite define, D-A),
+        // same source as the Sidebar version label.
+        version: this.opts.clientVersion ?? import.meta.env.VITE_APP_VERSION ?? "dev",
         platform: navigator.platform ?? "desktop",
         mode: "ui",
       },

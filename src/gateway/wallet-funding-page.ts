@@ -2,6 +2,8 @@
  * Self-contained HTML page for wallet funding via Stripe Crypto Onramp.
  * Served at GET /wallet/fund by the gateway HTTP server.
  */
+import { VERSION } from "../version.js";
+
 export function renderWalletFundingPage(gatewayWsUrl: string, gatewayToken?: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -250,7 +252,7 @@ export function renderWalletFundingPage(gatewayWsUrl: string, gatewayToken?: str
           type: "req", id: connId, method: "connect",
           params: {
             minProtocol: 3, maxProtocol: 3,
-            client: { id: "bitterbot-control-ui", version: "1.0.0", platform: "browser", mode: "ui" },
+            client: { id: "bitterbot-control-ui", version: ${JSON.stringify(VERSION)}, platform: "browser", mode: "ui" },
             role: "operator",
             scopes: ["operator.admin", "operator.approvals", "operator.pairing"],
             auth: GW_TOKEN ? { token: GW_TOKEN } : undefined
