@@ -51,8 +51,9 @@ let warnings = 0;
 
 // ── Node version ──
 // The floor is `engines.node` in package.json (">=22.12.0"), not just the
-// major: 22.0-22.11 lack APIs we rely on and `engine-strict=true` in .npmrc
-// would refuse them anyway, so say so up front with the exact number.
+// major: 22.0-22.11 lack APIs we rely on. This script is the enforcement
+// point (pnpm's engine-strict would also police every transitive dependency,
+// some of which demand Node 24), so say so up front with the exact number.
 const FALLBACK_MIN_NODE = "22.12.0";
 function readMinNodeVersion() {
   try {
