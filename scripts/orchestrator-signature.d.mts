@@ -8,7 +8,9 @@
 export declare const ORCHESTRATOR_MINISIGN_PUBKEY: string;
 export declare const MINISIGN_PUBKEY_ENV: "BITTERBOT_ORCHESTRATOR_MINISIGN_PUBKEY";
 
-export declare function resolvePinnedMinisignPubkey(env?: Record<string, string | undefined>): string;
+export declare function resolvePinnedMinisignPubkey(
+  env?: Record<string, string | undefined>,
+): string;
 
 export declare function verifyMinisign(input: {
   pubkeyB64: string;
