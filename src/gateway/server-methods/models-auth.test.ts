@@ -121,6 +121,47 @@ describe("models.auth.list", () => {
     expect(JSON.stringify(payload)).not.toContain(SECRET);
     expect(JSON.stringify(payload)).not.toContain("cfg-key");
   });
+
+  it("keeps a retired provider only while a stale profile exists, marked retired (PLAN-56 Phase 1)", async () => {
+    const store = makeStore();
+    // google-gemini-cli: stale profile stored -> listed, flagged, deletable.
+    store.profiles["google-gemini-cli:default"] = {
+      type: "oauth",
+      provider: "google-gemini-cli",
+      access: "stale",
+      refresh: "stale",
+      expires: Date.now() + 60_000,
+    } as never;
+    store.order = { ...store.order, "google-gemini-cli": ["google-gemini-cli:default"] };
+    vi.mocked(ensureAuthProfileStore).mockReturnValue(store);
+    vi.mocked(resolveAuthProfileOrder).mockImplementation(({ provider }: { provider: string }) =>
+      provider === "anthropic"
+        ? ["anthropic:default"]
+        : provider === "google-gemini-cli"
+          ? ["google-gemini-cli:default"]
+          : [],
+    );
+    // google-antigravity: only in the catalog, no profile -> dropped.
+    const ctx = {
+      loadGatewayModelCatalog: vi.fn(async () => [
+        { id: "claude-opus-4-8", name: "Claude Opus 4.8", provider: "anthropic" },
+        { id: "x", name: "x", provider: "google-antigravity" },
+      ]),
+    } as never;
+    const { calls, respond } = capture();
+    await modelsAuthHandlers["models.auth.list"]!({ params: {}, respond, context: ctx } as never);
+    expect(calls[0].ok).toBe(true);
+    const providers = (
+      calls[0].payload as {
+        providers: Array<{ provider: string; retired?: string; profiles: unknown[] }>;
+      }
+    ).providers;
+    const gemini = providers.find((p) => p.provider === "google-gemini-cli");
+    expect(gemini?.retired).toBe("Google Gemini CLI OAuth");
+    expect(gemini?.profiles).toHaveLength(1);
+    expect(providers.find((p) => p.provider === "google-antigravity")).toBeUndefined();
+    expect(providers.find((p) => p.provider === "anthropic")?.retired).toBeUndefined();
+  });
 });
 
 describe("models.auth.test", () => {

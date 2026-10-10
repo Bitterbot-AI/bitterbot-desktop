@@ -286,6 +286,21 @@ export const ToolsWebFetchSchema = z
     cacheTtlMinutes: z.number().nonnegative().optional(),
     maxRedirects: z.number().int().nonnegative().optional(),
     userAgent: z.string().optional(),
+    // Read by src/agents/tools/web-fetch.ts (readability :98, firecrawl :151)
+    // and documented in schema.help.ts, but the strict schema rejected them
+    // until PLAN-56 Phase 1.
+    readability: z.boolean().optional(),
+    firecrawl: z
+      .object({
+        enabled: z.boolean().optional(),
+        apiKey: z.string().optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        onlyMainContent: z.boolean().optional(),
+        maxAgeMs: z.number().int().nonnegative().optional(),
+        timeoutSeconds: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .optional();
@@ -346,13 +361,15 @@ const ToolExecBaseShape = {
   cleanupMs: z.number().int().positive().optional(),
   notifyOnExit: z.boolean().optional(),
   notifyOnExitEmptySuccess: z.boolean().optional(),
+  // Read at the global level too (src/agents/agent-tools.ts:141); the root
+  // schema used to reject it while the Settings form labelled it (PLAN-56).
+  approvalRunningNoticeMs: z.number().int().nonnegative().optional(),
   applyPatch: ToolExecApplyPatchSchema,
 } as const;
 
 const AgentToolExecSchema = z
   .object({
     ...ToolExecBaseShape,
-    approvalRunningNoticeMs: z.number().int().nonnegative().optional(),
   })
   .strict()
   .optional();

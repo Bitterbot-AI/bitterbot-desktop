@@ -4,6 +4,7 @@ import { type P2pIngestStats, useP2pStore } from "../../stores/p2p-store";
 import { CensusBreakdown } from "./CensusBreakdown";
 import { ContributionCard } from "./ContributionCard";
 import { NetworkGrowthSparkline } from "./NetworkGrowthSparkline";
+import { P2pEnabledSwitch } from "./P2pEnabledSwitch";
 import { PeerMap } from "./PeerMap";
 
 export function P2pDashboard() {
@@ -76,6 +77,7 @@ export function P2pDashboard() {
         >
           {connected ? "Connected" : "Disconnected"}
         </span>
+        <P2pEnabledSwitch />
       </div>
 
       {error && (
@@ -89,7 +91,8 @@ export function P2pDashboard() {
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-6 text-center space-y-2">
           <p className="text-sm text-muted-foreground">The P2P orchestrator is not running.</p>
           <p className="text-xs text-muted-foreground/60">
-            Enable P2P in your config and restart the gateway to connect to the network.
+            Turn on the P2P mesh switch above (p2p.enabled) and restart the gateway to connect to
+            the network.
           </p>
         </div>
       )}
