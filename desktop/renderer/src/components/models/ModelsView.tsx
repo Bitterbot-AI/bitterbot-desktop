@@ -271,22 +271,35 @@ function ProviderRow({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm font-medium truncate">{status.provider}</span>
+            {status.retired && (
+              <Badge variant="destructive" title={`${status.retired} was removed upstream`}>
+                retired
+              </Badge>
+            )}
             {status.envPresent && <Badge variant="outline">env</Badge>}
             {status.configKeyPresent && <Badge variant="outline">config</Badge>}
             {!hasCredentials && <Badge variant="secondary">no key</Badge>}
           </div>
           <div className="flex items-center gap-1">
-            {hasCredentials && (
+            {hasCredentials && !status.retired && (
               <Button size="sm" variant="ghost" onClick={onProbe} disabled={probing}>
                 {probing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Test"}
               </Button>
             )}
-            <Button size="sm" variant="outline" onClick={onAddKey}>
-              <Plus className="h-3 w-3 mr-1" />
-              {hasCredentials ? "Rotate" : "Add key"}
-            </Button>
+            {!status.retired && (
+              <Button size="sm" variant="outline" onClick={onAddKey}>
+                <Plus className="h-3 w-3 mr-1" />
+                {hasCredentials ? "Rotate" : "Add key"}
+              </Button>
+            )}
           </div>
         </div>
+        {status.retired && (
+          <p className="text-xs text-muted-foreground">
+            {status.retired} is no longer supported; delete the stored profile below and use the
+            Gemini API key provider (google/...) instead.
+          </p>
+        )}
 
         {hasCredentials && (
           <p className="text-xs text-muted-foreground">

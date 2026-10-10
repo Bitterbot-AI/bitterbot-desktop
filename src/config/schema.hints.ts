@@ -5,6 +5,7 @@ import {
   FIELD_DEFAULTS,
   isAdvancedPath,
   isReadOnlyPath,
+  TRI_STATE_PATHS,
 } from "./schema.defaults.js";
 import { FIELD_HELP } from "./schema.help.js";
 import { FIELD_LABELS } from "./schema.labels.js";
@@ -30,8 +31,13 @@ export type ConfigUiHint = {
   default?: unknown;
   /** Written by Bitterbot itself; the form renders it as text. */
   readOnly?: boolean;
-  /** One sentence explaining why the key is going away; the form hides it. */
+  /**
+   * One sentence explaining why the key is going away. The form never offers
+   * it and shows it read-only (with this reason) only when the file sets it.
+   */
   deprecated?: string;
+  /** Boolean whose unset state means "no override"; rendered with a "(not set)" choice. */
+  triState?: boolean;
 };
 
 export type ConfigUiHints = Record<string, ConfigUiHint>;
@@ -145,21 +151,46 @@ function asNode(value: unknown): JsonSchemaNode | undefined {
     : undefined;
 }
 
+/** Non-null `anyOf`/`oneOf` branches, flattened; the node itself when it is not a union. */
+function candidateBranches(node: JsonSchemaNode): JsonSchemaNode[] {
+  const alts = (node.anyOf ?? node.oneOf) as unknown[] | undefined;
+  if (!Array.isArray(alts)) {
+    return [node];
+  }
+  const rest = alts.map(asNode).filter((a): a is JsonSchemaNode => !!a && a.type !== "null");
+  return rest.flatMap(candidateBranches);
+}
+
 /** Collapse `anyOf`/`oneOf` with a single non-null branch (zod optional/nullable). */
 function nonNullBranch(node: JsonSchemaNode): JsonSchemaNode {
-  const alts = (node.anyOf ?? node.oneOf) as unknown[] | undefined;
-  if (Array.isArray(alts)) {
-    const rest = alts.map(asNode).filter((a): a is JsonSchemaNode => !!a && a.type !== "null");
-    if (rest.length === 1) {
-      return nonNullBranch(rest[0]);
+  const rest = candidateBranches(node);
+  return rest.length === 1 ? rest[0] : node;
+}
+
+/** Step one path segment down from `node`, trying every union branch in order. */
+function stepInto(node: JsonSchemaNode, part: string): JsonSchemaNode | undefined {
+  for (const branch of candidateBranches(node)) {
+    let next: JsonSchemaNode | undefined;
+    if (part === "*") {
+      next = asNode(branch.additionalProperties);
+    } else if (part.endsWith("[]")) {
+      const prop = asNode(asNode(branch.properties)?.[part.slice(0, -2)]);
+      next = prop ? asNode(nonNullBranch(prop).items) : undefined;
+    } else {
+      next = asNode(asNode(branch.properties)?.[part]);
+    }
+    if (next) {
+      return next;
     }
   }
-  return node;
+  return undefined;
 }
 
 /**
  * Walk a generated JSON schema along a dotted hint path. `*` descends into a
- * record's additionalProperties, `name[]` into an array's items.
+ * record's additionalProperties, `name[]` into an array's items. A union of
+ * shapes (e.g. `array | {inlineButtons}`, or the typed-or-unknown unions in
+ * MemorySchema) is searched branch by branch.
  */
 export function jsonSchemaNodeAtPath(schema: unknown, path: string): JsonSchemaNode | undefined {
   let cur = asNode(schema);
@@ -170,15 +201,7 @@ export function jsonSchemaNodeAtPath(schema: unknown, path: string): JsonSchemaN
     return cur;
   }
   for (const part of path.split(".")) {
-    cur = nonNullBranch(cur);
-    if (part === "*") {
-      cur = asNode(cur.additionalProperties);
-    } else if (part.endsWith("[]")) {
-      const prop = asNode(asNode(cur.properties)?.[part.slice(0, -2)]);
-      cur = prop ? asNode(nonNullBranch(prop).items) : undefined;
-    } else {
-      cur = asNode(asNode(cur.properties)?.[part]);
-    }
+    cur = stepInto(cur, part);
     if (!cur) {
       return undefined;
     }
@@ -287,6 +310,7 @@ export function buildBaseHints(options?: { jsonSchema?: unknown }): ConfigUiHint
       ...hint,
       ...(effectiveDefault !== undefined ? { default: effectiveDefault } : {}),
       ...(isReadOnlyPath(path) ? { readOnly: true } : {}),
+      ...(path in TRI_STATE_PATHS ? { triState: true } : {}),
       ...(hint.advanced === undefined && isAdvancedPath(path) ? { advanced: true } : {}),
     };
   }

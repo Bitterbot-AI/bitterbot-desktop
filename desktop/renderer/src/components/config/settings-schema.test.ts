@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  controlKindFor,
-  initialValueFor,
-  isLeafHintPath,
-  schemaNodeAtPath,
-} from "./settings-schema";
+import { controlKindFor, isLeafHintPath, schemaNodeAtPath } from "./settings-schema";
 
 const SCHEMA = {
   type: "object",
@@ -82,6 +77,56 @@ describe("schemaNodeAtPath", () => {
     expect(schemaNodeAtPath(SCHEMA, "loose.anything")).toBeUndefined();
     expect(schemaNodeAtPath(null, "x")).toBeUndefined();
   });
+
+  it("searches every union branch (array | object) and typed-or-unknown unions", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        channels: {
+          type: "object",
+          properties: {
+            telegram: {
+              type: "object",
+              properties: {
+                capabilities: {
+                  anyOf: [
+                    { type: "array", items: { type: "string" } },
+                    {
+                      type: "object",
+                      properties: { inlineButtons: { type: "string", enum: ["off", "dm"] } },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+        memory: {
+          type: "object",
+          properties: {
+            curiosity: {
+              anyOf: [{ type: "object", properties: { enabled: { type: "boolean" } } }, {}],
+            },
+          },
+        },
+      },
+    };
+    expect(schemaNodeAtPath(schema, "channels.telegram.capabilities.inlineButtons")?.enum).toEqual([
+      "off",
+      "dm",
+    ]);
+    expect(schemaNodeAtPath(schema, "memory.curiosity.enabled")).toEqual({ type: "boolean" });
+  });
+
+  it("treats JSON-schema boolean nodes (true/false as a schema) as unresolvable", () => {
+    const schema = {
+      type: "object",
+      properties: { a: { type: "object", properties: { b: true } } },
+    };
+    expect(schemaNodeAtPath(schema, "a.b")).toBeUndefined();
+    expect(controlKindFor(undefined, undefined).kind).toBe("unknown");
+    expect(schemaNodeAtPath(true, "a")).toBeUndefined();
+  });
 });
 
 describe("controlKindFor", () => {
@@ -132,24 +177,7 @@ describe("controlKindFor", () => {
   });
 });
 
-describe("initialValueFor / isLeafHintPath", () => {
-  it("uses the schema default when it is a primitive", () => {
-    const node = schemaNodeAtPath(SCHEMA, "commands.native");
-    expect(initialValueFor(controlKindFor(node, undefined), node)).toBe("auto");
-  });
-
-  it("never seeds a row with an object default", () => {
-    const node = schemaNodeAtPath(SCHEMA, "commands");
-    expect(initialValueFor({ kind: "string" }, node)).toBe("");
-  });
-
-  it("picks a sensible empty value per control kind", () => {
-    expect(initialValueFor({ kind: "boolean" }, undefined)).toBe(false);
-    expect(initialValueFor({ kind: "number" }, undefined)).toBe(0);
-    expect(initialValueFor({ kind: "enum", options: [null, "ask"] }, undefined)).toBe("ask");
-    expect(initialValueFor({ kind: "string" }, undefined)).toBe("");
-  });
-
+describe("isLeafHintPath", () => {
   it("leaf paths are dotted and free of wildcards", () => {
     expect(isLeafHintPath("update.checkOnStart")).toBe(true);
     expect(isLeafHintPath("update")).toBe(false);

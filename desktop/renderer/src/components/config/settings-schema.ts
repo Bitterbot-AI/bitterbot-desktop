@@ -18,6 +18,7 @@ export type UiHint = {
   default?: unknown;
   readOnly?: boolean;
   deprecated?: string;
+  triState?: boolean;
 };
 
 export type ControlKind = "boolean" | "enum" | "number" | "string" | "unknown";
@@ -44,23 +45,47 @@ function branches(node: JsonSchemaNode): JsonSchemaNode[] | undefined {
   return alts.map(asNode).filter((a): a is JsonSchemaNode => !!a);
 }
 
+/** Non-null union branches, flattened; the node itself when it is not a union. */
+function candidateBranches(node: JsonSchemaNode): JsonSchemaNode[] {
+  const alts = branches(node);
+  if (!alts) {
+    return [node];
+  }
+  return alts.filter((a) => a.type !== "null").flatMap(candidateBranches);
+}
+
 /** Collapse `anyOf`/`oneOf` that is just "T or null" down to T. */
 function nonNullBranch(node: JsonSchemaNode): JsonSchemaNode {
-  const alts = branches(node);
-  if (alts) {
-    const rest = alts.filter((a) => a.type !== "null");
-    if (rest.length === 1) {
-      return nonNullBranch(rest[0]);
+  const rest = candidateBranches(node);
+  return rest.length === 1 ? rest[0] : node;
+}
+
+/** Step one path segment down, trying every union branch in order. */
+function stepInto(node: JsonSchemaNode, part: string): JsonSchemaNode | undefined {
+  for (const branch of candidateBranches(node)) {
+    let next: JsonSchemaNode | undefined;
+    if (part === "*") {
+      next = asNode(branch.additionalProperties);
+    } else if (part.endsWith("[]")) {
+      const prop = asNode(asNode(branch.properties)?.[part.slice(0, -2)]);
+      next = prop ? asNode(nonNullBranch(prop).items) : undefined;
+    } else {
+      next = asNode(asNode(branch.properties)?.[part]);
+    }
+    if (next) {
+      return next;
     }
   }
-  return node;
+  return undefined;
 }
 
 /**
  * Walk the JSON schema along a dotted hint path. `*` descends into a record's
- * additionalProperties, `name[]` into an array's items. Intermediate "T or
- * null" unions are collapsed to T; the final node is returned as-is so the
- * caller can still see that it is nullable.
+ * additionalProperties, `name[]` into an array's items. Intermediate unions
+ * are searched branch by branch (so `array | {inlineButtons}` resolves); the
+ * final node is returned as-is so the caller can still see that it is
+ * nullable. JSON-schema booleans (`true`/`false` as a schema) are not objects
+ * and yield undefined.
  */
 export function schemaNodeAtPath(schema: unknown, path: string): JsonSchemaNode | undefined {
   let cur = asNode(schema);
@@ -71,15 +96,7 @@ export function schemaNodeAtPath(schema: unknown, path: string): JsonSchemaNode 
     return cur;
   }
   for (const part of path.split(".")) {
-    cur = nonNullBranch(cur);
-    if (part === "*") {
-      cur = asNode(cur.additionalProperties);
-    } else if (part.endsWith("[]")) {
-      const prop = asNode(asNode(cur.properties)?.[part.slice(0, -2)]);
-      cur = prop ? asNode(nonNullBranch(prop).items) : undefined;
-    } else {
-      cur = asNode(asNode(cur.properties)?.[part]);
-    }
+    cur = stepInto(cur, part);
     if (!cur) {
       return undefined;
     }
@@ -180,27 +197,6 @@ export function controlKindFor(node: JsonSchemaNode | undefined, value: unknown)
 /** A hint path the form can show as a single row. */
 export function isLeafHintPath(path: string): boolean {
   return path.includes(".") && !path.includes("*") && !path.includes("[]");
-}
-
-/** Value a freshly added row starts with. */
-export function initialValueFor(spec: ControlSpec, node: JsonSchemaNode | undefined): unknown {
-  if (
-    node &&
-    node.default !== undefined &&
-    (node.default === null || typeof node.default !== "object")
-  ) {
-    return node.default;
-  }
-  switch (spec.kind) {
-    case "boolean":
-      return false;
-    case "number":
-      return 0;
-    case "enum":
-      return spec.options?.find((o) => o !== null) ?? "";
-    default:
-      return "";
-  }
 }
 
 /** Primitive value, or undefined for objects/arrays the form cannot show inline. */

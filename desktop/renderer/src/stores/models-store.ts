@@ -57,6 +57,8 @@ export interface ProviderAuthStatus {
   envSource?: string;
   configKeyPresent: boolean;
   winningSource: string | null;
+  /** Provider removed upstream; listed only so a stale profile can be deleted. */
+  retired?: string;
 }
 
 export interface AuthProbeResult {

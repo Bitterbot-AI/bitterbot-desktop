@@ -41,41 +41,55 @@ const MemorySchema = z
       })
       .strict()
       .optional(),
-    // PLAN-56 Phase 1: the curiosity keys the Settings form labels. Mirrors
-    // src/memory/curiosity-types.ts and curiosity-researcher.ts; passthrough
-    // because the rest of CuriosityConfig is still typed only in TS.
+    // PLAN-56 Phase 1: the curiosity keys the Settings form labels, so the
+    // generated JSON schema carries typed leaves for them. ACCEPTANCE IS
+    // UNCHANGED: `memory` was fully passthrough before, so every shape falls
+    // back to the `z.unknown()` branch (null, false, "3" from ${ENV}, ...).
+    // The typed branch exists only for the form's control types; the code-read
+    // sites (curiosity-researcher.ts, manager.ts) keep doing their own coercion.
     curiosity: z
-      .object({
-        enabled: z.boolean().optional(),
-        research: z
+      .union([
+        z
           .object({
             enabled: z.boolean().optional(),
-            intervalMinutes: z.number().positive().optional(),
-            maxPerDay: z.number().int().nonnegative().optional(),
-            maxSearchesPerTarget: z.number().int().positive().optional(),
-            maxPagesPerTarget: z.number().int().positive().optional(),
-            minConfidence: z.number().min(0).max(1).optional(),
-            blockedDomains: z.array(z.string()).optional(),
-            maxAttempts: z.number().int().positive().optional(),
-            strictEgress: z.boolean().optional(),
+            research: z
+              .union([
+                z
+                  .object({
+                    enabled: z.boolean().optional(),
+                    strictEgress: z.boolean().optional(),
+                    intervalMinutes: z.unknown().optional(),
+                    maxPerDay: z.unknown().optional(),
+                  })
+                  .passthrough(),
+                z.unknown(),
+              ])
+              .optional(),
+            autoResearch: z
+              .union([
+                z
+                  .object({
+                    enabled: z.boolean().optional(),
+                    maxPerDay: z.unknown().optional(),
+                  })
+                  .passthrough(),
+                z.unknown(),
+              ])
+              .optional(),
           })
-          .passthrough()
-          .optional(),
-        autoResearch: z
-          .object({
-            enabled: z.boolean().optional(),
-            maxPerDay: z.number().int().nonnegative().optional(),
-          })
-          .passthrough()
-          .optional(),
-      })
-      .passthrough()
+          .passthrough(),
+        z.unknown(),
+      ])
       .optional(),
     architectEvolution: z
-      .object({
-        enabled: z.boolean().optional(),
-      })
-      .passthrough()
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
       .optional(),
   })
   // Memory subsystems (dream, consolidation, digest, requestFrequency, etc.)

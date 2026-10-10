@@ -13,11 +13,12 @@
  * catalogues in src/config/schema.defaults.ts). A row whose value comes from
  * the default wears a "default" badge. Control types come from the JSON
  * schema (switch / select / number / text); `meta.*` is read-only; deprecated
- * keys are hidden; "Add setting" exposes every labelled key that is unset and
- * has no default.
+ * keys are never offered and show read-only (with the reason) only while the
+ * file still sets them; "Add setting" exposes every labelled key that is unset
+ * and has no default, and an added row stays clean until the user acts on it.
  */
 import { Plus, RotateCw, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "../../lib/utils";
 import type { ConfigSchema, ConfigSnapshot } from "../../stores/config-store";
 import { useGatewayStore } from "../../stores/gateway-store";
@@ -26,7 +27,6 @@ import { Switch } from "../ui/switch";
 import {
   type ControlSpec,
   controlKindFor,
-  initialValueFor,
   isLeafHintPath,
   type JsonSchemaNode,
   primitiveOrUndefined,
@@ -130,7 +130,7 @@ export function SettingsForm({
   const leaves = useMemo(() => {
     const out: Row[] = [];
     for (const [path, hint] of Object.entries(hints)) {
-      if (!isLeafHintPath(path) || hint.deprecated) {
+      if (!isLeafHintPath(path)) {
         continue;
       }
       const node = jsonSchema ? schemaNodeAtPath(jsonSchema, path) : undefined;
@@ -147,6 +147,11 @@ export function SettingsForm({
       const value = getAtPath(config, path);
       if (value !== undefined && primitiveOrUndefined(value) === undefined) {
         return false; // objects/arrays live in the raw editor
+      }
+      if (hint.deprecated) {
+        // Never offered; shown read-only (with the reason) only while the
+        // file still sets it, so a user can see what the load warning means.
+        return isSet && value !== undefined;
       }
       const shown =
         isSet ||
@@ -197,7 +202,7 @@ export function SettingsForm({
     const q = addQuery.trim().toLowerCase();
     return leaves
       .filter(({ path, hint, spec, isSet }) => {
-        if (hint.readOnly || spec.kind === "unknown") {
+        if (hint.readOnly || hint.deprecated || spec.kind === "unknown") {
           return false;
         }
         if (isSet || getAtPath(config, path) !== undefined || hint.default !== undefined) {
@@ -235,12 +240,10 @@ export function SettingsForm({
   };
 
   const addRow = (row: Row) => {
+    // The row starts CLEAN: no value is seeded and nothing is dirty until the
+    // user acts on it, so Save can never write a value nobody chose (the
+    // first enum option, 0, false...).
     setAdded(new Set(added).add(row.path));
-    // Switches, numbers and selects start at a concrete value; a text row
-    // stays clean until typed so Save cannot write an empty string by accident.
-    if (row.spec.kind !== "string") {
-      setValue(row.path, initialValueFor(row.spec, row.node));
-    }
     setAddOpen(false);
     setAddQuery("");
   };
@@ -418,6 +421,14 @@ export function SettingsForm({
                       <span className={cn("text-sm", isDirty && "text-brand")}>
                         {hint.label ?? path}
                       </span>
+                      {hint.deprecated && (
+                        <span
+                          title={hint.deprecated}
+                          className="px-1.5 py-0.5 rounded text-2xs uppercase tracking-wide bg-danger/10 text-danger border border-danger/20"
+                        >
+                          deprecated
+                        </span>
+                      )}
                       {(fromDefault || pinnedDefault) && (
                         <span
                           title="Not set in your config; this is the value Bitterbot uses"
@@ -435,8 +446,12 @@ export function SettingsForm({
                         </span>
                       )}
                     </div>
-                    {hint.help && (
-                      <p className="text-xs text-muted-foreground mt-0.5">{hint.help}</p>
+                    {hint.deprecated ? (
+                      <p className="text-xs text-danger/80 mt-0.5">{hint.deprecated}</p>
+                    ) : (
+                      hint.help && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{hint.help}</p>
+                      )
                     )}
                     <p className="text-2xs font-mono text-muted-foreground/50 mt-0.5">{path}</p>
                   </div>
@@ -467,6 +482,64 @@ export function SettingsForm({
   );
 }
 
+const SELECT_CLASS =
+  "h-7 w-56 text-xs font-mono px-2 rounded-md border border-input bg-transparent dark:bg-input/30";
+
+/**
+ * Number input with its own text state: "-", "1." and "" are legitimate
+ * intermediate keystrokes that `Number()` would turn into NaN or 0. Only a
+ * finite number is committed; an emptied field removes the edit (unset key)
+ * or writes `null` (merge-patch delete) when the key was set.
+ */
+function NumberField({
+  value,
+  label,
+  placeholder,
+  hasOriginal,
+  onChange,
+}: {
+  value: unknown;
+  label: string;
+  placeholder?: string;
+  hasOriginal: boolean;
+  onChange: (value: unknown) => void;
+}) {
+  const external = typeof value === "number" ? String(value) : "";
+  const [text, setText] = useState(external);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) {
+      setText(external);
+    }
+  }, [external, focused]);
+  // type="text" on purpose: a number input reports "" for "-" or "1." mid-typing,
+  // which this field would have to read as "cleared".
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      value={text}
+      placeholder={placeholder}
+      aria-label={label}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        if (raw.trim() === "") {
+          onChange(hasOriginal ? null : undefined);
+          return;
+        }
+        const n = Number(raw);
+        if (Number.isFinite(n)) {
+          onChange(n);
+        }
+      }}
+      className="h-7 w-56 text-xs font-mono"
+    />
+  );
+}
+
 function SettingControl({
   row,
   value,
@@ -478,11 +551,30 @@ function SettingControl({
 }) {
   const { path, hint, spec } = row;
   const label = hint.label ?? path;
-  if (hint.readOnly) {
+  if (hint.readOnly || hint.deprecated) {
     return (
       <span className="text-xs font-mono text-muted-foreground" data-testid={`readonly:${path}`}>
         {value === undefined ? "(unset)" : String(value)}
       </span>
+    );
+  }
+  if (spec.kind === "boolean" && hint.triState) {
+    // Unset is a real third state ("no override"), so an OFF switch would lie.
+    const selected = value === true ? "true" : value === false ? "false" : "";
+    return (
+      <select
+        value={selected}
+        aria-label={label}
+        onChange={(e) => {
+          const raw = e.target.value;
+          onChange(raw === "" ? (spec.nullable ? null : undefined) : raw === "true");
+        }}
+        className={SELECT_CLASS}
+      >
+        <option value="">(not set)</option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
     );
   }
   if (spec.kind === "boolean") {
@@ -504,7 +596,7 @@ function SettingControl({
           const match = options.find((o) => o !== null && String(o) === raw);
           onChange(match === undefined ? raw : match);
         }}
-        className="h-7 w-56 text-xs font-mono px-2 rounded-md border border-input bg-transparent dark:bg-input/30"
+        className={SELECT_CLASS}
       >
         {(selected === "" || spec.nullable) && <option value="">(not set)</option>}
         {options
@@ -519,19 +611,12 @@ function SettingControl({
   }
   if (spec.kind === "number") {
     return (
-      <Input
-        type="number"
-        value={value === undefined || value === null ? "" : String(value)}
+      <NumberField
+        value={value}
+        label={label}
         placeholder={hint.placeholder}
-        aria-label={label}
-        onChange={(e) => {
-          const raw = e.target.value;
-          const n = Number(raw);
-          if (!Number.isNaN(n)) {
-            onChange(n);
-          }
-        }}
-        className="h-7 w-56 text-xs font-mono"
+        hasOriginal={row.isSet || primitiveOrUndefined(value) !== undefined}
+        onChange={onChange}
       />
     );
   }

@@ -15,7 +15,9 @@
  *   appears in neither list, i.e. when the form would start lying again.
  * - READ_ONLY_PATHS: rendered as text, never editable.
  * - DEPRECATED_PATHS: accepted this release with a load-time warning, removed
- *   next release; the form hides them.
+ *   next release; the form shows them read-only (with the reason) only when
+ *   the file sets them, and never offers them.
+ * - TRI_STATE_PATHS: booleans whose unset state is "no override".
  * - ADVANCED_PATHS: expert knobs hidden behind "Show advanced".
  */
 
@@ -56,8 +58,6 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "skills.evolution.routingRepair": true,
   // src/agents/skill-validation-policy.ts:47 — `validationTools?.exec !== false`.
   "skills.evolution.validationTools.exec": true,
-  // src/memory/skill-marketability-predictor.ts:108 — `config.enabled ?? true`.
-  "skills.marketability.predictor.enabled": true,
   // src/agents/model-catalog.ts:188 — `=== false` disables.
   "models.liveDiscovery.enabled": true,
   // src/infra/usage-ledger.ts:1723 — `raw !== false` (BITTERBOT_USAGE_LEDGER=0 also disables).
@@ -82,8 +82,22 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "tools.web.search.enabled": true,
   // src/agents/tools/web-fetch.ts:91 (resolveFetchEnabled) — unset ⇒ true.
   "tools.web.fetch.enabled": true,
-  // src/node-host/runner.ts:92 — `!== false`.
+  // src/node-host/runner.ts:92 — `!== false && resolvedBrowser.enabled`: unset means on,
+  // but the proxy only starts when the browser itself is enabled.
   "nodeHost.browserProxy.enabled": true,
+  // src/agents/tools/web-fetch.ts:98 (resolveFetchReadabilityEnabled) — unset ⇒ true.
+  "tools.web.fetch.readability": true,
+  // src/agents/tools/web-fetch.ts:166-169 — unset ⇒ true.
+  "tools.web.fetch.firecrawl.onlyMainContent": true,
+  // src/agents/memory-search.ts:218 — `?? true`.
+  "agents.defaults.memorySearch.remote.batch.wait": true,
+  // src/channels/plugins/config-writes.ts:39 — `value !== false` for every channel.
+  "channels.telegram.configWrites": true,
+  "channels.slack.configWrites": true,
+  "channels.discord.configWrites": true,
+  "channels.whatsapp.configWrites": true,
+  "channels.signal.configWrites": true,
+  "channels.imessage.configWrites": true,
   // src/agents/skills/refresh.ts:137 — `watch !== false`.
   "skills.load.watch": true,
   // src/agents/memory-search.ts:196 — `?? true`.
@@ -136,7 +150,13 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
   "memory.curiosity.research.strictEgress":
     "src/memory/curiosity-researcher.ts:75 — DEFAULT_CURIOSITY_RESEARCH.strictEgress is false.",
   "tools.wallet.enabled":
-    "src/agents/tools/a2a-client-tool.ts:162 — `=== true`; money surfaces never self-enable.",
+    "src/agents/tools/a2a-client-tool.ts:162 — `=== true` for the agent-facing wallet tool. Note src/config/defaults.ts:522 (isEarningCapable) treats unset as capable: with CDP credentials present the node can still RECEIVE x402 payments; only `false` turns that off.",
+  "skills.marketability.predictor.enabled":
+    "src/memory/manager.ts:3639 — `predictorCfg?.enabled !== true` returns null; the predictor ctor's `?? true` (:108) is never reached with unset.",
+  "agents.defaults.memorySearch.remote.batch.enabled":
+    "src/agents/memory-search.ts:217 — `?? false`.",
+  "tools.web.fetch.firecrawl.enabled":
+    "src/agents/tools/web-fetch.ts:151 — unset ⇒ `Boolean(apiKey)`: on only when a Firecrawl key is configured.",
   "tools.wallet.x402.enabled": "src/gateway/server-methods/wallet.ts:226 — `?? false`.",
   "diagnostics.enabled": "src/infra/diagnostic-events.ts:160 — `=== true`.",
   "diagnostics.otel.enabled":
@@ -177,16 +197,24 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
   "payments.privacy.enabled": "src/payments/privacy/rail.ts:36 — `=== true`.",
   "payments.privacy.sandbox": "src/payments/privacy/rail.ts:38 — `=== true`.",
   "messages.suppressToolErrors": "src/agents/embedded-runner/run/payloads.ts:257 — `Boolean(...)`.",
-  "channels.telegram.network.autoSelectFamily":
-    "src/telegram/network-config.ts:32 — tri-state: unset means no override (Node's own default), not false.",
   "channels.whatsapp.selfChatMode": "src/web/accounts.ts:157 — falsy ⇒ off.",
-  "channels.discord.intents.presence": "src/discord/monitor/provider.ts:576 — truthy check.",
+  "channels.discord.intents.presence":
+    "src/discord/monitor/gateway-plugin.ts:18 and provider.ts:576 — truthy check.",
   "channels.discord.intents.guildMembers":
-    "src/discord/monitor/provider.ts (intents block) — truthy check.",
+    "src/discord/monitor/gateway-plugin.ts:21 — truthy check.",
   "channels.discord.pluralkit.enabled":
     "src/discord/monitor/message-handler.preflight.ts:91 — `Boolean(pluralkitConfig?.enabled)`.",
   "channels.slack.allowBots": "src/slack/monitor/message-handler/prepare.ts:90-93 — `?? false`.",
   "channels.slack.thread.inheritParent": "src/slack/monitor/provider.ts:122 — `?? false`.",
+};
+
+/**
+ * Booleans where unset is a third state ("no override"), not false. The form
+ * renders these as a select with "(not set)" instead of an OFF switch.
+ */
+export const TRI_STATE_PATHS: Record<string, string> = {
+  "channels.telegram.network.autoSelectFamily":
+    "src/telegram/network-config.ts:32 — only a boolean overrides; unset leaves Node's own autoSelectFamily default.",
 };
 
 /** Rendered as text in the form; written by Bitterbot, never by the user. */
@@ -205,9 +233,9 @@ export const DEPRECATED_PATHS: Record<string, string> = {
   "memory.curiosity.autoResearch.enabled":
     "memory.curiosity.autoResearch.enabled is a legacy alias of memory.curiosity.research.enabled; set that key instead. It will be removed next release.",
   "agents.defaults.runtime.engine":
-    'agents.defaults.runtime.engine is obsolete: the pi engine was removed (PLAN-52), "pi" runs the bitterbot runtime with a warning. It will be removed next release.',
+    'agents.defaults.runtime.engine is no longer needed: "bitterbot" is the only runtime (PLAN-52), so the key has no effect and "pi" runs the bitterbot runtime with a warning. It will be removed next release.',
   "agents.list[].runtime.engine":
-    'agents.list[].runtime.engine is obsolete: the pi engine was removed (PLAN-52), "pi" runs the bitterbot runtime with a warning. It will be removed next release.',
+    'agents.list[].runtime.engine is no longer needed: "bitterbot" is the only runtime (PLAN-52), so the key has no effect and "pi" runs the bitterbot runtime with a warning. It will be removed next release.',
   "agents.defaults.compaction.mode":
     'agents.defaults.compaction.mode: "safeguard" is accepted and has no effect (see LIMITATIONS.md, "Execution and isolation"); "default" is the only live mode. The key will be removed next release.',
   "agents.defaults.contextPruning":

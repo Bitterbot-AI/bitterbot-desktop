@@ -94,8 +94,10 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.remote.sshTarget":
     "Remote gateway over SSH (tunnels the gateway port to localhost). Format: user@host or user@host:port.",
   "gateway.remote.sshIdentity": "Optional SSH identity file path (passed to ssh -i).",
-  "agents.list.*.skills":
-    "Optional allowlist of skills for this agent (omit = all skills; empty = no skills).",
+  "agents.defaults.sandbox.mode":
+    'Run tool calls in a Docker sandbox: "off" (default, tools run on the host), "non-main" (every session except the main one) or "all". See LIMITATIONS.md, "Execution and isolation".',
+  "agents.defaults.sandbox.workspaceAccess":
+    'What the sandbox sees of the agent workspace: "none" (default: a scratch workspace), "ro" (read-only) or "rw".',
   "agents.list[].skills":
     "Optional allowlist of skills for this agent (omit = all skills; empty = no skills).",
   "agents.list[].identity.avatar":
@@ -361,8 +363,6 @@ export const FIELD_HELP: Record<string, string> = {
     "Resolved install directory (usually ~/.bitterbot/extensions/<id>).",
   "plugins.installs.*.version": "Version recorded at install time (if available).",
   "plugins.installs.*.installedAt": "ISO timestamp of last install/update.",
-  "agents.list.*.identity.avatar":
-    "Agent avatar (workspace-relative path, http(s) URL, or data URI).",
   "agents.defaults.model.primary": "Primary model (provider/model).",
   "agents.defaults.model.fallbacks":
     "Ordered fallback models (provider/model). Used when the primary model fails.",

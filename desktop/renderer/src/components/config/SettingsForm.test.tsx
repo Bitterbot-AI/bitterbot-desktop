@@ -83,7 +83,7 @@ describe("SettingsForm", () => {
     render(<SettingsForm snapshot={SNAPSHOT} schema={SCHEMA} saving={false} onPatch={onPatch} />);
     // gateway.port row carries the restart chip.
     expect(screen.getAllByTitle("Applying this change restarts the gateway").length).toBe(2);
-    const port = screen.getByRole("spinbutton");
+    const port = screen.getByRole("textbox", { name: "Gateway Port" });
     await userEvent.clear(port);
     await userEvent.type(port, "20000");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -134,8 +134,42 @@ const TRUTH_SCHEMA = {
         },
       },
       meta: { type: "object", properties: { lastTouchedAt: { type: "string" } } },
-      memory: { type: "object", properties: { backend: { const: "builtin" } } },
+      memory: {
+        type: "object",
+        properties: {
+          backend: { const: "builtin" },
+          curiosity: {
+            type: "object",
+            properties: {
+              autoResearch: { type: "object", properties: { enabled: { type: "boolean" } } },
+            },
+          },
+        },
+      },
       p2p: { type: "object", properties: { enabled: { type: "boolean" } } },
+      tools: {
+        type: "object",
+        properties: {
+          exec: {
+            type: "object",
+            properties: { ask: { type: "string", enum: ["off", "on-miss", "always"] } },
+          },
+        },
+      },
+      channels: {
+        type: "object",
+        properties: {
+          telegram: {
+            type: "object",
+            properties: {
+              network: {
+                type: "object",
+                properties: { autoSelectFamily: { type: "boolean" } },
+              },
+            },
+          },
+        },
+      },
       gateway: {
         type: "object",
         properties: {
@@ -161,9 +195,19 @@ const TRUTH_SCHEMA = {
     "review.spend": { label: "Review: Spending" },
     "usage.budgets.daily.usd": { label: "Daily Budget (USD)" },
     "meta.lastTouchedAt": { label: "Config Last Touched At", readOnly: true },
-    "memory.backend": { label: "Memory Backend", deprecated: "inert" },
+    "memory.backend": { deprecated: "memory.backend is inert and will be removed next release." },
+    "memory.curiosity.autoResearch.enabled": {
+      deprecated: "legacy alias of memory.curiosity.research.enabled",
+    },
     "p2p.enabled": { label: "P2P Mesh Enabled", default: true },
     "gateway.controlUi.basePath": { label: "Control UI Base Path", advanced: true },
+    tools: { label: "Tools", order: 50 },
+    "tools.exec.ask": { label: "Exec Ask" },
+    channels: { label: "Messaging Channels", order: 150 },
+    "channels.telegram.network.autoSelectFamily": {
+      label: "Telegram autoSelectFamily",
+      triState: true,
+    },
   },
   reloadRules: [
     { prefix: "review", kind: "none" as const },
@@ -276,7 +320,7 @@ describe("SettingsForm truth layer (PLAN-56 Phase 1)", () => {
     expect(screen.queryByRole("textbox", { name: "Config Last Touched At" })).toBeNull();
   });
 
-  it("hides deprecated keys and honours Show advanced", async () => {
+  it("shows a deprecated key the file sets as a read-only row with the reason, never as a control", () => {
     render(
       <SettingsForm
         snapshot={TRUTH_SNAPSHOT}
@@ -285,10 +329,53 @@ describe("SettingsForm truth layer (PLAN-56 Phase 1)", () => {
         onPatch={vi.fn()}
       />,
     );
-    expect(screen.queryByText("Memory Backend")).toBeNull();
+    // memory.backend IS in the file: shown read-only with the reason.
+    expect(screen.getByTestId("readonly:memory.backend").textContent).toBe("builtin");
+    expect(screen.getByText(/memory.backend is inert/)).toBeTruthy();
+    expect(screen.getByText("deprecated")).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "memory.backend" })).toBeNull();
+    // memory.curiosity.autoResearch.enabled is NOT in the file: not shown at all.
+    expect(screen.queryByText(/legacy alias/)).toBeNull();
+  });
+
+  it("honours Show advanced", async () => {
+    render(
+      <SettingsForm
+        snapshot={TRUTH_SNAPSHOT}
+        schema={TRUTH_SCHEMA}
+        saving={false}
+        onPatch={vi.fn()}
+      />,
+    );
     expect(screen.queryByText("Control UI Base Path")).toBeNull();
     await userEvent.click(screen.getByRole("switch", { name: "Show advanced" }));
     expect(screen.getByText("Control UI Base Path")).toBeTruthy();
+  });
+
+  it("renders a tri-state boolean as a select with (not set) instead of an OFF switch", async () => {
+    const onPatch = vi.fn(async () => true);
+    render(
+      <SettingsForm
+        snapshot={TRUTH_SNAPSHOT}
+        schema={TRUTH_SCHEMA}
+        saving={false}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Add setting/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Telegram autoSelectFamily/ }));
+    expect(screen.queryByRole("switch", { name: "Telegram autoSelectFamily" })).toBeNull();
+    const select = screen.getByRole("combobox", {
+      name: "Telegram autoSelectFamily",
+    }) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "true", "false"]);
+    await userEvent.selectOptions(select, "false");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onPatch).toHaveBeenCalledWith(
+      { channels: { telegram: { network: { autoSelectFamily: false } } } },
+      true,
+    );
   });
 
   it("renders group help under the section title", () => {
@@ -323,11 +410,35 @@ describe("SettingsForm truth layer (PLAN-56 Phase 1)", () => {
     expect(panel.textContent).not.toContain("memory.backend");
     expect(panel.textContent).not.toContain("update.checkOnStart");
     await userEvent.click(screen.getByRole("button", { name: /Daily Budget \(USD\)/ }));
-    const usd = screen.getByRole("spinbutton", { name: "Daily Budget (USD)" });
-    await userEvent.clear(usd);
+    const usd = screen.getByRole("textbox", { name: "Daily Budget (USD)" }) as HTMLInputElement;
+    // The added row starts EMPTY and clean: nothing to save yet.
+    expect(usd.value).toBe("");
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
     await userEvent.type(usd, "5");
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(onPatch).toHaveBeenCalledWith({ usage: { budgets: { daily: { usd: 5 } } } }, false);
+  });
+
+  it("an added enum starts at (not set) and is not dirty until chosen", async () => {
+    const onPatch = vi.fn(async () => true);
+    render(
+      <SettingsForm
+        snapshot={TRUTH_SNAPSHOT}
+        schema={TRUTH_SCHEMA}
+        saving={false}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Add setting/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Exec Ask/ }));
+    const ask = screen.getByRole("combobox", { name: "Exec Ask" }) as HTMLSelectElement;
+    // Never seeded with "off" (which would silently disable exec approval).
+    expect(ask.value).toBe("");
+    expect(Array.from(ask.options).map((o) => o.value)).toEqual(["", "off", "on-miss", "always"]);
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.selectOptions(ask, "always");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onPatch).toHaveBeenCalledWith({ tools: { exec: { ask: "always" } } }, true);
   });
 
   it("an added nullable enum offers (not set) and the real options", async () => {
@@ -343,8 +454,88 @@ describe("SettingsForm truth layer (PLAN-56 Phase 1)", () => {
     await userEvent.click(screen.getByRole("button", { name: /Review: Spending/ }));
     const select = screen.getByRole("combobox", { name: "Review: Spending" }) as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "ask", "allow"]);
-    expect(select.value).toBe("ask");
+    expect(select.value).toBe("");
     expect(screen.getByText(/Three layers/)).toBeTruthy();
+  });
+
+  it("an added boolean starts OFF and clean; only a toggle makes it dirty", async () => {
+    const onPatch = vi.fn(async () => true);
+    render(
+      <SettingsForm
+        snapshot={TRUTH_SNAPSHOT}
+        schema={{
+          ...TRUTH_SCHEMA,
+          schema: {
+            type: "object",
+            properties: {
+              ...TRUTH_SCHEMA.schema.properties,
+              commands: { type: "object", properties: { bash: { type: "boolean" } } },
+            },
+          },
+          uiHints: {
+            ...TRUTH_SCHEMA.uiHints,
+            commands: { label: "Commands" },
+            "commands.bash": { label: "Allow Bash Chat Command" },
+          },
+        }}
+        saving={false}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Add setting/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Allow Bash Chat Command/ }));
+    const sw = screen.getByRole("switch", { name: "Allow Bash Chat Command" });
+    expect(sw.getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.click(sw);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onPatch).toHaveBeenCalledWith({ commands: { bash: true } }, true);
+  });
+
+  it("number field: clearing a set number writes null, partial input is not committed, decimals and negatives work", async () => {
+    const onPatch = vi.fn(async () => true);
+    render(
+      <SettingsForm
+        snapshot={{
+          ...TRUTH_SNAPSHOT,
+          config: { ...TRUTH_SNAPSHOT.config, usage: { budgets: { daily: { usd: 5 } } } },
+          resolved: { ...TRUTH_SNAPSHOT.resolved, usage: { budgets: { daily: { usd: 5 } } } },
+        }}
+        schema={TRUTH_SCHEMA}
+        saving={false}
+        onPatch={onPatch}
+      />,
+    );
+    const usd = screen.getByRole("textbox", { name: "Daily Budget (USD)" }) as HTMLInputElement;
+    expect(usd.value).toBe("5");
+    await userEvent.clear(usd);
+    expect(screen.getByText("1 unsaved change")).toBeTruthy();
+    await userEvent.type(usd, "-");
+    // "-" alone is not a number: the last committed value (null) stands, no 0 is written.
+    expect(usd.value).toBe("-");
+    await userEvent.type(usd, "2.5");
+    expect(usd.value).toBe("-2.5");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onPatch).toHaveBeenCalledWith({ usage: { budgets: { daily: { usd: -2.5 } } } }, false);
+  });
+
+  it("number field: clearing a set number and saving deletes the key (merge-patch null)", async () => {
+    const onPatch = vi.fn(async () => true);
+    render(
+      <SettingsForm
+        snapshot={{
+          ...TRUTH_SNAPSHOT,
+          config: { ...TRUTH_SNAPSHOT.config, usage: { budgets: { daily: { usd: 5 } } } },
+          resolved: { ...TRUTH_SNAPSHOT.resolved, usage: { budgets: { daily: { usd: 5 } } } },
+        }}
+        schema={TRUTH_SCHEMA}
+        saving={false}
+        onPatch={onPatch}
+      />,
+    );
+    await userEvent.clear(screen.getByRole("textbox", { name: "Daily Budget (USD)" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onPatch).toHaveBeenCalledWith({ usage: { budgets: { daily: { usd: null } } } }, false);
   });
 
   it("an added text row stays clean until typed and can be removed again", async () => {
