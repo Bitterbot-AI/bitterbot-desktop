@@ -24,7 +24,7 @@ describe("migration v76 — memory_suppressions (PLAN-55 Phase 0)", () => {
     const cols = (
       db.prepare(`PRAGMA table_info(memory_suppressions)`).all() as Array<{ name: string }>
     ).map((c) => c.name);
-    expect(cols).toEqual(["id", "kind", "hash", "created_at", "reason", "actor"]);
+    expect(cols).toEqual(["id", "kind", "hash", "created_at", "reason", "actor", "text"]);
     const indexes = (
       db.prepare(`PRAGMA index_list(memory_suppressions)`).all() as Array<{
         name: string;

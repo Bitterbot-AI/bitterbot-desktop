@@ -109,6 +109,7 @@ import {
   type ListOptions as OwnerListOptions,
   listAuditLog as ownerListAuditLog,
   listPreferences as ownerListPreferences,
+  pinFact as ownerPinFact,
   retireFact as ownerRetireFact,
   unretireFact as ownerUnretireFact,
 } from "./owner-controls.js";
@@ -6078,6 +6079,15 @@ export class MemoryIndexManager implements MemorySearchManager {
       throw new Error("the facts ledger is not available");
     }
     return await this.ownerChange("unretire-fact", () => ownerUnretireFact(this.db, store, key));
+  }
+
+  /** PLAN-55 Phase 0: the `owner` tier's writer. */
+  async ownerPinFact(input: { key: string; value: string; category?: string; statement?: string }) {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("pin-fact", () => ownerPinFact(this.db, store, input));
   }
 
   /**

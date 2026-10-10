@@ -213,4 +213,76 @@ describe("soft retire (agent, decay, hygiene)", () => {
     expect(store.decayTick(farFuture)).toBe(0);
     expect(store.get(KEY)?.status).toBe("owner_retired");
   });
+
+  it("decay retires through retire(reason decay): soft, no suppression", () => {
+    const farFuture = Date.now() + 400 * 86_400_000;
+    expect(store.decayTick(farFuture)).toBe(1);
+    expect(store.get(KEY)?.status).toBe("retired");
+    expect(listSuppressions(db)).toHaveLength(0);
+  });
+});
+
+describe("review-round fixes", () => {
+  it("an owner-retired agent_pin row does not lock the key: a new value supersedes, no conflict", () => {
+    store.pin({ key: KEY, value: "Victor", source: "agent_pin" });
+    expect(store.retire(KEY, { reason: "owner" })).toBe(true);
+    const result = store.pin({ key: KEY, value: "Vic", source: "extraction" });
+    expect(result.op).toBe("supersede");
+    expect(store.get(KEY)?.value).toBe("Vic");
+    expect(store.get(KEY)?.status).toBe("active");
+    expect(conflicts()).toEqual([]);
+    // The superseded row keeps its history, and unretire has nothing to lift.
+    expect(store.history(KEY).map((f) => f.status)).toEqual(["active", "superseded"]);
+    expect(store.unretire(KEY)).toBe(false);
+    // The retired value itself is still out, by any lower tier.
+    expect(store.pin({ key: KEY, value: "Victor", source: "extraction" }).op).toBe("rejected");
+    expect(store.pin({ key: KEY, value: "victor", source: "agent_pin" }).op).toBe("rejected");
+  });
+
+  it("a soft-retired agent_pin row is not a current belief either (extraction may replace it)", () => {
+    store.pin({ key: KEY, value: "Victor", source: "agent_pin" });
+    store.retire(KEY, { reason: "agent" });
+    expect(store.pin({ key: KEY, value: "Vic", source: "extraction" }).op).toBe("supersede");
+    expect(conflicts()).toEqual([]);
+  });
+
+  it("the sweep never asks about a key whose current row is not active", () => {
+    store.pin({ key: KEY, value: "Victor", source: "agent_pin" });
+    // A stale tier_rejection left behind before the retire.
+    db.prepare(
+      `INSERT INTO canonical_conflicts (id, key, kind, current_value, proposed_value,
+         current_source, proposed_source, created_at)
+       VALUES ('c1', ?, 'tier_rejection', 'Victor', 'Vic', 'agent_pin', 'extraction', ?)`,
+    ).run(KEY, Date.now());
+    store.retire(KEY, { reason: "owner" });
+    const engine = new EpistemicDirectiveEngine(db);
+    expect(engine.sweepCanonicalConflicts()).toBe(0);
+    expect(engine.listOpenDirectives(10)).toHaveLength(0);
+    expect(conflicts()[0]?.consumed_at).not.toBeNull();
+  });
+
+  it("rejects an unknown source instead of treating it as a tier above everything", () => {
+    store.pin({ key: KEY, value: "Victor", source: "owner" });
+    const result = store.pin({
+      key: KEY,
+      value: "Mallory",
+      source: "not_a_source" as unknown as "owner",
+    });
+    expect(result.op).toBe("rejected");
+    expect(result.op === "rejected" && result.reason).toMatch(/unknown source/);
+    expect(store.get(KEY)?.value).toBe("Victor");
+    // Same for a retired value: unknown sources cannot bypass the suppression.
+    store.retire(KEY, { reason: "owner" });
+    expect(store.pin({ key: KEY, value: "Victor", source: "nope" as unknown as "owner" }).op).toBe(
+      "rejected",
+    );
+    expect(store.get(KEY)?.status).toBe("owner_retired");
+  });
+
+  it("an owner retire whose suppression cannot be written does not flip the status", () => {
+    store.pin({ key: KEY, value: "Victor", source: "agent_pin" });
+    db.exec(`DROP TABLE memory_suppressions`);
+    expect(() => store.retire(KEY, { reason: "owner" })).toThrow();
+    expect(store.get(KEY)?.status).toBe("active");
+  });
 });

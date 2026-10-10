@@ -2636,9 +2636,13 @@ const MIGRATIONS: Migration[] = [
           hash       TEXT NOT NULL,
           created_at INTEGER NOT NULL,
           reason     TEXT,
-          actor      TEXT NOT NULL DEFAULT 'owner'
+          actor      TEXT NOT NULL DEFAULT 'owner',
+          text       TEXT
         )
       `);
+      // The unreleased first cut of v76 had no `text` column; a node that ran
+      // it gets the column here rather than through a v77.
+      addColumnIfMissing(db, "memory_suppressions", "text", "TEXT");
       db.exec(
         `CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_suppressions_kind_hash ` +
           `ON memory_suppressions(kind, hash)`,

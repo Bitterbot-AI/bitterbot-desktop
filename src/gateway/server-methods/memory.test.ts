@@ -12,7 +12,7 @@ import { CanonicalFactsStore } from "../../memory/canonical-facts.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { listSuppressions } from "../../memory/memory-suppressions.js";
-import { retireFact, unretireFact } from "../../memory/owner-controls.js";
+import { pinFact, retireFact, unretireFact } from "../../memory/owner-controls.js";
 import { ErrorCodes } from "../protocol/index.js";
 import { memoryHandlers } from "./memory.js";
 
@@ -58,6 +58,7 @@ beforeEach(() => {
     canonicalFacts: () => store,
     ownerRetireFact: async (key: string) => retireFact(db, store, key),
     ownerUnretireFact: async (key: string) => unretireFact(db, store, key),
+    ownerPinFact: async (input: Parameters<typeof pinFact>[2]) => pinFact(db, store, input),
   };
   vi.mocked(getMemorySearchManager).mockResolvedValue({
     manager: manager as never,
@@ -90,6 +91,52 @@ describe("memory.retireFact / memory.unretireFact (PLAN-55 Phase 0)", () => {
     expect((await call(retire, { key: "nope.nothing" })).payload).toEqual({ ok: false });
     expect((await call(unretire, { key: "nope.nothing" })).payload).toEqual({ ok: false });
     expect((await call(retire, {})).payload).toEqual({ ok: false });
+  });
+
+  it("memory.pinFact pins at the owner tier and brings a retired fact back", async () => {
+    const pin = memoryHandlers["memory.pinFact"]!;
+    await call(retire, { key: "infra.deploy_endpoint" });
+    const res = await call(pin, { key: " infra.deploy_endpoint ", value: " api.acme.com " });
+    expect(res.ok).toBe(true);
+    expect(res.payload).toEqual({
+      ok: true,
+      op: "strengthen",
+      key: "infra.deploy_endpoint",
+      value: "api.acme.com",
+    });
+    expect(store.get("infra.deploy_endpoint")?.status).toBe("active");
+    expect(store.get("infra.deploy_endpoint")?.source).toBe("owner");
+    expect(listSuppressions(db)).toHaveLength(0);
+    // Outranks the agent from now on.
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api9.acme.com", source: "agent_pin" }).op,
+    ).toBe("rejected");
+    expect(
+      db.prepare(`SELECT event FROM memory_audit_log WHERE event = 'owner_pin_fact'`).all(),
+    ).toHaveLength(1);
+    // A bad pin is INVALID_REQUEST with the ledger's reason.
+    const bad = await call(pin, { key: "???", value: "x" });
+    expect(bad.ok).toBe(false);
+    expect(bad.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
+  });
+
+  it("memory.facts lists active by default, retired on request, both with a status", async () => {
+    const facts = memoryHandlers["memory.facts"]!;
+    store.pin({ key: "identity.user.name", value: "Victor", source: "agent_pin" });
+    await call(retire, { key: "identity.user.name" });
+    const keys = (res: Call) =>
+      (res.payload as { facts: Array<{ key: string; status: string }> }).facts;
+    expect(keys(await call(facts, {}))).toEqual([
+      expect.objectContaining({ key: "infra.deploy_endpoint", status: "active" }),
+    ]);
+    expect(keys(await call(facts, { status: "retired" }))).toEqual([
+      expect.objectContaining({ key: "identity.user.name", status: "owner_retired" }),
+    ]);
+    expect(
+      keys(await call(facts, { status: "all" }))
+        .map((f) => f.key)
+        .toSorted(),
+    ).toEqual(["identity.user.name", "infra.deploy_endpoint"]);
   });
 
   it("maps an unavailable memory manager to UNAVAILABLE", async () => {

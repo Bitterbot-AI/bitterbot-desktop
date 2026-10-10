@@ -11,10 +11,13 @@ import {
   addSuppression,
   chunkTextHash,
   factKeyValueHash,
+  inSavepoint,
   isSuppressed,
   liftSuppression,
   listSuppressions,
+  normalizeLoose,
   preferenceKeyHash,
+  preferenceValueHash,
 } from "./memory-suppressions.js";
 
 let db: DatabaseSync;
@@ -30,11 +33,58 @@ beforeEach(() => {
 });
 
 describe("hashing", () => {
-  it("chunk text: trim, collapse whitespace and case do not change the hash", () => {
+  it("chunk text: punctuation, whitespace and case do not change the hash; words do", () => {
     const a = chunkTextHash("The deploy endpoint is api.acme.com.");
     expect(chunkTextHash("  the   deploy\nendpoint is API.acme.com. ")).toBe(a);
+    expect(chunkTextHash("The deploy endpoint is api.acme.com")).toBe(a); // no full stop
+    expect(chunkTextHash("The deploy endpoint is: api acme com!")).toBe(a);
     expect(chunkTextHash("The deploy endpoint is api2.acme.com.")).not.toBe(a);
+    expect(chunkTextHash("The deploy endpoint is now api.acme.com.")).not.toBe(a);
     expect(a).toMatch(/^[0-9a-f]{64}$/);
+    // Unicode letters and digits survive; symbols do not.
+    expect(normalizeLoose("Café №5 — ¡hola!")).toBe("café 5 hola");
+  });
+
+  it("preference value: category plus the loosely normalised value", () => {
+    const a = preferenceValueHash("directive", "Always reply in Spanish.");
+    expect(preferenceValueHash("Directive", "always reply in spanish")).toBe(a);
+    expect(preferenceValueHash("directive", "Reply in Spanish, always.")).not.toBe(a);
+    expect(preferenceValueHash("identity", "Always reply in Spanish.")).not.toBe(a);
+  });
+
+  it("keeps the text only when given, for similarity consumers", () => {
+    const s = addSuppression(db, {
+      kind: "preference_value",
+      hash: preferenceValueHash("directive", "Always reply in Spanish."),
+      text: normalizeLoose("Always reply in Spanish."),
+    });
+    expect(s.text).toBe("always reply in spanish");
+    expect(listSuppressions(db, { kind: "preference_value" })[0]?.text).toBe(
+      "always reply in spanish",
+    );
+    expect(addSuppression(db, { kind: "chunk_hash", hash: "h" }).text).toBeNull();
+  });
+
+  it("inSavepoint applies a write whole or not at all, inside or outside a transaction", () => {
+    expect(() =>
+      inSavepoint(db, "t1", () => {
+        addSuppression(db, { kind: "chunk_hash", hash: "rolled-back" });
+        throw new Error("boom");
+      }),
+    ).toThrow("boom");
+    expect(isSuppressed(db, "chunk_hash", "rolled-back")).toBeNull();
+    db.exec("BEGIN");
+    expect(() =>
+      inSavepoint(db, "t2", () => {
+        addSuppression(db, { kind: "chunk_hash", hash: "nested" });
+        throw new Error("boom");
+      }),
+    ).toThrow("boom");
+    addSuppression(db, { kind: "chunk_hash", hash: "outer" });
+    db.exec("COMMIT");
+    expect(isSuppressed(db, "chunk_hash", "nested")).toBeNull();
+    expect(isSuppressed(db, "chunk_hash", "outer")).not.toBeNull();
+    expect(inSavepoint(db, "t3", () => 42)).toBe(42);
   });
 
   it("fact key/value: key and value are normalised separately and joined with NUL", () => {

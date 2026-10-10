@@ -17,9 +17,15 @@ import { CanonicalFactsStore } from "./canonical-facts.js";
 import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
 import { MemoryIndexManager } from "./manager.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
-import { listSuppressions } from "./memory-suppressions.js";
+import {
+  chunkTextHash,
+  isSuppressed,
+  listSuppressions,
+  normalizeLoose,
+} from "./memory-suppressions.js";
 import {
   deletePreference,
+  editMemory,
   forgetMemory,
   listAuditLog,
   listPreferences,
@@ -91,20 +97,28 @@ describe("forgotten stays forgotten after re-extraction (PLAN-55 Phase 0)", () =
     );
   }
 
-  async function runExtraction(): Promise<void> {
+  async function runExtraction(
+    texts: { fact: string; directive: string; extra?: string } = {
+      fact: FACT_TEXT,
+      directive: DIRECTIVE_TEXT,
+    },
+  ): Promise<void> {
     const llmCall = async () => {
       llmCalls += 1;
       return JSON.stringify({
         facts: [
           {
-            text: FACT_TEXT,
+            text: texts.fact,
             layer: "world_fact",
             confidence: 0.9,
             lines: [2],
             canonicalKey: KEY,
             canonicalValue: "api.acme.com",
           },
-          { text: DIRECTIVE_TEXT, layer: "directive", confidence: 0.9, lines: [2] },
+          { text: texts.directive, layer: "directive", confidence: 0.9, lines: [2] },
+          ...(texts.extra
+            ? [{ text: texts.extra, layer: "world_fact", confidence: 0.9, lines: [2] }]
+            : []),
         ],
         handover: { purpose: "p", milestones: [], decisions: [], blockers: [], nextSteps: [] },
       });
@@ -166,26 +180,106 @@ describe("forgotten stays forgotten after re-extraction (PLAN-55 Phase 0)", () =
       listSuppressions(db)
         .map((s) => s.kind)
         .toSorted(),
-    ).toEqual(["chunk_hash", "chunk_hash", "fact_key_value", "preference_key"]);
+    ).toEqual(["chunk_hash", "chunk_hash", "fact_key_value", "preference_key", "preference_value"]);
     expect(listAuditLog(db).map((e) => e.event)).toEqual(
       expect.arrayContaining(["owner_forget", "owner_retire_fact", "owner_forget_preference"]),
     );
 
     // The session grows: new content hash, extraction runs again and the
-    // model says the same things.
+    // model says the same things, with the punctuation, case and spacing
+    // drift a real extractor shows between runs, plus one materially new
+    // fact that IS allowed to land.
     writeSession([
       "the deploy endpoint is api.acme.com, and always reply in Spanish",
       "also, we moved the standup to 10am, which is a longer line so the delta is real",
     ]);
-    await runExtraction();
+    const EXTRA = "The staging endpoint is staging.acme.com.";
+    await runExtraction({
+      fact: "the deploy endpoint is API.acme.com",
+      directive: "ALWAYS  reply in Spanish",
+      extra: EXTRA,
+    });
     expect(llmCalls).toBe(2);
 
-    // Nothing came back.
-    expect(factChunks().filter((c) => c.text === FACT_TEXT)).toHaveLength(0);
-    expect(factChunks().filter((c) => c.text === DIRECTIVE_TEXT)).toHaveLength(0);
+    // Nothing the owner removed came back; the new fact did.
+    const texts = factChunks().map((c) => normalizeLoose(c.text));
+    expect(texts).not.toContain(normalizeLoose(FACT_TEXT));
+    expect(texts).not.toContain(normalizeLoose(DIRECTIVE_TEXT));
+    expect(texts).toContain(normalizeLoose(EXTRA));
     expect(store.get(KEY)?.status).toBe("owner_retired");
     expect(store.get(KEY)?.mentionCount).toBe(1);
     expect(directivePref()).toBeUndefined();
+    expect(listPreferences(db)).toHaveLength(0);
+  });
+
+  it("a different value for the retired key supersedes it without a question for the owner", async () => {
+    // The live-data case: an agent_pin row the owner retires must not lock
+    // the key; extraction proposing a NEW value supersedes, and the sweep
+    // never offers the retired value back as "which is current?".
+    store.pin({ key: KEY, value: "api.acme.com", source: "agent_pin" });
+    expect(retireFact(db, store, KEY)).toBe(true);
+    const result = store.pin({ key: KEY, value: "api2.acme.com", source: "extraction" });
+    expect(result.op).toBe("supersede");
+    expect(store.get(KEY)?.value).toBe("api2.acme.com");
+    expect(store.get(KEY)?.status).toBe("active");
+    const conflicts = db.prepare(`SELECT kind FROM canonical_conflicts WHERE key = ?`).all(KEY);
+    expect(conflicts).toEqual([]);
+    const engine = new EpistemicDirectiveEngine(db);
+    expect(engine.sweepCanonicalConflicts()).toBe(0);
+    expect(engine.listOpenDirectives(10)).toHaveLength(0);
+    // The retired value itself is still out.
+    expect(store.pin({ key: KEY, value: "api.acme.com", source: "extraction" }).op).toBe(
+      "rejected",
+    );
+  });
+
+  it("forget after an edit suppresses the original text as well as the edited one", async () => {
+    writeSession(["the deploy endpoint is api.acme.com, and always reply in Spanish"]);
+    await runExtraction();
+    const factChunk = factChunks().find((c) => c.text === FACT_TEXT)!;
+    editMemory(db, factChunk.id, "The deploy endpoint is api.acme.com (owner-edited).", TABLES);
+    forgetMemory(db, factChunk.id, TABLES);
+    expect(isSuppressed(db, "chunk_hash", chunkTextHash(FACT_TEXT))).not.toBeNull();
+    expect(
+      isSuppressed(
+        db,
+        "chunk_hash",
+        chunkTextHash("The deploy endpoint is api.acme.com (owner-edited)."),
+      ),
+    ).not.toBeNull();
+    // The audit log carries the hash of what was edited away, never the text.
+    const meta = db
+      .prepare(`SELECT metadata FROM memory_audit_log WHERE event = 'owner_edit'`)
+      .get() as { metadata: string };
+    expect(meta.metadata).toContain(chunkTextHash(FACT_TEXT));
+    expect(meta.metadata).not.toContain("api.acme.com");
+
+    writeSession([
+      "the deploy endpoint is api.acme.com, and always reply in Spanish",
+      "second line to move the content hash a reasonable distance",
+    ]);
+    await runExtraction();
+    expect(factChunks().map((c) => normalizeLoose(c.text))).not.toContain(
+      normalizeLoose(FACT_TEXT),
+    );
+  });
+
+  it("an owner write that cannot record its suppression does not happen at all", async () => {
+    writeSession(["the deploy endpoint is api.acme.com, and always reply in Spanish"]);
+    await runExtraction();
+    const factChunk = factChunks().find((c) => c.text === FACT_TEXT)!;
+    const pref = directivePref()!;
+    db.exec(`DROP TABLE memory_suppressions`);
+
+    expect(() => retireFact(db, store, KEY)).toThrow();
+    expect(store.get(KEY)?.status).toBe("active");
+    expect(() => forgetMemory(db, factChunk.id, TABLES)).toThrow();
+    expect(factChunks().some((c) => c.id === factChunk.id)).toBe(true);
+    expect(() => deletePreference(db, pref.category, pref.key)).toThrow();
+    expect(directivePref()).toBeDefined();
+    expect(listAuditLog(db).map((e) => e.event)).not.toEqual(
+      expect.arrayContaining(["owner_forget", "owner_retire_fact", "owner_forget_preference"]),
+    );
   });
 
   it("unretire lets the fact corroborate again while the forgotten memory stays forgotten", async () => {
@@ -253,5 +347,46 @@ describe("a removed preference does not regrow from preference extraction", () =
       }),
     ).toBeNull();
     expect(listPreferences(db)).toHaveLength(0);
+  });
+
+  it("upsertFromDirective skips a reworded restatement of a removed directive", () => {
+    const first = userModel.upsertFromDirective({
+      text: "Always reply in Spanish.",
+      confidence: 0.9,
+      sessionId: "s1",
+    });
+    expect(first?.key).toBe("always_reply_spanish");
+    expect(deletePreference(db, first!.category, first!.key)).toBe(true);
+    // Different key (reply_spanish_always), same instruction: the writer
+    // would have merged it into the removed row, so it must not mint a new one.
+    expect(
+      userModel.upsertFromDirective({
+        text: "Reply in Spanish, always.",
+        confidence: 0.9,
+        sessionId: "s2",
+      }),
+    ).toBeNull();
+    expect(listPreferences(db)).toHaveLength(0);
+    // An unrelated directive still lands.
+    expect(
+      userModel.upsertFromDirective({
+        text: "Never deploy on Fridays.",
+        confidence: 0.9,
+        sessionId: "s3",
+      }),
+    ).not.toBeNull();
+  });
+
+  it("extractPreferences skips a removed value under another key's category too", () => {
+    expect(userModel.extractPreferences("I prefer typescript for everything", "c1")).toHaveLength(
+      1,
+    );
+    expect(deletePreference(db, "language", "preferred_language")).toBe(true);
+    expect(
+      listSuppressions(db)
+        .map((s) => s.kind)
+        .toSorted(),
+    ).toEqual(["preference_key", "preference_value"]);
+    expect(userModel.extractPreferences("I always use TypeScript", "c2")).toEqual([]);
   });
 });

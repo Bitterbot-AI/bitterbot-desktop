@@ -7,7 +7,13 @@
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { isSuppressed, preferenceKeyHash } from "./memory-suppressions.js";
+import {
+  isSuppressed,
+  listSuppressions,
+  preferenceKeyHash,
+  preferenceValueHash,
+  type Suppression,
+} from "./memory-suppressions.js";
 const log = createSubsystemLogger("memory/user-model");
 
 export type UserPreference = {
@@ -203,11 +209,7 @@ export class UserModelManager {
         continue;
       }
       // PLAN-55 Phase 0: the owner removed this preference; do not regrow it.
-      const suppressed = isSuppressed(
-        this.db,
-        "preference_key",
-        preferenceKeyHash(spec.category, spec.key),
-      );
+      const suppressed = this.preferenceSuppression(spec.category, spec.key, value);
       if (suppressed) {
         log.debug(
           `preference extraction skipped [${spec.category}] ${spec.key} (suppression ${suppressed.id})`,
@@ -274,6 +276,31 @@ export class UserModelManager {
     }
 
     return extracted;
+  }
+
+  /**
+   * PLAN-55 Phase 0: the suppression that forbids writing this preference,
+   * or null. Three checks: the exact key, the exact (loosely normalised)
+   * value, and word overlap against every value the owner removed, at the
+   * same threshold `upsertFromDirective` uses to treat a restatement as a
+   * duplicate. Whatever the writer would have merged into the removed row,
+   * it must not mint as a new one.
+   */
+  private preferenceSuppression(category: string, key: string, value: string): Suppression | null {
+    const byKey = isSuppressed(this.db, "preference_key", preferenceKeyHash(category, key));
+    if (byKey) {
+      return byKey;
+    }
+    const byValue = isSuppressed(this.db, "preference_value", preferenceValueHash(category, value));
+    if (byValue) {
+      return byValue;
+    }
+    for (const s of listSuppressions(this.db, { kind: "preference_value", limit: 1000 })) {
+      if (s.text && directiveSimilarity(value, s.text) >= DIRECTIVE_DUPLICATE_THRESHOLD) {
+        return s;
+      }
+    }
+    return null;
   }
 
   /**
@@ -466,8 +493,9 @@ export class UserModelManager {
     const key = words.slice(0, 5).join("_") || `directive_${now}`;
 
     // PLAN-55 Phase 0: the owner removed this preference; a restatement in a
-    // later transcript must not mint it again.
-    const suppressed = isSuppressed(this.db, "preference_key", preferenceKeyHash(category, key));
+    // later transcript (same key, same wording, or a paraphrase that passes
+    // the same overlap test the dedupe uses) must not mint it again.
+    const suppressed = this.preferenceSuppression(category, key, text);
     if (suppressed) {
       log.debug(`directive preference skipped [${category}] ${key} (suppression ${suppressed.id})`);
       return null;

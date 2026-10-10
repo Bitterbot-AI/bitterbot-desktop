@@ -522,12 +522,19 @@ export class EpistemicDirectiveEngine {
          WHERE resolved_at IS NULL AND status IN ('open', 'answered')
            AND source_entity_ids LIKE ? ESCAPE '\\' LIMIT 1`,
       );
+      const currentStatusStmt = this.db.prepare(
+        `SELECT status FROM canonical_facts WHERE key = ? AND valid_until IS NULL`,
+      );
       const now = Date.now();
       for (const row of rows) {
         // PLAN-55 Phase 0: a rejected re-pin of a fact the owner retired is
         // recorded for the audit trail, never turned into a question: the
-        // owner already answered it.
-        if (row.kind === "owner_retired") {
+        // owner already answered it. Belt and braces: the same holds for any
+        // conflict whose key no longer has an active belief (a retired value
+        // must never be offered back as "which is current?").
+        const currentStatus = (currentStatusStmt.get(row.key) as { status: string } | undefined)
+          ?.status;
+        if (row.kind === "owner_retired" || (currentStatus && currentStatus !== "active")) {
           consumeStmt.run(now, null, row.id);
           continue;
         }

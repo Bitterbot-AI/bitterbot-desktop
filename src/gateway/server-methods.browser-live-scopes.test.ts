@@ -119,6 +119,7 @@ describe("memory control scopes (PLAN-53 G1)", () => {
       "memory.forgetPreference",
       "memory.retireFact",
       "memory.unretireFact",
+      "memory.pinFact",
       "memory.export",
     ]) {
       expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
