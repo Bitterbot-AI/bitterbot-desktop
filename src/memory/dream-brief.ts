@@ -66,7 +66,10 @@ export function buildDreamBrief(db: DatabaseSync, sinceMs: number): DreamBrief {
   ).map((r) => ({
     statement: one(r.statement || `${r.key}: ${r.value}`, 160),
     change:
-      r.valid_until != null || r.status === "retired" || r.status === "superseded"
+      r.valid_until != null ||
+      r.status === "retired" ||
+      r.status === "owner_retired" ||
+      r.status === "superseded"
         ? ("retired" as const)
         : r.first_seen_at >= sinceMs
           ? ("new" as const)
