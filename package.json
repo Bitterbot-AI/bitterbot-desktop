@@ -163,7 +163,7 @@
     "@lydell/node-pty": "1.2.0-beta.15",
     "@mariozechner/pi-agent-core": "0.73.1",
     "@mariozechner/pi-ai": "0.73.1",
-    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "@mozilla/readability": "^0.6.0",
     "@opentelemetry/api": "^1.9.1",
     "@opentelemetry/exporter-trace-otlp-http": "^0.222.0",
@@ -206,7 +206,7 @@
     "tar": "7.5.22",
     "tslog": "^4.10.2",
     "undici": "^7.22.0",
-    "viem": "^2.57.2",
+    "viem": "^2.57.3",
     "ws": "^8.22.0",
     "yaml": "^2.9.1",
     "zod": "^4.6.5"
