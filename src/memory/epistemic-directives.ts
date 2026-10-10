@@ -524,6 +524,13 @@ export class EpistemicDirectiveEngine {
       );
       const now = Date.now();
       for (const row of rows) {
+        // PLAN-55 Phase 0: a rejected re-pin of a fact the owner retired is
+        // recorded for the audit trail, never turned into a question: the
+        // owner already answered it.
+        if (row.kind === "owner_retired") {
+          consumeStmt.run(now, null, row.id);
+          continue;
+        }
         const tag = `canonical:${row.key}`;
         const escapedTag = tag.replace(/[\\%_]/g, (c) => `\\${c}`);
         const existing = existingStmt.get(`%"${escapedTag}"%`) as { id: string } | undefined;

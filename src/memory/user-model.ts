@@ -7,6 +7,7 @@
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { isSuppressed, preferenceKeyHash } from "./memory-suppressions.js";
 const log = createSubsystemLogger("memory/user-model");
 
 export type UserPreference = {
@@ -199,6 +200,18 @@ export class UserModelManager {
 
       const value = spec.extractValue(match).toLowerCase().trim();
       if (!value) {
+        continue;
+      }
+      // PLAN-55 Phase 0: the owner removed this preference; do not regrow it.
+      const suppressed = isSuppressed(
+        this.db,
+        "preference_key",
+        preferenceKeyHash(spec.category, spec.key),
+      );
+      if (suppressed) {
+        log.debug(
+          `preference extraction skipped [${spec.category}] ${spec.key} (suppression ${suppressed.id})`,
+        );
         continue;
       }
 
@@ -451,6 +464,14 @@ export class UserModelManager {
       .split(/\s+/)
       .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
     const key = words.slice(0, 5).join("_") || `directive_${now}`;
+
+    // PLAN-55 Phase 0: the owner removed this preference; a restatement in a
+    // later transcript must not mint it again.
+    const suppressed = isSuppressed(this.db, "preference_key", preferenceKeyHash(category, key));
+    if (suppressed) {
+      log.debug(`directive preference skipped [${category}] ${key} (suppression ${suppressed.id})`);
+      return null;
+    }
 
     // Upsert: boost confidence for existing, insert for new.
     //

@@ -56,9 +56,14 @@ open an issue.
   cloud model provider, each prompt (including the memories recalled into it)
   is sent to that provider. Only a local model keeps it on the machine.
 - **Memory governance is not active.** The code for sensitivity tagging,
-  per-memory TTL and access audit exists, but nothing calls it: every memory
-  is treated the same. You can turn memory off, and you can read or delete
-  the files, but there is no per-memory delete or export command yet.
+  per-memory TTL and access control exists, but nothing calls it: every
+  memory is treated the same. What does work: the Memory tab (and the
+  `memory.*` RPCs) let you view, edit, forget and export individual memories,
+  retire settled facts and remove learned preferences, and a forget or
+  retire you make is not undone by re-extraction, dream promotion or the
+  agent's own pins. Memories indexed from files and transcripts are still
+  read-only there, and forgetting a memory does not yet remove the facts,
+  graph links or dream insights derived from it.
 - **Changing the embedding provider, model or API key rebuilds the index.**
   Memories that come from files are re-embedded. Extracted facts, dream
   insights and notes are carried over as stored, not re-embedded with the new

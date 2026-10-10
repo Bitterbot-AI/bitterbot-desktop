@@ -2616,6 +2616,38 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 76,
+    description:
+      "PLAN-55 Phase 0 (2026-10-10): memory_suppressions, the owner's standing 'no'. " +
+      "Owner forget records the memory text hash, owner retire records the fact " +
+      "key/value hash, preference removal records the preference key; session " +
+      "extraction, preference extraction, curiosity findings, dream insight promotion " +
+      "and the ledger's pin() consult it before writing, so what the owner removed " +
+      "stays removed when the same input is re-processed. Also in this release but " +
+      "code-only (SQLite has no enum): canonical_facts.source gains 'owner' (trust " +
+      "tier 3; 'user_directive' is its alias) and canonical_facts.status gains " +
+      "'owner_retired', which only an owner-tier pin or unretire reactivates.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_suppressions (
+          id         TEXT PRIMARY KEY,
+          kind       TEXT NOT NULL,
+          hash       TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          reason     TEXT,
+          actor      TEXT NOT NULL DEFAULT 'owner'
+        )
+      `);
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_suppressions_kind_hash ` +
+          `ON memory_suppressions(kind, hash)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_memory_suppressions_kind ON memory_suppressions(kind)`,
+      );
+    },
+  },
 ];
 
 /**

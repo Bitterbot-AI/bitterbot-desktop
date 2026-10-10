@@ -28,6 +28,12 @@ import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isHeartbeatArtifact, sweepHeartbeatArtifacts } from "./canonical-facts-hygiene.js";
+import {
+  addSuppression,
+  factKeyValueHash,
+  isSuppressed,
+  liftSuppression,
+} from "./memory-suppressions.js";
 
 const log = createSubsystemLogger("memory/canonical");
 
@@ -41,7 +47,14 @@ export const CANONICAL_CATEGORIES = [
 ] as const;
 export type CanonicalCategory = (typeof CANONICAL_CATEGORIES)[number];
 
+/**
+ * Who wrote a fact. `owner` (PLAN-55 Phase 0) is the owner acting through
+ * the Memory tab, the CLI or the gateway RPCs; `user_directive` is kept as an
+ * alias of `owner` for rows and callers that predate it. The agent's
+ * `memory_pin` tool can only ever write `agent_pin`.
+ */
 export type CanonicalSource =
+  | "owner"
   | "user_directive"
   | "agent_pin"
   | "extraction"
@@ -52,7 +65,7 @@ export type CanonicalSource =
 /**
  * Supersession trust tiers. A pin may only SUPERSEDE (replace the value of) a
  * current belief written by an equal-or-lower tier — deliberate statements
- * (a user directive, an explicit agent pin) can never be overwritten by
+ * (an owner action, an explicit agent pin) can never be overwritten by
  * background inference (session extraction, dream promotion, web research),
  * no matter how the confidences drift.
  *
@@ -62,15 +75,43 @@ export type CanonicalSource =
  * corroboration counter — a web page agreeing with the ledger is
  * corroboration-only and can never move confidence, refresh recency, or
  * reactivate a retired fact.
+ *
+ * PLAN-55 Phase 0: `owner` (and its alias `user_directive`) sits alone at
+ * tier 3, above the agent's own pins. Only this tier reactivates an
+ * `owner_retired` fact or lifts a key/value suppression.
  */
+export const OWNER_TRUST_TIER = 3;
 const SOURCE_TRUST_TIER: Record<CanonicalSource, number> = {
-  user_directive: 2,
+  owner: OWNER_TRUST_TIER,
+  user_directive: OWNER_TRUST_TIER,
   agent_pin: 2,
   seed: 1,
   extraction: 1,
   promotion: 0,
   web_research: 0,
 };
+
+/** Trust tier of a source; unknown strings (a row written by newer code) are tier 0. */
+export function canonicalSourceTier(source: string): number {
+  return SOURCE_TRUST_TIER[source as CanonicalSource] ?? 0;
+}
+
+/** Why a fact is being retired; decides whether the retirement is sticky. */
+export type RetireReason = "owner" | "agent" | "decay" | "hygiene";
+
+/**
+ * A fact's status. `retired` (agent, decay, hygiene, capacity) is soft: any
+ * tier >= 1 same-value pin reactivates it. `owner_retired` (PLAN-55 Phase 0)
+ * is the owner's decision: every pin below the owner tier is rejected until
+ * the owner pins it again or calls unretire(). `unconfirmed` is the
+ * staleness lane's terminal state (dream-modes/hygiene.ts).
+ */
+export type CanonicalFactStatus =
+  | "active"
+  | "retired"
+  | "owner_retired"
+  | "unconfirmed"
+  | "superseded";
 
 export type CanonicalFact = {
   id: string;
@@ -87,7 +128,7 @@ export type CanonicalFact = {
   supersededBy: string | null;
   source: CanonicalSource;
   evidenceChunkIds: string[];
-  status: "active" | "retired" | "superseded";
+  status: CanonicalFactStatus;
   /**
    * PLAN-34 Phase 2b: tier-0 same-value confirmations (dream promotion,
    * web research). Separate from mentionCount so background agreement can
@@ -518,7 +559,39 @@ export class CanonicalFactsStore {
       return { op: "rejected", reason: transientReason };
     }
 
+    const tier = SOURCE_TRUST_TIER[input.source];
     const current = this.get(slug);
+
+    // PLAN-55 Phase 0: the owner retired exactly this key/value. Nothing
+    // below the owner tier may bring it back, whatever path it arrives by
+    // (extraction, promotion, an agent pin, a directive answer) and
+    // whatever the current row looks like (owner_retired, superseded by a
+    // newer value, or missing). The check is on the normalised pair, so a
+    // case or whitespace variant cannot SUPERSEDE its way around it.
+    const suppression = isSuppressed(this.db, "fact_key_value", factKeyValueHash(slug, value));
+    if (suppression && tier < OWNER_TRUST_TIER) {
+      log.debug(
+        `canonical REJECT (owner retired, suppression ${suppression.id}): [${slug}] ${input.source} ` +
+          `proposed "${value.slice(0, 40)}"`,
+      );
+      if (current) {
+        this.recordConflict("owner_retired", slug, current, value, input.source, now);
+      }
+      return {
+        op: "rejected",
+        reason: `the owner retired "${slug}" with this value; only the owner can bring it back`,
+      };
+    }
+    // The owner pinning what they once retired is their newer decision; the
+    // suppression is lifted once the write has actually landed (never on a
+    // rejected pin).
+    const liftOnSuccess = suppression && tier >= OWNER_TRUST_TIER ? suppression.hash : null;
+    const lifted = (): void => {
+      if (liftOnSuccess) {
+        liftSuppression(this.db, "fact_key_value", liftOnSuccess);
+        log.info(`canonical suppression lifted by owner pin: [${slug}]`);
+      }
+    };
 
     if (!current) {
       // PLAN-34 Phase 2b: tier-first eviction. A lower-tier ADD may only
@@ -530,7 +603,7 @@ export class CanonicalFactsStore {
         { confidence, mentionCount: 1, lastConfirmedAt: now, corroborationCount: 0 },
         now,
       );
-      if (!this.evictForCapacity(now, SOURCE_TRUST_TIER[input.source], incomingScore)) {
+      if (!this.evictForCapacity(now, tier, incomingScore)) {
         return {
           op: "rejected",
           reason:
@@ -561,6 +634,7 @@ export class CanonicalFactsStore {
           evidence,
         );
       const fact = this.get(slug);
+      lifted();
       log.info(`canonical ADD: [${slug}] (${input.source})`);
       return { op: "add", fact: fact! };
     }
@@ -574,7 +648,7 @@ export class CanonicalFactsStore {
       // recency refresh, and NEVER reactivation of a retired fact. Web
       // pages agreeing with the ledger must not keep facts artificially
       // fresh or resurrect what capacity pressure retired.
-      if (SOURCE_TRUST_TIER[input.source] === 0) {
+      if (tier === 0) {
         this.db
           .prepare(
             `UPDATE canonical_facts
@@ -584,6 +658,17 @@ export class CanonicalFactsStore {
           )
           .run(mergedEvidence, current.id);
         return { op: "strengthen", fact: this.get(slug)! };
+      }
+      // PLAN-55 Phase 0: an owner_retired row without a suppression (a
+      // pre-v76 database, or a lifted row) is still the owner's decision:
+      // only the owner tier reactivates it.
+      if (current.status === "owner_retired" && tier < OWNER_TRUST_TIER) {
+        log.debug(`canonical REJECT (owner_retired): [${slug}] ${input.source} re-pin`);
+        this.recordConflict("owner_retired", slug, current, value, input.source, now);
+        return {
+          op: "rejected",
+          reason: `the owner retired "${slug}"; only the owner can bring it back`,
+        };
       }
       // Re-confirmation from tier >= 1 — the signal the crystal store
       // structurally ignores.
@@ -619,6 +704,7 @@ export class CanonicalFactsStore {
           mergedEvidence,
           current.id,
         );
+      lifted();
       return { op: "strengthen", fact: this.get(slug)! };
     }
 
@@ -626,7 +712,7 @@ export class CanonicalFactsStore {
     // current belief. A dream-cycle promotion must never overwrite what the
     // user deliberately pinned; the conflict is surfaced instead of silently
     // resolved either way.
-    if (SOURCE_TRUST_TIER[input.source] < SOURCE_TRUST_TIER[current.source]) {
+    if (tier < canonicalSourceTier(current.source)) {
       log.info(
         `canonical CONFLICT (kept current): [${slug}] ${input.source} proposed ` +
           `"${value.slice(0, 40)}" against ${current.source} "${current.value.slice(0, 40)}"`,
@@ -666,6 +752,7 @@ export class CanonicalFactsStore {
          VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL, NULL, ?, ?, 'active')`,
       )
       .run(id, slug, value, statement, category, confidence, now, now, now, input.source, evidence);
+    lifted();
     log.info(
       `canonical SUPERSEDE: [${slug}] "${current.value.slice(0, 40)}" -> "${value.slice(0, 40)}"`,
     );
@@ -681,7 +768,7 @@ export class CanonicalFactsStore {
    * table).
    */
   private recordConflict(
-    kind: "tier_rejection" | "rapid_supersede",
+    kind: "tier_rejection" | "rapid_supersede" | "owner_retired",
     key: string,
     current: CanonicalFact,
     proposedValue: string,
@@ -717,14 +804,73 @@ export class CanonicalFactsStore {
     }
   }
 
-  /** Demote a fact out of injection (kept queryable; nothing deleted). */
-  retire(key: string): boolean {
+  /**
+   * Demote a fact out of injection (kept queryable; nothing deleted).
+   *
+   * PLAN-55 Phase 0: the reason decides how sticky the retirement is.
+   * `agent`, `decay` and `hygiene` set `retired`, which any tier >= 1
+   * same-value pin reactivates (the pre-Phase-0 behaviour, and still right
+   * for a fact the agent or the clock demoted). `owner` sets
+   * `owner_retired` and records a key/value suppression, so the fact comes
+   * back only through an owner-tier pin or unretire(); it may also upgrade
+   * an already `retired` or `unconfirmed` row. Without a reason the call is
+   * treated as the agent's (the weakest actor), never the owner's.
+   */
+  retire(key: string, opts?: { reason?: RetireReason }): boolean {
+    const reason = opts?.reason ?? "agent";
     const current = this.get(key);
-    if (!current || current.status !== "active") {
+    if (!current) {
+      return false;
+    }
+    if (reason === "owner") {
+      if (current.status === "superseded" || current.status === "owner_retired") {
+        return false;
+      }
+      this.db
+        .prepare(`UPDATE canonical_facts SET status = 'owner_retired' WHERE id = ?`)
+        .run(current.id);
+      const suppression = addSuppression(this.db, {
+        kind: "fact_key_value",
+        hash: factKeyValueHash(current.key, current.value),
+        reason: "owner_retire",
+        actor: "owner",
+      });
+      log.info(`canonical OWNER-RETIRE: [${current.key}] (suppression ${suppression.id})`);
+      return true;
+    }
+    if (current.status !== "active") {
       return false;
     }
     this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
-    log.info(`canonical RETIRE: [${current.key}]`);
+    log.info(`canonical RETIRE (${reason}): [${current.key}]`);
+    return true;
+  }
+
+  /**
+   * PLAN-55 Phase 0: the owner lifts a retirement. Reactivates the current
+   * row for the key (whatever retired it) and removes the key/value
+   * suppression an owner retire wrote. Owner-only semantics: there is no
+   * agent path to this.
+   */
+  unretire(key: string): boolean {
+    const current = this.get(key);
+    if (!current || current.status === "active" || current.status === "superseded") {
+      return false;
+    }
+    // The owner says it is true again: that is a confirmation, so the
+    // staleness episode that may have retired it ends here too.
+    this.db
+      .prepare(
+        `UPDATE canonical_facts
+            SET status = 'active',
+                last_confirmed_at = ?,
+                staleness_asked_count = 0,
+                last_staleness_ask_at = NULL
+          WHERE id = ?`,
+      )
+      .run(Date.now(), current.id);
+    liftSuppression(this.db, "fact_key_value", factKeyValueHash(current.key, current.value));
+    log.info(`canonical UNRETIRE: [${current.key}] (was ${current.status})`);
     return true;
   }
 
@@ -796,7 +942,7 @@ export class CanonicalFactsStore {
     const active = this.listActive({ now });
     const evictable = active
       .filter((f) => {
-        const tier = SOURCE_TRUST_TIER[f.source];
+        const tier = canonicalSourceTier(f.source);
         if (tier > incomingTier) {
           return false;
         }
@@ -807,7 +953,7 @@ export class CanonicalFactsStore {
       // Lowest tier first, then lowest score (worst victims first).
       .toSorted(
         (a, b) =>
-          SOURCE_TRUST_TIER[a.source] - SOURCE_TRUST_TIER[b.source] ||
+          canonicalSourceTier(a.source) - canonicalSourceTier(b.source) ||
           canonicalPromotionScore(a, now) - canonicalPromotionScore(b, now),
       );
     if (evictable.length < overBy) {
@@ -819,7 +965,7 @@ export class CanonicalFactsStore {
       stmt.run(victim.id);
       log.warn(
         `canonical ledger at capacity (${this.maxFacts}): demoted lowest-scored ` +
-          `tier-${SOURCE_TRUST_TIER[victim.source]} fact [${victim.key}]`,
+          `tier-${canonicalSourceTier(victim.source)} fact [${victim.key}]`,
       );
     }
     return true;

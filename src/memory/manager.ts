@@ -96,6 +96,7 @@ import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
 import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
+import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import {
   deletePreference as ownerDeletePreference,
@@ -108,6 +109,8 @@ import {
   type ListOptions as OwnerListOptions,
   listAuditLog as ownerListAuditLog,
   listPreferences as ownerListPreferences,
+  retireFact as ownerRetireFact,
+  unretireFact as ownerUnretireFact,
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { truncateAtSentence } from "./proactive-recall.js";
@@ -4262,6 +4265,15 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Store extracted facts as crystals with epistemic layers
         for (const fact of result.facts) {
           try {
+            // PLAN-55 Phase 0: the owner forgot this memory; do not grow it
+            // back under a new id (nor route it to preferences or the ledger).
+            const suppressed = isSuppressed(this.db, "chunk_hash", chunkTextHash(fact.text));
+            if (suppressed) {
+              log.debug(
+                `session extraction skipped a forgotten memory (suppression ${suppressed.id})`,
+              );
+              continue;
+            }
             const id = `fact_${crypto.randomUUID()}`;
             const evidenceLines = fact.evidence
               .filter((e): e is Extract<typeof e, { kind: "session" }> => e.kind === "session")
@@ -6051,6 +6063,23 @@ export class MemoryIndexManager implements MemorySearchManager {
     );
   }
 
+  /** PLAN-55 Phase 0: an owner retire is sticky (owner_retired + key/value suppression). */
+  async ownerRetireFact(key: string): Promise<boolean> {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("retire-fact", () => ownerRetireFact(this.db, store, key));
+  }
+
+  async ownerUnretireFact(key: string): Promise<boolean> {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("unretire-fact", () => ownerUnretireFact(this.db, store, key));
+  }
+
   /**
    * PLAN-34 §6.2: backfill `chunks.session_trust` for session chunks written
    * before the v34 migration (NULL rows only — the live write path stamps
@@ -6137,6 +6166,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     importanceScore: number;
     evidenceRefs: string;
   }): boolean {
+    // PLAN-55 Phase 0: the owner forgot this exact insight; do not promote it again.
+    const suppressed = isSuppressed(this.db, "chunk_hash", chunkTextHash(row.text));
+    if (suppressed) {
+      log.debug(`promoted-insight skipped a forgotten memory (suppression ${suppressed.id})`);
+      return false;
+    }
     const id = `dream_insight_${crypto.randomUUID()}`;
     const now = Date.now();
     const hash = crypto.createHash("sha256").update(row.text).digest("hex");

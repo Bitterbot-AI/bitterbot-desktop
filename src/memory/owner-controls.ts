@@ -13,6 +13,13 @@
  * memory findable by search until the 14-day purge. The audit log records
  * that something was forgotten, never what it said.
  *
+ * Forgetting sticks (PLAN-55 Phase 0). A forget records the memory's text
+ * hash, a fact retire records the key/value, a preference removal records
+ * the key, all in `memory_suppressions`; the background writers that would
+ * otherwise regrow them from the same transcript consult that table first.
+ * Every owner write goes through here so the gateway RPCs and the CLI get
+ * the suppression for free.
+ *
  * Every function here takes the database handle from the caller per call:
  * the manager swaps it during a reindex, so it must never be kept.
  */
@@ -21,9 +28,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import type { CanonicalFactsStore } from "./canonical-facts.js";
 import { setChunkText } from "./chunk-writer.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import { hashText } from "./internal.js";
+import { addSuppression, chunkTextHash, preferenceKeyHash } from "./memory-suppressions.js";
 
 /** Id prefixes of memories that exist only in the database (the agent's own). */
 export const OWNER_EDITABLE_PREFIXES = [
@@ -248,7 +257,47 @@ export function forgetMemory(db: DatabaseSync, id: string, tables: IndexTables):
     db.exec("ROLLBACK");
     throw err;
   }
-  audit(db, id, "owner_forget", { length: memory.text.length, semanticType: memory.semanticType });
+  // The text hash keeps re-extraction, curiosity and dream promotion from
+  // writing the same memory back under a new id.
+  let suppressionId: string | null = null;
+  try {
+    suppressionId = addSuppression(db, {
+      kind: "chunk_hash",
+      hash: chunkTextHash(memory.text),
+      reason: "owner_forget",
+      actor: "owner",
+    }).id;
+  } catch {
+    // A pre-v76 database: the forget itself stands.
+  }
+  audit(db, id, "owner_forget", {
+    length: memory.text.length,
+    semanticType: memory.semanticType,
+    suppressionId,
+  });
+}
+
+/**
+ * Retire a settled fact as the owner (PLAN-55 Phase 0): the row becomes
+ * `owner_retired` and its key/value is suppressed, so extraction, promotion
+ * and the agent's own pins cannot bring it back. Only unretireFact() or an
+ * owner-tier pin lifts it.
+ */
+export function retireFact(db: DatabaseSync, store: CanonicalFactsStore, key: string): boolean {
+  const ok = store.retire(key, { reason: "owner" });
+  if (ok) {
+    audit(db, `fact:${store.get(key)?.key ?? key}`, "owner_retire_fact", {});
+  }
+  return ok;
+}
+
+/** Lift a retirement, whoever made it, and the suppression that came with it. */
+export function unretireFact(db: DatabaseSync, store: CanonicalFactsStore, key: string): boolean {
+  const ok = store.unretire(key);
+  if (ok) {
+    audit(db, `fact:${store.get(key)?.key ?? key}`, "owner_unretire_fact", {});
+  }
+  return ok;
 }
 
 /** Replace the text of one of the agent's own memories. Re-embedding follows. */
@@ -392,7 +441,18 @@ export function deletePreference(db: DatabaseSync, category: string, key: string
     .prepare("DELETE FROM user_preferences WHERE category = ? AND key = ?")
     .run(category, key);
   if (Number(res.changes) > 0) {
-    audit(db, `pref:${category}:${key}`, "owner_forget_preference", {});
+    let suppressionId: string | null = null;
+    try {
+      suppressionId = addSuppression(db, {
+        kind: "preference_key",
+        hash: preferenceKeyHash(category, key),
+        reason: "owner_forget_preference",
+        actor: "owner",
+      }).id;
+    } catch {
+      // A pre-v76 database: the removal itself stands.
+    }
+    audit(db, `pref:${category}:${key}`, "owner_forget_preference", { suppressionId });
     return true;
   }
   return false;

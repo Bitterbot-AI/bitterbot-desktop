@@ -151,20 +151,25 @@ export const memoryHandlers: GatewayRequestHandlers = {
     }
   },
 
-  /** Stop treating a fact as settled. Kept in its history. */
+  /**
+   * Stop treating a fact as settled. Kept in its history. The owner's retire
+   * is sticky (PLAN-55 Phase 0): extraction and the agent cannot bring the
+   * same value back; memory.unretireFact or an owner pin can.
+   */
   "memory.retireFact": async ({ params, respond }) => {
     try {
       const m = await memoryManager(str(params.agentId));
-      const store = m.canonicalFacts();
-      if (!store) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, "the facts ledger is not available"),
-        );
-        return;
-      }
-      respond(true, { ok: store.retire(str(params.key)) });
+      respond(true, { ok: await m.ownerRetireFact(str(params.key)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Take a fact back out of retirement, whoever retired it. */
+  "memory.unretireFact": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.ownerUnretireFact(str(params.key)) });
     } catch (err) {
       fail(respond, err);
     }
