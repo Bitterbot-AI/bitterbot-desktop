@@ -9,8 +9,7 @@ title: "Broadcast Groups"
 
 # Broadcast Groups
 
-**Status:** Experimental  
-**Version:** Added in 2026.1.9
+**Status:** Experimental
 
 ## Overview
 

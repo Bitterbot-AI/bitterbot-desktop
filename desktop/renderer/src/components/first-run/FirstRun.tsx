@@ -13,11 +13,14 @@
  *      with the user-entered credentials and reports back in ~1s
  *   4. On success, persist to localStorage and reload into AppShell
  *
- * This is a bridge, not a replacement for the CLI onboarding wizard.
- * Full agent setup (API keys, auth profiles, workspace, channels) still
- * requires the onboarding wizard in a terminal — FirstRun just
- * handles the final "now connect the browser UI to the running gateway"
- * mile when the same-origin token handoff can't answer (non-local viewer).
+ * This is a bridge, not a replacement for onboarding. Full agent setup
+ * (API keys, auth profiles, workspace, channels) happens in the terminal
+ * wizard (`pnpm bitterbot onboard`) for source installs, or in the browser
+ * for Docker installs, where the first browser that connects with the
+ * token is paired automatically (bootstrap pairing). FirstRun just handles
+ * the final "now connect the browser UI to the running gateway" mile when
+ * the same-origin token handoff can't answer (non-local viewer).
+ * Browser-first onboarding for every install is PLAN-56 Phase 4.
  */
 
 import { useEffect, useState } from "react";
@@ -98,9 +101,12 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             isn&apos;t running yet, or you&apos;re viewing from a non-local address.
           </p>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Start it in a terminal with{" "}
-            <code className="px-1 py-0.5 bg-muted rounded">pnpm start gateway</code>. If you still
-            need to connect manually, get the URL and token from{" "}
+            For a source install, start it in a terminal with{" "}
+            <code className="px-1 py-0.5 bg-muted rounded">pnpm start gateway</code>. For Docker,
+            the gateway is already running: paste the{" "}
+            <code className="px-1 py-0.5 bg-muted rounded">BITTERBOT_GATEWAY_TOKEN</code> you set
+            for the container and the rest of setup happens here in the browser. If you still need
+            to connect manually, get the URL and token from{" "}
             <code className="px-1 py-0.5 bg-muted rounded">bitterbot dashboard</code> (or{" "}
             <code className="px-1 py-0.5 bg-muted rounded">
               ~/.bitterbot/bitterbot.json → gateway.auth.token
@@ -197,10 +203,11 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             gateway + Control UI in one terminal).
           </p>
           <p>
-            Don't have a token yet?{" "}
+            Source install without a token yet?{" "}
             <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm bitterbot onboard</code>{" "}
-            walks you through full setup and auto-generates{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-2xs">desktop/.env</code>.
+            walks you through full setup in the terminal and auto-generates{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">desktop/.env</code>. Docker
+            installs finish setup in the browser (Models &amp; Keys, then Channels).
           </p>
         </footer>
       </div>

@@ -129,9 +129,9 @@ external end-user instructions.
 
 ---
 
-## Historical behavior (pre-2026.1.22)
+## Historical behavior (before the hygiene cleanup)
 
-Before the 2026.1.22 release, Bitterbot applied multiple layers of transcript hygiene:
+Before the hygiene cleanup, Bitterbot applied multiple layers of transcript hygiene:
 
 - A **transcript-sanitize extension** ran on every context build and could:
   - Repair tool use/result pairing.
@@ -143,5 +143,5 @@ Before the 2026.1.22 release, Bitterbot applied multiple layers of transcript hy
   - Trimming assistant content after tool calls.
 
 This complexity caused cross-provider regressions (notably `openai-responses`
-`call_id|fc_id` pairing). The 2026.1.22 cleanup removed the extension, centralized
+`call_id|fc_id` pairing). The cleanup removed the extension, centralized
 logic in the runner, and made OpenAI **no-touch** beyond image sanitization.
