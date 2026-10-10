@@ -17,8 +17,28 @@
           "jsonpath": "$.version"
         },
         {
+          "type": "toml",
+          "path": "desktop/src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "desktop/src-tauri/Cargo.lock",
+          "jsonpath": "$.package[?(@.name=='bitterbot-desktop')].version"
+        },
+        {
           "type": "json",
           "path": "extensions/discord/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "extensions/email/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "extensions/mcp/package.json",
           "jsonpath": "$.version"
         },
         {

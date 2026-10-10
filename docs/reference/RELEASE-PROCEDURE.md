@@ -52,6 +52,14 @@ gh attestation verify bitterbot-orchestrator-linux-x64 \
 minisign -Vm checksums.txt -P <fleet pubkey> && sha256sum -c checksums.txt
 ```
 
+The fleet public key (the base64 line of the minisign `.pub` file, the same
+value as the `MINISIGN_PUBLIC_KEY` repo secret) is pinned as
+`ORCHESTRATOR_MINISIGN_PUBKEY` in `scripts/orchestrator-signature.mjs`.
+While it is empty, `pnpm install` prints `signature not verified (no pinned
+key)` and trusts SHA-256 alone; once set, a bad or replayed
+`checksums.txt.minisig` makes the fetch refuse the binary. Operators can pin
+ahead of the repo with `BITTERBOT_ORCHESTRATOR_MINISIGN_PUBKEY`.
+
 ## 5. Clean-machine smoke
 
 On a machine (or container) that has never seen Bitterbot: follow the

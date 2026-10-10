@@ -91,8 +91,6 @@ open an issue.
   do not fully trust.
 - The browser tool drives a real Chromium profile that all agents on the node
   share.
-- The sandbox browser image (`Dockerfile.sandbox-browser`) does not build
-  from this repository: its entrypoint script is missing.
 - `agents.defaults.compaction.mode: "safeguard"` and
   `agents.defaults.contextPruning` are accepted by the config and have no
   effect.
@@ -109,11 +107,17 @@ open an issue.
 
 ## Orchestrator (P2P binary)
 
-- **Release signing is in rollout.** The fetcher already verifies a
-  minisign signature over release checksums when one is present, and
-  refuses a bad signature. Until the first signed release lands, the
-  published binaries are integrity-checked by SHA-256 only. Building from
-  source (`cargo build --release --manifest-path orchestrator/Cargo.toml`)
+- **Signature verification is off until the public key is pinned.**
+  Orchestrator releases (since `orchestrator-v0.2.3`) are signed: every
+  release carries `checksums.txt.minisig`, and the binaries carry GitHub
+  build-provenance attestations (`gh attestation verify`). The postinstall
+  fetcher verifies the minisign signature and refuses a bad, missing or
+  replayed one, but only once the public key is pinned in
+  `scripts/orchestrator-signature.mjs` (or, until the repo pins one, set in
+  `BITTERBOT_ORCHESTRATOR_MINISIGN_PUBKEY`). Until then it says so in one
+  warning (`signature not verified (no pinned key)`) and the published
+  binaries are integrity-checked by SHA-256 only. Building from source
+  (`cargo build --release --manifest-path orchestrator/Cargo.toml`)
   sidesteps the question entirely.
 
 ## Platform

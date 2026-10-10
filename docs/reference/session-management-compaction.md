@@ -237,7 +237,7 @@ Convention:
 - The assistant starts its output with `NO_REPLY` to indicate “do not deliver a reply to the user”.
 - Bitterbot strips/suppresses this in the delivery layer.
 
-As of `2026.1.10`, Bitterbot also suppresses **draft/typing streaming** when a partial chunk begins with `NO_REPLY`, so silent operations don’t leak partial output mid-turn.
+Bitterbot also suppresses **draft/typing streaming** when a partial chunk begins with `NO_REPLY`, so silent operations don’t leak partial output mid-turn.
 
 ---
 

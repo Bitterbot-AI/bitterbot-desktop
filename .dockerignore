@@ -35,6 +35,23 @@ tmp
 dist
 **/dist
 **/*.trace
+# A host cargo build must not overwrite the prebuilt binary postinstall
+# fetches into the image (wrong arch, unsigned).
+orchestrator/target
+
+# secrets and local state (PLAN-56 Phase 0)
+keys/
+.env
+.env.*
+deploy/**/*.tfstate
+deploy/**/*.tfstate.*
+
+# internal material that is not part of the product
+research/
+docs/reviews/
+docs/plans/
+docs/debug/
+docs/diagnostics/
 
 # large app trees not needed for CLI build
 apps/

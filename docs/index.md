@@ -55,7 +55,7 @@ its memory on their disk, its network behavior documented and switchable.
 - **Self-hosted and inspectable** — MIT licensed; every outbound connection
   is documented with its off switch ([what this node connects to](/network/egress))
 
-**What do you need?** Node 22+, pnpm, and an API key (Anthropic
+**What do you need?** Node 22.12+, pnpm, and an API key (Anthropic
 recommended). Long-term memory works even with no embedding key — a bundled
 local model handles it.
 
@@ -85,7 +85,7 @@ and supervises the P2P orchestrator.
 
     <Note>
     There is no npm package or hosted installer yet — installing from source
-    is the supported path today. Requires Node 22+ and pnpm. On Windows, use
+    is the supported path today. Requires Node 22.12+ and pnpm. On Windows, use
     WSL2 and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
     </Note>
 
