@@ -344,6 +344,7 @@ describe("update-cli", () => {
     expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
     const errors = vi.mocked(defaultRuntime.error).mock.calls.map((call) => String(call[0]));
     expect(errors.join("\n")).toContain("docker compose pull && docker compose up -d");
+    expect(errors.join("\n")).toContain("BITTERBOT_INSTALL_KIND=package");
   });
 
   it("defaults to dev channel for git installs when unset", async () => {

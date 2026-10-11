@@ -1,4 +1,7 @@
 # Bitterbot with Docker Compose: works with zero edits (PLAN-56 Phase 2).
+# Needs image 1.5.0 or later (the first with the entrypoint this file relies
+# on); download this file from a release, not from the main branch:
+#   https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
 #
 #   docker compose up -d
 #   docker compose logs bitterbot-gateway   # first boot prints the token + URL
@@ -6,6 +9,8 @@
 # Then open http://127.0.0.1:19001/ and paste the token. Your data (config,
 # SQLite memory, keys, workspace) lives in ./bitterbot-data next to this file;
 # back that folder up. Update: docker compose pull && docker compose up -d
+# Run CLI commands as node, never as root:
+#   docker compose exec -u node bitterbot-gateway node bitterbot.mjs <command>
 # Full guide: docs/platforms/docker.md
 #
 # Every setting below has a default. Put overrides in a `.env` file next to
@@ -15,15 +20,23 @@
 #   BITTERBOT_GATEWAY_TOKEN=...                 # pin your own token (openssl rand -hex 32)
 #   BITTERBOT_BIND_HOST=0.0.0.0                 # serve the LAN (strong token first!)
 #   BITTERBOT_P2P_BIND_HOST=0.0.0.0             # accept direct inbound mesh peers
-#   BITTERBOT_IMAGE=ghcr.io/bitterbot-ai/bitterbot-desktop:1.4.0   # pin exactly
+#   BITTERBOT_IMAGE=ghcr.io/bitterbot-ai/bitterbot-desktop:1.5.0   # pin exactly (1.5.0 or later)
+#
+# Token caveat: once a token is saved in bitterbot.json (gateway.auth.token,
+# e.g. the one generated on first boot), it wins over BITTERBOT_GATEWAY_TOKEN;
+# the gateway logs a warning when the two differ. Change it with
+# `config set gateway.auth.token <new>` and restart.
 
-x-bitterbot-common:
-  &bitterbot-common # `:1` follows every 1.x release; a new major needs a deliberate tag change.
+# `:1` follows every 1.x release; a new major needs a deliberate tag change.
+x-bitterbot-common: &bitterbot-common
   image: ${BITTERBOT_IMAGE:-ghcr.io/bitterbot-ai/bitterbot-desktop:1}
-  # Starts as root only so the image's entrypoint can hand a Docker-created
-  # (root-owned) data folder to the `node` user; it then drops to `node`
-  # (uid 1000) before running anything else.
+  # Starts as root only so the image's entrypoint can hand root-owned files
+  # in the data folder to the `node` user; it then drops to `node` (uid 1000)
+  # before running anything else. The entrypoint is named explicitly so an
+  # image without it (1.4.x and older) fails to start instead of running the
+  # gateway as root.
   user: "0:0"
+  entrypoint: ["/app/scripts/docker-entrypoint.sh"]
   init: true
   volumes:
     # A bind mount, not a named volume: you can see, copy and back up the
@@ -69,7 +82,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 300s
     command: [
         "node",
         "bitterbot.mjs",

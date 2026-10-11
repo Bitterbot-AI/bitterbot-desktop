@@ -191,6 +191,25 @@ jobs:
           if docker compose exec -T -u node bitterbot-gateway sh -c 'grep -rl "$0" /tmp "$HOME/.bitterbot/logs" 2>/dev/null' "$stored_token"; then
             echo "generated token found in a log file"; exit 1
           fi
+          # Every process but tini (docker-init) runs as uid 1000: the gateway
+          # (which retitles itself) and the orchestrator. The healthcheck's
+          # transient `node -e fetch(...)` is an exec, not the gateway.
+          docker top "$cid" -eo uid,args
+          [ "$(docker top "$cid" -eo uid,args | tail -n +2 | grep -v -e docker-init -e 'fetch(' | awk '{print $1}' | sort -u)" = "1000" ]
+          [ "$(docker compose exec -T -u node bitterbot-gateway id -u | tr -d '\r')" = "1000" ]
+          # A root exec leaves a root-owned file; the next start hands it to node.
+          docker compose exec -T -u 0 bitterbot-gateway touch /home/node/.bitterbot/left-by-root.txt
+          [ "$(stat -c %u bitterbot-data/left-by-root.txt)" = "0" ]
+          docker compose restart bitterbot-gateway
+          docker compose up -d --wait --wait-timeout 300
+          [ "$(stat -c %u bitterbot-data/left-by-root.txt)" = "1000" ]
+          # A workspace mount owned by another uid is never re-owned.
+          sudo mkdir -p /tmp/ws-other && sudo touch /tmp/ws-other/keep.txt
+          sudo chown -R 2000:2000 /tmp/ws-other && sudo chmod 0777 /tmp/ws-other
+          BITTERBOT_WORKSPACE_DIR=/tmp/ws-other docker compose up -d --wait --wait-timeout 300 || {
+            docker compose logs --tail 60; exit 1; }
+          [ "$(stat -c %u /tmp/ws-other)" = "2000" ]
+          [ "$(stat -c %u /tmp/ws-other/keep.txt)" = "2000" ]
           docker compose down
 
       - name: Smoke test — Fly template boots on a root-owned volume

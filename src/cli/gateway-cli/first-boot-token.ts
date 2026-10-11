@@ -24,6 +24,7 @@ import {
   readConfigFileSnapshot,
   writeConfigFile,
 } from "../../config/config.js";
+import { bootstrapPairingEnabled } from "../../gateway/bootstrap-pairing.js";
 import { looksLikeContainer, readDeclaredInstallKind } from "../../infra/install-kind.js";
 
 /** Same shape as the wizard's and doctor's `randomToken()` (48 hex chars). */
@@ -55,6 +56,8 @@ export function formatFirstBootTokenBanner(params: {
   configPath: string;
   port: number;
   inContainer: boolean;
+  /** Bootstrap pairing (BITTERBOT_BOOTSTRAP_PAIRING=1 or the config switch) is on. */
+  bootstrapPairing?: boolean;
 }): string {
   const rule = "=".repeat(72);
   const where = params.inContainer
@@ -75,8 +78,15 @@ export function formatFirstBootTokenBanner(params: {
     `  Open:   ${where}`,
     tokenLine,
     "",
-    "Paste the token when the Control UI asks for it; the first browser that",
-    "signs in with it is paired. Show the token again later with:",
+    ...(params.bootstrapPairing
+      ? [
+          "Paste the token when the Control UI asks for it; the first browser that",
+          "signs in with it is paired. Show the token again later with:",
+        ]
+      : [
+          "Paste the token when the Control UI asks for it, then approve the browser",
+          "with `devices approve`. Show the token again later with:",
+        ]),
     `  ${formatTokenRetrievalCommand(params.inContainer)}`,
     "Anyone with this token can control the agent: keep it private.",
     rule,
@@ -96,6 +106,7 @@ export async function generateFirstBootToken(params: {
   writeConfig?: typeof writeConfigFile;
   makeToken?: () => string;
   inContainer?: boolean;
+  bootstrapPairing?: boolean;
 }): Promise<string> {
   const readSnapshot = params.readSnapshot ?? readConfigFileSnapshot;
   const writeConfig = params.writeConfig ?? writeConfigFile;
@@ -131,7 +142,32 @@ export async function generateFirstBootToken(params: {
       configPath: snapshot.path,
       port: params.port,
       inContainer,
+      bootstrapPairing:
+        params.bootstrapPairing ??
+        bootstrapPairingEnabled(base.gateway?.controlUi?.bootstrapPairing),
     }),
   );
   return token;
+}
+
+/**
+ * The server uses gateway.auth.token from the config over
+ * BITTERBOT_GATEWAY_TOKEN. When both are set and differ (typically a token
+ * generated on first boot, then an env var added later), say so at startup
+ * without printing either value; null when there is nothing to warn about.
+ */
+export function describeTokenSourceConflict(
+  configToken: string | undefined,
+  envToken: string | undefined,
+): string | null {
+  const fromConfig = configToken?.trim();
+  const fromEnv = envToken?.trim();
+  if (!fromConfig || !fromEnv || fromConfig === fromEnv) {
+    return null;
+  }
+  return (
+    "BITTERBOT_GATEWAY_TOKEN differs from gateway.auth.token in the config file; " +
+    "the config token is the one in use. Remove one, or change the config token with " +
+    "`config set gateway.auth.token <new>` and restart."
+  );
 }

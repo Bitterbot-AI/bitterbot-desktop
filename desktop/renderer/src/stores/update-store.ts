@@ -73,12 +73,24 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   setChecking: (checking) => set({ checking }),
   setUpdating: (updating) => set({ updating }),
   setOutcome: (outcome) => set({ outcome }),
-  dismissBanner: () => set({ dismissedSha: get().info?.sha ?? "unknown" }),
+  dismissBanner: () => set({ dismissedSha: bannerDismissKey(get().info) }),
   resetForReconnect: () => set({ info: null, outcome: null, updating: false, checking: false }),
   setReloadAfterReconnect: (v) => set({ reloadAfterReconnect: v }),
 }));
 
-/** The banner shows only for a stale node the human has not dismissed at this sha. */
+/**
+ * What a dismissal is remembered against: the local sha for git installs
+ * (it comes back after the node updates), the OFFERED image version for
+ * containers (which have no sha), so dismissing 1.5.0 never hides 1.6.0.
+ */
+export function bannerDismissKey(info: UpdateInfo | null): string {
+  if (info?.installKind === "container") {
+    return `image:${info.registryLatest ?? "unknown"}`;
+  }
+  return info?.sha ?? "unknown";
+}
+
+/** The banner shows only for a stale node the human has not dismissed at this key. */
 export function shouldShowUpdateBanner(state: {
   info: UpdateInfo | null;
   updating: boolean;
@@ -87,7 +99,7 @@ export function shouldShowUpdateBanner(state: {
   const { info, updating, dismissedSha } = state;
   if (!info || updating) return false;
   if (!info.staleness.stale) return false;
-  return dismissedSha !== (info.sha ?? "unknown");
+  return dismissedSha !== bannerDismissKey(info);
 }
 
 /** Shape of the update.check RPC response the UI consumes. */

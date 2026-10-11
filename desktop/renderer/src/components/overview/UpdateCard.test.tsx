@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useGatewayStore } from "../../stores/gateway-store";
-import { parseUpdateEvent, useUpdateStore, type UpdateInfo } from "../../stores/update-store";
+import {
+  parseUpdateEvent,
+  shouldShowUpdateBanner,
+  useUpdateStore,
+  type UpdateInfo,
+} from "../../stores/update-store";
 import { UpdateCard } from "./UpdateCard";
 
 function containerInfo(partial: Partial<UpdateInfo>): UpdateInfo {
@@ -83,5 +88,28 @@ describe("UpdateCard in a container (PLAN-56 Phase 2)", () => {
       staleness: { behind: null, threshold: 20, stale: true, reason: "image-version" },
     });
     expect(parsed?.installKind).toBe("container");
+  });
+
+  it("dismissing the banner for image 1.5.0 does not hide 1.6.0", () => {
+    useUpdateStore.setState({
+      info: containerInfo({ registryLatest: "1.5.0" }),
+      dismissedSha: null,
+    });
+    useUpdateStore.getState().dismissBanner();
+    const dismissed = useUpdateStore.getState().dismissedSha;
+    expect(
+      shouldShowUpdateBanner({
+        info: containerInfo({ registryLatest: "1.5.0" }),
+        updating: false,
+        dismissedSha: dismissed,
+      }),
+    ).toBe(false);
+    expect(
+      shouldShowUpdateBanner({
+        info: containerInfo({ registryLatest: "1.6.0" }),
+        updating: false,
+        dismissedSha: dismissed,
+      }),
+    ).toBe(true);
   });
 });

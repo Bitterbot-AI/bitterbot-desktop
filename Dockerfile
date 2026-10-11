@@ -57,6 +57,9 @@ COPY . .
 RUN pnpm build
 
 ENV NODE_ENV=production
+# The app's data lives under /home/node whoever starts the container (a
+# `docker run -u 0` would otherwise get HOME=/root).
+ENV HOME=/home/node
 # Tells the gateway it lives in a container (install kind `container`), so the
 # update check asks the GitHub releases API for the newest image instead of
 # npm, and the in-app updater says to pull a newer image instead of updating
@@ -64,7 +67,8 @@ ENV NODE_ENV=production
 ENV BITTERBOT_INSTALL_KIND=container
 
 # Allow non-root user to write temp files during runtime/tests.
-RUN chown -R node:node /app && chmod 0755 /app/scripts/docker-entrypoint.sh
+RUN chown -R node:node /app && chmod 0755 /app/scripts/docker-entrypoint.sh \
+  && chmod 0644 /app/scripts/docker-entrypoint-lib.sh
 
 # Security hardening: run as the non-root `node` user (uid 1000).
 USER node

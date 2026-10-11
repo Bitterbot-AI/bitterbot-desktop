@@ -23,6 +23,10 @@ export const INSTALL_KIND_ENV = "BITTERBOT_INSTALL_KIND";
 /** The shell command a container install updates with, shown by every surface. */
 export const CONTAINER_UPDATE_COMMAND = "docker compose pull && docker compose up -d";
 
+/** Escape hatch printed with every container refusal, for a misdetection. */
+export const CONTAINER_FALSE_POSITIVE_HINT =
+  "Not actually a container image install? Set BITTERBOT_INSTALL_KIND=package and retry.";
+
 export type ContainerProbe = {
   env?: NodeJS.ProcessEnv;
   existsSync?: (p: string) => boolean;

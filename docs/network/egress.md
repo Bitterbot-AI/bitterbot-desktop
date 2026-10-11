@@ -83,8 +83,9 @@ below in one step.
   - npm package: `registry.npmjs.org` (package metadata for the update
     channel);
   - container image (`BITTERBOT_INSTALL_KIND=container`, set by the image):
-    `api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases/latest`,
-    never npm. The answer is cached for 30 minutes (15 after a failure), so
+    `api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30`
+    (the newest `vX.Y.Z` release that carries the `docker-compose.yml` asset,
+    which is attached only once its image is on GHCR), never npm. The answer is cached for 30 minutes (15 after a failure), so
     opening the Control UI repeatedly does not repeat the request.
 - **What:** standard git/registry/HTTPS requests; nothing about your node is
   sent beyond what those protocols carry (the GitHub request is

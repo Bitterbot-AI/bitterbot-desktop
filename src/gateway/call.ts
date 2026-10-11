@@ -212,22 +212,30 @@ export async function callGateway<T = Record<string, unknown>>(
         ? typeof remote?.token === "string" && remote.token.trim().length > 0
           ? remote.token.trim()
           : undefined
-        : process.env.BITTERBOT_GATEWAY_TOKEN?.trim() ||
+        : // Local: the same precedence as the server (resolveGatewayAuth):
+          // gateway.auth.token in config first, then BITTERBOT_GATEWAY_TOKEN.
+          // A config token generated on first boot must keep working for
+          // in-container CLI calls even when the env var holds another value.
           (typeof authToken === "string" && authToken.trim().length > 0
             ? authToken.trim()
-            : undefined)
+            : undefined) ||
+          process.env.BITTERBOT_GATEWAY_TOKEN?.trim() ||
+          undefined
       : undefined);
   const password =
     explicitAuth.password ||
     (!urlOverride
-      ? process.env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
-        (isRemoteMode
-          ? typeof remote?.password === "string" && remote.password.trim().length > 0
+      ? isRemoteMode
+        ? process.env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
+          (typeof remote?.password === "string" && remote.password.trim().length > 0
             ? remote.password.trim()
-            : undefined
-          : typeof authPassword === "string" && authPassword.trim().length > 0
-            ? authPassword.trim()
             : undefined)
+        : // Local: config first, like the server.
+          (typeof authPassword === "string" && authPassword.trim().length > 0
+            ? authPassword.trim()
+            : undefined) ||
+          process.env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
+          undefined
       : undefined);
 
   const formatCloseError = (code: number, reason: string) => {

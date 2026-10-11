@@ -96,21 +96,37 @@ describe("docker-compose.yml (zero-edit compose)", () => {
     expect(interpolateWithEmptyEnv(gateway.environment?.BITTERBOT_GATEWAY_TOKEN ?? "x")).toBe("");
   });
 
-  it("starts as root only to hand the data folder to `node` (the image entrypoint drops privileges)", () => {
+  it("starts as root only through the image entrypoint, which drops to `node`", () => {
     expect(gateway.user).toBe("0:0");
-    const entrypoint = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../scripts/docker-entrypoint.sh"),
-      "utf-8",
-    );
-    expect(entrypoint).toMatch(/exec setpriv --reuid=node --regid=node/);
-    // Only a root-owned folder is chowned: never a user's own ~/.bitterbot.
-    expect(entrypoint).toMatch(/stat -c %u "\$\{dir\}"\)" = "0"/);
+    // Named explicitly: an image without it (1.4.x) fails to start instead
+    // of running the gateway as root.
+    expect(gateway.entrypoint).toEqual(["/app/scripts/docker-entrypoint.sh"]);
+    const scripts = path.resolve(import.meta.dirname, "../../scripts");
+    const entrypoint = fs.readFileSync(path.join(scripts, "docker-entrypoint.sh"), "utf-8");
+    const lib = fs.readFileSync(path.join(scripts, "docker-entrypoint-lib.sh"), "utf-8");
+    expect(entrypoint).toMatch(/setpriv --reuid=node --regid=node --init-groups --no-new-privs/);
+    expect(entrypoint).toContain("HOME=/home/node");
+    expect(entrypoint).toContain("bb_uid_map_is_identity");
+    // Only root-owned entries, one filesystem, no recursive chown across mounts.
+    expect(lib).toMatch(/-xdev/);
+    expect(lib).toMatch(/-uid "\$match_uid" -exec chown -h/);
+    expect(`${entrypoint}\n${lib}`).not.toMatch(/chown -R/);
     const dockerfile = fs.readFileSync(
       path.resolve(import.meta.dirname, "../../Dockerfile"),
       "utf-8",
     );
     expect(dockerfile).toContain('ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]');
     expect(dockerfile).toContain("ENV BITTERBOT_INSTALL_KIND=container");
+    expect(dockerfile).toContain("ENV HOME=/home/node");
+  });
+
+  it("gives cold boots five minutes before the healthcheck counts", () => {
+    expect((gateway.healthcheck as { start_period?: string }).start_period).toBe("300s");
+  });
+
+  it("pins image versions that carry the entrypoint in its examples", () => {
+    expect(RAW).not.toMatch(/bitterbot-desktop:1\.4\./);
+    expect(RAW).toContain("releases/latest/download/docker-compose.yml");
   });
 
   it("does not start the CLI helper with `up`", () => {

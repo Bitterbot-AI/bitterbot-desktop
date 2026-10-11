@@ -29,12 +29,14 @@ With Docker, the whole install is:
 
 ```bash
 mkdir bitterbot && cd bitterbot
-curl -fsSLO https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docker-compose.yml
+curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
 docker compose up -d
 docker compose logs bitterbot-gateway   # shows the generated token
 ```
 
-Then open `http://127.0.0.1:19001/` and paste the token.
+Then open `http://127.0.0.1:19001/` and paste the token. (The compose file is
+attached to releases from 1.5.0 on; before that, follow the `docker run` form
+on the [Docker page](/platforms/docker#without-compose).)
 
 ## Prereqs (source install)
 

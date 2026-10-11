@@ -22,7 +22,11 @@ import { defaultRuntime } from "../../runtime.js";
 import { formatCliCommand } from "../command-format.js";
 import { forceFreePortAndWait } from "../ports.js";
 import { ensureDevGatewayConfig } from "./dev.js";
-import { generateFirstBootToken, shouldGenerateFirstBootToken } from "./first-boot-token.js";
+import {
+  describeTokenSourceConflict,
+  generateFirstBootToken,
+  shouldGenerateFirstBootToken,
+} from "./first-boot-token.js";
 import { runGatewayLoop } from "./run-loop.js";
 import {
   describeUnknownError,
@@ -211,6 +215,13 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
   const passwordValue = resolvedAuth.password;
   const hasToken = typeof tokenValue === "string" && tokenValue.trim().length > 0;
   const hasPassword = typeof passwordValue === "string" && passwordValue.trim().length > 0;
+  const tokenConflict = describeTokenSourceConflict(
+    cfg.gateway?.auth?.token,
+    process.env.BITTERBOT_GATEWAY_TOKEN,
+  );
+  if (tokenConflict && !tokenRaw) {
+    gatewayLog.warn(tokenConflict);
+  }
   // PLAN-56 Phase 2: a fresh install started beyond loopback with no auth at
   // all (zero-edit `docker compose up`) gets a generated token, persisted to
   // gateway.auth.token, instead of the refusal below.

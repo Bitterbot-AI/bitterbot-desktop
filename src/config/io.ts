@@ -604,6 +604,30 @@ type ReadConfigFileSnapshotInternalResult = {
   envSnapshotForRestore?: Record<string, string | undefined>;
 };
 
+/**
+ * The load-time defaults chain shared by loadConfig() and the missing-file
+ * snapshot. Returns a new object with paths normalised.
+ */
+function applyLoadTimeDefaults(validated: BitterbotConfig): BitterbotConfig {
+  const cfg = applyA2aDefaults(
+    applyP2pDefaults(
+      applyModelDefaults(
+        applyCompactionDefaults(
+          applyContextPruningDefaults(
+            applyAgentDefaults(
+              applySessionDefaults(
+                applyLoggingDefaults(applyMessageDefaults(applyCirclesDefaults(validated))),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  normalizeConfigPaths(cfg);
+  return cfg;
+}
+
 export function createConfigIO(overrides: ConfigIoDeps = {}) {
   const deps = normalizeDeps(overrides);
   const requestedConfigPath = resolveConfigPathForDeps(deps);
@@ -664,24 +688,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         deps.logger.warn(`Config warnings:\\n${details}`);
       }
       warnIfConfigFromFuture(validated.config, deps.logger);
-      const cfg = applyA2aDefaults(
-        applyP2pDefaults(
-          applyModelDefaults(
-            applyCompactionDefaults(
-              applyContextPruningDefaults(
-                applyAgentDefaults(
-                  applySessionDefaults(
-                    applyLoggingDefaults(
-                      applyMessageDefaults(applyCirclesDefaults(validated.config)),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      normalizeConfigPaths(cfg);
+      const cfg = applyLoadTimeDefaults(validated.config);
 
       const duplicates = findDuplicateAgentDirs(cfg, {
         env: deps.env,
@@ -724,20 +731,13 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     const exists = deps.fs.existsSync(configPath);
     if (!exists) {
       const hash = hashConfigRaw(null);
+      // PLAN-56 Phase 2: exactly what loadConfig() returns for a missing file
+      // (validation + the same defaults chain + path normalisation), so a
+      // write computes its merge patch against the same baseline the caller
+      // started from and persists only the caller's changes.
+      const validatedEmpty = validateConfigObjectWithPlugins({});
       const config = applyTalkApiKey(
-        applyA2aDefaults(
-          applyP2pDefaults(
-            applyModelDefaults(
-              applyCompactionDefaults(
-                applyContextPruningDefaults(
-                  applyAgentDefaults(
-                    applySessionDefaults(applyMessageDefaults(applyCirclesDefaults({}))),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        applyLoadTimeDefaults(validatedEmpty.ok ? validatedEmpty.config : {}),
       );
       const legacyIssues: LegacyConfigIssue[] = [];
       return {
@@ -863,23 +863,10 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
           // for config set/unset operations (issue #6070)
           resolved: coerceConfig(resolvedConfigRaw),
           valid: true,
-          config: normalizeConfigPaths(
-            applyTalkApiKey(
-              applyA2aDefaults(
-                applyP2pDefaults(
-                  applyModelDefaults(
-                    applyAgentDefaults(
-                      applySessionDefaults(
-                        applyLoggingDefaults(
-                          applyMessageDefaults(applyCirclesDefaults(validated.config)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          // The same chain as loadConfig() (it used to skip the compaction
+          // and context-pruning defaults, so a loadConfig() -> write froze
+          // them into the file), plus the talk API key.
+          config: normalizeConfigPaths(applyTalkApiKey(applyLoadTimeDefaults(validated.config))),
           hash,
           issues: [],
           warnings: validated.warnings,
@@ -928,6 +915,14 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     const { snapshot } = await readConfigFileSnapshotInternal();
     let envRefMap: Map<string, string> | null = null;
     let changedPaths: Set<string> | null = null;
+    if (snapshot.valid && !snapshot.exists) {
+      // PLAN-56 Phase 2: a missing file loads with every load-time default
+      // applied, so a caller's loadConfig() -> mutate -> write would
+      // otherwise freeze all of them (bootstrap peers, mailbox URL, a2a caps,
+      // ...) into the new file. Diff against that baseline and write only
+      // what the caller changed.
+      persistCandidate = applyMergePatch({}, createMergePatch(snapshot.config, cfg));
+    }
     if (snapshot.valid && snapshot.exists) {
       const patch = createMergePatch(snapshot.config, cfg);
       persistCandidate = applyMergePatch(snapshot.resolved, patch);
@@ -1223,6 +1218,19 @@ export function loadConfig(): BitterbotConfig {
     }
   }
   return config;
+}
+
+/**
+ * Whether a config FILE exists (PLAN-56 Phase 2). loadConfig() applies the
+ * load-time defaults for a missing file too, so "is this node configured"
+ * must ask the filesystem, never the loaded object.
+ */
+export function configFileExists(): boolean {
+  try {
+    return fs.existsSync(createConfigIO().configPath);
+  } catch {
+    return false;
+  }
 }
 
 export async function readConfigFileSnapshot(): Promise<ConfigFileSnapshot> {

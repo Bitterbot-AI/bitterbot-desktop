@@ -44,7 +44,8 @@ jobs:
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/docker-publish.yml
     permissions:
-      contents: read
+      # write: the final job attaches docker-compose.yml to the release.
+      contents: write
       packages: write
       id-token: write
       attestations: write

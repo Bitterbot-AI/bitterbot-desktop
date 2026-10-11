@@ -8,7 +8,10 @@ import { doctorCommand } from "../../commands/doctor.js";
 import { loadConfig, readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
 import { armBootVerify, clearRollbackRecord, disarmBootVerify } from "../../infra/boot-verify.js";
 import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
-import { CONTAINER_UPDATE_COMMAND } from "../../infra/install-kind.js";
+import {
+  CONTAINER_FALSE_POSITIVE_HINT,
+  CONTAINER_UPDATE_COMMAND,
+} from "../../infra/install-kind.js";
 import {
   channelToNpmTag,
   DEFAULT_GIT_CHANNEL,
@@ -538,7 +541,7 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     // The image is the code: an in-place update would vanish on the next
     // container recreate, and npm is not where images come from.
     defaultRuntime.error(
-      `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}`,
+      `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}. ${CONTAINER_FALSE_POSITIVE_HINT}`,
     );
     defaultRuntime.exit(1);
     return;

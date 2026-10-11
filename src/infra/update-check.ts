@@ -318,13 +318,20 @@ export async function fetchNpmLatestVersion(params?: {
 }
 
 /**
- * Container installs (PLAN-56 D6): the newest image is the newest GitHub
- * release, because docker-publish runs on every release-please release. The
+ * Container installs (PLAN-56 D6): the newest image is the newest app release
+ * that carries the `docker-compose.yml` asset. docker-publish attaches that
+ * asset as its LAST step, after the multi-arch image is pushed and tagged, so
+ * a release without it ("published, image still building") never prompts.
+ * The list endpoint (not /releases/latest) is used so a desktop or
+ * orchestrator release marked "latest" can never mask the app release. The
  * releases API needs no token (60 requests/hour per IP unauthenticated); the
  * request carries no identifying data beyond the IP and a generic User-Agent.
  */
-export const GITHUB_LATEST_RELEASE_URL =
-  "https://api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases/latest";
+export const GITHUB_RELEASES_URL =
+  "https://api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30";
+
+/** The release asset whose presence means "the image for this release is on GHCR". */
+export const COMPOSE_RELEASE_ASSET = "docker-compose.yml";
 
 /** Successful answers are reused this long, so a click-happy UI never fans out. */
 const GITHUB_RELEASE_CACHE_MS = 30 * 60 * 1000;
@@ -355,8 +362,47 @@ function parseReleaseTag(tag: unknown): string | null {
   if (typeof tag !== "string") {
     return null;
   }
-  const match = /^v?(\d+\.\d+\.\d+)$/.exec(tag.trim());
+  const match = /^v(\d+\.\d+\.\d+)$/.exec(tag);
   return match ? (match[1] ?? null) : null;
+}
+
+type GithubReleaseEntry = {
+  tag_name?: unknown;
+  draft?: unknown;
+  prerelease?: unknown;
+  assets?: unknown;
+};
+
+/**
+ * The highest `vX.Y.Z` among published, non-prerelease releases that carry
+ * the compose asset; null when there is none.
+ */
+export function pickLatestImageRelease(releases: GithubReleaseEntry[]): string | null {
+  let best: string | null = null;
+  for (const release of releases) {
+    if (!release || release.draft === true || release.prerelease === true) {
+      continue;
+    }
+    const version = parseReleaseTag(release.tag_name);
+    if (!version) {
+      continue;
+    }
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const hasCompose = assets.some(
+      (asset) =>
+        asset &&
+        typeof asset === "object" &&
+        (asset as { name?: unknown }).name === COMPOSE_RELEASE_ASSET,
+    );
+    if (!hasCompose) {
+      continue;
+    }
+    const cmp = compareSemverStrings(version, best);
+    if (best === null || (cmp != null && cmp > 0)) {
+      best = version;
+    }
+  }
+  return best;
 }
 
 export async function fetchLatestGithubRelease(params?: {
@@ -386,7 +432,7 @@ async function fetchLatestGithubReleaseUncached(params?: {
   const timeoutMs = Math.max(250, params?.timeoutMs ?? 3500);
   try {
     const res = await fetchWithTimeout(
-      GITHUB_LATEST_RELEASE_URL,
+      GITHUB_RELEASES_URL,
       {
         headers: {
           Accept: "application/vnd.github+json",
@@ -406,17 +452,15 @@ async function fetchLatestGithubReleaseUncached(params?: {
         error: rateLimited ? "rate-limited" : `HTTP ${res.status}`,
       };
     }
-    const json = (await res.json()) as {
-      tag_name?: unknown;
-      draft?: unknown;
-      prerelease?: unknown;
-    };
-    const version =
-      json && json.draft !== true && json.prerelease !== true
-        ? parseReleaseTag(json.tag_name)
-        : null;
-    if (!version) {
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json)) {
       return { latestVersion: null, source: "github-releases", error: "malformed" };
+    }
+    const version = pickLatestImageRelease(json as GithubReleaseEntry[]);
+    if (!version) {
+      // Releases exist but none carries a published image yet (or the list
+      // is junk): no prompt.
+      return { latestVersion: null, source: "github-releases", error: "no-image-release" };
     }
     return { latestVersion: version, source: "github-releases" };
   } catch (err) {

@@ -2,7 +2,10 @@ import { loadConfig } from "../../config/config.js";
 import { resolveBitterbotPackageRoot } from "../../infra/bitterbot-root.js";
 import { armBootVerify, clearRollbackRecord } from "../../infra/boot-verify.js";
 import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
-import { CONTAINER_UPDATE_COMMAND } from "../../infra/install-kind.js";
+import {
+  CONTAINER_FALSE_POSITIVE_HINT,
+  CONTAINER_UPDATE_COMMAND,
+} from "../../infra/install-kind.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
@@ -89,7 +92,8 @@ async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
 export const CONTAINER_UPDATE_REFUSAL =
   `This gateway runs in a container, so it cannot update itself: its code is the image. ` +
   `Pull a newer image instead: ${CONTAINER_UPDATE_COMMAND} ` +
-  `(on a VPS from the template: /opt/bitterbot/update.sh; on Fly.io: fly deploy).`;
+  `(on a VPS from the template: /opt/bitterbot/update.sh; on Fly.io: fly deploy). ` +
+  CONTAINER_FALSE_POSITIVE_HINT;
 
 export const updateHandlers: GatewayRequestHandlers = {
   "update.check": async ({ params, respond }) => {

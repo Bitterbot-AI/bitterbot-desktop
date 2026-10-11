@@ -143,3 +143,26 @@ jobs:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: true
+
+  # PLAN-56 Phase 2: the zero-edit docker-compose.yml is served from the
+  # release (releases/latest/download/docker-compose.yml), never from main,
+  # and it is attached LAST, only after the multi-arch image is pushed and
+  # tagged. Containers count a release as "available" only when it carries
+  # this asset, so the update prompt can never point at an image that is not
+  # on GHCR yet.
+  compose-asset:
+    needs: merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ inputs.version }}
+      - name: Attach docker-compose.yml to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ inputs.version }}" docker-compose.yml \
+            --repo "${{ github.repository }}" --clobber

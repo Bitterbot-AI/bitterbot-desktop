@@ -18,13 +18,23 @@ your laptop sleeps.
 ## Start in one command
 
 You need Docker with Compose v2 (Docker Desktop on macOS and Windows, or Docker
-Engine on Linux). Download the compose file into an empty folder and start it:
+Engine on Linux). Download the compose file of the latest release into an empty
+folder and start it:
 
 ```bash
 mkdir bitterbot && cd bitterbot
-curl -fsSLO https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docker-compose.yml
+curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
 docker compose up -d
 ```
+
+<Note>
+The compose file is attached to each release once that release's image is on
+GHCR, starting with the first release after 1.4.0 (1.5.0). It needs image
+1.5.0 or later. Until that release exists, clone the repository at a release
+tag (`git clone --branch vX.Y.Z https://github.com/Bitterbot-AI/bitterbot-desktop.git`)
+and use the [`docker run` form](#without-compose); do not take the compose file
+from the `main` branch.
+</Note>
 
 Nothing needs editing. On first boot the gateway generates a gateway token,
 saves it, and prints it once in its log together with the address to open:
@@ -48,8 +58,11 @@ Lost the token? Print it again at any time:
 docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token
 ```
 
-Run other CLI commands the same way (always with `-u node`, so nothing in the
-data folder ends up owned by root), or as a one-off container:
+Run other CLI commands the same way. `-u node` is the only supported form: the
+compose file starts the container as root (so the entrypoint can fix file
+ownership), which makes a plain `docker compose exec` run as root too. Files a
+root `exec` leaves in the data folder are handed back to `node` on the next
+start. A one-off container works as well:
 `docker compose run --rm bitterbot-cli doctor`.
 
 ## What the defaults are
@@ -74,15 +87,28 @@ install:
 BITTERBOT_CONFIG_DIR=/home/you/.bitterbot
 ```
 
-Then `docker compose up -d` again. The container runs as uid 1000; a data folder
-owned by another user must be readable and writable by uid 1000. A folder that
-Docker creates for you (owned by root) is handed to uid 1000 automatically; a
-folder you own is never touched.
+Then `docker compose up -d` again. The gateway runs as uid 1000; a data folder
+owned by another user must be readable and writable by uid 1000. On every start
+the entrypoint hands **root-owned** entries in the data folder and the workspace
+to uid 1000 (a folder Docker created for you, or files a root `exec` left
+behind). Entries owned by any other uid, and other mounts inside the data
+folder, are never touched. If that fails (a read-only, NFS `root_squash` or
+Windows-shared folder) it prints a warning and starts anyway.
 
 Once a token has been generated it lives in `bitterbot.json` and takes
-precedence over `BITTERBOT_GATEWAY_TOKEN`. To change it later, run
-`config set gateway.auth.token <new>` through the exec command above and
-restart.
+precedence over `BITTERBOT_GATEWAY_TOKEN` (for the gateway and for CLI commands
+run inside the container); the gateway logs a warning when the two differ. To
+change it later, run `config set gateway.auth.token <new>` through the exec
+command above and restart.
+
+### Rootless Docker and Podman
+
+Under rootless Docker or Podman, root inside the container is your own
+unprivileged host user. The entrypoint detects the user namespace (a uid map
+other than `0 0 4294967295`), changes no file ownership at all, and says so in
+the log. It still drops to uid 1000 if that user can write the data folder;
+otherwise it keeps running as the container's root, which is your host user,
+so the files stay yours.
 
 ## Where your data lives, and backups
 
@@ -117,7 +143,10 @@ update a container itself (the image is the code, so the next restart would
 bring the old one back). Your data folder is untouched by updates.
 
 To go back, set `BITTERBOT_IMAGE` to the previous version tag (for example
-`ghcr.io/bitterbot-ai/bitterbot-desktop:1.4.0`) and run `docker compose up -d`.
+`ghcr.io/bitterbot-ai/bitterbot-desktop:1.5.0`) and run `docker compose up -d`.
+The version must be 1.5.0 or later: older images have no entrypoint, and the
+compose file names it explicitly so such an image fails to start instead of
+running the gateway as root. To go further back, use the `docker run` form.
 
 Do not use Watchtower or other auto-updaters: Watchtower is archived, and an
 unattended update cannot roll back if the new image fails to start.
@@ -261,7 +290,7 @@ sessions and settings.
 
 ## Upgrading from the older compose file
 
-The compose file shipped with 1.4.x and earlier required `BITTERBOT_CONFIG_DIR`,
+The compose file shipped in the repository with 1.4.x and earlier required `BITTERBOT_CONFIG_DIR`,
 `BITTERBOT_WORKSPACE_DIR` and `BITTERBOT_GATEWAY_TOKEN`. If you set them, they
 still win, so nothing moves. Two defaults changed:
 
@@ -269,4 +298,8 @@ still win, so nothing moves. Two defaults changed:
   your host has a public IP or a port forward to 9100, add
   `BITTERBOT_P2P_BIND_HOST=0.0.0.0` to `.env` to keep accepting direct inbound
   peers.
-- The default image tag is `:1` instead of `:latest` (the same image today).
+- The default image tag is `:1` instead of `:latest`, and the file needs image
+  1.5.0 or later (it starts the container as root and names the image's
+  entrypoint, which drops to uid 1000; an older image refuses to start).
+- `docker compose exec` now runs as root unless you pass `-u node`; always pass
+  it.

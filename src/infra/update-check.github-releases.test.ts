@@ -9,8 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   checkUpdateStatus,
   fetchLatestGithubRelease,
-  GITHUB_LATEST_RELEASE_URL,
+  GITHUB_RELEASES_URL,
   peekLatestGithubRelease,
+  pickLatestImageRelease,
   resetGithubReleaseCacheForTests,
 } from "./update-check.js";
 import { computeUpdateStaleness } from "./update-staleness.js";
@@ -23,18 +24,43 @@ function jsonResponse(body: unknown, init?: ResponseInit): Response {
   });
 }
 
+const COMPOSE = [{ name: "docker-compose.yml" }];
+function release(tag: string, extra: Record<string, unknown> = {}) {
+  return { tag_name: tag, draft: false, prerelease: false, assets: COMPOSE, ...extra };
+}
+
+describe("pickLatestImageRelease", () => {
+  it("takes the highest vX.Y.Z that carries the compose asset", () => {
+    expect(
+      pickLatestImageRelease([
+        release("v1.4.0"),
+        release("v1.10.0"),
+        release("v1.9.0"),
+        release("orchestrator-v9.0.0"),
+        release("desktop-v9.0.0"),
+        release("v2.0.0", { prerelease: true }),
+        release("v2.1.0", { draft: true }),
+        release("v3.0.0", { assets: [] }), // published, image not pushed yet
+        release("v1.11.0-beta.1"),
+      ]),
+    ).toBe("1.10.0");
+    expect(pickLatestImageRelease([release("v1.5.0", { assets: [] })])).toBeNull();
+    expect(pickLatestImageRelease([])).toBeNull();
+  });
+});
+
 describe("fetchLatestGithubRelease", () => {
   beforeEach(() => {
     resetGithubReleaseCacheForTests();
   });
 
   it("returns the release version from tag_name, unauthenticated, with no identifying data", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ tag_name: "v1.5.0" }));
+    const fetchImpl = vi.fn(async () => jsonResponse([release("v1.5.0"), release("v1.4.0")]));
     const res = await fetchLatestGithubRelease({ fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(res).toEqual({ latestVersion: "1.5.0", source: "github-releases" });
     expect(fetchImpl).toHaveBeenCalledOnce();
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe(GITHUB_LATEST_RELEASE_URL);
+    expect(url).toBe(GITHUB_RELEASES_URL);
     const headers = init.headers as Record<string, string>;
     expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain("authorization");
     expect(headers["User-Agent"]).toBe("bitterbot-update-check");
@@ -54,11 +80,12 @@ describe("fetchLatestGithubRelease", () => {
     ).toMatchObject({ latestVersion: null, error: "rate-limited" });
   });
 
-  it("treats a malformed body, a non-app tag or a prerelease as unknown", async () => {
+  it("treats a malformed body or a list without an image release as unknown", async () => {
     for (const body of [
       { nope: true },
-      { tag_name: "orchestrator-v0.2.3" },
-      { tag_name: "v1.5.0", prerelease: true },
+      [release("orchestrator-v0.2.3")],
+      [release("v1.5.0", { prerelease: true })],
+      [release("v1.5.0", { assets: [] })],
       "not json at all",
     ]) {
       resetGithubReleaseCacheForTests();
@@ -83,7 +110,7 @@ describe("fetchLatestGithubRelease", () => {
   });
 
   it("caches answers (30 min) and failures (15 min) so the API is never hammered", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ tag_name: "v1.5.0" }));
+    const fetchImpl = vi.fn(async () => jsonResponse([release("v1.5.0")]));
     const f = fetchImpl as unknown as typeof fetch;
     const t0 = 1_000_000;
     await fetchLatestGithubRelease({ fetchImpl: f, now: t0 });
@@ -116,7 +143,7 @@ describe("checkUpdateStatus for a container install", () => {
     const urls: string[] = [];
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       urls.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
-      return jsonResponse({ tag_name: "v99.0.0" });
+      return jsonResponse([release("v99.0.0")]);
     });
     try {
       const res = await checkUpdateStatus({
@@ -132,7 +159,7 @@ describe("checkUpdateStatus for a container install", () => {
       expect(res.git).toBeUndefined();
       expect(res.deps).toBeUndefined();
       expect(res.registry).toEqual({ latestVersion: "99.0.0", source: "github-releases" });
-      expect(urls).toEqual([GITHUB_LATEST_RELEASE_URL]);
+      expect(urls).toEqual([GITHUB_RELEASES_URL]);
       expect(urls.some((u) => u.includes("registry.npmjs.org"))).toBe(false);
 
       // Newer release => stale with the image-specific reason; same => fresh.

@@ -78,13 +78,14 @@ and supervises the P2P orchestrator.
   <Step title="Start it with Docker (recommended)">
     ```bash
     mkdir bitterbot && cd bitterbot
-    curl -fsSLO https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docker-compose.yml
+    curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
     docker compose up -d
     docker compose logs bitterbot-gateway   # shows the generated token
     ```
 
     Nothing to edit: data lives in `./bitterbot-data`, the Control UI on
-    `127.0.0.1` only. Details, backups and updates:
+    `127.0.0.1` only. The compose file ships with releases from 1.5.0 on;
+    before that, see the Docker page for the `docker run` form. Details, backups and updates:
     [Docker (recommended install)](/platforms/docker).
 
   </Step>
