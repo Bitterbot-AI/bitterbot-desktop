@@ -67,7 +67,10 @@ touched by the installer.
 Each tarball contains the built gateway and Control UI, its production
 dependencies for that platform, the P2P orchestrator binary, an official
 Node.js 22 LTS runtime (used only by Bitterbot), a `bin/bitterbot` launcher,
-and a `manifest.json` listing the SHA-256 of every file.
+and a `manifest.json` listing the SHA-256 of every file. Expect a download of
+about 390 MB (1.5 GB unpacked). GPU builds of llama.cpp are not included:
+local embeddings run on the CPU, which is enough for the small embedding
+model.
 
 ## Options
 

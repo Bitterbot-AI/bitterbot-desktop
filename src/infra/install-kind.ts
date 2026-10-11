@@ -57,7 +57,7 @@ export const TARBALL_FALSE_POSITIVE_HINT =
  */
 export const TARBALL_UPDATE_REFUSAL =
   "This Bitterbot was installed from a release tarball and cannot update itself in place yet. " +
-  `Re-run the installer to update (it keeps the previous version for rollback): ${TARBALL_UPDATE_COMMAND} ` +
+  `Re-run the installer to update (it keeps the previous version for rollback): ${TARBALL_UPDATE_COMMAND} . ` +
   TARBALL_FALSE_POSITIVE_HINT;
 
 /**

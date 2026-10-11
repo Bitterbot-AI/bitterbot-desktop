@@ -168,6 +168,10 @@ open an issue.
 - **Updates are a re-run.** `bitterbot update` does not update an
   installer-based install in place yet: re-run `install.sh` (it keeps the
   previous version for a manual rollback) and restart the gateway.
+- **Size.** A tarball is about 390 MB to download and 1.5 GB unpacked (the
+  Claude Agent SDK's bundled binary alone is about 230 MB). GPU builds of
+  llama.cpp are left out, so local embeddings run on the CPU in an
+  installer-based install; a source install or Docker keeps them.
 - **Not OS-signed.** The binaries in the tarball are not Apple-notarized or
   Authenticode-signed; integrity comes from minisign, SHA-256 and GitHub
   build-provenance attestations.
