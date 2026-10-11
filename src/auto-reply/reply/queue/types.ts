@@ -20,6 +20,13 @@ export type QueueDedupeMode = "message-id" | "prompt" | "none";
 
 export type FollowupRun = {
   prompt: string;
+  /**
+   * PLAN-55 Phase 1: the owner's own words, the raw inbound body before the
+   * reply pipeline wrapped it (inbound context, reply/quote blocks, thread
+   * history, untrusted context, system events). The correction capture reads
+   * this, never `prompt`.
+   */
+  userBody?: string;
   /** Provider message ID, when available (for deduplication). */
   messageId?: string;
   summaryLine?: string;

@@ -200,10 +200,10 @@ describe("memory tools for a guest (PLAN-53 G2)", () => {
       line: 1,
     });
     expect((expand.details as { error?: string }).error).toMatch(/not the owner/);
-    const pin = await createMemoryPinTool({ config: cfg, memoryGuest: true })!.execute("g5", {
-      action: "list",
-    });
-    expect((pin.details as { error?: string }).error).toMatch(/not the owner/);
+    // PLAN-55 Phase 1 review (item 10): the ledger tool is absent on a guest
+    // turn, not listed with a refusal.
+    expect(createMemoryPinTool({ config: cfg, memoryGuest: true })).toBeNull();
+    expect(createMemoryPinTool({ config: cfg })).not.toBeNull();
   });
 
   it("leaves the owner's search untouched", async () => {
@@ -237,7 +237,7 @@ describe("memory_pin evidence, scope and held supersedes (PLAN-55 Phase 1)", () 
   });
 
   it("stores evidence and scope on the fact and lists them", async () => {
-    const tool = createMemoryPinTool({ config: cfg })!;
+    const tool = createMemoryPinTool({ config: cfg, workspaceDir: "/srv/agents/Acme" })!;
     const res = await tool.execute("p1", {
       action: "pin",
       key: "infra.deploy_endpoint",
@@ -269,6 +269,76 @@ describe("memory_pin evidence, scope and held supersedes (PLAN-55 Phase 1)", () 
     });
     expect(res.details).toMatchObject({ ok: false, op: "rejected" });
     expect((res.details as { reason: string }).reason).toMatch(/scope must be/);
+  });
+
+  it("review item 6: a project scope must be the active project (workspace basename)", async () => {
+    const noProject = createMemoryPinTool({ config: cfg })!;
+    const r1 = await noProject.execute("s1", {
+      action: "pin",
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      scope: "project:acme",
+    });
+    expect(r1.details).toMatchObject({ ok: false, op: "rejected" });
+    expect((r1.details as { reason: string }).reason).toMatch(/no project is active/);
+    expect(store.get("infra.deploy_endpoint")).toBeNull();
+    const acme = createMemoryPinTool({ config: cfg, workspaceDir: "/srv/agents/Acme" })!;
+    const r2 = await acme.execute("s2", {
+      action: "pin",
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      scope: "project:globex",
+    });
+    expect((r2.details as { reason: string }).reason).toMatch(/active project is "acme"/);
+    const r3 = await acme.execute("s3", {
+      action: "pin",
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      scope: "project:Acme",
+    });
+    expect(r3.details).toMatchObject({ ok: true, op: "add" });
+    expect(store.get("infra.deploy_endpoint")?.scope).toBe("project:acme");
+    // The default workspace is no project either.
+    const dflt = createMemoryPinTool({
+      config: cfg,
+      workspaceDir: "/home/v/.bitterbot/workspace",
+    })!;
+    const r4 = await dflt.execute("s4", {
+      action: "pin",
+      key: "preference.editor",
+      value: "vim",
+      scope: "project:workspace",
+    });
+    expect((r4.details as { reason: string }).reason).toMatch(/no project is active/);
+  });
+
+  it("review item 1: retire of a tier >= 2 belief is held and reported, nothing changes", async () => {
+    store.pin({ key: "identity.user.name", value: "Victor", source: "owner" });
+    const tool = createMemoryPinTool({ config: cfg })!;
+    const res = await tool.execute("r1", { action: "retire", key: "identity.user.name" });
+    expect(res.details).toMatchObject({
+      ok: false,
+      held: true,
+      op: "held",
+      current: { key: "identity.user.name", value: "Victor", source: "owner" },
+    });
+    expect(store.get("identity.user.name")?.status).toBe("active");
+    // Retire then re-pin cannot walk around the hold.
+    const again = await tool.execute("r2", {
+      action: "pin",
+      key: "identity.user.name",
+      value: "Vic",
+    });
+    expect(again.details).toMatchObject({ ok: false, held: true });
+    expect(store.get("identity.user.name")?.value).toBe("Victor");
+    // A tier-1 belief retires as before.
+    store.pin({ key: "project.repo", value: "org/a", source: "extraction" });
+    expect(
+      (await tool.execute("r3", { action: "retire", key: "project.repo" })).details,
+    ).toMatchObject({
+      ok: true,
+      op: "retired",
+    });
   });
 
   it("holds a replacement of the owner's (or its own earlier) belief and says so", async () => {

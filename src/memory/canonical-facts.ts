@@ -35,6 +35,7 @@ import {
   isSuppressed,
   liftSuppression,
 } from "./memory-suppressions.js";
+import { secretRejectionReason } from "./secret-shape.js";
 
 const log = createSubsystemLogger("memory/canonical");
 
@@ -658,6 +659,12 @@ export class CanonicalFactsStore {
         reason: "heartbeat scaffolding is not a fact (prompt/ack text, HEARTBEAT.md, clock lines)",
       };
     }
+    // PLAN-55 Phase 1 review (item 5): credentials never enter the ledger,
+    // from any source. The reason never carries the value.
+    const secret = secretRejectionReason(slug, value);
+    if (secret) {
+      return { op: "rejected", reason: secret };
+    }
     const statement = (input.statement?.trim() || `${slug}: ${value}`).slice(
       0,
       MAX_STATEMENT_CHARS,
@@ -724,6 +731,13 @@ export class CanonicalFactsStore {
       if (liftOnSuccess) {
         liftSuppression(this.db, "fact_key_value", liftOnSuccess);
         log.info(`canonical suppression lifted by owner pin: [${slug}]`);
+      }
+      // PLAN-55 Phase 1 review (item 2): an owner-tier write settles the
+      // key: held agent attempts and "which is current?" questions about it
+      // are closed, so a question the owner already answered by stating the
+      // value never stays open.
+      if (tier >= OWNER_TRUST_TIER) {
+        this.settleKey(slug, now);
       }
     };
 
@@ -877,7 +891,18 @@ export class CanonicalFactsStore {
     // value itself out. Note the SUPERSEDE below overwrites `owner_retired`
     // with `superseded` on the old row (history keeps it); unretire() then
     // has nothing to lift, by design.
-    const currentTier = current.status === "active" ? canonicalSourceTier(current.source) : 0;
+    //
+    // PLAN-55 Phase 1 review (item 1): a `retired`/`unconfirmed` row still
+    // guards against the AGENT: `memory_pin retire` followed by a re-pin
+    // would otherwise walk around the hold below. The owner's retire
+    // (`owner_retired`) and `superseded` keep the Phase 0 reading.
+    const currentTier =
+      current.status === "active"
+        ? canonicalSourceTier(current.source)
+        : (current.status === "retired" || current.status === "unconfirmed") &&
+            input.source === "agent_pin"
+          ? canonicalSourceTier(current.source)
+          : 0;
     // PLAN-55 Phase 1: the agent's own pin never silently replaces a
     // deliberate belief (its earlier pin, or the owner's). The write is held
     // and recorded as a pending_supersede conflict: the reply's confirmation
@@ -972,7 +997,12 @@ export class CanonicalFactsStore {
    * table).
    */
   private recordConflict(
-    kind: "tier_rejection" | "rapid_supersede" | "owner_retired" | "pending_supersede",
+    kind:
+      | "tier_rejection"
+      | "rapid_supersede"
+      | "owner_retired"
+      | "pending_supersede"
+      | "pending_retire",
     key: string,
     current: CanonicalFact,
     proposedValue: string,
@@ -989,15 +1019,23 @@ export class CanonicalFactsStore {
         // PLAN-55 Phase 1: a held agent supersede is refreshed in place so the
         // confirmation line reports THIS turn's attempt (latest proposed value,
         // created_at = now) while the table still holds one row per key.
-        if (kind === "pending_supersede" && pending.kind === "pending_supersede") {
+        if (kind.startsWith("pending_") && pending.kind.startsWith("pending_")) {
           this.db
             .prepare(
               `UPDATE canonical_conflicts
-                  SET proposed_value = ?, proposed_source = ?, current_value = ?,
+                  SET kind = ?, proposed_value = ?, proposed_source = ?, current_value = ?,
                       current_source = ?, created_at = ?
                 WHERE id = ?`,
             )
-            .run(proposedValue, proposedSource, current.value, current.source, now, pending.id);
+            .run(
+              kind,
+              proposedValue,
+              proposedSource,
+              current.value,
+              current.source,
+              now,
+              pending.id,
+            );
         }
         return;
       }
@@ -1064,9 +1102,76 @@ export class CanonicalFactsStore {
     if (current.status !== "active") {
       return false;
     }
+    // PLAN-55 Phase 1 review (item 1): the agent cannot retire a deliberate
+    // belief (its own earlier pin or the owner's) any more than it can
+    // replace one; the attempt is held for the owner. Use retireAgent() to
+    // learn which happened.
+    if (reason === "agent" && canonicalSourceTier(current.source) >= 2) {
+      log.info(`canonical RETIRE HELD (pending owner confirmation): [${current.key}]`);
+      this.recordConflict("pending_retire", current.key, current, "", "agent_pin", Date.now());
+      return false;
+    }
     this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
     log.info(`canonical RETIRE (${reason}): [${current.key}]`);
     return true;
+  }
+
+  /**
+   * PLAN-55 Phase 1 review (item 1): the agent's retire, with its outcome.
+   * `held` means nothing changed and a `pending_retire` conflict was
+   * recorded for the owner; `noop` means there was nothing active to retire.
+   */
+  retireAgent(key: string): {
+    op: "retired" | "held" | "noop";
+    reason?: string;
+    fact?: CanonicalFact;
+  } {
+    const current = this.get(key);
+    if (!current || current.status !== "active") {
+      return { op: "noop" };
+    }
+    if (canonicalSourceTier(current.source) >= 2) {
+      this.retire(key, { reason: "agent" });
+      return {
+        op: "held",
+        reason: `"${current.key}" was set by ${current.source}; retiring it is held for the owner's confirmation`,
+        fact: current,
+      };
+    }
+    return this.retire(key, { reason: "agent" })
+      ? { op: "retired", fact: current }
+      : { op: "noop" };
+  }
+
+  /**
+   * PLAN-55 Phase 1 review (item 2): close everything the owner's statement
+   * answers. Unconsumed conflicts for the key are consumed, and open
+   * "which is current?" directives tagged `canonical:<key>` are resolved.
+   * Best-effort: the write itself has already landed.
+   */
+  private settleKey(key: string, now: number): void {
+    try {
+      this.db
+        .prepare(
+          `UPDATE canonical_conflicts SET consumed_at = ? WHERE key = ? AND consumed_at IS NULL`,
+        )
+        .run(now, key);
+    } catch (err) {
+      log.debug(`settleKey conflicts skipped: ${String(err)}`);
+    }
+    try {
+      const tag = `canonical:${key}`.replace(/[\\%_]/g, (c) => `\\${c}`);
+      this.db
+        .prepare(
+          `UPDATE epistemic_directives
+              SET resolved_at = ?, status = 'answered',
+                  resolution = COALESCE(resolution, 'settled by the owner')
+            WHERE resolved_at IS NULL AND source_entity_ids LIKE ? ESCAPE '\\'`,
+        )
+        .run(now, `%"${tag}"%`);
+    } catch (err) {
+      log.debug(`settleKey directives skipped: ${String(err)}`);
+    }
   }
 
   /**
@@ -1139,20 +1244,25 @@ export class CanonicalFactsStore {
   listPendingSupersedes(opts?: { since?: number; limit?: number }): Array<{
     id: string;
     key: string;
+    /** `pending_supersede` (replace) or `pending_retire` (stop injecting). */
+    kind: "pending_supersede" | "pending_retire";
     currentValue: string;
+    /** Empty for a held retire. */
     proposedValue: string;
     createdAt: number;
   }> {
     try {
       const rows = this.db
         .prepare(
-          `SELECT id, key, current_value, proposed_value, created_at FROM canonical_conflicts
-            WHERE kind = 'pending_supersede' AND consumed_at IS NULL AND created_at >= ?
+          `SELECT id, key, kind, current_value, proposed_value, created_at FROM canonical_conflicts
+            WHERE kind IN ('pending_supersede', 'pending_retire') AND consumed_at IS NULL
+              AND created_at >= ?
             ORDER BY created_at DESC LIMIT ?`,
         )
         .all(opts?.since ?? 0, Math.max(1, opts?.limit ?? 20)) as unknown as Array<{
         id: string;
         key: string;
+        kind: "pending_supersede" | "pending_retire";
         current_value: string;
         proposed_value: string;
         created_at: number;
@@ -1160,6 +1270,7 @@ export class CanonicalFactsStore {
       return rows.map((r) => ({
         id: r.id,
         key: r.key,
+        kind: r.kind,
         currentValue: r.current_value,
         proposedValue: r.proposed_value,
         createdAt: r.created_at,

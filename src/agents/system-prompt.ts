@@ -61,7 +61,9 @@ function buildMemorySection(params: {
           '- `memory_pin`: THE tool for corrections and settled facts. When the user corrects you, states a durable fact (repo, endpoint, name, standing choice) or says "remember this", pin {key, value, evidence: their words quoted, scope: global | project:<name> | person:<name>}. Replacing a fact you or the owner pinned before is held for the owner\'s confirmation; do not retry it.',
         ]
       : []),
-    "- `working_memory_note`: scratch for anything else worth keeping (decisions, emotional moments, deadlines, context); optional type=directive|world_fact|mental_model|experience. Err on noting too much. Not for corrections or settled facts: those go to `memory_pin`.",
+    params.availableTools.has("memory_pin")
+      ? "- `working_memory_note`: scratch for anything else worth keeping (decisions, emotional moments, deadlines, context); optional type=directive|world_fact|mental_model|experience. Err on noting too much. Not for corrections or settled facts: those go to `memory_pin`."
+      : '- `working_memory_note`: persist anything worth keeping (user facts, decisions, preferences, corrections, emotional moments, deadlines, "remember this"); optional type=directive|world_fact|mental_model|experience. Err on noting too much.',
     "- `dream_search` / `dream_status`: cross-domain insights from dream cycles.",
     "- `curiosity_state` / `curiosity_resolve`: knowledge gaps and exploration targets; resolve one after investigating it.",
     ...(params.availableTools.has("recall_range")

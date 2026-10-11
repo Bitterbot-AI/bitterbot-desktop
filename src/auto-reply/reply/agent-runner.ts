@@ -29,7 +29,11 @@ import {
   isAudioPayload,
   signalTypingIfNeeded,
 } from "./agent-runner-helpers.js";
-import { runCorrectionCaptureAfterTurn, runMemoryFlushIfNeeded } from "./agent-runner-memory.js";
+import {
+  rememberSteeredUserTurn,
+  runCorrectionCaptureAfterTurn,
+  runMemoryFlushIfNeeded,
+} from "./agent-runner-memory.js";
 import { buildReplyPayloads } from "./agent-runner-payloads.js";
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
@@ -178,6 +182,11 @@ export async function runReplyAgent(params: {
       senderIsOwner: followupRun.run.senderIsOwner === true,
     });
     if (steered && !shouldFollowup) {
+      // PLAN-55 Phase 1 review (item 9): the steered message joins the
+      // running turn; its correction is captured when that turn completes.
+      if (followupRun.run.senderIsOwner === true) {
+        rememberSteeredUserTurn(followupRun.run.sessionId, followupRun.userBody ?? commandBody);
+      }
       await touchActiveSessionEntry();
       typing.cleanup();
       return undefined;
@@ -392,11 +401,32 @@ export async function runReplyAgent(params: {
       cliSessionId,
     });
 
+    // PLAN-55 Phase 1: capture what the owner corrected this turn and tell
+    // them. Runs BEFORE the "nothing to send" early returns (review item 9:
+    // a block-streamed turn delivers its text directly and reaches them with
+    // no payload), so the line goes out on its own when there is nothing to
+    // append it to. Skipped inside for heartbeats, guests, non-owner and
+    // non-first-party sessions.
+    const memoryUpdatedLine = await runCorrectionCaptureAfterTurn({
+      cfg,
+      followupRun,
+      sessionKey,
+      commandBody,
+      replyText: payloadArray
+        .map((p) => p.text ?? "")
+        .filter(Boolean)
+        .join("\n"),
+      isHeartbeat,
+      chatType: sessionCtx.ChatType,
+      runStartedAt,
+    });
+    const lineOnly = memoryUpdatedLine ? { text: memoryUpdatedLine } : undefined;
+
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
     // keep the typing indicator stuck.
     if (payloadArray.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeWithFollowup(lineOnly, queueKey, runFollowupTurn);
     }
 
     const payloadResult = buildReplyPayloads({
@@ -419,7 +449,7 @@ export async function runReplyAgent(params: {
     didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
 
     if (replyPayloads.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeWithFollowup(lineOnly, queueKey, runFollowupTurn);
     }
 
     await signalTypingIfNeeded(replyPayloads, typingSignals);
@@ -509,23 +539,8 @@ export async function runReplyAgent(params: {
     if (verboseEnabled && activeIsNewSession) {
       finalPayloads = [{ text: `🧭 New session: ${followupRun.run.sessionId}` }, ...finalPayloads];
     }
-    // PLAN-55 Phase 1: capture what the owner corrected this turn and tell
-    // them, on the same footer path as the usage line (system-generated,
-    // never the model's words). Skipped for heartbeats, guests, non-owner
-    // and non-first-party sessions inside.
-    const memoryUpdatedLine = await runCorrectionCaptureAfterTurn({
-      cfg,
-      followupRun,
-      sessionKey,
-      commandBody,
-      replyText: replyPayloads
-        .map((p) => p.text ?? "")
-        .filter(Boolean)
-        .join("\n"),
-      isHeartbeat,
-      chatType: sessionCtx.ChatType,
-      runStartedAt,
-    });
+    // The confirmation line rides the same footer path as the usage line
+    // (system-generated, never the model's words).
     if (memoryUpdatedLine) {
       finalPayloads = appendUsageLine(finalPayloads, memoryUpdatedLine);
     }

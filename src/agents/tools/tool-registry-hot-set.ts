@@ -38,7 +38,9 @@ import { createListToolsTool, createUseToolTool } from "./tool-dispatcher-tool.j
 
 const log = createSubsystemLogger("agents/tools/hot-set");
 
-export const HOT_SET_DEFAULT_MAX = 12;
+// PLAN-55 Phase 1: 12 -> 13 so memory_pin joins the chat list without
+// evicting anything; recall_range still adds its own slot on top.
+export const HOT_SET_DEFAULT_MAX = 13;
 /** chars / 2.6 is the estimate the audit uses for tool definitions. */
 export const TOOL_DEFINITION_CHARS_PER_TOKEN = 2.6;
 
@@ -79,6 +81,10 @@ const CHAT_HOT: readonly string[] = [
   // model has no near substitute to fall back on: it just says it cannot.
   HOT_SET_CRON_TOOL,
   "sessions_send",
+  // PLAN-55 Phase 1: the prompt names memory_pin as THE tool for corrections
+  // and settled facts; a tool the model has to search for loses to
+  // working_memory_note, which is always there.
+  "memory_pin",
 ];
 /** Lanes with nobody watching a canvas do not carry the tools that draw on one. */
 const NO_SCREEN: ReadonlySet<string> = new Set(["browser", "canvas", HOT_SET_ARTIFACT_TOOL]);

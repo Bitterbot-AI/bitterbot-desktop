@@ -239,9 +239,9 @@ describe("review-round fixes", () => {
     expect(store.pin({ key: KEY, value: "victor", source: "agent_pin" }).op).toBe("rejected");
   });
 
-  it("a soft-retired agent_pin row is not a current belief either (extraction may replace it)", () => {
+  it("a soft-retired agent_pin row is not a current belief for extraction (decay-retired: the agent's own retire of a tier-2 row is held since Phase 1)", () => {
     store.pin({ key: KEY, value: "Victor", source: "agent_pin" });
-    store.retire(KEY, { reason: "agent" });
+    store.retire(KEY, { reason: "decay" });
     expect(store.pin({ key: KEY, value: "Vic", source: "extraction" }).op).toBe("supersede");
     expect(conflicts()).toEqual([]);
   });

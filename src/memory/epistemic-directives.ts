@@ -534,7 +534,14 @@ export class EpistemicDirectiveEngine {
         // must never be offered back as "which is current?").
         const currentStatus = (currentStatusStmt.get(row.key) as { status: string } | undefined)
           ?.status;
-        if (row.kind === "owner_retired" || (currentStatus && currentStatus !== "active")) {
+        // PLAN-55 Phase 1: a held agent retire is for the confirmation line
+        // and the owner's review, never a "which is current?" question (there
+        // is no second value to ask about).
+        if (
+          row.kind === "owner_retired" ||
+          row.kind === "pending_retire" ||
+          (currentStatus && currentStatus !== "active")
+        ) {
           consumeStmt.run(now, null, row.id);
           continue;
         }

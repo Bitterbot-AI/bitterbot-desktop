@@ -102,7 +102,10 @@ describe("PLAN-34 Phase 1 — closed directive loop (acceptance)", () => {
 
     const answered = engine.getDirective(question.id)!;
     expect(answered.status).toBe("answered");
-    expect(answered.resolvedAt).toBeNull(); // survival window still open
+    // PLAN-55 Phase 1 review (item 2): the owner picking an offered value is
+    // an owner-tier write, which settles the question on the spot.
+    expect(answered.resolvedAt).not.toBeNull();
+    expect(answered.resolution).toBe("a2a.new.example");
     expect(engine.getDirectivesForSession({ sessionKey: "session-2" })).toHaveLength(0);
 
     // The answer is a retrievable crystal with transcript evidence.
@@ -116,17 +119,18 @@ describe("PLAN-34 Phase 1 — closed directive loop (acceptance)", () => {
     expect(JSON.parse(crystal.evidence_refs)).toEqual([
       { kind: "session", path: "/sessions/owner.jsonl", line: 2 },
     ]);
-    // The ledger was corroborated, not forked.
+    // The ledger was corroborated, not forked, and now carries the owner's authority.
     expect(store.get("infra.gateway")!.value).toBe("a2a.new.example");
     expect(store.get("infra.gateway")!.mentionCount).toBeGreaterThanOrEqual(2);
+    expect(store.get("infra.gateway")!.source).toBe("owner");
 
-    // 6. Same-cycle finalize is a no-op; the NEXT cycle resolves it.
+    // 6. Finalize has nothing left to do: the answer settled the directive.
     expect(
       finalizeAnsweredDirectives({ engine, canonicalStore: store, cutoffTs: cycle1 - 60_000 }),
     ).toBe(0);
     expect(
       finalizeAnsweredDirectives({ engine, canonicalStore: store, cutoffTs: Date.now() + 60_000 }),
-    ).toBe(1);
+    ).toBe(0);
     const resolved = engine.getDirective(question.id)!;
     expect(resolved.resolvedAt).not.toBeNull();
     expect(resolved.resolution).toBe("a2a.new.example");
@@ -136,17 +140,21 @@ describe("PLAN-34 Phase 1 — closed directive loop (acceptance)", () => {
     expect(engine.sweepCanonicalConflicts()).toBe(0);
   });
 
-  it("trust tiers hold for answers: an extraction-tier answer cannot overwrite a deliberate pin, and the contradicted answer never resolves", async () => {
-    // The user deliberately pinned A; background extraction proposed B.
-    store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "user_directive" });
-    store.pin({ key: "project.repo", value: "github.com/org/beta", source: "extraction" });
-    engine.sweepCanonicalConflicts();
-    const question = engine.listOpenDirectives(5)[0];
+  it("PLAN-55 Phase 1 review (item 2): a held agent supersede -> question -> the owner's answer settles it at owner tier", () => {
+    // The owner pinned A; the agent tried B and was held (pending_supersede).
+    store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "owner" });
+    expect(
+      store.pin({ key: "project.repo", value: "github.com/org/beta", source: "agent_pin" }).op,
+    ).toBe("held");
+    expect(engine.sweepCanonicalConflicts()).toBe(1);
+    const question = engine.listOpenDirectives(5)[0]!;
+    expect(question.question).toMatch(/Which is current for project.repo/);
 
-    // The owner answers with the EXTRACTION value. Routing stays a normal
-    // reconciler proposal: extraction tier still cannot supersede the
-    // deliberate pin (that requires memory_pin), so the ledger keeps A.
-    applyDirectiveResolutions({
+    // The owner answers with the AGENT's value: one of the two offered
+    // candidates, so it is the owner's own choice and lands at owner tier
+    // (an extraction-tier pin would have been rejected by the very tier
+    // that caused the hold, leaving the question unsettleable).
+    const applied = applyDirectiveResolutions({
       db,
       engine,
       canonicalStore: store,
@@ -161,17 +169,41 @@ describe("PLAN-34 Phase 1 — closed directive loop (acceptance)", () => {
       sessionPath: "/sessions/owner.jsonl",
       now: Date.now(),
     });
-    expect(engine.getDirective(question.id)!.status).toBe("answered"); // stops asking
-    expect(store.get("project.repo")!.value).toBe("github.com/org/alpha"); // tier held
-
-    // Ledger value != stored answer -> contradicted -> never resolves, and
-    // the row leaves limbo (terminal 'expired') so the key can re-ask.
-    expect(
-      finalizeAnsweredDirectives({ engine, canonicalStore: store, cutoffTs: Date.now() + 60_000 }),
-    ).toBe(0);
+    expect(applied).toEqual({ answered: 1, pinned: 1 });
+    expect(store.get("project.repo")).toMatchObject({
+      value: "github.com/org/beta",
+      source: "owner",
+      evidenceRef: "session:/sessions/owner.jsonl#L2",
+    });
     const done = engine.getDirective(question.id)!;
-    expect(done.resolvedAt).toBeNull();
-    expect(done.status).toBe("expired");
+    expect(done.status).toBe("answered");
+    expect(done.resolvedAt).not.toBeNull();
+    expect(engine.listOpenDirectives(5)).toEqual([]);
+    expect(store.listPendingSupersedes()).toEqual([]);
+    expect(
+      db.prepare(`SELECT COUNT(*) AS n FROM canonical_conflicts WHERE consumed_at IS NULL`).get(),
+    ).toEqual({ n: 0 });
+    // Audit names the actor.
+    const audit = db
+      .prepare(`SELECT metadata FROM memory_audit_log WHERE event = 'owner_pin_fact'`)
+      .all() as Array<{ metadata: string }>;
+    expect(JSON.parse(audit.at(-1)!.metadata)).toMatchObject({ actor: "directive_answer" });
+    // Nothing to re-ask: a later sweep creates nothing.
+    expect(engine.sweepCanonicalConflicts()).toBe(0);
+  });
+
+  it("PLAN-55 Phase 1 review (item 2): the owner settling the key through memory.pinFact closes the open question too", () => {
+    store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "owner" });
+    store.pin({ key: "project.repo", value: "github.com/org/beta", source: "agent_pin" });
+    engine.sweepCanonicalConflicts();
+    expect(engine.listOpenDirectives(5)).toHaveLength(1);
+    // The owner restates the original value (Memory page, RPC, or a chat
+    // correction): a strengthen at owner tier.
+    expect(
+      store.pin({ key: "project.repo", value: "github.com/org/alpha", source: "owner" }).op,
+    ).toBe("strengthen");
+    expect(engine.listOpenDirectives(5)).toEqual([]);
+    expect(store.get("project.repo")?.value).toBe("github.com/org/alpha");
   });
 
   it("candidate constraint: a deictic or off-candidate quote answers the question but never moves the ledger", () => {

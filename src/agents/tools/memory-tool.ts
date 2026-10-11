@@ -1,10 +1,12 @@
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { MemoryCitationsMode } from "../../config/types.memory.js";
+import { normalizeCanonicalScope } from "../../memory/canonical-facts.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemorySearchResult } from "../../memory/types.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
+import { resolveActiveProjectName } from "../canonical-facts-block.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
@@ -267,8 +269,10 @@ export function createMemoryExpandTool(options: {
 export function createMemoryPinTool(options: {
   config?: BitterbotConfig;
   agentSessionKey?: string;
-  /** PLAN-53 G2: a non-owner sent this turn; recall only what a guest may see. */
+  /** PLAN-53 G2: a non-owner sent this turn; the ledger tool is not offered at all. */
   memoryGuest?: boolean;
+  /** PLAN-55 Phase 1: the run's workspace; `project:<name>` scopes must name its project. */
+  workspaceDir?: string;
 }): AnyAgentTool | null {
   const ctx = resolveMemoryToolContext(options);
   if (!ctx) {
@@ -278,6 +282,13 @@ export function createMemoryPinTool(options: {
   if (cfg.memory?.canonicalLedger?.enabled === false) {
     return null;
   }
+  // A guest can neither read the owner's ledger nor write beliefs into it:
+  // the tool is absent from a guest turn rather than listed and refusing
+  // (PLAN-55 Phase 1 review, item 10).
+  if (options.memoryGuest) {
+    return null;
+  }
+  const activeProject = resolveActiveProjectName(options.workspaceDir);
   return {
     label: "Memory Pin",
     name: "memory_pin",
@@ -285,10 +296,6 @@ export function createMemoryPinTool(options: {
       "Pin a canonical fact (exact key-value ground truth: repo names, endpoints, identities, standing decisions) into the always-injected ledger. THE tool for corrections and settled facts: use it when the user corrects you, states a durable fact, or says 'remember this'. Actions: pin {key, value, statement?, category?, evidence?, scope?} (add/strengthen/supersede automatically), list (active facts), get {key} (current belief + history), retire {key} (stop injecting; kept for audit). evidence = a short verbatim quote of the user's words. scope = 'global' (default), 'project:<name>' (only for that project) or 'person:<name>'. Replacing a fact you or the owner pinned earlier is held for the owner's confirmation (result.held). Keys are dot-slugs like 'project.repo'; categories: identity|project|infra|preference|relationship.",
     parameters: MemoryPinSchema,
     execute: async (_toolCallId, args) => {
-      // A guest can neither read the owner's ledger nor write beliefs into it.
-      if (options.memoryGuest) {
-        return jsonResult({ ok: false, error: GUEST_REFUSAL });
-      }
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
       const { manager, error } = await getMemorySearchManager({ cfg, agentId });
@@ -304,6 +311,25 @@ export function createMemoryPinTool(options: {
           const category = readStringParam(params, "category");
           const evidence = readStringParam(params, "evidence");
           const scope = readStringParam(params, "scope");
+          // PLAN-55 Phase 1 review (item 6): a project scope must be the
+          // active project, or the fact would be invisible everywhere.
+          if (scope && /^\s*project\s*:/i.test(scope)) {
+            const wanted = normalizeCanonicalScope(scope);
+            if (!activeProject) {
+              return jsonResult({
+                ok: false,
+                op: "rejected",
+                reason: "no project is active in this workspace; pin it as global or person:<name>",
+              });
+            }
+            if (wanted !== `project:${activeProject}`) {
+              return jsonResult({
+                ok: false,
+                op: "rejected",
+                reason: `the active project is "${activeProject}"; a project scope must be project:${activeProject}`,
+              });
+            }
+          }
           const result = store.pin({
             key: key ?? "",
             value: value ?? "",
@@ -363,8 +389,25 @@ export function createMemoryPinTool(options: {
         if (action === "retire") {
           const key = readStringParam(params, "key", { required: true });
           // The agent's retire is soft (PLAN-55 Phase 0): a later same-value
-          // pin reactivates it. Only the owner's retire is sticky.
-          return jsonResult({ ok: store.retire(key ?? "", { reason: "agent" }), key });
+          // pin reactivates it. Only the owner's retire is sticky. Retiring a
+          // belief the owner or the agent pinned deliberately is held for
+          // the owner (Phase 1 review), like replacing one.
+          const result = store.retireAgent(key ?? "");
+          if (result.op === "held") {
+            return jsonResult({
+              ok: false,
+              held: true,
+              op: "held",
+              key,
+              reason: result.reason,
+              current: {
+                key: result.fact!.key,
+                value: result.fact!.value,
+                source: result.fact!.source,
+              },
+            });
+          }
+          return jsonResult({ ok: result.op === "retired", op: result.op, key });
         }
         return jsonResult({ ok: false, error: `unknown action "${action}"` });
       } catch (err) {

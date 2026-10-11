@@ -57,6 +57,9 @@ export type UsageFeature = (typeof USAGE_FEATURES)[keyof typeof USAGE_FEATURES] 
 export const BACKGROUND_USAGE_FEATURES: ReadonlySet<string> = new Set([
   USAGE_FEATURES.memoryDream,
   USAGE_FEATURES.memoryExtraction,
+  // PLAN-55 Phase 1: the per-turn correction pass is hidden spend too; an
+  // exceeded budget in enforce mode pauses it (the reply still goes out).
+  USAGE_FEATURES.memoryCorrection,
   USAGE_FEATURES.memoryMarketability,
   USAGE_FEATURES.memoryDiscovery,
   USAGE_FEATURES.skillsEvolution,

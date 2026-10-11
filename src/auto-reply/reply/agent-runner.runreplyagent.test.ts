@@ -30,6 +30,7 @@ const state = vi.hoisted(() => ({
   runCliAgentMock: vi.fn(),
   // PLAN-55 Phase 1: the correction capture hook; null = no line.
   correctionLineMock: vi.fn(async (_params: unknown): Promise<string | null> => null),
+  steeredMock: vi.fn((_sessionId: string, _body: string) => {}),
 }));
 
 let runReplyAgentPromise:
@@ -80,6 +81,8 @@ vi.mock("./agent-runner-memory.js", async () => {
   return {
     ...actual,
     runCorrectionCaptureAfterTurn: (params: unknown) => state.correctionLineMock(params),
+    rememberSteeredUserTurn: (sessionId: string, body: string) =>
+      state.steeredMock(sessionId, body),
   };
 });
 
@@ -93,6 +96,7 @@ beforeEach(() => {
   state.runCliAgentMock.mockReset();
   state.correctionLineMock.mockReset();
   state.correctionLineMock.mockResolvedValue(null);
+  state.steeredMock.mockReset();
   vi.stubEnv("BITTERBOT_TEST_FAST", "1");
 });
 
@@ -1213,6 +1217,25 @@ describe("runReplyAgent correction confirmation line", () => {
     expect(params.replyText).toBe("Got it.");
     expect(params.isHeartbeat).toBe(false);
     expect(typeof params.runStartedAt).toBe("number");
+  });
+
+  it("review item 9: a turn with no payload (block-streamed, delivered directly) still delivers the line on its own", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValue({ payloads: [], meta: {} });
+    state.correctionLineMock.mockResolvedValue("Memory updated: deploy endpoint = api2.acme.com");
+    const { run } = createMinimalRun();
+    const res = await run();
+    expect(res).toEqual({ text: "Memory updated: deploy endpoint = api2.acme.com" });
+    expect(state.correctionLineMock).toHaveBeenCalledTimes(1);
+    // The hook saw the turn even though there was nothing to append to.
+    const params = state.correctionLineMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect(params.replyText).toBe("");
+  });
+
+  it("review item 9: a turn with no payload and nothing to say returns nothing", async () => {
+    state.runEmbeddedPiAgentMock.mockResolvedValue({ payloads: [], meta: {} });
+    const { run } = createMinimalRun();
+    expect(await run()).toBeUndefined();
+    expect(state.correctionLineMock).toHaveBeenCalledTimes(1);
   });
 
   it("leaves the reply alone when the hook has nothing to say", async () => {

@@ -359,10 +359,11 @@ export type OwnerPinInput = {
   evidenceRef?: string;
   /**
    * PLAN-55 Phase 1: who is asking. `owner` is the Memory page / RPC / CLI;
-   * `correction` is the per-turn capture of the owner's own message. Audit
-   * only: both write at the owner tier.
+   * `correction` is the per-turn capture of the owner's own message;
+   * `directive_answer` is the owner choosing one of the values a "which is
+   * current?" question offered. Audit only: all write at the owner tier.
    */
-  actor?: "owner" | "correction";
+  actor?: "owner" | "correction" | "directive_answer";
 };
 
 /**

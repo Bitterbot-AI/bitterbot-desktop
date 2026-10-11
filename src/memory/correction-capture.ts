@@ -10,35 +10,42 @@
  * 1. A fast regex pre-filter (CORRECTION_PREFILTER_PATTERNS) decides whether
  *    the user's message has a corrective or imperative shape at all. Most
  *    turns do not, and cost nothing.
- * 2. On a hit, ONE cheap-model call over the last user message plus the
+ * 2. On a hit, ONE cheap-model call over the owner's own words plus the
  *    assistant reply, with the narrow canonical-only prompt from the
  *    extractor's prompt family (buildCorrectionExtractionPrompt), returns
  *    `{facts:[{key,value,statement,correction,scope}]}`.
  * 3. Each fact is pinned. At tier `owner` (owner-controls.pinFact) when the
- *    model flagged it as a correction AND the value appears verbatim in the
- *    owner's own words; at tier `extraction` otherwise. Evidence is the
- *    session line ref of the owner's message. The model's `correction` and
- *    `scope` are hints: the owner tier is reached only through the owner's
- *    text, so neither a tool result nor an agent pin's forged `evidence`
- *    can promote a fact (adversarial pass, 2026-10-10).
+ *    model flagged it as a correction AND the value appears as a whole token
+ *    in the owner's own words outside a negation ("not X", "instead of X");
+ *    at tier `extraction` otherwise. Evidence is the session line ref of the
+ *    owner's message. The model's `correction` and `scope` are hints: the
+ *    owner tier is reached only through the owner's text, so neither a tool
+ *    result, a quoted or forwarded message, nor an agent pin's forged
+ *    `evidence` can promote a fact. Credential-shaped values never land.
  * 4. The reply gets one "Memory updated" line generated from the op results
  *    (never by the model): the pass's writes, the agent's own `memory_pin`
- *    writes during the turn, and agent supersedes that were held for the
- *    owner (`pending_supersede`).
+ *    writes during the turn, and agent supersedes or retires that were held
+ *    for the owner (`pending_supersede` / `pending_retire`).
  *
  * Skipped: heartbeats, cron, subagents, A2A, circles, group/channel chats
- * and guests (classifySessionKeyTrust), non-owner senders, followup and
- * slug-generator runs (they never reach this hook), `session.memory = "off"`,
- * `memory.correction.enabled = false`, and every pre-filter miss. Budget:
- * at most one model call per owner turn, recorded in the usage ledger as
- * `memory/correction`.
+ * and guests (classifySessionKeyTrust), non-owner senders, the slug
+ * generator and isolated cron runs (they never reach the hook),
+ * `session.memory = "off"`, `memory.correction.enabled = false`, and every
+ * pre-filter miss. Budget: at most one model call per owner turn, recorded
+ * in the usage ledger as `memory/correction`, cancelled (not just abandoned)
+ * when the reply-path cap expires, and paused by `usage.budgets.mode:
+ * enforce` like the other background lanes.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
-import { type CanonicalFactsStore, normalizeCanonicalScope } from "./canonical-facts.js";
+import {
+  type CanonicalFactsStore,
+  normalizeCanonicalScope,
+  normalizeScopeName,
+} from "./canonical-facts.js";
 import type { OwnerPinInput, OwnerPinResult } from "./owner-controls.js";
 import {
   buildCorrectionExtractionPrompt,
@@ -56,45 +63,119 @@ export const CORRECTION_LLM_LANE = {
   batch: false,
 } as const;
 
-/** Wall-clock cap on the whole pass; the reply is waiting on it. */
+/** Wall-clock cap on the whole pass; the reply is waiting on it and the model call is aborted. */
 export const CORRECTION_CAPTURE_TIMEOUT_MS = 12_000;
 
 const EXTERNAL_START = "<<<EXTERNAL_UNTRUSTED_CONTENT>>>";
 const EXTERNAL_END = "<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>";
+/** Code points, not UTF-16 units: the cut never splits a surrogate pair. */
 const MAX_LINE_CHARS = 320;
 /** Transcripts above this are cited by file only (no line lookup on the reply path). */
 export const MAX_TRANSCRIPT_BYTES_FOR_LINE_REF = 4 * 1024 * 1024;
+
+export type CorrectionLlmCall = (
+  prompt: string,
+  opts?: { signal?: AbortSignal },
+) => Promise<string>;
+
+/** Verbs that make `always`/`never` an instruction rather than a description. */
+const INSTRUCTION_VERB =
+  "(?:use|do|call|reply|respond|answer|send|write|deploy|run|put|say|ask|include|add|remove|format|start|stop|treat|assume|refer|speak|address|check|open|commit|push|merge|skip|avoid|keep|make|book|schedule|order|buy|pay|set|post|email|text|ping|tag|log|save|store|read|show|tell|give|print|return|render|output|apply|follow|ignore|prefer|want|need|be|go|sign|wake|mention|default|cc|reach|contact|talk|greet|summarize|summarise|translate|pick|choose|route|deliver|notify|remind|wait|confirm|assume)";
+/** Nouns after "my" that name an identity or a standing preference. */
+const IDENTITY_NOUN =
+  "(?:name|first name|last name|surname|nickname|handle|username|timezone|time zone|email|e-mail|phone|number|address|birthday|pronouns?|repo|repository|endpoint|url|domain|editor|shell|os|stack|language|preference|default|company|employer|team|role|title|github|discord|slack|telegram|wallet|project|workspace|branch|org|organization|organisation|locale|currency|city|country|calendar|assistant|bot)";
 
 /**
  * The corrective / imperative shapes that earn a model call. Documented
  * here because the list IS the cost policy: a shape not in it is never
  * captured on the hot path (the dream-time extractor still sees it later).
- * All patterns run over prose only: fenced code, inline code, quoted lines
- * (`> ...`) and external-content envelopes are stripped first, so a pasted
- * diff or a forwarded email cannot trigger a call or reach the model as the
- * owner's words.
+ * `unless` vetoes a match (question frames, hedges). All patterns run over
+ * prose only: fenced code, inline code, quoted lines (`> ...`), reply /
+ * quote / forward blocks, inbound-context blocks and external-content
+ * envelopes are stripped first, so a pasted diff, a quoted message or a
+ * forwarded email cannot trigger a call or reach the model as the owner's
+ * words.
  */
-export const CORRECTION_PREFILTER_PATTERNS: ReadonlyArray<{ name: string; rx: RegExp }> = [
-  // "No, ..." / "Nope." / "Wrong:" at the start of the message or a sentence.
-  { name: "no-comma", rx: /(^|[.!?]\s+)(no|nope|wrong|incorrect)\b\s*[,.!:;-]/i },
+export const CORRECTION_PREFILTER_PATTERNS: ReadonlyArray<{
+  name: string;
+  rx: RegExp;
+  unless?: RegExp;
+}> = [
+  // "No, ..." / "Nope." / "Wrong:" at the start of the message, a line or a sentence.
+  { name: "no-comma", rx: /(^|[.!?]\s+)(no|nope|wrong|incorrect)\b\s*[,.!:;-]/im },
   // "X is not Y" / "it's not X" / "isn't".
   { name: "not-x", rx: /\b(is|it'?s|that'?s|was|are|were)\s+not\b|\b(isn'?t|aren'?t|wasn'?t)\b/i },
-  { name: "actually", rx: /\bactually\b/i },
-  { name: "always", rx: /\balways\b/i },
-  { name: "never", rx: /\bnever\b/i },
+  // "actually" with a fact frame after it, never a hedge or a plan change.
+  {
+    name: "actually",
+    rx: /\bactually\b[^.!?]{0,60}\b(is|are|was|were|it'?s|that'?s|not|isn'?t|should|use|call me|my|the)\b/i,
+    unless: /\bactually,?\s+(let'?s|let us|can|could|would|maybe|i think|never mind|forget)/i,
+  },
+  // "always"/"never" as an instruction: sentence-initial, in a request frame,
+  // or followed by an instruction verb within three tokens.
+  {
+    name: "always",
+    rx: new RegExp(
+      String.raw`(^|[.!?]\s+)(please\s+)?always\b|\b(you should|you must|should|please|i want you to|make sure (you|to)|from now on)\s+always\b|\balways\s+(\w+ly\s+)?${INSTRUCTION_VERB}\b`,
+      "i",
+    ),
+  },
+  {
+    name: "never",
+    rx: new RegExp(
+      String.raw`(^|[.!?]\s+)(please\s+)?never\b|\b(you should|you must|should|please|i want you to|make sure (you|to)|from now on)\s+never\b|\bnever\s+(\w+ly\s+)?${INSTRUCTION_VERB}\b`,
+      "i",
+    ),
+  },
   { name: "from-now-on", rx: /\bfrom now on\b/i },
-  { name: "remember", rx: /\bremember\b/i },
+  // "remember that/this/to/my ...", never "remember what/when" or a question.
+  {
+    name: "remember",
+    rx: /\bremember\s+(that|this|to|my|our|the|i|i'm|we|it|he|she|they)\b/i,
+    unless:
+      /\b(do|can|could|would|did|will|don'?t|didn'?t)\s+you\s+remember\b|\bremember\s+(what|when|where|who|how|if|whether|why)\b/i,
+  },
   // "it's X not Y" / "X, not Y".
   { name: "x-not-y", rx: /\b(it'?s|is)\s+[^,.;!?]{1,80}?,?\s+not\s+\S/i },
   { name: "use-instead", rx: /\buse\b[^.!?]{0,80}\binstead\b|\binstead of\b/i },
-  { name: "i-prefer", rx: /\bI('d| would)?\s+prefer\b/i },
+  // "I prefer X over/instead of/not Y", never "I'd prefer the blue one".
+  {
+    name: "i-prefer",
+    rx: /\bI('d| would)?\s+prefer\b[^.!?]{0,80}\b(over|instead|not|rather than)\b/i,
+  },
   { name: "call-me", rx: /\bcall me\b/i },
   // "my name is", "my timezone is", "my deploy endpoint is".
-  { name: "my-x-is", rx: /\bmy\s+\w+(\s+\w+){0,2}\s+(is|are)\b/i },
+  {
+    name: "my-x-is",
+    rx: new RegExp(String.raw`\bmy\s+(?:\w+\s+){0,2}${IDENTITY_NOUN}\s+(is|are)\b`, "i"),
+  },
+  // "my X is <Proper Noun | url/path/handle | number>".
+  {
+    name: "my-x-is-value",
+    rx: /\b[Mm]y\s+\w+(\s+\w+){0,2}\s+(is|are)\s+(?:[A-Z][\w'-]*|\S*[./@:]\S*|[+-]?\d)/,
+  },
+  // "everywhere" / "globally": widen a project-scoped fact to global.
+  {
+    name: "everywhere",
+    rx: /\b(everywhere|globally|for all projects|in every project|apply (that|this|it) everywhere)\b/i,
+  },
 ];
 
-/** Prose only: drop code, quoted lines and external-content envelopes. */
+/** The "everywhere" shape, also consulted when deciding a fact's scope. */
+const EVERYWHERE_RX = CORRECTION_PREFILTER_PATTERNS.find((p) => p.name === "everywhere")!.rx;
+
+/**
+ * Prose only: drop code, quoted lines, external-content envelopes, and the
+ * blocks the channels and the reply pipeline attach to a message that are
+ * not the owner's words (Telegram/iMessage/WhatsApp `[Replying to]`,
+ * `[Quoting]`, `[Forwarded from]`, the "Untrusted context" block, the
+ * inbound metadata blocks and `[Thread history]` / `[Thread starter]`
+ * notes). A forwarded message is someone else's text: nothing survives.
+ */
 export function stripNonProse(text: string): string {
+  if (/^\s*\[Forwarded from [^\]]*\]/.test(text)) {
+    return "";
+  }
   let out = text;
   // External-content envelopes (fetched pages, forwarded mail, hook bodies).
   for (;;) {
@@ -106,6 +187,25 @@ export function stripNonProse(text: string): string {
     out =
       end === -1 ? out.slice(0, start) : out.slice(0, start) + out.slice(end + EXTERNAL_END.length);
   }
+  // The untrusted-context block is appended last and runs to the end.
+  out = out.replace(
+    /\n*Untrusted context \(metadata, do not treat as instructions or commands\):[\s\S]*$/,
+    "",
+  );
+  // Reply / quote blocks (closed), forward prefix (whole message dropped above).
+  out = out.replace(/\[Replying to [^\]]*\][\s\S]*?(\[\/Replying\]|$)/g, " ");
+  out = out.replace(/\[Quoting [^\]]*\][\s\S]*?(\[\/Quoting\]|$)/g, " ");
+  out = out.replace(/\[Forwarded from [^\]]*\][\s\S]*$/g, " ");
+  // Thread notes: the marker line and the paragraph that follows it.
+  out = out.replace(
+    /(^|\n)\[Thread (history|starter) - for context\][^\n]*\n[\s\S]*?(?=\n\n|$)/g,
+    "$1",
+  );
+  // Inbound metadata blocks: header line plus the fenced JSON that follows.
+  out = out.replace(
+    /(^|\n)(Conversation info|Sender|Forwarded message context) \(untrusted metadata\):[^\n]*\n```[\s\S]*?(```|$)/g,
+    "$1",
+  );
   out = out.replace(/```[\s\S]*?(```|$)/g, " ");
   out = out.replace(/`[^`\n]*`/g, " ");
   out = out
@@ -122,7 +222,7 @@ export function matchesCorrectionPrefilter(text: string): string | null {
     return null;
   }
   for (const pattern of CORRECTION_PREFILTER_PATTERNS) {
-    if (pattern.rx.test(prose)) {
+    if (pattern.rx.test(prose) && !(pattern.unless && pattern.unless.test(prose))) {
       return pattern.name;
     }
   }
@@ -142,15 +242,22 @@ export type CorrectionWrite = {
   by: "correction" | "agent";
 };
 
-export type HeldSupersede = { key: string; currentValue: string; proposedValue: string };
+export type HeldSupersede = {
+  key: string;
+  kind: "pending_supersede" | "pending_retire";
+  currentValue: string;
+  /** Empty for a held retire. */
+  proposedValue: string;
+};
 
 export type CorrectionCaptureInput = {
   cfg: BitterbotConfig;
   sessionKey?: string;
   /** The session transcript (JSONL) this turn was appended to; evidence refs point into it. */
   sessionFile?: string;
-  /** The run's workspace, for the scope hint (project = basename). */
+  /** The run's workspace project (basename), or null when none is active. */
   activeProject?: string | null;
+  /** The owner's own words: the raw inbound body, never the prompt with its context blocks. */
   userMessage: string;
   assistantReply: string;
   senderIsOwner: boolean;
@@ -163,7 +270,9 @@ export type CorrectionCaptureInput = {
   /** The owner tier's writer (manager.ownerPinFact, which serialises on the maintenance mutex). */
   pinAsOwner: ((input: OwnerPinInput) => Promise<OwnerPinResult>) | null | undefined;
   /** The cheap-model lane (manager.correctionLlmCall); null disables the model call. */
-  llmCall: ((prompt: string) => Promise<string>) | null | undefined;
+  llmCall: CorrectionLlmCall | null | undefined;
+  /** Aborts the model call (the reply-path cap). */
+  signal?: AbortSignal;
   now?: number;
 };
 
@@ -222,14 +331,106 @@ export function resolveCorrectionSkipReason(params: {
 }
 
 const normalizeForMatch = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+const escapeRx = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Did the owner literally write this value? The gate to the owner tier. */
+/** Tokens that, just before a value, mark it as the OLD or rejected one. */
+const NEGATOR_TOKENS = new Set([
+  "not",
+  "no",
+  "never",
+  "isn't",
+  "aren't",
+  "wasn't",
+  "weren't",
+  "was",
+  "were",
+  "old",
+  "formerly",
+  "previously",
+  "longer",
+  "than",
+  "of",
+]);
+const NEGATOR_PHRASE_RX = /\b(instead of|no longer|rather than|used to be|not)\s*$/;
+const NEGATOR_WINDOW_TOKENS = 3;
+
+/**
+ * Did the owner literally write this value, as a whole token, somewhere
+ * it is asserted rather than rejected? The gate to the owner tier.
+ * "no, not api2, it's api3" makes api3 eligible and api2 not.
+ */
 export function userMessageContainsValue(userMessage: string, value: string): boolean {
   const needle = normalizeForMatch(value);
   if (needle.length < 2) {
     return false;
   }
-  return normalizeForMatch(stripNonProse(userMessage)).includes(needle);
+  const prose = normalizeForMatch(stripNonProse(userMessage));
+  if (!prose) {
+    return false;
+  }
+  const rx = new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRx(needle)}(?=$|[^\\p{L}\\p{N}])`, "gu");
+  for (const match of prose.matchAll(rx)) {
+    // Only the clause the value sits in: "No, it is X" asserts X even though
+    // the sentence opens with a negator.
+    const before = prose
+      .slice(0, match.index ?? 0)
+      .split(/[,.;:!?]|\bbut\b/)
+      .at(-1)!
+      .trim();
+    if (NEGATOR_PHRASE_RX.test(before)) {
+      continue;
+    }
+    const window = before
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(-NEGATOR_WINDOW_TOKENS)
+      .map((t) => t.replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, ""));
+    const negated = window.some((t) => NEGATOR_TOKENS.has(t) || t.endsWith("n't"));
+    if (!negated) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Does the owner's prose name this scope's project or person? */
+function proseNamesScope(prose: string, name: string): boolean {
+  const forms = new Set([name, name.replace(/-/g, " "), name.replace(/-/g, "")]);
+  return [...forms].some((form) => form.length >= 2 && userMessageContainsValue(prose, form));
+}
+
+/**
+ * The scope a correction is written with (PLAN-55 review items 6-8):
+ * - "everywhere"/"globally" in the owner's words: explicitly global;
+ * - no scope from the model: undefined, so a supersede keeps the replaced
+ *   belief's scope and an add is global (deliberate deviation from plan
+ *   §3.2, which defaulted to the current project);
+ * - `project:<x>`: only when a project is active, it is that project, and
+ *   the owner's words name it; otherwise undefined;
+ * - `person:<x>`: only when the owner's words name the person.
+ */
+export function resolveCorrectionScope(params: {
+  modelScope: string | undefined;
+  activeProject: string | null | undefined;
+  userMessage: string;
+}): string | undefined {
+  const prose = stripNonProse(params.userMessage);
+  if (EVERYWHERE_RX.test(prose)) {
+    return "global";
+  }
+  const scope = params.modelScope ? normalizeCanonicalScope(params.modelScope) : null;
+  if (!scope || scope === "global") {
+    return undefined;
+  }
+  if (scope.startsWith("project:")) {
+    const project = params.activeProject ? normalizeScopeName(params.activeProject) : null;
+    if (!project || scope !== `project:${project}` || !proseNamesScope(prose, project)) {
+      return undefined;
+    }
+    return scope;
+  }
+  const person = scope.slice("person:".length);
+  return proseNamesScope(prose, person) ? scope : undefined;
 }
 
 /**
@@ -268,7 +469,8 @@ export async function resolveUserMessageEvidenceRef(
       if (!line.startsWith("User: ")) {
         continue;
       }
-      if (!head || normalizeForMatch(line.slice("User: ".length)).startsWith(head)) {
+      const body = normalizeForMatch(line.slice("User: ".length));
+      if (!head || body.startsWith(head) || body.includes(head)) {
         return `session:${sessionFile}#L${i + 1}`;
       }
     }
@@ -295,6 +497,12 @@ function describeScope(scope: string): string | null {
     return `for ${normalized.slice("person:".length)}`;
   }
   return null;
+}
+
+/** Cut on code points so a surrogate pair is never split. */
+function truncateLine(line: string, max: number): string {
+  const points = Array.from(line);
+  return points.length > max ? `${points.slice(0, max - 3).join("")}...` : line;
 }
 
 /**
@@ -339,15 +547,16 @@ export function formatMemoryUpdatedLine(params: {
     parts.push(`Memory updated: ${items.join("; ")}`);
   }
   if (held.length > 0) {
-    const items = held.map(
-      (h) => `${humanizeFactKey(h.key)} ${h.currentValue} -> ${h.proposedValue}`,
+    const items = held.map((h) =>
+      h.kind === "pending_retire"
+        ? `retire ${humanizeFactKey(h.key)} (${h.currentValue})`
+        : `${humanizeFactKey(h.key)} ${h.currentValue} -> ${h.proposedValue}`,
     );
     parts.push(
       `${writes.length > 0 ? "held" : "Memory: held"} for your confirmation: ${items.join("; ")}`,
     );
   }
-  const line = parts.join("; ").replace(/\s+/g, " ");
-  return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS - 3)}...` : line;
+  return truncateLine(parts.join("; ").replace(/\s+/g, " "), MAX_LINE_CHARS);
 }
 
 /**
@@ -419,12 +628,7 @@ export async function runCorrectionCapture(
           input.userMessage,
         );
         for (const fact of facts) {
-          const write = await pinCorrectionFact({
-            fact,
-            input,
-            store,
-            evidenceRef,
-          });
+          const write = await pinCorrectionFact({ fact, input, store, evidenceRef });
           if (write) {
             result.writes.push(write);
           }
@@ -432,12 +636,15 @@ export async function runCorrectionCapture(
       }
     }
     // The model path: what the agent pinned itself during this run, and what
-    // it tried to replace and was held on.
+    // it tried to replace or retire and was held on.
     const own = new Set(result.writes.map((w) => w.key));
     result.writes.push(...collectAgentWritesSince(store, input.runStartedAt, own));
-    result.held = store
-      .listPendingSupersedes({ since: input.runStartedAt })
-      .map((h) => ({ key: h.key, currentValue: h.currentValue, proposedValue: h.proposedValue }));
+    result.held = store.listPendingSupersedes({ since: input.runStartedAt }).map((h) => ({
+      key: h.key,
+      kind: h.kind,
+      currentValue: h.currentValue,
+      proposedValue: h.proposedValue,
+    }));
     if (confirm) {
       result.line = formatMemoryUpdatedLine({
         writes: result.writes,
@@ -469,7 +676,7 @@ async function extractWithOneCall(
   result.llmCalls += 1;
   let raw: string;
   try {
-    raw = await input.llmCall!(prompt);
+    raw = await input.llmCall!(prompt, { signal: input.signal });
   } catch (err) {
     log.warn(`correction capture LLM call failed: ${String(err)}`);
     return [];
@@ -479,13 +686,23 @@ async function extractWithOneCall(
 
 async function pinCorrectionFact(params: {
   fact: CorrectionFact;
-  input: CorrectionCaptureInput;
+  input: CanonicalCaptureCtx;
   store: CanonicalFactsStore;
   evidenceRef: string | null;
 }): Promise<CorrectionWrite | null> {
   const { fact, input, store } = params;
-  const ownerAuthored = fact.correction && userMessageContainsValue(input.userMessage, fact.value);
-  const scope = fact.scope;
+  const scope = resolveCorrectionScope({
+    modelScope: fact.scope,
+    activeProject: input.activeProject,
+    userMessage: input.userMessage,
+  });
+  const current = store.get(fact.key);
+  // "everywhere" on a value the ledger already holds is the owner widening
+  // that fact: owner-authored by the value match, whatever the model's flag.
+  const widening =
+    scope === "global" && current?.status === "active" && current.value === fact.value;
+  const ownerAuthored =
+    widening || (fact.correction && userMessageContainsValue(input.userMessage, fact.value));
   const category = fact.key.split(".")[0];
   if (ownerAuthored) {
     const res = await input.pinAsOwner!({
@@ -511,7 +728,6 @@ async function pinCorrectionFact(params: {
       ...(res.previousValue ? { previousValue: res.previousValue } : {}),
     };
   }
-  const previous = store.get(fact.key);
   const res = store.pin({
     key: fact.key,
     value: fact.value,
@@ -533,6 +749,11 @@ async function pinCorrectionFact(params: {
     scope: res.fact.scope,
     tier: "extraction",
     by: "correction",
-    ...(res.op === "supersede" && previous ? { previousValue: previous.value } : {}),
+    ...(res.op === "supersede" && current ? { previousValue: current.value } : {}),
   };
 }
+
+type CanonicalCaptureCtx = Pick<
+  CorrectionCaptureInput,
+  "activeProject" | "userMessage" | "pinAsOwner"
+>;

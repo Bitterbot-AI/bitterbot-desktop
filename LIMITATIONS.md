@@ -70,10 +70,18 @@ open an issue.
   with the owner, and only when the message has a corrective shape (the list
   is in `docs/memory/controls.md`). Group chats, guests and scheduled runs
   are left to the slower dream-time extractor. A fact's project scope is the
-  agent's workspace folder name; there is no project model yet, and
-  person-scoped facts are not yet routed per person. When the agent tries to
-  replace a fact you or it pinned, the change is held and you are told, but
-  there is no one-tap confirm or revert yet: restate the value to settle it.
+  agent's workspace folder name; there is no project model yet, a correction
+  is global unless you name that project (a deliberate deviation from the
+  plan's "default to the current project"), and person-scoped facts are not
+  yet routed per person. When the agent tries to replace or retire a fact
+  you or it pinned, the change is held and you are told, but there is no
+  one-tap confirm or revert yet: restate the value, or answer the "which is
+  current?" question, to settle it.
+- **`session.memory = "off"` gates the learners, not the agent.** It stops
+  transcript indexing, the session extractor and the correction capture. It
+  does not stop `memory_pin`, `working_memory_note`, the pre-compaction
+  memory flush or compaction summaries, the transcript is still written to
+  disk, and switching back on (or a reindex) indexes those conversations.
 - **Changing the embedding provider, model or API key rebuilds the index.**
   Memories that come from files are re-embedded. Extracted facts, dream
   insights and notes are carried over as stored, not re-embedded with the new

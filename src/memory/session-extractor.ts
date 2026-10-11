@@ -23,6 +23,7 @@ import {
   normalizeCanonicalKey,
   normalizeCanonicalScope,
 } from "./canonical-facts.js";
+import { secretRejectionReason } from "./secret-shape.js";
 import type { SessionHandoverBrief } from "./session-handover.js";
 import { remapLine, stripHeartbeatTurns, windowTranscript } from "./session-transcript-prep.js";
 
@@ -247,7 +248,8 @@ export type CorrectionFact = {
   value: string;
   statement: string;
   correction: boolean;
-  scope: string;
+  /** `project:<name>` | `person:<name>`; undefined when the model named none (or global). */
+  scope: string | undefined;
 };
 
 export const CORRECTION_MAX_FACTS = 5;
@@ -330,6 +332,12 @@ export function parseCorrectionResponse(raw: string): CorrectionFact[] {
     if (!KNOWN_CATEGORY_PREFIXES.has(prefix) || seen.has(canonical.key)) {
       continue;
     }
+    // PLAN-55 review (item 5): a credential is never a fact, whatever the
+    // model says; dropped here before anything can echo it.
+    if (secretRejectionReason(canonical.key, canonical.value)) {
+      log.debug(`correction pass dropped a credential-shaped value for [${canonical.key}]`);
+      continue;
+    }
     seen.add(canonical.key);
     const statement =
       typeof entry.statement === "string" && entry.statement.trim()
@@ -340,8 +348,10 @@ export function parseCorrectionResponse(raw: string): CorrectionFact[] {
       value: canonical.value,
       statement,
       correction: entry.correction === true,
-      scope:
-        (typeof entry.scope === "string" ? normalizeCanonicalScope(entry.scope) : null) ?? "global",
+      scope: (() => {
+        const scope = typeof entry.scope === "string" ? normalizeCanonicalScope(entry.scope) : null;
+        return scope && scope !== "global" ? scope : undefined;
+      })(),
     });
     if (out.length >= CORRECTION_MAX_FACTS) {
       break;

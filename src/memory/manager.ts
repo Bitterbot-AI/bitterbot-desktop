@@ -324,7 +324,9 @@ export class MemoryIndexManager implements MemorySearchManager {
   /** PLAN-50: dedicated session-extraction lane (attributed to memory/extraction). */
   private extractionLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-55 Phase 1: the per-turn correction lane (same model as extraction, live, own feature). */
-  private correctionLlmCallFn: ((prompt: string) => Promise<string>) | null = null;
+  private correctionLlmCallFn:
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-18 Phase 1 — small fast LLM call for query decomposition. Lazy-built. */
   private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -3831,7 +3833,7 @@ export class MemoryIndexManager implements MemorySearchManager {
        */
       batch?: boolean;
     },
-  ): ((prompt: string) => Promise<string>) | null {
+  ): ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
       return null;
@@ -3844,7 +3846,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const feature = opts?.feature ?? USAGE_FEATURES.memoryDream;
     const agentDir = resolveAgentDir(this.cfg, this.agentId);
 
-    return async (prompt: string): Promise<string> => {
+    return async (prompt: string, callOpts?: { signal?: AbortSignal }): Promise<string> => {
       // Lazy import to avoid circular deps and keep cold path fast.
       const { completeAttributed } = await import("../agents/complete-attributed.js");
       const { text } = await completeAttributed({
@@ -3857,6 +3859,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         feature,
         agentId: this.agentId,
         errorPrefix: `llm error (${modelSpec})`,
+        // PLAN-55 Phase 1 review (item 12): a caller on the reply path can
+        // cancel the call instead of abandoning it to bill and write later.
+        ...(callOpts?.signal ? { signal: callOpts.signal } : {}),
         // Token-efficiency item 3: latency-tolerant lanes (dream, extraction, discovery,
         // evolution judge/maintainer) go through the Batches API; completeAttributed falls
         // back to the live call on timeout or error and records batch rows at 50%.
@@ -6128,7 +6133,9 @@ export class MemoryIndexManager implements MemorySearchManager {
    * PLAN-55 Phase 1: the cheap-model lane for the per-turn correction
    * capture, or null when the pass is disabled or no model is configured.
    */
-  correctionLlmCall(): ((prompt: string) => Promise<string>) | null {
+  correctionLlmCall():
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null {
     if (this.cfg.memory?.correction?.enabled === false) {
       return null;
     }

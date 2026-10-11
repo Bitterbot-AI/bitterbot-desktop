@@ -129,7 +129,8 @@ describe("CanonicalFactsStore reconcile verbs", () => {
 
   it("re-pinning a retired fact reactivates it via STRENGTHEN", () => {
     store.pin({ key: "infra.gateway", value: "a2a.bitterbot.ai", source: "agent_pin" });
-    expect(store.retire("infra.gateway")).toBe(true);
+    // Decay-retired: the agent's own retire of a tier-2 row is held (Phase 1 review).
+    expect(store.retire("infra.gateway", { reason: "decay" })).toBe(true);
     expect(store.listActive().length).toBe(0);
     const result = store.pin({
       key: "infra.gateway",
@@ -700,7 +701,7 @@ describe("CanonicalFactsStore.lookup — PLAN-33 Phase 4 ledger-first hits", () 
   });
 
   it("never returns retired or superseded facts", () => {
-    store.retire("identity.user-name");
+    store.retire("identity.user-name", { reason: "decay" });
     expect(store.lookup("identity.user-name")).toEqual([]);
     // Superseded value is not matchable; only the current belief is.
     store.pin({ key: "project.repo", value: "VGIL77/fork", source: "owner" });
@@ -966,12 +967,115 @@ describe("PLAN-55 Phase 1: scope, evidence_ref, held supersede", () => {
     ).toBe("supersede");
   });
 
-  it("a retired tier-2 row guards nothing: the agent may replace it without a hold", () => {
+  it("review item 1: the agent cannot retire a tier >= 2 belief; the attempt is held", () => {
     store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "agent_pin" });
-    store.retire("infra.deploy_endpoint", { reason: "agent" });
+    const held = store.retireAgent("infra.deploy_endpoint");
+    expect(held.op).toBe("held");
+    expect(held.reason).toMatch(/held for the owner's confirmation/);
+    // Nothing changed, and the plain retire() path is guarded the same way.
+    expect(store.get("infra.deploy_endpoint")?.status).toBe("active");
+    expect(store.retire("infra.deploy_endpoint", { reason: "agent" })).toBe(false);
+    expect(store.get("infra.deploy_endpoint")?.status).toBe("active");
+    expect(store.listPendingSupersedes()).toMatchObject([
+      {
+        key: "infra.deploy_endpoint",
+        kind: "pending_retire",
+        currentValue: "api.acme.com",
+        proposedValue: "",
+      },
+    ]);
+    // The retire-then-repin bypass is closed: still held.
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api2.acme.com", source: "agent_pin" }).op,
+    ).toBe("held");
+    expect(store.get("infra.deploy_endpoint")?.value).toBe("api.acme.com");
+    // The owner's belief: same.
+    store.pin({ key: "identity.user.name", value: "Victor", source: "owner" });
+    expect(store.retireAgent("identity.user.name").op).toBe("held");
+    expect(store.get("identity.user.name")?.status).toBe("active");
+    // A tier-1 belief the agent may still retire, and that is not held.
+    store.pin({ key: "project.repo", value: "org/a", source: "extraction" });
+    expect(store.retireAgent("project.repo")).toMatchObject({ op: "retired" });
+    expect(store.get("project.repo")?.status).toBe("retired");
+    expect(store.retireAgent("project.repo").op).toBe("noop");
+  });
+
+  it("review item 1: a retired/unconfirmed tier >= 2 row still guards against the agent, not against others", () => {
+    store.pin({ key: "identity.user.name", value: "Victor", source: "owner" });
+    store.retire("identity.user.name", { reason: "decay" });
+    expect(store.get("identity.user.name")?.status).toBe("retired");
+    // The agent: held, nothing written.
+    expect(store.pin({ key: "identity.user.name", value: "Vic", source: "agent_pin" }).op).toBe(
+      "held",
+    );
+    expect(store.get("identity.user.name")?.value).toBe("Victor");
+    // Extraction keeps the Phase 0 reading: a retired row is not a current belief.
+    expect(store.pin({ key: "identity.user.name", value: "Vic", source: "extraction" }).op).toBe(
+      "supersede",
+    );
+    // The owner's own retire (owner_retired) keeps the Phase 0 reading for the agent too.
+    store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "agent_pin" });
+    store.retire("infra.deploy_endpoint", { reason: "owner" });
     expect(
       store.pin({ key: "infra.deploy_endpoint", value: "api2.acme.com", source: "agent_pin" }).op,
     ).toBe("supersede");
+  });
+
+  it("review item 5: credential-shaped values and secret-named keys are refused from every source, without echoing the value", () => {
+    const token = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    for (const source of ["owner", "agent_pin", "extraction"] as const) {
+      const res = store.pin({ key: "identity.github.token", value: "whatever", source });
+      expect(res.op).toBe("rejected");
+      const byValue = store.pin({ key: "infra.github.handle", value: token, source });
+      expect(byValue.op).toBe("rejected");
+      if (byValue.op === "rejected") {
+        expect(byValue.reason).not.toContain(token);
+        expect(byValue.reason).toMatch(/credential/);
+      }
+    }
+    expect(store.listActive()).toEqual([]);
+    // Ordinary values with digits and dots still land.
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api2.acme.com", source: "owner" }).op,
+    ).toBe("add");
+    expect(store.pin({ key: "project.version", value: "v1.4.0-rc.2", source: "owner" }).op).toBe(
+      "add",
+    );
+  });
+
+  it("review item 2: an owner-tier write settles the key: pending conflicts consumed, open canonical directives resolved", () => {
+    store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "agent_pin" });
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api2.acme.com", source: "agent_pin" }).op,
+    ).toBe("held");
+    expect(store.listPendingSupersedes()).toHaveLength(1);
+    db.prepare(
+      `INSERT INTO epistemic_directives (id, directive_type, question, context, priority, created_at, source_entity_ids)
+       VALUES ('d1', 'contradiction', 'q', 'c', 0.7, ?, ?)`,
+    ).run(
+      Date.now(),
+      JSON.stringify(["canonical:infra.deploy_endpoint", "candidate:a", "candidate:b"]),
+    );
+    db.prepare(
+      `INSERT INTO epistemic_directives (id, directive_type, question, context, priority, created_at, source_entity_ids)
+       VALUES ('d2', 'contradiction', 'q', 'c', 0.7, ?, ?)`,
+    ).run(Date.now(), JSON.stringify(["canonical:infra.deploy_endpoint_other"]));
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api3.acme.com", source: "owner" }).op,
+    ).toBe("supersede");
+    expect(store.listPendingSupersedes()).toEqual([]);
+    const rows = db
+      .prepare(`SELECT id, resolved_at, status FROM epistemic_directives ORDER BY id`)
+      .all() as Array<{ id: string; resolved_at: number | null; status: string }>;
+    expect(rows[0]).toMatchObject({ id: "d1", status: "answered" });
+    expect(rows[0]!.resolved_at).not.toBeNull();
+    // LIKE is literal: the longer key with the same prefix is untouched.
+    expect(rows[1]).toMatchObject({ id: "d2", resolved_at: null });
+    // A non-owner write settles nothing.
+    store.pin({ key: "project.repo", value: "org/a", source: "agent_pin" });
+    store.pin({ key: "project.repo", value: "org/b", source: "agent_pin" });
+    store.pin({ key: "project.repo", value: "org/a", source: "extraction" });
+    expect(store.listPendingSupersedes()).toHaveLength(1);
   });
 
   it("renderBlock includes project-scoped facts only for the matching active project", () => {

@@ -90,6 +90,11 @@ describe("memory_pin in the Memory section", () => {
       toolNames: ["memory_search", "memory_get", "working_memory_note"],
     });
     expect(prompt).not.toContain("`memory_pin`: THE tool");
-    expect(prompt).toMatch(/`working_memory_note`: scratch/);
+    // Without the ledger tool, working_memory_note is still the place for
+    // corrections: the prompt never points at a tool the model cannot see.
+    expect(prompt).not.toMatch(/`working_memory_note`: scratch/);
+    expect(prompt).toMatch(
+      /`working_memory_note`: persist anything worth keeping \(user facts, decisions, preferences, corrections/,
+    );
   });
 });
