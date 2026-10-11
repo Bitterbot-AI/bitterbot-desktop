@@ -319,7 +319,8 @@ jobs:
           v=$("$B" --version | tail -1)
           echo "bitterbot --version -> $v"
           echo "$v" | grep -qw "$VERSION"
-          "$B" update status --json > "$RUNNER_TEMP/update-status.json"
+          # Plugin/boot log lines can precede the JSON on stdout.
+          "$B" update status --json | sed -n '/^{/,$p' > "$RUNNER_TEMP/update-status.json"
           jq . "$RUNNER_TEMP/update-status.json"
           [ "$(jq -r .update.installKind "$RUNNER_TEMP/update-status.json")" = "tarball" ]
           [ "$(jq -r .channel.value "$RUNNER_TEMP/update-status.json")" = "stable" ]

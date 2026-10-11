@@ -250,6 +250,77 @@ function installProductionDeps(stage) {
   }
 }
 
+/** Size in bytes of a directory tree (symlinks not followed). */
+function treeSize(dir) {
+  let total = 0;
+  const walk = (d) => {
+    for (const dirent of fs.readdirSync(d, { withFileTypes: true })) {
+      const abs = path.join(d, dirent.name);
+      if (dirent.isDirectory()) {
+        walk(abs);
+      } else if (dirent.isFile()) {
+        total += fs.statSync(abs).size;
+      }
+    }
+  };
+  walk(dir);
+  return total;
+}
+
+/**
+ * Drop what the runtime never reads, then log the biggest packages so the
+ * release log shows where the size goes:
+ *   - GPU builds of llama.cpp (`@node-llama-cpp/*-cuda*`, `*-vulkan*`, about
+ *     650 MB on linux-x64). node-llama-cpp falls back to its CPU build, which
+ *     is what the small local embedding model needs (see LIMITATIONS.md).
+ *   - type declarations and source maps inside node_modules.
+ */
+function pruneForRelease(stage) {
+  const virtualStore = path.join(stage, "node_modules", ".pnpm");
+  const before = treeSize(path.join(stage, "node_modules"));
+  for (const name of fs.readdirSync(virtualStore)) {
+    if (/^@node-llama-cpp\+.*-(cuda|vulkan)/.test(name)) {
+      fs.rmSync(path.join(virtualStore, name), { recursive: true, force: true });
+      log(`pruned GPU build ${name}`);
+    }
+  }
+  const prunable = /\.(d\.ts|d\.mts|d\.cts|map)$/;
+  const walk = (dir) => {
+    for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+      const abs = path.join(dir, dirent.name);
+      if (dirent.isSymbolicLink()) {
+        // Links to pruned GPU packages would dangle: remove them too.
+        if (!fs.existsSync(abs)) {
+          fs.rmSync(abs);
+        }
+      } else if (dirent.isDirectory()) {
+        walk(abs);
+      } else if (dirent.isFile() && prunable.test(dirent.name)) {
+        fs.rmSync(abs);
+      }
+    }
+  };
+  walk(path.join(stage, "node_modules"));
+  for (const ext of fs.readdirSync(path.join(stage, "extensions"))) {
+    const nm = path.join(stage, "extensions", ext, "node_modules");
+    if (fs.existsSync(nm)) {
+      walk(nm);
+    }
+  }
+  const after = treeSize(path.join(stage, "node_modules"));
+  const mib = (n) => `${(n / 1024 / 1024).toFixed(0)} MiB`;
+  log(`node_modules ${mib(before)} -> ${mib(after)} after pruning`);
+  const sizes = fs
+    .readdirSync(virtualStore, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => ({ name: d.name, size: treeSize(path.join(virtualStore, d.name)) }))
+    .toSorted((a, b) => b.size - a.size)
+    .slice(0, 25);
+  log(
+    `largest packages:\n${sizes.map((e) => `  ${mib(e.size).padStart(8)}  ${e.name}`).join("\n")}`,
+  );
+}
+
 /**
  * Load every native package with the BUNDLED Node from the staged tree. A
  * missing platform prebuild or an ABI mismatch fails the release here, not
@@ -302,7 +373,7 @@ function verifyLauncher(stage, version) {
     encoding: "utf8",
     env: { ...process.env, BITTERBOT_NO_RESPAWN: "1" },
   });
-  const out = `${res.stdout ?? ""}`.trim();
+  const out = (res.stdout ?? "").trim();
   if (res.status !== 0 || !out.split(/\s+/).includes(version)) {
     process.stderr.write(res.stderr ?? "");
     fail(`bin/bitterbot --version printed "${out}", expected ${version}`);
@@ -385,6 +456,7 @@ async function main() {
   log(`copied ${files.length} package files (npm pack list)`);
 
   installProductionDeps(stage);
+  pruneForRelease(stage);
   const nodeVersion = await stageNodeRuntime(stage, platform, args.nodeVersion);
   const orchestratorVersion = await stageOrchestrator(stage, platform);
 
