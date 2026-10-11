@@ -41,6 +41,7 @@ import { applyMergePatch } from "./merge-patch.js";
 import { normalizeConfigPaths } from "./normalize-paths.js";
 import { resolveConfigPath, resolveDefaultConfigCandidates, resolveStateDir } from "./paths.js";
 import { applyConfigOverrides } from "./runtime-overrides.js";
+import { DEPRECATED_ONLY_WHEN, DEPRECATED_PATHS } from "./schema.defaults.js";
 import type { BitterbotConfig, ConfigFileSnapshot, LegacyConfigIssue } from "./types.js";
 import {
   validateConfigObjectRawWithPlugins,
@@ -417,6 +418,88 @@ function warnOnConfigMiskeys(raw: unknown, logger: Pick<typeof console, "warn">)
   }
 }
 
+function readAtDottedPath(obj: unknown, path: string): unknown {
+  let cur: unknown = obj;
+  for (const part of path.split(".")) {
+    if (!cur || typeof cur !== "object") {
+      return undefined;
+    }
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+/**
+ * Resolve a registry path (`a.b`, `a.list[].b`) against a config object and
+ * return every value present. `[]` fans out over array elements.
+ */
+function collectAtRegistryPath(
+  obj: unknown,
+  path: string,
+): Array<{ path: string; value: unknown }> {
+  const idx = path.indexOf("[]");
+  if (idx === -1) {
+    const value = readAtDottedPath(obj, path);
+    return value === undefined ? [] : [{ path, value }];
+  }
+  const head = path.slice(0, idx);
+  const tail = path.slice(idx + 2).replace(/^\./, "");
+  const list = readAtDottedPath(obj, head);
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const out: Array<{ path: string; value: unknown }> = [];
+  list.forEach((item, i) => {
+    for (const hit of collectAtRegistryPath(item, tail)) {
+      out.push({ path: `${head}[${i}].${hit.path}`, value: hit.value });
+    }
+  });
+  return out;
+}
+
+const warnedDeprecatedKeys = new Set<string>();
+
+/** @internal */
+export function resetDeprecatedConfigWarningsForTests(): void {
+  warnedDeprecatedKeys.clear();
+}
+
+/**
+ * PLAN-56 Phase 1: warn once per process for every deprecated key present in
+ * the config (DEPRECATED_PATHS). Keys in DEPRECATED_ONLY_WHEN warn only for
+ * the listed value. The schema keeps accepting them this release.
+ */
+export function warnOnDeprecatedConfigKeys(
+  raw: unknown,
+  logger: Pick<typeof console, "warn">,
+  options?: { once?: boolean },
+): string[] {
+  if (!raw || typeof raw !== "object") {
+    return [];
+  }
+  const once = options?.once ?? true;
+  const warned: string[] = [];
+  for (const [registryPath, reason] of Object.entries(DEPRECATED_PATHS)) {
+    for (const hit of collectAtRegistryPath(raw, registryPath)) {
+      if (
+        registryPath in DEPRECATED_ONLY_WHEN &&
+        !isDeepStrictEqual(hit.value, DEPRECATED_ONLY_WHEN[registryPath])
+      ) {
+        continue;
+      }
+      if (once) {
+        if (warnedDeprecatedKeys.has(hit.path)) {
+          continue;
+        }
+        warnedDeprecatedKeys.add(hit.path);
+      }
+      logger.warn(`Config key "${hit.path}" is deprecated: ${reason}`);
+      warned.push(hit.path);
+    }
+  }
+  return warned;
+}
+
 function stampConfigVersion(cfg: BitterbotConfig): BitterbotConfig {
   const now = new Date().toISOString();
   return {
@@ -552,6 +635,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         deps.env,
       );
       warnOnConfigMiskeys(resolvedConfig, deps.logger);
+      warnOnDeprecatedConfigKeys(resolvedConfig, deps.logger);
       if (typeof resolvedConfig !== "object" || resolvedConfig === null) {
         return {};
       }

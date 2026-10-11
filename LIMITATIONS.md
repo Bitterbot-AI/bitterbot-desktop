@@ -91,9 +91,12 @@ open an issue.
   do not fully trust.
 - The browser tool drives a real Chromium profile that all agents on the node
   share.
-- `agents.defaults.compaction.mode: "safeguard"` and
-  `agents.defaults.contextPruning` are accepted by the config and have no
-  effect.
+- `agents.defaults.compaction.mode: "safeguard"`,
+  `agents.defaults.contextPruning`, `agents.defaults.runtime.engine`,
+  `memory.backend` and `memory.curiosity.autoResearch.enabled` are accepted by
+  the config and have no effect (the last one is an alias of
+  `memory.curiosity.research.enabled`). The gateway warns about each one it
+  finds at load; they will be removed in the next release.
 
 ## Automations
 

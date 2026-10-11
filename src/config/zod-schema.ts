@@ -41,8 +41,58 @@ const MemorySchema = z
       })
       .strict()
       .optional(),
+    // PLAN-56 Phase 1: the curiosity keys the Settings form labels, so the
+    // generated JSON schema carries typed leaves for them. ACCEPTANCE IS
+    // UNCHANGED: `memory` was fully passthrough before, so every shape falls
+    // back to the `z.unknown()` branch (null, false, "3" from ${ENV}, ...).
+    // The typed branch exists only for the form's control types; the code-read
+    // sites (curiosity-researcher.ts, manager.ts) keep doing their own coercion.
+    curiosity: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+            research: z
+              .union([
+                z
+                  .object({
+                    enabled: z.boolean().optional(),
+                    strictEgress: z.boolean().optional(),
+                    intervalMinutes: z.unknown().optional(),
+                    maxPerDay: z.unknown().optional(),
+                  })
+                  .passthrough(),
+                z.unknown(),
+              ])
+              .optional(),
+            autoResearch: z
+              .union([
+                z
+                  .object({
+                    enabled: z.boolean().optional(),
+                    maxPerDay: z.unknown().optional(),
+                  })
+                  .passthrough(),
+                z.unknown(),
+              ])
+              .optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
+    architectEvolution: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
   })
-  // Memory subsystems (dream, curiosity, consolidation, digest, requestFrequency, etc.)
+  // Memory subsystems (dream, consolidation, digest, requestFrequency, etc.)
   // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.
   // Passthrough keeps user configs from being rejected for those fields until the
   // schema catches up; strong typing at the code-read sites still applies.
