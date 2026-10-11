@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CONTAINER_UPDATE_COMMAND,
@@ -104,7 +105,7 @@ describe("resolveInstallKind", () => {
 
 describe("release-tarball install kind (PLAN-56 Phase 3a)", () => {
   const root = "/home/u/.bitterbot/app/1.5.0";
-  const marker = `${root}/${TARBALL_INSTALL_MARKER}`;
+  const marker = path.join(root, TARBALL_INSTALL_MARKER);
 
   it("reads a tarball declaration from the launcher's env", () => {
     expect(readDeclaredInstallKind({ BITTERBOT_INSTALL_KIND: "tarball" })).toBe("tarball");
