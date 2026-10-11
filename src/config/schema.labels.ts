@@ -52,6 +52,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "update.channel": "Update Channel",
   "update.checkOnStart": "Update Check on Start",
   "update.promptBehindCommits": "Update Prompt Threshold (commits behind)",
+  "update.autoRollback.enabled": "Roll Back a Failed Update",
   "usage.ledger.enabled": "Usage Ledger Enabled",
   "usage.ledger.retentionDays": "Usage Retention (days)",
   "usage.budgets.mode": "Budget Mode",

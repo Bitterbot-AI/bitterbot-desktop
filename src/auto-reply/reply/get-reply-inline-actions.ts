@@ -3,7 +3,7 @@ import { runInOwnerContext } from "../../agents/run-owner-context.js";
 import type { SkillCommandSpec } from "../../agents/skills.js";
 import { applyOwnerOnlyToolPolicy } from "../../agents/tool-policy.js";
 import { getChannelDock } from "../../channels/dock.js";
-import type { BitterbotConfig } from "../../config/config.js";
+import { type BitterbotConfig, configFileExists } from "../../config/config.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { resolveGatewayMessageChannel } from "../../utils/message-channel.js";
@@ -377,13 +377,17 @@ export async function handleInlineActions(params: {
     await sendInlineReply(directiveAck);
   }
 
-  const isEmptyConfig = Object.keys(cfg).length === 0;
   const skipWhenConfigEmpty = command.channelId
     ? Boolean(getChannelDock(command.channelId)?.commands?.skipWhenConfigEmpty)
     : false;
+  // "Unconfigured" (PLAN-56 Phase 2): loadConfig() applies load-time
+  // defaults even without a config file, so the object is never empty in
+  // production. No load-time default sets `channels`, so a cfg with no
+  // channel settings AND no config file on disk is the unconfigured node; an
+  // explicitly empty cfg (tests, embedders) still counts too.
   if (
     skipWhenConfigEmpty &&
-    isEmptyConfig &&
+    (Object.keys(cfg).length === 0 || (cfg.channels === undefined && !configFileExists())) &&
     command.from &&
     command.to &&
     command.from !== command.to

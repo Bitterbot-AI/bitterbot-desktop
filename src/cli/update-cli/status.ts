@@ -102,7 +102,9 @@ export async function updateStatusCommand(opts: UpdateStatusOptions): Promise<vo
       ? `git (${update.root ?? "unknown"})`
       : update.installKind === "package"
         ? update.packageManager
-        : "unknown";
+        : update.installKind === "container"
+          ? "container image"
+          : "unknown";
 
   const rows = [
     { Item: "Install", Value: installLabel },

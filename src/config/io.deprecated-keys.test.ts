@@ -66,6 +66,18 @@ describe("warnOnDeprecatedConfigKeys (PLAN-56 Phase 1)", () => {
     expect(warnOnDeprecatedConfigKeys(raw, { warn }, { once: false })).toEqual(["memory.backend"]);
   });
 
+  it("warns for update.uiRestart (PLAN-56 Phase 2) and the schema still accepts it", async () => {
+    const warn = vi.fn();
+    expect(
+      warnOnDeprecatedConfigKeys({ update: { uiRestart: { enabled: true } } }, { warn }),
+    ).toEqual(["update.uiRestart"]);
+    expect(warn.mock.calls[0][0]).toContain("update.uiRestart has no effect");
+    const { BitterbotSchema } = await import("./zod-schema.js");
+    expect(BitterbotSchema.safeParse({ update: { uiRestart: { enabled: false } } }).success).toBe(
+      true,
+    );
+  });
+
   it("ignores non-object input", () => {
     const warn = vi.fn();
     expect(warnOnDeprecatedConfigKeys(null, { warn })).toEqual([]);

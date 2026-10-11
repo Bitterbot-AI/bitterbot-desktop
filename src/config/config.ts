@@ -1,5 +1,6 @@
 export {
   clearConfigCache,
+  configFileExists,
   createConfigIO,
   loadConfig,
   parseConfigJson5,

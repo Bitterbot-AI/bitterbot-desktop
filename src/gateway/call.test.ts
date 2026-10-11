@@ -404,7 +404,7 @@ describe("callGateway password resolution", () => {
     expect(lastClientOptions?.password).toBe("secret");
   });
 
-  it("prefers env password over local config password", async () => {
+  it("prefers local config password over env, like the server (PLAN-56 Phase 2)", async () => {
     process.env.BITTERBOT_GATEWAY_PASSWORD = "from-env";
     loadConfig.mockReturnValue({
       gateway: {
@@ -416,7 +416,7 @@ describe("callGateway password resolution", () => {
 
     await callGateway({ method: "health" });
 
-    expect(lastClientOptions?.password).toBe("from-env");
+    expect(lastClientOptions?.password).toBe("from-config");
   });
 
   it("uses remote password in remote mode when env is unset", async () => {
@@ -505,5 +505,25 @@ describe("callGateway token resolution", () => {
     });
 
     expect(lastClientOptions?.token).toBe("explicit-token");
+  });
+
+  it("prefers the local config token over env, like the server (PLAN-56 Phase 2)", async () => {
+    process.env.BITTERBOT_GATEWAY_TOKEN = "env-token";
+    loadConfig.mockReturnValue({
+      gateway: { mode: "local", bind: "loopback", auth: { token: "config-token" } },
+    });
+
+    await callGateway({ method: "health" });
+
+    expect(lastClientOptions?.token).toBe("config-token");
+  });
+
+  it("falls back to the env token when config has none", async () => {
+    process.env.BITTERBOT_GATEWAY_TOKEN = "env-token";
+    loadConfig.mockReturnValue({ gateway: { mode: "local", bind: "loopback" } });
+
+    await callGateway({ method: "health" });
+
+    expect(lastClientOptions?.token).toBe("env-token");
   });
 });

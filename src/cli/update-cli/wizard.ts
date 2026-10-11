@@ -1,6 +1,10 @@
 import { confirm, isCancel, select } from "@clack/prompts";
 import { readConfigFileSnapshot } from "../../config/config.js";
 import {
+  CONTAINER_FALSE_POSITIVE_HINT,
+  CONTAINER_UPDATE_COMMAND,
+} from "../../infra/install-kind.js";
+import {
   formatUpdateChannelLabel,
   normalizeUpdateChannel,
   resolveEffectiveUpdateChannel,
@@ -54,6 +58,14 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
     }),
     readConfigFileSnapshot(),
   ]);
+
+  if (updateStatus.installKind === "container") {
+    defaultRuntime.error(
+      `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}. ${CONTAINER_FALSE_POSITIVE_HINT}`,
+    );
+    defaultRuntime.exit(1);
+    return;
+  }
 
   const configChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)

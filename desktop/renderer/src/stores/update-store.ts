@@ -5,12 +5,21 @@ export type UpdateStaleness = {
   behind: number | null;
   threshold: number;
   stale: boolean;
-  reason: "git-behind" | "package-version" | "fresh" | "unknown";
+  reason: "git-behind" | "package-version" | "image-version" | "fresh" | "unknown";
 };
+
+export type InstallKind = "git" | "package" | "container" | "unknown";
+
+/** Shown by the UI and the gateway for container installs (PLAN-56 Phase 2). */
+export const CONTAINER_UPDATE_COMMAND = "docker compose pull && docker compose up -d";
+
+function parseInstallKind(value: unknown): InstallKind {
+  return value === "git" || value === "package" || value === "container" ? value : "unknown";
+}
 
 export type UpdateInfo = {
   version: string;
-  installKind: "git" | "package" | "unknown";
+  installKind: InstallKind;
   sha: string | null;
   branch: string | null;
   registryLatest: string | null;
@@ -64,12 +73,24 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   setChecking: (checking) => set({ checking }),
   setUpdating: (updating) => set({ updating }),
   setOutcome: (outcome) => set({ outcome }),
-  dismissBanner: () => set({ dismissedSha: get().info?.sha ?? "unknown" }),
+  dismissBanner: () => set({ dismissedSha: bannerDismissKey(get().info) }),
   resetForReconnect: () => set({ info: null, outcome: null, updating: false, checking: false }),
   setReloadAfterReconnect: (v) => set({ reloadAfterReconnect: v }),
 }));
 
-/** The banner shows only for a stale node the human has not dismissed at this sha. */
+/**
+ * What a dismissal is remembered against: the local sha for git installs
+ * (it comes back after the node updates), the OFFERED image version for
+ * containers (which have no sha), so dismissing 1.5.0 never hides 1.6.0.
+ */
+export function bannerDismissKey(info: UpdateInfo | null): string {
+  if (info?.installKind === "container") {
+    return `image:${info.registryLatest ?? "unknown"}`;
+  }
+  return info?.sha ?? "unknown";
+}
+
+/** The banner shows only for a stale node the human has not dismissed at this key. */
 export function shouldShowUpdateBanner(state: {
   info: UpdateInfo | null;
   updating: boolean;
@@ -78,7 +99,7 @@ export function shouldShowUpdateBanner(state: {
   const { info, updating, dismissedSha } = state;
   if (!info || updating) return false;
   if (!info.staleness.stale) return false;
-  return dismissedSha !== (info.sha ?? "unknown");
+  return dismissedSha !== bannerDismissKey(info);
 }
 
 /** Shape of the update.check RPC response the UI consumes. */
@@ -87,7 +108,7 @@ export type UpdateCheckResponse = {
   version: string;
   channel: string | null;
   check: {
-    installKind: "git" | "package" | "unknown";
+    installKind: InstallKind;
     git?: {
       sha: string | null;
       branch: string | null;
@@ -106,7 +127,7 @@ export type UpdateCheckResponse = {
 export function parseCheckResponse(resp: UpdateCheckResponse): UpdateInfo {
   return {
     version: resp.version,
-    installKind: resp.check.installKind,
+    installKind: parseInstallKind(resp.check.installKind),
     sha: resp.check.git?.sha ?? null,
     branch: resp.check.git?.branch ?? null,
     registryLatest: resp.registryLatest ?? null,
@@ -126,7 +147,7 @@ export function parseUpdateEvent(payload: unknown): UpdateInfo | null {
   if (!staleness || typeof staleness !== "object") return null;
   return {
     version: typeof p.version === "string" ? p.version : "?",
-    installKind: p.installKind === "git" || p.installKind === "package" ? p.installKind : "unknown",
+    installKind: parseInstallKind(p.installKind),
     sha: typeof p.sha === "string" ? p.sha : null,
     branch: typeof p.branch === "string" ? p.branch : null,
     registryLatest: typeof p.registryLatest === "string" ? p.registryLatest : null,

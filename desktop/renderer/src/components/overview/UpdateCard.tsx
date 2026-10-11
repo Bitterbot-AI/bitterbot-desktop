@@ -3,6 +3,7 @@ import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import {
+  CONTAINER_UPDATE_COMMAND,
   parseCheckResponse,
   useUpdateStore,
   type UpdateCheckResponse,
@@ -42,6 +43,55 @@ function describeSkipReason(reason: string | null): string {
     default:
       return reason ?? "unknown";
   }
+}
+
+function majorOf(version: string | null | undefined): number | null {
+  const m = /^v?(\d+)\./.exec(version ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Container installs (PLAN-56 Phase 2): the gateway cannot update itself, so
+ * the card names the newest image and the one command that pulls it.
+ */
+function ContainerUpdateStatus({
+  version,
+  latest,
+  stale,
+}: {
+  version: string;
+  latest: string | null;
+  stale: boolean;
+}) {
+  const runningMajor = majorOf(version);
+  const latestMajor = majorOf(latest);
+  const majorChange = runningMajor != null && latestMajor != null && latestMajor > runningMajor;
+  return (
+    <div className="mb-3 space-y-1.5" data-testid="update-card-container">
+      {latest && stale ? (
+        <p className="text-sm text-warning">Image {latest} available; pull to update.</p>
+      ) : latest ? (
+        <p className="text-xs text-success">Up to date with the latest image (v{latest}).</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Latest image unknown (GitHub unreachable or rate-limited); try again later.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        This node runs in a container and updates by pulling a newer image. On the Docker host, in
+        the folder with docker-compose.yml, run:
+      </p>
+      <code className="block text-xs font-mono bg-muted/30 border border-border/20 rounded px-2 py-1 select-all">
+        {CONTAINER_UPDATE_COMMAND}
+      </code>
+      {majorChange && (
+        <p className="text-xs text-warning">
+          v{latest} is a new major version: the default image tag (:{runningMajor}) will not pull
+          it. Set BITTERBOT_IMAGE to the :{latestMajor} tag first, after reading the release notes.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function UpdateCard() {
@@ -188,6 +238,14 @@ export function UpdateCard() {
         )}
       </div>
 
+      {info?.installKind === "container" && (
+        <ContainerUpdateStatus
+          version={info.version}
+          latest={info.registryLatest}
+          stale={info.staleness.stale}
+        />
+      )}
+
       {/* What an update brings, BEFORE install (sota-bar rec 2) */}
       {!updating &&
         info?.installKind === "git" &&
@@ -247,7 +305,7 @@ export function UpdateCard() {
           >
             {checking ? "Checking…" : "Check for updates"}
           </button>
-          {!confirming ? (
+          {info?.installKind === "container" ? null : !confirming ? (
             <button
               type="button"
               onClick={() => setConfirming(true)}

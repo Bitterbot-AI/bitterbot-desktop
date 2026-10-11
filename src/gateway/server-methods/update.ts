@@ -3,13 +3,26 @@ import { resolveBitterbotPackageRoot } from "../../infra/bitterbot-root.js";
 import { armBootVerify, clearRollbackRecord } from "../../infra/boot-verify.js";
 import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
 import {
+  CONTAINER_FALSE_POSITIVE_HINT,
+  CONTAINER_UPDATE_COMMAND,
+} from "../../infra/install-kind.js";
+import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
   writeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
-import { DEFAULT_PACKAGE_CHANNEL, normalizeUpdateChannel } from "../../infra/update-channels.js";
-import { checkUpdateStatus, resolveNpmChannelTag } from "../../infra/update-check.js";
+import {
+  DEFAULT_PACKAGE_CHANNEL,
+  normalizeUpdateChannel,
+  resolveEffectiveUpdateChannel,
+} from "../../infra/update-channels.js";
+import {
+  checkUpdateStatus,
+  fetchLatestGithubRelease,
+  peekLatestGithubRelease,
+  resolveNpmChannelTag,
+} from "../../infra/update-check.js";
 import { runGatewayUpdate } from "../../infra/update-runner.js";
 import { computeUpdateStaleness } from "../../infra/update-staleness.js";
 import { VERSION } from "../../version.js";
@@ -52,6 +65,14 @@ async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
     });
     channelVersion = resolved.version;
   }
+  // Containers compare against the newest GitHub release (cached for 30 min
+  // inside fetchLatestGithubRelease, so repeated UI checks do not hit the API).
+  if (check.installKind === "container") {
+    const release = fetch
+      ? await fetchLatestGithubRelease({ timeoutMs: 2500 })
+      : peekLatestGithubRelease();
+    channelVersion = release?.latestVersion ?? null;
+  }
   const staleness = computeUpdateStaleness(check, config.update?.promptBehindCommits, {
     channelVersion,
   });
@@ -61,10 +82,18 @@ async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
     channel,
     check,
     registryLatest: channelVersion,
+    updateCommand: check.installKind === "container" ? CONTAINER_UPDATE_COMMAND : null,
     staleness,
     checkedAt: Date.now(),
   };
 }
+
+/** The shared refusal text for update.run inside a container. */
+export const CONTAINER_UPDATE_REFUSAL =
+  `This gateway runs in a container, so it cannot update itself: its code is the image. ` +
+  `Pull a newer image instead: ${CONTAINER_UPDATE_COMMAND} ` +
+  `(on a VPS from the template: /opt/bitterbot/update.sh; on Fly.io: fly deploy). ` +
+  CONTAINER_FALSE_POSITIVE_HINT;
 
 export const updateHandlers: GatewayRequestHandlers = {
   "update.check": async ({ params, respond }) => {
@@ -97,17 +126,26 @@ export const updateHandlers: GatewayRequestHandlers = {
     if (!assertValidParams(params, validateUpdateRunParams, "update.run", respond)) {
       return;
     }
+    const root =
+      (await resolveBitterbotPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      }).catch(() => null)) ?? process.cwd();
+    // One probe for both the container refusal and the default channel. No
+    // fetch and no registry: this only reads the local install.
+    const local = await checkUpdateStatus({
+      root,
+      timeoutMs: 4000,
+      fetchGit: false,
+      includeRegistry: false,
+    }).catch(() => null);
     // A container cannot update itself in place: its code is the image, and
-    // the next restart would bring the old one back (PLAN-53 F1).
-    if (process.env.BITTERBOT_INSTALL_KIND === "container") {
-      respond(
-        false,
-        undefined,
-        errorShape(
-          ErrorCodes.UNAVAILABLE,
-          "This gateway runs in a container. Update it by pulling a newer image (on a VPS from the template: /opt/bitterbot/update.sh; on Fly.io: fly deploy).",
-        ),
-      );
+    // the next restart would bring the old one back (PLAN-53 F1). Detected
+    // from BITTERBOT_INSTALL_KIND or, for images that do not set it, the
+    // container heuristic (never for a git checkout).
+    if (process.env.BITTERBOT_INSTALL_KIND === "container" || local?.installKind === "container") {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CONTAINER_UPDATE_REFUSAL));
       return;
     }
     const { sessionKey, note, restartDelayMs } = parseRestartRequestParams(params);
@@ -121,17 +159,24 @@ export const updateHandlers: GatewayRequestHandlers = {
     try {
       const config = loadConfig();
       const configChannel = normalizeUpdateChannel(config.update?.channel);
-      const root =
-        (await resolveBitterbotPackageRoot({
-          moduleUrl: import.meta.url,
-          argv1: process.argv[1],
-          cwd: process.cwd(),
-        })) ?? process.cwd();
+      // A git checkout sitting on a release tag follows `stable` (or `beta`
+      // for a beta tag) when no channel is configured (PLAN-56 §3.5); the
+      // runner's own default stays `dev` for checkouts on a branch.
+      const effective =
+        local && !configChannel
+          ? resolveEffectiveUpdateChannel({
+              configChannel: null,
+              installKind: local.installKind,
+              git: local.git ? { tag: local.git.tag, branch: local.git.branch } : undefined,
+            })
+          : null;
+      const channel =
+        configChannel ?? (effective?.source === "git-tag" ? effective.channel : undefined);
       result = await runGatewayUpdate({
         timeoutMs,
         cwd: root,
         argv1: process.argv[1],
-        channel: configChannel ?? undefined,
+        channel,
       });
     } catch (err) {
       result = {
