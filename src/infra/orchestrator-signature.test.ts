@@ -3,6 +3,7 @@ import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } fr
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   checkChecksumsSignature,
@@ -61,15 +62,41 @@ function collect() {
 }
 
 describe("resolvePinnedMinisignPubkey", () => {
-  it("falls back to the pinned constant (empty until Victor pins it)", () => {
+  it("returns the pinned release key", () => {
+    expect(ORCHESTRATOR_MINISIGN_PUBKEY).toMatch(/^RW[A-Za-z0-9+/]{54}$/);
     expect(resolvePinnedMinisignPubkey({})).toBe(ORCHESTRATOR_MINISIGN_PUBKEY);
   });
 
-  it("lets the environment override the pinned key", () => {
-    expect(resolvePinnedMinisignPubkey({ [MINISIGN_PUBKEY_ENV]: "  abc  " })).toBe("abc");
+  it("ignores (and warns about) an environment key that differs from the pinned one", () => {
+    const warns: string[] = [];
+    expect(
+      resolvePinnedMinisignPubkey({ [MINISIGN_PUBKEY_ENV]: "  RWabc  " }, (m) => warns.push(m)),
+    ).toBe(ORCHESTRATOR_MINISIGN_PUBKEY);
+    expect(warns).toHaveLength(1);
+    expect(warns[0]).toContain("ignored");
     expect(resolvePinnedMinisignPubkey({ [MINISIGN_PUBKEY_ENV]: "" })).toBe(
       ORCHESTRATOR_MINISIGN_PUBKEY,
     );
+  });
+
+  it("the pinned key verifies the real orchestrator-v0.2.3 release signature", () => {
+    const dir = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "__fixtures__",
+      "orchestrator-v0.2.3",
+    );
+    const message = fs.readFileSync(path.join(dir, "checksums.txt"));
+    const minisig = fs.readFileSync(path.join(dir, "checksums.txt.minisig"), "utf8");
+    expect(verifyMinisign({ pubkeyB64: ORCHESTRATOR_MINISIGN_PUBKEY, message, minisig })).toEqual({
+      trustedComment: "orchestrator-v0.2.3 checksums",
+    });
+    expect(() =>
+      verifyMinisign({
+        pubkeyB64: ORCHESTRATOR_MINISIGN_PUBKEY,
+        message: Buffer.concat([message, Buffer.from("x")]),
+        minisig,
+      }),
+    ).toThrow("INVALID");
   });
 });
 
@@ -171,11 +198,6 @@ describe("checkChecksumsSignature", () => {
       expect(result.ok, other).toBe(false);
       expect(result.reason).toContain("cross-release replay");
     }
-  });
-
-  it("the environment override is honoured only while no key is pinned in the repo", () => {
-    expect(resolvePinnedMinisignPubkey({})).toBe("");
-    expect(resolvePinnedMinisignPubkey({ [MINISIGN_PUBKEY_ENV]: "  RWabc  " })).toBe("RWabc");
   });
 });
 

@@ -134,14 +134,14 @@ The renderer calls into `desktop/renderer/src/lib/updater.ts`, which:
 - Surfaces update status via a subscribable `UpdateStatus` store
 - No-ops gracefully when running in a plain browser (dev)
 
-**Setup required before the first release:**
-
-1. `cd desktop && pnpm tauri signer generate -w ~/.tauri/bitterbot-updater.key`
-2. Paste the public key contents into `tauri.conf.json` `plugins.updater.pubkey`
-3. Add GitHub secrets `TAURI_SIGNING_PRIVATE_KEY` (private key contents) and
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-4. Back up the private key offline. Losing it means no future updates can be
-   signed for the current public key.
+**Updater key (done 2026-10-11):** the key pair was generated with
+`pnpm tauri signer generate`, the public key is pinned in `tauri.conf.json`
+`plugins.updater.pubkey`, and the private key and its password are the
+`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets.
+The private key is backed up outside the repo. Losing it, or its password,
+means installed desktop apps can never verify another update: rotating
+requires shipping a release signed with the old key that carries the new
+public key.
 
 ## Release pipeline
 
