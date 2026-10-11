@@ -226,5 +226,10 @@ fi
 # name (plugin installs); a Node already on PATH keeps precedence.
 PATH=$PATH:$root/runtime/node/bin
 export PATH
+# In-use marker: exec keeps this pid, so install.sh never prunes or replaces
+# a version directory while a process started from it is alive.
+if mkdir -p "$root/.pids" 2>/dev/null; then
+  : >"$root/.pids/$$" 2>/dev/null || true
+fi
 exec "$root/runtime/node/bin/node" "$root/dist/entry.js" "$@"
 `;

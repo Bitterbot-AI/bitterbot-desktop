@@ -4,15 +4,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const fsMocks = vi.hoisted(() => ({
   access: vi.fn(),
   realpath: vi.fn(),
+  readFile: vi.fn(),
 }));
 
 vi.mock("node:fs/promises", () => ({
-  default: { access: fsMocks.access, realpath: fsMocks.realpath },
+  default: { access: fsMocks.access, realpath: fsMocks.realpath, readFile: fsMocks.readFile },
   access: fsMocks.access,
   realpath: fsMocks.realpath,
+  readFile: fsMocks.readFile,
 }));
 
-import { resolveGatewayProgramArguments } from "./program-args.js";
+import {
+  resolveGatewayProgramArguments,
+  resolveTarballLauncherForService,
+} from "./program-args.js";
 
 const originalArgv = [...process.argv];
 
@@ -111,6 +116,7 @@ describe("release-tarball installs (PLAN-56 Phase 3a)", () => {
     process.env.BITTERBOT_INSTALL_KIND = "tarball";
     process.env.BITTERBOT_INSTALL_ROOT = root;
     process.argv = [path.join(root, "runtime/node/bin/node"), path.join(root, "dist/entry.js")];
+    fsMocks.readFile.mockRejectedValue(new Error("ENOENT"));
     fsMocks.access.mockImplementation(async (target: string) => {
       if (target === launcher) {
         return;
@@ -121,6 +127,37 @@ describe("release-tarball installs (PLAN-56 Phase 3a)", () => {
     const result = await resolveGatewayProgramArguments({ port: 19001 });
 
     expect(result.programArguments).toEqual([launcher, "gateway", "--port", "19001"]);
+  });
+
+  it("keys on the install root, not the raw env: a stray tarball env without a tarball root is ignored", async () => {
+    const env = {
+      BITTERBOT_INSTALL_KIND: "tarball",
+    } as NodeJS.ProcessEnv;
+    fsMocks.access.mockResolvedValue(undefined);
+    expect(await resolveTarballLauncherForService(env, "/usr/bin/node")).toBeNull();
+  });
+
+  it("finds the root from a bundled-node execPath and its marker, even with the package escape", async () => {
+    const root = path.resolve("/home/u/.bitterbot/app/1.5.0");
+    const launcher = path.resolve("/home/u/.bitterbot/app/current/bin/bitterbot");
+    fsMocks.readFile.mockImplementation(async (p: string) => {
+      if (p === path.join(root, ".bitterbot-install-kind")) {
+        return "tarball\n";
+      }
+      throw new Error("ENOENT");
+    });
+    fsMocks.access.mockImplementation(async (target: string) => {
+      if (target === launcher) {
+        return;
+      }
+      throw new Error("missing");
+    });
+    const execPath = path.join(root, "runtime", "node", "bin", "node");
+    const escaped = { BITTERBOT_INSTALL_KIND: "package" } as NodeJS.ProcessEnv;
+    expect(await resolveTarballLauncherForService(escaped, execPath)).toBe(launcher);
+    expect(await resolveTarballLauncherForService({} as NodeJS.ProcessEnv, execPath)).toBe(
+      launcher,
+    );
   });
 
   it("keeps the node + entry form when an explicit node path is requested", async () => {

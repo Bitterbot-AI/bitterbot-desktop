@@ -190,6 +190,7 @@ describe("release-tarball installs follow GitHub releases (PLAN-56 Phase 3a)", (
   const tarball = (version: string, platform = "linux-x64") => ({
     name: `bitterbot-${version}-${platform}.tar.gz`,
   });
+  const SIGNED = [{ name: "checksums.txt" }, { name: "checksums.txt.minisig" }];
 
   beforeEach(() => {
     resetGithubReleaseCacheForTests();
@@ -197,11 +198,14 @@ describe("release-tarball installs follow GitHub releases (PLAN-56 Phase 3a)", (
 
   it("takes the highest release that carries THIS platform's tarball", () => {
     const releases = [
-      release("v1.5.0", { assets: [...COMPOSE, tarball("1.5.0")] }),
-      release("v1.6.0", { assets: [...COMPOSE, tarball("1.6.0", "darwin-arm64")] }),
+      release("v1.5.0", { assets: [...COMPOSE, tarball("1.5.0"), ...SIGNED] }),
+      release("v1.6.0", { assets: [...COMPOSE, tarball("1.6.0", "darwin-arm64"), ...SIGNED] }),
       release("v1.7.0", { assets: [...COMPOSE] }), // tarball job not finished
-      release("v1.8.0", { assets: [tarball("1.7.0")] }), // wrong version in the name
-      release("v1.9.0", { prerelease: true, assets: [tarball("1.9.0")] }),
+      release("v1.8.0", { assets: [tarball("1.7.0"), ...SIGNED] }), // wrong version in the name
+      release("v1.9.0", { prerelease: true, assets: [tarball("1.9.0"), ...SIGNED] }),
+      // Tarball uploaded but the signing step not approved / not finished yet.
+      release("v1.10.0", { assets: [tarball("1.10.0"), { name: "checksums.txt" }] }),
+      release("v1.11.0", { assets: [tarball("1.11.0")] }),
     ];
     expect(pickLatestTarballRelease(releases, "linux-x64")).toBe("1.5.0");
     expect(pickLatestTarballRelease(releases, "darwin-arm64")).toBe("1.6.0");
@@ -213,7 +217,7 @@ describe("release-tarball installs follow GitHub releases (PLAN-56 Phase 3a)", (
   it("caches image and tarball answers separately", async () => {
     const body = [
       release("v1.6.0", { assets: [...COMPOSE] }),
-      release("v1.5.0", { assets: [...COMPOSE, tarball("1.5.0")] }),
+      release("v1.5.0", { assets: [...COMPOSE, tarball("1.5.0"), ...SIGNED] }),
     ];
     const fetchImpl = vi.fn(async () => jsonResponse(body));
     const image = await fetchLatestGithubRelease({

@@ -248,6 +248,12 @@ function installProductionDeps(stage) {
   for (const extra of ["desktop", "scripts", "pnpm-workspace.yaml", ".npmrc"]) {
     fs.rmSync(path.join(stage, extra), { recursive: true, force: true });
   }
+  // pnpm bookkeeping with absolute CI paths and timestamps; Node never reads it.
+  for (const name of fs.readdirSync(path.join(stage, "node_modules"))) {
+    if (name === ".modules.yaml" || name.startsWith(".pnpm-workspace-state")) {
+      fs.rmSync(path.join(stage, "node_modules", name), { force: true });
+    }
+  }
 }
 
 /** Size in bytes of a directory tree (symlinks not followed). */
@@ -423,8 +429,40 @@ function resolveCommit() {
   }
 }
 
+/**
+ * SOURCE_DATE_EPOCH (set by the release workflow from the tag's commit), else
+ * the HEAD commit time, else now. Used for builtAt and every mtime, so a
+ * rebuild of the same tag produces the same manifest and, where the
+ * dependency tree is byte-identical, the same tarball.
+ */
+function resolveSourceDateEpoch() {
+  const fromEnv = Number(process.env.SOURCE_DATE_EPOCH);
+  if (Number.isInteger(fromEnv) && fromEnv > 0) {
+    return fromEnv;
+  }
+  try {
+    return Number(
+      execFileSync("git", ["log", "-1", "--format=%ct"], { cwd: ROOT, encoding: "utf8" }).trim(),
+    );
+  } catch {
+    return Math.floor(Date.now() / 1000);
+  }
+}
+
+function normalizeMtimes(dir, epoch) {
+  for (const dirent of fs.readdirSync(dir, { withFileTypes: true })) {
+    const abs = path.join(dir, dirent.name);
+    if (dirent.isDirectory()) {
+      normalizeMtimes(abs, epoch);
+    }
+    fs.lutimesSync(abs, epoch, epoch);
+  }
+  fs.lutimesSync(dir, epoch, epoch);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const epoch = resolveSourceDateEpoch();
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   const version = args.version ?? pkg.version;
   if (version !== pkg.version) {
@@ -473,7 +511,7 @@ async function main() {
     nodeVersion,
     orchestratorVersion,
     commit: resolveCommit(),
-    builtAt: new Date().toISOString(),
+    builtAt: new Date(epoch * 1000).toISOString(),
     files: collectManifestEntries(stage),
   });
   const manifestText = `${JSON.stringify(manifest, null, 1)}\n`;
@@ -485,11 +523,29 @@ async function main() {
 
   const tarball = path.join(out, `${baseName}.tar.gz`);
   fs.rmSync(tarball, { force: true });
-  const gnuTar = spawnSync("tar", ["--version"], { encoding: "utf8" }).stdout?.includes("GNU tar");
-  const ownerArgs = gnuTar
-    ? ["--owner=0", "--group=0", "--numeric-owner", "--sort=name"]
+  // Reproducible where cheap: every mtime is SOURCE_DATE_EPOCH, entries are
+  // sorted and owned by 0:0 (GNU tar; macOS uses gtar when the runner has
+  // it), and gzip stores no name or timestamp.
+  normalizeMtimes(stagingRoot, epoch);
+  const tarCmd = ["gtar", "tar"].find((cmd) =>
+    spawnSync(cmd, ["--version"], { encoding: "utf8" }).stdout?.includes("GNU tar"),
+  );
+  const tarArgs = tarCmd
+    ? [
+        "--sort=name",
+        `--mtime=@${epoch}`,
+        "--owner=0",
+        "--group=0",
+        "--numeric-owner",
+        "--pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime",
+      ]
     : ["--uid", "0", "--gid", "0"];
-  run("tar", ["-czf", tarball, ...ownerArgs, "-C", stagingRoot, baseName]);
+  const tarBin = tarCmd ?? "tar";
+  const quoted = (a) => `'${String(a).replaceAll("'", "'\\''")}'`;
+  run("bash", [
+    "-c",
+    `set -o pipefail; ${tarBin} -cf - ${tarArgs.map(quoted).join(" ")} -C ${quoted(stagingRoot)} ${quoted(baseName)} | gzip -n -6 > ${quoted(tarball)}`,
+  ]);
   fs.rmSync(stagingRoot, { recursive: true, force: true });
   const size = fs.statSync(tarball).size;
   log(`wrote ${tarball} (${(size / 1024 / 1024).toFixed(1)} MiB)`);

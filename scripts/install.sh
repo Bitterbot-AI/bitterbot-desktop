@@ -2,13 +2,20 @@
 #
 # Bitterbot installer (PLAN-56 Phase 3a).
 #
-#   curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --version 1.5.0 --no-onboard
 #
+# The script is served from main (always available, whatever state the newest
+# release is in) and is also attached to every release for pinned installs.
+# It embeds the pinned public key, so it is exactly as trustworthy as main.
+#
 # What it does, in order (it prints this plan before touching anything):
-#   1. Detects your OS/arch (Linux x64/arm64, macOS Apple silicon).
-#   2. Downloads the release's checksums.txt, checksums.txt.minisig and the
-#      tarball for your platform from GitHub Releases.
+#   1. Detects your OS/arch (Linux x64/arm64 with glibc >= 2.28, macOS Apple
+#      silicon). Refuses to run as root unless --allow-root.
+#   2. Without --version, asks the GitHub releases API for the newest release
+#      that carries this platform's tarball AND checksums.txt AND its .minisig
+#      (a release whose assets are still being built is skipped). Then
+#      downloads those three files from releases/download/v<version>/.
 #   3. Verifies checksums.txt against the minisign public key PINNED below
 #      (with `minisign`, or OpenSSL 3 when minisign is absent), requires the
 #      signed trusted comment to name this exact release, then checks the
@@ -28,8 +35,9 @@ bb_usage() {
   cat <<'USAGE'
 Usage: install.sh [options]
 
-  -s, --version X.Y.Z    Install this release instead of the latest
+  -s, --version X.Y.Z    Install this release instead of the newest complete one
       --dir PATH         Install root (default: ~/.bitterbot/app)
+      --allow-root       Allow installing as root (not recommended)
       --no-onboard       Do not run `bitterbot onboard` afterwards
   -y, --yes              Do not ask for confirmation
       --with-browser     Linux: also download Playwright's Chromium (~170 MB)
@@ -54,15 +62,130 @@ bb_need() {
   command -v "$1" >/dev/null 2>&1 || bb_die "this installer needs '$1' on PATH"
 }
 
-# Download $1 to $2. Production downloads are HTTPS-only; test mode also
-# allows the loopback/file URL it was given.
-bb_fetch() {
-  local url=$1 dest=$2
+# curl flags. Production: HTTPS only, redirects too (GitHub serves assets
+# through a redirect). Test mode: http/file only, no redirects at all, no
+# proxy, so a loopback URL can never be bounced somewhere else.
+bb_curl() {
   if [ "$BB_TEST_MODE" = "1" ]; then
-    curl -fsSL --retry 2 -o "$dest" "$url"
+    curl -sSL --max-redirs 0 --proto '=http,file' --proto-redir '=http,file' --noproxy '*' "$@"
   else
-    curl -fsSL --proto '=https' --tlsv1.2 --retry 2 -o "$dest" "$url"
+    curl -sSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 "$@"
   fi
+}
+
+# Download $1 to $2, failing on HTTP errors.
+bb_fetch() {
+  bb_curl -f -o "$2" "$1"
+}
+
+# Newest complete release for platform $2 from a GitHub releases API listing
+# in file $1: tag vX.Y.Z, not draft, not prerelease, with the platform
+# tarball, checksums.txt and checksums.txt.minisig among its assets. Mirrors
+# pickLatestTarballRelease() in src/infra/update-check.ts. Works on compact or
+# pretty JSON: only the tag_name/draft/prerelease/browser_download_url
+# key-value pairs are read (in a release body they would be escaped).
+bb_pick_latest() {
+  { grep -oE '"(tag_name|draft|prerelease|browser_download_url)": *("[^"]*"|true|false)' "$1" || true; } |
+    awk -v plat="$2" '
+      function key(s) { sub(/^"/, "", s); sub(/".*$/, "", s); return s }
+      function val(s) { sub(/^"[^"]*": */, "", s); gsub(/"/, "", s); return s }
+      function newer(a, b,   x, y, i) {
+        if (b == "") return 1
+        split(a, x, "."); split(b, y, ".")
+        for (i = 1; i <= 3; i++) {
+          if (x[i] + 0 > y[i] + 0) return 1
+          if (x[i] + 0 < y[i] + 0) return 0
+        }
+        return 0
+      }
+      {
+        k = key($0); v = val($0)
+        if (k == "tag_name") { cur = v; tags[v] = 1 }
+        else if ((k == "draft" || k == "prerelease") && v == "true") { bad[cur] = 1 }
+        else if (k == "browser_download_url" && match(v, /\/releases\/download\/[^\/]+\/[^\/]+$/)) {
+          n = split(substr(v, RSTART), parts, "/")
+          has[parts[n - 1] SUBSEP parts[n]] = 1
+        }
+      }
+      END {
+        best = ""
+        for (t in tags) {
+          if (t !~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ || (t in bad)) continue
+          ver = substr(t, 2)
+          if (!((t SUBSEP "bitterbot-" ver "-" plat ".tar.gz") in has)) continue
+          if (!((t SUBSEP "checksums.txt") in has)) continue
+          if (!((t SUBSEP "checksums.txt.minisig") in has)) continue
+          if (newer(ver, best)) best = ver
+        }
+        if (best != "") print best
+      }'
+}
+
+# glibc version as "MAJOR.MINOR" (empty when unknown).
+bb_glibc_version() {
+  local v
+  v=$(getconf GNU_LIBC_VERSION 2>/dev/null || true)
+  v=${v##* }
+  if [ -z "$v" ]; then
+    v=$( (ldd --version 2>&1 || true) | head -n 1)
+    v=${v##* }
+  fi
+  if [[ $v =~ ^[0-9]+\.[0-9]+ ]]; then
+    printf '%s\n' "${BASH_REMATCH[0]}"
+  fi
+}
+
+# Is version directory $1 in use? Prints a pid and returns 0 when a process
+# started by its launcher is alive (pid markers in $1/.pids) or, on Linux,
+# when any process we can see has its executable or cwd inside it.
+bb_version_in_use() {
+  local dir=$1 f pid p l t
+  if [ -d "$dir/.pids" ]; then
+    for f in "$dir/.pids"/*; do
+      [ -e "$f" ] || continue
+      pid=${f##*/}
+      case $pid in
+        '' | *[!0-9]*) continue ;;
+      esac
+      if kill -0 "$pid" 2>/dev/null; then
+        printf '%s\n' "$pid"
+        return 0
+      fi
+      rm -f "$f"
+    done
+  fi
+  if [ -d /proc/self ]; then
+    for p in /proc/[0-9]*; do
+      for l in exe cwd; do
+        t=$(readlink "$p/$l" 2>/dev/null) || continue
+        case $t in
+          "$dir" | "$dir"/*)
+            printf '%s\n' "${p#/proc/}"
+            return 0
+            ;;
+        esac
+      done
+    done
+  fi
+  return 1
+}
+
+# Check every file listed in $1/manifest.json against its sha256.
+bb_verify_manifest() {
+  local dir=$1 list
+  list=$(mktemp "${TMPDIR:-/tmp}/bitterbot-manifest.XXXXXX")
+  awk '
+    /^ *"path": "/ { p = $0; sub(/^ *"path": "/, "", p); sub(/",?$/, "", p); next }
+    /^ *"sha256": "[0-9a-f]+"/ { h = $0; sub(/^ *"sha256": "/, "", h); sub(/",?$/, "", h); if (p != "") print h "  " p; p = ""; next }
+  ' "$dir/manifest.json" >"$list"
+  local rc=0
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$dir" && sha256sum --status -c "$list") || rc=1
+  else
+    (cd "$dir" && shasum -a 256 --status -c "$list") || rc=1
+  fi
+  rm -f "$list"
+  return $rc
 }
 
 bb_sha256() {
@@ -147,8 +270,19 @@ bb_detect_platform() {
   esac
   case $os in
     Linux)
-      if ldd --version 2>&1 | grep -qi musl; then
-        bb_die "musl-based Linux (e.g. Alpine) is not supported by the release tarball. Use Docker: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/docker.md"
+      # `ldd --version` exits non-zero on musl, so read its output, not its status.
+      case "$(ldd --version 2>&1 || true)" in
+        *musl*)
+          bb_die "musl-based Linux (e.g. Alpine) is not supported by the release tarball. Use Docker: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/docker.md"
+          ;;
+      esac
+      local glibc
+      glibc=$(bb_glibc_version)
+      if [ -n "$glibc" ]; then
+        local gmaj=${glibc%%.*} gmin=${glibc#*.}
+        if [ "$gmaj" -lt 2 ] || { [ "$gmaj" -eq 2 ] && [ "$gmin" -lt 28 ]; }; then
+          bb_die "glibc $glibc is too old: the bundled Node 22 needs glibc 2.28 or newer (Debian 10, Ubuntu 18.10, RHEL 8 or later). Use Docker: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/docker.md"
+        fi
       fi
       os=linux
       ;;
@@ -198,7 +332,7 @@ main() {
   local pubkey=$PINNED_PUBKEY
 
   local version="" install_dir="${HOME}/.bitterbot/app" onboard=1 with_browser=0
-  local require_signature=0
+  local require_signature=0 allow_root=0
   BB_YES=0
   BB_TEST_MODE=0
   while [ $# -gt 0 ]; do
@@ -229,6 +363,10 @@ main() {
         require_signature=1
         shift
         ;;
+      --allow-root)
+        allow_root=1
+        shift
+        ;;
       -h | --help)
         bb_usage
         return 0
@@ -236,8 +374,16 @@ main() {
       *) bb_die "unknown option: $1 (see --help)" ;;
     esac
   done
-  if [ -n "$version" ] && ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  # Whole-string match (a grep would accept "1.5.0<newline>anything").
+  if [ -n "$version" ] && ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     bb_die "--version must look like 1.5.0 (got '$version')"
+  fi
+  case $install_dir in
+    /*) ;;
+    *) install_dir="$PWD/$install_dir" ;;
+  esac
+  if [ "$(id -u)" = "0" ] && [ "$allow_root" != "1" ]; then
+    bb_die "refusing to install as root: Bitterbot runs as your user and keeps its data in ~/.bitterbot. Re-run as your normal user (no sudo), or pass --allow-root if you really mean it."
   fi
 
   # Test mode (CI only). The base-URL and public-key overrides exist so CI
@@ -250,10 +396,14 @@ main() {
     if [ "${BITTERBOT_INSTALL_TEST_MODE:-}" != "1" ]; then
       bb_die "BITTERBOT_INSTALL_BASE_URL / BITTERBOT_INSTALL_TEST_PUBKEY are test-only and need BITTERBOT_INSTALL_TEST_MODE=1; refusing (production installs always use the pinned key and GitHub Releases)"
     fi
-    case ${BITTERBOT_INSTALL_BASE_URL:-} in
-      http://127.0.0.1:* | http://localhost:* | file:///*) ;;
-      *) bb_die "test mode only accepts a loopback http:// or file:// BITTERBOT_INSTALL_BASE_URL" ;;
+    local test_url=${BITTERBOT_INSTALL_BASE_URL:-}
+    case $test_url in
+      *@*) bb_die "test mode refuses a BITTERBOT_INSTALL_BASE_URL with '@' (userinfo)" ;;
     esac
+    if ! [[ $test_url =~ ^http://(127\.0\.0\.1|localhost):[0-9]+(/|$) ]] &&
+      ! [[ $test_url =~ ^file:/// ]]; then
+      bb_die "test mode only accepts a loopback http://127.0.0.1:<port> / http://localhost:<port> or file:/// BITTERBOT_INSTALL_BASE_URL"
+    fi
     BB_TEST_MODE=1
     base_url=${BITTERBOT_INSTALL_BASE_URL%/}
     if [ -n "${BITTERBOT_INSTALL_TEST_PUBKEY:-}" ]; then
@@ -273,11 +423,10 @@ main() {
   local platform
   platform=$(bb_detect_platform)
 
-  local download_base
-  if [ -n "$version" ]; then
-    download_base="$base_url/download/v$version"
-  else
-    download_base="$base_url/latest/download"
+  # The releases API (test mode: a JSON file next to the fake releases).
+  local api_url="https://api.github.com/repos/${REPO}/releases?per_page=30"
+  if [ "$BB_TEST_MODE" = "1" ]; then
+    api_url="$base_url/api/releases.json"
   fi
 
   # Decide (and announce) the verification level before downloading.
@@ -305,8 +454,8 @@ main() {
   local link_dir="${HOME}/.local/bin"
   bb_say "Bitterbot installer"
   bb_say ""
-  bb_say "  Release:   ${version:-latest} for $platform"
-  bb_say "  From:      $download_base/"
+  bb_say "  Release:   ${version:-newest complete release} for $platform"
+  bb_say "  From:      $base_url/download/v${version:-<version>}/"
   bb_say "  Install:   $install_dir/<version> (current -> the new version; the previous one is kept)"
   bb_say "  Command:   $link_dir/bitterbot"
   case $sig_tool in
@@ -314,6 +463,16 @@ main() {
     openssl) bb_say "  Verify:    minisign signature checked with OpenSSL 3 (pinned key) + SHA-256" ;;
     none) bb_say "  Verify:    SHA-256 over HTTPS only (install minisign for signature verification)" ;;
   esac
+  local link_now=""
+  if [ -L "$link_dir/bitterbot" ]; then
+    link_now=$(readlink "$link_dir/bitterbot")
+    case $link_now in
+      "$install_dir"/*) link_now="" ;;
+    esac
+  fi
+  if [ -n "$link_now" ]; then
+    bb_say "             (replaces the existing link to $link_now)"
+  fi
   if [ "$gh_ok" = "1" ]; then
     bb_say "             + GitHub build-provenance attestation (gh attestation verify)"
   fi
@@ -332,22 +491,29 @@ main() {
   # shellcheck disable=SC2064 # expand $tmp now: it is a local of main()
   trap "rm -rf '$tmp'" EXIT
 
+  if [ -z "$version" ]; then
+    bb_say "Looking up the newest complete release..."
+    local code
+    code=$(bb_curl -o "$tmp/releases.json" -w '%{http_code}' -H 'Accept: application/vnd.github+json' "$api_url") ||
+      bb_die "could not reach the GitHub releases API ($api_url). Check your connection, or pin a release with --version X.Y.Z."
+    case $code in
+      200 | 000) ;;
+      403 | 429) bb_die "the GitHub releases API refused the request (HTTP $code; unauthenticated requests are limited to 60 per hour per IP). Wait a while, or pin a release with --version X.Y.Z." ;;
+      *) bb_die "the GitHub releases API answered HTTP $code. Try again later, or pin a release with --version X.Y.Z." ;;
+    esac
+    version=$(bb_pick_latest "$tmp/releases.json" "$platform")
+    [ -n "$version" ] ||
+      bb_die "no published release carries a signed tarball for $platform yet. Use Docker, or try again after the next release."
+    bb_say "Newest complete release: $version"
+  fi
+  local download_base="$base_url/download/v$version"
+
   bb_say "Downloading checksums.txt and its signature..."
   bb_fetch "$download_base/checksums.txt" "$tmp/checksums.txt" ||
-    bb_die "could not download $download_base/checksums.txt (is the release fully published? try again in a few minutes, or pin an older one with --version)"
+    bb_die "could not download $download_base/checksums.txt (does release v$version have tarballs? each release's tarballs are attached after a maintainer approves the signing step)"
   bb_fetch "$download_base/checksums.txt.minisig" "$tmp/checksums.txt.minisig" ||
     bb_die "could not download checksums.txt.minisig: every release is signed, so a missing signature is treated as tampering. Refusing."
 
-  # Which version: the pinned one, or the one the checksums file lists for
-  # this platform (exactly one entry).
-  local tar_re matches
-  tar_re="^[0-9a-f]{64}  bitterbot-[0-9]+\\.[0-9]+\\.[0-9]+-${platform}\\.tar\\.gz$"
-  matches=$(grep -E "$tar_re" "$tmp/checksums.txt" || true)
-  if [ -z "$version" ]; then
-    [ "$(printf '%s\n' "$matches" | grep -c .)" = "1" ] ||
-      bb_die "checksums.txt does not list exactly one tarball for $platform"
-    version=$(printf '%s\n' "$matches" | sed -E "s/^.*  bitterbot-([0-9.]+)-${platform}\\.tar\\.gz$/\\1/")
-  fi
   local asset="bitterbot-${version}-${platform}.tar.gz"
   local expected_sha
   expected_sha=$(awk -v f="$asset" '$2 == f {print $1}' "$tmp/checksums.txt")
@@ -370,7 +536,7 @@ main() {
       level="minisign signature checked with OpenSSL (pinned key)"
       ;;
     none)
-      level="SHA-256 only (checksums.txt fetched over HTTPS); signature NOT verified"
+      level="none"
       ;;
   esac
   if [ "$sig_tool" != "none" ] && [ "$trusted" != "$expected_comment" ]; then
@@ -387,11 +553,16 @@ main() {
   if [ "$gh_ok" = "1" ]; then
     gh attestation verify "$tmp/$asset" --repo "$REPO" >/dev/null ||
       bb_die "gh attestation verify FAILED for $asset. Refusing."
-    level="$level + GitHub build-provenance attestation"
+    if [ "$level" = "none" ]; then
+      level="GitHub build-provenance attestation + SHA-256 (no minisign signature)"
+    else
+      level="$level + GitHub build-provenance attestation"
+    fi
   fi
 
   # Unpack next to the install root (same filesystem: the moves are renames).
   mkdir -p "$install_dir"
+  install_dir=$(cd "$install_dir" && pwd -P)
   local stage top="bitterbot-${version}-${platform}"
   stage=$(mktemp -d "$install_dir/.staging.XXXXXX")
   # shellcheck disable=SC2064 # expand now: both are locals of main()
@@ -407,15 +578,25 @@ main() {
   if [ -L "$install_dir/current" ]; then
     previous=$(readlink "$install_dir/current")
   fi
-  local replaced=""
+  local replaced="" reuse=0 busy
   if [ -e "$install_dir/$version" ] &&
     cmp -s "$stage/$top/manifest.json" "$install_dir/$version/manifest.json"; then
-    # The same build is already unpacked (a gateway may be running from it):
-    # keep it in place and only (re)point current and the command link.
-    bb_say "$version is already installed; keeping it in place"
-    rm -rf "$stage"
-  else
+    # The same build is already unpacked (a gateway may be running from it).
+    # Keep it in place if every file still matches the manifest; repair it
+    # otherwise.
+    if bb_verify_manifest "$install_dir/$version"; then
+      bb_say "$version is already installed and intact; keeping it in place"
+      reuse=1
+      rm -rf "$stage"
+    else
+      bb_warn "$version is installed but some files differ from its manifest; repairing"
+    fi
+  fi
+  if [ "$reuse" != "1" ]; then
     if [ -e "$install_dir/$version" ]; then
+      if busy=$(bb_version_in_use "$install_dir/$version"); then
+        bb_die "$install_dir/$version must be replaced but is in use by a running Bitterbot (pid $busy). Stop it (bitterbot gateway stop) and re-run."
+      fi
       replaced="$install_dir/.replaced.$version.$$"
       mv "$install_dir/$version" "$replaced"
     fi
@@ -450,6 +631,10 @@ main() {
     entry=${entry##*/}
     printf '%s' "$entry" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
     if [ "$entry" != "$version" ] && [ "$entry" != "$keep_prev" ]; then
+      if busy=$(bb_version_in_use "$install_dir/$entry"); then
+        bb_say "Keeping old version $entry: in use by pid $busy"
+        continue
+      fi
       bb_say "Removing old version $entry"
       rm -rf "${install_dir:?}/$entry"
     fi
@@ -462,8 +647,19 @@ main() {
     bb_warn "$link_dir/bitterbot exists and is not a symlink; left it alone. Run $target directly or remove that file and re-run."
     bin_cmd=$target
   else
+    # A link pointing outside the install root was announced in the plan
+    # above, so it is replaced only after the confirmation (or --yes).
+    if [ -n "$link_now" ]; then
+      bb_warn "replacing $link_dir/bitterbot (it pointed to $link_now)"
+    fi
     ln -sfn "$target" "$link_dir/bitterbot"
     bin_cmd="$link_dir/bitterbot"
+  fi
+  local first_on_path
+  first_on_path=$(command -v bitterbot 2>/dev/null || true)
+  if [ -n "$first_on_path" ] && [ "$first_on_path" != "$link_dir/bitterbot" ] &&
+    [ "$first_on_path" != "$bin_cmd" ]; then
+    bb_warn "another bitterbot comes first on your PATH: $first_on_path. Remove it or put $link_dir earlier in PATH."
   fi
 
   if [ "$with_browser" = "1" ]; then
@@ -481,7 +677,11 @@ main() {
 
   bb_say ""
   bb_say "Installed Bitterbot $version ($platform) in $install_dir/$version"
-  bb_say "Verified: $level"
+  if [ "$level" = "none" ]; then
+    bb_say "Checked against checksums.txt from the same server (no signature)"
+  else
+    bb_say "Verified: $level"
+  fi
   if [ "$sig_tool" = "none" ]; then
     bb_say "  To check the signature yourself: minisign -Vm checksums.txt -P $PINNED_PUBKEY"
     bb_say "  (from $download_base/), then: sha256sum -c --ignore-missing checksums.txt"

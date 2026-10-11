@@ -116,7 +116,7 @@ the [installer](/start/install-script) downloads a signed, prebuilt release with
 its own Node runtime:
 
 ```bash
-curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
 ```
 
 **npm:** not yet. There is no npm package today; Docker, the installer and

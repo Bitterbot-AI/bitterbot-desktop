@@ -15,34 +15,42 @@ prebuilt, signed release for your machine and needs nothing installed first
 [Docker](/platforms/docker) instead.
 
 ```bash
-curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
 ```
 
+The script comes from the `main` branch, so this URL always works; it then
+installs the newest release that is completely published and signed. It
+carries the release signing key inside it, so it is exactly as trustworthy as
+the repository itself. Every release also attaches its own copy of
+`install.sh` (`releases/download/v<version>/install.sh`) for pinned installs.
+
 <Note>
-Release tarballs and `install.sh` are attached to releases from **1.5.0** on.
-Until that release is out, the URL above returns 404; use
+Release tarballs exist from **1.5.0** on. Until that release is out, the
+installer stops with "no published release carries a signed tarball"; use
 [Docker](/platforms/docker) or a [source install](/start/getting-started#quick-setup-from-source-cli).
 </Note>
 
 Read the script before running it (it is short and commented):
 
 ```bash
-curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | less
+curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | less
 ```
 
 ## Supported machines
 
-| Platform                 | Installer | Otherwise                                    |
-| ------------------------ | --------- | -------------------------------------------- |
-| Linux x64 (glibc)        | yes       |                                              |
-| Linux arm64 (glibc)      | yes       |                                              |
-| macOS, Apple silicon     | yes       |                                              |
-| macOS, Intel             | no        | [Docker Desktop](/platforms/docker)          |
-| Linux with musl (Alpine) | no        | [Docker](/platforms/docker)                  |
-| Windows                  | no        | [Docker Desktop or WSL2](/platforms/windows) |
+| Platform                  | Installer | Otherwise                                    |
+| ------------------------- | --------- | -------------------------------------------- |
+| Linux x64 (glibc 2.28+)   | yes       |                                              |
+| Linux arm64 (glibc 2.28+) | yes       |                                              |
+| macOS, Apple silicon      | yes       |                                              |
+| macOS, Intel              | no        | [Docker Desktop](/platforms/docker)          |
+| Linux with musl (Alpine)  | no        | [Docker](/platforms/docker)                  |
+| Windows                   | no        | [Docker Desktop or WSL2](/platforms/windows) |
 
 On an unsupported machine the installer stops before downloading anything and
-points at Docker.
+points at Docker. glibc 2.28 is the floor of the bundled Node 22 (Debian 10,
+Ubuntu 18.10, RHEL 8 and later). The installer also refuses to run as root:
+Bitterbot runs as your user (`--allow-root` overrides this).
 
 ## What it does
 
@@ -50,15 +58,20 @@ The installer prints this plan and asks before acting (`--yes` skips the
 question):
 
 1. Detects your OS and CPU.
-2. Downloads `checksums.txt`, `checksums.txt.minisig` and
-   `bitterbot-<version>-<os>-<arch>.tar.gz` from the GitHub release.
+2. Without `--version`, asks the GitHub releases API for the newest release
+   that has your platform's tarball, `checksums.txt` and
+   `checksums.txt.minisig` (a release still being built is skipped), then
+   downloads those three files from `releases/download/v<version>/`.
 3. Verifies them (see below). Any failure stops the install with nothing
    changed.
 4. Unpacks to `~/.bitterbot/app/<version>/`, points `~/.bitterbot/app/current`
    at it, keeps the version you had before (`~/.bitterbot/app/previous`), and
-   removes anything older than that.
-5. Links `~/.local/bin/bitterbot`. If `~/.local/bin` is not on your `PATH`, it
-   prints the line to add to your shell profile.
+   removes anything older than that, except a version a running Bitterbot
+   still uses (each launch leaves its pid in `<version>/.pids`).
+5. Links `~/.local/bin/bitterbot` (the plan says so if it replaces a link to
+   something else). If `~/.local/bin` is not on your `PATH`, it prints the line
+   to add to your shell profile, and it warns when another `bitterbot` comes
+   first on your `PATH`.
 6. Runs `bitterbot onboard` (skip with `--no-onboard`).
 
 Your config, memory database and keys live in `~/.bitterbot` and are never
@@ -78,8 +91,10 @@ model.
 curl -fsSL .../install.sh | bash -s -- --version 1.5.0 --no-onboard
 ```
 
-- `-s`, `--version X.Y.Z`: install that release instead of the latest.
-- `--dir PATH`: install root (default `~/.bitterbot/app`).
+- `-s`, `--version X.Y.Z`: install that release instead of the newest
+  complete one.
+- `--dir PATH`: install root (default `~/.bitterbot/app`; a relative path is
+  taken from the current directory).
 - `--no-onboard`: skip `bitterbot onboard`.
 - `-y`, `--yes`: do not ask for confirmation.
 - `--with-browser`: Linux only; also downloads Playwright's Chromium (about
@@ -87,6 +102,7 @@ curl -fsSL .../install.sh | bash -s -- --version 1.5.0 --no-onboard
   browser tool uses an installed Chrome, Brave or Edge.
 - `--require-signature`: refuse to install unless the signature can be checked
   (needs `minisign` or OpenSSL 3).
+- `--allow-root`: allow installing as root (not recommended).
 
 ## What gets verified
 
@@ -107,6 +123,9 @@ one it used:
 | `minisign`                           | minisign signature against the pinned key, then the tarball's SHA-256               |
 | OpenSSL 3 (most current Linux)       | the same minisign signature, checked with OpenSSL, then SHA-256                     |
 | neither (stock macOS ships LibreSSL) | SHA-256 only, from `checksums.txt` fetched over HTTPS; the signature is NOT checked |
+
+In the last case the installer ends with "Checked against checksums.txt from
+the same server (no signature)" instead of "Verified".
 
 In the first two cases the signed comment must read `v<version> checksums`
 for the exact version being installed, so a signature copied from another
@@ -163,9 +182,14 @@ want to delete your config, memory and keys.
 
 ## Troubleshooting
 
-- `could not download .../checksums.txt`: the release is still being
-  published (the tarballs are attached a few minutes after the release
-  appears). Wait, or pin the previous release with `--version`.
+- `no published release carries a signed tarball`, or a pinned
+  `--version` that fails with `could not download .../checksums.txt`: that
+  release's tarballs are not attached yet. They are built after the release
+  appears and are signed only after a maintainer approves the signing step,
+  which can take hours; until then the installer (without `--version`) keeps
+  installing the previous complete release.
+- `the GitHub releases API refused the request`: unauthenticated API calls are
+  limited to 60 per hour per IP. Wait, or pin a release with `--version`.
 - `signature is INVALID` or `SHA-256 mismatch`: do not work around it. Report
   it with the full output at
   [GitHub issues](https://github.com/Bitterbot-AI/bitterbot-desktop/issues).

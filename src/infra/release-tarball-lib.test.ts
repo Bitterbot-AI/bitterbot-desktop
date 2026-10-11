@@ -166,8 +166,50 @@ describe.skipIf(process.platform === "win32")("launcher (bin/bitterbot)", () => 
       expect(run({})).toBe(`kind=tarball root=${real} args=${real}/dist/entry.js --version`);
       // The documented escape hatch survives the launcher.
       expect(run({ BITTERBOT_INSTALL_KIND: "package" })).toContain("kind=package");
+      // Each launch leaves an in-use marker (its pid) in the version directory.
+      expect(fs.readdirSync(path.join(install, ".pids")).length).toBeGreaterThan(0);
+      expect(fs.readdirSync(path.join(install, ".pids")).every((n) => /^\d+$/.test(n))).toBe(true);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("release-tarball.yml publishing rules", () => {
+  const wf = fs.readFileSync(repoFile(".github/workflows/release-tarball.yml"), "utf8");
+
+  it("uploads tarballs, then checksums + signature, then install.sh", () => {
+    const tarballs = wf.indexOf('gh release upload "v$VERSION" bitterbot-*.tar.gz');
+    const checksums = wf.indexOf(
+      'gh release upload "v$VERSION" checksums.txt checksums.txt.minisig',
+    );
+    const installer = wf.indexOf('gh release upload "v$VERSION" install.sh');
+    expect(tarballs).toBeGreaterThan(0);
+    expect(checksums).toBeGreaterThan(tarballs);
+    expect(installer).toBeGreaterThan(checksums);
+  });
+
+  it("refuses a manual rebuild of a signed release unless forced", () => {
+    expect(wf).toMatch(/force:\n\s+description:/);
+    expect(wf).toContain('if [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE" != "true" ]; then');
+    expect(wf).toContain("grep -qx 'checksums.txt'");
+  });
+
+  it("builds reproducibly from the tag commit time", () => {
+    expect(wf).toContain("SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}");
+    expect(wf).toContain('echo "epoch=$(git log -1 --format=%ct)"');
+  });
+
+  it("SHA-pins every action and uses no dependency cache", () => {
+    const uses = [...wf.matchAll(/uses:\s*(\S+)/g)].map((m) => m[1]);
+    expect(uses.length).toBeGreaterThan(4);
+    for (const ref of uses) {
+      expect(ref, ref).toMatch(/@[0-9a-f]{40}$/);
+    }
+    expect(wf).not.toMatch(/cache:\s*pnpm/);
+  });
+
+  it("normalizes the concurrency key to the v-prefixed tag", () => {
+    expect(wf).toContain("format('v{0}', inputs.version)");
   });
 });

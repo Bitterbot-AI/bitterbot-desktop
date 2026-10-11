@@ -1,13 +1,17 @@
 /**
- * scripts/install.sh (PLAN-56 Phase 3a) against fake releases on disk:
- * every verification tier, upgrade-in-place with the previous version kept,
- * and every refusal (tampering, replayed or foreign signatures, test-only
- * overrides outside test mode). The real tarball is exercised end to end by
+ * scripts/install.sh (PLAN-56 Phase 3a) against fake releases on disk (and a
+ * fake GitHub releases API listing): every verification tier, choosing the
+ * newest COMPLETE release, upgrade-in-place with the previous version kept,
+ * in-use versions never pruned, and every refusal (tampering, replayed or
+ * foreign signatures, test-only overrides outside test mode, loopback-guard
+ * bypasses, redirects, musl / old glibc, root). The real tarball is exercised end to end by
  * the `installer` job in .github/workflows/ci.yml.
  */
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,6 +20,7 @@ import {
   ORCHESTRATOR_MINISIGN_PUBKEY,
   verifyMinisign,
 } from "../../scripts/orchestrator-signature.mjs";
+import { buildManifest } from "../../scripts/release-tarball-lib.mjs";
 import { tarballPlatformId } from "./install-kind.js";
 
 const INSTALL_SH = fileURLToPath(new URL("../../scripts/install.sh", import.meta.url));
@@ -63,29 +68,84 @@ function hasCommand(cmd: string): boolean {
   return spawnSync("sh", ["-c", `command -v ${cmd}`]).status === 0;
 }
 
+type Override = { draft?: boolean; prerelease?: boolean; omit?: string[] };
+
 const describeInstaller = process.platform !== "win32" && platformId ? describe : describe.skip;
 
 describeInstaller("scripts/install.sh", () => {
   let work: string;
   let key: TestKey;
   let releases: string;
+  let homeCounter = 0;
+  const overrides = new Map<string, Override>();
+
+  /** A fresh, empty fake GitHub release store for one test. */
+  function freshReleases(): string {
+    releases = fs.mkdtempSync(path.join(work, "releases-"));
+    overrides.clear();
+    writeApi();
+    return releases;
+  }
+
+  function freshHome(): string {
+    homeCounter += 1;
+    return path.join(work, `home-${homeCounter}`);
+  }
+
+  /** releases/api/releases.json: the GitHub releases API listing of what is on disk. */
+  function writeApi() {
+    const dl = path.join(releases, "download");
+    const tags = fs.existsSync(dl) ? fs.readdirSync(dl) : [];
+    const listing = tags.map((tag) => {
+      const o = overrides.get(tag) ?? {};
+      const names = fs.readdirSync(path.join(dl, tag)).filter((n) => !(o.omit ?? []).includes(n));
+      return {
+        tag_name: tag,
+        name: `Release ${tag}`,
+        draft: o.draft ?? false,
+        prerelease: o.prerelease ?? false,
+        body: 'notes with a fake "tag_name": "v99.0.0" inside',
+        assets: names.map((n) => ({
+          name: n,
+          browser_download_url: `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/${tag}/${n}`,
+        })),
+      };
+    });
+    fs.mkdirSync(path.join(releases, "api"), { recursive: true });
+    fs.writeFileSync(path.join(releases, "api", "releases.json"), JSON.stringify(listing, null, 2));
+  }
 
   /** Build a fake signed release `version` under releases/download/v<version>. */
   function publish(
     version: string,
-    opts: { tamper?: boolean; comment?: string; signer?: TestKey; noSig?: boolean } = {},
+    opts: {
+      tamper?: boolean;
+      comment?: string;
+      signer?: TestKey;
+      noSig?: boolean;
+      api?: Override;
+    } = {},
   ) {
     const top = `bitterbot-${version}-${platformId}`;
-    const src = path.join(work, "src", version);
+    const src = path.join(work, "src", `${path.basename(releases)}-${version}`);
+    fs.rmSync(src, { recursive: true, force: true });
     fs.mkdirSync(path.join(src, top, "bin"), { recursive: true });
-    fs.writeFileSync(
-      path.join(src, top, "bin", "bitterbot"),
-      `#!/bin/sh\necho "fake bitterbot ${version} $*"\n`,
-      { mode: 0o755 },
-    );
+    const launcher = Buffer.from(`#!/bin/sh\necho "fake bitterbot ${version} $*"\n`);
+    fs.writeFileSync(path.join(src, top, "bin", "bitterbot"), launcher, { mode: 0o755 });
+    const manifest = buildManifest({
+      version,
+      platformId: platformId!,
+      nodeVersion: "v22.0.0",
+      orchestratorVersion: "0.2.3",
+      commit: null,
+      builtAt: "2026-10-11T00:00:00.000Z",
+      files: [
+        { path: "bin/bitterbot", sha256: sha256(launcher), size: launcher.length, mode: "755" },
+      ],
+    });
     fs.writeFileSync(
       path.join(src, top, "manifest.json"),
-      `${JSON.stringify({ version, platform: platformId }, null, 1)}\n`,
+      `${JSON.stringify(manifest, null, 1)}\n`,
     );
     const dir = path.join(releases, "download", `v${version}`);
     fs.mkdirSync(dir, { recursive: true });
@@ -108,36 +168,85 @@ describeInstaller("scripts/install.sh", () => {
     if (opts.tamper) {
       fs.appendFileSync(path.join(dir, asset), "tampered");
     }
-    // releases/latest/download mirrors the newest publish.
-    fs.rmSync(path.join(releases, "latest"), { recursive: true, force: true });
-    fs.mkdirSync(path.join(releases, "latest"), { recursive: true });
-    fs.cpSync(dir, path.join(releases, "latest", "download"), { recursive: true });
+    if (opts.api) {
+      overrides.set(`v${version}`, opts.api);
+    }
+    writeApi();
+  }
+
+  function baseEnv(home: string, env: Record<string, string | undefined>) {
+    fs.mkdirSync(home, { recursive: true });
+    return {
+      PATH: process.env.PATH,
+      HOME: home,
+      TMPDIR: work,
+      BITTERBOT_INSTALL_TEST_MODE: "1",
+      BITTERBOT_INSTALL_BASE_URL: pathToFileURL(releases).href,
+      BITTERBOT_INSTALL_TEST_PUBKEY: key.pubkeyB64,
+      ...env,
+    } as NodeJS.ProcessEnv;
   }
 
   function runInstaller(
     args: string[],
     env: Record<string, string | undefined> = {},
     home = path.join(work, "home"),
+    opts: { cwd?: string } = {},
   ) {
-    fs.mkdirSync(home, { recursive: true });
     const res = spawnSync("bash", [INSTALL_SH, "--yes", "--no-onboard", ...args], {
       encoding: "utf8",
-      env: {
-        PATH: process.env.PATH,
-        HOME: home,
-        TMPDIR: work,
-        BITTERBOT_INSTALL_TEST_MODE: "1",
-        BITTERBOT_INSTALL_BASE_URL: pathToFileURL(releases).href,
-        BITTERBOT_INSTALL_TEST_PUBKEY: key.pubkeyB64,
-        ...env,
-      },
+      cwd: opts.cwd,
+      env: baseEnv(home, env),
     });
     return { status: res.status, out: `${res.stdout}${res.stderr}`, home };
   }
 
+  /** Async variant, for tests that serve HTTP from this process. */
+  function runInstallerAsync(
+    args: string[],
+    env: Record<string, string | undefined>,
+    home: string,
+  ): Promise<{ status: number | null; out: string }> {
+    return new Promise((resolve) => {
+      const child = spawn("bash", [INSTALL_SH, "--yes", "--no-onboard", ...args], {
+        env: baseEnv(home, env),
+      });
+      let out = "";
+      child.stdout.on("data", (d) => (out += d));
+      child.stderr.on("data", (d) => (out += d));
+      child.on("close", (status) => resolve({ status, out }));
+    });
+  }
+
+  async function withServer(
+    handler: http.RequestListener,
+    fn: (base: string, hits: string[]) => Promise<void>,
+  ) {
+    const hits: string[] = [];
+    const server = http.createServer((req, res) => {
+      hits.push(req.url ?? "");
+      handler(req, res);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as AddressInfo).port;
+    try {
+      await fn(`http://127.0.0.1:${port}`, hits);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  }
+
+  /** A directory of fake commands to put first on PATH. */
+  function fakeBin(scripts: Record<string, string>): string {
+    const dir = fs.mkdtempSync(path.join(work, "fakebin-"));
+    for (const [name, body] of Object.entries(scripts)) {
+      fs.writeFileSync(path.join(dir, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    }
+    return dir;
+  }
+
   beforeAll(() => {
     work = fs.mkdtempSync(path.join(os.tmpdir(), "bb-install-sh-"));
-    releases = path.join(work, "releases");
     key = makeKey();
   });
 
@@ -161,86 +270,275 @@ describeInstaller("scripts/install.sh", () => {
   });
 
   it("refuses the test-only overrides unless test mode is explicitly on", () => {
+    freshReleases();
     publish("1.4.0");
-    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_MODE: undefined });
+    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_MODE: undefined }, freshHome());
     expect(res.status).not.toBe(0);
     expect(res.out).toContain("test-only and need BITTERBOT_INSTALL_TEST_MODE=1");
-    const keyOnly = runInstaller([], {
-      BITTERBOT_INSTALL_TEST_MODE: undefined,
-      BITTERBOT_INSTALL_BASE_URL: undefined,
-    });
+    const keyOnly = runInstaller(
+      [],
+      { BITTERBOT_INSTALL_TEST_MODE: undefined, BITTERBOT_INSTALL_BASE_URL: undefined },
+      freshHome(),
+    );
     expect(keyOnly.status).not.toBe(0);
     expect(keyOnly.out).toContain("refusing");
   });
 
-  it("even in test mode, refuses a non-loopback base URL", () => {
-    const res = runInstaller([], { BITTERBOT_INSTALL_BASE_URL: "https://example.com/releases" });
+  it.each([
+    ["https://example.com/releases", "loopback"],
+    ["http://127.0.0.1:1@attacker.example/releases", "'@'"],
+    ["http://localhost:8080.attacker.example/releases", "loopback"],
+    ["http://127.0.0.1.attacker.example:80/releases", "loopback"],
+  ])("even in test mode, refuses the base URL %s", (url, why) => {
+    const res = runInstaller([], { BITTERBOT_INSTALL_BASE_URL: url }, freshHome());
     expect(res.status).not.toBe(0);
-    expect(res.out).toContain("loopback");
+    expect(res.out).toContain(why);
   });
 
-  it("SHA-256-only fallback says so, and --require-signature refuses it", () => {
-    publish("1.4.0");
-    const home = path.join(work, "home-none");
-    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, home);
+  it("test mode never follows a redirect, even to another loopback server", async () => {
+    await withServer(
+      (_req, res) => {
+        res.writeHead(200, { "content-type": "text/plain" }).end("never fetched");
+      },
+      async (target, targetHits) => {
+        await withServer(
+          (req, res) => {
+            res.writeHead(302, { location: `${target}${req.url}` }).end();
+          },
+          async (redirector) => {
+            const home = freshHome();
+            const res = await runInstallerAsync(
+              ["--version", "1.4.0"],
+              { BITTERBOT_INSTALL_BASE_URL: redirector },
+              home,
+            );
+            expect(res.status).not.toBe(0);
+            expect(targetHits).toEqual([]);
+            expect(fs.existsSync(path.join(home, ".bitterbot", "app"))).toBe(false);
+          },
+        );
+      },
+    );
+  });
+
+  it("explains a GitHub API rate limit instead of failing obscurely", async () => {
+    await withServer(
+      (_req, res) => {
+        res.writeHead(403, { "content-type": "application/json" }).end('{"message":"rate limit"}');
+      },
+      async (base) => {
+        const res = await runInstallerAsync([], { BITTERBOT_INSTALL_BASE_URL: base }, freshHome());
+        expect(res.status).not.toBe(0);
+        expect(res.out).toContain("60 per hour");
+        expect(res.out).toContain("--version X.Y.Z");
+      },
+    );
+  });
+
+  it("picks the newest COMPLETE release: skips ones missing the tarball, the signature, or marked draft/prerelease", () => {
+    freshReleases();
+    publish("1.5.0");
+    publish("1.6.0", { api: { omit: [`bitterbot-1.6.0-${platformId}.tar.gz`] } }); // tarball job still running
+    publish("1.7.0", { api: { omit: ["checksums.txt.minisig"] } }); // signing not approved yet
+    publish("1.8.0", { api: { prerelease: true } });
+    publish("1.9.0", { api: { draft: true } });
+    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, freshHome());
     expect(res.status, res.out).toBe(0);
-    expect(res.out).toContain("signature NOT verified");
+    expect(res.out).toContain("Newest complete release: 1.5.0");
+    expect(fs.readlinkSync(path.join(res.home, ".bitterbot", "app", "current"))).toBe("1.5.0");
+  });
+
+  it("says when no release has a tarball for this platform yet", () => {
+    freshReleases();
+    const res = runInstaller([], {}, freshHome());
+    expect(res.status).not.toBe(0);
+    expect(res.out).toContain("no published release carries a signed tarball");
+  });
+
+  it("SHA-256-only fallback says what it checked, and --require-signature refuses it", () => {
+    freshReleases();
+    publish("1.4.0");
+    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, freshHome());
+    expect(res.status, res.out).toBe(0);
+    expect(res.out).toContain("Checked against checksums.txt from the same server (no signature)");
+    expect(res.out).not.toContain("Verified:");
     const strict = runInstaller(
       ["--require-signature"],
       { BITTERBOT_INSTALL_TEST_VERIFIER: "none" },
-      path.join(work, "home-strict"),
+      freshHome(),
     );
     expect(strict.status).not.toBe(0);
+  });
+
+  it("validates --version as a whole string", () => {
+    const res = runInstaller(["--version", "1.5.0\nrm -rf /"], {}, freshHome());
+    expect(res.status).not.toBe(0);
+    expect(res.out).toContain("--version must look like 1.5.0");
+  });
+
+  it("refuses to run as root unless --allow-root", () => {
+    freshReleases();
+    publish("1.4.0");
+    const bin = fakeBin({ id: 'if [ "$1" = "-u" ]; then echo 0; else exec /usr/bin/id "$@"; fi' });
+    const env = { PATH: `${bin}:${process.env.PATH}`, BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
+    const refused = runInstaller([], env, freshHome());
+    expect(refused.status).not.toBe(0);
+    expect(refused.out).toContain("refusing to install as root");
+    const allowed = runInstaller(["--allow-root"], env, freshHome());
+    expect(allowed.status, allowed.out).toBe(0);
+  });
+
+  it("refuses musl Linux even though `ldd --version` exits non-zero there", () => {
+    const bin = fakeBin({
+      uname: 'case "$1" in -s) echo Linux ;; -m) echo x86_64 ;; *) echo Linux ;; esac',
+      ldd: 'echo "musl libc (x86_64)"; echo "Version 1.2.4"; exit 1',
+      getconf: "exit 1",
+    });
+    const res = runInstaller([], { PATH: `${bin}:${process.env.PATH}` }, freshHome());
+    expect(res.status).not.toBe(0);
+    expect(res.out).toContain("musl-based Linux");
+  });
+
+  it("refuses glibc older than 2.28 (the bundled Node 22 needs it)", () => {
+    const bin = fakeBin({
+      uname: 'case "$1" in -s) echo Linux ;; -m) echo x86_64 ;; *) echo Linux ;; esac',
+      ldd: 'echo "ldd (GNU libc) 2.17"',
+      getconf: "exit 1",
+    });
+    const res = runInstaller([], { PATH: `${bin}:${process.env.PATH}` }, freshHome());
+    expect(res.status).not.toBe(0);
+    expect(res.out).toContain("glibc 2.17 is too old");
+  });
+
+  it("makes a relative --dir absolute", () => {
+    freshReleases();
+    publish("1.4.0");
+    const cwd = fs.mkdtempSync(path.join(work, "cwd-"));
+    const res = runInstaller(
+      ["--dir", "rel-app"],
+      { BITTERBOT_INSTALL_TEST_VERIFIER: "none" },
+      freshHome(),
+      { cwd },
+    );
+    expect(res.status, res.out).toBe(0);
+    const link = fs.readlinkSync(path.join(res.home, ".local", "bin", "bitterbot"));
+    expect(path.isAbsolute(link)).toBe(true);
+    expect(link).toBe(path.join(fs.realpathSync(cwd), "rel-app", "current", "bin", "bitterbot"));
+  });
+
+  it("announces and replaces a foreign ~/.local/bin/bitterbot link, and warns about an earlier one on PATH", () => {
+    freshReleases();
+    publish("1.4.0");
+    const home = freshHome();
+    fs.mkdirSync(path.join(home, ".local", "bin"), { recursive: true });
+    fs.symlinkSync("/usr/bin/true", path.join(home, ".local", "bin", "bitterbot"));
+    const shadow = fakeBin({ bitterbot: "echo other" });
+    const res = runInstaller(
+      [],
+      { PATH: `${shadow}:${process.env.PATH}`, BITTERBOT_INSTALL_TEST_VERIFIER: "none" },
+      home,
+    );
+    expect(res.status, res.out).toBe(0);
+    expect(res.out).toContain("(replaces the existing link to /usr/bin/true)");
+    expect(res.out).toContain("another bitterbot comes first on your PATH");
+    expect(fs.readlinkSync(path.join(home, ".local", "bin", "bitterbot"))).toContain(
+      path.join(".bitterbot", "app", "current", "bin", "bitterbot"),
+    );
+  });
+
+  it("never prunes or replaces a version a running process uses", async () => {
+    freshReleases();
+    for (const v of ["1.5.0", "1.6.0", "1.7.0", "1.8.0"]) {
+      publish(v);
+    }
+    const home = freshHome();
+    const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
+    expect(runInstaller(["--version", "1.5.0"], env, home).status).toBe(0);
+    const app = path.join(home, ".bitterbot", "app");
+    // A "gateway" started from 1.5.0: the launcher's pid marker.
+    const sleeper = spawn("sleep", ["60"], { stdio: "ignore" });
+    try {
+      fs.mkdirSync(path.join(app, "1.5.0", ".pids"), { recursive: true });
+      fs.writeFileSync(path.join(app, "1.5.0", ".pids", String(sleeper.pid)), "");
+      expect(runInstaller(["--version", "1.6.0"], env, home).status).toBe(0);
+      const third = runInstaller(["--version", "1.7.0"], env, home);
+      expect(third.status, third.out).toBe(0);
+      expect(third.out).toContain("Keeping old version 1.5.0: in use by pid");
+      expect(fs.existsSync(path.join(app, "1.5.0", "bin", "bitterbot"))).toBe(true);
+    } finally {
+      sleeper.kill();
+      await new Promise((r) => sleeper.once("exit", r));
+    }
+    // Once the process is gone, the next install prunes it (and its stale marker).
+    const fourth = runInstaller(["--version", "1.8.0"], env, home);
+    expect(fourth.status, fourth.out).toBe(0);
+    expect(fs.existsSync(path.join(app, "1.5.0"))).toBe(false);
+  });
+
+  it("re-checks an identical same-version install file by file and repairs a modified one", () => {
+    freshReleases();
+    publish("1.4.0");
+    const home = freshHome();
+    const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
+    expect(runInstaller([], env, home).status).toBe(0);
+    const app = path.join(home, ".bitterbot", "app");
+    const intact = runInstaller([], env, home);
+    expect(intact.out).toContain("already installed and intact; keeping it in place");
+    fs.writeFileSync(path.join(app, "1.4.0", "bin", "bitterbot"), "#!/bin/sh\necho evil\n");
+    const repaired = runInstaller([], env, home);
+    expect(repaired.status, repaired.out).toBe(0);
+    expect(repaired.out).toContain("repairing");
+    expect(fs.readFileSync(path.join(app, "1.4.0", "bin", "bitterbot"), "utf8")).toContain(
+      "fake bitterbot 1.4.0",
+    );
   });
 
   it.runIf(opensslCanVerify())(
     "verifies with OpenSSL, installs, links, then upgrades keeping the previous version",
     () => {
+      freshReleases();
       publish("1.4.0");
-      const first = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "openssl" });
+      const home = freshHome();
+      const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "openssl" };
+      const first = runInstaller([], env, home);
       expect(first.status, first.out).toBe(0);
       expect(first.out).toContain("minisign signature checked with OpenSSL (pinned key)");
-      const app = path.join(first.home, ".bitterbot", "app");
+      const app = path.join(home, ".bitterbot", "app");
       expect(fs.readlinkSync(path.join(app, "current"))).toBe("1.4.0");
-      const link = path.join(first.home, ".local", "bin", "bitterbot");
-      expect(fs.readlinkSync(link)).toBe(path.join(app, "current", "bin", "bitterbot"));
+      const link = path.join(home, ".local", "bin", "bitterbot");
+      expect(fs.readlinkSync(link)).toBe(
+        path.join(fs.realpathSync(app), "current", "bin", "bitterbot"),
+      );
       expect(execFileSync(link, ["--version"], { encoding: "utf8" })).toContain(
         "fake bitterbot 1.4.0",
       );
 
       publish("1.4.1");
-      const second = runInstaller(["--version", "1.4.1"], {
-        BITTERBOT_INSTALL_TEST_VERIFIER: "openssl",
-      });
+      const second = runInstaller([], env, home);
       expect(second.status, second.out).toBe(0);
       expect(fs.readlinkSync(path.join(app, "current"))).toBe("1.4.1");
       expect(fs.readlinkSync(path.join(app, "previous"))).toBe("1.4.0");
       expect(fs.existsSync(path.join(app, "1.4.0", "bin", "bitterbot"))).toBe(true);
       expect(execFileSync(link, [], { encoding: "utf8" })).toContain("fake bitterbot 1.4.1");
 
-      // Re-running the same build keeps its directory in place (a gateway may
-      // be running from it) and keeps the previous version.
+      // Re-running the same build keeps its directory in place.
       const marker = path.join(app, "1.4.1", "still-here");
       fs.writeFileSync(marker, "");
-      const again = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "openssl" });
+      const again = runInstaller([], env, home);
       expect(again.status, again.out).toBe(0);
-      expect(again.out).toContain("already installed; keeping it in place");
+      expect(again.out).toContain("already installed and intact; keeping it in place");
       expect(fs.existsSync(marker)).toBe(true);
       expect(
         fs.readdirSync(app).some((n) => n.startsWith(".staging") || n.startsWith(".replaced")),
       ).toBe(false);
-      expect(fs.readlinkSync(path.join(app, "current"))).toBe("1.4.1");
       expect(fs.existsSync(path.join(app, "1.4.0"))).toBe(true);
     },
   );
 
   it.runIf(hasCommand("minisign"))("verifies with the minisign binary", () => {
+    freshReleases();
     publish("1.4.2");
-    const res = runInstaller(
-      [],
-      { BITTERBOT_INSTALL_TEST_VERIFIER: "minisign" },
-      path.join(work, "home-minisign"),
-    );
+    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "minisign" }, freshHome());
     expect(res.status, res.out).toBe(0);
     expect(res.out).toContain("Verified: minisign signature (pinned key)");
   });
@@ -251,40 +549,45 @@ describeInstaller("scripts/install.sh", () => {
     ),
   )("refusals with the %s verifier", (verifier) => {
     const env = { BITTERBOT_INSTALL_TEST_VERIFIER: verifier };
+    const pinned = ["--version", "1.5.0"];
 
     it("refuses a signature from another key", () => {
+      freshReleases();
       publish("1.5.0", { signer: makeKey() });
-      const res = runInstaller([], env, path.join(work, `home-foreign-${verifier}`));
+      const home = freshHome();
+      const res = runInstaller(pinned, env, home);
       expect(res.status).not.toBe(0);
       expect(res.out).toContain("INVALID");
-      expect(
-        fs.existsSync(path.join(work, `home-foreign-${verifier}`, ".bitterbot", "app", "1.5.0")),
-      ).toBe(false);
+      expect(fs.existsSync(path.join(home, ".bitterbot", "app", "1.5.0"))).toBe(false);
     });
 
     it("refuses a signature replayed from another release", () => {
+      freshReleases();
       publish("1.5.0", { comment: "v1.4.0 checksums" });
-      const res = runInstaller([], env, path.join(work, `home-replay-${verifier}`));
+      const res = runInstaller(pinned, env, freshHome());
       expect(res.status).not.toBe(0);
       expect(res.out).toContain("replayed");
     });
 
     it("refuses an orchestrator release signature (same key, other trusted comment)", () => {
+      freshReleases();
       publish("1.5.0", { comment: "orchestrator-v0.2.3 checksums" });
-      const res = runInstaller([], env, path.join(work, `home-orch-${verifier}`));
+      const res = runInstaller(pinned, env, freshHome());
       expect(res.status).not.toBe(0);
     });
 
     it("refuses a tarball whose SHA-256 does not match the signed checksums", () => {
+      freshReleases();
       publish("1.5.0", { tamper: true });
-      const res = runInstaller([], env, path.join(work, `home-tamper-${verifier}`));
+      const res = runInstaller(pinned, env, freshHome());
       expect(res.status).not.toBe(0);
       expect(res.out).toContain("SHA-256 mismatch");
     });
 
-    it("refuses a release with no signature at all", () => {
+    it("refuses a pinned release with no signature at all", () => {
+      freshReleases();
       publish("1.5.0", { noSig: true });
-      const res = runInstaller([], env, path.join(work, `home-nosig-${verifier}`));
+      const res = runInstaller(pinned, env, freshHome());
       expect(res.status).not.toBe(0);
       expect(res.out).toContain("treated as tampering");
     });

@@ -339,6 +339,10 @@ export async function fetchNpmLatestVersion(params?: {
 export const GITHUB_RELEASES_URL =
   "https://api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30";
 
+/** Release-level checksums and their minisign signature (release-tarball.yml). */
+export const TARBALL_CHECKSUMS_ASSET = "checksums.txt";
+export const TARBALL_SIGNATURE_ASSET = "checksums.txt.minisig";
+
 /** The release asset whose presence means "the image for this release is on GHCR". */
 export const COMPOSE_RELEASE_ASSET = "docker-compose.yml";
 
@@ -418,7 +422,7 @@ function releaseAssetNames(release: GithubReleaseEntry): Set<string> {
  */
 function pickLatestReleaseWithAsset(
   releases: GithubReleaseEntry[],
-  requiredAsset: (version: string) => string,
+  requiredAssets: (version: string) => string[],
 ): string | null {
   let best: string | null = null;
   for (const release of releases) {
@@ -429,7 +433,8 @@ function pickLatestReleaseWithAsset(
     if (!version) {
       continue;
     }
-    if (!releaseAssetNames(release).has(requiredAsset(version))) {
+    const names = releaseAssetNames(release);
+    if (!requiredAssets(version).every((name) => names.has(name))) {
       continue;
     }
     const cmp = compareSemverStrings(version, best);
@@ -445,20 +450,26 @@ function pickLatestReleaseWithAsset(
  * the compose asset; null when there is none.
  */
 export function pickLatestImageRelease(releases: GithubReleaseEntry[]): string | null {
-  return pickLatestReleaseWithAsset(releases, () => COMPOSE_RELEASE_ASSET);
+  return pickLatestReleaseWithAsset(releases, () => [COMPOSE_RELEASE_ASSET]);
 }
 
 /**
  * Release-tarball installs (PLAN-56 Phase 3): the highest release that
- * carries `bitterbot-<version>-<platformId>.tar.gz`. A release whose tarball
- * job has not finished (or failed verification and uploaded nothing) is
- * never offered.
+ * carries `bitterbot-<version>-<platformId>.tar.gz` AND `checksums.txt` AND
+ * `checksums.txt.minisig`, i.e. one install.sh can actually install. A
+ * release whose tarball job has not finished, is waiting for the signing
+ * approval, or failed verification (and so uploaded nothing) is never
+ * offered. scripts/install.sh applies the same rule (bb_pick_latest).
  */
 export function pickLatestTarballRelease(
   releases: GithubReleaseEntry[],
   platformId: string,
 ): string | null {
-  return pickLatestReleaseWithAsset(releases, (version) => tarballAssetName(version, platformId));
+  return pickLatestReleaseWithAsset(releases, (version) => [
+    tarballAssetName(version, platformId),
+    TARBALL_CHECKSUMS_ASSET,
+    TARBALL_SIGNATURE_ASSET,
+  ]);
 }
 
 /**

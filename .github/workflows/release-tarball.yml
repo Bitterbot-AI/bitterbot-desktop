@@ -12,6 +12,10 @@
 # pinned key) and the bin/bitterbot launcher, loads every native package with
 # the bundled Node, and writes the tarball + manifest.json.
 #
+# Every release therefore needs ONE approval click in the "release"
+# environment before its tarballs exist; until then install.sh (served from
+# main) keeps installing the previous complete release.
+#
 # Publish (one job, approval-gated like orchestrator-release.yml): checksums
 # over every asset, minisign signature with the trusted comment
 # "v<version> checksums", a self-verify against the key PINNED in the repo
@@ -33,14 +37,21 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Existing release version to (re)build tarballs for, e.g. 1.5.0"
+        description: "Existing release version to build tarballs for, e.g. 1.5.0"
         required: true
         type: string
+      force:
+        description: "Rebuild even though the release already has checksums.txt (replaces assets in place; installs running during the upload may fail closed)"
+        required: false
+        default: false
+        type: boolean
   release:
     types: [published]
 
 concurrency:
-  group: release-tarball-${{ inputs.version || github.event.release.tag_name }}
+  # One key per version whatever the trigger: inputs may be "1.5.0" or "v1.5.0",
+  # the release event always carries "v1.5.0".
+  group: release-tarball-${{ inputs.version && (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version)) || github.event.release.tag_name }}
   cancel-in-progress: false
 
 permissions:
@@ -53,11 +64,15 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       run: ${{ steps.v.outputs.run }}
+      epoch: ${{ steps.epoch.outputs.epoch }}
     steps:
       - id: v
         env:
           INPUT_VERSION: ${{ inputs.version }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          FORCE: ${{ inputs.force }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           version="${INPUT_VERSION:-}"
@@ -73,8 +88,28 @@ jobs:
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::version must be X.Y.Z, got '$version'"; exit 1
           fi
+          # A manual rebuild of a release that already has signed tarballs
+          # would swap assets under running installs: refuse unless forced.
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE" != "true" ]; then
+            if gh release view "v$version" --repo "${{ github.repository }}" --json assets \
+              -q '.assets[].name' | grep -qx 'checksums.txt'; then
+              echo "::error::v$version already has checksums.txt; re-run with force: true to rebuild it"
+              exit 1
+            fi
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.v.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ steps.v.outputs.version }}
+
+      # Reproducible builds: every platform stamps builtAt and file mtimes
+      # with the tag commit's time.
+      - id: epoch
+        if: steps.v.outputs.run == 'true'
+        run: echo "epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
 
   build:
     needs: meta
@@ -94,17 +129,20 @@ jobs:
             runner: ubuntu-22.04-arm
           - platform: darwin-arm64
             runner: macos-14
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
     steps:
-      - uses: actions/checkout@v7
+      # SHA-pinned like orchestrator-release.yml; no dependency cache in a
+      # release build (a poisoned cache must not reach a signed artifact).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v${{ needs.meta.outputs.version }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Install dependencies
         env:
@@ -145,7 +183,7 @@ jobs:
       id-token: write # build-provenance attestation (Sigstore)
       attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: v${{ needs.meta.outputs.version }}
 
@@ -203,9 +241,13 @@ jobs:
         run: |
           set -euo pipefail
           cd release
-          # Signature and checksums first, tarballs next (the update check
-          # keys on the tarball asset), install.sh last (the one-liner).
+          # Tarballs and manifests first, then checksums.txt + its signature,
+          # then install.sh. install.sh and the update check only consider a
+          # release once it has the tarball AND checksums.txt AND .minisig,
+          # so a half-finished upload is never picked, and new checksums are
+          # never published before the tarballs they describe.
+          gh release upload "v$VERSION" bitterbot-*.tar.gz bitterbot-*.manifest.json \
+            --repo "${{ github.repository }}" --clobber
           gh release upload "v$VERSION" checksums.txt checksums.txt.minisig \
-            bitterbot-*.manifest.json --repo "${{ github.repository }}" --clobber
-          gh release upload "v$VERSION" bitterbot-*.tar.gz --repo "${{ github.repository }}" --clobber
+            --repo "${{ github.repository }}" --clobber
           gh release upload "v$VERSION" install.sh --repo "${{ github.repository }}" --clobber

@@ -360,7 +360,7 @@ describe("update-cli", () => {
     expect(resolveNpmChannelTag).not.toHaveBeenCalled();
     expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
     const errors = vi.mocked(defaultRuntime.error).mock.calls.map((call) => String(call[0]));
-    expect(errors.join("\n")).toContain("releases/latest/download/install.sh | bash");
+    expect(errors.join("\n")).toContain("main/scripts/install.sh | bash");
     expect(errors.join("\n")).toContain("keeps the previous version");
   });
 

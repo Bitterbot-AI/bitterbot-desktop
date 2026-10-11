@@ -132,7 +132,7 @@ describe("UpdateCard for a release-tarball install (PLAN-56 Phase 3a)", () => {
     useUpdateStore.setState({ info: tarballInfo({}) });
     render(<UpdateCard />);
     expect(screen.getByText("Release 1.5.0 available; re-run the installer.")).toBeTruthy();
-    expect(screen.getByText(/releases\/latest\/download\/install\.sh \| bash/)).toBeTruthy();
+    expect(screen.getByText(/main\/scripts\/install\.sh \| bash/)).toBeTruthy();
     expect(screen.queryByText("Update now")).toBeNull();
     expect(screen.queryByTestId("update-card-container")).toBeNull();
   });

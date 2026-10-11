@@ -143,7 +143,7 @@ describe("release-tarball install kind (PLAN-56 Phase 3a)", () => {
     expect(externalUpdateCommand("git")).toBeNull();
     expect(externalUpdateCommand("package")).toBeNull();
     expect(TARBALL_UPDATE_COMMAND).toBe(
-      "curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash",
+      "curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash",
     );
     expect(TARBALL_UPDATE_REFUSAL).toContain(TARBALL_UPDATE_COMMAND);
     expect(TARBALL_UPDATE_REFUSAL).toContain("BITTERBOT_INSTALL_KIND=package");

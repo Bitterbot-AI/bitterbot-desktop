@@ -163,8 +163,13 @@ open an issue.
   SHA-256 from `checksums.txt` fetched over HTTPS, says so, and runs
   `gh attestation verify` only if `gh` is installed and logged in. Install
   minisign or pass `--require-signature` to refuse that fallback.
-- **Platforms.** Tarballs exist for Linux x64/arm64 (glibc) and Apple-silicon
-  macOS, from release 1.5.0 on. Intel Macs, musl Linux and Windows use Docker.
+- **Platforms.** Tarballs exist for Linux x64/arm64 with glibc 2.28 or newer
+  (the bundled Node 22's floor) and Apple-silicon macOS, from release 1.5.0
+  on. Intel Macs, musl Linux, older glibc and Windows use Docker.
+- **Tarballs lag the release.** Each release's tarballs are signed only after
+  a maintainer approves the signing step (one approval per release). Until
+  then the installer keeps installing the previous complete release, and a
+  pinned `--version` of the new one fails.
 - **Updates are a re-run.** `bitterbot update` does not update an
   installer-based install in place yet: re-run `install.sh` (it keeps the
   previous version for a manual rollback) and restart the gateway.

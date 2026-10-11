@@ -19,7 +19,7 @@ export const CONTAINER_UPDATE_COMMAND = "docker compose pull && docker compose u
  * TARBALL_UPDATE_COMMAND in src/infra/install-kind.ts.
  */
 export const TARBALL_UPDATE_COMMAND =
-  "curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash";
+  "curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash";
 
 function parseInstallKind(value: unknown): InstallKind {
   return value === "git" || value === "package" || value === "container" || value === "tarball"

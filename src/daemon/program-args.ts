@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveInstallKind, TARBALL_INSTALL_MARKER } from "../infra/install-kind.js";
+import { INSTALL_ROOT_ENV } from "../infra/orchestrator-binary.js";
 
 type GatewayProgramArgs = {
   programArguments: string[];
@@ -172,27 +174,64 @@ async function resolveBinaryPath(binary: string): Promise<string> {
  * node + entry, so it follows install.sh upgrades on its next restart and
  * never points at a version directory that a later install prunes. The
  * launcher also declares the install kind and the bundled orchestrator.
+ *
+ * Selection keys on the install kind (resolveInstallKind) of the install
+ * root, found from BITTERBOT_INSTALL_ROOT or from a bundled-node execPath
+ * (`<root>/runtime/node/bin/node`). A tarball layout whose kind was
+ * overridden with BITTERBOT_INSTALL_KIND=package still gets the launcher:
+ * the alternative is a service pinned to a versioned node path.
+ * @internal exported for tests
  */
-async function resolveTarballLauncherForService(
+export async function resolveTarballLauncherForService(
   env: NodeJS.ProcessEnv = process.env,
+  execPath: string = process.execPath,
 ): Promise<string | null> {
-  if (env.BITTERBOT_INSTALL_KIND?.trim().toLowerCase() !== "tarball") {
-    return null;
+  const roots: string[] = [];
+  const fromEnv = env[INSTALL_ROOT_ENV]?.trim();
+  if (fromEnv) {
+    roots.push(fromEnv);
   }
-  const root = env.BITTERBOT_INSTALL_ROOT?.trim();
-  if (!root) {
-    return null;
+  const bundledNodeTail = path.join("runtime", "node", "bin", "node");
+  if (execPath.endsWith(path.sep + bundledNodeTail)) {
+    roots.push(path.resolve(execPath, "..", "..", "..", ".."));
   }
-  const candidates = [
-    path.join(path.dirname(root), "current", "bin", "bitterbot"),
-    path.join(root, "bin", "bitterbot"),
-  ];
-  for (const candidate of candidates) {
+  for (const root of roots) {
+    const markerPath = path.join(root, TARBALL_INSTALL_MARKER);
+    let marker: string | null = null;
     try {
-      await fs.access(candidate);
-      return candidate;
+      marker = (await fs.readFile(markerPath, "utf-8")).trim();
     } catch {
-      // try the next one
+      marker = null;
+    }
+    const kind = resolveInstallKind({
+      isGit: false,
+      hasRoot: true,
+      root,
+      probe: {
+        env,
+        existsSync: () => false,
+        readFileSync: (p: string) => {
+          if (p === markerPath && marker !== null) {
+            return marker;
+          }
+          throw new Error("ENOENT");
+        },
+      },
+    });
+    if (kind !== "tarball" && marker !== "tarball") {
+      continue;
+    }
+    const candidates = [
+      path.join(path.dirname(root), "current", "bin", "bitterbot"),
+      path.join(root, "bin", "bitterbot"),
+    ];
+    for (const candidate of candidates) {
+      try {
+        await fs.access(candidate);
+        return candidate;
+      } catch {
+        // try the next one
+      }
     }
   }
   return null;
