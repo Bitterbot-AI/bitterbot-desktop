@@ -207,23 +207,51 @@ function headingBefore(content: string, index: number): string | null {
  */
 export function preserveOwnerSections(oldState: string, newState: string): string {
   const oldBlocks = extractOwnerSections(oldState);
-  const oldSet = new Set(oldBlocks);
-  // Drop forged or altered owner blocks from the model's output.
-  let out = newState.replace(OWNER_BLOCK_RX, (block) => (oldSet.has(block) ? block : ""));
+  // How many copies of each block the owner wrote (duplicates are kept).
+  const allowance = new Map<string, number>();
+  for (const b of oldBlocks) {
+    allowance.set(b, (allowance.get(b) ?? 0) + 1);
+  }
+  // Drop forged, altered or extra copies of owner blocks from the output.
+  const kept = new Map<string, number>();
+  let out = newState.replace(OWNER_BLOCK_RX, (block) => {
+    const used = kept.get(block) ?? 0;
+    if (used < (allowance.get(block) ?? 0)) {
+      kept.set(block, used + 1);
+      return block;
+    }
+    return "";
+  });
   if (oldBlocks.length === 0) {
     return out === newState ? newState : out.replace(/\n{3,}/g, "\n\n");
   }
+  // Put back each missing copy, in the section its occurrence was in.
+  const seen = new Map<string, number>();
   let searchFrom = 0;
   for (const block of oldBlocks) {
     const at = oldState.indexOf(block, searchFrom);
     searchFrom = at >= 0 ? at + block.length : searchFrom;
-    if (out.includes(block)) {
+    const nth = (seen.get(block) ?? 0) + 1;
+    seen.set(block, nth);
+    if ((kept.get(block) ?? 0) >= nth) {
       continue;
     }
     const heading = at >= 0 ? headingBefore(oldState, at) : null;
     out = insertIntoSection(out, heading, block);
+    kept.set(block, (kept.get(block) ?? 0) + 1);
   }
   return out.replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * Remove every owner-marked block from text the model produced where no
+ * owner block may come from it: the first synthesis (the previous content is
+ * kept verbatim above it, owner blocks included) and any other path that
+ * has no previous state to compare against.
+ */
+export function stripOwnerSections(newState: string): string {
+  const out = newState.replace(OWNER_BLOCK_RX, "");
+  return out === newState ? newState : out.replace(/\n{3,}/g, "\n\n");
 }
 
 function insertIntoSection(content: string, heading: string | null, block: string): string {

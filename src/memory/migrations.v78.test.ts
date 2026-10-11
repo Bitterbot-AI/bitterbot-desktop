@@ -36,6 +36,19 @@ describe("migration v78: canonical:changed propagation (PLAN-55 Phase 2)", () =>
       db.prepare(`PRAGMA index_list(chunk_supersessions)`).all() as Array<{ name: string }>
     ).map((i) => i.name);
     expect(indexes).toContain("idx_chunk_supersessions_key");
+    expect(columns(db, "canonical_change_outbox")).toEqual([
+      "id",
+      "fact_id",
+      "key",
+      "event_json",
+      "created_at",
+      "propagated_at",
+    ]);
+    expect(columns(db, "canonical_propagation_undo")).toContain("undone_at");
+    // Starts empty: changes before the migration are never replayed.
+    expect(
+      (db.prepare(`SELECT COUNT(*) AS n FROM canonical_change_outbox`).get() as { n: number }).n,
+    ).toBe(0);
     expect(columns(db, "dream_briefs")).toContain("stale_fact");
     expect(columns(db, "dream_insights")).toContain("stale_fact");
   });

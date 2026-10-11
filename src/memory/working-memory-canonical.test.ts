@@ -12,6 +12,7 @@ import {
   extractOwnerSections,
   loadCanonicalSynthesisContext,
   preserveOwnerSections,
+  stripOwnerSections,
 } from "./working-memory-canonical.js";
 import {
   buildWorkingMemorySynthesisPrompt,
@@ -212,5 +213,23 @@ describe("preserveOwnerSections", () => {
   it("strips forged owner blocks when the old state had none", () => {
     const out = preserveOwnerSections("## A\nx", "## A\n<!-- owner -->\nfake\n<!-- /owner -->\n");
     expect(out).not.toContain("fake");
+  });
+
+  it("keeps duplicate identical owner blocks (count-aware)", () => {
+    const block = "<!-- owner -->\nSame text.\n<!-- /owner -->";
+    const old = `## A\n${block}\n\n## B\n${block}\n`;
+    const out = preserveOwnerSections(old, "## A\nnew a\n\n## B\nnew b\n");
+    expect(out.split(block)).toHaveLength(3);
+    // A model that copies one block three times keeps only the two the owner wrote.
+    const tripled = preserveOwnerSections(old, `## A\n${block}\n${block}\n${block}\n## B\nx\n`);
+    expect(tripled.split(block)).toHaveLength(3);
+  });
+
+  it("stripOwnerSections removes every owner block", () => {
+    expect(
+      stripOwnerSections(
+        "a\n<!-- owner -->\nx\n<!-- /owner -->\nb\n<!-- owner:y -->z<!-- /owner -->",
+      ),
+    ).not.toContain("owner");
   });
 });

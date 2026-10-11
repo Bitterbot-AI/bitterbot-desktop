@@ -510,11 +510,14 @@ export class CanonicalFactsStore {
     op: CanonicalChangeOp,
     fact: CanonicalFact,
     oldValue: string | null,
-    extra?: { tier?: number; source?: string; retireReason?: string },
+    extra?: {
+      tier?: number;
+      source?: string;
+      retireReason?: string;
+      /** The fact whose value stopped being current (supersede, retire). */
+      previous?: CanonicalFact;
+    },
   ): void {
-    if (this.changeListeners.size === 0) {
-      return;
-    }
     const event: CanonicalChangeEvent = {
       key: fact.key,
       oldValue,
@@ -525,9 +528,31 @@ export class CanonicalFactsStore {
       ...(extra?.retireReason ? { retireReason: extra.retireReason } : {}),
       scope: fact.scope,
       evidence: { ref: fact.evidenceRef, chunkIds: [...fact.evidenceChunkIds] },
+      ...(extra?.previous
+        ? {
+            oldEvidence: {
+              ref: extra.previous.evidenceRef,
+              chunkIds: [...extra.previous.evidenceChunkIds],
+            },
+          }
+        : {}),
       factId: fact.id,
       at: Date.now(),
     };
+    // PLAN-55 Phase 2: the outbox row lands in the caller's transaction, so
+    // a change that commits is never lost even if the in-memory queue is
+    // (shutdown, overflow); the reconcile pass replays unpropagated rows.
+    try {
+      const res = this.db
+        .prepare(
+          `INSERT INTO canonical_change_outbox (fact_id, key, event_json, created_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(event.factId, event.key, JSON.stringify(event), event.at);
+      event.outboxId = Number(res.lastInsertRowid);
+    } catch (err) {
+      log.debug(`canonical outbox write skipped: ${String(err)}`);
+    }
     for (const listener of this.changeListeners) {
       try {
         listener(event);
@@ -1044,7 +1069,7 @@ export class CanonicalFactsStore {
       `canonical SUPERSEDE: [${slug}] "${current.value.slice(0, 40)}" -> "${value.slice(0, 40)}"`,
     );
     const superseding = this.get(slug)!;
-    this.emitChanged("supersede", superseding, current.value);
+    this.emitChanged("supersede", superseding, current.value, { previous: current });
     return { op: "supersede", fact: superseding };
   }
 
@@ -1158,6 +1183,7 @@ export class CanonicalFactsStore {
       });
       log.info(`canonical OWNER-RETIRE: [${current.key}] (suppression ${suppression.id})`);
       this.emitChanged("retire", current, current.value, {
+        previous: current,
         tier: OWNER_TRUST_TIER,
         source: "owner",
         retireReason: "owner",
@@ -1179,6 +1205,7 @@ export class CanonicalFactsStore {
     this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
     log.info(`canonical RETIRE (${reason}): [${current.key}]`);
     this.emitChanged("retire", current, current.value, {
+      previous: current,
       tier: reason === "agent" ? canonicalSourceTier("agent_pin") : 0,
       source: reason === "agent" ? "agent_pin" : reason,
       retireReason: reason,

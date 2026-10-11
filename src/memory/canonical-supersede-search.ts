@@ -8,27 +8,31 @@
  * snippet `[superseded]` with the key's current value. A pin back to the old
  * value deletes the marks, so "re-pin" is a full undo.
  *
- * Matching is bounded and token-aware: the old value must appear in the
- * chunk text as a whole token sequence (case-insensitive, letters and digits
- * on either side break the match), trivially short or generic values are
- * skipped, and a chunk that also states the new value is left alone (it is
- * describing the change, not restating the old belief). Candidate chunks come
- * from the FTS index when it is available, otherwise from a windowed rowid
- * scan that yields between windows; both paths cap their work per event.
+ * Which chunks: the old fact's own evidence (its chunk ids, and the session
+ * line its evidence ref points at), plus any chunk that states the old value
+ * as a whole identifier AND names the key's subject (canonical-stale-match.ts).
+ * A chunk that also states the new value describes the change and is left
+ * alone. Candidates come from the FTS index when available, otherwise from a
+ * windowed scan; both go newest first, yield between batches and cap their
+ * work per event.
  */
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { canonicalChangeMarksStale, type CanonicalChangeEvent } from "./canonical-events.js";
+import {
+  ftsPhraseForValue,
+  staleCitationMatcher,
+  staleValueMatcher,
+  yieldToEventLoop,
+} from "./canonical-stale-match.js";
 import { normalizeExact } from "./memory-suppressions.js";
 import type { MemorySearchResult } from "./types.js";
 
+export { ftsPhraseForValue, staleValueMatcher, yieldToEventLoop } from "./canonical-stale-match.js";
+
 const log = createSubsystemLogger("memory/canonical-propagation");
 
-/** Values shorter than this never mark anything ("no", "v2", "42"). */
-export const MIN_STALE_VALUE_CHARS = 3;
-/** Values longer than this are prose; a verbatim match would be luck. */
-export const MAX_STALE_VALUE_CHARS = 200;
 /** At most this many chunks are marked per event. */
 export const MAX_MARKS_PER_EVENT = 200;
 /** Rows read per scan window before yielding the event loop. */
@@ -38,63 +42,8 @@ export const MAX_SCAN_ROWS = 200_000;
 /** Score multiplier for a superseded result (it also sorts after current ones). */
 export const SUPERSEDED_SCORE_FACTOR = 0.5;
 export const SUPERSEDED_TAG = "[superseded]";
-
-const GENERIC_VALUES = new Set([
-  "yes",
-  "no",
-  "true",
-  "false",
-  "none",
-  "null",
-  "n/a",
-  "unknown",
-  "the",
-  "and",
-  "off",
-  "on",
-]);
-
-const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-/**
- * A token-aware, case-insensitive matcher for a fact value, or null when the
- * value is too short, too long, purely a small number, or generic.
- */
-export function staleValueMatcher(
-  value: string | null | undefined,
-): ((text: string) => boolean) | null {
-  const v = (value ?? "").trim().replace(/\s+/g, " ");
-  if (v.length < MIN_STALE_VALUE_CHARS || v.length > MAX_STALE_VALUE_CHARS) {
-    return null;
-  }
-  if (GENERIC_VALUES.has(v.toLowerCase()) || /^\d{1,4}$/.test(v)) {
-    return null;
-  }
-  // No letter or digit at all: nothing token-like to anchor on.
-  if (!/[\p{L}\p{N}]/u.test(v)) {
-    return null;
-  }
-  const body = v.split(" ").map(escapeRegExp).join("\\s+");
-  const rx = new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, "iu");
-  return (text: string) => rx.test(text);
-}
-
-/** FTS5 phrase query for a value: its letter/digit tokens in order. */
-export function ftsPhraseForValue(value: string): string | null {
-  const tokens = value
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter(Boolean);
-  if (tokens.length === 0) {
-    return null;
-  }
-  return `"${tokens.join(" ")}"`;
-}
-
-export const yieldToEventLoop = (): Promise<void> =>
-  new Promise((resolve) => {
-    setImmediate(resolve);
-  });
+/** Evidence ids of the old fact considered per event. */
+const MAX_EVIDENCE_IDS = 50;
 
 export type SupersedeSearchOptions = {
   ftsTable?: string | null;
@@ -104,6 +53,40 @@ export type SupersedeSearchOptions = {
 };
 
 export type SupersedeSearchResult = { marked: number; cleared: number; scanned: number };
+
+type ChunkRow = { id: string; text: string };
+
+/**
+ * `session:<path>#L<n>` -> chunks of that session file covering line n. The
+ * path may be stored absolute or relative, so the basename is compared.
+ */
+function chunksForEvidenceRef(db: DatabaseSync, ref: string | null | undefined): ChunkRow[] {
+  const m = ref?.match(/^session:(.+)#L(\d+)$/);
+  if (!m) {
+    return [];
+  }
+  const base = m[1]!.split(/[\\/]/).at(-1) ?? "";
+  const line = Number(m[2]);
+  if (!base) {
+    return [];
+  }
+  try {
+    return db
+      .prepare(
+        `SELECT id, text FROM chunks
+          WHERE (path = ? OR path LIKE ? ESCAPE '\\') AND start_line <= ? AND end_line >= ?
+          ORDER BY updated_at DESC LIMIT 5`,
+      )
+      .all(
+        m[1]!,
+        `%/${base.replace(/[\\%_]/g, (c) => `\\${c}`)}`,
+        line,
+        line,
+      ) as unknown as ChunkRow[];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Apply one change event to `chunk_supersessions`. Idempotent: marks are
@@ -136,11 +119,10 @@ export async function propagateSupersededChunks(
   if (!canonicalChangeMarksStale(event)) {
     return result;
   }
-  const matchesOld = staleValueMatcher(event.oldValue);
-  if (!matchesOld) {
+  const matcher = staleCitationMatcher(event);
+  if (!matcher) {
     return result;
   }
-  const matchesNew = staleValueMatcher(event.newValue);
   const maxMarks = opts.maxMarks ?? MAX_MARKS_PER_EVENT;
   const staleValue = normalizeExact(event.oldValue!);
   const insert = db.prepare(
@@ -148,20 +130,44 @@ export async function propagateSupersededChunks(
        (chunk_id, fact_key, stale_value, fact_id, current_value, created_at)
      VALUES (?, ?, ?, ?, ?, ?)`,
   );
-  const evidence = new Set(event.evidence.chunkIds);
-  const consider = (row: { id: string; text: string }): void => {
-    if (result.marked >= maxMarks || evidence.has(row.id)) {
-      return;
+  const newEvidence = new Set(event.evidence.chunkIds);
+  const mark = (id: string): void => {
+    if (result.marked < maxMarks) {
+      result.marked += Number(
+        insert.run(id, event.key, staleValue, event.factId, event.newValue, event.at).changes,
+      );
     }
-    if (!matchesOld(row.text) || matchesNew?.(row.text)) {
-      return;
-    }
-    const changes = Number(
-      insert.run(row.id, event.key, staleValue, event.factId, event.newValue, event.at).changes,
-    );
-    result.marked += changes;
   };
 
+  // 1. The old fact's own evidence: the chunks it was taken from. A chunk
+  //    id from its evidence list is marked unless it states the new value;
+  //    a chunk resolved from its session line ref must state the old value.
+  const oldEvidenceIds = new Set((event.oldEvidence?.chunkIds ?? []).slice(0, MAX_EVIDENCE_IDS));
+  if (oldEvidenceIds.size > 0) {
+    const load = db.prepare(`SELECT id, text FROM chunks WHERE id = ?`);
+    const matchesNew = staleValueMatcher(event.newValue);
+    for (const id of oldEvidenceIds) {
+      const row = load.get(id) as ChunkRow | undefined;
+      if (row && !newEvidence.has(row.id) && !matchesNew?.(row.text)) {
+        mark(row.id);
+      }
+    }
+  }
+  for (const row of chunksForEvidenceRef(db, event.oldEvidence?.ref)) {
+    if (!newEvidence.has(row.id) && matcher.statesOld(row.text)) {
+      mark(row.id);
+    }
+  }
+
+  // 2. Everything else must state the old value AND name the key's subject.
+  const consider = (row: ChunkRow): void => {
+    if (result.marked >= maxMarks || newEvidence.has(row.id) || oldEvidenceIds.has(row.id)) {
+      return;
+    }
+    if (matcher.cites(row.text)) {
+      mark(row.id);
+    }
+  };
   const viaFts = await scanViaFts(db, event.oldValue!, opts, consider, result);
   if (!viaFts) {
     await scanChunksWindowed(db, opts, consider, result, maxMarks);
@@ -179,7 +185,7 @@ async function scanViaFts(
   db: DatabaseSync,
   oldValue: string,
   opts: SupersedeSearchOptions,
-  consider: (row: { id: string; text: string }) => void,
+  consider: (row: ChunkRow) => void,
   result: SupersedeSearchResult,
 ): Promise<boolean> {
   const table = opts.ftsTable;
@@ -187,27 +193,23 @@ async function scanViaFts(
   if (!table || !phrase) {
     return false;
   }
-  let ids: string[];
+  let rows: ChunkRow[];
   try {
     const cap = (opts.maxMarks ?? MAX_MARKS_PER_EVENT) * 5;
-    ids = (
-      db
-        .prepare(`SELECT id FROM ${table} WHERE ${table} MATCH ? LIMIT ?`)
-        .all(phrase, cap) as Array<{
-        id: string;
-      }>
-    ).map((r) => r.id);
+    // Newest first, deterministically: the cap keeps the most recent.
+    rows = db
+      .prepare(
+        `SELECT c.id AS id, c.text AS text FROM ${table} f JOIN chunks c ON c.id = f.id
+          WHERE ${table} MATCH ? ORDER BY c.updated_at DESC, c.id LIMIT ?`,
+      )
+      .all(phrase, cap) as unknown as ChunkRow[];
   } catch (err) {
     log.debug(`supersede FTS lookup failed, scanning instead: ${String(err)}`);
     return false;
   }
-  const load = db.prepare(`SELECT id, text FROM chunks WHERE id = ?`);
-  for (let i = 0; i < ids.length; i++) {
-    const row = load.get(ids[i]!) as { id: string; text: string } | undefined;
+  for (let i = 0; i < rows.length; i++) {
     result.scanned++;
-    if (row) {
-      consider(row);
-    }
+    consider(rows[i]!);
     if (i % 100 === 99) {
       await yieldToEventLoop();
     }
@@ -218,22 +220,19 @@ async function scanViaFts(
 async function scanChunksWindowed(
   db: DatabaseSync,
   opts: SupersedeSearchOptions,
-  consider: (row: { id: string; text: string }) => void,
+  consider: (row: ChunkRow) => void,
   result: SupersedeSearchResult,
   maxMarks: number,
 ): Promise<void> {
   const windowRows = opts.windowRows ?? SCAN_WINDOW_ROWS;
   const maxScan = opts.maxScanRows ?? MAX_SCAN_ROWS;
+  // Newest first (highest rowid), so the cap keeps the most recent chunks.
   const page = db.prepare(
-    `SELECT rowid AS rid, id, text FROM chunks WHERE rowid > ? ORDER BY rowid LIMIT ?`,
+    `SELECT rowid AS rid, id, text FROM chunks WHERE rowid < ? ORDER BY rowid DESC LIMIT ?`,
   );
-  let after = 0;
+  let before = Number.MAX_SAFE_INTEGER;
   while (result.scanned < maxScan && result.marked < maxMarks) {
-    const rows = page.all(after, windowRows) as unknown as Array<{
-      rid: number;
-      id: string;
-      text: string;
-    }>;
+    const rows = page.all(before, windowRows) as unknown as Array<ChunkRow & { rid: number }>;
     if (rows.length === 0) {
       break;
     }
@@ -241,8 +240,17 @@ async function scanChunksWindowed(
       consider(row);
     }
     result.scanned += rows.length;
-    after = rows[rows.length - 1]!.rid;
+    before = rows[rows.length - 1]!.rid;
     await yieldToEventLoop();
+  }
+}
+
+/** True when any chunk carries a supersession mark (cheap; used to size over-fetch). */
+export function hasSupersessionMarks(db: DatabaseSync): boolean {
+  try {
+    return Boolean(db.prepare(`SELECT 1 FROM chunk_supersessions LIMIT 1`).get());
+  } catch {
+    return false;
   }
 }
 

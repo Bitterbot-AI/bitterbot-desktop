@@ -20,7 +20,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { canonicalChangeMarksStale, type CanonicalChangeEvent } from "./canonical-events.js";
-import { staleValueMatcher, yieldToEventLoop } from "./canonical-supersede-search.js";
+import { staleCitationMatcher, yieldToEventLoop } from "./canonical-stale-match.js";
 import { normalizeExact } from "./memory-suppressions.js";
 
 const log = createSubsystemLogger("memory/canonical-propagation");
@@ -43,6 +43,25 @@ const parseIds = (raw: string | null): string[] => {
   }
 };
 
+/** The insight's notes (a list; a single legacy object is accepted). */
+export function parseInsightNotes(raw: string | null): InsightStaleNote[] {
+  if (!raw) {
+    return [];
+  }
+  try {
+    const v = JSON.parse(raw) as unknown;
+    const list = Array.isArray(v) ? v : [v];
+    return list.filter(
+      (n): n is InsightStaleNote =>
+        Boolean(n) &&
+        typeof n === "object" &&
+        typeof (n as { reason?: unknown }).reason === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
 export async function propagateToDreamInsights(
   db: DatabaseSync,
   event: CanonicalChangeEvent,
@@ -55,16 +74,16 @@ export async function propagateToDreamInsights(
     if (!canonicalChangeMarksStale(event)) {
       return result;
     }
-    const matchesOld = staleValueMatcher(event.oldValue);
-    if (!matchesOld) {
+    const matcher = staleCitationMatcher(event);
+    if (!matcher) {
       return result;
     }
-    const matchesNew = staleValueMatcher(event.newValue);
     const markedChunks = new Set(
       (
         db
           .prepare(
-            `SELECT chunk_id FROM chunk_supersessions WHERE fact_key = ? AND stale_value = ?`,
+            `SELECT chunk_id FROM chunk_supersessions WHERE fact_key = ? AND stale_value = ?
+              ORDER BY created_at DESC LIMIT 1000`,
           )
           .all(event.key, normalizeExact(event.oldValue!)) as Array<{ chunk_id: string }>
       ).map((r) => r.chunk_id),
@@ -76,36 +95,40 @@ export async function propagateToDreamInsights(
       factId: event.factId,
       at: event.at,
     };
+    // Newest first, so the per-event cap keeps the insights still in play.
     const page = db.prepare(
-      `SELECT rowid AS rid, id, content, source_chunk_ids FROM dream_insights
-        WHERE rowid > ? AND stale_fact IS NULL ORDER BY rowid LIMIT ?`,
+      `SELECT rowid AS rid, id, content, source_chunk_ids, stale_fact FROM dream_insights
+        WHERE rowid < ? ORDER BY rowid DESC LIMIT ?`,
     );
-    const flag = db.prepare(
-      `UPDATE dream_insights SET stale_fact = ? WHERE id = ? AND stale_fact IS NULL`,
-    );
-    let after = 0;
+    const flag = db.prepare(`UPDATE dream_insights SET stale_fact = ? WHERE id = ?`);
+    let before = Number.MAX_SAFE_INTEGER;
     let scanned = 0;
     while (scanned < MAX_INSIGHT_ROWS_PER_EVENT) {
-      const rows = page.all(after, INSIGHT_WINDOW_ROWS) as unknown as Array<{
+      const rows = page.all(before, INSIGHT_WINDOW_ROWS) as unknown as Array<{
         rid: number;
         id: string;
         content: string;
         source_chunk_ids: string | null;
+        stale_fact: string | null;
       }>;
       if (rows.length === 0) {
         break;
       }
       for (const row of rows) {
-        const statesOld = matchesOld(row.content) && !matchesNew?.(row.content);
         const restsOnMarked =
           markedChunks.size > 0 &&
           parseIds(row.source_chunk_ids).some((id) => markedChunks.has(id));
-        if (statesOld || restsOnMarked) {
-          result.flagged += Number(flag.run(JSON.stringify(note), row.id).changes);
+        if (!matcher.cites(row.content) && !restsOnMarked) {
+          continue;
         }
+        const notes = parseInsightNotes(row.stale_fact);
+        if (notes.some((n) => n.reason === "superseded" && n.key === event.key)) {
+          continue;
+        }
+        result.flagged += Number(flag.run(JSON.stringify([...notes, note]), row.id).changes);
       }
       scanned += rows.length;
-      after = rows[rows.length - 1]!.rid;
+      before = rows[rows.length - 1]!.rid;
       await yieldToEventLoop();
     }
   } catch (err) {
@@ -117,28 +140,29 @@ export async function propagateToDreamInsights(
   return result;
 }
 
+/** Drop this key's notes for a value that is current again; unflag when none remain. */
 function clearInsightFlags(db: DatabaseSync, key: string, value: string): number {
   const rows = db
     .prepare(
       `SELECT id, stale_fact FROM dream_insights
-        WHERE stale_fact IS NOT NULL AND stale_fact LIKE '%"superseded"%' LIMIT 2000`,
+        WHERE stale_fact IS NOT NULL AND stale_fact LIKE '%"superseded"%'
+        ORDER BY rowid DESC LIMIT 2000`,
     )
     .all() as unknown as Array<{ id: string; stale_fact: string }>;
-  const clear = db.prepare(`UPDATE dream_insights SET stale_fact = NULL WHERE id = ?`);
+  const write = db.prepare(`UPDATE dream_insights SET stale_fact = ? WHERE id = ?`);
   const norm = normalizeExact(value);
   let n = 0;
   for (const row of rows) {
-    try {
-      const note = JSON.parse(row.stale_fact) as InsightStaleNote;
-      if (
-        note.reason === "superseded" &&
-        note.key === key &&
-        normalizeExact(note.oldValue) === norm
-      ) {
-        n += Number(clear.run(row.id).changes);
-      }
-    } catch {
-      // malformed note: leave it
+    const notes = parseInsightNotes(row.stale_fact);
+    const kept = notes.filter(
+      (x) => !(x.reason === "superseded" && x.key === key && normalizeExact(x.oldValue) === norm),
+    );
+    if (kept.length === notes.length) {
+      continue;
+    }
+    write.run(kept.length > 0 ? JSON.stringify(kept) : null, row.id);
+    if (kept.length === 0) {
+      n++;
     }
   }
   return n;
@@ -200,7 +224,7 @@ export function insightPromotionBlock(
       at: Date.now(),
     };
     db.prepare(`UPDATE dream_insights SET stale_fact = ? WHERE id = ? AND stale_fact IS NULL`).run(
-      JSON.stringify(note),
+      JSON.stringify([note]),
       insight.id,
     );
   } catch {

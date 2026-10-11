@@ -44,9 +44,17 @@ export type CanonicalChangeEvent = {
   retireReason?: string;
   scope: string;
   evidence: { ref: string | null; chunkIds: string[] };
+  /** Supersede and retire: the evidence behind the value that stopped being current. */
+  oldEvidence?: { ref: string | null; chunkIds: string[] };
   /** The row that now carries the key's current state. */
   factId: string;
   at: number;
+  /**
+   * Row id in `canonical_change_outbox`, written in the same transaction as
+   * the change. Set once the consumers have run, so a change the in-memory
+   * queue lost (shutdown, overflow) is replayed by the reconcile pass.
+   */
+  outboxId?: number;
 };
 
 export type CanonicalChangeListener = (event: CanonicalChangeEvent) => void;

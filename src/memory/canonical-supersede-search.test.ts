@@ -65,12 +65,24 @@ function result(path: string, line: number, snippet: string, score: number): Mem
 }
 
 describe("staleValueMatcher", () => {
-  it("matches whole token sequences only, case-insensitively", () => {
+  it("matches whole identifiers only", () => {
     const m = staleValueMatcher("api.acme.com")!;
-    expect(m("Deploy to API.ACME.COM today")).toBe(true);
+    expect(m("Deploy to API.ACME.COM today")).toBe(true); // lowercase value: case-insensitive
+    expect(m("the endpoint is api.acme.com.")).toBe(true); // sentence-final dot
     expect(m("deploy to api2.acme.com")).toBe(false);
     expect(m("deploy to api.acme.company")).toBe(false);
-    expect(staleValueMatcher("New York")!("lives in new   york now")).toBe(true);
+    expect(m("deploy to staging.api.acme.com")).toBe(false);
+    expect(staleValueMatcher("New York")!("lives in New   York now")).toBe(true);
+  });
+
+  it("treats _ . - inside identifiers as word characters and is case-sensitive for capitalised values", () => {
+    const m = staleValueMatcher("Max")!;
+    expect(m("Set max_tokens to 4096")).toBe(false);
+    expect(m("Use Math.max for the bound")).toBe(false);
+    expect(m("MAX_TOKENS=4096")).toBe(false);
+    expect(m("the Max-like curve")).toBe(false);
+    expect(m("raise the max to 10")).toBe(false);
+    expect(m("my dog Max loves walks.")).toBe(true);
   });
 
   it("skips trivially short, numeric, generic and long values", () => {
@@ -79,6 +91,58 @@ describe("staleValueMatcher", () => {
     expect(staleValueMatcher("true")).toBeNull();
     expect(staleValueMatcher("--")).toBeNull();
     expect(staleValueMatcher("x".repeat(201))).toBeNull();
+  });
+});
+
+describe("key context", () => {
+  beforeEach(() => open(false));
+
+  it("pet.dog.name Max -> Rex marks the dog, not max_tokens or Math.max", async () => {
+    chunk("tokens", "Set max_tokens to 4096 for the summariser.");
+    chunk("math", "Use Math.max to clamp the score.");
+    chunk("bare", "Max said hello.");
+    chunk("dog", "my dog Max loves the beach");
+    await propagateSupersededChunks(
+      db,
+      event({ key: "pet.dog.name", oldValue: "Max", newValue: "Rex" }),
+    );
+    expect(marks().map((m) => m.chunk_id)).toEqual(["dog"]);
+  });
+
+  it("user.name Victor -> Vic needs name context or the old fact's evidence", async () => {
+    chunk("mention", "Victor pushed the release on Friday.");
+    chunk("named", "The user's name is Victor.");
+    chunk("evidence", "Victor here, call me that.");
+    await propagateSupersededChunks(
+      db,
+      event({
+        key: "user.name",
+        oldValue: "Victor",
+        newValue: "Vic",
+        oldEvidence: { ref: null, chunkIds: ["evidence"] },
+      }),
+    );
+    expect(marks().map((m) => m.chunk_id)).toEqual(["evidence", "named"]);
+  });
+
+  it("marks the chunk the old fact's session evidence ref points at", async () => {
+    db.prepare(
+      `INSERT INTO chunks (id, path, source, start_line, end_line, hash, model, text, embedding, updated_at)
+       VALUES ('sess', 'sessions/abc.jsonl', 'sessions', 10, 20, 'h', 'm', 'ok so api.acme.com it is', '[]', 1)`,
+    ).run();
+    await propagateSupersededChunks(
+      db,
+      event({ oldEvidence: { ref: "session:/home/x/sessions/abc.jsonl#L12", chunkIds: [] } }),
+    );
+    expect(marks().map((m) => m.chunk_id)).toEqual(["sess"]);
+  });
+
+  it("scans newest first, so the cap keeps the most recent chunks", async () => {
+    for (let i = 0; i < 5; i++) {
+      chunk(`c${i}`, `deploy endpoint ${i}: api.acme.com`);
+    }
+    await propagateSupersededChunks(db, event({}), { maxMarks: 2, windowRows: 2 });
+    expect(marks().map((m) => m.chunk_id)).toEqual(["c3", "c4"]);
   });
 });
 
@@ -199,11 +263,11 @@ describe("applySupersededMarks", () => {
   });
 
   it("disambiguates line-0 fact chunks on one path by the snippet", async () => {
-    chunk("f1", "user prefers api.acme.com", "sessions/s.jsonl", 0);
+    chunk("f1", "user's deploy endpoint is api.acme.com", "sessions/s.jsonl", 0);
     chunk("f2", "user likes tea", "sessions/s.jsonl", 0);
     await propagateSupersededChunks(db, event({}));
     const out = applySupersededMarks(db, [
-      result("sessions/s.jsonl", 0, "user prefers api.acme.com", 0.7),
+      result("sessions/s.jsonl", 0, "user's deploy endpoint is api.acme.com", 0.7),
       result("sessions/s.jsonl", 0, "user likes tea", 0.6),
     ]);
     expect(out.map((r) => r.snippet.startsWith(SUPERSEDED_TAG))).toEqual([false, true]);

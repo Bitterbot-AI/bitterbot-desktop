@@ -38,7 +38,7 @@ import type {
   TaskStatus,
   TaskUpdateInput,
 } from "./types.js";
-import { isTerminal } from "./types.js";
+import { isTerminal, readTaskStaleFacts } from "./types.js";
 
 const log = createSubsystemLogger("tasks/store");
 
@@ -402,30 +402,59 @@ export class TaskStore {
   }
 
   /**
-   * PLAN-55 Phase 2: replace the task's `metadata.staleFacts` list (empty
-   * removes it). Unlike update(), lastSeenAt is left alone: a flag written
-   * by memory propagation is not task activity, and stall detection must
-   * still see a stalled task. Returns undefined when the task is missing.
+   * PLAN-55 Phase 2: read-modify-write the task's `metadata.staleFacts` list
+   * in one SAVEPOINT, so two writers cannot lose each other's flags. An empty
+   * result removes the key. Unlike update(), lastSeenAt is left alone: a flag
+   * written by memory propagation is not task activity, and stall detection
+   * must still see a stalled task. Returns undefined when the task is missing
+   * or nothing changed.
    */
+  updateStaleFacts(
+    id: string,
+    mutate: (current: TaskStaleFactFlag[]) => TaskStaleFactFlag[],
+  ): Task | undefined {
+    this.db.exec("SAVEPOINT task_stale_facts");
+    try {
+      const existing = this.get(id);
+      if (!existing) {
+        this.db.exec("RELEASE task_stale_facts");
+        return undefined;
+      }
+      const current = readTaskStaleFacts(existing);
+      const next = mutate(current);
+      if (JSON.stringify(next) === JSON.stringify(current)) {
+        this.db.exec("RELEASE task_stale_facts");
+        return undefined;
+      }
+      const metadata: Record<string, unknown> = { ...existing.metadata };
+      if (next.length > 0) {
+        metadata.staleFacts = next;
+      } else {
+        delete metadata.staleFacts;
+      }
+      const now = Date.now();
+      const json = Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
+      this.db
+        .prepare(`UPDATE tasks SET metadata_json = ?, updated_at = ? WHERE id = ?`)
+        .run(json, now, id);
+      this.db.exec("RELEASE task_stale_facts");
+      const task: Task = { ...existing, metadata: json ? metadata : null, updatedAt: now };
+      this.emit({ type: "updated", task });
+      return task;
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK TO task_stale_facts");
+        this.db.exec("RELEASE task_stale_facts");
+      } catch {
+        // the savepoint went with the failed statement
+      }
+      throw err;
+    }
+  }
+
+  /** Replace the stale-fact list outright (see updateStaleFacts). */
   setStaleFacts(id: string, staleFacts: TaskStaleFactFlag[]): Task | undefined {
-    const existing = this.get(id);
-    if (!existing) {
-      return undefined;
-    }
-    const metadata: Record<string, unknown> = { ...existing.metadata };
-    if (staleFacts.length > 0) {
-      metadata.staleFacts = staleFacts;
-    } else {
-      delete metadata.staleFacts;
-    }
-    const now = Date.now();
-    const json = Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
-    this.db
-      .prepare(`UPDATE tasks SET metadata_json = ?, updated_at = ? WHERE id = ?`)
-      .run(json, now, id);
-    const next: Task = { ...existing, metadata: json ? metadata : null, updatedAt: now };
-    this.emit({ type: "updated", task: next });
-    return next;
+    return this.updateStaleFacts(id, () => staleFacts);
   }
 
   /**

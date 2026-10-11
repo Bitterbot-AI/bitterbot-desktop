@@ -2,22 +2,26 @@
  * PLAN-55 Phase 2 (G4), consumer 5: open anticipation briefs and task plans
  * that cite a superseded value.
  *
- * - `dream_briefs` rows still `open` whose question or answer sketch states
- *   the old value move to status `stale_fact` with a `stale_fact` JSON note
- *   (key, old, new, fact id), so consumeDreamBrief never voices them.
- * - Open (non-terminal) tasks whose goal, done criteria, plan steps or
- *   latest handoff state the old value get a `metadata.staleFacts` entry;
- *   task_get returns it.
- * - When anything was flagged, one `stale_fact` epistemic directive names
- *   the change and the affected items. That is the "needs your answer" list
- *   today: open user-answerable directives are injected into the owner's
- *   first-party turns (endocrine-state.ts) and the extractor's Open
- *   Questions block.
+ * "Cites" is the shared matcher (canonical-stale-match.ts): the old value as
+ * a whole identifier, not alongside the new one, AND a subject word of the
+ * key in the same text.
  *
- * A pin back to the old value reverses both flags (the brief reopens, the
- * task entry is dropped). Idempotent: a brief already flagged is not
- * re-flagged, a task entry is keyed (key, old value), and the directive
- * engine dedupes a repeated question.
+ * - `dream_briefs` rows still `open` that cite it move to status
+ *   `stale_fact`; `stale_fact` holds a JSON list of notes, one per key, so
+ *   consumeDreamBrief never voices them.
+ * - Open (non-terminal) tasks whose goal, done criteria, plan steps or
+ *   latest handoff cite it get a `metadata.staleFacts` entry (per key, written
+ *   atomically through TaskStore.updateStaleFacts); task_get returns it.
+ * - When anything was flagged, one `stale_reference` epistemic directive
+ *   names the change, the affected items and what a yes does. Open
+ *   user-answerable directives are the "needs your answer" list: they are
+ *   injected into the owner's first-party turns (endocrine-state.ts) and
+ *   the extractor's Open Questions block.
+ *
+ * A pin back to the old value drops that key's notes and flags; a brief
+ * reopens only when no stale key remains on it. Idempotent: notes and flags
+ * are keyed (key, old value), and the directive engine dedupes a repeated
+ * question.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -30,7 +34,7 @@ import {
   type TaskStaleFactFlag,
 } from "../tasks/types.js";
 import { canonicalChangeMarksStale, type CanonicalChangeEvent } from "./canonical-events.js";
-import { staleValueMatcher, yieldToEventLoop } from "./canonical-supersede-search.js";
+import { staleCitationMatcher, yieldToEventLoop } from "./canonical-stale-match.js";
 import type { EpistemicDirectiveEngine } from "./epistemic-directives.js";
 import { normalizeExact } from "./memory-suppressions.js";
 
@@ -85,8 +89,11 @@ export async function propagateToBriefsAndTasks(params: {
   event: CanonicalChangeEvent;
   taskStore: TaskStore | null;
   directives: EpistemicDirectiveEngine | null;
+  /** False for a project-scoped change: tasks are not tied to a workspace. */
+  includeTasks?: boolean;
 }): Promise<BriefTaskPropagationResult> {
-  const { db, event, taskStore, directives } = params;
+  const { db, event, directives } = params;
+  const taskStore = params.includeTasks === false ? null : params.taskStore;
   const result: BriefTaskPropagationResult = {
     briefsFlagged: 0,
     briefsReopened: 0,
@@ -105,12 +112,11 @@ export async function propagateToBriefsAndTasks(params: {
   if (!canonicalChangeMarksStale(event)) {
     return result;
   }
-  const matchesOld = staleValueMatcher(event.oldValue);
-  if (!matchesOld) {
+  const matcher = staleCitationMatcher(event);
+  if (!matcher) {
     return result;
   }
-  const matchesNew = staleValueMatcher(event.newValue);
-  const cites = (text: string): boolean => matchesOld(text) && !matchesNew?.(text);
+  const cites = matcher.cites;
 
   const note: BriefStaleNote = {
     key: event.key,
@@ -124,21 +130,30 @@ export async function propagateToBriefsAndTasks(params: {
   try {
     const rows = db
       .prepare(
-        `SELECT id, question, answer_sketch FROM dream_briefs WHERE status = 'open'
-          ORDER BY created_at DESC LIMIT ?`,
+        `SELECT id, question, answer_sketch, stale_fact FROM dream_briefs
+          WHERE status IN ('open', 'stale_fact')
+          ORDER BY created_at DESC, id LIMIT ?`,
       )
       .all(MAX_BRIEFS_PER_EVENT) as unknown as Array<{
       id: string;
       question: string;
       answer_sketch: string;
+      stale_fact: string | null;
     }>;
     const flag = db.prepare(
-      `UPDATE dream_briefs SET status = 'stale_fact', stale_fact = ? WHERE id = ? AND status = 'open'`,
+      `UPDATE dream_briefs SET status = 'stale_fact', stale_fact = ?
+        WHERE id = ? AND status IN ('open', 'stale_fact')`,
     );
     for (const row of rows) {
-      if (cites(`${row.question}\n${row.answer_sketch}`)) {
-        result.briefsFlagged += Number(flag.run(JSON.stringify(note), row.id).changes);
+      if (!cites(`${row.question}\n${row.answer_sketch}`)) {
+        continue;
       }
+      const notes = parseBriefNotes(row.stale_fact);
+      if (notes.some((n) => sameNote(n, note))) {
+        continue;
+      }
+      const next = [...notes.filter((n) => n.key !== note.key), note];
+      result.briefsFlagged += Number(flag.run(JSON.stringify(next), row.id).changes);
     }
   } catch (err) {
     log.debug(`brief stale flagging skipped: ${String(err)}`);
@@ -158,18 +173,6 @@ export async function propagateToBriefsAndTasks(params: {
       if (isTerminal(task.status) || !cites(taskCitableText(task, taskStore))) {
         continue;
       }
-      const existing = readTaskStaleFacts(task);
-      const oldNorm = normalizeExact(note.oldValue);
-      if (
-        existing.some(
-          (f) =>
-            f.key === note.key &&
-            normalizeExact(f.oldValue) === oldNorm &&
-            f.newValue === note.newValue,
-        )
-      ) {
-        continue;
-      }
       const flag: TaskStaleFactFlag = {
         key: note.key,
         oldValue: note.oldValue,
@@ -177,11 +180,18 @@ export async function propagateToBriefsAndTasks(params: {
         factId: note.factId,
         flaggedAt: note.at,
       };
-      const next = [
-        ...existing.filter((f) => !(f.key === note.key && normalizeExact(f.oldValue) === oldNorm)),
-        flag,
-      ];
-      if (taskStore.setStaleFacts(task.id, next)) {
+      const oldNorm = normalizeExact(note.oldValue);
+      const updated = taskStore.updateStaleFacts(task.id, (current) =>
+        current.some(
+          (f) =>
+            f.key === note.key &&
+            normalizeExact(f.oldValue) === oldNorm &&
+            f.newValue === note.newValue,
+        )
+          ? current
+          : [...current.filter((f) => f.key !== note.key), flag],
+      );
+      if (updated) {
         result.tasksFlagged++;
         flaggedGoals.push(task.goal);
       }
@@ -206,16 +216,25 @@ export async function propagateToBriefsAndTasks(params: {
 function reopenBriefs(db: DatabaseSync, key: string, value: string): number {
   try {
     const rows = db
-      .prepare(`SELECT id, stale_fact FROM dream_briefs WHERE status = 'stale_fact' LIMIT 500`)
+      .prepare(
+        `SELECT id, stale_fact FROM dream_briefs WHERE status = 'stale_fact'
+          ORDER BY created_at DESC, id LIMIT 500`,
+      )
       .all() as unknown as Array<{ id: string; stale_fact: string | null }>;
-    const reopen = db.prepare(
-      `UPDATE dream_briefs SET status = 'open', stale_fact = NULL WHERE id = ?`,
-    );
+    const write = db.prepare(`UPDATE dream_briefs SET status = ?, stale_fact = ? WHERE id = ?`);
+    const norm = normalizeExact(value);
     let n = 0;
     for (const row of rows) {
-      const note = parseNote(row.stale_fact);
-      if (note && note.key === key && normalizeExact(note.oldValue) === normalizeExact(value)) {
-        n += Number(reopen.run(row.id).changes);
+      const notes = parseBriefNotes(row.stale_fact);
+      const kept = notes.filter((x) => !(x.key === key && normalizeExact(x.oldValue) === norm));
+      if (kept.length === notes.length) {
+        continue;
+      }
+      // Reopen only when no stale key remains on the brief.
+      if (kept.length === 0) {
+        n += Number(write.run("open", null, row.id).changes);
+      } else {
+        write.run("stale_fact", JSON.stringify(kept), row.id);
       }
     }
     return n;
@@ -233,30 +252,47 @@ async function clearTaskFlags(store: TaskStore, key: string, value: string): Pro
   }
   const norm = normalizeExact(value);
   let cleared = 0;
-  for (const task of tasks) {
-    const flags = readTaskStaleFacts(task);
-    const kept = flags.filter((f) => !(f.key === key && normalizeExact(f.oldValue) === norm));
-    if (kept.length !== flags.length && store.setStaleFacts(task.id, kept)) {
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i]!;
+    if (!readTaskStaleFacts(task).some((f) => f.key === key)) {
+      continue;
+    }
+    const updated = store.updateStaleFacts(task.id, (flags) =>
+      flags.filter((f) => !(f.key === key && normalizeExact(f.oldValue) === norm)),
+    );
+    if (updated) {
       cleared++;
     }
-  }
-  if (cleared > 0) {
-    await yieldToEventLoop();
+    if (i % 25 === 24) {
+      await yieldToEventLoop();
+    }
   }
   return cleared;
 }
 
-function parseNote(raw: string | null): BriefStaleNote | null {
+/** The brief's stale notes (a list; a single legacy object is accepted). */
+export function parseBriefNotes(raw: string | null): BriefStaleNote[] {
   if (!raw) {
-    return null;
+    return [];
   }
   try {
-    const v = JSON.parse(raw) as BriefStaleNote;
-    return typeof v?.key === "string" && typeof v.oldValue === "string" ? v : null;
+    const v = JSON.parse(raw) as unknown;
+    const list = Array.isArray(v) ? v : [v];
+    return list.filter(
+      (n): n is BriefStaleNote =>
+        Boolean(n) &&
+        typeof (n as BriefStaleNote).key === "string" &&
+        typeof (n as BriefStaleNote).oldValue === "string",
+    );
   } catch {
-    return null;
+    return [];
   }
 }
+
+const sameNote = (a: BriefStaleNote, b: BriefStaleNote): boolean =>
+  a.key === b.key &&
+  normalizeExact(a.oldValue) === normalizeExact(b.oldValue) &&
+  a.newValue === b.newValue;
 
 /** One prompt-safe line: control characters dropped (codepoint scan), whitespace collapsed, clipped. */
 const clip = (s: string, n: number): string => {
@@ -289,12 +325,15 @@ function surfaceStaleQuestion(
   if (result.briefsFlagged > 0) {
     items.push(`${result.briefsFlagged} prepared answer(s)`);
   }
+  const fix = event.newValue
+    ? `If you say yes I will rewrite them to use "${clip(event.newValue, 60)}"; if not, I will leave them as they are.`
+    : "If you say yes I will drop the old value from them; if not, I will leave them as they are.";
   const question =
-    `You ${change}, but ${items.join(" and ")} still rely on the old value. ` +
-    `Should I update them to the new one?`;
+    `Your correction: you ${change}, but ${items.join(" and ")} still rely on the old value. ` +
+    `Should I update them? ${fix}`;
   try {
     const d = directives.createDirective({
-      type: "stale_fact",
+      type: "stale_reference",
       question,
       context: `canonical:changed ${event.op} (fact ${event.factId})`,
       priority: 0.6,
@@ -302,7 +341,7 @@ function surfaceStaleQuestion(
     });
     return d?.id ?? null;
   } catch (err) {
-    log.debug(`stale_fact directive failed: ${String(err)}`);
+    log.debug(`stale_reference directive failed: ${String(err)}`);
     return null;
   }
 }

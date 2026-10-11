@@ -9,11 +9,15 @@
  * retires the fact, a row still holding the retired value is removed. Rows
  * are never created here, and a new value the owner has suppressed as a
  * preference (key or value) removes the row instead of writing it back.
+ * Every removal is recorded (canonical-propagation-undo.ts) so bringing the
+ * value back restores the row. Project-scoped changes never reach this
+ * consumer: preferences are global (see canonical-propagation.ts).
  */
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { CanonicalChangeEvent } from "./canonical-events.js";
+import { recordUndo, type PreferenceRowPayload } from "./canonical-propagation-undo.js";
 import {
   isSuppressed,
   normalizeExact,
@@ -52,11 +56,12 @@ export function propagateToPreferences(
   // Candidates by category (the key's first segment); the table is small
   // and the category index bounds the read.
   const category = event.key.slice(0, dot);
-  let rows: Array<{ id: string; category: string; key: string; value: string }>;
+  let rows: PreferenceRowPayload[];
   try {
     rows = db
       .prepare(
-        `SELECT id, category, key, value FROM user_preferences WHERE lower(category) = ? LIMIT 500`,
+        `SELECT id, category, key, value, confidence, evidence_ids, created_at, updated_at
+           FROM user_preferences WHERE lower(category) = ? ORDER BY id LIMIT 500`,
       )
       .all(category.toLowerCase()) as unknown as typeof rows;
   } catch {
@@ -66,7 +71,15 @@ export function propagateToPreferences(
   if (matches.length === 0) {
     return result;
   }
-  const remove = db.prepare(`DELETE FROM user_preferences WHERE id = ?`);
+  const del = db.prepare(`DELETE FROM user_preferences WHERE id = ?`);
+  // Every removal is recorded so bringing the value back restores the row.
+  const remove = (row: PreferenceRowPayload) => {
+    const changes = del.run(row.id).changes;
+    if (Number(changes) > 0) {
+      recordUndo(db, event.key, row.value, "preference_row", row);
+    }
+    return { changes };
+  };
   const update = db.prepare(`UPDATE user_preferences SET value = ?, updated_at = ? WHERE id = ?`);
   for (const row of matches) {
     if (event.op === "retire") {
@@ -77,7 +90,7 @@ export function propagateToPreferences(
         event.oldValue &&
         normalizeExact(row.value) === normalizeExact(event.oldValue)
       ) {
-        result.removed += Number(remove.run(row.id).changes);
+        result.removed += Number(remove(row).changes);
       }
       continue;
     }
@@ -93,7 +106,7 @@ export function propagateToPreferences(
       isSuppressed(db, "preference_key", preferenceKeyHash(row.category, row.key)) ??
       isSuppressed(db, "preference_value", preferenceValueHash(row.category, event.newValue));
     if (suppressed) {
-      result.removed += Number(remove.run(row.id).changes);
+      result.removed += Number(remove(row).changes);
       continue;
     }
     result.updated += Number(update.run(event.newValue, event.at, row.id).changes);

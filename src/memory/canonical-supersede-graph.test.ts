@@ -5,8 +5,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { CanonicalChangeEvent } from "./canonical-events.js";
-import { keySubjectTokens, propagateToKnowledgeGraph } from "./canonical-supersede-graph.js";
-import { KnowledgeGraphManager } from "./knowledge-graph.js";
+import { keyGraphShape, propagateToKnowledgeGraph } from "./canonical-supersede-graph.js";
+import { KnowledgeGraphManager, type RelationType } from "./knowledge-graph.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { addSuppression, factKeyValueHash } from "./memory-suppressions.js";
 
@@ -60,10 +60,74 @@ const supersedeBeliefs = (): number =>
   ).n;
 
 describe("knowledge-graph propagation", () => {
-  it("derives subject tokens from the key, dropping the category and generic words", () => {
-    expect([...keySubjectTokens("relationship.spouse.name")]).toEqual(["spouse"]);
-    expect([...keySubjectTokens("infra.deploy_endpoint")]).toEqual(["deploy", "endpoint"]);
-    expect([...keySubjectTokens("identity.user.name")]).toEqual([]);
+  it("maps key segments to relations and names a subject only when the key has one", () => {
+    const employer = keyGraphShape("user.employer");
+    expect([...employer.relations]).toContain("works_at");
+    expect([...employer.subjects]).toEqual([]);
+    const lang = keyGraphShape("project.bitterbot.language");
+    expect([...lang.relations]).toEqual(["uses"]);
+    expect([...lang.subjects]).toEqual(["bitterbot"]);
+    expect([...keyGraphShape("identity.user.home_city").relations]).toContain("lives_in");
+    expect([...keyGraphShape("relationship.spouse_of").relations]).toEqual(["spouse_of"]);
+    expect([...keyGraphShape("pet.dog.name").relations]).toEqual([]);
+  });
+
+  it("user.employer Acme -> Beta supersedes victor works_at acme", () => {
+    kg.upsertRelationship({
+      sourceName: "Victor",
+      sourceType: "person",
+      targetName: "Acme",
+      targetType: "organization",
+      relationType: "works_at" as RelationType,
+    });
+    const r = propagateToKnowledgeGraph(
+      db,
+      kg,
+      event({ key: "user.employer", oldValue: "Acme", newValue: "Beta" }),
+    );
+    expect(r).toEqual({ superseded: 1 });
+    expect(edges()).toEqual([
+      { src: "victor", tgt: "acme", rel: "works_at", open: false },
+      { src: "victor", tgt: "beta", rel: "works_at", open: true },
+    ]);
+  });
+
+  it("project.bitterbot.language rust -> typescript leaves orchestrator uses rust alone", () => {
+    kg.upsertRelationship({
+      sourceName: "orchestrator",
+      sourceType: "project",
+      targetName: "rust",
+      targetType: "concept",
+      relationType: "uses",
+    });
+    kg.upsertRelationship({
+      sourceName: "bitterbot",
+      sourceType: "project",
+      targetName: "rust",
+      targetType: "concept",
+      relationType: "uses",
+    });
+    propagateToKnowledgeGraph(
+      db,
+      kg,
+      event({ key: "project.bitterbot.language", oldValue: "rust", newValue: "typescript" }),
+    );
+    expect(edges()).toEqual([
+      { src: "bitterbot", tgt: "rust", rel: "uses", open: false },
+      { src: "bitterbot", tgt: "typescript", rel: "uses", open: true },
+      { src: "orchestrator", tgt: "rust", rel: "uses", open: true },
+    ]);
+  });
+
+  it("ignores an edge at the old value whose relation the key does not describe", () => {
+    kg.upsertRelationship({
+      sourceName: "Donna",
+      sourceType: "person",
+      targetName: "Bitterbot",
+      targetType: "project",
+      relationType: "works_on",
+    });
+    expect(propagateToKnowledgeGraph(db, kg, event({}))).toEqual({ superseded: 0 });
   });
 
   it("supersedes the matching edge with one to the new value and records the belief", () => {
@@ -94,13 +158,13 @@ describe("knowledge-graph propagation", () => {
 
   it("closes without replacement on the owner's retire; ignores soft retires and adds", () => {
     kg.upsertRelationship({
-      sourceName: "deploy pipeline",
-      sourceType: "concept",
-      targetName: "api.acme.com",
-      targetType: "concept",
-      relationType: "uses",
+      sourceName: "Victor",
+      sourceType: "person",
+      targetName: "Acme",
+      targetType: "organization",
+      relationType: "works_at" as RelationType,
     });
-    const base = event({ key: "infra.deploy_endpoint", oldValue: "api.acme.com" });
+    const base = event({ key: "user.employer", oldValue: "Acme" });
     propagateToKnowledgeGraph(db, kg, { ...base, op: "add", oldValue: null });
     propagateToKnowledgeGraph(db, kg, {
       ...base,
@@ -115,9 +179,7 @@ describe("knowledge-graph propagation", () => {
       newValue: null,
       retireReason: "owner",
     });
-    expect(edges()).toEqual([
-      { src: "deploy pipeline", tgt: "api.acme.com", rel: "uses", open: false },
-    ]);
+    expect(edges()).toEqual([{ src: "victor", tgt: "acme", rel: "works_at", open: false }]);
   });
 
   it("does not write a replacement to a value the owner retired for the key", () => {

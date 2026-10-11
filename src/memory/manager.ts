@@ -25,8 +25,10 @@ import {
   applySupersededMarks,
   CANONICAL_CHANGED_EVENT,
   CanonicalPropagation,
+  hasSupersessionMarks,
   loadCanonicalSynthesisContext,
   preserveOwnerSections,
+  stripOwnerSections,
 } from "./canonical-propagation.js";
 import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
@@ -185,6 +187,8 @@ import { scanForOpenLoops } from "./zeigarnik-effect.js";
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
+/** PLAN-55 Phase 2: extra results fetched while superseded marks exist. */
+const SUPERSEDED_OVERFETCH = 10;
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const BATCH_FAILURE_LIMIT = 2;
 
@@ -1208,7 +1212,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
   ): Promise<MemorySearchResult[]> {
     const want = opts?.maxResults ?? this.settings.query.maxResults;
-    const results = await this.search(query, { ...opts, maxResults: want * 3 });
+    // PLAN-55 Phase 2: superseded tags carry ledger values; never for a guest.
+    const results = await this.search(query, {
+      ...opts,
+      maxResults: want * 3,
+      tagSuperseded: false,
+    });
     return filterGuestResults(this.db, results).slice(0, want);
   }
 
@@ -1222,15 +1231,30 @@ export class MemoryIndexManager implements MemorySearchManager {
       maxResults?: number;
       minScore?: number;
       sessionKey?: string;
+      /**
+       * PLAN-55 Phase 2: rank superseded results last and tag them with the
+       * ledger's current value. Owner searches only; guestSearch passes false.
+       */
+      tagSuperseded?: boolean;
     },
   ): Promise<MemorySearchResult[]> {
+    // PLAN-55 Phase 2: over-fetch while marks exist, so demoted results never
+    // take a slot a current one could fill.
+    const tagSuperseded =
+      opts?.tagSuperseded !== false &&
+      this.cfg.memory?.canonicalLedger?.enabled !== false &&
+      hasSupersessionMarks(this.db);
+    const want = opts?.maxResults ?? this.settings.query.maxResults;
+    const innerOpts = tagSuperseded
+      ? { ...opts, maxResults: want + Math.min(want, SUPERSEDED_OVERFETCH) }
+      : opts;
     // PLAN-28 B1: per-layer retrieval counts, filled by searchInner and attached
     // as span attributes + fed to the dead-wire detector / sampled trace below.
     const layers: SearchLayerCounts = emptySearchCounts();
     const results = await withSpanAttrs(
       "memory.search",
       async (setAttr) => {
-        const r = await this.searchInner(query, opts, layers);
+        const r = await this.searchInner(query, innerOpts, layers);
         setAttr("memory.vector_hits", layers.vectorHits);
         setAttr("memory.keyword_hits", layers.keywordHits);
         setAttr("memory.graph_hits", layers.graphHits);
@@ -1254,7 +1278,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       sampleRate: this.retrievalTraceRate,
     });
     this.attachEvidenceRefs(results);
-    applySupersededMarks(this.db, results);
+    if (tagSuperseded) {
+      applySupersededMarks(this.db, results);
+      results.splice(want);
+    }
     if (results.length === 0) {
       this.recordCoverageMiss(query);
     }
@@ -4977,10 +5004,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       usedHeuristicFallback = true;
     }
 
-    // PLAN-55 Phase 2: owner-marked MEMORY.md blocks survive the rewrite verbatim.
-    if (!isFirstSynthesis) {
-      newState = preserveOwnerSections(oldState, newState);
-    }
+    // PLAN-55 Phase 2: owner-marked MEMORY.md blocks survive the rewrite
+    // verbatim, and the model can never add one: on the first synthesis the
+    // previous content (owner blocks included) is kept above the new state.
+    newState = isFirstSynthesis
+      ? stripOwnerSections(newState)
+      : preserveOwnerSections(oldState, newState);
 
     // Conservative first cycle: append below existing user content
     const finalContent = hasUserContent
@@ -6066,8 +6095,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       getFtsTable: () => (this.fts.enabled && this.fts.available ? FTS_TABLE : null),
       getKnowledgeGraph: () => this.knowledgeGraph,
       getDirectives: () => this.epistemicDirectiveEngine,
+      getWorkspaceDir: () => this.workspaceDir,
     });
     this.canonicalPropagation = propagation;
+    // Replays changes a shutdown or queue overflow left unpropagated.
+    propagation.startReconcile();
     store.onChanged((event) => {
       this.emitEvent?.(CANONICAL_CHANGED_EVENT, { ...event });
       propagation.enqueue(event);

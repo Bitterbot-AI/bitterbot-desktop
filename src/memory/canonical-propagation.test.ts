@@ -72,20 +72,13 @@ describe("CanonicalPropagation", () => {
     expect(marked()).toEqual(["old"]);
   });
 
-  it("end to end: one owner correction reaches search, preferences, graph and tasks", async () => {
+  it("end to end: one owner correction reaches search, preferences and tasks", async () => {
     chunk("old", "deploy endpoint: api.acme.com");
     db.prepare(
       `INSERT INTO user_preferences (id, category, key, value, created_at, updated_at)
        VALUES ('p', 'infra', 'deploy_endpoint', 'api.acme.com', 1, 1)`,
     ).run();
-    kg.upsertRelationship({
-      sourceName: "deploy pipeline",
-      sourceType: "concept",
-      targetName: "api.acme.com",
-      targetType: "concept",
-      relationType: "uses",
-    });
-    const task = tasks.create({ goal: "Push the build to api.acme.com", doneCriteria: "live" });
+    const task = tasks.create({ goal: "Deploy the build to api.acme.com", doneCriteria: "live" });
     store.pin({ key: KEY, value: "api.acme.com", source: "extraction" });
     store.pin({ key: KEY, value: "api2.acme.com", source: "owner" });
     await propagation.idle();
@@ -95,13 +88,6 @@ describe("CanonicalPropagation", () => {
       (db.prepare(`SELECT value FROM user_preferences WHERE id = 'p'`).get() as { value: string })
         .value,
     ).toBe("api2.acme.com");
-    const open = db
-      .prepare(
-        `SELECT t.name FROM relationships r JOIN entities t ON t.id = r.target_entity_id
-          WHERE r.valid_until IS NULL`,
-      )
-      .all() as Array<{ name: string }>;
-    expect(open.map((r) => r.name)).toEqual(["api2.acme.com"]);
     expect(readTaskStaleFacts(tasks.get(task.id)!)).toHaveLength(1);
 
     // Re-pin back to the old value undoes the marks and flags.
@@ -153,7 +139,7 @@ describe("CanonicalPropagation", () => {
 
   it("a failing consumer is logged and the others still run", async () => {
     chunk("old", "deploy endpoint: api.acme.com");
-    const task = tasks.create({ goal: "Push to api.acme.com", doneCriteria: "live" });
+    const task = tasks.create({ goal: "Deploy to api.acme.com", doneCriteria: "live" });
     // The graph consumer throws outright: its getter fails.
     const p2 = new CanonicalPropagation({
       getDb: () => db,
@@ -188,5 +174,156 @@ describe("CanonicalPropagation", () => {
     store.pin({ key: KEY, value: "d.acme.com", source: "owner" });
     await propagation.idle();
     expect(seen).toHaveLength(3);
+  });
+
+  it("a project-scoped change leaves the global preference row untouched", async () => {
+    db.prepare(
+      `INSERT INTO user_preferences (id, category, key, value, created_at, updated_at)
+       VALUES ('p', 'infra', 'deploy_endpoint', 'api.acme.com', 1, 1)`,
+    ).run();
+    chunk("old", "deploy endpoint: api.acme.com");
+    // This database is not the acme workspace: nothing local either.
+    store.pin({ key: KEY, value: "api.acme.com", source: "owner", scope: "project:acme" });
+    store.pin({ key: KEY, value: "api2.acme.com", source: "owner" });
+    await propagation.idle();
+    expect(
+      (db.prepare(`SELECT value FROM user_preferences WHERE id = 'p'`).get() as { value: string })
+        .value,
+    ).toBe("api.acme.com");
+    expect(marked()).toEqual([]);
+
+    // In the acme workspace the local stores follow, the global ones still do not.
+    const local = new CanonicalPropagation({
+      getDb: () => db,
+      getKnowledgeGraph: () => kg,
+      getDirectives: () => null,
+      getTaskStore: () => tasks,
+      getWorkspaceDir: () => "/home/me/workspaces/acme",
+    });
+    store.onChanged((e) => local.enqueue(e));
+    propagation.close();
+    store.pin({ key: KEY, value: "api3.acme.com", source: "owner" });
+    await local.idle();
+    expect(
+      (db.prepare(`SELECT value FROM user_preferences WHERE id = 'p'`).get() as { value: string })
+        .value,
+    ).toBe("api.acme.com");
+    expect(
+      (
+        db.prepare(`SELECT chunk_id FROM chunk_supersessions`).all() as Array<{
+          chunk_id: string;
+        }>
+      ).length,
+    ).toBe(0); // the chunk states api.acme.com, not the replaced api2
+    local.close();
+  });
+
+  it("bring back restores the preference row and the graph edge the owner's retire removed", async () => {
+    const employer = "identity.user.employer";
+    db.prepare(
+      `INSERT INTO user_preferences (id, category, key, value, created_at, updated_at)
+       VALUES ('p', 'identity', 'user_employer', 'Acme', 1, 1)`,
+    ).run();
+    kg.upsertRelationship({
+      sourceName: "Victor",
+      sourceType: "person",
+      targetName: "Acme",
+      targetType: "organization",
+      relationType: "works_at" as never,
+    });
+    const openEdges = () =>
+      (
+        db
+          .prepare(
+            `SELECT t.name FROM relationships r JOIN entities t ON t.id = r.target_entity_id
+              WHERE r.valid_until IS NULL ORDER BY t.name`,
+          )
+          .all() as Array<{ name: string }>
+      ).map((r) => r.name);
+    store.pin({ key: employer, value: "Acme", source: "extraction" });
+    store.retire(employer, { reason: "owner" });
+    await propagation.idle();
+    expect(db.prepare(`SELECT 1 FROM user_preferences WHERE id = 'p'`).get()).toBeUndefined();
+    expect(openEdges()).toEqual([]);
+
+    store.unretire(employer);
+    await propagation.idle();
+    expect(
+      (db.prepare(`SELECT value FROM user_preferences WHERE id = 'p'`).get() as { value: string })
+        .value,
+    ).toBe("Acme");
+    expect(openEdges()).toEqual(["acme"]);
+
+    // Supersede and pin back: the replacement edge closes, the original reopens.
+    store.pin({ key: employer, value: "Beta", source: "owner" });
+    await propagation.idle();
+    expect(openEdges()).toEqual(["beta"]);
+    store.pin({ key: employer, value: "Acme", source: "owner" });
+    await propagation.idle();
+    expect(openEdges()).toEqual(["acme"]);
+  });
+
+  it("an event dropped by close() is propagated by the next instance's reconcile", async () => {
+    chunk("old", "deploy endpoint: api.acme.com");
+    store.pin({ key: KEY, value: "api.acme.com", source: "extraction" });
+    await propagation.idle();
+    store.pin({ key: KEY, value: "api2.acme.com", source: "owner" });
+    propagation.close(); // gateway shutdown before the drain ran
+    await propagation.idle();
+    expect(marked()).toEqual([]);
+    const pending = db
+      .prepare(`SELECT COUNT(*) AS n FROM canonical_change_outbox WHERE propagated_at IS NULL`)
+      .get() as { n: number };
+    expect(pending.n).toBe(1);
+
+    const reopened = new CanonicalPropagation({
+      getDb: () => db,
+      getDirectives: () => null,
+      getTaskStore: () => tasks,
+    });
+    const r = await reopened.reconcile();
+    expect(r.replayed).toBe(1);
+    await reopened.idle();
+    expect(marked()).toEqual(["old"]);
+    expect(
+      (
+        db
+          .prepare(`SELECT COUNT(*) AS n FROM canonical_change_outbox WHERE propagated_at IS NULL`)
+          .get() as { n: number }
+      ).n,
+    ).toBe(0);
+    expect((await reopened.reconcile()).replayed).toBe(0); // idempotent
+    reopened.close();
+  });
+
+  it("queue overflow defers to reconcile instead of losing the change", async () => {
+    propagation.close();
+    const small = new CanonicalPropagation({
+      getDb: () => db,
+      getDirectives: () => null,
+      getTaskStore: () => tasks,
+      maxQueued: 2,
+    });
+    const seen: string[] = [];
+    small.onOutcome((o) => seen.push(String(o.event.newValue)));
+    store.onChanged((e) => small.enqueue(e));
+    store.pin({ key: KEY, value: "a.acme.com", source: "owner" });
+    store.pin({ key: KEY, value: "b.acme.com", source: "owner" });
+    store.pin({ key: KEY, value: "c.acme.com", source: "owner" });
+    await small.idle();
+    expect(seen).toEqual(["b.acme.com", "c.acme.com"]);
+    await small.reconcile();
+    await small.idle();
+    expect(seen).toEqual(["b.acme.com", "c.acme.com", "a.acme.com"]);
+    small.close();
+  });
+
+  it("deletes marks whose chunk is gone during reconcile", async () => {
+    db.prepare(
+      `INSERT INTO chunk_supersessions (chunk_id, fact_key, stale_value, created_at)
+       VALUES ('gone', 'k.x', 'v', 1)`,
+    ).run();
+    const r = await propagation.reconcile();
+    expect(r.orphansRemoved).toBe(1);
   });
 });

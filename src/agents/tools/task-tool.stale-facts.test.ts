@@ -58,3 +58,38 @@ describe("task_get staleFacts", () => {
     expect(store.get(task.id)!.metadata).toBeNull();
   });
 });
+
+describe("TaskStore.updateStaleFacts", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-task-stale2-"));
+    startTaskStore({ dbPath: path.join(dir, "tasks.sqlite") });
+  });
+
+  afterEach(() => {
+    stopTaskStore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("applies the mutation to the stored list, so two writers never lose each other's flags", () => {
+    const store = getActiveTaskStore()!;
+    const task = store.create({ goal: "g", doneCriteria: "d" });
+    const stale = store.get(task.id)!; // a reader's snapshot, taken before either write
+    const flag = (key: string) => ({
+      key,
+      oldValue: "v",
+      newValue: "w",
+      factId: key,
+      flaggedAt: 1,
+    });
+    store.updateStaleFacts(task.id, (cur) => [...cur, flag("a.one")]);
+    store.updateStaleFacts(task.id, (cur) => [...cur, flag("b.two")]);
+    expect(stale.metadata).toBeNull();
+    expect(
+      (store.get(task.id)!.metadata!.staleFacts as Array<{ key: string }>).map((f) => f.key),
+    ).toEqual(["a.one", "b.two"]);
+    // A no-op mutation writes nothing.
+    expect(store.updateStaleFacts(task.id, (cur) => cur)).toBeUndefined();
+  });
+});

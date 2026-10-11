@@ -121,4 +121,39 @@ describe("canonical:changed emission", () => {
     off();
     expect(() => store.pin({ key: KEY, value: "x.acme.com", source: "owner" })).not.toThrow();
   });
+
+  it("writes every change to the outbox in the writer's transaction, with the old evidence", () => {
+    store.pin({
+      key: KEY,
+      value: "api.acme.com",
+      source: "extraction",
+      evidenceChunkIds: ["c-old"],
+    });
+    store.pin({ key: KEY, value: "api2.acme.com", source: "owner", evidenceChunkIds: ["c-new"] });
+    expect(events.at(-1)!.oldEvidence).toEqual({ ref: null, chunkIds: ["c-old"] });
+    const rows = db
+      .prepare(`SELECT id, key, event_json, propagated_at FROM canonical_change_outbox ORDER BY id`)
+      .all() as Array<{
+      id: number;
+      key: string;
+      event_json: string;
+      propagated_at: number | null;
+    }>;
+    expect(rows).toHaveLength(2);
+    expect(events.at(-1)!.outboxId).toBe(rows[1]!.id);
+    expect(JSON.parse(rows[1]!.event_json)).toMatchObject({
+      op: "supersede",
+      oldValue: "api.acme.com",
+    });
+    expect(rows.every((r) => r.propagated_at === null)).toBe(true);
+
+    // A rolled-back write leaves no outbox row.
+    db.exec("SAVEPOINT t");
+    store.pin({ key: KEY, value: "api3.acme.com", source: "owner" });
+    db.exec("ROLLBACK TO t");
+    db.exec("RELEASE t");
+    expect(
+      (db.prepare(`SELECT COUNT(*) AS n FROM canonical_change_outbox`).get() as { n: number }).n,
+    ).toBe(2);
+  });
 });

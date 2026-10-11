@@ -29,11 +29,12 @@ function insight(id: string, content: string, sources: string[] = []): void {
   ).run(id, content, JSON.stringify(sources));
 }
 
+/** The first stale note on an insight, or null. */
 const flag = (id: string): Record<string, unknown> | null => {
   const row = db.prepare(`SELECT stale_fact FROM dream_insights WHERE id = ?`).get(id) as {
     stale_fact: string | null;
   };
-  return row.stale_fact ? (JSON.parse(row.stale_fact) as Record<string, unknown>) : null;
+  return row.stale_fact ? (JSON.parse(row.stale_fact) as Array<Record<string, unknown>>)[0]! : null;
 };
 
 const event = (over: Partial<CanonicalChangeEvent>): CanonicalChangeEvent => ({
@@ -54,6 +55,7 @@ describe("dream insight propagation", () => {
   it("flags insights stating the old value or resting on a superseded chunk", async () => {
     insight("states", "Deploys to api.acme.com tend to fail on Fridays.");
     insight("rests", "Fridays are risky.", ["chunk-old"]);
+    insight("nocontext", "The api.acme.com status page is slow.");
     insight("clean", "The owner likes tea.", ["chunk-other"]);
     insight("both", "Moved from api.acme.com to api2.acme.com.");
     db.prepare(
@@ -65,6 +67,7 @@ describe("dream insight propagation", () => {
     expect(flag("states")).toMatchObject({ reason: "superseded", key: "infra.deploy_endpoint" });
     expect(flag("rests")).toMatchObject({ reason: "superseded" });
     expect(flag("clean")).toBeNull();
+    expect(flag("nocontext")).toBeNull();
     expect(flag("both")).toBeNull();
     // Idempotent.
     expect((await propagateToDreamInsights(db, event({}))).flagged).toBe(0);
@@ -122,5 +125,19 @@ describe("insightPromotionBlock", () => {
     expect(flag("forgot")).toMatchObject({ reason: "forgotten_evidence", chunkIds: ["c4"] });
     // The flag now short-circuits.
     expect(insightPromotionBlock(db, { id: "forgot", sourceChunkIds: [] })).toBe("stale_fact");
+  });
+
+  it("keeps notes per key: clearing one key leaves the other flag", async () => {
+    insight("both", "Deploy to api.acme.com in the eu-west-1 deploy region.");
+    await propagateToDreamInsights(db, event({}));
+    await propagateToDreamInsights(
+      db,
+      event({ key: "infra.deploy_region", oldValue: "eu-west-1", newValue: "us-east-1" }),
+    );
+    await propagateToDreamInsights(
+      db,
+      event({ oldValue: "api2.acme.com", newValue: "api.acme.com" }),
+    );
+    expect(flag("both")).toMatchObject({ key: "infra.deploy_region" });
   });
 });

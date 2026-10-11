@@ -2687,7 +2687,12 @@ export const MIGRATIONS: Migration[] = [
       "dream_briefs.stale_fact and dream_insights.stale_fact (JSON, nullable) flag an " +
       "anticipation brief or a dream insight that cites a superseded value or rests on " +
       "forgotten evidence: a flagged brief is not surfaced and a flagged insight is not " +
-      "promoted.",
+      "promoted. canonical_change_outbox records every ledger change in the writer's " +
+      "transaction; propagated_at is set once the consumers ran, and a reconcile pass " +
+      "replays rows left unset. It starts empty: changes made before this migration are " +
+      "not propagated retroactively. canonical_propagation_undo records what an owner " +
+      "retire or a supersede removed (a preference row, graph edges) so bringing the " +
+      "value back restores it.",
     up: (db: DatabaseSync) => {
       db.exec(`
         CREATE TABLE IF NOT EXISTS chunk_supersessions (
@@ -2703,6 +2708,35 @@ export const MIGRATIONS: Migration[] = [
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_chunk_supersessions_key ` +
           `ON chunk_supersessions(fact_key, stale_value)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_change_outbox (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          fact_id        TEXT NOT NULL,
+          key            TEXT NOT NULL,
+          event_json     TEXT NOT NULL,
+          created_at     INTEGER NOT NULL,
+          propagated_at  INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_change_outbox_pending ` +
+          `ON canonical_change_outbox(propagated_at, id)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_propagation_undo (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          fact_key    TEXT NOT NULL,
+          value       TEXT NOT NULL,
+          kind        TEXT NOT NULL,
+          payload     TEXT NOT NULL,
+          created_at  INTEGER NOT NULL,
+          undone_at   INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_propagation_undo_key ` +
+          `ON canonical_propagation_undo(fact_key, value, undone_at)`,
       );
       const hasTable = (name: string): boolean =>
         Boolean(
