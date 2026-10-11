@@ -15,6 +15,7 @@ import { logVerbose } from "../../globals.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import {
   CORRECTION_CAPTURE_TIMEOUT_MS,
+  matchesCorrectionPrefilter,
   resolveCorrectionSkipReason,
   runCorrectionCapture,
 } from "../../memory/correction-capture.js";
@@ -239,8 +240,15 @@ export async function runCorrectionCaptureAfterTurn(params: {
     return null;
   }
   const work = (async (): Promise<string | null> => {
-    const { getMemorySearchManager } = await import("../../memory/index.js");
-    const { manager } = await getMemorySearchManager({ cfg: params.cfg, agentId: run.agentId });
+    const { getMemorySearchManager, peekMemorySearchManager } =
+      await import("../../memory/index.js");
+    // A corrective shape earns the model call and may open the memory
+    // manager. Any other turn only reads what the run itself wrote (an
+    // agent pin, a held supersede), which exists only if something already
+    // opened the manager: never open the memory database for a plain turn.
+    const { manager } = matchesCorrectionPrefilter(params.commandBody)
+      ? await getMemorySearchManager({ cfg: params.cfg, agentId: run.agentId })
+      : await peekMemorySearchManager({ cfg: params.cfg, agentId: run.agentId });
     const m = manager as unknown as
       | {
           canonicalFacts?: () =>

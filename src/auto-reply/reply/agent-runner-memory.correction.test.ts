@@ -14,10 +14,12 @@ import type { FollowupRun } from "./queue.js";
 
 const state = vi.hoisted(() => ({
   getManager: vi.fn(),
+  peekManager: vi.fn(),
 }));
 
 vi.mock("../../memory/index.js", () => ({
   getMemorySearchManager: (params: unknown) => state.getManager(params),
+  peekMemorySearchManager: (params: unknown) => state.peekManager(params),
 }));
 
 import { runCorrectionCaptureAfterTurn } from "./agent-runner-memory.js";
@@ -53,6 +55,8 @@ beforeEach(() => {
   store = new CanonicalFactsStore(db);
   llm.mockReset();
   state.getManager.mockReset();
+  state.peekManager.mockReset();
+  state.peekManager.mockResolvedValue({ manager: null });
   state.getManager.mockResolvedValue({
     manager: {
       canonicalFacts: () => store,
@@ -129,6 +133,24 @@ describe("runCorrectionCaptureAfterTurn", () => {
         followupRun: followupRun(),
       }),
     ).toBeNull();
+    expect(state.getManager).not.toHaveBeenCalled();
+  });
+
+  it("a turn without a corrective shape never opens the memory manager, only peeks at an open one", async () => {
+    const plain = { ...base, commandBody: "check my wallet balance", followupRun: followupRun() };
+    expect(await runCorrectionCaptureAfterTurn(plain)).toBeNull();
+    expect(state.getManager).not.toHaveBeenCalled();
+    expect(state.peekManager).toHaveBeenCalledWith({ cfg: {}, agentId: "main" });
+    // With an already-open manager, the run's own agent writes are still reported.
+    store.pin({ key: "identity.user.name", value: "Victor", source: "owner" });
+    store.pin({ key: "identity.user.name", value: "Vic", source: "agent_pin" });
+    state.peekManager.mockResolvedValue({
+      manager: { canonicalFacts: () => store, correctionLlmCall: () => llm },
+    });
+    expect(await runCorrectionCaptureAfterTurn({ ...plain, runStartedAt: Date.now() - 50 })).toBe(
+      "Memory: held for your confirmation: user name Victor -> Vic",
+    );
+    expect(llm).not.toHaveBeenCalled();
     expect(state.getManager).not.toHaveBeenCalled();
   });
 

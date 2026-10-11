@@ -485,6 +485,21 @@ export class MemoryIndexManager implements MemorySearchManager {
     log.debug("propagated new DB handle and schemas to subsystems after reindex");
   }
 
+  /**
+   * PLAN-55 Phase 1: the already-open manager for this agent, or null. Never
+   * builds one: a caller that only wants to read what an earlier tool call
+   * wrote (the confirmation line after a turn with no corrective shape) must
+   * not open the memory database on a turn that never touched memory.
+   */
+  static peek(params: { cfg: BitterbotConfig; agentId: string }): MemoryIndexManager | null {
+    const settings = resolveMemorySearchConfig(params.cfg, params.agentId);
+    if (!settings) {
+      return null;
+    }
+    const workspaceDir = resolveAgentWorkspaceDir(params.cfg, params.agentId);
+    return INDEX_CACHE.get(`${params.agentId}:${workspaceDir}:${JSON.stringify(settings)}`) ?? null;
+  }
+
   static async get(params: {
     cfg: BitterbotConfig;
     agentId: string;
