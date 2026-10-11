@@ -115,7 +115,7 @@ describe("checkUpdateStatus for a container install", () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "bb-container-root-"));
     const urls: string[] = [];
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
-      urls.push(String(input));
+      urls.push(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
       return jsonResponse({ tag_name: "v99.0.0" });
     });
     try {

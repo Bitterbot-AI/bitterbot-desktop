@@ -148,11 +148,11 @@ jobs:
           docker logs bbnc 2>&1 | tail -30
           [ "$started" = "0" ]
           docker exec bbnc sh -c 'test ! -e "$HOME/.bitterbot/bitterbot.json"'
-          docker exec bbnc node bitterbot.mjs update status --json > /tmp/bbnc-update.json || true
-          cat /tmp/bbnc-update.json
-          grep -q '"installKind": "container"' /tmp/bbnc-update.json
-          # Never npm for a container: the release source is GitHub.
-          if grep -q '"source": "npm"' /tmp/bbnc-update.json; then exit 1; fi
+          docker exec bbnc node bitterbot.mjs update status > /tmp/bbnc-update.txt || true
+          cat /tmp/bbnc-update.txt
+          grep -q "Install .*container image" /tmp/bbnc-update.txt
+          # Never npm for a container: the release source is GitHub ("image ...").
+          if grep -qi "npm" /tmp/bbnc-update.txt; then exit 1; fi
           docker rm -f bbnc
 
       - name: Smoke test — zero-edit docker compose up
