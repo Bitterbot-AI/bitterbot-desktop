@@ -157,7 +157,9 @@ describe("runSessionExtraction wiring (PLAN-34 Phase 1)", () => {
       .get() as { status: string; resolution: string; resolved_at: number | null };
     expect(row.status).toBe("answered");
     expect(row.resolution).toBe("a2a.new.example");
-    expect(row.resolved_at).toBeNull();
+    // PLAN-55 Phase 1 review (item 2): the owner picking an offered value is
+    // an owner-tier write, which settles the question on the spot.
+    expect(row.resolved_at).not.toBeNull();
 
     // The answer crystal exists with evidence, and the ledger corroborated.
     const crystal = db
@@ -167,13 +169,15 @@ describe("runSessionExtraction wiring (PLAN-34 Phase 1)", () => {
       .get();
     expect(crystal).toBeDefined();
     expect(store.get("infra.gateway")!.value).toBe("a2a.new.example");
+    expect(store.get("infra.gateway")!.source).toBe("owner");
 
-    // Cycle 2 (no changed sessions): finalize resolves the survivor.
+    // Cycle 2 (no changed sessions): nothing left to finalize, nothing re-asked.
     await runExtraction(fake);
     const after = db.prepare(`SELECT resolved_at FROM epistemic_directives`).get() as {
       resolved_at: number | null;
     };
     expect(after.resolved_at).not.toBeNull();
+    expect(engine.listOpenDirectives(5)).toEqual([]);
   });
 
   it("never offers open questions to non-first-party sessions", async () => {
