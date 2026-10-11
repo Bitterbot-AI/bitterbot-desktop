@@ -100,10 +100,8 @@ jobs:
 
       - name: Smoke test — gateway boots and serves the Control UI
         run: |
-          # A one-line config, as every real container has one: with no
-          # bitterbot.json, loadConfig() returns {} without defaults, so an
-          # unconfigured gateway never reaches the P2P block and the
-          # orchestrator assertion below could not be exercised.
+          # A one-line config mounted from the host (the classic `docker run`
+          # form). The next step covers the no-config case.
           mkdir -p /tmp/bbdata && chmod 777 /tmp/bbdata
           printf '{ "p2p": { "enabled": true } }\n' > /tmp/bbdata/bitterbot.json
           chmod 666 /tmp/bbdata/bitterbot.json
@@ -130,6 +128,70 @@ jobs:
           done
           docker logs bb 2>&1 | grep -i "orchestrator" | tail -5
           [ "$started" = "0" ]
+
+      - name: Smoke test — no config file still gets the defaults (P2P on) and install kind container
+        # PLAN-56 Phase 2: loadConfig() applies the same defaults chain when
+        # bitterbot.json is absent, so an unconfigured container joins the
+        # mesh exactly like one with an empty `{}` file. The token comes from
+        # the env, so nothing may create a config file.
+        run: |
+          docker run -d --name bbnc -p 19003:19001 -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token \
+            bitterbot:ci node bitterbot.mjs gateway --allow-unconfigured --bind lan
+          started=1
+          for i in $(seq 1 90); do
+            if docker logs bbnc 2>&1 | grep -q "P2P orchestrator bridge started (binary: /app/orchestrator/target/release/bitterbot-orchestrator)"; then
+              started=0
+              break
+            fi
+            sleep 2
+          done
+          docker logs bbnc 2>&1 | tail -30
+          [ "$started" = "0" ]
+          docker exec bbnc sh -c 'test ! -e "$HOME/.bitterbot/bitterbot.json"'
+          docker exec bbnc node bitterbot.mjs update status --json > /tmp/bbnc-update.json || true
+          cat /tmp/bbnc-update.json
+          grep -q '"installKind": "container"' /tmp/bbnc-update.json
+          # Never npm for a container: the release source is GitHub.
+          if grep -q '"source": "npm"' /tmp/bbnc-update.json; then exit 1; fi
+          docker rm -f bbnc
+
+      - name: Smoke test — zero-edit docker compose up
+        # PLAN-56 Phase 2: the repo's docker-compose.yml with nothing set
+        # (only the image pointed at this build). Proves: Docker-created
+        # ./bitterbot-data is handed to `node`, the first boot generates,
+        # persists and prints a token, the healthcheck passes, both ports are
+        # bound to loopback, and the token works from the host.
+        run: |
+          # Free host port 19001 (the first smoke container still holds it).
+          docker rm -f bb || true
+          mkdir -p /tmp/compose && cp docker-compose.yml /tmp/compose/
+          cd /tmp/compose
+          # The file itself must render with no variables set at all.
+          docker compose config --quiet
+          docker compose config | grep -q 'ghcr.io/bitterbot-ai/bitterbot-desktop:1$'
+          export BITTERBOT_IMAGE=bitterbot:ci
+          docker compose up -d --wait --wait-timeout 300 || {
+            docker compose logs --tail 80; exit 1; }
+          docker compose logs bitterbot-gateway 2>&1 | tail -40
+          banner_token=$(docker compose logs --no-log-prefix bitterbot-gateway 2>&1 | sed -n 's/^ *Token: *//p' | head -1)
+          [ -n "$banner_token" ]
+          stored_token=$(docker compose exec -T -u node bitterbot-gateway \
+            node bitterbot.mjs config get gateway.auth.token | tail -1 | tr -d '\r')
+          [ "$banner_token" = "$stored_token" ]
+          [ "$(stat -c %u bitterbot-data)" = "1000" ]
+          [ "$(stat -c %u bitterbot-data/bitterbot.json)" = "1000" ]
+          cid=$(docker compose ps -q bitterbot-gateway)
+          docker port "$cid"
+          [ "$(docker port "$cid" 19001/tcp)" = "127.0.0.1:19001" ]
+          [ "$(docker port "$cid" 9100/tcp)" = "127.0.0.1:9100" ]
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $stored_token" http://127.0.0.1:19001/)
+          echo "GET / with the generated token -> $code"
+          [ "$code" = "200" ]
+          # The token must not reach the gateway's own file log.
+          if docker compose exec -T -u node bitterbot-gateway sh -c 'grep -rl "$0" /tmp "$HOME/.bitterbot/logs" 2>/dev/null' "$stored_token"; then
+            echo "generated token found in a log file"; exit 1
+          fi
+          docker compose down
 
       - name: Smoke test — Fly template boots on a root-owned volume
         # PLAN-53 F1: Fly mounts volumes owned by root; the template's

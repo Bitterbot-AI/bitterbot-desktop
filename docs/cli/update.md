@@ -12,6 +12,20 @@ Safely update Bitterbot and switch between stable/beta/dev channels.
 
 If you installed via **npm/pnpm** (global install, no git metadata), updates happen via the package manager flow in [Updating](/install/updating).
 
+In a **container** (the published image sets `BITTERBOT_INSTALL_KIND=container`;
+images that do not are detected from `/.dockerenv`, `/run/.containerenv` or the
+cgroup, unless the directory is a git checkout), `bitterbot update` and the
+Control UI refuse to update in place: the image is the code. `update status`
+compares the running version with the newest GitHub release instead of npm.
+Update with `docker compose pull && docker compose up -d` on the Docker host
+(see [Docker](/platforms/docker)).
+
+## Default channel
+
+With `update.channel` unset: `stable` for npm installs, containers, and git
+checkouts sitting on a release tag (`beta` for a `-beta` tag); `dev` only for a
+git checkout on a branch. A configured `update.channel` always wins.
+
 ## Usage
 
 ```bash
@@ -94,16 +108,10 @@ High-level:
    and `bitterbot doctor` reports what happened. Disable with
    `update.autoRollback.enabled: false`.
 10. Syncs plugins to the active channel (dev uses bundled extensions; stable/beta uses npm) and updates npm-installed plugins.
-11. Restarts the Control UI. The vite dev server is a separate process that
-    cannot pick up an applied update on its own (its dependency cache is
-    stale after the install, the gateway URL/token are baked in at server
-    start, and file watchers are blind on some filesystems), so a successful
-    update — and an auto-rollback — spawns a detached restarter that bounces
-    it. It only ever restarts a UI that was already running, and only when
-    the process holding the port is identifiably this checkout's vite;
-    under `pnpm start:all` the supervisor respawns the fresh UI itself. Open
-    browser tabs reconnect and reload on their own. Disable with
-    `update.uiRestart.enabled: false` (log: `<stateDir>/ui-restart.log`).
+11. Nothing else restarts: the gateway serves the Control UI itself, so open
+    browser tabs reconnect and reload on their own. `update.uiRestart` (which
+    gated a separate UI restarter) has no effect, warns at load, and will be
+    removed next release.
 
 ## Updating from the Control UI
 

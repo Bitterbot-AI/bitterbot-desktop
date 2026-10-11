@@ -22,7 +22,10 @@ Two setups ship with the repository; both are covered in
   Caddy, update with rollback).
 
 Other hosts that run a container image (`ghcr.io/bitterbot-ai/bitterbot-desktop`)
-work too, but have no template.
+work too, but have no template. On any host with Docker, the repository's
+`docker-compose.yml` runs with zero edits: ports on `127.0.0.1` only, data in
+`./bitterbot-data`, and a gateway token generated on first boot (see
+[Docker (recommended install)](/platforms/docker)).
 
 ## How cloud setups work
 

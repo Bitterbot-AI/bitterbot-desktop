@@ -8,11 +8,13 @@ import { doctorCommand } from "../../commands/doctor.js";
 import { loadConfig, readConfigFileSnapshot, writeConfigFile } from "../../config/config.js";
 import { armBootVerify, clearRollbackRecord, disarmBootVerify } from "../../infra/boot-verify.js";
 import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
+import { CONTAINER_UPDATE_COMMAND } from "../../infra/install-kind.js";
 import {
   channelToNpmTag,
   DEFAULT_GIT_CHANNEL,
   DEFAULT_PACKAGE_CHANNEL,
   normalizeUpdateChannel,
+  resolveEffectiveUpdateChannel,
 } from "../../infra/update-channels.js";
 import {
   compareSemverStrings,
@@ -532,12 +534,33 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   }
 
   const installKind = updateStatus.installKind;
+  if (installKind === "container") {
+    // The image is the code: an in-place update would vanish on the next
+    // container recreate, and npm is not where images come from.
+    defaultRuntime.error(
+      `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}`,
+    );
+    defaultRuntime.exit(1);
+    return;
+  }
   const switchToGit = requestedChannel === "dev" && installKind !== "git";
   const switchToPackage =
     requestedChannel !== null && requestedChannel !== "dev" && installKind === "git";
   const updateInstallKind = switchToGit ? "git" : switchToPackage ? "package" : installKind;
+  // PLAN-56 §3.5: a git checkout ON a release tag defaults to stable (beta
+  // for a beta tag); only a checkout on a branch defaults to dev.
   const defaultChannel =
-    updateInstallKind === "git" ? DEFAULT_GIT_CHANNEL : DEFAULT_PACKAGE_CHANNEL;
+    updateInstallKind === "git"
+      ? switchToGit
+        ? DEFAULT_GIT_CHANNEL
+        : resolveEffectiveUpdateChannel({
+            configChannel: null,
+            installKind: "git",
+            git: updateStatus.git
+              ? { tag: updateStatus.git.tag, branch: updateStatus.git.branch }
+              : undefined,
+          }).channel
+      : DEFAULT_PACKAGE_CHANNEL;
   const channel = requestedChannel ?? storedChannel ?? defaultChannel;
 
   const explicitTag = normalizeTag(opts.tag);

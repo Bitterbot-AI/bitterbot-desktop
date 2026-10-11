@@ -89,7 +89,10 @@ export const FIELD_HELP: Record<string, string> = {
     "Query configured providers' /models endpoints at catalog build so the picker reflects what they actually serve.",
   "meta.lastTouchedVersion": "Auto-set when Bitterbot writes the config.",
   "meta.lastTouchedAt": "ISO timestamp of the last config write (auto-set).",
-  "update.channel": 'Update channel for git + npm installs ("stable", "beta", or "dev").',
+  "update.channel":
+    'Update channel for git + npm installs ("stable", "beta", or "dev"). Unset: stable for npm installs, containers and git checkouts on a release tag; dev for git checkouts on a branch. Containers follow their image tag and update with `docker compose pull && docker compose up -d`.',
+  "update.autoRollback.enabled":
+    "Git installs: if a freshly updated gateway never confirms a healthy boot, roll back once to the pre-update commit (clean worktree only; config and memory untouched) (default: true).",
   "update.checkOnStart":
     "Automatic update checks at gateway start and every 6 hours (default: true).",
   "update.promptBehindCommits":

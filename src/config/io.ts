@@ -616,26 +616,23 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
   function loadConfig(): BitterbotConfig {
     try {
       maybeLoadDotEnvForConfig(deps.env);
-      if (!deps.fs.existsSync(configPath)) {
-        if (shouldEnableShellEnvFallback(deps.env) && !shouldDeferShellEnvFallback(deps.env)) {
-          loadShellEnvFallback({
-            enabled: true,
-            env: deps.env,
-            expectedKeys: SHELL_ENV_EXPECTED_KEYS,
-            logger: deps.logger,
-            timeoutMs: resolveShellEnvFallbackTimeoutMs(deps.env),
-          });
-        }
-        return {};
+      // PLAN-56 Phase 2: a missing file loads exactly like an empty `{}` file,
+      // through the same validation and apply*Defaults chain. It used to
+      // return a bare `{}`, so an unconfigured container silently ran with no
+      // P2P, circles or model defaults. "Not configured" detection (wizard,
+      // `gateway --allow-unconfigured`, doctor, onboard) keys off the FILE
+      // (readConfigFileSnapshot().exists / fs.existsSync), never this object.
+      let resolvedConfig: unknown = {};
+      if (deps.fs.existsSync(configPath)) {
+        const raw = deps.fs.readFileSync(configPath, "utf-8");
+        const parsed = deps.json5.parse(raw);
+        resolvedConfig = resolveConfigForRead(
+          resolveConfigIncludesForRead(parsed, configPath, deps),
+          deps.env,
+        ).resolvedConfigRaw;
+        warnOnConfigMiskeys(resolvedConfig, deps.logger);
+        warnOnDeprecatedConfigKeys(resolvedConfig, deps.logger);
       }
-      const raw = deps.fs.readFileSync(configPath, "utf-8");
-      const parsed = deps.json5.parse(raw);
-      const { resolvedConfigRaw: resolvedConfig } = resolveConfigForRead(
-        resolveConfigIncludesForRead(parsed, configPath, deps),
-        deps.env,
-      );
-      warnOnConfigMiskeys(resolvedConfig, deps.logger);
-      warnOnDeprecatedConfigKeys(resolvedConfig, deps.logger);
       if (typeof resolvedConfig !== "object" || resolvedConfig === null) {
         return {};
       }

@@ -25,6 +25,9 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   // ---- the six that the plan found rendering OFF while actually ON ----
   // src/infra/update-startup.ts:86 — only `=== false` skips the check.
   "update.checkOnStart": true,
+  // src/gateway/server-methods/update.ts (spawnBootWatchdog) and
+  // src/cli/update-cli/update-command.ts — `autoRollback?.enabled !== false`.
+  "update.autoRollback.enabled": true,
   // src/monitors/runtime.ts:60 — only `=== false` skips the engine.
   "monitors.enabled": true,
   // src/agents/tools/browser-tool.ts:251 — `!== false`.
@@ -248,6 +251,8 @@ export const DEPRECATED_PATHS: Record<string, string> = {
     'agents.defaults.compaction.mode: "safeguard" is accepted and has no effect (see LIMITATIONS.md, "Execution and isolation"); "default" is the only live mode. The key will be removed next release.',
   "agents.defaults.contextPruning":
     'agents.defaults.contextPruning is accepted and has no effect (see LIMITATIONS.md, "Execution and isolation"). It will be removed next release.',
+  "update.uiRestart":
+    "update.uiRestart has no effect: the gateway serves the Control UI itself (PLAN-39), so an update never restarts a separate UI process. It will be removed next release.",
 };
 
 /**

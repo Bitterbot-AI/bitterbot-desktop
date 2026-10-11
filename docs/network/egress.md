@@ -67,17 +67,28 @@ below in one step.
   researched.
 
 - **Inbound:** the orchestrator also accepts libp2p connections on TCP 9100
-  on all interfaces (change with `p2p.listenAddrs`).
+  on all interfaces (change with `p2p.listenAddrs`). In the repository's
+  `docker-compose.yml` the port is published on the host's `127.0.0.1` only
+  (`BITTERBOT_P2P_BIND_HOST=0.0.0.0` publishes it on all interfaces), so other
+  peers reach a compose install through a relay circuit rather than by dialing
+  it directly. The Fly.io and VPS templates publish it publicly.
 - **Off switch:** `p2p.enabled: false` (Settings → P2P, or decline the
   wizard's network consent).
 
 ## 3. Update check (runtime)
 
 - **When:** at gateway start and every 6 hours.
-- **Where:** `git fetch` against your clone's `origin`, and
-  `registry.npmjs.org` (package metadata for the update channel).
-- **What:** standard git/registry requests; nothing about your node is
-  sent beyond what those protocols carry.
+- **Where:** depends on how Bitterbot is installed:
+  - source checkout: `git fetch` against your clone's `origin`;
+  - npm package: `registry.npmjs.org` (package metadata for the update
+    channel);
+  - container image (`BITTERBOT_INSTALL_KIND=container`, set by the image):
+    `api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases/latest`,
+    never npm. The answer is cached for 30 minutes (15 after a failure), so
+    opening the Control UI repeatedly does not repeat the request.
+- **What:** standard git/registry/HTTPS requests; nothing about your node is
+  sent beyond what those protocols carry (the GitHub request is
+  unauthenticated, with a generic `bitterbot-update-check` User-Agent).
 - **Off switch:** `update.checkOnStart: false`.
 
 ## 4. Model provider APIs (runtime, key-gated)

@@ -39,12 +39,15 @@ dist
 # fetches into the image (wrong arch, unsigned).
 orchestrator/target
 
-# secrets and local state (PLAN-56 Phase 0)
+# secrets and local state (PLAN-56 Phase 0, Phase 2)
 keys/
-.env
-.env.*
+.env*
+**/.env
+**/.env.*
 deploy/**/*.tfstate
 deploy/**/*.tfstate.*
+# docker-compose.yml's default data folder (config, memory, keys, token)
+bitterbot-data/
 
 # internal material that is not part of the product
 research/

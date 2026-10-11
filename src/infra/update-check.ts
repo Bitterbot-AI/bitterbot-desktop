@@ -3,6 +3,9 @@ import path from "node:path";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { fetchWithTimeout } from "../utils/fetch-timeout.js";
 import { detectPackageManager as detectPackageManagerImpl } from "./detect-package-manager.js";
+import { type ContainerProbe, type InstallKind, resolveInstallKind } from "./install-kind.js";
+
+export type { InstallKind } from "./install-kind.js";
 import { parseSemver } from "./runtime-guard.js";
 import { channelToNpmTag, type UpdateChannel } from "./update-channels.js";
 
@@ -33,6 +36,8 @@ export type DepsStatus = {
 
 export type RegistryStatus = {
   latestVersion: string | null;
+  /** Where `latestVersion` came from: npm for package installs, GitHub releases for containers. */
+  source?: "npm" | "github-releases";
   error?: string;
 };
 
@@ -44,7 +49,7 @@ export type NpmTagStatus = {
 
 export type UpdateCheckResult = {
   root: string | null;
-  installKind: "git" | "package" | "unknown";
+  installKind: InstallKind;
   packageManager: PackageManager;
   git?: GitUpdateStatus;
   deps?: DepsStatus;
@@ -307,8 +312,116 @@ export async function fetchNpmLatestVersion(params?: {
   const res = await fetchNpmTagVersion({ tag: "latest", timeoutMs: params?.timeoutMs });
   return {
     latestVersion: res.version,
+    source: "npm",
     error: res.error,
   };
+}
+
+/**
+ * Container installs (PLAN-56 D6): the newest image is the newest GitHub
+ * release, because docker-publish runs on every release-please release. The
+ * releases API needs no token (60 requests/hour per IP unauthenticated); the
+ * request carries no identifying data beyond the IP and a generic User-Agent.
+ */
+export const GITHUB_LATEST_RELEASE_URL =
+  "https://api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases/latest";
+
+/** Successful answers are reused this long, so a click-happy UI never fans out. */
+const GITHUB_RELEASE_CACHE_MS = 30 * 60 * 1000;
+/** Failures (offline, rate-limited) are remembered too, so retries back off. */
+const GITHUB_RELEASE_ERROR_CACHE_MS = 15 * 60 * 1000;
+
+let githubReleaseCache: { at: number; status: RegistryStatus } | null = null;
+
+/** @internal */
+export function resetGithubReleaseCacheForTests(): void {
+  githubReleaseCache = null;
+}
+
+/**
+ * The last answer, if still fresh, WITHOUT a network request: lets the
+ * Control UI's no-fetch bootstrap check show a known newer image.
+ */
+export function peekLatestGithubRelease(now = Date.now()): RegistryStatus | null {
+  const cached = githubReleaseCache;
+  if (!cached?.status.latestVersion || now - cached.at >= GITHUB_RELEASE_CACHE_MS) {
+    return null;
+  }
+  return cached.status;
+}
+
+/** Release tags are `vX.Y.Z` (release-please); anything else is not an app release. */
+function parseReleaseTag(tag: unknown): string | null {
+  if (typeof tag !== "string") {
+    return null;
+  }
+  const match = /^v?(\d+\.\d+\.\d+)$/.exec(tag.trim());
+  return match ? (match[1] ?? null) : null;
+}
+
+export async function fetchLatestGithubRelease(params?: {
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+  now?: number;
+}): Promise<RegistryStatus> {
+  const now = params?.now ?? Date.now();
+  const cached = githubReleaseCache;
+  if (cached) {
+    const ttl = cached.status.latestVersion
+      ? GITHUB_RELEASE_CACHE_MS
+      : GITHUB_RELEASE_ERROR_CACHE_MS;
+    if (now - cached.at < ttl) {
+      return cached.status;
+    }
+  }
+  const status = await fetchLatestGithubReleaseUncached(params);
+  githubReleaseCache = { at: now, status };
+  return status;
+}
+
+async function fetchLatestGithubReleaseUncached(params?: {
+  timeoutMs?: number;
+  fetchImpl?: typeof fetch;
+}): Promise<RegistryStatus> {
+  const timeoutMs = Math.max(250, params?.timeoutMs ?? 3500);
+  try {
+    const res = await fetchWithTimeout(
+      GITHUB_LATEST_RELEASE_URL,
+      {
+        headers: {
+          Accept: "application/vnd.github+json",
+          "User-Agent": "bitterbot-update-check",
+        },
+      },
+      timeoutMs,
+      params?.fetchImpl,
+    );
+    if (!res.ok) {
+      const rateLimited =
+        res.status === 429 ||
+        (res.status === 403 && res.headers.get("x-ratelimit-remaining") === "0");
+      return {
+        latestVersion: null,
+        source: "github-releases",
+        error: rateLimited ? "rate-limited" : `HTTP ${res.status}`,
+      };
+    }
+    const json = (await res.json()) as {
+      tag_name?: unknown;
+      draft?: unknown;
+      prerelease?: unknown;
+    };
+    const version =
+      json && json.draft !== true && json.prerelease !== true
+        ? parseReleaseTag(json.tag_name)
+        : null;
+    if (!version) {
+      return { latestVersion: null, source: "github-releases", error: "malformed" };
+    }
+    return { latestVersion: version, source: "github-releases" };
+  } catch (err) {
+    return { latestVersion: null, source: "github-releases", error: String(err) };
+  }
 }
 
 export async function fetchNpmTagVersion(params: {
@@ -396,23 +509,48 @@ export async function checkUpdateStatus(params: {
   timeoutMs?: number;
   fetchGit?: boolean;
   includeRegistry?: boolean;
+  /** Test seam for the container heuristic (env, /.dockerenv, cgroup). */
+  containerProbe?: ContainerProbe;
 }): Promise<UpdateCheckResult> {
   const timeoutMs = params.timeoutMs ?? 6000;
   const root = params.root ? path.resolve(params.root) : null;
+  const fetchRegistry = (kind: InstallKind) =>
+    kind === "container"
+      ? fetchLatestGithubRelease({ timeoutMs })
+      : fetchNpmLatestVersion({ timeoutMs });
   if (!root) {
+    const installKind = resolveInstallKind({
+      isGit: false,
+      hasRoot: false,
+      probe: params.containerProbe,
+    });
     return {
       root: null,
-      installKind: "unknown",
+      installKind,
       packageManager: "unknown",
-      registry: params.includeRegistry ? await fetchNpmLatestVersion({ timeoutMs }) : undefined,
+      registry: params.includeRegistry ? await fetchRegistry(installKind) : undefined,
     };
   }
 
   const pm = await detectPackageManager(root);
   const gitRoot = await detectGitRoot(root);
-  const isGit = gitRoot && path.resolve(gitRoot) === root;
+  const isGit = Boolean(gitRoot && path.resolve(gitRoot) === root);
 
-  const installKind: UpdateCheckResult["installKind"] = isGit ? "git" : "package";
+  const installKind = resolveInstallKind({
+    isGit,
+    hasRoot: true,
+    probe: params.containerProbe,
+  });
+  if (installKind === "container") {
+    // The image's node_modules are fixed at build time: a deps verdict or a
+    // git status would describe the image, not anything the user can act on.
+    return {
+      root,
+      installKind,
+      packageManager: pm,
+      registry: params.includeRegistry ? await fetchRegistry(installKind) : undefined,
+    };
+  }
   const git = isGit
     ? await checkGitUpdateStatus({
         root,
@@ -421,7 +559,7 @@ export async function checkUpdateStatus(params: {
       })
     : undefined;
   const deps = await checkDepsStatus({ root, manager: pm });
-  const registry = params.includeRegistry ? await fetchNpmLatestVersion({ timeoutMs }) : undefined;
+  const registry = params.includeRegistry ? await fetchRegistry(installKind) : undefined;
 
   return {
     root,

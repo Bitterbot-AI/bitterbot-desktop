@@ -17,7 +17,26 @@ and chat in the browser, or open `http://127.0.0.1:19001/` on the
 Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 </Info>
 
-## Prereqs
+## Pick a path
+
+1. **Docker (recommended):** one command, nothing to install but Docker,
+   updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
+2. **From source (below):** for developing Bitterbot, or when you need the
+   browser tool (the image ships without Chromium).
+3. **npm:** not yet. There is no npm package or hosted installer today.
+
+With Docker, the whole install is:
+
+```bash
+mkdir bitterbot && cd bitterbot
+curl -fsSLO https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docker-compose.yml
+docker compose up -d
+docker compose logs bitterbot-gateway   # shows the generated token
+```
+
+Then open `http://127.0.0.1:19001/` and paste the token.
+
+## Prereqs (source install)
 
 - Node 22.12 or newer
 - pnpm — ships with Node via corepack: `corepack enable pnpm || npm install -g pnpm`
@@ -26,7 +45,7 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 Check your Node version with `node --version` if you are unsure.
 </Tip>
 
-## Quick setup (CLI)
+## Quick setup from source (CLI)
 
 <Steps>
   <Step title="Install Bitterbot (from source)">
@@ -42,12 +61,10 @@ Check your Node version with `node --version` if you are unsure.
     ```
 
     <Note>
-    There is no npm package or hosted installer yet; installing from source is
-    the supported path on your own machine. For an always-on server, use the
-    container image `ghcr.io/bitterbot-ai/bitterbot-desktop` (see
-    [Docker and always-on hosting](/platforms/docker)). On Windows, use WSL2 and
-    keep the checkout on the Linux filesystem (`~`), not `/mnt/c`; boot is
-    dramatically faster there.
+    There is no npm package or hosted installer yet. Without a source checkout,
+    use the container image (see [Docker (recommended install)](/platforms/docker)).
+    On Windows, use Docker Desktop, or WSL2 with the checkout on the Linux
+    filesystem (`~`), not `/mnt/c`; boot is dramatically faster there.
     </Note>
 
   </Step>

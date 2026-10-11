@@ -324,7 +324,26 @@ describe("update-cli", () => {
     const last = vi.mocked(defaultRuntime.log).mock.calls.at(-1)?.[0];
     expect(typeof last).toBe("string");
     const parsed = JSON.parse(String(last));
-    expect(parsed.channel.value).toBe("stable");
+    // The mock is `main` whose tip carries v1.2.3: a branch checkout is dev
+    // (PLAN-56 §3.5), matching what `bitterbot update` actually runs.
+    expect(parsed.channel.value).toBe("dev");
+    expect(parsed.channel.source).toBe("git-branch");
+  });
+
+  it("refuses to update a container in place and names the pull command (PLAN-56 Phase 2)", async () => {
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/app",
+      installKind: "container",
+      packageManager: "pnpm",
+    });
+
+    await updateCommand({});
+
+    expect(runGatewayUpdate).not.toHaveBeenCalled();
+    expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+    expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
+    const errors = vi.mocked(defaultRuntime.error).mock.calls.map((call) => String(call[0]));
+    expect(errors.join("\n")).toContain("docker compose pull && docker compose up -d");
   });
 
   it("defaults to dev channel for git installs when unset", async () => {

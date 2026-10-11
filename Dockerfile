@@ -57,12 +57,14 @@ COPY . .
 RUN pnpm build
 
 ENV NODE_ENV=production
-# Tells the gateway it lives in a container, so the in-app updater points at
-# pulling a newer image instead of updating code that the image would replace.
+# Tells the gateway it lives in a container (install kind `container`), so the
+# update check asks the GitHub releases API for the newest image instead of
+# npm, and the in-app updater says to pull a newer image instead of updating
+# code that the image would replace (PLAN-56 Phase 2).
 ENV BITTERBOT_INSTALL_KIND=container
 
 # Allow non-root user to write temp files during runtime/tests.
-RUN chown -R node:node /app
+RUN chown -R node:node /app && chmod 0755 /app/scripts/docker-entrypoint.sh
 
 # Security hardening: run as the non-root `node` user (uid 1000).
 USER node
@@ -81,4 +83,8 @@ LABEL org.opencontainers.image.source="https://github.com/Bitterbot-AI/bitterbot
 # For container platforms requiring external health checks:
 #   1. Set BITTERBOT_GATEWAY_TOKEN or BITTERBOT_GATEWAY_PASSWORD env var
 #   2. Override CMD: ["node","bitterbot.mjs","gateway","--allow-unconfigured","--bind","lan"]
+# Runs the command as `node` by default. The zero-edit compose file starts the
+# container as root so the entrypoint can hand a Docker-created (root-owned)
+# ./bitterbot-data folder to `node` before dropping privileges.
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["node", "bitterbot.mjs", "gateway", "--allow-unconfigured"]

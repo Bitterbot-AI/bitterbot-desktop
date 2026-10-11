@@ -5,12 +5,21 @@ export type UpdateStaleness = {
   behind: number | null;
   threshold: number;
   stale: boolean;
-  reason: "git-behind" | "package-version" | "fresh" | "unknown";
+  reason: "git-behind" | "package-version" | "image-version" | "fresh" | "unknown";
 };
+
+export type InstallKind = "git" | "package" | "container" | "unknown";
+
+/** Shown by the UI and the gateway for container installs (PLAN-56 Phase 2). */
+export const CONTAINER_UPDATE_COMMAND = "docker compose pull && docker compose up -d";
+
+function parseInstallKind(value: unknown): InstallKind {
+  return value === "git" || value === "package" || value === "container" ? value : "unknown";
+}
 
 export type UpdateInfo = {
   version: string;
-  installKind: "git" | "package" | "unknown";
+  installKind: InstallKind;
   sha: string | null;
   branch: string | null;
   registryLatest: string | null;
@@ -87,7 +96,7 @@ export type UpdateCheckResponse = {
   version: string;
   channel: string | null;
   check: {
-    installKind: "git" | "package" | "unknown";
+    installKind: InstallKind;
     git?: {
       sha: string | null;
       branch: string | null;
@@ -106,7 +115,7 @@ export type UpdateCheckResponse = {
 export function parseCheckResponse(resp: UpdateCheckResponse): UpdateInfo {
   return {
     version: resp.version,
-    installKind: resp.check.installKind,
+    installKind: parseInstallKind(resp.check.installKind),
     sha: resp.check.git?.sha ?? null,
     branch: resp.check.git?.branch ?? null,
     registryLatest: resp.registryLatest ?? null,
@@ -126,7 +135,7 @@ export function parseUpdateEvent(payload: unknown): UpdateInfo | null {
   if (!staleness || typeof staleness !== "object") return null;
   return {
     version: typeof p.version === "string" ? p.version : "?",
-    installKind: p.installKind === "git" || p.installKind === "package" ? p.installKind : "unknown",
+    installKind: parseInstallKind(p.installKind),
     sha: typeof p.sha === "string" ? p.sha : null,
     branch: typeof p.branch === "string" ? p.branch : null,
     registryLatest: typeof p.registryLatest === "string" ? p.registryLatest : null,

@@ -22,6 +22,7 @@ import { defaultRuntime } from "../../runtime.js";
 import { formatCliCommand } from "../command-format.js";
 import { forceFreePortAndWait } from "../ports.js";
 import { ensureDevGatewayConfig } from "./dev.js";
+import { generateFirstBootToken, shouldGenerateFirstBootToken } from "./first-boot-token.js";
 import { runGatewayLoop } from "./run-loop.js";
 import {
   describeUnknownError,
@@ -210,8 +211,29 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
   const passwordValue = resolvedAuth.password;
   const hasToken = typeof tokenValue === "string" && tokenValue.trim().length > 0;
   const hasPassword = typeof passwordValue === "string" && passwordValue.trim().length > 0;
+  // PLAN-56 Phase 2: a fresh install started beyond loopback with no auth at
+  // all (zero-edit `docker compose up`) gets a generated token, persisted to
+  // gateway.auth.token, instead of the refusal below.
+  let generatedToken: string | null = null;
+  if (
+    shouldGenerateFirstBootToken({
+      allowUnconfigured: Boolean(opts.allowUnconfigured),
+      bind,
+      authMode: resolvedAuthMode,
+    })
+  ) {
+    try {
+      generatedToken = await generateFirstBootToken({ port });
+    } catch (err) {
+      defaultRuntime.error(String(err instanceof Error ? err.message : err));
+      defaultRuntime.exit(1);
+      return;
+    }
+  }
   const hasSharedSecret =
-    (resolvedAuthMode === "token" && hasToken) || (resolvedAuthMode === "password" && hasPassword);
+    generatedToken !== null ||
+    (resolvedAuthMode === "token" && hasToken) ||
+    (resolvedAuthMode === "password" && hasPassword);
   const authHints: string[] = [];
   if (miskeys.hasGatewayToken) {
     authHints.push('Found "gateway.token" in config. Use "gateway.auth.token" instead.');
@@ -267,8 +289,9 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
       start: async () =>
         await startGatewayServer(port, {
           bind,
-          auth:
-            authMode || passwordRaw || tokenRaw || authModeRaw
+          auth: generatedToken
+            ? { mode: "token", token: generatedToken }
+            : authMode || passwordRaw || tokenRaw || authModeRaw
               ? {
                   mode: authMode ?? undefined,
                   token: tokenRaw,

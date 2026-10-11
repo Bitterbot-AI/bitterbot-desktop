@@ -1,26 +1,75 @@
+# Bitterbot with Docker Compose: works with zero edits (PLAN-56 Phase 2).
+#
+#   docker compose up -d
+#   docker compose logs bitterbot-gateway   # first boot prints the token + URL
+#
+# Then open http://127.0.0.1:19001/ and paste the token. Your data (config,
+# SQLite memory, keys, workspace) lives in ./bitterbot-data next to this file;
+# back that folder up. Update: docker compose pull && docker compose up -d
+# Full guide: docs/platforms/docker.md
+#
+# Every setting below has a default. Put overrides in a `.env` file next to
+# this file (Compose reads it automatically), for example:
+#
+#   BITTERBOT_CONFIG_DIR=/home/you/.bitterbot   # reuse an existing install's data
+#   BITTERBOT_GATEWAY_TOKEN=...                 # pin your own token (openssl rand -hex 32)
+#   BITTERBOT_BIND_HOST=0.0.0.0                 # serve the LAN (strong token first!)
+#   BITTERBOT_P2P_BIND_HOST=0.0.0.0             # accept direct inbound mesh peers
+#   BITTERBOT_IMAGE=ghcr.io/bitterbot-ai/bitterbot-desktop:1.4.0   # pin exactly
+
+x-bitterbot-common:
+  &bitterbot-common # `:1` follows every 1.x release; a new major needs a deliberate tag change.
+  image: ${BITTERBOT_IMAGE:-ghcr.io/bitterbot-ai/bitterbot-desktop:1}
+  # Starts as root only so the image's entrypoint can hand a Docker-created
+  # (root-owned) data folder to the `node` user; it then drops to `node`
+  # (uid 1000) before running anything else.
+  user: "0:0"
+  init: true
+  volumes:
+    # A bind mount, not a named volume: you can see, copy and back up the
+    # SQLite memory. Docker creates the folder on first start.
+    - ${BITTERBOT_CONFIG_DIR:-./bitterbot-data}:/home/node/.bitterbot
+    - ${BITTERBOT_WORKSPACE_DIR:-${BITTERBOT_CONFIG_DIR:-./bitterbot-data}/workspace}:/home/node/.bitterbot/workspace
+
 services:
   bitterbot-gateway:
-    image: ${BITTERBOT_IMAGE:-ghcr.io/bitterbot-ai/bitterbot-desktop:latest}
+    <<: *bitterbot-common
     environment:
       HOME: /home/node
       TERM: xterm-256color
-      BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN}
+      # Empty = the gateway generates a token on first boot, saves it to
+      # bitterbot.json (gateway.auth.token) and prints it once in the log.
+      BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN:-}
       # Pair the first browser that signs in with the token (once), so a fresh
       # install is set up from the browser. See docs/platforms/docker.md.
       BITTERBOT_BOOTSTRAP_PAIRING: "1"
-    volumes:
-      - ${BITTERBOT_CONFIG_DIR}:/home/node/.bitterbot
-      - ${BITTERBOT_WORKSPACE_DIR}:/home/node/.bitterbot/workspace
     ports:
       # Host-side default is loopback: the container must bind 0.0.0.0 for
       # the port mapping to function, so exposure is governed HERE. Set
       # BITTERBOT_BIND_HOST=0.0.0.0 (and a strong token) to serve the LAN.
       - "${BITTERBOT_BIND_HOST:-127.0.0.1}:${BITTERBOT_GATEWAY_PORT:-19001}:19001"
-      # P2P mesh (skill sharing, circles). Peers dial in on this port; set
-      # BITTERBOT_P2P_PORT to move it, or delete the line to stay off the mesh.
-      - "${BITTERBOT_P2P_PORT:-9100}:9100"
-    init: true
+      # P2P mesh (skill sharing, circles). Loopback by default: the node still
+      # dials out to the bootstrap and relay peers and stays reachable through
+      # a relay circuit, but nobody can dial this port directly. Set
+      # BITTERBOT_P2P_BIND_HOST=0.0.0.0 on a host with a public IP or a port
+      # forward to accept direct inbound peers. To leave the mesh entirely,
+      # set `p2p.enabled: false` in bitterbot.json.
+      - "${BITTERBOT_P2P_BIND_HOST:-127.0.0.1}:${BITTERBOT_P2P_PORT:-9100}:9100"
     restart: unless-stopped
+    healthcheck:
+      # The gateway answers its own loopback with the Control UI; any HTTP
+      # status below 500 means the process is up and serving.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:19001/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     command: [
         "node",
         "bitterbot.mjs",
@@ -33,17 +82,20 @@ services:
         "19001",
       ]
 
+  # One-off CLI against the same data (not started by `up`):
+  #   docker compose run --rm bitterbot-cli doctor
+  # Against the running gateway, `docker compose exec` is simpler (always with
+  # `-u node`, so nothing in the data folder ends up owned by root):
+  #   docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token
   bitterbot-cli:
-    image: ${BITTERBOT_IMAGE:-ghcr.io/bitterbot-ai/bitterbot-desktop:latest}
+    <<: *bitterbot-common
+    profiles: ["cli"]
     environment:
       HOME: /home/node
       TERM: xterm-256color
-      BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN}
+      BITTERBOT_GATEWAY_TOKEN: ${BITTERBOT_GATEWAY_TOKEN:-}
       BROWSER: echo
-    volumes:
-      - ${BITTERBOT_CONFIG_DIR}:/home/node/.bitterbot
-      - ${BITTERBOT_WORKSPACE_DIR}:/home/node/.bitterbot/workspace
     stdin_open: true
     tty: true
-    init: true
-    entrypoint: ["node", "bitterbot.mjs"]
+    # Same privilege drop as the gateway, then the CLI with your arguments.
+    entrypoint: ["/app/scripts/docker-entrypoint.sh", "node", "bitterbot.mjs"]
