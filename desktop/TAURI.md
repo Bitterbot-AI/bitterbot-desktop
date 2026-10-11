@@ -199,8 +199,6 @@ Wired and ready for testing:
 Still to do:
 
 - Real app icons (run `pnpm tauri icon path/to/source.png` once the designed PNG exists)
-- Generate the Tauri updater minisign key pair and back it up offline
-- Add `@tauri-apps/plugin-updater`, `@tauri-apps/plugin-process`, `@tauri-apps/api` to `desktop/package.json`
 - First end-to-end test of `pnpm tauri:build` with the SEA sidecar populated
 - Apple Developer enrollment ($99/yr) for Tier 1 macOS signing
 

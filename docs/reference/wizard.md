@@ -18,6 +18,9 @@ For a high-level overview, see [Onboarding Wizard](/start/wizard).
 <Steps>
   <Step title="Existing config detection">
     - If `~/.bitterbot/bitterbot.json` exists, choose **Keep / Modify / Reset**.
+      A file that holds only the gateway token a first gateway start generated
+      (the Docker image does this) does not count: the wizard keeps the token and
+      sets up the rest.
     - Re-running the wizard does **not** wipe anything unless you explicitly choose **Reset**
       (or pass `--reset`).
     - If the config is invalid or contains legacy keys, the wizard stops and asks
@@ -120,7 +123,11 @@ For a high-level overview, see [Onboarding Wizard](/start/wizard).
     - More detail: [Agent wallet](/wallet)
   </Step>
   <Step title="Finish">
-    - Summary + next steps.
+    - Summary + next steps, including how to correct the agent in chat and the Memory page controls.
+    - The start commands it prints follow the install kind: `pnpm start:all` in a source
+      checkout (where it can also start the stack for you), `bitterbot gateway` for an
+      installer or package install, `docker compose up -d` in a container (where no
+      service is installed: the image runs the gateway).
   </Step>
 </Steps>
 
@@ -274,7 +281,7 @@ Typical fields in `~/.bitterbot/bitterbot.json`:
 - `agents.defaults.model` / `models.providers` (if Minimax chosen)
 - `gateway.*` (mode, bind, auth, tailscale)
 - `channels.telegram.botToken`, `channels.discord.token`, `channels.signal.*`
-- Channel allowlists (Slack/Discord/Matrix/Microsoft Teams) when you opt in during the prompts (names resolve to IDs when possible).
+- Channel allowlists (Slack/Discord) when you opt in during the prompts (names resolve to IDs when possible).
 - `skills.install.nodeManager`
 - `wizard.lastRunAt`
 - `wizard.lastRunVersion`

@@ -679,7 +679,7 @@ Periodic heartbeat runs.
   agents: {
     defaults: {
       compaction: {
-        mode: "safeguard", // default | safeguard
+        mode: "default", // "safeguard" is accepted, has no effect, and warns at load
         policy: "summary", // summary | offload (PLAN-52A; offload is flagged until its evaluation passes)
         offload: {
           toolOutputStubs: true, // stub old tool outputs mid-turn; full text stays reachable via recall_range
@@ -713,7 +713,7 @@ Periodic heartbeat runs.
 }
 ```
 
-- `mode`: `default` or `safeguard` (chunked summarization for long histories). See [Compaction](/concepts/compaction).
+- `mode`: `default` is the only live mode. `safeguard` is still accepted so old configs parse, has no effect, warns at load and will be removed next release (`bitterbot doctor --fix` removes it). See [Compaction](/concepts/compaction).
 - `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). Under `offload` the horizon cut replaces the LLM summary as the main compaction mechanism (see [Compaction](/concepts/compaction)).
 - `offload.toolOutputStubs` (default `true`, independent of `policy`): when a turn passes the mid-turn trigger, the oldest tool outputs are replaced by a stub naming the tool call id; the transcript keeps the text and [recall_range](/tools/recall-range) returns it. Stubs persist across turns and restarts.
 - `offload.recallCrossSession`: `off` (default) keeps [recall_range](/tools/recall-range) on the current conversation; `owner` lets owner senders read other sessions of this agent.
@@ -739,47 +739,7 @@ A value of `"pi"` logs one warning per process (`the pi engine was removed; <age
 
 ### `agents.defaults.contextPruning`
 
-Prunes **old tool results** from in-memory context before sending to the LLM. Does **not** modify session history on disk.
-
-```json5
-{
-  agents: {
-    defaults: {
-      contextPruning: {
-        mode: "cache-ttl", // off | cache-ttl
-        ttl: "1h", // duration (ms/s/m/h), default unit: minutes
-        keepLastAssistants: 3,
-        softTrimRatio: 0.3,
-        hardClearRatio: 0.5,
-        minPrunableToolChars: 50000,
-        softTrim: { maxChars: 4000, headChars: 1500, tailChars: 1500 },
-        hardClear: { enabled: true, placeholder: "[Old tool result content cleared]" },
-        tools: { deny: ["browser", "canvas"] },
-      },
-    },
-  },
-}
-```
-
-<Accordion title="cache-ttl mode behavior">
-
-- `mode: "cache-ttl"` enables pruning passes.
-- `ttl` controls how often pruning can run again (after the last cache touch).
-- Pruning soft-trims oversized tool results first, then hard-clears older tool results if needed.
-
-**Soft-trim** keeps beginning + end and inserts `...` in the middle.
-
-**Hard-clear** replaces the entire tool result with the placeholder.
-
-Notes:
-
-- Image blocks are never trimmed/cleared.
-- Ratios are character-based (approximate), not exact token counts.
-- If fewer than `keepLastAssistants` assistant messages exist, pruning is skipped.
-
-</Accordion>
-
-See [Session Pruning](/concepts/session-pruning) for behavior details.
+Accepted and ignored. Nothing in the owned runtime reads it: old tool outputs are handled by compaction (`compaction.offload.toolOutputStubs`, above). The key stays in the schema this release so existing configs parse, warns at load, and will be removed next release; `bitterbot doctor --fix` removes it. See [Session pruning](/concepts/session-pruning).
 
 ### Block streaming
 

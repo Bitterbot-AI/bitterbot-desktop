@@ -9,6 +9,8 @@
  * briefly; the gateway never runs the CLI doctor concurrently in-process.
  */
 import { loadConfig } from "../config/config.js";
+import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { detectInstallKind } from "../infra/install-kind.js";
 import { noteBootHealth } from "./doctor-boot-health.js";
 import { setDoctorJsonMode } from "./doctor-check.js";
 import { runControlUiChecks } from "./doctor-control-ui.js";
@@ -50,7 +52,12 @@ export async function collectRepairFindings(opts?: {
       const cfg = loadConfig();
       runIdentityChecks({ config: cfg });
       await runSecurityChecks(cfg);
-      await runControlUiChecks(cfg);
+      const packageRoot = await resolveBitterbotPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      }).catch(() => null);
+      await runControlUiChecks(cfg, detectInstallKind(packageRoot));
       // Auto-rollback surfaced as a persistent card (sota-bar rec 2): the
       // boot watchdog's record is warn/error until the next clean update.
       noteBootHealth(now);

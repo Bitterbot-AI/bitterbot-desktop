@@ -28,6 +28,21 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
    browser tool in a container setup (the image ships without Chromium).
 4. **npm:** not yet. There is no npm package today.
 
+With Docker, the whole install is:
+
+```bash
+mkdir bitterbot && cd bitterbot
+curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
+docker compose up -d
+docker compose logs bitterbot-gateway   # shows the generated token
+```
+
+Then open `http://127.0.0.1:19001/` and paste the token. The token is printed
+once; read it again any time with
+`docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token`. (The compose file is
+attached to releases from 1.5.0 on; before that, follow the `docker run` form
+on the [Docker page](/platforms/docker#without-compose).)
+
 With the installer, the whole install is:
 
 ```bash
@@ -40,19 +55,6 @@ to `~/.bitterbot/app/<version>`, links `~/.local/bin/bitterbot`, and runs
 `bitterbot onboard`. To check a download by hand: `minisign -Vm checksums.txt`
 with the key on the [installer page](/start/install-script#verify-a-download-yourself),
 or `gh attestation verify <tarball> --repo Bitterbot-AI/bitterbot-desktop`.
-
-With Docker, the whole install is:
-
-```bash
-mkdir bitterbot && cd bitterbot
-curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
-docker compose up -d
-docker compose logs bitterbot-gateway   # shows the generated token
-```
-
-Then open `http://127.0.0.1:19001/` and paste the token. (The compose file is
-attached to releases from 1.5.0 on; before that, follow the `docker run` form
-on the [Docker page](/platforms/docker#without-compose).)
 
 ## Prereqs (source install)
 
@@ -120,7 +122,9 @@ If the Control UI loads, your Gateway is ready for use.
 
 ## Run the Control UI
 
-The gateway serves the Control UI itself — one process, one port:
+The gateway serves the Control UI itself: one process, one port. Start it the
+way your install starts it: `docker compose up -d` (Docker), `bitterbot gateway`
+(installer), or from a source checkout:
 
 ```bash
 pnpm start gateway

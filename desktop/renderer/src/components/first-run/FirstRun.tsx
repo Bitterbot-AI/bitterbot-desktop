@@ -15,8 +15,8 @@
  *
  * This is a bridge, not a replacement for onboarding. Full agent setup
  * (API keys, auth profiles, workspace, channels) happens in the terminal
- * wizard (`pnpm bitterbot onboard`) for source installs, or in the browser
- * for Docker installs, where the first browser that connects with the
+ * wizard (`bitterbot onboard`; `pnpm bitterbot onboard` in a checkout) for
+ * installer and source installs, or in the browser for Docker installs, where the first browser that connects with the
  * token is paired automatically (bootstrap pairing). FirstRun just handles
  * the final "now connect the browser UI to the running gateway" mile when
  * the same-origin token handoff can't answer (non-local viewer).
@@ -197,17 +197,25 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
 
         <footer className="text-xs text-muted-foreground border-t border-border/40 pt-4 space-y-1">
           <p>
-            Need to start the gateway?{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm start gateway</code> or{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm dev:all</code> (spawns
-            gateway + Control UI in one terminal).
+            Need to start the gateway? Docker:{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">docker compose up -d</code>.
+            Installer:{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">bitterbot gateway</code>. Source
+            checkout:{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm start gateway</code>.
           </p>
           <p>
-            Source install without a token yet?{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm bitterbot onboard</code>{" "}
-            walks you through full setup in the terminal and auto-generates{" "}
-            <code className="px-1 py-0.5 bg-muted rounded text-2xs">desktop/.env</code>. Docker
-            installs finish setup in the browser (Models &amp; Keys, then Channels).
+            Docker prints the token once in{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">docker compose logs</code>; get
+            it again with{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">
+              docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get
+              gateway.auth.token
+            </code>
+            . Installer and source installs without a token yet:{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">bitterbot onboard</code> (or{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm bitterbot onboard</code> in
+            a checkout) walks you through setup in the terminal and generates one.
           </p>
         </footer>
       </div>

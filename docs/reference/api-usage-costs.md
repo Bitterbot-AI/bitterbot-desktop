@@ -116,10 +116,11 @@ These are typically low-volume calls but still hit provider APIs:
 
 See [Models CLI](/cli/models).
 
-### 7) Compaction safeguard summarization
+### 7) Compaction summarization
 
-The compaction safeguard can summarize session history using the **current model**, which
-invokes provider APIs when it runs.
+Compaction (`agents.defaults.compaction.policy: "summary"`, the default) summarizes session
+history with a model, which invokes provider APIs when it runs. The old `safeguard` mode has
+no effect any more.
 
 See [Session management + compaction](/reference/session-management-compaction).
 

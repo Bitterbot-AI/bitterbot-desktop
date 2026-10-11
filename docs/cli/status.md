@@ -23,4 +23,4 @@ Notes:
 - Output includes per-agent session stores when multiple agents are configured.
 - Overview includes Gateway + node host service install/runtime status when available.
 - Overview includes update channel + git SHA (for source checkouts).
-- Update info surfaces in the Overview; if an update is available, status prints a hint to run `bitterbot update` (see [Updating](/install/updating)).
+- Update info surfaces in the Overview; if an update is available, status prints a hint to run `bitterbot update` (see [`bitterbot update`](/cli/update)).

@@ -193,3 +193,54 @@ export function resolveInstallKind(params: {
   }
   return "package";
 }
+
+/**
+ * Cheap synchronous install-kind detection for advice text (onboarding
+ * wizard, doctor): a `.git` entry at the package root marks a checkout (a
+ * linked worktree's `.git` file counts). The update path keeps its own
+ * `git rev-parse` check; this only decides which commands to print.
+ */
+export function detectInstallKind(root: string | null, probe: ContainerProbe = {}): InstallKind {
+  const existsSync = probe.existsSync ?? ((p: string) => fs.existsSync(p));
+  let isGit = false;
+  if (root) {
+    try {
+      isGit = existsSync(path.join(root, ".git"));
+    } catch {
+      isGit = false;
+    }
+  }
+  return resolveInstallKind({ isGit, hasRoot: Boolean(root), root, probe });
+}
+
+/**
+ * The command that starts the gateway for this install kind, for advice
+ * text. Containers start with the compose project on the Docker host; a
+ * source checkout runs the pnpm script; the installer and package installs
+ * have `bitterbot` on PATH.
+ */
+export function gatewayStartCommand(kind: InstallKind): string {
+  if (kind === "container") {
+    return "docker compose up -d";
+  }
+  if (kind === "git") {
+    return "pnpm start gateway";
+  }
+  return "bitterbot gateway";
+}
+
+/** Human label for an install kind, as `bitterbot update status` names it. */
+export function installKindLabel(kind: InstallKind): string {
+  switch (kind) {
+    case "git":
+      return "source checkout (git)";
+    case "package":
+      return "package install";
+    case "container":
+      return "container image";
+    case "tarball":
+      return "release tarball (install.sh)";
+    case "unknown":
+      return "unknown (package root not found)";
+  }
+}

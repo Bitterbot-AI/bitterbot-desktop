@@ -10,6 +10,7 @@ vi.mock("../infra/orchestrator-binary.js", () => ({
   probeTcpReachable,
   probeOrchestratorBinary,
   parseMultiaddr: () => null,
+  INSTALL_ROOT_ENV: "BITTERBOT_INSTALL_ROOT",
 }));
 vi.mock("../infra/dns-bootstrap.js", () => ({
   resolveBootstrapDns: vi.fn(async () => []),
@@ -76,5 +77,27 @@ describe("setupP2pForOnboarding — network consent (PLAN-41 Phase 1, p0-10)", (
       }) as never,
     );
     expect(probeTcpReachable).not.toHaveBeenCalled();
+  });
+});
+
+describe("setupP2pForOnboarding: install-kind aware text (drift pass)", () => {
+  it("the consent note lists the curiosity query and links the egress page", async () => {
+    const params = baseParams("quickstart", true);
+    await setupP2pForOnboarding(params as never);
+    const note = (params.prompter as { note: ReturnType<typeof vi.fn> }).note;
+    const intro = String(note.mock.calls[0]?.[0]);
+    expect(intro).toContain("curiosity target");
+    expect(intro).toContain("/network/egress");
+    expect(intro).not.toContain("can buy them with USDC");
+  });
+
+  it("a missing binary on a tarball install points at the installer, not pnpm", async () => {
+    probeOrchestratorBinary.mockReturnValueOnce({ found: false } as never);
+    const params = { ...baseParams("quickstart", true), installKind: "tarball" as const };
+    await setupP2pForOnboarding(params as never);
+    const note = (params.prompter as { note: ReturnType<typeof vi.fn> }).note;
+    const missing = note.mock.calls.find((c) => c[1] === "Orchestrator binary missing");
+    expect(String(missing?.[0])).toContain("install.sh");
+    expect(String(missing?.[0])).not.toContain("pnpm");
   });
 });

@@ -15,6 +15,7 @@ import {
 import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath } from "../utils.js";
+import { isFirstBootOnlyConfig } from "./onboarding.first-boot.js";
 import type { QuickstartGatewayDefaults, WizardFlow } from "./onboarding.types.js";
 import { WizardCancelledError, type WizardPrompter } from "./prompts.js";
 
@@ -178,7 +179,18 @@ async function runOnboardingWizardInner(
     flow = "advanced";
   }
 
-  if (snapshot.exists) {
+  // A file holding only the token a first gateway start generated (the
+  // container image does this) is not a previous setup: keep the token and
+  // onboard as new. The defaults apply with or without a file (PLAN-56).
+  const firstBootOnly = snapshot.exists && isFirstBootOnlyConfig(snapshot.resolved);
+  if (firstBootOnly) {
+    await prompter.note(
+      "Found only the gateway token generated on first start. Keeping it; setting up the rest.",
+      "Config",
+    );
+  }
+
+  if (snapshot.exists && !firstBootOnly) {
     await prompter.note(
       onboardHelpers.summarizeExistingConfig(baseConfig),
       "Existing config detected",
@@ -497,11 +509,19 @@ async function runOnboardingWizardInner(
   // manually post-install.
   {
     const { setupP2pForOnboarding } = await import("./onboarding.p2p.js");
+    const { resolveBitterbotPackageRoot } = await import("../infra/bitterbot-root.js");
+    const { detectInstallKind } = await import("../infra/install-kind.js");
+    const packageRoot = await resolveBitterbotPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    }).catch(() => null);
     nextConfig = await setupP2pForOnboarding({
       config: nextConfig,
       flow,
       prompter,
       runtime,
+      installKind: detectInstallKind(packageRoot),
     });
   }
 

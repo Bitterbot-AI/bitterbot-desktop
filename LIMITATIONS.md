@@ -127,11 +127,15 @@ open an issue.
 - The browser tool drives a real Chromium profile that all agents on the node
   share.
 - `agents.defaults.compaction.mode: "safeguard"`,
-  `agents.defaults.contextPruning`, `agents.defaults.runtime.engine`,
-  `memory.backend` and `memory.curiosity.autoResearch.enabled` are accepted by
-  the config and have no effect (the last one is an alias of
-  `memory.curiosity.research.enabled`). The gateway warns about each one it
-  finds at load; they will be removed in the next release.
+  `agents.defaults.contextPruning`, `agents.defaults.runtime.engine` (and
+  `agents.list[].runtime.engine`), `update.uiRestart`, `memory.backend` and
+  `memory.curiosity.autoResearch.enabled` are deprecated. All but the last have
+  no effect. `autoResearch.enabled: false` still turns curiosity research off
+  (an alias of `memory.curiosity.research.enabled`), and `true` still switches
+  on the dream engine's Skill Seekers research step. The gateway warns about
+  each one it finds at load and `bitterbot doctor` lists them; `doctor --fix`
+  removes the inert ones and moves `autoResearch.enabled: false` to
+  `research.enabled`. They will be removed in the next release.
 
 ## Automations
 

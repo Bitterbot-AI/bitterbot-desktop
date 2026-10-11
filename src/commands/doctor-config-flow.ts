@@ -11,10 +11,13 @@ import {
   migrateLegacyConfig,
   readConfigFileSnapshot,
 } from "../config/config.js";
+import { findDeprecatedConfigKeys } from "../config/io.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { listTelegramAccountIds, resolveTelegramAccount } from "../telegram/accounts.js";
 import { note } from "../terminal/note.js";
 import { isRecord } from "../utils.js";
+import { renderSection, warn } from "./doctor-check.js";
+import { removeDeprecatedConfigKeys } from "./doctor-deprecated-config.js";
 import { normalizeLegacyConfigValues } from "./doctor-legacy-config.js";
 import type { DoctorOptions } from "./doctor-prompter.js";
 
@@ -457,6 +460,36 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
       cfg = normalized.config;
     } else {
       fixHints.push(`Run "${formatCliCommand("bitterbot doctor --fix")}" to apply these changes.`);
+    }
+  }
+
+  // PLAN-56: deprecated keys, by exact path, as a finding (so `doctor --json`
+  // and the update gate see them); the inert ones are removed on repair.
+  const deprecatedHits = findDeprecatedConfigKeys(snapshot.resolved);
+  if (deprecatedHits.length > 0) {
+    renderSection("Config", [
+      warn(
+        [
+          "Deprecated config keys (accepted this release, removed next release):",
+          ...deprecatedHits.map((hit) => `- ${hit.path}: ${hit.reason}`),
+        ].join("\n"),
+      ),
+    ]);
+    const removal = removeDeprecatedConfigKeys(candidate, deprecatedHits);
+    if (removal.kept.length > 0) {
+      note(removal.kept.join("\n"), "Deprecated config keys");
+    }
+    if (removal.changes.length > 0) {
+      note(removal.changes.join("\n"), "Doctor changes");
+      candidate = removal.config;
+      pendingChanges = true;
+      if (shouldRepair) {
+        cfg = removal.config;
+      } else {
+        fixHints.push(
+          `Run "${formatCliCommand("bitterbot doctor --fix")}" to remove the deprecated keys.`,
+        );
+      }
     }
   }
 

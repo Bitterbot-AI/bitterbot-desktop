@@ -5,6 +5,46 @@ import { withTempHome } from "../../test/helpers/temp-home.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 
 describe("doctor config flow", () => {
+  it("removes inert deprecated keys on repair and keeps them without it", async () => {
+    await withTempHome(async (home) => {
+      const configDir = path.join(home, ".bitterbot");
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        path.join(configDir, "bitterbot.json"),
+        JSON.stringify(
+          {
+            memory: { backend: "builtin" },
+            update: { uiRestart: { enabled: true } },
+            agents: { list: [{ id: "main", runtime: { engine: "pi" } }] },
+          },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+
+      const kept = await loadAndMaybeMigrateDoctorConfig({
+        options: { nonInteractive: true },
+        confirm: async () => false,
+      });
+      expect((kept.cfg as Record<string, { backend?: string }>).memory?.backend).toBe("builtin");
+
+      const repaired = await loadAndMaybeMigrateDoctorConfig({
+        options: { nonInteractive: true, repair: true },
+        confirm: async () => false,
+      });
+      const cfg = repaired.cfg as {
+        memory?: { backend?: string };
+        update?: { uiRestart?: unknown };
+        agents?: { list?: Array<{ id: string; runtime?: unknown }> };
+      };
+      expect(cfg.memory?.backend).toBeUndefined();
+      expect(cfg.update?.uiRestart).toBeUndefined();
+      expect(cfg.agents?.list?.[0]).toEqual(expect.objectContaining({ id: "main" }));
+      expect(cfg.agents?.list?.[0]?.runtime).toBeUndefined();
+    });
+  });
+
   it("preserves invalid config for doctor repairs", async () => {
     await withTempHome(async (home) => {
       const configDir = path.join(home, ".bitterbot");

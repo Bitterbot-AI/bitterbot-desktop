@@ -20,6 +20,7 @@ import type { BitterbotConfig } from "../config/config.js";
 import { resolveGatewayService } from "../daemon/service.js";
 import { isSystemdUserServiceAvailable } from "../daemon/systemd.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { detectInstallKind, gatewayStartCommand, type InstallKind } from "../infra/install-kind.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { setupOnboardingShellCompletion } from "./onboarding.completion.js";
@@ -35,6 +36,8 @@ type FinalizeOnboardingOptions = {
   settings: GatewayWizardSettings;
   prompter: WizardPrompter;
   runtime: RuntimeEnv;
+  /** Test seam; detected from the package root when unset. */
+  installKind?: InstallKind;
 };
 
 export async function finalizeOnboardingWizard(
@@ -54,6 +57,17 @@ export async function finalizeOnboardingWizard(
       progress.stop(options.doneMessage);
     }
   };
+
+  // How this Bitterbot is installed decides what the wizard can start and
+  // which commands it prints: only a source checkout has pnpm scripts, a
+  // container already runs the gateway, installer/package installs have
+  // `bitterbot` on PATH (PLAN-56).
+  const repoRoot = await resolveBitterbotPackageRoot({
+    moduleUrl: import.meta.url,
+    argv1: process.argv[1],
+    cwd: process.cwd(),
+  });
+  const installKind = options.installKind ?? detectInstallKind(repoRoot);
 
   const systemdAvailable =
     process.platform === "linux" ? await isSystemdUserServiceAvailable() : true;
@@ -81,7 +95,10 @@ export async function finalizeOnboardingWizard(
   const explicitInstallDaemon =
     typeof opts.installDaemon === "boolean" ? opts.installDaemon : undefined;
   let installDaemon: boolean;
-  if (explicitInstallDaemon !== undefined) {
+  if (installKind === "container") {
+    // The image's entrypoint is the gateway; there is no service to install.
+    installDaemon = false;
+  } else if (explicitInstallDaemon !== undefined) {
     installDaemon = explicitInstallDaemon;
   } else if (process.platform === "linux" && !systemdAvailable) {
     installDaemon = false;
@@ -227,19 +244,14 @@ export async function finalizeOnboardingWizard(
   const controlUiUrl = `http://127.0.0.1:${settings.port}/`;
   const gatewayWsUrl = `ws://127.0.0.1:${settings.port}`;
 
-  // Resolve the Bitterbot repo root once. Only when it's present (and has a
-  // stack-launcher script) do we auto-spawn — a global npm install of
-  // bitterbot has no repo to run `pnpm start:all` in.
-  const repoRoot = await resolveBitterbotPackageRoot({
-    moduleUrl: import.meta.url,
-    argv1: process.argv[1],
-    cwd: process.cwd(),
-  });
+  // Only a source checkout auto-spawns: a release tarball or package carries
+  // package.json (with its scripts) but not the scripts/ they run, nor pnpm.
   // Prefer the production launcher (`start:all`: plain gateway boot + Vite,
   // skips whatever is already up). Fall back to `dev:all` (watch mode) only if
   // start:all is absent, so older checkouts still work.
-  const startAllAvailable = await hasScript(repoRoot, "start:all");
-  const devAllAvailable = await hasScript(repoRoot, "dev:all");
+  const spawnRoot = installKind === "git" ? repoRoot : null;
+  const startAllAvailable = await hasScript(spawnRoot, "start:all");
+  const devAllAvailable = await hasScript(spawnRoot, "dev:all");
   const stackCommand = startAllAvailable ? "start:all" : devAllAvailable ? "dev:all" : null;
 
   // No desktop/.env any more (PLAN-39 Phase 4): the served UI derives the
@@ -269,7 +281,7 @@ export async function finalizeOnboardingWizard(
 
   if (opts.skipUi) {
     await prompter.note("Skipping Control UI startup.", "Control UI");
-  } else if (repoRoot && stackCommand && installDaemon) {
+  } else if (spawnRoot && stackCommand && installDaemon) {
     // A service manager owns the gateway, and the gateway serves the Control UI
     // itself (PLAN-39 Phase 4) — so there is NOTHING left to spawn. Spawning
     // start:all here would exit 0 within a second ("nothing to start") and trip
@@ -303,7 +315,7 @@ export async function finalizeOnboardingWizard(
         "Still starting",
       );
     }
-  } else if (repoRoot && stackCommand) {
+  } else if (spawnRoot && stackCommand) {
     // Bring the gateway up automatically so the wizard finishes with it (and
     // the Control UI it serves) already running — nothing for the user to
     // type. `start:all` is idempotent (skips an already-listening gateway). If
@@ -311,7 +323,7 @@ export async function finalizeOnboardingWizard(
     // `dev:all` as a hidden backup.
     let outcome = await spawnStackHardened({
       command: stackCommand,
-      repoRoot,
+      repoRoot: spawnRoot,
       gatewayWsUrl,
       settings,
       nextConfig,
@@ -320,7 +332,7 @@ export async function finalizeOnboardingWizard(
     if (!outcome.spawned && stackCommand !== "dev:all" && devAllAvailable) {
       outcome = await spawnStackHardened({
         command: "dev:all",
-        repoRoot,
+        repoRoot: spawnRoot,
         gatewayWsUrl,
         settings,
         nextConfig,
@@ -350,7 +362,7 @@ export async function finalizeOnboardingWizard(
           `Give it another minute, then open: ${controlUiUrl}`,
           "",
           `Tail the live logs: tail -f ${outcome.logPath}`,
-          `Or run it in a terminal: cd ${repoRoot} && pnpm ${stackCommand}`,
+          `Or run it in a terminal: cd ${spawnRoot} && pnpm ${stackCommand}`,
         ].join("\n"),
         "Still starting",
       );
@@ -358,8 +370,8 @@ export async function finalizeOnboardingWizard(
     // outcome.spawned === false: spawnStackHardened already surfaced the failure
     // note (log tail + the exact command to run by hand).
   } else {
-    // Global install / no repo checkout — nothing to spawn. Open the browser
-    // and point at the production start command.
+    // Container, installer or package install: nothing to spawn. Open the
+    // browser and point at this install kind's start command.
     const browserSupport = await detectBrowserOpenSupport();
     if (browserSupport.ok) {
       controlUiOpened = await openUrl(controlUiUrl);
@@ -372,7 +384,7 @@ export async function finalizeOnboardingWizard(
         "",
         gatewayProbe.ok
           ? "The gateway is running. If the Control UI shows 'Disconnected', reload\n  the page; it fetches its session token from the gateway it was served by."
-          : "Start the gateway when ready:\n  pnpm start gateway",
+          : `Start the gateway when ready:\n  ${startHint(installKind)}`,
       ].join("\n"),
       "Dashboard",
     );
@@ -452,8 +464,16 @@ export async function finalizeOnboardingWizard(
       "     `bitterbot skills marketplace`.",
       "  4. See what other operators are building: https://github.com/Bitterbot-AI/bitterbot-desktop/discussions",
       "",
-      "Bring the stack up yourself anytime: `pnpm start:all` (gateway + Control UI).",
-      "Developing and want hot-reload? `pnpm dev:all` runs both in watch mode.",
+      'If it gets something wrong, just say so in chat ("no, my timezone is CET"):',
+      "the correction is in memory before the next turn and the reply ends with a",
+      '"Memory updated" line. The Memory page lets you pin, retire and forget for good.',
+      "",
+      ...(installKind === "git"
+        ? [
+            "Bring the stack up yourself anytime: `pnpm start:all` (gateway + Control UI).",
+            "Developing and want hot-reload? `pnpm dev:all` runs both in watch mode.",
+          ]
+        : [`Start the gateway yourself anytime: ${startHint(installKind)}`]),
       "",
       "When something feels off: `bitterbot doctor` walks ~25 subsystem checks.",
       "",
@@ -463,15 +483,28 @@ export async function finalizeOnboardingWizard(
     "What now",
   );
 
+  const outroStart = installKind === "git" ? "pnpm start:all" : startHint(installKind);
   await prompter.outro(
     spawnedStack
       ? `Setup done. Gateway + Control UI starting in the background; ${controlUiUrl} should load in a few seconds.`
       : controlUiOpened
-        ? `Setup done. Control UI is at ${controlUiUrl} — run \`pnpm start:all\` if the gateway isn't up.`
-        : `Setup done. Run \`pnpm start:all\` then open ${controlUiUrl} to drive Bitterbot.`,
+        ? `Setup done. Control UI is at ${controlUiUrl}; run \`${outroStart}\` if the gateway isn't up.`
+        : `Setup done. Run \`${outroStart}\` then open ${controlUiUrl} to drive Bitterbot.`,
   );
 
   return { launchedTui: false };
+}
+
+/**
+ * The start command to print for this install kind. Containers start from
+ * the compose project on the Docker host; the rest use the CLI or pnpm.
+ */
+function startHint(kind: InstallKind): string {
+  const command = gatewayStartCommand(kind);
+  if (kind === "container") {
+    return `${command} (on the Docker host, in the compose directory)`;
+  }
+  return kind === "git" ? command : formatCliCommand(command);
 }
 
 /**

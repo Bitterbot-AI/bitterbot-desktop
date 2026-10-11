@@ -26,6 +26,9 @@ describe("noteMacLaunchctlGatewayEnvOverrides", () => {
     expect(message).toContain("launchctl environment overrides detected");
     expect(message).toContain("BITTERBOT_GATEWAY_TOKEN");
     expect(message).toContain("launchctl unsetenv BITTERBOT_GATEWAY_TOKEN");
+    // Config wins over the environment (PLAN-56 Phase 2 token precedence).
+    expect(message).toContain("use the config token first");
+    expect(message).not.toContain("overrides config tokens");
     expect(message).not.toContain("BITTERBOT_GATEWAY_PASSWORD");
   });
 

@@ -465,6 +465,33 @@ export function resetDeprecatedConfigWarningsForTests(): void {
 }
 
 /**
+ * Every deprecated key present in `raw` (DEPRECATED_PATHS), with its concrete
+ * path (`agents.list[1].runtime.engine`), value and reason. Keys in
+ * DEPRECATED_ONLY_WHEN count only for the listed value. Shared by the load
+ * warning and `bitterbot doctor`.
+ */
+export function findDeprecatedConfigKeys(
+  raw: unknown,
+): Array<{ path: string; value: unknown; reason: string }> {
+  if (!raw || typeof raw !== "object") {
+    return [];
+  }
+  const found: Array<{ path: string; value: unknown; reason: string }> = [];
+  for (const [registryPath, reason] of Object.entries(DEPRECATED_PATHS)) {
+    for (const hit of collectAtRegistryPath(raw, registryPath)) {
+      if (
+        registryPath in DEPRECATED_ONLY_WHEN &&
+        !isDeepStrictEqual(hit.value, DEPRECATED_ONLY_WHEN[registryPath])
+      ) {
+        continue;
+      }
+      found.push({ path: hit.path, value: hit.value, reason });
+    }
+  }
+  return found;
+}
+
+/**
  * PLAN-56 Phase 1: warn once per process for every deprecated key present in
  * the config (DEPRECATED_PATHS). Keys in DEPRECATED_ONLY_WHEN warn only for
  * the listed value. The schema keeps accepting them this release.
@@ -474,28 +501,17 @@ export function warnOnDeprecatedConfigKeys(
   logger: Pick<typeof console, "warn">,
   options?: { once?: boolean },
 ): string[] {
-  if (!raw || typeof raw !== "object") {
-    return [];
-  }
   const once = options?.once ?? true;
   const warned: string[] = [];
-  for (const [registryPath, reason] of Object.entries(DEPRECATED_PATHS)) {
-    for (const hit of collectAtRegistryPath(raw, registryPath)) {
-      if (
-        registryPath in DEPRECATED_ONLY_WHEN &&
-        !isDeepStrictEqual(hit.value, DEPRECATED_ONLY_WHEN[registryPath])
-      ) {
+  for (const hit of findDeprecatedConfigKeys(raw)) {
+    if (once) {
+      if (warnedDeprecatedKeys.has(hit.path)) {
         continue;
       }
-      if (once) {
-        if (warnedDeprecatedKeys.has(hit.path)) {
-          continue;
-        }
-        warnedDeprecatedKeys.add(hit.path);
-      }
-      logger.warn(`Config key "${hit.path}" is deprecated: ${reason}`);
-      warned.push(hit.path);
+      warnedDeprecatedKeys.add(hit.path);
     }
+    logger.warn(`Config key "${hit.path}" is deprecated: ${hit.reason}`);
+    warned.push(hit.path);
   }
   return warned;
 }
