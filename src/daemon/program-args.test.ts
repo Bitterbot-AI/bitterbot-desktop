@@ -88,3 +88,55 @@ describe("resolveGatewayProgramArguments", () => {
     ]);
   });
 });
+
+describe("release-tarball installs (PLAN-56 Phase 3a)", () => {
+  const savedKind = process.env.BITTERBOT_INSTALL_KIND;
+  const savedRoot = process.env.BITTERBOT_INSTALL_ROOT;
+  afterEach(() => {
+    if (savedKind === undefined) {
+      delete process.env.BITTERBOT_INSTALL_KIND;
+    } else {
+      process.env.BITTERBOT_INSTALL_KIND = savedKind;
+    }
+    if (savedRoot === undefined) {
+      delete process.env.BITTERBOT_INSTALL_ROOT;
+    } else {
+      process.env.BITTERBOT_INSTALL_ROOT = savedRoot;
+    }
+  });
+
+  it("runs the service through the stable current/bin/bitterbot launcher", async () => {
+    const root = path.resolve("/home/u/.bitterbot/app/1.5.0");
+    const launcher = path.resolve("/home/u/.bitterbot/app/current/bin/bitterbot");
+    process.env.BITTERBOT_INSTALL_KIND = "tarball";
+    process.env.BITTERBOT_INSTALL_ROOT = root;
+    process.argv = [path.join(root, "runtime/node/bin/node"), path.join(root, "dist/entry.js")];
+    fsMocks.access.mockImplementation(async (target: string) => {
+      if (target === launcher) {
+        return;
+      }
+      throw new Error("missing");
+    });
+
+    const result = await resolveGatewayProgramArguments({ port: 19001 });
+
+    expect(result.programArguments).toEqual([launcher, "gateway", "--port", "19001"]);
+  });
+
+  it("keeps the node + entry form when an explicit node path is requested", async () => {
+    process.env.BITTERBOT_INSTALL_KIND = "tarball";
+    process.env.BITTERBOT_INSTALL_ROOT = path.resolve("/home/u/.bitterbot/app/1.5.0");
+    const entryPath = path.resolve("/home/u/.bitterbot/app/1.5.0/dist/entry.js");
+    process.argv = ["node", entryPath];
+    fsMocks.realpath.mockResolvedValue(entryPath);
+    fsMocks.access.mockResolvedValue(undefined);
+
+    const result = await resolveGatewayProgramArguments({
+      port: 19001,
+      runtime: "node",
+      nodePath: "/usr/bin/node",
+    });
+
+    expect(result.programArguments[0]).toBe("/usr/bin/node");
+  });
+});

@@ -394,6 +394,8 @@ main() {
   mkdir -p "$install_dir"
   local stage top="bitterbot-${version}-${platform}"
   stage=$(mktemp -d "$install_dir/.staging.XXXXXX")
+  # shellcheck disable=SC2064 # expand now: both are locals of main()
+  trap "rm -rf '$tmp' '$stage'" EXIT
   tar -xzf "$tmp/$asset" -C "$stage" || bb_die "could not unpack $asset"
   [ -x "$stage/$top/bin/bitterbot" ] || bb_die "$asset does not contain $top/bin/bitterbot"
   if ! grep -q "\"version\": \"$version\"" "$stage/$top/manifest.json" ||
@@ -406,12 +408,20 @@ main() {
     previous=$(readlink "$install_dir/current")
   fi
   local replaced=""
-  if [ -e "$install_dir/$version" ]; then
-    replaced="$install_dir/.replaced.$version.$$"
-    mv "$install_dir/$version" "$replaced"
+  if [ -e "$install_dir/$version" ] &&
+    cmp -s "$stage/$top/manifest.json" "$install_dir/$version/manifest.json"; then
+    # The same build is already unpacked (a gateway may be running from it):
+    # keep it in place and only (re)point current and the command link.
+    bb_say "$version is already installed; keeping it in place"
+    rm -rf "$stage"
+  else
+    if [ -e "$install_dir/$version" ]; then
+      replaced="$install_dir/.replaced.$version.$$"
+      mv "$install_dir/$version" "$replaced"
+    fi
+    mv "$stage/$top" "$install_dir/$version"
+    rmdir "$stage"
   fi
-  mv "$stage/$top" "$install_dir/$version"
-  rmdir "$stage"
 
   # Switch `current` (atomic rename on GNU coreutils; ln -sfn elsewhere).
   ln -sfn "$version" "$install_dir/current.new"

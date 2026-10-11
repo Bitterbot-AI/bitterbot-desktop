@@ -166,6 +166,38 @@ async function resolveBinaryPath(binary: string): Promise<string> {
   }
 }
 
+/**
+ * Release-tarball installs (PLAN-56 Phase 3): a service runs the stable
+ * `<app>/current/bin/bitterbot` launcher instead of this version's bundled
+ * node + entry, so it follows install.sh upgrades on its next restart and
+ * never points at a version directory that a later install prunes. The
+ * launcher also declares the install kind and the bundled orchestrator.
+ */
+async function resolveTarballLauncherForService(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | null> {
+  if (env.BITTERBOT_INSTALL_KIND?.trim().toLowerCase() !== "tarball") {
+    return null;
+  }
+  const root = env.BITTERBOT_INSTALL_ROOT?.trim();
+  if (!root) {
+    return null;
+  }
+  const candidates = [
+    path.join(path.dirname(root), "current", "bin", "bitterbot"),
+    path.join(root, "bin", "bitterbot"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // try the next one
+    }
+  }
+  return null;
+}
+
 async function resolveCliProgramArguments(params: {
   args: string[];
   dev?: boolean;
@@ -174,6 +206,13 @@ async function resolveCliProgramArguments(params: {
 }): Promise<GatewayProgramArgs> {
   const execPath = process.execPath;
   const runtime = params.runtime ?? "auto";
+
+  if (!params.dev && runtime !== "bun" && !params.nodePath) {
+    const launcher = await resolveTarballLauncherForService();
+    if (launcher) {
+      return { programArguments: [launcher, ...params.args] };
+    }
+  }
 
   if (runtime === "node") {
     const nodePath =

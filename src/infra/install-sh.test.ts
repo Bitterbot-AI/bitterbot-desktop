@@ -218,9 +218,17 @@ describeInstaller("scripts/install.sh", () => {
       expect(fs.existsSync(path.join(app, "1.4.0", "bin", "bitterbot"))).toBe(true);
       expect(execFileSync(link, [], { encoding: "utf8" })).toContain("fake bitterbot 1.4.1");
 
-      // Re-running the same version reinstalls in place and keeps the previous one.
+      // Re-running the same build keeps its directory in place (a gateway may
+      // be running from it) and keeps the previous version.
+      const marker = path.join(app, "1.4.1", "still-here");
+      fs.writeFileSync(marker, "");
       const again = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "openssl" });
       expect(again.status, again.out).toBe(0);
+      expect(again.out).toContain("already installed; keeping it in place");
+      expect(fs.existsSync(marker)).toBe(true);
+      expect(
+        fs.readdirSync(app).some((n) => n.startsWith(".staging") || n.startsWith(".replaced")),
+      ).toBe(false);
       expect(fs.readlinkSync(path.join(app, "current"))).toBe("1.4.1");
       expect(fs.existsSync(path.join(app, "1.4.0"))).toBe(true);
     },

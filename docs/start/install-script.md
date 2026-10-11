@@ -141,7 +141,10 @@ switches `current` over, and keeps the old version in
 Update card tell you when a newer release exists (they check GitHub releases,
 not npm); `bitterbot update` and the UI's update button do not update an
 installer-based install in place yet, and say so. Restart the gateway after
-updating (`bitterbot gateway restart`, or stop and start it).
+updating (`bitterbot gateway restart`, or stop and start it). A gateway service
+installed during onboarding runs `~/.bitterbot/app/current/bin/bitterbot`, so a
+restart picks up the new version. Re-running the installer for the version you
+already have leaves its directory in place.
 
 To go back one version by hand:
 

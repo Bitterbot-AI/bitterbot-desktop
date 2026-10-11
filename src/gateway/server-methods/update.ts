@@ -6,6 +6,7 @@ import {
   CONTAINER_FALSE_POSITIVE_HINT,
   CONTAINER_UPDATE_COMMAND,
   externalUpdateCommand,
+  readDeclaredInstallKind,
   TARBALL_UPDATE_REFUSAL,
 } from "../../infra/install-kind.js";
 import {
@@ -156,7 +157,10 @@ export const updateHandlers: GatewayRequestHandlers = {
     // A release-tarball install (PLAN-56 Phase 3a) has no in-place updater
     // yet: re-running install.sh is the update. Phase 3b replaces this
     // refusal with snapshot/stage/activate/rollback.
-    if (local?.installKind === "tarball") {
+    if (
+      local?.installKind === "tarball" ||
+      (local === null && readDeclaredInstallKind() === "tarball")
+    ) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, TARBALL_UPDATE_REFUSAL));
       return;
     }
