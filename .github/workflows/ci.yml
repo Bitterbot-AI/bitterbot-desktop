@@ -194,8 +194,9 @@ jobs:
           # Every process but tini (docker-init) runs as uid 1000: the gateway
           # (which retitles itself) and the orchestrator. The healthcheck's
           # transient `node -e fetch(...)` is an exec, not the gateway.
-          docker top "$cid" -eo uid,args
-          [ "$(docker top "$cid" -eo uid,args | tail -n +2 | grep -v -e docker-init -e 'fetch(' | awk '{print $1}' | sort -u)" = "1000" ]
+          # (docker top needs the pid column.)
+          docker top "$cid" -eo pid,uid,args
+          [ "$(docker top "$cid" -eo pid,uid,args | tail -n +2 | grep -v -e docker-init -e 'fetch(' | awk '{print $2}' | sort -u)" = "1000" ]
           [ "$(docker compose exec -T -u node bitterbot-gateway id -u | tr -d '\r')" = "1000" ]
           # A root exec leaves a root-owned file; the next start hands it to node.
           docker compose exec -T -u 0 bitterbot-gateway touch /home/node/.bitterbot/left-by-root.txt
