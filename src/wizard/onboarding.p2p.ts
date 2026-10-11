@@ -108,11 +108,13 @@ export async function setupP2pForOnboarding(params: {
     const label =
       binary.source === "prebuilt"
         ? `downloaded prebuilt at ${binary.path}`
-        : binary.source === "release"
-          ? "local cargo release build"
-          : binary.source === "debug"
-            ? "local cargo debug build (release recommended for production)"
-            : `explicit override: ${binary.path}`;
+        : binary.source === "bundled"
+          ? `bundled with the release tarball at ${binary.path}`
+          : binary.source === "release"
+            ? "local cargo release build"
+            : binary.source === "debug"
+              ? "local cargo debug build (release recommended for production)"
+              : `explicit override: ${binary.path}`;
     await prompter.note(`Orchestrator binary: ${label}`, "Binary");
   } else {
     await prompter.note(

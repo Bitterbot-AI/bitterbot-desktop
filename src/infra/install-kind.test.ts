@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONTAINER_UPDATE_COMMAND,
+  externalUpdateCommand,
+  hasTarballMarker,
   looksLikeContainer,
   readDeclaredInstallKind,
   resolveInstallKind,
+  TARBALL_INSTALL_MARKER,
+  TARBALL_UPDATE_COMMAND,
+  TARBALL_UPDATE_REFUSAL,
+  tarballAssetName,
+  tarballPlatformId,
   type ContainerProbe,
 } from "./install-kind.js";
 
@@ -10,6 +18,8 @@ function probe(params: {
   env?: Record<string, string>;
   files?: string[];
   cgroup?: string | null;
+  /** Readable file contents by path. */
+  contents?: Record<string, string>;
 }): ContainerProbe {
   const files = new Set(params.files ?? []);
   return {
@@ -18,6 +28,10 @@ function probe(params: {
     readFileSync: (p) => {
       if (p === "/proc/1/cgroup" && params.cgroup != null) {
         return params.cgroup;
+      }
+      const content = params.contents?.[p];
+      if (content != null) {
+        return content;
       }
       throw new Error("ENOENT");
     },
@@ -85,5 +99,61 @@ describe("resolveInstallKind", () => {
     expect(resolveInstallKind({ isGit: true, hasRoot: true, probe: p })).toBe("git");
     expect(resolveInstallKind({ isGit: false, hasRoot: true, probe: p })).toBe("package");
     expect(resolveInstallKind({ isGit: false, hasRoot: false, probe: p })).toBe("unknown");
+  });
+});
+
+describe("release-tarball install kind (PLAN-56 Phase 3a)", () => {
+  const root = "/home/u/.bitterbot/app/1.5.0";
+  const marker = `${root}/${TARBALL_INSTALL_MARKER}`;
+
+  it("reads a tarball declaration from the launcher's env", () => {
+    expect(readDeclaredInstallKind({ BITTERBOT_INSTALL_KIND: "tarball" })).toBe("tarball");
+  });
+
+  it("the launcher's declaration or the root marker makes it a tarball install", () => {
+    const declared = probe({ env: { BITTERBOT_INSTALL_KIND: "tarball" } });
+    expect(resolveInstallKind({ isGit: false, hasRoot: true, root, probe: declared })).toBe(
+      "tarball",
+    );
+    const marked = probe({ contents: { [marker]: "tarball\n" } });
+    expect(resolveInstallKind({ isGit: false, hasRoot: true, root, probe: marked })).toBe(
+      "tarball",
+    );
+    expect(hasTarballMarker(root, marked)).toBe(true);
+    expect(hasTarballMarker(root, probe({ contents: { [marker]: "something-else" } }))).toBe(false);
+  });
+
+  it("an inherited tarball env can never turn a git checkout into a tarball install", () => {
+    const p = probe({ env: { BITTERBOT_INSTALL_KIND: "tarball" } });
+    expect(resolveInstallKind({ isGit: true, hasRoot: true, root, probe: p })).toBe("git");
+  });
+
+  it("an explicit package declaration overrides the marker (the documented escape hatch)", () => {
+    const p = probe({
+      env: { BITTERBOT_INSTALL_KIND: "package" },
+      contents: { [marker]: "tarball" },
+    });
+    expect(resolveInstallKind({ isGit: false, hasRoot: true, root, probe: p })).toBe("package");
+  });
+
+  it("names the installer as the update path and keeps containers on compose", () => {
+    expect(externalUpdateCommand("tarball")).toBe(TARBALL_UPDATE_COMMAND);
+    expect(externalUpdateCommand("container")).toBe(CONTAINER_UPDATE_COMMAND);
+    expect(externalUpdateCommand("git")).toBeNull();
+    expect(externalUpdateCommand("package")).toBeNull();
+    expect(TARBALL_UPDATE_COMMAND).toBe(
+      "curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash",
+    );
+    expect(TARBALL_UPDATE_REFUSAL).toContain(TARBALL_UPDATE_COMMAND);
+    expect(TARBALL_UPDATE_REFUSAL).toContain("BITTERBOT_INSTALL_KIND=package");
+  });
+
+  it("maps only the published platforms to tarball assets", () => {
+    expect(tarballPlatformId("linux", "x64")).toBe("linux-x64");
+    expect(tarballPlatformId("linux", "arm64")).toBe("linux-arm64");
+    expect(tarballPlatformId("darwin", "arm64")).toBe("darwin-arm64");
+    expect(tarballPlatformId("darwin", "x64")).toBeNull();
+    expect(tarballPlatformId("win32", "x64")).toBeNull();
+    expect(tarballAssetName("1.5.0", "linux-x64")).toBe("bitterbot-1.5.0-linux-x64.tar.gz");
   });
 });

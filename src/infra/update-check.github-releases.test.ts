@@ -12,6 +12,7 @@ import {
   GITHUB_RELEASES_URL,
   peekLatestGithubRelease,
   pickLatestImageRelease,
+  pickLatestTarballRelease,
   resetGithubReleaseCacheForTests,
 } from "./update-check.js";
 import { computeUpdateStaleness } from "./update-staleness.js";
@@ -181,6 +182,89 @@ describe("checkUpdateStatus for a container install", () => {
     } finally {
       fetchSpy.mockRestore();
       await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("release-tarball installs follow GitHub releases (PLAN-56 Phase 3a)", () => {
+  const tarball = (version: string, platform = "linux-x64") => ({
+    name: `bitterbot-${version}-${platform}.tar.gz`,
+  });
+
+  beforeEach(() => {
+    resetGithubReleaseCacheForTests();
+  });
+
+  it("takes the highest release that carries THIS platform's tarball", () => {
+    const releases = [
+      release("v1.5.0", { assets: [...COMPOSE, tarball("1.5.0")] }),
+      release("v1.6.0", { assets: [...COMPOSE, tarball("1.6.0", "darwin-arm64")] }),
+      release("v1.7.0", { assets: [...COMPOSE] }), // tarball job not finished
+      release("v1.8.0", { assets: [tarball("1.7.0")] }), // wrong version in the name
+      release("v1.9.0", { prerelease: true, assets: [tarball("1.9.0")] }),
+    ];
+    expect(pickLatestTarballRelease(releases, "linux-x64")).toBe("1.5.0");
+    expect(pickLatestTarballRelease(releases, "darwin-arm64")).toBe("1.6.0");
+    expect(pickLatestTarballRelease(releases, "linux-arm64")).toBeNull();
+    // The image picker still keys on the compose asset only.
+    expect(pickLatestImageRelease(releases)).toBe("1.7.0");
+  });
+
+  it("caches image and tarball answers separately", async () => {
+    const body = [
+      release("v1.6.0", { assets: [...COMPOSE] }),
+      release("v1.5.0", { assets: [...COMPOSE, tarball("1.5.0")] }),
+    ];
+    const fetchImpl = vi.fn(async () => jsonResponse(body));
+    const image = await fetchLatestGithubRelease({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const tar = await fetchLatestGithubRelease({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      target: { kind: "tarball", platformId: "linux-x64" },
+    });
+    expect(image.latestVersion).toBe("1.6.0");
+    expect(tar).toEqual({ latestVersion: "1.5.0", source: "github-releases" });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(
+      peekLatestGithubRelease(Date.now(), { kind: "tarball", platformId: "linux-x64" })
+        ?.latestVersion,
+    ).toBe("1.5.0");
+  });
+
+  it("reports no-tarball-release when no release carries the platform tarball", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse([release("v1.6.0")]));
+    const res = await fetchLatestGithubRelease({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      target: { kind: "tarball", platformId: "linux-x64" },
+    });
+    expect(res).toEqual({
+      latestVersion: null,
+      source: "github-releases",
+      error: "no-tarball-release",
+    });
+  });
+
+  it("checkUpdateStatus reports a marked install root as tarball, with no deps or git verdict", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "bb-tarball-"));
+    try {
+      await fs.writeFile(
+        path.join(dir, "package.json"),
+        JSON.stringify({ name: "bitterbot", version: "1.4.0" }),
+      );
+      await fs.writeFile(path.join(dir, ".bitterbot-install-kind"), "tarball\n");
+      const res = await checkUpdateStatus({
+        root: dir,
+        includeRegistry: false,
+        containerProbe: { env: {} as NodeJS.ProcessEnv, existsSync: () => false },
+      });
+      expect(res.installKind).toBe("tarball");
+      expect(res.deps).toBeUndefined();
+      expect(res.git).toBeUndefined();
+      const staleness = computeUpdateStaleness(res, undefined, { channelVersion: "999.0.0" });
+      expect(staleness).toMatchObject({ stale: true, reason: "package-version" });
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
     }
   });
 });

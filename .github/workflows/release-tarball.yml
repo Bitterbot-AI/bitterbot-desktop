@@ -1,0 +1,211 @@
+# Signed per-platform release tarballs + install.sh (PLAN-56 Phase 3a).
+#
+# Invoked from release-please.yml when a release is created (workflow_call:
+# API events raised with the default GITHUB_TOKEN never trigger standalone
+# workflows), on a release published by hand, and manually for an existing
+# tag via workflow_dispatch.
+#
+# Per platform (native runners, no cross-compiling): pnpm install + build,
+# then scripts/build-release-tarball.mjs stages the npm package files, the
+# production node_modules, the official Node 22 LTS runtime (SHASUMS256
+# verified), the signed orchestrator binary (minisign verified against the
+# pinned key) and the bin/bitterbot launcher, loads every native package with
+# the bundled Node, and writes the tarball + manifest.json.
+#
+# Publish (one job, approval-gated like orchestrator-release.yml): checksums
+# over every asset, minisign signature with the trusted comment
+# "v<version> checksums", a self-verify against the key PINNED in the repo
+# (the same check install.sh makes), build-provenance attestations, and only
+# then the upload. Any failure before the upload step uploads nothing.
+#
+# darwin-x64 is not built (Intel macOS runners are being retired; Intel Macs
+# use Docker). Windows is Docker Desktop / WSL2 until install.ps1 (Phase 3b).
+
+name: release-tarball
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.5.0)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing release version to (re)build tarballs for, e.g. 1.5.0"
+        required: true
+        type: string
+  release:
+    types: [published]
+
+concurrency:
+  group: release-tarball-${{ inputs.version || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      run: ${{ steps.v.outputs.run }}
+    steps:
+      - id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION:-}"
+          if [ -z "$version" ]; then
+            # Release events also fire for orchestrator-v* and desktop-v*
+            # releases published by hand: only app tags vX.Y.Z build here.
+            case "$RELEASE_TAG" in
+              v[0-9]*) version="${RELEASE_TAG#v}" ;;
+              *) echo "run=false" >> "$GITHUB_OUTPUT"; echo "not an app release: $RELEASE_TAG"; exit 0 ;;
+            esac
+          fi
+          version="${version#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version must be X.Y.Z, got '$version'"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    if: needs.meta.outputs.run == 'true'
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # 22.04 runners: the oldest glibc we can build on keeps the native
+          # prebuild selection compatible with older distros.
+          - platform: linux-x64
+            runner: ubuntu-22.04
+          - platform: linux-arm64
+            runner: ubuntu-22.04-arm
+          - platform: darwin-arm64
+            runner: macos-14
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.meta.outputs.version }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          # The tarball carries its own verified orchestrator (fetched by the
+          # build script); the postinstall copy would only be discarded.
+          BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Version matches the tag
+        run: |
+          test "$(node -p 'require("./package.json").version')" = "${{ needs.meta.outputs.version }}"
+
+      - name: Build and verify the tarball
+        run: node scripts/build-release-tarball.mjs --version "${{ needs.meta.outputs.version }}" --out "$RUNNER_TEMP/release-out"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tarball-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/release-out/bitterbot-*.tar.gz
+            ${{ runner.temp }}/release-out/bitterbot-*.manifest.json
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: [meta, build]
+    if: needs.meta.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Same approval gate as orchestrator-release.yml: the signing key is only
+    # reachable after the maintainer approves the "release" environment.
+    environment: release
+    permissions:
+      contents: write # upload release assets
+      id-token: write # build-provenance attestation (Sigstore)
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ needs.meta.outputs.version }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: tarball-*
+          path: release
+          merge-multiple: true
+
+      - name: Assemble, checksum, SIGN and self-verify
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY secret is not set: refusing to publish unsigned tarballs" >&2
+            exit 1
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          cp scripts/install.sh release/install.sh
+          cd release
+          # Every platform must be present; a missing one fails the release.
+          for p in linux-x64 linux-arm64 darwin-arm64; do
+            test -f "bitterbot-$VERSION-$p.tar.gz"
+            test -f "bitterbot-$VERSION-$p.manifest.json"
+          done
+          sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh > checksums.txt
+          cat checksums.txt
+          printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/release.key"
+          minisign -S -s "$RUNNER_TEMP/release.key" -m checksums.txt \
+            -t "v$VERSION checksums" -c "bitterbot release tarballs"
+          rm -f "$RUNNER_TEMP/release.key"
+          # Self-verify against the key PINNED in the repo, with both the
+          # minisign binary and the installer's own policy (trusted comment
+          # must name this release). A key mismatch stops here, before upload.
+          PINNED=$(node --input-type=module -e "const m = await import('file://$GITHUB_WORKSPACE/scripts/orchestrator-signature.mjs'); process.stdout.write(m.ORCHESTRATOR_MINISIGN_PUBKEY)")
+          grep -q "local PINNED_PUBKEY=\"$PINNED\"" install.sh
+          minisign -V -P "$PINNED" -m checksums.txt -x checksums.txt.minisig
+          test "$(sed -n 's/^trusted comment: //p' checksums.txt.minisig)" = "v$VERSION checksums"
+          sha256sum -c checksums.txt
+          ls -lh
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/bitterbot-*.tar.gz
+            release/install.sh
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release
+          # Signature and checksums first, tarballs next (the update check
+          # keys on the tarball asset), install.sh last (the one-liner).
+          gh release upload "v$VERSION" checksums.txt checksums.txt.minisig \
+            bitterbot-*.manifest.json --repo "${{ github.repository }}" --clobber
+          gh release upload "v$VERSION" bitterbot-*.tar.gz --repo "${{ github.repository }}" --clobber
+          gh release upload "v$VERSION" install.sh --repo "${{ github.repository }}" --clobber

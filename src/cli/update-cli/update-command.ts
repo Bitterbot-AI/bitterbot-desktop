@@ -11,6 +11,7 @@ import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
 import {
   CONTAINER_FALSE_POSITIVE_HINT,
   CONTAINER_UPDATE_COMMAND,
+  TARBALL_UPDATE_REFUSAL,
 } from "../../infra/install-kind.js";
 import {
   channelToNpmTag,
@@ -543,6 +544,13 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     defaultRuntime.error(
       `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}. ${CONTAINER_FALSE_POSITIVE_HINT}`,
     );
+    defaultRuntime.exit(1);
+    return;
+  }
+  if (installKind === "tarball") {
+    // PLAN-56 Phase 3a: no in-place tarball updater yet (Phase 3b). The
+    // installer is the updater; npm is never where a tarball install updates.
+    defaultRuntime.error(TARBALL_UPDATE_REFUSAL);
     defaultRuntime.exit(1);
     return;
   }

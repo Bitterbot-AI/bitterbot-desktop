@@ -113,3 +113,47 @@ describe("UpdateCard in a container (PLAN-56 Phase 2)", () => {
     ).toBe(true);
   });
 });
+
+describe("UpdateCard for a release-tarball install (PLAN-56 Phase 3a)", () => {
+  function tarballInfo(partial: Partial<UpdateInfo>): UpdateInfo {
+    return containerInfo({
+      installKind: "tarball",
+      staleness: { behind: null, threshold: 20, stale: true, reason: "package-version" },
+      ...partial,
+    });
+  }
+
+  beforeEach(() => {
+    useGatewayStore.setState({ status: "connected", request: vi.fn(), hello: null } as never);
+    useUpdateStore.setState({ info: null, outcome: null, updating: false, checking: false });
+  });
+
+  it("names the newer release and the installer command, and offers no in-place update", () => {
+    useUpdateStore.setState({ info: tarballInfo({}) });
+    render(<UpdateCard />);
+    expect(screen.getByText("Release 1.5.0 available; re-run the installer.")).toBeTruthy();
+    expect(screen.getByText(/releases\/latest\/download\/install\.sh \| bash/)).toBeTruthy();
+    expect(screen.queryByText("Update now")).toBeNull();
+    expect(screen.queryByTestId("update-card-container")).toBeNull();
+  });
+
+  it("says up to date when the latest release is the running one", () => {
+    useUpdateStore.setState({
+      info: tarballInfo({
+        registryLatest: "1.4.0",
+        staleness: { behind: null, threshold: 20, stale: false, reason: "fresh" },
+      }),
+    });
+    render(<UpdateCard />);
+    expect(screen.getByText(/Up to date with the latest release \(v1\.4\.0\)/)).toBeTruthy();
+  });
+
+  it("the update event keeps installKind tarball", () => {
+    const parsed = parseUpdateEvent({
+      version: "1.4.0",
+      installKind: "tarball",
+      staleness: { behind: null, threshold: 20, stale: true, reason: "package-version" },
+    });
+    expect(parsed?.installKind).toBe("tarball");
+  });
+});

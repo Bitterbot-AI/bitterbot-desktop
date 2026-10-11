@@ -19,11 +19,27 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 
 ## Pick a path
 
-1. **Docker (recommended):** one command, nothing to install but Docker,
-   updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
-2. **From source (below):** for developing Bitterbot, or when you need the
-   browser tool (the image ships without Chromium).
-3. **npm:** not yet. There is no npm package or hosted installer today.
+1. **Docker (recommended for servers):** one command, nothing to install but
+   Docker, updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
+2. **Installer (laptops):** a signed, prebuilt release for Linux x64/arm64 and
+   Apple-silicon macOS, with its own Node runtime, from release 1.5.0 on.
+   See [Installer (laptops)](/start/install-script) for what it verifies.
+3. **From source (below):** for developing Bitterbot, or when you need the
+   browser tool in a container setup (the image ships without Chromium).
+4. **npm:** not yet. There is no npm package today.
+
+With the installer, the whole install is:
+
+```bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
+```
+
+It prints its plan, verifies the release's minisign signature (with
+`minisign` or OpenSSL 3; otherwise it says it checked SHA-256 only), unpacks
+to `~/.bitterbot/app/<version>`, links `~/.local/bin/bitterbot`, and runs
+`bitterbot onboard`. To check a download by hand: `minisign -Vm checksums.txt`
+with the key on the [installer page](/start/install-script#verify-a-download-yourself),
+or `gh attestation verify <tarball> --repo Bitterbot-AI/bitterbot-desktop`.
 
 With Docker, the whole install is:
 
@@ -63,8 +79,9 @@ Check your Node version with `node --version` if you are unsure.
     ```
 
     <Note>
-    There is no npm package or hosted installer yet. Without a source checkout,
-    use the container image (see [Docker (recommended install)](/platforms/docker)).
+    There is no npm package yet. Without a source checkout, use the
+    [installer](/start/install-script) on a laptop or the container image on a
+    server (see [Docker (recommended install)](/platforms/docker)).
     On Windows, use Docker Desktop, or WSL2 with the checkout on the Linux
     filesystem (`~`), not `/mnt/c`; boot is dramatically faster there.
     </Note>

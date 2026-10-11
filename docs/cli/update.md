@@ -20,9 +20,20 @@ compares the running version with the newest GitHub release instead of npm.
 Update with `docker compose pull && docker compose up -d` on the Docker host
 (see [Docker](/platforms/docker)).
 
+For an **installer-based install** (the release tarball from
+[`install.sh`](/start/install-script); its launcher sets
+`BITTERBOT_INSTALL_KIND=tarball` and the install root carries a
+`.bitterbot-install-kind` marker), `bitterbot update` and the Control UI also
+refuse to update in place for now and print the installer one-liner instead:
+re-running `install.sh` installs the new version next to the current one and
+keeps the previous one. `update status` compares the running version with the
+newest GitHub release that carries a tarball for your platform. Set
+`BITTERBOT_INSTALL_KIND=package` if the detection is wrong.
+
 ## Default channel
 
-With `update.channel` unset: `stable` for npm installs, containers, and git
+With `update.channel` unset: `stable` for npm installs, containers, installer
+(tarball) installs, and git
 checkouts sitting on a release tag (`beta` for a `-beta` tag); `dev` only for a
 git checkout on a branch. A configured `update.channel` always wins.
 

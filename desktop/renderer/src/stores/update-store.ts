@@ -8,13 +8,28 @@ export type UpdateStaleness = {
   reason: "git-behind" | "package-version" | "image-version" | "fresh" | "unknown";
 };
 
-export type InstallKind = "git" | "package" | "container" | "unknown";
+export type InstallKind = "git" | "package" | "container" | "tarball" | "unknown";
 
 /** Shown by the UI and the gateway for container installs (PLAN-56 Phase 2). */
 export const CONTAINER_UPDATE_COMMAND = "docker compose pull && docker compose up -d";
 
+/**
+ * Shown for release-tarball installs (PLAN-56 Phase 3a): re-running the
+ * installer is the update until in-place tarball updates land. Mirrors
+ * TARBALL_UPDATE_COMMAND in src/infra/install-kind.ts.
+ */
+export const TARBALL_UPDATE_COMMAND =
+  "curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash";
+
 function parseInstallKind(value: unknown): InstallKind {
-  return value === "git" || value === "package" || value === "container" ? value : "unknown";
+  return value === "git" || value === "package" || value === "container" || value === "tarball"
+    ? value
+    : "unknown";
+}
+
+/** Install kinds the gateway cannot update in place (no "Update now"). */
+export function updatesExternally(kind: InstallKind | undefined): boolean {
+  return kind === "container" || kind === "tarball";
 }
 
 export type UpdateInfo = {
@@ -86,6 +101,9 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
 export function bannerDismissKey(info: UpdateInfo | null): string {
   if (info?.installKind === "container") {
     return `image:${info.registryLatest ?? "unknown"}`;
+  }
+  if (info?.installKind === "tarball") {
+    return `release:${info.registryLatest ?? "unknown"}`;
   }
   return info?.sha ?? "unknown";
 }

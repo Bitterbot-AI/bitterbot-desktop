@@ -3,6 +3,7 @@ import { readConfigFileSnapshot } from "../../config/config.js";
 import {
   CONTAINER_FALSE_POSITIVE_HINT,
   CONTAINER_UPDATE_COMMAND,
+  TARBALL_UPDATE_REFUSAL,
 } from "../../infra/install-kind.js";
 import {
   formatUpdateChannelLabel,
@@ -63,6 +64,11 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
     defaultRuntime.error(
       `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}. ${CONTAINER_FALSE_POSITIVE_HINT}`,
     );
+    defaultRuntime.exit(1);
+    return;
+  }
+  if (updateStatus.installKind === "tarball") {
+    defaultRuntime.error(TARBALL_UPDATE_REFUSAL);
     defaultRuntime.exit(1);
     return;
   }

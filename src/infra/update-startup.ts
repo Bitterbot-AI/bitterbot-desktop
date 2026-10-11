@@ -5,11 +5,12 @@ import type { loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { VERSION } from "../version.js";
 import { resolveBitterbotPackageRoot } from "./bitterbot-root.js";
-import { CONTAINER_UPDATE_COMMAND } from "./install-kind.js";
+import { CONTAINER_UPDATE_COMMAND, TARBALL_UPDATE_COMMAND } from "./install-kind.js";
 import { normalizeUpdateChannel, DEFAULT_PACKAGE_CHANNEL } from "./update-channels.js";
 import {
   compareSemverStrings,
   fetchLatestGithubRelease,
+  githubReleaseTargetFor,
   resolveNpmChannelTag,
   checkUpdateStatus,
   type InstallKind,
@@ -163,6 +164,30 @@ export async function runGatewayUpdateCheck(params: {
         );
         nextState.lastNotifiedVersion = release.latestVersion;
         nextState.lastNotifiedTag = "image";
+      }
+    }
+  }
+
+  // Release-tarball installs (PLAN-56 Phase 3): the newest GitHub release
+  // that carries this platform's signed tarball. Updating is re-running
+  // install.sh until in-place tarball updates land (Phase 3b).
+  if (status.installKind === "tarball") {
+    const target = githubReleaseTargetFor("tarball");
+    const release = target
+      ? await fetchLatestGithubRelease({ timeoutMs: 2500, target })
+      : { latestVersion: null };
+    channelVersion = release.latestVersion;
+    const cmp = compareSemverStrings(VERSION, release.latestVersion);
+    if (release.latestVersion && cmp != null && cmp < 0) {
+      if (
+        state.lastNotifiedVersion !== release.latestVersion ||
+        state.lastNotifiedTag !== "tarball"
+      ) {
+        params.log.info(
+          `release v${release.latestVersion} available (running v${VERSION}). Re-run the installer to update: ${TARBALL_UPDATE_COMMAND}`,
+        );
+        nextState.lastNotifiedVersion = release.latestVersion;
+        nextState.lastNotifiedTag = "tarball";
       }
     }
   }

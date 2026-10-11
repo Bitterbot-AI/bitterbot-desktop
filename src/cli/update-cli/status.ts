@@ -104,7 +104,9 @@ export async function updateStatusCommand(opts: UpdateStatusOptions): Promise<vo
         ? update.packageManager
         : update.installKind === "container"
           ? "container image"
-          : "unknown";
+          : update.installKind === "tarball"
+            ? `release tarball (${update.root ?? "unknown"})`
+            : "unknown";
 
   const rows = [
     { Item: "Install", Value: installLabel },
