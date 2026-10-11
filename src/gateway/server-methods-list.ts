@@ -185,6 +185,8 @@ const BASE_METHODS = [
   "memory.forgetPreference",
   "memory.facts",
   "memory.retireFact",
+  "memory.unretireFact",
+  "memory.pinFact",
   "memory.export",
   // PLAN-54: the curiosity loop (visible, stoppable, never needs approval)
   "curiosity.status",

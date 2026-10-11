@@ -131,11 +131,25 @@ export const memoryHandlers: GatewayRequestHandlers = {
     }
   },
 
-  /** The facts the agent treats as settled (the pinned ledger). */
+  /**
+   * The facts the agent treats as settled (the pinned ledger). `status`
+   * (PLAN-55 Phase 0): "active" (default), "retired" (retired, owner_retired
+   * and unconfirmed current rows) or "all".
+   */
   "memory.facts": async ({ params, respond }) => {
     try {
       const m = await memoryManager(str(params.agentId));
-      const facts = m.canonicalFacts()?.listActive() ?? [];
+      const store = m.canonicalFacts();
+      const status =
+        params.status === "retired" || params.status === "all" ? params.status : "active";
+      const facts = !store
+        ? []
+        : status === "active"
+          ? store.listActive()
+          : [
+              ...(status === "all" ? store.listActive() : []),
+              ...store.listByStatus(["retired", "owner_retired", "unconfirmed"]),
+            ];
       respond(true, {
         facts: facts.map((f) => ({
           key: f.key,
@@ -144,6 +158,7 @@ export const memoryHandlers: GatewayRequestHandlers = {
           category: f.category,
           confidence: f.confidence,
           source: f.source,
+          status: f.status,
         })),
       });
     } catch (err) {
@@ -151,20 +166,50 @@ export const memoryHandlers: GatewayRequestHandlers = {
     }
   },
 
-  /** Stop treating a fact as settled. Kept in its history. */
+  /**
+   * Pin a fact as the owner (PLAN-55 Phase 0): the `owner` tier's writer.
+   * Supersedes any agent or background belief for the key and brings back a
+   * fact the owner had retired. `scope` is accepted and ignored until Phase 1
+   * adds the column.
+   */
+  "memory.pinFact": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const result = await m.ownerPinFact({
+        key: str(params.key),
+        value: str(params.value),
+        category: str(params.category) || undefined,
+        statement: str(params.statement) || undefined,
+      });
+      if (!result.ok) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));
+        return;
+      }
+      respond(true, result);
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * Stop treating a fact as settled. Kept in its history. The owner's retire
+   * is sticky (PLAN-55 Phase 0): extraction and the agent cannot bring the
+   * same value back; memory.unretireFact or an owner pin can.
+   */
   "memory.retireFact": async ({ params, respond }) => {
     try {
       const m = await memoryManager(str(params.agentId));
-      const store = m.canonicalFacts();
-      if (!store) {
-        respond(
-          false,
-          undefined,
-          errorShape(ErrorCodes.UNAVAILABLE, "the facts ledger is not available"),
-        );
-        return;
-      }
-      respond(true, { ok: store.retire(str(params.key)) });
+      respond(true, { ok: await m.ownerRetireFact(str(params.key)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /** Take a fact back out of retirement, whoever retired it. */
+  "memory.unretireFact": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      respond(true, { ok: await m.ownerUnretireFact(str(params.key)) });
     } catch (err) {
       fail(respond, err);
     }

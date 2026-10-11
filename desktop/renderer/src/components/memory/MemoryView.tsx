@@ -20,13 +20,23 @@ export type MemorySummary = {
 };
 
 type MemoryDetail = MemorySummary & { text: string; sensitivity: string | null };
-type Fact = { key: string; value: string; statement: string; category: string; source: string };
+type Fact = {
+  key: string;
+  value: string;
+  statement: string;
+  category: string;
+  source: string;
+  status?: string;
+};
 type Preference = { category: string; key: string; value: string };
 type AuditEntry = { id: string; event: string; actor: string; timestamp: number };
 
 const AUDIT_WORDS: Record<string, string> = {
   owner_forget: "You deleted a memory",
   owner_edit: "You corrected a memory",
+  owner_retire_fact: "You retired a settled fact",
+  owner_unretire_fact: "You brought a retired fact back",
+  owner_pin_fact: "You pinned a settled fact",
   forgotten: "Faded out (not used in a long time)",
   expired: "Expired (its keep-until date passed)",
   merged: "Merged into a similar memory",
@@ -72,6 +82,7 @@ export function MemoryView() {
   const [open, setOpen] = useState<MemoryDetail | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [facts, setFacts] = useState<Fact[]>([]);
+  const [retired, setRetired] = useState<Fact[]>([]);
   const [prefs, setPrefs] = useState<Preference[]>([]);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [unavailable, setUnavailable] = useState(false);
@@ -107,6 +118,12 @@ export function MemoryView() {
       setPrefs(p.preferences ?? []);
     } catch {
       // older gateway
+    }
+    try {
+      const r = (await request("memory.facts", { status: "retired" })) as { facts: Fact[] };
+      setRetired(r.facts ?? []);
+    } catch {
+      // older gateway without the status filter
     }
     try {
       const a = (await request("memory.audit", { limit: 100 })) as { entries: AuditEntry[] };
@@ -328,8 +345,9 @@ export function MemoryView() {
         <section className="space-y-2">
           <h2 className="text-lg font-semibold text-foreground">Settled facts</h2>
           <p className="text-xs text-muted-foreground">
-            What your agent treats as true without looking it up. Retiring one stops that; it can
-            come back if you say it again.
+            What your agent treats as true without looking it up. Retiring one stops that for good:
+            the agent cannot bring the same value back on its own. Only you can, from the retired
+            list below.
           </p>
           <ul className="space-y-1">
             {facts.map((f) => (
@@ -338,7 +356,10 @@ export function MemoryView() {
                 <button
                   onClick={() =>
                     void request("memory.retireFact", { key: f.key })
-                      .then(() => setFacts((l) => l.filter((x) => x.key !== f.key)))
+                      .then(() => {
+                        setFacts((l) => l.filter((x) => x.key !== f.key));
+                        setRetired((l) => [{ ...f, status: "owner_retired" }, ...l]);
+                      })
                       .catch((err) =>
                         toast.error("Could not retire it", { description: describeError(err) }),
                       )
@@ -346,6 +367,41 @@ export function MemoryView() {
                   className="text-xs text-muted-foreground hover:text-danger"
                 >
                   Retire
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {retired.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold text-foreground">Retired facts</h2>
+          <p className="text-xs text-muted-foreground">
+            No longer treated as true. Ones you retired stay out until you bring them back here;
+            ones that faded out or that the agent retired come back if they are confirmed again.
+          </p>
+          <ul className="space-y-1">
+            {retired.map((f) => (
+              <li key={f.key} className="flex items-center gap-3 text-sm">
+                <span className="flex-1 break-words text-muted-foreground">
+                  {f.statement || `${f.key}: ${f.value}`}
+                  {f.status === "owner_retired" ? " (retired by you)" : ""}
+                </span>
+                <button
+                  onClick={() =>
+                    void request("memory.unretireFact", { key: f.key })
+                      .then(() => {
+                        setRetired((l) => l.filter((x) => x.key !== f.key));
+                        setFacts((l) => [{ ...f, status: "active" }, ...l]);
+                      })
+                      .catch((err) =>
+                        toast.error("Could not bring it back", { description: describeError(err) }),
+                      )
+                  }
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Bring back
                 </button>
               </li>
             ))}

@@ -13,6 +13,13 @@
  * memory findable by search until the 14-day purge. The audit log records
  * that something was forgotten, never what it said.
  *
+ * Forgetting sticks (PLAN-55 Phase 0). A forget records the memory's text
+ * hash, a fact retire records the key/value, a preference removal records
+ * the key, all in `memory_suppressions`; the background writers that would
+ * otherwise regrow them from the same transcript consult that table first.
+ * Every owner write goes through here so the gateway RPCs and the CLI get
+ * the suppression for free.
+ *
  * Every function here takes the database handle from the caller per call:
  * the manager swaps it during a reindex, so it must never be kept.
  */
@@ -21,9 +28,18 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import type { CanonicalFactsStore } from "./canonical-facts.js";
 import { setChunkText } from "./chunk-writer.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import { hashText } from "./internal.js";
+import {
+  addSuppression,
+  chunkTextHash,
+  inSavepoint,
+  normalizeLoose,
+  preferenceKeyHash,
+  preferenceValueHash,
+} from "./memory-suppressions.js";
 
 /** Id prefixes of memories that exist only in the database (the agent's own). */
 export const OWNER_EDITABLE_PREFIXES = [
@@ -206,20 +222,17 @@ function editableOrThrow(db: DatabaseSync, id: string): MemoryDetail {
   return memory;
 }
 
-function audit(
+/** Audit entry that must land with the write it describes (call inside the transaction). */
+function writeAudit(
   db: DatabaseSync,
   chunkId: string,
   event: string,
   metadata: Record<string, unknown>,
 ): void {
-  try {
-    db.prepare(
-      `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(crypto.randomUUID(), chunkId, event, Date.now(), "owner", JSON.stringify(metadata));
-  } catch {
-    // An audit failure never undoes the owner's action.
-  }
+  db.prepare(
+    `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(crypto.randomUUID(), chunkId, event, Date.now(), "owner", JSON.stringify(metadata));
 }
 
 export type IndexTables = { ftsTable: string | null; vectorTable: string | null };
@@ -232,7 +245,38 @@ const tryRun = (db: DatabaseSync, sql: string, ...args: Array<string | number>) 
   }
 };
 
-/** Delete one of the agent's own memories, everywhere it is indexed. */
+/**
+ * Text hashes this memory carried before the owner edited it (recorded by
+ * editMemory in the audit log as hashes, never as text), so a forget also
+ * suppresses the original extraction text.
+ */
+function previousTextHashes(db: DatabaseSync, id: string): string[] {
+  try {
+    const rows = db
+      .prepare(`SELECT metadata FROM memory_audit_log WHERE chunk_id = ? AND event = 'owner_edit'`)
+      .all(id) as unknown as Array<{ metadata: string | null }>;
+    const hashes = new Set<string>();
+    for (const r of rows) {
+      try {
+        const meta = JSON.parse(r.metadata ?? "{}") as { previousHash?: unknown };
+        if (typeof meta.previousHash === "string" && /^[0-9a-f]{64}$/.test(meta.previousHash)) {
+          hashes.add(meta.previousHash);
+        }
+      } catch {
+        // Unparseable metadata from another writer; nothing to carry.
+      }
+    }
+    return [...hashes];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Delete one of the agent's own memories, everywhere it is indexed. The
+ * delete, the suppressions and the audit entry commit together: a memory is
+ * never gone without the record that keeps it gone.
+ */
 export function forgetMemory(db: DatabaseSync, id: string, tables: IndexTables): void {
   const memory = editableOrThrow(db, id);
   db.exec("BEGIN");
@@ -243,12 +287,83 @@ export function forgetMemory(db: DatabaseSync, id: string, tables: IndexTables):
       tryRun(db, `DELETE FROM ${table} WHERE chunk_id = ?`, id);
     }
     db.prepare("DELETE FROM chunks WHERE id = ?").run(id);
+    // The text hash keeps re-extraction, curiosity and dream promotion from
+    // writing the same memory back under a new id; an edited memory's
+    // earlier texts are suppressed too, or the original would regrow.
+    const hashes = [chunkTextHash(memory.text), ...previousTextHashes(db, id)];
+    const suppressionIds = [...new Set(hashes)].map(
+      (hash) => addSuppression(db, { kind: "chunk_hash", hash, reason: "owner_forget" }).id,
+    );
+    writeAudit(db, id, "owner_forget", {
+      length: memory.text.length,
+      semanticType: memory.semanticType,
+      suppressionId: suppressionIds[0] ?? null,
+      suppressionIds,
+    });
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
     throw err;
   }
-  audit(db, id, "owner_forget", { length: memory.text.length, semanticType: memory.semanticType });
+}
+
+/**
+ * Retire a settled fact as the owner (PLAN-55 Phase 0): the row becomes
+ * `owner_retired` and its key/value is suppressed, so extraction, promotion
+ * and the agent's own pins cannot bring it back. Only unretireFact() or an
+ * owner-tier pin (pinFact) lifts it. Status, suppression and audit entry
+ * commit together.
+ */
+export function retireFact(db: DatabaseSync, store: CanonicalFactsStore, key: string): boolean {
+  return inSavepoint(db, "owner_retire_fact", () => {
+    const ok = store.retire(key, { reason: "owner" });
+    if (ok) {
+      writeAudit(db, `fact:${store.get(key)?.key ?? key}`, "owner_retire_fact", {});
+    }
+    return ok;
+  });
+}
+
+/** Lift a retirement, whoever made it, and the suppression that came with it. */
+export function unretireFact(db: DatabaseSync, store: CanonicalFactsStore, key: string): boolean {
+  return inSavepoint(db, "owner_unretire_fact", () => {
+    const ok = store.unretire(key);
+    if (ok) {
+      writeAudit(db, `fact:${store.get(key)?.key ?? key}`, "owner_unretire_fact", {});
+    }
+    return ok;
+  });
+}
+
+export type OwnerPinResult =
+  | { ok: true; op: "add" | "strengthen" | "supersede"; key: string; value: string }
+  | { ok: false; reason: string };
+
+/**
+ * Pin a fact as the owner (PLAN-55 Phase 0, the `owner` tier's writer): the
+ * value the owner states outranks the agent's pins and every background
+ * source, reactivates an owner-retired fact and lifts its suppression.
+ */
+export function pinFact(
+  db: DatabaseSync,
+  store: CanonicalFactsStore,
+  input: { key: string; value: string; category?: string; statement?: string },
+): OwnerPinResult {
+  return inSavepoint(db, "owner_pin_fact", () => {
+    const result = store.pin({
+      key: input.key,
+      value: input.value,
+      statement: input.statement,
+      category: input.category,
+      confidence: 0.95,
+      source: "owner",
+    });
+    if (result.op === "rejected") {
+      return { ok: false, reason: result.reason };
+    }
+    writeAudit(db, `fact:${result.fact.key}`, "owner_pin_fact", { op: result.op });
+    return { ok: true, op: result.op, key: result.fact.key, value: result.fact.value };
+  });
 }
 
 /** Replace the text of one of the agent's own memories. Re-embedding follows. */
@@ -289,12 +404,18 @@ export function editMemory(
         memory.source,
       );
     }
+    // The hash (never the text) of what was replaced, so a later forget can
+    // suppress the original extraction text as well as the edited one.
+    writeAudit(db, id, "owner_edit", {
+      before: memory.text.length,
+      after: next.length,
+      previousHash: chunkTextHash(memory.text),
+    });
     db.exec("COMMIT");
   } catch (err) {
     db.exec("ROLLBACK");
     throw err;
   }
-  audit(db, id, "owner_edit", { before: memory.text.length, after: next.length });
   return getMemory(db, id) as MemoryDetail;
 }
 
@@ -387,15 +508,38 @@ export function listPreferences(
   }
 }
 
+/**
+ * Remove a learned preference. Both the key and the (loosely normalised)
+ * value are suppressed, in the same transaction as the delete: the
+ * directive writer dedupes restatements by word overlap, so a reworded
+ * "always reply in Spanish" would otherwise mint a new key.
+ */
 export function deletePreference(db: DatabaseSync, category: string, key: string): boolean {
-  const res = db
-    .prepare("DELETE FROM user_preferences WHERE category = ? AND key = ?")
-    .run(category, key);
-  if (Number(res.changes) > 0) {
-    audit(db, `pref:${category}:${key}`, "owner_forget_preference", {});
+  return inSavepoint(db, "owner_forget_preference", () => {
+    const row = db
+      .prepare("SELECT value FROM user_preferences WHERE category = ? AND key = ?")
+      .get(category, key) as { value: string } | undefined;
+    if (!row) {
+      return false;
+    }
+    db.prepare("DELETE FROM user_preferences WHERE category = ? AND key = ?").run(category, key);
+    const keySuppression = addSuppression(db, {
+      kind: "preference_key",
+      hash: preferenceKeyHash(category, key),
+      reason: "owner_forget_preference",
+    });
+    const valueSuppression = addSuppression(db, {
+      kind: "preference_value",
+      hash: preferenceValueHash(category, row.value ?? ""),
+      text: normalizeLoose(row.value ?? ""),
+      reason: "owner_forget_preference",
+    });
+    writeAudit(db, `pref:${category}:${key}`, "owner_forget_preference", {
+      suppressionId: keySuppression.id,
+      suppressionIds: [keySuppression.id, valueSuppression.id],
+    });
     return true;
-  }
-  return false;
+  });
 }
 
 export type AuditEntry = {

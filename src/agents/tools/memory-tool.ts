@@ -336,7 +336,9 @@ export function createMemoryPinTool(options: {
         }
         if (action === "retire") {
           const key = readStringParam(params, "key", { required: true });
-          return jsonResult({ ok: store.retire(key ?? ""), key });
+          // The agent's retire is soft (PLAN-55 Phase 0): a later same-value
+          // pin reactivates it. Only the owner's retire is sticky.
+          return jsonResult({ ok: store.retire(key ?? "", { reason: "agent" }), key });
         }
         return jsonResult({ ok: false, error: `unknown action "${action}"` });
       } catch (err) {
