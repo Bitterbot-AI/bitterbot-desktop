@@ -200,7 +200,7 @@ export function resolveCorrectionSkipReason(params: {
   if (params.isHeartbeat) {
     return "heartbeat";
   }
-  if (params.senderIsOwner !== true) {
+  if (!params.senderIsOwner) {
     return "not-owner";
   }
   if (!params.sessionKey) {

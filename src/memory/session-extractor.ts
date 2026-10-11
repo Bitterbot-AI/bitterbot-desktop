@@ -291,8 +291,8 @@ User: ${user}
 Assistant: ${reply}`;
 }
 
-const KNOWN_CATEGORY_PREFIXES = (CANONICAL_CATEGORIES as readonly string[]).filter(
-  (c) => c !== "other",
+const KNOWN_CATEGORY_PREFIXES = new Set(
+  (CANONICAL_CATEGORIES as readonly string[]).filter((c) => c !== "other"),
 );
 
 /**
@@ -327,7 +327,7 @@ export function parseCorrectionResponse(raw: string): CorrectionFact[] {
       continue;
     }
     const prefix = canonical.key.split(".")[0] ?? "";
-    if (!KNOWN_CATEGORY_PREFIXES.includes(prefix) || seen.has(canonical.key)) {
+    if (!KNOWN_CATEGORY_PREFIXES.has(prefix) || seen.has(canonical.key)) {
       continue;
     }
     seen.add(canonical.key);
