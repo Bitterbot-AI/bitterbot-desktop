@@ -190,7 +190,7 @@ describe("release-tarball.yml publishing rules", () => {
   });
 
   it("refuses a manual rebuild of a signed release unless forced", () => {
-    expect(wf).toMatch(/force:\n\s+description:/);
+    expect(wf).toMatch(/force:\r?\n\s+description:/);
     expect(wf).toContain('if [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE" != "true" ]; then');
     expect(wf).toContain("grep -qx 'checksums.txt'");
   });
