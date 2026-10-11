@@ -347,6 +347,23 @@ describe("update-cli", () => {
     expect(errors.join("\n")).toContain("BITTERBOT_INSTALL_KIND=package");
   });
 
+  it("refuses to update a release-tarball install in place and names the installer (PLAN-56 Phase 3a)", async () => {
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/home/u/.bitterbot/app/1.4.0",
+      installKind: "tarball",
+      packageManager: "pnpm",
+    });
+
+    await updateCommand({ yes: true });
+
+    expect(runGatewayUpdate).not.toHaveBeenCalled();
+    expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+    expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
+    const errors = vi.mocked(defaultRuntime.error).mock.calls.map((call) => String(call[0]));
+    expect(errors.join("\n")).toContain("main/scripts/install.sh | bash");
+    expect(errors.join("\n")).toContain("keeps the previous version");
+  });
+
   it("defaults to dev channel for git installs when unset", async () => {
     vi.mocked(runGatewayUpdate).mockResolvedValue({
       status: "ok",

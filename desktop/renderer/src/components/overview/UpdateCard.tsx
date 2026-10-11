@@ -5,6 +5,8 @@ import { useGatewayStore } from "../../stores/gateway-store";
 import {
   CONTAINER_UPDATE_COMMAND,
   parseCheckResponse,
+  TARBALL_UPDATE_COMMAND,
+  updatesExternally,
   useUpdateStore,
   type UpdateCheckResponse,
 } from "../../stores/update-store";
@@ -90,6 +92,34 @@ function ContainerUpdateStatus({
           it. Set BITTERBOT_IMAGE to the :{latestMajor} tag first, after reading the release notes.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Release-tarball installs (PLAN-56 Phase 3a): no in-place updater yet, so
+ * the card names the newest release and the installer one-liner, which
+ * unpacks the new version next to this one and keeps it for rollback.
+ */
+function TarballUpdateStatus({ latest, stale }: { latest: string | null; stale: boolean }) {
+  return (
+    <div className="mb-3 space-y-1.5" data-testid="update-card-tarball">
+      {latest && stale ? (
+        <p className="text-sm text-warning">Release {latest} available; re-run the installer.</p>
+      ) : latest ? (
+        <p className="text-xs text-success">Up to date with the latest release (v{latest}).</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Latest release unknown (GitHub unreachable or rate-limited); try again later.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        This node was installed from a signed release tarball. To update, run the installer again in
+        a terminal on this machine (the previous version is kept):
+      </p>
+      <code className="block text-xs font-mono bg-muted/30 border border-border/20 rounded px-2 py-1 select-all break-all">
+        {TARBALL_UPDATE_COMMAND}
+      </code>
     </div>
   );
 }
@@ -246,6 +276,10 @@ export function UpdateCard() {
         />
       )}
 
+      {info?.installKind === "tarball" && (
+        <TarballUpdateStatus latest={info.registryLatest} stale={info.staleness.stale} />
+      )}
+
       {/* What an update brings, BEFORE install (sota-bar rec 2) */}
       {!updating &&
         info?.installKind === "git" &&
@@ -305,7 +339,7 @@ export function UpdateCard() {
           >
             {checking ? "Checking…" : "Check for updates"}
           </button>
-          {info?.installKind === "container" ? null : !confirming ? (
+          {updatesExternally(info?.installKind) ? null : !confirming ? (
             <button
               type="button"
               onClick={() => setConfirming(true)}

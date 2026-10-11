@@ -32,6 +32,8 @@ function describeSource(source: BinarySource): string {
   switch (source) {
     case "config":
       return "explicit config override";
+    case "bundled":
+      return "bundled with the release tarball";
     case "release":
       return "local cargo release build";
     case "debug":

@@ -155,6 +155,32 @@ open an issue.
   source (`cargo build --release --manifest-path orchestrator/Cargo.toml`)
   does not involve the signature at all.
 
+## Installer (release tarballs)
+
+- **Signature check depends on your machine.** `install.sh` verifies the
+  release's minisign signature only when `minisign` or OpenSSL 3 is present.
+  Stock macOS has neither (its `openssl` is LibreSSL), so there it checks
+  SHA-256 from `checksums.txt` fetched over HTTPS, says so, and runs
+  `gh attestation verify` only if `gh` is installed and logged in. Install
+  minisign or pass `--require-signature` to refuse that fallback.
+- **Platforms.** Tarballs exist for Linux x64/arm64 with glibc 2.28 or newer
+  (the bundled Node 22's floor) and Apple-silicon macOS, from release 1.5.0
+  on. Intel Macs, musl Linux, older glibc and Windows use Docker.
+- **Tarballs lag the release.** Each release's tarballs are signed only after
+  a maintainer approves the signing step (one approval per release). Until
+  then the installer keeps installing the previous complete release, and a
+  pinned `--version` of the new one fails.
+- **Updates are a re-run.** `bitterbot update` does not update an
+  installer-based install in place yet: re-run `install.sh` (it keeps the
+  previous version for a manual rollback) and restart the gateway.
+- **Size.** A tarball is about 390 MB to download and 1.5 GB unpacked (the
+  Claude Agent SDK's bundled binary alone is about 230 MB). GPU builds of
+  llama.cpp are left out, so local embeddings run on the CPU in an
+  installer-based install; a source install or Docker keeps them.
+- **Not OS-signed.** The binaries in the tarball are not Apple-notarized or
+  Authenticode-signed; integrity comes from minisign, SHA-256 and GitHub
+  build-provenance attestations.
+
 ## Platform
 
 - **Windows means WSL2.** Native Windows is not a supported gateway host.
@@ -162,8 +188,9 @@ open an issue.
   mount makes boots dramatically slower (measured 43x on one machine).
 - The Tauri desktop shell is experimental and not part of this release;
   the supported UI is the Control UI served by the gateway.
-- npm installs are not supported yet; installing from source is the
-  supported path. `bitterbot update` tracks your git checkout.
+- npm installs are not supported yet. Supported paths: Docker, the
+  installer (release tarballs, from 1.5.0), and a source checkout, where
+  `bitterbot update` tracks your git checkout.
 
 ## Operational honesty
 

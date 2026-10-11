@@ -145,3 +145,20 @@ describe("formatUpdateAvailableHint", () => {
     );
   });
 });
+
+describe("release-tarball installs (PLAN-56 Phase 3a)", () => {
+  it("offers the newer release with the installer command, never npm", () => {
+    const update = buildUpdate({
+      installKind: "tarball",
+      root: "/home/u/.bitterbot/app/1.4.0",
+      registry: { latestVersion: nextMajorVersion(VERSION), source: "github-releases" },
+    });
+    const hint = formatUpdateAvailableHint(update);
+    expect(hint).toContain(`Release v${nextMajorVersion(VERSION)} available`);
+    expect(hint).toContain("install.sh | bash");
+    const line = formatUpdateOneLiner(update);
+    expect(line).toContain("tarball");
+    expect(line).toContain(`release update ${nextMajorVersion(VERSION)}`);
+    expect(line).not.toContain("npm");
+  });
+});

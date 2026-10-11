@@ -5,6 +5,9 @@ import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
 import {
   CONTAINER_FALSE_POSITIVE_HINT,
   CONTAINER_UPDATE_COMMAND,
+  externalUpdateCommand,
+  readDeclaredInstallKind,
+  TARBALL_UPDATE_REFUSAL,
 } from "../../infra/install-kind.js";
 import {
   formatDoctorNonInteractiveHint,
@@ -20,6 +23,7 @@ import {
 import {
   checkUpdateStatus,
   fetchLatestGithubRelease,
+  githubReleaseTargetFor,
   peekLatestGithubRelease,
   resolveNpmChannelTag,
 } from "../../infra/update-check.js";
@@ -65,12 +69,14 @@ async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
     });
     channelVersion = resolved.version;
   }
-  // Containers compare against the newest GitHub release (cached for 30 min
-  // inside fetchLatestGithubRelease, so repeated UI checks do not hit the API).
-  if (check.installKind === "container") {
+  // Containers and release-tarball installs compare against the newest
+  // GitHub release carrying their asset (cached for 30 min inside
+  // fetchLatestGithubRelease, so repeated UI checks do not hit the API).
+  const releaseTarget = githubReleaseTargetFor(check.installKind);
+  if (releaseTarget) {
     const release = fetch
-      ? await fetchLatestGithubRelease({ timeoutMs: 2500 })
-      : peekLatestGithubRelease();
+      ? await fetchLatestGithubRelease({ timeoutMs: 2500, target: releaseTarget })
+      : peekLatestGithubRelease(Date.now(), releaseTarget);
     channelVersion = release?.latestVersion ?? null;
   }
   const staleness = computeUpdateStaleness(check, config.update?.promptBehindCommits, {
@@ -82,7 +88,7 @@ async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
     channel,
     check,
     registryLatest: channelVersion,
-    updateCommand: check.installKind === "container" ? CONTAINER_UPDATE_COMMAND : null,
+    updateCommand: externalUpdateCommand(check.installKind),
     staleness,
     checkedAt: Date.now(),
   };
@@ -146,6 +152,16 @@ export const updateHandlers: GatewayRequestHandlers = {
     // container heuristic (never for a git checkout).
     if (process.env.BITTERBOT_INSTALL_KIND === "container" || local?.installKind === "container") {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CONTAINER_UPDATE_REFUSAL));
+      return;
+    }
+    // A release-tarball install (PLAN-56 Phase 3a) has no in-place updater
+    // yet: re-running install.sh is the update. Phase 3b replaces this
+    // refusal with snapshot/stage/activate/rollback.
+    if (
+      local?.installKind === "tarball" ||
+      (local === null && readDeclaredInstallKind() === "tarball")
+    ) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, TARBALL_UPDATE_REFUSAL));
       return;
     }
     const { sessionKey, note, restartDelayMs } = parseRestartRequestParams(params);

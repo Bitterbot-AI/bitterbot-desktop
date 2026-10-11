@@ -1,5 +1,6 @@
 import { formatCliCommand } from "../cli/command-format.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { externalUpdateCommand, resolveInstallKind } from "../infra/install-kind.js";
 import { runGatewayUpdate } from "../infra/update-runner.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import type { RuntimeEnv } from "../runtime.js";
@@ -75,6 +76,23 @@ export async function maybeOfferUpdateBeforeDoctor(params: {
   }
 
   if (git === "not-git") {
+    // Containers and release-tarball installs cannot update through a package
+    // manager: name the command that actually updates them (PLAN-56).
+    const kind = resolveInstallKind({ isGit: false, hasRoot: true, root: params.root });
+    const external = externalUpdateCommand(kind);
+    if (external) {
+      note(
+        [
+          kind === "container"
+            ? "This Bitterbot runs in a container image. On the Docker host, update with:"
+            : "This Bitterbot was installed from a release tarball. Update by re-running the installer (it keeps the previous version):",
+          `  ${external}`,
+          "Then rerun doctor.",
+        ].join("\n"),
+        "Update",
+      );
+      return { updated: false };
+    }
     note(
       [
         "This install is not a git checkout.",

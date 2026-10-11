@@ -38,11 +38,12 @@ export function isStableTag(tag: string): boolean {
  * Default channel by install kind (PLAN-56 §3.5): `stable` for package,
  * container and git checkouts sitting on a release tag; `dev` only for a git
  * checkout on a branch with `update.channel` unset. Containers have no other
- * channel today: the image tag (`:1`, `:latest`) is what they follow.
+ * channel today: the image tag (`:1`, `:latest`) is what they follow; release
+ * tarballs (PLAN-56 Phase 3) follow the newest stable GitHub release.
  */
 export function resolveEffectiveUpdateChannel(params: {
   configChannel?: UpdateChannel | null;
-  installKind: "git" | "package" | "container" | "unknown";
+  installKind: "git" | "package" | "container" | "tarball" | "unknown";
   git?: { tag?: string | null; branch?: string | null };
 }): { channel: UpdateChannel; source: UpdateChannelSource } {
   if (params.configChannel) {
@@ -65,7 +66,11 @@ export function resolveEffectiveUpdateChannel(params: {
     return { channel: DEFAULT_GIT_CHANNEL, source: "default" };
   }
 
-  if (params.installKind === "package" || params.installKind === "container") {
+  if (
+    params.installKind === "package" ||
+    params.installKind === "container" ||
+    params.installKind === "tarball"
+  ) {
     return { channel: DEFAULT_PACKAGE_CHANNEL, source: "default" };
   }
 

@@ -5,7 +5,8 @@
  * We are pre-release: the whole fleet runs git checkouts of main, so the
  * drift metric that matters is commits behind upstream. Package (npm)
  * installs fall back to a semver comparison against the registry, and
- * container installs against the newest GitHub release (PLAN-56 Phase 2).
+ * container and release-tarball installs against the newest GitHub release
+ * (PLAN-56 Phases 2 and 3).
  */
 
 import { VERSION } from "../version.js";
@@ -55,9 +56,14 @@ export function computeUpdateStaleness(
     };
   }
 
-  if (check.installKind === "package" || check.installKind === "container") {
+  if (
+    check.installKind === "package" ||
+    check.installKind === "container" ||
+    check.installKind === "tarball"
+  ) {
     // Containers: `channelVersion` is the newest GitHub release (the image
-    // published for it), so the same semver comparison applies.
+    // published for it); release tarballs: the newest release carrying this
+    // platform's tarball. The same semver comparison applies.
     const latest = opts?.channelVersion ?? check.registry?.latestVersion ?? null;
     const cmp = compareSemverStrings(VERSION, latest);
     if (cmp == null) {

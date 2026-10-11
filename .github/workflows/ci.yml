@@ -236,6 +236,169 @@ jobs:
           [ "$(docker top bbfly -o pid,user | tail -n +2 | awk '{print $2}' | grep -c '^root$')" = "0" ]
           [ "$(stat -c %u /tmp/flydata)" = "1000" ]
 
+  installer:
+    # PLAN-56 Phase 3a: build the linux-x64 release tarball from THIS tree
+    # with the release script, sign a release with a throwaway minisign key,
+    # serve it on loopback, and install it with `curl | bash` the way users
+    # will (test mode: the only way install.sh accepts a non-pinned key).
+    # Then boot the gateway from the installed copy with no config file.
+    name: Release tarball + install.sh (linux-x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck install.sh
+        run: shellcheck --version && shellcheck scripts/install.sh
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build the release tarball (verifies Node, orchestrator signature, native packages)
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          node scripts/build-release-tarball.mjs --out "$RUNNER_TEMP/release-out"
+          # Reproducibility stamps: builtAt and every tar mtime are the commit time.
+          want=$(node -p "new Date(Number(process.env.SOURCE_DATE_EPOCH) * 1000).toISOString()")
+          grep -q "\"builtAt\": \"$want\"" "$RUNNER_TEMP"/release-out/bitterbot-*.manifest.json
+          stamp=$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%d %H:%M:%S')
+          tar --full-time -tvzf "$RUNNER_TEMP"/release-out/bitterbot-*.tar.gz > "$RUNNER_TEMP/tar-list.txt"
+          wc -l < "$RUNNER_TEMP/tar-list.txt"
+          if grep -v -m5 "$stamp" "$RUNNER_TEMP/tar-list.txt"; then echo "entries without the SOURCE_DATE_EPOCH mtime"; exit 1; fi
+          if grep -v -m5 " 0/0 " "$RUNNER_TEMP/tar-list.txt"; then echo "entries not owned by 0/0"; exit 1; fi
+
+      - name: Sign a local release with a throwaway key and serve it on loopback
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y minisign
+          VERSION=$(node -p 'require("./package.json").version')
+          KEYS="$RUNNER_TEMP/keys" && mkdir -p "$KEYS"
+          minisign -G -W -p "$KEYS/test.pub" -s "$KEYS/test.key"
+          D="$RUNNER_TEMP/releases/download/v$VERSION" && mkdir -p "$D"
+          cp "$RUNNER_TEMP"/release-out/bitterbot-* "$D/"
+          cp scripts/install.sh "$D/install.sh"
+          (cd "$D" && sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh > checksums.txt             && minisign -S -s "$KEYS/test.key" -m checksums.txt -t "v$VERSION checksums")
+          # A fake GitHub releases API listing: the newest release (v99.0.0)
+          # has no tarball yet, so install.sh must pick this build's version.
+          # install.sh itself is served at the root, like raw main.
+          mkdir -p "$RUNNER_TEMP/releases/api"
+          node -e '
+            const fs = require("node:fs");
+            const [dir, version] = process.argv.slice(1);
+            const asset = (tag, n) => ({ name: n, browser_download_url: `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/${tag}/${n}` });
+            const listing = [
+              { tag_name: "v99.0.0", draft: false, prerelease: false, assets: [asset("v99.0.0", "docker-compose.yml")] },
+              { tag_name: `v${version}`, draft: false, prerelease: false, assets: fs.readdirSync(`${dir}/download/v${version}`).map((n) => asset(`v${version}`, n)) },
+            ];
+            fs.writeFileSync(`${dir}/api/releases.json`, JSON.stringify(listing));
+          ' "$RUNNER_TEMP/releases" "$VERSION"
+          cp scripts/install.sh "$RUNNER_TEMP/releases/install.sh"
+          ls -lh "$D"
+          echo "TEST_PUBKEY=$(sed -n 2p "$KEYS/test.pub")" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          nohup python3 -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/releases"             > "$RUNNER_TEMP/http.log" 2>&1 &
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8765/ && break; sleep 0.5; done
+
+      - name: Production mode refuses the test key and the local URL
+        run: |
+          set +e -uo pipefail
+          out=$(BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"             BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765             HOME="$RUNNER_TEMP/home-refuse" bash scripts/install.sh --yes --no-onboard 2>&1)
+          status=$?
+          echo "$out"
+          [ "$status" -ne 0 ]
+          echo "$out" | grep -q "need BITTERBOT_INSTALL_TEST_MODE=1"
+          [ ! -e "$RUNNER_TEMP/home-refuse/.bitterbot/app" ]
+
+      - name: curl | bash install (minisign verification), then reinstall verifying with OpenSSL
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home" BITTERBOT_INSTALL_TEST_MODE=1             BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
+          curl -fsSL http://127.0.0.1:8765/install.sh | bash -s -- --yes --no-onboard | tee "$RUNNER_TEMP/install1.log"
+          grep -q "Newest complete release: $VERSION" "$RUNNER_TEMP/install1.log"
+          grep -q "Verified: minisign signature (pinned key)" "$RUNNER_TEMP/install1.log"
+          # Same build again: every file is re-checked against manifest.json
+          # and the directory is kept in place.
+          BITTERBOT_INSTALL_TEST_VERIFIER=openssl bash scripts/install.sh --yes --no-onboard --version "$VERSION" | tee "$RUNNER_TEMP/install2.log"
+          grep -q "Verified: minisign signature checked with OpenSSL (pinned key)" "$RUNNER_TEMP/install2.log"
+          grep -q "already installed and intact; keeping it in place" "$RUNNER_TEMP/install2.log"
+          ls -la "$HOME/.bitterbot/app" "$HOME/.local/bin"
+          du -sh "$HOME/.bitterbot/app/$VERSION"
+
+      - name: The installed copy runs, reports tarball, and refuses in-place updates
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          B="$HOME/.local/bin/bitterbot"
+          [ "$(readlink "$HOME/.bitterbot/app/current")" = "$VERSION" ]
+          test -x "$HOME/.bitterbot/app/current/bin/bitterbot-orchestrator"
+          test -x "$HOME/.bitterbot/app/current/runtime/node/bin/node"
+          v=$("$B" --version | tail -1)
+          echo "bitterbot --version -> $v"
+          echo "$v" | grep -qw "$VERSION"
+          # Same table assertions as the container smoke (`update status --json`
+          # is swallowed by the parent command's --json flag).
+          COLUMNS=200 "$B" update status > "$RUNNER_TEMP/update-status.txt"
+          cat "$RUNNER_TEMP/update-status.txt"
+          grep -q "Install .*release tarball" "$RUNNER_TEMP/update-status.txt"
+          grep -q "Channel .*stable (default)" "$RUNNER_TEMP/update-status.txt"
+          if grep -qi "npm" "$RUNNER_TEMP/update-status.txt"; then exit 1; fi
+          if "$B" update --yes > "$RUNNER_TEMP/update-run.txt" 2>&1; then
+            echo "bitterbot update must refuse for a tarball install"; cat "$RUNNER_TEMP/update-run.txt"; exit 1
+          fi
+          cat "$RUNNER_TEMP/update-run.txt"
+          grep -q "install.sh" "$RUNNER_TEMP/update-run.txt"
+
+      - name: Gateway boots from the installed copy with no config file
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          B="$HOME/.local/bin/bitterbot"
+          test ! -e "$HOME/.bitterbot/bitterbot.json"
+          (cd /tmp && BITTERBOT_GATEWAY_TOKEN=ci-smoke-token nohup "$B" gateway --allow-unconfigured             > "$RUNNER_TEMP/gateway.log" 2>&1 &)
+          code=000
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token"               http://127.0.0.1:19001/ || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "GET / -> $code"
+          tail -40 "$RUNNER_TEMP/gateway.log"
+          [ "$code" = "200" ]
+          # P2P is on by default: the orchestrator must start from the binary
+          # inside the installed tarball, not a cargo or ~/.bitterbot/bin copy.
+          started=1
+          for i in $(seq 1 30); do
+            if grep -q "P2P orchestrator bridge started (binary: $HOME/.bitterbot/app/$VERSION/bin/bitterbot-orchestrator)" "$RUNNER_TEMP/gateway.log"; then
+              started=0; break
+            fi
+            sleep 2
+          done
+          grep -i orchestrator "$RUNNER_TEMP/gateway.log" | tail -5 || true
+          [ "$started" = "0" ]
+          # The launcher marked its version directory as in use (install.sh
+          # never prunes or replaces it while that pid lives).
+          ls -la "$HOME/.bitterbot/app/$VERSION/.pids"
+          live=0
+          for f in "$HOME/.bitterbot/app/$VERSION/.pids"/*; do
+            if kill -0 "${f##*/}" 2>/dev/null; then live=1; fi
+          done
+          [ "$live" = "1" ]
+          test ! -e "$HOME/.bitterbot/bitterbot.json"
+          pkill -f "app/$VERSION/dist/entry.js" || true
+
   sandbox-images:
     # PLAN-53 A5: the sandbox build scripts and the browser entrypoint were
     # missing, so Dockerfile.sandbox-browser could not build. Build both images

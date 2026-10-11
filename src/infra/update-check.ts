@@ -3,7 +3,13 @@ import path from "node:path";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { fetchWithTimeout } from "../utils/fetch-timeout.js";
 import { detectPackageManager as detectPackageManagerImpl } from "./detect-package-manager.js";
-import { type ContainerProbe, type InstallKind, resolveInstallKind } from "./install-kind.js";
+import {
+  type ContainerProbe,
+  type InstallKind,
+  resolveInstallKind,
+  tarballAssetName,
+  tarballPlatformId,
+} from "./install-kind.js";
 
 export type { InstallKind } from "./install-kind.js";
 import { parseSemver } from "./runtime-guard.js";
@@ -36,7 +42,10 @@ export type DepsStatus = {
 
 export type RegistryStatus = {
   latestVersion: string | null;
-  /** Where `latestVersion` came from: npm for package installs, GitHub releases for containers. */
+  /**
+   * Where `latestVersion` came from: npm for package installs, GitHub
+   * releases for containers and release-tarball installs.
+   */
   source?: "npm" | "github-releases";
   error?: string;
 };
@@ -330,6 +339,10 @@ export async function fetchNpmLatestVersion(params?: {
 export const GITHUB_RELEASES_URL =
   "https://api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30";
 
+/** Release-level checksums and their minisign signature (release-tarball.yml). */
+export const TARBALL_CHECKSUMS_ASSET = "checksums.txt";
+export const TARBALL_SIGNATURE_ASSET = "checksums.txt.minisig";
+
 /** The release asset whose presence means "the image for this release is on GHCR". */
 export const COMPOSE_RELEASE_ASSET = "docker-compose.yml";
 
@@ -338,19 +351,36 @@ const GITHUB_RELEASE_CACHE_MS = 30 * 60 * 1000;
 /** Failures (offline, rate-limited) are remembered too, so retries back off. */
 const GITHUB_RELEASE_ERROR_CACHE_MS = 15 * 60 * 1000;
 
-let githubReleaseCache: { at: number; status: RegistryStatus } | null = null;
+/**
+ * Which release asset proves a release is installable for this install kind:
+ * the compose file for containers (attached after the image is on GHCR), the
+ * platform tarball for release-tarball installs (attached only after the
+ * whole set is signed, see .github/workflows/release-tarball.yml).
+ */
+export type GithubReleaseTarget = { kind: "image" } | { kind: "tarball"; platformId: string };
+
+const IMAGE_TARGET: GithubReleaseTarget = { kind: "image" };
+
+function releaseTargetKey(target: GithubReleaseTarget): string {
+  return target.kind === "image" ? "image" : `tarball:${target.platformId}`;
+}
+
+const githubReleaseCache = new Map<string, { at: number; status: RegistryStatus }>();
 
 /** @internal */
 export function resetGithubReleaseCacheForTests(): void {
-  githubReleaseCache = null;
+  githubReleaseCache.clear();
 }
 
 /**
  * The last answer, if still fresh, WITHOUT a network request: lets the
- * Control UI's no-fetch bootstrap check show a known newer image.
+ * Control UI's no-fetch bootstrap check show a known newer release.
  */
-export function peekLatestGithubRelease(now = Date.now()): RegistryStatus | null {
-  const cached = githubReleaseCache;
+export function peekLatestGithubRelease(
+  now = Date.now(),
+  target: GithubReleaseTarget = IMAGE_TARGET,
+): RegistryStatus | null {
+  const cached = githubReleaseCache.get(releaseTargetKey(target));
   if (!cached?.status.latestVersion || now - cached.at >= GITHUB_RELEASE_CACHE_MS) {
     return null;
   }
@@ -373,11 +403,27 @@ type GithubReleaseEntry = {
   assets?: unknown;
 };
 
+function releaseAssetNames(release: GithubReleaseEntry): Set<string> {
+  const names = new Set<string>();
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  for (const asset of assets) {
+    const name =
+      asset && typeof asset === "object" ? (asset as { name?: unknown }).name : undefined;
+    if (typeof name === "string") {
+      names.add(name);
+    }
+  }
+  return names;
+}
+
 /**
  * The highest `vX.Y.Z` among published, non-prerelease releases that carry
- * the compose asset; null when there is none.
+ * the asset `requiredAsset(version)` names; null when there is none.
  */
-export function pickLatestImageRelease(releases: GithubReleaseEntry[]): string | null {
+function pickLatestReleaseWithAsset(
+  releases: GithubReleaseEntry[],
+  requiredAssets: (version: string) => string[],
+): string | null {
   let best: string | null = null;
   for (const release of releases) {
     if (!release || release.draft === true || release.prerelease === true) {
@@ -387,14 +433,8 @@ export function pickLatestImageRelease(releases: GithubReleaseEntry[]): string |
     if (!version) {
       continue;
     }
-    const assets = Array.isArray(release.assets) ? release.assets : [];
-    const hasCompose = assets.some(
-      (asset) =>
-        asset &&
-        typeof asset === "object" &&
-        (asset as { name?: unknown }).name === COMPOSE_RELEASE_ASSET,
-    );
-    if (!hasCompose) {
+    const names = releaseAssetNames(release);
+    if (!requiredAssets(version).every((name) => names.has(name))) {
       continue;
     }
     const cmp = compareSemverStrings(version, best);
@@ -405,13 +445,61 @@ export function pickLatestImageRelease(releases: GithubReleaseEntry[]): string |
   return best;
 }
 
+/**
+ * The highest `vX.Y.Z` among published, non-prerelease releases that carry
+ * the compose asset; null when there is none.
+ */
+export function pickLatestImageRelease(releases: GithubReleaseEntry[]): string | null {
+  return pickLatestReleaseWithAsset(releases, () => [COMPOSE_RELEASE_ASSET]);
+}
+
+/**
+ * Release-tarball installs (PLAN-56 Phase 3): the highest release that
+ * carries `bitterbot-<version>-<platformId>.tar.gz` AND `checksums.txt` AND
+ * `checksums.txt.minisig`, i.e. one install.sh can actually install. A
+ * release whose tarball job has not finished, is waiting for the signing
+ * approval, or failed verification (and so uploaded nothing) is never
+ * offered. scripts/install.sh applies the same rule (bb_pick_latest).
+ */
+export function pickLatestTarballRelease(
+  releases: GithubReleaseEntry[],
+  platformId: string,
+): string | null {
+  return pickLatestReleaseWithAsset(releases, (version) => [
+    tarballAssetName(version, platformId),
+    TARBALL_CHECKSUMS_ASSET,
+    TARBALL_SIGNATURE_ASSET,
+  ]);
+}
+
+/**
+ * The GitHub release target for an install kind on this machine, or null
+ * when the kind does not follow GitHub releases (or no tarball is published
+ * for this platform).
+ */
+export function githubReleaseTargetFor(
+  kind: InstallKind,
+  platformId: string | null = tarballPlatformId(),
+): GithubReleaseTarget | null {
+  if (kind === "container") {
+    return IMAGE_TARGET;
+  }
+  if (kind === "tarball") {
+    return platformId ? { kind: "tarball", platformId } : null;
+  }
+  return null;
+}
+
 export async function fetchLatestGithubRelease(params?: {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
   now?: number;
+  target?: GithubReleaseTarget;
 }): Promise<RegistryStatus> {
   const now = params?.now ?? Date.now();
-  const cached = githubReleaseCache;
+  const target = params?.target ?? IMAGE_TARGET;
+  const key = releaseTargetKey(target);
+  const cached = githubReleaseCache.get(key);
   if (cached) {
     const ttl = cached.status.latestVersion
       ? GITHUB_RELEASE_CACHE_MS
@@ -420,16 +508,17 @@ export async function fetchLatestGithubRelease(params?: {
       return cached.status;
     }
   }
-  const status = await fetchLatestGithubReleaseUncached(params);
-  githubReleaseCache = { at: now, status };
+  const status = await fetchLatestGithubReleaseUncached({ ...params, target });
+  githubReleaseCache.set(key, { at: now, status });
   return status;
 }
 
-async function fetchLatestGithubReleaseUncached(params?: {
+async function fetchLatestGithubReleaseUncached(params: {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;
+  target: GithubReleaseTarget;
 }): Promise<RegistryStatus> {
-  const timeoutMs = Math.max(250, params?.timeoutMs ?? 3500);
+  const timeoutMs = Math.max(250, params.timeoutMs ?? 3500);
   try {
     const res = await fetchWithTimeout(
       GITHUB_RELEASES_URL,
@@ -440,7 +529,7 @@ async function fetchLatestGithubReleaseUncached(params?: {
         },
       },
       timeoutMs,
-      params?.fetchImpl,
+      params.fetchImpl,
     );
     if (!res.ok) {
       const rateLimited =
@@ -456,11 +545,20 @@ async function fetchLatestGithubReleaseUncached(params?: {
     if (!Array.isArray(json)) {
       return { latestVersion: null, source: "github-releases", error: "malformed" };
     }
-    const version = pickLatestImageRelease(json as GithubReleaseEntry[]);
+    const releases = json as GithubReleaseEntry[];
+    const target = params.target;
+    const version =
+      target.kind === "image"
+        ? pickLatestImageRelease(releases)
+        : pickLatestTarballRelease(releases, target.platformId);
     if (!version) {
-      // Releases exist but none carries a published image yet (or the list
-      // is junk): no prompt.
-      return { latestVersion: null, source: "github-releases", error: "no-image-release" };
+      // Releases exist but none carries a published image / platform
+      // tarball yet (or the list is junk): no prompt.
+      return {
+        latestVersion: null,
+        source: "github-releases",
+        error: target.kind === "image" ? "no-image-release" : "no-tarball-release",
+      };
     }
     return { latestVersion: version, source: "github-releases" };
   } catch (err) {
@@ -558,10 +656,15 @@ export async function checkUpdateStatus(params: {
 }): Promise<UpdateCheckResult> {
   const timeoutMs = params.timeoutMs ?? 6000;
   const root = params.root ? path.resolve(params.root) : null;
-  const fetchRegistry = (kind: InstallKind) =>
-    kind === "container"
-      ? fetchLatestGithubRelease({ timeoutMs })
-      : fetchNpmLatestVersion({ timeoutMs });
+  const fetchRegistry = async (kind: InstallKind): Promise<RegistryStatus> => {
+    if (kind === "container" || kind === "tarball") {
+      const target = githubReleaseTargetFor(kind);
+      return target
+        ? await fetchLatestGithubRelease({ timeoutMs, target })
+        : { latestVersion: null, source: "github-releases", error: "unsupported-platform" };
+    }
+    return await fetchNpmLatestVersion({ timeoutMs });
+  };
   if (!root) {
     const installKind = resolveInstallKind({
       isGit: false,
@@ -583,11 +686,13 @@ export async function checkUpdateStatus(params: {
   const installKind = resolveInstallKind({
     isGit,
     hasRoot: true,
+    root,
     probe: params.containerProbe,
   });
-  if (installKind === "container") {
-    // The image's node_modules are fixed at build time: a deps verdict or a
-    // git status would describe the image, not anything the user can act on.
+  if (installKind === "container" || installKind === "tarball") {
+    // The image's (or the release tarball's) node_modules are fixed at build
+    // time: a deps verdict or a git status would describe the artifact, not
+    // anything the user can act on.
     return {
       root,
       installKind,

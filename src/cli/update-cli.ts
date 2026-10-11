@@ -44,6 +44,8 @@ export function registerUpdateCli(program: Command) {
 ${theme.heading("What this does:")}
   - Git checkouts: fetches, rebases, installs deps, builds, and runs doctor
   - npm installs: updates via detected package manager
+  - Release-tarball installs (install.sh): re-run install.sh; it keeps the previous version
+  - Containers: pull a newer image (docker compose pull && docker compose up -d)
 
 ${theme.heading("Switch channels:")}
   - Use --channel stable|beta|dev to persist the update channel in config
