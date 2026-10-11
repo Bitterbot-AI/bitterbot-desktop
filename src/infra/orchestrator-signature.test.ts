@@ -3,6 +3,7 @@ import { createHash, generateKeyPairSync, randomBytes, sign, type KeyObject } fr
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   checkChecksumsSignature,
@@ -80,7 +81,7 @@ describe("resolvePinnedMinisignPubkey", () => {
 
   it("the pinned key verifies the real orchestrator-v0.2.3 release signature", () => {
     const dir = path.join(
-      path.dirname(new URL(import.meta.url).pathname),
+      path.dirname(fileURLToPath(import.meta.url)),
       "__fixtures__",
       "orchestrator-v0.2.3",
     );
