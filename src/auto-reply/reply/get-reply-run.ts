@@ -425,6 +425,7 @@ export async function runPreparedReply(
     prompt: queuedBody,
     messageId: sessionCtx.MessageSidFull ?? sessionCtx.MessageSid,
     summaryLine: baseBodyTrimmedRaw,
+    userBody: baseBodyTrimmedRaw,
     enqueuedAt: Date.now(),
     // Originating channel for reply routing.
     originatingChannel: ctx.OriginatingChannel,

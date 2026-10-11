@@ -121,6 +121,9 @@ describe("selectHotTools per lane", () => {
     // What draws in the person's side panel must not need a search hop.
     expect(names(sel.hot)).toContain("create_artifact");
     expect(names(sel.hot)).toContain("cron");
+    // PLAN-55 Phase 1: the prompt sends corrections to memory_pin; a
+    // deferred tool loses to working_memory_note, which is always there.
+    expect(names(sel.hot)).toContain("memory_pin");
     expect(names(sel.hot)).not.toContain("message");
     expect(names(sel.hot)).not.toContain("browser");
     expect(names(sel.deferred)).toContain("message");

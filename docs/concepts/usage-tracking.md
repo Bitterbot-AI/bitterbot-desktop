@@ -90,7 +90,7 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
 `agent/turn`, `agent/subagent`, `agent/cron`, `agent/heartbeat`, `agent/a2a`, `agent/acp`,
 `agent/cli-backend`, `agent/continuity-gate`, `skills/evolution`, `memory/search`,
 `memory/recall`, `memory/index`, `memory/index-batch`, `memory/dream`, `memory/extraction`,
-`memory/probe`, `memory/planner`, `memory/architect`, `memory/marketability`,
+`memory/correction`, `memory/probe`, `memory/planner`, `memory/architect`, `memory/marketability`,
 `memory/discovery`, `tasks/judge`, `rlm/deep-recall`, `tts/summary`, `tts/synthesis`,
 `media/image`, `media/audio`, `agent/compaction`, `tools/web-search`.
 

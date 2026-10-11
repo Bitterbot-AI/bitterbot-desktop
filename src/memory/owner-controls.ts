@@ -336,20 +336,44 @@ export function unretireFact(db: DatabaseSync, store: CanonicalFactsStore, key: 
 }
 
 export type OwnerPinResult =
-  | { ok: true; op: "add" | "strengthen" | "supersede"; key: string; value: string }
+  | {
+      ok: true;
+      op: "add" | "strengthen" | "supersede";
+      key: string;
+      value: string;
+      /** PLAN-55 Phase 1: the scope the fact now carries. */
+      scope: string;
+      /** The value this pin replaced (supersede only). */
+      previousValue?: string;
+    }
   | { ok: false; reason: string };
+
+export type OwnerPinInput = {
+  key: string;
+  value: string;
+  category?: string;
+  statement?: string;
+  /** PLAN-55 Phase 1: `global` (default) | `project:<name>` | `person:<name>`. */
+  scope?: string;
+  /** PLAN-55 Phase 1: session line ref (`session:<path>#L<n>`) or short quote. */
+  evidenceRef?: string;
+  /**
+   * PLAN-55 Phase 1: who is asking. `owner` is the Memory page / RPC / CLI;
+   * `correction` is the per-turn capture of the owner's own message;
+   * `directive_answer` is the owner choosing one of the values a "which is
+   * current?" question offered. Audit only: all write at the owner tier.
+   */
+  actor?: "owner" | "correction" | "directive_answer";
+};
 
 /**
  * Pin a fact as the owner (PLAN-55 Phase 0, the `owner` tier's writer): the
  * value the owner states outranks the agent's pins and every background
  * source, reactivates an owner-retired fact and lifts its suppression.
  */
-export function pinFact(
-  db: DatabaseSync,
-  store: CanonicalFactsStore,
-  input: { key: string; value: string; category?: string; statement?: string },
-): OwnerPinResult {
-  return inSavepoint(db, "owner_pin_fact", () => {
+export function pinFact(db: DatabaseSync, store: CanonicalFactsStore, input: OwnerPinInput) {
+  return inSavepoint(db, "owner_pin_fact", (): OwnerPinResult => {
+    const previous = store.get(input.key);
     const result = store.pin({
       key: input.key,
       value: input.value,
@@ -357,12 +381,25 @@ export function pinFact(
       category: input.category,
       confidence: 0.95,
       source: "owner",
+      scope: input.scope,
+      evidenceRef: input.evidenceRef,
     });
-    if (result.op === "rejected") {
+    if (result.op === "rejected" || result.op === "held") {
       return { ok: false, reason: result.reason };
     }
-    writeAudit(db, `fact:${result.fact.key}`, "owner_pin_fact", { op: result.op });
-    return { ok: true, op: result.op, key: result.fact.key, value: result.fact.value };
+    writeAudit(db, `fact:${result.fact.key}`, "owner_pin_fact", {
+      op: result.op,
+      scope: result.fact.scope,
+      actor: input.actor ?? "owner",
+    });
+    return {
+      ok: true,
+      op: result.op,
+      key: result.fact.key,
+      value: result.fact.value,
+      scope: result.fact.scope,
+      ...(result.op === "supersede" && previous ? { previousValue: previous.value } : {}),
+    };
   });
 }
 
@@ -475,7 +512,7 @@ export async function exportMemories(
       }
     };
     const facts = select(
-      "SELECT key, value, statement, category, confidence, status, valid_from, valid_until, superseded_by, source FROM canonical_facts ORDER BY key, valid_from",
+      "SELECT key, value, statement, category, confidence, status, valid_from, valid_until, superseded_by, source, scope, evidence_ref FROM canonical_facts ORDER BY key, valid_from",
     );
     const preferences = select(
       "SELECT category, key, value, confidence, created_at, updated_at FROM user_preferences ORDER BY category, key",

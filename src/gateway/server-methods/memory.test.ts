@@ -103,14 +103,17 @@ describe("memory.retireFact / memory.unretireFact (PLAN-55 Phase 0)", () => {
       op: "strengthen",
       key: "infra.deploy_endpoint",
       value: "api.acme.com",
+      scope: "global",
     });
     expect(store.get("infra.deploy_endpoint")?.status).toBe("active");
     expect(store.get("infra.deploy_endpoint")?.source).toBe("owner");
     expect(listSuppressions(db)).toHaveLength(0);
-    // Outranks the agent from now on.
+    // Outranks the agent from now on (Phase 1: the agent's replacement is held
+    // for the owner instead of rejected outright; nothing is written either way).
     expect(
       store.pin({ key: "infra.deploy_endpoint", value: "api9.acme.com", source: "agent_pin" }).op,
-    ).toBe("rejected");
+    ).toBe("held");
+    expect(store.get("infra.deploy_endpoint")?.value).toBe("api.acme.com");
     expect(
       db.prepare(`SELECT event FROM memory_audit_log WHERE event = 'owner_pin_fact'`).all(),
     ).toHaveLength(1);
@@ -148,5 +151,58 @@ describe("memory.retireFact / memory.unretireFact (PLAN-55 Phase 0)", () => {
     expect(res.ok).toBe(false);
     expect(res.error?.code).toBe(ErrorCodes.UNAVAILABLE);
     expect(res.error?.message).toContain("memory is off");
+  });
+});
+
+describe("memory.facts / memory.pinFact scope and evidence (PLAN-55 Phase 1)", () => {
+  const facts = memoryHandlers["memory.facts"]!;
+  const pin = memoryHandlers["memory.pinFact"]!;
+
+  it("memory.facts returns scope (global by default) and evidenceRef", async () => {
+    const res = await call(facts, {});
+    expect(res.ok).toBe(true);
+    const list = (res.payload as { facts: Array<Record<string, unknown>> }).facts;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({
+      key: "infra.deploy_endpoint",
+      scope: "global",
+      evidenceRef: null,
+      status: "active",
+    });
+  });
+
+  it("memory.pinFact stores scope and evidence, and memory.facts shows them", async () => {
+    const res = await call(pin, {
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      scope: "project: Acme",
+      evidence: "session:/s/main.jsonl#L12",
+    });
+    expect(res).toMatchObject({
+      ok: true,
+      payload: {
+        ok: true,
+        op: "supersede",
+        key: "infra.deploy_endpoint",
+        value: "api2.acme.com",
+        scope: "project:acme",
+        previousValue: "api.acme.com",
+      },
+    });
+    const listed = (await call(facts, { status: "all" })).payload as {
+      facts: Array<Record<string, unknown>>;
+    };
+    expect(listed.facts.find((f) => f.key === "infra.deploy_endpoint")).toMatchObject({
+      value: "api2.acme.com",
+      scope: "project:acme",
+      evidenceRef: "session:/s/main.jsonl#L12",
+    });
+  });
+
+  it("memory.pinFact refuses a scope nothing could match", async () => {
+    const res = await call(pin, { key: "a.b", value: "v", scope: "team:x" });
+    expect(res.ok).toBe(false);
+    expect(res.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
+    expect(res.error?.message).toMatch(/scope must be/);
   });
 });

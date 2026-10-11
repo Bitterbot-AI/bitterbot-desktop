@@ -91,6 +91,19 @@ const MemorySchema = z
         z.unknown(),
       ])
       .optional(),
+    // PLAN-55 Phase 1: the per-turn correction capture and its confirmation
+    // line. Same typed-branch-or-unknown shape as curiosity (acceptance unchanged).
+    correction: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+            confirm: z.boolean().optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
   })
   // Memory subsystems (dream, consolidation, digest, requestFrequency, etc.)
   // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.

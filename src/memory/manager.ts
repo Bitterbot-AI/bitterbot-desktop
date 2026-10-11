@@ -24,6 +24,7 @@ import { CanonicalFactsStore } from "./canonical-facts.js";
 import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
+import { CORRECTION_LLM_LANE } from "./correction-capture.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import {
   insertNovelTargets,
@@ -109,6 +110,7 @@ import {
   type ListOptions as OwnerListOptions,
   listAuditLog as ownerListAuditLog,
   listPreferences as ownerListPreferences,
+  type OwnerPinInput,
   pinFact as ownerPinFact,
   retireFact as ownerRetireFact,
   unretireFact as ownerUnretireFact,
@@ -321,6 +323,10 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-50: dedicated session-extraction lane (attributed to memory/extraction). */
   private extractionLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  /** PLAN-55 Phase 1: the per-turn correction lane (same model as extraction, live, own feature). */
+  private correctionLlmCallFn:
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-18 Phase 1 — small fast LLM call for query decomposition. Lazy-built. */
   private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -479,6 +485,21 @@ export class MemoryIndexManager implements MemorySearchManager {
       log.debug(`schema re-creation after reindex failed: ${String(err)}`);
     }
     log.debug("propagated new DB handle and schemas to subsystems after reindex");
+  }
+
+  /**
+   * PLAN-55 Phase 1: the already-open manager for this agent, or null. Never
+   * builds one: a caller that only wants to read what an earlier tool call
+   * wrote (the confirmation line after a turn with no corrective shape) must
+   * not open the memory database on a turn that never touched memory.
+   */
+  static peek(params: { cfg: BitterbotConfig; agentId: string }): MemoryIndexManager | null {
+    const settings = resolveMemorySearchConfig(params.cfg, params.agentId);
+    if (!settings) {
+      return null;
+    }
+    const workspaceDir = resolveAgentWorkspaceDir(params.cfg, params.agentId);
+    return INDEX_CACHE.get(`${params.agentId}:${workspaceDir}:${JSON.stringify(settings)}`) ?? null;
   }
 
   static async get(params: {
@@ -2945,6 +2966,16 @@ export class MemoryIndexManager implements MemorySearchManager {
           // brief do not fit the 2048 lane default; truncated JSON never parsed.
           maxTokens: this.cfg.memory?.extraction?.maxTokens ?? 6144,
         });
+    // PLAN-55 Phase 1: the per-turn correction capture reuses the extraction
+    // model choice (memory.extraction.model, else the dream model, else the
+    // cheap default) on its own ledger lane, `memory/correction`, and never
+    // through the Batches API: the owner's reply is waiting on it.
+    this.correctionLlmCallFn = dreamCfg?.llmCall
+      ? builtLlmCall
+      : this.buildLlmCallFn(
+          this.cfg.memory?.extraction?.model ?? dreamCfg?.model ?? this.resolveCheapLlmSpec(),
+          CORRECTION_LLM_LANE,
+        );
     this.dreamEngine = new DreamEngine(this.db, engineCfg, synthesizeFn, embedBatchFn);
 
     if (this.hormonalManager) {
@@ -3802,7 +3833,7 @@ export class MemoryIndexManager implements MemorySearchManager {
        */
       batch?: boolean;
     },
-  ): ((prompt: string) => Promise<string>) | null {
+  ): ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
       return null;
@@ -3815,7 +3846,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const feature = opts?.feature ?? USAGE_FEATURES.memoryDream;
     const agentDir = resolveAgentDir(this.cfg, this.agentId);
 
-    return async (prompt: string): Promise<string> => {
+    return async (prompt: string, callOpts?: { signal?: AbortSignal }): Promise<string> => {
       // Lazy import to avoid circular deps and keep cold path fast.
       const { completeAttributed } = await import("../agents/complete-attributed.js");
       const { text } = await completeAttributed({
@@ -3828,6 +3859,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         feature,
         agentId: this.agentId,
         errorPrefix: `llm error (${modelSpec})`,
+        // PLAN-55 Phase 1 review (item 12): a caller on the reply path can
+        // cancel the call instead of abandoning it to bill and write later.
+        ...(callOpts?.signal ? { signal: callOpts.signal } : {}),
         // Token-efficiency item 3: latency-tolerant lanes (dream, extraction, discovery,
         // evolution judge/maintainer) go through the Batches API; completeAttributed falls
         // back to the live call on timeout or error and records batch rows at 50%.
@@ -4101,6 +4135,11 @@ export class MemoryIndexManager implements MemorySearchManager {
   private async runSessionExtraction(): Promise<void> {
     const extractionCfg = this.cfg.memory?.extraction;
     if (extractionCfg?.enabled === false) {
+      return;
+    }
+    // PLAN-55 Phase 1: incognito. Nothing is learned from transcripts.
+    if (this.cfg.session?.memory === "off") {
+      log.debug("session extraction skipped: session.memory is off");
       return;
     }
 
@@ -6081,13 +6120,35 @@ export class MemoryIndexManager implements MemorySearchManager {
     return await this.ownerChange("unretire-fact", () => ownerUnretireFact(this.db, store, key));
   }
 
-  /** PLAN-55 Phase 0: the `owner` tier's writer. */
-  async ownerPinFact(input: { key: string; value: string; category?: string; statement?: string }) {
+  /** PLAN-55 Phase 0: the `owner` tier's writer (Phase 1: scope and evidence ride along). */
+  async ownerPinFact(input: OwnerPinInput) {
     const store = this.canonicalFactsStore;
     if (!store) {
       throw new Error("the facts ledger is not available");
     }
     return await this.ownerChange("pin-fact", () => ownerPinFact(this.db, store, input));
+  }
+
+  /**
+   * PLAN-55 Phase 1: the cheap-model lane for the per-turn correction
+   * capture, or null when the pass is disabled or no model is configured.
+   */
+  correctionLlmCall():
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null {
+    if (this.cfg.memory?.correction?.enabled === false) {
+      return null;
+    }
+    // Built with the dream engine when that is on (an injected dream llmCall
+    // is reused); otherwise lazily here, so the pass does not depend on
+    // dreaming being enabled.
+    this.correctionLlmCallFn ??= this.buildLlmCallFn(
+      this.cfg.memory?.extraction?.model ??
+        this.cfg.memory?.dream?.model ??
+        this.resolveCheapLlmSpec(),
+      CORRECTION_LLM_LANE,
+    );
+    return this.correctionLlmCallFn;
   }
 
   /**

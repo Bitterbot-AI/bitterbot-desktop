@@ -159,6 +159,9 @@ export const memoryHandlers: GatewayRequestHandlers = {
           confidence: f.confidence,
           source: f.source,
           status: f.status,
+          // PLAN-55 Phase 1: where the fact applies and where it came from.
+          scope: f.scope,
+          evidenceRef: f.evidenceRef,
         })),
       });
     } catch (err) {
@@ -169,8 +172,9 @@ export const memoryHandlers: GatewayRequestHandlers = {
   /**
    * Pin a fact as the owner (PLAN-55 Phase 0): the `owner` tier's writer.
    * Supersedes any agent or background belief for the key and brings back a
-   * fact the owner had retired. `scope` is accepted and ignored until Phase 1
-   * adds the column.
+   * fact the owner had retired. Phase 1: `scope` (`global` | `project:<name>`
+   * | `person:<name>`) and `evidence` (a line ref or short quote) are stored
+   * on the fact.
    */
   "memory.pinFact": async ({ params, respond }) => {
     try {
@@ -180,6 +184,8 @@ export const memoryHandlers: GatewayRequestHandlers = {
         value: str(params.value),
         category: str(params.category) || undefined,
         statement: str(params.statement) || undefined,
+        scope: str(params.scope) || undefined,
+        evidenceRef: str(params.evidence) || undefined,
       });
       if (!result.ok) {
         respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, result.reason));

@@ -38,6 +38,14 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "memory.curiosity.research.enabled": true,
   // src/memory/manager.ts:3189, :3387 — only `=== false` turns the curiosity engine off.
   "memory.curiosity.enabled": true,
+  // src/memory/correction-capture.ts (resolveCorrectionSkipReason) — only `=== false` skips the
+  // per-turn correction capture; src/memory/manager.ts correctionLlmCall() returns null then.
+  "memory.correction.enabled": true,
+  // src/memory/correction-capture.ts (runCorrectionCapture) — `confirm !== false` appends the line.
+  "memory.correction.confirm": true,
+  // src/memory/correction-capture.ts, src/memory/manager.ts runSessionExtraction,
+  // src/memory/manager-sync-ops.ts syncSessionFiles — only `=== "off"` keeps conversations out.
+  "session.memory": "on",
 
   // ---- load-time defaults (defaults.ts) that have no zod default ----
   // src/config/defaults.ts:504 (applyP2pDefaults).

@@ -58,11 +58,13 @@ describe("owner tier", () => {
     expect(store.pin({ key: KEY, value: "api.acme.com", source: "agent_pin" }).op).toBe("add");
     const owner = store.pin({ key: KEY, value: "api2.acme.com", source: "owner" });
     expect(owner.op).toBe("supersede");
+    // PLAN-55 Phase 1: the agent's attempt is held for the owner (a
+    // pending_supersede conflict) rather than rejected; nothing is written.
     const back = store.pin({ key: KEY, value: "api.acme.com", source: "agent_pin" });
-    expect(back.op).toBe("rejected");
+    expect(back.op).toBe("held");
     expect(store.get(KEY)?.value).toBe("api2.acme.com");
     expect(store.get(KEY)?.source).toBe("owner");
-    expect(conflicts().map((c) => c.kind)).toEqual(["tier_rejection"]);
+    expect(conflicts().map((c) => c.kind)).toEqual(["pending_supersede"]);
   });
 
   it("user_directive supersedes an agent pin exactly like owner", () => {
@@ -70,9 +72,7 @@ describe("owner tier", () => {
     expect(store.pin({ key: KEY, value: "api2.acme.com", source: "user_directive" }).op).toBe(
       "supersede",
     );
-    expect(store.pin({ key: KEY, value: "api3.acme.com", source: "agent_pin" }).op).toBe(
-      "rejected",
-    );
+    expect(store.pin({ key: KEY, value: "api3.acme.com", source: "agent_pin" }).op).toBe("held");
   });
 });
 
@@ -239,9 +239,9 @@ describe("review-round fixes", () => {
     expect(store.pin({ key: KEY, value: "victor", source: "agent_pin" }).op).toBe("rejected");
   });
 
-  it("a soft-retired agent_pin row is not a current belief either (extraction may replace it)", () => {
+  it("a soft-retired agent_pin row is not a current belief for extraction (decay-retired: the agent's own retire of a tier-2 row is held since Phase 1)", () => {
     store.pin({ key: KEY, value: "Victor", source: "agent_pin" });
-    store.retire(KEY, { reason: "agent" });
+    store.retire(KEY, { reason: "decay" });
     expect(store.pin({ key: KEY, value: "Vic", source: "extraction" }).op).toBe("supersede");
     expect(conflicts()).toEqual([]);
   });

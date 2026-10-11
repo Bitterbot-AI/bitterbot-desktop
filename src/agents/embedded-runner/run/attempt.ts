@@ -598,6 +598,7 @@ export async function runEmbeddedAttempt(
             config: params.config,
             agentId: sessionAgentId,
             promptMode,
+            workspaceDir: resolvedWorkspace,
           }).catch(() => undefined);
 
     // PLAN-34 Phase 2b: idle-research findings surface deterministically on
