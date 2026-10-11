@@ -319,11 +319,13 @@ jobs:
           v=$("$B" --version | tail -1)
           echo "bitterbot --version -> $v"
           echo "$v" | grep -qw "$VERSION"
-          # Plugin/boot log lines can precede the JSON on stdout.
-          "$B" update status --json | sed -n '/^{/,$p' > "$RUNNER_TEMP/update-status.json"
-          jq . "$RUNNER_TEMP/update-status.json"
-          [ "$(jq -r .update.installKind "$RUNNER_TEMP/update-status.json")" = "tarball" ]
-          [ "$(jq -r .channel.value "$RUNNER_TEMP/update-status.json")" = "stable" ]
+          # Same table assertions as the container smoke (`update status --json`
+          # is swallowed by the parent command's --json flag).
+          COLUMNS=200 "$B" update status > "$RUNNER_TEMP/update-status.txt"
+          cat "$RUNNER_TEMP/update-status.txt"
+          grep -q "Install .*release tarball" "$RUNNER_TEMP/update-status.txt"
+          grep -q "Channel .*stable (default)" "$RUNNER_TEMP/update-status.txt"
+          if grep -qi "npm" "$RUNNER_TEMP/update-status.txt"; then exit 1; fi
           if "$B" update --yes > "$RUNNER_TEMP/update-run.txt" 2>&1; then
             echo "bitterbot update must refuse for a tarball install"; cat "$RUNNER_TEMP/update-run.txt"; exit 1
           fi
