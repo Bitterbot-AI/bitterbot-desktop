@@ -24,6 +24,7 @@ import { CanonicalFactsStore } from "./canonical-facts.js";
 import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
+import { CORRECTION_LLM_LANE } from "./correction-capture.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import {
   insertNovelTargets,
@@ -109,6 +110,7 @@ import {
   type ListOptions as OwnerListOptions,
   listAuditLog as ownerListAuditLog,
   listPreferences as ownerListPreferences,
+  type OwnerPinInput,
   pinFact as ownerPinFact,
   retireFact as ownerRetireFact,
   unretireFact as ownerUnretireFact,
@@ -321,6 +323,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-50: dedicated session-extraction lane (attributed to memory/extraction). */
   private extractionLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  /** PLAN-55 Phase 1: the per-turn correction lane (same model as extraction, live, own feature). */
+  private correctionLlmCallFn: ((prompt: string) => Promise<string>) | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-18 Phase 1 — small fast LLM call for query decomposition. Lazy-built. */
   private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -2945,6 +2949,16 @@ export class MemoryIndexManager implements MemorySearchManager {
           // brief do not fit the 2048 lane default; truncated JSON never parsed.
           maxTokens: this.cfg.memory?.extraction?.maxTokens ?? 6144,
         });
+    // PLAN-55 Phase 1: the per-turn correction capture reuses the extraction
+    // model choice (memory.extraction.model, else the dream model, else the
+    // cheap default) on its own ledger lane, `memory/correction`, and never
+    // through the Batches API: the owner's reply is waiting on it.
+    this.correctionLlmCallFn = dreamCfg?.llmCall
+      ? builtLlmCall
+      : this.buildLlmCallFn(
+          this.cfg.memory?.extraction?.model ?? dreamCfg?.model ?? this.resolveCheapLlmSpec(),
+          CORRECTION_LLM_LANE,
+        );
     this.dreamEngine = new DreamEngine(this.db, engineCfg, synthesizeFn, embedBatchFn);
 
     if (this.hormonalManager) {
@@ -4101,6 +4115,11 @@ export class MemoryIndexManager implements MemorySearchManager {
   private async runSessionExtraction(): Promise<void> {
     const extractionCfg = this.cfg.memory?.extraction;
     if (extractionCfg?.enabled === false) {
+      return;
+    }
+    // PLAN-55 Phase 1: incognito. Nothing is learned from transcripts.
+    if (this.cfg.session?.memory === "off") {
+      log.debug("session extraction skipped: session.memory is off");
       return;
     }
 
@@ -6081,13 +6100,33 @@ export class MemoryIndexManager implements MemorySearchManager {
     return await this.ownerChange("unretire-fact", () => ownerUnretireFact(this.db, store, key));
   }
 
-  /** PLAN-55 Phase 0: the `owner` tier's writer. */
-  async ownerPinFact(input: { key: string; value: string; category?: string; statement?: string }) {
+  /** PLAN-55 Phase 0: the `owner` tier's writer (Phase 1: scope and evidence ride along). */
+  async ownerPinFact(input: OwnerPinInput) {
     const store = this.canonicalFactsStore;
     if (!store) {
       throw new Error("the facts ledger is not available");
     }
     return await this.ownerChange("pin-fact", () => ownerPinFact(this.db, store, input));
+  }
+
+  /**
+   * PLAN-55 Phase 1: the cheap-model lane for the per-turn correction
+   * capture, or null when the pass is disabled or no model is configured.
+   */
+  correctionLlmCall(): ((prompt: string) => Promise<string>) | null {
+    if (this.cfg.memory?.correction?.enabled === false) {
+      return null;
+    }
+    // Built with the dream engine when that is on (an injected dream llmCall
+    // is reused); otherwise lazily here, so the pass does not depend on
+    // dreaming being enabled.
+    this.correctionLlmCallFn ??= this.buildLlmCallFn(
+      this.cfg.memory?.extraction?.model ??
+        this.cfg.memory?.dream?.model ??
+        this.resolveCheapLlmSpec(),
+      CORRECTION_LLM_LANE,
+    );
+    return this.correctionLlmCallFn;
   }
 
   /**

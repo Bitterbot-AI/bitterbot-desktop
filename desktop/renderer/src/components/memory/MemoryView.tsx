@@ -27,7 +27,17 @@ type Fact = {
   category: string;
   source: string;
   status?: string;
+  /** PLAN-55 Phase 1: `global` | `project:<name>` | `person:<name>`. */
+  scope?: string;
 };
+
+/** The chip text for a fact's scope, or null for global (no chip). */
+export function describeScope(scope: string | undefined | null): string | null {
+  if (!scope || scope === "global") return null;
+  if (scope.startsWith("project:")) return `project ${scope.slice("project:".length)}`;
+  if (scope.startsWith("person:")) return `about ${scope.slice("person:".length)}`;
+  return scope;
+}
 type Preference = { category: string; key: string; value: string };
 type AuditEntry = { id: string; event: string; actor: string; timestamp: number };
 
@@ -352,7 +362,17 @@ export function MemoryView() {
           <ul className="space-y-1">
             {facts.map((f) => (
               <li key={f.key} className="flex items-center gap-3 text-sm">
-                <span className="flex-1 break-words">{f.statement || `${f.key}: ${f.value}`}</span>
+                <span className="flex-1 break-words">
+                  {f.statement || `${f.key}: ${f.value}`}
+                  {describeScope(f.scope) ? (
+                    <span
+                      className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                      title="Where this fact applies"
+                    >
+                      {describeScope(f.scope)}
+                    </span>
+                  ) : null}
+                </span>
                 <button
                   onClick={() =>
                     void request("memory.retireFact", { key: f.key })

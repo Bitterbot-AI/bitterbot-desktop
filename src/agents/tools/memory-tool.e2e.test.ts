@@ -212,3 +212,94 @@ describe("memory tools for a guest (PLAN-53 G2)", () => {
     expect(stubManager.guestSearch).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * PLAN-55 Phase 1: memory_pin carries evidence and scope, and an agent pin
+ * that would replace a tier >= 2 belief is held, not written.
+ */
+describe("memory_pin evidence, scope and held supersedes (PLAN-55 Phase 1)", () => {
+  const cfg = { agents: { list: [{ id: "main", default: true }] } };
+  let store: import("../../memory/canonical-facts.js").CanonicalFactsStore;
+
+  beforeEach(async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const { ensureMemoryIndexSchema } = await import("../../memory/memory-schema.js");
+    const { CanonicalFactsStore } = await import("../../memory/canonical-facts.js");
+    const db = new DatabaseSync(":memory:");
+    ensureMemoryIndexSchema({
+      db,
+      embeddingCacheTable: "embedding_cache",
+      ftsTable: "chunks_fts",
+      ftsEnabled: false,
+    });
+    store = new CanonicalFactsStore(db);
+    (stubManager as unknown as { canonicalFacts?: () => unknown }).canonicalFacts = () => store;
+  });
+
+  it("stores evidence and scope on the fact and lists them", async () => {
+    const tool = createMemoryPinTool({ config: cfg })!;
+    const res = await tool.execute("p1", {
+      action: "pin",
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      evidence: "no, the deploy endpoint is api2.acme.com",
+      scope: "project:Acme",
+    });
+    expect(res.details).toMatchObject({ ok: true, op: "add" });
+    expect(store.get("infra.deploy_endpoint")).toMatchObject({
+      source: "agent_pin",
+      scope: "project:acme",
+      evidenceRef: "no, the deploy endpoint is api2.acme.com",
+    });
+    const listed = await tool.execute("p2", { action: "list" });
+    expect((listed.details as { facts: Array<Record<string, unknown>> }).facts[0]).toMatchObject({
+      key: "infra.deploy_endpoint",
+      scope: "project:acme",
+      evidence: "no, the deploy endpoint is api2.acme.com",
+    });
+  });
+
+  it("refuses a scope nothing could match", async () => {
+    const tool = createMemoryPinTool({ config: cfg })!;
+    const res = await tool.execute("p3", {
+      action: "pin",
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      scope: "team:x",
+    });
+    expect(res.details).toMatchObject({ ok: false, op: "rejected" });
+    expect((res.details as { reason: string }).reason).toMatch(/scope must be/);
+  });
+
+  it("holds a replacement of the owner's (or its own earlier) belief and says so", async () => {
+    store.pin({ key: "identity.user.name", value: "Victor", source: "owner" });
+    const tool = createMemoryPinTool({ config: cfg })!;
+    const res = await tool.execute("p4", {
+      action: "pin",
+      key: "identity.user.name",
+      value: "Admin",
+      evidence: "the user said so",
+    });
+    expect(res.details).toEqual({
+      ok: false,
+      held: true,
+      op: "held",
+      reason: expect.stringMatching(/held for the owner's confirmation/),
+      current: { key: "identity.user.name", value: "Victor", source: "owner" },
+      proposedValue: "Admin",
+    });
+    expect(store.get("identity.user.name")?.value).toBe("Victor");
+    expect(store.listPendingSupersedes()).toMatchObject([
+      { key: "identity.user.name", currentValue: "Victor", proposedValue: "Admin" },
+    ]);
+    // Its own earlier pin is protected the same way.
+    await tool.execute("p5", { action: "pin", key: "preference.editor", value: "vim" });
+    const again = await tool.execute("p6", {
+      action: "pin",
+      key: "preference.editor",
+      value: "emacs",
+    });
+    expect(again.details).toMatchObject({ ok: false, held: true });
+    expect(store.get("preference.editor")?.value).toBe("vim");
+  });
+});

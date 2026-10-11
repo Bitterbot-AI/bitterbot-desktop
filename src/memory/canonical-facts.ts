@@ -143,6 +143,20 @@ export type CanonicalFact = {
    * be displayed and scored (hard-capped) without moving confidence.
    */
   corroborationCount: number;
+  /**
+   * PLAN-55 Phase 1: where the fact applies. `global` (default) renders in
+   * every prompt; `project:<name>` only when the active workspace is that
+   * project; `person:<name>` renders everywhere for now (per-person
+   * routing is a later phase). See normalizeCanonicalScope().
+   */
+  scope: string;
+  /**
+   * PLAN-55 Phase 1: the line the fact was taken from (`session:<path>#L<n>`
+   * for the correction capture and the owner's pin) or a short quote the
+   * agent's memory_pin cited. Display and audit only: never trusted for
+   * tier decisions (the per-turn pass re-derives what the owner said).
+   */
+  evidenceRef: string | null;
 };
 
 export type PinInput = {
@@ -154,11 +168,23 @@ export type PinInput = {
   confidence?: number;
   source: CanonicalSource;
   evidenceChunkIds?: string[];
+  /** PLAN-55 Phase 1: `global` | `project:<name>` | `person:<name>`; default `global`. */
+  scope?: string;
+  /** PLAN-55 Phase 1: session line ref or short quote; stored, never trusted. */
+  evidenceRef?: string;
 };
 
 export type PinResult =
   | { op: "add" | "strengthen" | "supersede"; fact: CanonicalFact }
-  | { op: "rejected"; reason: string };
+  | { op: "rejected"; reason: string }
+  /**
+   * PLAN-55 Phase 1: the agent (tier `agent_pin`) tried to replace a belief
+   * written at tier >= 2 (its own earlier pin, or the owner's). Nothing is
+   * written; a `pending_supersede` conflict records old -> new so the owner
+   * can confirm it (the confirmation line says so, the conflict sweep asks
+   * "which is current?"). Diff-before-confirm and one-tap apply are Phase 2.
+   */
+  | { op: "held"; reason: string; fact: CanonicalFact; proposedValue: string };
 
 /**
  * PLAN-33 Phase 4 — one ledger-first hit from CanonicalFactsStore.lookup().
@@ -262,6 +288,8 @@ type Row = {
   evidence_chunk_ids: string;
   status: string;
   corroboration_count?: number | null;
+  scope?: string | null;
+  evidence_ref?: string | null;
 };
 
 function rowToFact(row: Row): CanonicalFact {
@@ -293,7 +321,62 @@ function rowToFact(row: Row): CanonicalFact {
     evidenceChunkIds: evidence,
     status: row.status as CanonicalFact["status"],
     corroborationCount: row.corroboration_count ?? 0,
+    scope: normalizeCanonicalScope(row.scope ?? "global") ?? "global",
+    evidenceRef: typeof row.evidence_ref === "string" && row.evidence_ref ? row.evidence_ref : null,
   };
+}
+
+/** PLAN-55 Phase 1 (D4): the first-cut scope model, a string on the fact. */
+export const CANONICAL_SCOPE_GLOBAL = "global";
+const SCOPE_NAME_RX = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const MAX_EVIDENCE_REF_CHARS = 300;
+
+/** Slug form of a project or person name for a scope: lowercase, spaces to `-`. */
+export function normalizeScopeName(raw: string): string | null {
+  const slug = raw
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9._-]/g, "");
+  return SCOPE_NAME_RX.test(slug) ? slug : null;
+}
+
+/**
+ * Normalise a scope string: `global`, `project:<name>` or `person:<name>`
+ * (name slugified). Empty/undefined is `global`; anything else is null so a
+ * caller can reject it instead of storing a scope nothing will ever match.
+ */
+export function normalizeCanonicalScope(raw: string | undefined | null): string | null {
+  const text = (raw ?? "").trim().toLowerCase();
+  if (!text || text === CANONICAL_SCOPE_GLOBAL) {
+    return CANONICAL_SCOPE_GLOBAL;
+  }
+  const m = /^(project|person)\s*:\s*(.+)$/.exec(text);
+  if (!m) {
+    return null;
+  }
+  const name = normalizeScopeName(m[2] ?? "");
+  return name ? `${m[1]}:${name}` : null;
+}
+
+/**
+ * Does a fact with this scope belong in a prompt for `activeProject`?
+ * Global and person-scoped facts always do; a project-scoped fact only
+ * when the active project is known and matches. With no project known
+ * (no workspace, or the default workspace) project facts stay out, which
+ * is the safe side: a correction made inside project A never leaks into
+ * an unrelated chat.
+ */
+export function isCanonicalFactVisibleInScope(
+  scope: string,
+  activeProject: string | undefined | null,
+): boolean {
+  const normalized = normalizeCanonicalScope(scope) ?? CANONICAL_SCOPE_GLOBAL;
+  if (normalized === CANONICAL_SCOPE_GLOBAL || normalized.startsWith("person:")) {
+    return true;
+  }
+  const project = activeProject ? normalizeScopeName(activeProject) : null;
+  return project !== null && normalized === `project:${project}`;
 }
 
 /** Normalize a raw key into ledger slug form; null when unusable. */
@@ -581,6 +664,18 @@ export class CanonicalFactsStore {
     const confidence = Math.max(0.05, Math.min(1, input.confidence ?? 0.7));
     const evidence = JSON.stringify(input.evidenceChunkIds ?? []);
     const now = Date.now();
+    // PLAN-55 Phase 1: a scope nothing could ever match is a rejected write,
+    // not a silently global fact.
+    const scope = normalizeCanonicalScope(input.scope);
+    if (!scope) {
+      return {
+        op: "rejected",
+        reason: `scope must be "global", "project:<name>" or "person:<name>" (got "${String(input.scope)}")`,
+      };
+    }
+    const evidenceRef = input.evidenceRef?.trim()
+      ? input.evidenceRef.trim().replace(/\s+/g, " ").slice(0, MAX_EVIDENCE_REF_CHARS)
+      : null;
 
     const transientReason = rejectBackgroundTransient(input.source, slug, value, category);
     if (transientReason) {
@@ -650,8 +745,8 @@ export class CanonicalFactsStore {
           `INSERT INTO canonical_facts
              (id, key, value, statement, category, confidence, mention_count,
               first_seen_at, last_confirmed_at, valid_from, valid_until,
-              superseded_by, source, evidence_chunk_ids, status)
-           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL, NULL, ?, ?, 'active')`,
+              superseded_by, source, evidence_chunk_ids, status, scope, evidence_ref)
+           VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL, NULL, ?, ?, 'active', ?, ?)`,
         )
         .run(
           id,
@@ -665,10 +760,12 @@ export class CanonicalFactsStore {
           now,
           input.source,
           evidence,
+          scope,
+          evidenceRef,
         );
       const fact = this.get(slug);
       lifted();
-      log.info(`canonical ADD: [${slug}] (${input.source})`);
+      log.info(`canonical ADD: [${slug}] (${input.source}, scope ${scope})`);
       return { op: "add", fact: fact! };
     }
 
@@ -722,6 +819,14 @@ export class CanonicalFactsStore {
       // fact the agent can no longer supersede, not a tier-1 row with an
       // extra mention.
       const source = tier > canonicalSourceTier(current.source) ? input.source : current.source;
+      // PLAN-55 Phase 1: a restatement from an equal-or-higher tier may move
+      // the scope (the owner saying "everywhere" re-pins the value as
+      // global); a lower tier cannot narrow or widen what a higher tier set.
+      // The newest evidence wins when one is given.
+      const nextScope =
+        input.scope !== undefined && tier >= canonicalSourceTier(current.source)
+          ? scope
+          : current.scope;
       this.db
         .prepare(
           `UPDATE canonical_facts
@@ -733,7 +838,9 @@ export class CanonicalFactsStore {
                   source = ?,
                   status = 'active',
                   staleness_asked_count = 0,
-                  last_staleness_ask_at = NULL
+                  last_staleness_ask_at = NULL,
+                  scope = ?,
+                  evidence_ref = COALESCE(?, evidence_ref)
             WHERE id = ?`,
         )
         .run(
@@ -742,6 +849,8 @@ export class CanonicalFactsStore {
           input.statement?.trim() ? statement : current.statement,
           mergedEvidence,
           source,
+          nextScope,
+          evidenceRef,
           current.id,
         );
       lifted();
@@ -763,6 +872,27 @@ export class CanonicalFactsStore {
     // with `superseded` on the old row (history keeps it); unretire() then
     // has nothing to lift, by design.
     const currentTier = current.status === "active" ? canonicalSourceTier(current.source) : 0;
+    // PLAN-55 Phase 1: the agent's own pin never silently replaces a
+    // deliberate belief (its earlier pin, or the owner's). The write is held
+    // and recorded as a pending_supersede conflict: the reply's confirmation
+    // line names it and the conflict sweep asks the owner which is current.
+    // Research input (PLAN-55 §3.2): Gemini's delayed-invocation exploit
+    // worked because the user confirmed without seeing the diff.
+    if (input.source === "agent_pin" && currentTier >= 2) {
+      log.info(
+        `canonical HELD (pending owner confirmation): [${slug}] agent_pin proposed ` +
+          `"${value.slice(0, 40)}" against ${current.source} "${current.value.slice(0, 40)}"`,
+      );
+      this.recordConflict("pending_supersede", slug, current, value, input.source, now);
+      return {
+        op: "held",
+        reason:
+          `"${slug}" is currently "${current.value}" (set by ${current.source}); replacing it ` +
+          `with "${value}" is held for the owner's confirmation`,
+        fact: current,
+        proposedValue: value,
+      };
+    }
     if (tier < currentTier) {
       log.info(
         `canonical CONFLICT (kept current): [${slug}] ${input.source} proposed ` +
@@ -794,15 +924,32 @@ export class CanonicalFactsStore {
           WHERE id = ?`,
       )
       .run(now, id, current.id);
+    // A correction that names no scope keeps the scope of the belief it
+    // replaces: "no, the endpoint is X" inside project A stays project A.
+    const nextScope = input.scope !== undefined ? scope : current.scope;
     this.db
       .prepare(
         `INSERT INTO canonical_facts
            (id, key, value, statement, category, confidence, mention_count,
             first_seen_at, last_confirmed_at, valid_from, valid_until,
-            superseded_by, source, evidence_chunk_ids, status)
-         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL, NULL, ?, ?, 'active')`,
+            superseded_by, source, evidence_chunk_ids, status, scope, evidence_ref)
+         VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NULL, NULL, ?, ?, 'active', ?, ?)`,
       )
-      .run(id, slug, value, statement, category, confidence, now, now, now, input.source, evidence);
+      .run(
+        id,
+        slug,
+        value,
+        statement,
+        category,
+        confidence,
+        now,
+        now,
+        now,
+        input.source,
+        evidence,
+        nextScope,
+        evidenceRef,
+      );
     lifted();
     log.info(
       `canonical SUPERSEDE: [${slug}] "${current.value.slice(0, 40)}" -> "${value.slice(0, 40)}"`,
@@ -819,7 +966,7 @@ export class CanonicalFactsStore {
    * table).
    */
   private recordConflict(
-    kind: "tier_rejection" | "rapid_supersede" | "owner_retired",
+    kind: "tier_rejection" | "rapid_supersede" | "owner_retired" | "pending_supersede",
     key: string,
     current: CanonicalFact,
     proposedValue: string,
@@ -828,9 +975,24 @@ export class CanonicalFactsStore {
   ): void {
     try {
       const pending = this.db
-        .prepare(`SELECT 1 FROM canonical_conflicts WHERE key = ? AND consumed_at IS NULL LIMIT 1`)
-        .get(key);
+        .prepare(
+          `SELECT id, kind FROM canonical_conflicts WHERE key = ? AND consumed_at IS NULL LIMIT 1`,
+        )
+        .get(key) as { id: string; kind: string } | undefined;
       if (pending) {
+        // PLAN-55 Phase 1: a held agent supersede is refreshed in place so the
+        // confirmation line reports THIS turn's attempt (latest proposed value,
+        // created_at = now) while the table still holds one row per key.
+        if (kind === "pending_supersede" && pending.kind === "pending_supersede") {
+          this.db
+            .prepare(
+              `UPDATE canonical_conflicts
+                  SET proposed_value = ?, proposed_source = ?, current_value = ?,
+                      current_source = ?, created_at = ?
+                WHERE id = ?`,
+            )
+            .run(proposedValue, proposedSource, current.value, current.source, now, pending.id);
+        }
         return;
       }
       this.db
@@ -963,6 +1125,44 @@ export class CanonicalFactsStore {
     return retired;
   }
 
+  /**
+   * PLAN-55 Phase 1: agent supersedes held for the owner (unconsumed
+   * `pending_supersede` conflicts), newest first, optionally only those
+   * recorded since `since`. The reply's confirmation line reads this.
+   */
+  listPendingSupersedes(opts?: { since?: number; limit?: number }): Array<{
+    id: string;
+    key: string;
+    currentValue: string;
+    proposedValue: string;
+    createdAt: number;
+  }> {
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT id, key, current_value, proposed_value, created_at FROM canonical_conflicts
+            WHERE kind = 'pending_supersede' AND consumed_at IS NULL AND created_at >= ?
+            ORDER BY created_at DESC LIMIT ?`,
+        )
+        .all(opts?.since ?? 0, Math.max(1, opts?.limit ?? 20)) as unknown as Array<{
+        id: string;
+        key: string;
+        current_value: string;
+        proposed_value: string;
+        created_at: number;
+      }>;
+      return rows.map((r) => ({
+        id: r.id,
+        key: r.key,
+        currentValue: r.current_value,
+        proposedValue: r.proposed_value,
+        createdAt: r.created_at,
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   /** Count of active (injectable) facts. */
   activeCount(): number {
     const row = this.db
@@ -1034,14 +1234,22 @@ export class CanonicalFactsStore {
    * by promotion score and truncated only by the whole-fact token budget
    * (a fact is included fully or not at all; never mid-sentence).
    */
-  renderBlock(opts?: { categories?: string[]; now?: number }): string | undefined {
+  renderBlock(opts?: {
+    categories?: string[];
+    now?: number;
+    /**
+     * PLAN-55 Phase 1: the active project (workspace basename). Project-scoped
+     * facts render only when it matches; undefined means none of them do.
+     */
+    activeProject?: string | null;
+  }): string | undefined {
     const now = opts?.now ?? Date.now();
     // Promotion order decides which facts survive the budget; the surviving
     // lines are then sorted by key so the block only moves when a fact is
     // added, retired or reworded (cache-prefix stability).
-    const facts = this.listActive({ categories: opts?.categories, now }).filter(
-      isRenderableCanonicalFact,
-    );
+    const facts = this.listActive({ categories: opts?.categories, now })
+      .filter(isRenderableCanonicalFact)
+      .filter((fact) => isCanonicalFactVisibleInScope(fact.scope, opts?.activeProject));
     if (facts.length === 0) {
       return undefined;
     }

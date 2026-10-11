@@ -14,7 +14,9 @@ import {
   CANONICAL_RENDER_MAX_CHARS,
   CanonicalFactsStore,
   canonicalPromotionScore,
+  isCanonicalFactVisibleInScope,
   normalizeCanonicalKey,
+  normalizeCanonicalScope,
 } from "./canonical-facts.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 
@@ -98,10 +100,12 @@ describe("CanonicalFactsStore reconcile verbs", () => {
 
   it("SUPERSEDE on contradiction — old belief keeps its validity window", () => {
     store.pin({ key: "project.repo", value: "VGIL77/old-repo", source: "agent_pin" });
+    // PLAN-55 Phase 1: an agent pin over a tier >= 2 belief is held, so the
+    // deliberate supersede here comes from the owner.
     const result = store.pin({
       key: "project.repo",
       value: "Bitterbot-AI/bitterbot-desktop",
-      source: "agent_pin",
+      source: "owner",
     });
     expect(result.op).toBe("supersede");
     const current = store.get("project.repo");
@@ -699,7 +703,7 @@ describe("CanonicalFactsStore.lookup — PLAN-33 Phase 4 ledger-first hits", () 
     store.retire("identity.user-name");
     expect(store.lookup("identity.user-name")).toEqual([]);
     // Superseded value is not matchable; only the current belief is.
-    store.pin({ key: "project.repo", value: "VGIL77/fork", source: "agent_pin" });
+    store.pin({ key: "project.repo", value: "VGIL77/fork", source: "owner" });
     expect(store.lookup("github.com/Bitterbot-AI/bitterbot-desktop")).toEqual([]);
     expect(store.lookup("VGIL77/fork")[0]?.fact.value).toBe("VGIL77/fork");
   });
@@ -795,5 +799,214 @@ describe("staleness ask budget resets on re-confirmation", () => {
     const row = budgetRow("identity.user.name");
     expect(row.staleness_asked_count).toBe(0);
     expect(row.status).toBe("active");
+  });
+});
+
+/**
+ * PLAN-55 Phase 1: scope and evidence on the fact, and the held agent
+ * supersede (an agent pin never silently replaces a tier >= 2 belief).
+ */
+describe("PLAN-55 Phase 1: scope, evidence_ref, held supersede", () => {
+  let db: DatabaseSync;
+  let store: CanonicalFactsStore;
+
+  beforeEach(() => {
+    db = makeDb();
+    store = new CanonicalFactsStore(db);
+  });
+
+  it("migration v77 adds scope (default global) and evidence_ref (nullable)", () => {
+    const cols = (
+      db.prepare(`PRAGMA table_info(canonical_facts)`).all() as Array<{
+        name: string;
+        dflt_value: string | null;
+        notnull: number;
+      }>
+    ).reduce<Record<string, { dflt: string | null; notnull: number }>>((acc, c) => {
+      acc[c.name] = { dflt: c.dflt_value, notnull: c.notnull };
+      return acc;
+    }, {});
+    expect(cols.scope).toEqual({ dflt: "'global'", notnull: 1 });
+    expect(cols.evidence_ref).toEqual({ dflt: null, notnull: 0 });
+  });
+
+  it("normalizes scopes and rejects shapes nothing could match", () => {
+    expect(normalizeCanonicalScope(undefined)).toBe("global");
+    expect(normalizeCanonicalScope("")).toBe("global");
+    expect(normalizeCanonicalScope(" Global ")).toBe("global");
+    expect(normalizeCanonicalScope("project: Acme Corp")).toBe("project:acme-corp");
+    expect(normalizeCanonicalScope("person:Victor")).toBe("person:victor");
+    expect(normalizeCanonicalScope("team:x")).toBeNull();
+    expect(normalizeCanonicalScope("project:")).toBeNull();
+    expect(normalizeCanonicalScope("project:!!!")).toBeNull();
+    expect(store.pin({ key: "a.b", value: "v", source: "owner", scope: "team:x" }).op).toBe(
+      "rejected",
+    );
+  });
+
+  it("stores scope and evidence_ref on ADD and SUPERSEDE, keeps scope when a correction names none", () => {
+    const added = store.pin({
+      key: "infra.deploy_endpoint",
+      value: "api.acme.com",
+      source: "extraction",
+      scope: "project:acme",
+      evidenceRef: "session:/s/a.jsonl#L4",
+    });
+    expect(added.op).toBe("add");
+    expect(store.get("infra.deploy_endpoint")).toMatchObject({
+      scope: "project:acme",
+      evidenceRef: "session:/s/a.jsonl#L4",
+    });
+    const sup = store.pin({
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      source: "owner",
+      evidenceRef: "session:/s/a.jsonl#L9",
+    });
+    expect(sup.op).toBe("supersede");
+    expect(store.get("infra.deploy_endpoint")).toMatchObject({
+      value: "api2.acme.com",
+      scope: "project:acme",
+      evidenceRef: "session:/s/a.jsonl#L9",
+    });
+    // "everywhere": the owner re-pins the same value as global.
+    const widened = store.pin({
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      source: "owner",
+      scope: "global",
+    });
+    expect(widened.op).toBe("strengthen");
+    expect(store.get("infra.deploy_endpoint")?.scope).toBe("global");
+  });
+
+  it("a lower tier cannot move the scope a higher tier set; newest evidence wins", () => {
+    store.pin({
+      key: "project.repo",
+      value: "org/repo",
+      source: "owner",
+      scope: "project:acme",
+      evidenceRef: "session:/s/a.jsonl#L1",
+    });
+    const res = store.pin({
+      key: "project.repo",
+      value: "org/repo",
+      source: "extraction",
+      scope: "global",
+      evidenceRef: "session:/s/b.jsonl#L7",
+    });
+    expect(res.op).toBe("strengthen");
+    const fact = store.get("project.repo");
+    expect(fact?.scope).toBe("project:acme");
+    expect(fact?.evidenceRef).toBe("session:/s/b.jsonl#L7");
+    expect(fact?.source).toBe("owner");
+  });
+
+  it("holds an agent pin that would replace a tier >= 2 belief and records pending_supersede", () => {
+    store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "agent_pin" });
+    const held = store.pin({
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      source: "agent_pin",
+    });
+    expect(held.op).toBe("held");
+    if (held.op !== "held") {
+      throw new Error("unreachable");
+    }
+    expect(held.fact.value).toBe("api.acme.com");
+    expect(held.proposedValue).toBe("api2.acme.com");
+    // Nothing written: the current belief and the history are untouched.
+    expect(store.get("infra.deploy_endpoint")?.value).toBe("api.acme.com");
+    expect(store.history("infra.deploy_endpoint")).toHaveLength(1);
+    const conflicts = db
+      .prepare(`SELECT kind, current_value, proposed_value FROM canonical_conflicts WHERE key = ?`)
+      .all("infra.deploy_endpoint") as Array<{
+      kind: string;
+      current_value: string;
+      proposed_value: string;
+    }>;
+    expect(conflicts).toEqual([
+      { kind: "pending_supersede", current_value: "api.acme.com", proposed_value: "api2.acme.com" },
+    ]);
+    // The same holds against the owner's belief.
+    store.pin({ key: "identity.user.name", value: "Victor", source: "owner" });
+    expect(store.pin({ key: "identity.user.name", value: "Vic", source: "agent_pin" }).op).toBe(
+      "held",
+    );
+    // The owner is never held, and a same-value agent pin still strengthens.
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api3.acme.com", source: "owner" }).op,
+    ).toBe("supersede");
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api3.acme.com", source: "agent_pin" }).op,
+    ).toBe("strengthen");
+  });
+
+  it("a second held attempt on the same key refreshes the one pending row to the latest proposal", () => {
+    store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "owner" });
+    store.pin({ key: "infra.deploy_endpoint", value: "api2.acme.com", source: "agent_pin" });
+    const before = store.listPendingSupersedes()[0]!;
+    store.pin({ key: "infra.deploy_endpoint", value: "api3.acme.com", source: "agent_pin" });
+    const pending = store.listPendingSupersedes();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      id: before.id,
+      currentValue: "api.acme.com",
+      proposedValue: "api3.acme.com",
+    });
+    expect(pending[0]!.createdAt).toBeGreaterThanOrEqual(before.createdAt);
+    // `since` filters by the refreshed time.
+    expect(store.listPendingSupersedes({ since: pending[0]!.createdAt + 1 })).toEqual([]);
+  });
+
+  it("an agent pin still supersedes a tier <= 1 belief (extraction, seed)", () => {
+    store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "extraction" });
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api2.acme.com", source: "agent_pin" }).op,
+    ).toBe("supersede");
+  });
+
+  it("a retired tier-2 row guards nothing: the agent may replace it without a hold", () => {
+    store.pin({ key: "infra.deploy_endpoint", value: "api.acme.com", source: "agent_pin" });
+    store.retire("infra.deploy_endpoint", { reason: "agent" });
+    expect(
+      store.pin({ key: "infra.deploy_endpoint", value: "api2.acme.com", source: "agent_pin" }).op,
+    ).toBe("supersede");
+  });
+
+  it("renderBlock includes project-scoped facts only for the matching active project", () => {
+    store.pin({ key: "identity.user.name", value: "Victor", source: "owner" });
+    store.pin({
+      key: "infra.deploy_endpoint",
+      value: "api2.acme.com",
+      source: "owner",
+      scope: "project:Acme",
+    });
+    store.pin({
+      key: "relationship.alice.role",
+      value: "designer",
+      source: "owner",
+      scope: "person:alice",
+    });
+    const none = store.renderBlock() ?? "";
+    expect(none).toContain("[identity.user.name]");
+    expect(none).toContain("[relationship.alice.role]");
+    expect(none).not.toContain("[infra.deploy_endpoint]");
+    const other = store.renderBlock({ activeProject: "globex" }) ?? "";
+    expect(other).not.toContain("[infra.deploy_endpoint]");
+    const acme = store.renderBlock({ activeProject: "acme" }) ?? "";
+    expect(acme).toContain("[infra.deploy_endpoint] api2.acme.com");
+    // Name normalisation on both sides: "Acme" (pinned) matches "ACME" (workspace).
+    expect(store.renderBlock({ activeProject: "ACME" }) ?? "").toContain("[infra.deploy_endpoint]");
+  });
+
+  it("isCanonicalFactVisibleInScope: unknown scopes read as global, no project means no project facts", () => {
+    expect(isCanonicalFactVisibleInScope("global", undefined)).toBe(true);
+    expect(isCanonicalFactVisibleInScope("garbage", undefined)).toBe(true);
+    expect(isCanonicalFactVisibleInScope("person:bob", null)).toBe(true);
+    expect(isCanonicalFactVisibleInScope("project:acme", undefined)).toBe(false);
+    expect(isCanonicalFactVisibleInScope("project:acme", "")).toBe(false);
+    expect(isCanonicalFactVisibleInScope("project:acme", "acme")).toBe(true);
+    expect(isCanonicalFactVisibleInScope("project:acme", "Acme Corp")).toBe(false);
   });
 });

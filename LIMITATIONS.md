@@ -64,6 +64,16 @@ open an issue.
   agent's own pins. Memories indexed from files and transcripts are still
   read-only there, and forgetting a memory does not yet remove the facts,
   graph links or dream insights derived from it.
+- **Corrections are captured in direct owner chats only.** A correction you
+  state in chat is pinned at your authority before the next turn, with a
+  "Memory updated" line in the reply, but only in a first-party direct chat
+  with the owner, and only when the message has a corrective shape (the list
+  is in `docs/memory/controls.md`). Group chats, guests and scheduled runs
+  are left to the slower dream-time extractor. A fact's project scope is the
+  agent's workspace folder name; there is no project model yet, and
+  person-scoped facts are not yet routed per person. When the agent tries to
+  replace a fact you or it pinned, the change is held and you are told, but
+  there is no one-tap confirm or revert yet: restate the value to settle it.
 - **Changing the embedding provider, model or API key rebuilds the index.**
   Memories that come from files are re-embedded. Extracted facts, dream
   insights and notes are carried over as stored, not re-embedded with the new

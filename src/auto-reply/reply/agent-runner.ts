@@ -29,7 +29,7 @@ import {
   isAudioPayload,
   signalTypingIfNeeded,
 } from "./agent-runner-helpers.js";
-import { runMemoryFlushIfNeeded } from "./agent-runner-memory.js";
+import { runCorrectionCaptureAfterTurn, runMemoryFlushIfNeeded } from "./agent-runner-memory.js";
 import { buildReplyPayloads } from "./agent-runner-payloads.js";
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
@@ -508,6 +508,26 @@ export async function runReplyAgent(params: {
     }
     if (verboseEnabled && activeIsNewSession) {
       finalPayloads = [{ text: `🧭 New session: ${followupRun.run.sessionId}` }, ...finalPayloads];
+    }
+    // PLAN-55 Phase 1: capture what the owner corrected this turn and tell
+    // them, on the same footer path as the usage line (system-generated,
+    // never the model's words). Skipped for heartbeats, guests, non-owner
+    // and non-first-party sessions inside.
+    const memoryUpdatedLine = await runCorrectionCaptureAfterTurn({
+      cfg,
+      followupRun,
+      sessionKey,
+      commandBody,
+      replyText: replyPayloads
+        .map((p) => p.text ?? "")
+        .filter(Boolean)
+        .join("\n"),
+      isHeartbeat,
+      chatType: sessionCtx.ChatType,
+      runStartedAt,
+    });
+    if (memoryUpdatedLine) {
+      finalPayloads = appendUsageLine(finalPayloads, memoryUpdatedLine);
     }
     if (responseUsageLine) {
       finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);

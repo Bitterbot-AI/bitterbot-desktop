@@ -33,6 +33,8 @@ export const USAGE_FEATURES = {
   memoryDream: "memory/dream",
   memoryCuriosity: "memory/curiosity",
   memoryExtraction: "memory/extraction",
+  /** PLAN-55 Phase 1: the per-turn correction capture (one cheap call per corrective owner turn). */
+  memoryCorrection: "memory/correction",
   memoryProbe: "memory/probe",
   memoryEmbeddings: "memory/embeddings",
   memoryPlanner: "memory/planner",

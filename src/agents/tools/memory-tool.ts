@@ -33,6 +33,11 @@ const MemoryPinSchema = Type.Object({
   value: Type.Optional(Type.String()),
   statement: Type.Optional(Type.String()),
   category: Type.Optional(Type.String()),
+  // PLAN-55 Phase 1: where the fact came from (a short quote of the user's
+  // words or a session line ref) and where it applies. Stored on the fact
+  // for display and audit; never trusted for tier decisions.
+  evidence: Type.Optional(Type.String()),
+  scope: Type.Optional(Type.String()),
 });
 
 // PLAN-24 HORMA Phase 0: resolve an evidence_ref (surfaced on memory_search
@@ -277,7 +282,7 @@ export function createMemoryPinTool(options: {
     label: "Memory Pin",
     name: "memory_pin",
     description:
-      "Pin a canonical fact (exact key-value ground truth: repo names, endpoints, identities, standing decisions) into the always-injected ledger. Use when the user states a durable fact, corrects you on one, or says 'remember this'. Actions: pin {key, value, statement?, category?} (add/strengthen/supersede automatically), list (active facts), get {key} (current belief + history), retire {key} (stop injecting; kept for audit). Keys are dot-slugs like 'project.repo'; categories: identity|project|infra|preference|relationship.",
+      "Pin a canonical fact (exact key-value ground truth: repo names, endpoints, identities, standing decisions) into the always-injected ledger. THE tool for corrections and settled facts: use it when the user corrects you, states a durable fact, or says 'remember this'. Actions: pin {key, value, statement?, category?, evidence?, scope?} (add/strengthen/supersede automatically), list (active facts), get {key} (current belief + history), retire {key} (stop injecting; kept for audit). evidence = a short verbatim quote of the user's words. scope = 'global' (default), 'project:<name>' (only for that project) or 'person:<name>'. Replacing a fact you or the owner pinned earlier is held for the owner's confirmation (result.held). Keys are dot-slugs like 'project.repo'; categories: identity|project|infra|preference|relationship.",
     parameters: MemoryPinSchema,
     execute: async (_toolCallId, args) => {
       // A guest can neither read the owner's ledger nor write beliefs into it.
@@ -297,6 +302,8 @@ export function createMemoryPinTool(options: {
           const value = readStringParam(params, "value", { required: true });
           const statement = readStringParam(params, "statement");
           const category = readStringParam(params, "category");
+          const evidence = readStringParam(params, "evidence");
+          const scope = readStringParam(params, "scope");
           const result = store.pin({
             key: key ?? "",
             value: value ?? "",
@@ -304,7 +311,24 @@ export function createMemoryPinTool(options: {
             category: category ?? undefined,
             confidence: 0.95, // explicit pins carry user/agent intent
             source: "agent_pin",
+            scope: scope ?? undefined,
+            evidenceRef: evidence ?? undefined,
           });
+          if (result.op === "held") {
+            // PLAN-55 Phase 1: nothing was written; the owner decides.
+            return jsonResult({
+              ok: false,
+              held: true,
+              op: "held",
+              reason: result.reason,
+              current: {
+                key: result.fact.key,
+                value: result.fact.value,
+                source: result.fact.source,
+              },
+              proposedValue: result.proposedValue,
+            });
+          }
           return jsonResult(
             result.op === "rejected" ? { ok: false, ...result } : { ok: true, ...result },
           );
@@ -323,6 +347,8 @@ export function createMemoryPinTool(options: {
               mentionCount: f.mentionCount,
               lastConfirmedAt: f.lastConfirmedAt,
               source: f.source,
+              scope: f.scope,
+              evidence: f.evidenceRef,
             })),
           });
         }

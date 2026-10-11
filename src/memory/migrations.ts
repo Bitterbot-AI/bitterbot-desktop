@@ -38,7 +38,7 @@ export type Migration = {
   up: (db: DatabaseSync) => void;
 };
 
-const MIGRATIONS: Migration[] = [
+export const MIGRATIONS: Migration[] = [
   {
     version: 1,
     description: "Knowledge Crystal columns + indexes",
@@ -2649,6 +2649,31 @@ const MIGRATIONS: Migration[] = [
       );
       db.exec(
         `CREATE INDEX IF NOT EXISTS idx_memory_suppressions_kind ON memory_suppressions(kind)`,
+      );
+    },
+  },
+  {
+    version: 77,
+    description:
+      "PLAN-55 Phase 1 (2026-10-10): canonical_facts.scope ('global' | 'project:<name>' | " +
+      "'person:<name>', default 'global') decides where a fact is injected: project-scoped " +
+      "facts render only when the active workspace matches. canonical_facts.evidence_ref " +
+      "(nullable) is the session line ref or quote the correction capture, the owner's pin " +
+      "or the agent's memory_pin cited. Code-only in the same release: canonical_conflicts " +
+      "gains the 'pending_supersede' kind (an agent pin that would replace a tier >= 2 " +
+      "belief is held for the owner instead of written).",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'canonical_facts'`)
+        .get();
+      if (!has) {
+        return;
+      }
+      addColumnIfMissing(db, "canonical_facts", "scope", "TEXT NOT NULL DEFAULT 'global'");
+      addColumnIfMissing(db, "canonical_facts", "evidence_ref", "TEXT");
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_facts_scope ON canonical_facts(scope) ` +
+          `WHERE valid_until IS NULL`,
       );
     },
   },

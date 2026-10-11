@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js";
+import { resolveActiveProjectName } from "../../agents/canonical-facts-block.js";
 import { runEmbeddedPiAgent } from "../../agents/embedded.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
 import { isCliProvider } from "../../agents/model-selection.js";
@@ -12,6 +13,11 @@ import {
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
+import {
+  CORRECTION_CAPTURE_TIMEOUT_MS,
+  resolveCorrectionSkipReason,
+  runCorrectionCapture,
+} from "../../memory/correction-capture.js";
 import type { TemplateContext } from "../templating.js";
 import type { VerboseLevel } from "../thinking.js";
 import type { GetReplyOptions } from "../types.js";
@@ -202,4 +208,90 @@ export async function runMemoryFlushIfNeeded(params: {
   }
 
   return activeSessionEntry;
+}
+
+/**
+ * PLAN-55 Phase 1: the per-turn correction capture, on run completion of a
+ * first-party owner turn. Returns the one-line "Memory updated" confirmation
+ * to append to the reply, or null. Cheap gates run before the memory
+ * manager is touched; the whole pass is bounded by
+ * CORRECTION_CAPTURE_TIMEOUT_MS and never throws into the reply path.
+ */
+export async function runCorrectionCaptureAfterTurn(params: {
+  cfg: BitterbotConfig;
+  followupRun: FollowupRun;
+  sessionKey?: string;
+  commandBody: string;
+  replyText: string;
+  isHeartbeat: boolean;
+  chatType?: string;
+  runStartedAt: number;
+}): Promise<string | null> {
+  const run = params.followupRun.run;
+  const skipped = resolveCorrectionSkipReason({
+    cfg: params.cfg,
+    sessionKey: params.sessionKey ?? run.sessionKey,
+    senderIsOwner: run.senderIsOwner === true,
+    isHeartbeat: params.isHeartbeat,
+    userMessage: params.commandBody,
+  });
+  if (skipped) {
+    return null;
+  }
+  const work = (async (): Promise<string | null> => {
+    const { getMemorySearchManager } = await import("../../memory/index.js");
+    const { manager } = await getMemorySearchManager({ cfg: params.cfg, agentId: run.agentId });
+    const m = manager as unknown as
+      | {
+          canonicalFacts?: () =>
+            | import("../../memory/canonical-facts.js").CanonicalFactsStore
+            | null;
+          ownerPinFact?: (
+            input: import("../../memory/owner-controls.js").OwnerPinInput,
+          ) => Promise<import("../../memory/owner-controls.js").OwnerPinResult>;
+          correctionLlmCall?: () => ((prompt: string) => Promise<string>) | null;
+        }
+      | null
+      | undefined;
+    const store = m?.canonicalFacts?.() ?? null;
+    if (!store) {
+      return null;
+    }
+    const result = await runCorrectionCapture({
+      cfg: params.cfg,
+      sessionKey: params.sessionKey ?? run.sessionKey,
+      sessionFile: run.sessionFile,
+      activeProject: resolveActiveProjectName(run.workspaceDir),
+      userMessage: params.commandBody,
+      assistantReply: params.replyText,
+      senderIsOwner: run.senderIsOwner === true,
+      isHeartbeat: params.isHeartbeat,
+      chatType: params.chatType,
+      runStartedAt: params.runStartedAt,
+      store,
+      pinAsOwner: m?.ownerPinFact ? (input) => m.ownerPinFact!(input) : null,
+      llmCall: m?.correctionLlmCall?.() ?? null,
+    });
+    return result.line;
+  })();
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<string | null>((resolve) => {
+    timer = setTimeout(() => {
+      logVerbose("correction capture timed out; reply sent without a confirmation line");
+      resolve(null);
+    }, CORRECTION_CAPTURE_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } catch (err) {
+    logVerbose(`correction capture failed: ${String(err)}`);
+    return null;
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+    // A timed-out pass keeps running to completion in the background; its
+    // failure, if any, must not surface as an unhandled rejection.
+    void work.catch(() => null);
+  }
 }

@@ -1145,6 +1145,7 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
       rotateBytes: "10mb",
     },
     mainKey: "main", // legacy (runtime always uses "main")
+    memory: "on", // "off" = incognito: nothing from conversations is learned
     agentToAgent: { maxPingPongTurns: 5 },
     sendPolicy: {
       rules: [{ action: "deny", match: { channel: "discord", chatType: "group" } }],
@@ -1167,6 +1168,7 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
 - **`mainKey`**: legacy field. Runtime now always uses `"main"` for the main direct-chat bucket.
 - **`sendPolicy`**: match by `channel`, `chatType` (`direct|group|channel`, with legacy `dm` alias), `keyPrefix`, or `rawKeyPrefix`. First deny wins.
 - **`maintenance`**: `warn` warns the active session on eviction; `enforce` applies pruning and rotation.
+- **`memory`**: `"off"` keeps conversations out of memory: transcripts are not indexed, the session extractor does not read them, and corrections you state in chat are not captured (see [Your memory controls](/memory/controls)). Default `"on"`.
 
 </Accordion>
 

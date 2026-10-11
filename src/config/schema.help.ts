@@ -64,6 +64,12 @@ export const FIELD_HELP: Record<string, string> = {
   "memory.curiosity.research.maxPerDay":
     "How many questions the agent may research per day (default 10). Dopamine adds up to 2, cortisol removes up to 2.",
   "memory.curiosity.research.intervalMinutes": "Minutes between research passes (default 240).",
+  "memory.correction.enabled":
+    "After each of your turns whose message looks like a correction or a standing instruction, one cheap model call pins what you said as a settled fact at your authority (usage feature memory/correction). Off: corrections reach the facts ledger only when the agent pins them or when the dream-time extractor reads the transcript.",
+  "memory.correction.confirm":
+    'Append one "Memory updated: ..." line to the reply whenever a settled fact was written during the turn. Values are shown in direct chats only.',
+  "session.memory":
+    '"off" is incognito: conversation transcripts are not indexed into memory, the session extractor does not read them, and corrections are not captured. Replies still work. Default "on".',
   "memory.curiosity.research.strictEgress":
     "When true, no capitalized term from a question may appear in the outgoing search phrase, even a public one like libp2p; most technical questions then cannot be searched. Default false: public subjects the model declares pass, while the owner's name, people, organizations and projects from the knowledge graph, and copied fragments never do.",
   "tools.wallet.enabled":
