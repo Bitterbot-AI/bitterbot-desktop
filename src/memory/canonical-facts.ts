@@ -502,8 +502,14 @@ export class CanonicalFactsStore {
     if (!slug) {
       return [];
     }
+    // Newest first; when an ADD and its SUPERSEDE land in the same
+    // millisecond (fast machines, CI), the current row (open validity
+    // window) still sorts ahead of the row it replaced.
     const rows = this.db
-      .prepare(`SELECT * FROM canonical_facts WHERE key = ? ORDER BY valid_from DESC`)
+      .prepare(
+        `SELECT * FROM canonical_facts WHERE key = ?
+          ORDER BY valid_from DESC, (valid_until IS NULL) DESC, valid_until DESC`,
+      )
       .all(slug) as unknown as Row[];
     return rows.map(rowToFact);
   }

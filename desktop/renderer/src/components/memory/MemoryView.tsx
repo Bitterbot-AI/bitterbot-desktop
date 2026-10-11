@@ -366,7 +366,7 @@ export function MemoryView() {
                   {f.statement || `${f.key}: ${f.value}`}
                   {describeScope(f.scope) ? (
                     <span
-                      className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                      className="ml-2 rounded bg-muted px-1.5 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground"
                       title="Where this fact applies"
                     >
                       {describeScope(f.scope)}
