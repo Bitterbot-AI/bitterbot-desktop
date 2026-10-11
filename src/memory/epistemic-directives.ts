@@ -27,6 +27,7 @@ export type DirectiveType =
   | "knowledge_gap" // High GCCRF prediction error region
   | "low_confidence" // Entity with few evidence chunks
   | "stale_fact" // Relationship not reinforced recently
+  | "stale_reference" // PLAN-55: open tasks/briefs cite a value the owner corrected
   | "graph_bridge"; // PLAN-18: SAGE reader missed a chunk vector/FTS found
 
 /**
@@ -41,6 +42,7 @@ export const USER_ANSWERABLE_TYPES: ReadonlySet<DirectiveType> = new Set([
   "knowledge_gap",
   "low_confidence",
   "stale_fact",
+  "stale_reference",
 ]);
 
 /** A user-answerable question stops injecting after this many sessions. */

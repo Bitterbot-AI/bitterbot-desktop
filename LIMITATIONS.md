@@ -77,6 +77,18 @@ open an issue.
   you or it pinned, the change is held and you are told, but there is no
   one-tap confirm or revert yet: restate the value, or answer the "which is
   current?" question, to settle it.
+- **A correction propagates by text match, after the fact.** When a fact
+  changes, older memories, the matching learned preference, graph links,
+  unused prepared answers, open tasks and dream insights that state the old
+  value are updated or flagged, and the next `MEMORY.md` rewrite is told the
+  new value. The match is on the old value's exact wording next to a word
+  from the key (a paraphrase, or a mention without that word, is missed),
+  graph links follow only for keys on a short fixed list of relations, the
+  work per change is capped (200 memories, 20 graph links, 200 briefs and
+  tasks), memories indexed after the change are not checked against it, and
+  corrections made before this release are not propagated retroactively.
+  Superseded memories are ranked lower and tagged in the owner's search, not
+  hidden.
 - **`session.memory = "off"` gates the learners, not the agent.** It stops
   transcript indexing, the session extractor and the correction capture. It
   does not stop `memory_pin`, `working_memory_note`, the pre-compaction

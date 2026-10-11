@@ -21,6 +21,15 @@ import {
 } from "../security/external-content.js";
 import { registerTaskRewardHook } from "../tasks/judge.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
+import {
+  applySupersededMarks,
+  CANONICAL_CHANGED_EVENT,
+  CanonicalPropagation,
+  hasSupersessionMarks,
+  loadCanonicalSynthesisContext,
+  preserveOwnerSections,
+  stripOwnerSections,
+} from "./canonical-propagation.js";
 import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
@@ -178,6 +187,8 @@ import { scanForOpenLoops } from "./zeigarnik-effect.js";
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
+/** PLAN-55 Phase 2: extra results fetched while superseded marks exist. */
+const SUPERSEDED_OVERFETCH = 10;
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const BATCH_FAILURE_LIMIT = 2;
 
@@ -1135,6 +1146,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   );
   /** PLAN-33: the canonical facts ledger (null when disabled/failed). */
   private canonicalFactsStore: CanonicalFactsStore | null = null;
+  /** PLAN-55 Phase 2: canonical:changed consumers, run off the write path. */
+  private canonicalPropagation: CanonicalPropagation | null = null;
   /** PLAN-33: last canonical-block injection, for retrievalHealth. */
   private lastCanonicalInjection: { at: number; count: number } | null = null;
   /** PLAN-28 B2: persisted-trace sampling rate (env-tunable, 0 disables). */
@@ -1199,7 +1212,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
   ): Promise<MemorySearchResult[]> {
     const want = opts?.maxResults ?? this.settings.query.maxResults;
-    const results = await this.search(query, { ...opts, maxResults: want * 3 });
+    // PLAN-55 Phase 2: superseded tags carry ledger values; never for a guest.
+    const results = await this.search(query, {
+      ...opts,
+      maxResults: want * 3,
+      tagSuperseded: false,
+    });
     return filterGuestResults(this.db, results).slice(0, want);
   }
 
@@ -1213,15 +1231,30 @@ export class MemoryIndexManager implements MemorySearchManager {
       maxResults?: number;
       minScore?: number;
       sessionKey?: string;
+      /**
+       * PLAN-55 Phase 2: rank superseded results last and tag them with the
+       * ledger's current value. Owner searches only; guestSearch passes false.
+       */
+      tagSuperseded?: boolean;
     },
   ): Promise<MemorySearchResult[]> {
+    // PLAN-55 Phase 2: over-fetch while marks exist, so demoted results never
+    // take a slot a current one could fill.
+    const tagSuperseded =
+      opts?.tagSuperseded !== false &&
+      this.cfg.memory?.canonicalLedger?.enabled !== false &&
+      hasSupersessionMarks(this.db);
+    const want = opts?.maxResults ?? this.settings.query.maxResults;
+    const innerOpts = tagSuperseded
+      ? { ...opts, maxResults: want + Math.min(want, SUPERSEDED_OVERFETCH) }
+      : opts;
     // PLAN-28 B1: per-layer retrieval counts, filled by searchInner and attached
     // as span attributes + fed to the dead-wire detector / sampled trace below.
     const layers: SearchLayerCounts = emptySearchCounts();
     const results = await withSpanAttrs(
       "memory.search",
       async (setAttr) => {
-        const r = await this.searchInner(query, opts, layers);
+        const r = await this.searchInner(query, innerOpts, layers);
         setAttr("memory.vector_hits", layers.vectorHits);
         setAttr("memory.keyword_hits", layers.keywordHits);
         setAttr("memory.graph_hits", layers.graphHits);
@@ -1245,6 +1278,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       sampleRate: this.retrievalTraceRate,
     });
     this.attachEvidenceRefs(results);
+    if (tagSuperseded) {
+      applySupersededMarks(this.db, results);
+      results.splice(want);
+    }
     if (results.length === 0) {
       this.recordCoverageMiss(query);
     }
@@ -4913,6 +4950,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       networkIdentity,
       emotionalAnchors,
       userPreferences,
+      ...loadCanonicalSynthesisContext(this.db, this.canonicalFactsStore),
     };
 
     let newState: string;
@@ -4965,6 +5003,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       newState = buildHeuristicWorkingMemory(ctx);
       usedHeuristicFallback = true;
     }
+
+    // PLAN-55 Phase 2: owner-marked MEMORY.md blocks survive the rewrite
+    // verbatim, and the model can never add one: on the first synthesis the
+    // previous content (owner blocks included) is kept above the new state.
+    newState = isFirstSynthesis
+      ? stripOwnerSections(newState)
+      : preserveOwnerSections(oldState, newState);
 
     // Conservative first cycle: append below existing user content
     const finalContent = hasUserContent
@@ -6024,6 +6069,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         maxFacts: ledgerCfg?.maxFacts,
         budgetTokens: ledgerCfg?.budgetTokens,
       });
+      this.wireCanonicalPropagation(this.canonicalFactsStore);
       const prefs = this.userModelManager?.getUserProfile().preferences ?? [];
       this.canonicalFactsStore.seedFromIdentityPreferences(prefs);
     } catch (err) {
@@ -6034,6 +6080,35 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   canonicalFacts(): CanonicalFactsStore | null {
     return this.canonicalFactsStore;
+  }
+
+  /**
+   * PLAN-55 Phase 2: every ledger change is forwarded on the manager's event
+   * bus as `canonical:changed` and queued for the propagation consumers
+   * (search marks, preferences, graph, briefs/tasks, dream insights), which
+   * run after the write, never inside the chat turn.
+   */
+  private wireCanonicalPropagation(store: CanonicalFactsStore): void {
+    this.canonicalPropagation?.close();
+    const propagation = new CanonicalPropagation({
+      getDb: () => this.db,
+      getFtsTable: () => (this.fts.enabled && this.fts.available ? FTS_TABLE : null),
+      getKnowledgeGraph: () => this.knowledgeGraph,
+      getDirectives: () => this.epistemicDirectiveEngine,
+      getWorkspaceDir: () => this.workspaceDir,
+    });
+    this.canonicalPropagation = propagation;
+    // Replays changes a shutdown or queue overflow left unpropagated.
+    propagation.startReconcile();
+    store.onChanged((event) => {
+      this.emitEvent?.(CANONICAL_CHANGED_EVENT, { ...event });
+      propagation.enqueue(event);
+    });
+  }
+
+  /** PLAN-55 Phase 2: resolves when queued canonical:changed consumers have run. */
+  async canonicalPropagationIdle(): Promise<void> {
+    await this.canonicalPropagation?.idle();
   }
 
   // ── PLAN-53 G1: the owner's controls over what the agent remembers ──────
@@ -7223,6 +7298,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     this.closed = true;
+    this.canonicalPropagation?.close();
     if (this.watchTimer) {
       clearTimeout(this.watchTimer);
       this.watchTimer = null;

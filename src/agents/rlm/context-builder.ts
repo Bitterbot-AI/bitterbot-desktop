@@ -503,6 +503,8 @@ export async function buildDeepRecallContext(params: {
   range?: TranscriptRange;
   maxTokens?: number;
   memoryManager?: MemorySearchManager | null;
+  /** PLAN-55: tag superseded memories with the ledger's current value (owner senders only). */
+  tagSuperseded?: boolean;
 }): Promise<string> {
   const { agentId, scope, sessionId, includeMemory = true, maxTokens = 500_000 } = params;
   const includeToolResults = params.includeToolResults ?? scope === "current_session";
@@ -625,7 +627,10 @@ export async function buildDeepRecallContext(params: {
 
     for (const q of crystalQueries) {
       try {
-        const results = await params.memoryManager.search(q, { maxResults: 20 });
+        const results = await params.memoryManager.search(q, {
+          maxResults: 20,
+          tagSuperseded: params.tagSuperseded === true,
+        });
         for (const r of results) {
           const key = r.snippet.slice(0, 100);
           if (!seenSnippets.has(key)) {

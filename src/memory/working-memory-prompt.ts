@@ -15,6 +15,11 @@
  * - Emerging Skills section: BitterBot
  */
 
+import {
+  buildCanonicalKeysInputBlock,
+  type CanonicalSynthesisContext,
+} from "./working-memory-canonical.js";
+
 /**
  * Day-granular stamp for the injected MEMORY.md header. The full ISO
  * timestamp lives in provenance/journal; in the prompt it only churned the
@@ -95,6 +100,10 @@ export type WorkingMemoryContext = {
     value: string;
     confidence: number;
   }>;
+  /** PLAN-55 Phase 2: active ledger facts for the rewrite (working-memory-canonical.ts). */
+  canonicalFacts?: CanonicalSynthesisContext["canonicalFacts"];
+  /** PLAN-55 Phase 2: the last N supersedes and owner retires, newest first. */
+  recentSupersedes?: CanonicalSynthesisContext["recentSupersedes"];
 };
 
 /**
@@ -200,6 +209,8 @@ ${buildEmotionalAnchorsInputBlock(ctx)}
 ${buildNetworkIdentityInputBlock(ctx)}
 
 ${buildPhenotypeConstraintBlock(ctx)}
+
+${buildCanonicalKeysInputBlock(ctx)}
 
 ## Output Format (MANDATORY — include ALL 7 sections)
 

@@ -48,6 +48,7 @@ import {
 import { createBitterbotTools } from "./bitterbot-tools.js";
 import { listChannelAgentTools } from "./channel-tools.js";
 import { otherAgentGenomeFiles, wrapToolWithGenomeGuard } from "./genome-guard.js";
+import { wrapToolWithMemoryOwnerGuard } from "./memory-owner-guard.js";
 import type { ModelAuthMode } from "./model-auth.js";
 import { isNativeToolSearchActive } from "./providers/anthropic/config.js";
 import { wrapToolWithOwnerContext } from "./run-owner-context.js";
@@ -629,7 +630,13 @@ export function createBitterbotCodingTools(options?: {
   );
   // Runs a tool call starts (sub-agents, messages to other sessions, task
   // wakeups) inherit a non-owner sender's status; see run-owner-context.ts.
-  const ownerScoped = genomeGuarded.map((tool) => wrapToolWithOwnerContext(tool, senderIsOwner));
+  // PLAN-55: owner blocks in MEMORY.md survive any tool call unchanged.
+  const memoryOwnerGuarded = genomeGuarded.map((tool) =>
+    wrapToolWithMemoryOwnerGuard(tool, workspaceRoot),
+  );
+  const ownerScoped = memoryOwnerGuarded.map((tool) =>
+    wrapToolWithOwnerContext(tool, senderIsOwner),
+  );
   const withHooks = ownerScoped.map((tool) =>
     wrapToolWithBeforeToolCallHook(tool, {
       agentId,

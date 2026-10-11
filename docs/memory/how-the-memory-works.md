@@ -260,7 +260,7 @@ The agent never asks permission for a question. It is visible (Curiosity page, t
 
 Curiosity frontiers also used to spawn long-horizon tasks for the agent to investigate. That spawn is off by default as of PLAN-34 Phase 0 (`BITTERBOT_CURIOSITY_SPAWN_TASKS=1` re-enables): no executor ever claimed the tasks, so they only accumulated. At open, the task store stops abandoned auto-spawned curiosity tasks (unowned, `[curiosity]`-prefixed, pending longer than the 7-day spawn-dedupe horizon); tool-created curiosity tasks are never touched. Dream-cycle research (PLAN-34 Phase 2) services curiosity targets instead.
 
-Each dream cycle also performs an RLM (Recursive Language Model) state update on the agent's working memory — MEMORY.md is rewritten as a state vector, incorporating new crystals, dream insights, scratch buffer notes, and the current hormonal state.
+Each dream cycle also performs an RLM (Recursive Language Model) state update on the agent's working memory: MEMORY.md is rewritten as a state vector, incorporating new crystals, dream insights, scratch buffer notes, and the current hormonal state. The rewrite is also given the canonical ledger's current values and its recent corrections, so it stops restating a value you replaced, and it keeps any block you wrapped in `<!-- owner -->` ... `<!-- /owner -->` markers verbatim (see [Your memory controls](/memory/controls#when-a-fact-changes-what-repeated-it-follows)).
 
 Dreams have a quality score (DQS) that evaluates crystal yield, merge efficiency, orphan rescue, and token efficiency. This score feeds back into future mode selection, creating a closed-loop system that learns which dream modes are most productive.
 
