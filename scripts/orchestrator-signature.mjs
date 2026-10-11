@@ -22,10 +22,14 @@ import { createHash, createPublicKey, verify as cryptoVerify } from "node:crypto
  * matches the `MINISIGN_PUBLIC_KEY` repo secret used by
  * .github/workflows/orchestrator-release.yml).
  *
- * TODO(victor): pin, see PLAN-56 Phase 0. Releases since orchestrator-v0.2.3
- * ship `checksums.txt.minisig`; verification turns on the moment this is set.
+ * Pinned 2026-10-11 (key id 310E141334FF6D4). Releases since
+ * orchestrator-v0.2.3 ship `checksums.txt.minisig`; the unit test verifies
+ * this key against the real 0.2.3 signature kept under
+ * src/infra/__fixtures__/orchestrator-v0.2.3. Rotating the signing key means
+ * changing this value in the same PR that changes the repo secrets.
  */
-export const ORCHESTRATOR_MINISIGN_PUBKEY = "";
+export const ORCHESTRATOR_MINISIGN_PUBKEY =
+  "RWTU9k8zQeEQA5GbldCYMA7kgR3nwoLbtjhw5FWMGiwu+h72OMk2Ne04";
 
 /** First orchestrator release that shipped checksums.txt.minisig. */
 export const FIRST_SIGNED_VERSION = "0.2.3";
