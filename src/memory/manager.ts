@@ -21,6 +21,13 @@ import {
 } from "../security/external-content.js";
 import { registerTaskRewardHook } from "../tasks/judge.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
+import {
+  applySupersededMarks,
+  CANONICAL_CHANGED_EVENT,
+  CanonicalPropagation,
+  loadCanonicalSynthesisContext,
+  preserveOwnerSections,
+} from "./canonical-propagation.js";
 import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
@@ -1135,6 +1142,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   );
   /** PLAN-33: the canonical facts ledger (null when disabled/failed). */
   private canonicalFactsStore: CanonicalFactsStore | null = null;
+  /** PLAN-55 Phase 2: canonical:changed consumers, run off the write path. */
+  private canonicalPropagation: CanonicalPropagation | null = null;
   /** PLAN-33: last canonical-block injection, for retrievalHealth. */
   private lastCanonicalInjection: { at: number; count: number } | null = null;
   /** PLAN-28 B2: persisted-trace sampling rate (env-tunable, 0 disables). */
@@ -1245,6 +1254,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       sampleRate: this.retrievalTraceRate,
     });
     this.attachEvidenceRefs(results);
+    applySupersededMarks(this.db, results);
     if (results.length === 0) {
       this.recordCoverageMiss(query);
     }
@@ -4913,6 +4923,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       networkIdentity,
       emotionalAnchors,
       userPreferences,
+      ...loadCanonicalSynthesisContext(this.db, this.canonicalFactsStore),
     };
 
     let newState: string;
@@ -4964,6 +4975,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     } else {
       newState = buildHeuristicWorkingMemory(ctx);
       usedHeuristicFallback = true;
+    }
+
+    // PLAN-55 Phase 2: owner-marked MEMORY.md blocks survive the rewrite verbatim.
+    if (!isFirstSynthesis) {
+      newState = preserveOwnerSections(oldState, newState);
     }
 
     // Conservative first cycle: append below existing user content
@@ -6024,6 +6040,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         maxFacts: ledgerCfg?.maxFacts,
         budgetTokens: ledgerCfg?.budgetTokens,
       });
+      this.wireCanonicalPropagation(this.canonicalFactsStore);
       const prefs = this.userModelManager?.getUserProfile().preferences ?? [];
       this.canonicalFactsStore.seedFromIdentityPreferences(prefs);
     } catch (err) {
@@ -6034,6 +6051,32 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   canonicalFacts(): CanonicalFactsStore | null {
     return this.canonicalFactsStore;
+  }
+
+  /**
+   * PLAN-55 Phase 2: every ledger change is forwarded on the manager's event
+   * bus as `canonical:changed` and queued for the propagation consumers
+   * (search marks, preferences, graph, briefs/tasks, dream insights), which
+   * run after the write, never inside the chat turn.
+   */
+  private wireCanonicalPropagation(store: CanonicalFactsStore): void {
+    this.canonicalPropagation?.close();
+    const propagation = new CanonicalPropagation({
+      getDb: () => this.db,
+      getFtsTable: () => (this.fts.enabled && this.fts.available ? FTS_TABLE : null),
+      getKnowledgeGraph: () => this.knowledgeGraph,
+      getDirectives: () => this.epistemicDirectiveEngine,
+    });
+    this.canonicalPropagation = propagation;
+    store.onChanged((event) => {
+      this.emitEvent?.(CANONICAL_CHANGED_EVENT, { ...event });
+      propagation.enqueue(event);
+    });
+  }
+
+  /** PLAN-55 Phase 2: resolves when queued canonical:changed consumers have run. */
+  async canonicalPropagationIdle(): Promise<void> {
+    await this.canonicalPropagation?.idle();
   }
 
   // ── PLAN-53 G1: the owner's controls over what the agent remembers ──────
@@ -7223,6 +7266,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     this.closed = true;
+    this.canonicalPropagation?.close();
     if (this.watchTimer) {
       clearTimeout(this.watchTimer);
       this.watchTimer = null;

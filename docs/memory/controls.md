@@ -88,6 +88,36 @@ Behind this is a small table, `memory_suppressions`, that records what you remov
 
 `memory.unretireFact` and `memory.pinFact` lift a fact's entry; a forgotten memory's entry stays until a later release adds un-forget.
 
+## When a fact changes, what repeated it follows
+
+A correction is not finished when the ledger has the new value: older memories, your learned preferences, the knowledge graph, the agent's prepared answers, open tasks and `MEMORY.md` may still say the old one. Every ledger change (a new value replacing an old one, a retire, a bring-back, a retired value restated) is announced as a `canonical:changed` event with the key, old and new value, the writer's tier, scope and evidence. A queue picks it up after the write has committed, never inside your chat turn, and hands it to six followers in turn. Each one does a bounded amount of work, pauses between batches so the gateway stays responsive, can run twice without doing anything twice, and logs its own failure without stopping the others. A write that was rolled back propagates nothing.
+
+What counts as a change worth following: a value replaced by another, and your own retire. A retire by the agent, by decay or by hygiene means "stop showing this", not "this is wrong", so nothing else is touched. A value coming back (you pin the old value again, or Bring back) undoes the marks and flags below.
+
+| Follower         | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Search           | Memories whose text states the old value as a whole token sequence (case aside; "api.acme.com" does not match "api2.acme.com" or "api.acme.company") are marked superseded, unless they also state the new value (they describe the change). `memory_search` still returns them, after every current result, at half their score, with the snippet starting `[superseded] (deploy endpoint is now "api2.acme.com")`. Values under three characters, small numbers and words like "yes" or "none" mark nothing. At most 200 memories per change. |
+| Preferences      | The learned preference that mirrors the key (`<category>.<key>`, with `.`, `_` and `-` treated alike: `identity/user_name` is `identity.user.name`) takes the new value; your retire removes it if it still holds the retired value. No preference is ever created this way, and a value or key you removed as a preference is deleted instead of written back.                                                                                                                                                                                 |
+| Knowledge graph  | A current link that points at the old value and is about the same thing as the key (its relation or the other end shares a word with the key, so `relationship.spouse.name` matches `spouse_of`) is closed with the graph's own `supersede` step, which keeps it in the belief history. On a value change a link to the new value replaces it; on your retire nothing replaces it.                                                                                                                                                              |
+| Briefs and tasks | Prepared answers the agent has not used yet (anticipation briefs) that state the old value are set aside (`stale_fact`) and never voiced. Open tasks whose goal, done criteria, plan steps or latest handoff state it get a `staleFacts` entry, which `task_get` returns. When anything was flagged you get one question in the usual place for questions to you: "You changed deploy endpoint from ... to ..., but 1 open task(s) still rely on the old value. Should I update them?"                                                          |
+| Dream insights   | Insights that state the old value or were drawn from memories just marked superseded are flagged and never promoted into searchable memory. The same holds for an insight drawn from a memory you forgot.                                                                                                                                                                                                                                                                                                                                       |
+| `MEMORY.md`      | The next dream rewrite is given the current ledger values and the last ten corrections and retires (old -> new), with the instruction never to restate an old value as current.                                                                                                                                                                                                                                                                                                                                                                 |
+
+Your own words in `MEMORY.md` stay yours. Wrap any part of it in owner markers and the dream rewrite keeps it character for character, in the section it was in:
+
+```markdown
+## The Bond (Theory of Mind)
+
+<!-- owner -->
+
+Call me Vic. Never schedule anything before 10am.
+<!-- /owner -->
+```
+
+A label is allowed (`<!-- owner:schedule -->`). If the rewrite drops or edits a marked block it is put back from the previous version; owner markers that appear in the rewrite without being in the previous version are removed, so the agent cannot mint text that looks like yours.
+
+Not covered yet: memories indexed after the change are not checked against older corrections, and the confirmation line does not count what was propagated.
+
 ## What is read-only here
 
 - **Memories from conversations and files** (session transcripts, `MEMORY.md`, skill files) are rebuilt from those files whenever they change, so a change made here would not stick. They are listed for reading; change the file instead.

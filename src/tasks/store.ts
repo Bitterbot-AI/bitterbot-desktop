@@ -34,6 +34,7 @@ import type {
   TaskListOptions,
   TaskPlan,
   TaskSource,
+  TaskStaleFactFlag,
   TaskStatus,
   TaskUpdateInput,
 } from "./types.js";
@@ -396,6 +397,33 @@ export class TaskStore {
         next.checks.length > 0 ? JSON.stringify(next.checks) : null,
         id,
       );
+    this.emit({ type: "updated", task: next });
+    return next;
+  }
+
+  /**
+   * PLAN-55 Phase 2: replace the task's `metadata.staleFacts` list (empty
+   * removes it). Unlike update(), lastSeenAt is left alone: a flag written
+   * by memory propagation is not task activity, and stall detection must
+   * still see a stalled task. Returns undefined when the task is missing.
+   */
+  setStaleFacts(id: string, staleFacts: TaskStaleFactFlag[]): Task | undefined {
+    const existing = this.get(id);
+    if (!existing) {
+      return undefined;
+    }
+    const metadata: Record<string, unknown> = { ...existing.metadata };
+    if (staleFacts.length > 0) {
+      metadata.staleFacts = staleFacts;
+    } else {
+      delete metadata.staleFacts;
+    }
+    const now = Date.now();
+    const json = Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : null;
+    this.db
+      .prepare(`UPDATE tasks SET metadata_json = ?, updated_at = ? WHERE id = ?`)
+      .run(json, now, id);
+    const next: Task = { ...existing, metadata: json ? metadata : null, updatedAt: now };
     this.emit({ type: "updated", task: next });
     return next;
   }

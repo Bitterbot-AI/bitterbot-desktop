@@ -27,6 +27,11 @@
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type {
+  CanonicalChangeEvent,
+  CanonicalChangeListener,
+  CanonicalChangeOp,
+} from "./canonical-events.js";
 import { isHeartbeatArtifact, sweepHeartbeatArtifacts } from "./canonical-facts-hygiene.js";
 import {
   addSuppression,
@@ -468,6 +473,8 @@ export class CanonicalFactsStore {
   private readonly db: DatabaseSync;
   private readonly maxFacts: number;
   private readonly budgetTokens: number;
+  /** PLAN-55 Phase 2: `canonical:changed` subscribers (see canonical-events.ts). */
+  private readonly changeListeners = new Set<CanonicalChangeListener>();
 
   constructor(db: DatabaseSync, config?: CanonicalLedgerConfig) {
     this.db = db;
@@ -482,6 +489,51 @@ export class CanonicalFactsStore {
       }
     } catch (err) {
       log.warn(`canonical hygiene sweep failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * PLAN-55 Phase 2: subscribe to `canonical:changed`. Fired after the
+   * store's own statements ran, once per change of a key's current value
+   * (add, supersede, retire, unretire, reactivation). Listeners must be
+   * cheap and must not throw into the write path; a throwing listener is
+   * logged and skipped. Returns the unsubscribe function.
+   */
+  onChanged(listener: CanonicalChangeListener): () => void {
+    this.changeListeners.add(listener);
+    return () => {
+      this.changeListeners.delete(listener);
+    };
+  }
+
+  private emitChanged(
+    op: CanonicalChangeOp,
+    fact: CanonicalFact,
+    oldValue: string | null,
+    extra?: { tier?: number; source?: string; retireReason?: string },
+  ): void {
+    if (this.changeListeners.size === 0) {
+      return;
+    }
+    const event: CanonicalChangeEvent = {
+      key: fact.key,
+      oldValue,
+      newValue: op === "retire" ? null : fact.value,
+      op,
+      tier: extra?.tier ?? canonicalSourceTier(fact.source),
+      source: extra?.source ?? fact.source,
+      ...(extra?.retireReason ? { retireReason: extra.retireReason } : {}),
+      scope: fact.scope,
+      evidence: { ref: fact.evidenceRef, chunkIds: [...fact.evidenceChunkIds] },
+      factId: fact.id,
+      at: Date.now(),
+    };
+    for (const listener of this.changeListeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        log.warn(`canonical:changed listener failed: ${String(err)}`);
+      }
     }
   }
 
@@ -786,6 +838,7 @@ export class CanonicalFactsStore {
       const fact = this.get(slug);
       lifted();
       log.info(`canonical ADD: [${slug}] (${input.source}, scope ${scope})`);
+      this.emitChanged("add", fact!, null);
       return { op: "add", fact: fact! };
     }
 
@@ -874,7 +927,12 @@ export class CanonicalFactsStore {
           current.id,
         );
       lifted();
-      return { op: "strengthen", fact: this.get(slug)! };
+      const strengthened = this.get(slug)!;
+      // PLAN-55 Phase 2: a restated retired value is current again.
+      if (current.status !== "active") {
+        this.emitChanged("reactivate", strengthened, null);
+      }
+      return { op: "strengthen", fact: strengthened };
     }
 
     // Contradiction: only an equal-or-higher trust tier may replace the
@@ -985,7 +1043,9 @@ export class CanonicalFactsStore {
     log.info(
       `canonical SUPERSEDE: [${slug}] "${current.value.slice(0, 40)}" -> "${value.slice(0, 40)}"`,
     );
-    return { op: "supersede", fact: this.get(slug)! };
+    const superseding = this.get(slug)!;
+    this.emitChanged("supersede", superseding, current.value);
+    return { op: "supersede", fact: superseding };
   }
 
   /**
@@ -1097,6 +1157,11 @@ export class CanonicalFactsStore {
         });
       });
       log.info(`canonical OWNER-RETIRE: [${current.key}] (suppression ${suppression.id})`);
+      this.emitChanged("retire", current, current.value, {
+        tier: OWNER_TRUST_TIER,
+        source: "owner",
+        retireReason: "owner",
+      });
       return true;
     }
     if (current.status !== "active") {
@@ -1113,6 +1178,11 @@ export class CanonicalFactsStore {
     }
     this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
     log.info(`canonical RETIRE (${reason}): [${current.key}]`);
+    this.emitChanged("retire", current, current.value, {
+      tier: reason === "agent" ? canonicalSourceTier("agent_pin") : 0,
+      source: reason === "agent" ? "agent_pin" : reason,
+      retireReason: reason,
+    });
     return true;
   }
 
@@ -1199,6 +1269,7 @@ export class CanonicalFactsStore {
       .run(Date.now(), current.id);
     liftSuppression(this.db, "fact_key_value", factKeyValueHash(current.key, current.value));
     log.info(`canonical UNRETIRE: [${current.key}] (was ${current.status})`);
+    this.emitChanged("unretire", current, null, { tier: OWNER_TRUST_TIER, source: "owner" });
     return true;
   }
 

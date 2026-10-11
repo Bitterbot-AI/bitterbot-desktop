@@ -2677,6 +2677,45 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 78,
+    description:
+      "PLAN-55 Phase 2 (2026-10-11): canonical:changed propagation. chunk_supersessions " +
+      "(chunk_id, fact_key, stale_value) marks a memory chunk that states a value the " +
+      "ledger no longer holds for that key; search ranks it below current results and " +
+      "tags it [superseded], and a pin back to that value deletes the mark. " +
+      "dream_briefs.stale_fact and dream_insights.stale_fact (JSON, nullable) flag an " +
+      "anticipation brief or a dream insight that cites a superseded value or rests on " +
+      "forgotten evidence: a flagged brief is not surfaced and a flagged insight is not " +
+      "promoted.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chunk_supersessions (
+          chunk_id      TEXT NOT NULL,
+          fact_key      TEXT NOT NULL,
+          stale_value   TEXT NOT NULL,
+          fact_id       TEXT,
+          current_value TEXT,
+          created_at    INTEGER NOT NULL,
+          PRIMARY KEY (chunk_id, fact_key, stale_value)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunk_supersessions_key ` +
+          `ON chunk_supersessions(fact_key, stale_value)`,
+      );
+      const hasTable = (name: string): boolean =>
+        Boolean(
+          db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name),
+        );
+      if (hasTable("dream_briefs")) {
+        addColumnIfMissing(db, "dream_briefs", "stale_fact", "TEXT");
+      }
+      if (hasTable("dream_insights")) {
+        addColumnIfMissing(db, "dream_insights", "stale_fact", "TEXT");
+      }
+    },
+  },
 ];
 
 /**

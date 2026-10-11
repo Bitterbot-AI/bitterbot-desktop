@@ -154,6 +154,34 @@ export type TaskUpdateInput = {
   incrementWakeup?: boolean;
 };
 
+/**
+ * PLAN-55 Phase 2: a canonical fact this open task's plan or latest handoff
+ * still cites at a value the owner has since replaced (newValue) or retired
+ * (newValue null). Stored under `metadata.staleFacts`; task_get surfaces it.
+ */
+export type TaskStaleFactFlag = {
+  key: string;
+  oldValue: string;
+  newValue: string | null;
+  factId: string;
+  flaggedAt: number;
+};
+
+/** The task's stale-fact flags (empty when none or malformed). */
+export function readTaskStaleFacts(task: Pick<Task, "metadata">): TaskStaleFactFlag[] {
+  const raw = task.metadata?.staleFacts;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.filter(
+    (f): f is TaskStaleFactFlag =>
+      Boolean(f) &&
+      typeof f === "object" &&
+      typeof (f as TaskStaleFactFlag).key === "string" &&
+      typeof (f as TaskStaleFactFlag).oldValue === "string",
+  );
+}
+
 export type TaskListOptions = {
   status?: TaskStatus | TaskStatus[];
   parentTaskId?: string | null;
