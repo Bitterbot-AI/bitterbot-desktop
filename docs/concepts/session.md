@@ -73,8 +73,8 @@ All session state is **owned by the gateway** (the “master” Bitterbot). UI c
 
 ## Session pruning
 
-Bitterbot trims **old tool results** from the in-memory context right before LLM calls by default.
-This does **not** rewrite JSONL history. See [/concepts/session-pruning](/concepts/session-pruning).
+The old cache-TTL tool-result pruning (`agents.defaults.contextPruning`) is inert; compaction's
+tool-output stubs replace it, and neither rewrites JSONL history. See [/concepts/session-pruning](/concepts/session-pruning).
 
 ## Pre-compaction memory flush
 

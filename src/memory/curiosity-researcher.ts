@@ -33,8 +33,12 @@ import {
   type ResearchableTarget,
 } from "./curiosity-gaps.js";
 import { curiosityRoiByRegion, curiosityUtility } from "./curiosity-use.js";
+import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
 
 const log = createSubsystemLogger("memory/curiosity");
+
+/** The memory text a verified finding is stored as (one place, so the suppression hash matches). */
+const findingText = (description: string, answer: string): string => `${description}\n${answer}`;
 
 export type CuriosityResearchConfig = {
   /** Default true. The legacy `autoResearch.enabled: false` also disables. */
@@ -835,6 +839,30 @@ async function researchOne(
       .map((n) => pages[n - 1])
       .filter((p): p is NonNullable<typeof p> => !!p)
       .map((p) => ({ url: p.url, title: p.title ?? null }));
+    // PLAN-55 Phase 0: the owner forgot this exact finding. Keep it visible
+    // on the Curiosity page as unverified, never back in memory, and stop
+    // researching the question.
+    const suppressed = isSuppressed(
+      deps.db,
+      "chunk_hash",
+      chunkTextHash(findingText(target.description, distilled.answer)),
+    );
+    if (suppressed) {
+      log.debug(
+        `curiosity skipped a forgotten finding for ${target.id.slice(0, 8)} (suppression ${suppressed.id})`,
+      );
+      storeUnverifiedFinding(deps.db, {
+        target,
+        phrase,
+        answer: distilled.answer,
+        confidence: distilled.confidence,
+        sources,
+        costUsd: costSoFar(),
+        now,
+      });
+      finish("unanswered", true, phrase);
+      return;
+    }
     const regionId =
       target.regionId ??
       (deps.embed
@@ -913,7 +941,7 @@ function storeFinding(
   },
 ): string {
   const chunkId = `fact_${crypto.randomUUID()}`;
-  const text = `${p.target.description}\n${p.answer}`;
+  const text = findingText(p.target.description, p.answer);
   const evidence = p.sources.map((s) => ({
     kind: "url",
     url: s.url,

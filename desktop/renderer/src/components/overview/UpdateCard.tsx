@@ -3,7 +3,10 @@ import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import {
+  CONTAINER_UPDATE_COMMAND,
   parseCheckResponse,
+  TARBALL_UPDATE_COMMAND,
+  updatesExternally,
   useUpdateStore,
   type UpdateCheckResponse,
 } from "../../stores/update-store";
@@ -42,6 +45,84 @@ function describeSkipReason(reason: string | null): string {
     default:
       return reason ?? "unknown";
   }
+}
+
+function majorOf(version: string | null | undefined): number | null {
+  const m = /^v?(\d+)\./.exec(version ?? "");
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Container installs (PLAN-56 Phase 2): the gateway cannot update itself, so
+ * the card names the newest image and the one command that pulls it.
+ */
+function ContainerUpdateStatus({
+  version,
+  latest,
+  stale,
+}: {
+  version: string;
+  latest: string | null;
+  stale: boolean;
+}) {
+  const runningMajor = majorOf(version);
+  const latestMajor = majorOf(latest);
+  const majorChange = runningMajor != null && latestMajor != null && latestMajor > runningMajor;
+  return (
+    <div className="mb-3 space-y-1.5" data-testid="update-card-container">
+      {latest && stale ? (
+        <p className="text-sm text-warning">Image {latest} available; pull to update.</p>
+      ) : latest ? (
+        <p className="text-xs text-success">Up to date with the latest image (v{latest}).</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Latest image unknown (GitHub unreachable or rate-limited); try again later.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        This node runs in a container and updates by pulling a newer image. On the Docker host, in
+        the folder with docker-compose.yml, run:
+      </p>
+      <code className="block text-xs font-mono bg-muted/30 border border-border/20 rounded px-2 py-1 select-all">
+        {CONTAINER_UPDATE_COMMAND}
+      </code>
+      {majorChange && (
+        <p className="text-xs text-warning">
+          v{latest} is a new major version: the default image tag (:{runningMajor}) will not pull
+          it. Set BITTERBOT_IMAGE to the :{latestMajor} tag first, after reading the release notes.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Release-tarball installs (PLAN-56 Phase 3b): "Update now" downloads the
+ * newest signed release, checks it, snapshots the node's data, switches over
+ * and rolls back automatically if the new version does not boot.
+ */
+function TarballUpdateStatus({ latest, stale }: { latest: string | null; stale: boolean }) {
+  return (
+    <div className="mb-3 space-y-1.5" data-testid="update-card-tarball">
+      {latest && stale ? (
+        <p className="text-sm text-warning">Release {latest} available.</p>
+      ) : latest ? (
+        <p className="text-xs text-success">Up to date with the latest release (v{latest}).</p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Latest release unknown (GitHub unreachable or rate-limited); try again later.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Installed from a signed release tarball. Updating verifies the release signature, snapshots
+        your config and memory, keeps the current version for rollback, and switches back
+        automatically if the new version does not start. From a terminal on this machine:
+      </p>
+      <code className="block text-xs font-mono bg-muted/30 border border-border/20 rounded px-2 py-1 select-all break-all">
+        {TARBALL_UPDATE_COMMAND}
+      </code>
+    </div>
+  );
 }
 
 export function UpdateCard() {
@@ -124,7 +205,12 @@ export function UpdateCard() {
   }, [request, setUpdating, setOutcome]);
 
   const behind = info?.staleness.behind;
-  const upToDate = info != null && !info.staleness.stale && behind === 0;
+  // Release-tarball installs have no commit drift: up to date means the
+  // newest release is known and is not newer than this node.
+  const upToDate =
+    info != null &&
+    !info.staleness.stale &&
+    (info.installKind === "tarball" ? info.registryLatest != null : behind === 0);
 
   if (!supported) {
     return (
@@ -188,6 +274,18 @@ export function UpdateCard() {
         )}
       </div>
 
+      {info?.installKind === "container" && (
+        <ContainerUpdateStatus
+          version={info.version}
+          latest={info.registryLatest}
+          stale={info.staleness.stale}
+        />
+      )}
+
+      {info?.installKind === "tarball" && (
+        <TarballUpdateStatus latest={info.registryLatest} stale={info.staleness.stale} />
+      )}
+
       {/* What an update brings, BEFORE install (sota-bar rec 2) */}
       {!updating &&
         info?.installKind === "git" &&
@@ -247,7 +345,7 @@ export function UpdateCard() {
           >
             {checking ? "Checking…" : "Check for updates"}
           </button>
-          {!confirming ? (
+          {updatesExternally(info?.installKind) ? null : !confirming ? (
             <button
               type="button"
               onClick={() => setConfirming(true)}
@@ -263,7 +361,9 @@ export function UpdateCard() {
             </button>
           ) : (
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              Rebuilds and restarts the node (can take 20+ minutes).
+              {info?.installKind === "tarball"
+                ? "Downloads the signed release, snapshots your data and restarts the node."
+                : "Rebuilds and restarts the node (can take 20+ minutes)."}
               <button
                 type="button"
                 onClick={() => void runUpdate()}

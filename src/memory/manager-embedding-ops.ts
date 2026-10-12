@@ -26,6 +26,7 @@ import {
   type MemoryChunk,
   type MemoryFileEntry,
 } from "./internal.js";
+import { isSessionPassageSuppressed } from "./memory-suppressions.js";
 import type { SessionFileEntry } from "./session-files.js";
 import type { MemorySource } from "./types.js";
 
@@ -956,6 +957,14 @@ class MemoryManagerEmbeddingOps {
         await yieldToEventLoop();
       }
       const chunk = chunks[i];
+      // PLAN-55 Phase 3: the owner forgot this passage of the transcript; a
+      // reindex of the (unchanged) transcript must not bring it back.
+      if (
+        options.source === "sessions" &&
+        isSessionPassageSuppressed(this.db, entry.path, chunk.text)
+      ) {
+        continue;
+      }
       const embedding = embeddings[i] ?? [];
       // When embedding failed (graceful degradation left it empty), tag the row
       // 'pending' rather than the real model so the backfill drainer reclaims it

@@ -588,6 +588,7 @@
                 "group": "First steps",
                 "pages": [
                   "start/getting-started",
+                  "start/install-script",
                   "start/onboarding-overview",
                   "start/wizard",
                   "start/onboarding"

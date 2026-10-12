@@ -32,7 +32,7 @@ export type UpdateStepResult = {
 
 export type UpdateRunResult = {
   status: "ok" | "error" | "skipped";
-  mode: "git" | "pnpm" | "bun" | "npm" | "unknown";
+  mode: "git" | "pnpm" | "bun" | "npm" | "tarball" | "unknown";
   root?: string;
   reason?: string;
   before?: { sha?: string | null; version?: string | null };

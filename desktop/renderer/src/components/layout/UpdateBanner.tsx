@@ -110,9 +110,11 @@ export function UpdateBanner() {
 
   const behind = info?.staleness.behind;
   const label =
-    info?.staleness.reason === "package-version"
-      ? `A newer release is available (v${info.registryLatest ?? "?"}).`
-      : `This node is ${behind ?? "many"} commits behind the latest code.`;
+    info?.staleness.reason === "image-version"
+      ? `Image v${info.registryLatest ?? "?"} is available; pull to update.`
+      : info?.staleness.reason === "package-version"
+        ? `A newer release is available (v${info.registryLatest ?? "?"}).`
+        : `This node is ${behind ?? "many"} commits behind the latest code.`;
 
   return (
     <div className="flex items-center gap-3 px-4 py-2 bg-warning/10 border-b border-warning/25 text-sm">

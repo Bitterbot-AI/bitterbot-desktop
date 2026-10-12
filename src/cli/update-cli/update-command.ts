@@ -9,10 +9,15 @@ import { loadConfig, readConfigFileSnapshot, writeConfigFile } from "../../confi
 import { armBootVerify, clearRollbackRecord, disarmBootVerify } from "../../infra/boot-verify.js";
 import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
 import {
+  CONTAINER_FALSE_POSITIVE_HINT,
+  CONTAINER_UPDATE_COMMAND,
+} from "../../infra/install-kind.js";
+import {
   channelToNpmTag,
   DEFAULT_GIT_CHANNEL,
   DEFAULT_PACKAGE_CHANNEL,
   normalizeUpdateChannel,
+  resolveEffectiveUpdateChannel,
 } from "../../infra/update-channels.js";
 import {
   compareSemverStrings,
@@ -51,7 +56,9 @@ import {
   tryWriteCompletionCache,
   type UpdateCommandOptions,
 } from "./shared.js";
+import { updateStatusCommand } from "./status.js";
 import { suppressDeprecations } from "./suppress-deprecations.js";
+import { runTarballUpdateCommand } from "./tarball.js";
 
 const CLI_NAME = resolveCliName();
 
@@ -532,12 +539,50 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
   }
 
   const installKind = updateStatus.installKind;
+  if (installKind === "container") {
+    // The image is the code: an in-place update would vanish on the next
+    // container recreate, and npm is not where images come from.
+    defaultRuntime.error(
+      `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}. ${CONTAINER_FALSE_POSITIVE_HINT}`,
+    );
+    defaultRuntime.exit(1);
+    return;
+  }
+  if (installKind === "tarball") {
+    // PLAN-56 Phase 3b: verified in-place update with snapshot, auto-rollback
+    // and --rollback. npm is never where a tarball install updates.
+    await runTarballUpdateCommand({ root, opts });
+    return;
+  }
+  if (opts.rollback || opts.reinstall || opts.restoreData || opts.restoreConfig) {
+    defaultRuntime.error(
+      "--rollback, --reinstall, --restore-data and --restore-config are for release-tarball installs (install.sh). A source checkout rolls back with git; the boot watchdog does it automatically after a failed update.",
+    );
+    defaultRuntime.exit(1);
+    return;
+  }
+  if (opts.check) {
+    await updateStatusCommand({ json: opts.json, timeout: opts.timeout });
+    return;
+  }
   const switchToGit = requestedChannel === "dev" && installKind !== "git";
   const switchToPackage =
     requestedChannel !== null && requestedChannel !== "dev" && installKind === "git";
   const updateInstallKind = switchToGit ? "git" : switchToPackage ? "package" : installKind;
+  // PLAN-56 §3.5: a git checkout ON a release tag defaults to stable (beta
+  // for a beta tag); only a checkout on a branch defaults to dev.
   const defaultChannel =
-    updateInstallKind === "git" ? DEFAULT_GIT_CHANNEL : DEFAULT_PACKAGE_CHANNEL;
+    updateInstallKind === "git"
+      ? switchToGit
+        ? DEFAULT_GIT_CHANNEL
+        : resolveEffectiveUpdateChannel({
+            configChannel: null,
+            installKind: "git",
+            git: updateStatus.git
+              ? { tag: updateStatus.git.tag, branch: updateStatus.git.branch }
+              : undefined,
+          }).channel
+      : DEFAULT_PACKAGE_CHANNEL;
   const channel = requestedChannel ?? storedChannel ?? defaultChannel;
 
   const explicitTag = normalizeTag(opts.tag);

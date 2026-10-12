@@ -111,12 +111,12 @@ exec 64.8%, read 11.9%, process 4.3%, web_search 3.1%, web_fetch 2.5%,
 memory_search 2.1%, code_interpreter 1.9%, browser 1.3%, write 1.2%,
 edit 1.0%; everything else under 0.7%.
 
-| lane      | always              | lane list                                                                                                                | est. tokens |
-| --------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| chat      | read, memory_search | exec, process, write, edit, web_search, web_fetch, code_interpreter, create_artifact, cron, sessions_send, recall_range  | ~3.7k       |
-| heartbeat | read, memory_search | message                                                                                                                  | ~3.7k       |
-| cron      | read, memory_search | same as chat minus browser/canvas/create_artifact                                                                        | ~3.4k       |
-| subagent  | read, memory_search | chat list minus sessions_send, create_artifact and cron (the subagent policy already denies memory_search/sessions_send) | ~2.9k       |
+| lane      | always              | lane list                                                                                                                           | est. tokens |
+| --------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| chat      | read, memory_search | exec, process, write, edit, web_search, web_fetch, code_interpreter, create_artifact, cron, sessions_send, memory_pin, recall_range | ~4.0k       |
+| heartbeat | read, memory_search | message                                                                                                                             | ~3.7k       |
+| cron      | read, memory_search | same as chat minus browser/canvas/create_artifact                                                                                   | ~3.4k       |
+| subagent  | read, memory_search | chat list minus sessions_send, create_artifact and cron (the subagent policy already denies memory_search/sessions_send)            | ~2.9k       |
 
 `message_owner` exists only on guest turns (someone other than the owner is
 talking). Whenever it is registered it is hot, in every lane, and it does not
@@ -128,9 +128,12 @@ deferred everywhere. `create_artifact` is hot in chat although it is rarely
 called: it is what puts a page, chart or game in the person's side panel, and
 when it was deferred the model wrote an HTML file with `write` and told the
 user to open it themselves. `cron` is hot in chat for a similar reason:
-scheduling a reminder is a core request with no near substitute. `max` is 12 (13 with the default `recall_range` slot); the
-selection is a priority cut, `always` first, then the lane list, in the order
-written.
+scheduling a reminder is a core request with no near substitute. `memory_pin`
+is hot in chat because the system prompt names it as the tool for corrections
+and settled facts; deferred, the model fell back to `working_memory_note`,
+which never reaches the facts ledger. `max` is 13 (14 with the default
+`recall_range` slot); the selection is a priority cut, `always` first, then the
+lane list, in the order written.
 
 `recall_range` is in the default chat and cron lists because tool-output stubs
 (on by default) and context-offload notes point at it: the model must be able

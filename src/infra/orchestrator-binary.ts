@@ -19,7 +19,14 @@ import path from "node:path";
 import type { P2pConfig } from "../config/types.p2p.js";
 
 /** Where a binary was found, if any. Ordered by priority. */
-export type BinarySource = "config" | "release" | "debug" | "prebuilt";
+export type BinarySource = "config" | "bundled" | "release" | "debug" | "prebuilt";
+
+/**
+ * Set by the release tarball's launcher (`bin/bitterbot`, PLAN-56 Phase 3)
+ * to the install root, whose `bin/` holds the minisign-verified orchestrator
+ * shipped in the tarball.
+ */
+export const INSTALL_ROOT_ENV = "BITTERBOT_INSTALL_ROOT";
 
 export type BinaryCandidate = {
   source: BinarySource;
@@ -50,7 +57,10 @@ const exeName = (): string =>
  * probeOrchestratorBinary(); callers that want to render a full
  * diagnostic table use this.
  */
-export function listOrchestratorBinaryCandidates(cfg: P2pConfig | undefined): BinaryCandidate[] {
+export function listOrchestratorBinaryCandidates(
+  cfg: P2pConfig | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): BinaryCandidate[] {
   const bin = exeName();
   const cargoBase = path.resolve(process.cwd(), "orchestrator", "target");
   const candidates: BinaryCandidate[] = [];
@@ -60,6 +70,11 @@ export function listOrchestratorBinaryCandidates(cfg: P2pConfig | undefined): Bi
       path: cfg.orchestratorBinary,
       exists: existsFile(cfg.orchestratorBinary),
     });
+  }
+  const installRoot = env[INSTALL_ROOT_ENV]?.trim();
+  if (installRoot) {
+    const bundledPath = path.join(installRoot, "bin", bin);
+    candidates.push({ source: "bundled", path: bundledPath, exists: existsFile(bundledPath) });
   }
   const releasePath = path.join(cargoBase, "release", bin);
   candidates.push({ source: "release", path: releasePath, exists: existsFile(releasePath) });
@@ -73,6 +88,7 @@ export function listOrchestratorBinaryCandidates(cfg: P2pConfig | undefined): Bi
 /**
  * Resolve the orchestrator binary using the priority order:
  *   1. Explicit config override (p2p.orchestratorBinary)
+ *   1b. The release tarball's bundled binary (BITTERBOT_INSTALL_ROOT/bin)
  *   2. Local cargo release build  (dev iteration wins over prebuilt)
  *   3. Local cargo debug build    (noted with a warning)
  *   4. Postinstall-downloaded prebuilt at ~/.bitterbot/bin/
@@ -81,8 +97,11 @@ export function listOrchestratorBinaryCandidates(cfg: P2pConfig | undefined): Bi
  * just get "the path or a throw." Bridge wraps this to preserve the
  * throw contract.
  */
-export function probeOrchestratorBinary(cfg: P2pConfig | undefined): OrchestratorBinaryProbe {
-  const candidates = listOrchestratorBinaryCandidates(cfg);
+export function probeOrchestratorBinary(
+  cfg: P2pConfig | undefined,
+  env: NodeJS.ProcessEnv = process.env,
+): OrchestratorBinaryProbe {
+  const candidates = listOrchestratorBinaryCandidates(cfg, env);
   const winner = candidates.find((c) => c.exists);
   if (winner) {
     return { found: true, source: winner.source, path: winner.path, candidates };

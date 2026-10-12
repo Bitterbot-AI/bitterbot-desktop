@@ -193,4 +193,4 @@ jobs:
             "desktop-v${{ needs.create-release.outputs.version }}" \
             --repo "${{ github.repository }}" \
             --draft=false \
-            --latest
+            --latest=false

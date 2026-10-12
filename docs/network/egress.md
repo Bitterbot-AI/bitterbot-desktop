@@ -16,16 +16,32 @@ connection is documented and switchable.** It does not claim "no telemetry"
 
 The onboarding wizard's P2P consent prompt is the master gesture: declining
 it applies the Local-only preset, which turns off items 2, 3, 5, and 6
-below in one step.
+below in one step. Setup (in the browser or the terminal) states what
+joining sends in one sentence, quoted here word for word:
+
+> Joining the P2P network connects this node to the Bitterbot bootstrap
+> relays and shares, under its Ed25519 peer id: skill announcements,
+> reputation scores and census pings; the text of your agent's top curiosity
+> question at most once per consolidation cycle; experience scores (numbers
+> only) once per dream cycle; and skills you mark shared or public.
+
+The setup step keeps your current `p2p.enabled` value preselected; it does
+not change the default.
 
 ## 1. GitHub Releases — orchestrator binary (install time)
 
-- **When:** during `pnpm install` (postinstall), and only if a prebuilt
-  release exists for the version in `orchestrator/Cargo.toml`.
+- **When:** during `pnpm install` (postinstall) in a source checkout, and
+  only if a prebuilt release exists for the version in
+  `orchestrator/Cargo.toml`. The Docker image and the installer's release
+  tarball already carry the binary (fetched and verified when they were
+  built), so those installs make no orchestrator download at all; the
+  installer itself downloads the tarball, `checksums.txt` and its signature
+  from the same releases.
 - **Where:** `github.com` / `objects.githubusercontent.com`
   (`Bitterbot-AI/bitterbot-desktop` releases).
-- **What:** plain HTTPS downloads of `checksums.txt` (+ `.minisig` once
-  releases are signed) and the platform binary. Nothing is uploaded.
+- **What:** plain HTTPS downloads of `checksums.txt`, `checksums.txt.minisig`
+  (required: the fetch verifies it against the pinned minisign key and refuses
+  a missing or bad signature) and the platform binary. Nothing is uploaded.
 - **Off switch:** `BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD=1` in the install
   environment, or build locally with
   `cargo build --release --manifest-path orchestrator/Cargo.toml`.
@@ -67,17 +83,38 @@ below in one step.
   researched.
 
 - **Inbound:** the orchestrator also accepts libp2p connections on TCP 9100
-  on all interfaces (change with `p2p.listenAddrs`).
+  on all interfaces (change with `p2p.listenAddrs`). In the repository's
+  `docker-compose.yml` the port is published on the host's `127.0.0.1` only
+  (`BITTERBOT_P2P_BIND_HOST=0.0.0.0` publishes it on all interfaces), so other
+  peers reach a compose install through a relay circuit rather than by dialing
+  it directly. The Fly.io and VPS templates publish it publicly.
 - **Off switch:** `p2p.enabled: false` (Settings → P2P, or decline the
   wizard's network consent).
 
 ## 3. Update check (runtime)
 
 - **When:** at gateway start and every 6 hours.
-- **Where:** `git fetch` against your clone's `origin`, and
-  `registry.npmjs.org` (package metadata for the update channel).
-- **What:** standard git/registry requests; nothing about your node is
-  sent beyond what those protocols carry.
+- **Where:** depends on how Bitterbot is installed:
+  - source checkout: `git fetch` against your clone's `origin`;
+  - npm package: `registry.npmjs.org` (package metadata for the update
+    channel);
+  - container image (`BITTERBOT_INSTALL_KIND=container`, set by the image):
+    `api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30`
+    (the newest `vX.Y.Z` release that carries the `docker-compose.yml` asset,
+    which is attached only once its image is on GHCR), never npm. The answer is cached for 30 minutes (15 after a failure), so
+    opening the Control UI repeatedly does not repeat the request;
+  - installer (release tarball) install (`BITTERBOT_INSTALL_KIND=tarball`, set
+    by its launcher): the same GitHub releases list, counting only a release
+    that carries the tarball for your platform, never npm. The update itself
+    happens only when you run `bitterbot update` or press Update in the
+    Control UI: it reads the same list, then downloads `checksums.txt`,
+    `checksums.txt.minisig` and the platform tarball from
+    `github.com/Bitterbot-AI/bitterbot-desktop/releases/download/v<version>/`
+    (redirected to `objects.githubusercontent.com`), HTTPS only, nothing
+    uploaded.
+- **What:** standard git/registry/HTTPS requests; nothing about your node is
+  sent beyond what those protocols carry (the GitHub request is
+  unauthenticated, with a generic `bitterbot-update-check` User-Agent).
 - **Off switch:** `update.checkOnStart: false`.
 
 ## 4. Model provider APIs (runtime, key-gated)

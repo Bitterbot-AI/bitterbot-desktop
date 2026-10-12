@@ -18,8 +18,9 @@ Linux, macOS and Windows (WSL2) are supported today.
 
 - Windows: [Windows](/platforms/windows)
 - Linux: [Linux](/platforms/linux)
-- macOS: install from source as on Linux; the service runs under launchd
-  (`ai.bitterbot.gateway`).
+- macOS: Apple silicon uses the [installer](/start/install-script) (1.5.0
+  and later) or a source install; Intel Macs use [Docker](/platforms/docker).
+  The service runs under launchd (`ai.bitterbot.gateway`).
 
 ## VPS & hosting
 

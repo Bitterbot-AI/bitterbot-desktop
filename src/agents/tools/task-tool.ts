@@ -38,7 +38,7 @@ import type {
   TaskSource,
   TaskStatus,
 } from "../../tasks/types.js";
-import { isTerminal } from "../../tasks/types.js";
+import { isTerminal, readTaskStaleFacts } from "../../tasks/types.js";
 import type { AnyAgentTool } from "./common.js";
 
 /** Hard cap on per-task scheduled wakeups to prevent runaway loops. */
@@ -464,7 +464,8 @@ export function createTaskGetTool(): AnyAgentTool {
     description:
       "Fetch a single Task by id with its status, plan, checkpoint pointer, and (by " +
       "default) its most recent event-journal entries. Use this to inspect a task " +
-      "without subscribing to the live stream.",
+      "without subscribing to the live stream. `staleFacts` lists facts the plan still " +
+      "cites at a value the owner has since corrected or retired.",
     parameters: GetSchema,
     execute: safeExecute(async (_toolCallId, params) => {
       const store = getActiveTaskStore();
@@ -483,7 +484,15 @@ export function createTaskGetTool(): AnyAgentTool {
           recentEvents = journal.query({ taskId, limit });
         }
       }
-      return jsonResult({ ok: true, task, recentEvents });
+      // PLAN-55 Phase 2: facts this task still cites at a value the owner
+      // replaced or retired; re-check the plan before acting on them.
+      const staleFacts = readTaskStaleFacts(task);
+      return jsonResult({
+        ok: true,
+        task,
+        recentEvents,
+        ...(staleFacts.length > 0 ? { staleFacts } : {}),
+      });
     }),
   };
 }

@@ -1,6 +1,6 @@
 {
   "name": "@bitterbot/email",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "private": true,
   "description": "Bitterbot email channel: read a mailbox over IMAP, reply over SMTP",
   "type": "module",

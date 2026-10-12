@@ -25,6 +25,7 @@ import {
   containsSourceLeak,
   isSensitiveTopic,
 } from "./auto-research-egress.js";
+import { insightPromotionBlock } from "./canonical-supersede-insights.js";
 import { bumpChunkDreamCount, setChunkLifecycle } from "./chunk-writer.js";
 import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
 import {
@@ -3159,7 +3160,14 @@ export class DreamEngine {
     }
     const rej = emptyRejections();
     const grounded: GroundedInsight[] = [];
+    let staleBlocked = 0;
     for (const insight of insights) {
+      // PLAN-55 Phase 2: an insight that states a superseded fact value or
+      // rests on superseded or forgotten evidence is never promoted.
+      if (insightPromotionBlock(this.db, insight)) {
+        staleBlocked++;
+        continue;
+      }
       const candidate: PromotionCandidateInsight = {
         id: insight.id,
         content: insight.content,
@@ -3173,6 +3181,9 @@ export class DreamEngine {
       if (g) {
         grounded.push(g);
       }
+    }
+    if (staleBlocked > 0) {
+      log.debug(`insight promotion: ${staleBlocked} candidate(s) blocked by stale evidence`);
     }
     // Relevance-rank so the most-grounded are verified first within budget.
     grounded.sort((a, b) => b.topSimilarity - a.topSimilarity);

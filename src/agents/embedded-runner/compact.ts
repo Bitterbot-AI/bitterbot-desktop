@@ -527,6 +527,7 @@ export async function compactEmbeddedPiSessionDirect(
       config: params.config,
       agentId: sessionAgentId,
       promptMode,
+      workspaceDir: resolvedWorkspace,
     }).catch(() => undefined);
 
     const appendPrompt = buildEmbeddedSystemPrompt({

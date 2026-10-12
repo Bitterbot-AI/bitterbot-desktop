@@ -18,6 +18,8 @@ type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 export type GatewayClient = {
   connect: ConnectParams;
   connId?: string;
+  /** Setup-token connections only (PLAN-56 Phase 4); never sent to a client. */
+  setupToken?: string;
 };
 
 export type RespondFn = (
@@ -76,7 +78,8 @@ export type GatewayRequestContext = {
     cleared: boolean,
     accountId?: string,
   ) => void;
-  wizardRunner: (
+  /** Test override; unset runs the setup step model (server-methods/wizard.ts). */
+  wizardRunner?: (
     opts: import("../../commands/onboard-types.js").OnboardOptions,
     runtime: import("../../runtime.js").RuntimeEnv,
     prompter: import("../../wizard/prompts.js").WizardPrompter,

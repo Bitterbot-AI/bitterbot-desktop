@@ -18,6 +18,9 @@ For a high-level overview, see [Onboarding Wizard](/start/wizard).
 <Steps>
   <Step title="Existing config detection">
     - If `~/.bitterbot/bitterbot.json` exists, choose **Keep / Modify / Reset**.
+      A file that holds only the gateway token a first gateway start generated
+      (the Docker image does this) does not count: the wizard keeps the token and
+      sets up the rest.
     - Re-running the wizard does **not** wipe anything unless you explicitly choose **Reset**
       (or pass `--reset`).
     - If the config is invalid or contains legacy keys, the wizard stops and asks
@@ -120,7 +123,11 @@ For a high-level overview, see [Onboarding Wizard](/start/wizard).
     - More detail: [Agent wallet](/wallet)
   </Step>
   <Step title="Finish">
-    - Summary + next steps.
+    - Summary + next steps, including how to correct the agent in chat and the Memory page controls.
+    - The start commands it prints follow the install kind: `pnpm start:all` in a source
+      checkout (where it can also start the stack for you), `bitterbot gateway` for an
+      installer or package install, `docker compose up -d` in a container (where no
+      service is installed: the image runs the gateway).
   </Step>
 </Steps>
 
@@ -249,8 +256,32 @@ bitterbot agents add work \
 
 ## Gateway wizard RPC
 
-The Gateway exposes the wizard flow over RPC (`wizard.start`, `wizard.next`, `wizard.cancel`, `wizard.status`).
-Clients (Control UI) can render steps without re‑implementing onboarding logic.
+The Gateway exposes setup over RPC (`wizard.start`, `wizard.next`,
+`wizard.cancel`, `wizard.status`). `wizard.start` runs the same step model as
+the terminal QuickStart (`src/wizard/setup-steps.ts`), followed by a first
+reply on the chosen model and a doctor summary; the Control UI's `/setup` page
+renders the steps it returns. Each step is a prompt (`note`, `select`, `text`,
+`confirm`, `multiselect`) with an optional `section` (which setup step, index,
+total) and optional `data` (first reply, doctor summary, completion). Secrets
+never appear in a step: detected keys are listed by name and last four
+characters, and a pasted key is a `text` step marked `sensitive`.
+
+Who may call them:
+
+- An admin-authenticated client, any time.
+- A client that connected with a setup token (`auth.setupToken` in `connect`,
+  from the link `bitterbot onboard` prints): only these four methods, no
+  broadcast events, only while the token is live (30 minutes, deleted when
+  setup completes), only from a loopback Host and the same Origin (or none),
+  and only until onboarding is complete (Finish clicked; a setup interrupted
+  after its first config write still counts as not complete).
+- A setup-token client can drive only the session its own token started;
+  `wizard.next`, `wizard.cancel` and `wizard.status` on any other session
+  answer "wizard not found". When a newer link replaced the token (or it
+  expired), the next `wizard.start` cancels that orphaned session and starts
+  fresh. A session nobody touches for 30 minutes is cancelled.
+- A `select` or `multiselect` answer must be one of the options the step
+  offered; anything else is refused and the step stays open.
 
 ## Signal setup (signal-cli)
 
@@ -274,7 +305,7 @@ Typical fields in `~/.bitterbot/bitterbot.json`:
 - `agents.defaults.model` / `models.providers` (if Minimax chosen)
 - `gateway.*` (mode, bind, auth, tailscale)
 - `channels.telegram.botToken`, `channels.discord.token`, `channels.signal.*`
-- Channel allowlists (Slack/Discord/Matrix/Microsoft Teams) when you opt in during the prompts (names resolve to IDs when possible).
+- Channel allowlists (Slack/Discord) when you opt in during the prompts (names resolve to IDs when possible).
 - `skills.install.nodeManager`
 - `wizard.lastRunAt`
 - `wizard.lastRunVersion`

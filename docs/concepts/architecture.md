@@ -226,16 +226,14 @@ Open `http://127.0.0.1:19001` for the full dashboard: chat, dreams, skills, work
 
 ### Supported Channels
 
-| Channel         | Integration | Connection |
-| --------------- | ----------- | ---------- |
-| WhatsApp        | Baileys     | Direct     |
-| Telegram        | grammY      | Bot API    |
-| Discord         | discord.js  | Bot        |
-| Signal          | signal-cli  | Bridge     |
-| Slack           | Bolt SDK    | App        |
-| Google Chat     | Chat API    | Webhook    |
-| Microsoft Teams | Extension   | Connector  |
-| WebChat         | Built-in    | Gateway WS |
+| Channel  | Integration | Connection |
+| -------- | ----------- | ---------- |
+| WhatsApp | Baileys     | Direct     |
+| Telegram | grammY      | Bot API    |
+| Discord  | discord.js  | Bot        |
+| Signal   | signal-cli  | Bridge     |
+| Slack    | Bolt SDK    | App        |
+| WebChat  | Built-in    | Gateway WS |
 
 ### WebSocket Protocol
 

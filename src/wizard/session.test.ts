@@ -72,3 +72,51 @@ describe("WizardSession", () => {
     expect(done.status).toBe("cancelled");
   });
 });
+
+describe("WizardSession answers (PLAN-56 Phase 4)", () => {
+  test("a select answer must be one of the offered options", async () => {
+    let picked: unknown;
+    const session = new WizardSession(async (prompter) => {
+      picked = await prompter.select({
+        message: "Web search",
+        options: [
+          { value: "later", label: "Later" },
+          { value: "env:brave", label: "Brave" },
+        ],
+      });
+    });
+    const step = (await session.next()).step!;
+    await expect(session.answer(step.id, "env:anything")).rejects.toThrow(
+      "not one of the offered options",
+    );
+    // Refused without consuming the step: a valid answer still goes through.
+    expect((await session.next()).step?.id).toBe(step.id);
+    await session.answer(step.id, "env:brave");
+    expect((await session.next()).done).toBe(true);
+    expect(picked).toBe("env:brave");
+  });
+
+  test("multiselect answers are checked option by option", async () => {
+    const session = new WizardSession(async (prompter) => {
+      await prompter.multiselect({
+        message: "Pick",
+        options: [
+          { value: "a", label: "A" },
+          { value: "b", label: "B" },
+        ],
+      });
+    });
+    const step = (await session.next()).step!;
+    await expect(session.answer(step.id, ["a", "zzz"])).rejects.toThrow();
+    await expect(session.answer(step.id, "a")).rejects.toThrow();
+    await session.answer(step.id, ["b"]);
+    expect((await session.next()).done).toBe(true);
+  });
+
+  test("next and answer refresh lastActivityAt", async () => {
+    const session = noteRunner();
+    session.lastActivityAt = 0;
+    await session.next();
+    expect(session.lastActivityAt).toBeGreaterThan(0);
+  });
+});

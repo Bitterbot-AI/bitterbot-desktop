@@ -475,7 +475,7 @@ export function applyCompactionDefaults(cfg: BitterbotConfig): BitterbotConfig {
  * Add new bootnodes here as they come online; remove only when a node
  * is permanently retired.
  */
-const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
+export const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
   // DigitalOcean relay fleet (deployed 2026-04-28) — fixed-IP nodes that are
   // both the relay fleet and 3 of the 5 genesis-trust quorum members. These are
   // the true DNS-independent backstop: raw /ip4 multiaddrs that resolve even if
@@ -493,10 +493,28 @@ const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
   "/dns4/metro.proxy.rlwy.net/tcp/12838/p2p/12D3KooWCwCCFMHCVv8eXZnAGMTUjTDPPePfYRTJ1fZvRpqcQXKt",
 ];
 
+/**
+ * True when a configured peer list is exactly the built-in fallback list (in
+ * any order): an older config write froze the load-time default into the
+ * file (drift-pass review HIGH-2). Such a list is treated as unset, so it
+ * follows the built-in list instead of pinning it forever.
+ */
+export function isFrozenFallbackPeerList(peers: unknown): boolean {
+  if (!Array.isArray(peers) || peers.length !== FALLBACK_BOOTSTRAP_PEERS.length) {
+    return false;
+  }
+  const set = new Set(peers);
+  return (
+    set.size === FALLBACK_BOOTSTRAP_PEERS.length &&
+    FALLBACK_BOOTSTRAP_PEERS.every((p) => set.has(p))
+  );
+}
+
 export function applyP2pDefaults(cfg: BitterbotConfig): BitterbotConfig {
   const p2p = cfg.p2p ?? {};
-  // Merge fallback peers with any user-supplied ones, dedupe.
-  const userPeers = p2p.bootstrapPeers ?? [];
+  // Merge fallback peers with any user-supplied ones, dedupe. A list that is
+  // only the fallback peers (frozen by an old write) counts as unset.
+  const userPeers = isFrozenFallbackPeerList(p2p.bootstrapPeers) ? [] : (p2p.bootstrapPeers ?? []);
   const mergedPeers = Array.from(new Set([...FALLBACK_BOOTSTRAP_PEERS, ...userPeers]));
   return {
     ...cfg,

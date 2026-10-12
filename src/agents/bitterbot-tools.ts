@@ -285,7 +285,7 @@ export function createBitterbotTools(options?: {
     createMemorySearchTool(memoryOpts),
     createMemoryGetTool(memoryOpts),
     createMemoryExpandTool(memoryOpts),
-    createMemoryPinTool(memoryOpts),
+    createMemoryPinTool({ ...memoryOpts, workspaceDir: options?.workspaceDir }),
     createMemoryStatusTool(memoryOpts),
     createDreamSearchTool(memoryOpts),
     createDreamStatusTool(memoryOpts),

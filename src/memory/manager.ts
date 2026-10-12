@@ -21,9 +21,19 @@ import {
 } from "../security/external-content.js";
 import { registerTaskRewardHook } from "../tasks/judge.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
+import {
+  applySupersededMarks,
+  CANONICAL_CHANGED_EVENT,
+  CanonicalPropagation,
+  hasSupersessionMarks,
+  loadCanonicalSynthesisContext,
+  preserveOwnerSections,
+  stripOwnerSections,
+} from "./canonical-propagation.js";
 import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
 import { ContributorStatusLedger } from "./contributor-status.js";
+import { CORRECTION_LLM_LANE } from "./correction-capture.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
 import {
   insertNovelTargets,
@@ -96,6 +106,9 @@ import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
 import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
+import { type ExportSink, MemoryExportInterrupted, writeMemoryExport } from "./memory-export.js";
+import { type ImportActor, importMemories } from "./memory-import.js";
+import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import {
   deletePreference as ownerDeletePreference,
@@ -108,6 +121,16 @@ import {
   type ListOptions as OwnerListOptions,
   listAuditLog as ownerListAuditLog,
   listPreferences as ownerListPreferences,
+  collectSessionChunks as ownerCollectSessionChunks,
+  forgetSessionMemories as ownerForgetSessionMemories,
+  sessionChunksForFiles as ownerSessionChunksForFiles,
+  OwnerEditRefused,
+  type OwnerPinInput,
+  previewEdit as ownerPreviewEdit,
+  previewForget as ownerPreviewForget,
+  pinFact as ownerPinFact,
+  retireFact as ownerRetireFact,
+  unretireFact as ownerUnretireFact,
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { truncateAtSentence } from "./proactive-recall.js";
@@ -154,9 +177,8 @@ import type {
 } from "./types.js";
 import { UserModelManager } from "./user-model.js";
 import {
-  buildWorkingMemorySynthesisPrompt,
+  synthesizeValidatedWorkingMemory,
   buildHeuristicWorkingMemory,
-  validateWorkingMemory,
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
 } from "./working-memory-prompt.js";
@@ -172,8 +194,12 @@ import { scanForOpenLoops } from "./zeigarnik-effect.js";
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
+/** PLAN-55 Phase 2: extra results fetched while superseded marks exist. */
+const SUPERSEDED_OVERFETCH = 10;
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const BATCH_FAILURE_LIMIT = 2;
+/** PLAN-55 Phase 3 review: concurrent forget/edit previews (unlocked full scans). */
+const MAX_OWNER_PREVIEWS_IN_FLIGHT = 2;
 
 const log = createSubsystemLogger("memory");
 
@@ -317,6 +343,10 @@ export class MemoryIndexManager implements MemorySearchManager {
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-50: dedicated session-extraction lane (attributed to memory/extraction). */
   private extractionLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  /** PLAN-55 Phase 1: the per-turn correction lane (same model as extraction, live, own feature). */
+  private correctionLlmCallFn:
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-18 Phase 1 — small fast LLM call for query decomposition. Lazy-built. */
   private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -475,6 +505,21 @@ export class MemoryIndexManager implements MemorySearchManager {
       log.debug(`schema re-creation after reindex failed: ${String(err)}`);
     }
     log.debug("propagated new DB handle and schemas to subsystems after reindex");
+  }
+
+  /**
+   * PLAN-55 Phase 1: the already-open manager for this agent, or null. Never
+   * builds one: a caller that only wants to read what an earlier tool call
+   * wrote (the confirmation line after a turn with no corrective shape) must
+   * not open the memory database on a turn that never touched memory.
+   */
+  static peek(params: { cfg: BitterbotConfig; agentId: string }): MemoryIndexManager | null {
+    const settings = resolveMemorySearchConfig(params.cfg, params.agentId);
+    if (!settings) {
+      return null;
+    }
+    const workspaceDir = resolveAgentWorkspaceDir(params.cfg, params.agentId);
+    return INDEX_CACHE.get(`${params.agentId}:${workspaceDir}:${JSON.stringify(settings)}`) ?? null;
   }
 
   static async get(params: {
@@ -1110,6 +1155,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   );
   /** PLAN-33: the canonical facts ledger (null when disabled/failed). */
   private canonicalFactsStore: CanonicalFactsStore | null = null;
+  /** PLAN-55 Phase 2: canonical:changed consumers, run off the write path. */
+  private canonicalPropagation: CanonicalPropagation | null = null;
   /** PLAN-33: last canonical-block injection, for retrievalHealth. */
   private lastCanonicalInjection: { at: number; count: number } | null = null;
   /** PLAN-28 B2: persisted-trace sampling rate (env-tunable, 0 disables). */
@@ -1174,7 +1221,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
   ): Promise<MemorySearchResult[]> {
     const want = opts?.maxResults ?? this.settings.query.maxResults;
-    const results = await this.search(query, { ...opts, maxResults: want * 3 });
+    // PLAN-55 Phase 2: superseded tags carry ledger values; never for a guest.
+    const results = await this.search(query, {
+      ...opts,
+      maxResults: want * 3,
+      tagSuperseded: false,
+    });
     return filterGuestResults(this.db, results).slice(0, want);
   }
 
@@ -1188,15 +1240,30 @@ export class MemoryIndexManager implements MemorySearchManager {
       maxResults?: number;
       minScore?: number;
       sessionKey?: string;
+      /**
+       * PLAN-55 Phase 2: rank superseded results last and tag them with the
+       * ledger's current value. Owner searches only; guestSearch passes false.
+       */
+      tagSuperseded?: boolean;
     },
   ): Promise<MemorySearchResult[]> {
+    // PLAN-55 Phase 2: over-fetch while marks exist, so demoted results never
+    // take a slot a current one could fill.
+    const tagSuperseded =
+      opts?.tagSuperseded !== false &&
+      this.cfg.memory?.canonicalLedger?.enabled !== false &&
+      hasSupersessionMarks(this.db);
+    const want = opts?.maxResults ?? this.settings.query.maxResults;
+    const innerOpts = tagSuperseded
+      ? { ...opts, maxResults: want + Math.min(want, SUPERSEDED_OVERFETCH) }
+      : opts;
     // PLAN-28 B1: per-layer retrieval counts, filled by searchInner and attached
     // as span attributes + fed to the dead-wire detector / sampled trace below.
     const layers: SearchLayerCounts = emptySearchCounts();
     const results = await withSpanAttrs(
       "memory.search",
       async (setAttr) => {
-        const r = await this.searchInner(query, opts, layers);
+        const r = await this.searchInner(query, innerOpts, layers);
         setAttr("memory.vector_hits", layers.vectorHits);
         setAttr("memory.keyword_hits", layers.keywordHits);
         setAttr("memory.graph_hits", layers.graphHits);
@@ -1220,6 +1287,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       sampleRate: this.retrievalTraceRate,
     });
     this.attachEvidenceRefs(results);
+    if (tagSuperseded) {
+      applySupersededMarks(this.db, results);
+      results.splice(want);
+    }
     if (results.length === 0) {
       this.recordCoverageMiss(query);
     }
@@ -2941,6 +3012,16 @@ export class MemoryIndexManager implements MemorySearchManager {
           // brief do not fit the 2048 lane default; truncated JSON never parsed.
           maxTokens: this.cfg.memory?.extraction?.maxTokens ?? 6144,
         });
+    // PLAN-55 Phase 1: the per-turn correction capture reuses the extraction
+    // model choice (memory.extraction.model, else the dream model, else the
+    // cheap default) on its own ledger lane, `memory/correction`, and never
+    // through the Batches API: the owner's reply is waiting on it.
+    this.correctionLlmCallFn = dreamCfg?.llmCall
+      ? builtLlmCall
+      : this.buildLlmCallFn(
+          this.cfg.memory?.extraction?.model ?? dreamCfg?.model ?? this.resolveCheapLlmSpec(),
+          CORRECTION_LLM_LANE,
+        );
     this.dreamEngine = new DreamEngine(this.db, engineCfg, synthesizeFn, embedBatchFn);
 
     if (this.hormonalManager) {
@@ -3798,7 +3879,7 @@ export class MemoryIndexManager implements MemorySearchManager {
        */
       batch?: boolean;
     },
-  ): ((prompt: string) => Promise<string>) | null {
+  ): ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
       return null;
@@ -3811,7 +3892,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const feature = opts?.feature ?? USAGE_FEATURES.memoryDream;
     const agentDir = resolveAgentDir(this.cfg, this.agentId);
 
-    return async (prompt: string): Promise<string> => {
+    return async (prompt: string, callOpts?: { signal?: AbortSignal }): Promise<string> => {
       // Lazy import to avoid circular deps and keep cold path fast.
       const { completeAttributed } = await import("../agents/complete-attributed.js");
       const { text } = await completeAttributed({
@@ -3824,6 +3905,9 @@ export class MemoryIndexManager implements MemorySearchManager {
         feature,
         agentId: this.agentId,
         errorPrefix: `llm error (${modelSpec})`,
+        // PLAN-55 Phase 1 review (item 12): a caller on the reply path can
+        // cancel the call instead of abandoning it to bill and write later.
+        ...(callOpts?.signal ? { signal: callOpts.signal } : {}),
         // Token-efficiency item 3: latency-tolerant lanes (dream, extraction, discovery,
         // evolution judge/maintainer) go through the Batches API; completeAttributed falls
         // back to the live call on timeout or error and records batch rows at 50%.
@@ -4099,6 +4183,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (extractionCfg?.enabled === false) {
       return;
     }
+    // PLAN-55 Phase 1: incognito. Nothing is learned from transcripts.
+    if (this.cfg.session?.memory === "off") {
+      log.debug("session extraction skipped: session.memory is off");
+      return;
+    }
 
     const llmCall = this.extractionLlmCall ?? this.dreamLlmCall;
     if (!llmCall) {
@@ -4262,6 +4351,15 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Store extracted facts as crystals with epistemic layers
         for (const fact of result.facts) {
           try {
+            // PLAN-55 Phase 0: the owner forgot this memory; do not grow it
+            // back under a new id (nor route it to preferences or the ledger).
+            const suppressed = isSuppressed(this.db, "chunk_hash", chunkTextHash(fact.text));
+            if (suppressed) {
+              log.debug(
+                `session extraction skipped a forgotten memory (suppression ${suppressed.id})`,
+              );
+              continue;
+            }
             const id = `fact_${crypto.randomUUID()}`;
             const evidenceLines = fact.evidence
               .filter((e): e is Extract<typeof e, { kind: "session" }> => e.kind === "session")
@@ -4861,6 +4959,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       networkIdentity,
       emotionalAnchors,
       userPreferences,
+      ...loadCanonicalSynthesisContext(this.db, this.canonicalFactsStore),
     };
 
     let newState: string;
@@ -4872,9 +4971,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     const synthesisCall = this.dreamSynthesisLlmCall ?? this.dreamLlmCall;
     if (synthesisCall) {
       try {
-        const prompt = buildWorkingMemorySynthesisPrompt(ctx);
-        const raw = await synthesisCall(prompt);
-        const validation = validateWorkingMemory(raw, isFirstSynthesis ? undefined : oldState);
+        const { raw, validation, attempts } = await synthesizeValidatedWorkingMemory(
+          ctx,
+          synthesisCall,
+        );
+        if (attempts > 1) {
+          log.info("RLM synthesis required a validation repair attempt");
+        }
         validationSummary = {
           collapsed: validation.collapsed,
           valid: validation.valid,
@@ -4913,6 +5016,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       newState = buildHeuristicWorkingMemory(ctx);
       usedHeuristicFallback = true;
     }
+
+    // PLAN-55 Phase 2: owner-marked MEMORY.md blocks survive the rewrite
+    // verbatim, and the model can never add one: on the first synthesis the
+    // previous content (owner blocks included) is kept above the new state.
+    newState = isFirstSynthesis
+      ? stripOwnerSections(newState)
+      : preserveOwnerSections(oldState, newState);
 
     // Conservative first cycle: append below existing user content
     const finalContent = hasUserContent
@@ -5972,6 +6082,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         maxFacts: ledgerCfg?.maxFacts,
         budgetTokens: ledgerCfg?.budgetTokens,
       });
+      this.wireCanonicalPropagation(this.canonicalFactsStore);
       const prefs = this.userModelManager?.getUserProfile().preferences ?? [];
       this.canonicalFactsStore.seedFromIdentityPreferences(prefs);
     } catch (err) {
@@ -5982,6 +6093,35 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   canonicalFacts(): CanonicalFactsStore | null {
     return this.canonicalFactsStore;
+  }
+
+  /**
+   * PLAN-55 Phase 2: every ledger change is forwarded on the manager's event
+   * bus as `canonical:changed` and queued for the propagation consumers
+   * (search marks, preferences, graph, briefs/tasks, dream insights), which
+   * run after the write, never inside the chat turn.
+   */
+  private wireCanonicalPropagation(store: CanonicalFactsStore): void {
+    this.canonicalPropagation?.close();
+    const propagation = new CanonicalPropagation({
+      getDb: () => this.db,
+      getFtsTable: () => (this.fts.enabled && this.fts.available ? FTS_TABLE : null),
+      getKnowledgeGraph: () => this.knowledgeGraph,
+      getDirectives: () => this.epistemicDirectiveEngine,
+      getWorkspaceDir: () => this.workspaceDir,
+    });
+    this.canonicalPropagation = propagation;
+    // Replays changes a shutdown or queue overflow left unpropagated.
+    propagation.startReconcile();
+    store.onChanged((event) => {
+      this.emitEvent?.(CANONICAL_CHANGED_EVENT, { ...event });
+      propagation.enqueue(event);
+    });
+  }
+
+  /** PLAN-55 Phase 2: resolves when queued canonical:changed consumers have run. */
+  async canonicalPropagationIdle(): Promise<void> {
+    await this.canonicalPropagation?.idle();
   }
 
   // ── PLAN-53 G1: the owner's controls over what the agent remembers ──────
@@ -6013,13 +6153,25 @@ export class MemoryIndexManager implements MemorySearchManager {
     return ownerGetMemory(this.db, id);
   }
 
-  async ownerForgetMemory(id: string): Promise<void> {
-    await this.ownerChange("forget", () => ownerForgetMemory(this.db, id, this.ownerIndexTables()));
+  /**
+   * PLAN-55 Phase 3: forget with the cascade. `planHash` (from
+   * ownerForgetPreview) makes the forget refuse when the plan changed.
+   */
+  async ownerForgetMemory(id: string, opts: { planHash?: string } = {}) {
+    return await this.ownerChange("forget", () =>
+      ownerForgetMemory(this.db, id, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        planHash: opts.planHash,
+      }),
+    );
   }
 
-  async ownerEditMemory(id: string, text: string) {
+  async ownerEditMemory(id: string, text: string, opts: { planHash?: string } = {}) {
     const edited = await this.ownerChange("edit", () =>
-      ownerEditMemory(this.db, id, text, this.ownerIndexTables()),
+      ownerEditMemory(this.db, id, text, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        planHash: opts.planHash,
+      }),
     );
     // Re-embed now when possible so it is found by meaning again; the regular
     // backfill catches it otherwise.
@@ -6034,7 +6186,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch {
       workingMemory = null;
     }
-    return await ownerExportMemories(this.db, outFile, { agentId: this.agentId, workingMemory });
+    return await ownerExportMemories(this.db, outFile, {
+      agentId: this.agentId,
+      workingMemory,
+      genome: await this.readWorkspaceText("GENOME.md"),
+      assertCurrent: this.exportHandleGuard(),
+    });
   }
 
   ownerListPreferences() {
@@ -6049,6 +6206,196 @@ export class MemoryIndexManager implements MemorySearchManager {
     return await this.ownerChange("forget-preference", () =>
       ownerDeletePreference(this.db, category, key),
     );
+  }
+
+  /** PLAN-55 Phase 0: an owner retire is sticky (owner_retired + key/value suppression). */
+  async ownerRetireFact(key: string): Promise<boolean> {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("retire-fact", () => ownerRetireFact(this.db, store, key));
+  }
+
+  async ownerUnretireFact(key: string): Promise<boolean> {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("unretire-fact", () => ownerUnretireFact(this.db, store, key));
+  }
+
+  /** PLAN-55 Phase 0: the `owner` tier's writer (Phase 1: scope and evidence ride along). */
+  async ownerPinFact(input: OwnerPinInput) {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("pin-fact", () => ownerPinFact(this.db, store, input));
+  }
+
+  // ── PLAN-55 Phase 3: cascade preview, session deletion, export v2, import ──
+
+  /** What forgetting this memory would also change (read-only), with the plan hash. */
+  async ownerForgetPreview(id: string) {
+    return await this.ownerPreview(() => ownerPreviewForget(this.db, id));
+  }
+
+  /** What replacing this memory's text would also change (read-only). */
+  async ownerEditPreview(id: string, text: string) {
+    return await this.ownerPreview(() => ownerPreviewEdit(this.db, id, text));
+  }
+
+  /**
+   * PLAN-55 §3.5b: a conversation was deleted (`sessions.delete`). Its
+   * indexed memories go with the cascade; facts resting only on it are
+   * retired below the owner tier, and the survivors are returned.
+   */
+  async ownerForgetSession(
+    sessionFiles: string[],
+    opts: {
+      /**
+       * Runs once the memories are collected (the caller archives the
+       * transcript here). When it returns a list, only those files (the
+       * ones confirmed archived) are forgotten; a transcript whose archive
+       * failed keeps its memories and the facts resting on them.
+       */
+      onCollected?: () => string[] | void;
+      /** `system` for automatic housekeeping (forgetSessionMemories has the difference). */
+      initiator?: "owner" | "system";
+    } = {},
+  ) {
+    // Collected first, outside the maintenance lock, so the caller can
+    // archive the transcript right away; the cascade then waits its turn.
+    const collected = await ownerCollectSessionChunks(this.db, sessionFiles);
+    const confirmed = opts.onCollected?.();
+    const files = Array.isArray(confirmed)
+      ? sessionFiles.filter((f) => confirmed.includes(f))
+      : sessionFiles;
+    const chunks = Array.isArray(confirmed)
+      ? ownerSessionChunksForFiles(collected, files)
+      : collected;
+    return await this.ownerChange("forget-session", () =>
+      ownerForgetSessionMemories(this.db, files, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        chunks,
+        initiator: opts.initiator,
+      }),
+    );
+  }
+
+  private async readWorkspaceText(name: string): Promise<string | null> {
+    try {
+      return await fs.readFile(path.join(this.workspaceDir, name), "utf8");
+    } catch {
+      return null;
+    }
+  }
+
+  /** Export version 2 to any sink (the gateway's download streams it to the client). */
+  async ownerExportTo(sink: ExportSink) {
+    const assertCurrent = this.exportHandleGuard();
+    return await writeMemoryExport(this.db, sink, {
+      agentId: this.agentId,
+      workingMemory: await this.readWorkspaceText("MEMORY.md"),
+      genome: await this.readWorkspaceText("GENOME.md"),
+      assertCurrent,
+    });
+  }
+
+  /**
+   * PLAN-55 Phase 3 review: an export reads page by page across yields and a
+   * safe reindex can swap `this.db` in between; the guard throws
+   * MemoryExportInterrupted on the first page after a swap.
+   */
+  private exportHandleGuard(): () => void {
+    const db = this.db;
+    return () => {
+      if (this.db !== db) {
+        throw new MemoryExportInterrupted();
+      }
+    };
+  }
+
+  /** Previews running right now; they scan without the maintenance lock, so they are capped. */
+  private ownerPreviewsInFlight = 0;
+
+  private async ownerPreview<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.ownerPreviewsInFlight >= MAX_OWNER_PREVIEWS_IN_FLIGHT) {
+      throw new OwnerEditRefused(
+        "Another preview of what a forget or edit would change is still running; try again in a moment.",
+      );
+    }
+    this.ownerPreviewsInFlight += 1;
+    try {
+      return await fn();
+    } finally {
+      this.ownerPreviewsInFlight -= 1;
+    }
+  }
+
+  /** The memory database file, for the owner to copy (shown next to the download). */
+  ownerDatabasePath(): string {
+    return this.settings.store.path;
+  }
+
+  /**
+   * Restore a memory export (v1 or v2; memory-import.ts has the rules).
+   * Imported memories are re-embedded in the background afterwards.
+   */
+  async ownerImportMemories(
+    input: unknown,
+    opts: {
+      dryRun?: boolean;
+      actor?: ImportActor;
+      keepOwnerTier?: boolean;
+      confirmOwnerTierGrantsHash?: string;
+    } = {},
+  ) {
+    const result = await this.ownerChange("import", () =>
+      importMemories(this.db, input, {
+        actor: opts.actor ?? "owner",
+        dryRun: opts.dryRun,
+        keepOwnerTier: opts.keepOwnerTier,
+        confirmOwnerTierGrantsHash: opts.confirmOwnerTierGrantsHash,
+        store: this.canonicalFactsStore,
+        tables: this.ownerIndexTables(),
+      }),
+    );
+    if (!result.dryRun && result.importedChunkIds.length > 0) {
+      void (async () => {
+        for (;;) {
+          const { embedded } = await this.backfillPendingEmbeddings({ limit: 50 });
+          if (embedded === 0) {
+            return;
+          }
+          await yieldToEventLoop();
+        }
+      })().catch((err) => log.debug(`import re-embed stopped: ${String(err)}`));
+    }
+    return result;
+  }
+
+  /**
+   * PLAN-55 Phase 1: the cheap-model lane for the per-turn correction
+   * capture, or null when the pass is disabled or no model is configured.
+   */
+  correctionLlmCall():
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null {
+    if (this.cfg.memory?.correction?.enabled === false) {
+      return null;
+    }
+    // Built with the dream engine when that is on (an injected dream llmCall
+    // is reused); otherwise lazily here, so the pass does not depend on
+    // dreaming being enabled.
+    this.correctionLlmCallFn ??= this.buildLlmCallFn(
+      this.cfg.memory?.extraction?.model ??
+        this.cfg.memory?.dream?.model ??
+        this.resolveCheapLlmSpec(),
+      CORRECTION_LLM_LANE,
+    );
+    return this.correctionLlmCallFn;
   }
 
   /**
@@ -6137,6 +6484,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     importanceScore: number;
     evidenceRefs: string;
   }): boolean {
+    // PLAN-55 Phase 0: the owner forgot this exact insight; do not promote it again.
+    const suppressed = isSuppressed(this.db, "chunk_hash", chunkTextHash(row.text));
+    if (suppressed) {
+      log.debug(`promoted-insight skipped a forgotten memory (suppression ${suppressed.id})`);
+      return false;
+    }
     const id = `dream_insight_${crypto.randomUUID()}`;
     const now = Date.now();
     const hash = crypto.createHash("sha256").update(row.text).digest("hex");
@@ -7117,6 +7470,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     this.closed = true;
+    this.canonicalPropagation?.close();
     if (this.watchTimer) {
       clearTimeout(this.watchTimer);
       this.watchTimer = null;

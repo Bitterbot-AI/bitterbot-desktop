@@ -62,6 +62,9 @@ export function ensureDreamSchema(db: DatabaseSync): void {
       updated_at INTEGER NOT NULL
     );
   `);
+  // PLAN-55 Phase 2: set when the insight cites a superseded fact value or
+  // rests on forgotten evidence; a flagged insight is never promoted.
+  ensureColumn(db, "dream_insights", "stale_fact", "TEXT");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS dream_cycles (

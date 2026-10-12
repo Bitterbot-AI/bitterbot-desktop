@@ -44,8 +44,24 @@ jobs:
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/docker-publish.yml
     permissions:
-      contents: read
+      # write: the final job attaches docker-compose.yml to the release.
+      contents: write
       packages: write
+      id-token: write
+      attestations: write
+    with:
+      version: ${{ needs.release-please.outputs.version }}
+
+  # PLAN-56 Phase 3a: signed per-platform tarballs + install.sh, attached to
+  # the same release. Independent of the image publish; secrets: inherit
+  # passes MINISIGN_SECRET_KEY to the approval-gated publish job.
+  release-tarball:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/release-tarball.yml
+    secrets: inherit
+    permissions:
+      contents: write
       id-token: write
       attestations: write
     with:

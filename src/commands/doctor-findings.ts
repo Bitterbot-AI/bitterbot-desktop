@@ -9,6 +9,8 @@
  * briefly; the gateway never runs the CLI doctor concurrently in-process.
  */
 import { loadConfig } from "../config/config.js";
+import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { detectInstallKind } from "../infra/install-kind.js";
 import { noteBootHealth } from "./doctor-boot-health.js";
 import { setDoctorJsonMode } from "./doctor-check.js";
 import { runControlUiChecks } from "./doctor-control-ui.js";
@@ -50,7 +52,12 @@ export async function collectRepairFindings(opts?: {
       const cfg = loadConfig();
       runIdentityChecks({ config: cfg });
       await runSecurityChecks(cfg);
-      await runControlUiChecks(cfg);
+      const packageRoot = await resolveBitterbotPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      }).catch(() => null);
+      await runControlUiChecks(cfg, detectInstallKind(packageRoot));
       // Auto-rollback surfaced as a persistent card (sota-bar rec 2): the
       // boot watchdog's record is warn/error until the next clean update.
       noteBootHealth(now);
@@ -72,6 +79,57 @@ export async function collectRepairFindings(opts?: {
     }
   })();
   return inFlight;
+}
+
+/**
+ * PLAN-56 Phase 4: the doctor summary the setup page ends with. The same
+ * read-only, offline subset as the Repairs card plus the Install section
+ * (install kind and channel, version drift, orchestrator signature,
+ * Playwright, local GGUF), against the config setup is about to write.
+ * Serialized with the Repairs collector: both use the module-global findings.
+ */
+export async function collectSetupDoctorSummary(opts: {
+  cfg: import("../config/config.js").BitterbotConfig;
+  now?: number;
+}): Promise<RepairFindingsReport> {
+  while (inFlight) {
+    await inFlight.catch(() => undefined);
+  }
+  const run = (async () => {
+    setDoctorJsonMode(true);
+    resetDoctorOutcome();
+    try {
+      const cfg = opts.cfg;
+      const { runInstallHealthChecks } = await import("./doctor-install-health.js");
+      const { VERSION } = await import("../version.js");
+      const packageRoot = await resolveBitterbotPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      }).catch(() => null);
+      const installKind = detectInstallKind(packageRoot);
+      await runInstallHealthChecks({ cfg, installKind, packageRoot, runningVersion: VERSION });
+      runIdentityChecks({ config: cfg });
+      await runSecurityChecks(cfg);
+      await runControlUiChecks(cfg, installKind);
+      return {
+        findings: [...doctorFindings()],
+        worstLevel: worstFindingLevel(),
+        checkedAt: opts.now ?? Date.now(),
+      } satisfies RepairFindingsReport;
+    } finally {
+      setDoctorJsonMode(false);
+      resetDoctorOutcome();
+    }
+  })();
+  inFlight = run;
+  try {
+    return await run;
+  } finally {
+    if (inFlight === run) {
+      inFlight = null;
+    }
+  }
 }
 
 /** Test hook. */

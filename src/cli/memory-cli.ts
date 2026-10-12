@@ -496,15 +496,363 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
   }
 }
 
+// ── PLAN-55 Phase 3: owner controls from the CLI (forget, edit, export, import) ──
+
+type CascadeSummaryLike = {
+  planHash: string;
+  counts: Record<string, number>;
+  factsRetired: Array<{ key: string; value: string }>;
+  ownerFactsKept: Array<{ key: string; value: string }>;
+  factsKeptWithOtherEvidence: Array<{ key: string; value: string }>;
+  factsRelinked: Array<{ key: string; value: string }>;
+  newId?: string;
+};
+
+type OwnerCliManager = {
+  ownerForgetPreview: (id: string) => Promise<CascadeSummaryLike>;
+  ownerForgetMemory: (
+    id: string,
+    opts?: { planHash?: string },
+  ) => Promise<{ counts: Record<string, number>; retiredFacts: unknown[] }>;
+  ownerEditPreview: (id: string, text: string) => Promise<CascadeSummaryLike>;
+  ownerEditMemory: (
+    id: string,
+    text: string,
+    opts?: { planHash?: string },
+  ) => Promise<{ id: string; previousId: string; cascade: { counts: Record<string, number> } }>;
+  ownerExportMemories: (outFile: string) => Promise<Record<string, unknown> & { file: string }>;
+  ownerExportTo: (sink: (piece: string) => void | Promise<void>) => Promise<unknown>;
+  ownerImportMemories: (
+    input: unknown,
+    opts?: {
+      dryRun?: boolean;
+      actor?: "owner" | "system";
+      keepOwnerTier?: boolean;
+      confirmOwnerTierGrantsHash?: string;
+    },
+  ) => Promise<Record<string, unknown>>;
+  ownerDatabasePath?: () => string;
+};
+
+/** y/N on an interactive terminal; false when there is no terminal to ask on. */
+async function askYesNo(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return false;
+  }
+  const { createInterface } = await import("node:readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
+  } finally {
+    rl.close();
+  }
+}
+
+function ownerControls(manager: unknown): OwnerCliManager | null {
+  const m = manager as Partial<OwnerCliManager>;
+  return typeof m.ownerForgetPreview === "function" ? (m as OwnerCliManager) : null;
+}
+
+/** The cascade preview as lines for the terminal (no memory text). */
+export function formatCascadeSummary(summary: CascadeSummaryLike): string[] {
+  const c = summary.counts;
+  const lines = [
+    `Memories forgotten: ${c.chunks ?? 0}${c.derivedChunks ? ` (${c.derivedChunks} derived dream insight memories)` : ""}`,
+    `Facts retired: ${c.factsRetired ?? 0}; owner facts kept: ${c.ownerFactsKept ?? 0}; kept on other evidence: ${summary.factsKeptWithOtherEvidence.length}${c.factsRelinked ? `; moved to the new text: ${c.factsRelinked}` : ""}`,
+    `Graph links closed: ${c.edgesClosed ?? 0}; dream insights flagged: ${c.insightsFlagged ?? 0}; curiosity findings: ${c.curiosityFindings ?? 0}; preferences: ${c.preferences ?? 0}; dream-utility rows: ${c.dreamUtility ?? 0}`,
+  ];
+  for (const f of summary.factsRetired) lines.push(`  retire  ${f.key} = ${f.value}`);
+  for (const f of summary.ownerFactsKept)
+    lines.push(`  keep (yours, no evidence left)  ${f.key} = ${f.value}`);
+  lines.push(`Plan: ${summary.planHash}`);
+  return lines;
+}
+
+async function withOwnerControls(
+  opts: { agent?: string },
+  run: (m: OwnerCliManager) => Promise<void>,
+): Promise<void> {
+  const cfg = loadConfig();
+  const agentId = resolveAgent(cfg, opts.agent);
+  await withManager<MemoryManager>({
+    getManager: () => getMemorySearchManager({ cfg, agentId }),
+    onMissing: (error) => {
+      defaultRuntime.error(error ?? "Memory is disabled.");
+      process.exitCode = 1;
+    },
+    onCloseError: (err) =>
+      defaultRuntime.error(`Memory manager close failed: ${formatErrorMessage(err)}`),
+    close: async (manager) => {
+      await manager.close?.();
+    },
+    run: async (manager) => {
+      const owner = ownerControls(manager);
+      if (!owner) {
+        defaultRuntime.error("This memory backend has no owner controls.");
+        process.exitCode = 1;
+        return;
+      }
+      try {
+        await run(owner);
+      } catch (err) {
+        defaultRuntime.error(formatErrorMessage(err));
+        process.exitCode = 1;
+      }
+    },
+  });
+}
+
+function registerOwnerMemoryCommands(memory: Command) {
+  memory
+    .command("forget")
+    .description("Forget a memory and what rests only on it (shows the cascade first)")
+    .argument("<id>", "Memory id (from the Memory page or memory.list)")
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--preview", "Show what would change and stop", false)
+    .option("--yes", "Apply without asking again", false)
+    .option("--json", "Print JSON")
+    .action(
+      async (
+        id: string,
+        opts: { agent?: string; preview?: boolean; yes?: boolean; json?: boolean },
+      ) => {
+        await withOwnerControls(opts, async (m) => {
+          const preview = await m.ownerForgetPreview(id);
+          if (opts.preview || !opts.yes) {
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify({ preview }, null, 2));
+            } else {
+              defaultRuntime.log(formatCascadeSummary(preview).join("\n"));
+              if (!opts.preview) {
+                defaultRuntime.log("Nothing changed. Re-run with --yes to forget it.");
+              }
+            }
+            return;
+          }
+          const result = await m.ownerForgetMemory(id, { planHash: preview.planHash });
+          defaultRuntime.log(
+            opts.json
+              ? JSON.stringify(result, null, 2)
+              : `Forgot ${id}: ${result.counts.chunks ?? 0} memories, ${result.retiredFacts.length} fact(s) retired.`,
+          );
+        });
+      },
+    );
+
+  memory
+    .command("edit")
+    .description("Replace a memory's text (the old one is forgotten with its cascade)")
+    .argument("<id>", "Memory id")
+    .argument("<text>", "The new text")
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--preview", "Show what would change and stop", false)
+    .option("--yes", "Apply without asking again", false)
+    .option("--json", "Print JSON")
+    .action(
+      async (
+        id: string,
+        text: string,
+        opts: { agent?: string; preview?: boolean; yes?: boolean; json?: boolean },
+      ) => {
+        await withOwnerControls(opts, async (m) => {
+          const preview = await m.ownerEditPreview(id, text);
+          if (opts.preview || !opts.yes) {
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify({ preview }, null, 2));
+            } else {
+              defaultRuntime.log(formatCascadeSummary(preview).join("\n"));
+              if (!opts.preview) {
+                defaultRuntime.log("Nothing changed. Re-run with --yes to replace it.");
+              }
+            }
+            return;
+          }
+          const result = await m.ownerEditMemory(id, text, { planHash: preview.planHash });
+          defaultRuntime.log(
+            opts.json
+              ? JSON.stringify(result, null, 2)
+              : `Replaced ${result.previousId} with ${result.id}.`,
+          );
+        });
+      },
+    );
+
+  memory
+    .command("export")
+    .description("Export everything the agent remembers (JSON, version 2)")
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--out <file>", "Output file, or - for stdout (default: ~/.bitterbot/exports/)")
+    .option("--format <format>", "Export format (v2)", "v2")
+    .option("--json", "Print the result as JSON")
+    .action(async (opts: { agent?: string; out?: string; format?: string; json?: boolean }) => {
+      if (opts.format && opts.format !== "v2" && opts.format !== "2") {
+        defaultRuntime.error(
+          `Unknown format "${opts.format}"; only v2 is written (v1 readers can read it).`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      await withOwnerControls(opts, async (m) => {
+        if (opts.out === "-") {
+          await m.ownerExportTo((piece) => {
+            process.stdout.write(piece);
+          });
+          return;
+        }
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const file = opts.out
+          ? path.resolve(opts.out)
+          : path.join(resolveStateDir(process.env, os.homedir), "exports", `memory-${stamp}.json`);
+        const result = await m.ownerExportMemories(file);
+        if (opts.json) {
+          defaultRuntime.log(JSON.stringify(result, null, 2));
+          return;
+        }
+        defaultRuntime.log(
+          `Exported to ${shortenHomePath(result.file)} (${String(result.memories)} memories, ${String(result.facts)} facts, ${String(result.redactions)} redaction(s)).`,
+        );
+        const dbPath = m.ownerDatabasePath?.();
+        if (dbPath) {
+          defaultRuntime.log(`The raw database is ${shortenHomePath(dbPath)}.`);
+        }
+      });
+    });
+
+  memory
+    .command("import")
+    .description("Restore a memory export (v1 or v2) as the owner")
+    .argument("<file>", "Export file")
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--dry-run", "Count what would be restored, change nothing", false)
+    .option(
+      "--keep-owner-tier",
+      "Keep facts that were owner-tier in the export at the owner tier (asks first)",
+      false,
+    )
+    .option("--yes", "With --keep-owner-tier: do not ask", false)
+    .option("--json", "Print JSON")
+    .action(
+      async (
+        file: string,
+        opts: {
+          agent?: string;
+          dryRun?: boolean;
+          keepOwnerTier?: boolean;
+          yes?: boolean;
+          json?: boolean;
+        },
+      ) => {
+        const { MAX_IMPORT_BYTES, parseMemoryExport } = await import("../memory/memory-import.js");
+        let raw: string;
+        try {
+          const stat = await fs.stat(file);
+          if (stat.size > MAX_IMPORT_BYTES) {
+            defaultRuntime.error(
+              `${file} is ${(stat.size / 1024 / 1024).toFixed(1)} MB; imports are capped at ${MAX_IMPORT_BYTES / 1024 / 1024} MB.`,
+            );
+            process.exitCode = 1;
+            return;
+          }
+          raw = await fs.readFile(file, "utf8");
+        } catch (err) {
+          defaultRuntime.error(`Cannot read ${file}: ${formatErrorMessage(err)}`);
+          process.exitCode = 1;
+          return;
+        }
+        await withOwnerControls(opts, async (m) => {
+          const input = parseMemoryExport(raw);
+          const keepOwnerTier = Boolean(opts.keepOwnerTier);
+          let confirmOwnerTierGrantsHash: string | undefined;
+          if (keepOwnerTier && !opts.dryRun) {
+            // Rule C: list the grants with a dry run, say what they mean, and
+            // apply exactly those (bound by their hash, not their number).
+            const dry = (await m.ownerImportMemories(input, {
+              dryRun: true,
+              actor: "owner",
+              keepOwnerTier: true,
+            })) as {
+              ownerTierGrants?: number;
+              ownerTierGrantsHash?: string;
+              replacesOwnerValues?: number;
+            };
+            const grants = dry.ownerTierGrants ?? 0;
+            const replaces = dry.replacesOwnerValues ?? 0;
+            if (grants > 0) {
+              const warning =
+                `This will give ${grants} facts owner authority (they will override the agent and win every conflict)` +
+                (replaces > 0
+                  ? `; ${replaces} of them replace your current owner values.`
+                  : "; none of them replace your current owner values.");
+              defaultRuntime.log(warning);
+              if (!opts.yes && !(await askYesNo("Continue?"))) {
+                defaultRuntime.error(
+                  process.stdin.isTTY
+                    ? "Import cancelled; nothing changed."
+                    : "Refusing to grant owner authority without a terminal to confirm on; re-run with --yes.",
+                );
+                process.exitCode = 1;
+                return;
+              }
+            }
+            confirmOwnerTierGrantsHash = dry.ownerTierGrantsHash;
+          }
+          const result = await m.ownerImportMemories(input, {
+            dryRun: Boolean(opts.dryRun),
+            actor: "owner",
+            keepOwnerTier,
+            confirmOwnerTierGrantsHash,
+          });
+          if (opts.json) {
+            defaultRuntime.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          const r = result as {
+            dryRun: boolean;
+            memories: Record<string, number>;
+            facts: Record<string, number>;
+            preferences: Record<string, number>;
+            ownerTierGrants?: number;
+            ownerFactsUnconfirmed?: Array<{ key: string; value: string; scope: string }>;
+          };
+          const fmt = (t: Record<string, number>) =>
+            Object.entries(t)
+              .filter(([, v]) => v > 0)
+              .map(([k, v]) => `${k} ${v}`)
+              .join(", ") || "nothing";
+          defaultRuntime.log(
+            [
+              r.dryRun ? "Dry run, nothing written." : "Imported.",
+              `Memories: ${fmt(r.memories)}`,
+              `Facts: ${fmt(r.facts)}`,
+              `Preferences: ${fmt(r.preferences)}`,
+              `Owner-tier grants: ${r.ownerTierGrants ?? 0}`,
+              ...((r.ownerFactsUnconfirmed ?? []).length > 0
+                ? [
+                    `Imported below your tier (were yours in the export; pin one to confirm it):`,
+                    ...(r.ownerFactsUnconfirmed ?? []).map(
+                      (f) =>
+                        `  ${f.key} = ${f.value}${f.scope === "global" ? "" : ` (${f.scope})`}`,
+                    ),
+                  ]
+                : []),
+            ].join("\n"),
+          );
+        });
+      },
+    );
+}
+
 export function registerMemoryCli(program: Command) {
   const memory = program
     .command("memory")
-    .description("Memory search tools")
+    .description("Memory search tools and owner controls")
     .addHelpText(
       "after",
       () =>
         `\n${theme.muted("Docs:")} ${formatDocsLink("/cli/memory", "docs.bitterbot.ai/cli/memory")}\n`,
     );
+
+  registerOwnerMemoryCommands(memory);
 
   memory
     .command("status")

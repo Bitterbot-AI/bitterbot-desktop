@@ -67,6 +67,7 @@ import {
 } from "../health-state.js";
 import type { GatewayWsClient } from "../ws-types.js";
 import { formatGatewayAuthFailureMessage, type AuthProvidedKind } from "./auth-messages.js";
+import { buildSetupHello, decideSetupConnect, SETUP_SCOPE } from "./setup-connect.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
@@ -345,6 +346,55 @@ export function attachGatewayWsMessageHandler(params: {
             close(1008, truncateCloseReason(errorMessage));
             return;
           }
+        }
+
+        // PLAN-56 Phase 4: a setup-token connection (the browser setup page).
+        // It gets the wizard RPCs only: no admin scope, no device pairing, no
+        // broadcast events, a hello that carries no gateway snapshot.
+        const presentedSetupToken = connectParams.auth?.setupToken?.trim();
+        if (presentedSetupToken) {
+          const decision = await decideSetupConnect({
+            token: presentedSetupToken,
+            hostHeader: requestHost,
+            origin: requestOrigin,
+            remoteIsLoopback: isLoopbackAddress(remoteAddr),
+            hasProxyHeaders,
+            role,
+          });
+          if (!decision.ok) {
+            setHandshakeState("failed");
+            setCloseCause("setup-token-rejected", { reason: decision.reason });
+            logWsControl.warn(
+              `setup token rejected conn=${connId} remote=${remoteAddr ?? "?"} reason=${decision.reason}`,
+            );
+            send({
+              type: "res",
+              id: frame.id,
+              ok: false,
+              error: errorShape(ErrorCodes.INVALID_REQUEST, decision.message),
+            });
+            close(1008, truncateCloseReason(decision.message));
+            return;
+          }
+          connectParams.role = "operator";
+          connectParams.scopes = [SETUP_SCOPE];
+          clearHandshakeTimer();
+          setClient({
+            socket,
+            connect: connectParams,
+            connId,
+            clientIp: reportedClientIp,
+            setupToken: presentedSetupToken,
+          });
+          setHandshakeState("connected");
+          logWs("in", "connect", { connId, client: connectParams.client.id, auth: "setup-token" });
+          send({
+            type: "res",
+            id: frame.id,
+            ok: true,
+            payload: buildSetupHello({ connId, protocol: PROTOCOL_VERSION }),
+          });
+          return;
         }
 
         const deviceRaw = connectParams.device;

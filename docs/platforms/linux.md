@@ -15,11 +15,18 @@ Native Linux companion apps are planned. Contributions are welcome if you want t
 
 ## Beginner quick path (VPS)
 
-1. Install Node 22.12+ and pnpm
-2. `git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop && bash scripts/setup-deps.sh && pnpm install`
-3. `pnpm bitterbot onboard --install-daemon`
+1. Install Docker with the compose plugin
+2. `mkdir bitterbot && cd bitterbot && curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml && docker compose up -d`
+   (image 1.5.0 or later; see [Docker](/platforms/docker))
+3. Read the token: `docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token`
+   (or use the value of `BITTERBOT_GATEWAY_TOKEN` if you set one)
 4. From your laptop: `ssh -N -L 19001:127.0.0.1:19001 <user>@<host>`
 5. Open `http://127.0.0.1:19001/` and paste your token
+
+On a Linux laptop or desktop (x64 or arm64, glibc), the
+[installer](/start/install-script) is the shorter path. A source checkout
+(`git clone`, `bash scripts/setup-deps.sh`, `pnpm install`,
+`pnpm bitterbot onboard --install-daemon`) is for development.
 
 Step-by-step VPS guide: see the [VPS hosting hub](/gateway/vps).
 

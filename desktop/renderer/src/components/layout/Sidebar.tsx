@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
 import { formatRelativeTime } from "../../lib/format";
+import { productName } from "../../lib/runtime";
 import { cn } from "../../lib/utils";
 import { NAV_MANIFEST, type NavGroup } from "../../nav-manifest";
 import { useChatStore } from "../../stores/chat-store";
@@ -683,11 +684,13 @@ export function Sidebar() {
                 <Moon className="w-3.5 h-3.5" />
               )}
             </button>
-            <span title={`Bitterbot Desktop v${APP_VERSION}`}>v{APP_VERSION.split(".")[0]}</span>
+            <span title={`${productName()} v${APP_VERSION}`}>v{APP_VERSION.split(".")[0]}</span>
           </>
         ) : (
           <>
-            <span>Bitterbot Desktop v{APP_VERSION}</span>
+            <span>
+              {productName()} v{APP_VERSION}
+            </span>
             <button
               onClick={toggleTheme}
               className="w-7 h-7 flex items-center justify-center rounded-md hover:bg-[var(--sidebar-hover)] text-[var(--sidebar-text-muted)] hover:text-[var(--sidebar-text-primary)] transition-colors"

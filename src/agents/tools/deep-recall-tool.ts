@@ -475,7 +475,11 @@ export function createDeepRecallTool(options: {
       const { manager } = await getMemorySearchManager({ cfg, agentId });
       if (manager) {
         try {
-          const quickResults = await manager.search(query, { maxResults: 5 });
+          const quickResults = await manager.search(query, {
+            maxResults: 5,
+            // PLAN-55: superseded tags carry ledger values; owner only.
+            tagSuperseded: options.senderIsOwner === true,
+          });
           // Only shortcut if we have 3+ genuinely high-confidence results.
           // manager.search may ignore minScore (e.g. RRF strategy), so filter here.
           const highConfidence = quickResults.filter((r) => r.score >= 0.8);
@@ -521,7 +525,10 @@ export function createDeepRecallTool(options: {
       if (manager) {
         const mgr = manager;
         liveApis.search = async (q, opts) => {
-          const results = await mgr.search(q, { maxResults: opts?.maxResults ?? 10 });
+          const results = await mgr.search(q, {
+            maxResults: opts?.maxResults ?? 10,
+            tagSuperseded: options.senderIsOwner === true,
+          });
           return results.map((r) => ({
             snippet: r.snippet,
             score: r.score,
@@ -556,6 +563,7 @@ export function createDeepRecallTool(options: {
           range,
           maxTokens,
           memoryManager: manager,
+          tagSuperseded: options.senderIsOwner === true,
         });
         if (context.length < 50 && !entry) {
           return jsonResult({
@@ -622,7 +630,10 @@ export function createDeepRecallTool(options: {
             db?: import("node:sqlite").DatabaseSync;
           };
           // Use quick search results as proxy for the knowledge region
-          const quickResults = await memManager.search(query, { maxResults: 10 });
+          const quickResults = await memManager.search(query, {
+            maxResults: 10,
+            tagSuperseded: options.senderIsOwner === true,
+          });
           if (quickResults.length >= 3 && memManager.db) {
             const db = memManager.db;
             const chunkIds: string[] = [];

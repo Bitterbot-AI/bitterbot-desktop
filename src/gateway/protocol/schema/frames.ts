@@ -58,6 +58,9 @@ export const ConnectParamsSchema = Type.Object(
           token: Type.Optional(Type.String()),
           deviceToken: Type.Optional(Type.String()),
           password: Type.Optional(Type.String()),
+          // PLAN-56 Phase 4: one-time setup token from the setup URL; grants
+          // the wizard RPCs only (src/gateway/setup-token.ts).
+          setupToken: Type.Optional(Type.String()),
         },
         { additionalProperties: false },
       ),

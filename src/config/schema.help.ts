@@ -57,22 +57,44 @@ export const FIELD_HELP: Record<string, string> = {
     "Let dream cycles propose harness-policy overlays (PLAN-25). Experimental.",
   "memory.architectEvolution.enabled":
     "Learn extraction rules from failures and inject them into future extractions (HORMA). Experimental.",
-  "memory.curiosity.autoResearch.enabled":
-    "Legacy switch. Setting it to false also turns off memory.curiosity.research.",
+  "memory.curiosity.enabled":
+    "The curiosity engine: novelty detection, knowledge gaps and the questions that drive dream exploration and research (default: true).",
   "memory.curiosity.research.enabled":
     "Let the agent research its own open questions on a schedule: the question is rewritten as a generic topic phrase (checked for names and fragments) before anything leaves the node, then searched, read, and remembered with sources. Everything it does is on the Curiosity page, where it can be paused. Default on when web search is configured.",
+  "memory.curiosity.autoResearch.enabled":
+    "Let the dream engine run the Skill Seekers research step on its curiosity targets (needs skills.skillSeekers.enabled). Separate from Curiosity Research (memory.curiosity.research.enabled); setting this to false also turns Curiosity Research off unless that key is explicitly true. Default off.",
   "memory.curiosity.research.maxPerDay":
     "How many questions the agent may research per day (default 10). Dopamine adds up to 2, cortisol removes up to 2.",
   "memory.curiosity.research.intervalMinutes": "Minutes between research passes (default 240).",
+  "memory.correction.enabled":
+    "After each of your turns whose message looks like a correction or a standing instruction, one cheap model call pins what you said as a settled fact at your authority (usage feature memory/correction). Off: corrections reach the facts ledger only when the agent pins them or when the dream-time extractor reads the transcript.",
+  "memory.correction.confirm":
+    'Append one "Memory updated: ..." line to the reply whenever a settled fact was written during the turn. Values are shown in direct chats only.',
+  "session.memory":
+    '"off" is incognito: conversation transcripts are not indexed into memory, the session extractor does not read them, and corrections are not captured. Replies still work. Default "on".',
   "memory.curiosity.research.strictEgress":
     "When true, no capitalized term from a question may appear in the outgoing search phrase, even a public one like libp2p; most technical questions then cannot be searched. Default false: public subjects the model declares pass, while the owner's name, people, organizations and projects from the knowledge graph, and copied fragments never do.",
   "tools.wallet.enabled":
     "Expose the USDC wallet tool to the agent (x402 payments, transfers). Off by default; requires CDP credentials to transact.",
+  "tools.wallet.network": 'USDC network: "base" (mainnet) or "base-sepolia" (testnet).',
+  "tools.wallet.perTransactionCapUsd":
+    'Hard ceiling on a single wallet transaction, in US dollars. Applies even when review.spend is "allow" or a spend grant matches.',
+  "tools.wallet.sessionSpendCapUsd":
+    "Hard ceiling on what one agent session may spend from the wallet, in US dollars.",
+  "tools.wallet.dailySpendLimitUsd":
+    "Hard ceiling on wallet spend per UTC day, in US dollars, across all sessions.",
+  "tools.wallet.x402.enabled":
+    "Let the agent pay HTTP 402 paywalls automatically with USDC (default: false). Each payment still passes review.spend and the wallet caps.",
+  "tools.wallet.x402.maxCostPerRequestUsd":
+    "Most a single x402 paywall may charge, in US dollars; dearer pages are refused.",
   "models.liveDiscovery.enabled":
     "Query configured providers' /models endpoints at catalog build so the picker reflects what they actually serve.",
   "meta.lastTouchedVersion": "Auto-set when Bitterbot writes the config.",
   "meta.lastTouchedAt": "ISO timestamp of the last config write (auto-set).",
-  "update.channel": 'Update channel for git + npm installs ("stable", "beta", or "dev").',
+  "update.channel":
+    'Update channel for git + npm installs ("stable", "beta", or "dev"). Unset: stable for npm installs, containers and git checkouts on a release tag; dev for git checkouts on a branch. Containers follow their image tag and update with `docker compose pull && docker compose up -d`.',
+  "update.autoRollback.enabled":
+    "If a freshly updated gateway never confirms a healthy boot, roll back once: git installs reset to the pre-update commit (clean worktree only; config and memory untouched); installer (tarball) installs switch back to the previous version and restore a changed config, plus memory databases only if the new version migrated them past what the old one knows (default: true).",
   "update.checkOnStart":
     "Automatic update checks at gateway start and every 6 hours (default: true).",
   "update.promptBehindCommits":
@@ -83,8 +105,10 @@ export const FIELD_HELP: Record<string, string> = {
   "gateway.remote.sshTarget":
     "Remote gateway over SSH (tunnels the gateway port to localhost). Format: user@host or user@host:port.",
   "gateway.remote.sshIdentity": "Optional SSH identity file path (passed to ssh -i).",
-  "agents.list.*.skills":
-    "Optional allowlist of skills for this agent (omit = all skills; empty = no skills).",
+  "agents.defaults.sandbox.mode":
+    'Run tool calls in a Docker sandbox: "off" (default, tools run on the host), "non-main" (every session except the main one) or "all". See LIMITATIONS.md, "Execution and isolation".',
+  "agents.defaults.sandbox.workspaceAccess":
+    'What the sandbox sees of the agent workspace: "none" (default: a scratch workspace), "ro" (read-only) or "rw".',
   "agents.list[].skills":
     "Optional allowlist of skills for this agent (omit = all skills; empty = no skills).",
   "agents.list[].identity.avatar":
@@ -255,15 +279,6 @@ export const FIELD_HELP: Record<string, string> = {
     "If true, Slack thread sessions inherit the parent channel transcript (default: false).",
   "channels.slack.thread.initialHistoryLimit":
     "Maximum number of existing Slack thread messages to fetch when starting a new thread session (default: 20, set to 0 to disable).",
-  "channels.mattermost.botToken":
-    "Bot token from Mattermost System Console -> Integrations -> Bot Accounts.",
-  "channels.mattermost.baseUrl":
-    "Base URL for your Mattermost server (e.g., https://chat.example.com).",
-  "channels.mattermost.chatmode":
-    'Reply to channel messages on mention ("oncall"), on trigger chars (">" or "!") ("onchar"), or on every message ("onmessage").',
-  "channels.mattermost.oncharPrefixes": 'Trigger prefixes for onchar mode (default: [">", "!"]).',
-  "channels.mattermost.requireMention":
-    "Require @mention in channels before responding (default: true).",
   "auth.profiles": "Named auth profiles (provider + mode + optional email).",
   "auth.order": "Ordered auth profile IDs per provider (used for automatic failover).",
   "auth.cooldowns.billingBackoffHours":
@@ -291,7 +306,7 @@ export const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.extraPaths":
     "Extra paths to include in memory search (directories or .md files; relative paths resolved from workspace).",
   "agents.defaults.memorySearch.experimental.sessionMemory":
-    "Enable experimental session transcript indexing for memory search (default: false).",
+    "Enable experimental session transcript indexing for memory search (default: true).",
   "agents.defaults.memorySearch.provider":
     'Embedding provider ("openai", "gemini", "voyage", or "local").',
   "agents.defaults.memorySearch.remote.baseUrl":
@@ -329,8 +344,7 @@ export const FIELD_HELP: Record<string, string> = {
     "Multiplier for candidate pool size (default: 4).",
   "agents.defaults.memorySearch.cache.enabled":
     "Cache chunk embeddings in SQLite to speed up reindexing and frequent updates (default: true).",
-  memory: "Memory backend configuration (global).",
-  "memory.backend": "Memory backend (builtin).",
+  memory: "Memory system configuration (global).",
   "memory.citations": 'Default citation behavior ("auto", "on", or "off").',
   "agents.defaults.memorySearch.cache.maxEntries":
     "Optional cap on cached embeddings (best-effort).",
@@ -360,8 +374,6 @@ export const FIELD_HELP: Record<string, string> = {
     "Resolved install directory (usually ~/.bitterbot/extensions/<id>).",
   "plugins.installs.*.version": "Version recorded at install time (if available).",
   "plugins.installs.*.installedAt": "ISO timestamp of last install/update.",
-  "agents.list.*.identity.avatar":
-    "Agent avatar (workspace-relative path, http(s) URL, or data URI).",
   "agents.defaults.model.primary": "Primary model (provider/model).",
   "agents.defaults.model.fallbacks":
     "Ordered fallback models (provider/model). Used when the primary model fails.",
@@ -395,8 +407,6 @@ export const FIELD_HELP: Record<string, string> = {
     "Allow Telegram to write config in response to channel events/commands (default: true).",
   "channels.slack.configWrites":
     "Allow Slack to write config in response to channel events/commands (default: true).",
-  "channels.mattermost.configWrites":
-    "Allow Mattermost to write config in response to channel events/commands (default: true).",
   "channels.discord.configWrites":
     "Allow Discord to write config in response to channel events/commands (default: true).",
   "channels.discord.proxy":
@@ -407,8 +417,6 @@ export const FIELD_HELP: Record<string, string> = {
     "Allow Signal to write config in response to channel events/commands (default: true).",
   "channels.imessage.configWrites":
     "Allow iMessage to write config in response to channel events/commands (default: true).",
-  "channels.msteams.configWrites":
-    "Allow Microsoft Teams to write config in response to channel events/commands (default: true).",
   "channels.discord.commands.native": 'Override native commands for Discord (bool or "auto").',
   "channels.discord.commands.nativeSkills":
     'Override native skill commands for Discord (bool or "auto").',
@@ -458,8 +466,6 @@ export const FIELD_HELP: Record<string, string> = {
     'Direct message access control ("pairing" recommended). "open" requires channels.signal.allowFrom=["*"].',
   "channels.imessage.dmPolicy":
     'Direct message access control ("pairing" recommended). "open" requires channels.imessage.allowFrom=["*"].',
-  "channels.bluebubbles.dmPolicy":
-    'Direct message access control ("pairing" recommended). "open" requires channels.bluebubbles.allowFrom=["*"].',
   "channels.discord.dmPolicy":
     'Direct message access control ("pairing" recommended). "open" requires channels.discord.allowFrom=["*"].',
   "channels.discord.dm.policy":

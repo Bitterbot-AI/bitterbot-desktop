@@ -18,7 +18,7 @@ Last updated: 2026-01-01
 ## TL;DR
 
 - **Tailoring lives outside the repo:** `~/.bitterbot/workspace` (workspace) + `~/.bitterbot/bitterbot.json` (config).
-- **Stable workflow:** install via npm and use the onboarding wizard; let the service run the Gateway.
+- **Stable workflow:** Docker compose on a server, or the [installer](/start/install-script) on a laptop (1.5.0 and later), then the onboarding wizard; let the service (or compose) run the Gateway. There is no installable npm package.
 - **Bleeding edge workflow:** run the Gateway yourself via `pnpm gateway:watch`.
 
 ## Prereqs (from source)
@@ -66,9 +66,11 @@ After `pnpm build`, you can run the packaged CLI directly:
 node bitterbot.mjs gateway --port 19001 --verbose
 ```
 
-## Stable workflow
+## Stable workflow (source checkout)
 
-1. Install from source (there is no npm package yet): `git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop && bash scripts/setup-deps.sh && pnpm install`
+Not developing? Use [Docker](/platforms/docker) or the [installer](/start/install-script) instead; this section is the source-checkout version.
+
+1. Install from source: `git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop && bash scripts/setup-deps.sh && pnpm install`
 2. Run the onboarding wizard: `pnpm bitterbot onboard --install-daemon`
 3. Link surfaces (example: WhatsApp):
 

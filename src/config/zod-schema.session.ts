@@ -58,6 +58,8 @@ export const SessionSchema = z
       ])
       .optional(),
     mainKey: z.string().optional(),
+    /** PLAN-55 Phase 1: "off" keeps conversations out of memory (incognito). */
+    memory: z.union([z.literal("on"), z.literal("off")]).optional(),
     sendPolicy: SessionSendPolicySchema.optional(),
     agentToAgent: z
       .object({
