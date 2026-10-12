@@ -1,6 +1,6 @@
 {
   "full_run_authorized": false,
-  "node": "/home/vicmg/.nvm/versions/node/v22.22.1/bin/node",
+  "node": "node",
   "budget_usd": null,
   "dream_calls": 2,
   "max_results": 15,

@@ -168,6 +168,15 @@ class Broker:
             self.charged += row.get("cost_usd",reserve)-reserve
             self.save_request(row)
 
+def resolve_node(value):
+    """Resolve the configured Node binary: a path, or a command name looked up on PATH."""
+    if os.sep not in value:
+        found = shutil.which(value)
+        if found is None:
+            raise FileNotFoundError(f"node binary {value!r} not found on PATH")
+        value = found
+    return Path(value).expanduser().resolve(strict=True)
+
 class Worker:
     def __init__(self, profile, cfg, broker, now):
         self.profile, self.broker = Path(profile).resolve(), broker
@@ -175,7 +184,7 @@ class Worker:
         for name in ["home","state","tmp","workspace","agent"]:
             (self.profile/name).mkdir(exist_ok=True)
         atomic(self.profile/"empty-config.json",{})
-        node = Path(cfg["node"]).resolve(strict=True)
+        node = resolve_node(cfg["node"])
         env = {"PATH":str(node.parent)+":/usr/bin:/bin","HOME":str(self.profile/"home"),
                "BITTERBOT_HOME":str(self.profile/"home"),"BITTERBOT_STATE_DIR":str(self.profile/"state"),
                "BITTERBOT_CONFIG_PATH":str(self.profile/"empty-config.json"),

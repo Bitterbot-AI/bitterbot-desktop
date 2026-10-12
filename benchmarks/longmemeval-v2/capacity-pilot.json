@@ -1,5 +1,5 @@
 {
-  "node": "/home/vicmg/.nvm/versions/node/v22.22.1/bin/node",
+  "node": "node",
   "budget_usd": 500,
   "dream_calls": 2,
   "max_results": 15,

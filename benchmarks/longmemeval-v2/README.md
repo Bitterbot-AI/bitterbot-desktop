@@ -58,11 +58,11 @@ Wall-clock Date behavior is virtualized only inside the worker. Timers and Pytho
 
 ## Setup
 
-Run in the current WSL checkout:
+Run from the repository root with Node 22 on `PATH` (configs use `"node": "node"`; set an absolute path there to pin a specific binary):
 
 ```bash
-cd /home/vicmg/bitterbot-desktop
-export PATH="/home/vicmg/.nvm/versions/node/v22.22.1/bin:$PATH"
+cd bitterbot-desktop
+node --version  # v22.x
 B=benchmarks/longmemeval-v2
 mkdir -p "$B/.runtime"
 git clone https://github.com/xiaowu0162/LongMemEval-V2.git "$B/.runtime/upstream"
