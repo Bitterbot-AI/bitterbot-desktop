@@ -144,7 +144,11 @@ describe("export v2", () => {
       expect(doc).toHaveProperty(k);
     }
     const memories = doc.memories as Array<Record<string, unknown>>;
-    expect(memories.map((m) => m.id).toSorted()).toEqual(["abc_session", "fact_1", "note_2"]);
+    expect(memories.map((m) => String(m.id)).toSorted((a, b) => a.localeCompare(b))).toEqual([
+      "abc_session",
+      "fact_1",
+      "note_2",
+    ]);
     expect(memories.find((m) => m.id === "fact_1")).toMatchObject({
       kind: "own",
       text: "Victor lives in Lisbon.",
@@ -154,8 +158,8 @@ describe("export v2", () => {
     expect(
       facts
         .filter((f) => f.key === "identity.home_city")
-        .map((f) => f.status)
-        .toSorted(),
+        .map((f) => String(f.status))
+        .toSorted((a, b) => a.localeCompare(b)),
     ).toEqual(["active", "superseded"]);
     expect(facts[0]).toHaveProperty("evidence_chunk_ids");
     expect((doc.knowledgeGraph as { relationships: unknown[] }).relationships).toHaveLength(1);

@@ -182,8 +182,11 @@ export async function writeMemoryExport(
     let sensitivity: string | null = null;
     try {
       sensitivity =
-        (JSON.parse(String(row.governance_json ?? "{}")) as { sensitivity?: string }).sensitivity ??
-        null;
+        (
+          JSON.parse(typeof row.governance_json === "string" ? row.governance_json : "{}") as {
+            sensitivity?: string;
+          }
+        ).sensitivity ?? null;
     } catch {
       sensitivity = null;
     }
