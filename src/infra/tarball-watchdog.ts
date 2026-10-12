@@ -176,7 +176,7 @@ export async function performTarballRollback(params: {
     const stop = await run([...cli, "gateway", "stop"], { timeoutMs: STOP_TIMEOUT_MS }).catch(
       (err) => ({ stdout: "", stderr: String(err), code: 1 }),
     );
-    steps.push(stop.code === 0 ? "service stopped" : "service stop failed (continuing)");
+    steps.push(stop.code === 0 ? "`gateway stop` ran" : "`gateway stop` failed (continuing)");
   }
 
   // 2. Switch back and restore per the policy.

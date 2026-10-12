@@ -475,6 +475,11 @@ jobs:
           export HOME="$RUNNER_TEMP/home"
           B="$HOME/.local/bin/bitterbot"
           APP="$HOME/.bitterbot/app"
+          # The previous step's gateway got SIGTERM; wait until it has exited
+          # (it holds the gateway lock and port 19001 while it shuts down).
+          pkill -f "dist/entry.js" || true
+          for i in $(seq 1 60); do pgrep -f "dist/entry.js" > /dev/null || break; sleep 1; done
+          if pgrep -af "dist/entry.js"; then echo "an earlier gateway is still running"; exit 1; fi
           # The gateway runs WITHOUT the test-mode variables (only the CLI gets
           # them) and without the runner's systemd variables, so it is an
           # unsupervised gateway like `bitterbot gateway` in a terminal.
