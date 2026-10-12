@@ -468,7 +468,9 @@ describe("memory cli owner controls (PLAN-55 Phase 3)", () => {
   it("export writes v2 to --out and shows the database path; other formats are refused", async () => {
     const m = ownerManager();
     const { out } = await run(["export", "--out", "/tmp/x/export.json"], m);
-    expect(m.ownerExportMemories).toHaveBeenCalledWith("/tmp/x/export.json");
+    const { resolve } = await import("node:path");
+    // Resolved against the platform (a drive letter on Windows).
+    expect(m.ownerExportMemories).toHaveBeenCalledWith(resolve("/tmp/x/export.json"));
     expect(out).toContain("3 memories");
     expect(out).toContain("main.sqlite");
 
