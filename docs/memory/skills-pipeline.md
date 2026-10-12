@@ -823,7 +823,7 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   cited traces are all third-party (circle / a2a / subagent / guest /
   unknown) is HELD `untrusted-evidence-only` before any LLM spend, and a
   proposal that read no traces at all is refused at apply time (`proposal
-cites no traces`); a pre-user-stream trace is classified by its session
+  cites no traces`); a pre-user-stream trace is classified by its session
   key, as the sampler admitted it. P2P
   ingestion routes an envelope into the skill-network bridge (memory
   chunk) only when `ingestSkill` ACCEPTED it (`shouldBridgeIngest`); a
@@ -872,7 +872,7 @@ cites no traces`); a pre-user-stream trace is classified by its session
   (`skills.evolution.validationBudgetMinutes`, default 45) HOLDs with
   `budget-exhausted`. **Corpus review** (`corpus-review.ts`; RPCs
   `skills.evolution.corpus.list|accept|reject`; CLI `bitterbot skills
-corpus list|accept|reject`) is the only writer of `task-corpus.jsonl`:
+  corpus list|accept|reject`) is the only writer of `task-corpus.jsonl`:
   drafts are re-flagged at accept time (absolute paths, network verbs,
   injection hits, error-string checkers) and rejected ids are never
   redrafted. **Records mode** (`validate-records.ts`) is the opt-in

@@ -736,8 +736,8 @@ Test your handlers in isolation:
 
 ```typescript
 import { test } from "vitest";
-import { createHookEvent } from "./src/hooks/hooks.js";
 import myHandler from "./hooks/my-hook/handler.js";
+import { createHookEvent } from "./src/hooks/hooks.js";
 
 test("my handler works", async () => {
   const event = createHookEvent("command", "new", "test-session", {

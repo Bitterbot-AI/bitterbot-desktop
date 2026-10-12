@@ -209,7 +209,7 @@ deletes them all) or remove them by hand from Cloudflare.
   ```
 - **Peer ID file empty.** The systemd unit hasn't started yet, or the
   log line wasn't matched. Check `journalctl -u bitterbot-orchestrator
--n 50` and look for `Local peer ID: 12D3KooW...`.
+  -n 50` and look for `Local peer ID: 12D3KooW...`.
 
 ## Source-of-truth
 

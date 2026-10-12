@@ -196,10 +196,10 @@ fire-and-forget queue as usage rows, and pruned with the same retention.
 Where it shows up:
 
 - `bitterbot doctor` (7d): `hot-set: N direct calls, M via use_tool (K failed), J via native
-search in 7d; top deferred tools reached indirectly: ...`, warning with a tip to add a tool
+  search in 7d; top deferred tools reached indirectly: ...`, warning with a tip to add a tool
   to `tools.hotSet` when it is reached indirectly 5 or more times a week
   (`HOT_SET_PROMOTE_MIN_INDIRECT_PER_WEEK`; scaled to the window), and `tool results
-spilled: N in 7d, avg X chars` (info).
+  spilled: N in 7d, avg X chars` (info).
 - `bitterbot gateway usage --tools [--days N] [--json]`: the same lines plus failures by
   class and the prefix-stability report below. It reads the ledger file directly, so it works
   without a running gateway.
@@ -215,7 +215,7 @@ on the full JSONL trace is written as before. A digest that moves between two tu
 than 60 minutes apart is a cache bust the operator can fix.
 
 - `bitterbot doctor` (7d): `prefix stability: N sessions in 7d where the cached prefix
-changed mid-session (turns < 60 min apart): <session, turn count, likely tier: tools|system>`,
+  changed mid-session (turns < 60 min apart): <session, turn count, likely tier: tools|system>`,
   warn when N > 0, with the tip "a prompt section above the cache boundary is changing between
   turns; run with BITTERBOT_CACHE_TRACE=1 to see which". Rows without digests (older
   releases, reconciled transcripts) never count as changes.
