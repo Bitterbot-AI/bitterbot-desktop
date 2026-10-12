@@ -139,16 +139,25 @@ systemctl --user status
 
 ### 3) Install Bitterbot (inside WSL)
 
-Follow the Linux Getting Started flow inside WSL:
+WSL is Linux, so the Linux paths work inside it. The
+[installer](/start/install-script) (1.5.0 and later) is the short one:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+```
+
+For development, use a source checkout instead:
 
 ```bash
 git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
 cd bitterbot-desktop
+bash scripts/setup-deps.sh
 pnpm install
-pnpm build # auto-installs UI deps on first run
 pnpm build
-bitterbot onboard
+pnpm bitterbot onboard --install-daemon
 ```
+
+Without WSL, run the [Docker](/platforms/docker) image with Docker Desktop.
 
 Full guide: [Getting Started](/start/getting-started)
 

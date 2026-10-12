@@ -70,6 +70,8 @@ export const AgentDefaultsSchema = z
           .strict(),
       )
       .optional(),
+    /** Enforce `models` as the allowlist for /model and session overrides (default false: it is a catalog). */
+    restrictModels: z.boolean().optional(),
     workspace: z.string().optional(),
     repoRoot: z.string().optional(),
     skipBootstrap: z.boolean().optional(),

@@ -28,6 +28,14 @@ Notes:
 
 - Interactive prompts (like keychain/OAuth fixes) only run when stdin is a TTY and `--non-interactive` is **not** set. Headless runs (cron, Telegram, no terminal) will skip prompts.
 - `--fix` (alias for `--repair`) writes a backup to `~/.bitterbot/bitterbot.json.bak` and drops unknown config keys, listing each removal.
+- Deprecated config keys (`memory.backend`, `agents.defaults.runtime.engine`, `agents.list[].runtime.engine`, `agents.defaults.compaction.mode: "safeguard"`, `agents.defaults.contextPruning`, `update.uiRestart`) are listed by exact path as a warning in the **Config** section (and in `--json`). `--fix` removes them (all are inert). It never rewrites a config that uses `$include` (remove the listed keys by hand; each path names the included file it lives in where the root file shows it). The interactive prompt for removing deprecated keys alone defaults to no. A config file with comments loses them when `--fix` rewrites it; doctor says so, and the previous file is kept as `.bak`.
+- No config file is not an error in itself: every default applies without one. But `gateway.mode` has no default, so outside the container image (which always starts with `--allow-unconfigured`) an unset `gateway.mode` is a warning: `bitterbot gateway` refuses to start until onboarding or `bitterbot config set gateway.mode local` sets it.
+
+## Install kind
+
+The **Runtime** section names how this Bitterbot is installed (source checkout, container image, release tarball from `install.sh`, or package), and the advice elsewhere follows it: the pnpm check runs only for a source checkout, a missing Control UI build or orchestrator binary points a container at `docker compose pull && docker compose up -d` and a tarball install at the installer one-liner, and a checkout at `pnpm ui:build` / `pnpm install` / `cargo build`. In a container, a `lan` gateway bind is a warning that says LAN exposure depends on the host port mapping (`-p 19001:19001` or `BITTERBOT_BIND_HOST=0.0.0.0` exposes it on the LAN); check it on the Docker host with `docker compose port bitterbot-gateway 19001`.
+
+The **P2P Network** section also says where the orchestrator binary's integrity comes from: verified when the release tarball or image was built, verified at download by the postinstall fetch (a valid minisign signature against the pinned key is required from 1.5.0 on), built from source, or supplied by `p2p.orchestratorBinary` (not verified).
 
 ## Exit code and the update gate
 
@@ -238,7 +246,7 @@ still shows.
 
 ## macOS: `launchctl` env overrides
 
-If you previously ran `launchctl setenv BITTERBOT_GATEWAY_TOKEN ...` (or `...PASSWORD`), that value overrides your config file and can cause persistent “unauthorized” errors.
+If you previously ran `launchctl setenv BITTERBOT_GATEWAY_TOKEN ...` (or `...PASSWORD`), the gateway and the CLI ignore it while your config sets `gateway.auth.token` (config wins over the environment), but anything that reads only the environment keeps sending the stale value and gets persistent “unauthorized” errors.
 
 ```bash
 launchctl getenv BITTERBOT_GATEWAY_TOKEN

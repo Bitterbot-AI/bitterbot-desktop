@@ -2,8 +2,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CONTAINER_UPDATE_COMMAND,
+  detectInstallKind,
   externalUpdateCommand,
+  gatewayStartCommand,
   hasTarballMarker,
+  installKindLabel,
+  isSourceTree,
   looksLikeContainer,
   readDeclaredInstallKind,
   resolveInstallKind,
@@ -156,5 +160,65 @@ describe("release-tarball install kind (PLAN-56 Phase 3a)", () => {
     expect(tarballPlatformId("darwin", "x64")).toBeNull();
     expect(tarballPlatformId("win32", "x64")).toBeNull();
     expect(tarballAssetName("1.5.0", "linux-x64")).toBe("bitterbot-1.5.0-linux-x64.tar.gz");
+  });
+});
+
+describe("detectInstallKind (advice text, drift pass)", () => {
+  it("a .git entry at the root is a checkout, even with a container env", () => {
+    const root = "/src/bitterbot";
+    expect(detectInstallKind(root, probe({ files: [path.join(root, ".git")] }))).toBe("git");
+  });
+
+  it("the tarball marker without .git is a tarball install", () => {
+    const root = "/home/u/.bitterbot/app/1.5.0";
+    expect(
+      detectInstallKind(
+        root,
+        probe({ contents: { [path.join(root, TARBALL_INSTALL_MARKER)]: "tarball\n" } }),
+      ),
+    ).toBe("tarball");
+  });
+
+  it("the image env declares a container; no root is unknown", () => {
+    expect(detectInstallKind("/app", probe({ env: { BITTERBOT_INSTALL_KIND: "container" } }))).toBe(
+      "container",
+    );
+    expect(detectInstallKind(null, probe({}))).toBe("unknown");
+  });
+});
+
+describe("gatewayStartCommand / installKindLabel", () => {
+  it("names the start command each install kind actually has", () => {
+    expect(gatewayStartCommand("git")).toBe("pnpm start gateway");
+    expect(gatewayStartCommand("container")).toBe("docker compose up -d");
+    expect(gatewayStartCommand("tarball")).toBe("bitterbot gateway");
+    expect(gatewayStartCommand("package")).toBe("bitterbot gateway");
+  });
+
+  it("labels every kind", () => {
+    for (const kind of ["git", "package", "container", "tarball", "unknown"] as const) {
+      expect(installKindLabel(kind).length).toBeGreaterThan(0);
+    }
+    expect(installKindLabel("tarball")).toContain("install.sh");
+  });
+});
+
+describe("isSourceTree (LOW-3: ZIP downloads still auto-spawn)", () => {
+  const root = "/home/u/bitterbot-desktop-main";
+  const zipFiles = [
+    path.join(root, "pnpm-workspace.yaml"),
+    path.join(root, "scripts", "start-all.mjs"),
+  ];
+  it("a non-git repository copy with the stack scripts is a source tree", () => {
+    expect(isSourceTree(root, "package", probe({ files: zipFiles }))).toBe(true);
+  });
+  it("a tarball, container or package without scripts/ is not", () => {
+    expect(isSourceTree(root, "tarball", probe({ files: zipFiles }))).toBe(false);
+    expect(isSourceTree(root, "container", probe({ files: zipFiles }))).toBe(false);
+    expect(isSourceTree(root, "package", probe({ files: [] }))).toBe(false);
+    expect(isSourceTree(null, "package", probe({ files: zipFiles }))).toBe(false);
+  });
+  it("a git checkout always is", () => {
+    expect(isSourceTree(root, "git", probe({}))).toBe(true);
   });
 });

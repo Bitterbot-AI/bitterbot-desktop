@@ -20,12 +20,18 @@ below in one step.
 
 ## 1. GitHub Releases — orchestrator binary (install time)
 
-- **When:** during `pnpm install` (postinstall), and only if a prebuilt
-  release exists for the version in `orchestrator/Cargo.toml`.
+- **When:** during `pnpm install` (postinstall) in a source checkout, and
+  only if a prebuilt release exists for the version in
+  `orchestrator/Cargo.toml`. The Docker image and the installer's release
+  tarball already carry the binary (fetched and verified when they were
+  built), so those installs make no orchestrator download at all; the
+  installer itself downloads the tarball, `checksums.txt` and its signature
+  from the same releases.
 - **Where:** `github.com` / `objects.githubusercontent.com`
   (`Bitterbot-AI/bitterbot-desktop` releases).
-- **What:** plain HTTPS downloads of `checksums.txt` (+ `.minisig` once
-  releases are signed) and the platform binary. Nothing is uploaded.
+- **What:** plain HTTPS downloads of `checksums.txt`, `checksums.txt.minisig`
+  (required: the fetch verifies it against the pinned minisign key and refuses
+  a missing or bad signature) and the platform binary. Nothing is uploaded.
 - **Off switch:** `BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD=1` in the install
   environment, or build locally with
   `cargo build --release --manifest-path orchestrator/Cargo.toml`.
@@ -86,7 +92,10 @@ below in one step.
     `api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30`
     (the newest `vX.Y.Z` release that carries the `docker-compose.yml` asset,
     which is attached only once its image is on GHCR), never npm. The answer is cached for 30 minutes (15 after a failure), so
-    opening the Control UI repeatedly does not repeat the request.
+    opening the Control UI repeatedly does not repeat the request;
+  - installer (release tarball) install (`BITTERBOT_INSTALL_KIND=tarball`, set
+    by its launcher): the same GitHub releases list, counting only a release
+    that carries the tarball for your platform, never npm.
 - **What:** standard git/registry/HTTPS requests; nothing about your node is
   sent beyond what those protocols carry (the GitHub request is
   unauthenticated, with a generic `bitterbot-update-check` User-Agent).

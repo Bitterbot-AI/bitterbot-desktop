@@ -15,6 +15,9 @@ function makeMoonshotConfig(home: string, storePath: string) {
       defaults: {
         model: { primary: "anthropic/claude-opus-4-5" },
         workspace: path.join(home, "bitterbot"),
+        // `models` is a catalog unless restrictModels opts into allowlisting
+        // (b7950e34); these cases exercise the allowlist.
+        restrictModels: true,
         models: {
           "anthropic/claude-opus-4-5": {},
           "moonshot/kimi-k2-0905-preview": {},

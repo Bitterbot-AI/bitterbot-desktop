@@ -11,10 +11,19 @@ import {
   migrateLegacyConfig,
   readConfigFileSnapshot,
 } from "../config/config.js";
+import { isFrozenFallbackPeerList } from "../config/defaults.js";
+import { findDeprecatedConfigKeys } from "../config/io.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { listTelegramAccountIds, resolveTelegramAccount } from "../telegram/accounts.js";
 import { note } from "../terminal/note.js";
 import { isRecord } from "../utils.js";
+import { renderSection, warn } from "./doctor-check.js";
+import {
+  configUsesInclude,
+  json5HasComments,
+  locateConfigKey,
+  removeDeprecatedConfigKeys,
+} from "./doctor-deprecated-config.js";
 import { normalizeLegacyConfigValues } from "./doctor-legacy-config.js";
 import type { DoctorOptions } from "./doctor-prompter.js";
 
@@ -460,11 +469,95 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     }
   }
 
+  // PLAN-56: deprecated keys, by exact path, as a finding (so `doctor --json`
+  // and the update gate see them); the inert ones are removed on repair.
+  // Never auto-written when the config uses $include: a write re-serialises
+  // the root file with the included content inlined (drift-pass HIGH-1).
+  let deprecatedOnlyChanges = false;
+  const deprecatedHits = findDeprecatedConfigKeys(snapshot.resolved);
+  if (deprecatedHits.length > 0) {
+    const usesInclude = configUsesInclude(snapshot.parsed);
+    renderSection("Config", [
+      warn(
+        [
+          "Deprecated config keys (accepted this release, removed next release):",
+          ...deprecatedHits.map((hit) => {
+            const file = usesInclude ? locateConfigKey(snapshot.parsed, hit.path) : null;
+            return `- ${hit.path}${file ? ` (in ${file})` : ""}: ${hit.reason}`;
+          }),
+          ...(usesInclude
+            ? [
+                "This config uses $include, so doctor will not rewrite it: remove these keys by hand.",
+              ]
+            : []),
+        ].join("\n"),
+      ),
+    ]);
+    const removal = usesInclude
+      ? { config: candidate, changes: [] }
+      : removeDeprecatedConfigKeys(candidate, deprecatedHits);
+    if (removal.changes.length > 0) {
+      const changeLines = [...removal.changes];
+      if (json5HasComments(snapshot.raw)) {
+        changeLines.push(
+          `- Note: ${snapshot.path ?? CONFIG_PATH} has comments; applying this rewrites the file without them (the previous file is kept as .bak).`,
+        );
+      }
+      note(changeLines.join("\n"), "Doctor changes");
+      candidate = removal.config;
+      deprecatedOnlyChanges = !pendingChanges;
+      pendingChanges = true;
+      if (shouldRepair) {
+        cfg = removal.config;
+      } else {
+        fixHints.push(
+          `Run "${formatCliCommand("bitterbot doctor --fix")}" to remove the deprecated keys.`,
+        );
+      }
+    }
+  }
+
+  // Drift-pass HIGH-2: an older config write could freeze the built-in
+  // fallback bootstrap peers into the file. They load as unset now; --fix
+  // removes them so the file no longer pins the list.
+  const filePeers = (snapshot.resolved as { p2p?: { bootstrapPeers?: unknown } } | undefined)?.p2p
+    ?.bootstrapPeers;
+  if (isFrozenFallbackPeerList(filePeers)) {
+    const usesInclude = configUsesInclude(snapshot.parsed);
+    const where = usesInclude ? locateConfigKey(snapshot.parsed, "p2p.bootstrapPeers") : null;
+    renderSection("Config", [
+      warn(
+        [
+          `p2p.bootstrapPeers${where ? ` (in ${where})` : ""} holds exactly the built-in fallback peers, frozen into the file by an older config write. It loads as unset, but the file should not pin the list.`,
+          usesInclude
+            ? "This config uses $include, so doctor will not rewrite it: remove the key by hand."
+            : `Run "${formatCliCommand("bitterbot doctor --fix")}" to remove it.`,
+        ].join("\n"),
+      ),
+    ]);
+    if (!usesInclude) {
+      const next = structuredClone(candidate) as BitterbotConfig & {
+        p2p?: Record<string, unknown>;
+      };
+      if (next.p2p) {
+        delete next.p2p.bootstrapPeers;
+      }
+      note("- Removed p2p.bootstrapPeers (the frozen built-in fallback list).", "Doctor changes");
+      candidate = next;
+      deprecatedOnlyChanges = !pendingChanges || deprecatedOnlyChanges;
+      pendingChanges = true;
+      if (shouldRepair) {
+        cfg = next;
+      }
+    }
+  }
+
   const autoEnable = applyPluginAutoEnable({ config: candidate, env: process.env });
   if (autoEnable.changes.length > 0) {
     note(autoEnable.changes.join("\n"), "Doctor changes");
     candidate = autoEnable.config;
     pendingChanges = true;
+    deprecatedOnlyChanges = false;
     if (shouldRepair) {
       cfg = autoEnable.config;
     } else {
@@ -478,6 +571,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
       note(repair.changes.join("\n"), "Doctor changes");
       candidate = repair.config;
       pendingChanges = true;
+      deprecatedOnlyChanges = false;
       cfg = repair.config;
     }
   } else {
@@ -498,6 +592,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     const lines = unknown.removed.map((path) => `- ${path}`).join("\n");
     candidate = unknown.config;
     pendingChanges = true;
+    deprecatedOnlyChanges = false;
     if (shouldRepair) {
       cfg = unknown.config;
       note(lines, "Doctor changes");
@@ -508,9 +603,13 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   }
 
   if (!shouldRepair && pendingChanges) {
+    // Removing deprecated keys alone is never urgent (they still load this
+    // release), so that prompt defaults to no; --fix applies it.
     const shouldApply = await params.confirm({
-      message: "Apply recommended config repairs now?",
-      initialValue: true,
+      message: deprecatedOnlyChanges
+        ? "Remove the deprecated config keys now?"
+        : "Apply recommended config repairs now?",
+      initialValue: !deprecatedOnlyChanges,
     });
     if (shouldApply) {
       cfg = candidate;

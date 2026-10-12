@@ -6,7 +6,9 @@
  *
  *   1. Node version meets the minimum (we depend on structuredClone,
  *      node:test, modern AbortSignal behaviour, and node --watch)
- *   2. pnpm is on PATH (monorepo dev workflow + `pnpm dev:all`)
+ *   2. pnpm is on PATH, for source checkouts only (monorepo dev workflow +
+ *      `pnpm dev:all`); container, installer and package installs never
+ *      need it
  *   3. Platform-specific caveats:
  *        - Linux + public bind → recommend Tailscale / loopback
  *        - WSL2 → flag known symlink + filesystem-performance gotchas
@@ -19,6 +21,7 @@
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import type { BitterbotConfig } from "../config/config.js";
+import { type InstallKind, installKindLabel } from "../infra/install-kind.js";
 import {
   renderSection as renderDoctorSection,
   type CheckResult,
@@ -66,9 +69,17 @@ function whichPnpm(): { found: boolean; version?: string } {
   return { found: false };
 }
 
-export function runRuntimeChecks(params: { config: BitterbotConfig }): void {
+export function runRuntimeChecks(params: {
+  config: BitterbotConfig;
+  /** How this Bitterbot is installed (detectInstallKind). */
+  installKind?: InstallKind;
+  /** Test seam for the pnpm probe. */
+  whichPnpm?: () => { found: boolean; version?: string };
+}): void {
   const { config } = params;
+  const installKind = params.installKind ?? "unknown";
   const results: CheckResult[] = [];
+  results.push(info(`Install: ${installKindLabel(installKind)}`));
 
   // ── Node version ──
   const major = parseNodeMajor(process.version);
@@ -85,9 +96,13 @@ export function runRuntimeChecks(params: { config: BitterbotConfig }): void {
     results.push(ok(`Node ${process.version}`));
   }
 
-  // ── pnpm ──
-  const pnpm = whichPnpm();
-  if (pnpm.found) {
+  // ── pnpm (source checkouts only: nothing else runs pnpm) ──
+  const pnpm =
+    installKind === "git" ? (params.whichPnpm ?? whichPnpm)() : { found: false, skipped: true };
+  if ("skipped" in pnpm) {
+    // Container, installer and package installs start with `bitterbot` (or
+    // compose); a missing pnpm is not a problem there.
+  } else if (pnpm.found) {
     results.push(ok(`pnpm ${pnpm.version} on PATH`));
   } else {
     results.push(
@@ -104,7 +119,19 @@ export function runRuntimeChecks(params: { config: BitterbotConfig }): void {
   const tailscaleMode = config.gateway?.tailscale?.mode ?? "off";
 
   if (platform === "linux" && (bind === "lan" || bind === "auto" || bind === "custom")) {
-    if (tailscaleMode === "off") {
+    if (installKind === "container") {
+      // Inside the image the gateway must bind 0.0.0.0; whether that reaches
+      // the LAN is decided on the host by the port mapping, which doctor
+      // cannot see from inside the container.
+      results.push(
+        warn(
+          `Container: gateway bind=${bind} inside the container. LAN exposure depends on the ` +
+            "host port mapping: `-p 19001:19001` or BITTERBOT_BIND_HOST=0.0.0.0 exposes it on " +
+            "your LAN. Check on the Docker host with `docker compose port bitterbot-gateway 19001` " +
+            "(127.0.0.1:... means loopback only).",
+        ),
+      );
+    } else if (tailscaleMode === "off") {
       results.push(
         warn(
           `Linux + gateway bind=${bind} with Tailscale off. The gateway is reachable ` +

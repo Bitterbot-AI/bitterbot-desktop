@@ -78,19 +78,26 @@ node --version  # Should be v22.x or later
 
 When running Bitterbot in Docker:
 
-1. The official image runs as a non-root user (`node`) for reduced attack surface
-2. Use `--read-only` flag when possible for additional filesystem protection
-3. Limit container capabilities with `--cap-drop=ALL`
+1. The official image runs the gateway as a non-root user (`node`, uid 1000). The
+   release `docker-compose.yml` starts the container as root only so the
+   entrypoint can hand root-owned files in the data folder to `node`; it then
+   drops to `node` before running anything else
+2. Limit container capabilities with `--cap-drop=ALL`
 
 Example secure Docker run:
 
 ```bash
-# Build the image locally first (no published image yet):
-docker build -t bitterbot:local .
-docker run --read-only --cap-drop=ALL \
-  -v bitterbot-data:/app/data \
-  bitterbot:local
+# Published image (1.5.0 or later); runs as `node` when started without --user.
+# A fresh named volume inherits node ownership from the image (CI runs this).
+docker run -d --cap-drop=ALL \
+  -v bitterbot-data:/home/node/.bitterbot \
+  -e BITTERBOT_GATEWAY_TOKEN=change-me \
+  ghcr.io/bitterbot-ai/bitterbot-desktop:1
 ```
+
+A bind-mounted host folder instead of a named volume must be writable by uid
+1000, or start the way the release `docker-compose.yml` does (`-u 0:0`; the
+entrypoint hands root-owned files to `node`, then drops to it).
 
 ## Security Scanning
 

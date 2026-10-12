@@ -33,6 +33,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "memory.architectEvolution.enabled": "Memory Architect Evolution",
   "memory.curiosity.enabled": "Curiosity Engine",
   "memory.curiosity.research.enabled": "Curiosity Research",
+  "memory.curiosity.autoResearch.enabled": "Dream Skill Seekers Research",
   "memory.curiosity.research.maxPerDay": "Curiosity Questions Per Day",
   "memory.curiosity.research.intervalMinutes": "Curiosity Research Interval",
   "memory.curiosity.research.strictEgress": "Curiosity Strict Egress",

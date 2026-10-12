@@ -212,11 +212,43 @@ function createMergePatch(base: unknown, target: unknown): unknown {
       patch[key] = childPatch;
       continue;
     }
-    if (!isDeepStrictEqual(baseValue, targetValue)) {
+    if (!configValuesEqual(baseValue, targetValue)) {
       patch[key] = cloneUnknown(targetValue);
     }
   }
   return patch;
+}
+
+/**
+ * Structural equality for config values (JSON data). Unlike
+ * isDeepStrictEqual it ignores prototypes, so an array or object made in
+ * another realm (structuredClone under a vm context, a worker's message)
+ * still equals its same-realm twin. With isDeepStrictEqual such a clone of
+ * the loaded config differed from the snapshot at every array, and a write
+ * froze those arrays (the fallback p2p.bootstrapPeers) into the file
+ * (drift-pass review HIGH-2).
+ */
+export function configValuesEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    return a.every((item, index) => configValuesEqual(item, b[index]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) {
+      return false;
+    }
+    const bRecord = b as Record<string, unknown>;
+    const aRecord = a as Record<string, unknown>;
+    return aKeys.every((key) => key in bRecord && configValuesEqual(aRecord[key], bRecord[key]));
+  }
+  return false;
 }
 
 function collectEnvRefPaths(value: unknown, path: string, output: Map<string, string>): void {
@@ -272,7 +304,7 @@ function collectChangedPaths(
     }
     return;
   }
-  if (!isDeepStrictEqual(base, target)) {
+  if (!configValuesEqual(base, target)) {
     output.add(path);
   }
 }
@@ -465,6 +497,33 @@ export function resetDeprecatedConfigWarningsForTests(): void {
 }
 
 /**
+ * Every deprecated key present in `raw` (DEPRECATED_PATHS), with its concrete
+ * path (`agents.list[1].runtime.engine`), value and reason. Keys in
+ * DEPRECATED_ONLY_WHEN count only for the listed value. Shared by the load
+ * warning and `bitterbot doctor`.
+ */
+export function findDeprecatedConfigKeys(
+  raw: unknown,
+): Array<{ path: string; value: unknown; reason: string }> {
+  if (!raw || typeof raw !== "object") {
+    return [];
+  }
+  const found: Array<{ path: string; value: unknown; reason: string }> = [];
+  for (const [registryPath, reason] of Object.entries(DEPRECATED_PATHS)) {
+    for (const hit of collectAtRegistryPath(raw, registryPath)) {
+      if (
+        registryPath in DEPRECATED_ONLY_WHEN &&
+        !isDeepStrictEqual(hit.value, DEPRECATED_ONLY_WHEN[registryPath])
+      ) {
+        continue;
+      }
+      found.push({ path: hit.path, value: hit.value, reason });
+    }
+  }
+  return found;
+}
+
+/**
  * PLAN-56 Phase 1: warn once per process for every deprecated key present in
  * the config (DEPRECATED_PATHS). Keys in DEPRECATED_ONLY_WHEN warn only for
  * the listed value. The schema keeps accepting them this release.
@@ -474,28 +533,17 @@ export function warnOnDeprecatedConfigKeys(
   logger: Pick<typeof console, "warn">,
   options?: { once?: boolean },
 ): string[] {
-  if (!raw || typeof raw !== "object") {
-    return [];
-  }
   const once = options?.once ?? true;
   const warned: string[] = [];
-  for (const [registryPath, reason] of Object.entries(DEPRECATED_PATHS)) {
-    for (const hit of collectAtRegistryPath(raw, registryPath)) {
-      if (
-        registryPath in DEPRECATED_ONLY_WHEN &&
-        !isDeepStrictEqual(hit.value, DEPRECATED_ONLY_WHEN[registryPath])
-      ) {
+  for (const hit of findDeprecatedConfigKeys(raw)) {
+    if (once) {
+      if (warnedDeprecatedKeys.has(hit.path)) {
         continue;
       }
-      if (once) {
-        if (warnedDeprecatedKeys.has(hit.path)) {
-          continue;
-        }
-        warnedDeprecatedKeys.add(hit.path);
-      }
-      logger.warn(`Config key "${hit.path}" is deprecated: ${reason}`);
-      warned.push(hit.path);
+      warnedDeprecatedKeys.add(hit.path);
     }
+    logger.warn(`Config key "${hit.path}" is deprecated: ${hit.reason}`);
+    warned.push(hit.path);
   }
   return warned;
 }
@@ -626,6 +674,88 @@ function applyLoadTimeDefaults(validated: BitterbotConfig): BitterbotConfig {
   );
   normalizeConfigPaths(cfg);
   return cfg;
+}
+
+/**
+ * Remove, in place, every value of `candidate` that the file does not hold
+ * (`raw`) and that equals what the load-time defaults supply for that file
+ * (`defaults`). Objects are walked so a partially customised defaulted block
+ * keeps only the customised keys. An object emptied by the walk goes too,
+ * unless the file had it.
+ */
+function stripLoadTimeDefaultsInPlace(
+  candidate: Record<string, unknown>,
+  raw: unknown,
+  defaults: unknown,
+): void {
+  if (!isPlainObject(defaults)) {
+    return;
+  }
+  const rawObj = isPlainObject(raw) ? raw : undefined;
+  for (const key of Object.keys(candidate)) {
+    if (!(key in defaults)) {
+      continue;
+    }
+    const inFile = rawObj !== undefined && key in rawObj;
+    const value = candidate[key];
+    const defaultValue = defaults[key];
+    if (!inFile && configValuesEqual(value, defaultValue)) {
+      delete candidate[key];
+      continue;
+    }
+    if (isPlainObject(value) && isPlainObject(defaultValue)) {
+      stripLoadTimeDefaultsInPlace(value, inFile ? rawObj?.[key] : undefined, defaultValue);
+      if (!inFile && Object.keys(value).length === 0) {
+        delete candidate[key];
+      }
+    }
+  }
+}
+
+/**
+ * Drift-pass review HIGH-2: a write must never persist a value that exists
+ * only because the load-time defaults (applyLoadTimeDefaults: bootstrap
+ * peers, compaction/context-pruning modes, a2a caps, circles, ...) put it into
+ * the loaded config. Whatever path built the candidate (merge patch against
+ * the snapshot, a missing file, an invalid snapshot written best-effort), a
+ * value absent from the file that equals the default for that file is
+ * dropped. A value the caller changed differs from the default and stays; a
+ * caller "setting" a key to exactly its default is indistinguishable from
+ * the default and is not written (the effective config is the same).
+ */
+export function stripLoadTimeDefaults(candidate: unknown, fileRaw: unknown): unknown {
+  if (!isPlainObject(candidate)) {
+    return candidate;
+  }
+  const base = isPlainObject(fileRaw) ? (structuredClone(fileRaw) as BitterbotConfig) : {};
+  let defaults: unknown;
+  try {
+    defaults = applyLoadTimeDefaults(base);
+  } catch {
+    return candidate;
+  }
+  const out = structuredClone(candidate);
+  stripLoadTimeDefaultsInPlace(out, fileRaw, defaults);
+  return out;
+}
+
+/**
+ * Drop, in place, every key of `validated` that `candidate` does not have:
+ * schema validation may normalise values but must not add keys (zod
+ * `.default()`s such as `commands.native`, plugin schema defaults) to what is
+ * written. Walks plain objects only.
+ */
+function dropKeysAddedByValidation(validated: unknown, candidate: unknown): void {
+  if (!isPlainObject(validated) || !isPlainObject(candidate)) {
+    return;
+  }
+  for (const key of Object.keys(validated)) {
+    if (!(key in candidate)) {
+      delete validated[key];
+      continue;
+    }
+    dropKeysAddedByValidation(validated[key], candidate[key]);
+  }
 }
 
 export function createConfigIO(overrides: ConfigIoDeps = {}) {
@@ -943,6 +1073,11 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
       }
     }
 
+    persistCandidate = stripLoadTimeDefaults(
+      persistCandidate,
+      snapshot.exists ? snapshot.resolved : {},
+    );
+
     const validated = validateConfigObjectRawWithPlugins(persistCandidate);
     if (!validated.ok) {
       const issue = validated.issues[0];
@@ -966,6 +1101,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     // Apply env restoration to validated.config (which has runtime defaults stripped
     // per issue #6070) rather than the raw caller input.
     let cfgToWrite = validated.config;
+    dropKeysAddedByValidation(cfgToWrite, persistCandidate);
     try {
       if (deps.fs.existsSync(configPath)) {
         const currentRaw = await deps.fs.promises.readFile(configPath, "utf-8");

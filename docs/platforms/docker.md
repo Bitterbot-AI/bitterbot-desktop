@@ -58,6 +58,9 @@ Lost the token? Print it again at any time:
 docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token
 ```
 
+(or use the value of `BITTERBOT_GATEWAY_TOKEN` if you set one: then no token is
+generated and the command above prints nothing).
+
 Run other CLI commands the same way. `-u node` is the only supported form: the
 compose file starts the container as root (so the entrypoint can fix file
 ownership), which makes a plain `docker compose exec` run as root too. Files a

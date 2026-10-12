@@ -27,12 +27,15 @@
 
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveBootstrapDns } from "../infra/dns-bootstrap.js";
+import type { InstallKind } from "../infra/install-kind.js";
+import { orchestratorMissingAdvice } from "../infra/orchestrator-advice.js";
 import {
   parseMultiaddr,
   probeOrchestratorBinary,
   probeTcpReachable,
 } from "../infra/orchestrator-binary.js";
 import type { RuntimeEnv } from "../runtime.js";
+import { formatDocsLink } from "../terminal/links.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
 
@@ -41,21 +44,28 @@ export async function setupP2pForOnboarding(params: {
   flow: WizardFlow;
   prompter: WizardPrompter;
   runtime: RuntimeEnv;
+  /** How this Bitterbot is installed; picks the orchestrator remediation. */
+  installKind?: InstallKind;
 }): Promise<BitterbotConfig> {
   const { config, flow, prompter } = params;
+  const installKind = params.installKind ?? "unknown";
 
   // ── 1. Intro ──
   await prompter.note(
     [
       "Bitterbot agents talk to each other on a live P2P mesh. Your node:",
       "",
-      "  - publishes skills your agent crystallizes during dream cycles",
-      "    (other agents can buy them with USDC via x402)",
+      "  - shares skills marked shared or public (selling them needs the",
+      "    marketplace and the wallet, both off by default)",
       "  - ingests skills published by trusted peers (defaults to 'review'",
       "    mode — quarantined until you approve, never auto-installed)",
-      "  - participates in EigenTrust reputation scoring so good actors",
-      "    rise and bad actors get gossipsub-throttled",
-      "  - receives weather + bounty broadcasts from management nodes",
+      "  - takes part in reputation scoring, census pings and weather/bounty",
+      "    broadcasts from management nodes",
+      "  - asks the network about its top curiosity target (a short question",
+      "    derived from its memory, at most once per consolidation cycle) and",
+      "    sends experience scores (numbers only) once per dream cycle",
+      "",
+      `Every outbound connection and its off switch: ${formatDocsLink("/network/egress", "What this node connects to")}`,
       "",
       "Your node starts as an EDGE tier (read skills, publish skills, no",
       "broadcast authority). Management tier — issuing bans, bounties, and",
@@ -119,15 +129,10 @@ export async function setupP2pForOnboarding(params: {
   } else {
     await prompter.note(
       [
-        "The orchestrator binary was not found in any expected location.",
-        "The `pnpm install` downloader can only fetch a prebuilt when a release",
-        "exists for the version pinned in orchestrator/Cargo.toml — if none is",
-        "published yet, that path cannot work. The gateway will give you a clear",
-        "error with remediation steps if you start it without a binary.",
+        "The orchestrator binary was not found in any expected location, so the",
+        "node cannot join the network until it is back. Everything else works.",
         "",
-        "Options:",
-        "  - Build locally:  cargo build --release --manifest-path orchestrator/Cargo.toml",
-        "  - Or re-run `pnpm install` once a prebuilt release for this version is published",
+        ...orchestratorMissingAdvice(installKind),
       ].join("\n"),
       "Orchestrator binary missing",
     );

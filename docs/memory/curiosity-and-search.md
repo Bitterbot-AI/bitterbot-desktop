@@ -335,7 +335,7 @@ type CuriosityConfig = {
   maxQueryHistory?: number; // Default: 200
   gapScoreThreshold?: number; // Default: 0.5
   research?: {
-    enabled?: boolean; // Default: true (legacy autoResearch.enabled=false also disables)
+    enabled?: boolean; // Default: true (autoResearch.enabled=false also disables)
     intervalMinutes?: number; // Default: 240
     maxPerDay?: number; // Default: 10
     maxSearchesPerTarget?: number; // Default: 2

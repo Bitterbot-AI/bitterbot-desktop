@@ -10,7 +10,10 @@ title: "update"
 
 Safely update Bitterbot and switch between stable/beta/dev channels.
 
-If you installed via **npm/pnpm** (global install, no git metadata), updates happen via the package manager flow in [Updating](/install/updating).
+There is no installable npm package (the `bitterbot` name on npm is a
+placeholder), so in practice an install is a **source checkout**, a
+**container**, or an **installer-based install**. The package-manager flow
+below exists for a package install and is not a supported install path yet.
 
 In a **container** (the published image sets `BITTERBOT_INSTALL_KIND=container`;
 images that do not are detected from `/.dockerenv`, `/run/.containerenv` or the
@@ -32,7 +35,7 @@ newest GitHub release that carries a tarball for your platform. Set
 
 ## Default channel
 
-With `update.channel` unset: `stable` for npm installs, containers, installer
+With `update.channel` unset: `stable` for package installs, containers, installer
 (tarball) installs, and git
 checkouts sitting on a release tag (`beta` for a `-beta` tag); `dev` only for a
 git checkout on a branch. A configured `update.channel` always wins.
@@ -54,8 +57,8 @@ bitterbot --update
 ## Options
 
 - `--no-restart`: skip restarting the Gateway service after a successful update.
-- `--channel <stable|beta|dev>`: set the update channel (git + npm; persisted in config).
-- `--tag <dist-tag|version>`: override the npm dist-tag or version for this update only.
+- `--channel <stable|beta|dev>`: set the update channel (persisted in config).
+- `--tag <dist-tag|version>`: override the npm dist-tag or version for this update only (package installs).
 - `--json`: print machine-readable `UpdateRunResult` JSON.
 - `--timeout <seconds>`: per-step timeout (default is 1200s).
 
@@ -89,7 +92,10 @@ install method aligned:
 
 - `dev` → ensures a git checkout (default: `~/bitterbot`, override with `BITTERBOT_GIT_DIR`),
   updates it, and installs the global CLI from that checkout.
-- `stable`/`beta` → installs from npm using the matching dist-tag.
+- `stable`/`beta` → on a package install, installs from npm using the matching
+  dist-tag. Do not switch a checkout to these expecting npm: the npm package is
+  a placeholder. A checkout follows `stable`/`beta` by checking out the release
+  tag (below).
 
 ## Git checkout flow
 
@@ -179,6 +185,6 @@ Known limitation: drift counting works on the `dev` channel (a tracked
 ## See also
 
 - `bitterbot doctor` (offers to run update first on git checkouts)
-- [Development channels](/install/development-channels)
-- [Updating](/install/updating)
+- [Install script](/start/install-script)
+- [Docker](/platforms/docker)
 - [CLI reference](/cli)

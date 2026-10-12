@@ -96,6 +96,14 @@ and supervises the P2P orchestrator.
   </Step>
 </Steps>
 
+**On a laptop** (Linux x64/arm64, Apple-silicon macOS), from release 1.5.0
+the [installer](/start/install-script) downloads a signed, prebuilt release with
+its own Node runtime:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+```
+
 **From source instead** (to develop Bitterbot, or to use the browser tool,
 which the image does not include):
 
@@ -110,14 +118,6 @@ pnpm bitterbot onboard
 The wizard configures your provider, asks for network consent, starts the
 gateway, and opens the Control UI. On Windows without Docker Desktop, use WSL2
 and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
-
-**On a laptop** (Linux x64/arm64, Apple-silicon macOS), from release 1.5.0
-the [installer](/start/install-script) downloads a signed, prebuilt release with
-its own Node runtime:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
-```
 
 **npm:** not yet. There is no npm package today; Docker, the installer and
 source are the supported paths.

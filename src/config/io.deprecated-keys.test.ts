@@ -30,12 +30,11 @@ describe("warnOnDeprecatedConfigKeys (PLAN-56 Phase 1)", () => {
     );
     expect(warned).toEqual([
       "memory.backend",
-      "memory.curiosity.autoResearch.enabled",
       "agents.defaults.runtime.engine",
       "agents.list[1].runtime.engine",
       "agents.defaults.contextPruning",
     ]);
-    expect(warn).toHaveBeenCalledTimes(5);
+    expect(warn).toHaveBeenCalledTimes(4);
     expect(warn.mock.calls[0][0]).toContain('Config key "memory.backend" is deprecated: ');
     expect(warn.mock.calls[0][0]).toContain("removed next release");
   });
