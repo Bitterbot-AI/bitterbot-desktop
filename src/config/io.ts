@@ -739,6 +739,25 @@ export function stripLoadTimeDefaults(candidate: unknown, fileRaw: unknown): unk
   return out;
 }
 
+/**
+ * Drop, in place, every key of `validated` that `candidate` does not have:
+ * schema validation may normalise values but must not add keys (zod
+ * `.default()`s such as `commands.native`, plugin schema defaults) to what is
+ * written. Walks plain objects only.
+ */
+function dropKeysAddedByValidation(validated: unknown, candidate: unknown): void {
+  if (!isPlainObject(validated) || !isPlainObject(candidate)) {
+    return;
+  }
+  for (const key of Object.keys(validated)) {
+    if (!(key in candidate)) {
+      delete validated[key];
+      continue;
+    }
+    dropKeysAddedByValidation(validated[key], candidate[key]);
+  }
+}
+
 export function createConfigIO(overrides: ConfigIoDeps = {}) {
   const deps = normalizeDeps(overrides);
   const requestedConfigPath = resolveConfigPathForDeps(deps);
@@ -1082,6 +1101,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     // Apply env restoration to validated.config (which has runtime defaults stripped
     // per issue #6070) rather than the raw caller input.
     let cfgToWrite = validated.config;
+    dropKeysAddedByValidation(cfgToWrite, persistCandidate);
     try {
       if (deps.fs.existsSync(configPath)) {
         const currentRaw = await deps.fs.promises.readFile(configPath, "utf-8");

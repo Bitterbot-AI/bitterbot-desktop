@@ -11,6 +11,7 @@ import {
   migrateLegacyConfig,
   readConfigFileSnapshot,
 } from "../config/config.js";
+import { isFrozenFallbackPeerList } from "../config/defaults.js";
 import { findDeprecatedConfigKeys } from "../config/io.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { listTelegramAccountIds, resolveTelegramAccount } from "../telegram/accounts.js";
@@ -512,6 +513,41 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
         fixHints.push(
           `Run "${formatCliCommand("bitterbot doctor --fix")}" to remove the deprecated keys.`,
         );
+      }
+    }
+  }
+
+  // Drift-pass HIGH-2: an older config write could freeze the built-in
+  // fallback bootstrap peers into the file. They load as unset now; --fix
+  // removes them so the file no longer pins the list.
+  const filePeers = (snapshot.resolved as { p2p?: { bootstrapPeers?: unknown } } | undefined)?.p2p
+    ?.bootstrapPeers;
+  if (isFrozenFallbackPeerList(filePeers)) {
+    const usesInclude = configUsesInclude(snapshot.parsed);
+    const where = usesInclude ? locateConfigKey(snapshot.parsed, "p2p.bootstrapPeers") : null;
+    renderSection("Config", [
+      warn(
+        [
+          `p2p.bootstrapPeers${where ? ` (in ${where})` : ""} holds exactly the built-in fallback peers, frozen into the file by an older config write. It loads as unset, but the file should not pin the list.`,
+          usesInclude
+            ? "This config uses $include, so doctor will not rewrite it: remove the key by hand."
+            : `Run "${formatCliCommand("bitterbot doctor --fix")}" to remove it.`,
+        ].join("\n"),
+      ),
+    ]);
+    if (!usesInclude) {
+      const next = structuredClone(candidate) as BitterbotConfig & {
+        p2p?: Record<string, unknown>;
+      };
+      if (next.p2p) {
+        delete next.p2p.bootstrapPeers;
+      }
+      note("- Removed p2p.bootstrapPeers (the frozen built-in fallback list).", "Doctor changes");
+      candidate = next;
+      deprecatedOnlyChanges = !pendingChanges || deprecatedOnlyChanges;
+      pendingChanges = true;
+      if (shouldRepair) {
+        cfg = next;
       }
     }
   }

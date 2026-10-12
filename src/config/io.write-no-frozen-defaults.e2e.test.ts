@@ -37,6 +37,9 @@ describe("global writeConfigFile never freezes load-time defaults", () => {
       const persisted = await readJson(file);
       expect(persisted.memory).toBeUndefined();
       expect(persisted.p2p).toBeUndefined();
+      // Schema (zod) defaults are not written either: only meta is added.
+      expect(persisted.commands).toBeUndefined();
+      expect(Object.keys(persisted).toSorted()).toEqual(["gateway", "meta", "ui"]);
       expect(persisted.gateway).toEqual({ mode: "local" });
       expect(persisted.ui).toEqual({ seamColor: "#ffffff" });
     });
@@ -59,6 +62,24 @@ describe("global writeConfigFile never freezes load-time defaults", () => {
       expect(persisted.p2p).toBeUndefined();
       expect(persisted.memory).toBeUndefined();
       expect(persisted.gateway).toEqual({ mode: "local" });
+    });
+  });
+
+  it("doctor --fix removes a frozen fallback peer list from the file", async () => {
+    await withTempHome(async (home) => {
+      const { FALLBACK_BOOTSTRAP_PEERS } = await import("./defaults.js");
+      const file = await writeRoot(home, {
+        gateway: { mode: "local" },
+        p2p: { enabled: true, bootstrapPeers: [...FALLBACK_BOOTSTRAP_PEERS] },
+      });
+      const { writeConfigFile } = await import("./config.js");
+      const { loadAndMaybeMigrateDoctorConfig } = await import("../commands/doctor-config-flow.js");
+      const result = await loadAndMaybeMigrateDoctorConfig({
+        options: { nonInteractive: true, repair: true },
+        confirm: async () => false,
+      });
+      await writeConfigFile(result.cfg);
+      expect((await readJson(file)).p2p).toEqual({ enabled: true });
     });
   });
 

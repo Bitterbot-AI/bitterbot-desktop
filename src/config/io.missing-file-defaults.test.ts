@@ -82,10 +82,9 @@ describe("loadConfig without a config file (PLAN-56 Phase 2)", () => {
     });
   });
 
-  // Zod-level schema defaults (today only `commands.native/nativeSkills`)
-  // are written by every config write, to an existing file too; that is
-  // pre-existing behaviour, so it is stripped here and pinned by the
-  // missing-vs-empty equality test below.
+  // Zod-level schema defaults (`commands.native/nativeSkills`) are no longer
+  // written (writeConfigFile drops keys validation adds); `meta` always is.
+  // Both are stripped here so these tests pin only the caller's change.
   const ZOD_WRITE_DEFAULTS = ["meta", "commands"];
   function writtenWithoutZodDefaults(raw: string): Record<string, unknown> {
     const written = JSON.parse(raw) as Record<string, unknown>;

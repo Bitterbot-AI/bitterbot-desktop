@@ -2,7 +2,7 @@
  * True when a config file holds nothing but what a first gateway start
  * writes on its own: the generated `gateway.auth` token (container first
  * boot, PLAN-56 Phase 2), the `meta` stamp and the `commands` schema
- * default every write adds. Onboarding treats that as "not set up yet"
+ * default that writes before the drift-pass fix added. Onboarding treats that as "not set up yet"
  * instead of offering to keep/modify/reset an "existing config". Pass the
  * file's own content (snapshot.resolved), never the defaults-applied config.
  */
