@@ -194,7 +194,7 @@ async function sweepSubagentRuns() {
     try {
       await callGateway({
         method: "sessions.delete",
-        params: { key: entry.childSessionKey, deleteTranscript: true },
+        params: { key: entry.childSessionKey, deleteTranscript: true, initiator: "system" },
         timeoutMs: 10_000,
       });
     } catch {

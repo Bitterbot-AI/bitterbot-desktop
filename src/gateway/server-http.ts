@@ -50,6 +50,7 @@ import {
 } from "./hooks.js";
 import { sendGatewayAuthFailure } from "./http-common.js";
 import { getBearerToken, getHeader } from "./http-utils.js";
+import { handleMemoryExportHttpRequest } from "./memory-export-http.js";
 import { getMobileAvatarBytes, renderMobileUiPage } from "./mobile-ui-page.js";
 import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
@@ -636,6 +637,15 @@ export function createGatewayHttpServer(opts: {
         res.setHeader("Content-Type", "text/html; charset=utf-8");
         const gatewayToken = resolvedAuth?.token ?? "";
         res.end(renderWalletFundingPage(wsUrl, gatewayToken));
+        return;
+      }
+      // PLAN-55 Phase 3: the memory export download (one-time token minted
+      // by the admin-scoped memory.exportDownload RPC).
+      if (
+        await handleMemoryExportHttpRequest(req, res, {
+          basePath: normalizeControlUiBasePath(configSnapshot.gateway?.controlUi?.basePath),
+        })
+      ) {
         return;
       }
       if (handleA2aRequest) {

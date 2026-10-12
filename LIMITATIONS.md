@@ -58,12 +58,35 @@ open an issue.
 - **Memory governance is not active.** The code for sensitivity tagging,
   per-memory TTL and access control exists, but nothing calls it: every
   memory is treated the same. What does work: the Memory tab (and the
-  `memory.*` RPCs) let you view, edit, forget and export individual memories,
-  retire settled facts and remove learned preferences, and a forget or
-  retire you make is not undone by re-extraction, dream promotion or the
-  agent's own pins. Memories indexed from files and transcripts are still
-  read-only there, and forgetting a memory does not yet remove the facts,
-  graph links or dream insights derived from it.
+  `memory.*` RPCs, and `bitterbot memory forget|edit|export|import`) let you
+  view, edit, forget, export and import memories, retire settled facts and
+  remove learned preferences, and a forget or retire you make is not undone
+  by re-extraction, dream promotion or the agent's own pins. Forgetting or
+  editing a memory cascades (with a preview first): facts left without
+  evidence are retired (yours are kept and listed), graph links left without
+  evidence are closed, and dream insights drawn from it are flagged.
+  Deleting a conversation does the same for what was learned only from it;
+  when automatic housekeeping (subagent cleanup, the doctor probe) deletes
+  one, facts are retired at the agent's strength, not yours. Memories
+  indexed from files are still read-only there (change the file). A memory
+  indexed from a conversation can be forgotten, but the transcript line
+  itself is not redacted, and the forget matches its exact text (normalised
+  for case and punctuation), so the same words cut into a different chunk
+  as the transcript grows, or overlapping a neighbouring chunk, can be
+  indexed again. A short forgotten passage (under 40 characters or 5
+  distinct words) is matched in its own transcript only. `MEMORY.md` and
+  scratch notes that repeat a forgotten memory are not rewritten. The export
+  (JSON, version 2) carries memories, facts with history, preferences, the
+  knowledge graph, dream insights, curiosity findings, open questions,
+  suppressions, the audit log, `MEMORY.md` and `GENOME.md`, never embeddings;
+  credential-shaped values are redacted by pattern, so a secret in an
+  unusual shape can still be in it. An import restores memories, facts and
+  preferences only, at the extraction tier and within the ledger's free
+  capacity: facts that were yours in the export come back below your tier
+  until you pin them, unless you import with `--keep-owner-tier` and confirm
+  the exact grants (by the hash a dry run reports). Imported identity and
+  directive preferences come back as ordinary ones, at the extraction
+  confidence.
 - **Corrections are captured in direct owner chats only.** A correction you
   state in chat is pinned at your authority before the next turn, with a
   "Memory updated" line in the reply, but only in a first-party direct chat

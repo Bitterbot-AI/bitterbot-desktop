@@ -1,6 +1,11 @@
 /** PLAN-55 Phase 1 review (item 5): credential shapes never become facts. */
 import { describe, expect, it } from "vitest";
-import { looksLikeSecretKey, looksLikeSecretValue, secretRejectionReason } from "./secret-shape.js";
+import {
+  looksLikeSecretKey,
+  looksLikeSecretValue,
+  redactSecretShapes,
+  secretRejectionReason,
+} from "./secret-shape.js";
 
 describe("secret-shape", () => {
   it.each([
@@ -60,5 +65,59 @@ describe("secret-shape", () => {
     expect(reason).toMatch(/credential/);
     expect(reason).not.toContain("ghp_");
     expect(secretRejectionReason("infra.deploy_endpoint", "api2.acme.com")).toBeNull();
+  });
+});
+
+describe("redactSecretShapes (PLAN-55 Phase 3 export)", () => {
+  it("replaces the secret and keeps the words around it", () => {
+    const out = redactSecretShapes("my token is ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789, thanks");
+    expect(out.text).toBe("my token is [redacted], thanks");
+    expect(out.redactions).toBe(1);
+  });
+
+  it("keeps the name of an assignment and drops its value", () => {
+    const out = redactSecretShapes("OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuv");
+    expect(out.text).toContain("OPENAI_API_KEY=");
+    expect(out.text).not.toContain("abcdefghijklmnopqrstuv");
+  });
+
+  it("removes private key blocks and JWTs, and leaves plain text alone", () => {
+    const pem =
+      "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----";
+    expect(redactSecretShapes(pem).text).not.toContain("MIIEvQIBADANBgkqhkiG9w0BAQEFAASC");
+    expect(
+      redactSecretShapes(
+        "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N",
+      ).text,
+    ).toBe("jwt [redacted]");
+    expect(redactSecretShapes("Victor lives in Lisbon.")).toEqual({
+      text: "Victor lives in Lisbon.",
+      redactions: 0,
+    });
+  });
+
+  it("leaves file paths and identifiers alone (review: no over-redaction)", () => {
+    for (const text of [
+      "/home/x/bitterbot-desktop/src/memory/forgetCascade/ManagerEmbeddingOps2v3.test.ts",
+      "C:/Users/Victor/Documents/Projects2024/BitterbotDesktop/src/index.ts",
+      "see MemoryIndexManagerOwnerForgetSessionWithCascade2Phase3 in the log",
+      "/home/vicmg/bb-plan55p3/src/memory/memory-export-import.test.ts",
+    ]) {
+      expect(redactSecretShapes(text)).toEqual({ text, redactions: 0 });
+      expect(looksLikeSecretValue(text)).toBe(false);
+    }
+  });
+
+  it("still redacts real key shapes, including base64 runs with slashes", () => {
+    for (const secret of [
+      // Built at runtime so secret scanners do not read the fixture as a key.
+      ["q7Rk2vNw", "Lp9/Xc4T", "mZ8bQe/3", "HsJ6yUf1", "Gd5aWt0K"].join(""),
+      ["ch9U+c48x4sv", "XstXnYDbf6pK", "W9JTMJuCbjBr0SMDq2"].join(""),
+      "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7",
+      "sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
+      "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    ]) {
+      expect(redactSecretShapes(`key: ${secret} end`).text).toBe("key: [redacted] end");
+    }
   });
 });

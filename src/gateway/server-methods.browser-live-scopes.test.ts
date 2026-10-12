@@ -121,10 +121,36 @@ describe("memory control scopes (PLAN-53 G1)", () => {
       "memory.unretireFact",
       "memory.pinFact",
       "memory.export",
+      // PLAN-55 Phase 3.
+      "memory.exportDownload",
+      "memory.import",
     ]) {
       expect(coreGatewayHandlers[method], `${method} has a handler`).toBeTypeOf("function");
       expect(authorizeGatewayMethod(method, operatorWith(["operator.write"]))).not.toBeNull();
+      expect(
+        authorizeGatewayMethod(method, operatorWith(["operator.read", "operator.write"])),
+      ).not.toBeNull();
       expect(authorizeGatewayMethod(method, operatorWith(["operator.admin"]))).toBeNull();
+    }
+  });
+
+  it("PLAN-55 Phase 3: the cascade preview is a read; a guest or a node gets nothing", () => {
+    expect(coreGatewayHandlers["memory.forgetPreview"]).toBeTypeOf("function");
+    expect(
+      authorizeGatewayMethod("memory.forgetPreview", operatorWith(["operator.read"])),
+    ).toBeNull();
+    const node = { connect: { role: "node", scopes: ["operator.admin"] } } as Parameters<
+      typeof authorizeGatewayMethod
+    >[1];
+    for (const method of [
+      "memory.forgetPreview",
+      "memory.forget",
+      "memory.edit",
+      "memory.exportDownload",
+      "memory.import",
+    ]) {
+      expect(authorizeGatewayMethod(method, operatorWith([])), method).not.toBeNull();
+      expect(authorizeGatewayMethod(method, node), method).not.toBeNull();
     }
   });
 });
