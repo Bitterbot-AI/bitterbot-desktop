@@ -20,19 +20,16 @@ import type {
   AgentsFilesListResultSchema,
   AgentsFilesSetParamsSchema,
   AgentsFilesSetResultSchema,
-  AgentsListParamsSchema,
   AgentsListResultSchema,
   AgentsUpdateParamsSchema,
   AgentsUpdateResultSchema,
   ModelChoiceSchema,
   ModelsAuthDeleteParamsSchema,
-  ModelsAuthListParamsSchema,
   ModelsAuthSetParamsSchema,
   ModelsAuthTestParamsSchema,
   ModelsListParamsSchema,
   ModelsSetDefaultParamsSchema,
   ModelsListResultSchema,
-  SkillsBinsParamsSchema,
   SkillsBinsResultSchema,
   SkillsCreateParamsSchema,
   SkillsInstallParamsSchema,
@@ -76,9 +73,7 @@ import type {
 } from "./channels.js";
 import type {
   ConfigApplyParamsSchema,
-  ConfigGetParamsSchema,
   ConfigPatchParamsSchema,
-  ConfigSchemaParamsSchema,
   ConfigSchemaResponseSchema,
   ConfigSetParamsSchema,
   UpdateCheckParamsSchema,
@@ -86,13 +81,11 @@ import type {
 } from "./config.js";
 import type {
   DevicePairApproveParamsSchema,
-  DevicePairListParamsSchema,
   DevicePairRejectParamsSchema,
   DeviceTokenRevokeParamsSchema,
   DeviceTokenRotateParamsSchema,
 } from "./devices.js";
 import type {
-  ExecApprovalsGetParamsSchema,
   ExecApprovalsNodeGetParamsSchema,
   ExecApprovalsNodeSetParamsSchema,
   ExecApprovalsSetParamsSchema,
@@ -123,9 +116,7 @@ import type {
   NodeEventParamsSchema,
   NodeInvokeParamsSchema,
   NodeInvokeResultParamsSchema,
-  NodeListParamsSchema,
   NodePairApproveParamsSchema,
-  NodePairListParamsSchema,
   NodePairRejectParamsSchema,
   NodePairRequestParamsSchema,
   NodePairVerifyParamsSchema,
