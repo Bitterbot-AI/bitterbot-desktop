@@ -65,15 +65,19 @@ export async function runNonInteractiveOnboardingLocal(params: {
 
   // PLAN-56 Phase 4: the rest of setup is the shared step model with every
   // recommended answer (what the "recommended defaults" fork accepts). With
-  // no auth flag, the model key is the first one found in the environment,
-  // ~/.bitterbot/.env or the auth store; flags keep the provider they chose.
+  // no auth flag, the model credential is one already found (a saved sign-in
+  // or key for the configured model's provider first); flags keep the
+  // provider they chose. A configured primary model is always kept, and a
+  // key found only in the process environment is used in place, never
+  // copied into a file.
   {
     const { commitSetupKey, createSetupDraft, runSetupSteps } =
       await import("../../wizard/setup-steps.js");
-    const { detectSetupKeys } = await import("../../wizard/setup-keys.js");
+    const { detectSetupKeys, detectSignedInProfiles } = await import("../../wizard/setup-keys.js");
     const ctx = {
       effective: baseConfig,
       keys: detectSetupKeys(),
+      profiles: detectSignedInProfiles(),
       keyEnv: {},
       installKind: "unknown" as const,
       env: process.env,
@@ -85,10 +89,17 @@ export async function runNonInteractiveOnboardingLocal(params: {
       draft,
       presets: authFromFlags ? { auth: "skip", model: "keep" } : undefined,
     });
-    await commitSetupKey(draft, ctx);
+    await commitSetupKey(draft, ctx, { persistEnvironmentKey: false });
     nextConfig = draft.config;
     if (!authFromFlags && draft.answers.auth && draft.answers.auth !== "skip" && !opts.json) {
-      runtime.log(`Model key: ${draft.answers.auth} (saved for the gateway)`);
+      runtime.log(
+        draft.answers.auth.startsWith("env:")
+          ? `Model key: ${draft.answers.auth.slice(4)} from the environment (used in place, not saved)`
+          : `Model key: ${draft.answers.auth}`,
+      );
+    }
+    for (const notice of draft.notices) {
+      runtime.log(notice);
     }
   }
 
@@ -108,6 +119,8 @@ export async function runNonInteractiveOnboardingLocal(params: {
 
   nextConfig = applyWizardMetadata(nextConfig, { command: "onboard", mode });
   await writeConfigFile(nextConfig);
+  // A browser setup abandoned halfway is finished now.
+  (await import("../../gateway/setup-token.js")).clearSetupInProgress();
   logConfigUpdated(runtime);
 
   await ensureWorkspaceAndSessions(workspaceDir, runtime, {

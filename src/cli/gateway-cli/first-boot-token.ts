@@ -25,8 +25,9 @@ import {
   writeConfigFile,
 } from "../../config/config.js";
 import { bootstrapPairingEnabled } from "../../gateway/bootstrap-pairing.js";
-import { issueSetupToken } from "../../gateway/setup-token.js";
+import { buildSetupUrl, issueSetupToken, setupInProgress } from "../../gateway/setup-token.js";
 import { looksLikeContainer, readDeclaredInstallKind } from "../../infra/install-kind.js";
+import { isFirstBootOnlyConfig } from "../../wizard/onboarding.first-boot.js";
 
 /** Same shape as the wizard's and doctor's `randomToken()` (48 hex chars). */
 function randomToken(): string {
@@ -59,7 +60,7 @@ export function formatFirstBootTokenBanner(params: {
   inContainer: boolean;
   /** Bootstrap pairing (BITTERBOT_BOOTSTRAP_PAIRING=1 or the config switch) is on. */
   bootstrapPairing?: boolean;
-  /** PLAN-56 Phase 4: one-time browser setup link (container only; it carries a token). */
+  /** PLAN-56 Phase 4: browser setup link (container only; it carries a token). */
   setupUrl?: string;
 }): string {
   const rule = "=".repeat(72);
@@ -76,7 +77,7 @@ export function formatFirstBootTokenBanner(params: {
   const setupLines =
     params.inContainer && params.setupUrl
       ? [
-          "Finish setup in your browser (link valid 30 minutes, works once):",
+          "Finish setup in your browser (link valid 30 minutes, works until setup finishes):",
           `  ${params.setupUrl}`,
           "Link expired? Get a new one with:",
           "  docker compose exec -u node bitterbot-gateway node bitterbot.mjs onboard",
@@ -84,7 +85,7 @@ export function formatFirstBootTokenBanner(params: {
         ]
       : params.inContainer
         ? []
-        : ["Finish setup with `bitterbot onboard` (it prints a one-time setup link).", ""];
+        : ["Finish setup with `bitterbot onboard` (it prints a setup link).", ""];
   return [
     rule,
     "Bitterbot generated a gateway token on first boot and saved it to",
@@ -124,6 +125,8 @@ export async function generateFirstBootToken(params: {
   inContainer?: boolean;
   bootstrapPairing?: boolean;
   issueSetupToken?: () => string;
+  /** gateway.controlUi.basePath: the setup link lives under it. */
+  basePath?: string;
 }): Promise<string> {
   const readSnapshot = params.readSnapshot ?? readConfigFileSnapshot;
   const writeConfig = params.writeConfig ?? writeConfigFile;
@@ -153,13 +156,13 @@ export async function generateFirstBootToken(params: {
   const inContainer =
     params.inContainer ?? (readDeclaredInstallKind() === "container" || looksLikeContainer());
   const write = params.write ?? ((text: string) => void process.stdout.write(text));
-  // PLAN-56 Phase 4: a container's first boot also prints a one-time setup
+  // PLAN-56 Phase 4: a container's first boot also prints a setup
   // link, so `docker compose logs` is all it takes to start setup.
   let setupUrl: string | undefined;
   if (inContainer) {
     try {
       const mint = params.issueSetupToken ?? (() => issueSetupToken().token);
-      setupUrl = `http://127.0.0.1:${params.port}/setup?token=${encodeURIComponent(mint())}`;
+      setupUrl = buildSetupUrl({ port: params.port, basePath: params.basePath, token: mint() });
     } catch {
       setupUrl = undefined;
     }
@@ -177,6 +180,64 @@ export async function generateFirstBootToken(params: {
     }),
   );
   return token;
+}
+
+/**
+ * PLAN-56 Phase 4: a container whose config is still first-boot-only (no
+ * setup yet, or a browser setup that never finished) prints a fresh setup
+ * link at every start, also when no token was generated because one is
+ * pinned (BITTERBOT_GATEWAY_TOKEN). Returns the URL, or null when setup is
+ * done or this is not a container.
+ */
+export async function announceContainerSetupLink(params: {
+  port: number;
+  basePath?: string;
+  write?: (text: string) => void;
+  /** Test seams. */
+  inContainer?: boolean;
+  readSnapshot?: typeof readConfigFileSnapshot;
+  issueSetupToken?: () => string;
+  inProgress?: () => boolean;
+}): Promise<string | null> {
+  const inContainer =
+    params.inContainer ?? (readDeclaredInstallKind() === "container" || looksLikeContainer());
+  if (!inContainer) {
+    return null;
+  }
+  const snapshot = await (params.readSnapshot ?? readConfigFileSnapshot)().catch(() => null);
+  if (snapshot?.exists && !snapshot.valid) {
+    return null;
+  }
+  const notSetUp =
+    !snapshot?.exists ||
+    isFirstBootOnlyConfig(snapshot.resolved) ||
+    (params.inProgress ?? setupInProgress)();
+  if (!notSetUp) {
+    return null;
+  }
+  let url: string;
+  try {
+    const mint = params.issueSetupToken ?? (() => issueSetupToken().token);
+    url = buildSetupUrl({ port: params.port, basePath: params.basePath, token: mint() });
+  } catch {
+    return null;
+  }
+  const rule = "=".repeat(72);
+  const write = params.write ?? ((text: string) => void process.stdout.write(text));
+  write(
+    [
+      rule,
+      "Bitterbot is not set up yet. Finish setup in your browser",
+      "(link valid 30 minutes, works until setup finishes):",
+      `  ${url}`,
+      "  (if you mapped a different host port, use that port in the link)",
+      "Link expired? Get a new one with:",
+      "  docker compose exec -u node bitterbot-gateway node bitterbot.mjs onboard",
+      rule,
+      "",
+    ].join("\n"),
+  );
+  return url;
 }
 
 /**

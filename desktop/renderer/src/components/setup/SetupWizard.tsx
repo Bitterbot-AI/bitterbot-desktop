@@ -2,14 +2,16 @@
  * Browser-first onboarding (PLAN-56 Phase 4): the `/setup` route.
  *
  * `bitterbot onboard` prints and opens `http://127.0.0.1:<port>/setup?token=...`.
- * This page connects with that one-time setup token (wizard scope only; it
+ * This page connects with that setup token (wizard scope only; it
  * cannot read config, chat or anything else), runs `wizard.start` and renders
  * each step the gateway sends until `wizard.next` says done. The same steps
  * run in the terminal (`bitterbot onboard --no-browser`): one step model,
  * two renderers.
  *
  * Without a setup link (setup already done) the page signs in the normal
- * Control UI way, as admin, and the gateway lets an admin re-run setup.
+ * Control UI way, as admin, and the gateway lets an admin re-run setup. When
+ * the gateway refuses the setup link this tab kept (spent, expired, replaced
+ * by a newer one), the page forgets it and falls back to that admin sign-in.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -33,6 +35,14 @@ type NextResult = {
 };
 
 type Phase = "connecting" | "running" | "done" | "cancelled" | "error";
+
+type ServiceInfo = {
+  state: "installed" | "existing" | "failed" | "declined" | "unavailable";
+  label?: string;
+  error?: string;
+};
+
+type DoneInfo = { channelsNext?: boolean; restart?: boolean; service?: ServiceInfo };
 
 /** Steps can wait on a real model turn and the doctor summary. */
 const STEP_TIMEOUT_MS = 240_000;
@@ -82,7 +92,7 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
   const [step, setStep] = useState<SetupStep | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [doneInfo, setDoneInfo] = useState<{ channelsNext?: boolean; restart?: boolean }>({});
+  const [doneInfo, setDoneInfo] = useState<DoneInfo>({});
   const clientRef = useRef<Pick<GatewayClient, "start" | "stop" | "request"> | null>(null);
   const sessionRef = useRef<string | null>(null);
   const lastDataRef = useRef<unknown>(null);
@@ -94,11 +104,7 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
     if (result.done) {
       setStep(null);
       if (result.status === "done") {
-        const last = lastDataRef.current as {
-          kind?: string;
-          channelsNext?: boolean;
-          restart?: boolean;
-        };
+        const last = lastDataRef.current as (DoneInfo & { kind?: string }) | null;
         setDoneInfo(last?.kind === "done" ? last : {});
         setPhase("done");
         forgetSetupToken();
@@ -119,21 +125,36 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
 
   useEffect(() => {
     let cancelled = false;
-    const setupToken = takeSetupToken(loc, window.history);
-    void (async () => {
-      const adminToken = setupToken ? null : await (resolveAdminToken ?? fetchAdminToken)(basePath);
+    const make: NonNullable<SetupWizardProps["createClient"]> =
+      createClient ?? ((opts) => new GatewayClient(opts));
+
+    const connectAsAdmin = async (refusal?: string) => {
+      const adminToken = await (resolveAdminToken ?? fetchAdminToken)(basePath);
       if (cancelled) {
         return;
       }
-      const make: NonNullable<SetupWizardProps["createClient"]> =
-        createClient ?? ((opts) => new GatewayClient(opts));
+      if (refusal && !adminToken) {
+        // No admin sign-in here (another machine): say why the link failed.
+        setPhase("error");
+        setError(explain(new Error(refusal)));
+        return;
+      }
+      connect({ token: adminToken ?? undefined });
+    };
+
+    const connect = (auth: { setupToken: string } | { token?: string }) => {
+      const viaSetupToken = "setupToken" in auth;
       let started = false;
+      // The setup link was refused: forget it, sign in as admin instead.
+      const refused = (message: string) => {
+        clientRef.current?.stop();
+        forgetSetupToken();
+        void connectAsAdmin(message);
+      };
       const client = make({
         url: setupGatewayWsUrl(loc),
         clientName: "bitterbot-control-ui",
-        ...(setupToken
-          ? { setupToken, scopes: ["operator.setup"] }
-          : { token: adminToken ?? undefined }),
+        ...(viaSetupToken ? { setupToken: auth.setupToken, scopes: ["operator.setup"] } : auth),
         defaultRequestTimeoutMs: STEP_TIMEOUT_MS,
         onHello: () => {
           if (started || cancelled) {
@@ -144,10 +165,16 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
             ?.request<NextResult>("wizard.start", {}, { timeoutMs: STEP_TIMEOUT_MS })
             .then((result) => !cancelled && apply(result))
             .catch((err: unknown) => {
-              if (!cancelled) {
-                setPhase("error");
-                setError(explain(err));
+              if (cancelled) {
+                return;
               }
+              const message = explain(err);
+              if (viaSetupToken && /already completed|expired|no longer valid/.test(message)) {
+                refused(message);
+                return;
+              }
+              setPhase("error");
+              setError(message);
             });
         },
         onClose: ({ code, reason }) => {
@@ -157,15 +184,27 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
           // Refused at connect (expired or spent link, wrong address): retrying
           // with the same link cannot help.
           if (code === 1008 || (reason && reason !== "connect failed")) {
+            const message = reason || "the gateway refused this setup link";
+            if (viaSetupToken) {
+              refused(message);
+              return;
+            }
             clientRef.current?.stop();
             setPhase("error");
-            setError(explain(new Error(reason || "the gateway refused this setup link")));
+            setError(explain(new Error(message)));
           }
         },
       });
       clientRef.current = client;
       client.start();
-    })();
+    };
+
+    const setupToken = takeSetupToken(loc, window.history);
+    if (setupToken) {
+      connect({ setupToken });
+    } else {
+      void connectAsAdmin();
+    }
     return () => {
       cancelled = true;
       clientRef.current?.stop();
@@ -241,6 +280,26 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
         {phase === "done" ? (
           <div className="rounded-lg border p-5 space-y-3" data-testid="setup-done">
             <h2 className="text-lg font-semibold">You're set up</h2>
+            {doneInfo.service?.state === "installed" ? (
+              <p className="text-sm" data-testid="setup-service">
+                Bitterbot now runs in the background as a {doneInfo.service.label} and starts on
+                login.
+              </p>
+            ) : doneInfo.service?.state === "existing" ? (
+              <p className="text-sm" data-testid="setup-service">
+                Bitterbot runs in the background as a {doneInfo.service.label}.
+              </p>
+            ) : doneInfo.service?.state === "failed" ? (
+              <p className="text-sm text-destructive" data-testid="setup-service">
+                The background service could not be installed ({doneInfo.service.error}). Bitterbot
+                runs only while this gateway process runs; try{" "}
+                <code>bitterbot gateway install</code>.
+              </p>
+            ) : doneInfo.service?.state === "declined" ? (
+              <p className="text-sm text-muted-foreground" data-testid="setup-service">
+                Not running as a background service; start it with <code>bitterbot gateway</code>.
+              </p>
+            ) : null}
             {doneInfo.restart ? (
               <p className="text-sm text-muted-foreground">
                 The gateway restarts once to apply the last settings; give it a few seconds.

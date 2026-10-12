@@ -6,8 +6,10 @@
 #   docker compose up -d
 #   docker compose logs bitterbot-gateway   # first boot prints a setup link + token
 #
-# Then open the one-time setup link from the log (http://127.0.0.1:19001/setup?token=...,
-# valid 30 minutes) and finish setup in the browser. Link expired? Get a new one:
+# Then open the setup link from the log (http://127.0.0.1:19001/setup?token=...,
+# valid 30 minutes, works until setup finishes) and finish setup in the browser.
+# Until setup is done every start prints a fresh link (also with a pinned
+# BITTERBOT_GATEWAY_TOKEN). Link expired? Get a new one:
 #   docker compose exec -u node bitterbot-gateway node bitterbot.mjs onboard
 # The Control UI itself is http://127.0.0.1:19001/ (paste the token). Your data (config,
 # SQLite memory, keys, workspace) lives in ./bitterbot-data next to this file;

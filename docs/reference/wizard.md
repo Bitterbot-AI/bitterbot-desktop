@@ -272,8 +272,16 @@ Who may call them:
 - A client that connected with a setup token (`auth.setupToken` in `connect`,
   from the link `bitterbot onboard` prints): only these four methods, no
   broadcast events, only while the token is live (30 minutes, deleted when
-  setup completes), only from a loopback Host, and only until onboarding is
-  complete.
+  setup completes), only from a loopback Host and the same Origin (or none),
+  and only until onboarding is complete (Finish clicked; a setup interrupted
+  after its first config write still counts as not complete).
+- A setup-token client can drive only the session its own token started;
+  `wizard.next`, `wizard.cancel` and `wizard.status` on any other session
+  answer "wizard not found". When a newer link replaced the token (or it
+  expired), the next `wizard.start` cancels that orphaned session and starts
+  fresh. A session nobody touches for 30 minutes is cancelled.
+- A `select` or `multiselect` answer must be one of the options the step
+  offered; anything else is refused and the step stays open.
 
 ## Signal setup (signal-cli)
 

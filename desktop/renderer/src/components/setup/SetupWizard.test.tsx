@@ -116,7 +116,12 @@ describe("SetupWizard (the /setup page)", () => {
         type: "note",
         title: "Done",
         message: "Setup is complete.",
-        data: { kind: "done", channelsNext: true, restart: true },
+        data: {
+          kind: "done",
+          channelsNext: true,
+          restart: true,
+          service: { state: "installed", label: "systemd user service" },
+        },
       },
     ];
     let i = 0;
@@ -169,12 +174,15 @@ describe("SetupWizard (the /setup page)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Finish" }));
     await screen.findByTestId("setup-done");
     expect(screen.getByText(/connect a chat app/)).toBeTruthy();
+    expect(screen.getByTestId("setup-service").textContent).toContain(
+      "runs in the background as a systemd user service",
+    );
     expect(screen.getByRole("link", { name: "Open the Control UI" }).getAttribute("href")).toBe(
       "/bb/",
     );
   });
 
-  it("explains an expired link", async () => {
+  it("explains an expired link when there is no admin sign-in to fall back to", async () => {
     const { factory } = makeClientFactory((method) =>
       method === "wizard.start"
         ? new Error("setup link expired; run `bitterbot onboard` for a new one")
@@ -183,11 +191,39 @@ describe("SetupWizard (the /setup page)", () => {
     render(
       <SetupWizard
         createClient={factory as never}
+        resolveAdminToken={async () => null}
         location={fakeLocation("http://127.0.0.1:19001/setup?token=old")}
       />,
     );
     const alert = await screen.findByTestId("setup-error");
     expect(alert.textContent).toContain("bitterbot onboard");
+    // The refused link is forgotten: a reload does not try it again.
+    expect(sessionStorage.getItem("bitterbot-setup-token")).toBeNull();
+  });
+
+  it("falls back to the admin sign-in when the tab's stored link is refused", async () => {
+    sessionStorage.setItem("bitterbot-setup-token", "spent");
+    const { factory, created } = makeClientFactory((method, _params) => {
+      if (method === "wizard.start" && created.length === 1) {
+        return new Error(
+          "setup already completed; sign in to the Control UI (admin) to run it again",
+        );
+      }
+      return { sessionId: "admin-sess", done: true, status: "done" };
+    });
+    render(
+      <SetupWizard
+        createClient={factory as never}
+        resolveAdminToken={async () => "admin-token"}
+        location={fakeLocation("http://127.0.0.1:19001/setup")}
+      />,
+    );
+    await waitFor(() => expect(created).toHaveLength(2));
+    expect(created[0]).toMatchObject({ setupToken: "spent" });
+    expect(created[1]).toMatchObject({ token: "admin-token" });
+    expect(created[1]?.setupToken).toBeUndefined();
+    expect(sessionStorage.getItem("bitterbot-setup-token")).toBeNull();
+    await screen.findByTestId("setup-done");
   });
 
   it("without a setup link, signs in as admin (re-running setup)", async () => {

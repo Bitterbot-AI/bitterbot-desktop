@@ -58,10 +58,7 @@ export function registerOnboardCommand(program: Command) {
     .option("--workspace <dir>", "Agent workspace directory (default: ~/.bitterbot/workspace)")
     .option("--reset", "Reset config + credentials + sessions + workspace before running wizard")
     .option("--non-interactive", "Run without prompts", false)
-    .option(
-      "--browser",
-      "Set up in the browser: print and open a one-time setup link (the default)",
-    )
+    .option("--browser", "Set up in the browser: print and open a setup link (the default)")
     .option("--no-browser", "Use the terminal wizard instead of the browser setup page")
     .option(
       "--accept-risk",

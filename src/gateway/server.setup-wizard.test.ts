@@ -215,7 +215,10 @@ describe("browser setup over wizard.* (setup token)", () => {
         const step = next.step!;
         seen.push(step);
         let value: unknown = null;
-        if (step.type === "select") {
+        if (step.type === "confirm") {
+          // The explicit risk acknowledgement.
+          value = true;
+        } else if (step.type === "select") {
           const values = step.options?.map((o) => o.value) ?? [];
           value = values.includes("recommended")
             ? "recommended"
@@ -229,7 +232,7 @@ describe("browser setup over wizard.* (setup token)", () => {
       }
       expect(next.status).toBe("done");
       const kinds = seen.map((s) => s.data?.kind).filter(Boolean);
-      expect(kinds).toEqual(["first-turn", "doctor", "done"]);
+      expect(kinds).toEqual(["risk", "first-turn", "doctor", "done"]);
 
       const written = JSON.parse(
         await fs.readFile(path.join(stateDir(), "bitterbot.json"), "utf8"),
@@ -294,6 +297,118 @@ describe("browser setup over wizard.* (setup token)", () => {
       expect(res.ok).toBe(false);
     } finally {
       b.close();
+    }
+  }, 60_000);
+});
+
+describe("setup links after a lost session (PLAN-56 Phase 4 review fixes)", () => {
+  async function answerUntil(
+    ws: WebSocket,
+    sessionId: string,
+    first: NextResult,
+    stop: (step: Step) => boolean,
+  ): Promise<NextResult> {
+    let next = first;
+    while (!next.done && next.step && !stop(next.step)) {
+      const step = next.step;
+      let value: unknown = null;
+      if (step.type === "confirm") {
+        value = true;
+      } else if (step.type === "select") {
+        const values = step.options?.map((o) => o.value) ?? [];
+        value = values.includes("recommended")
+          ? "recommended"
+          : step.section?.id === "auth"
+            ? "skip"
+            : (step.initialValue ?? values[0]);
+      }
+      const res = await request(ws, "wizard.next", {
+        sessionId,
+        answer: { stepId: step.id, value },
+      });
+      expect(res.ok).toBe(true);
+      next = res.payload as NextResult;
+    }
+    return next;
+  }
+
+  it("a closed tab does not block a new link; the old session is cancelled", async () => {
+    await fs.rm(path.join(stateDir(), "bitterbot.json"), { force: true });
+    const first = issueSetupToken({ stateDir: stateDir() }).token;
+    const a = await open();
+    let oldSession: string;
+    try {
+      expect((await connectWithSetupToken(a, first)).ok).toBe(true);
+      const started = (await request(a, "wizard.start", {})).payload as NextResult;
+      oldSession = started.sessionId!;
+      // Get past the first config write (the hot write before the first reply).
+      await answerUntil(a, oldSession, started, (step) => step.data?.kind === "doctor");
+    } finally {
+      a.close(); // the tab is gone
+    }
+    // Partly written, yet not "complete": a new link may finish setup.
+    await expect(fs.stat(path.join(stateDir(), "bitterbot.json"))).resolves.toBeTruthy();
+
+    // `bitterbot onboard` again: a new token replaces the old one.
+    const second = issueSetupToken({ stateDir: stateDir() }).token;
+    const b = await open();
+    try {
+      expect((await connectWithSetupToken(b, second)).ok).toBe(true);
+      // The new link cannot drive the orphaned session...
+      const foreign = await request(b, "wizard.status", { sessionId: oldSession });
+      expect(foreign.ok).toBe(false);
+      expect(foreign.error?.message).toContain("wizard not found");
+      // ...and wizard.start replaces it with a fresh one.
+      const res = await request(b, "wizard.start", {});
+      expect(res.ok).toBe(true);
+      const fresh = res.payload as NextResult;
+      expect(fresh.sessionId).not.toBe(oldSession);
+      expect(fresh.step?.data?.kind).toBe("risk");
+      await request(b, "wizard.cancel", { sessionId: fresh.sessionId });
+    } finally {
+      b.close();
+    }
+  }, 120_000);
+
+  it("an expired link's session gives way to the next link", async () => {
+    const short = issueSetupToken({ stateDir: stateDir(), ttlMs: 2_000 }).token;
+    const a = await open();
+    let oldSession: string;
+    try {
+      expect((await connectWithSetupToken(a, short)).ok).toBe(true);
+      oldSession = ((await request(a, "wizard.start", {})).payload as NextResult).sessionId!;
+    } finally {
+      a.close();
+    }
+    await new Promise((r) => setTimeout(r, 2_100));
+    const next = issueSetupToken({ stateDir: stateDir() }).token;
+    const b = await open();
+    try {
+      expect((await connectWithSetupToken(b, next)).ok).toBe(true);
+      const res = await request(b, "wizard.start", {});
+      expect(res.ok).toBe(true);
+      expect((res.payload as NextResult).sessionId).not.toBe(oldSession);
+      await request(b, "wizard.cancel", { sessionId: (res.payload as NextResult).sessionId });
+    } finally {
+      b.close();
+    }
+  }, 60_000);
+
+  it("refuses a setup-token connect from a foreign Origin", async () => {
+    const token = issueSetupToken({ stateDir: stateDir() }).token;
+    const ws = await open({ Origin: "https://evil.example" });
+    try {
+      const res = await request(ws, "connect", {
+        minProtocol: PROTOCOL_VERSION,
+        maxProtocol: PROTOCOL_VERSION,
+        // Not the Control UI id: the origin rule applies to setup tokens anyway.
+        client: { id: "test", version: "e2e", platform: "test", mode: "test" },
+        role: "operator",
+        auth: { setupToken: token },
+      }).catch((err: Error) => ({ ok: false, error: { message: err.message } }));
+      expect(res.ok).toBe(false);
+    } finally {
+      ws.close();
     }
   }, 60_000);
 });

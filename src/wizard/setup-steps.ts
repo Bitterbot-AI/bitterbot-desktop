@@ -15,14 +15,20 @@
  *
  * Steps only build a draft (config edits + a pending key). Nothing is written
  * until `commitSetupDraft`, so cancelling setup leaves no trace.
+ *
+ * Interactive runs start with the same explicit risk acknowledgement the
+ * terminal wizard has always shown (`requireSetupRiskAcknowledgement`);
+ * --non-interactive needs --accept-risk instead.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
 import type { InstallKind } from "../infra/install-kind.js";
 import { applyLocalOnlyPreset } from "./onboarding.p2p.js";
-import type { WizardPrompter } from "./prompts.js";
+import { WizardCancelledError, type WizardPrompter } from "./prompts.js";
 import {
   type DetectedKey,
+  detectSetupKeys,
+  detectSignedInProfiles,
   describeKeySource,
   resolveDetectedKey,
   SETUP_PROVIDER_ORDER,
@@ -30,9 +36,11 @@ import {
   type SetupKeyEnv,
   type SetupKeySource,
   type SetupProvider,
+  type SignedInProfile,
   storeProviderKey,
   validatePastedKey,
 } from "./setup-keys.js";
+import type { SetupServiceSupport } from "./setup-service.js";
 
 export const SETUP_STEP_IDS = [
   "auth",
@@ -41,6 +49,7 @@ export const SETUP_STEP_IDS = [
   "webSearch",
   "channels",
   "p2p",
+  "service",
   "telemetry",
 ] as const;
 export type SetupStepId = (typeof SETUP_STEP_IDS)[number];
@@ -57,6 +66,73 @@ export const P2P_EGRESS_SENTENCE =
   "under its Ed25519 peer id: skill announcements, reputation scores and census pings; the text " +
   "of your agent's top curiosity question at most once per consolidation cycle; experience " +
   "scores (numbers only) once per dream cycle; and skills you mark shared or public.";
+
+/** The risk acknowledgement, word for word what the terminal wizard shows. */
+export const RISK_ACKNOWLEDGEMENT_TITLE = "Security — at your own risk";
+export const RISK_ACKNOWLEDGEMENT_NOTE = [
+  "Read this before going further.",
+  "",
+  "Bitterbot is in open beta. It remembers your life, runs real tools,",
+  "moves real USDC, and talks to other agents on a live P2P mesh.",
+  "That is the whole point — and it is also how you get hurt if you",
+  "skip the safety rails.",
+  "",
+  "What this agent can actually do once you enable its tools:",
+  "- Read and write files in its workspace",
+  "- Run code, browse the web, execute shell commands",
+  "- Send and receive messages on channels you connect (WhatsApp, Telegram, etc.)",
+  "- Hold a USDC wallet on Base, pay for paywalled APIs via x402, receive payments",
+  "- Publish skills to the P2P marketplace and ingest skills from other agents",
+  "",
+  "LLMs can be tricked. A malicious message, a hostile webpage, or a",
+  "poisoned skill from the network can steer the agent toward actions",
+  "you did not intend. Plan for that, not against it.",
+  "",
+  "Run Bitterbot at your own risk. We ship fast, patch fast, and trust",
+  "operators to harden their own nodes. If basic security and access",
+  "control are unfamiliar territory, pair with someone who can help",
+  "before enabling tools, channels, or the wallet.",
+  "",
+  "Recommended baseline:",
+  "- Pairing, allowlists, and mention gating for inbound messages.",
+  "- Sandbox + least-privilege tools. Start minimal; expand as you trust it.",
+  "- Keep secrets out of the agent's reachable filesystem (no .env in workspace).",
+  "- Use the strongest model available for any bot with tools or untrusted inboxes.",
+  "- Start the wallet with a small float you can afford to lose while you learn.",
+  "- P2P skill ingestion defaults to 'review' — don't flip to 'auto' until you",
+  "  have a trust list and understand the SkillVerifier + reputation gates.",
+  "",
+  "Run regularly:",
+  "  bitterbot security audit --deep",
+  "  bitterbot security audit --fix",
+  "  bitterbot doctor",
+  "",
+  "Must read: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/SECURITY.md",
+].join("\n");
+export const RISK_ACKNOWLEDGEMENT_CONFIRM =
+  "I understand Bitterbot can act on my behalf, move funds, and connect to a live P2P network. I accept the risk. Continue?";
+
+/**
+ * The explicit risk acknowledgement both renderers show before any setup
+ * choice. Declining cancels setup. There is no default "yes".
+ */
+export async function requireSetupRiskAcknowledgement(prompter: WizardPrompter): Promise<void> {
+  await prompter.note(RISK_ACKNOWLEDGEMENT_NOTE, RISK_ACKNOWLEDGEMENT_TITLE, {
+    data: { kind: "risk" },
+  });
+  const ok = await prompter.confirm({
+    message: RISK_ACKNOWLEDGEMENT_CONFIRM,
+    initialValue: false,
+  });
+  if (ok !== true) {
+    throw new WizardCancelledError("risk not accepted");
+  }
+}
+
+/** Where to go for sign-in methods the setup page does not offer. */
+export const OTHER_SIGN_IN_HINT =
+  "Codex (ChatGPT) OAuth, Anthropic setup tokens, Gemini, Bedrock, local and custom endpoints: " +
+  "run `bitterbot onboard --no-browser --flow manual` in a terminal, or add them later in Settings.";
 
 export const TELEMETRY_STATEMENT =
   "Bitterbot sends no telemetry to the project: no analytics, crash reports or usage pings, and " +
@@ -75,9 +151,13 @@ export type SetupContext = {
   effective: BitterbotConfig;
   /** Keys setup may offer (names and masked suffixes only). */
   keys: DetectedKey[];
+  /** Saved OAuth / token sign-ins, offered as "already signed in". */
+  profiles?: SignedInProfile[];
   keyEnv: SetupKeyEnv;
   installKind: InstallKind;
   env?: NodeJS.ProcessEnv;
+  /** Whether a background gateway service can be installed (undefined: not offered). */
+  service?: SetupServiceSupport;
 };
 
 export type PendingKey = {
@@ -92,6 +172,12 @@ export type SetupDraft = {
   provider?: SetupProvider;
   /** Written to the provider's secret location at commit, never before. */
   pendingKey?: PendingKey;
+  /** A saved sign-in (OAuth / token) chosen instead of an API key. */
+  authProfile?: { profileId: string; provider: string; mode: "oauth" | "token" };
+  /** Install the gateway as a background service (the "service" step). */
+  installService?: boolean;
+  /** Messages for the user from committing (key backups, env warnings). */
+  notices: string[];
   channelsNext: boolean;
   /** Answers per step, secrets excluded (for tests and the review screen). */
   answers: Partial<Record<SetupStepId, string>>;
@@ -102,6 +188,10 @@ type StepAnswer = { choice: string; secret?: string; webProvider?: string };
 type SetupStepDef = {
   id: SetupStepId;
   title: string;
+  /** False: the step does not apply here (not asked, not described); `skipped` is applied. */
+  applies?: (ctx: SetupContext) => boolean;
+  /** The answer recorded when the step does not apply. */
+  skipped?: string;
   /** The answer "recommended defaults" and --non-interactive take; undefined = ask. */
   recommended: (ctx: SetupContext, draft: SetupDraft) => string | undefined;
   /** One line for the fork screen describing the recommended answer. */
@@ -176,16 +266,58 @@ function currentPrimary(config: BitterbotConfig): string | undefined {
   return model && typeof model === "object" ? model.primary : undefined;
 }
 
+function profileLabel(profile: SignedInProfile): string {
+  const how = profile.mode === "oauth" ? "OAuth sign-in" : "token";
+  return `Already signed in: ${profile.provider} (${how}, profile ${profile.profileId}${profile.email ? `, ${profile.email}` : ""})`;
+}
+
+function providerOfModel(model: string | undefined): string | undefined {
+  return model?.includes("/") ? model.split("/")[0] : undefined;
+}
+
+/**
+ * The credential to recommend: one for the provider of the model already
+ * configured (a saved sign-in first), else the first key found, else a
+ * saved sign-in. Undefined: nothing found, ask.
+ */
+function recommendedAuth(ctx: SetupContext, draft: SetupDraft): string | undefined {
+  const profiles = ctx.profiles ?? [];
+  const primaryProvider = providerOfModel(currentPrimary(draft.config));
+  if (primaryProvider) {
+    const profile = profiles.find((p) => p.provider === primaryProvider);
+    if (profile) {
+      return profile.id;
+    }
+    const key = ctx.keys.find((k) => k.provider === primaryProvider);
+    if (key) {
+      return key.id;
+    }
+  }
+  return ctx.keys[0]?.id ?? profiles[0]?.id;
+}
+
 const authStep: SetupStepDef = {
   id: "auth",
   title: "Model provider key",
-  recommended: (ctx) => ctx.keys[0]?.id,
-  describe: (ctx) =>
-    ctx.keys[0]
-      ? `Model key: ${keyLabel(ctx.keys[0])}`
-      : "Model key: none found yet, you will be asked for one",
-  ask: async (ctx, _draft, prompter) => {
+  recommended: (ctx, draft) => recommendedAuth(ctx, draft),
+  describe: (ctx, draft) => {
+    const rec = recommendedAuth(ctx, draft);
+    const profile = ctx.profiles?.find((p) => p.id === rec);
+    if (profile) {
+      return `Model sign-in: ${profileLabel(profile)}`;
+    }
+    const key = ctx.keys.find((k) => k.id === rec);
+    return key
+      ? `Model key: ${keyLabel(key)}`
+      : "Model key: none found yet, you will be asked for one";
+  },
+  ask: async (ctx, draft, prompter) => {
     const options = [
+      ...(ctx.profiles ?? []).map((profile) => ({
+        value: profile.id,
+        label: profileLabel(profile),
+        hint: "Keep using this sign-in",
+      })),
       ...ctx.keys.map((key) => ({ value: key.id, label: keyLabel(key), hint: "Use this key" })),
       ...SETUP_PROVIDER_ORDER.map((provider) => ({
         value: `paste:${provider}`,
@@ -193,19 +325,28 @@ const authStep: SetupStepDef = {
         hint: SETUP_PROVIDERS[provider].keyUrl,
       })),
       {
+        value: "other",
+        label: "Other sign-in methods (Codex OAuth, Gemini, custom endpoints)",
+        hint: "Set up in a terminal: bitterbot onboard --no-browser --flow manual",
+      },
+      {
         value: "skip",
         label: "Skip for now",
-        hint: "Add a key later in Settings. Other providers (Gemini, OAuth sign-ins, custom endpoints): Settings, or `bitterbot onboard --no-browser --flow manual`",
+        hint: "Add a key later in Settings",
       },
     ];
     const choice = await prompter.select({
       message:
-        ctx.keys.length > 0
+        ctx.keys.length > 0 || (ctx.profiles?.length ?? 0) > 0
           ? "Which key should your agent use? Keys found on this machine are listed by name; their values never leave the gateway."
           : "Your agent needs a model provider API key. Paste one, or skip and add it later.",
       options,
-      initialValue: options[0]?.value,
+      initialValue: recommendedAuth(ctx, draft) ?? options[0]?.value,
     });
+    if (choice === "other") {
+      await prompter.note(OTHER_SIGN_IN_HINT, "Other sign-in methods");
+      return { choice: "skip" };
+    }
     if (typeof choice === "string" && choice.startsWith("paste:")) {
       const provider = choice.slice("paste:".length) as SetupProvider;
       if (!SETUP_PROVIDERS[provider]) {
@@ -219,8 +360,30 @@ const authStep: SetupStepDef = {
   apply: (ctx, draft, answer) => {
     draft.provider = undefined;
     draft.pendingKey = undefined;
+    draft.authProfile = undefined;
+    if (answer.choice.startsWith("profile:")) {
+      const profile = (ctx.profiles ?? []).find((p) => p.id === answer.choice);
+      if (!profile) {
+        draft.answers.auth = "skip";
+        return;
+      }
+      draft.authProfile = {
+        profileId: profile.profileId,
+        provider: profile.provider,
+        mode: profile.mode,
+      };
+      if (profile.provider in SETUP_PROVIDERS) {
+        draft.provider = profile.provider as SetupProvider;
+      }
+      draft.answers.auth = profile.id;
+      return;
+    }
     if (answer.choice.startsWith("paste:") && answer.secret) {
       const provider = answer.choice.slice("paste:".length) as SetupProvider;
+      if (!SETUP_PROVIDERS[provider]) {
+        draft.answers.auth = "skip";
+        return;
+      }
       draft.provider = provider;
       draft.pendingKey = { provider, value: answer.secret, source: "pasted" };
       draft.answers.auth = `pasted:${provider}`;
@@ -245,13 +408,13 @@ const authStep: SetupStepDef = {
 const modelStep: SetupStepDef = {
   id: "model",
   title: "Model",
-  recommended: (ctx, draft) => {
-    if (!draft.provider) {
+  // A model already in the config file is kept unless the user picks
+  // another one: recommended defaults and --non-interactive never replace it.
+  recommended: (_ctx, draft) => {
+    if (!draft.provider || currentPrimary(draft.config)) {
       return "keep";
     }
-    const models = SETUP_PROVIDERS[draft.provider].models;
-    const primary = currentPrimary(ctx.effective);
-    return primary && models.some((m) => m.id === primary) ? primary : models[0]?.id;
+    return SETUP_PROVIDERS[draft.provider].models[0]?.id;
   },
   describe: (ctx, draft) => {
     const provider = draft.provider ?? ctx.keys[0]?.provider;
@@ -269,9 +432,16 @@ const modelStep: SetupStepDef = {
       return { choice: "keep" };
     }
     const models = SETUP_PROVIDERS[draft.provider].models;
+    const primary = currentPrimary(draft.config);
+    const options = [
+      ...(primary
+        ? [{ value: "keep", label: `Keep the current model (${primary})`, hint: "No change" }]
+        : []),
+      ...models.map((m) => ({ value: m.id, label: m.label, hint: `${m.id}: ${m.hint}` })),
+    ];
     const choice = await prompter.select({
       message: `Which ${SETUP_PROVIDERS[draft.provider].label} model?`,
-      options: models.map((m) => ({ value: m.id, label: m.label, hint: `${m.id}: ${m.hint}` })),
+      options,
       initialValue: modelStep.recommended(ctx, draft),
     });
     return { choice: typeof choice === "string" ? choice : (models[0]?.id ?? "keep") };
@@ -282,10 +452,12 @@ const modelStep: SetupStepDef = {
       return;
     }
     const allowed = SETUP_PROVIDERS[draft.provider].models.map((m) => m.id);
-    const model = allowed.includes(answer.choice) ? answer.choice : allowed[0];
-    if (!model) {
+    if (!allowed.includes(answer.choice)) {
+      // Not a model this provider offers here: leave the config alone.
+      draft.answers.model = "keep";
       return;
     }
+    const model = answer.choice;
     draft.config = setPrimaryModel(draft.config, model);
     draft.answers.model = model;
   },
@@ -334,7 +506,8 @@ const embeddingsStep: SetupStepDef = {
     return { choice: typeof choice === "string" ? choice : "auto" };
   },
   apply: (_ctx, draft, answer) => {
-    draft.answers.embeddings = answer.choice;
+    const known = ["keep", "auto", "local", "openai"];
+    draft.answers.embeddings = known.includes(answer.choice) ? answer.choice : "auto";
     if (answer.choice !== "local" && answer.choice !== "openai") {
       return;
     }
@@ -429,7 +602,7 @@ const webSearchStep: SetupStepDef = {
     }
     return { choice: value };
   },
-  apply: (_ctx, draft, answer) => {
+  apply: (ctx, draft, answer) => {
     const search = draft.config.tools?.web?.search;
     type WebSearchConfig = NonNullable<NonNullable<BitterbotConfig["tools"]>["web"]>["search"];
     const write = (next: Record<string, unknown>) => {
@@ -447,11 +620,19 @@ const webSearchStep: SetupStepDef = {
     if (answer.choice === "parallel") {
       write({ provider: "parallel", enabled: true });
       draft.answers.webSearch = "parallel";
-    } else if (answer.choice.startsWith("env:")) {
-      // The key stays in the environment; only the provider choice is saved.
+    } else if (
+      answer.choice.startsWith("env:") &&
+      answer.choice === `env:${detectSearchEnv(ctx.env ?? process.env)?.provider ?? ""}`
+    ) {
+      // Only the provider whose key is actually in the environment. The key
+      // stays there; only the provider choice is saved.
       write({ provider: answer.choice.slice(4), enabled: true });
       draft.answers.webSearch = answer.choice;
-    } else if (answer.choice.startsWith("paste:") && answer.secret && answer.webProvider) {
+    } else if (
+      answer.choice.startsWith("paste:") &&
+      answer.secret &&
+      (answer.webProvider === "brave" || answer.webProvider === "tavily")
+    ) {
       // Same place the terminal web-search step stores a pasted key.
       const provider = answer.webProvider;
       if (provider === "brave") {
@@ -545,6 +726,52 @@ const p2pStep: SetupStepDef = {
   },
 };
 
+const serviceStep: SetupStepDef = {
+  id: "service",
+  title: "Keep running",
+  // Offered exactly where the terminal QuickStart installs a service: not in
+  // a container, not on Linux without systemd user services, not when one is
+  // already installed (src/wizard/onboarding.finalize.ts).
+  applies: (ctx) => ctx.service?.kind === "available",
+  skipped: "n/a",
+  recommended: () => "install",
+  describe: (ctx) =>
+    `Background service: install it (${ctx.service?.kind === "available" ? ctx.service.label : "service"}), so Bitterbot keeps running and starts on login`,
+  ask: async (ctx, _draft, prompter) => {
+    const label = ctx.service?.kind === "available" ? ctx.service.label : "service";
+    const choice = await prompter.select({
+      message:
+        "Keep Bitterbot running in the background? Dreams, curiosity and channels work only while the gateway runs.",
+      options: [
+        {
+          value: "install",
+          label: "Keep Bitterbot running in the background (start on login)",
+          hint: `Installs a ${label}; remove it any time with \`bitterbot gateway uninstall\``,
+        },
+        {
+          value: "no",
+          label: "No, I will start it myself",
+          hint: "Run `bitterbot gateway` when you want it",
+        },
+      ],
+      initialValue: "install",
+    });
+    return { choice: choice === "no" ? "no" : "install" };
+  },
+  apply: (ctx, draft, answer) => {
+    if (
+      ctx.service?.kind !== "available" ||
+      (answer.choice !== "install" && answer.choice !== "no")
+    ) {
+      draft.installService = false;
+      draft.answers.service = ctx.service?.kind === "installed" ? "installed" : "n/a";
+      return;
+    }
+    draft.installService = answer.choice === "install";
+    draft.answers.service = answer.choice;
+  },
+};
+
 const telemetryStep: SetupStepDef = {
   id: "telemetry",
   title: "Privacy",
@@ -567,11 +794,18 @@ export const SETUP_STEPS: readonly SetupStepDef[] = [
   webSearchStep,
   channelsStep,
   p2pStep,
+  serviceStep,
   telemetryStep,
 ];
 
 export function createSetupDraft(config: BitterbotConfig): SetupDraft {
-  return { config: structuredClone(config), channelsNext: false, answers: {} };
+  return { config: structuredClone(config), channelsNext: false, answers: {}, notices: [] };
+}
+
+/** Re-read the keys and sign-ins setup can offer (after a commit moved one). */
+export function refreshSetupCredentials(ctx: SetupContext): void {
+  ctx.keys = detectSetupKeys(ctx.keyEnv);
+  ctx.profiles = detectSignedInProfiles(ctx.keyEnv.agentDir);
 }
 
 export type SetupRunMode = "interactive" | "non-interactive";
@@ -590,14 +824,28 @@ export async function runSetupSteps(params: {
   presets?: Partial<Record<SetupStepId, string>>;
   /** Skip the fork and walk every step (tests, "back"). */
   skipFork?: boolean;
-  /** Skip the fork and take every recommended answer (scripted runs with flags). */
+  /**
+   * Skip the fork and take every recommended answer. Only for runs nobody
+   * can answer (no TTY); an interactive terminal always sees the fork.
+   */
   acceptRecommended?: boolean;
+  /**
+   * The risk acknowledgement already happened (the terminal wizard asks at
+   * its start; --non-interactive requires --accept-risk). Otherwise an
+   * interactive run asks it first.
+   */
+  riskAcknowledged?: boolean;
 }): Promise<SetupDraft> {
   const { ctx, draft, prompter } = params;
+  if (prompter && !params.riskAcknowledged && !params.only) {
+    await requireSetupRiskAcknowledgement(prompter);
+  }
+  const applicable = SETUP_STEPS.filter((step) => !step.applies || step.applies(ctx));
   const steps = SETUP_STEPS.filter((step) => !params.only || params.only.includes(step.id));
+  const askedSteps = steps.filter((step) => !step.applies || step.applies(ctx));
   let useRecommended = !prompter || params.acceptRecommended === true;
   if (prompter && !useRecommended && !params.skipFork && !params.only) {
-    const lines = SETUP_STEPS.map((step) => `- ${step.describe(ctx, draft)}`);
+    const lines = applicable.map((step) => `- ${step.describe(ctx, draft)}`);
     const fork = await prompter.select({
       message: [
         "Recommended defaults:",
@@ -611,13 +859,18 @@ export async function runSetupSteps(params: {
           label: "Use recommended defaults",
           hint: "One click; change anything later in Settings",
         },
-        { value: "custom", label: "Choose each step", hint: `${SETUP_STEPS.length} short steps` },
+        { value: "custom", label: "Choose each step", hint: `${applicable.length} short steps` },
       ],
       initialValue: "recommended",
     });
     useRecommended = fork !== "custom";
   }
-  for (const [index, step] of steps.entries()) {
+  for (const step of steps) {
+    if (step.applies && !step.applies(ctx)) {
+      step.apply(ctx, draft, { choice: step.skipped ?? "n/a" });
+      continue;
+    }
+    const index = askedSteps.indexOf(step);
     const preset = params.presets?.[step.id];
     const recommended = step.recommended(ctx, draft);
     let answer: StepAnswer;
@@ -626,7 +879,12 @@ export async function runSetupSteps(params: {
     } else if (useRecommended && recommended !== undefined) {
       answer = { choice: recommended };
     } else if (prompter) {
-      prompter.section?.({ id: step.id, title: step.title, index: index + 1, total: steps.length });
+      prompter.section?.({
+        id: step.id,
+        title: step.title,
+        index: index + 1,
+        total: askedSteps.length,
+      });
       answer = await step.ask(ctx, draft, prompter);
       prompter.section?.(null);
     } else {
@@ -642,7 +900,17 @@ export async function runSetupSteps(params: {
  * Write the chosen provider key to its normal secret location (once) and
  * return the config pointing at it. Clears the pending key either way.
  */
-export async function commitSetupKey(draft: SetupDraft, ctx: SetupContext): Promise<void> {
+export async function commitSetupKey(
+  draft: SetupDraft,
+  ctx: SetupContext,
+  opts?: { persistEnvironmentKey?: boolean },
+): Promise<void> {
+  if (draft.authProfile) {
+    // A saved sign-in: nothing to write but the config pointer.
+    const { applyAuthProfileConfig } = await import("../commands/onboard-auth.js");
+    draft.config = applyAuthProfileConfig(draft.config, draft.authProfile);
+    return;
+  }
   const pending = draft.pendingKey;
   if (!pending) {
     return;
@@ -654,6 +922,13 @@ export async function commitSetupKey(draft: SetupDraft, ctx: SetupContext): Prom
     config: draft.config,
     env: ctx.env,
     agentDir: ctx.keyEnv.agentDir,
+    persistEnvironmentKey: opts?.persistEnvironmentKey,
+    onNotice: (message) => draft.notices.push(message),
   });
   draft.pendingKey = undefined;
+}
+
+/** True when the draft has a credential the first reply can use. */
+export function draftHasCredential(draft: SetupDraft): boolean {
+  return Boolean(draft.provider || draft.authProfile);
 }

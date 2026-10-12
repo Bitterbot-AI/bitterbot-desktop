@@ -69,7 +69,6 @@ describe("control UI static serving", () => {
     const root = await makeRoot({ "index.html": "<!doctype html>setup-shell" });
     for (const [url, basePath] of [
       ["/setup?token=abc", ""],
-      ["/setup/", ""],
       ["/bb/setup?token=abc", "/bb"],
     ] as const) {
       const res = makeRes();
@@ -89,6 +88,27 @@ describe("control UI static serving", () => {
         isAuthorized: allow,
       }),
     ).toBe(false);
+  });
+
+  it("redirects /setup/ to /setup under the base path, keeping the query", async () => {
+    const root = await makeRoot({ "index.html": "<!doctype html>setup-shell" });
+    for (const [url, basePath, location] of [
+      ["/setup/?token=abc", "", "/setup?token=abc"],
+      ["/setup/", "", "/setup"],
+      ["/bb/setup/?token=a%2Bb", "/bb", "/bb/setup?token=a%2Bb"],
+    ] as const) {
+      const res = makeRes();
+      expect(
+        await handleControlUiRequest(makeReq(url), res, {
+          configuredRoot: root,
+          basePath,
+          isAuthorized: allow,
+        }),
+      ).toBe(true);
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(location);
+      expect(res.body).toBe("");
+    }
   });
 
   it("serves index.html at the mount root", async () => {

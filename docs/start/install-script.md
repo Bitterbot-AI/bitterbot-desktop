@@ -74,7 +74,7 @@ question):
    to add to your shell profile, and it warns when another `bitterbot` comes
    first on your `PATH`.
 6. Runs `bitterbot onboard` (skip with `--no-onboard`). It starts the gateway
-   and opens a one-time setup page in your browser
+   and opens a setup page in your browser
    (`http://127.0.0.1:19001/setup?token=...`, valid 30 minutes); without a
    browser it prints the link. `bitterbot onboard --no-browser` runs the same
    steps in the terminal. See [`bitterbot onboard`](/cli/onboard).

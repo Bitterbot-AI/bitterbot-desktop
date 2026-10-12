@@ -183,6 +183,14 @@ vi.mock("./onboarding.finalize.js", () => ({
   finalizeOnboardingWizard,
 }));
 
+// The "Keep running" step is offered where a service can be installed.
+vi.mock("./setup-service.js", () => ({
+  detectSetupServiceSupport: vi.fn(async () => ({
+    kind: "available",
+    label: "systemd user service",
+  })),
+}));
+
 vi.mock("./onboarding.completion.js", () => ({
   setupOnboardingShellCompletion,
 }));
@@ -324,6 +332,38 @@ describe("runOnboardingWizard", () => {
     expect(runTui).not.toHaveBeenCalled();
   });
 
+  it("with --auth-choice on a terminal, still shows the recommended-defaults fork (P2P consent)", async () => {
+    const messages: string[] = [];
+    const select: WizardPrompter["select"] = vi.fn(async (params) => {
+      messages.push(params.message);
+      return params.initialValue ?? params.options[0]?.value;
+    }) as WizardPrompter["select"];
+    const prompter = createWizardPrompter({ select });
+    const tty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    try {
+      await runOnboardingWizard(
+        {
+          acceptRisk: true,
+          flow: "quickstart",
+          authChoice: "skip",
+          installDaemon: false,
+          skipHealth: true,
+          skipUi: true,
+        },
+        createRuntime({ throwsOnExit: true }),
+        prompter,
+      );
+    } finally {
+      if (tty) {
+        Object.defineProperty(process.stdin, "isTTY", tty);
+      } else {
+        delete (process.stdin as { isTTY?: boolean }).isTTY;
+      }
+    }
+    expect(messages.some((m) => m.startsWith("Recommended defaults:"))).toBe(true);
+  });
+
   async function runTuiHatchTest(params: {
     writeBootstrapFile: boolean;
     expectedMessage: string | undefined;
@@ -417,12 +457,17 @@ describe("runOnboardingWizard", () => {
         }
       },
     });
+    finalizeOnboardingWizard.mockClear();
     await runOnboardingWizard(
-      { installDaemon: false, skipHealth: true, skipUi: true },
+      { skipHealth: true, skipUi: true },
       createRuntime({ throwsOnExit: true }),
       prompter,
     );
     expect(sections).toEqual([...SETUP_STEP_IDS]);
+    // The step's answer (recommended: install) is what finalize acts on.
+    expect(finalizeOnboardingWizard).toHaveBeenCalledWith(
+      expect.objectContaining({ opts: expect.objectContaining({ installDaemon: true }) }),
+    );
     const forkIndex = prompts.findIndex((p) => p.message.startsWith("Recommended defaults:"));
     expect(forkIndex).toBeGreaterThan(-1);
     // Before the model: the risk acknowledgement and the QuickStart/Manual

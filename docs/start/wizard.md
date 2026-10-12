@@ -22,19 +22,30 @@ bitterbot onboard --no-browser  # the same steps in the terminal
 ## Setup in the browser (default)
 
 `bitterbot onboard` starts the gateway (or reuses the running one) and prints
-and opens a one-time link, `http://127.0.0.1:19001/setup?token=...`. The link
-works once, for 30 minutes, only on this machine, and only for the setup steps.
-Over SSH, in a container, or without a display, it prints the link instead of
-opening it; over SSH, forward the port first
-(`ssh -N -L 19001:127.0.0.1:19001 <host>`).
+and opens a setup link, `http://127.0.0.1:19001/setup?token=...`. The link
+works until setup finishes, for at most 30 minutes, only on this machine, and
+only for the setup steps. Running `bitterbot onboard` again prints a new link
+and retires the old one, together with any setup it had started (a closed tab
+never blocks setup). Over SSH, in a container, or without a display, it prints
+the link instead of opening it; over SSH, forward the port first
+(`ssh -N -L 19001:127.0.0.1:19001 <host>`). Without a terminal at all (a
+script), `bitterbot onboard` stops with an error: pass `--browser` to print
+the link, or use `--non-interactive`.
 
-The browser and the terminal QuickStart run **one list of steps**, so they ask
-the same things:
+Setup starts with the same explicit risk acknowledgement as the terminal
+wizard. Then the browser and the terminal QuickStart run **one list of
+steps**, so they ask the same things:
 
 1. **Model provider key**: keys found on this machine are offered by name and
-   last four characters; their values never reach the browser. The key you
-   pick is saved once, so you are not asked again.
-2. **Model**.
+   last four characters; their values never reach the browser. A saved sign-in
+   that is not a key (an OAuth sign-in or a setup token) is offered as
+   "Already signed in" and kept. The key you pick is saved once, so you are not
+   asked again. If a different key is already saved where it goes, the file is
+   copied to a timestamped backup next to it first (`auth-profiles.json.bak-*`
+   or `.env.bak-*`, readable by you only) and setup tells you where. Other
+   sign-in methods (Codex OAuth, Gemini, custom endpoints) are under "Other
+   sign-in methods": run `bitterbot onboard --no-browser --flow manual`.
+2. **Model**: a model already in your config is kept unless you pick another.
 3. **Memory embeddings**: the local model by default (about 330 MB, downloaded
    on first use).
 4. **Web search** (optional): curiosity research needs it.
@@ -42,13 +53,30 @@ the same things:
 6. **P2P network**: an explicit choice, with what joining sends (see
    [What this node connects to](/network/egress)); your current setting is
    preselected.
-7. **Privacy**: Bitterbot sends no telemetry to the project, and there is no
+7. **Keep running**: install the gateway as a background service (systemd
+   user service on Linux, LaunchAgent on macOS) so it keeps running and starts
+   on login. Recommended wherever the terminal QuickStart installs one; not
+   offered in a container, on Linux without systemd user services, or when a
+   service is already installed. The Done screen says whether it is running as
+   a service. The gateway `bitterbot onboard` started for setup hands its port
+   to the service when you click Finish.
+8. **Privacy**: Bitterbot sends no telemetry to the project, and there is no
    account.
 
 **Use recommended defaults** accepts every step in one click. When the config
 is written, setup runs a first reply on your model and shows it with its
 latency (Retry, Back and Skip on failure), then a read-only doctor summary.
+The first reply runs in its own session (`agent:<id>:setup`), not your main
+chat. Setup counts as finished only when you click Finish: if the tab closes
+halfway, run `bitterbot onboard` again for a new link that picks it up.
 Details: [`bitterbot onboard`](/cli/onboard).
+
+<Note>
+An OpenAI key is saved to `~/.bitterbot/.env` (mode 0600). The gateway loads
+that file without overriding its own environment, so an `OPENAI_API_KEY`
+already exported in the gateway's shell or service environment wins after a
+restart; setup warns when the two differ. Remove or update the exported one.
+</Note>
 
 <Info>
 Fastest first chat: open the Control UI (no channel setup needed). Run
@@ -74,8 +102,10 @@ The terminal wizard starts with **QuickStart** (the setup steps above) vs
 
 <Tabs>
   <Tab title="QuickStart (the setup steps)">
-    Risk acknowledgement and the flow choice, then the seven setup steps above
-    (or "Use recommended defaults"). Everything else takes a sane default:
+    Risk acknowledgement and the flow choice, then the setup steps above (or
+    "Use recommended defaults"; with `--auth-choice` on a terminal the fork is
+    still shown, and only a run without a terminal takes the recommended answers
+    unasked). Everything else takes a sane default:
 
     - Local gateway (loopback), port **19001**, auth **Token** (auto-generated), Tailscale **Off**
     - Workspace default (or existing workspace)

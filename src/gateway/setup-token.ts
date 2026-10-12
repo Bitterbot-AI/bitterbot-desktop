@@ -8,8 +8,10 @@
  *   admin scope: a connection that presents it gets the `operator.setup` scope
  *   and nothing else, receives no broadcast events, and skips device pairing;
  * - expires 30 minutes after it was minted;
- * - is single-use: the setup it drives deletes it on completion, and minting a
- *   new one replaces the old one (there is at most one live setup token);
+ * - works until setup finishes: the setup it drives deletes it on completion,
+ *   and minting a new one replaces the old one (there is at most one live
+ *   setup token; a wizard session started with a replaced or expired token is
+ *   cancelled when the new link starts setup);
  * - is accepted from a loopback Host header only (see `setupTokenRequestAllowed`).
  *
  * Only a SHA-256 of the token is stored, in `<stateDir>/setup-token.json`
@@ -23,6 +25,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveStateDir } from "../config/paths.js";
+import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 
 /** The only scope a setup-token connection holds. */
 export const SETUP_SCOPE = "operator.setup";
@@ -40,6 +43,12 @@ export const SETUP_EVENTS: ReadonlySet<string> = new Set(["tick"]);
 
 export const SETUP_TOKEN_TTL_MS = 30 * 60 * 1000;
 export const SETUP_TOKEN_FILE = "setup-token.json";
+/**
+ * Present while a browser setup has written part of the config but not
+ * finished (the first reply runs between two writes). Until it is removed, a
+ * setup link may still start (or restart) setup.
+ */
+export const SETUP_IN_PROGRESS_FILE = "setup-in-progress.json";
 
 type StoredSetupToken = {
   sha256: string;
@@ -55,7 +64,7 @@ function tokenPath(stateDir?: string): string {
   return path.join(stateDir ?? resolveStateDir(), SETUP_TOKEN_FILE);
 }
 
-function hashToken(token: string): string {
+export function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token, "utf8").digest("hex");
 }
 
@@ -127,6 +136,51 @@ export function verifySetupToken(
 export function setupTokenLive(opts?: { stateDir?: string; now?: number }): boolean {
   const stored = readStored(opts?.stateDir);
   return Boolean(stored && (opts?.now ?? Date.now()) < stored.expiresAt);
+}
+
+/** The stored hash of the live (unexpired) setup token, or null. */
+export function liveSetupTokenHash(opts?: { stateDir?: string; now?: number }): string | null {
+  const stored = readStored(opts?.stateDir);
+  if (!stored || (opts?.now ?? Date.now()) >= stored.expiresAt) {
+    return null;
+  }
+  return stored.sha256;
+}
+
+function inProgressPath(stateDir?: string): string {
+  return path.join(stateDir ?? resolveStateDir(), SETUP_IN_PROGRESS_FILE);
+}
+
+/** Record that setup wrote part of the config and has not finished yet. */
+export function markSetupInProgress(opts?: { stateDir?: string; now?: number }): void {
+  const file = inProgressPath(opts?.stateDir);
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(file, `${JSON.stringify({ startedAt: opts?.now ?? Date.now() })}\n`, {
+      mode: 0o600,
+    });
+  } catch {
+    // Best effort: without the marker an interrupted setup needs the admin sign-in.
+  }
+}
+
+export function setupInProgress(opts?: { stateDir?: string }): boolean {
+  return fs.existsSync(inProgressPath(opts?.stateDir));
+}
+
+export function clearSetupInProgress(opts?: { stateDir?: string }): void {
+  try {
+    fs.rmSync(inProgressPath(opts?.stateDir), { force: true });
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+/** The setup page URL for this gateway (`<basePath>/setup`, token in the query). */
+export function buildSetupUrl(params: { port: number; basePath?: string; token?: string }): string {
+  const base = normalizeControlUiBasePath(params.basePath);
+  const query = params.token ? `?token=${encodeURIComponent(params.token)}` : "";
+  return `http://127.0.0.1:${params.port}${base}/setup${query}`;
 }
 
 /** Delete the live setup token (wizard completed, or an explicit revoke). */

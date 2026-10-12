@@ -69,8 +69,11 @@ export async function handleControlUiRequest(
     return false;
   }
   let pathname: string;
+  let search: string;
   try {
-    pathname = new URL(rawUrl, "http://localhost").pathname;
+    const parsed = new URL(rawUrl, "http://localhost");
+    pathname = parsed.pathname;
+    search = parsed.search;
   } catch {
     return false;
   }
@@ -97,11 +100,20 @@ export async function handleControlUiRequest(
     return true;
   }
 
+  // `/setup/` would resolve the page's relative asset URLs under /setup/ and
+  // render blank: send it to `/setup`, keeping the query (the setup link).
+  if (relative === `${SETUP_PAGE_PATH}/`) {
+    res.statusCode = 302;
+    res.setHeader("Location", `${basePath}${SETUP_PAGE_PATH}${search}`);
+    res.setHeader("Cache-Control", "no-store");
+    res.end();
+    return true;
+  }
+
   // PLAN-56 Phase 4: `/setup` is the browser setup page, a client-side view
   // of the same bundle (the renderer switches on the path). The only route
   // besides the files themselves; everything else stays a genuine 404.
-  const fileRelative =
-    relative === SETUP_PAGE_PATH || relative === `${SETUP_PAGE_PATH}/` ? "/index.html" : relative;
+  const fileRelative = relative === SETUP_PAGE_PATH ? "/index.html" : relative;
   const opened = await resolveFileWithinRoot(root, fileRelative).catch(() => null);
   if (!opened) {
     return false;

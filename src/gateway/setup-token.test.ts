@@ -8,9 +8,15 @@ import { authorizeGatewayMethod } from "./server-methods.js";
 import { decideSetupConnect } from "./server/ws-connection/setup-connect.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
 import {
+  buildSetupUrl,
+  clearSetupInProgress,
+  hashToken,
   isSetupOnlyScopes,
   issueSetupToken,
+  liveSetupTokenHash,
+  markSetupInProgress,
   revokeSetupToken,
+  setupInProgress,
   SETUP_SCOPE,
   SETUP_TOKEN_FILE,
   SETUP_TOKEN_TTL_MS,
@@ -58,7 +64,7 @@ describe("setup token store", () => {
     expect(setupTokenLive({ stateDir, now: SETUP_TOKEN_TTL_MS })).toBe(false);
   });
 
-  it("is single-use: revoked on completion, and a new mint replaces the old token", () => {
+  it("works until setup finishes: revoked on completion, and a new mint replaces the old token", () => {
     const first = issueSetupToken({ stateDir }).token;
     const second = issueSetupToken({ stateDir }).token;
     expect(verifySetupToken(first, { stateDir }).ok).toBe(false);
@@ -107,6 +113,72 @@ describe("where a setup token is accepted", () => {
     expect((await decideSetupConnect({ ...ok, token: "forged" })).ok).toBe(false);
     const expired = await decideSetupConnect({ ...ok, now: Date.now() + SETUP_TOKEN_TTL_MS + 1 });
     expect(expired).toMatchObject({ ok: false, reason: "expired" });
+  });
+
+  it("decideSetupConnect requires the same origin whatever the client id", async () => {
+    const { token } = issueSetupToken({ stateDir });
+    const base = {
+      token,
+      hostHeader: "127.0.0.1:19001",
+      remoteIsLoopback: true,
+      hasProxyHeaders: false,
+      role: "operator",
+      inContainer: false,
+      stateDir,
+    };
+    expect(await decideSetupConnect({ ...base, origin: "http://127.0.0.1:19001" })).toEqual({
+      ok: true,
+    });
+    // Absent Origin: a non-browser client (the CLI).
+    expect(await decideSetupConnect({ ...base, origin: undefined })).toEqual({ ok: true });
+    expect(await decideSetupConnect({ ...base, origin: "https://evil.example" })).toMatchObject({
+      ok: false,
+      reason: "origin",
+    });
+    expect(await decideSetupConnect({ ...base, origin: "null" })).toMatchObject({
+      ok: false,
+      reason: "origin",
+    });
+  });
+
+  it("accepts a non-loopback socket only in a container", async () => {
+    const { token } = issueSetupToken({ stateDir });
+    const lan = {
+      token,
+      hostHeader: "127.0.0.1:19001",
+      remoteIsLoopback: false,
+      hasProxyHeaders: false,
+      role: "operator",
+      stateDir,
+    };
+    expect((await decideSetupConnect({ ...lan, inContainer: false })).ok).toBe(false);
+    expect((await decideSetupConnect({ ...lan, inContainer: true })).ok).toBe(true);
+  });
+});
+
+describe("setup token helpers", () => {
+  it("liveSetupTokenHash names the live token only while it is unexpired", () => {
+    expect(liveSetupTokenHash({ stateDir })).toBeNull();
+    const { token, expiresAt } = issueSetupToken({ stateDir, now: 1_000 });
+    expect(liveSetupTokenHash({ stateDir, now: 2_000 })).toBe(hashToken(token));
+    expect(liveSetupTokenHash({ stateDir, now: expiresAt })).toBeNull();
+  });
+
+  it("the in-progress marker is set, read and cleared (0600)", () => {
+    expect(setupInProgress({ stateDir })).toBe(false);
+    markSetupInProgress({ stateDir });
+    expect(setupInProgress({ stateDir })).toBe(true);
+    if (process.platform !== "win32") {
+      expect(fs.statSync(path.join(stateDir, "setup-in-progress.json")).mode & 0o777).toBe(0o600);
+    }
+    clearSetupInProgress({ stateDir });
+    expect(setupInProgress({ stateDir })).toBe(false);
+  });
+
+  it("buildSetupUrl honours the base path", () => {
+    expect(buildSetupUrl({ port: 19001, basePath: "/bb", token: "a+b" })).toBe(
+      "http://127.0.0.1:19001/bb/setup?token=a%2Bb",
+    );
   });
 });
 
@@ -171,22 +243,40 @@ describe("setup page over HTTP (non-loopback socket, e.g. Docker port mapping)",
   const req = (url: string, host = "127.0.0.1:19001") =>
     ({ url, headers: { host } }) as unknown as import("node:http").IncomingMessage;
 
-  it("serves /setup only with a live token and a loopback Host", () => {
+  const container = (extra?: object) => ({ stateDir, inContainer: true, ...extra });
+
+  it("serves /setup in a container while a link is live, with a loopback Host only", () => {
+    expect(isSetupPageRequest(req("/setup"), "", container())).toBe(false);
     const { token } = issueSetupToken({ stateDir });
-    expect(isSetupPageRequest(req(`/setup?token=${token}`), "", { stateDir })).toBe(true);
-    expect(isSetupPageRequest(req(`/bb/setup?token=${token}`), "/bb", { stateDir })).toBe(true);
-    expect(isSetupPageRequest(req("/setup?token=wrong"), "", { stateDir })).toBe(false);
-    expect(isSetupPageRequest(req(`/setup?token=${token}`, "evil.example"), "", { stateDir })).toBe(
+    expect(isSetupPageRequest(req(`/setup?token=${token}`), "", container())).toBe(true);
+    expect(isSetupPageRequest(req(`/bb/setup?token=${token}`), "/bb", container())).toBe(true);
+    expect(isSetupPageRequest(req(`/setup/?token=${token}`), "", container())).toBe(true);
+    expect(isSetupPageRequest(req(`/setup?token=${token}`, "evil.example"), "", container())).toBe(
       false,
     );
   });
 
-  it("serves the bundle's assets only while a setup link is live, never index or auth", () => {
-    expect(isSetupPageRequest(req("/assets/index-abc.js"), "", { stateDir })).toBe(false);
+  it("serves a reload of /setup (the token already taken out of the URL)", () => {
+    // The page removes ?token= from the address bar; a reload must still load
+    // the shell, which then connects with the token it kept in sessionStorage.
     issueSetupToken({ stateDir });
-    expect(isSetupPageRequest(req("/assets/index-abc.js"), "", { stateDir })).toBe(true);
-    expect(isSetupPageRequest(req("/"), "", { stateDir })).toBe(false);
-    expect(isSetupPageRequest(req("/index.html"), "", { stateDir })).toBe(false);
-    expect(isSetupPageRequest(req("/auth/session-token"), "", { stateDir })).toBe(false);
+    expect(isSetupPageRequest(req("/setup"), "", container())).toBe(true);
+    expect(isSetupPageRequest(req("/bb/setup"), "/bb", container())).toBe(true);
+  });
+
+  it("never applies outside a container, whatever the Host header says", () => {
+    const { token } = issueSetupToken({ stateDir });
+    const outside = { stateDir, inContainer: false };
+    expect(isSetupPageRequest(req(`/setup?token=${token}`), "", outside)).toBe(false);
+    expect(isSetupPageRequest(req("/assets/index-abc.js"), "", outside)).toBe(false);
+  });
+
+  it("serves the bundle's assets only while a setup link is live, never index or auth", () => {
+    expect(isSetupPageRequest(req("/assets/index-abc.js"), "", container())).toBe(false);
+    issueSetupToken({ stateDir });
+    expect(isSetupPageRequest(req("/assets/index-abc.js"), "", container())).toBe(true);
+    expect(isSetupPageRequest(req("/"), "", container())).toBe(false);
+    expect(isSetupPageRequest(req("/index.html"), "", container())).toBe(false);
+    expect(isSetupPageRequest(req("/auth/session-token"), "", container())).toBe(false);
   });
 });

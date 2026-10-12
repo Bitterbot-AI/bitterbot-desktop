@@ -8,9 +8,17 @@
  *    without a restart is written, and one real turn runs on the chosen model
  *    ("Say hello and tell me one thing you can do."), with its latency. A
  *    failure shows the provider error with Retry / Back / Skip.
+ *    The setup session uses its own session key, so retries never land in the
+ *    main chat (src/gateway/setup-first-turn.ts).
  * 4. The doctor summary (the read-only, offline doctor subset).
- * 5. On Finish: the rest of the config (settings that restart the gateway,
- *    such as `gateway.*` and `p2p.*`) is written and the setup token deleted.
+ * 5. "Keep running": when chosen, the gateway service is installed (and the
+ *    Done screen says whether that worked).
+ * 6. On Finish: the rest of the config (settings that restart the gateway,
+ *    such as `gateway.*` and `p2p.*`) is written, the setup token deleted, and
+ *    a setup gateway hands its port over to the new service.
+ *
+ * Until Finish, a marker (`setup-in-progress.json`) keeps setup "not done",
+ * so a lost session can be picked up again with a new setup link.
  *
  * Every config write goes through `writeConfigFile`, which never writes
  * load-time defaults (src/config/io.ts `stripLoadTimeDefaults`).
@@ -20,10 +28,13 @@ import type { BitterbotConfig } from "../config/config.js";
 import type { InstallKind } from "../infra/install-kind.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { WizardPrompter } from "./prompts.js";
-import { detectSetupKeys, type SetupKeyEnv } from "./setup-keys.js";
+import { detectSetupKeys, detectSignedInProfiles, type SetupKeyEnv } from "./setup-keys.js";
+import type { SetupServiceInstallResult, SetupServiceSupport } from "./setup-service.js";
 import {
   commitSetupKey,
   createSetupDraft,
+  draftHasCredential,
+  refreshSetupCredentials,
   runSetupSteps,
   type SetupContext,
   type SetupDraft,
@@ -43,6 +54,14 @@ export type SetupWizardDeps = {
   collectDoctorSummary?: (cfg: BitterbotConfig) => Promise<DoctorSummary>;
   /** Called once setup has written everything (deletes the setup token). */
   onComplete?: () => void;
+  /** Called before the first config write (marks setup as in progress). */
+  markInProgress?: () => void;
+  /** Whether the "Keep running" step is offered (undefined: not offered). */
+  service?: SetupServiceSupport;
+  /** Install the gateway service for the final config. */
+  installService?: (config: BitterbotConfig) => Promise<SetupServiceInstallResult>;
+  /** After Finish, when a service was installed: hand this gateway over to it. */
+  onHandover?: () => void;
   keyEnv?: SetupKeyEnv;
   env?: NodeJS.ProcessEnv;
   installKind?: InstallKind;
@@ -145,7 +164,34 @@ function summarizeDoctor(summary: DoctorSummary): string {
   ].join("\n");
 }
 
-export type SetupWizardResult = { draft: SetupDraft; firstTurn?: FirstTurnResult };
+/** What the Done screen reports about running in the background. */
+export type ServiceOutcome =
+  | { state: "installed"; label: string }
+  | { state: "existing"; label: string }
+  | { state: "failed"; label: string; error: string }
+  | { state: "declined" }
+  | { state: "unavailable" };
+
+function describeService(service: ServiceOutcome): string {
+  switch (service.state) {
+    case "installed":
+      return `Bitterbot now runs in the background as a ${service.label} and starts on login.`;
+    case "existing":
+      return `Bitterbot runs in the background as a ${service.label} (already installed).`;
+    case "failed":
+      return `The ${service.label} could not be installed (${service.error}). Bitterbot runs only while this gateway process runs; try \`bitterbot gateway install\`.`;
+    case "declined":
+      return "Bitterbot is not installed as a background service; start it with `bitterbot gateway` when you want it.";
+    case "unavailable":
+      return "";
+  }
+}
+
+export type SetupWizardResult = {
+  draft: SetupDraft;
+  firstTurn?: FirstTurnResult;
+  service?: ServiceOutcome;
+};
 
 export async function runSetupWizard(
   prompter: WizardPrompter,
@@ -169,9 +215,11 @@ export async function runSetupWizard(
   const ctx: SetupContext = {
     effective: loadConfig(),
     keys: detectSetupKeys(keyEnv),
+    profiles: detectSignedInProfiles(keyEnv.agentDir),
     keyEnv,
     installKind: deps.installKind ?? "unknown",
     env,
+    service: deps.service,
   };
   const draft = createSetupDraft(base);
   await runSetupSteps({ ctx, draft, prompter });
@@ -198,16 +246,23 @@ export async function runSetupWizard(
   let deferredKeys: string[] = [];
   for (;;) {
     await commitSetupKey(draft, ctx);
+    if (draft.notices.length > 0) {
+      await prompter.note(draft.notices.join("\n"), "Your previous key was kept");
+      draft.notices = [];
+    }
     draft.config = finishConfig(draft.config);
     const split = await splitRestartSensitive(base, draft.config);
     deferredKeys = split.deferredKeys;
+    // Setup is "in progress" until Finish: a lost session leaves a config a
+    // new setup link may still complete (wizard.start's onboardingComplete).
+    deps.markInProgress?.();
     await writeConfigFile(split.hot);
     await ensureWorkspaceAndSessions(workspaceDir, quietRuntime, {
       skipBootstrap: Boolean(draft.config.agents?.defaults?.skipBootstrap),
     });
-    if (!draft.provider || !deps.runFirstTurn) {
+    if (!draftHasCredential(draft) || !deps.runFirstTurn) {
       await prompter.note(
-        draft.provider
+        draftHasCredential(draft)
           ? "The first reply runs in the browser setup; open the Control UI to say hello."
           : "No model key yet, so there is no first reply to show. Add a key in Settings, then say hello in Chat.",
         "First reply",
@@ -248,6 +303,9 @@ export async function runSetupWizard(
       },
     });
     if (next === "back") {
+      // The commit above moved the chosen key (an env key is now a saved
+      // one): offer what is there now, not the list from the start.
+      refreshSetupCredentials(ctx);
       await runSetupSteps({ ctx, draft, prompter, only: ["auth", "model"] });
     } else if (next !== "retry") {
       break;
@@ -263,14 +321,33 @@ export async function runSetupWizard(
     });
   }
 
+  // "Keep running": install before the Done screen so it can say how it went.
+  // The service's gateway waits for this one to hand over its port at Finish.
+  let service: ServiceOutcome;
+  if (draft.installService && deps.installService) {
+    const result = await deps.installService(
+      mergeDeferred(loadConfig(), draft.config, deferredKeys),
+    );
+    service = result.ok
+      ? { state: "installed", label: result.label }
+      : { state: "failed", label: result.label, error: result.error };
+  } else if (ctx.service?.kind === "installed") {
+    service = { state: "existing", label: ctx.service.label };
+  } else if (draft.answers.service === "no") {
+    service = { state: "declined" };
+  } else {
+    service = { state: "unavailable" };
+  }
+
   await prompter.note(
     [
       "Setup is complete.",
+      describeService(service),
       draft.channelsNext
         ? "Next: connect a chat channel from the Channels page."
         : "Chat with your agent in the Control UI. Channels, keys and every setting stay editable in Settings.",
-      deferredKeys.length > 0
-        ? `Finishing writes the remaining settings (${deferredKeys.join(", ")}); the gateway restarts once to apply them.`
+      deferredKeys.length > 0 || service.state === "installed"
+        ? `Finishing writes the remaining settings${deferredKeys.length > 0 ? ` (${deferredKeys.join(", ")})` : ""}; the gateway restarts once to apply them.`
         : "",
     ]
       .filter(Boolean)
@@ -280,11 +357,15 @@ export async function runSetupWizard(
       data: {
         kind: "done",
         channelsNext: draft.channelsNext,
-        restart: deferredKeys.length > 0,
+        restart: deferredKeys.length > 0 || service.state === "installed",
+        service,
       },
     },
   );
   await writeConfigFile(draft.config);
   deps.onComplete?.();
-  return { draft, firstTurn };
+  if (service.state === "installed") {
+    deps.onHandover?.();
+  }
+  return { draft, firstTurn, service };
 }

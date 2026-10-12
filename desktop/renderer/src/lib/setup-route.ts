@@ -3,7 +3,7 @@
  *
  * The gateway serves the same bundle at `<basePath>/setup`; the app renders the
  * setup page instead of the dashboard there. `bitterbot onboard` opens
- * `http://127.0.0.1:<port><basePath>/setup?token=<one-time setup token>`.
+ * `http://127.0.0.1:<port><basePath>/setup?token=<setup token>`.
  *
  * The token is taken out of the address bar at once (history.replaceState)
  * so it does not linger in history or leak through a Referer, and is kept in
@@ -59,7 +59,7 @@ export function takeSetupToken(loc: Location = window.location, hist: History = 
     try {
       hist.replaceState(hist.state, "", `${url.pathname}${url.search}${url.hash}`);
     } catch {
-      // Not fatal: the token is single-use and short-lived anyway.
+      // Not fatal: the token dies when setup finishes and is short-lived anyway.
     }
     return fromQuery;
   }

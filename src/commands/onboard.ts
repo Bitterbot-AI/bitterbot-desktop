@@ -77,6 +77,11 @@ export async function onboardCommand(opts: OnboardOptions, runtime: RuntimeEnv =
   const { detectOnboardEnvironment, resolveOnboardSurface, runBrowserOnboarding } =
     await import("./onboard-browser.js");
   const surface = resolveOnboardSurface({ opts: normalizedOpts, ...detectOnboardEnvironment() });
+  if (surface.kind === "no-terminal") {
+    runtime.error(surface.message);
+    runtime.exit(1);
+    return;
+  }
   if (surface.kind === "browser") {
     await runBrowserOnboarding(normalizedOpts, runtime, surface);
     return;

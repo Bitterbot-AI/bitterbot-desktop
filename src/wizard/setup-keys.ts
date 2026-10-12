@@ -13,8 +13,14 @@
  *
  *   - Anthropic, OpenRouter: the auth profile store (`auth-profiles.json`,
  *     profile `<provider>:default`).
- *   - OpenAI: `~/.bitterbot/.env` (`OPENAI_API_KEY`), which the gateway loads at
- *     start (src/infra/dotenv.ts).
+ *   - OpenAI: `~/.bitterbot/.env` (`OPENAI_API_KEY`, mode 0600), which the
+ *     gateway loads at start (src/infra/dotenv.ts).
+ *
+ * Never destructive: when a DIFFERENT key (or a sign-in) is already stored
+ * where the new key goes, the file is first COPIED to a timestamped backup
+ * next to it (`auth-profiles.json.bak-<time>`, `.env.bak-<time>`, mode 0600)
+ * and setup says where. Signed-in profiles that are not API keys (OAuth,
+ * setup tokens) are offered as "already signed in" and kept as they are.
  */
 
 import crypto from "node:crypto";
@@ -22,6 +28,7 @@ import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
+import { resolveAuthStorePath } from "../agents/auth-profiles/paths.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { upsertSharedEnvVar } from "../infra/env-file.js";
@@ -160,6 +167,43 @@ function readSavedKey(provider: SetupProvider, agentDir?: string): string | null
   return null;
 }
 
+/** A saved sign-in that is not an API key (OAuth, setup token): kept as is. */
+export type SignedInProfile = {
+  /** Option id the renderer answers with: `profile:<profileId>`. */
+  id: string;
+  profileId: string;
+  provider: string;
+  mode: "oauth" | "token";
+  /** Account email when the store has one (shown to the owner only). */
+  email?: string;
+};
+
+/** Saved OAuth / token sign-ins in the auth profile store (never their secrets). */
+export function detectSignedInProfiles(agentDir?: string): SignedInProfile[] {
+  try {
+    const store = ensureAuthProfileStore(agentDir, { allowKeychainPrompt: false });
+    const out: SignedInProfile[] = [];
+    for (const [profileId, cred] of Object.entries(store.profiles)) {
+      if (cred?.type !== "oauth" && cred?.type !== "token") {
+        continue;
+      }
+      if (cred.type === "token" && typeof cred.expires === "number" && cred.expires < Date.now()) {
+        continue;
+      }
+      out.push({
+        id: `profile:${profileId}`,
+        profileId,
+        provider: cred.provider,
+        mode: cred.type,
+        ...(cred.email ? { email: cred.email } : {}),
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 type ResolvedKey = DetectedKey & { value: string };
 
 function collectKeys(opts: SetupKeyEnv): ResolvedKey[] {
@@ -226,9 +270,39 @@ export function validatePastedKey(raw: string): string | undefined {
   return undefined;
 }
 
+function backupStamp(now: Date): string {
+  return now.toISOString().replace(/[-:]/g, "").replace(/\..*$/, "");
+}
+
+/**
+ * COPY `file` to `<file>.bak-<time>` (mode 0600) before it is changed.
+ * Never moves or deletes the original. Returns the backup path.
+ */
+export function backupSecretFile(file: string, now: Date = new Date()): string | null {
+  if (!fs.existsSync(file)) {
+    return null;
+  }
+  let target = `${file}.bak-${backupStamp(now)}`;
+  for (let n = 2; fs.existsSync(target); n += 1) {
+    target = `${file}.bak-${backupStamp(now)}-${n}`;
+  }
+  fs.copyFileSync(file, target, fs.constants.COPYFILE_EXCL);
+  try {
+    fs.chmodSync(target, 0o600);
+  } catch {
+    // Best effort (Windows).
+  }
+  return target;
+}
+
 /**
  * Write the key to the provider's normal secret location (once) and point the
  * config at it. `source: "saved"` keys are already stored; nothing is rewritten.
+ *
+ * `persistEnvironmentKey: false` (--non-interactive) uses a key found in the
+ * process environment in place: nothing is written, the gateway reads the
+ * same variable. A different key already stored where this one goes is
+ * backed up first (see the module comment); `onNotice` says where.
  */
 export async function storeProviderKey(params: {
   provider: SetupProvider;
@@ -237,9 +311,13 @@ export async function storeProviderKey(params: {
   config: BitterbotConfig;
   env?: NodeJS.ProcessEnv;
   agentDir?: string;
+  persistEnvironmentKey?: boolean;
+  onNotice?: (message: string) => void;
 }): Promise<BitterbotConfig> {
   const { provider, source } = params;
   const key = params.key.trim();
+  const notice = params.onNotice ?? (() => {});
+  const inPlace = source === "environment" && params.persistEnvironmentKey === false;
   const {
     applyAuthProfileConfig,
     applyOpenrouterProviderConfig,
@@ -248,15 +326,54 @@ export async function storeProviderKey(params: {
   } = await import("../commands/onboard-auth.js");
   if (provider === "openai") {
     const env = params.env ?? process.env;
-    if (source !== "env-file") {
+    if (source !== "env-file" && !inPlace) {
+      const file = path.join(resolveConfigDir(env), ".env");
+      const before = readEnvFile(file).OPENAI_API_KEY?.trim();
+      if (before && before !== key) {
+        const backup = backupSecretFile(file);
+        if (backup) {
+          notice(`Your previous OPENAI_API_KEY in ${file} was kept in ${backup}.`);
+        }
+      }
+      // dotenv never overrides a variable the gateway's own environment
+      // already has: a different OPENAI_API_KEY there wins after a restart.
+      const shellValue = env.OPENAI_API_KEY?.trim();
+      if (shellValue && shellValue !== key && shellValue !== before) {
+        notice(
+          "OPENAI_API_KEY is also set in the gateway's environment (shell profile or service) " +
+            `with a different key, and that one wins after a restart. Remove it there, or update it, so ${file} is used.`,
+        );
+      }
       upsertSharedEnvVar({ key: "OPENAI_API_KEY", value: key, env });
     }
-    // The running gateway reads provider keys from its environment.
-    process.env.OPENAI_API_KEY = key;
+    if (!inPlace) {
+      // The running gateway reads provider keys from its environment.
+      process.env.OPENAI_API_KEY = key;
+    }
     const { applyOpenAIProviderConfig } = await import("../commands/openai-model-default.js");
     return applyOpenAIProviderConfig(params.config);
   }
+  if (inPlace) {
+    // The gateway resolves <PROVIDER>_API_KEY from its environment itself.
+    return provider === "openrouter" ? applyOpenrouterProviderConfig(params.config) : params.config;
+  }
   if (source !== "saved") {
+    const profileId = `${provider}:default`;
+    try {
+      const store = ensureAuthProfileStore(params.agentDir, { allowKeychainPrompt: false });
+      const existing = store.profiles[profileId];
+      const same = existing?.type === "api_key" && existing.key?.trim() === key;
+      if (existing && !same) {
+        const backup = backupSecretFile(resolveAuthStorePath(params.agentDir));
+        if (backup) {
+          notice(
+            `Your previous ${SETUP_PROVIDERS[provider].label} credential was kept in ${backup}.`,
+          );
+        }
+      }
+    } catch {
+      // No store yet: nothing to keep.
+    }
     // The terminal wizard's writers: `<provider>:default` in the agent's
     // auth profile store, where the gateway looks on every turn.
     if (provider === "anthropic") {

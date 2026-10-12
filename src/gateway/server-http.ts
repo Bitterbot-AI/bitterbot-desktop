@@ -16,6 +16,7 @@ import {
 } from "../canvas-host/a2ui.js";
 import type { CanvasHostHandler } from "../canvas-host/server.js";
 import { loadConfig } from "../config/config.js";
+import { looksLikeContainer, readDeclaredInstallKind } from "../infra/install-kind.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
 import { handleSlackHttpRequest } from "../slack/http/index.js";
@@ -56,7 +57,7 @@ import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
-import { hostnameOf, LOOPBACK_HOSTS, setupTokenLive, verifySetupToken } from "./setup-token.js";
+import { hostnameOf, LOOPBACK_HOSTS, setupTokenLive } from "./setup-token.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 import { renderWalletFundingPage } from "./wallet-funding-page.js";
 
@@ -194,19 +195,31 @@ function controlUiBasePathFor(cfg: { gateway?: { controlUi?: { basePath?: string
 }
 
 /**
- * PLAN-56 Phase 4: the setup page for a browser holding a setup link, when
- * the request is not a direct loopback one (Docker's port mapping). The page
- * needs a live token in its query; its static assets (the public bundle, no
- * secrets in it since PLAN-39) load while a setup link is live. Both require
- * a loopback Host header, like the token itself.
+ * PLAN-56 Phase 4: the setup page for a browser holding a setup link when the
+ * request is not a direct loopback one. That only happens in a container,
+ * where Docker's port mapping delivers the host's loopback connection from
+ * the bridge address; everywhere else a non-loopback request gets nothing
+ * here (a forged Host header is not enough). In a container, while a setup
+ * link is live, the page shell and its static assets load (the bundle is
+ * public, no secrets in it since PLAN-39), including on a reload, whose URL
+ * no longer carries the token; the WebSocket still demands the token itself.
+ * Both require a loopback Host header, like the token.
  */
 export function isSetupPageRequest(
   req: IncomingMessage,
   basePath: string,
-  opts?: { stateDir?: string },
+  opts?: { stateDir?: string; inContainer?: boolean },
 ): boolean {
+  const inContainer =
+    opts?.inContainer ?? (readDeclaredInstallKind() === "container" || looksLikeContainer());
+  if (!inContainer) {
+    return false;
+  }
   const host = hostnameOf(req.headers.host);
   if (!host || !LOOPBACK_HOSTS.has(host)) {
+    return false;
+  }
+  if (!setupTokenLive(opts)) {
     return false;
   }
   let url: URL;
@@ -220,10 +233,9 @@ export function isSetupPageRequest(
     return false;
   }
   if (relative === SETUP_PAGE_PATH || relative === `${SETUP_PAGE_PATH}/`) {
-    return verifySetupToken(url.searchParams.get("token"), opts).ok;
+    return true;
   }
-  const isAsset = relative !== "/" && !relative.endsWith(".html") && !relative.startsWith("/auth/");
-  return isAsset && setupTokenLive(opts);
+  return relative !== "/" && !relative.endsWith(".html") && !relative.startsWith("/auth/");
 }
 
 export type HooksRequestHandler = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;

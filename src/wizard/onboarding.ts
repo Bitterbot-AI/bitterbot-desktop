@@ -17,7 +17,7 @@ import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath } from "../utils.js";
 import { isFirstBootOnlyConfig } from "./onboarding.first-boot.js";
 import type { QuickstartGatewayDefaults, WizardFlow } from "./onboarding.types.js";
-import { WizardCancelledError, type WizardPrompter } from "./prompts.js";
+import type { WizardPrompter } from "./prompts.js";
 
 async function requireRiskAcknowledgement(params: {
   opts: OnboardOptions;
@@ -26,59 +26,9 @@ async function requireRiskAcknowledgement(params: {
   if (params.opts.acceptRisk === true) {
     return;
   }
-
-  await params.prompter.note(
-    [
-      "Read this before going further.",
-      "",
-      "Bitterbot is in open beta. It remembers your life, runs real tools,",
-      "moves real USDC, and talks to other agents on a live P2P mesh.",
-      "That is the whole point — and it is also how you get hurt if you",
-      "skip the safety rails.",
-      "",
-      "What this agent can actually do once you enable its tools:",
-      "- Read and write files in its workspace",
-      "- Run code, browse the web, execute shell commands",
-      "- Send and receive messages on channels you connect (WhatsApp, Telegram, etc.)",
-      "- Hold a USDC wallet on Base, pay for paywalled APIs via x402, receive payments",
-      "- Publish skills to the P2P marketplace and ingest skills from other agents",
-      "",
-      "LLMs can be tricked. A malicious message, a hostile webpage, or a",
-      "poisoned skill from the network can steer the agent toward actions",
-      "you did not intend. Plan for that, not against it.",
-      "",
-      "Run Bitterbot at your own risk. We ship fast, patch fast, and trust",
-      "operators to harden their own nodes. If basic security and access",
-      "control are unfamiliar territory, pair with someone who can help",
-      "before enabling tools, channels, or the wallet.",
-      "",
-      "Recommended baseline:",
-      "- Pairing, allowlists, and mention gating for inbound messages.",
-      "- Sandbox + least-privilege tools. Start minimal; expand as you trust it.",
-      "- Keep secrets out of the agent's reachable filesystem (no .env in workspace).",
-      "- Use the strongest model available for any bot with tools or untrusted inboxes.",
-      "- Start the wallet with a small float you can afford to lose while you learn.",
-      "- P2P skill ingestion defaults to 'review' — don't flip to 'auto' until you",
-      "  have a trust list and understand the SkillVerifier + reputation gates.",
-      "",
-      "Run regularly:",
-      "  bitterbot security audit --deep",
-      "  bitterbot security audit --fix",
-      "  bitterbot doctor",
-      "",
-      "Must read: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/SECURITY.md",
-    ].join("\n"),
-    "Security — at your own risk",
-  );
-
-  const ok = await params.prompter.confirm({
-    message:
-      "I understand Bitterbot can act on my behalf, move funds, and connect to a live P2P network. I accept the risk. Continue?",
-    initialValue: false,
-  });
-  if (!ok) {
-    throw new WizardCancelledError("risk not accepted");
-  }
+  // The same acknowledgement the browser setup page asks (setup-steps.ts).
+  const { requireSetupRiskAcknowledgement } = await import("./setup-steps.js");
+  await requireSetupRiskAcknowledgement(params.prompter);
 }
 
 export async function runOnboardingWizard(
@@ -421,6 +371,8 @@ async function runOnboardingWizardInner(
   }).catch(() => null);
   const installKind = detectInstallKind(packageRoot);
 
+  // The options finalize sees (the "Keep running" step may set installDaemon).
+  let finalizeOpts: OnboardOptions = opts;
   let settings: Awaited<
     ReturnType<typeof import("./onboarding.gateway-config.js").configureGatewayForOnboarding>
   >["settings"];
@@ -430,7 +382,7 @@ async function runOnboardingWizardInner(
     // browser setup page renders over wizard.* (src/wizard/setup-steps.ts).
     // An explicit --auth-choice still runs the provider-specific auth flow;
     // the model's key and model steps then keep what it configured.
-    let presets: Partial<Record<"auth" | "model" | "channels", string>> | undefined;
+    let presets: Partial<Record<"auth" | "model" | "channels" | "service", string>> | undefined;
     if (opts.authChoice !== undefined) {
       const { applyAuthChoice } = await import("../commands/auth-choice.js");
       const authResult = await applyAuthChoice({
@@ -450,26 +402,42 @@ async function runOnboardingWizardInner(
     if (opts.skipChannels ?? opts.skipProviders) {
       presets = { ...presets, channels: "later" };
     }
+    if (typeof opts.installDaemon === "boolean") {
+      presets = { ...presets, service: opts.installDaemon ? "install" : "no" };
+    }
     const { commitSetupKey, createSetupDraft, runSetupSteps } = await import("./setup-steps.js");
-    const { detectSetupKeys } = await import("./setup-keys.js");
+    const { detectSetupKeys, detectSignedInProfiles } = await import("./setup-keys.js");
+    const { detectSetupServiceSupport } = await import("./setup-service.js");
     const ctx = {
       effective: baseConfig,
       keys: detectSetupKeys(),
+      profiles: detectSignedInProfiles(),
       keyEnv: {},
       installKind,
       env: process.env,
+      service: await detectSetupServiceSupport({ installKind }),
     };
     const draft = createSetupDraft(nextConfig);
-    // Flags mean a scripted run: take the recommended answers for the rest.
     await runSetupSteps({
       ctx,
       draft,
       prompter,
       presets,
-      acceptRecommended: opts.authChoice !== undefined,
+      // Asked at the start of the wizard (or --accept-risk).
+      riskAcknowledged: true,
+      // Flags on a run nobody can answer take the recommended answers; an
+      // interactive terminal always sees the fork (P2P is a consent choice).
+      acceptRecommended: opts.authChoice !== undefined && !process.stdin.isTTY,
     });
     await commitSetupKey(draft, ctx);
+    for (const notice of draft.notices) {
+      await prompter.note(notice, "Your previous key was kept");
+    }
     nextConfig = draft.config;
+    // The "Keep running" step decides the service install finalize does.
+    if (draft.answers.service === "install" || draft.answers.service === "no") {
+      finalizeOpts = { ...opts, installDaemon: draft.answers.service === "install" };
+    }
     await warnIfModelConfigLooksOff(nextConfig, prompter);
 
     const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
@@ -659,11 +627,13 @@ async function runOnboardingWizardInner(
 
   nextConfig = onboardHelpers.applyWizardMetadata(nextConfig, { command: "onboard", mode });
   await writeConfigFile(nextConfig);
+  // A browser setup abandoned halfway is finished now.
+  (await import("../gateway/setup-token.js")).clearSetupInProgress();
 
   const { finalizeOnboardingWizard } = await import("./onboarding.finalize.js");
   const { launchedTui } = await finalizeOnboardingWizard({
     flow,
-    opts,
+    opts: finalizeOpts,
     baseConfig,
     nextConfig,
     workspaceDir,

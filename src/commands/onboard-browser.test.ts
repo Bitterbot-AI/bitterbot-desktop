@@ -32,15 +32,46 @@ describe("resolveOnboardSurface", () => {
     ).toBe("browser");
   });
 
+  it("--json and the --skip-* switches keep the terminal wizard; switches left off do not", () => {
+    for (const opts of [
+      { json: true },
+      { skipChannels: true },
+      { skipHealth: true },
+      { skipSkills: true },
+    ]) {
+      expect(resolveOnboardSurface({ opts, ...env }).kind).toBe("terminal");
+    }
+    // The CLI passes every switch, false when absent.
+    expect(
+      resolveOnboardSurface({
+        opts: { json: false, skipChannels: false, skipHealth: false, skipSkills: false },
+        ...env,
+      }).kind,
+    ).toBe("browser");
+  });
+
   it("headless, SSH and container sessions print the link instead of opening it", () => {
     for (const variant of [
       { ...env, remote: true },
       { ...env, inContainer: true },
-      { ...env, stdinIsTty: false },
+      { ...env, inContainer: true, stdinIsTty: false },
     ]) {
       const surface = resolveOnboardSurface({ opts: {}, ...variant });
       expect(surface).toMatchObject({ kind: "browser", open: false });
     }
+    // Explicit --browser without a terminal: print the link (scripts).
+    expect(
+      resolveOnboardSurface({ opts: { browser: true }, ...env, stdinIsTty: false }),
+    ).toMatchObject({ kind: "browser", open: false });
+  });
+
+  it("without a terminal, the default is an error, not a background gateway", () => {
+    const surface = resolveOnboardSurface({ opts: {}, ...env, stdinIsTty: false });
+    expect(surface.kind).toBe("no-terminal");
+    expect(surface.kind === "no-terminal" && surface.message).toContain(
+      "bitterbot onboard --browser",
+    );
+    expect(surface.kind === "no-terminal" && surface.message).toContain("--non-interactive");
   });
 });
 
@@ -112,7 +143,7 @@ describe("runBrowserOnboarding", () => {
     expect(verifySetupToken(token, { stateDir: dir }).ok).toBe(true);
     expect(result!.url.startsWith("http://127.0.0.1:19001/setup?token=")).toBe(true);
     expect(openUrl).toHaveBeenCalledWith(result!.url);
-    expect(rt.lines.join("\n")).toContain("link valid 30 minutes, works once");
+    expect(rt.lines.join("\n")).toContain("link valid 30 minutes, works until setup finishes");
   });
 
   it("reuses a running gateway and only prints the link when headless", async () => {
@@ -145,6 +176,21 @@ describe("runBrowserOnboarding", () => {
     expect(result?.tokenIssued).toBe(false);
     expect(result?.url).toBe("http://127.0.0.1:19001/setup");
     expect(fs.existsSync(path.join(dir, "setup-token.json"))).toBe(false);
+  });
+
+  it("mints a new link when an earlier browser setup wrote config but never finished", async () => {
+    fs.writeFileSync(
+      path.join(dir, "bitterbot.json"),
+      JSON.stringify({ agents: { defaults: { workspace: dir } } }),
+    );
+    fs.writeFileSync(path.join(dir, "setup-in-progress.json"), "{}\n");
+    const result = await runBrowserOnboarding(
+      {},
+      runtime(),
+      { kind: "browser", open: false, headless: false, inContainer: false },
+      { isListening: async () => true },
+    );
+    expect(result?.tokenIssued).toBe(true);
   });
 
   it("in a container, a stopped gateway is an error with the compose command", async () => {

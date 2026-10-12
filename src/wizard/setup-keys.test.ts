@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   detectSetupKeys,
+  detectSignedInProfiles,
   maskKeySuffix,
   resolveDetectedKey,
   storeProviderKey,
@@ -111,6 +112,171 @@ describe("storeProviderKey (ask once, remember)", () => {
         process.env.OPENAI_API_KEY = previous;
       }
     }
+  });
+});
+
+describe("storeProviderKey never destroys a different key", () => {
+  const writeStore = (profiles: Record<string, unknown>) => {
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, "auth-profiles.json"),
+      JSON.stringify({ version: 1, profiles }),
+    );
+  };
+  const backups = (where: string, prefix: string) =>
+    fs.readdirSync(where).filter((name) => name.startsWith(`${prefix}.bak-`));
+
+  it("copies the auth store aside before replacing a different Anthropic key", async () => {
+    writeStore({
+      "anthropic:default": { type: "api_key", provider: "anthropic", key: "sk-ant-OLD-key-123456" },
+    });
+    const notices: string[] = [];
+    await storeProviderKey({
+      provider: "anthropic",
+      key: ANTHROPIC,
+      source: "pasted",
+      config: {},
+      agentDir,
+      onNotice: (m) => notices.push(m),
+    });
+    const store = JSON.parse(fs.readFileSync(path.join(agentDir, "auth-profiles.json"), "utf8"));
+    expect(store.profiles["anthropic:default"].key).toBe(ANTHROPIC);
+    const [backup] = backups(agentDir, "auth-profiles.json");
+    expect(backup).toBeDefined();
+    const kept = JSON.parse(fs.readFileSync(path.join(agentDir, backup!), "utf8"));
+    expect(kept.profiles["anthropic:default"].key).toBe("sk-ant-OLD-key-123456");
+    if (process.platform !== "win32") {
+      expect(fs.statSync(path.join(agentDir, backup!)).mode & 0o777).toBe(0o600);
+    }
+    expect(notices.join("\n")).toContain(backup!);
+    expect(notices.join("\n")).not.toContain("sk-ant-OLD");
+  });
+
+  it("keeps a setup-token sign-in the same way, and writes no backup for the same key", async () => {
+    writeStore({
+      "anthropic:default": { type: "token", provider: "anthropic", token: "tok-abcdefghijkl" },
+    });
+    await storeProviderKey({
+      provider: "anthropic",
+      key: ANTHROPIC,
+      source: "pasted",
+      config: {},
+      agentDir,
+    });
+    expect(backups(agentDir, "auth-profiles.json")).toHaveLength(1);
+    await storeProviderKey({
+      provider: "anthropic",
+      key: ANTHROPIC,
+      source: "pasted",
+      config: {},
+      agentDir,
+    });
+    expect(backups(agentDir, "auth-profiles.json")).toHaveLength(1);
+  });
+
+  it("copies ~/.bitterbot/.env aside before replacing a different OpenAI key", async () => {
+    fs.writeFileSync(path.join(dir, ".env"), "OPENAI_API_KEY=sk-OLD-openai-key-0000\n");
+    const env = { BITTERBOT_STATE_DIR: dir } as NodeJS.ProcessEnv;
+    const previous = process.env.OPENAI_API_KEY;
+    const notices: string[] = [];
+    try {
+      await storeProviderKey({
+        provider: "openai",
+        key: OPENAI,
+        source: "pasted",
+        config: {},
+        env,
+        agentDir,
+        onNotice: (m) => notices.push(m),
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previous;
+      }
+    }
+    expect(fs.readFileSync(path.join(dir, ".env"), "utf8")).toContain(`OPENAI_API_KEY=${OPENAI}`);
+    const [backup] = backups(dir, ".env");
+    expect(fs.readFileSync(path.join(dir, backup!), "utf8")).toContain("sk-OLD-openai-key-0000");
+    expect(notices.join("\n")).toContain(backup!);
+  });
+
+  it("warns when the gateway's own environment has a different OpenAI key (dotenv will not override it)", async () => {
+    const env = {
+      BITTERBOT_STATE_DIR: dir,
+      OPENAI_API_KEY: "sk-shell-stale-key-9999",
+    } as NodeJS.ProcessEnv;
+    const previous = process.env.OPENAI_API_KEY;
+    const notices: string[] = [];
+    try {
+      await storeProviderKey({
+        provider: "openai",
+        key: OPENAI,
+        source: "pasted",
+        config: {},
+        env,
+        agentDir,
+        onNotice: (m) => notices.push(m),
+      });
+    } finally {
+      if (previous === undefined) {
+        delete process.env.OPENAI_API_KEY;
+      } else {
+        process.env.OPENAI_API_KEY = previous;
+      }
+    }
+    expect(notices.join("\n")).toContain("also set in the gateway's environment");
+    expect(notices.join("\n")).not.toContain("sk-shell-stale");
+  });
+
+  it("uses an environment key in place when asked not to persist it (--non-interactive)", async () => {
+    const config = await storeProviderKey({
+      provider: "anthropic",
+      key: ANTHROPIC,
+      source: "environment",
+      config: {},
+      agentDir,
+      persistEnvironmentKey: false,
+    });
+    expect(config).toEqual({});
+    expect(fs.existsSync(path.join(agentDir, "auth-profiles.json"))).toBe(false);
+  });
+});
+
+describe("detectSignedInProfiles", () => {
+  it("lists OAuth and token sign-ins (never their secrets), not API keys or expired tokens", () => {
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, "auth-profiles.json"),
+      JSON.stringify({
+        version: 1,
+        profiles: {
+          "openai-codex:default": {
+            type: "oauth",
+            provider: "openai-codex",
+            access: "SECRET-access",
+            refresh: "SECRET-refresh",
+            expires: Date.now() + 60_000,
+            email: "me@example.com",
+          },
+          "anthropic:claude": { type: "token", provider: "anthropic", token: "SECRET-token" },
+          "anthropic:old": {
+            type: "token",
+            provider: "anthropic",
+            token: "SECRET-old",
+            expires: 1,
+          },
+          "openrouter:default": { type: "api_key", provider: "openrouter", key: "SECRET-key" },
+        },
+      }),
+    );
+    const profiles = detectSignedInProfiles(agentDir);
+    expect(profiles.map((p) => [p.id, p.mode])).toEqual([
+      ["profile:openai-codex:default", "oauth"],
+      ["profile:anthropic:claude", "token"],
+    ]);
+    expect(JSON.stringify(profiles)).not.toContain("SECRET");
   });
 });
 

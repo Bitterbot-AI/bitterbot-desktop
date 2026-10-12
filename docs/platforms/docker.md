@@ -37,18 +37,25 @@ from the `main` branch.
 </Note>
 
 Nothing needs editing. On first boot the gateway generates a gateway token,
-saves it, and prints it once in its log together with a one-time setup link:
+saves it, and prints it once in its log together with a setup link. Until
+setup is finished, every start prints a fresh setup link, also when you pinned
+your own token with `BITTERBOT_GATEWAY_TOKEN` (no token is generated then).
+With `gateway.controlUi.basePath` set, the link is under that path:
 
 ```bash
 docker compose logs bitterbot-gateway
 ```
 
-Look for the block that starts with `Bitterbot generated a gateway token`.
+Look for the block that starts with `Bitterbot generated a gateway token` (or
+`Bitterbot is not set up yet`).
 
 1. Open the setup link from that block
    (`http://127.0.0.1:19001/setup?token=...`; use your host port if you mapped
-   a different one). It works once, for 30 minutes, only for setup, and only
-   through the loopback port compose publishes. Setup asks for a model key
+   a different one). It works until setup finishes, for at most 30 minutes,
+   only for setup, and only through the loopback port compose publishes
+   (Docker's port mapping is the boundary here: if you publish the port on all
+   interfaces, anyone on your network who holds the link can reach the setup
+   page). Reloading the setup page keeps working. Setup asks for a model key
    (keys passed to the container's environment are offered by name and last
    four characters, never shown), the model, memory, web search, channels and
    P2P, then shows a first reply from your agent with its latency and a

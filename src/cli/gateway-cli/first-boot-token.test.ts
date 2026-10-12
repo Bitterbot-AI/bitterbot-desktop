@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ConfigFileSnapshot } from "../../config/config.js";
 import {
+  announceContainerSetupLink,
   describeTokenSourceConflict,
   formatFirstBootTokenBanner,
   generateFirstBootToken,
@@ -74,6 +75,23 @@ describe("generateFirstBootToken", () => {
     );
   });
 
+  it("puts the setup link under gateway.controlUi.basePath", async () => {
+    const write = vi.fn();
+    await generateFirstBootToken({
+      port: 19001,
+      basePath: "/bb/",
+      readSnapshot: async () => snapshot({}),
+      writeConfig: async () => {},
+      makeToken: () => "t0k3n",
+      write,
+      inContainer: true,
+      issueSetupToken: () => "s3tup",
+      bootstrapPairing: true,
+    });
+    expect(write.mock.calls[0][0]).toContain("http://127.0.0.1:19001/bb/setup?token=s3tup");
+    expect(write.mock.calls[0][0]).toContain("works until setup finishes");
+  });
+
   it("merges into an existing valid config", async () => {
     const writeConfig = vi.fn(async () => {});
     await generateFirstBootToken({
@@ -139,5 +157,71 @@ describe("describeTokenSourceConflict", () => {
     expect(msg).toContain("config token is the one in use");
     expect(msg).not.toContain("config-secret");
     expect(msg).not.toContain("env-secret");
+  });
+});
+
+describe("announceContainerSetupLink (token pinned with BITTERBOT_GATEWAY_TOKEN)", () => {
+  const base = {
+    port: 19001,
+    inContainer: true,
+    issueSetupToken: () => "s3tup",
+    inProgress: () => false,
+  };
+
+  it("prints a setup link while the config is first-boot-only, under the base path", async () => {
+    const write = vi.fn();
+    const url = await announceContainerSetupLink({
+      ...base,
+      basePath: "/bb",
+      readSnapshot: async () => snapshot({}),
+      write,
+    });
+    expect(url).toBe("http://127.0.0.1:19001/bb/setup?token=s3tup");
+    expect(write.mock.calls[0][0]).toContain(url);
+    expect(write.mock.calls[0][0]).toContain("works until setup finishes");
+  });
+
+  it("prints again for a browser setup that never finished", async () => {
+    const url = await announceContainerSetupLink({
+      ...base,
+      inProgress: () => true,
+      readSnapshot: async () =>
+        snapshot({ exists: true, resolved: { agents: { defaults: { workspace: "/w" } } } }),
+      write: () => {},
+    });
+    expect(url).toContain("/setup?token=s3tup");
+  });
+
+  it("stays quiet once set up, outside a container, or with an invalid config", async () => {
+    const issue = vi.fn(() => "s3tup");
+    const write = vi.fn();
+    const setUp = snapshot({ exists: true, resolved: { gateway: { mode: "local" } } });
+    expect(
+      await announceContainerSetupLink({
+        ...base,
+        issueSetupToken: issue,
+        readSnapshot: async () => setUp,
+        write,
+      }),
+    ).toBeNull();
+    expect(
+      await announceContainerSetupLink({
+        ...base,
+        inContainer: false,
+        issueSetupToken: issue,
+        readSnapshot: async () => snapshot({}),
+        write,
+      }),
+    ).toBeNull();
+    expect(
+      await announceContainerSetupLink({
+        ...base,
+        issueSetupToken: issue,
+        readSnapshot: async () => snapshot({ exists: true, valid: false }),
+        write,
+      }),
+    ).toBeNull();
+    expect(issue).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
   });
 });

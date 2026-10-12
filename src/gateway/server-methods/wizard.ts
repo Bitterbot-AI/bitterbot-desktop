@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { defaultRuntime } from "../../runtime.js";
 import type { WizardPrompter } from "../../wizard/prompts.js";
 import { WizardSession } from "../../wizard/session.js";
@@ -10,7 +10,16 @@ import {
   validateWizardStartParams,
   validateWizardStatusParams,
 } from "../protocol/index.js";
-import { isSetupOnlyScopes, revokeSetupToken, verifySetupToken } from "../setup-token.js";
+import {
+  clearSetupInProgress,
+  hashToken,
+  isSetupOnlyScopes,
+  liveSetupTokenHash,
+  markSetupInProgress,
+  revokeSetupToken,
+  setupInProgress,
+  verifySetupToken,
+} from "../setup-token.js";
 import { formatForLog } from "../ws-log.js";
 import type { GatewayClient, GatewayRequestContext, GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
@@ -32,6 +41,11 @@ function isSetupOnlyClient(client: GatewayClient | null): boolean {
  * admin-authenticated caller may run the wizard again.
  */
 export async function onboardingComplete(): Promise<boolean> {
+  // A browser setup that wrote part of the config and then lost its session
+  // is not complete: the next setup link may finish it.
+  if (setupInProgress()) {
+    return false;
+  }
   const { readConfigFileSnapshot } = await import("../../config/config.js");
   const { isFirstBootOnlyConfig } = await import("../../wizard/onboarding.first-boot.js");
   const snapshot = await readConfigFileSnapshot();
@@ -56,21 +70,68 @@ function createSetupRunner(context: GatewayRequestContext) {
       argv1: process.argv[1],
       cwd: process.cwd(),
     }).catch(() => null);
+    const { detectSetupServiceSupport, installSetupGatewayService } =
+      await import("../../wizard/setup-service.js");
+    const { isLikelySupervisedProcess } = await import("../../infra/process-respawn.js");
+    const { scheduleSetupHandoverExit } = await import("../../infra/setup-handover.js");
+    const { resolveGatewayPort } = await import("../../config/config.js");
     const agentHandler = agentHandlers.agent;
+    const installKind = detectInstallKind(packageRoot);
     await runSetupWizard(prompter, {
-      installKind: detectInstallKind(packageRoot),
+      installKind,
+      service: await detectSetupServiceSupport({ installKind }),
+      installService: (cfg) =>
+        installSetupGatewayService({ config: cfg, port: resolveGatewayPort(cfg) }),
+      // Only an unsupervised gateway (the one `bitterbot onboard` started)
+      // hands its port over; on Windows the scheduled task starts at the next
+      // sign-in, so this gateway keeps running until then.
+      onHandover: () => {
+        if (!isLikelySupervisedProcess() && process.platform !== "win32") {
+          scheduleSetupHandoverExit();
+        }
+      },
       runFirstTurn: (cfg) => runSetupFirstTurn({ cfg, context, agentHandler }),
       collectDoctorSummary: (cfg) => collectSetupDoctorSummary({ cfg }),
-      // Single-use: the token that drove this setup dies with it.
-      onComplete: () => revokeSetupToken(),
+      markInProgress: () => markSetupInProgress(),
+      // The token that drove this setup dies with it; setup is now complete.
+      onComplete: () => {
+        revokeSetupToken();
+        clearSetupInProgress();
+      },
     });
   };
 }
 
+const SETUP_OWNER_PREFIX = "setup:";
+
 function ownerKeyFor(token: string | undefined): string {
-  return `setup:${createHash("sha256")
-    .update(token ?? "")
-    .digest("hex")}`;
+  return `${SETUP_OWNER_PREFIX}${hashToken(token?.trim() ?? "")}`;
+}
+
+/** Who is calling: "admin", or the setup token's owner key. */
+function callerOwner(client: GatewayClient | null): string {
+  return isSetupOnlyClient(client) ? ownerKeyFor(client?.setupToken) : "admin";
+}
+
+/** Admin may drive any session; a setup token only the one it started. */
+function mayUseSession(session: WizardSession, owner: string): boolean {
+  return owner === "admin" || session.owner === owner;
+}
+
+/**
+ * A setup-token session whose token is no longer the live one (replaced by a
+ * newer `bitterbot onboard`, or expired): nobody can resume it any more.
+ */
+function isOrphanedSetupSession(session: WizardSession): boolean {
+  if (!session.owner?.startsWith(SETUP_OWNER_PREFIX)) {
+    return false;
+  }
+  const live = liveSetupTokenHash();
+  return !live || session.owner !== `${SETUP_OWNER_PREFIX}${live}`;
+}
+
+function sessionNotFound() {
+  return errorShape(ErrorCodes.INVALID_REQUEST, "wizard not found");
 }
 
 function setupLinkError(reason: string) {
@@ -86,7 +147,7 @@ export const wizardHandlers: GatewayRequestHandlers = {
       return;
     }
     const setupOnly = isSetupOnlyClient(client);
-    const owner = setupOnly ? ownerKeyFor(client?.setupToken) : "admin";
+    const owner = callerOwner(client);
     if (setupOnly) {
       // The connection proved the token at connect; it must still be live now
       // (not expired, not used up by a finished setup).
@@ -96,11 +157,19 @@ export const wizardHandlers: GatewayRequestHandlers = {
         return;
       }
     }
-    const running = context.findRunningWizard();
+    let running = context.findRunningWizard();
+    const runningSession = running ? context.wizardSessions.get(running) : undefined;
+    if (running && runningSession && isOrphanedSetupSession(runningSession)) {
+      // Its tab closed, then `bitterbot onboard` minted a new link (or the
+      // old one expired): cancel it so the new link can start fresh.
+      runningSession.cancel();
+      context.wizardSessions.delete(running);
+      running = null;
+    }
     if (running) {
       // A reload of the setup page resumes its own session where it was.
       const session = context.wizardSessions.get(running);
-      if (session && (session.owner === owner || owner === "admin")) {
+      if (session && mayUseSession(session, owner)) {
         const result = await session.next();
         respond(true, { sessionId: running, ...result }, undefined);
         return;
@@ -152,8 +221,8 @@ export const wizardHandlers: GatewayRequestHandlers = {
     }
     const sessionId = params.sessionId;
     const session = context.wizardSessions.get(sessionId);
-    if (!session) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "wizard not found"));
+    if (!session || !mayUseSession(session, callerOwner(client))) {
+      respond(false, undefined, sessionNotFound());
       return;
     }
     const answer = params.answer as { stepId?: string; value?: unknown } | undefined;
@@ -175,14 +244,14 @@ export const wizardHandlers: GatewayRequestHandlers = {
     }
     respond(true, result, undefined);
   },
-  "wizard.cancel": ({ params, respond, context }) => {
+  "wizard.cancel": ({ params, respond, context, client }) => {
     if (!assertValidParams(params, validateWizardCancelParams, "wizard.cancel", respond)) {
       return;
     }
     const sessionId = params.sessionId;
     const session = context.wizardSessions.get(sessionId);
-    if (!session) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "wizard not found"));
+    if (!session || !mayUseSession(session, callerOwner(client))) {
+      respond(false, undefined, sessionNotFound());
       return;
     }
     session.cancel();
@@ -190,14 +259,14 @@ export const wizardHandlers: GatewayRequestHandlers = {
     context.wizardSessions.delete(sessionId);
     respond(true, status, undefined);
   },
-  "wizard.status": ({ params, respond, context }) => {
+  "wizard.status": ({ params, respond, context, client }) => {
     if (!assertValidParams(params, validateWizardStatusParams, "wizard.status", respond)) {
       return;
     }
     const sessionId = params.sessionId;
     const session = context.wizardSessions.get(sessionId);
-    if (!session) {
-      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "wizard not found"));
+    if (!session || !mayUseSession(session, callerOwner(client))) {
+      respond(false, undefined, sessionNotFound());
       return;
     }
     const status = readWizardStatus(session);

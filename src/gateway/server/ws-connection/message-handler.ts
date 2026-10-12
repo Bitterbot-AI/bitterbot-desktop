@@ -356,6 +356,7 @@ export function attachGatewayWsMessageHandler(params: {
           const decision = await decideSetupConnect({
             token: presentedSetupToken,
             hostHeader: requestHost,
+            origin: requestOrigin,
             remoteIsLoopback: isLoopbackAddress(remoteAddr),
             hasProxyHeaders,
             role,

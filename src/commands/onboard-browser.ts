@@ -2,8 +2,9 @@
  * `bitterbot onboard` in the browser (PLAN-56 Phase 4).
  *
  * Starts the gateway when nothing listens on its port (or reuses the running
- * one: a service, a container), mints a one-time setup token (30 minutes,
- * wizard scope only; src/gateway/setup-token.ts) and prints, then opens,
+ * one: a service, a container), mints a setup token (30 minutes at most,
+ * until setup finishes; wizard scope only; src/gateway/setup-token.ts) and
+ * prints, then opens,
  * `http://127.0.0.1:<port><basePath>/setup?token=...`. The Control UI's setup
  * page runs the same steps as the terminal QuickStart over `wizard.*`.
  *
@@ -12,7 +13,10 @@
  * the link is opened when a browser is available and stdin is a terminal;
  * headless, SSH and container sessions print the link instead. Flags that
  * only the terminal wizard understands (--flow, --mode, --auth-choice and
- * the provider key, gateway and daemon flags) keep the terminal wizard.
+ * the provider key, gateway and daemon flags, --json and the --skip-* flags)
+ * keep the terminal wizard. Without a terminal (stdin not a TTY) the default
+ * is an error rather than a background gateway nobody asked for: scripts pass
+ * --browser (print the link) or --non-interactive.
  */
 
 import { spawn } from "node:child_process";
@@ -22,8 +26,12 @@ import path from "node:path";
 import { formatCliCommand } from "../cli/command-format.js";
 import { loadConfig, readConfigFileSnapshot, resolveGatewayPort } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
-import { normalizeControlUiBasePath } from "../gateway/control-ui-shared.js";
-import { issueSetupToken, SETUP_TOKEN_TTL_MS } from "../gateway/setup-token.js";
+import {
+  buildSetupUrl,
+  issueSetupToken,
+  SETUP_TOKEN_TTL_MS,
+  setupInProgress,
+} from "../gateway/setup-token.js";
 import { looksLikeContainer, readDeclaredInstallKind } from "../infra/install-kind.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { isFirstBootOnlyConfig } from "../wizard/onboarding.first-boot.js";
@@ -32,7 +40,8 @@ import type { OnboardOptions } from "./onboard-types.js";
 
 export type OnboardSurface =
   | { kind: "terminal" }
-  | { kind: "browser"; open: boolean; headless: boolean; inContainer: boolean };
+  | { kind: "browser"; open: boolean; headless: boolean; inContainer: boolean }
+  | { kind: "no-terminal"; message: string };
 
 /** Options only the terminal wizard (or --non-interactive) acts on. */
 const TERMINAL_ONLY_KEYS: Array<keyof OnboardOptions> = [
@@ -58,6 +67,24 @@ const TERMINAL_ONLY_KEYS: Array<keyof OnboardOptions> = [
   "nodeManager",
 ];
 
+/** Switches the CLI always passes (false when absent): they count when on. */
+const TERMINAL_ONLY_SWITCHES: Array<keyof OnboardOptions> = [
+  "json",
+  "skipChannels",
+  "skipProviders",
+  "skipHealth",
+  "skipSkills",
+  "skipUi",
+];
+
+/** True when a flag only the terminal wizard (or --non-interactive) honours is set. */
+export function hasTerminalOnlyFlag(opts: OnboardOptions): boolean {
+  return (
+    TERMINAL_ONLY_KEYS.some((key) => opts[key] !== undefined) ||
+    TERMINAL_ONLY_SWITCHES.some((key) => opts[key] === true)
+  );
+}
+
 export function resolveOnboardSurface(params: {
   opts: OnboardOptions;
   stdinIsTty: boolean;
@@ -68,8 +95,20 @@ export function resolveOnboardSurface(params: {
   if (opts.browser === false) {
     return { kind: "terminal" };
   }
-  if (opts.browser !== true && TERMINAL_ONLY_KEYS.some((key) => opts[key] !== undefined)) {
+  if (opts.browser !== true && hasTerminalOnlyFlag(opts)) {
     return { kind: "terminal" };
+  }
+  if (opts.browser !== true && !params.stdinIsTty && !params.inContainer) {
+    return {
+      kind: "no-terminal",
+      message: [
+        "`bitterbot onboard` needs a terminal to choose a setup surface, and none is attached.",
+        "Print a browser setup link instead (starts the gateway in the background if needed):",
+        "  bitterbot onboard --browser",
+        "Or set up without prompts:",
+        "  bitterbot onboard --non-interactive --accept-risk --anthropic-api-key <key>",
+      ].join("\n"),
+    };
   }
   const headless = params.inContainer || params.remote;
   return {
@@ -80,11 +119,7 @@ export function resolveOnboardSurface(params: {
   };
 }
 
-export function buildSetupUrl(params: { port: number; basePath?: string; token?: string }): string {
-  const base = normalizeControlUiBasePath(params.basePath);
-  const query = params.token ? `?token=${encodeURIComponent(params.token)}` : "";
-  return `http://127.0.0.1:${params.port}${base}/setup${query}`;
-}
+export { buildSetupUrl };
 
 /** True when something accepts TCP connections on 127.0.0.1:<port>. */
 export function isPortListening(port: number, timeoutMs = 1500): Promise<boolean> {
@@ -120,6 +155,8 @@ export function spawnSetupGateway(port: number): { pid?: number; logPath: string
       "--port",
       String(port),
     ],
+    // Unsupervised: if setup installs the gateway service, this process
+    // hands its port over at Finish (src/infra/setup-handover.ts).
     { detached: true, stdio: ["ignore", fd, fd], env: process.env },
   );
   child.unref();
@@ -194,7 +231,9 @@ export async function runBrowserOnboarding(
     }
   }
 
-  const alreadySetUp = snapshot.exists && !isFirstBootOnlyConfig(snapshot.resolved);
+  // A browser setup that lost its session before Finish is not "set up".
+  const alreadySetUp =
+    snapshot.exists && !isFirstBootOnlyConfig(snapshot.resolved) && !setupInProgress();
   let url: string;
   if (alreadySetUp) {
     // A setup token cannot re-run a finished setup; the admin sign-in can
@@ -214,7 +253,7 @@ export async function runBrowserOnboarding(
     runtime.log(
       [
         "",
-        `Finish setup in your browser (link valid ${minutes} minutes, works once):`,
+        `Finish setup in your browser (link valid ${minutes} minutes, works until setup finishes):`,
         `  ${url}`,
         ...(surface.inContainer
           ? ["  (if you mapped a different host port, use that port in the link)"]

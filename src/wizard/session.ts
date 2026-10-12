@@ -184,13 +184,45 @@ class WizardSessionPrompter implements WizardPrompter {
   }
 }
 
+function sameOptionValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+/** Throws when a select/multiselect answer is not among the offered options. */
+export function assertOfferedAnswer(step: WizardStep, value: unknown): void {
+  const options = step.options ?? [];
+  if (step.type === "select" && options.length > 0) {
+    if (!options.some((o) => sameOptionValue(o.value, value))) {
+      throw new Error("wizard: answer is not one of the offered options");
+    }
+  } else if (step.type === "multiselect" && options.length > 0) {
+    const values = Array.isArray(value) ? value : [];
+    if (
+      !Array.isArray(value) ||
+      !values.every((v) => options.some((o) => sameOptionValue(o.value, v)))
+    ) {
+      throw new Error("wizard: answer is not one of the offered options");
+    }
+  }
+}
+
 export class WizardSession {
   /**
    * Who may resume this session after a page reload (PLAN-56 Phase 4): a
    * setup token's hash, or "admin". Set by the wizard.start handler.
    */
   owner: string | undefined;
+  /** Last time a client called next/answer (idle sessions are reaped). */
+  lastActivityAt = Date.now();
   private currentStep: WizardStep | null = null;
+  private pendingSteps = new Map<string, WizardStep>();
   private stepDeferred: Deferred<WizardStep | null> | null = null;
   private answerDeferred = new Map<string, Deferred<unknown>>();
   private status: WizardSessionStatus = "running";
@@ -201,7 +233,12 @@ export class WizardSession {
     void this.run(prompter);
   }
 
+  touch(now = Date.now()): void {
+    this.lastActivityAt = now;
+  }
+
   async next(): Promise<WizardNextResult> {
+    this.touch();
     if (this.currentStep) {
       return { done: false, step: this.currentStep, status: this.status };
     }
@@ -223,6 +260,14 @@ export class WizardSession {
     if (!deferred) {
       throw new Error("wizard: no pending step");
     }
+    this.touch();
+    // A select answer must be one of the options this step offered (a
+    // client cannot smuggle in a value the step never showed).
+    const step = this.pendingSteps.get(stepId);
+    if (step) {
+      assertOfferedAnswer(step, value);
+    }
+    this.pendingSteps.delete(stepId);
     this.answerDeferred.delete(stepId);
     this.currentStep = null;
     deferred.resolve(value);
@@ -239,6 +284,7 @@ export class WizardSession {
       deferred.reject(new WizardCancelledError());
     }
     this.answerDeferred.clear();
+    this.pendingSteps.clear();
     this.resolveStep(null);
   }
 
@@ -271,6 +317,7 @@ export class WizardSession {
     this.pushStep(step);
     const deferred = createDeferred<unknown>();
     this.answerDeferred.set(step.id, deferred);
+    this.pendingSteps.set(step.id, step);
     return await deferred.promise;
   }
 

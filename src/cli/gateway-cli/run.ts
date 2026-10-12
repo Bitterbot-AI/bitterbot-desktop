@@ -23,6 +23,7 @@ import { formatCliCommand } from "../command-format.js";
 import { forceFreePortAndWait } from "../ports.js";
 import { ensureDevGatewayConfig } from "./dev.js";
 import {
+  announceContainerSetupLink,
   describeTokenSourceConflict,
   generateFirstBootToken,
   shouldGenerateFirstBootToken,
@@ -234,12 +235,22 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
     })
   ) {
     try {
-      generatedToken = await generateFirstBootToken({ port });
+      generatedToken = await generateFirstBootToken({
+        port,
+        basePath: cfg.gateway?.controlUi?.basePath,
+      });
     } catch (err) {
       defaultRuntime.error(String(err instanceof Error ? err.message : err));
       defaultRuntime.exit(1);
       return;
     }
+  } else if (opts.allowUnconfigured) {
+    // PLAN-56 Phase 4: a container not set up yet prints a setup link even
+    // when no token was generated (BITTERBOT_GATEWAY_TOKEN pinned one).
+    await announceContainerSetupLink({
+      port,
+      basePath: cfg.gateway?.controlUi?.basePath,
+    }).catch(() => null);
   }
   const hasSharedSecret =
     generatedToken !== null ||

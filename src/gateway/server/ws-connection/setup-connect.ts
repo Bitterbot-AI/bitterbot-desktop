@@ -4,6 +4,7 @@
  */
 
 import { looksLikeContainer, readDeclaredInstallKind } from "../../../infra/install-kind.js";
+import { checkBrowserOrigin } from "../../origin-check.js";
 import { MAX_BUFFERED_BYTES, MAX_PAYLOAD_BYTES, TICK_INTERVAL_MS } from "../../server-constants.js";
 import {
   SETUP_EVENTS,
@@ -20,6 +21,8 @@ export type SetupConnectDecision = { ok: true } | { ok: false; reason: string; m
 export async function decideSetupConnect(params: {
   token: string;
   hostHeader: string | undefined;
+  /** The browser's Origin header; absent for non-browser clients. */
+  origin?: string;
   remoteIsLoopback: boolean;
   hasProxyHeaders: boolean;
   role: string | null;
@@ -30,6 +33,19 @@ export async function decideSetupConnect(params: {
 }): Promise<SetupConnectDecision> {
   if (params.role !== "operator") {
     return { ok: false, reason: "role", message: "setup token: operator role only" };
+  }
+  // Same-origin only, whatever client id the connection claims: a page from
+  // another origin must not drive setup with a token it learned. No Origin
+  // header at all means a non-browser client (the CLI, a test), which is fine.
+  if (params.origin !== undefined && params.origin.trim() !== "") {
+    const origin = checkBrowserOrigin({ requestHost: params.hostHeader, origin: params.origin });
+    if (!origin.ok) {
+      return {
+        ok: false,
+        reason: "origin",
+        message: "setup links work only from the setup page the gateway itself served",
+      };
+    }
   }
   const inContainer =
     params.inContainer ?? (readDeclaredInstallKind() === "container" || looksLikeContainer());

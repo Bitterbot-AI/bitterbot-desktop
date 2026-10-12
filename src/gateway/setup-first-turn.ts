@@ -5,14 +5,19 @@
  * exactly what the user will chat with, and its cost is recorded like any
  * other turn. Runs in-process: no WebSocket round trip, no gateway token.
  *
- * The turn lands in the agent's main session, so the greeting is the first
- * message the user sees when the Control UI opens.
+ * The turn runs in a dedicated session (`agent:<id>:setup`), never the main
+ * chat: a "Say hello" retry cannot pile test turns into the user's
+ * transcript or the main session's memory. A turn that outlives its budget
+ * is aborted before setup offers Retry, so two paid turns never run at once. Provider errors are
+ * shown through the log redaction (src/logging/redact.ts): a key echoed in an
+ * error message is masked before it reaches the browser.
  */
 
 import { randomUUID } from "node:crypto";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import type { BitterbotConfig } from "../config/config.js";
-import { resolveAgentMainSessionKey } from "../config/sessions/main-session.js";
+import { redactSensitiveText } from "../logging/redact.js";
+import { buildAgentMainSessionKey } from "../routing/session-key.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../utils/message-channel.js";
 import type { GatewayRequestContext, GatewayRequestHandler } from "./server-methods/types.js";
 
@@ -20,6 +25,34 @@ export const SETUP_FIRST_TURN_PROMPT = "Say hello and tell me one thing you can 
 
 /** Server-side budget for the turn, in seconds (cold caches, slow providers). */
 const TURN_TIMEOUT_S = 90;
+/** Grace on top of the turn's own timeout before setup gives up and aborts it. */
+const TURN_GRACE_S = 30;
+
+/** The session the setup greeting runs in (kept out of the main chat). */
+export const SETUP_SESSION_MAIN_KEY = "setup";
+
+export function resolveSetupSessionKey(agentId: string): string {
+  return buildAgentMainSessionKey({ agentId, mainKey: SETUP_SESSION_MAIN_KEY });
+}
+
+/** Provider error text for the browser: printable, bounded, secrets masked. */
+export function presentTurnError(text: string): string {
+  return sanitizeReply(redactSensitiveText(text, { mode: "tools" }), 600);
+}
+
+/** Abort whatever run the setup session has in flight. */
+async function abortSetupSessionRun(sessionKey: string): Promise<void> {
+  try {
+    const { loadSessionEntry } = await import("./session-utils.js");
+    const { abortEmbeddedPiRun } = await import("../agents/embedded-runner/runs.js");
+    const sessionId = loadSessionEntry(sessionKey).entry?.sessionId;
+    if (sessionId) {
+      abortEmbeddedPiRun(sessionId);
+    }
+  } catch {
+    // Nothing to abort.
+  }
+}
 
 export type FirstTurnOutcome =
   | { ok: true; latencyMs: number; reply: string; model?: string }
@@ -52,12 +85,16 @@ export async function runSetupFirstTurn(params: {
   /** The `agent` handler (injected so this module does not import the handler table). */
   agentHandler: GatewayRequestHandler;
   now?: () => number;
+  /** Test seams. */
+  timeoutMs?: number;
+  abortRun?: (sessionKey: string) => Promise<void> | void;
 }): Promise<FirstTurnOutcome> {
   const now = params.now ?? Date.now;
   const agentId = resolveDefaultAgentId(params.cfg);
-  const sessionKey = resolveAgentMainSessionKey({ cfg: params.cfg, agentId });
+  const sessionKey = resolveSetupSessionKey(agentId);
   const started = now();
   const reqId = `setup-first-turn-${randomUUID()}`;
+  const budgetMs = params.timeoutMs ?? (TURN_TIMEOUT_S + TURN_GRACE_S) * 1000;
   const requestParams = {
     message: SETUP_FIRST_TURN_PROMPT,
     agentId,
@@ -68,14 +105,23 @@ export async function runSetupFirstTurn(params: {
     idempotencyKey: reqId,
   };
   const final = await new Promise<{ ok: boolean; payload?: unknown; error?: string }>((resolve) => {
-    const timer = setTimeout(
-      () => resolve({ ok: false, error: `no reply within ${TURN_TIMEOUT_S + 30}s` }),
-      (TURN_TIMEOUT_S + 30) * 1000,
-    );
+    let settled = false;
     const settle = (value: { ok: boolean; payload?: unknown; error?: string }) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(timer);
       resolve(value);
     };
+    const timer = setTimeout(() => {
+      // Stop the run before offering Retry: never two paid turns at once.
+      void Promise.resolve((params.abortRun ?? abortSetupSessionRun)(sessionKey))
+        .catch(() => undefined)
+        .finally(() =>
+          settle({ ok: false, error: `no reply within ${Math.round(budgetMs / 1000)}s` }),
+        );
+    }, budgetMs);
     void Promise.resolve(
       params.agentHandler({
         req: { type: "req", id: reqId, method: "agent", params: requestParams },
@@ -102,7 +148,7 @@ export async function runSetupFirstTurn(params: {
     return {
       ok: false,
       latencyMs,
-      error: sanitizeReply(final.error ?? payload?.summary ?? "the turn did not complete", 600),
+      error: presentTurnError(final.error ?? payload?.summary ?? "the turn did not complete"),
     };
   }
   const payloads = payload.result?.payloads ?? [];
@@ -112,7 +158,7 @@ export async function runSetupFirstTurn(params: {
     return {
       ok: false,
       latencyMs,
-      error: sanitizeReply(errorText ?? "the model returned no text", 600),
+      error: presentTurnError(errorText ?? "the model returned no text"),
     };
   }
   const meta = payload.result?.meta?.agentMeta;
