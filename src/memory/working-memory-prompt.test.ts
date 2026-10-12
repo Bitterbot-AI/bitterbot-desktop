@@ -1,6 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildWorkingMemorySynthesisPrompt,
+  synthesizeValidatedWorkingMemory,
+  applyCrystalPointerRepair,
+  MAX_CRYSTAL_POINTERS,
   buildHeuristicWorkingMemory,
   stripSectionSubheaders,
   validateWorkingMemory,
@@ -311,5 +314,126 @@ describe("buildHeuristicWorkingMemory idempotence (token-efficiency pass 2026-09
     ).toBe("I am curious.");
     expect(stripSectionSubheaders(null)).toBeNull();
     expect(stripSectionSubheaders("*Who am I becoming?*")).toBeNull();
+  });
+});
+
+describe("bounded synthesis repair", () => {
+  const document = (count: number) =>
+    WORKING_MEMORY_SECTIONS.map(
+      (section) =>
+        `## ${section}\n` +
+        (section === "Crystal Pointers"
+          ? Array.from({ length: count }, (_, i) => `- Topic ${i} → search: \`topic ${i}\``).join(
+              "\n",
+            )
+          : "Meaningful ongoing context and established user preferences remain available."),
+    ).join("\n\n");
+
+  it("states the same pointer limit enforced by validation", () => {
+    expect(buildWorkingMemorySynthesisPrompt(makeContext())).toContain(
+      `at most ${MAX_CRYSTAL_POINTERS} bullet entries total`,
+    );
+    expect(validateWorkingMemory(document(20)).collapsed).toBe(false);
+    expect(validateWorkingMemory(document(21)).collapsed).toBe(true);
+  });
+
+  it("accepts valid synthesis without an extra model call", async () => {
+    const call = vi.fn().mockResolvedValue(document(20));
+    const result = await synthesizeValidatedWorkingMemory(makeContext(), call);
+    expect(result.attempts).toBe(1);
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs overflow once and validates the corrected document", async () => {
+    const merged = Array.from(
+      { length: 20 },
+      (_, i) => `- Topic ${i} → search: \`topic ${i}${i === 0 ? "; topic 20" : ""}\``,
+    );
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce(document(21))
+      .mockResolvedValueOnce(JSON.stringify(merged));
+    const result = await synthesizeValidatedWorkingMemory(makeContext(), call);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls[1][0]).toContain("at most 16 pointer entries");
+    expect(call.mock.calls[1][0]).toContain("Preserve EVERY original search-query phrase");
+    expect(result.raw).toContain("topic 0; topic 20");
+    expect(result.validation.collapsed).toBe(false);
+    expect(result.validation.valid).toBe(true);
+  });
+
+  it("does not loop or truncate if repair still exceeds the limit", async () => {
+    const call = vi.fn().mockResolvedValue(document(21));
+    const result = await synthesizeValidatedWorkingMemory(makeContext(), call);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(result.raw).toBe(document(21));
+    expect(result.validation.collapsed).toBe(true);
+  });
+
+  it("checks repaired output against the original mature state", async () => {
+    const oldState = document(20) + "\nSubstantive historical details. ".repeat(250);
+    const call = vi.fn().mockResolvedValueOnce(document(21)).mockResolvedValueOnce(document(1));
+    const result = await synthesizeValidatedWorkingMemory(makeContext({ oldState }), call);
+    expect(result.validation.collapsed).toBe(true);
+    expect(result.validation.collapseReason).toContain("Mass drop");
+  });
+
+  it("repairs missing sections but propagates transport failures", async () => {
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce("Incomplete draft")
+      .mockResolvedValueOnce(document(2));
+    expect((await synthesizeValidatedWorkingMemory(makeContext(), call)).validation.valid).toBe(
+      true,
+    );
+    const failed = vi.fn().mockRejectedValue(new Error("transport unavailable"));
+    await expect(synthesizeValidatedWorkingMemory(makeContext(), failed)).rejects.toThrow(
+      "transport unavailable",
+    );
+    expect(failed).toHaveBeenCalledTimes(1);
+  });
+  it("rejects lost phrases, over-limit arrays and malformed repair output", () => {
+    const source = document(21);
+    const tooMany = Array.from({ length: 21 }, (_, i) => `- Topic ${i} → search: \`topic ${i}\``);
+    expect(applyCrystalPointerRepair(source, JSON.stringify(tooMany))).toBeNull();
+    expect(applyCrystalPointerRepair(source, JSON.stringify(tooMany.slice(0, 20)))).toBeNull();
+    expect(applyCrystalPointerRepair(source, "not json")).toBeNull();
+    expect(
+      applyCrystalPointerRepair(source, JSON.stringify(["- Missing search syntax"])),
+    ).toBeNull();
+    expect(
+      applyCrystalPointerRepair(
+        source,
+        JSON.stringify(["## Injected header\n- Other → search: `topic`"]),
+      ),
+    ).toBeNull();
+  });
+
+  it("preserves every other section and every query phrase verbatim", () => {
+    const source = document(21);
+    const all = Array.from({ length: 21 }, (_, i) => `topic ${i}`).join("; ");
+    const merged = applyCrystalPointerRepair(
+      source,
+      JSON.stringify([`- Related topics → search: \`${all}\``]),
+    );
+    expect(merged).not.toBeNull();
+    const pattern = /## Crystal Pointers[^\n]*\n[\s\S]*?(?=\n## |$)/;
+    expect(merged!.replace(pattern, "")).toBe(source.replace(pattern, ""));
+    for (let i = 0; i < 21; i++) expect(merged).toContain(`topic ${i}`);
+    expect(validateWorkingMemory(merged!).collapsed).toBe(false);
+  });
+
+  it("does not mistake a longer query for a preserved shorter query", () => {
+    const source = document(2);
+    expect(
+      applyCrystalPointerRepair(source, JSON.stringify(["- Topics → search: `topic 0; topic 10`"])),
+    ).toBeNull();
+  });
+  it("normalizes separate quoted phrases without losing query text", () => {
+    const source = document(2);
+    const response = JSON.stringify(["- Related topics → search: `topic 0`; `topic 1`"]);
+    const repaired = applyCrystalPointerRepair(source, response);
+    expect(repaired).toContain("- Related topics → search: `topic 0; topic 1`");
+    expect(validateWorkingMemory(repaired!).collapsed).toBe(false);
   });
 });

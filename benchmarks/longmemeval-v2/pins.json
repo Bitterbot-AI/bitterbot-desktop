@@ -1,0 +1,17 @@
+{
+  "upstream": {
+    "url": "https://github.com/xiaowu0162/LongMemEval-V2.git",
+    "commit": "2cc8c540bdb87fe6761629b585e727e1c4704520"
+  },
+  "dataset": {
+    "repo": "xiaowu0162/longmemeval-v2",
+    "revision": "f152293e235517d504809563c833d7190b8c713b",
+    "sha256": {
+      "questions.jsonl": "0a3ae5ebea938c24d7800e1e0b0828e08ae1646f939a53853b2b8cdc08e292b7",
+      "trajectories.jsonl": "363cec9a8e87aa8d9101ce4e600aadbf7031d674056ebe4f969e8424abc5f3c6",
+      "haystacks/lme_v2_medium.json": "4756d5126347f0d18f045bb6c47b08cb3b23e9db24386cc48a9b2879e7969b59"
+    }
+  },
+  "bitterbot_base": "cd4562a7038a1700ae4d19a345223e98d5b9efb3",
+  "reader_processor_revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a"
+}

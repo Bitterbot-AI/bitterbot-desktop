@@ -1,0 +1,44 @@
+{
+  "full_run_authorized": false,
+  "node": "node",
+  "budget_usd": null,
+  "dream_calls": 2,
+  "max_results": 15,
+  "dream_every": 4,
+  "seed": 1701,
+  "models": {
+    "embedding": {
+      "model": "text-embedding-3-small",
+      "revision": "provider alias; immutable snapshot unavailable",
+      "base_url": "https://api.openai.com/v1",
+      "key_env": "OPENAI_API_KEY",
+      "input_per_million": 0.02,
+      "output_per_million": 0
+    },
+    "dream": {
+      "model": "gpt-4.1-mini-2025-04-14",
+      "revision": "2025-04-14",
+      "base_url": "https://api.openai.com/v1",
+      "key_env": "OPENAI_API_KEY",
+      "input_per_million": 0.4,
+      "output_per_million": 1.6
+    },
+    "reader": {
+      "model": "Qwen/Qwen3.5-9B",
+      "revision": "c202236235762e1c871ad0ccb60c8ee5ba337b9a",
+      "base_url": null,
+      "key_env": "READER_API_KEY",
+      "input_per_million": null,
+      "output_per_million": null,
+      "input_reservation_tokens": 262144
+    },
+    "judge": {
+      "model": "gpt-5.2-2025-12-11",
+      "revision": "2025-12-11",
+      "base_url": "https://api.openai.com/v1",
+      "key_env": "OPENAI_API_KEY",
+      "input_per_million": 1.75,
+      "output_per_million": 14
+    }
+  }
+}

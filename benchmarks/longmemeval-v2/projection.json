@@ -1,0 +1,41 @@
+{
+  "kind": "single-small-trajectory linear screening projection; NOT validated full-history throughput",
+  "inventory": {
+    "web": {
+      "questions": 240,
+      "distinct_ordered_histories": 236,
+      "trajectory_ingestions": 117134,
+      "history_bytes": 66567809040,
+      "history_states": 1741617
+    },
+    "enterprise": {
+      "questions": 211,
+      "distinct_ordered_histories": 211,
+      "trajectory_ingestions": 105500,
+      "history_bytes": 110337968035,
+      "history_states": 4927678
+    }
+  },
+  "dream_cycles": 55669,
+  "replayed_bytes": 176905777075,
+  "sample_bytes": 35417,
+  "byte_scale_factor": 4994939.635626959,
+  "measured_ingestion_usd": 0.00052748,
+  "measured_dream_usd": 0.01100746,
+  "measured_ingestion_seconds": 16.889359275985043,
+  "measured_dream_seconds": 21.565059684042353,
+  "projected_ingestion_usd": 2634.730759000508,
+  "projected_dream_usd": 612.77429074,
+  "projected_memory_usd": 3247.505049740508,
+  "projected_serial_days": 990.2990205499129,
+  "reader_451_at_200k_input_20k_output_usd": 10.373,
+  "judge_451_at_4096_output_usd_excluding_input": 25.862144,
+  "cumulative_plumbing_usd": 0.06318502,
+  "limitations": [
+    "A complete 500-trajectory history has not been measured.",
+    "Reindexing, consolidation and checkpoint copying may grow nonlinearly.",
+    "Dream cost per cycle will vary with memory size.",
+    "Excludes reader/judge latency, screenshot transfer, failed attempts and storage costs.",
+    "Hosted reader price is a catalog tariff, not a binding quote."
+  ]
+}
