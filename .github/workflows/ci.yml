@@ -431,6 +431,9 @@ jobs:
           done
           [ "$live" = "1" ]
           test ! -e "$HOME/.bitterbot/bitterbot.json"
+          # The gateway renames its process to `bitterbot-gateway`; the
+          # launcher's parent keeps `dist/entry.js` in its command line.
+          pkill -f "^bitterbot-gateway" || true
           pkill -f "app/$VERSION/dist/entry.js" || true
 
       - name: Derive version B (same code) and a broken B' (gateway exits 1), sign B
@@ -477,9 +480,32 @@ jobs:
           APP="$HOME/.bitterbot/app"
           # The previous step's gateway got SIGTERM; wait until it has exited
           # (it holds the gateway lock and port 19001 while it shuts down).
+          pkill -f "^bitterbot-gateway" || true
           pkill -f "dist/entry.js" || true
-          for i in $(seq 1 60); do pgrep -f "dist/entry.js" > /dev/null || break; sleep 1; done
-          if pgrep -af "dist/entry.js"; then echo "an earlier gateway is still running"; exit 1; fi
+          for i in $(seq 1 60); do
+            pgrep -f "^bitterbot-gateway" > /dev/null || curl -s -o /dev/null http://127.0.0.1:19001/ || break
+            sleep 1
+          done
+          if pgrep -af "^bitterbot-gateway"; then echo "an earlier gateway is still running"; exit 1; fi
+          cat > "$RUNNER_TEMP/gw.sh" <<'SH'
+          # gw_version: the app version every running gateway process executes
+          # (its process title is bitterbot-gateway; /proc/<pid>/exe is the
+          # bundled node inside ~/.bitterbot/app/<version>/runtime).
+          gw_versions() {
+            for pid in $(pgrep -f "^bitterbot-gateway"); do
+              readlink "/proc/$pid/exe" | sed -n 's#.*/app/\([0-9.]*\)/runtime/.*#\1#p'
+            done | sort -u
+          }
+          healthy() {
+            for i in $(seq 1 120); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19001/ || true)
+              if [ "$code" = "200" ] && [ "$(gw_versions)" = "$1" ]; then return 0; fi
+              sleep 2
+            done
+            echo "gateway not healthy on $1 (running: $(gw_versions | tr '\n' ' '))"
+            tail -60 "$RUNNER_TEMP/gateway-update.log"; return 1
+          }
+          SH
           # The gateway runs WITHOUT the test-mode variables (only the CLI gets
           # them) and without the runner's systemd variables, so it is an
           # unsupervised gateway like `bitterbot gateway` in a terminal.
@@ -487,14 +513,7 @@ jobs:
             -u INVOCATION_ID -u JOURNAL_STREAM -u SYSTEMD_EXEC_PID \
             BITTERBOT_GATEWAY_TOKEN=ci-smoke-token nohup "$B" gateway --allow-unconfigured \
             > "$RUNNER_TEMP/gateway-update.log" 2>&1 &)
-          healthy() {
-            for i in $(seq 1 120); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19001/ || true)
-              if [ "$code" = "200" ] && pgrep -f "app/$1/dist/entry.js" > /dev/null; then return 0; fi
-              sleep 2
-            done
-            echo "gateway not healthy on $1"; tail -60 "$RUNNER_TEMP/gateway-update.log"; return 1
-          }
+          . "$RUNNER_TEMP/gw.sh"
           healthy "$VERSION"
           key_sha_before=$(sha256sum "$HOME/.bitterbot/keys/node.key" 2>/dev/null | cut -d' ' -f1 || true)
           export BITTERBOT_GATEWAY_TOKEN=ci-smoke-token BITTERBOT_INSTALL_TEST_MODE=1 \
@@ -524,8 +543,8 @@ jobs:
             [ "$(sha256sum "$HOME/.bitterbot/keys/node.key" | cut -d' ' -f1)" = "$key_sha_before" ]
             [ "$(sha256sum "$snap/keys/node.key" | cut -d' ' -f1)" = "$key_sha_before" ]
           fi
+          # healthy() requires every running gateway to be B: A is gone.
           healthy "$VB"
-          if pgrep -f "app/$VERSION/dist/entry.js"; then echo "the old version is still running"; exit 1; fi
           grep -q "spawned tarball watchdog" "$HOME/.bitterbot/boot-watchdog.log"
 
       - name: bitterbot update --rollback B -> A (manual), gateway healthy on A
@@ -539,13 +558,8 @@ jobs:
           grep -q '"status":"ok"' "$RUNNER_TEMP/rollback.json"
           [ "$(readlink "$APP/current")" = "$VERSION" ]
           [ "$(readlink "$APP/previous")" = "$VB" ]
-          for i in $(seq 1 120); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19001/ || true)
-            if [ "$code" = "200" ] && pgrep -f "app/$VERSION/dist/entry.js" > /dev/null; then break; fi
-            sleep 2
-          done
-          [ "$code" = "200" ]
-          pgrep -f "app/$VERSION/dist/entry.js"
+          . "$RUNNER_TEMP/gw.sh"
+          healthy "$VERSION"
           grep -q '"version":"'"$VERSION"'"' "$RUNNER_TEMP/rollback.json"
 
       - name: bitterbot update A -> B' (gateway cannot boot) rolls back to A automatically
@@ -576,12 +590,12 @@ jobs:
           grep -q '"mode": "tarball"' "$HOME/.bitterbot/rollback-performed.json"
           grep -q '"ok": true' "$HOME/.bitterbot/rollback-performed.json"
           grep -q "simulated boot failure" "$RUNNER_TEMP/gateway-update.log"
-          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19001/ || true)
-          [ "$code" = "200" ]
-          pgrep -f "app/$VERSION/dist/entry.js"
+          . "$RUNNER_TEMP/gw.sh"
+          healthy "$VERSION"
           # doctor reports the rollback (warn), names the versions.
           timeout 300 "$B" doctor --non-interactive > "$RUNNER_TEMP/doctor.txt" 2>&1 || true
           grep -q "ROLLED BACK" "$RUNNER_TEMP/doctor.txt"
+          pkill -f "^bitterbot-gateway" || true
           pkill -f "dist/entry.js" || true
 
       - name: Logs on failure

@@ -233,8 +233,8 @@ export async function performTarballRollback(params: {
     );
     steps.push(
       restart.code === 0
-        ? "service restarted"
-        : "service restart failed (a supervisor may recover)",
+        ? "`gateway restart` ran"
+        : "`gateway restart` failed (a supervisor may recover)",
     );
   }
   return { ok: true, detail: steps.join("; "), restored, snapshotDir };
