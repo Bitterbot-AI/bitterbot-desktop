@@ -59,7 +59,7 @@ Other surfaces:
   cost per outcome and what-if replay. See
   [Usage tracking](/concepts/usage-tracking).
 - **CLI:** `bitterbot gateway usage [--by model|feature|provider|kind|agent|day]
-[--why] [--whatif provider/model] [--json]` reads the same ledger.
+  [--why] [--whatif provider/model] [--json]` reads the same ledger.
 - **CLI (provider quotas):** `bitterbot status --usage` and
   `bitterbot channels list` show provider quota windows (not per-response costs).
 
@@ -77,14 +77,11 @@ never show dollar cost.
 
 ## Cache TTL and pruning impact
 
-Provider prompt caching only applies within the cache TTL window. Bitterbot can
-optionally run **cache-ttl pruning**: it prunes the session once the cache TTL
-has expired, then resets the cache window so subsequent requests can re-use the
-freshly cached context instead of re-caching the full history. This keeps cache
-write costs lower when a session goes idle past the TTL.
-
-Configure it in [Gateway configuration](/gateway/configuration) and see the
-behavior details in [Session pruning](/concepts/session-pruning).
+Provider prompt caching only applies within the cache TTL window. The old
+**cache-ttl pruning** (`agents.defaults.contextPruning`) no longer runs: the key
+is accepted, has no effect and warns at load (see
+[Session pruning](/concepts/session-pruning)). Tool-output growth is handled by
+compaction's tool-output stubs instead.
 
 Heartbeats no longer warm the main-session cache by default. Since the
 token-efficiency build, an interval heartbeat is skipped outright when its inputs

@@ -27,7 +27,7 @@ export async function createOwnedContractSession(
   const cwd = path.join(options.dir, "workspace");
   fs.mkdirSync(cwd, { recursive: true });
   const hadSessionFile = fs.existsSync(file);
-  const store = guardSessionManager(openTranscript(file, "bitterbot"), {
+  const store = guardSessionManager(openTranscript(file), {
     agentId: "main",
     allowSyntheticToolResults: true,
   });

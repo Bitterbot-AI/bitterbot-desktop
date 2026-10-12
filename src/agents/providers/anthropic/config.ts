@@ -75,6 +75,18 @@ export function modelSupportsAdaptiveThinking(modelId: string | undefined | null
   return /claude-(opus|sonnet)-(4-[6-9]|[5-9])(?![0-9])/.test(id) || FABLE_OR_MYTHOS.test(id);
 }
 
+/**
+ * The SDK marks `temperature` deprecated: models released after Opus 4.6
+ * reject it with a 400 (Opus 4.7+ rejects every value; Sonnet 5 tolerates
+ * only its default). Opus 4.6, Haiku 4.5 and older still accept it. Err
+ * toward "rejects": a dropped deprecated parameter is harmless, a kept one is
+ * a failed request.
+ */
+export function modelRejectsTemperature(modelId: string | undefined | null): boolean {
+  const id = normalizeAnthropicModelId(modelId);
+  return /claude-(opus|sonnet|haiku)-(4-[7-9]|[5-9])(?![0-9])/.test(id) || FABLE_OR_MYTHOS.test(id);
+}
+
 export function isAnthropicFirstPartyBaseUrl(baseUrl: unknown): boolean {
   // Absent/empty = SDK default (api.anthropic.com) = first-party.
   if (baseUrl === undefined || baseUrl === null) {

@@ -13,7 +13,7 @@ import {
   discoverModels,
   type AuthStorage,
   type ModelRegistry,
-} from "../runtime/engines/pi/model-discovery.js";
+} from "../runtime/models/index.js";
 
 type InlineModelEntry = ModelDefinitionConfig & { provider: string; baseUrl?: string };
 type InlineProviderConfig = {

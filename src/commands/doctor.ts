@@ -21,6 +21,7 @@ import { resolveGatewayService } from "../daemon/service.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails } from "../gateway/call.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { detectInstallKind } from "../infra/install-kind.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { note } from "../terminal/note.js";
@@ -45,11 +46,13 @@ import { runControlUiChecks } from "./doctor-control-ui.js";
 import { runEconomyChecks } from "./doctor-economy.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
 import { checkGatewayHealth } from "./doctor-gateway-health.js";
+import { gatewayModeUnsetFinding } from "./doctor-gateway-mode.js";
 import {
   maybeRepairGatewayServiceConfig,
   maybeScanExtraGatewayServices,
 } from "./doctor-gateway-services.js";
 import { runIdentityChecks } from "./doctor-identity.js";
+import { runInstallHealthChecks } from "./doctor-install-health.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { runLivenessChecks } from "./doctor-liveness.js";
 import { runMemorySearchChecks } from "./doctor-memory-search.js";
@@ -76,6 +79,7 @@ import { runSkillEvolutionChecks } from "./doctor-skill-evolution.js";
 import { runSkillsChecks } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import { runSubsystemChecks } from "./doctor-subsystems.js";
+import { runTarballInstallChecks } from "./doctor-tarball.js";
 import { runTaskSpineChecks } from "./doctor-tasks.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
 import { runUsageChecks } from "./doctor-usage.js";
@@ -132,6 +136,7 @@ async function runDoctor(
     argv1: process.argv[1],
     cwd: process.cwd(),
   });
+  const installKind = detectInstallKind(root);
 
   const updateResult = await maybeOfferUpdateBeforeDoctor({
     runtime,
@@ -150,6 +155,14 @@ async function runDoctor(
   // signal — surface it before anything else.
   noteBootHealth();
 
+  // Release-tarball installs: links, manifest, snapshots (PLAN-56 Phase 3b).
+  await runTarballInstallChecks({
+    installKind,
+    root,
+    repair: prompter.shouldRepair,
+    deep: options.deep === true,
+  });
+
   const configResult = await loadAndMaybeMigrateDoctorConfig({
     options,
     confirm: (p) => prompter.confirm(p),
@@ -158,19 +171,17 @@ async function runDoctor(
 
   // Runtime (Node version, pnpm, platform posture) first — every check
   // below assumes the runtime itself is viable. Runs config-only / fast.
-  runRuntimeChecks({ config: cfg });
+  runRuntimeChecks({ config: cfg, installKind });
+
+  // Install kind + update channel, version drift, orchestrator signature,
+  // Playwright, local GGUF (PLAN-56 Phase 4). Offline and read-only.
+  await runInstallHealthChecks({ cfg, installKind, packageRoot: root, runningVersion: VERSION });
 
   const configPath = configResult.path ?? CONFIG_PATH;
   if (!cfg.gateway?.mode) {
-    const lines = [
-      "gateway.mode is unset; gateway start will be blocked.",
-      `Fix: run ${formatCliCommand("bitterbot configure")} and set Gateway mode (local/remote).`,
-      `Or set directly: ${formatCliCommand("bitterbot config set gateway.mode local")}`,
-    ];
-    if (!fs.existsSync(configPath)) {
-      lines.push(`Missing config: run ${formatCliCommand("bitterbot setup")} first.`);
-    }
-    renderSection("Gateway", [warn(lines.join("\n"))]);
+    renderSection("Gateway", [
+      gatewayModeUnsetFinding({ installKind, configFileExists: fs.existsSync(configPath) }),
+    ]);
   }
 
   cfg = await maybeRepairAnthropicOAuthProfileId(cfg, prompter);
@@ -238,7 +249,7 @@ async function runDoctor(
   await noteMacLaunchctlGatewayEnvOverrides(cfg);
 
   await runSecurityChecks(cfg);
-  await runControlUiChecks(cfg);
+  await runControlUiChecks(cfg, installKind);
 
   if (cfg.hooks?.gmail?.model?.trim()) {
     const hooksModelRef = resolveHooksGmailModel({
@@ -338,7 +349,7 @@ async function runDoctor(
   });
 
   // ── P2P Network (core infra; promoted from the memory architecture block) ──
-  await runP2pNetworkChecks({ config: cfg, isGatewayRunning: healthOk });
+  await runP2pNetworkChecks({ config: cfg, isGatewayRunning: healthOk, installKind });
 
   // ── P2P Identity (node tier, keypair, genesis trust list for management) ──
   runIdentityChecks({ config: cfg, packageRoot: root });

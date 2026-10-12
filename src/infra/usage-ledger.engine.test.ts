@@ -1,4 +1,8 @@
-/** PLAN-52: the usage ledger tags rows with the agent runtime engine and compares engines. */
+/**
+ * PLAN-52: the usage ledger tags rows with the agent runtime engine. Since
+ * Phase 6 the resolved engine is always `bitterbot`; the column and the
+ * comparison stay so rows written before the switch can still be read.
+ */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,8 +21,8 @@ import {
 
 const cfg = {
   agents: {
-    defaults: { runtime: { engine: "pi" } },
-    list: [{ id: "main" }, { id: "drill", runtime: { engine: "bitterbot" } }],
+    defaults: { runtime: { engine: "bitterbot" } },
+    list: [{ id: "main" }, { id: "drill", runtime: { engine: "pi" } }],
   },
   models: {
     providers: {
@@ -49,7 +53,7 @@ describe("usage ledger: runtime engine", () => {
     ledger.close();
   });
 
-  it("resolves the engine from the config and the agent id; null without an agent", async () => {
+  it("resolves the engine as bitterbot for every agent; null without an agent", async () => {
     const base = {
       kind: "chat" as const,
       feature: "agent/turn",
@@ -59,7 +63,7 @@ describe("usage ledger: runtime engine", () => {
     const usage = { input: 1000, output: 100 };
     expect(
       (await resolveUsageEvent({ ...base, usage, agentId: "main", config: cfg }))?.engine,
-    ).toBe("pi");
+    ).toBe("bitterbot");
     expect(
       (await resolveUsageEvent({ ...base, usage, agentId: "drill", config: cfg }))?.engine,
     ).toBe("bitterbot");
@@ -70,15 +74,22 @@ describe("usage ledger: runtime engine", () => {
           ...base,
           usage,
           agentId: "main",
-          engine: "bitterbot",
+          engine: "pi",
           config: cfg,
         })
       )?.engine,
-    ).toBe("bitterbot");
+    ).toBe("pi");
   });
 
   it("stores the engine, filters by it, and compares engines", async () => {
-    const record = (agentId: string, runId: string, durationMs: number, status?: "error") =>
+    // Rows tagged "pi" stand for rows written before the engine was removed.
+    const record = (
+      agentId: string,
+      runId: string,
+      durationMs: number,
+      status?: "error",
+      engine?: string,
+    ) =>
       recordUsage({
         kind: "chat",
         feature: "agent/turn",
@@ -88,12 +99,13 @@ describe("usage ledger: runtime engine", () => {
         runId,
         durationMs,
         status,
+        engine,
         usage: { input: 1_000_000, output: 0 },
         config: cfg,
       });
-    record("main", "run-a", 100);
-    record("main", "run-a", 300);
-    record("main", "run-b", 200, "error");
+    record("main", "run-a", 100, undefined, "pi");
+    record("main", "run-a", 300, undefined, "pi");
+    record("main", "run-b", 200, "error", "pi");
     record("drill", "run-c", 50);
     recordUsage({
       kind: "embedding",
@@ -162,11 +174,11 @@ describe("usage ledger: runtime engine", () => {
 });
 
 describe("doctor: runtime engine lines", () => {
-  it("names the default engine and the agents that override it", () => {
+  it("names the one engine; a legacy pi override no longer shows", () => {
     const lines = collectRuntimeEngineChecks({ config: cfg }).map((check) => check.message);
-    expect(lines).toEqual(["Runtime engine: pi (default); drill=bitterbot"]);
+    expect(lines).toEqual(["Runtime engine: bitterbot (default)"]);
     expect(collectRuntimeEngineChecks({}).map((check) => check.message)).toEqual([
-      "Runtime engine: pi (default)",
+      "Runtime engine: bitterbot (default)",
     ]);
   });
 

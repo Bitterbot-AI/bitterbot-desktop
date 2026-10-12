@@ -3,9 +3,11 @@ import {
   confirm,
   intro,
   isCancel,
+  log,
   multiselect,
   type Option,
   outro,
+  password,
   select,
   spinner,
   text,
@@ -63,6 +65,15 @@ export function createClackPrompter(): WizardPrompter {
       ),
     text: async (params) => {
       const validate = params.validate;
+      if (params.sensitive) {
+        // Secrets (API keys) are masked as typed and never echoed.
+        return guardCancel(
+          await password({
+            message: stylePromptMessage(params.message),
+            validate: validate ? (value) => validate(value ?? "") : undefined,
+          }),
+        );
+      }
       return guardCancel(
         await text({
           message: stylePromptMessage(params.message),
@@ -79,6 +90,14 @@ export function createClackPrompter(): WizardPrompter {
           initialValue: params.initialValue,
         }),
       ),
+    section: (info) => {
+      if (!info) {
+        return;
+      }
+      log.step(
+        stylePromptTitle(`Step ${info.index} of ${info.total}: ${info.title}`) ?? info.title,
+      );
+    },
     progress: (label: string): WizardProgress => {
       const spin = spinner();
       spin.start(theme.accent(label));

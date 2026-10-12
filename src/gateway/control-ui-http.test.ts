@@ -65,6 +65,52 @@ afterEach(async () => {
 });
 
 describe("control UI static serving", () => {
+  it("serves index.html at /setup (PLAN-56 Phase 4), under the base path too", async () => {
+    const root = await makeRoot({ "index.html": "<!doctype html>setup-shell" });
+    for (const [url, basePath] of [
+      ["/setup?token=abc", ""],
+      ["/bb/setup?token=abc", "/bb"],
+    ] as const) {
+      const res = makeRes();
+      const handled = await handleControlUiRequest(makeReq(url), res, {
+        configuredRoot: root,
+        basePath,
+        isAuthorized: allow,
+      });
+      expect(handled).toBe(true);
+      expect(res.body).toContain("setup-shell");
+    }
+    // Still no general SPA fallback.
+    const other = makeRes();
+    expect(
+      await handleControlUiRequest(makeReq("/settings"), other, {
+        configuredRoot: root,
+        isAuthorized: allow,
+      }),
+    ).toBe(false);
+  });
+
+  it("redirects /setup/ to /setup under the base path, keeping the query", async () => {
+    const root = await makeRoot({ "index.html": "<!doctype html>setup-shell" });
+    for (const [url, basePath, location] of [
+      ["/setup/?token=abc", "", "/setup?token=abc"],
+      ["/setup/", "", "/setup"],
+      ["/bb/setup/?token=a%2Bb", "/bb", "/bb/setup?token=a%2Bb"],
+    ] as const) {
+      const res = makeRes();
+      expect(
+        await handleControlUiRequest(makeReq(url), res, {
+          configuredRoot: root,
+          basePath,
+          isAuthorized: allow,
+        }),
+      ).toBe(true);
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe(location);
+      expect(res.body).toBe("");
+    }
+  });
+
   it("serves index.html at the mount root", async () => {
     const root = await makeRoot({ "index.html": "<!doctype html>hello" });
     const res = makeRes();

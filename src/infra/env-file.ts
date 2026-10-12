@@ -18,7 +18,9 @@ export function upsertSharedEnvVar(params: {
     raw = fs.readFileSync(filepath, "utf8");
   }
 
-  const lines = raw.length ? raw.split(/\r?\n/) : [];
+  // Drop the final newline first, so each write does not add a blank line.
+  const body = raw.replace(/\r?\n$/, "");
+  const lines = body.length ? body.split(/\r?\n/) : [];
   const matcher = new RegExp(`^(\\s*(?:export\\s+)?)${escapeRegExp(key)}\\s*=`);
   let updated = false;
   let replaced = false;
@@ -47,8 +49,14 @@ export function upsertSharedEnvVar(params: {
   }
 
   const output = `${nextLines.join("\n")}\n`;
-  fs.writeFileSync(filepath, output, "utf8");
-  fs.chmodSync(filepath, 0o600);
+  // Secrets live here: created 0600 (never briefly world-readable), and an
+  // existing file is tightened to 0600 too.
+  fs.writeFileSync(filepath, output, { encoding: "utf8", mode: 0o600 });
+  try {
+    fs.chmodSync(filepath, 0o600);
+  } catch {
+    // Best effort (Windows ACLs).
+  }
 
   return { path: filepath, updated, created: !raw };
 }

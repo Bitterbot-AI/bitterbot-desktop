@@ -52,12 +52,23 @@ gh attestation verify bitterbot-orchestrator-linux-x64 \
 minisign -Vm checksums.txt -P <fleet pubkey> && sha256sum -c checksums.txt
 ```
 
+The fleet public key (the base64 line of the minisign `.pub` file, the same
+value as the `MINISIGN_PUBLIC_KEY` repo secret) is pinned as
+`ORCHESTRATOR_MINISIGN_PUBKEY` in `scripts/orchestrator-signature.mjs`
+(pinned 2026-10-11). A missing, bad or replayed `checksums.txt.minisig` makes
+the fetch refuse the binary; there is no SHA-256-only fallback while a key is
+pinned, and the environment override `BITTERBOT_ORCHESTRATOR_MINISIGN_PUBKEY`
+is ignored once the repo pins one. Rotating the key means changing the
+constant in the same PR that changes the repo secrets.
+
 ## 5. Clean-machine smoke
 
-On a machine (or container) that has never seen Bitterbot: follow the
-README Quick Start **verbatim** — clone, `setup-deps.sh`, `pnpm install`,
-`pnpm bitterbot onboard`. The wizard must finish and the gateway must
-serve the Control UI at `http://127.0.0.1:19001/`. Any deviation from the
+On a machine (or container) that has never seen Bitterbot, run each install
+path from [Getting Started](/start/getting-started) **verbatim**: the Docker
+compose download and `docker compose up -d`, the `install.sh` one-liner, and
+the source path (clone, `setup-deps.sh`, `pnpm install`,
+`pnpm bitterbot onboard`). Each must end with the gateway serving the Control
+UI at `http://127.0.0.1:19001/`. Any deviation from the
 documented text is a release blocker, not a doc bug to fix later.
 
 ## 6. Live-agent drive

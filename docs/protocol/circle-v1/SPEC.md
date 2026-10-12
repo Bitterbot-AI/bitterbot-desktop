@@ -98,7 +98,7 @@ Each member appends only to their own hash chain within a circle:
   `event` (the typed payload), `claimed_at` (display metadata ONLY),
   `heads` (the author's view of all members' head seqs — fork evidence).
 - `event_hash = sha256(JCS({circle_id, author, seq, prev, type, body,
-claimed_at}))`.
+  claimed_at}))`.
 - Replay of the identical event at the same seq is idempotent. A DIFFERENT
   event at an existing seq is a **fork** — cryptographic proof of tampering:
   the circle freezes, writes are refused, humans decide.

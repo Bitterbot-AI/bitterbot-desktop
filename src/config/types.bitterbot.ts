@@ -80,11 +80,13 @@ export type BitterbotConfig = {
      */
     promptBehindCommits?: number;
     /**
-     * Automatic post-update rollback (git installs). When a freshly-updated
-     * gateway never confirms a healthy boot before the boot-verify deadline,
-     * a detached watchdog performs ONE guarded `git reset --hard` to the
-     * pre-update sha (clean worktree only, config/DB untouched, once-only
-     * latch), rebuilds, and best-effort restarts. Default: enabled.
+     * Automatic post-update rollback. When a freshly-updated gateway never
+     * confirms a healthy boot before the boot-verify deadline, a detached
+     * watchdog performs ONE guarded rollback (once-only latch): git installs
+     * `git reset --hard` to the pre-update sha (clean worktree only, config/DB
+     * untouched), rebuild and restart; release-tarball installs switch the
+     * `current` symlink back and apply the snapshot restore policy
+     * (src/infra/update-snapshot.ts). Default: enabled.
      */
     autoRollback?: {
       enabled?: boolean;

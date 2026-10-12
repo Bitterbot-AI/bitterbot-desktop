@@ -4,6 +4,7 @@ import { updateAuthProfileStoreWithLock } from "../../agents/auth-profiles/store
 import type { AuthProfileCredential, AuthProfileStore } from "../../agents/auth-profiles/types.js";
 import { resolveApiKeyForProvider, resolveEnvApiKey } from "../../agents/model-auth.js";
 import { normalizeProviderId } from "../../agents/model-selection.js";
+import { retiredProviderLabel } from "../../agents/retired-providers.js";
 import { buildTokenProfileId } from "../../commands/auth-token.js";
 import { loadConfig } from "../../config/config.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
@@ -52,6 +53,12 @@ type ProviderAuthStatus = {
    * (profile > env > config), mirroring resolveApiKeyForProvider order.
    */
   winningSource: string | null;
+  /**
+   * Set when the provider was removed upstream (PLAN-56 Phase 1). Listed only
+   * while a stored profile still exists so the user can delete it; the UI
+   * offers no key entry for it.
+   */
+  retired?: string;
 };
 
 function summarizeProvider(params: {
@@ -96,6 +103,7 @@ function summarizeProvider(params: {
           ? "models.json"
           : null;
 
+  const retired = retiredProviderLabel(provider);
   return {
     provider,
     profiles,
@@ -103,6 +111,7 @@ function summarizeProvider(params: {
     envSource: env?.source,
     configKeyPresent,
     winningSource,
+    ...(retired ? { retired } : {}),
   };
 }
 
@@ -134,9 +143,13 @@ export const modelsAuthHandlers: GatewayRequestHandlers = {
         providers.add(normalizeProviderId(id));
       }
       const now = Date.now();
+      // PLAN-56 Phase 1: retired providers (removed upstream) are refused at
+      // run time. They stay listed only while a stored profile exists, marked
+      // `retired`, so the Control UI can still delete the stale profile.
       const result = [...providers]
         .toSorted((a, b) => a.localeCompare(b))
-        .map((provider) => summarizeProvider({ provider, store, cfg, now }));
+        .map((provider) => summarizeProvider({ provider, store, cfg, now }))
+        .filter((summary) => !summary.retired || summary.profiles.length > 0);
       respond(true, { providers: result }, undefined);
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));

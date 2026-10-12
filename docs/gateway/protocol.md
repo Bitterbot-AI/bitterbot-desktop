@@ -186,8 +186,9 @@ The Gateway treats these as **claims** and enforces server-side allowlists.
 
 ## Auth
 
-- If `BITTERBOT_GATEWAY_TOKEN` (or `--token`) is set, `connect.params.auth.token`
-  must match or the socket is closed.
+- If a gateway token is set (`gateway.auth.token` in the config, else
+  `BITTERBOT_GATEWAY_TOKEN`, or `--token`), `connect.params.auth.token` must
+  match or the socket is closed. The config value wins over the environment.
 - After pairing, the Gateway issues a **device token** scoped to the connection
   role + scopes. It is returned in `hello-ok.auth.deviceToken` and should be
   persisted by the client for future connects.

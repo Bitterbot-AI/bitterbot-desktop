@@ -4,7 +4,8 @@
  * gets halfway into a broken tree.
  *
  * What it checks:
- *   - Node.js ≥ 22 (hard fail — lots of modern syntax/APIs used throughout)
+ *   - Node.js ≥ the `engines.node` floor in package.json (22.12.0; hard
+ *     fail — lots of modern syntax/APIs used throughout)
  *   - Running under pnpm (warn only — npm/yarn can still build, but the
  *     workspace hooks expect pnpm and the docs say pnpm)
  *   - On Linux: presence of build tools + libssl headers that native
@@ -19,8 +20,10 @@
  * Skip in CI or controlled environments with BITTERBOT_SKIP_PREINSTALL_CHECK=1.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const RESET = "\x1b[0m";
 const RED = "\x1b[31m";
@@ -47,19 +50,42 @@ let hardFailures = 0;
 let warnings = 0;
 
 // ── Node version ──
-const MIN_MAJOR = 22;
+// The floor is `engines.node` in package.json (">=22.12.0"), not just the
+// major: 22.0-22.11 lack APIs we rely on. This script is the enforcement
+// point (pnpm's engine-strict would also police every transitive dependency,
+// some of which demand Node 24), so say so up front with the exact number.
+const FALLBACK_MIN_NODE = "22.12.0";
+function readMinNodeVersion() {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(path.join(here, "..", "package.json"), "utf8"));
+    const match = /(\d+)\.(\d+)\.(\d+)/.exec(String(pkg.engines?.node ?? ""));
+    return match ? match[0] : FALLBACK_MIN_NODE;
+  } catch {
+    return FALLBACK_MIN_NODE;
+  }
+}
+function parseVersion(v) {
+  return v.split(".").map((n) => Number.parseInt(n, 10));
+}
+function compareVersions(a, b) {
+  const [aMajor = 0, aMinor = 0, aPatch = 0] = parseVersion(a);
+  const [bMajor = 0, bMinor = 0, bPatch = 0] = parseVersion(b);
+  return aMajor - bMajor || aMinor - bMinor || aPatch - bPatch;
+}
+const MIN_NODE = readMinNodeVersion();
+const MIN_MAJOR = parseVersion(MIN_NODE)[0];
 const actual = process.versions.node;
-const [major] = actual.split(".").map((n) => Number.parseInt(n, 10));
-if (Number.isNaN(major) || major < MIN_MAJOR) {
+if (parseVersion(actual).some(Number.isNaN) || compareVersions(actual, MIN_NODE) < 0) {
   fail(
-    `Node.js ${actual} detected. This repo requires Node ≥ ${MIN_MAJOR}.\n` +
+    `Node.js ${actual} detected. This repo requires Node ≥ ${MIN_NODE} (the ${MIN_MAJOR} LTS line).\n` +
       `  Install via nvm: nvm install ${MIN_MAJOR} && nvm use ${MIN_MAJOR}\n` +
       `  Or fnm:          fnm install ${MIN_MAJOR} && fnm use ${MIN_MAJOR}\n` +
       `  Or volta:        volta install node@${MIN_MAJOR}`,
   );
   hardFailures++;
 } else {
-  log(`Node ${actual} ✓`);
+  log(`Node ${actual} ✓ (≥ ${MIN_NODE})`);
 }
 
 // ── Package manager ──
@@ -102,9 +128,10 @@ if (process.platform === "linux") {
     warn(
       `Linux system deps not detected: ${missing.map((m) => m.name).join(", ")}\n` +
         `  Native modules may fall back to prebuilt binaries where available. ` +
-        `If you hit a build error later, run:\n` +
-        `    bash scripts/setup-deps.sh\n` +
-        `  which installs the full dep set (pkg-config, libssl-dev, ffmpeg, chromium deps, ripgrep, etc.)`,
+        `If you hit a build error later, install the build prerequisites for your distro\n` +
+        `  (Debian/Ubuntu: sudo apt-get install -y build-essential pkg-config libssl-dev python3).\n` +
+        `  bash scripts/setup-deps.sh installs the runtime tools only (ripgrep, trash-cli, htop,\n` +
+        `  ffmpeg, jq, tmux); Chromium comes later from \`pnpm exec playwright install --with-deps chromium\`.`,
     );
     warnings++;
   } else {

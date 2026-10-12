@@ -91,10 +91,10 @@ export async function noteMacLaunchctlGatewayEnvOverrides(
   const lines = [
     "- launchctl environment overrides detected (can cause confusing unauthorized errors).",
     envToken && envTokenKey
-      ? `- \`${envTokenKey}\` is set; it overrides config tokens.`
+      ? `- \`${envTokenKey}\` is set. The gateway and CLI use the config token first and ignore it, but a client that reads only the environment sends this stale value.`
       : undefined,
     envPassword
-      ? `- \`${envPasswordKey ?? "BITTERBOT_GATEWAY_PASSWORD"}\` is set; it overrides config passwords.`
+      ? `- \`${envPasswordKey ?? "BITTERBOT_GATEWAY_PASSWORD"}\` is set. The config password wins, but a client that reads only the environment sends this stale value.`
       : undefined,
     "- Clear overrides and restart the app/gateway:",
     envTokenKey ? `  launchctl unsetenv ${envTokenKey}` : undefined,

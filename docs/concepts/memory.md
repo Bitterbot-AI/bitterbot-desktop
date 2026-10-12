@@ -94,17 +94,10 @@ No external database, no cloud dependency. One `.db` file is the entire memory.
 
 ## Configuration
 
-Memory is configured under `memory` in `bitterbot.json`:
-
-```json
-{
-  "memory": {
-    "backend": "builtin"
-  }
-}
-```
-
-The `builtin` backend is the only supported backend. Embedding providers (OpenAI, Gemini, Voyage, local) are configured separately under `agents.defaults.memorySearch`.
+Memory is configured under `memory` in `bitterbot.json`. There is one
+storage backend (SQLite, built in), so there is nothing to choose: the old
+`memory.backend` key is inert, warns at load, and will be removed next
+release (`bitterbot doctor --fix` removes it). Embedding providers (OpenAI, Gemini, Voyage, local) are configured separately under `agents.defaults.memorySearch`.
 
 `agents.defaults.memorySearch.excludePaths` (workspace-relative globs, `**` spans directories) keeps files out of the memory index. Default: `["memory/memory-snapshots/**", "memory/dream-journal.md"]` — the dream journal (hundreds of KB, appended every cycle) and the per-cycle working-memory snapshots changed on every dream cycle, so the file-level hash gate never matched and they were re-chunked and re-embedded each sync (60-180 s embed calls). Dream insights are promoted into searchable chunks separately; snapshots are provenance for the rewrite, not memory. Set `excludePaths: []` to index everything.
 

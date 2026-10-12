@@ -24,6 +24,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { looksLikePersonName } from "./knowledge-graph.js";
 import { ensureColumn } from "./memory-schema.js";
 import { backfillSkillCategories } from "./skill-category.js";
 
@@ -37,7 +38,7 @@ export type Migration = {
   up: (db: DatabaseSync) => void;
 };
 
-const MIGRATIONS: Migration[] = [
+export const MIGRATIONS: Migration[] = [
   {
     version: 1,
     description: "Knowledge Crystal columns + indexes",
@@ -2494,6 +2495,259 @@ const MIGRATIONS: Migration[] = [
             ELSE 'generated' END
           WHERE lifecycle IS NULL`,
       );
+    },
+  },
+  {
+    version: 73,
+    description:
+      "PLAN-54 curiosity loop (2026-10-07). curiosity_findings holds what the agent went and " +
+      "learned on its own: the question, the depersonalized query that left the node, the " +
+      "cited answer, confidence, hormonal state at acquisition, cost, the chunk it became, and " +
+      "whether a conversation ever used it. curiosity_targets gains an attempt counter and an " +
+      "embedding for dedupe, so the same question is never asked twice.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS curiosity_findings (
+          id            TEXT PRIMARY KEY,
+          target_id     TEXT NOT NULL,
+          question      TEXT NOT NULL,
+          query_phrase  TEXT NOT NULL,
+          answer        TEXT NOT NULL,
+          confidence    REAL NOT NULL,
+          sources_json  TEXT NOT NULL DEFAULT '[]',
+          hormonal_json TEXT,
+          cost_usd      REAL NOT NULL DEFAULT 0,
+          chunk_id      TEXT,
+          region_id     TEXT,
+          created_at    INTEGER NOT NULL,
+          first_used_at INTEGER,
+          used_count    INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_curiosity_findings_chunk ON curiosity_findings (chunk_id);
+        CREATE INDEX IF NOT EXISTS idx_curiosity_findings_created ON curiosity_findings (created_at);
+      `);
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'curiosity_targets'`)
+        .get();
+      if (has) {
+        addColumnIfMissing(db, "curiosity_targets", "attempts", "INTEGER NOT NULL DEFAULT 0");
+        addColumnIfMissing(db, "curiosity_targets", "embedding_json", "TEXT");
+        // The emerging-skill "frontier" generator is deleted in this release;
+        // its open rows were never researchable (handover briefs, READMEs).
+        db.exec(
+          `DELETE FROM curiosity_targets WHERE resolved_at IS NULL
+             AND json_extract(metadata, '$.source') = 'emerging_skill'`,
+        );
+      }
+    },
+  },
+  {
+    version: 74,
+    description:
+      "PLAN-54 follow-up (2026-10-07): curiosity_findings.verified marks findings that cleared " +
+      "the two-source / confidence gate and became memory. An answer the agent found but was " +
+      "not confident enough to remember is kept (verified = 0, no chunk) so the Curiosity page " +
+      "can show what it saw instead of a bare 'unanswered'.",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'curiosity_findings'`)
+        .get();
+      if (has) {
+        addColumnIfMissing(db, "curiosity_findings", "verified", "INTEGER NOT NULL DEFAULT 1");
+      }
+    },
+  },
+  {
+    version: 75,
+    description:
+      "Knowledge-graph person hygiene (2026-10-07): entities filed as 'person' that are not " +
+      "names ('here', 'commands', a peer id) are reclassified as 'concept'. The curiosity " +
+      "egress filter blocks every known person's name from outgoing search phrases, so noise " +
+      "there blocked ordinary words; identity recall read the same rows.",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entities'`)
+        .get();
+      if (!has) {
+        return;
+      }
+      const rows = db
+        .prepare(`SELECT id, name, mention_count FROM entities WHERE entity_type = 'person'`)
+        .all() as Array<{ id: string; name: string; mention_count: number }>;
+      const findConcept = db.prepare(
+        `SELECT id FROM entities WHERE name = ? AND entity_type = 'concept'`,
+      );
+      const demote = db.prepare(`UPDATE entities SET entity_type = 'concept' WHERE id = ?`);
+      // (name, entity_type) is unique: when a concept of that name already
+      // exists, fold the person row into it and keep every edge.
+      const repointSource = db.prepare(
+        `UPDATE OR IGNORE relationships SET source_entity_id = ? WHERE source_entity_id = ?`,
+      );
+      const repointTarget = db.prepare(
+        `UPDATE OR IGNORE relationships SET target_entity_id = ? WHERE target_entity_id = ?`,
+      );
+      const dropOrphanEdges = db.prepare(
+        `DELETE FROM relationships WHERE source_entity_id = ? OR target_entity_id = ?`,
+      );
+      const repointParent = db.prepare(
+        `UPDATE entities SET parent_entity_id = ? WHERE parent_entity_id = ?`,
+      );
+      const bump = db.prepare(`UPDATE entities SET mention_count = mention_count + ? WHERE id = ?`);
+      const remove = db.prepare(`DELETE FROM entities WHERE id = ?`);
+      for (const r of rows) {
+        if (looksLikePersonName(r.name)) {
+          continue;
+        }
+        const concept = findConcept.get(r.name) as { id: string } | undefined;
+        if (!concept) {
+          demote.run(r.id);
+          continue;
+        }
+        repointSource.run(concept.id, r.id);
+        repointTarget.run(concept.id, r.id);
+        dropOrphanEdges.run(r.id, r.id);
+        try {
+          repointParent.run(concept.id, r.id);
+        } catch {
+          // parent_entity_id arrived in a later migration on some nodes
+        }
+        bump.run(r.mention_count ?? 1, concept.id);
+        remove.run(r.id);
+      }
+    },
+  },
+  {
+    version: 76,
+    description:
+      "PLAN-55 Phase 0 (2026-10-10): memory_suppressions, the owner's standing 'no'. " +
+      "Owner forget records the memory text hash, owner retire records the fact " +
+      "key/value hash, preference removal records the preference key; session " +
+      "extraction, preference extraction, curiosity findings, dream insight promotion " +
+      "and the ledger's pin() consult it before writing, so what the owner removed " +
+      "stays removed when the same input is re-processed. Also in this release but " +
+      "code-only (SQLite has no enum): canonical_facts.source gains 'owner' (trust " +
+      "tier 3; 'user_directive' is its alias) and canonical_facts.status gains " +
+      "'owner_retired', which only an owner-tier pin or unretire reactivates.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_suppressions (
+          id         TEXT PRIMARY KEY,
+          kind       TEXT NOT NULL,
+          hash       TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          reason     TEXT,
+          actor      TEXT NOT NULL DEFAULT 'owner',
+          text       TEXT
+        )
+      `);
+      // The unreleased first cut of v76 had no `text` column; a node that ran
+      // it gets the column here rather than through a v77.
+      addColumnIfMissing(db, "memory_suppressions", "text", "TEXT");
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_suppressions_kind_hash ` +
+          `ON memory_suppressions(kind, hash)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_memory_suppressions_kind ON memory_suppressions(kind)`,
+      );
+    },
+  },
+  {
+    version: 77,
+    description:
+      "PLAN-55 Phase 1 (2026-10-10): canonical_facts.scope ('global' | 'project:<name>' | " +
+      "'person:<name>', default 'global') decides where a fact is injected: project-scoped " +
+      "facts render only when the active workspace matches. canonical_facts.evidence_ref " +
+      "(nullable) is the session line ref or quote the correction capture, the owner's pin " +
+      "or the agent's memory_pin cited. Code-only in the same release: canonical_conflicts " +
+      "gains the 'pending_supersede' kind (an agent pin that would replace a tier >= 2 " +
+      "belief is held for the owner instead of written).",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'canonical_facts'`)
+        .get();
+      if (!has) {
+        return;
+      }
+      addColumnIfMissing(db, "canonical_facts", "scope", "TEXT NOT NULL DEFAULT 'global'");
+      addColumnIfMissing(db, "canonical_facts", "evidence_ref", "TEXT");
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_facts_scope ON canonical_facts(scope) ` +
+          `WHERE valid_until IS NULL`,
+      );
+    },
+  },
+  {
+    version: 78,
+    description:
+      "PLAN-55 Phase 2 (2026-10-11): canonical:changed propagation. chunk_supersessions " +
+      "(chunk_id, fact_key, stale_value) marks a memory chunk that states a value the " +
+      "ledger no longer holds for that key; search ranks it below current results and " +
+      "tags it [superseded], and a pin back to that value deletes the mark. " +
+      "dream_briefs.stale_fact and dream_insights.stale_fact (JSON, nullable) flag an " +
+      "anticipation brief or a dream insight that cites a superseded value or rests on " +
+      "forgotten evidence: a flagged brief is not surfaced and a flagged insight is not " +
+      "promoted. canonical_change_outbox records every ledger change in the writer's " +
+      "transaction; propagated_at is set once the consumers ran, and a reconcile pass " +
+      "replays rows left unset. It starts empty: changes made before this migration are " +
+      "not propagated retroactively. canonical_propagation_undo records what an owner " +
+      "retire or a supersede removed (a preference row, graph edges) so bringing the " +
+      "value back restores it.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chunk_supersessions (
+          chunk_id      TEXT NOT NULL,
+          fact_key      TEXT NOT NULL,
+          stale_value   TEXT NOT NULL,
+          fact_id       TEXT,
+          current_value TEXT,
+          created_at    INTEGER NOT NULL,
+          PRIMARY KEY (chunk_id, fact_key, stale_value)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunk_supersessions_key ` +
+          `ON chunk_supersessions(fact_key, stale_value)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_change_outbox (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          fact_id        TEXT NOT NULL,
+          key            TEXT NOT NULL,
+          event_json     TEXT NOT NULL,
+          created_at     INTEGER NOT NULL,
+          propagated_at  INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_change_outbox_pending ` +
+          `ON canonical_change_outbox(propagated_at, id)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_propagation_undo (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          fact_key    TEXT NOT NULL,
+          value       TEXT NOT NULL,
+          kind        TEXT NOT NULL,
+          payload     TEXT NOT NULL,
+          created_at  INTEGER NOT NULL,
+          undone_at   INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_propagation_undo_key ` +
+          `ON canonical_propagation_undo(fact_key, value, undone_at)`,
+      );
+      const hasTable = (name: string): boolean =>
+        Boolean(
+          db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name),
+        );
+      if (hasTable("dream_briefs")) {
+        addColumnIfMissing(db, "dream_briefs", "stale_fact", "TEXT");
+      }
+      if (hasTable("dream_insights")) {
+        addColumnIfMissing(db, "dream_insights", "stale_fact", "TEXT");
+      }
     },
   },
 ];

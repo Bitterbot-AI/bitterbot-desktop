@@ -87,6 +87,11 @@ export type OnboardOptions = {
   flow?: "quickstart" | "advanced" | "manual";
   workspace?: string;
   nonInteractive?: boolean;
+  /**
+   * PLAN-56 Phase 4: true = browser setup (`--browser`), false = terminal
+   * wizard (`--no-browser`), undefined = decide (onboard-browser.ts).
+   */
+  browser?: boolean;
   /** Required for non-interactive onboarding; skips the interactive risk prompt when true. */
   acceptRisk?: boolean;
   reset?: boolean;

@@ -90,7 +90,7 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
 `agent/turn`, `agent/subagent`, `agent/cron`, `agent/heartbeat`, `agent/a2a`, `agent/acp`,
 `agent/cli-backend`, `agent/continuity-gate`, `skills/evolution`, `memory/search`,
 `memory/recall`, `memory/index`, `memory/index-batch`, `memory/dream`, `memory/extraction`,
-`memory/probe`, `memory/planner`, `memory/architect`, `memory/marketability`,
+`memory/correction`, `memory/probe`, `memory/planner`, `memory/architect`, `memory/marketability`,
 `memory/discovery`, `tasks/judge`, `rlm/deep-recall`, `tts/summary`, `tts/synthesis`,
 `media/image`, `media/audio`, `agent/compaction`, `tools/web-search`.
 
@@ -196,10 +196,10 @@ fire-and-forget queue as usage rows, and pruned with the same retention.
 Where it shows up:
 
 - `bitterbot doctor` (7d): `hot-set: N direct calls, M via use_tool (K failed), J via native
-search in 7d; top deferred tools reached indirectly: ...`, warning with a tip to add a tool
+  search in 7d; top deferred tools reached indirectly: ...`, warning with a tip to add a tool
   to `tools.hotSet` when it is reached indirectly 5 or more times a week
   (`HOT_SET_PROMOTE_MIN_INDIRECT_PER_WEEK`; scaled to the window), and `tool results
-spilled: N in 7d, avg X chars` (info).
+  spilled: N in 7d, avg X chars` (info).
 - `bitterbot gateway usage --tools [--days N] [--json]`: the same lines plus failures by
   class and the prefix-stability report below. It reads the ledger file directly, so it works
   without a running gateway.
@@ -215,14 +215,14 @@ on the full JSONL trace is written as before. A digest that moves between two tu
 than 60 minutes apart is a cache bust the operator can fix.
 
 - `bitterbot doctor` (7d): `prefix stability: N sessions in 7d where the cached prefix
-changed mid-session (turns < 60 min apart): <session, turn count, likely tier: tools|system>`,
+  changed mid-session (turns < 60 min apart): <session, turn count, likely tier: tools|system>`,
   warn when N > 0, with the tip "a prompt section above the cache boundary is changing between
   turns; run with BITTERBOT_CACHE_TRACE=1 to see which". Rows without digests (older
   releases, reconciled transcripts) never count as changes.
 
 ## Runtime engine
 
-Every row that belongs to an agent carries `engine`: the agent runtime configured for that agent when the call was recorded (`pi` or `bitterbot`, see `agents.defaults.runtime.engine`). Rows without an agent leave it empty. The column exists so the two engines can be compared on the same traffic before the default is switched: `bitterbot doctor` prints, per engine and for the last 14 days, the number of runs, cost per run, model-call latency (p50 and p95), the tool error rate, and the number of errored model calls, once both engines have recorded runs.
+Every row that belongs to an agent carries `engine`: the agent runtime that recorded the call. Since the pi engine was removed every new row says `bitterbot`; rows written earlier may say `pi`. Rows without an agent leave it empty. The column was added so the two engines could be compared on the same traffic before the default was switched, and the comparison is still readable: `bitterbot doctor` prints, per engine and for the last 14 days, the number of runs, cost per run, model-call latency (p50 and p95), the tool error rate, and the number of errored model calls, when more than one engine has recorded runs.
 
 ## Batch rows
 

@@ -849,6 +849,12 @@ class MemoryManagerSyncOps {
     needsFullReindex: boolean;
     progress?: MemorySyncProgressState;
   }) {
+    // PLAN-55 Phase 1: incognito. Transcripts stay on disk but are not
+    // indexed into memory while session.memory is "off".
+    if (this.cfg.session?.memory === "off") {
+      log.debug("memory sync: session indexing skipped (session.memory is off)");
+      return;
+    }
     const files = await listSessionFilesForAgent(this.agentId);
     const activePaths = new Set(files.map((file) => sessionPathForFile(file)));
     const indexAll = params.needsFullReindex || this.sessionsDirtyFiles.size === 0;

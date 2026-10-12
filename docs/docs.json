@@ -48,6 +48,14 @@
   },
   "redirects": [
     {
+      "source": "/reference/pi",
+      "destination": "/reference/agent-runtime"
+    },
+    {
+      "source": "/reference/pi-dev",
+      "destination": "/reference/agent-runtime-dev"
+    },
+    {
       "source": "/concepts/sessions",
       "destination": "/concepts/session"
     },
@@ -580,6 +588,7 @@
                 "group": "First steps",
                 "pages": [
                   "start/getting-started",
+                  "start/install-script",
                   "start/onboarding-overview",
                   "start/wizard",
                   "start/onboarding"
@@ -1000,6 +1009,7 @@
                   "cli/channels",
                   "cli/configure",
                   "cli/cron",
+                  "cli/curiosity",
                   "cli/dashboard",
                   "cli/directory",
                   "cli/dns",
@@ -1072,8 +1082,7 @@
                   "reference/api-usage-costs",
                   "reference/date-time",
                   "reference/transcript-hygiene",
-                  "reference/pi",
-                  "reference/pi-dev",
+                  "reference/agent-runtime",
                   "reference/agent-runtime-dev",
                   "web/mobile"
                 ]

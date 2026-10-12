@@ -1,0 +1,49 @@
+name: E2E (nightly)
+
+# The e2e suite (src/**/*.e2e.test.ts, ~330 files) is not part of CI: it is
+# too slow for every push and some files need network access. Until
+# 2026-10-08 nothing ran it at all, so stale tests (hot-set deferral, the
+# models.list shape, edit argument forms) rotted silently. This job runs it
+# once a night in shards so a break shows up within a day instead of a month.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+# One group per run: a manual dispatch must not cancel the cron run in flight.
+concurrency:
+  group: e2e-nightly-${{ github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: E2E shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Some e2e files drive the built CLI/gateway, not only src/.
+      - name: Build
+        run: pnpm build
+
+      - name: E2E tests (shard ${{ matrix.shard }} of 4)
+        env:
+          BITTERBOT_E2E_WORKERS: "2"
+        run: pnpm test:e2e -- --shard=${{ matrix.shard }}/4

@@ -1090,11 +1090,38 @@ export function createWebSearchTool(options?: {
  * keys, caching, timeouts) and returns normalized {title, url} results.
  * Null when web search is unavailable (disabled or no API key).
  */
+/**
+ * True when a web search provider is enabled AND has credentials, i.e. when
+ * `runConfiguredWebSearch` would actually search. Status surfaces (PLAN-54
+ * Curiosity page) use it; no network call.
+ */
+export function isWebSearchConfigured(cfg: BitterbotConfig | undefined): boolean {
+  const search = resolveSearchConfig(cfg);
+  if (!resolveSearchEnabled({ search })) {
+    return false;
+  }
+  const provider = resolveSearchProvider(search);
+  if (provider === "parallel") {
+    return true;
+  }
+  const apiKey =
+    provider === "perplexity"
+      ? resolvePerplexityApiKey(resolvePerplexityConfig(search))?.apiKey
+      : provider === "grok"
+        ? resolveGrokApiKey(resolveGrokConfig(search))
+        : provider === "tavily"
+          ? resolveTavilyApiKey(resolveTavilyConfig(search))
+          : provider === "serply"
+            ? resolveSerplyApiKey(resolveSerplyConfig(search))
+            : resolveSearchApiKey(search);
+  return Boolean(apiKey);
+}
+
 export async function runConfiguredWebSearch(
   cfg: BitterbotConfig | undefined,
   query: string,
   count = DEFAULT_SEARCH_COUNT,
-): Promise<Array<{ title: string; url: string }> | null> {
+): Promise<Array<{ title: string; url: string; snippet?: string }> | null> {
   const search = resolveSearchConfig(cfg);
   if (!resolveSearchEnabled({ search })) {
     return null;
@@ -1142,7 +1169,19 @@ export async function runConfiguredWebSearch(
   return results
     .map((r) => {
       const url = typeof r.url === "string" ? r.url : "";
-      return { title: typeof r.title === "string" && r.title ? r.title : url, url };
+      // Tavily returns `content`, Brave `description`: a snippet lets a caller
+      // that cannot fetch the page still read something.
+      const snippet =
+        typeof r.content === "string"
+          ? r.content
+          : typeof r.description === "string"
+            ? r.description
+            : undefined;
+      return {
+        title: typeof r.title === "string" && r.title ? r.title : url,
+        url,
+        ...(snippet ? { snippet: snippet.slice(0, 2000) } : {}),
+      };
     })
     .filter((r) => r.url.length > 0);
 }

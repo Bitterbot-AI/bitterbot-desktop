@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { CURRENT_SESSION_VERSION } from "@mariozechner/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
+import { TRANSCRIPT_VERSION } from "../../agents/runtime/transcript/types.js";
 import type { GatewayRequestContext } from "./types.js";
 
 // Guardrail: Ensure gateway "injected" assistant transcript messages are appended via SessionManager,
@@ -12,12 +12,12 @@ describe("gateway chat.inject transcript writes", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bitterbot-chat-inject-"));
     const transcriptPath = path.join(dir, "sess.jsonl");
 
-    // Minimal Pi session header so SessionManager can open/append safely.
+    // Minimal session header so the transcript store can open/append safely.
     fs.writeFileSync(
       transcriptPath,
       `${JSON.stringify({
         type: "session",
-        version: CURRENT_SESSION_VERSION,
+        version: TRANSCRIPT_VERSION,
         id: "sess-1",
         timestamp: new Date(0).toISOString(),
         cwd: "/tmp",

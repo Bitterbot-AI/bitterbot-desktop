@@ -61,7 +61,8 @@ const { compactEmbeddedPiSessionDirect } =
 const { ensureBitterbotModelsJson } = await import("../../src/agents/models-config.js");
 const { openTranscript } = await import("../../src/agents/runtime/open-transcript.js");
 
-type Engine = "pi" | "bitterbot";
+/** Kept as a label for the scratch directories and run ids; the runtime is always the owned one. */
+type Engine = "bitterbot";
 type Check = { name: string; ok: boolean; detail?: string };
 
 const TOKEN = `smoke-${Math.random().toString(36).slice(2, 10)}`;
@@ -156,7 +157,7 @@ async function runOverflow(engine: Engine, model: string): Promise<Check[]> {
     const charsPerToken = await measureCharsPerToken(model);
     const seedTokens = Math.floor(window * SEED_SHARE);
     const perTurnChars = Math.floor((seedTokens / SEED_TURNS) * charsPerToken);
-    const store = openTranscript(sessionFile, engine);
+    const store = openTranscript(sessionFile);
     let running = 0;
     for (let turn = 0; turn < SEED_TURNS; turn++) {
       const text =
@@ -397,7 +398,7 @@ async function main(): Promise<void> {
   // In memory only: the scratch agent directory holds no credentials.
   process.env.ANTHROPIC_API_KEY = auth.apiKey;
 
-  const engines = (args.values.engines ?? "pi,bitterbot").split(",") as Engine[];
+  const engines = (args.values.engines ?? "bitterbot").split(",") as Engine[];
   const model = args.values.model ?? "claude-haiku-4-5";
   let failed = 0;
   for (const engine of engines) {

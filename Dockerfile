@@ -32,8 +32,14 @@ COPY extensions/signal/package.json ./extensions/signal/
 COPY extensions/slack/package.json ./extensions/slack/
 COPY extensions/telegram/package.json ./extensions/telegram/
 COPY extensions/twitch/package.json ./extensions/twitch/
+COPY extensions/mcp/package.json ./extensions/mcp/
 COPY extensions/whatsapp/package.json ./extensions/whatsapp/
+COPY extensions/x/package.json ./extensions/x/
 COPY scripts ./scripts
+# postinstall reads the orchestrator version from this manifest. Copying it
+# only with `COPY . .` (after install) is why images v1.0.0-v1.4.0 shipped
+# without the P2P binary (`could not read orchestrator version: ENOENT`).
+COPY orchestrator/Cargo.toml ./orchestrator/
 
 # postinstall fetches the orchestrator binary. Point it INSIDE the image at the
 # repo-relative path the resolver probes, not the default ~/.bitterbot/bin:
@@ -51,15 +57,34 @@ COPY . .
 RUN pnpm build
 
 ENV NODE_ENV=production
-# Tells the gateway it lives in a container, so the in-app updater points at
-# pulling a newer image instead of updating code that the image would replace.
+# The app's data lives under /home/node whoever starts the container (a
+# `docker run -u 0` would otherwise get HOME=/root).
+ENV HOME=/home/node
+# Tells the gateway it lives in a container (install kind `container`), so the
+# update check asks the GitHub releases API for the newest image instead of
+# npm, and the in-app updater says to pull a newer image instead of updating
+# code that the image would replace (PLAN-56 Phase 2).
 ENV BITTERBOT_INSTALL_KIND=container
 
+# The data dir exists in the image, owned by `node`, so a fresh named volume
+# mounted at /home/node/.bitterbot inherits node ownership and a plain
+# `docker run` (as `node`, no root entrypoint step) can write to it.
+RUN mkdir -p /home/node/.bitterbot && chown node:node /home/node/.bitterbot
+
 # Allow non-root user to write temp files during runtime/tests.
-RUN chown -R node:node /app
+RUN chown -R node:node /app && chmod 0755 /app/scripts/docker-entrypoint.sh \
+  && chmod 0644 /app/scripts/docker-entrypoint-lib.sh
 
 # Security hardening: run as the non-root `node` user (uid 1000).
 USER node
+
+# OCI labels (PLAN-56 Phase 0). docker-publish.yml passes the release version
+# and commit as build args; a local `docker build` leaves them empty.
+ARG BITTERBOT_VERSION=""
+ARG BITTERBOT_REVISION=""
+LABEL org.opencontainers.image.source="https://github.com/Bitterbot-AI/bitterbot-desktop" \
+      org.opencontainers.image.version="${BITTERBOT_VERSION}" \
+      org.opencontainers.image.revision="${BITTERBOT_REVISION}"
 
 # Start gateway server with default config. Binds to loopback (127.0.0.1) by
 # default for security; the Control UI is served by the gateway at /.
@@ -67,4 +92,8 @@ USER node
 # For container platforms requiring external health checks:
 #   1. Set BITTERBOT_GATEWAY_TOKEN or BITTERBOT_GATEWAY_PASSWORD env var
 #   2. Override CMD: ["node","bitterbot.mjs","gateway","--allow-unconfigured","--bind","lan"]
+# Runs the command as `node` by default. The zero-edit compose file starts the
+# container as root so the entrypoint can hand a Docker-created (root-owned)
+# ./bitterbot-data folder to `node` before dropping privileges.
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 CMD ["node", "bitterbot.mjs", "gateway", "--allow-unconfigured"]

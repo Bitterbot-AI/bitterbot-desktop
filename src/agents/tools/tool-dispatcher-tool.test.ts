@@ -1,5 +1,10 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it, vi } from "vitest";
+import { CLAUDE_PARAM_GROUPS, wrapToolParamNormalization } from "../agent-tools.read.js";
+import { createEditTool } from "../runtime/tools/coding/edit.js";
 import { wrapToolWithCapabilityEnforcer } from "../skills/capability-enforcer.js";
 import type { AnyAgentTool } from "./common.js";
 import {
@@ -226,5 +231,53 @@ describe("use_tool preserves the gates wrapped around the target", () => {
     );
     expect(raw.execute).not.toHaveBeenCalled();
     expect(denials).toEqual([expect.objectContaining({ tool: "wallet" })]);
+  });
+});
+
+describe("use_tool runs the target's prepareArguments before validation (as the agent loop does)", () => {
+  // The real edit tool: schema requires `edits[]`, but its prepareArguments shim
+  // folds the legacy oldText/newText pair, and the Claude-compat wrapper maps
+  // old_string/new_string first. Validating the raw input rejected both forms
+  // (Wave 3 regression, 2026-09-30).
+  const seed = async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "use-tool-edit-"));
+    await fs.writeFile(path.join(dir, "a.txt"), "hello world\n");
+    const edit = wrapToolParamNormalization(createEditTool(dir) as never, CLAUDE_PARAM_GROUPS.edit);
+    return { dir, use: createUseToolTool({ registry: [edit] }) };
+  };
+
+  it.each([
+    ["edits[] (current form)", { path: "a.txt", edits: [{ oldText: "hello", newText: "bye" }] }],
+    ["legacy oldText/newText", { path: "a.txt", oldText: "hello", newText: "bye" }],
+    [
+      "Claude Code old_string/new_string",
+      { file_path: "a.txt", old_string: "hello", new_string: "bye" },
+    ],
+  ])("edits the file with %s", async (_label, input) => {
+    const { dir, use } = await seed();
+    try {
+      const result = await use.execute("e1", { name: "edit", input });
+      expect(details(result)?.ok).not.toBe(false);
+      expect(await fs.readFile(path.join(dir, "a.txt"), "utf8")).toBe("bye world\n");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("a prepareArguments rejection is an error result, not a throw (replace_all)", async () => {
+    const { dir, use } = await seed();
+    try {
+      const out = details(
+        await use.execute("e2", {
+          name: "edit",
+          input: { path: "a.txt", oldText: "o", newText: "0", replace_all: true },
+        }),
+      );
+      expect(out.ok).toBe(false);
+      expect(String(out.error)).toMatch(/replace_all is not supported/);
+      expect(await fs.readFile(path.join(dir, "a.txt"), "utf8")).toBe("hello world\n");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

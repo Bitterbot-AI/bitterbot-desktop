@@ -12,6 +12,7 @@ import { circlesHandlers } from "./server-methods/circles.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
+import { curiosityHandlers } from "./server-methods/curiosity.js";
 import { deviceHandlers } from "./server-methods/devices.js";
 import { doctorHandlers } from "./server-methods/doctor.js";
 import { dreamHandlers } from "./server-methods/dream.js";
@@ -45,6 +46,7 @@ import { walletHandlers } from "./server-methods/wallet.js";
 import { webHandlers } from "./server-methods/web.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
 import { workspaceHandlers } from "./server-methods/workspace.js";
+import { isSetupOnlyScopes, SETUP_METHODS } from "./setup-token.js";
 
 const ADMIN_SCOPE = "operator.admin";
 const READ_SCOPE = "operator.read";
@@ -79,6 +81,8 @@ const PAIRING_METHODS = new Set([
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
 const READ_METHODS = new Set([
   "health",
+  "curiosity.status",
+  "curiosity.list",
   "doctor.findings",
   "logs.tail",
   "channels.status",
@@ -150,6 +154,8 @@ const READ_METHODS = new Set([
   "memory.preferences",
   "memory.audit",
   "memory.facts",
+  // PLAN-55 Phase 3: the cascade preview changes nothing.
+  "memory.forgetPreview",
   "forage.tape",
   "forage.stats",
   "forage.post",
@@ -179,6 +185,11 @@ const READ_METHODS = new Set([
 ]);
 const WRITE_METHODS = new Set([
   "send",
+  "curiosity.pause",
+  "curiosity.resume",
+  "curiosity.dismiss",
+  "curiosity.ask",
+  "curiosity.runNow",
   "agent",
   "agent.wait",
   "wake",
@@ -286,6 +297,13 @@ export function authorizeGatewayMethod(method: string, client: GatewayRequestOpt
   if (role !== "operator") {
     return errorShape(ErrorCodes.INVALID_REQUEST, `unauthorized role: ${role}`);
   }
+  // PLAN-56 Phase 4: a setup-token connection may drive the wizard and
+  // nothing else (src/gateway/setup-token.ts).
+  if (isSetupOnlyScopes(scopes)) {
+    return SETUP_METHODS.has(method)
+      ? null
+      : errorShape(ErrorCodes.INVALID_REQUEST, "setup token grants wizard access only");
+  }
   if (scopes.includes(ADMIN_SCOPE)) {
     return null;
   }
@@ -378,6 +396,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...workspaceHandlers,
   ...dreamHandlers,
   ...memoryHandlers,
+  ...curiosityHandlers,
   ...circlesHandlers,
   ...forageHandlers,
   ...spendGrantHandlers,

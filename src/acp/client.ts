@@ -14,6 +14,7 @@ import {
 } from "@agentclientprotocol/sdk";
 import { ensureBitterbotCliOnPath } from "../infra/path-env.js";
 import { DANGEROUS_ACP_TOOLS } from "../security/dangerous-tools.js";
+import { VERSION } from "../version.js";
 
 const SAFE_AUTO_APPROVE_KINDS = new Set(["read", "search"]);
 
@@ -363,7 +364,7 @@ export async function createAcpClient(opts: AcpClientOptions = {}): Promise<AcpC
       fs: { readTextFile: true, writeTextFile: true },
       terminal: true,
     },
-    clientInfo: { name: "bitterbot-acp-client", version: "1.0.0" },
+    clientInfo: { name: "bitterbot-acp-client", version: VERSION },
   });
 
   log("creating session");

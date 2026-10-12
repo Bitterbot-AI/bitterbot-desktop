@@ -1,5 +1,6 @@
 import { formatCliCommand } from "../cli/command-format.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { CONTAINER_UPDATE_COMMAND, TARBALL_UPDATE_COMMAND } from "../infra/install-kind.js";
 import {
   checkUpdateStatus,
   compareSemverStrings,
@@ -62,6 +63,12 @@ export function formatUpdateAvailableHint(update: UpdateCheckResult): string | n
   if (availability.hasGitUpdate && availability.gitBehind != null) {
     details.push(`git behind ${availability.gitBehind}`);
   }
+  if (update.installKind === "container" && availability.latestVersion) {
+    return `Image v${availability.latestVersion} available. Pull to update: ${CONTAINER_UPDATE_COMMAND}`;
+  }
+  if (update.installKind === "tarball" && availability.latestVersion) {
+    return `Release v${availability.latestVersion} available. Run: ${formatCliCommand(TARBALL_UPDATE_COMMAND)}`;
+  }
   if (availability.hasRegistryUpdate && availability.latestVersion) {
     details.push(`npm ${availability.latestVersion}`);
   }
@@ -73,20 +80,28 @@ export function formatUpdateOneLiner(update: UpdateCheckResult): string {
   const parts: string[] = [];
 
   const appendRegistryUpdateSummary = () => {
+    const label =
+      update.registry?.source === "github-releases"
+        ? update.installKind === "tarball"
+          ? "release"
+          : "image"
+        : "npm";
     if (update.registry?.latestVersion) {
       const cmp = compareSemverStrings(VERSION, update.registry.latestVersion);
       if (cmp === 0) {
-        parts.push(`npm latest ${update.registry.latestVersion}`);
+        parts.push(`${label} latest ${update.registry.latestVersion}`);
       } else if (cmp != null && cmp < 0) {
-        parts.push(`npm update ${update.registry.latestVersion}`);
+        parts.push(`${label} update ${update.registry.latestVersion}`);
       } else {
-        parts.push(`npm latest ${update.registry.latestVersion} (local newer)`);
+        parts.push(`${label} latest ${update.registry.latestVersion} (local newer)`);
       }
       return;
     }
     if (update.registry?.error) {
       parts.push(
-        update.registry.error === "not-published" ? "npm: no releases yet" : "npm latest unknown",
+        update.registry.error === "not-published"
+          ? `${label}: no releases yet`
+          : `${label} latest unknown`,
       );
     }
   };
@@ -114,6 +129,12 @@ export function formatUpdateOneLiner(update: UpdateCheckResult): string {
     if (update.git.fetchOk === false) {
       parts.push("fetch failed");
     }
+    appendRegistryUpdateSummary();
+  } else if (update.installKind === "container") {
+    parts.push("container");
+    appendRegistryUpdateSummary();
+  } else if (update.installKind === "tarball") {
+    parts.push("tarball");
     appendRegistryUpdateSummary();
   } else {
     parts.push(update.packageManager !== "unknown" ? update.packageManager : "pkg");

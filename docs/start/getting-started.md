@@ -17,7 +17,57 @@ and chat in the browser, or open `http://127.0.0.1:19001/` on the
 Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 </Info>
 
-## Prereqs
+## Pick a path
+
+1. **Docker (recommended for servers):** one command, nothing to install but
+   Docker, updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
+2. **Installer (laptops):** a signed, prebuilt release for Linux x64/arm64 and
+   Apple-silicon macOS, with its own Node runtime, from release 1.5.0 on.
+   See [Installer (laptops)](/start/install-script) for what it verifies.
+3. **From source (below):** for developing Bitterbot, or when you need the
+   browser tool in a container setup (the image ships without Chromium).
+4. **npm:** not yet. There is no npm package today.
+
+With Docker, the whole install is:
+
+```bash
+mkdir bitterbot && cd bitterbot
+curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
+docker compose up -d
+docker compose logs bitterbot-gateway   # shows a setup link and the token
+```
+
+Open the setup link from the log (`http://127.0.0.1:19001/setup?token=...`,
+valid 30 minutes, works until setup finishes) and finish setup in the
+browser: model key, model, memory, web search, channels, P2P, then a first
+reply from your agent with its latency. Link expired? Get a new one with
+`docker compose exec -u node bitterbot-gateway node bitterbot.mjs onboard`.
+Afterwards the Control UI is `http://127.0.0.1:19001/`; it asks for the token
+printed in the same log. The token is printed once; read it again any time with
+`docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token`
+(or use the value of `BITTERBOT_GATEWAY_TOKEN` if you set one). (The compose file is
+attached to releases from 1.5.0 on; before that, follow the `docker run` form
+on the [Docker page](/platforms/docker#without-compose).)
+
+With the installer, the whole install is:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+```
+
+It prints its plan, verifies the release's minisign signature (with
+`minisign` or OpenSSL 3; otherwise it says it checked SHA-256 only), unpacks
+to `~/.bitterbot/app/<version>`, links `~/.local/bin/bitterbot`, and runs
+`bitterbot onboard`, which starts the gateway and opens a setup page
+in your browser (`--no-browser` keeps setup in the terminal). To check a download by hand: `minisign -Vm checksums.txt`
+with the key on the [installer page](/start/install-script#verify-a-download-yourself),
+or `gh attestation verify <tarball> --repo Bitterbot-AI/bitterbot-desktop`.
+Later, `bitterbot update` updates it in place (verified, with a snapshot of
+your data and an automatic rollback; see
+[Updating](/start/install-script#updating)). On Windows, `install.ps1` runs the
+same installer inside WSL2 ([Windows](/start/install-script#windows-wsl2)).
+
+## Prereqs (source install)
 
 - Node 22.12 or newer
 - pnpm — ships with Node via corepack: `corepack enable pnpm || npm install -g pnpm`
@@ -26,7 +76,7 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 Check your Node version with `node --version` if you are unsure.
 </Tip>
 
-## Quick setup (CLI)
+## Quick setup from source (CLI)
 
 <Steps>
   <Step title="Install Bitterbot (from source)">
@@ -42,12 +92,11 @@ Check your Node version with `node --version` if you are unsure.
     ```
 
     <Note>
-    There is no npm package or hosted installer yet; installing from source is
-    the supported path on your own machine. For an always-on server, use the
-    container image `ghcr.io/bitterbot-ai/bitterbot-desktop` (see
-    [Docker and always-on hosting](/platforms/docker)). On Windows, use WSL2 and
-    keep the checkout on the Linux filesystem (`~`), not `/mnt/c`; boot is
-    dramatically faster there.
+    There is no npm package yet. Without a source checkout, use the
+    [installer](/start/install-script) on a laptop or the container image on a
+    server (see [Docker (recommended install)](/platforms/docker)).
+    On Windows, use Docker Desktop, or WSL2 with the checkout on the Linux
+    filesystem (`~`), not `/mnt/c`; boot is dramatically faster there.
     </Note>
 
   </Step>
@@ -56,8 +105,11 @@ Check your Node version with `node --version` if you are unsure.
     pnpm bitterbot onboard --install-daemon
     ```
 
-    The wizard configures auth, gateway settings, and optional channels.
-    See [Onboarding Wizard](/start/wizard) for details.
+    The wizard configures auth, gateway settings, and optional channels, and
+    installs the gateway service. Without `--install-daemon`,
+    `pnpm bitterbot onboard` starts the gateway and finishes setup on a
+    setup page in your browser instead. See
+    [Onboarding Wizard](/start/wizard) for details.
 
   </Step>
   <Step title="Check the Gateway">
@@ -84,7 +136,9 @@ If the Control UI loads, your Gateway is ready for use.
 
 ## Run the Control UI
 
-The gateway serves the Control UI itself — one process, one port:
+The gateway serves the Control UI itself: one process, one port. Start it the
+way your install starts it: `docker compose up -d` (Docker), `bitterbot gateway`
+(installer), or from a source checkout:
 
 ```bash
 pnpm start gateway

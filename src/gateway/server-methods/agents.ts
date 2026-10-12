@@ -6,6 +6,7 @@ import {
   resolveAgentWorkspaceDir,
 } from "../../agents/agent-scope.js";
 import { noteGenomeWrittenByUser } from "../../agents/genome-guard.js";
+import { noteMemoryWrittenByUser } from "../../agents/memory-owner-guard.js";
 import {
   DEFAULT_GENOME_FILENAME,
   DEFAULT_HEARTBEAT_FILENAME,
@@ -479,6 +480,11 @@ export const agentsHandlers: GatewayRequestHandlers = {
       // Told to the Genome guard BEFORE the write: a tool call in flight
       // right now must find content the user saved, not undo it.
       noteGenomeWrittenByUser(filePath, content);
+    }
+    if (name === DEFAULT_MEMORY_FILENAME) {
+      // PLAN-55: the owner editing MEMORY.md (owner blocks included) is kept
+      // by the memory owner guard, even with a tool call in flight.
+      noteMemoryWrittenByUser(filePath, content);
     }
     await fs.writeFile(filePath, content, "utf-8");
     const meta = await statFile(filePath);

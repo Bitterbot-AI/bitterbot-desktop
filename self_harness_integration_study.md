@@ -221,13 +221,13 @@ The thing the brief wanted Wasm for — **bounding a runaway loop/leak from a co
 **Language note:** the PoC is **TypeScript**, not Rust/LangGraph, because that is what the harness is written in (`src/agents/skills/`). A Rust/LangGraph PoC would be unrunnable in this codebase. The node is designed to drop in beside the existing `skill-gate.ts` and reuse `replayTrace` semantics from the trace store.
 
 ```typescript
+import type { SkillExecutionTracker } from "../../memory/skill-execution-tracker";
+import { runInDocker } from "../sandbox/docker"; // existing Docker exec
+import type { InterventionStore } from "./intervention-store";
 // src/agents/skills/harness-validate.ts  (PoC — Proposal Validation node)
 // Implements the Self-Harness acceptance rule on top of the existing skill-gate.
 import { runSkillGate } from "./skill-gate"; // existing: schema+injection+diff
 import { promoteStaged } from "./skill-promote"; // existing: atomic promote+archive
-import type { InterventionStore } from "./intervention-store";
-import type { SkillExecutionTracker } from "../../memory/skill-execution-tracker";
-import { runInDocker } from "../sandbox/docker"; // existing Docker exec
 
 export interface FailureSignature {
   // Stage-1 output, persisted on the record

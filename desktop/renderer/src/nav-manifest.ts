@@ -14,6 +14,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Brain,
+  Lightbulb,
   Plug,
   Bot,
   BrainCircuit,
@@ -55,6 +56,7 @@ const NAV_MANIFEST_LITERAL = [
   { id: "skills", label: "Skills", icon: Puzzle, group: "main" },
   { id: "connectors", label: "Connectors", icon: Plug, group: "main" },
   { id: "memory", label: "Memory", icon: Brain, group: "main" },
+  { id: "curiosity", label: "Curiosity", icon: Lightbulb, group: "main" },
   { id: "cron", label: "Automations", icon: Clock, group: "main" },
   { id: "models", label: "Models & Keys", icon: KeyRound, group: "main" },
   { id: "config", label: "Settings", icon: Settings, group: "main" },

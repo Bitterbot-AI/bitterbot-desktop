@@ -95,6 +95,8 @@ describe("Agent-specific tool filtering", () => {
   it("should allow apply_patch when exec is allow-listed and applyPatch is enabled", () => {
     const cfg: BitterbotConfig = {
       tools: {
+        // Hot-set off so apply_patch is listed by name, not deferred behind use_tool.
+        hotSet: { enabled: false },
         allow: ["read", "exec"],
         exec: {
           applyPatch: { enabled: true },
@@ -128,6 +130,7 @@ describe("Agent-specific tool filtering", () => {
     try {
       const cfg: BitterbotConfig = {
         tools: {
+          hotSet: { enabled: false },
           allow: ["read", "exec"],
           exec: {
             applyPatch: { enabled: true },
@@ -175,6 +178,7 @@ describe("Agent-specific tool filtering", () => {
     try {
       const cfg: BitterbotConfig = {
         tools: {
+          hotSet: { enabled: false },
           allow: ["read", "exec"],
           exec: {
             applyPatch: { enabled: true, workspaceOnly: false },
@@ -276,6 +280,7 @@ describe("Agent-specific tool filtering", () => {
   it("should apply provider-specific tool profile overrides", () => {
     const cfg: BitterbotConfig = {
       tools: {
+        hotSet: { enabled: false },
         profile: "coding",
         byProvider: {
           "google-antigravity": {

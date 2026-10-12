@@ -8,15 +8,41 @@ title: "Windows (WSL2)"
 
 # Windows (WSL2)
 
-Bitterbot on Windows is recommended **via WSL2** (Ubuntu recommended). The
-CLI + Gateway run inside Linux, which keeps the runtime consistent and makes
-tooling far more compatible (Node/Bun/pnpm, Linux binaries, skills). Native
-Windows might be trickier. WSL2 gives you the full Linux experience — one command
-to install: `wsl --install`.
+Bitterbot on Windows runs **inside WSL2** (Ubuntu recommended). The CLI and
+the Gateway run in Linux, which keeps the runtime consistent and the tooling
+compatible (Node, Linux binaries, skills). WSL2 itself is one command:
+`wsl --install`. Without WSL2, use the [Docker](/platforms/docker) image with
+Docker Desktop.
 
-Native Windows companion apps are planned.
+A native Windows install (and a Scheduled Task to run the gateway without
+WSL) is not available yet; native companion apps are planned.
 
-## Install (WSL2)
+## Install with install.ps1 (WSL2)
+
+In PowerShell (no administrator needed):
+
+```powershell
+irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
+```
+
+The script finds your default WSL2 distribution, prints its plan, and runs the
+[Linux installer](/start/install-script) inside it. Bitterbot then lives in
+your Linux home (`~/.bitterbot`, on the ext4 filesystem); nothing on Windows
+changes. Updates afterwards are `bitterbot update` inside WSL.
+
+- No WSL distribution, or only WSL1: it prints how to enable WSL2
+  (`wsl --install`, or `wsl --set-version <name> 2`) and the Docker Desktop
+  alternative, and exits with code 2.
+- Options need the saved script: `.\install.ps1 -Version 1.6.0 -NoOnboard`,
+  `-Distro <name>`, `-Yes`, and `-WhatIf` to print the plan without running
+  anything (piped into `iex`, set `$env:BITTERBOT_INSTALL_DRY_RUN = '1'`).
+- Piped into `iex` it never closes your window or ends the script that runs
+  it, and leaves no functions or settings (`$ErrorActionPreference`, strict
+  mode) behind; its exit code is in `$LASTEXITCODE`.
+- Keep your files on the Linux side: clone a source checkout into your Linux
+  home, not under `/mnt/c` (much slower, and file watching breaks).
+
+More:
 
 - [Getting Started](/start/getting-started) (use inside WSL)
 - Official WSL2 guide (Microsoft): [https://learn.microsoft.com/windows/wsl/install](https://learn.microsoft.com/windows/wsl/install)
@@ -139,16 +165,27 @@ systemctl --user status
 
 ### 3) Install Bitterbot (inside WSL)
 
-Follow the Linux Getting Started flow inside WSL:
+WSL is Linux, so the Linux paths work inside it. The
+[installer](/start/install-script) (1.5.0 and later) is the short one; run it
+inside WSL, or run `install.ps1` from PowerShell (above), which does the same:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+```
+
+For development, use a source checkout instead (in your Linux home):
+
+```bash
+cd ~
 git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
 cd bitterbot-desktop
+bash scripts/setup-deps.sh
 pnpm install
-pnpm build # auto-installs UI deps on first run
 pnpm build
-bitterbot onboard
+pnpm bitterbot onboard --install-daemon
 ```
+
+Without WSL, run the [Docker](/platforms/docker) image with Docker Desktop.
 
 Full guide: [Getting Started](/start/getting-started)
 

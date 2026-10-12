@@ -7,17 +7,13 @@ import {
   createAssistantMessageEventStream,
   type Model,
 } from "@mariozechner/pi-ai";
-import {
-  AuthStorage,
-  createAgentSession,
-  ModelRegistry,
-  SessionManager,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
 import { afterEach, describe, expect, it } from "vitest";
 import "./test-helpers/fast-coding-tools.js";
 import { createBitterbotCodingTools } from "./agent-tools.js";
-import { sessionToolAllowlist, splitSdkTools } from "./embedded-runner/tool-split.js";
+import { AgentSession, type SessionStore } from "./runtime/session/session.js";
+import { toRuntimeTools } from "./runtime/session/tools.js";
+import { TranscriptStore } from "./runtime/transcript/store.js";
+import { guardSessionManager } from "./session-tool-result-guard-wrapper.js";
 
 const model = {
   id: "stub-model",
@@ -96,30 +92,21 @@ async function runEdit(args: Record<string, unknown>) {
   const file = path.join(workspace, "note.txt");
   fs.writeFileSync(file, "alpha beta gamma\n", "utf8");
 
-  const { customTools } = splitSdkTools({
-    tools: createBitterbotCodingTools({ workspaceDir: workspace }),
-    sandboxEnabled: false,
-  });
-  const authStorage = AuthStorage.inMemory({ anthropic: { type: "api_key", key: "test-key" } });
-  const { session } = await createAgentSession({
-    cwd: workspace,
-    agentDir: workspace,
-    authStorage,
-    modelRegistry: ModelRegistry.inMemory(authStorage),
-    model,
-    tools: sessionToolAllowlist(customTools),
-    customTools,
-    sessionManager: SessionManager.inMemory(workspace),
-    settingsManager: SettingsManager.inMemory(),
-  });
   const toolResults: string[] = [];
-  session.agent.streamFn = scriptedStream(args, toolResults);
+  const session = new AgentSession({
+    model,
+    thinkingLevel: "off",
+    systemPrompt: "edit shapes test",
+    tools: toRuntimeTools(createBitterbotCodingTools({ workspaceDir: workspace })),
+    store: guardSessionManager(TranscriptStore.inMemory(workspace)) as unknown as SessionStore,
+    streamFn: scriptedStream(args, toolResults),
+  });
   await session.prompt("edit the file");
   session.dispose();
   return { content: fs.readFileSync(file, "utf8"), toolResults };
 }
 
-describe("edit tool argument shapes through a real pi session", () => {
+describe("edit tool argument shapes through a real session", () => {
   it("accepts Claude Code style (file_path, old_string, new_string)", async () => {
     const { content, toolResults } = await runEdit({
       file_path: "note.txt",
@@ -130,12 +117,12 @@ describe("edit tool argument shapes through a real pi session", () => {
     expect(content).toBe("alpha BETA gamma\n");
   });
 
-  it("accepts the legacy pi form (path, oldText, newText)", async () => {
+  it("accepts the legacy form (path, oldText, newText)", async () => {
     const { content } = await runEdit({ path: "note.txt", oldText: "gamma", newText: "GAMMA" });
     expect(content).toBe("alpha beta GAMMA\n");
   });
 
-  it("accepts the pi 0.73 multi-edit form (path, edits[])", async () => {
+  it("accepts the multi-edit form (path, edits[])", async () => {
     const { content } = await runEdit({
       path: "note.txt",
       edits: [
@@ -146,7 +133,7 @@ describe("edit tool argument shapes through a real pi session", () => {
     expect(content).toBe("ALPHA beta GAMMA\n");
   });
 
-  it("ignores extra keys pi's strict edit schema would reject (replace_all: false)", async () => {
+  it("ignores extra keys the strict edit schema would reject (replace_all: false)", async () => {
     const { content } = await runEdit({
       file_path: "note.txt",
       old_string: "beta",

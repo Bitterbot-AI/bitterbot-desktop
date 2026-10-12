@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { readConfigFileSnapshot } from "./doctor.e2e-harness.js";
 
+// The Control UI check reports an error when no built UI is staged, which is
+// true of any checkout before `pnpm ui:build` (a fresh worktree, CI). This
+// file pins the exit-code wiring, not the build state, so stub that check.
+vi.mock("./doctor-control-ui.js", () => ({ runControlUiChecks: vi.fn(async () => {}) }));
+
 // The keystone of the update gate: doctorCommand must actually call
 // runtime.exit(1) when a check records an error-level finding. Everything
 // upstream (findings accumulator, renderSection) and downstream (update-runner

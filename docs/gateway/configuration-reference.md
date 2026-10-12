@@ -592,7 +592,8 @@ Time format in system prompt. Default: `auto` (OS preference).
 ```
 
 - `model.primary`: format `provider/model` (e.g. `anthropic/claude-opus-4-6`). If you omit the provider, Bitterbot assumes `anthropic` (deprecated).
-- `models`: the configured model catalog and allowlist for `/model`. Each entry can include `alias` (shortcut) and `params` (provider-specific: `temperature`, `maxTokens`).
+- `models`: the configured model catalog. Each entry can include `alias` (shortcut) and `params` (provider-specific: `temperature`, `maxTokens`). It is not a restriction: setting a default registers it here without forbidding other models.
+- `restrictModels` (default `false`): `true` enforces `models` as the allowlist for `/model` and session overrides (the current default is always allowed).
 - `imageModel`: only used if the primary model lacks image input.
 - `maxConcurrent`: max parallel agent runs across sessions (each session still serialized). Default: 1.
 
@@ -679,7 +680,7 @@ Periodic heartbeat runs.
   agents: {
     defaults: {
       compaction: {
-        mode: "safeguard", // default | safeguard
+        mode: "default", // "safeguard" is accepted, has no effect, and warns at load
         policy: "summary", // summary | offload (PLAN-52A; offload is flagged until its evaluation passes)
         offload: {
           toolOutputStubs: true, // stub old tool outputs mid-turn; full text stays reachable via recall_range
@@ -713,84 +714,33 @@ Periodic heartbeat runs.
 }
 ```
 
-- `mode`: `default` or `safeguard` (chunked summarization for long histories). See [Compaction](/concepts/compaction).
-- `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). The offload horizon cut runs on the `bitterbot` engine (see `agents.defaults.runtime`); on the `pi` engine the key only selects the hot-set behaviour and compaction stays an LLM summary.
+- `mode`: `default` is the only live mode. `safeguard` is still accepted so old configs parse, has no effect, warns at load and will be removed next release (`bitterbot doctor --fix` removes it). See [Compaction](/concepts/compaction).
+- `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). Under `offload` the horizon cut replaces the LLM summary as the main compaction mechanism (see [Compaction](/concepts/compaction)).
 - `offload.toolOutputStubs` (default `true`, independent of `policy`): when a turn passes the mid-turn trigger, the oldest tool outputs are replaced by a stub naming the tool call id; the transcript keeps the text and [recall_range](/tools/recall-range) returns it. Stubs persist across turns and restarts.
 - `offload.recallCrossSession`: `off` (default) keeps [recall_range](/tools/recall-range) on the current conversation; `owner` lets owner senders read other sessions of this agent.
-- `offload.*` trigger and target fractions, `minKeepUserTurns`, stub thresholds, `elideHeartbeats`, `ledgerBudgetTokens`: parameters of the offload planner (`src/agents/runtime/compaction/`). Targets must sit below their triggers; the planner clamps them otherwise. `summary` (`always` by default: a short cheap-model summary of the elided range is appended to the ledger; `idle` skips it during overflow recovery; `off` writes the ledger alone) and `summaryModel` apply on the `bitterbot` engine. `proactiveRecall` (default `true`): once part of a conversation has been offloaded, each new user message is searched against the offloaded dialogue and up to three matching excerpts are placed in front of it (no model call; skipped for heartbeats). `elideHeartbeats` (default `true`): at the offload trigger, bare heartbeat prompt-and-acknowledgement pairs are dropped from the window (they stay in the transcript). A heartbeat prompt that carried queued system events, a heartbeat turn that ran tools, and the turn that just ran are never dropped. `recallBudgetUsdPerDay` (default `1.0`): once the node's `deep_recall` spend for the UTC day reaches the agent's limit, `deep_recall` answers with a notice pointing at `recall_range`, which is free. It applies to every scope and is not enforced when the usage ledger is off.
+- `offload.*` trigger and target fractions, `minKeepUserTurns`, stub thresholds, `elideHeartbeats`, `ledgerBudgetTokens`: parameters of the offload planner (`src/agents/runtime/compaction/`). Targets must sit below their triggers; the planner clamps them otherwise. `summary` (`always` by default: a short cheap-model summary of the elided range is appended to the ledger; `idle` skips it during overflow recovery; `off` writes the ledger alone) and `summaryModel` select that summary. `proactiveRecall` (default `true`): once part of a conversation has been offloaded, each new user message is searched against the offloaded dialogue and up to three matching excerpts are placed in front of it (no model call; skipped for heartbeats). `elideHeartbeats` (default `true`): at the offload trigger, bare heartbeat prompt-and-acknowledgement pairs are dropped from the window (they stay in the transcript). A heartbeat prompt that carried queued system events, a heartbeat turn that ran tools, and the turn that just ran are never dropped. `recallBudgetUsdPerDay` (default `1.0`): once the node's `deep_recall` spend for the UTC day reaches the agent's limit, `deep_recall` answers with a notice pointing at `recall_range`, which is free. It applies to every scope and is not enforced when the usage ledger is off.
 - `memoryFlush`: silent agentic turn before auto-compaction to store durable memories. Skipped when workspace is read-only.
 - Per-agent override: `agents.list[].compaction` accepts `policy` and `offload`, layered field by field over these defaults, so one agent can run `offload` while the others stay on `summary`. The other compaction keys are global.
 
 ### `agents.defaults.runtime`
 
-Selects the agent runtime. Per-agent override: `agents.list[].runtime.engine`.
+Accepted and ignored. Every agent runs the owned runtime under `src/agents/runtime/` (transcript store, agent loop, session layer, compaction policies, model registry); see [Agent runtime](/reference/agent-runtime). The key, and its per-agent form `agents.list[].runtime.engine`, remain in the schema so configs written while the pi engine existed still parse:
 
 ```json5
 {
   agents: {
     defaults: {
-      runtime: { engine: "pi" }, // "pi" (default) | "bitterbot"
+      runtime: { engine: "bitterbot" }, // "bitterbot" | "pi" (removed; ignored with a warning)
     },
-    list: [{ id: "drill-haiku", runtime: { engine: "bitterbot" } }],
   },
 }
 ```
 
-- `pi`: the pi-coding-agent session, loop, and transcript writer.
-- `bitterbot`: the owned runtime under `src/agents/runtime/`: transcript store, agent loop, session layer (persistence, retry, overflow recovery), and compaction policy. Model transports, the model registry, and auth storage still come from pi.
-
-What changes for an agent on `bitterbot`:
-
-- Compaction summaries are requested through the same provider path as turns. On `pi` the summary call bypasses it, which is why `/compact` fails on models only the in-tree Anthropic provider handles.
-- `agents.defaults.compaction.policy: "offload"` takes effect (horizon cut with a ledger; tool-output stubs when a single turn overflows).
-- After an abort no further tool call of the batch is executed and no further model call is made.
-- A retryable provider error thrown before any response is retried like one reported in a response.
-
-Both engines read and write the same session file format, so an agent can be switched either way between turns. See [Agent runtime development](/reference/agent-runtime-dev).
+A value of `"pi"` logs one warning per process (`the pi engine was removed; <agent or agents.defaults> runs the owned runtime`) and has no other effect. The session file format did not change with the engine, so transcripts written by either engine are read the same way.
 
 ### `agents.defaults.contextPruning`
 
-Prunes **old tool results** from in-memory context before sending to the LLM. Does **not** modify session history on disk.
-
-```json5
-{
-  agents: {
-    defaults: {
-      contextPruning: {
-        mode: "cache-ttl", // off | cache-ttl
-        ttl: "1h", // duration (ms/s/m/h), default unit: minutes
-        keepLastAssistants: 3,
-        softTrimRatio: 0.3,
-        hardClearRatio: 0.5,
-        minPrunableToolChars: 50000,
-        softTrim: { maxChars: 4000, headChars: 1500, tailChars: 1500 },
-        hardClear: { enabled: true, placeholder: "[Old tool result content cleared]" },
-        tools: { deny: ["browser", "canvas"] },
-      },
-    },
-  },
-}
-```
-
-<Accordion title="cache-ttl mode behavior">
-
-- `mode: "cache-ttl"` enables pruning passes.
-- `ttl` controls how often pruning can run again (after the last cache touch).
-- Pruning soft-trims oversized tool results first, then hard-clears older tool results if needed.
-
-**Soft-trim** keeps beginning + end and inserts `...` in the middle.
-
-**Hard-clear** replaces the entire tool result with the placeholder.
-
-Notes:
-
-- Image blocks are never trimmed/cleared.
-- Ratios are character-based (approximate), not exact token counts.
-- If fewer than `keepLastAssistants` assistant messages exist, pruning is skipped.
-
-</Accordion>
-
-See [Session Pruning](/concepts/session-pruning) for behavior details.
+Accepted and has no effect. With `mode: "cache-ttl"` the runtime still appends a cache-TTL timestamp entry to the session, but nothing acts on that entry, so nothing is pruned: old tool outputs are handled by compaction (`compaction.offload.toolOutputStubs`, above). The key stays in the schema this release so existing configs parse, warns at load, and will be removed next release; `bitterbot doctor --fix` removes it. See [Session pruning](/concepts/session-pruning).
 
 ### Block streaming
 
@@ -1156,6 +1106,7 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
       rotateBytes: "10mb",
     },
     mainKey: "main", // legacy (runtime always uses "main")
+    memory: "on", // "off" = incognito: nothing from conversations is learned
     agentToAgent: { maxPingPongTurns: 5 },
     sendPolicy: {
       rules: [{ action: "deny", match: { channel: "discord", chatType: "group" } }],
@@ -1178,6 +1129,7 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
 - **`mainKey`**: legacy field. Runtime now always uses `"main"` for the main direct-chat bucket.
 - **`sendPolicy`**: match by `channel`, `chatType` (`direct|group|channel`, with legacy `dm` alias), `keyPrefix`, or `rawKeyPrefix`. First deny wins.
 - **`maintenance`**: `warn` warns the active session on eviction; `enforce` applies pruning and rotation.
+- **`memory`**: `"off"` keeps conversations out of memory: transcripts are not indexed, the session extractor does not read them, and corrections you state in chat are not captured (see [Your memory controls](/memory/controls)). Default `"on"`.
 
 </Accordion>
 
@@ -1629,7 +1581,7 @@ See also: [Agent wallet](/wallet), [Wallet funding](/wallet/wallet-funding).
 
 ## Custom providers and base URLs
 
-Bitterbot uses the pi-coding-agent model catalog. Add custom providers via `models.providers` in config or `~/.bitterbot/agents/<agentId>/agent/models.json`.
+Bitterbot uses the `@mariozechner/pi-ai` model catalog. Add custom providers via `models.providers` in config or `~/.bitterbot/agents/<agentId>/agent/models.json`.
 
 ```json5
 {
@@ -2484,7 +2436,7 @@ Metadata written by CLI wizards (`onboard`, `configure`, `doctor`):
 {
   wizard: {
     lastRunAt: "2026-01-01T00:00:00.000Z",
-    lastRunVersion: "2026.1.4",
+    lastRunVersion: "1.4.0",
     lastRunCommit: "abc1234",
     lastRunCommand: "configure",
     lastRunMode: "local",

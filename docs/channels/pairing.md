@@ -79,7 +79,7 @@ Stored under `~/.bitterbot/devices/`:
 
 - The Control UI pairs the same way. On a fresh remote gateway, bootstrap pairing
   can approve the first browser automatically; see
-  [first run from the browser](/platforms/docker#first-run-from-the-browser).
+  [first run from the browser](/platforms/docker#start-in-one-command).
 - The legacy `node.pair.*` API (CLI: `bitterbot nodes pending/approve`) is a
   separate gateway-owned pairing store. WS nodes still require device pairing.
 - The `/pair` chat command also emits a phone-ready URL alongside the iOS setup
@@ -89,7 +89,7 @@ Stored under `~/.bitterbot/devices/`:
 
 - Security model + prompt injection: [Security](/gateway/security)
 - Updating safely: run `bitterbot doctor`; for containers see
-  [Updates and rollback](/platforms/docker#updates-and-rollback)
+  [Updating](/platforms/docker#updating)
 - Channel configs:
   - Telegram: [Telegram](/channels/telegram)
   - WhatsApp: [WhatsApp](/channels/whatsapp)

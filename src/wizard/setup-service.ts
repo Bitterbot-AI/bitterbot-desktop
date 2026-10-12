@@ -1,0 +1,119 @@
+/**
+ * The "Keep running" setup step's backend (PLAN-56 Phase 4): whether a
+ * background gateway service can be installed here, and installing it.
+ *
+ * The decision mirrors the terminal QuickStart's finalize step
+ * (src/wizard/onboarding.finalize.ts): no service in a container (the image
+ * runs the gateway), none on Linux without systemd user services, nothing to
+ * do when one is already installed. The install itself is the same one
+ * `bitterbot onboard --non-interactive --install-daemon` runs, plus systemd
+ * lingering so the service survives logout.
+ */
+
+import type { BitterbotConfig } from "../config/config.js";
+import type { InstallKind } from "../infra/install-kind.js";
+
+export type SetupServiceSupport =
+  | { kind: "available"; label: string }
+  | { kind: "installed"; label: string }
+  | { kind: "unavailable"; reason: string };
+
+/** Human name of the service manager for this platform. */
+export function serviceLabelFor(platform: NodeJS.Platform): string {
+  switch (platform) {
+    case "darwin":
+      return "macOS LaunchAgent";
+    case "linux":
+      return "systemd user service";
+    case "win32":
+      return "Windows scheduled task";
+    default:
+      return "background service";
+  }
+}
+
+export async function detectSetupServiceSupport(params: {
+  installKind: InstallKind;
+  platform?: NodeJS.Platform;
+  env?: NodeJS.ProcessEnv;
+  /** Test seams. */
+  systemdAvailable?: () => Promise<boolean>;
+  isLoaded?: () => Promise<boolean>;
+}): Promise<SetupServiceSupport> {
+  const platform = params.platform ?? process.platform;
+  const env = params.env ?? process.env;
+  if (params.installKind === "container") {
+    return { kind: "unavailable", reason: "container" };
+  }
+  // Never install a real service from a test run.
+  if (!params.isLoaded && (env.VITEST || env.NODE_ENV === "test")) {
+    return { kind: "unavailable", reason: "test" };
+  }
+  if (platform !== "darwin" && platform !== "linux" && platform !== "win32") {
+    return { kind: "unavailable", reason: "platform" };
+  }
+  const label = serviceLabelFor(platform);
+  try {
+    if (platform === "linux") {
+      const available =
+        params.systemdAvailable ??
+        (async () => (await import("../daemon/systemd.js")).isSystemdUserServiceAvailable());
+      if (!(await available())) {
+        return { kind: "unavailable", reason: "no-systemd" };
+      }
+    }
+    const isLoaded =
+      params.isLoaded ??
+      (async () => {
+        const { resolveGatewayService } = await import("../daemon/service.js");
+        return resolveGatewayService().isLoaded({ env });
+      });
+    return (await isLoaded()) ? { kind: "installed", label } : { kind: "available", label };
+  } catch {
+    return { kind: "unavailable", reason: "probe-failed" };
+  }
+}
+
+export type SetupServiceInstallResult =
+  | { ok: true; label: string }
+  | { ok: false; label: string; error: string };
+
+/** Install (and start) the gateway service for `config`. Never throws. */
+export async function installSetupGatewayService(params: {
+  config: BitterbotConfig;
+  port: number;
+  env?: NodeJS.ProcessEnv;
+}): Promise<SetupServiceInstallResult> {
+  const env = params.env ?? process.env;
+  const label = serviceLabelFor(process.platform);
+  try {
+    const { resolveGatewayService } = await import("../daemon/service.js");
+    const { buildGatewayInstallPlan } = await import("../commands/daemon-install-helpers.js");
+    const { DEFAULT_GATEWAY_DAEMON_RUNTIME } = await import("../commands/daemon-runtime.js");
+    const { ensureSystemdUserLingerNonInteractive } = await import("../commands/systemd-linger.js");
+    const { Writable } = await import("node:stream");
+    const sink = new Writable({ write: (_chunk, _enc, cb) => cb() });
+    const quiet = {
+      log: () => {},
+      error: () => {},
+      exit: (code: number) => {
+        throw new Error(`exit ${code}`);
+      },
+    };
+    const service = resolveGatewayService();
+    const token = params.config.gateway?.auth?.token;
+    const { programArguments, workingDirectory, environment } = await buildGatewayInstallPlan({
+      env,
+      port: params.port,
+      token: typeof token === "string" ? token : undefined,
+      runtime: DEFAULT_GATEWAY_DAEMON_RUNTIME,
+      warn: () => {},
+      config: params.config,
+    });
+    await service.install({ env, stdout: sink, programArguments, workingDirectory, environment });
+    await ensureSystemdUserLingerNonInteractive({ runtime: quiet, env });
+    return { ok: true, label };
+  } catch (err) {
+    return { ok: false, label, error: err instanceof Error ? err.message : String(err) };
+  }
+}

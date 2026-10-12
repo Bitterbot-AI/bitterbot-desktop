@@ -115,8 +115,10 @@ const PI_AI_0_52_12_GOLDEN = JSON.parse(
  * Wire-format changes pi-ai made to its Anthropic provider after 0.52.12 that
  * the in-tree provider has not adopted: eager_input_streaming on every tool, a
  * cache breakpoint on the last tool (ours places markers itself), thinking
- * `display: "summarized"`, an explicit thinking {type: "disabled"}, and no
- * `temperature` alongside thinking. Normalize both sides to compare the rest.
+ * `display: "summarized"`, and an explicit thinking {type: "disabled"}. (No
+ * `temperature` alongside thinking is a delta the in-tree provider adopted on
+ * 2026-10-08; see the temperature tests below.) Normalize both sides to
+ * compare the rest.
  */
 function stripKnownPiAiDrift(json: string): string {
   const body = JSON.parse(json) as AnthropicRequestParams & {
@@ -162,7 +164,13 @@ describe("byte-level parity with vendored pi-ai 0.52.12", () => {
       plan: NO_SEARCH,
       cacheControl,
     });
-    expect(JSON.stringify(native)).toBe(vendored);
+    // Documented divergence (2026-10-08): 0.52.12 sent `temperature` alongside
+    // thinking, which the API now rejects; the golden keeps the capture as-is
+    // and the one key we drop is removed here.
+    const expected = JSON.parse(vendored) as { temperature?: number };
+    expect(expected.temperature).toBe(0.2);
+    delete expected.temperature;
+    expect(JSON.stringify(native)).toBe(JSON.stringify(expected));
   });
 
   it("streamSimpleAnthropic: identical option derivation for budget-based thinking (Haiku 4.5)", () => {
@@ -270,6 +278,58 @@ describe("byte-level parity with vendored pi-ai 0.52.12", () => {
     });
     expect(native.thinking).toEqual({ type: "adaptive" });
     expect(native.output_config).toEqual({ effort: "high" });
+  });
+
+  describe("documented divergence: temperature is dropped when the API would 400 on it", () => {
+    const build = (modelId: string, options: Record<string, unknown>) => {
+      const model = makeModel({ id: modelId });
+      const providerOptions = resolveProviderOptions(model, options as never, "sk-test");
+      return buildParams(model, richContext(modelId), false, providerOptions, {
+        plan: NO_SEARCH,
+        cacheControl: undefined,
+      }) as AnthropicRequestParams & { temperature?: number };
+    };
+
+    it("models up to Opus 4.6 keep temperature when thinking is off (vendored behaviour)", () => {
+      expect(build("claude-opus-4-6", { apiKey: "sk-test", temperature: 0.2 }).temperature).toBe(
+        0.2,
+      );
+      expect(build("claude-haiku-4-5", { apiKey: "sk-test", temperature: 0.7 }).temperature).toBe(
+        0.7,
+      );
+    });
+
+    it("thinking enabled drops temperature on every model (the API rejects the pair)", () => {
+      const haiku = build("claude-haiku-4-5", {
+        apiKey: "sk-test",
+        reasoning: "medium",
+        temperature: 0.2,
+      });
+      expect(haiku.thinking).toMatchObject({ type: "enabled" });
+      expect(haiku.temperature).toBeUndefined();
+      const opus = build("claude-opus-4-6", {
+        apiKey: "sk-test",
+        reasoning: "high",
+        temperature: 0.2,
+      });
+      expect(opus.thinking).toEqual({ type: "adaptive" });
+      expect(opus.temperature).toBeUndefined();
+    });
+
+    it("models after Opus 4.6 drop temperature entirely, thinking or not (Opus 4.7+ rejects every value)", () => {
+      for (const modelId of ["claude-opus-4-8", "claude-sonnet-5", "claude-fable-5-1"]) {
+        for (const temperature of [0.2, 1]) {
+          expect(
+            build(modelId, { apiKey: "sk-test", temperature }).temperature,
+            `${modelId} t=${temperature}`,
+          ).toBeUndefined();
+        }
+      }
+    });
+
+    it("no temperature in, no temperature out (nothing is invented)", () => {
+      expect("temperature" in build("claude-opus-4-8", { apiKey: "sk-test" })).toBe(false);
+    });
   });
 });
 

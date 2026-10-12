@@ -20,6 +20,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { VERSION } from "../version.js";
 
 // 1×1 transparent PNG so /m/avatar.png still answers if the docs/public
 // asset is missing in some installation layout.
@@ -833,7 +834,7 @@ function connect() {
       type: "req", id, method: "connect",
       params: {
         minProtocol: 3, maxProtocol: 3,
-        client: { id: "webchat-ui", version: "1.0.0", platform: "browser", mode: "ui" },
+        client: { id: "webchat-ui", version: ${JSON.stringify(VERSION)}, platform: "browser", mode: "ui" },
         role: "operator",
         scopes: ["operator.read", "operator.admin"],
         auth: TOKEN ? { token: TOKEN } : undefined,

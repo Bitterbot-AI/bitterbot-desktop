@@ -63,3 +63,38 @@ describe("research findings in the system prompt (PLAN-34 Phase 2b)", () => {
     expect(prompt).not.toContain("## Research Findings");
   });
 });
+
+/**
+ * PLAN-55 Phase 1: the Memory section names memory_pin as THE tool for
+ * corrections and settled facts; working_memory_note is scratch.
+ */
+describe("memory_pin in the Memory section", () => {
+  const tools = ["memory_search", "memory_get", "memory_pin", "working_memory_note"];
+
+  it("lists memory_pin for corrections, with evidence and scope, when the tool is available", () => {
+    const prompt = buildAgentSystemPrompt({ workspaceDir: "/tmp/bitterbot", toolNames: tools });
+    expect(prompt).toMatch(/`memory_pin`: THE tool for corrections and settled facts/);
+    expect(prompt).toContain("evidence: their words quoted");
+    expect(prompt).toContain("scope: global | project:<name> | person:<name>");
+    expect(prompt).toContain("held for the owner's confirmation");
+    expect(prompt).toMatch(/`working_memory_note`: scratch/);
+    expect(prompt).toContain("Not for corrections or settled facts: those go to `memory_pin`.");
+    expect(prompt).not.toMatch(
+      /working_memory_note`: persist anything worth keeping \(user facts, decisions, preferences, corrections/,
+    );
+  });
+
+  it("omits the memory_pin line when the ledger tool is not available", () => {
+    const prompt = buildAgentSystemPrompt({
+      workspaceDir: "/tmp/bitterbot",
+      toolNames: ["memory_search", "memory_get", "working_memory_note"],
+    });
+    expect(prompt).not.toContain("`memory_pin`: THE tool");
+    // Without the ledger tool, working_memory_note is still the place for
+    // corrections: the prompt never points at a tool the model cannot see.
+    expect(prompt).not.toMatch(/`working_memory_note`: scratch/);
+    expect(prompt).toMatch(
+      /`working_memory_note`: persist anything worth keeping \(user facts, decisions, preferences, corrections/,
+    );
+  });
+});

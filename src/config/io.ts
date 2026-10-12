@@ -41,6 +41,7 @@ import { applyMergePatch } from "./merge-patch.js";
 import { normalizeConfigPaths } from "./normalize-paths.js";
 import { resolveConfigPath, resolveDefaultConfigCandidates, resolveStateDir } from "./paths.js";
 import { applyConfigOverrides } from "./runtime-overrides.js";
+import { DEPRECATED_ONLY_WHEN, DEPRECATED_PATHS } from "./schema.defaults.js";
 import type { BitterbotConfig, ConfigFileSnapshot, LegacyConfigIssue } from "./types.js";
 import {
   validateConfigObjectRawWithPlugins,
@@ -211,11 +212,43 @@ function createMergePatch(base: unknown, target: unknown): unknown {
       patch[key] = childPatch;
       continue;
     }
-    if (!isDeepStrictEqual(baseValue, targetValue)) {
+    if (!configValuesEqual(baseValue, targetValue)) {
       patch[key] = cloneUnknown(targetValue);
     }
   }
   return patch;
+}
+
+/**
+ * Structural equality for config values (JSON data). Unlike
+ * isDeepStrictEqual it ignores prototypes, so an array or object made in
+ * another realm (structuredClone under a vm context, a worker's message)
+ * still equals its same-realm twin. With isDeepStrictEqual such a clone of
+ * the loaded config differed from the snapshot at every array, and a write
+ * froze those arrays (the fallback p2p.bootstrapPeers) into the file
+ * (drift-pass review HIGH-2).
+ */
+export function configValuesEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    return a.every((item, index) => configValuesEqual(item, b[index]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) {
+      return false;
+    }
+    const bRecord = b as Record<string, unknown>;
+    const aRecord = a as Record<string, unknown>;
+    return aKeys.every((key) => key in bRecord && configValuesEqual(aRecord[key], bRecord[key]));
+  }
+  return false;
 }
 
 function collectEnvRefPaths(value: unknown, path: string, output: Map<string, string>): void {
@@ -271,7 +304,7 @@ function collectChangedPaths(
     }
     return;
   }
-  if (!isDeepStrictEqual(base, target)) {
+  if (!configValuesEqual(base, target)) {
     output.add(path);
   }
 }
@@ -417,6 +450,104 @@ function warnOnConfigMiskeys(raw: unknown, logger: Pick<typeof console, "warn">)
   }
 }
 
+function readAtDottedPath(obj: unknown, path: string): unknown {
+  let cur: unknown = obj;
+  for (const part of path.split(".")) {
+    if (!cur || typeof cur !== "object") {
+      return undefined;
+    }
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+/**
+ * Resolve a registry path (`a.b`, `a.list[].b`) against a config object and
+ * return every value present. `[]` fans out over array elements.
+ */
+function collectAtRegistryPath(
+  obj: unknown,
+  path: string,
+): Array<{ path: string; value: unknown }> {
+  const idx = path.indexOf("[]");
+  if (idx === -1) {
+    const value = readAtDottedPath(obj, path);
+    return value === undefined ? [] : [{ path, value }];
+  }
+  const head = path.slice(0, idx);
+  const tail = path.slice(idx + 2).replace(/^\./, "");
+  const list = readAtDottedPath(obj, head);
+  if (!Array.isArray(list)) {
+    return [];
+  }
+  const out: Array<{ path: string; value: unknown }> = [];
+  list.forEach((item, i) => {
+    for (const hit of collectAtRegistryPath(item, tail)) {
+      out.push({ path: `${head}[${i}].${hit.path}`, value: hit.value });
+    }
+  });
+  return out;
+}
+
+const warnedDeprecatedKeys = new Set<string>();
+
+/** @internal */
+export function resetDeprecatedConfigWarningsForTests(): void {
+  warnedDeprecatedKeys.clear();
+}
+
+/**
+ * Every deprecated key present in `raw` (DEPRECATED_PATHS), with its concrete
+ * path (`agents.list[1].runtime.engine`), value and reason. Keys in
+ * DEPRECATED_ONLY_WHEN count only for the listed value. Shared by the load
+ * warning and `bitterbot doctor`.
+ */
+export function findDeprecatedConfigKeys(
+  raw: unknown,
+): Array<{ path: string; value: unknown; reason: string }> {
+  if (!raw || typeof raw !== "object") {
+    return [];
+  }
+  const found: Array<{ path: string; value: unknown; reason: string }> = [];
+  for (const [registryPath, reason] of Object.entries(DEPRECATED_PATHS)) {
+    for (const hit of collectAtRegistryPath(raw, registryPath)) {
+      if (
+        registryPath in DEPRECATED_ONLY_WHEN &&
+        !isDeepStrictEqual(hit.value, DEPRECATED_ONLY_WHEN[registryPath])
+      ) {
+        continue;
+      }
+      found.push({ path: hit.path, value: hit.value, reason });
+    }
+  }
+  return found;
+}
+
+/**
+ * PLAN-56 Phase 1: warn once per process for every deprecated key present in
+ * the config (DEPRECATED_PATHS). Keys in DEPRECATED_ONLY_WHEN warn only for
+ * the listed value. The schema keeps accepting them this release.
+ */
+export function warnOnDeprecatedConfigKeys(
+  raw: unknown,
+  logger: Pick<typeof console, "warn">,
+  options?: { once?: boolean },
+): string[] {
+  const once = options?.once ?? true;
+  const warned: string[] = [];
+  for (const hit of findDeprecatedConfigKeys(raw)) {
+    if (once) {
+      if (warnedDeprecatedKeys.has(hit.path)) {
+        continue;
+      }
+      warnedDeprecatedKeys.add(hit.path);
+    }
+    logger.warn(`Config key "${hit.path}" is deprecated: ${hit.reason}`);
+    warned.push(hit.path);
+  }
+  return warned;
+}
+
 function stampConfigVersion(cfg: BitterbotConfig): BitterbotConfig {
   const now = new Date().toISOString();
   return {
@@ -521,6 +652,112 @@ type ReadConfigFileSnapshotInternalResult = {
   envSnapshotForRestore?: Record<string, string | undefined>;
 };
 
+/**
+ * The load-time defaults chain shared by loadConfig() and the missing-file
+ * snapshot. Returns a new object with paths normalised.
+ */
+function applyLoadTimeDefaults(validated: BitterbotConfig): BitterbotConfig {
+  const cfg = applyA2aDefaults(
+    applyP2pDefaults(
+      applyModelDefaults(
+        applyCompactionDefaults(
+          applyContextPruningDefaults(
+            applyAgentDefaults(
+              applySessionDefaults(
+                applyLoggingDefaults(applyMessageDefaults(applyCirclesDefaults(validated))),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  normalizeConfigPaths(cfg);
+  return cfg;
+}
+
+/**
+ * Remove, in place, every value of `candidate` that the file does not hold
+ * (`raw`) and that equals what the load-time defaults supply for that file
+ * (`defaults`). Objects are walked so a partially customised defaulted block
+ * keeps only the customised keys. An object emptied by the walk goes too,
+ * unless the file had it.
+ */
+function stripLoadTimeDefaultsInPlace(
+  candidate: Record<string, unknown>,
+  raw: unknown,
+  defaults: unknown,
+): void {
+  if (!isPlainObject(defaults)) {
+    return;
+  }
+  const rawObj = isPlainObject(raw) ? raw : undefined;
+  for (const key of Object.keys(candidate)) {
+    if (!(key in defaults)) {
+      continue;
+    }
+    const inFile = rawObj !== undefined && key in rawObj;
+    const value = candidate[key];
+    const defaultValue = defaults[key];
+    if (!inFile && configValuesEqual(value, defaultValue)) {
+      delete candidate[key];
+      continue;
+    }
+    if (isPlainObject(value) && isPlainObject(defaultValue)) {
+      stripLoadTimeDefaultsInPlace(value, inFile ? rawObj?.[key] : undefined, defaultValue);
+      if (!inFile && Object.keys(value).length === 0) {
+        delete candidate[key];
+      }
+    }
+  }
+}
+
+/**
+ * Drift-pass review HIGH-2: a write must never persist a value that exists
+ * only because the load-time defaults (applyLoadTimeDefaults: bootstrap
+ * peers, compaction/context-pruning modes, a2a caps, circles, ...) put it into
+ * the loaded config. Whatever path built the candidate (merge patch against
+ * the snapshot, a missing file, an invalid snapshot written best-effort), a
+ * value absent from the file that equals the default for that file is
+ * dropped. A value the caller changed differs from the default and stays; a
+ * caller "setting" a key to exactly its default is indistinguishable from
+ * the default and is not written (the effective config is the same).
+ */
+export function stripLoadTimeDefaults(candidate: unknown, fileRaw: unknown): unknown {
+  if (!isPlainObject(candidate)) {
+    return candidate;
+  }
+  const base = isPlainObject(fileRaw) ? (structuredClone(fileRaw) as BitterbotConfig) : {};
+  let defaults: unknown;
+  try {
+    defaults = applyLoadTimeDefaults(base);
+  } catch {
+    return candidate;
+  }
+  const out = structuredClone(candidate);
+  stripLoadTimeDefaultsInPlace(out, fileRaw, defaults);
+  return out;
+}
+
+/**
+ * Drop, in place, every key of `validated` that `candidate` does not have:
+ * schema validation may normalise values but must not add keys (zod
+ * `.default()`s such as `commands.native`, plugin schema defaults) to what is
+ * written. Walks plain objects only.
+ */
+function dropKeysAddedByValidation(validated: unknown, candidate: unknown): void {
+  if (!isPlainObject(validated) || !isPlainObject(candidate)) {
+    return;
+  }
+  for (const key of Object.keys(validated)) {
+    if (!(key in candidate)) {
+      delete validated[key];
+      continue;
+    }
+    dropKeysAddedByValidation(validated[key], candidate[key]);
+  }
+}
+
 export function createConfigIO(overrides: ConfigIoDeps = {}) {
   const deps = normalizeDeps(overrides);
   const requestedConfigPath = resolveConfigPathForDeps(deps);
@@ -533,25 +770,23 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
   function loadConfig(): BitterbotConfig {
     try {
       maybeLoadDotEnvForConfig(deps.env);
-      if (!deps.fs.existsSync(configPath)) {
-        if (shouldEnableShellEnvFallback(deps.env) && !shouldDeferShellEnvFallback(deps.env)) {
-          loadShellEnvFallback({
-            enabled: true,
-            env: deps.env,
-            expectedKeys: SHELL_ENV_EXPECTED_KEYS,
-            logger: deps.logger,
-            timeoutMs: resolveShellEnvFallbackTimeoutMs(deps.env),
-          });
-        }
-        return {};
+      // PLAN-56 Phase 2: a missing file loads exactly like an empty `{}` file,
+      // through the same validation and apply*Defaults chain. It used to
+      // return a bare `{}`, so an unconfigured container silently ran with no
+      // P2P, circles or model defaults. "Not configured" detection (wizard,
+      // `gateway --allow-unconfigured`, doctor, onboard) keys off the FILE
+      // (readConfigFileSnapshot().exists / fs.existsSync), never this object.
+      let resolvedConfig: unknown = {};
+      if (deps.fs.existsSync(configPath)) {
+        const raw = deps.fs.readFileSync(configPath, "utf-8");
+        const parsed = deps.json5.parse(raw);
+        resolvedConfig = resolveConfigForRead(
+          resolveConfigIncludesForRead(parsed, configPath, deps),
+          deps.env,
+        ).resolvedConfigRaw;
+        warnOnConfigMiskeys(resolvedConfig, deps.logger);
+        warnOnDeprecatedConfigKeys(resolvedConfig, deps.logger);
       }
-      const raw = deps.fs.readFileSync(configPath, "utf-8");
-      const parsed = deps.json5.parse(raw);
-      const { resolvedConfigRaw: resolvedConfig } = resolveConfigForRead(
-        resolveConfigIncludesForRead(parsed, configPath, deps),
-        deps.env,
-      );
-      warnOnConfigMiskeys(resolvedConfig, deps.logger);
       if (typeof resolvedConfig !== "object" || resolvedConfig === null) {
         return {};
       }
@@ -583,24 +818,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         deps.logger.warn(`Config warnings:\\n${details}`);
       }
       warnIfConfigFromFuture(validated.config, deps.logger);
-      const cfg = applyA2aDefaults(
-        applyP2pDefaults(
-          applyModelDefaults(
-            applyCompactionDefaults(
-              applyContextPruningDefaults(
-                applyAgentDefaults(
-                  applySessionDefaults(
-                    applyLoggingDefaults(
-                      applyMessageDefaults(applyCirclesDefaults(validated.config)),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-      normalizeConfigPaths(cfg);
+      const cfg = applyLoadTimeDefaults(validated.config);
 
       const duplicates = findDuplicateAgentDirs(cfg, {
         env: deps.env,
@@ -643,20 +861,13 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     const exists = deps.fs.existsSync(configPath);
     if (!exists) {
       const hash = hashConfigRaw(null);
+      // PLAN-56 Phase 2: exactly what loadConfig() returns for a missing file
+      // (validation + the same defaults chain + path normalisation), so a
+      // write computes its merge patch against the same baseline the caller
+      // started from and persists only the caller's changes.
+      const validatedEmpty = validateConfigObjectWithPlugins({});
       const config = applyTalkApiKey(
-        applyA2aDefaults(
-          applyP2pDefaults(
-            applyModelDefaults(
-              applyCompactionDefaults(
-                applyContextPruningDefaults(
-                  applyAgentDefaults(
-                    applySessionDefaults(applyMessageDefaults(applyCirclesDefaults({}))),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        applyLoadTimeDefaults(validatedEmpty.ok ? validatedEmpty.config : {}),
       );
       const legacyIssues: LegacyConfigIssue[] = [];
       return {
@@ -782,23 +993,10 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
           // for config set/unset operations (issue #6070)
           resolved: coerceConfig(resolvedConfigRaw),
           valid: true,
-          config: normalizeConfigPaths(
-            applyTalkApiKey(
-              applyA2aDefaults(
-                applyP2pDefaults(
-                  applyModelDefaults(
-                    applyAgentDefaults(
-                      applySessionDefaults(
-                        applyLoggingDefaults(
-                          applyMessageDefaults(applyCirclesDefaults(validated.config)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          // The same chain as loadConfig() (it used to skip the compaction
+          // and context-pruning defaults, so a loadConfig() -> write froze
+          // them into the file), plus the talk API key.
+          config: normalizeConfigPaths(applyTalkApiKey(applyLoadTimeDefaults(validated.config))),
           hash,
           issues: [],
           warnings: validated.warnings,
@@ -847,6 +1045,14 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     const { snapshot } = await readConfigFileSnapshotInternal();
     let envRefMap: Map<string, string> | null = null;
     let changedPaths: Set<string> | null = null;
+    if (snapshot.valid && !snapshot.exists) {
+      // PLAN-56 Phase 2: a missing file loads with every load-time default
+      // applied, so a caller's loadConfig() -> mutate -> write would
+      // otherwise freeze all of them (bootstrap peers, mailbox URL, a2a caps,
+      // ...) into the new file. Diff against that baseline and write only
+      // what the caller changed.
+      persistCandidate = applyMergePatch({}, createMergePatch(snapshot.config, cfg));
+    }
     if (snapshot.valid && snapshot.exists) {
       const patch = createMergePatch(snapshot.config, cfg);
       persistCandidate = applyMergePatch(snapshot.resolved, patch);
@@ -866,6 +1072,11 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         envRefMap = null;
       }
     }
+
+    persistCandidate = stripLoadTimeDefaults(
+      persistCandidate,
+      snapshot.exists ? snapshot.resolved : {},
+    );
 
     const validated = validateConfigObjectRawWithPlugins(persistCandidate);
     if (!validated.ok) {
@@ -890,6 +1101,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
     // Apply env restoration to validated.config (which has runtime defaults stripped
     // per issue #6070) rather than the raw caller input.
     let cfgToWrite = validated.config;
+    dropKeysAddedByValidation(cfgToWrite, persistCandidate);
     try {
       if (deps.fs.existsSync(configPath)) {
         const currentRaw = await deps.fs.promises.readFile(configPath, "utf-8");
@@ -1142,6 +1354,19 @@ export function loadConfig(): BitterbotConfig {
     }
   }
   return config;
+}
+
+/**
+ * Whether a config FILE exists (PLAN-56 Phase 2). loadConfig() applies the
+ * load-time defaults for a missing file too, so "is this node configured"
+ * must ask the filesystem, never the loaded object.
+ */
+export function configFileExists(): boolean {
+  try {
+    return fs.existsSync(createConfigIO().configPath);
+  } catch {
+    return false;
+  }
 }
 
 export async function readConfigFileSnapshot(): Promise<ConfigFileSnapshot> {

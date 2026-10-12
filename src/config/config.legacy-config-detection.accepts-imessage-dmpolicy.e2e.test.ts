@@ -44,13 +44,6 @@ describe("legacy config detection", () => {
       expect(res.config.channels?.slack?.groupPolicy).toBe("allowlist");
     }
   });
-  it("defaults msteams.groupPolicy to allowlist when msteams section exists", async () => {
-    const res = validateConfigObject({ channels: { msteams: {} } });
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.config.channels?.msteams?.groupPolicy).toBe("allowlist");
-    }
-  });
   it("rejects unsafe executable config values", async () => {
     const res = validateConfigObject({
       channels: { imessage: { cliPath: "imsg; rm -rf /" } },

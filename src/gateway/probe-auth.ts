@@ -15,18 +15,22 @@ export function resolveGatewayProbeAuth(params: {
       ? typeof remote?.token === "string" && remote.token.trim()
         ? remote.token.trim()
         : undefined
-      : env.BITTERBOT_GATEWAY_TOKEN?.trim() ||
-        (typeof authToken === "string" && authToken.trim() ? authToken.trim() : undefined);
+      : // Local: config first, then env, like the server (resolveGatewayAuth).
+        (typeof authToken === "string" && authToken.trim() ? authToken.trim() : undefined) ||
+        env.BITTERBOT_GATEWAY_TOKEN?.trim() ||
+        undefined;
 
   const password =
-    env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
-    (params.mode === "remote"
-      ? typeof remote?.password === "string" && remote.password.trim()
-        ? remote.password.trim()
-        : undefined
-      : typeof authPassword === "string" && authPassword.trim()
-        ? authPassword.trim()
-        : undefined);
+    params.mode === "remote"
+      ? env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
+        (typeof remote?.password === "string" && remote.password.trim()
+          ? remote.password.trim()
+          : undefined)
+      : (typeof authPassword === "string" && authPassword.trim()
+          ? authPassword.trim()
+          : undefined) ||
+        env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
+        undefined;
 
   return { token, password };
 }

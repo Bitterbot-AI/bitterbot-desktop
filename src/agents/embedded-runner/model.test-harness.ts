@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { discoverModels } from "../runtime/engines/pi/model-discovery.js";
+import { discoverModels } from "../runtime/models/index.js";
 
 export const makeModel = (id: string) => ({
   id,

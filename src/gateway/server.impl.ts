@@ -60,7 +60,7 @@ import { startHormonalAccessor } from "../tasks/hormonal-accessor.js";
 import { registerJudgeFromConfig } from "../tasks/judge-provider.js";
 import { startTaskStallSweep } from "../tasks/stall-sweep.js";
 import { startTaskStore } from "../tasks/store.js";
-import { runOnboardingWizard } from "../wizard/onboarding.js";
+import { VERSION } from "../version.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
 import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
@@ -379,7 +379,8 @@ export async function startGatewayServer(
     ? createAuthRateLimiter(rateLimitConfig)
     : undefined;
 
-  const wizardRunner = opts.wizardRunner ?? runOnboardingWizard;
+  // Unset: wizard.* runs the setup step model (PLAN-56 Phase 4).
+  const wizardRunner = opts.wizardRunner;
   const { wizardSessions, findRunningWizard, purgeWizardSession } = createWizardSessionTracker();
 
   const deps = createDefaultDeps();
@@ -712,7 +713,9 @@ export async function startGatewayServer(
   // beacon. A healthy boot erases it so doctor never flags a phantom failure;
   // a boot that never reaches this point leaves it for doctor to surface.
   if (!minimalTestGateway) {
-    confirmBootHealthy();
+    // With our version: a tarball update's beacon only clears for the
+    // version it expects (PLAN-56 Phase 3b).
+    confirmBootHealthy(VERSION);
   }
   const stopUpdateCheck = minimalTestGateway
     ? null

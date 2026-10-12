@@ -19,7 +19,6 @@ export {
 } from "./embedded-runner/runs.js";
 export { buildEmbeddedSandboxInfo } from "./embedded-runner/sandbox-info.js";
 export { createSystemPromptOverride } from "./embedded-runner/system-prompt.js";
-export { sessionToolAllowlist, splitSdkTools } from "./embedded-runner/tool-split.js";
 export type {
   EmbeddedPiAgentMeta,
   EmbeddedPiCompactResult,
