@@ -491,11 +491,69 @@ describe("memory cli owner controls (PLAN-55 Phase 3)", () => {
     const { out } = await run(["import", file, "--dry-run"], m);
     expect(m.ownerImportMemories).toHaveBeenCalledWith(
       { version: 2, memories: [] },
-      { dryRun: true, actor: "owner" },
+      { dryRun: true, actor: "owner", keepOwnerTier: false, confirmOwnerTierGrants: undefined },
     );
     expect(out).toContain("Dry run, nothing written.");
     expect(out).toContain("Memories: imported 2");
     await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  async function exportFile(): Promise<{ file: string; cleanup: () => Promise<void> }> {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mem-import-cli-"));
+    const file = path.join(dir, "export.json");
+    await fs.writeFile(file, JSON.stringify({ version: 2, memories: [] }));
+    return { file, cleanup: () => fs.rm(dir, { recursive: true, force: true }) };
+  }
+
+  it("--keep-owner-tier without a terminal and without --yes refuses (rule C)", async () => {
+    const { file, cleanup } = await exportFile();
+    const m = ownerManager({
+      ownerImportMemories: vi.fn(async (_i: unknown, opts?: { dryRun?: boolean }) => ({
+        dryRun: Boolean(opts?.dryRun),
+        ownerTierGrants: 2,
+        memories: {},
+        facts: {},
+        preferences: {},
+      })),
+    });
+    const { out, err } = await run(["import", file, "--keep-owner-tier"], m);
+    expect(out).toContain(
+      "This will give 2 facts owner authority (they will override the agent and win every conflict)",
+    );
+    expect(err).toContain("--yes");
+    expect(m.ownerImportMemories).toHaveBeenCalledTimes(1);
+    expect(m.ownerImportMemories).toHaveBeenCalledWith(expect.anything(), {
+      dryRun: true,
+      actor: "owner",
+      keepOwnerTier: true,
+    });
+    expect(process.exitCode).toBe(1);
+    await cleanup();
+  });
+
+  it("--keep-owner-tier --yes applies with the dry run's count", async () => {
+    const { file, cleanup } = await exportFile();
+    const m = ownerManager({
+      ownerImportMemories: vi.fn(async (_i: unknown, opts?: { dryRun?: boolean }) => ({
+        dryRun: Boolean(opts?.dryRun),
+        ownerTierGrants: 2,
+        memories: {},
+        facts: {},
+        preferences: {},
+      })),
+    });
+    const { out } = await run(["import", file, "--keep-owner-tier", "--yes"], m);
+    expect(m.ownerImportMemories).toHaveBeenLastCalledWith(expect.anything(), {
+      dryRun: false,
+      actor: "owner",
+      keepOwnerTier: true,
+      confirmOwnerTierGrants: 2,
+    });
+    expect(out).toContain("Owner-tier grants: 2");
+    await cleanup();
   });
 
   it("import of a missing file fails cleanly", async () => {

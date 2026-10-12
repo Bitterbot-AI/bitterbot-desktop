@@ -6285,11 +6285,21 @@ export class MemoryIndexManager implements MemorySearchManager {
    * Restore a memory export (v1 or v2; memory-import.ts has the rules).
    * Imported memories are re-embedded in the background afterwards.
    */
-  async ownerImportMemories(input: unknown, opts: { dryRun?: boolean; actor?: ImportActor } = {}) {
+  async ownerImportMemories(
+    input: unknown,
+    opts: {
+      dryRun?: boolean;
+      actor?: ImportActor;
+      keepOwnerTier?: boolean;
+      confirmOwnerTierGrants?: number;
+    } = {},
+  ) {
     const result = await this.ownerChange("import", () =>
       importMemories(this.db, input, {
         actor: opts.actor ?? "owner",
         dryRun: opts.dryRun,
+        keepOwnerTier: opts.keepOwnerTier,
+        confirmOwnerTierGrants: opts.confirmOwnerTierGrants,
         store: this.canonicalFactsStore,
         tables: this.ownerIndexTables(),
       }),

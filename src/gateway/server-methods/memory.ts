@@ -293,7 +293,10 @@ export const memoryHandlers: GatewayRequestHandlers = {
    * `data` is the export (an object, or its JSON text); `dryRun: true`
    * returns the counts without writing. Suppressions win, duplicates are
    * skipped, and imported facts never outrank what is already there
-   * (memory-import.ts).
+   * (memory-import.ts). Facts that were owner-tier in the export import
+   * below it (listed as `ownerFactsUnconfirmed`) unless `keepOwnerTier:
+   * true` comes with `confirmOwnerTierGrants` equal to the dry run's
+   * `ownerTierGrants`.
    */
   "memory.import": async ({ params, respond }) => {
     try {
@@ -307,6 +310,13 @@ export const memoryHandlers: GatewayRequestHandlers = {
         await m.ownerImportMemories(parseMemoryExport(params.data), {
           dryRun: params.dryRun === true,
           actor: "owner",
+          // Rule C: owner-tier facts import below the owner tier unless the
+          // owner opts in and confirms the dry run's grant count.
+          keepOwnerTier: params.keepOwnerTier === true,
+          confirmOwnerTierGrants:
+            typeof params.confirmOwnerTierGrants === "number"
+              ? params.confirmOwnerTierGrants
+              : undefined,
         }),
       );
     } catch (err) {

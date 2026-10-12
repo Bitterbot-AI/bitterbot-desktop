@@ -18,11 +18,18 @@
  * 3. Dedupe. A memory whose id or exact text already exists, a fact whose
  *    key already holds the same value, a preference whose category/key
  *    already exists: `duplicate`.
- * 4. Trust tier. Imported facts are written with source `import` (tier 1,
- *    the extraction tier). A fact keeps the `owner` tier only when it was
- *    `owner` (or its alias `user_directive`) in the export AND the import is
- *    owner-initiated (`actor: "owner"`, which the admin-scoped RPC and the
- *    CLI pass). An imported fact never replaces an active fact of a higher
+ * 4. Trust tier (Victor's rule C). Imported facts are written with source
+ *    `import` (tier 1, the extraction tier). By default NO fact gets the
+ *    owner tier: a fact that was `owner` (or `user_directive`) in the export
+ *    is imported at tier 1 and listed in `ownerFactsUnconfirmed` (the audit
+ *    entry records it with `exportedTier: "owner"`); the owner confirms one
+ *    by pinning it (`memory.pinFact`). A hand-edited or third-party export
+ *    must not carry owner authority by accident. Opt-in: `keepOwnerTier`
+ *    with an owner-initiated import (`actor: "owner"`) writes those facts at
+ *    the owner tier, and only when `confirmOwnerTierGrants` equals the
+ *    number of owner-tier grants computed at apply time (`ownerTierGrants`,
+ *    which a dry run reports); a missing or different count is refused,
+ *    like a stale planHash. An imported fact never replaces an active fact of a higher
  *    tier (counted `lowerTier`); against an equal or lower tier the ledger's
  *    own pin rules decide, so the change is recorded and propagated like any
  *    other. A key the ledger does not have yet is restored with its full
@@ -151,6 +158,10 @@ export type MemoryImportOptions = {
   /** Who is importing. Only `owner` keeps owner-tier facts at the owner tier. */
   actor: ImportActor;
   dryRun?: boolean;
+  /** Rule C opt-in: write facts that were owner-tier in the export at the owner tier. */
+  keepOwnerTier?: boolean;
+  /** Required with keepOwnerTier (not on a dry run): the dry run's `ownerTierGrants`. */
+  confirmOwnerTierGrants?: number;
   store: CanonicalFactsStore | null;
   tables: { ftsTable: string | null };
 };
@@ -168,6 +179,12 @@ export type MemoryImportResult = {
   memories: Tally & { fileBacked: number; forgotten: number };
   facts: Tally & { lowerTier: number; secret: number; historyRows: number; ledgerOff: number };
   preferences: Tally;
+  /** How many facts this import writes (or would write) at the owner tier. */
+  ownerTierGrants: number;
+  /** Whether keepOwnerTier was used. */
+  keepOwnerTier: boolean;
+  /** Owner-tier facts in the export imported below the owner tier; pin one to confirm it. */
+  ownerFactsUnconfirmed: Array<{ key: string; value: string; scope: string }>;
   /** Ids of imported memories (to re-embed). Empty on a dry run. */
   importedChunkIds: string[];
 };
@@ -203,10 +220,7 @@ async function runBatched(db: DatabaseSync, ops: Array<() => void>, name: string
   }
 }
 
-function mappedSource(raw: string | undefined, actor: ImportActor): CanonicalSource {
-  const owner = raw === "owner" || raw === "user_directive";
-  return owner && actor === "owner" ? "owner" : "import";
-}
+const wasOwner = (raw: string | undefined): boolean => raw === "owner" || raw === "user_directive";
 
 export async function importMemories(
   db: DatabaseSync,
@@ -224,12 +238,21 @@ export async function importMemories(
     throw new MemoryImportRefused(`Unknown export format "${doc.format}".`);
   }
   const dryRun = opts.dryRun === true;
+  const keepOwnerTier = opts.keepOwnerTier === true;
+  if (keepOwnerTier && opts.actor !== "owner") {
+    throw new MemoryImportRefused("Only the owner can import facts at the owner tier.");
+  }
+  const mappedSource = (raw: string | undefined): CanonicalSource =>
+    keepOwnerTier && wasOwner(raw) ? "owner" : "import";
   const result: MemoryImportResult = {
     version: doc.version ?? 1,
     dryRun,
     memories: { ...tally(), fileBacked: 0, forgotten: 0 },
     facts: { ...tally(), lowerTier: 0, secret: 0, historyRows: 0, ledgerOff: 0 },
     preferences: tally(),
+    ownerTierGrants: 0,
+    keepOwnerTier,
+    ownerFactsUnconfirmed: [],
     importedChunkIds: [],
   };
   const now = Date.now();
@@ -319,7 +342,6 @@ export async function importMemories(
       }
     });
   }
-  await runBatched(db, memoryOps, "owner_import_memories");
 
   // ── Facts ──
   const factRows: Array<z.infer<typeof FactSchema>> = [];
@@ -338,6 +360,21 @@ export async function importMemories(
     byKey.set(row.key, list);
   }
   const store = opts.store;
+  const noteOwnerTier = (
+    key: string,
+    row: { value: string; scope?: string | null; source?: string },
+    source: CanonicalSource,
+  ) => {
+    if (source === "owner") {
+      result.ownerTierGrants += 1;
+    } else if (wasOwner(row.source)) {
+      result.ownerFactsUnconfirmed.push({
+        key,
+        value: row.value,
+        scope: normalizeCanonicalScope(row.scope ?? "global") ?? "global",
+      });
+    }
+  };
   const factOps: Array<() => void> = [];
   const pinOps: Array<() => void> = [];
   let keysSeen = 0;
@@ -374,7 +411,7 @@ export async function importMemories(
         result.facts.suppressed += 1;
         continue;
       }
-      const source = mappedSource(current.source, opts.actor);
+      const source = mappedSource(current.source);
       if (
         existing.status === "owner_retired" ||
         (existing.status === "active" &&
@@ -383,6 +420,7 @@ export async function importMemories(
         result.facts.lowerTier += 1;
         continue;
       }
+      noteOwnerTier(key, current, source);
       if (dryRun) {
         result.facts.imported += 1;
         continue;
@@ -417,6 +455,9 @@ export async function importMemories(
     }
     result.facts.imported += 1;
     result.facts.historyRows += rows.length - (current ? 1 : 0);
+    if (current) {
+      noteOwnerTier(key, current, mappedSource(current.source));
+    }
     if (dryRun) {
       continue;
     }
@@ -430,7 +471,7 @@ export async function importMemories(
     for (const r of ordered) {
       factOps.push(() => {
         const isCurrent = r === current;
-        const source = mappedSource(r.source, opts.actor);
+        const source = mappedSource(r.source);
         // History rows keep their history status; an "active" row that is
         // not the current one cannot be active.
         const rawStatus = r.status ?? "active";
@@ -469,6 +510,18 @@ export async function importMemories(
       });
     }
   }
+  // Rule C: owner authority is granted only for the exact count the owner
+  // confirmed from a dry run; checked before anything is written.
+  if (keepOwnerTier && !dryRun && opts.confirmOwnerTierGrants !== result.ownerTierGrants) {
+    throw new MemoryImportRefused(
+      `This import would give ${result.ownerTierGrants} fact(s) owner authority, but ${
+        opts.confirmOwnerTierGrants === undefined
+          ? "no confirmed count was given"
+          : `the confirmed count is ${opts.confirmOwnerTierGrants}`
+      }. Dry-run again and confirm the count it reports.`,
+    );
+  }
+  await runBatched(db, memoryOps, "owner_import_memories");
   await runBatched(db, factOps, "owner_import_facts");
   await runBatched(db, pinOps, "owner_import_pins");
 
@@ -537,6 +590,12 @@ export async function importMemories(
         JSON.stringify({
           version: result.version,
           sourceAgentId: doc.agentId ?? null,
+          keepOwnerTier,
+          ownerTierGrants: result.ownerTierGrants,
+          ownerFactsUnconfirmed: result.ownerFactsUnconfirmed.map((f) => ({
+            key: f.key,
+            exportedTier: "owner",
+          })),
           memories: result.memories,
           facts: result.facts,
           preferences: result.preferences,

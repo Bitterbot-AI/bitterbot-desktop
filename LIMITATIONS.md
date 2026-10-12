@@ -76,8 +76,10 @@ open an issue.
   curiosity findings, open questions, suppressions, the audit log,
   `MEMORY.md` and `GENOME.md`, never embeddings or secrets
   (credential-shaped text is redacted); an import restores memories, facts
-  and preferences only, never above the extraction tier unless the fact was
-  yours.
+  and preferences only, at the extraction tier: facts that were yours in the
+  export come back below your tier until you pin them, unless you import with
+  `--keep-owner-tier` and confirm the count of facts that get owner
+  authority.
 - **Corrections are captured in direct owner chats only.** A correction you
   state in chat is pinned at your authority before the next turn, with a
   "Memory updated" line in the reply, but only in a first-party direct chat

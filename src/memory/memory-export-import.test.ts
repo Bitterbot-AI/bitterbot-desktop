@@ -247,8 +247,34 @@ describe("import", () => {
         )
         .all();
     expect(facts(dst.db)).toEqual(facts(src.db));
-    expect(dst.store.get("identity.home_city")).toMatchObject({ value: "Lisbon", source: "owner" });
+    // Rule C default: nothing comes back at the owner tier; the owner's fact
+    // is listed for confirmation.
+    expect(dst.store.get("identity.home_city")).toMatchObject({
+      value: "Lisbon",
+      source: "import",
+    });
     expect(dst.store.get("project.repo")).toMatchObject({ source: "import" });
+    expect(
+      dst.db.prepare(`SELECT COUNT(*) AS n FROM canonical_facts WHERE source = 'owner'`).get(),
+    ).toEqual({ n: 0 });
+    expect(result.ownerTierGrants).toBe(0);
+    expect(result.ownerFactsUnconfirmed).toEqual([
+      { key: "identity.home_city", value: "Lisbon", scope: "global" },
+    ]);
+    const audit = JSON.parse(
+      (
+        dst.db
+          .prepare(`SELECT metadata FROM memory_audit_log WHERE event = 'owner_import'`)
+          .get() as {
+          metadata: string;
+        }
+      ).metadata,
+    );
+    expect(audit).toMatchObject({
+      keepOwnerTier: false,
+      ownerTierGrants: 0,
+      ownerFactsUnconfirmed: [{ key: "identity.home_city", exportedTier: "owner" }],
+    });
     expect(dst.db.prepare(`SELECT category, key, value FROM user_preferences`).all()).toEqual([
       { category: "style", key: "tone", value: "brief" },
     ]);
@@ -340,13 +366,68 @@ describe("import", () => {
     expect(result.preferences.imported).toBe(1);
   });
 
-  it("keeps an owner fact at the owner tier only when the owner imports", async () => {
-    const { doc } = await exportToString(src.db);
-    const dst = freshDb();
-    await importMemories(dst.db, doc, { actor: "system", store: dst.store, tables: TABLES });
-    expect(dst.store.get("identity.home_city")).toMatchObject({
-      value: "Lisbon",
-      source: "import",
+  describe("keepOwnerTier (rule C opt-in)", () => {
+    const opts = (dst: ReturnType<typeof freshDb>, extra: Record<string, unknown> = {}) => ({
+      actor: "owner" as const,
+      store: dst.store,
+      tables: TABLES,
+      ...extra,
+    });
+
+    it("the dry run reports how many facts would get owner authority", async () => {
+      const { doc } = await exportToString(src.db);
+      const dst = freshDb();
+      const dry = await importMemories(
+        dst.db,
+        doc,
+        opts(dst, { dryRun: true, keepOwnerTier: true }),
+      );
+      expect(dry.ownerTierGrants).toBe(1);
+      expect(dry.ownerFactsUnconfirmed).toEqual([]);
+      const plain = await importMemories(dst.db, doc, opts(dst, { dryRun: true }));
+      expect(plain.ownerTierGrants).toBe(0);
+      expect(plain.ownerFactsUnconfirmed).toHaveLength(1);
+    });
+
+    it("refuses without the confirmed count, and with a wrong one, writing nothing", async () => {
+      const { doc } = await exportToString(src.db);
+      const dst = freshDb();
+      await expect(importMemories(dst.db, doc, opts(dst, { keepOwnerTier: true }))).rejects.toThrow(
+        /Dry-run again/,
+      );
+      await expect(
+        importMemories(dst.db, doc, opts(dst, { keepOwnerTier: true, confirmOwnerTierGrants: 2 })),
+      ).rejects.toThrow(/confirmed count is 2/);
+      expect(dst.db.prepare(`SELECT COUNT(*) AS n FROM chunks`).get()).toEqual({ n: 0 });
+      expect(dst.db.prepare(`SELECT COUNT(*) AS n FROM canonical_facts`).get()).toEqual({ n: 0 });
+    });
+
+    it("with the right count grants exactly that many owner-tier facts", async () => {
+      const { doc } = await exportToString(src.db);
+      const dst = freshDb();
+      const result = await importMemories(
+        dst.db,
+        doc,
+        opts(dst, { keepOwnerTier: true, confirmOwnerTierGrants: 1 }),
+      );
+      expect(result).toMatchObject({ keepOwnerTier: true, ownerTierGrants: 1 });
+      expect(
+        dst.db
+          .prepare(`SELECT key FROM canonical_facts WHERE source = 'owner' AND valid_until IS NULL`)
+          .all(),
+      ).toEqual([{ key: "identity.home_city" }]);
+      expect(dst.store.get("project.repo")?.source).toBe("import");
+    });
+
+    it("is owner-only", async () => {
+      const { doc } = await exportToString(src.db);
+      const dst = freshDb();
+      await expect(
+        importMemories(dst.db, doc, {
+          ...opts(dst, { keepOwnerTier: true, confirmOwnerTierGrants: 1 }),
+          actor: "system",
+        }),
+      ).rejects.toThrow(/Only the owner/);
     });
   });
 

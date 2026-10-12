@@ -524,10 +524,29 @@ type OwnerCliManager = {
   ownerExportTo: (sink: (piece: string) => void | Promise<void>) => Promise<unknown>;
   ownerImportMemories: (
     input: unknown,
-    opts?: { dryRun?: boolean; actor?: "owner" | "system" },
+    opts?: {
+      dryRun?: boolean;
+      actor?: "owner" | "system";
+      keepOwnerTier?: boolean;
+      confirmOwnerTierGrants?: number;
+    },
   ) => Promise<Record<string, unknown>>;
   ownerDatabasePath?: () => string;
 };
+
+/** y/N on an interactive terminal; false when there is no terminal to ask on. */
+async function askYesNo(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return false;
+  }
+  const { createInterface } = await import("node:readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `)).trim());
+  } finally {
+    rl.close();
+  }
+}
 
 function ownerControls(manager: unknown): OwnerCliManager | null {
   const m = manager as Partial<OwnerCliManager>;
@@ -705,55 +724,113 @@ function registerOwnerMemoryCommands(memory: Command) {
     .argument("<file>", "Export file")
     .option("--agent <id>", "Agent id (default: default agent)")
     .option("--dry-run", "Count what would be restored, change nothing", false)
+    .option(
+      "--keep-owner-tier",
+      "Keep facts that were owner-tier in the export at the owner tier (asks first)",
+      false,
+    )
+    .option("--yes", "With --keep-owner-tier: do not ask", false)
     .option("--json", "Print JSON")
-    .action(async (file: string, opts: { agent?: string; dryRun?: boolean; json?: boolean }) => {
-      const { MAX_IMPORT_BYTES, parseMemoryExport } = await import("../memory/memory-import.js");
-      let raw: string;
-      try {
-        const stat = await fs.stat(file);
-        if (stat.size > MAX_IMPORT_BYTES) {
-          defaultRuntime.error(
-            `${file} is ${(stat.size / 1024 / 1024).toFixed(1)} MB; imports are capped at ${MAX_IMPORT_BYTES / 1024 / 1024} MB.`,
-          );
+    .action(
+      async (
+        file: string,
+        opts: {
+          agent?: string;
+          dryRun?: boolean;
+          keepOwnerTier?: boolean;
+          yes?: boolean;
+          json?: boolean;
+        },
+      ) => {
+        const { MAX_IMPORT_BYTES, parseMemoryExport } = await import("../memory/memory-import.js");
+        let raw: string;
+        try {
+          const stat = await fs.stat(file);
+          if (stat.size > MAX_IMPORT_BYTES) {
+            defaultRuntime.error(
+              `${file} is ${(stat.size / 1024 / 1024).toFixed(1)} MB; imports are capped at ${MAX_IMPORT_BYTES / 1024 / 1024} MB.`,
+            );
+            process.exitCode = 1;
+            return;
+          }
+          raw = await fs.readFile(file, "utf8");
+        } catch (err) {
+          defaultRuntime.error(`Cannot read ${file}: ${formatErrorMessage(err)}`);
           process.exitCode = 1;
           return;
         }
-        raw = await fs.readFile(file, "utf8");
-      } catch (err) {
-        defaultRuntime.error(`Cannot read ${file}: ${formatErrorMessage(err)}`);
-        process.exitCode = 1;
-        return;
-      }
-      await withOwnerControls(opts, async (m) => {
-        const result = await m.ownerImportMemories(parseMemoryExport(raw), {
-          dryRun: Boolean(opts.dryRun),
-          actor: "owner",
+        await withOwnerControls(opts, async (m) => {
+          const input = parseMemoryExport(raw);
+          const keepOwnerTier = Boolean(opts.keepOwnerTier);
+          let confirmOwnerTierGrants: number | undefined;
+          if (keepOwnerTier && !opts.dryRun) {
+            // Rule C: count the grants with a dry run, say what they mean, and
+            // apply exactly that count.
+            const dry = (await m.ownerImportMemories(input, {
+              dryRun: true,
+              actor: "owner",
+              keepOwnerTier: true,
+            })) as { ownerTierGrants?: number };
+            const grants = dry.ownerTierGrants ?? 0;
+            if (grants > 0) {
+              const warning = `This will give ${grants} facts owner authority (they will override the agent and win every conflict).`;
+              defaultRuntime.log(warning);
+              if (!opts.yes && !(await askYesNo("Continue?"))) {
+                defaultRuntime.error(
+                  process.stdin.isTTY
+                    ? "Import cancelled; nothing changed."
+                    : "Refusing to grant owner authority without a terminal to confirm on; re-run with --yes.",
+                );
+                process.exitCode = 1;
+                return;
+              }
+            }
+            confirmOwnerTierGrants = grants;
+          }
+          const result = await m.ownerImportMemories(input, {
+            dryRun: Boolean(opts.dryRun),
+            actor: "owner",
+            keepOwnerTier,
+            confirmOwnerTierGrants,
+          });
+          if (opts.json) {
+            defaultRuntime.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          const r = result as {
+            dryRun: boolean;
+            memories: Record<string, number>;
+            facts: Record<string, number>;
+            preferences: Record<string, number>;
+            ownerTierGrants?: number;
+            ownerFactsUnconfirmed?: Array<{ key: string; value: string; scope: string }>;
+          };
+          const fmt = (t: Record<string, number>) =>
+            Object.entries(t)
+              .filter(([, v]) => v > 0)
+              .map(([k, v]) => `${k} ${v}`)
+              .join(", ") || "nothing";
+          defaultRuntime.log(
+            [
+              r.dryRun ? "Dry run, nothing written." : "Imported.",
+              `Memories: ${fmt(r.memories)}`,
+              `Facts: ${fmt(r.facts)}`,
+              `Preferences: ${fmt(r.preferences)}`,
+              `Owner-tier grants: ${r.ownerTierGrants ?? 0}`,
+              ...((r.ownerFactsUnconfirmed ?? []).length > 0
+                ? [
+                    `Imported below your tier (were yours in the export; pin one to confirm it):`,
+                    ...(r.ownerFactsUnconfirmed ?? []).map(
+                      (f) =>
+                        `  ${f.key} = ${f.value}${f.scope === "global" ? "" : ` (${f.scope})`}`,
+                    ),
+                  ]
+                : []),
+            ].join("\n"),
+          );
         });
-        if (opts.json) {
-          defaultRuntime.log(JSON.stringify(result, null, 2));
-          return;
-        }
-        const r = result as {
-          dryRun: boolean;
-          memories: Record<string, number>;
-          facts: Record<string, number>;
-          preferences: Record<string, number>;
-        };
-        const fmt = (t: Record<string, number>) =>
-          Object.entries(t)
-            .filter(([, v]) => v > 0)
-            .map(([k, v]) => `${k} ${v}`)
-            .join(", ") || "nothing";
-        defaultRuntime.log(
-          [
-            r.dryRun ? "Dry run, nothing written." : "Imported.",
-            `Memories: ${fmt(r.memories)}`,
-            `Facts: ${fmt(r.facts)}`,
-            `Preferences: ${fmt(r.preferences)}`,
-          ].join("\n"),
-        );
-      });
-    });
+      },
+    );
 }
 
 export function registerMemoryCli(program: Command) {

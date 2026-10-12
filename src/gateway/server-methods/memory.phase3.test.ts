@@ -94,10 +94,18 @@ beforeEach(() => {
     ownerEditMemory: (id: string, text: string, opts?: { planHash?: string }) =>
       editMemory(db, id, text, TABLES, { store, ...opts }),
     ownerDatabasePath: () => "/home/u/.bitterbot/memory/main.sqlite",
-    ownerImportMemories: (input: unknown, opts: { dryRun?: boolean; actor?: "owner" }) =>
+    ownerImportMemories: (
+      input: unknown,
+      opts: {
+        dryRun?: boolean;
+        actor?: "owner";
+        keepOwnerTier?: boolean;
+        confirmOwnerTierGrants?: number;
+      },
+    ) =>
       importMemories(db, input, {
+        ...opts,
         actor: opts.actor ?? "owner",
-        dryRun: opts.dryRun,
         store,
         tables: TABLES,
       }),
@@ -173,6 +181,38 @@ describe("memory.forgetPreview / memory.forget / memory.edit (PLAN-55 Phase 3)",
 });
 
 describe("memory.exportDownload / memory.import", () => {
+  it("keepOwnerTier needs the dry run's grant count (rule C)", async () => {
+    const doc = {
+      version: 2,
+      memories: [],
+      facts: [{ key: "identity.name", value: "Victor", source: "owner" }],
+    };
+    const plain = await call("memory.import", { data: doc, dryRun: true });
+    expect(plain.payload).toMatchObject({
+      ownerTierGrants: 0,
+      ownerFactsUnconfirmed: [{ key: "identity.name", value: "Victor", scope: "global" }],
+    });
+    const dry = await call("memory.import", { data: doc, dryRun: true, keepOwnerTier: true });
+    expect(dry.payload).toMatchObject({ ownerTierGrants: 1 });
+    const missing = await call("memory.import", { data: doc, keepOwnerTier: true });
+    expect(missing.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
+    expect(missing.error?.message).toMatch(/Dry-run again/);
+    const wrong = await call("memory.import", {
+      data: doc,
+      keepOwnerTier: true,
+      confirmOwnerTierGrants: 3,
+    });
+    expect(wrong.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
+    expect(store.get("identity.name")).toBeNull();
+    const ok = await call("memory.import", {
+      data: doc,
+      keepOwnerTier: true,
+      confirmOwnerTierGrants: 1,
+    });
+    expect(ok.payload).toMatchObject({ keepOwnerTier: true, ownerTierGrants: 1 });
+    expect(store.get("identity.name")?.source).toBe("owner");
+  });
+
   it("mints a one-time download link and returns the database path", async () => {
     const res = await call("memory.exportDownload", {});
     expect(res.ok).toBe(true);
