@@ -59,9 +59,7 @@ function createSetupRunner(context: GatewayRequestContext) {
     const agentHandler = agentHandlers.agent;
     await runSetupWizard(prompter, {
       installKind: detectInstallKind(packageRoot),
-      runFirstTurn: agentHandler
-        ? (cfg) => runSetupFirstTurn({ cfg, context, agentHandler })
-        : undefined,
+      runFirstTurn: (cfg) => runSetupFirstTurn({ cfg, context, agentHandler }),
       collectDoctorSummary: (cfg) => collectSetupDoctorSummary({ cfg }),
       // Single-use: the token that drove this setup dies with it.
       onComplete: () => revokeSetupToken(),

@@ -62,8 +62,8 @@ describe("runSetupFirstTurn", () => {
         error: { code: "UNAVAILABLE", message: "Error: 401 invalid x-api-key" },
       }),
     });
-    expect(outcome.ok).toBe(false);
-    expect(outcome.ok === false && outcome.error).toContain("401 invalid x-api-key");
+    expect(outcome).toMatchObject({ ok: false });
+    expect(JSON.stringify(outcome)).toContain("401 invalid x-api-key");
   });
 
   it("treats an error-only reply as a failure", async () => {
