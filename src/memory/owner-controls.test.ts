@@ -98,8 +98,8 @@ describe("listing", () => {
 });
 
 describe("forgetting", () => {
-  it("removes the memory from the table and the keyword index, and records it without the text", () => {
-    forgetMemory(db, "fact_1", TABLES);
+  it("removes the memory from the table and the keyword index, and records it without the text", async () => {
+    await forgetMemory(db, "fact_1", TABLES);
 
     expect(getMemory(db, "fact_1")).toBeNull();
     expect(ftsIds("roast")).toEqual([]);
@@ -114,33 +114,49 @@ describe("forgetting", () => {
     expect(audit.metadata).not.toContain("roast");
   });
 
-  it("refuses memories rebuilt from files, frozen ones and unknown ids", () => {
-    expect(() => forgetMemory(db, "abc123", TABLES)).toThrow(/change the file instead/);
-    expect(() => forgetMemory(db, "seed_frozen", TABLES)).toThrow(OwnerEditRefused);
-    expect(() => forgetMemory(db, "fact_nope", TABLES)).toThrow(/no memory/);
-    expect(getMemory(db, "abc123")).not.toBeNull();
+  it("refuses memories rebuilt from files, frozen ones and unknown ids", async () => {
+    insert("file456", "a line of MEMORY.md", { source: "memory", path: "MEMORY.md" });
+    await expect(forgetMemory(db, "file456", TABLES)).rejects.toThrow(/change the file instead/);
+    await expect(forgetMemory(db, "seed_frozen", TABLES)).rejects.toThrow(OwnerEditRefused);
+    await expect(forgetMemory(db, "fact_nope", TABLES)).rejects.toThrow(/no memory/);
+    expect(getMemory(db, "file456")).not.toBeNull();
+  });
+
+  it("forgets a memory indexed from a conversation, suppressing its text (PLAN-55 Phase 3)", async () => {
+    await forgetMemory(db, "abc123", TABLES);
+    expect(getMemory(db, "abc123")).toBeNull();
+    expect(db.prepare("SELECT kind, reason FROM memory_suppressions").all() as unknown[]).toEqual([
+      { kind: "chunk_hash", reason: "owner_forget" },
+    ]);
   });
 });
 
 describe("editing", () => {
-  it("replaces the text, re-indexes it for keyword search and marks it for re-embedding", () => {
-    const edited = editMemory(db, "fact_1", "Victor prefers light roast now", TABLES);
+  it("replaces the text with a new memory, re-indexes it for keyword search and marks it for re-embedding", async () => {
+    const edited = await editMemory(db, "fact_1", "Victor prefers light roast now", TABLES);
 
-    expect(edited).toMatchObject({ text: "Victor prefers light roast now", version: 2 });
-    expect(ftsIds("light")).toEqual(["fact_1"]);
+    expect(edited).toMatchObject({
+      text: "Victor prefers light roast now",
+      version: 2,
+      previousId: "fact_1",
+    });
+    expect(edited.id).toMatch(/^fact_/);
+    expect(edited.id).not.toBe("fact_1");
+    expect(getMemory(db, "fact_1")).toBeNull();
+    expect(ftsIds("light")).toEqual([edited.id]);
     expect(ftsIds("dark")).toEqual([]);
     const row = db
-      .prepare("SELECT model, length(embedding) AS n FROM chunks WHERE id = 'fact_1'")
-      .get() as {
+      .prepare("SELECT model, length(embedding) AS n FROM chunks WHERE id = ?")
+      .get(edited.id) as {
       model: string;
       n: number;
     };
     expect(row).toEqual({ model: "pending", n: 0 });
   });
 
-  it("refuses empty text and file memories", () => {
-    expect(() => editMemory(db, "fact_1", "   ", TABLES)).toThrow(/empty/);
-    expect(() => editMemory(db, "abc123", "x", TABLES)).toThrow(OwnerEditRefused);
+  it("refuses empty text and file memories", async () => {
+    await expect(editMemory(db, "fact_1", "   ", TABLES)).rejects.toThrow(/empty/);
+    await expect(editMemory(db, "abc123", "x", TABLES)).rejects.toThrow(OwnerEditRefused);
   });
 });
 
@@ -154,6 +170,7 @@ describe("export", () => {
     const result = await exportMemories(db, out, { agentId: "main", workingMemory: "# MEMORY" });
 
     expect(result).toMatchObject({ memories: 5, preferences: 1 });
+    expect(JSON.parse(fs.readFileSync(out, "utf8")).version).toBe(2);
     const parsed = JSON.parse(fs.readFileSync(out, "utf8"));
     expect(parsed.memories.find((m: { id: string }) => m.id === "fact_gone").lifecycle).toBe(
       "forgotten",
@@ -181,8 +198,8 @@ describe("preferences", () => {
 });
 
 describe("audit log reader", () => {
-  it("lists what happened newest first, without memory text", () => {
-    forgetMemory(db, "fact_1", TABLES);
+  it("lists what happened newest first, without memory text", async () => {
+    await forgetMemory(db, "fact_1", TABLES);
     db.prepare(
       "INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata) VALUES ('old', 'x', 'forgotten', 1, 'consolidation', '{\"text\":\"secret\"}')",
     ).run();

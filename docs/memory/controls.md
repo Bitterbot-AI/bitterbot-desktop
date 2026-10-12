@@ -14,23 +14,27 @@ The **Memory** page in the Control UI shows what your agent remembers and gives 
 
 - **Find** a memory by its text, newest first.
 - **Read** it in full, with where it came from.
-- **Correct it.** The new text replaces the old one, is searchable by keyword at once, and is re-embedded so it is found by meaning again.
-- **Forget it.** It is deleted from the memory table, the keyword index and the vector index together. This cannot be undone, and it sticks: the agent will not learn the same memory again from the same conversation (see below for the limit).
+- **Correct it.** The new text becomes a new memory (new id, same metadata) that replaces the old one: it is searchable by keyword at once and re-embedded so it is found by meaning again. The old memory is forgotten with the cascade below, except that what still holds moves to the new one (see [Forget and edit cascade](#forget-and-edit-cascade)).
+- **Forget it.** It is deleted from the memory table, the keyword index and the vector index together, and so is everything that rested only on it (facts, graph links, dream insights; see the cascade below). You can preview exactly what goes first. This cannot be undone, and it sticks: the agent will not learn the same memory again from the same conversation (see below for the limit). A memory indexed from a conversation can be forgotten too; the transcript itself is not edited.
 - **Retire a settled fact.** Facts the agent treats as true without looking them up are listed separately. Retiring one stops that; it is kept in the fact's history. Your retire is final until you lift it: the agent cannot bring the same value back by extracting it again or pinning it itself. Only you can, with **Bring back** in the retired list (`memory.unretireFact`) or by pinning it again (`memory.pinFact`).
 - **Pin a fact** (`memory.pinFact`): what you state outranks what the agent pinned or learned, and brings back a fact you had retired.
 - **Remove a learned preference** (what the agent has picked up about how you like things). It will not be learned again from the same wording or a close paraphrase.
-- **Export everything** to a JSON file in `~/.bitterbot/exports/` (0600): every memory with its metadata (no embeddings), the facts ledger with its history, learned preferences, and `MEMORY.md`.
+- **Export everything** (export version 2): to a JSON file in `~/.bitterbot/exports/` (0600), or as a download to your browser. See [Export and import](#export-and-import).
+- **Import an export** (yours, or from another install) back into memory, with a dry run first.
 
-Over the gateway: `memory.list`, `memory.get`, `memory.facts` (with `status: "active" | "retired" | "all"`) and `memory.preferences` need read access; `memory.edit`, `memory.forget`, `memory.retireFact`, `memory.unretireFact`, `memory.pinFact`, `memory.forgetPreference` and `memory.export` need admin. There is no `bitterbot memory` CLI for these yet (PLAN-55 Phase 5); `bitterbot gateway call` reaches every RPC.
+Over the gateway: `memory.list`, `memory.get`, `memory.facts` (with `status: "active" | "retired" | "all"`), `memory.preferences` and `memory.forgetPreview` need read access; `memory.edit`, `memory.forget`, `memory.retireFact`, `memory.unretireFact`, `memory.pinFact`, `memory.forgetPreference`, `memory.export`, `memory.exportDownload` and `memory.import` need admin. An operator without scopes (a guest) and a node get none of them. The CLI has `bitterbot memory forget`, `edit`, `export` and `import` ([CLI reference](/cli/memory)); `bitterbot gateway call` reaches every RPC.
 
 ```bash
 bitterbot gateway call memory.list --params '{"q":"coffee"}'
-bitterbot gateway call memory.forget --params '{"id":"fact_..."}'
+bitterbot gateway call memory.forgetPreview --params '{"id":"fact_..."}'
+bitterbot gateway call memory.forget --params '{"id":"fact_...","planHash":"<from the preview>"}'
 bitterbot gateway call memory.facts --params '{"status":"retired"}'
 bitterbot gateway call memory.retireFact --params '{"key":"infra.deploy_endpoint"}'
 bitterbot gateway call memory.unretireFact --params '{"key":"infra.deploy_endpoint"}'
 bitterbot gateway call memory.pinFact --params '{"key":"infra.deploy_endpoint","value":"api2.acme.com"}'
 bitterbot gateway call memory.export
+bitterbot gateway call memory.exportDownload
+bitterbot gateway call memory.import --params '{"data":{...the export...},"dryRun":true}'
 ```
 
 ## Teach it once: corrections captured as you chat
@@ -124,15 +128,72 @@ A label is allowed (`<!-- owner:schedule -->`), and the same block may appear mo
 
 Not covered yet: memories indexed after the change are not checked against older corrections, and the confirmation line does not count what was propagated.
 
+## Forget and edit cascade
+
+A memory is rarely alone. Facts in the ledger cite it as evidence, knowledge-graph links cite it, dream insights were drawn from it (and some were promoted into searchable memories of their own), a curiosity finding may have become it, a learned preference may cite it. Forgetting it takes those with it, by these rules:
+
+| What rests on the memory                                  | What a forget does                                                                                                                                                                              |
+| --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A fact whose evidence is now empty                        | Retired, reason `evidence_removed`. Never deleted: it stays in the fact's history. A retire like this is soft: the same fact learned again from somewhere else comes back.                      |
+| A fact at your tier (`owner`) whose evidence is now empty | Kept active and **listed** in the preview and the result, so you decide. Only its evidence id is removed.                                                                                       |
+| A fact with other evidence still there                    | Kept; only the forgotten id is removed. A line reference into a conversation that still exists (`session:<file>#L<n>`) counts as evidence.                                                      |
+| A knowledge-graph link left with no evidence              | Closed (`valid_until` set), kept in the graph's belief history with the action `evidence_removed`. A link with other evidence only loses the id.                                                |
+| A dream insight drawn from the memory                     | Flagged (`stale_fact`), so it is never promoted. A promoted insight memory (`dream_insight_*`) made from it, or citing the forgotten memory directly, is forgotten too and its text suppressed. |
+| A curiosity finding that became the memory                | Its link to the memory is cleared.                                                                                                                                                              |
+| A learned preference citing the memory                    | The id is removed from its evidence. The preference stays (remove it separately if you want it gone).                                                                                           |
+| Dream-utility rows counting the memory                    | Deleted.                                                                                                                                                                                        |
+
+Every fact the cascade retires goes through the ledger, so the followers described above run for it as they do for your own retire (older memories stating the value are marked superseded, the mirrored preference is removed, matching graph links close).
+
+**Edit** is a forget plus a new memory. What still holds in the new text moves to the new memory instead of going: a fact whose value is still in the new text (whole words, case and punctuation aside), a graph link whose two names both are, a curiosity finding, a preference's evidence. Everything else follows the forget rules. The old text is suppressed, so extraction does not bring it back.
+
+**Preview, then confirm.** `memory.forgetPreview` (read access) returns what would change: counts, the facts that would be retired, your facts that would be kept and listed, facts kept on other evidence, facts that would move to the edited text, graph links closed, insights flagged, and a `planHash`. With `text` it previews an edit (and returns the new memory's id). `memory.forget` and `memory.edit` take `preview: true` to do the same, and `planHash` to apply exactly what was previewed: if anything changed in between (something new now rests on the memory, say), the call is refused with "Preview again" and nothing changes.
+
+**One transaction.** A forget or an edit of one memory is applied in one transaction with the deletion, the suppression and the audit entry: all of it or none. A plan with more than 500 writes (a deleted conversation with hundreds of memories) is applied in ordered batches, one transaction each, with the derived rows first and the memory deletions last, pausing between batches so the gateway stays responsive; if a batch fails, running it again picks up what is left. Working out the plan reads the database in windows of 1,000 rows with a pause after each.
+
+The audit log records the forget with the counts of what the cascade changed and the plan hash, never the text.
+
+## Deleting a conversation
+
+When a conversation is deleted (the Control UI's delete, or `sessions.delete` with the default `deleteTranscript: true`), what was learned only from it goes with it: its indexed memories, the memories extracted from it, and, through the cascade, facts whose only evidence was that conversation (its memories, or a line reference into its transcript). Facts at your tier are never retired; facts that survive are returned in the result as `memory.survivors`, each with the reason (`owner`, or `other_evidence`). `sessions.delete` waits up to 4 seconds for this; if the memory system is busy (a dream cycle holds its lock) the result says `pending` and the cascade finishes on its own. No text suppression is written: the transcript is gone, so nothing extracts it again, and restoring the file on purpose brings its memories back.
+
+The same rule runs when a subagent's session is cleaned up and when `bitterbot doctor` removes its probe session (both go through `sessions.delete`). It does not run on a session reset (the transcript is archived, not deleted), on session store retention pruning (which removes index entries, not transcripts), or when the memory index drops the chunks of a transcript that disappeared from disk (a moved or unreadable sessions folder looks the same, and must not retire every fact).
+
+## Export and import
+
+The export (version 2) is one JSON document with everything an owner needs to move or audit the agent's memory:
+
+- `memories`: every memory with its metadata (`id`, `kind`, `source`, `path`, `semanticType`, `lifecycle`, `importance`, `createdAt`, `updatedAt`, `text`, plus `lifecycleState`, `origin`, `epistemicLayer`, `evidenceRefs`, `version`, `sessionTrust`, `sensitivity`), no embeddings;
+- `facts`: every row of the facts ledger, all statuses, with the full history and evidence;
+- `preferences` (with their evidence), `knowledgeGraph` (`entities`, `relationships`, `beliefHistory`), `dreamInsights`, `curiosityFindings`, `conflicts`, `directives` (the agent's open questions), `suppressions`, `auditLog`, `chunkSupersessions`;
+- `workingMemory` (`MEMORY.md`) and `genome` (`GENOME.md`);
+- `version: 2`, `format: "bitterbot-memory-export"`, and `redactions`.
+
+A reader of version 1 still works: every version 1 field keeps its name and shape. What is never in it: `.env`, keys, wallet material, auth profiles or any file other than `MEMORY.md` and `GENOME.md` (the exporter reads only the memory database and those two files). Text that looks like a credential (API keys, tokens, bearer headers, private key blocks, JWTs, long hex or base64 runs, card numbers) is replaced with `[redacted]` wherever it appears, and `redactions` counts how many times.
+
+**Getting it.** `memory.export` writes it to `~/.bitterbot/exports/memory-<time>.json` (0600) on the gateway's machine. `memory.exportDownload` returns a one-time link (`url`, valid for five minutes, usable once) that streams the same document to the client as a download, page by page, never held whole in memory, and `sqlitePath`, the path of the raw memory database for when you want the file itself. `bitterbot memory export` writes the file (or stdout with `--out -`).
+
+**Import.** `memory.import` (admin) and `bitterbot memory import <file>` restore an export of either version. `dryRun: true` (`--dry-run`) returns the counts and writes nothing. The rules, in order:
+
+1. Only the agent's own memories are restored (facts, notes, insights and the rest). Memories indexed from files or conversations are skipped and counted as `fileBacked`: copy the files and reindex for those. Forgotten and expired ones are skipped.
+2. Your suppressions on this install win: a memory, fact or preference you removed here is skipped and counted as `suppressed`. Importing never lifts a suppression.
+3. Duplicates are skipped: a memory whose id or exact text is already here, a fact whose key already holds the same value, a preference already learned.
+4. Trust tier: imported facts are written with source `import`, the same tier as extraction (1). A fact keeps your tier (`owner`) only when it was `owner` in the export and you run the import (the gateway's admin-scoped RPC and the CLI both count as you). An imported fact never replaces an active fact of a higher tier (counted as `lowerTier`); against an equal or lower tier the ledger's own rules decide, and the change propagates like any other. A key the ledger does not have yet is restored with its history.
+5. Values that look like credentials are refused, as the ledger refuses them from any source.
+
+Imported memories are keyword-searchable at once and re-embedded in the background. Preferences have no source column; imported ones get an `import_` id. One `owner_import` audit entry records the counts. An export larger than 64 MB is refused; over the gateway the limit is lower (an RPC frame carries at most 8 MiB), so use the CLI for a large one.
+
 ## What is read-only here
 
-- **Memories from conversations and files** (session transcripts, `MEMORY.md`, skill files) are rebuilt from those files whenever they change, so a change made here would not stick. They are listed for reading; change the file instead.
+- **Memories from files** (`MEMORY.md`, `memory/*.md`, skill files) are rebuilt from those files whenever they change, so a change made here would not stick. They are listed for reading; change the file instead.
+- **Memories from conversations** can be forgotten (the transcript line is not edited; the memory's text is suppressed so reindexing the transcript skips it) but not edited: forget it, then pin the correct fact.
 - **Frozen memories** (skills and protected core memories) cannot be changed here.
 
 ## What forgetting does not reach
 
-- The conversation transcript the memory was learned from is still on disk; delete the session to remove it.
-- Knowledge-graph links that cited the memory are left in place, though they no longer lead to it.
+- The conversation transcript a memory was learned from is still on disk; delete the conversation to remove it (and, with it, what was learned only from it).
+- A forgotten passage of a conversation is matched by its exact text. If the transcript grows and the same words end up in a differently cut chunk, that chunk is indexed.
+- `MEMORY.md`, scratch notes and handover briefs that repeat the forgotten text are not rewritten.
 - SQLite keeps deleted text in free pages of the database file until it is compacted.
 
 Every change is written to the memory audit log as "the owner forgot / edited this", without the text.

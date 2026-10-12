@@ -318,6 +318,87 @@ export function setChunkText(
   });
 }
 
+/**
+ * PLAN-55 Phase 3: the owner's edit writes the new text as a NEW chunk (a
+ * copy of the old row under `newId`, every column carried over except the
+ * text and what derives from it) so the forget cascade can run on the old
+ * id. Embedding cleared and model "pending" as in setChunkText. Returns the
+ * number of rows inserted (0 when the source row is gone).
+ */
+export function insertEditedChunkCopy(
+  db: DatabaseSync,
+  sourceId: string,
+  newId: string,
+  fields: { text: string; hash: string; updatedAt: number; version: number },
+): number {
+  const columns = (db.prepare("PRAGMA table_info(chunks)").all() as Array<{ name: string }>).map(
+    (c) => c.name,
+  );
+  const overrides: Record<string, SqlValue> = {
+    id: newId,
+    text: fields.text,
+    hash: fields.hash,
+    model: "pending",
+    embedding: new Uint8Array(0),
+    updated_at: fields.updatedAt,
+    version: fields.version,
+  };
+  const names = columns;
+  const select = names.map((c) => (c in overrides ? "?" : c)).join(", ");
+  const args = names.filter((c) => c in overrides).map((c) => overrides[c]!);
+  const res = db
+    .prepare(`INSERT INTO chunks (${names.join(", ")}) SELECT ${select} FROM chunks WHERE id = ?`)
+    .run(...args, sourceId);
+  return Number(res.changes);
+}
+
+/**
+ * PLAN-55 Phase 3: a memory restored by `memory.import`. Lands unembedded
+ * (model "pending") so the background backfill embeds it; origin "import"
+ * so it can always be told apart from what this agent learned itself.
+ */
+export function insertImportedChunk(
+  db: DatabaseSync,
+  row: {
+    id: string;
+    path: string;
+    source: string;
+    text: string;
+    hash: string;
+    semanticType: string | null;
+    lifecycle: string;
+    importance: number | null;
+    createdAt: number;
+    updatedAt: number;
+    epistemicLayer: string | null;
+    governanceJson: string | null;
+  },
+): number {
+  const res = db
+    .prepare(
+      `INSERT OR IGNORE INTO chunks (id, path, source, start_line, end_line, hash, model, text,
+         embedding, updated_at, created_at, origin, memory_type, semantic_type, lifecycle,
+         importance_score, epistemic_layer, governance_json, access_count)
+       VALUES (?, ?, ?, 0, 0, ?, 'pending', ?, ?, ?, ?, 'import', 'plaintext', ?, ?, ?, ?, ?, 0)`,
+    )
+    .run(
+      row.id,
+      row.path,
+      row.source,
+      row.hash,
+      row.text,
+      new Uint8Array(0),
+      row.updatedAt,
+      row.createdAt,
+      row.semanticType,
+      row.lifecycle,
+      row.importance,
+      row.epistemicLayer,
+      row.governanceJson,
+    );
+  return Number(res.changes);
+}
+
 // ── Skills ──────────────────────────────────────────────────────────────────
 
 export function setChunkSkillCategory(db: DatabaseSync, id: string, category: string): number {

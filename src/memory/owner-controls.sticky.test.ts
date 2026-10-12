@@ -171,8 +171,8 @@ describe("forgotten stays forgotten after re-extraction (PLAN-55 Phase 0)", () =
     expect(pref).toBeDefined();
 
     // The owner removes all of it.
-    forgetMemory(db, factChunk!.id, TABLES);
-    forgetMemory(db, directiveChunk!.id, TABLES);
+    await forgetMemory(db, factChunk!.id, TABLES, { store });
+    await forgetMemory(db, directiveChunk!.id, TABLES, { store });
     expect(retireFact(db, store, KEY)).toBe(true);
     expect(deletePreference(db, pref!.category, pref!.key)).toBe(true);
     expect(store.get(KEY)?.status).toBe("owner_retired");
@@ -237,8 +237,13 @@ describe("forgotten stays forgotten after re-extraction (PLAN-55 Phase 0)", () =
     writeSession(["the deploy endpoint is api.acme.com, and always reply in Spanish"]);
     await runExtraction();
     const factChunk = factChunks().find((c) => c.text === FACT_TEXT)!;
-    editMemory(db, factChunk.id, "The deploy endpoint is api.acme.com (owner-edited).", TABLES);
-    forgetMemory(db, factChunk.id, TABLES);
+    const edited = await editMemory(
+      db,
+      factChunk.id,
+      "The deploy endpoint is api.acme.com (owner-edited).",
+      TABLES,
+    );
+    await forgetMemory(db, edited.id, TABLES);
     expect(isSuppressed(db, "chunk_hash", chunkTextHash(FACT_TEXT))).not.toBeNull();
     expect(
       isSuppressed(
@@ -273,7 +278,8 @@ describe("forgotten stays forgotten after re-extraction (PLAN-55 Phase 0)", () =
 
     expect(() => retireFact(db, store, KEY)).toThrow();
     expect(store.get(KEY)?.status).toBe("active");
-    expect(() => forgetMemory(db, factChunk.id, TABLES)).toThrow();
+    await expect(forgetMemory(db, factChunk.id, TABLES, { store })).rejects.toThrow();
+    expect(store.get(KEY)?.status).toBe("active");
     expect(factChunks().some((c) => c.id === factChunk.id)).toBe(true);
     expect(() => deletePreference(db, pref.category, pref.key)).toThrow();
     expect(directivePref()).toBeDefined();
@@ -286,7 +292,7 @@ describe("forgotten stays forgotten after re-extraction (PLAN-55 Phase 0)", () =
     writeSession(["the deploy endpoint is api.acme.com, and always reply in Spanish"]);
     await runExtraction();
     const factChunk = factChunks().find((c) => c.text === FACT_TEXT)!;
-    forgetMemory(db, factChunk.id, TABLES);
+    await forgetMemory(db, factChunk.id, TABLES);
     retireFact(db, store, KEY);
     expect(unretireFact(db, store, KEY)).toBe(true);
     expect(store.get(KEY)?.status).toBe("active");

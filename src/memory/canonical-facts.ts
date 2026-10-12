@@ -67,7 +67,13 @@ export type CanonicalSource =
   | "extraction"
   | "promotion"
   | "seed"
-  | "web_research";
+  | "web_research"
+  /**
+   * PLAN-55 Phase 3: restored from a memory export by `memory.import`.
+   * Tier 1, the extraction tier: an import never outranks a deliberate pin.
+   * An owner-tier fact keeps `owner` only when the owner runs the import.
+   */
+  | "import";
 
 /**
  * Supersession trust tiers. A pin may only SUPERSEDE (replace the value of) a
@@ -94,6 +100,7 @@ const SOURCE_TRUST_TIER: Record<CanonicalSource, number> = {
   agent_pin: 2,
   seed: 1,
   extraction: 1,
+  import: 1,
   promotion: 0,
   web_research: 0,
 };
@@ -109,9 +116,12 @@ export function canonicalSourceTier(source: string): number {
  * `decay` is passed by decayTick(); `hygiene` is reserved for
  * sweepHeartbeatArtifacts, which still writes `retired` directly because it
  * runs before the store exists. Capacity eviction also writes `retired`
- * directly.
+ * directly. `evidence_removed` (PLAN-55 Phase 3) is the forget cascade: the
+ * owner forgot every memory the fact rested on. It is a soft `retired`
+ * (another source may establish the fact again) but it propagates like the
+ * owner's retire, because the owner removed its grounds.
  */
-export type RetireReason = "owner" | "agent" | "decay" | "hygiene";
+export type RetireReason = "owner" | "agent" | "decay" | "hygiene" | "evidence_removed";
 
 /**
  * A fact's status. `retired` (agent, decay, hygiene, capacity) is soft: any
@@ -1192,6 +1202,19 @@ export class CanonicalFactsStore {
     }
     if (current.status !== "active") {
       return false;
+    }
+    // PLAN-55 Phase 3: the forget cascade, run on the owner's behalf. The
+    // caller (owner-controls) never passes an owner-tier fact here.
+    if (reason === "evidence_removed") {
+      this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
+      log.info(`canonical RETIRE (evidence removed): [${current.key}]`);
+      this.emitChanged("retire", current, current.value, {
+        previous: current,
+        tier: OWNER_TRUST_TIER,
+        source: "owner",
+        retireReason: reason,
+      });
+      return true;
     }
     // PLAN-55 Phase 1 review (item 1): the agent cannot retire a deliberate
     // belief (its own earlier pin or the owner's) any more than it can

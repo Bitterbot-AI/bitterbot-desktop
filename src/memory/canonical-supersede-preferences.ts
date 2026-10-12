@@ -16,7 +16,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import type { CanonicalChangeEvent } from "./canonical-events.js";
+import { type CanonicalChangeEvent, isOwnerDrivenRetire } from "./canonical-events.js";
 import { recordUndo, type PreferenceRowPayload } from "./canonical-propagation-undo.js";
 import {
   isSuppressed,
@@ -86,7 +86,7 @@ export function propagateToPreferences(
       // Only the owner's retire says the value is wrong; only a row that
       // still holds that value goes.
       if (
-        event.retireReason === "owner" &&
+        isOwnerDrivenRetire(event) &&
         event.oldValue &&
         normalizeExact(row.value) === normalizeExact(event.oldValue)
       ) {

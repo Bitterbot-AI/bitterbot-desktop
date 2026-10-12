@@ -1,7 +1,11 @@
 /**
  * memory.*: the owner's controls over what their agent remembers (PLAN-53 G1).
- * Reads need operator.read; changes and export are admin-only (not listed in
- * either set), like other irreversible operations.
+ * Reads need operator.read; changes, export and import are admin-only (not
+ * listed in either set), like other irreversible operations. PLAN-55 Phase 3:
+ * memory.forgetPreview (read) shows what a forget or an edit would also
+ * change; memory.forget / memory.edit take `preview: true` and the
+ * previewed `planHash`; memory.exportDownload hands out a one-time download
+ * link; memory.import restores an export.
  */
 
 import os from "node:os";
@@ -10,7 +14,9 @@ import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemoryIndexManager } from "../../memory/manager.js";
+import { MemoryImportRefused, parseMemoryExport } from "../../memory/memory-import.js";
 import { OwnerEditRefused } from "../../memory/owner-controls.js";
+import { mintMemoryExportToken } from "../memory-export-http.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
@@ -34,7 +40,9 @@ function fail(respond: Parameters<GatewayRequestHandlers[string]>[0]["respond"],
     false,
     undefined,
     errorShape(
-      err instanceof OwnerEditRefused ? ErrorCodes.INVALID_REQUEST : ErrorCodes.UNAVAILABLE,
+      err instanceof OwnerEditRefused || err instanceof MemoryImportRefused
+        ? ErrorCodes.INVALID_REQUEST
+        : ErrorCodes.UNAVAILABLE,
       message,
     ),
   );
@@ -74,23 +82,62 @@ export const memoryHandlers: GatewayRequestHandlers = {
     }
   },
 
+  /**
+   * Replace a memory's text (PLAN-55 Phase 3: a new memory replaces the old
+   * one, with the cascade). `preview: true` returns the plan without
+   * changing anything; `planHash` refuses when the plan changed since.
+   */
   "memory.edit": async ({ params, respond }) => {
     try {
       const m = await memoryManager(str(params.agentId));
+      const text = typeof params.text === "string" ? params.text : "";
+      if (params.preview === true) {
+        respond(true, { preview: true, ...(await m.ownerEditPreview(str(params.id), text)) });
+        return;
+      }
       respond(
         true,
-        await m.ownerEditMemory(str(params.id), typeof params.text === "string" ? params.text : ""),
+        await m.ownerEditMemory(str(params.id), text, {
+          planHash: str(params.planHash) || undefined,
+        }),
       );
     } catch (err) {
       fail(respond, err);
     }
   },
 
+  /** Forget a memory with the cascade; `preview` and `planHash` as for memory.edit. */
   "memory.forget": async ({ params, respond }) => {
     try {
       const m = await memoryManager(str(params.agentId));
-      await m.ownerForgetMemory(str(params.id));
-      respond(true, { ok: true });
+      if (params.preview === true) {
+        respond(true, { preview: true, ...(await m.ownerForgetPreview(str(params.id))) });
+        return;
+      }
+      const result = await m.ownerForgetMemory(str(params.id), {
+        planHash: str(params.planHash) || undefined,
+      });
+      respond(true, { ok: true, ...result });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-55 Phase 3: what a forget (or, with `text`, an edit) of this
+   * memory would also change: facts retired or kept, graph links closed,
+   * insights flagged, and the `planHash` to confirm with. Read-only.
+   */
+  "memory.forgetPreview": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const id = str(params.id);
+      respond(
+        true,
+        typeof params.text === "string"
+          ? await m.ownerEditPreview(id, params.text)
+          : await m.ownerForgetPreview(id),
+      );
     } catch (err) {
       fail(respond, err);
     }
@@ -216,6 +263,52 @@ export const memoryHandlers: GatewayRequestHandlers = {
     try {
       const m = await memoryManager(str(params.agentId));
       respond(true, { ok: await m.ownerUnretireFact(str(params.key)) });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-55 Phase 3: a one-time link (`GET <path>`, five minutes) that
+   * streams the export (version 2) to the client, plus the path of the raw
+   * SQLite database for an owner who wants the file itself.
+   */
+  "memory.exportDownload": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      const agentId = str(params.agentId) || resolveDefaultAgentId(loadConfig());
+      const link = mintMemoryExportToken(agentId);
+      respond(true, {
+        url: link.path,
+        expiresAt: link.expiresAt,
+        sqlitePath: m.ownerDatabasePath(),
+      });
+    } catch (err) {
+      fail(respond, err);
+    }
+  },
+
+  /**
+   * PLAN-55 Phase 3: restore an export (version 1 or 2) as the owner.
+   * `data` is the export (an object, or its JSON text); `dryRun: true`
+   * returns the counts without writing. Suppressions win, duplicates are
+   * skipped, and imported facts never outrank what is already there
+   * (memory-import.ts).
+   */
+  "memory.import": async ({ params, respond }) => {
+    try {
+      const m = await memoryManager(str(params.agentId));
+      if (params.data === undefined || params.data === null) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "data is required"));
+        return;
+      }
+      respond(
+        true,
+        await m.ownerImportMemories(parseMemoryExport(params.data), {
+          dryRun: params.dryRun === true,
+          actor: "owner",
+        }),
+      );
     } catch (err) {
       fail(respond, err);
     }

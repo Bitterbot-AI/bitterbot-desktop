@@ -40,7 +40,7 @@ export type CanonicalChangeEvent = {
   tier: number;
   /** The writer: a CanonicalSource for pins, `owner` for unretire. */
   source: string;
-  /** Retire only: owner | agent | decay | hygiene. */
+  /** Retire only: owner | agent | decay | hygiene | evidence_removed. */
   retireReason?: string;
   scope: string;
   evidence: { ref: string | null; chunkIds: string[] };
@@ -74,5 +74,18 @@ export function canonicalChangeMarksStale(event: CanonicalChangeEvent): boolean 
   if (event.op === "supersede") {
     return event.oldValue !== event.newValue;
   }
-  return event.op === "retire" && event.retireReason === "owner";
+  return isOwnerDrivenRetire(event);
+}
+
+/**
+ * A retire the owner caused: their own retire, or the forget cascade
+ * retiring a fact whose every piece of evidence they forgot (PLAN-55
+ * Phase 3, `evidence_removed`). Both say the old value should stop
+ * showing up anywhere; a retire by the agent, decay or hygiene does not.
+ */
+export function isOwnerDrivenRetire(event: CanonicalChangeEvent): boolean {
+  return (
+    event.op === "retire" &&
+    (event.retireReason === "owner" || event.retireReason === "evidence_removed")
+  );
 }

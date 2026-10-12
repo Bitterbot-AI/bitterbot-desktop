@@ -153,6 +153,8 @@ const READ_METHODS = new Set([
   "memory.preferences",
   "memory.audit",
   "memory.facts",
+  // PLAN-55 Phase 3: the cascade preview changes nothing.
+  "memory.forgetPreview",
   "forage.tape",
   "forage.stats",
   "forage.post",

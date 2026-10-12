@@ -12,6 +12,7 @@
  */
 
 import { DEFAULT_REDACT_PATTERNS } from "../logging/redact.js";
+import { scrubCardData } from "../security/card-data.js";
 
 const EXTRA_SECRET_PATTERNS: RegExp[] = [
   /\bAKIA[0-9A-Z]{16}\b/,
@@ -58,4 +59,58 @@ export function secretRejectionReason(key: string, value: string): string | null
     return `the value for "${key}" has the shape of a credential; secrets are never stored as facts`;
   }
   return null;
+}
+
+// PLAN-55 Phase 3: the export redacts credential-shaped text instead of
+// refusing it. Same shapes as looksLikeSecretValue, as global patterns; the
+// base64-run pattern uses lookbehind so the character before the token is
+// kept.
+const REDACT_GLOBAL_RX: RegExp[] = [
+  ...DEFAULT_REDACT_PATTERNS.map((p) => new RegExp(p, "gi")),
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\bASIA[0-9A-Z]{16}\b/g,
+  /-----BEGIN [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----[\s\S]*?-----END [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----/g,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
+  /\b[0-9a-f]{32,}\b/gi,
+  /(?<![A-Za-z0-9+/=])(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*\d[A-Za-z0-9+/]*\d)[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])/g,
+  /\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{10,}\b/g,
+  /\bsk-ant-[A-Za-z0-9_-]{10,}\b/g,
+];
+
+export const SECRET_REDACTION = "[redacted]";
+
+/**
+ * Replace every credential-shaped run in `text` with `[redacted]` (and card
+ * numbers with the card scrubber's mask). Where a pattern captures the
+ * secret part of a larger match (`API_KEY=...`, `"token": "..."`), only
+ * that part is replaced, so the reader still sees what was there.
+ */
+export function redactSecretShapes(text: string): { text: string; redactions: number } {
+  if (!text) {
+    return { text, redactions: 0 };
+  }
+  let redactions = 0;
+  let next = scrubCardData(text);
+  if (next !== text) {
+    redactions += 1;
+  }
+  for (const rx of REDACT_GLOBAL_RX) {
+    rx.lastIndex = 0;
+    next = next.replace(rx, (...args: unknown[]) => {
+      const match = String(args[0]);
+      if (match.includes(SECRET_REDACTION)) {
+        return match;
+      }
+      redactions += 1;
+      // replace() passes (match, ...groups, offset, input[, named]): the
+      // capture groups are what sits before the numeric offset.
+      const offsetAt = args.findIndex((a, i) => i > 0 && typeof a === "number");
+      const groups = args
+        .slice(1, offsetAt > 0 ? offsetAt : 1)
+        .filter((g): g is string => typeof g === "string" && g.length > 2);
+      const token = groups.at(-1);
+      return token && token !== match ? match.replace(token, SECRET_REDACTION) : SECRET_REDACTION;
+    });
+  }
+  return { text: next, redactions };
 }

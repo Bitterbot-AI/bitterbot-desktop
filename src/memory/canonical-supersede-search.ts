@@ -19,7 +19,11 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { canonicalChangeMarksStale, type CanonicalChangeEvent } from "./canonical-events.js";
+import {
+  canonicalChangeMarksStale,
+  type CanonicalChangeEvent,
+  isOwnerDrivenRetire,
+} from "./canonical-events.js";
 import {
   ftsPhraseForValue,
   staleCitationMatcher,
@@ -111,7 +115,7 @@ export async function propagateSupersededChunks(
   // A soft retire (agent, decay) leaves them alone: the value it retired is
   // not known to be wrong, and the tag would otherwise lose the value the
   // owner last set.
-  if (event.op !== "retire" || event.retireReason === "owner") {
+  if (event.op !== "retire" || isOwnerDrivenRetire(event)) {
     db.prepare(
       `UPDATE chunk_supersessions SET current_value = ?, fact_id = ? WHERE fact_key = ?`,
     ).run(event.newValue, event.factId, event.key);

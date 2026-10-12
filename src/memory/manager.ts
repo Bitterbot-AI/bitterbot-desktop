@@ -106,6 +106,8 @@ import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
 import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
+import { type ExportSink, writeMemoryExport } from "./memory-export.js";
+import { type ImportActor, importMemories } from "./memory-import.js";
 import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import {
@@ -119,7 +121,11 @@ import {
   type ListOptions as OwnerListOptions,
   listAuditLog as ownerListAuditLog,
   listPreferences as ownerListPreferences,
+  collectSessionChunks as ownerCollectSessionChunks,
+  forgetSessionMemories as ownerForgetSessionMemories,
   type OwnerPinInput,
+  previewEdit as ownerPreviewEdit,
+  previewForget as ownerPreviewForget,
   pinFact as ownerPinFact,
   retireFact as ownerRetireFact,
   unretireFact as ownerUnretireFact,
@@ -6143,13 +6149,25 @@ export class MemoryIndexManager implements MemorySearchManager {
     return ownerGetMemory(this.db, id);
   }
 
-  async ownerForgetMemory(id: string): Promise<void> {
-    await this.ownerChange("forget", () => ownerForgetMemory(this.db, id, this.ownerIndexTables()));
+  /**
+   * PLAN-55 Phase 3: forget with the cascade. `planHash` (from
+   * ownerForgetPreview) makes the forget refuse when the plan changed.
+   */
+  async ownerForgetMemory(id: string, opts: { planHash?: string } = {}) {
+    return await this.ownerChange("forget", () =>
+      ownerForgetMemory(this.db, id, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        planHash: opts.planHash,
+      }),
+    );
   }
 
-  async ownerEditMemory(id: string, text: string) {
+  async ownerEditMemory(id: string, text: string, opts: { planHash?: string } = {}) {
     const edited = await this.ownerChange("edit", () =>
-      ownerEditMemory(this.db, id, text, this.ownerIndexTables()),
+      ownerEditMemory(this.db, id, text, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        planHash: opts.planHash,
+      }),
     );
     // Re-embed now when possible so it is found by meaning again; the regular
     // backfill catches it otherwise.
@@ -6164,7 +6182,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     } catch {
       workingMemory = null;
     }
-    return await ownerExportMemories(this.db, outFile, { agentId: this.agentId, workingMemory });
+    return await ownerExportMemories(this.db, outFile, {
+      agentId: this.agentId,
+      workingMemory,
+      genome: await this.readWorkspaceText("GENOME.md"),
+    });
   }
 
   ownerListPreferences() {
@@ -6205,6 +6227,85 @@ export class MemoryIndexManager implements MemorySearchManager {
       throw new Error("the facts ledger is not available");
     }
     return await this.ownerChange("pin-fact", () => ownerPinFact(this.db, store, input));
+  }
+
+  // ── PLAN-55 Phase 3: cascade preview, session deletion, export v2, import ──
+
+  /** What forgetting this memory would also change (read-only), with the plan hash. */
+  async ownerForgetPreview(id: string) {
+    return await ownerPreviewForget(this.db, id);
+  }
+
+  /** What replacing this memory's text would also change (read-only). */
+  async ownerEditPreview(id: string, text: string) {
+    return await ownerPreviewEdit(this.db, id, text);
+  }
+
+  /**
+   * PLAN-55 §3.5b: a conversation was deleted (`sessions.delete`). Its
+   * indexed memories go with the cascade; facts resting only on it are
+   * retired below the owner tier, and the survivors are returned.
+   */
+  async ownerForgetSession(sessionFiles: string[], opts: { onCollected?: () => void } = {}) {
+    // Collected first, outside the maintenance lock, so the caller can
+    // archive the transcript right away; the cascade then waits its turn.
+    const chunks = await ownerCollectSessionChunks(this.db, sessionFiles);
+    opts.onCollected?.();
+    return await this.ownerChange("forget-session", () =>
+      ownerForgetSessionMemories(this.db, sessionFiles, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        chunks,
+      }),
+    );
+  }
+
+  private async readWorkspaceText(name: string): Promise<string | null> {
+    try {
+      return await fs.readFile(path.join(this.workspaceDir, name), "utf8");
+    } catch {
+      return null;
+    }
+  }
+
+  /** Export version 2 to any sink (the gateway's download streams it to the client). */
+  async ownerExportTo(sink: ExportSink) {
+    return await writeMemoryExport(this.db, sink, {
+      agentId: this.agentId,
+      workingMemory: await this.readWorkspaceText("MEMORY.md"),
+      genome: await this.readWorkspaceText("GENOME.md"),
+    });
+  }
+
+  /** The memory database file, for the owner to copy (shown next to the download). */
+  ownerDatabasePath(): string {
+    return this.settings.store.path;
+  }
+
+  /**
+   * Restore a memory export (v1 or v2; memory-import.ts has the rules).
+   * Imported memories are re-embedded in the background afterwards.
+   */
+  async ownerImportMemories(input: unknown, opts: { dryRun?: boolean; actor?: ImportActor } = {}) {
+    const result = await this.ownerChange("import", () =>
+      importMemories(this.db, input, {
+        actor: opts.actor ?? "owner",
+        dryRun: opts.dryRun,
+        store: this.canonicalFactsStore,
+        tables: this.ownerIndexTables(),
+      }),
+    );
+    if (!result.dryRun && result.importedChunkIds.length > 0) {
+      void (async () => {
+        for (;;) {
+          const { embedded } = await this.backfillPendingEmbeddings({ limit: 50 });
+          if (embedded === 0) {
+            return;
+          }
+          await yieldToEventLoop();
+        }
+      })().catch((err) => log.debug(`import re-embed stopped: ${String(err)}`));
+    }
+    return result;
   }
 
   /**
