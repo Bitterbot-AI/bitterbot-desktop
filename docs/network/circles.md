@@ -168,7 +168,7 @@ so the UI renders collision cues rather than pretending uniqueness.
 - **The group canvas**: always visible under the member roster (never
   behind a tab). Cards, per-member slots and votes (Decision Cards),
   study-guide Co-Canvas slices, and **mermaid diagram cards** (`cardType:
-"mermaid"`, rendered client-side with `securityLevel: "strict"` because
+  "mermaid"`, rendered client-side with `securityLevel: "strict"` because
   card text is peer content), all typed events on the same signed chains as
   the tab (`circles.canvas.list/put/remove/slice`). Any chat message can be
   promoted to a note card from its hover menu — the chat scrolls away, the

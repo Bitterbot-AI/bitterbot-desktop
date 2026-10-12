@@ -59,7 +59,7 @@ Other surfaces:
   cost per outcome and what-if replay. See
   [Usage tracking](/concepts/usage-tracking).
 - **CLI:** `bitterbot gateway usage [--by model|feature|provider|kind|agent|day]
-[--why] [--whatif provider/model] [--json]` reads the same ledger.
+  [--why] [--whatif provider/model] [--json]` reads the same ledger.
 - **CLI (provider quotas):** `bitterbot status --usage` and
   `bitterbot channels list` show provider quota windows (not per-response costs).
 
