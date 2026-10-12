@@ -14,4 +14,6 @@ export type PreflightReport = {
   blocking: string[];
   warnings: string[];
   memorySchemaLatest: number;
+  /** Memory databases this version migrates forward on its first boot. */
+  pendingMigrations?: number;
 };

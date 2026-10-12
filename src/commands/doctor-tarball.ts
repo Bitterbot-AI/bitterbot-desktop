@@ -2,11 +2,13 @@
  * Doctor checks for release-tarball installs (PLAN-56 Phase 3b): the
  * `current`/`previous` symlinks, the `~/.local/bin/bitterbot` command link,
  * the running version directory against its manifest.json, leftovers of an
- * interrupted update, and the pre-update snapshots.
+ * interrupted update (and a stale `.update.lock`), the pre-update snapshots,
+ * and the files a rollback replaced.
  *
  * `doctor --fix` repairs the links (a broken `current` points back at the
  * running version, or the newest intact one; a missing or dangling command
- * link is recreated; a dangling `previous` is removed). A version directory
+ * link is recreated; a dangling `previous` is removed; a provably stale
+ * update lock and the leftovers it guarded are removed). A version directory
  * that fails its manifest is never patched in place: doctor names
  * `bitterbot update --reinstall`, which downloads and verifies it again.
  */
@@ -30,8 +32,18 @@ import {
   tarballCommandLinkPath,
   verifyVersionDir,
 } from "../infra/tarball-install.js";
+import {
+  clearStaleUpdateLock,
+  inspectUpdateLock,
+  UPDATE_LOCK_FILE,
+} from "../infra/tarball-updater.js";
 import { compareSemverStrings } from "../infra/update-check.js";
-import { listSnapshots, snapshotsRoot } from "../infra/update-snapshot.js";
+import {
+  displacedRoot,
+  listDisplaced,
+  listSnapshots,
+  snapshotsRoot,
+} from "../infra/update-snapshot.js";
 import { type CheckResult, error, info, ok, renderSection, warn } from "./doctor-check.js";
 
 function hasLauncher(appDir: string, version: string): boolean {
@@ -206,7 +218,7 @@ async function checkTarballInstall(params: {
     );
   }
 
-  // Leftovers of an interrupted update.
+  // Leftovers of an interrupted update, and its lock.
   let leftovers: string[] = [];
   try {
     leftovers = fs
@@ -215,8 +227,24 @@ async function checkTarballInstall(params: {
   } catch {
     leftovers = [];
   }
+  let lock = inspectUpdateLock(appDir);
+  if (lock.state === "stale") {
+    if (params.repair && clearStaleUpdateLock(appDir)) {
+      results.push(ok(`Removed a stale ${UPDATE_LOCK_FILE} (${lock.reason})`));
+      lock = { state: "free" };
+    } else if (params.repair) {
+      // It changed under us: another update took the lock.
+      lock = inspectUpdateLock(appDir);
+    } else {
+      results.push(
+        warn(
+          `${path.join(appDir, UPDATE_LOCK_FILE)} is stale (${lock.reason}); "bitterbot doctor --fix" removes it.`,
+        ),
+      );
+    }
+  }
   if (leftovers.length > 0) {
-    const locked = fs.existsSync(path.join(appDir, ".update.lock"));
+    const locked = lock.state === "held";
     if (params.repair && !locked) {
       for (const name of leftovers) {
         fs.rmSync(path.join(appDir, name), { recursive: true, force: true });
@@ -243,6 +271,32 @@ async function checkTarballInstall(params: {
     ),
   );
 
+  // Files a rollback replaced: kept outside the snapshots (never pruned)
+  // until you delete them.
+  const displaced = listDisplaced(stateDir);
+  if (displaced.length > 0) {
+    const total = displaced.reduce((n, d) => n + d.bytes, 0);
+    results.push(
+      info(
+        [
+          `${displaced.length} folder(s) of files replaced by a rollback in ${displacedRoot(stateDir)} (${formatBytes(total)}); nothing deletes them for you:`,
+          ...displaced.map((d) => `  - ${path.basename(d.dir)} (${formatBytes(d.bytes)})`),
+          `Once you no longer need them: rm -r "${displacedRoot(stateDir)}/<folder>"`,
+        ].join("\n"),
+      ),
+    );
+  }
+
   renderSection("Install", results);
   return results;
+}
+
+function formatBytes(n: number): string {
+  if (n >= 1e9) {
+    return `${(n / 1e9).toFixed(1)} GB`;
+  }
+  if (n >= 1e6) {
+    return `${(n / 1e6).toFixed(1)} MB`;
+  }
+  return `${Math.max(1, Math.round(n / 1e3))} KB`;
 }

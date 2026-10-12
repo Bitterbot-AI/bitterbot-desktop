@@ -554,9 +554,9 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     await runTarballUpdateCommand({ root, opts });
     return;
   }
-  if (opts.rollback || opts.reinstall || opts.restoreData) {
+  if (opts.rollback || opts.reinstall || opts.restoreData || opts.restoreConfig) {
     defaultRuntime.error(
-      "--rollback, --reinstall and --restore-data are for release-tarball installs (install.sh). A source checkout rolls back with git; the boot watchdog does it automatically after a failed update.",
+      "--rollback, --reinstall, --restore-data and --restore-config are for release-tarball installs (install.sh). A source checkout rolls back with git; the boot watchdog does it automatically after a failed update.",
     );
     defaultRuntime.exit(1);
     return;

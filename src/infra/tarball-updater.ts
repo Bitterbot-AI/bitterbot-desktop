@@ -16,11 +16,13 @@
  * while it is current, previous, or in use.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runCommandWithTimeout } from "../process/exec.js";
+import { disarmBootVerify, readBootVerify } from "./boot-verify.js";
 import {
   CURRENT_LINK,
   PREVIOUS_LINK,
@@ -45,6 +47,7 @@ import {
   applySnapshotRestore,
   createUpdateSnapshot,
   findSnapshotFor,
+  keepDatabases,
   planSnapshotRestore,
   type RestorePlan,
   type RestoreResult,
@@ -149,6 +152,9 @@ export function parsePreflightOutput(stdout: string): PreflightReport | null {
           warnings: Array.isArray(parsed.warnings) ? parsed.warnings.map(String) : [],
           memorySchemaLatest:
             typeof parsed.memorySchemaLatest === "number" ? parsed.memorySchemaLatest : 0,
+          ...(typeof parsed.pendingMigrations === "number"
+            ? { pendingMigrations: parsed.pendingMigrations }
+            : {}),
         };
       }
     } catch {
@@ -230,38 +236,206 @@ async function extractTarball(params: {
   }
 }
 
-const LOCK_FILE = ".update.lock";
+export const UPDATE_LOCK_FILE = ".update.lock";
+/**
+ * A lock whose owner cannot be identified by its start time (macOS, a lock
+ * written by an older version) is stale once it is older than this: an
+ * update holds the lock only while it downloads, snapshots and activates,
+ * never across the boot wait (whose deadline is at most 90 minutes).
+ */
+export const UPDATE_LOCK_MAX_AGE_MS = 6 * 60 * 60_000;
 
-/** One update at a time per app dir: `<appDir>/.update.lock` holds the owner's pid. */
+type UpdateLockPayload = {
+  pid: number;
+  /** Identifies the run that took the lock: only that run removes it. */
+  token: string | null;
+  createdAt: number | null;
+  /** Linux: the owner's start time (/proc/<pid>/stat field 22), to detect pid reuse. */
+  startTime: number | null;
+};
+
+/** Start time of `pid` in clock ticks since boot (Linux), or null. */
+export function readProcStartTime(pid: number, procRoot: string | null = "/proc"): number | null {
+  if (!procRoot) {
+    return null;
+  }
+  try {
+    const raw = fs.readFileSync(path.join(procRoot, String(pid), "stat"), "utf8");
+    const fields = raw
+      .slice(raw.lastIndexOf(")") + 1)
+      .trim()
+      .split(/\s+/);
+    const n = Number.parseInt(fields[19] ?? "", 10);
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+function readUpdateLockRaw(lockPath: string): { raw: string; mtimeMs: number } | null {
+  try {
+    return { raw: fs.readFileSync(lockPath, "utf8"), mtimeMs: fs.statSync(lockPath).mtimeMs };
+  } catch {
+    return null;
+  }
+}
+
+function parseUpdateLock(raw: string, mtimeMs: number): UpdateLockPayload | null {
+  const text = raw.trim();
+  if (/^\d+$/.test(text)) {
+    // Written by an earlier build: the pid only.
+    return { pid: Number(text), token: null, createdAt: mtimeMs, startTime: null };
+  }
+  try {
+    const parsed = JSON.parse(text) as Partial<UpdateLockPayload>;
+    if (typeof parsed.pid !== "number" || !Number.isFinite(parsed.pid) || parsed.pid <= 0) {
+      return null;
+    }
+    return {
+      pid: parsed.pid,
+      token: typeof parsed.token === "string" ? parsed.token : null,
+      createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : mtimeMs,
+      startTime: typeof parsed.startTime === "number" ? parsed.startTime : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type UpdateLockState =
+  | { state: "free" }
+  | { state: "held"; pid: number }
+  | { state: "stale"; pid: number | null; reason: string };
+
+/**
+ * Is `<appDir>/.update.lock` held? Held when its owner is this process (a
+ * concurrent run in the same gateway) or a live process with the recorded
+ * start time. Stale when the owner is dead, its pid now belongs to a process
+ * started later (start time differs), or, with no start time to compare, the
+ * lock is older than UPDATE_LOCK_MAX_AGE_MS.
+ */
+export function inspectUpdateLock(
+  appDir: string,
+  opts: { now?: number; procRoot?: string | null } = {},
+): UpdateLockState {
+  const read = readUpdateLockRaw(path.join(appDir, UPDATE_LOCK_FILE));
+  if (!read) {
+    return { state: "free" };
+  }
+  const lock = parseUpdateLock(read.raw, read.mtimeMs);
+  if (!lock) {
+    return { state: "stale", pid: null, reason: "the lock file is unreadable" };
+  }
+  // This process counts like any other: alive, so a lock with our pid is
+  // held (a concurrent run here) unless its start time says the pid was reused.
+  let alive = false;
+  try {
+    process.kill(lock.pid, 0);
+    alive = true;
+  } catch (err) {
+    alive = (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+  if (!alive) {
+    return { state: "stale", pid: lock.pid, reason: `its owner (pid ${lock.pid}) has exited` };
+  }
+  const procRoot = opts.procRoot === undefined ? "/proc" : opts.procRoot;
+  const nowStart = lock.startTime !== null ? readProcStartTime(lock.pid, procRoot) : null;
+  if (lock.startTime !== null && nowStart !== null) {
+    return nowStart === lock.startTime
+      ? { state: "held", pid: lock.pid }
+      : {
+          state: "stale",
+          pid: lock.pid,
+          reason: `pid ${lock.pid} now belongs to another process (its owner exited)`,
+        };
+  }
+  const age = (opts.now ?? Date.now()) - (lock.createdAt ?? read.mtimeMs);
+  if (age > UPDATE_LOCK_MAX_AGE_MS) {
+    return {
+      state: "stale",
+      pid: lock.pid,
+      reason: `it is ${Math.round(age / 3_600_000)} h old, longer than any update runs`,
+    };
+  }
+  return { state: "held", pid: lock.pid };
+}
+
+/** Remove a stale lock (doctor --fix). Returns false when it is held or already gone. */
+export function clearStaleUpdateLock(
+  appDir: string,
+  opts: { procRoot?: string | null } = {},
+): boolean {
+  const lockPath = path.join(appDir, UPDATE_LOCK_FILE);
+  const before = readUpdateLockRaw(lockPath);
+  if (!before || inspectUpdateLock(appDir, opts).state !== "stale") {
+    return false;
+  }
+  // Only the lock we judged: another updater may have replaced it meanwhile.
+  if (readUpdateLockRaw(lockPath)?.raw !== before.raw) {
+    return false;
+  }
+  fs.rmSync(lockPath, { force: true });
+  return true;
+}
+
+/** App dirs with an update running in THIS process (the file lock is per process). */
+const updatesInProcess = new Set<string>();
+
+/**
+ * One update at a time per app dir: `<appDir>/.update.lock` names the owner
+ * (pid, start time, a per-run token). The returned release removes the lock
+ * only while it still carries this run's token.
+ */
 function acquireUpdateLock(appDir: string): () => void {
-  const lockPath = path.join(appDir, LOCK_FILE);
+  const key = path.resolve(appDir);
+  if (updatesInProcess.has(key)) {
+    throw new TarballUpdateError(
+      "an update is already running in this process; wait for it to finish",
+      "lock",
+    );
+  }
+  const lockPath = path.join(appDir, UPDATE_LOCK_FILE);
+  const token = randomUUID();
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const fd = fs.openSync(lockPath, "wx", 0o600);
-      fs.writeSync(fd, String(process.pid));
-      fs.closeSync(fd);
-      return () => fs.rmSync(lockPath, { force: true });
+      try {
+        fs.writeSync(
+          fd,
+          JSON.stringify({
+            pid: process.pid,
+            token,
+            createdAt: Date.now(),
+            startTime: readProcStartTime(process.pid),
+          }),
+        );
+      } finally {
+        fs.closeSync(fd);
+      }
+      updatesInProcess.add(key);
+      return () => {
+        updatesInProcess.delete(key);
+        const now = readUpdateLockRaw(lockPath);
+        const lock = now ? parseUpdateLock(now.raw, now.mtimeMs) : null;
+        if (lock?.token === token) {
+          fs.rmSync(lockPath, { force: true });
+        }
+      };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
         throw err;
       }
-      const owner = Number.parseInt(fs.readFileSync(lockPath, "utf8").trim(), 10);
-      let alive = false;
-      if (Number.isFinite(owner) && owner > 0 && owner !== process.pid) {
-        try {
-          process.kill(owner, 0);
-          alive = true;
-        } catch (killErr) {
-          alive = (killErr as NodeJS.ErrnoException).code === "EPERM";
-        }
-      }
-      if (alive) {
+      const state = inspectUpdateLock(appDir);
+      if (state.state === "held") {
         throw new TarballUpdateError(
-          `another update is already running (pid ${owner}); wait for it to finish`,
+          `another update is already running (pid ${state.pid}); wait for it to finish`,
           "lock",
         );
       }
-      fs.rmSync(lockPath, { force: true });
+      if (state.state === "stale") {
+        log.warn(`removing a stale update lock: ${state.reason}`);
+        clearStaleUpdateLock(appDir);
+      }
     }
   }
   throw new TarballUpdateError(`could not take ${lockPath}`, "lock");
@@ -485,13 +659,26 @@ export type TarballRollbackResult = {
   plan: RestorePlan | null;
   restore: RestoreResult | null;
   snapshotDir: string | null;
+  /** Database restores the plan wanted but skipped: the gateway was not confirmed stopped. */
+  databasesSkipped: string | null;
+  /** Manual mode: a pending update's boot beacon was disarmed (its watchdog stands down). */
+  disarmedBeacon: boolean;
 };
 
 /**
  * Point `current` back at `toVersion` (keeping `fromVersion` as previous)
  * and restore from the snapshot taken for the update toVersion -> fromVersion
- * according to planSnapshotRestore's policy. The caller stops the gateway
- * first when the plan may touch databases (auto mode, or includeData).
+ * according to planSnapshotRestore's policy.
+ *
+ * Databases are never replaced under a live gateway: when the plan restores
+ * one, `gatewayCheck` must positively confirm that no gateway holds the state
+ * (gateway-presence.ts). Without that confirmation (or without a check) the
+ * database restores are skipped and reported in `databasesSkipped`; the
+ * version switch still happens.
+ *
+ * A manual rollback also disarms a pending tarball update's boot beacon, so
+ * the update's watchdog stands down (its armedAt no longer matches) and a
+ * later restart of the old version is not mistaken for that update.
  */
 export async function rollbackTarballInstall(params: {
   appDir: string;
@@ -501,8 +688,12 @@ export async function rollbackTarballInstall(params: {
   mode: "auto" | "manual";
   targetMemorySchemaLatest: number;
   includeData?: boolean;
+  /** Manual mode: also restore the config file. */
+  restoreConfig?: boolean;
   /** Only plan, do not touch anything (for a dry run / the prompt). */
   dryRun?: boolean;
+  /** Confirms no gateway holds the state; required before any database restore. */
+  gatewayCheck?: () => Promise<{ gone: boolean; detail: string }>;
   readSchemaVersion?: (file: string) => Promise<number | null>;
 }): Promise<TarballRollbackResult> {
   const { appDir, fromVersion, toVersion } = params;
@@ -516,7 +707,7 @@ export async function rollbackTarballInstall(params: {
     );
   }
   const snapshot = findSnapshotFor(params.stateDir, toVersion, fromVersion);
-  const plan = snapshot
+  let plan = snapshot
     ? await planSnapshotRestore({
         manifest: snapshot.manifest,
         snapshotDir: snapshot.dir,
@@ -528,6 +719,7 @@ export async function rollbackTarballInstall(params: {
             ? snapshot.manifest.fromMemorySchemaLatest
             : params.targetMemorySchemaLatest,
         includeData: params.includeData,
+        restoreConfig: params.restoreConfig,
         readSchemaVersion: params.readSchemaVersion,
       })
     : null;
@@ -538,18 +730,57 @@ export async function rollbackTarballInstall(params: {
       plan,
       restore: null,
       snapshotDir: snapshot?.dir ?? null,
+      databasesSkipped: null,
+      disarmedBeacon: false,
     };
+  }
+  let disarmedBeacon = false;
+  if (params.mode === "manual") {
+    const beacon = readBootVerify();
+    if (beacon?.tarball && path.resolve(beacon.tarball.appDir) === path.resolve(appDir)) {
+      disarmBootVerify();
+      disarmedBeacon = true;
+    }
+  }
+  let databasesSkipped: string | null = null;
+  if (plan?.restore.some((r) => r.entry.kind === "database")) {
+    const check = params.gatewayCheck
+      ? await params.gatewayCheck().catch((err: unknown) => ({
+          gone: false,
+          detail: `the gateway check failed: ${String(err)}`,
+        }))
+      : { gone: false, detail: "no gateway check was run" };
+    if (!check.gone) {
+      databasesSkipped = `a gateway may still be running (${check.detail})`;
+      plan = keepDatabases(plan, databasesSkipped);
+      log.warn(`rollback: databases not restored: ${databasesSkipped}`);
+    }
   }
   swapVersionLink(appDir, CURRENT_LINK, toVersion);
   if (fromVersion !== toVersion && fs.existsSync(path.join(appDir, fromVersion))) {
     swapVersionLink(appDir, PREVIOUS_LINK, fromVersion);
   }
   const restore =
-    plan && snapshot ? applySnapshotRestore({ plan, snapshotDir: snapshot.dir }) : null;
+    plan && snapshot
+      ? applySnapshotRestore({
+          plan,
+          snapshotDir: snapshot.dir,
+          stateDir: params.stateDir,
+          manifest: snapshot.manifest,
+        })
+      : null;
   log.info(
     `rolled back v${fromVersion} -> v${toVersion} (${params.mode}); restored ${restore?.restored.length ?? 0} file(s)`,
   );
-  return { from: fromVersion, to: toVersion, plan, restore, snapshotDir: snapshot?.dir ?? null };
+  return {
+    from: fromVersion,
+    to: toVersion,
+    plan,
+    restore,
+    snapshotDir: snapshot?.dir ?? null,
+    databasesSkipped,
+    disarmedBeacon,
+  };
 }
 
 /** current/previous as the links name them. */

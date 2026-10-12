@@ -182,18 +182,25 @@ open an issue.
   installer-based install in place on the stable channel only (no beta for
   tarballs). It always checks the minisign signature (no SHA-256 only
   fallback), takes a snapshot first, and rolls back automatically when the new
-  version does not confirm a healthy start (5 to 30 minutes; at once when the
-  relaunched process exits). Limits:
+  version does not confirm a healthy start (5 to 30 minutes, up to 90 when it
+  migrates memory databases on its first start; at once when the relaunched
+  process exits). Limits:
   - The snapshot covers the config file, `.env`, the memory databases in
     `~/.bitterbot/memory`, GENOME.md/MEMORY.md of the default agent and the
     P2P keys. Other state (sessions, tasks, usage ledger, a memory store
     configured outside `~/.bitterbot/memory`) is not snapshotted. Only the
     newest three snapshots are kept; each takes about as much disk as your
     memory databases, so three of them take about three times that.
-  - A rollback restores a changed config file, but keeps the memory databases
-    unless the failed version migrated them past what the old version knows
-    (automatic rollback) or you pass `--restore-data` (manual). Restoring a
-    database loses everything written since the update.
+  - An automatic rollback restores a changed config file and `.env`; a manual
+    `--rollback` keeps both (`--restore-config` restores the config; `.env`
+    only by hand from the snapshot). Memory databases are kept unless the
+    failed version migrated them past what the old version knows (automatic
+    rollback) or you pass `--restore-data` (manual). Restoring a database
+    loses everything written since the update, and happens only once no
+    gateway is running (gateway lock free, gateway port silent); otherwise
+    the version switches and the databases stay as they are.
+    Replaced files go to `~/.bitterbot/update-displaced/` and stay until you
+    delete them.
   - Only one version back: `previous` is the version you updated from.
   - A gateway that is not the installed service and not reachable over RPC
     (for example a custom supervisor) is not restarted; restart it yourself.

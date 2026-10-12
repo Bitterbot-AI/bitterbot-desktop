@@ -110,4 +110,51 @@ describeUnix("doctor checks for a release-tarball install", () => {
     expect((await run(false)).some((r) => r.message.includes("does not match"))).toBe(false);
     expect((await run(false, true)).some((r) => r.message.includes("sha256 mismatch"))).toBe(true);
   });
+
+  it("--fix removes a provably stale .update.lock and the leftovers it guarded", async () => {
+    swapVersionLink(appDir, "current", "1.4.0");
+    fs.mkdirSync(path.join(appDir, ".update-abc123"));
+    // An owner that exited long ago (pid beyond any pid_max).
+    fs.writeFileSync(
+      path.join(appDir, ".update.lock"),
+      JSON.stringify({ pid: 2 ** 22 + 12345, token: "t", createdAt: Date.now() }),
+    );
+    const preview = await run(false);
+    expect(preview.some((r) => r.level === "warn" && r.message.includes("is stale"))).toBe(true);
+    expect(preview.some((r) => r.message.includes("of an interrupted update"))).toBe(true);
+    const fixed = await run(true);
+    expect(fixed.some((r) => r.message.includes("Removed a stale .update.lock"))).toBe(true);
+    expect(fs.existsSync(path.join(appDir, ".update.lock"))).toBe(false);
+    expect(fs.existsSync(path.join(appDir, ".update-abc123"))).toBe(false);
+  });
+
+  it("--fix leaves a held lock (and its update's files) alone", async () => {
+    swapVersionLink(appDir, "current", "1.4.0");
+    fs.mkdirSync(path.join(appDir, ".update-abc123"));
+    fs.writeFileSync(
+      path.join(appDir, ".update.lock"),
+      JSON.stringify({ pid: process.pid, token: "t", createdAt: Date.now() }),
+    );
+    await run(true);
+    expect(fs.existsSync(path.join(appDir, ".update.lock"))).toBe(true);
+    expect(fs.existsSync(path.join(appDir, ".update-abc123"))).toBe(true);
+  });
+
+  it("lists files a rollback replaced, with sizes and how to delete them", async () => {
+    swapVersionLink(appDir, "current", "1.4.0");
+    const kept = path.join(
+      home,
+      ".bitterbot",
+      "update-displaced",
+      "20261011T000000Z-1.5.0-to-1.4.0",
+    );
+    fs.mkdirSync(kept, { recursive: true });
+    fs.writeFileSync(path.join(kept, "database-main.sqlite"), Buffer.alloc(2_500_000));
+    const results = await run(true);
+    const msg = results.find((r) => r.message.includes("replaced by a rollback"))?.message ?? "";
+    expect(msg).toContain("20261011T000000Z-1.5.0-to-1.4.0 (2.5 MB)");
+    expect(msg).toContain("rm -r");
+    // Doctor never deletes them, even with --fix.
+    expect(fs.existsSync(path.join(kept, "database-main.sqlite"))).toBe(true);
+  });
 });

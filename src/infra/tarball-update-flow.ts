@@ -7,13 +7,15 @@
 import path from "node:path";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import type { BitterbotConfig } from "../config/config.js";
-import { resolveConfigPath, resolveStateDir } from "../config/paths.js";
+import { resolveConfigPath, resolveGatewayPort, resolveStateDir } from "../config/paths.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { LATEST_SCHEMA_VERSION } from "../memory/migrations.js";
 import { readLastBootDurationMs } from "./boot-duration.js";
 import { armBootVerify, clearRollbackRecord, type BootVerifyRecord } from "./boot-verify.js";
 import { tarballPlatformId } from "./install-kind.js";
 import { resolveP2pKeyDir } from "./p2p-key-dir.js";
 import { CURRENT_LINK, readVersionLink, resolveTarballLayout } from "./tarball-install.js";
+import type { PreflightReport } from "./tarball-preflight.js";
 import {
   resolveLatestTarballVersion,
   resolveReleaseSource,
@@ -44,6 +46,8 @@ export type TarballUpdateContext = {
   autoRollback: boolean;
   /** LATEST_SCHEMA_VERSION of the running code. */
   memorySchemaLatest: number;
+  /** The configured gateway port (the rollback probes it before restoring a database). */
+  gatewayPort: number;
 };
 
 /**
@@ -99,34 +103,78 @@ export function resolveTarballUpdateContext(params: {
     },
     autoRollback: cfg.update?.autoRollback?.enabled !== false,
     memorySchemaLatest: LATEST_SCHEMA_VERSION,
+    gatewayPort: resolveGatewayPort(cfg, env),
   };
+}
+
+const log = createSubsystemLogger("update/tarball");
+
+/** Ceiling of the boot deadline when the new version migrates memory databases on boot. */
+const MIGRATION_DEADLINE_CAP_MS = 90 * 60_000;
+
+/**
+ * Databases the new version will migrate on its first boot, from its
+ * activation check (the explicit count, or its "will be migrated" notes).
+ */
+export function pendingMigrationCount(
+  preflight: Pick<PreflightReport, "warnings" | "pendingMigrations"> | null | undefined,
+): number {
+  if (!preflight) {
+    return 0;
+  }
+  if (typeof preflight.pendingMigrations === "number") {
+    return preflight.pendingMigrations;
+  }
+  return preflight.warnings.filter((w) => / will be migrated to \d+ on boot$/.test(w)).length;
 }
 
 /**
  * How long a tarball update's new version has to confirm a healthy boot
  * before the watchdog rolls back: three times the last measured boot, at
  * least 5 and at most 30 minutes (a tarball boot does no build, but a cold
- * boot on a slow disk was measured at ~5 minutes).
+ * boot on a slow disk was measured at ~5 minutes). When the new version
+ * migrates memory databases on boot (a large database can take many
+ * minutes), the deadline is tripled, up to 90 minutes.
  */
-export function tarballBootDeadlineMs(stateDir?: string): number {
+export function tarballBootDeadlineMs(
+  stateDir?: string,
+  opts: { pendingMigrations?: number } = {},
+): number {
   const last = readLastBootDurationMs(stateDir);
-  return Math.min(30 * 60_000, Math.max(5 * 60_000, last * 3));
+  const base = Math.min(30 * 60_000, Math.max(5 * 60_000, last * 3));
+  if ((opts.pendingMigrations ?? 0) > 0) {
+    return Math.min(MIGRATION_DEADLINE_CAP_MS, base * 3);
+  }
+  return base;
 }
 
 /** Arm the boot-verify beacon for a tarball update that is about to restart. */
 export function armTarballBootVerify(params: {
-  ctx: Pick<TarballUpdateContext, "appDir" | "fromVersion" | "autoRollback" | "memorySchemaLatest">;
+  ctx: Pick<
+    TarballUpdateContext,
+    "appDir" | "fromVersion" | "autoRollback" | "memorySchemaLatest"
+  > &
+    Partial<Pick<TarballUpdateContext, "gatewayPort">>;
   toVersion: string;
   snapshotDir: string | null;
   restart: "service" | "respawn";
   reason: string;
+  /** The new version's activation check (pending migrations extend the deadline). */
+  preflight?: Pick<PreflightReport, "warnings" | "pendingMigrations"> | null;
 }): BootVerifyRecord | null {
   // A clean update supersedes any earlier rollback notice.
   clearRollbackRecord();
+  const pendingMigrations = pendingMigrationCount(params.preflight);
+  const deadlineMs = tarballBootDeadlineMs(undefined, { pendingMigrations });
+  if (pendingMigrations > 0) {
+    log.info(
+      `v${params.toVersion} migrates ${pendingMigrations} memory database(s) on boot; boot deadline extended to ${Math.round(deadlineMs / 60_000)} min`,
+    );
+  }
   return armBootVerify({
     prevSha: null,
     expectedVersion: params.toVersion,
-    deadlineMs: tarballBootDeadlineMs(),
+    deadlineMs,
     reason: params.reason,
     tarball: {
       appDir: params.ctx.appDir,
@@ -136,6 +184,7 @@ export function armTarballBootVerify(params: {
       snapshotDir: params.snapshotDir,
       fromMemorySchemaLatest: params.ctx.memorySchemaLatest,
       autoRollback: params.ctx.autoRollback,
+      ...(params.ctx.gatewayPort ? { gatewayPort: params.ctx.gatewayPort } : {}),
     },
   });
 }

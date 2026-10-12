@@ -20,6 +20,7 @@ import {
   writeVersionDir,
 } from "../test-utils/fake-tarball-release.js";
 import { makeTestMinisignKey, type TestMinisignKey } from "../test-utils/minisign.js";
+import { armBootVerify, readBootVerify } from "./boot-verify.js";
 import { tarballPlatformId } from "./install-kind.js";
 import { readVersionLink, swapVersionLink, versionInUse } from "./tarball-install.js";
 import {
@@ -29,11 +30,21 @@ import {
   type ReleaseSource,
 } from "./tarball-release.js";
 import {
+  clearStaleUpdateLock,
+  inspectUpdateLock,
   parsePreflightOutput,
+  readProcStartTime,
   rollbackTarballInstall,
   runTarballUpdate,
+  UPDATE_LOCK_MAX_AGE_MS,
 } from "./tarball-updater.js";
-import { listSnapshots, readSnapshotManifest, type SnapshotSources } from "./update-snapshot.js";
+import { decideTarballWatchdogAction } from "./tarball-watchdog.js";
+import {
+  createUpdateSnapshot,
+  listSnapshots,
+  readSnapshotManifest,
+  type SnapshotSources,
+} from "./update-snapshot.js";
 
 const platformId = tarballPlatformId();
 const describeUpdater = process.platform !== "win32" && platformId ? describe : describe.skip;
@@ -331,12 +342,82 @@ describeUpdater("runTarballUpdate", () => {
     }
   });
 
+  it("two concurrent runs in one process: exactly one updates, the other is refused cleanly", async () => {
+    publish("1.5.0");
+    const results = await Promise.allSettled([update("1.5.0"), update("1.5.0")]);
+    const ok = results.filter((r) => r.status === "fulfilled");
+    const refused = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(ok).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(String(refused[0]!.reason)).toMatch(/already running/);
+    expect(String(refused[0]!.reason)).not.toMatch(/ENOENT/);
+    expect(readVersionLink(appDir, "current")).toBe("1.5.0");
+    // The winner released its lock; nothing is left behind.
+    expect(fs.existsSync(path.join(appDir, ".update.lock"))).toBe(false);
+    expect(fs.readdirSync(appDir).filter((n) => n.startsWith(".update-"))).toEqual([]);
+  });
+
+  it("a lock naming this very process is held, and another run never removes it", async () => {
+    publish("1.5.0");
+    const lockPath = path.join(appDir, ".update.lock");
+    const foreign = JSON.stringify({
+      pid: process.pid,
+      token: "another-run",
+      createdAt: Date.now(),
+    });
+    fs.writeFileSync(lockPath, foreign);
+    await expect(update("1.5.0")).rejects.toThrow(/already running/);
+    expect(fs.readFileSync(lockPath, "utf8")).toBe(foreign);
+    expect(readVersionLink(appDir, "current")).toBe("1.4.0");
+  });
+
+  it("a lock whose pid now belongs to a later process is stale and taken over", async () => {
+    publish("1.5.0");
+    const child = spawn("sleep", ["30"]);
+    try {
+      const start = readProcStartTime(child.pid!);
+      if (start === null) {
+        return; // no /proc (macOS): the age rule below covers it
+      }
+      fs.writeFileSync(
+        path.join(appDir, ".update.lock"),
+        JSON.stringify({ pid: child.pid, token: "t", createdAt: Date.now(), startTime: start - 1 }),
+      );
+      expect(inspectUpdateLock(appDir).state).toBe("stale");
+      await update("1.5.0");
+      expect(readVersionLink(appDir, "current")).toBe("1.5.0");
+    } finally {
+      child.kill("SIGKILL");
+    }
+  });
+
+  it("a live owner without a start time goes stale after the age ceiling", async () => {
+    publish("1.5.0");
+    const child = spawn("sleep", ["30"]);
+    try {
+      const lockPath = path.join(appDir, ".update.lock");
+      fs.writeFileSync(lockPath, String(child.pid));
+      expect(inspectUpdateLock(appDir).state).toBe("held");
+      const old = (Date.now() - UPDATE_LOCK_MAX_AGE_MS - 60_000) / 1000;
+      fs.utimesSync(lockPath, old, old);
+      const state = inspectUpdateLock(appDir);
+      expect(state.state).toBe("stale");
+      expect(clearStaleUpdateLock(appDir)).toBe(true);
+      expect(fs.existsSync(lockPath)).toBe(false);
+    } finally {
+      child.kill("SIGKILL");
+    }
+  });
+
   describe("rollback data policy", () => {
-    it("manual rollback switches back, restores a changed config, keeps the databases", async () => {
+    const gatewayGone = async () => ({ gone: true, detail: "no gateway" });
+
+    it("manual rollback switches back and keeps config, .env and databases by default", async () => {
       publish("1.5.0");
       const res = await update("1.5.0");
-      // After the update: config rewritten and new memories written.
+      // After the update: config and .env edited, new memories written.
       fs.writeFileSync(sources.configPath, '{"gateway":{"mode":"local"},"newKey":true}\n');
+      fs.writeFileSync(path.join(stateDir, ".env"), "X=2\n");
       makeDb(path.join(stateDir, "memory", "main.sqlite"), 70, 2);
       const out = await rollbackTarballInstall({
         appDir,
@@ -349,16 +430,158 @@ describeUpdater("runTarballUpdate", () => {
       expect(readVersionLink(appDir, "current")).toBe("1.4.0");
       expect(readVersionLink(appDir, "previous")).toBe("1.5.0");
       expect(out.snapshotDir).toBe(res.snapshotDir);
-      expect(out.restore?.restored).toEqual([sources.configPath]);
-      expect(fs.readFileSync(sources.configPath, "utf8")).toBe('{"gateway":{"mode":"local"}}\n');
-      // The post-update config is kept, never deleted.
-      const displaced = fs.readdirSync(out.restore!.displacedDir!);
-      expect(displaced).toContain("config-bitterbot.json");
-      // Memories written after the update survive.
+      expect(out.restore?.restored ?? []).toEqual([]);
+      // Edits made since the update are the user's: nothing is reverted.
+      expect(fs.readFileSync(sources.configPath, "utf8")).toContain("newKey");
+      expect(fs.readFileSync(path.join(stateDir, ".env"), "utf8")).toBe("X=2\n");
+      expect(out.plan?.kept.find((k) => k.source === sources.configPath)?.reason).toMatch(
+        /--restore-config/,
+      );
       expect(countRows(path.join(stateDir, "memory", "main.sqlite"))).toBe(5);
       expect(out.plan?.kept.some((k) => k.source.endsWith("main.sqlite"))).toBe(true);
       // Keys and workspace files are never restored automatically.
       expect(out.plan?.restore.some((r) => r.entry.kind === "key")).toBe(false);
+    });
+
+    it("manual rollback with --restore-config restores the config, never .env", async () => {
+      publish("1.5.0");
+      await update("1.5.0");
+      fs.writeFileSync(sources.configPath, '{"gateway":{"mode":"local"},"newKey":true}\n');
+      fs.writeFileSync(path.join(stateDir, ".env"), "X=2\n");
+      const out = await rollbackTarballInstall({
+        appDir,
+        stateDir,
+        fromVersion: "1.5.0",
+        toVersion: "1.4.0",
+        mode: "manual",
+        targetMemorySchemaLatest: 70,
+        restoreConfig: true,
+      });
+      expect(out.restore?.restored).toEqual([sources.configPath]);
+      expect(fs.readFileSync(sources.configPath, "utf8")).toBe('{"gateway":{"mode":"local"}}\n');
+      expect(fs.readFileSync(path.join(stateDir, ".env"), "utf8")).toBe("X=2\n");
+      // The replaced config is kept outside the snapshots tree, never deleted.
+      expect(out.restore?.displacedDir?.startsWith(path.join(stateDir, "update-displaced"))).toBe(
+        true,
+      );
+      expect(fs.readdirSync(out.restore!.displacedDir!)).toContain("config-bitterbot.json");
+    });
+
+    it("an automatic rollback still restores a changed .env and config", async () => {
+      publish("1.5.0");
+      await update("1.5.0");
+      fs.writeFileSync(sources.configPath, '{"gateway":{"mode":"local"},"newKey":true}\n');
+      fs.writeFileSync(path.join(stateDir, ".env"), "X=2\n");
+      const out = await rollbackTarballInstall({
+        appDir,
+        stateDir,
+        fromVersion: "1.5.0",
+        toVersion: "1.4.0",
+        mode: "auto",
+        targetMemorySchemaLatest: 70,
+      });
+      expect(out.restore?.restored).toEqual([sources.configPath, path.join(stateDir, ".env")]);
+      expect(fs.readFileSync(path.join(stateDir, ".env"), "utf8")).toBe("X=1\n");
+    });
+
+    it("files a rollback replaced survive the pruning of later snapshots", async () => {
+      publish("1.5.0");
+      await update("1.5.0");
+      makeDb(path.join(stateDir, "memory", "main.sqlite"), 70, 2);
+      const out = await rollbackTarballInstall({
+        appDir,
+        stateDir,
+        fromVersion: "1.5.0",
+        toVersion: "1.4.0",
+        mode: "manual",
+        targetMemorySchemaLatest: 70,
+        includeData: true,
+        gatewayCheck: gatewayGone,
+      });
+      const displaced = path.join(out.restore!.displacedDir!, "database-main.sqlite");
+      expect(fs.existsSync(displaced)).toBe(true);
+      // Three newer snapshots push the one the rollback used out of the keep-3 window.
+      for (const [i, to] of ["1.5.1", "1.5.2", "1.5.3"].entries()) {
+        await createUpdateSnapshot({
+          sources,
+          from: "1.4.0",
+          to,
+          fromMemorySchemaLatest: 70,
+          now: new Date(Date.now() + (i + 1) * 60_000),
+        });
+      }
+      expect(fs.existsSync(out.snapshotDir!)).toBe(false);
+      expect(fs.existsSync(displaced)).toBe(true);
+      // The post-rollback writes are in it: 3 original + 2 written after the update.
+      expect(countRows(displaced)).toBe(5);
+    });
+
+    it("never restores a database while a gateway may hold it (version still switches)", async () => {
+      publish("1.5.0");
+      await update("1.5.0");
+      makeDb(path.join(stateDir, "memory", "main.sqlite"), 80, 1);
+      for (const gatewayCheck of [
+        undefined,
+        async () => ({ gone: false, detail: "port 19001 on 127.0.0.1 accepts connections" }),
+        async () => {
+          throw new Error("probe crashed");
+        },
+      ]) {
+        swapVersionLink(appDir, "current", "1.5.0");
+        const out = await rollbackTarballInstall({
+          appDir,
+          stateDir,
+          fromVersion: "1.5.0",
+          toVersion: "1.4.0",
+          mode: "auto",
+          targetMemorySchemaLatest: 70,
+          gatewayCheck,
+        });
+        expect(readVersionLink(appDir, "current")).toBe("1.4.0");
+        expect(out.databasesSkipped).toMatch(/a gateway may still be running/);
+        expect(out.restore?.restored ?? []).not.toContain(
+          path.join(stateDir, "memory", "main.sqlite"),
+        );
+        // The live file was not renamed away: the post-update rows are all there.
+        expect(countRows(path.join(stateDir, "memory", "main.sqlite"))).toBe(4);
+      }
+    });
+
+    it("a manual rollback disarms a pending update's beacon, so its watchdog stands down", async () => {
+      publish("1.5.0");
+      await update("1.5.0");
+      const beacon = armBootVerify({
+        prevSha: null,
+        expectedVersion: "1.5.0",
+        tarball: {
+          appDir,
+          fromVersion: "1.4.0",
+          toVersion: "1.5.0",
+          restart: "respawn",
+          snapshotDir: null,
+          fromMemorySchemaLatest: 70,
+          autoRollback: true,
+        },
+      })!;
+      const out = await rollbackTarballInstall({
+        appDir,
+        stateDir,
+        fromVersion: "1.5.0",
+        toVersion: "1.4.0",
+        mode: "manual",
+        targetMemorySchemaLatest: 70,
+      });
+      expect(out.disarmedBeacon).toBe(true);
+      expect(readBootVerify()).toBeNull();
+      // The update's watchdog, long past its deadline, does nothing.
+      expect(
+        decideTarballWatchdogAction({
+          beacon: readBootVerify(),
+          expectedArmedAt: beacon.armedAt,
+          now: beacon.deadlineAt + 10 * 60_000,
+          childExited: true,
+        }),
+      ).toBe("exit-healthy");
     });
 
     it("manual rollback with --restore-data restores the databases too", async () => {
@@ -373,6 +596,7 @@ describeUpdater("runTarballUpdate", () => {
         mode: "manual",
         targetMemorySchemaLatest: 70,
         includeData: true,
+        gatewayCheck: gatewayGone,
       });
       expect(countRows(path.join(stateDir, "memory", "main.sqlite"))).toBe(3);
       expect(out.restore?.restored).toContain(path.join(stateDir, "memory", "main.sqlite"));
@@ -390,7 +614,9 @@ describeUpdater("runTarballUpdate", () => {
         toVersion: "1.4.0",
         mode: "auto",
         targetMemorySchemaLatest: 70,
+        gatewayCheck: gatewayGone,
       });
+      expect(out.databasesSkipped).toBeNull();
       expect(out.restore?.restored).toContain(path.join(stateDir, "memory", "main.sqlite"));
       expect(countRows(path.join(stateDir, "memory", "main.sqlite"))).toBe(3);
     });

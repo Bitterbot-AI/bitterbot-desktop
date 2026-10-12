@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sha256File } from "./tarball-install.js";
 import {
   createUpdateSnapshot,
   listSnapshots,
@@ -65,6 +66,41 @@ describe("pre-update snapshots", () => {
       live.close();
     }
   });
+
+  it("never reads a whole database copy into memory to hash it", async () => {
+    const file = path.join(stateDir, "memory", "main.sqlite");
+    const db = new DatabaseSync(file);
+    db.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)");
+    db.close();
+    const readFileSync = vi.spyOn(fs, "readFileSync");
+    const { manifest } = await createUpdateSnapshot({
+      sources,
+      from: "1.4.0",
+      to: "1.5.0",
+      fromMemorySchemaLatest: 1,
+    });
+    expect(manifest.entries.find((e) => e.kind === "database")?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    // Only the small manifest may be read whole; never a snapshot file.
+    const whole = readFileSync.mock.calls
+      .map((c) => String(c[0]))
+      .filter((f) => !f.endsWith("manifest.json"));
+    expect(whole).toEqual([]);
+  });
+
+  it("hashes a file larger than 2 GiB (a Buffer cannot hold it)", async () => {
+    const big = path.join(stateDir, "sparse.bin");
+    // Sparse: no disk blocks are written, but the size is past the
+    // ERR_FS_FILE_TOO_LARGE limit of fs.readFileSync.
+    const fd = fs.openSync(big, "w");
+    fs.ftruncateSync(fd, 2 ** 31 + 1);
+    fs.closeSync(fd);
+    try {
+      expect(() => fs.readFileSync(big)).toThrow();
+      expect(await sha256File(big)).toMatch(/^[0-9a-f]{64}$/);
+    } finally {
+      fs.rmSync(big, { force: true });
+    }
+  }, 120_000);
 
   it("refuses (and leaves nothing behind) when the disk is too full", async () => {
     fs.writeFileSync(path.join(stateDir, "memory", "main.sqlite"), Buffer.alloc(1024));

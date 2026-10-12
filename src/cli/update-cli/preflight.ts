@@ -43,6 +43,7 @@ export async function runUpdatePreflight(
     warnings.push(`legacy config key ${legacy.path}: ${legacy.message}`);
   }
   const readSchema = params.readSchemaVersion ?? readDatabaseSchemaVersion;
+  let pendingMigrations = 0;
   for (const db of listMemoryDatabases(params.stateDir ?? resolveStateDir())) {
     const schema = await readSchema(db);
     const name = path.basename(db);
@@ -53,6 +54,7 @@ export async function runUpdatePreflight(
         `${name} has memory schema ${schema}, newer than the ${LATEST_SCHEMA_VERSION} v${VERSION} knows (it was written by a newer release)`,
       );
     } else if (schema < LATEST_SCHEMA_VERSION) {
+      pendingMigrations += 1;
       warnings.push(
         `${name}: schema ${schema} will be migrated to ${LATEST_SCHEMA_VERSION} on boot`,
       );
@@ -65,6 +67,7 @@ export async function runUpdatePreflight(
     blocking,
     warnings,
     memorySchemaLatest: LATEST_SCHEMA_VERSION,
+    pendingMigrations,
   };
 }
 

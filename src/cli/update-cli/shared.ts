@@ -34,6 +34,8 @@ export type UpdateCommandOptions = {
   reinstall?: boolean;
   /** With --rollback: also restore the memory databases from the snapshot. */
   restoreData?: boolean;
+  /** With --rollback: also restore the config file from the snapshot. */
+  restoreConfig?: boolean;
 };
 
 export type UpdateStatusOptions = {

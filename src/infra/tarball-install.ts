@@ -298,11 +298,16 @@ export function readTarballManifest(dir: string): TarballManifest | null {
   };
 }
 
-async function sha256File(file: string): Promise<string> {
+/**
+ * SHA-256 of a file, streamed in 1 MiB chunks: never buffers the whole file
+ * (a memory database can exceed the 2 GiB a Buffer may hold) and yields to
+ * the event loop between chunks (it also runs inside the gateway).
+ */
+export async function sha256File(file: string): Promise<string> {
   const hash = createHash("sha256");
   const handle = await fsp.open(file, "r");
   try {
-    for await (const chunk of handle.createReadStream()) {
+    for await (const chunk of handle.createReadStream({ highWaterMark: 1024 * 1024 })) {
       hash.update(chunk as Buffer);
     }
   } finally {

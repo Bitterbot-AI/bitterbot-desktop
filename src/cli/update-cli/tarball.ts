@@ -6,6 +6,8 @@
  *   bitterbot update --tag 1.6.0     pin a release (downgrades ask first)
  *   bitterbot update --reinstall     re-download and replace this version
  *   bitterbot update --rollback      switch back to `previous`
+ *                    --restore-data    ...and restore the memory databases
+ *                    --restore-config  ...and restore the config file
  *   bitterbot update --json          machine output
  *
  * The heavy lifting is src/infra/tarball-updater.ts; this file decides the
@@ -25,6 +27,7 @@ import {
   readRollbackRecord,
   type BootVerifyRecord,
 } from "../../infra/boot-verify.js";
+import { checkGatewayGone, waitForGatewayGone } from "../../infra/gateway-presence.js";
 import { resolveLatestTarballVersion } from "../../infra/tarball-release.js";
 import {
   armTarballBootVerify,
@@ -128,26 +131,39 @@ export async function waitForTarballBoot(params: {
   const sleep = params.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
   const until = params.beacon.deadlineAt + WAIT_SLACK_MS;
   let rolledBack: { detail: string } | null = null;
+  // The watchdog writes "rollback in progress" before it acts and the final
+  // record after. The old version can come up (clearing the re-armed beacon)
+  // before the final record lands: a cleared beacon then is NOT a healthy
+  // update.
+  let rollbackPending = false;
   while (now() < until) {
     const record = readRollbackRecord();
     if (record?.mode === "tarball" && record.at >= params.beacon.armedAt) {
-      if (!record.ok && !record.detail.startsWith("rollback in progress")) {
+      const inProgress = !record.ok && record.detail.startsWith("rollback in progress");
+      if (!record.ok && !inProgress) {
         return { status: "rollback-failed", detail: record.detail };
       }
+      rollbackPending = inProgress;
       if (record.ok) {
         rolledBack = { detail: record.detail };
       }
     }
     const beacon = readBootVerify();
-    if (!beacon) {
-      return rolledBack
-        ? { status: "rolled-back", version: params.fromVersion, healthy: true, ...rolledBack }
-        : { status: "healthy", version: params.toVersion };
+    if (!beacon && rolledBack) {
+      return { status: "rolled-back", version: params.fromVersion, healthy: true, ...rolledBack };
+    }
+    if (!beacon && !rollbackPending) {
+      return { status: "healthy", version: params.toVersion };
     }
     await sleep(POLL_MS);
   }
-  if (rolledBack) {
-    return { status: "rolled-back", version: params.fromVersion, healthy: false, ...rolledBack };
+  if (rolledBack || rollbackPending) {
+    return {
+      status: "rolled-back",
+      version: params.fromVersion,
+      healthy: false,
+      detail: rolledBack?.detail ?? "the boot watchdog is rolling back (not finished yet)",
+    };
   }
   return {
     status: "timeout",
@@ -190,6 +206,7 @@ async function restartAndVerify(params: {
     snapshotDir: result.snapshotDir,
     restart: plan.kind,
     reason: "cli-update",
+    preflight: result.preflight,
   });
   if (!beacon) {
     emit.log(theme.warn("Could not arm the boot check; restart the gateway yourself."));
@@ -289,6 +306,7 @@ export type TarballCliOptions = UpdateCommandOptions & {
   rollback?: boolean;
   reinstall?: boolean;
   restoreData?: boolean;
+  restoreConfig?: boolean;
 };
 
 export async function runTarballUpdateCommand(params: {
@@ -494,6 +512,7 @@ async function runTarballRollback(params: {
     mode: "manual",
     targetMemorySchemaLatest: ctx.memorySchemaLatest,
     includeData: opts.restoreData,
+    restoreConfig: opts.restoreConfig,
     dryRun: true,
   }).catch((err: unknown) => {
     fail(emit, String(err instanceof Error ? err.message : err));
@@ -515,20 +534,28 @@ async function runTarballRollback(params: {
   }
   const touchesDatabases = preview.plan?.restore.some((r) => r.entry.kind === "database") ?? false;
   const loaded = await serviceLoaded();
-  if (touchesDatabases && !loaded && (await localGatewayVersion(cfg)) !== null) {
-    fail(
-      emit,
-      `Restoring databases needs the gateway stopped. Stop it (${formatCliCommand("bitterbot gateway stop")} or Ctrl-C), then re-run this command.`,
-    );
-    return;
+  // A database is never replaced under a live gateway. "No RPC answer" proves
+  // nothing (remote mode, auth, a hung gateway): gateway-presence.ts checks
+  // the gateway lock and the configured port instead.
+  if (touchesDatabases && !loaded) {
+    const presence = await checkGatewayGone({ port: ctx.gatewayPort });
+    if (!presence.gone) {
+      fail(
+        emit,
+        `Restoring databases needs the gateway stopped (${presence.detail}). Stop it (${formatCliCommand("bitterbot gateway stop")} or Ctrl-C), then re-run this command.`,
+      );
+      return;
+    }
   }
   if (!(await confirmOrExit(`Switch back to v${previous}?`, opts, emit))) {
     return;
   }
   if (touchesDatabases && loaded) {
-    await resolveGatewayService()
-      .stop({ env: process.env, stdout: process.stdout })
-      .catch(() => {});
+    try {
+      await resolveGatewayService().stop({ env: process.env, stdout: process.stdout });
+    } catch (err) {
+      emit.log(theme.warn(`Stopping the gateway service failed: ${String(err)}`));
+    }
   }
   const res = await rollbackTarballInstall({
     appDir: ctx.appDir,
@@ -538,6 +565,8 @@ async function runTarballRollback(params: {
     mode: "manual",
     targetMemorySchemaLatest: ctx.memorySchemaLatest,
     includeData: opts.restoreData,
+    restoreConfig: opts.restoreConfig,
+    gatewayCheck: () => waitForGatewayGone({ port: ctx.gatewayPort, timeoutMs: 30_000 }),
   });
   emit.out.rollback = {
     from: res.from,
@@ -545,17 +574,34 @@ async function runTarballRollback(params: {
     restored: res.restore?.restored ?? [],
     displacedDir: res.restore?.displacedDir ?? null,
     snapshotDir: res.snapshotDir,
+    databasesSkipped: res.databasesSkipped,
   };
   emit.log(`current -> v${previous}, previous -> v${from}.`);
+  if (res.disarmedBeacon) {
+    emit.log(
+      theme.muted("The pending update's boot check was cancelled (its watchdog stands down)."),
+    );
+  }
   if (res.restore && res.restore.restored.length > 0) {
     emit.log(
       theme.muted(
-        `Restored ${res.restore.restored.length} file(s); the replaced ones are in ${res.restore.displacedDir}`,
+        `Restored ${res.restore.restored.length} file(s); the replaced ones are kept in ${res.restore.displacedDir}`,
       ),
     );
   }
+  // The databases were asked for and not restored: say so loudly, and how to
+  // finish by hand (re-running --rollback would now switch the other way).
+  const code = res.databasesSkipped ? 1 : 0;
+  if (res.databasesSkipped) {
+    emit.log(
+      theme.error(
+        `The databases were NOT restored: ${res.databasesSkipped}. The version switch is done. To restore them, stop every gateway, then copy the files from ${res.snapshotDir ?? "the snapshot"}/memory over ${path.join(ctx.snapshot.stateDir, "memory")} (move the current ones aside first).`,
+      ),
+    );
+  }
+  const status = code === 0 ? "ok" : "partial";
   if (opts.restart === false) {
-    finish(emit, { status: "ok", restart: { kind: "skipped" } });
+    finish(emit, { status, restart: { kind: "skipped" } }, code);
     return;
   }
   let restarted = false;
@@ -572,7 +618,7 @@ async function runTarballRollback(params: {
         `Start the gateway to run v${previous}: ${formatCliCommand("bitterbot gateway")}`,
       ),
     );
-    finish(emit, { status: "ok", restart: { kind: "none" } });
+    finish(emit, { status, restart: { kind: "none" } }, code);
     return;
   }
   // Best effort: the old version answering over RPC.
@@ -587,13 +633,13 @@ async function runTarballRollback(params: {
   }
   if (answered === previous) {
     emit.log(theme.success(`Gateway is healthy on v${previous}.`));
-    finish(emit, { status: "ok", boot: { status: "healthy", version: previous } });
+    finish(emit, { status, boot: { status: "healthy", version: previous } }, code);
   } else {
     emit.log(
       theme.warn(
         `The gateway has not answered as v${previous} yet; check ${formatCliCommand("bitterbot gateway status")}.`,
       ),
     );
-    finish(emit, { status: "ok", boot: { status: "unconfirmed", answered } });
+    finish(emit, { status, boot: { status: "unconfirmed", answered } }, code);
   }
 }

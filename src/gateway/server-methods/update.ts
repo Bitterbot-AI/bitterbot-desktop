@@ -42,12 +42,14 @@ import {
   validateUpdateRunParams,
 } from "../protocol/index.js";
 import { parseRestartRequestParams } from "./restart-request.js";
-import type { GatewayRequestHandlers } from "./types.js";
+import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
 // Single-flight: concurrent update.check calls share one underlying probe so
 // a click-happy client cannot fan out parallel `git fetch` subprocesses.
 let inflightCheck: Promise<Record<string, unknown>> | null = null;
+// Single-flight for update.run: a concurrent run is refused, not queued.
+let inflightRun: Promise<void> | null = null;
 
 async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
   const config = loadConfig();
@@ -169,168 +171,188 @@ export const updateHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "update.run": async ({ params, respond }) => {
-    if (!assertValidParams(params, validateUpdateRunParams, "update.run", respond)) {
+  "update.run": async (ctx) => {
+    if (!assertValidParams(ctx.params, validateUpdateRunParams, "update.run", ctx.respond)) {
       return;
     }
-    const root =
-      (await resolveBitterbotPackageRoot({
-        moduleUrl: import.meta.url,
-        argv1: process.argv[1],
-        cwd: process.cwd(),
-      }).catch(() => null)) ?? process.cwd();
-    // One probe for both the container refusal and the default channel. No
-    // fetch and no registry: this only reads the local install.
-    const local = await checkUpdateStatus({
-      root,
-      timeoutMs: 4000,
-      fetchGit: false,
-      includeRegistry: false,
-    }).catch(() => null);
-    // A container cannot update itself in place: its code is the image, and
-    // the next restart would bring the old one back (PLAN-53 F1). Detected
-    // from BITTERBOT_INSTALL_KIND or, for images that do not set it, the
-    // container heuristic (never for a git checkout).
-    if (process.env.BITTERBOT_INSTALL_KIND === "container" || local?.installKind === "container") {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CONTAINER_UPDATE_REFUSAL));
-      return;
-    }
-    const { sessionKey, note, restartDelayMs } = parseRestartRequestParams(params);
-    const timeoutMsRaw = (params as { timeoutMs?: unknown }).timeoutMs;
-    const timeoutMs =
-      typeof timeoutMsRaw === "number" && Number.isFinite(timeoutMsRaw)
-        ? Math.max(1000, Math.floor(timeoutMsRaw))
-        : undefined;
-
-    // A release-tarball install (PLAN-56 Phase 3b) updates in place: verified
-    // download, snapshot, activation check, symlink switch; the boot watchdog
-    // rolls back if the new version never confirms a healthy boot. Always
-    // production rules (pinned key, GitHub Releases): the CLI-only test mode
-    // cannot be reached from here.
-    if (
-      local?.installKind === "tarball" ||
-      (local === null && readDeclaredInstallKind() === "tarball")
-    ) {
-      const config = loadConfig();
-      const run = await runTarballUpdateForGateway({ root, config, timeoutMs });
-      const result = run.result;
-      let restart = null;
-      if (result.status === "ok" && run.ctx && run.update) {
-        // Supervised (systemd/launchd): the supervisor brings `current` up and
-        // the watchdog only watches. Unsupervised: the respawn hands off to
-        // the watchdog, which launches `current` with this gateway's argv.
-        const supervised = isLikelySupervisedProcess(process.env);
-        const beacon = armTarballBootVerify({
-          ctx: run.ctx,
-          toVersion: run.update.to,
-          snapshotDir: run.update.snapshotDir,
-          restart: supervised ? "service" : "respawn",
-          reason: "update.run",
-        });
-        if (beacon && supervised && run.ctx.autoRollback) {
-          spawnTarballBootWatchdog({ root: run.ctx.root, armedAt: beacon.armedAt });
-        }
-        restart = scheduleGatewaySigusr1Restart({ delayMs: restartDelayMs, reason: "update.run" });
-      }
-      const payload = buildUpdateSentinel({ result, sessionKey, note });
-      let sentinelPath: string | null = null;
-      try {
-        sentinelPath = await writeRestartSentinel(payload);
-      } catch {
-        sentinelPath = null;
-      }
-      respond(
-        true,
-        { ok: true, result, restart, sentinel: { path: sentinelPath, payload } },
+    // One update at a time per gateway: a second click while one runs would
+    // race it over the same staging directory, snapshot and lock.
+    if (inflightRun) {
+      ctx.respond(
+        false,
         undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "an update is already running; wait for it to finish"),
       );
       return;
     }
-
-    let result: Awaited<ReturnType<typeof runGatewayUpdate>>;
+    inflightRun = runUpdate(ctx);
     try {
-      const config = loadConfig();
-      const configChannel = normalizeUpdateChannel(config.update?.channel);
-      // A git checkout sitting on a release tag follows `stable` (or `beta`
-      // for a beta tag) when no channel is configured (PLAN-56 §3.5); the
-      // runner's own default stays `dev` for checkouts on a branch.
-      const effective =
-        local && !configChannel
-          ? resolveEffectiveUpdateChannel({
-              configChannel: null,
-              installKind: local.installKind,
-              git: local.git ? { tag: local.git.tag, branch: local.git.branch } : undefined,
-            })
-          : null;
-      const channel =
-        configChannel ?? (effective?.source === "git-tag" ? effective.channel : undefined);
-      result = await runGatewayUpdate({
-        timeoutMs,
-        cwd: root,
-        argv1: process.argv[1],
-        channel,
-      });
-    } catch (err) {
-      result = {
-        status: "error",
-        mode: "unknown",
-        reason: String(err),
-        steps: [],
-        durationMs: 0,
-      };
+      await inflightRun;
+    } finally {
+      inflightRun = null;
     }
+  },
+};
 
+async function runUpdate({ params, respond }: Parameters<GatewayRequestHandler>[0]): Promise<void> {
+  const root =
+    (await resolveBitterbotPackageRoot({
+      moduleUrl: import.meta.url,
+      argv1: process.argv[1],
+      cwd: process.cwd(),
+    }).catch(() => null)) ?? process.cwd();
+  // One probe for both the container refusal and the default channel. No
+  // fetch and no registry: this only reads the local install.
+  const local = await checkUpdateStatus({
+    root,
+    timeoutMs: 4000,
+    fetchGit: false,
+    includeRegistry: false,
+  }).catch(() => null);
+  // A container cannot update itself in place: its code is the image, and
+  // the next restart would bring the old one back (PLAN-53 F1). Detected
+  // from BITTERBOT_INSTALL_KIND or, for images that do not set it, the
+  // container heuristic (never for a git checkout).
+  if (process.env.BITTERBOT_INSTALL_KIND === "container" || local?.installKind === "container") {
+    respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CONTAINER_UPDATE_REFUSAL));
+    return;
+  }
+  const { sessionKey, note, restartDelayMs } = parseRestartRequestParams(params);
+  const timeoutMsRaw = (params as { timeoutMs?: unknown }).timeoutMs;
+  const timeoutMs =
+    typeof timeoutMsRaw === "number" && Number.isFinite(timeoutMsRaw)
+      ? Math.max(1000, Math.floor(timeoutMsRaw))
+      : undefined;
+
+  // A release-tarball install (PLAN-56 Phase 3b) updates in place: verified
+  // download, snapshot, activation check, symlink switch; the boot watchdog
+  // rolls back if the new version never confirms a healthy boot. Always
+  // production rules (pinned key, GitHub Releases): the CLI-only test mode
+  // cannot be reached from here.
+  if (
+    local?.installKind === "tarball" ||
+    (local === null && readDeclaredInstallKind() === "tarball")
+  ) {
+    const config = loadConfig();
+    const run = await runTarballUpdateForGateway({ root, config, timeoutMs });
+    const result = run.result;
+    let restart = null;
+    if (result.status === "ok" && run.ctx && run.update) {
+      // Supervised (systemd/launchd): the supervisor brings `current` up and
+      // the watchdog only watches. Unsupervised: the respawn hands off to
+      // the watchdog, which launches `current` with this gateway's argv.
+      const supervised = isLikelySupervisedProcess(process.env);
+      const beacon = armTarballBootVerify({
+        ctx: run.ctx,
+        toVersion: run.update.to,
+        snapshotDir: run.update.snapshotDir,
+        restart: supervised ? "service" : "respawn",
+        reason: "update.run",
+        preflight: run.update.preflight,
+      });
+      if (beacon && supervised && run.ctx.autoRollback) {
+        spawnTarballBootWatchdog({ root: run.ctx.root, armedAt: beacon.armedAt });
+      }
+      restart = scheduleGatewaySigusr1Restart({ delayMs: restartDelayMs, reason: "update.run" });
+    }
     const payload = buildUpdateSentinel({ result, sessionKey, note });
-
     let sentinelPath: string | null = null;
     try {
       sentinelPath = await writeRestartSentinel(payload);
     } catch {
       sentinelPath = null;
     }
-
-    // Only restart when the update actually applied: a `skipped` (dirty tree,
-    // no upstream) or `error` run changed nothing, and bouncing the gateway
-    // for a no-op would kill live chat/agent sessions for nothing.
-    let restart = null;
-    if (result.status === "ok") {
-      // Arm the boot-health beacon BEFORE the restart: if the freshly-built
-      // gateway never comes up, doctor will surface it with this rollback sha.
-      // The new gateway clears the beacon the moment it is listening.
-      armBootVerify({ prevSha: result.before?.sha ?? null, reason: "update.run" });
-      // A clean update supersedes any earlier rollback state.
-      clearRollbackRecord();
-      // The beacon is the signal; the watchdog is the actor. Spawned detached
-      // so it survives this process's restart and can perform ONE guarded
-      // rollback if the fresh build never confirms a healthy boot.
-      if (result.root) {
-        spawnBootWatchdog({
-          root: result.root,
-          prevSha: result.before?.sha ?? null,
-          autoRollbackEnabled: loadConfig().update?.autoRollback?.enabled !== false,
-        });
-      }
-      restart = scheduleGatewaySigusr1Restart({
-        delayMs: restartDelayMs,
-        reason: "update.run",
-      });
-      // No UI process to bounce any more (PLAN-39 Phase 4): the gateway serves
-      // the Control UI from dist/control-ui per request, so after ui:build
-      // restages the assets, the next browser reload simply gets the new code.
-    }
-
     respond(
       true,
-      {
-        ok: true,
-        result,
-        restart,
-        sentinel: {
-          path: sentinelPath,
-          payload,
-        },
-      },
+      { ok: true, result, restart, sentinel: { path: sentinelPath, payload } },
       undefined,
     );
-  },
-};
+    return;
+  }
+
+  let result: Awaited<ReturnType<typeof runGatewayUpdate>>;
+  try {
+    const config = loadConfig();
+    const configChannel = normalizeUpdateChannel(config.update?.channel);
+    // A git checkout sitting on a release tag follows `stable` (or `beta`
+    // for a beta tag) when no channel is configured (PLAN-56 §3.5); the
+    // runner's own default stays `dev` for checkouts on a branch.
+    const effective =
+      local && !configChannel
+        ? resolveEffectiveUpdateChannel({
+            configChannel: null,
+            installKind: local.installKind,
+            git: local.git ? { tag: local.git.tag, branch: local.git.branch } : undefined,
+          })
+        : null;
+    const channel =
+      configChannel ?? (effective?.source === "git-tag" ? effective.channel : undefined);
+    result = await runGatewayUpdate({
+      timeoutMs,
+      cwd: root,
+      argv1: process.argv[1],
+      channel,
+    });
+  } catch (err) {
+    result = {
+      status: "error",
+      mode: "unknown",
+      reason: String(err),
+      steps: [],
+      durationMs: 0,
+    };
+  }
+
+  const payload = buildUpdateSentinel({ result, sessionKey, note });
+
+  let sentinelPath: string | null = null;
+  try {
+    sentinelPath = await writeRestartSentinel(payload);
+  } catch {
+    sentinelPath = null;
+  }
+
+  // Only restart when the update actually applied: a `skipped` (dirty tree,
+  // no upstream) or `error` run changed nothing, and bouncing the gateway
+  // for a no-op would kill live chat/agent sessions for nothing.
+  let restart = null;
+  if (result.status === "ok") {
+    // Arm the boot-health beacon BEFORE the restart: if the freshly-built
+    // gateway never comes up, doctor will surface it with this rollback sha.
+    // The new gateway clears the beacon the moment it is listening.
+    armBootVerify({ prevSha: result.before?.sha ?? null, reason: "update.run" });
+    // A clean update supersedes any earlier rollback state.
+    clearRollbackRecord();
+    // The beacon is the signal; the watchdog is the actor. Spawned detached
+    // so it survives this process's restart and can perform ONE guarded
+    // rollback if the fresh build never confirms a healthy boot.
+    if (result.root) {
+      spawnBootWatchdog({
+        root: result.root,
+        prevSha: result.before?.sha ?? null,
+        autoRollbackEnabled: loadConfig().update?.autoRollback?.enabled !== false,
+      });
+    }
+    restart = scheduleGatewaySigusr1Restart({
+      delayMs: restartDelayMs,
+      reason: "update.run",
+    });
+    // No UI process to bounce any more (PLAN-39 Phase 4): the gateway serves
+    // the Control UI from dist/control-ui per request, so after ui:build
+    // restages the assets, the next browser reload simply gets the new code.
+  }
+
+  respond(
+    true,
+    {
+      ok: true,
+      result,
+      restart,
+      sentinel: {
+        path: sentinelPath,
+        payload,
+      },
+    },
+    undefined,
+  );
+}

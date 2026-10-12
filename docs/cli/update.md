@@ -74,7 +74,13 @@ bitterbot --update
 - `--rollback`: installer-based installs only; switch back to the previous
   version.
 - `--restore-data`: with `--rollback`, also restore the memory databases from
-  the pre-update snapshot (loses everything written since the update).
+  the pre-update snapshot (loses everything written since the update). Only
+  with no gateway running: an installed service is stopped first, and a
+  database is never replaced while the gateway lock is held or the gateway
+  port answers.
+- `--restore-config`: with `--rollback`, also restore the config file from the
+  pre-update snapshot (for an old version that refuses the current config).
+  `.env` is never restored by `--rollback`.
 - `--reinstall`: installer-based installs only; download and verify the
   current version again and replace its directory (stop the gateway first).
 
@@ -129,13 +135,20 @@ release, only check, or roll back to the previous version.
    terminal or under `nohup` is asked (over RPC) to restart into `current`; with
    no gateway running it prints how to start one. It then waits for the new
    version to confirm a healthy start (at least 5 minutes, or three times the
-   last measured start, at most 30). If the new process exits or never
+   last measured start, at most 30; tripled, at most 90, when the new version
+   migrates memory databases on its first start). If the new process exits or never
    confirms, the boot watchdog switches `current` back, restores data per the
    [rollback policy](/start/install-script#rollback), starts the old version,
    and `bitterbot update` exits 1 with what happened.
 
-`bitterbot update --rollback` switches back by hand (config restored if it
-changed; databases kept unless `--restore-data`). The test-mode variables the
+`bitterbot update --rollback` switches back by hand. It keeps the config file
+(unless `--restore-config`), `.env` and the databases (unless `--restore-data`),
+and cancels the boot check of an update still pending, so that update's
+watchdog does not act on the version you switched to. Replaced files are kept
+in `~/.bitterbot/update-displaced/` (see
+[Rollback](/start/install-script#rollback)). One update runs at a time: a
+second `bitterbot update`, or a second Update click in the Control UI, is
+refused while one runs. The test-mode variables the
 installer CI uses (`BITTERBOT_INSTALL_TEST_MODE`, `BITTERBOT_INSTALL_BASE_URL`,
 `BITTERBOT_INSTALL_TEST_PUBKEY`) follow the same rules as in `install.sh` and
 only work from the CLI; `update.run` (and so the Control UI) always uses

@@ -142,6 +142,44 @@ describe("update RPCs for a release-tarball install", () => {
     expect(scheduleGatewaySigusr1Restart).not.toHaveBeenCalled();
   });
 
+  it("a second update.run while one is running is refused, and runs again once it finishes", async () => {
+    let finish!: () => void;
+    vi.mocked(runTarballUpdateForGateway).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve({
+              result: { status: "skipped", mode: "tarball", reason: "x", steps: [], durationMs: 1 },
+              ctx: CTX as never,
+              update: null,
+            });
+        }),
+    );
+    const first = capture();
+    const second = capture();
+    const running = updateHandlers["update.run"]!({ params: {}, respond: first.respond } as never);
+    // Let the first run reach the updater.
+    for (let i = 0; i < 20 && !finish; i += 1) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    await updateHandlers["update.run"]!({ params: {}, respond: second.respond } as never);
+    expect(second.calls[0]?.ok).toBe(false);
+    expect(second.calls[0]?.error?.message).toMatch(/already running/);
+    expect(runTarballUpdateForGateway).toHaveBeenCalledTimes(1);
+    finish();
+    await running;
+    expect(first.calls[0]?.ok).toBe(true);
+    // Released: the next run goes through.
+    vi.mocked(runTarballUpdateForGateway).mockResolvedValue({
+      result: { status: "skipped", mode: "tarball", reason: "x", steps: [], durationMs: 1 },
+      ctx: CTX as never,
+      update: null,
+    });
+    const third = capture();
+    await updateHandlers["update.run"]!({ params: {}, respond: third.respond } as never);
+    expect(third.calls[0]?.ok).toBe(true);
+  });
+
   it("update.check asks GitHub for this platform's tarball and offers the in-place update", async () => {
     vi.mocked(fetchLatestGithubRelease).mockResolvedValue({
       latestVersion: "999.0.0",

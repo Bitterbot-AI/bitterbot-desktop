@@ -42,6 +42,8 @@ For a release-tarball install, an **Install** section checks:
 - `~/.local/bin/bitterbot` links to `~/.bitterbot/app/current/bin/bitterbot`. `--fix` creates it when missing or dangling; a link to another install, or a regular file, is left alone.
 - The running version against its `manifest.json`: every file present with its recorded size, or with `--deep` its SHA-256. A mismatch is never patched in place; doctor names `bitterbot update --reinstall` (stop the gateway first), which downloads and verifies that version again.
 - Leftovers of an interrupted update (`.update-*`, `.replaced.*`), removed by `--fix` when no update is running, and the pre-update snapshots in `~/.bitterbot/snapshots`.
+- A stale update lock (`~/.bitterbot/app/.update.lock` whose owner has exited, whose pid now belongs to another process, or, with no start time to compare, older than six hours). `--fix` removes it; a lock held by a running update is left alone.
+- Files a rollback replaced, in `~/.bitterbot/update-displaced/<time>-<from>-to-<to>/`, with their sizes. Nothing deletes them for you, not even `--fix`; remove a folder with `rm -r` once you no longer need it.
 
 The **Update Health** section reports an automatic rollback after a failed update: for a tarball install, which version failed, which one runs now, and which files were restored from the snapshot.
 

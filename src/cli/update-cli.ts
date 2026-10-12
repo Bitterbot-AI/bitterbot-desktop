@@ -55,6 +55,11 @@ export function registerUpdateCli(program: Command) {
       "With --rollback: also restore memory databases from the pre-update snapshot (loses writes since the update)",
       false,
     )
+    .option(
+      "--restore-config",
+      "With --rollback: also restore the config file from the pre-update snapshot (.env is never restored by hand)",
+      false,
+    )
     .addHelpText("after", () => {
       const examples = [
         ["bitterbot update", "Update a source checkout (git)"],
@@ -114,6 +119,7 @@ ${theme.muted("Docs:")} ${formatDocsLink("/cli/update", "docs.bitterbot.ai/cli/u
           rollback: Boolean(opts.rollback),
           reinstall: Boolean(opts.reinstall),
           restoreData: Boolean(opts.restoreData),
+          restoreConfig: Boolean(opts.restoreConfig),
         });
       } catch (err) {
         defaultRuntime.error(String(err));

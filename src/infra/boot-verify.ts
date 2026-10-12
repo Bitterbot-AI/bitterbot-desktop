@@ -63,6 +63,8 @@ export type TarballBootVerify = {
   fromMemorySchemaLatest: number;
   /** update.autoRollback.enabled at arming time. */
   autoRollback: boolean;
+  /** The configured gateway port, probed before a rollback restores a database. */
+  gatewayPort?: number;
 };
 
 export type BootVerifyRecord = {

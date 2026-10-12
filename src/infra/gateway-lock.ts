@@ -41,7 +41,7 @@ export class GatewayLockError extends Error {
   }
 }
 
-type LockOwnerStatus = "alive" | "dead" | "unknown";
+export type LockOwnerStatus = "alive" | "dead" | "unknown";
 
 function normalizeProcArg(arg: string): string {
   return arg.replaceAll("\\", "/").toLowerCase();
@@ -160,6 +160,32 @@ function resolveGatewayLockPath(env: NodeJS.ProcessEnv) {
   const lockDir = resolveGatewayLockDir();
   const lockPath = path.join(lockDir, `gateway.${hash}.lock`);
   return { lockPath, configPath };
+}
+
+/**
+ * Who holds the gateway lock for this config (PLAN-56 Phase 3b: a rollback
+ * must know no gateway holds the state before it replaces a database).
+ * "none": no lock file; "dead": the owner exited (a leftover); "alive" or
+ * "unknown": treat as running.
+ */
+export async function readGatewayLockOwner(
+  opts: { env?: NodeJS.ProcessEnv; lockPath?: string; platform?: NodeJS.Platform } = {},
+): Promise<{ status: "none" | LockOwnerStatus; pid: number | null; lockPath: string }> {
+  const lockPath = opts.lockPath ?? resolveGatewayLockPath(opts.env ?? process.env).lockPath;
+  try {
+    await fs.access(lockPath);
+  } catch {
+    return { status: "none", pid: null, lockPath };
+  }
+  const payload = await readLockPayload(lockPath);
+  if (!payload) {
+    return { status: "unknown", pid: null, lockPath };
+  }
+  return {
+    status: resolveGatewayOwnerStatus(payload.pid, payload, opts.platform ?? process.platform),
+    pid: payload.pid,
+    lockPath,
+  };
 }
 
 export async function acquireGatewayLock(

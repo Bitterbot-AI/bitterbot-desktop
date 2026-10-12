@@ -13,10 +13,12 @@
  *     with the gateway's own argv and environment. If that process exits
  *     before it confirms a healthy boot, the rollback starts at once.
  *
- * Rollback (once, under the beacon's latch): stop the bad gateway, point
+ * Rollback (once, under the beacon's latch): stop the bad gateway (respawn:
+ * its whole process group), point
  * `current` back at the old version (`previous` keeps the new one), apply the
  * snapshot restore policy (update-snapshot.ts planSnapshotRestore, mode
- * "auto"), re-arm the beacon for the old version, start it again, and write
+ * "auto"; a database is restored only after gateway-presence.ts confirms no
+ * gateway holds the state, otherwise it is kept and reported), re-arm the beacon for the old version, start it again, and write
  * rollback-performed.json for doctor and `bitterbot update`.
  * `update.autoRollback.enabled = false` turns the rollback off; the beacon
  * then stays armed and doctor reports the failed boot.
@@ -25,7 +27,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { resolveStateDir } from "../config/paths.js";
+import { resolveGatewayPort, resolveStateDir } from "../config/paths.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import {
   armBootVerify,
@@ -35,6 +37,7 @@ import {
   type BootVerifyRecord,
   type TarballBootVerify,
 } from "./boot-verify.js";
+import { processGroupAlive, waitForGatewayGone, type GatewayPresence } from "./gateway-presence.js";
 import { CURRENT_LINK, resolveTarballLayout } from "./tarball-install.js";
 import { rollbackTarballInstall } from "./tarball-updater.js";
 
@@ -125,25 +128,73 @@ const defaultRunCommand: RunCommand = async (argv, opts) => {
   return { stdout: res.stdout, stderr: res.stderr, code: res.code ?? 1 };
 };
 
-async function stopChild(child: ChildProcess | null): Promise<void> {
-  if (!child || child.exitCode !== null || child.signalCode !== null || !child.pid) {
-    return;
+/**
+ * Stop a gateway this watchdog launched. launchCurrentGateway spawns it
+ * detached, so the launcher is a process-group leader and the gateway it
+ * execs (and any re-exec of entry.js) is in that group: signal the whole
+ * group, SIGTERM first, SIGKILL when anything is left after `termTimeoutMs`.
+ * Returns true when the group is confirmed gone.
+ */
+export async function stopGatewayChild(
+  child: ChildProcess | null,
+  opts: { termTimeoutMs?: number; killTimeoutMs?: number } = {},
+): Promise<boolean> {
+  const pgid = child?.pid;
+  if (!child || !pgid) {
+    return true;
   }
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  try {
-    child.kill("SIGTERM");
-  } catch {
-    return;
-  }
-  const timer = new Promise<"timeout">((resolve) =>
-    setTimeout(() => resolve("timeout"), 15_000).unref(),
-  );
-  if ((await Promise.race([exited, timer])) === "timeout") {
+  const signalGroup = (signal: NodeJS.Signals) => {
     try {
-      child.kill("SIGKILL");
+      process.kill(-pgid, signal);
     } catch {
-      /* already gone */
+      // No group (already gone) or not a leader: at least the launcher.
+      try {
+        child.kill(signal);
+      } catch {
+        /* already gone */
+      }
     }
+  };
+  const waitGone = async (ms: number) => {
+    const until = Date.now() + ms;
+    while (Date.now() < until) {
+      if (!processGroupAlive(pgid)) {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return !processGroupAlive(pgid);
+  };
+  if (!processGroupAlive(pgid)) {
+    return true;
+  }
+  signalGroup("SIGTERM");
+  if (await waitGone(opts.termTimeoutMs ?? 15_000)) {
+    return true;
+  }
+  log(`gateway process group ${pgid} ignored SIGTERM; sending SIGKILL`);
+  signalGroup("SIGKILL");
+  return await waitGone(opts.killTimeoutMs ?? 5_000);
+}
+
+/**
+ * Write a `.pids/<pid>` in-use marker in the version directory this
+ * watchdog runs from (it is started with node directly, not through
+ * bin/bitterbot, which writes the marker for everything else), so no prune
+ * removes that directory under it on a system without /proc (macOS).
+ */
+export async function withVersionPidMarker<T>(root: string, fn: () => Promise<T>): Promise<T> {
+  const marker = path.join(root, ".pids", String(process.pid));
+  try {
+    fs.mkdirSync(path.dirname(marker), { recursive: true });
+    fs.writeFileSync(marker, "");
+  } catch {
+    /* best-effort */
+  }
+  try {
+    return await fn();
+  } finally {
+    fs.rmSync(marker, { force: true });
   }
 }
 
@@ -160,7 +211,16 @@ export async function performTarballRollback(params: {
   stateDir?: string;
   runCommand?: RunCommand;
   launch?: typeof launchCurrentGateway;
-}): Promise<{ ok: boolean; detail: string; restored: string[]; snapshotDir: string | null }> {
+  /** Confirms no gateway holds the state before a database restore (tests inject it). */
+  gatewayCheck?: (params: { pgid: number | null }) => Promise<GatewayPresence>;
+  stopChild?: typeof stopGatewayChild;
+}): Promise<{
+  ok: boolean;
+  detail: string;
+  restored: string[];
+  snapshotDir: string | null;
+  databasesSkipped: string | null;
+}> {
   const run = params.runCommand ?? defaultRunCommand;
   const launch = params.launch ?? launchCurrentGateway;
   const t = params.tarball;
@@ -170,8 +230,12 @@ export async function performTarballRollback(params: {
 
   // 1. Stop the bad gateway so no process holds the databases.
   if (params.respawnArgv) {
-    await stopChild(params.child);
-    steps.push("stopped the new gateway process");
+    const stopped = await (params.stopChild ?? stopGatewayChild)(params.child);
+    steps.push(
+      stopped
+        ? "stopped the new gateway process group"
+        : "the new gateway's process group did not exit",
+    );
   } else {
     const stop = await run([...cli, "gateway", "stop"], { timeoutMs: STOP_TIMEOUT_MS }).catch(
       (err) => ({ stdout: "", stderr: String(err), code: 1 }),
@@ -179,9 +243,21 @@ export async function performTarballRollback(params: {
     steps.push(stop.code === 0 ? "`gateway stop` ran" : "`gateway stop` failed (continuing)");
   }
 
-  // 2. Switch back and restore per the policy.
+  // 2. Switch back and restore per the policy. A database is restored only
+  // once no gateway is confirmed to hold the state (a failed `gateway stop`,
+  // or a gateway that survived the kill, skips it).
+  const pgid = params.respawnArgv ? (params.child?.pid ?? null) : null;
+  const gatewayCheck =
+    params.gatewayCheck ??
+    ((p: { pgid: number | null }) =>
+      waitForGatewayGone({
+        port: t.gatewayPort ?? resolveGatewayPort(undefined, process.env),
+        pgid: p.pgid,
+        timeoutMs: 30_000,
+      }));
   let restored: string[] = [];
   let snapshotDir: string | null = null;
+  let databasesSkipped: string | null = null;
   try {
     const res = await rollbackTarballInstall({
       appDir: t.appDir,
@@ -190,21 +266,29 @@ export async function performTarballRollback(params: {
       toVersion: t.fromVersion,
       mode: "auto",
       targetMemorySchemaLatest: t.fromMemorySchemaLatest,
+      gatewayCheck: () => gatewayCheck({ pgid }),
     });
     restored = res.restore?.restored ?? [];
     snapshotDir = res.snapshotDir;
+    databasesSkipped = res.databasesSkipped;
     steps.push(`current -> ${t.fromVersion}`);
     steps.push(
       restored.length > 0
         ? `restored from snapshot: ${restored.map((f) => path.basename(f)).join(", ")}`
         : "no data restored (kept as is)",
     );
+    if (databasesSkipped) {
+      steps.push(
+        `databases NOT restored, ${databasesSkipped}; the pre-update copies are in ${snapshotDir ?? "the snapshot"}`,
+      );
+    }
   } catch (err) {
     return {
       ok: false,
       detail: `${steps.join("; ")}; switching back FAILED: ${String(err)}. Manual recovery: ln -sfn ${t.fromVersion} ${path.join(t.appDir, CURRENT_LINK)} && bitterbot gateway restart`,
       restored,
       snapshotDir,
+      databasesSkipped,
     };
   }
 
@@ -225,7 +309,7 @@ export async function performTarballRollback(params: {
       child ? `relaunched v${t.fromVersion} (pid ${child.pid ?? "?"})` : "relaunch FAILED",
     );
     if (!child) {
-      return { ok: false, detail: steps.join("; "), restored, snapshotDir };
+      return { ok: false, detail: steps.join("; "), restored, snapshotDir, databasesSkipped };
     }
   } else {
     const restart = await run([...cli, "gateway", "restart"], { timeoutMs: STOP_TIMEOUT_MS }).catch(
@@ -237,7 +321,7 @@ export async function performTarballRollback(params: {
         : "`gateway restart` failed (a supervisor may recover)",
     );
   }
-  return { ok: true, detail: steps.join("; "), restored, snapshotDir };
+  return { ok: true, detail: steps.join("; "), restored, snapshotDir, databasesSkipped };
 }
 
 /**
@@ -261,6 +345,15 @@ export async function runTarballWatchdog(params: {
   expectedArmedAt: number;
   respawnArgv: string[] | null;
   /** Respawn mode: the old gateway's pid; launch only after it has exited. */
+  waitPid?: number | null;
+}): Promise<void> {
+  await withVersionPidMarker(params.root, () => watchTarballBoot(params));
+}
+
+async function watchTarballBoot(params: {
+  root: string;
+  expectedArmedAt: number;
+  respawnArgv: string[] | null;
   waitPid?: number | null;
 }): Promise<void> {
   const startedAt = Date.now();

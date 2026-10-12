@@ -16,7 +16,8 @@
  * The app directory (`~/.bitterbot/app`) is never included. Only the newest
  * SNAPSHOT_KEEP (3) complete snapshots are kept; older ones are pruned after
  * a new one is written. A snapshot directory without manifest.json is an
- * interrupted one and is pruned too.
+ * interrupted one and is pruned too. Files a rollback replaces go to
+ * `<stateDir>/update-displaced/`, which pruning never touches.
  *
  * Restoring is deliberately narrow (planSnapshotRestore): only what the
  * newer version changed and the older one may not be able to read. See the
@@ -24,12 +25,17 @@
  */
 
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+import { sha256File } from "./tarball-install.js";
 
 export const SNAPSHOTS_DIRNAME = "snapshots";
+/**
+ * Files a rollback replaced (the post-update copies) live here, outside the
+ * snapshots tree, so pruning old snapshots never deletes them.
+ */
+export const DISPLACED_DIRNAME = "update-displaced";
 export const SNAPSHOT_KEEP = 3;
 const MANIFEST = "manifest.json";
 const SNAPSHOT_NAME_RE = /^\d{8}T\d{6}Z-[0-9.]+-to-[0-9.]+(-\d+)?$/;
@@ -73,8 +79,8 @@ export function snapshotsRoot(stateDir: string): string {
   return path.join(stateDir, SNAPSHOTS_DIRNAME);
 }
 
-function sha256File(file: string): string {
-  return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+export function displacedRoot(stateDir: string): string {
+  return path.join(stateDir, DISPLACED_DIRNAME);
 }
 
 function compactTimestamp(date: Date): string {
@@ -229,16 +235,28 @@ export async function createUpdateSnapshot(params: {
   fs.mkdirSync(dir, { mode: 0o700 });
   const entries: SnapshotEntry[] = [];
   try {
-    const addFile = (kind: SnapshotEntryKind, source: string, rel: string, mode = 0o600) => {
+    // Hashes are streamed (sha256File): a memory database can be larger than
+    // a Buffer may hold, and this can run inside the gateway process.
+    const addFile = async (kind: SnapshotEntryKind, source: string, rel: string, mode = 0o600) => {
       if (!fs.existsSync(source) || !fs.statSync(source).isFile()) {
         return;
       }
       const dest = path.join(dir, rel);
       copyPreserving(source, dest, mode);
-      entries.push({ kind, source, file: rel, sha256: sha256File(dest), size: fileSize(dest) });
+      entries.push({
+        kind,
+        source,
+        file: rel,
+        sha256: await sha256File(dest),
+        size: fileSize(dest),
+      });
     };
-    addFile("config", sources.configPath, path.join("config", path.basename(sources.configPath)));
-    addFile("config", path.join(sources.stateDir, ".env"), path.join("config", ".env"));
+    await addFile(
+      "config",
+      sources.configPath,
+      path.join("config", path.basename(sources.configPath)),
+    );
+    await addFile("config", path.join(sources.stateDir, ".env"), path.join("config", ".env"));
     fs.mkdirSync(path.join(dir, "memory"), { mode: 0o700 });
     for (const db of listMemoryDatabases(sources.stateDir)) {
       const rel = path.join("memory", path.basename(db));
@@ -256,19 +274,19 @@ export async function createUpdateSnapshot(params: {
         kind: "database",
         source: db,
         file: rel,
-        sha256: sha256File(dest),
+        sha256: await sha256File(dest),
         size: fileSize(dest),
         schemaVersion: res.schemaVersion,
       });
     }
     if (sources.workspaceDir) {
       for (const f of WORKSPACE_FILES) {
-        addFile("workspace", path.join(sources.workspaceDir, f), path.join("workspace", f));
+        await addFile("workspace", path.join(sources.workspaceDir, f), path.join("workspace", f));
       }
     }
     if (sources.keyDir) {
       for (const f of KEY_FILES) {
-        addFile("key", path.join(sources.keyDir, f), path.join("keys", f));
+        await addFile("key", path.join(sources.keyDir, f), path.join("keys", f));
       }
     }
     const manifest: SnapshotManifest = {
@@ -353,10 +371,23 @@ export function pruneSnapshots(stateDir: string, keep = SNAPSHOT_KEEP, active?: 
     if (!complete && name === active) {
       continue;
     }
+    // Files replaced by a rollback were once kept inside the snapshot
+    // (displaced-*); such a snapshot is left for the user to delete.
+    if (hasDisplacedFiles(dir)) {
+      continue;
+    }
     fs.rmSync(dir, { recursive: true, force: true });
     removed.push(name);
   }
   return removed;
+}
+
+function hasDisplacedFiles(dir: string): boolean {
+  try {
+    return fs.readdirSync(dir).some((n) => n.startsWith("displaced-"));
+  } catch {
+    return false;
+  }
 }
 
 /** The newest snapshot taken for the update `from` -> `to`. */
@@ -385,9 +416,15 @@ export type RestorePlan = {
  * Decide what a rollback restores from `manifest` (the snapshot taken for
  * the update being undone). The policy, and why:
  *
- *   - Config files: restored when they changed since the snapshot. The older
- *     version validates config strictly, so a key the newer version wrote can
- *     stop it from booting. The newer file is kept beside the snapshot.
+ *   - Config file: an automatic rollback restores it when it changed since
+ *     the snapshot. The older version validates config strictly, so a key the
+ *     newer version wrote can stop it from booting, and the newer version
+ *     never booted healthy, so nobody edited it on purpose since. A manual
+ *     rollback (`bitterbot update --rollback`) can come weeks after the
+ *     update: it restores the config only with `restoreConfig`
+ *     (`--restore-config`), because the changes since are probably yours.
+ *   - `.env`: restored only by an automatic rollback, never by a manual one
+ *     (API keys and tokens you changed since the update would be reverted).
  *   - Memory databases: KEPT by default. Restoring one throws away every
  *     memory written since the update, and migrations are forward-only with
  *     an N-1 compatibility contract (src/memory/migrations.ts), so the older
@@ -396,10 +433,12 @@ export type RestorePlan = {
  *     newest schema the older version knows (schema_version >
  *     `targetMemorySchemaLatest`): that version never booted healthy, so it
  *     wrote almost nothing worth keeping, and an unknown schema is the likely
- *     reason it failed. A manual rollback (`bitterbot update --rollback`)
- *     restores databases only with `includeData` (`--restore-data`).
+ *     reason it failed. A manual rollback restores databases only with
+ *     `includeData` (`--restore-data`).
  *   - GENOME.md, MEMORY.md and keys: never restored automatically (they are
  *     not changed by an update; the copies are there for a manual restore).
+ *
+ * Every replaced file is kept (applySnapshotRestore), never deleted.
  */
 export async function planSnapshotRestore(params: {
   manifest: SnapshotManifest;
@@ -407,6 +446,8 @@ export async function planSnapshotRestore(params: {
   mode: "auto" | "manual";
   targetMemorySchemaLatest: number;
   includeData?: boolean;
+  /** Manual mode: also restore the config file (`--restore-config`). */
+  restoreConfig?: boolean;
   readSchemaVersion?: (file: string) => Promise<number | null>;
 }): Promise<RestorePlan> {
   const readSchema = params.readSchemaVersion ?? readDatabaseSchemaVersion;
@@ -419,21 +460,40 @@ export async function planSnapshotRestore(params: {
     if (entry.kind === "config") {
       let current: string | null = null;
       try {
-        current = sha256File(entry.source);
+        current = await sha256File(entry.source);
       } catch {
         current = null;
       }
       if (current === entry.sha256) {
         plan.kept.push({ source: entry.source, reason: "unchanged since the update" });
-      } else {
-        plan.restore.push({
-          entry,
-          reason:
-            current === null
-              ? "missing after the update"
-              : "changed by or after the update; the older version validates config strictly",
-        });
+        continue;
       }
+      const isEnv = path.basename(entry.file) === ".env";
+      if (params.mode === "manual" && isEnv) {
+        plan.kept.push({
+          source: entry.source,
+          reason:
+            "kept: a manual rollback never restores .env (keys you changed since the update stay); the pre-update copy is in the snapshot",
+        });
+        continue;
+      }
+      if (params.mode === "manual" && !params.restoreConfig) {
+        plan.kept.push({
+          source: entry.source,
+          reason:
+            "kept: changed since the update. Pass --restore-config to restore the pre-update copy (if the older version refuses the current one)",
+        });
+        continue;
+      }
+      plan.restore.push({
+        entry,
+        reason:
+          current === null
+            ? "missing after the update"
+            : params.mode === "manual"
+              ? "--restore-config"
+              : "changed by or after the update; the older version validates config strictly",
+      });
       continue;
     }
     if (entry.kind === "database") {
@@ -478,21 +538,30 @@ export type RestoreResult = {
 
 /**
  * Apply a plan. Every file that gets replaced is MOVED into
- * `<snapshotDir>/displaced-<timestamp>/` first (with its -wal/-shm for a
- * database), never deleted. The gateway must be stopped for databases.
+ * `<stateDir>/update-displaced/<timestamp>-<from>-to-<to>/` first (with its
+ * -wal/-shm for a database), never deleted. That tree is outside the
+ * snapshots directory, so pruning old snapshots never touches it; only you
+ * delete it (doctor lists it). The gateway must be stopped for databases.
  */
 export function applySnapshotRestore(params: {
   plan: RestorePlan;
   snapshotDir: string;
+  stateDir: string;
+  /** The snapshot's manifest (names the displaced directory). */
+  manifest?: Pick<SnapshotManifest, "from" | "to">;
   now?: Date;
 }): RestoreResult {
   if (params.plan.restore.length === 0) {
     return { restored: [], displacedDir: null };
   }
-  const displacedDir = path.join(
-    params.snapshotDir,
-    `displaced-${compactTimestamp(params.now ?? new Date())}`,
-  );
+  const label = params.manifest ? `-${params.manifest.to}-to-${params.manifest.from}` : "";
+  const root = displacedRoot(params.stateDir);
+  const base = `${compactTimestamp(params.now ?? new Date())}${label}`;
+  let name = base;
+  for (let i = 1; fs.existsSync(path.join(root, name)); i += 1) {
+    name = `${base}-${i}`;
+  }
+  const displacedDir = path.join(root, name);
   fs.mkdirSync(displacedDir, { recursive: true, mode: 0o700 });
   const restored: string[] = [];
   for (const { entry } of params.plan.restore) {
@@ -519,4 +588,49 @@ export function applySnapshotRestore(params: {
     restored.push(target);
   }
   return { restored, displacedDir };
+}
+
+/** Directories of files replaced by rollbacks, newest first, with their total size. */
+export function listDisplaced(stateDir: string): Array<{ dir: string; bytes: number }> {
+  const root = displacedRoot(stateDir);
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root);
+  } catch {
+    return [];
+  }
+  const out: Array<{ dir: string; bytes: number }> = [];
+  for (const name of names.toSorted().toReversed()) {
+    const dir = path.join(root, name);
+    let bytes = 0;
+    try {
+      if (!fs.statSync(dir).isDirectory()) {
+        continue;
+      }
+      for (const f of fs.readdirSync(dir)) {
+        bytes += fileSize(path.join(dir, f));
+      }
+    } catch {
+      continue;
+    }
+    out.push({ dir, bytes });
+  }
+  return out;
+}
+
+/**
+ * The same plan with every database restore moved to `kept` (the gateway
+ * could not be confirmed stopped: a database is never replaced under a live
+ * writer).
+ */
+export function keepDatabases(plan: RestorePlan, reason: string): RestorePlan {
+  return {
+    restore: plan.restore.filter((r) => r.entry.kind !== "database"),
+    kept: [
+      ...plan.kept,
+      ...plan.restore
+        .filter((r) => r.entry.kind === "database")
+        .map((r) => ({ source: r.entry.source, reason: `NOT restored: ${reason}` })),
+    ],
+  };
 }

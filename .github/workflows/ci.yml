@@ -652,13 +652,77 @@ jobs:
           if ($wsl2.Out -notmatch 'not under /mnt/c') { throw 'ext4 advice missing' }
           $bad = Invoke-Dry -Fake 'wsl2' -Extra @('-Version', 'nope')
           if ($bad.Code -ne 1) { throw 'bad version must fail' }
-          # Piped into Invoke-Expression (the documented one-liner), dry run via the env switch.
-          $env:BITTERBOT_INSTALL_PS1_FAKE_WSL = 'wsl2'
-          $env:BITTERBOT_INSTALL_DRY_RUN = '1'
-          Get-Content -Raw scripts/install.ps1 | Invoke-Expression
-          # Still here: the piped script must not exit the caller's session.
-          Write-Host 'piped run returned to the caller'
           # The last native exit code (the refused -Version above) must not fail the step.
+          exit 0
+
+      - name: Piped into iex leaves the caller alone (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $work = Join-Path $env:RUNNER_TEMP 'bb-ps1'
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          # A caller SCRIPT (not the console) that pipes the installer into iex
+          # the documented way, then checks it got its session back: still
+          # running (no `exit`), same $ErrorActionPreference, no StrictMode,
+          # no installer functions or variables left behind.
+          $caller = Join-Path $work 'caller.ps1'
+          Set-Content -Path $caller -Encoding UTF8 -Value @'
+          param([string]$Installer, [string]$CallerEap)
+          $ErrorActionPreference = $CallerEap
+          Set-StrictMode -Off
+          $env:BITTERBOT_INSTALL_DRY_RUN = '1'
+          Get-Content -Raw $Installer | Invoke-Expression
+          $fails = @()
+          if ($ErrorActionPreference -ne $CallerEap) { $fails += "EAP is now $ErrorActionPreference" }
+          try { $null = $bbNeverDefinedVariable } catch { $fails += 'StrictMode leaked' }
+          $fns = @(Get-Command -CommandType Function -Name '*-Bb*' -ErrorAction SilentlyContinue)
+          if ($fns.Count -gt 0) { $fails += "functions leaked: $(($fns | ForEach-Object { $_.Name }) -join ', ')" }
+          foreach ($v in @('DryRun', 'Cmdlet', 'InstallShUrl', 'exitCode', 'plan')) {
+            if (Get-Variable -Name $v -Scope Global -ErrorAction SilentlyContinue) { $fails += "variable leaked: $v" }
+          }
+          Write-Host "caller continued (LASTEXITCODE=$LASTEXITCODE)"
+          if ($fails.Count -gt 0) { Write-Host ('LEAKS: ' + ($fails -join '; ')); exit 1 }
+          exit 0
+          '@
+          $installer = (Resolve-Path scripts/install.ps1).Path
+          function Invoke-Caller([string]$Eap) {
+            $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $caller -Installer $installer -CallerEap $Eap 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            Write-Host "--- caller EAP=$Eap exit=$code"
+            Write-Host $out
+            return [pscustomobject]@{ Code = $code; Out = $out }
+          }
+          $env:BITTERBOT_INSTALL_PS1_FAKE_WSL = 'wsl2'
+          foreach ($eap in @('Continue', 'Stop')) {
+            $r = Invoke-Caller $eap
+            if ($r.Code -ne 0 -or $r.Out -notmatch 'caller continued \(LASTEXITCODE=0\)' -or $r.Out -notmatch 'nothing was run') { throw "iex run with caller EAP=$eap" }
+          }
+          # A wsl.exe that writes to stderr (WSL prints notices there) must not
+          # read as "no WSL": Windows PowerShell 5.1 turns redirected stderr
+          # into errors, which threw under the installer's own 'Stop'.
+          Remove-Item Env:BITTERBOT_INSTALL_PS1_FAKE_WSL
+          $fake = Join-Path $work 'fakewsl'
+          New-Item -ItemType Directory -Force -Path $fake | Out-Null
+          Add-Type -OutputType ConsoleApplication -OutputAssembly (Join-Path $fake 'wsl.exe') -TypeDefinition @'
+          public static class FakeWsl {
+            public static int Main(string[] args) {
+              System.Console.Error.WriteLine("wsl: a notice on stderr");
+              if (args.Length > 0 && args[0] == "--list") {
+                System.Console.WriteLine("  NAME          STATE           VERSION");
+                System.Console.WriteLine("* FakeDistro    Running         2");
+              }
+              return 0;
+            }
+          }
+          '@
+          $env:PATH = "$fake;$env:PATH"
+          $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 -WhatIf 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host "--- fake stderr wsl exit=$code"
+          Write-Host $out
+          if ($code -ne 0 -or $out -notmatch 'WSL2 distribution: FakeDistro') { throw 'stderr from wsl.exe tripped the detection' }
+          $r = Invoke-Caller 'Stop'
+          if ($r.Code -ne 0 -or $r.Out -notmatch 'WSL2 distribution: FakeDistro') { throw 'stderr from wsl.exe tripped the detection (iex)' }
           exit 0
 
   sandbox-images:

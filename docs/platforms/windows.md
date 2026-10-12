@@ -36,6 +36,9 @@ changes. Updates afterwards are `bitterbot update` inside WSL.
 - Options need the saved script: `.\install.ps1 -Version 1.6.0 -NoOnboard`,
   `-Distro <name>`, `-Yes`, and `-WhatIf` to print the plan without running
   anything (piped into `iex`, set `$env:BITTERBOT_INSTALL_DRY_RUN = '1'`).
+- Piped into `iex` it never closes your window or ends the script that runs
+  it, and leaves no functions or settings (`$ErrorActionPreference`, strict
+  mode) behind; its exit code is in `$LASTEXITCODE`.
 - Keep your files on the Linux side: clone a source checkout into your Linux
   home, not under `/mnt/c` (much slower, and file watching breaks).
 

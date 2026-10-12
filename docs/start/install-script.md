@@ -192,7 +192,9 @@ stable channel (published, non-prerelease releases). Step by step:
    `bitterbot update` says how to start it. The update then waits until the new
    version confirms a healthy start. If it does not (the process exits, or
    nothing confirms within five minutes or three times the last measured
-   start, whichever is longer), a watchdog switches back automatically.
+   start, whichever is longer, at most 30 minutes; three times that, at most
+   90 minutes, when the new version migrates memory databases on its first
+   start), a watchdog switches back automatically.
 
 Nothing is activated if any step before 6 fails, and the version you were
 running stays in `~/.bitterbot/app/previous` until the next update.
@@ -224,24 +226,45 @@ bitterbot update --rollback
 ```
 
 The automatic rollback after a failed start, and `--rollback`, restore data
-narrowly, because restoring a database throws away everything written since
-the update:
+narrowly, because restoring a file throws away everything changed in it
+since the update:
 
-| What                 | Automatic rollback (new version never started)                         | `bitterbot update --rollback`               |
-| -------------------- | ---------------------------------------------------------------------- | ------------------------------------------- |
-| Config file, `.env`  | restored if they changed since the snapshot                            | restored if they changed since the snapshot |
-| Memory databases     | restored only if the new version migrated them past what the old knows | kept; `--restore-data` restores them        |
-| GENOME.md, MEMORY.md | kept                                                                   | kept                                        |
-| Keys                 | kept                                                                   | kept                                        |
+| What                 | Automatic rollback (new version never started)                         | `bitterbot update --rollback`        |
+| -------------------- | ---------------------------------------------------------------------- | ------------------------------------ |
+| Config file          | restored if it changed since the snapshot                              | kept; `--restore-config` restores it |
+| `.env`               | restored if it changed since the snapshot                              | kept (never restored by hand)        |
+| Memory databases     | restored only if the new version migrated them past what the old knows | kept; `--restore-data` restores them |
+| GENOME.md, MEMORY.md | kept                                                                   | kept                                 |
+| Keys                 | kept                                                                   | kept                                 |
 
 Why: database migrations are forward only, and each release keeps the
 previous release able to read the migrated schema, so the old version works
-with your current memories. A config file is restored because the old
-version validates it strictly and would refuse a key the new version wrote.
-Every file that is replaced is first moved to `displaced-<time>/` inside the
-snapshot, never deleted. `--restore-data` needs the gateway stopped (it stops
-an installed service itself). GENOME.md, MEMORY.md and keys are not changed by
-an update; restore them from the snapshot by hand if you ever need to.
+with your current memories. After a failed start the config file is restored
+because the old version validates it strictly and would refuse a key the new
+version wrote, and nobody has edited it since. A manual rollback can come
+weeks after the update, when changes to the config and `.env` are most likely
+yours: pass `--restore-config` only if the old version refuses the current
+config. `.env` holds your API keys and is never restored by hand; its
+pre-update copy stays in the snapshot.
+
+Every file that is replaced is first moved to
+`~/.bitterbot/update-displaced/<time>-<from>-to-<to>/`, never deleted. That
+folder is outside the snapshots, so removing old snapshots never touches it;
+`bitterbot doctor` lists it with its size, and only you delete it.
+
+A database is replaced only when no gateway can still be writing to it: the
+gateway lock must be free and nothing may answer on the gateway port (the
+automatic rollback also checks the process group of the gateway it started).
+`--rollback --restore-data` stops an installed service itself and refuses to
+start while a gateway it does not manage is running. If a gateway cannot be
+confirmed gone, the version still switches, the databases are left as they
+are, and the command says so and exits 1; copy the files from the snapshot's
+`memory/` folder by hand once every gateway is stopped. GENOME.md, MEMORY.md
+and keys are not changed by an update; restore them from the snapshot by hand
+if you ever need to.
+
+A manual rollback also cancels the boot check of an update that is still
+pending, so its watchdog does not act on the version you switched to.
 
 `bitterbot doctor` reports an automatic rollback (which versions, what was
 restored) until the next clean update. Set `update.autoRollback.enabled` to
@@ -275,6 +298,10 @@ installer above inside it, so Bitterbot lives in your Linux home
 and needs no administrator rights. Without WSL2 it prints how to enable it
 (`wsl --install`, which does need an administrator and a restart) and the
 [Docker Desktop](/platforms/docker) alternative, then exits with code 2.
+Piped into `iex` it leaves your PowerShell session as it was: it never closes
+the window or ends a script that runs it, keeps its functions and settings
+(`$ErrorActionPreference`, strict mode) to itself, and reports its exit code
+in `$LASTEXITCODE`.
 
 To pass options, save the script and run it:
 

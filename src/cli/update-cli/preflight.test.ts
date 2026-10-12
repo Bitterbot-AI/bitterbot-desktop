@@ -45,6 +45,8 @@ describe("update preflight (the activation check a new version runs)", () => {
       ok: true,
     });
     expect(report.warnings.join(" ")).toContain("will be migrated");
+    // The updater extends the boot deadline for it (tarballBootDeadlineMs).
+    expect(report.pendingMigrations).toBe(1);
     fs.rmSync(stateDir, { recursive: true, force: true });
   });
 

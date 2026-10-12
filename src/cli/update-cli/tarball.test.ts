@@ -8,6 +8,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -18,12 +19,27 @@ const runtime = vi.hoisted(() => ({
 }));
 vi.mock("../../runtime.js", () => ({ defaultRuntime: runtime }));
 vi.mock("../daemon-cli.js", () => ({ runDaemonRestart: vi.fn(async () => false) }));
+const svc = vi.hoisted(() => ({ loaded: false, stopError: null as Error | null, stops: 0 }));
 vi.mock("../../daemon/service.js", () => ({
   resolveGatewayService: () => ({
-    isLoaded: async () => false,
-    stop: async () => {},
+    isLoaded: async () => svc.loaded,
+    stop: async () => {
+      svc.stops += 1;
+      if (svc.stopError) {
+        throw svc.stopError;
+      }
+    },
     restart: async () => {},
   }),
+}));
+// No real port or gateway lock is probed: each test says what is running.
+const presence = vi.hoisted(() => ({
+  check: { gone: true, detail: "no gateway" },
+  wait: { gone: true, detail: "no gateway" },
+}));
+vi.mock("../../infra/gateway-presence.js", () => ({
+  checkGatewayGone: vi.fn(async () => presence.check),
+  waitForGatewayGone: vi.fn(async () => presence.wait),
 }));
 vi.mock("../../gateway/call.js", () => ({
   callGateway: vi.fn(async () => {
@@ -75,6 +91,11 @@ describeCli("runTarballUpdateCommand", () => {
     runtime.log.mockReset();
     runtime.error.mockReset();
     runtime.exit.mockReset();
+    svc.loaded = false;
+    svc.stopError = null;
+    svc.stops = 0;
+    presence.check = { gone: true, detail: "no gateway" };
+    presence.wait = { gone: true, detail: "no gateway" };
   });
 
   afterEach(() => {
@@ -151,6 +172,95 @@ describeCli("runTarballUpdateCommand", () => {
     expect(readVersionLink(appDir, "previous")).toBe("1.5.0");
   });
 
+  describe("--rollback and the data", () => {
+    const db = () => path.join(process.env.BITTERBOT_STATE_DIR!, "memory", "main.sqlite");
+    function addRows(n: number) {
+      fs.mkdirSync(path.dirname(db()), { recursive: true });
+      const d = new DatabaseSync(db());
+      d.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");
+      d.exec("INSERT OR IGNORE INTO meta VALUES ('schema_version', '1')");
+      d.exec("CREATE TABLE IF NOT EXISTS chunks (id INTEGER PRIMARY KEY, text TEXT)");
+      for (let i = 0; i < n; i += 1) {
+        d.prepare("INSERT INTO chunks (text) VALUES (?)").run(`m${i}`);
+      }
+      d.close();
+    }
+    function rows(): number {
+      const d = new DatabaseSync(db(), { readOnly: true });
+      try {
+        return (d.prepare("SELECT count(*) AS n FROM chunks").get() as { n: number }).n;
+      } finally {
+        d.close();
+      }
+    }
+    async function updateThenRollback(extra: Record<string, unknown>) {
+      addRows(3);
+      await runTarballUpdateCommand({ root: path.join(appDir, "1.4.0"), opts: { json: true } });
+      addRows(2); // written after the update
+      runtime.log.mockReset();
+      runtime.error.mockReset();
+      runtime.exit.mockReset();
+      process.env.BITTERBOT_INSTALL_ROOT = path.join(appDir, "1.5.0");
+      await runTarballUpdateCommand({
+        root: path.join(appDir, "1.5.0"),
+        opts: { rollback: true, yes: true, json: true, ...extra },
+      });
+    }
+
+    it("refuses --restore-data while an unsupervised gateway may run, without touching anything", async () => {
+      presence.check = { gone: false, detail: "port 19001 on 127.0.0.1 accepts connections" };
+      await updateThenRollback({ restoreData: true });
+      expect(jsonOutput()).toMatchObject({ status: "error" });
+      expect(String(jsonOutput().reason)).toMatch(/needs the gateway stopped \(port 19001/);
+      expect(readVersionLink(appDir, "current")).toBe("1.5.0");
+      expect(rows()).toBe(5);
+    });
+
+    it("a service whose stop fails and a gateway still there: switches, keeps the database, exits 1", async () => {
+      svc.loaded = true;
+      svc.stopError = new Error("systemctl: unit busy");
+      presence.wait = { gone: false, detail: "the gateway lock is held by pid 4242" };
+      await updateThenRollback({ restoreData: true });
+      expect(svc.stops).toBe(1);
+      expect(readVersionLink(appDir, "current")).toBe("1.4.0");
+      expect(rows()).toBe(5);
+      const out = jsonOutput();
+      expect(out.status).toBe("partial");
+      expect((out.rollback as { databasesSkipped: string }).databasesSkipped).toMatch(/pid 4242/);
+      expect(runtime.exit).toHaveBeenCalledWith(1);
+    });
+
+    it("restores the database once the stopped service is confirmed gone", async () => {
+      svc.loaded = true;
+      await updateThenRollback({ restoreData: true });
+      expect(svc.stops).toBe(1);
+      expect(rows()).toBe(3);
+      expect(jsonOutput().status).toBe("ok");
+      expect(runtime.exit).toHaveBeenCalledWith(0);
+    });
+
+    it("keeps a config edited since the update unless --restore-config", async () => {
+      const cfgPath = path.join(process.env.BITTERBOT_STATE_DIR!, "bitterbot.json");
+      fs.writeFileSync(cfgPath, "{}\n");
+      await runTarballUpdateCommand({ root: path.join(appDir, "1.4.0"), opts: { json: true } });
+      fs.writeFileSync(cfgPath, '{"update":{"channel":"stable"}}\n');
+      process.env.BITTERBOT_INSTALL_ROOT = path.join(appDir, "1.5.0");
+      await runTarballUpdateCommand({
+        root: path.join(appDir, "1.5.0"),
+        opts: { rollback: true, yes: true, json: true, restart: false },
+      });
+      expect(fs.readFileSync(cfgPath, "utf8")).toContain("stable");
+      // Back to 1.5.0 and roll back again, this time asking for the config.
+      swapVersionLink(appDir, "current", "1.5.0");
+      swapVersionLink(appDir, "previous", "1.4.0");
+      await runTarballUpdateCommand({
+        root: path.join(appDir, "1.5.0"),
+        opts: { rollback: true, yes: true, json: true, restart: false, restoreConfig: true },
+      });
+      expect(fs.readFileSync(cfgPath, "utf8")).toBe("{}\n");
+    });
+  });
+
   it("--rollback without a previous version is refused", async () => {
     await runTarballUpdateCommand({
       root: path.join(appDir, "1.4.0"),
@@ -207,6 +317,65 @@ describe("waitForTarballBoot", () => {
       sleep: async () => confirmBootHealthy("1.4.0"),
     });
     expect(outcome).toMatchObject({ status: "rolled-back", version: "1.4.0", healthy: true });
+  });
+
+  const inProgress = (at: number) => ({
+    fromSha: null,
+    toSha: "v1.4.0",
+    mode: "tarball" as const,
+    fromVersion: "1.5.0",
+    toVersion: "1.4.0",
+    at,
+    detail: "rollback in progress; if this persists, the watchdog crashed mid-way",
+    ok: false,
+  });
+  // The watchdog re-arms the beacon for the old version and restarts it; the
+  // old version binds (clearing that beacon AND the in-progress record)
+  // before the watchdog writes its final record.
+  const oldVersionBinds = () => {
+    armBootVerify({ prevSha: null, expectedVersion: "1.4.0", rollbackAttempted: true });
+    confirmBootHealthy("1.4.0");
+  };
+
+  it("a rollback in progress is not mistaken for a healthy update when the old version binds first", async () => {
+    const beacon = arm();
+    writeRollbackRecord(inProgress(beacon.armedAt + 1));
+    let polls = 0;
+    const outcome = await waitForTarballBoot({
+      beacon,
+      toVersion: "1.5.0",
+      fromVersion: "1.4.0",
+      sleep: async () => {
+        polls += 1;
+        if (polls === 1) {
+          oldVersionBinds();
+        } else if (polls === 3) {
+          writeRollbackRecord({ ...inProgress(beacon.armedAt + 2), ok: true, detail: "done" });
+        }
+      },
+    });
+    expect(outcome).toMatchObject({ status: "rolled-back", version: "1.4.0", healthy: true });
+  });
+
+  it("a rollback still unfinished at the deadline reports rolled-back, not healthy", async () => {
+    const beacon = arm();
+    writeRollbackRecord(inProgress(beacon.armedAt + 1));
+    let t = beacon.armedAt;
+    let polls = 0;
+    const outcome = await waitForTarballBoot({
+      beacon,
+      toVersion: "1.5.0",
+      fromVersion: "1.4.0",
+      now: () => t,
+      sleep: async () => {
+        polls += 1;
+        if (polls === 1) {
+          oldVersionBinds();
+        }
+        t += 60_000;
+      },
+    });
+    expect(outcome).toMatchObject({ status: "rolled-back", healthy: false });
   });
 
   it("reports a failed rollback", async () => {

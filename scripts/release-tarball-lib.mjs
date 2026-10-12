@@ -223,8 +223,23 @@ if [ -z "\${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ -d "$HOME/.bitterbot/browsers" ]
   export PLAYWRIGHT_BROWSERS_PATH
 fi
 # The bundled runtime is a fallback for tools that call \`node\`/\`npm\` by
-# name (plugin installs); a Node already on PATH keeps precedence.
-PATH=$PATH:$root/runtime/node/bin
+# name (plugin installs); a Node already on PATH keeps precedence. Bundled
+# runtimes of any version in this install dir (inherited by a restarted or
+# updated gateway) are dropped first, so PATH does not grow with every
+# restart and names this version's runtime only.
+appdir=$(dirname "$root")
+newpath=
+set -f
+IFS=:
+for entry in $PATH; do
+  case $entry in
+    "$appdir"/*/runtime/node/bin | "$appdir"/*/runtime/node/bin/) ;;
+    *) newpath=\${newpath:+$newpath:}$entry ;;
+  esac
+done
+unset IFS
+set +f
+PATH=\${newpath:+$newpath:}$root/runtime/node/bin
 export PATH
 # In-use marker: exec keeps this pid, so install.sh never prunes or replaces
 # a version directory while a process started from it is alive.
