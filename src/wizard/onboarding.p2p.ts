@@ -39,6 +39,26 @@ import { formatDocsLink } from "../terminal/links.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
 
+/**
+ * The Local-only preset (PLAN-41 Phase 1, p0-10): every ambient network
+ * surface off explicitly, so the config file documents the choice and each
+ * flag can be flipped back individually. Deliberately not a new config key.
+ * Shared by the terminal P2P step and the setup step model (setup-steps.ts).
+ */
+export function applyLocalOnlyPreset(config: BitterbotConfig): BitterbotConfig {
+  return {
+    ...config,
+    p2p: { ...config.p2p, enabled: false },
+    circles: { ...config.circles, enabled: false },
+    a2a: { ...config.a2a, enabled: false },
+    update: { ...config.update, checkOnStart: false },
+    models: {
+      ...config.models,
+      liveDiscovery: { ...config.models?.liveDiscovery, enabled: false },
+    },
+  };
+}
+
 export async function setupP2pForOnboarding(params: {
   config: BitterbotConfig;
   flow: WizardFlow;
@@ -88,17 +108,7 @@ export async function setupP2pForOnboarding(params: {
     // Local-only preset: every ambient network surface off explicitly, so
     // the config file documents the choice and each flag can be flipped
     // back individually. Deliberately not a new config key.
-    nextConfig = {
-      ...config,
-      p2p: { ...config.p2p, enabled: false },
-      circles: { ...config.circles, enabled: false },
-      a2a: { ...config.a2a, enabled: false },
-      update: { ...config.update, checkOnStart: false },
-      models: {
-        ...config.models,
-        liveDiscovery: { ...config.models?.liveDiscovery, enabled: false },
-      },
-    };
+    nextConfig = applyLocalOnlyPreset(config);
     await prompter.note(
       [
         "Local-only mode. Switched off: P2P mesh, circles, agent-to-agent",

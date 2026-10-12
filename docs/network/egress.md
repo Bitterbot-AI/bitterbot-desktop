@@ -16,7 +16,17 @@ connection is documented and switchable.** It does not claim "no telemetry"
 
 The onboarding wizard's P2P consent prompt is the master gesture: declining
 it applies the Local-only preset, which turns off items 2, 3, 5, and 6
-below in one step.
+below in one step. Setup (in the browser or the terminal) states what
+joining sends in one sentence, quoted here word for word:
+
+> Joining the P2P network connects this node to the Bitterbot bootstrap
+> relays and shares, under its Ed25519 peer id: skill announcements,
+> reputation scores and census pings; the text of your agent's top curiosity
+> question at most once per consolidation cycle; experience scores (numbers
+> only) once per dream cycle; and skills you mark shared or public.
+
+The setup step keeps your current `p2p.enabled` value preselected; it does
+not change the default.
 
 ## 1. GitHub Releases — orchestrator binary (install time)
 

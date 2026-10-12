@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { readBootVerify } from "./boot-verify.js";
+import { setupHandoverPending } from "./setup-handover.js";
 import { CURRENT_LINK, resolveTarballLayout } from "./tarball-install.js";
 import { spawnTarballBootWatchdog } from "./tarball-watchdog-spawn.js";
 
@@ -61,6 +62,7 @@ function resolveTarballRespawn(
 
 /**
  * Attempt to restart this process with a fresh PID.
+ * - setup handed over to the gateway service (setup-handover.ts): caller exits
  * - supervised environments (launchd/systemd): caller should exit and let supervisor restart
  * - BITTERBOT_NO_RESPAWN=1: caller should keep in-process restart behavior (tests/dev)
  * - release-tarball install with an update pending (boot-verify beacon with
@@ -70,6 +72,11 @@ function resolveTarballRespawn(
  * - otherwise: spawn detached child with current argv/execArgv, then caller exits
  */
 export function restartGatewayProcessWithFreshPid(): GatewayRespawnResult {
+  // PLAN-56 Phase 4: a setup gateway that handed over to the newly installed
+  // service exits; the service manager starts the supervised gateway.
+  if (setupHandoverPending()) {
+    return { mode: "supervised", detail: "handed over to the gateway service" };
+  }
   if (isTruthy(process.env.BITTERBOT_NO_RESPAWN)) {
     return { mode: "disabled" };
   }

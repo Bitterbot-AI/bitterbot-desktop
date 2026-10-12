@@ -23,7 +23,7 @@
 
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { chmod, mkdir, readFile, rename, stat, unlink } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -224,6 +224,7 @@ async function main() {
     try {
       const actual = await sha256File(destPath);
       if (actual === expectedHash) {
+        await writeVerificationStamp(destPath, { version, sha256: expectedHash, signature });
         log(`already up to date at ${destPath}`);
         return;
       }
@@ -274,7 +275,28 @@ async function main() {
     return;
   }
 
+  await writeVerificationStamp(destPath, { version, sha256: expectedHash, signature });
   log(`installed ${destPath} (v${version}, sha256 ${expectedHash.slice(0, 12)}…)`);
+}
+
+/**
+ * Record what was verified next to the binary (PLAN-56 Phase 4), so
+ * `bitterbot doctor` can say "minisign-verified at download, file unchanged"
+ * by re-hashing the binary offline. Best effort: a missing stamp only makes
+ * doctor say it cannot tell.
+ */
+async function writeVerificationStamp(binaryPath, { version, sha256, signature }) {
+  try {
+    const stamp = {
+      version,
+      sha256,
+      signature: signature?.verified ? "minisign" : "none",
+      verifiedAt: new Date().toISOString(),
+    };
+    await writeFile(`${binaryPath}.verified.json`, `${JSON.stringify(stamp, null, 2)}\n`);
+  } catch (err) {
+    warn(`could not write verification record: ${err.message}`);
+  }
 }
 
 main().catch((err) => {

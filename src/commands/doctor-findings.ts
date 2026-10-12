@@ -81,6 +81,57 @@ export async function collectRepairFindings(opts?: {
   return inFlight;
 }
 
+/**
+ * PLAN-56 Phase 4: the doctor summary the setup page ends with. The same
+ * read-only, offline subset as the Repairs card plus the Install section
+ * (install kind and channel, version drift, orchestrator signature,
+ * Playwright, local GGUF), against the config setup is about to write.
+ * Serialized with the Repairs collector: both use the module-global findings.
+ */
+export async function collectSetupDoctorSummary(opts: {
+  cfg: import("../config/config.js").BitterbotConfig;
+  now?: number;
+}): Promise<RepairFindingsReport> {
+  while (inFlight) {
+    await inFlight.catch(() => undefined);
+  }
+  const run = (async () => {
+    setDoctorJsonMode(true);
+    resetDoctorOutcome();
+    try {
+      const cfg = opts.cfg;
+      const { runInstallHealthChecks } = await import("./doctor-install-health.js");
+      const { VERSION } = await import("../version.js");
+      const packageRoot = await resolveBitterbotPackageRoot({
+        moduleUrl: import.meta.url,
+        argv1: process.argv[1],
+        cwd: process.cwd(),
+      }).catch(() => null);
+      const installKind = detectInstallKind(packageRoot);
+      await runInstallHealthChecks({ cfg, installKind, packageRoot, runningVersion: VERSION });
+      runIdentityChecks({ config: cfg });
+      await runSecurityChecks(cfg);
+      await runControlUiChecks(cfg, installKind);
+      return {
+        findings: [...doctorFindings()],
+        worstLevel: worstFindingLevel(),
+        checkedAt: opts.now ?? Date.now(),
+      } satisfies RepairFindingsReport;
+    } finally {
+      setDoctorJsonMode(false);
+      resetDoctorOutcome();
+    }
+  })();
+  inFlight = run;
+  try {
+    return await run;
+  } finally {
+    if (inFlight === run) {
+      inFlight = null;
+    }
+  }
+}
+
 /** Test hook. */
 export function resetRepairFindingsCache(): void {
   cached = null;
