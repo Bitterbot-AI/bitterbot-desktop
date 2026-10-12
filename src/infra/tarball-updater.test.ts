@@ -224,6 +224,37 @@ describeUpdater("runTarballUpdate", () => {
     expect(fs.existsSync(path.join(appDir, "1.3.0", "bin", "bitterbot"))).toBe(true);
   });
 
+  it("downloads over loopback http (the CI path) as well as file://", async () => {
+    publish("1.5.0");
+    const server = http.createServer((req, res) => {
+      const file = path.join(releases, decodeURIComponent((req.url ?? "/").split("?")[0]!));
+      if (!file.startsWith(releases) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      res.writeHead(200, { "Content-Length": fs.statSync(file).size });
+      fs.createReadStream(file).pipe(res);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const httpSource = resolveReleaseSource({
+        allowTestMode: true,
+        env: {
+          BITTERBOT_INSTALL_TEST_MODE: "1",
+          BITTERBOT_INSTALL_BASE_URL: `http://127.0.0.1:${port}`,
+          BITTERBOT_INSTALL_TEST_PUBKEY: key.pubkeyB64,
+        },
+      });
+      expect(await resolveLatestTarballVersion(httpSource, platformId!, 5000)).toBe("1.5.0");
+      await update("1.5.0", { source: httpSource });
+      expect(readVersionLink(appDir, "current")).toBe("1.5.0");
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+
   it("re-uses an already installed, intact copy of the target", async () => {
     publish("1.5.0");
     await update("1.5.0");

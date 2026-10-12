@@ -26,10 +26,11 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import http from "node:http";
+import https from "node:https";
 import path from "node:path";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 import { tarballAssetName } from "./install-kind.js";
 import {
@@ -147,6 +148,30 @@ function assertUrlAllowed(source: ReleaseSource, url: string): void {
   }
 }
 
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const MAX_REDIRECTS = 5;
+
+/**
+ * One GET with node:http(s). (Not fetch: undici asserts and crashes the
+ * process when a paused response body meets a closing socket, which a large
+ * streamed download into a slower disk triggers.) The timeout is a socket
+ * idle timeout, so a long download that keeps moving is never cut off.
+ */
+function httpGet(
+  url: string,
+  headers: Record<string, string>,
+  timeoutMs: number,
+): Promise<http.IncomingMessage> {
+  const get = url.startsWith("https:") ? https.get : http.get;
+  return new Promise((resolve, reject) => {
+    const req = get(url, { headers }, resolve);
+    req.on("error", reject);
+    req.setTimeout(Math.max(1000, Math.min(timeoutMs, 120_000)), () => {
+      req.destroy(new ReleaseVerificationError(`no data from ${url} for too long`));
+    });
+  });
+}
+
 async function openUrl(
   source: ReleaseSource,
   url: string,
@@ -161,20 +186,33 @@ async function openUrl(
     }
     return { status: 200, body: fs.createReadStream(file), url };
   }
-  const res = await fetch(url, {
+  let current = url;
+  for (let hop = 0; ; hop += 1) {
+    const res = await httpGet(
+      current,
+      { "User-Agent": "bitterbot-updater", ...headers },
+      timeoutMs,
+    );
+    const status = res.statusCode ?? 0;
+    const location = res.headers.location;
+    if (!REDIRECT_STATUSES.has(status) || !location) {
+      return { status, body: res, url: current };
+    }
+    res.resume();
     // Test mode: no redirects at all (install.sh: --max-redirs 0). Production
     // follows GitHub's asset redirect, which must stay on HTTPS.
-    redirect: source.testMode ? "error" : "follow",
-    headers: { "User-Agent": "bitterbot-updater", ...headers },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!source.testMode && !res.url.startsWith("https://")) {
-    throw new ReleaseVerificationError(`download was redirected off HTTPS: ${res.url}`);
+    if (source.testMode) {
+      throw new ReleaseVerificationError(`test mode refuses a redirect from ${current}`);
+    }
+    if (hop >= MAX_REDIRECTS) {
+      throw new ReleaseVerificationError(`too many redirects from ${url}`);
+    }
+    const next = new URL(location, current).toString();
+    if (!next.startsWith("https://")) {
+      throw new ReleaseVerificationError(`download was redirected off HTTPS: ${next}`);
+    }
+    current = next;
   }
-  const body = res.body
-    ? Readable.fromWeb(res.body as unknown as WebReadableStream<Uint8Array>)
-    : null;
-  return { status: res.status, body, url: res.url || url };
 }
 
 async function readAll(stream: Readable, max: number): Promise<Buffer> {

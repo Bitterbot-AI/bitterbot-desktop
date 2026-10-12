@@ -395,7 +395,7 @@ export async function runTarballUpdate(opts: TarballUpdateOptions): Promise<Tarb
 
       const finalDir = path.join(appDir, target);
       let reused = false;
-      await step("install", `${finalDir}`, async () => {
+      await step("install", finalDir, async () => {
         const stagedManifest = await fsp.readFile(path.join(staged, "manifest.json"), "utf8");
         if (fs.existsSync(finalDir) && !opts.reinstall) {
           let existing: string | null = null;

@@ -30,14 +30,26 @@ function opensslCanVerify(): boolean {
   return res.status === 0 && res.stdout.startsWith("OpenSSL 3.");
 }
 
-/** install.sh's OpenSSL verifier, called directly (the script minus its `main "$@"` line). */
+/**
+ * install.sh's OpenSSL verifier, called directly: the script minus its last
+ * line (`main "$@"`) written to a file and sourced (bash 3.2 on macOS cannot
+ * `source <(...)`). Returns the trusted comment, null on a refusal, or
+ * "unsupported" when this machine's OpenSSL cannot check minisign.
+ */
 function verifyWithInstallSh(file: string, sig: string, pubkey: string): string | null {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "bb-minisign-sh-"));
   try {
-    const script = `source <(sed '$d' "$1"); bb_openssl_minisign_verify "$2" "$3" "$4" "$5"`;
-    const res = spawnSync("bash", ["-c", script, "bash", INSTALL_SH, file, sig, pubkey, work], {
-      encoding: "utf8",
-    });
+    const lib = path.join(work, "install-lib.sh");
+    const body = fs.readFileSync(INSTALL_SH, "utf8").trimEnd().split("\n").slice(0, -1).join("\n");
+    fs.writeFileSync(lib, `${body}\n`);
+    fs.mkdirSync(path.join(work, "w"));
+    const script =
+      'source "$1"; bb_openssl_can_verify || { echo unsupported; exit 0; }; bb_openssl_minisign_verify "$2" "$3" "$4" "$5"';
+    const res = spawnSync(
+      "bash",
+      ["-c", script, "bash", lib, file, sig, pubkey, path.join(work, "w")],
+      { encoding: "utf8" },
+    );
     return res.status === 0 ? res.stdout.trim() : null;
   } finally {
     fs.rmSync(work, { recursive: true, force: true });
@@ -181,6 +193,15 @@ describe("same vectors, every verifier", () => {
       verifyMinisignJs({ pubkeyB64: key.pubkeyB64, message: body, minisig: bad }),
     ).toThrow();
     if (process.platform === "win32" || !opensslCanVerify()) {
+      return;
+    }
+    if (
+      verifyWithInstallSh(
+        path.join(ORCHESTRATOR_FIXTURE_DIR, "checksums.txt"),
+        path.join(ORCHESTRATOR_FIXTURE_DIR, "checksums.txt.minisig"),
+        RELEASE_MINISIGN_PUBKEY,
+      ) === "unsupported"
+    ) {
       return;
     }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-minisign-"));
