@@ -212,11 +212,43 @@ function createMergePatch(base: unknown, target: unknown): unknown {
       patch[key] = childPatch;
       continue;
     }
-    if (!isDeepStrictEqual(baseValue, targetValue)) {
+    if (!configValuesEqual(baseValue, targetValue)) {
       patch[key] = cloneUnknown(targetValue);
     }
   }
   return patch;
+}
+
+/**
+ * Structural equality for config values (JSON data). Unlike
+ * isDeepStrictEqual it ignores prototypes, so an array or object made in
+ * another realm (structuredClone under a vm context, a worker's message)
+ * still equals its same-realm twin. With isDeepStrictEqual such a clone of
+ * the loaded config differed from the snapshot at every array, and a write
+ * froze those arrays (the fallback p2p.bootstrapPeers) into the file
+ * (drift-pass review HIGH-2).
+ */
+export function configValuesEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) {
+    return true;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    return a.every((item, index) => configValuesEqual(item, b[index]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) {
+      return false;
+    }
+    const bRecord = b as Record<string, unknown>;
+    const aRecord = a as Record<string, unknown>;
+    return aKeys.every((key) => key in bRecord && configValuesEqual(aRecord[key], bRecord[key]));
+  }
+  return false;
 }
 
 function collectEnvRefPaths(value: unknown, path: string, output: Map<string, string>): void {
@@ -272,7 +304,7 @@ function collectChangedPaths(
     }
     return;
   }
-  if (!isDeepStrictEqual(base, target)) {
+  if (!configValuesEqual(base, target)) {
     output.add(path);
   }
 }
@@ -644,6 +676,69 @@ function applyLoadTimeDefaults(validated: BitterbotConfig): BitterbotConfig {
   return cfg;
 }
 
+/**
+ * Remove, in place, every value of `candidate` that the file does not hold
+ * (`raw`) and that equals what the load-time defaults supply for that file
+ * (`defaults`). Objects are walked so a partially customised defaulted block
+ * keeps only the customised keys. An object emptied by the walk goes too,
+ * unless the file had it.
+ */
+function stripLoadTimeDefaultsInPlace(
+  candidate: Record<string, unknown>,
+  raw: unknown,
+  defaults: unknown,
+): void {
+  if (!isPlainObject(defaults)) {
+    return;
+  }
+  const rawObj = isPlainObject(raw) ? raw : undefined;
+  for (const key of Object.keys(candidate)) {
+    if (!(key in defaults)) {
+      continue;
+    }
+    const inFile = rawObj !== undefined && key in rawObj;
+    const value = candidate[key];
+    const defaultValue = defaults[key];
+    if (!inFile && configValuesEqual(value, defaultValue)) {
+      delete candidate[key];
+      continue;
+    }
+    if (isPlainObject(value) && isPlainObject(defaultValue)) {
+      stripLoadTimeDefaultsInPlace(value, inFile ? rawObj?.[key] : undefined, defaultValue);
+      if (!inFile && Object.keys(value).length === 0) {
+        delete candidate[key];
+      }
+    }
+  }
+}
+
+/**
+ * Drift-pass review HIGH-2: a write must never persist a value that exists
+ * only because the load-time defaults (applyLoadTimeDefaults: bootstrap
+ * peers, compaction/context-pruning modes, a2a caps, circles, ...) put it into
+ * the loaded config. Whatever path built the candidate (merge patch against
+ * the snapshot, a missing file, an invalid snapshot written best-effort), a
+ * value absent from the file that equals the default for that file is
+ * dropped. A value the caller changed differs from the default and stays; a
+ * caller "setting" a key to exactly its default is indistinguishable from
+ * the default and is not written (the effective config is the same).
+ */
+export function stripLoadTimeDefaults(candidate: unknown, fileRaw: unknown): unknown {
+  if (!isPlainObject(candidate)) {
+    return candidate;
+  }
+  const base = isPlainObject(fileRaw) ? (structuredClone(fileRaw) as BitterbotConfig) : {};
+  let defaults: unknown;
+  try {
+    defaults = applyLoadTimeDefaults(base);
+  } catch {
+    return candidate;
+  }
+  const out = structuredClone(candidate);
+  stripLoadTimeDefaultsInPlace(out, fileRaw, defaults);
+  return out;
+}
+
 export function createConfigIO(overrides: ConfigIoDeps = {}) {
   const deps = normalizeDeps(overrides);
   const requestedConfigPath = resolveConfigPathForDeps(deps);
@@ -958,6 +1053,11 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         envRefMap = null;
       }
     }
+
+    persistCandidate = stripLoadTimeDefaults(
+      persistCandidate,
+      snapshot.exists ? snapshot.resolved : {},
+    );
 
     const validated = validateConfigObjectRawWithPlugins(persistCandidate);
     if (!validated.ok) {

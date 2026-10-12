@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { BitterbotConfig } from "../config/config.js";
 import { findDeprecatedConfigKeys } from "../config/io.js";
-import { parseConfigPath, removeDeprecatedConfigKeys } from "./doctor-deprecated-config.js";
+import {
+  configUsesInclude,
+  json5HasComments,
+  locateConfigKey,
+  parseConfigPath,
+  removeDeprecatedConfigKeys,
+} from "./doctor-deprecated-config.js";
 
 function fix(raw: Record<string, unknown>) {
   return removeDeprecatedConfigKeys(raw as BitterbotConfig, findDeprecatedConfigKeys(raw));
@@ -46,7 +52,6 @@ describe("removeDeprecatedConfigKeys (doctor --fix)", () => {
       update: { channel: "stable" },
     });
     expect(out.changes).toHaveLength(6);
-    expect(out.kept).toEqual([]);
     // The input is not mutated.
     expect(raw).toEqual(original);
   });
@@ -56,27 +61,30 @@ describe("removeDeprecatedConfigKeys (doctor --fix)", () => {
     expect(out.changes).toEqual([]);
     expect(out.config).toEqual({ agents: { defaults: { compaction: { mode: "default" } } } });
   });
+});
 
-  it("moves autoResearch.enabled=false to research.enabled=false (same effect)", () => {
-    const out = fix({
-      memory: { curiosity: { autoResearch: { enabled: false, maxPerDay: 3 } } },
-    });
-    expect(out.config).toEqual({
-      memory: { curiosity: { autoResearch: { maxPerDay: 3 }, research: { enabled: false } } },
-    });
+describe("memory.curiosity.autoResearch.enabled is not deprecated (live key)", () => {
+  it("is never reported or removed", () => {
+    const raw = { memory: { curiosity: { autoResearch: { enabled: false } } } };
+    expect(findDeprecatedConfigKeys(raw)).toEqual([]);
+    expect(fix(raw).config).toEqual(raw);
+  });
+});
+
+describe("include and comment detection (HIGH-1)", () => {
+  it("finds $include anywhere and names the file a key lives in", () => {
+    const parsed = { ui: {}, agents: { $include: "./agents.json5" } };
+    expect(configUsesInclude(parsed)).toBe(true);
+    expect(configUsesInclude({ agents: { list: [{ id: "a" }] } })).toBe(false);
+    expect(locateConfigKey(parsed, "agents.defaults.contextPruning")).toBe("./agents.json5");
+    expect(locateConfigKey(parsed, "memory.backend")).toBeNull();
   });
 
-  it("drops autoResearch.enabled=false when research.enabled is already set", () => {
-    const out = fix({
-      memory: { curiosity: { autoResearch: { enabled: false }, research: { enabled: true } } },
-    });
-    expect(out.config).toEqual({ memory: { curiosity: { research: { enabled: true } } } });
-  });
-
-  it("keeps autoResearch.enabled=true: the dream engine still reads it", () => {
-    const raw = { memory: { curiosity: { autoResearch: { enabled: true } } } };
-    const out = fix(raw);
-    expect(out.config).toEqual(raw);
-    expect(out.kept[0]).toContain("memory.curiosity.autoResearch.enabled");
+  it("detects JSON5 comments outside strings only", () => {
+    expect(json5HasComments('// c\n{"a": 1}')).toBe(true);
+    expect(json5HasComments('{"a": 1 /* c */}')).toBe(true);
+    expect(json5HasComments('{"url": "https://x.example/a"}')).toBe(false);
+    expect(json5HasComments('{"a": "it\'s // fine"}')).toBe(false);
+    expect(json5HasComments(null)).toBe(false);
   });
 });

@@ -24,7 +24,7 @@ Bitterbot selects models in this order:
 
 Related:
 
-- `agents.defaults.models` is the allowlist/catalog of models Bitterbot can use (plus aliases).
+- `agents.defaults.models` is the catalog of models (aliases, per-model params). It restricts which models can be picked only when `agents.defaults.restrictModels: true`.
 - `agents.defaults.imageModel` is used **only when** the primary model can’t accept images.
 - Per-agent defaults can override `agents.defaults.model` via `agents.list[].model` plus bindings (see [/concepts/multi-agent](/concepts/multi-agent)).
 
@@ -49,7 +49,7 @@ setup-token` also supported).
 
 - `agents.defaults.model.primary` and `agents.defaults.model.fallbacks`
 - `agents.defaults.imageModel.primary` and `agents.defaults.imageModel.fallbacks`
-- `agents.defaults.models` (allowlist + aliases + provider params)
+- `agents.defaults.models` (catalog: aliases + provider params; an allowlist only with `agents.defaults.restrictModels: true`)
 - `models.providers` (custom providers written into `models.json`)
 
 Model refs are normalized to lowercase. Provider aliases like `z.ai/*` normalize
@@ -60,9 +60,12 @@ Provider configuration examples (including OpenCode Zen) live in
 
 ## “Model is not allowed” (and why replies stop)
 
-If `agents.defaults.models` is set, it becomes the **allowlist** for `/model` and for
-session overrides. When a user selects a model that isn’t in that allowlist,
-Bitterbot returns:
+`agents.defaults.models` is a catalog, not a restriction: setting a default
+model registers it there, and that alone must not forbid every other model.
+To restrict which models `/model` and session overrides may pick, opt in with
+`agents.defaults.restrictModels: true`; the map is then enforced as the
+**allowlist** (the current default is always allowed). When a user selects a
+model that isn’t in that allowlist, Bitterbot returns:
 
 ```
 Model "provider/model" is not allowed. Use /model to list available models.
@@ -72,18 +75,21 @@ This happens **before** a normal reply is generated, so the message can feel
 like it “didn’t respond.” The fix is to either:
 
 - Add the model to `agents.defaults.models`, or
-- Clear the allowlist (remove `agents.defaults.models`), or
+- Turn the restriction off (`agents.defaults.restrictModels: false`, the default), or
 - Pick a model from `/model list`.
 
 Example allowlist config:
 
 ```json5
 {
-  agent: {
-    model: { primary: "anthropic/claude-sonnet-4-5" },
-    models: {
-      "anthropic/claude-sonnet-4-5": { alias: "Sonnet" },
-      "anthropic/claude-opus-4-6": { alias: "Opus" },
+  agents: {
+    defaults: {
+      restrictModels: true,
+      model: { primary: "anthropic/claude-sonnet-4-5" },
+      models: {
+        "anthropic/claude-sonnet-4-5": { alias: "Sonnet" },
+        "anthropic/claude-opus-4-6": { alias: "Opus" },
+      },
     },
   },
 }

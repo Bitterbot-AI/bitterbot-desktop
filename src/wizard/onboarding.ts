@@ -185,7 +185,7 @@ async function runOnboardingWizardInner(
   const firstBootOnly = snapshot.exists && isFirstBootOnlyConfig(snapshot.resolved);
   if (firstBootOnly) {
     await prompter.note(
-      "Found only the gateway token generated on first start. Keeping it; setting up the rest.",
+      "The config holds only a gateway token (what a first gateway start writes). Keeping the token; setting up everything else.",
       "Config",
     );
   }

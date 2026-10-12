@@ -20,7 +20,12 @@ import type { BitterbotConfig } from "../config/config.js";
 import { resolveGatewayService } from "../daemon/service.js";
 import { isSystemdUserServiceAvailable } from "../daemon/systemd.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
-import { detectInstallKind, gatewayStartCommand, type InstallKind } from "../infra/install-kind.js";
+import {
+  detectInstallKind,
+  gatewayStartCommand,
+  type InstallKind,
+  isSourceTree,
+} from "../infra/install-kind.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { setupOnboardingShellCompletion } from "./onboarding.completion.js";
@@ -67,7 +72,9 @@ export async function finalizeOnboardingWizard(
     argv1: process.argv[1],
     cwd: process.cwd(),
   });
-  const installKind = options.installKind ?? detectInstallKind(repoRoot);
+  const detectedKind = options.installKind ?? detectInstallKind(repoRoot);
+  // A non-git copy of the repository (ZIP download) runs like a checkout.
+  const installKind: InstallKind = isSourceTree(repoRoot, detectedKind) ? "git" : detectedKind;
 
   const systemdAvailable =
     process.platform === "linux" ? await isSystemdUserServiceAvailable() : true;

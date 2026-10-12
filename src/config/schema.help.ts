@@ -61,6 +61,8 @@ export const FIELD_HELP: Record<string, string> = {
     "The curiosity engine: novelty detection, knowledge gaps and the questions that drive dream exploration and research (default: true).",
   "memory.curiosity.research.enabled":
     "Let the agent research its own open questions on a schedule: the question is rewritten as a generic topic phrase (checked for names and fragments) before anything leaves the node, then searched, read, and remembered with sources. Everything it does is on the Curiosity page, where it can be paused. Default on when web search is configured.",
+  "memory.curiosity.autoResearch.enabled":
+    "Let the dream engine run the Skill Seekers research step on its curiosity targets (needs skills.skillSeekers.enabled). Separate from Curiosity Research (memory.curiosity.research.enabled); setting this to false also turns Curiosity Research off unless that key is explicitly true. Default off.",
   "memory.curiosity.research.maxPerDay":
     "How many questions the agent may research per day (default 10). Dopamine adds up to 2, cortisol removes up to 2.",
   "memory.curiosity.research.intervalMinutes": "Minutes between research passes (default 240).",

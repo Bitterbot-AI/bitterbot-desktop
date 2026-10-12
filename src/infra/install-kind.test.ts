@@ -7,6 +7,7 @@ import {
   gatewayStartCommand,
   hasTarballMarker,
   installKindLabel,
+  isSourceTree,
   looksLikeContainer,
   readDeclaredInstallKind,
   resolveInstallKind,
@@ -199,5 +200,25 @@ describe("gatewayStartCommand / installKindLabel", () => {
       expect(installKindLabel(kind).length).toBeGreaterThan(0);
     }
     expect(installKindLabel("tarball")).toContain("install.sh");
+  });
+});
+
+describe("isSourceTree (LOW-3: ZIP downloads still auto-spawn)", () => {
+  const root = "/home/u/bitterbot-desktop-main";
+  const zipFiles = [
+    path.join(root, "pnpm-workspace.yaml"),
+    path.join(root, "scripts", "start-all.mjs"),
+  ];
+  it("a non-git repository copy with the stack scripts is a source tree", () => {
+    expect(isSourceTree(root, "package", probe({ files: zipFiles }))).toBe(true);
+  });
+  it("a tarball, container or package without scripts/ is not", () => {
+    expect(isSourceTree(root, "tarball", probe({ files: zipFiles }))).toBe(false);
+    expect(isSourceTree(root, "container", probe({ files: zipFiles }))).toBe(false);
+    expect(isSourceTree(root, "package", probe({ files: [] }))).toBe(false);
+    expect(isSourceTree(null, "package", probe({ files: zipFiles }))).toBe(false);
+  });
+  it("a git checkout always is", () => {
+    expect(isSourceTree(root, "git", probe({}))).toBe(true);
   });
 });

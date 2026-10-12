@@ -17,7 +17,12 @@ import { listTelegramAccountIds, resolveTelegramAccount } from "../telegram/acco
 import { note } from "../terminal/note.js";
 import { isRecord } from "../utils.js";
 import { renderSection, warn } from "./doctor-check.js";
-import { removeDeprecatedConfigKeys } from "./doctor-deprecated-config.js";
+import {
+  configUsesInclude,
+  json5HasComments,
+  locateConfigKey,
+  removeDeprecatedConfigKeys,
+} from "./doctor-deprecated-config.js";
 import { normalizeLegacyConfigValues } from "./doctor-legacy-config.js";
 import type { DoctorOptions } from "./doctor-prompter.js";
 
@@ -465,23 +470,41 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
 
   // PLAN-56: deprecated keys, by exact path, as a finding (so `doctor --json`
   // and the update gate see them); the inert ones are removed on repair.
+  // Never auto-written when the config uses $include: a write re-serialises
+  // the root file with the included content inlined (drift-pass HIGH-1).
+  let deprecatedOnlyChanges = false;
   const deprecatedHits = findDeprecatedConfigKeys(snapshot.resolved);
   if (deprecatedHits.length > 0) {
+    const usesInclude = configUsesInclude(snapshot.parsed);
     renderSection("Config", [
       warn(
         [
           "Deprecated config keys (accepted this release, removed next release):",
-          ...deprecatedHits.map((hit) => `- ${hit.path}: ${hit.reason}`),
+          ...deprecatedHits.map((hit) => {
+            const file = usesInclude ? locateConfigKey(snapshot.parsed, hit.path) : null;
+            return `- ${hit.path}${file ? ` (in ${file})` : ""}: ${hit.reason}`;
+          }),
+          ...(usesInclude
+            ? [
+                "This config uses $include, so doctor will not rewrite it: remove these keys by hand.",
+              ]
+            : []),
         ].join("\n"),
       ),
     ]);
-    const removal = removeDeprecatedConfigKeys(candidate, deprecatedHits);
-    if (removal.kept.length > 0) {
-      note(removal.kept.join("\n"), "Deprecated config keys");
-    }
+    const removal = usesInclude
+      ? { config: candidate, changes: [] }
+      : removeDeprecatedConfigKeys(candidate, deprecatedHits);
     if (removal.changes.length > 0) {
-      note(removal.changes.join("\n"), "Doctor changes");
+      const changeLines = [...removal.changes];
+      if (json5HasComments(snapshot.raw)) {
+        changeLines.push(
+          `- Note: ${snapshot.path ?? CONFIG_PATH} has comments; applying this rewrites the file without them (the previous file is kept as .bak).`,
+        );
+      }
+      note(changeLines.join("\n"), "Doctor changes");
       candidate = removal.config;
+      deprecatedOnlyChanges = !pendingChanges;
       pendingChanges = true;
       if (shouldRepair) {
         cfg = removal.config;
@@ -498,6 +521,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     note(autoEnable.changes.join("\n"), "Doctor changes");
     candidate = autoEnable.config;
     pendingChanges = true;
+    deprecatedOnlyChanges = false;
     if (shouldRepair) {
       cfg = autoEnable.config;
     } else {
@@ -511,6 +535,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
       note(repair.changes.join("\n"), "Doctor changes");
       candidate = repair.config;
       pendingChanges = true;
+      deprecatedOnlyChanges = false;
       cfg = repair.config;
     }
   } else {
@@ -531,6 +556,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     const lines = unknown.removed.map((path) => `- ${path}`).join("\n");
     candidate = unknown.config;
     pendingChanges = true;
+    deprecatedOnlyChanges = false;
     if (shouldRepair) {
       cfg = unknown.config;
       note(lines, "Doctor changes");
@@ -541,9 +567,13 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   }
 
   if (!shouldRepair && pendingChanges) {
+    // Removing deprecated keys alone is never urgent (they still load this
+    // release), so that prompt defaults to no; --fix applies it.
     const shouldApply = await params.confirm({
-      message: "Apply recommended config repairs now?",
-      initialValue: true,
+      message: deprecatedOnlyChanges
+        ? "Remove the deprecated config keys now?"
+        : "Apply recommended config repairs now?",
+      initialValue: !deprecatedOnlyChanges,
     });
     if (shouldApply) {
       cfg = candidate;

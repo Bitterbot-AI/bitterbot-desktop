@@ -23,5 +23,22 @@ export function isFirstBootOnlyConfig(raw: unknown): boolean {
   if (!gateway || typeof gateway !== "object" || Array.isArray(gateway)) {
     return false;
   }
-  return Object.keys(gateway).every((key) => key === "auth");
+  const gatewayKeys = Object.keys(gateway);
+  if (!gatewayKeys.every((key) => key === "auth")) {
+    return false;
+  }
+  const auth = (gateway as Record<string, unknown>).auth;
+  if (auth === undefined) {
+    return true;
+  }
+  if (!auth || typeof auth !== "object" || Array.isArray(auth)) {
+    return false;
+  }
+  // Exactly what the first-boot token writes: a token, optionally with
+  // mode "token". A password, trusted-proxy or any other auth setting was
+  // chosen by a person.
+  const authRecord = auth as Record<string, unknown>;
+  const onlyTokenKeys = Object.keys(authRecord).every((key) => key === "mode" || key === "token");
+  const tokenMode = authRecord.mode === undefined || authRecord.mode === "token";
+  return onlyTokenKeys && tokenMode;
 }

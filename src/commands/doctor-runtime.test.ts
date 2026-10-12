@@ -26,12 +26,14 @@ describe("runRuntimeChecks install-kind awareness", () => {
     expect(messages().some((m) => m.startsWith("warn: pnpm not found"))).toBe(true);
   });
 
-  it("a container's lan bind is not a LAN exposure warning", () => {
+  it("a container's lan bind warns that exposure depends on the host port mapping", () => {
     if (process.platform !== "linux") {
       return;
     }
     runRuntimeChecks({ config: { gateway: { bind: "lan" } }, installKind: "container" });
-    expect(messages().some((m) => m.startsWith("warn: Linux + gateway bind"))).toBe(false);
-    expect(messages().some((m) => m.startsWith("info: Container: gateway bind=lan"))).toBe(true);
+    const container = messages().find((m) => m.startsWith("warn: Container: gateway bind=lan"));
+    expect(container).toBeDefined();
+    expect(container).toContain("docker compose port bitterbot-gateway 19001");
+    expect(container).not.toContain("publishes 127.0.0.1 only");
   });
 });

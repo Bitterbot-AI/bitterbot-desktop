@@ -211,8 +211,10 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             <code className="px-1 py-0.5 bg-muted rounded text-2xs">
               docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get
               gateway.auth.token
-            </code>
-            . Installer and source installs without a token yet:{" "}
+            </code>{" "}
+            (or use the value of{" "}
+            <code className="px-1 py-0.5 bg-muted rounded text-2xs">BITTERBOT_GATEWAY_TOKEN</code>{" "}
+            if you set one). Installer and source installs without a token yet:{" "}
             <code className="px-1 py-0.5 bg-muted rounded text-2xs">bitterbot onboard</code> (or{" "}
             <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm bitterbot onboard</code> in
             a checkout) walks you through setup in the terminal and generates one.

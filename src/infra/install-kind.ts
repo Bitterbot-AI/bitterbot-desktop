@@ -244,3 +244,32 @@ export function installKindLabel(kind: InstallKind): string {
       return "unknown (package root not found)";
   }
 }
+
+/**
+ * True for a source tree the pnpm stack scripts can run in: a git checkout,
+ * or a non-git copy of the repository (a ZIP download) that still carries
+ * the scripts the `start:all` / `dev:all` package scripts run. A release
+ * tarball or package has `package.json` with those scripts but not
+ * `scripts/start-all.mjs`.
+ */
+export function isSourceTree(
+  root: string | null,
+  kind: InstallKind,
+  probe: ContainerProbe = {},
+): boolean {
+  if (kind === "git") {
+    return true;
+  }
+  if (!root || kind !== "package") {
+    return false;
+  }
+  const existsSync = probe.existsSync ?? ((p: string) => fs.existsSync(p));
+  try {
+    return (
+      existsSync(path.join(root, "pnpm-workspace.yaml")) &&
+      existsSync(path.join(root, "scripts", "start-all.mjs"))
+    );
+  } catch {
+    return false;
+  }
+}

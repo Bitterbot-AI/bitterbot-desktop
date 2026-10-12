@@ -39,7 +39,8 @@ docker compose logs bitterbot-gateway   # shows the generated token
 
 Then open `http://127.0.0.1:19001/` and paste the token. The token is printed
 once; read it again any time with
-`docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token`. (The compose file is
+`docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token`
+(or use the value of `BITTERBOT_GATEWAY_TOKEN` if you set one). (The compose file is
 attached to releases from 1.5.0 on; before that, follow the `docker run` form
 on the [Docker page](/platforms/docker#without-compose).)
 

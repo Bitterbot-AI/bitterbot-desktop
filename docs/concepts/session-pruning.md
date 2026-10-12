@@ -10,7 +10,9 @@ read_when:
 
 `agents.defaults.contextPruning` (the `cache-ttl` tool-result trimming of the
 old embedded engine) has **no effect** in the owned runtime. Nothing trims tool
-results from the in-memory context on a cache TTL any more.
+results from the in-memory context on a cache TTL any more. With
+`mode: "cache-ttl"` set, the runtime still appends a cache-TTL timestamp entry
+to the session transcript; nothing reads that entry to prune anything.
 
 - The key is still accepted so existing configs parse. It warns once at load
   and will be removed next release.

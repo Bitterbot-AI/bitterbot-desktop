@@ -592,7 +592,8 @@ Time format in system prompt. Default: `auto` (OS preference).
 ```
 
 - `model.primary`: format `provider/model` (e.g. `anthropic/claude-opus-4-6`). If you omit the provider, Bitterbot assumes `anthropic` (deprecated).
-- `models`: the configured model catalog and allowlist for `/model`. Each entry can include `alias` (shortcut) and `params` (provider-specific: `temperature`, `maxTokens`).
+- `models`: the configured model catalog. Each entry can include `alias` (shortcut) and `params` (provider-specific: `temperature`, `maxTokens`). It is not a restriction: setting a default registers it here without forbidding other models.
+- `restrictModels` (default `false`): `true` enforces `models` as the allowlist for `/model` and session overrides (the current default is always allowed).
 - `imageModel`: only used if the primary model lacks image input.
 - `maxConcurrent`: max parallel agent runs across sessions (each session still serialized). Default: 1.
 
@@ -739,7 +740,7 @@ A value of `"pi"` logs one warning per process (`the pi engine was removed; <age
 
 ### `agents.defaults.contextPruning`
 
-Accepted and ignored. Nothing in the owned runtime reads it: old tool outputs are handled by compaction (`compaction.offload.toolOutputStubs`, above). The key stays in the schema this release so existing configs parse, warns at load, and will be removed next release; `bitterbot doctor --fix` removes it. See [Session pruning](/concepts/session-pruning).
+Accepted and has no effect. With `mode: "cache-ttl"` the runtime still appends a cache-TTL timestamp entry to the session, but nothing acts on that entry, so nothing is pruned: old tool outputs are handled by compaction (`compaction.offload.toolOutputStubs`, above). The key stays in the schema this release so existing configs parse, warns at load, and will be removed next release; `bitterbot doctor --fix` removes it. See [Session pruning](/concepts/session-pruning).
 
 ### Block streaming
 

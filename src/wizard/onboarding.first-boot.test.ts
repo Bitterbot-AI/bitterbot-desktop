@@ -19,4 +19,15 @@ describe("isFirstBootOnlyConfig", () => {
     expect(isFirstBootOnlyConfig({ agents: { defaults: { model: "a/b" } } })).toBe(false);
     expect(isFirstBootOnlyConfig({ channels: { telegram: {} } })).toBe(false);
   });
+
+  it("only a token (mode unset or token) counts as first-boot auth", () => {
+    expect(isFirstBootOnlyConfig({ gateway: { auth: { token: "t" } } })).toBe(true);
+    expect(isFirstBootOnlyConfig({ gateway: { auth: { mode: "password", password: "p" } } })).toBe(
+      false,
+    );
+    expect(
+      isFirstBootOnlyConfig({ gateway: { auth: { mode: "token", token: "t", extra: 1 } } }),
+    ).toBe(false);
+    expect(isFirstBootOnlyConfig({ gateway: { auth: { mode: "trusted-proxy" } } })).toBe(false);
+  });
 });

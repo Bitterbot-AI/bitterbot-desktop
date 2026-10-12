@@ -27,7 +27,9 @@ export function gatewayModeUnsetFinding(params: {
     setDirectly,
   ];
   if (!params.configFileExists) {
-    lines.push("No config file yet. That is fine: every default applies without one.");
+    lines.push(
+      "No config file yet. Every other default applies without one, but the gateway still needs gateway.mode (onboarding sets it).",
+    );
   }
   return warn(lines.join("\n"));
 }

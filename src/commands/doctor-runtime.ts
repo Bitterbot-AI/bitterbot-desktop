@@ -120,12 +120,15 @@ export function runRuntimeChecks(params: {
 
   if (platform === "linux" && (bind === "lan" || bind === "auto" || bind === "custom")) {
     if (installKind === "container") {
-      // Inside the image the gateway must bind 0.0.0.0; what is reachable is
-      // decided by the published port (docker-compose.yml: 127.0.0.1 only).
+      // Inside the image the gateway must bind 0.0.0.0; whether that reaches
+      // the LAN is decided on the host by the port mapping, which doctor
+      // cannot see from inside the container.
       results.push(
-        info(
-          `Container: gateway bind=${bind} inside the container; exposure is set by the ` +
-            "published port (the release docker-compose.yml publishes 127.0.0.1 only).",
+        warn(
+          `Container: gateway bind=${bind} inside the container. LAN exposure depends on the ` +
+            "host port mapping: `-p 19001:19001` or BITTERBOT_BIND_HOST=0.0.0.0 exposes it on " +
+            "your LAN. Check on the Docker host with `docker compose port bitterbot-gateway 19001` " +
+            "(127.0.0.1:... means loopback only).",
         ),
       );
     } else if (tailscaleMode === "off") {

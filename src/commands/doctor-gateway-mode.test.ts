@@ -8,10 +8,13 @@ describe("gatewayModeUnsetFinding", () => {
     expect(finding.message).toContain("--allow-unconfigured");
   });
 
-  it("warns elsewhere, and a missing file is called fine, not an error", () => {
+  it("warns elsewhere: a missing file is not an error, but the gateway still needs the mode", () => {
     const finding = gatewayModeUnsetFinding({ installKind: "tarball", configFileExists: false });
     expect(finding.level).toBe("warn");
-    expect(finding.message).toContain("No config file yet. That is fine");
+    expect(finding.message).toContain("No config file yet");
+    expect(finding.message).toContain("still needs gateway.mode");
+    expect(finding.message).toContain("--allow-unconfigured");
+    expect(finding.message).not.toContain("That is fine");
     expect(finding.message).not.toContain("Missing config");
     expect(
       gatewayModeUnsetFinding({ installKind: "git", configFileExists: true }).message,

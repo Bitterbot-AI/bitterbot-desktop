@@ -66,6 +66,11 @@ ENV HOME=/home/node
 # code that the image would replace (PLAN-56 Phase 2).
 ENV BITTERBOT_INSTALL_KIND=container
 
+# The data dir exists in the image, owned by `node`, so a fresh named volume
+# mounted at /home/node/.bitterbot inherits node ownership and a plain
+# `docker run` (as `node`, no root entrypoint step) can write to it.
+RUN mkdir -p /home/node/.bitterbot && chown node:node /home/node/.bitterbot
+
 # Allow non-root user to write temp files during runtime/tests.
 RUN chown -R node:node /app && chmod 0755 /app/scripts/docker-entrypoint.sh \
   && chmod 0644 /app/scripts/docker-entrypoint-lib.sh

@@ -120,6 +120,18 @@ describe("docker-compose.yml (zero-edit compose)", () => {
     expect(dockerfile).toContain("ENV HOME=/home/node");
   });
 
+  it("pre-creates the data dir owned by node before dropping to USER node (named volumes)", () => {
+    const dockerfile = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../../Dockerfile"),
+      "utf-8",
+    );
+    const mkdir = dockerfile.indexOf(
+      "RUN mkdir -p /home/node/.bitterbot && chown node:node /home/node/.bitterbot",
+    );
+    expect(mkdir).toBeGreaterThan(-1);
+    expect(mkdir).toBeLessThan(dockerfile.indexOf("\nUSER node"));
+  });
+
   it("gives cold boots five minutes before the healthcheck counts", () => {
     expect((gateway.healthcheck as { start_period?: string }).start_period).toBe("300s");
   });

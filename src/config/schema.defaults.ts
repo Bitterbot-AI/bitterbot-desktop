@@ -145,6 +145,8 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
  * the settings-truth test honest when a label is added.
  */
 export const UNSET_MEANS_FALSE: Record<string, string> = {
+  "memory.curiosity.autoResearch.enabled":
+    "src/memory/dream-engine.ts:289: `autoResearch?.enabled === true` gates the Skill Seekers research step (dream-engine.ts:2289); `false` also turns curiosity research off (curiosity-researcher.ts resolveCuriosityResearchConfig).",
   "a2a.enabled":
     "src/config/defaults.ts:548 — `a2a.enabled ?? false` (load-time, visible in config.get).",
   "a2a.marketplace.enabled": "src/config/defaults.ts:590 — load-time `enabled: false`.",
@@ -241,8 +243,6 @@ export const READ_ONLY_PATHS: ReadonlySet<string> = new Set([
 export const DEPRECATED_PATHS: Record<string, string> = {
   "memory.backend":
     'memory.backend is inert: "builtin" is the only accepted value and nothing reads it. It will be removed next release.',
-  "memory.curiosity.autoResearch.enabled":
-    "memory.curiosity.autoResearch.enabled is a legacy alias of memory.curiosity.research.enabled; set that key instead. It will be removed next release.",
   "agents.defaults.runtime.engine":
     'agents.defaults.runtime.engine is no longer needed: "bitterbot" is the only runtime (PLAN-52), so the key has no effect and "pi" runs the bitterbot runtime with a warning. It will be removed next release.',
   "agents.list[].runtime.engine":

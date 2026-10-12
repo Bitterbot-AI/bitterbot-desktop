@@ -155,6 +155,30 @@ jobs:
           if grep -qi "npm" /tmp/bbnc-update.txt; then exit 1; fi
           docker rm -f bbnc
 
+      - name: Smoke test, plain docker run as node with a fresh named volume (SECURITY.md example)
+        # The image pre-creates /home/node/.bitterbot owned by node, so a new
+        # named volume inherits that ownership and the gateway (running as
+        # node, no root entrypoint step) can write its state there.
+        run: |
+          docker volume rm -f bb-ci-vol >/dev/null 2>&1 || true
+          docker run -d --name bbvol --cap-drop=ALL -v bb-ci-vol:/home/node/.bitterbot \
+            -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token \
+            bitterbot:ci node bitterbot.mjs gateway --allow-unconfigured --bind lan
+          started=1
+          for i in $(seq 1 90); do
+            if docker logs bbvol 2>&1 | grep -q "P2P orchestrator bridge started"; then
+              started=0
+              break
+            fi
+            sleep 2
+          done
+          docker logs bbvol 2>&1 | tail -30
+          [ "$started" = "0" ]
+          [ "$(docker exec bbvol stat -c %U /home/node/.bitterbot)" = "node" ]
+          docker exec bbvol sh -c 'touch "$HOME/.bitterbot/.write-probe"'
+          docker rm -f bbvol
+          docker volume rm -f bb-ci-vol
+
       - name: Smoke test — zero-edit docker compose up
         # PLAN-56 Phase 2: the repo's docker-compose.yml with nothing set
         # (only the image pointed at this build). Proves: Docker-created
