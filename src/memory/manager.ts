@@ -169,9 +169,8 @@ import type {
 } from "./types.js";
 import { UserModelManager } from "./user-model.js";
 import {
-  buildWorkingMemorySynthesisPrompt,
+  synthesizeValidatedWorkingMemory,
   buildHeuristicWorkingMemory,
-  validateWorkingMemory,
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
 } from "./working-memory-prompt.js";
@@ -4962,9 +4961,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     const synthesisCall = this.dreamSynthesisLlmCall ?? this.dreamLlmCall;
     if (synthesisCall) {
       try {
-        const prompt = buildWorkingMemorySynthesisPrompt(ctx);
-        const raw = await synthesisCall(prompt);
-        const validation = validateWorkingMemory(raw, isFirstSynthesis ? undefined : oldState);
+        const { raw, validation, attempts } = await synthesizeValidatedWorkingMemory(
+          ctx,
+          synthesisCall,
+        );
+        if (attempts > 1) {
+          log.info("RLM synthesis required a validation repair attempt");
+        }
         validationSummary = {
           collapsed: validation.collapsed,
           valid: validation.valid,
