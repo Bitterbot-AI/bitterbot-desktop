@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useGatewayStore } from "../../stores/gateway-store";
 import {
@@ -114,7 +114,7 @@ describe("UpdateCard in a container (PLAN-56 Phase 2)", () => {
   });
 });
 
-describe("UpdateCard for a release-tarball install (PLAN-56 Phase 3a)", () => {
+describe("UpdateCard for a release-tarball install (PLAN-56 Phase 3b)", () => {
   function tarballInfo(partial: Partial<UpdateInfo>): UpdateInfo {
     return containerInfo({
       installKind: "tarball",
@@ -128,13 +128,36 @@ describe("UpdateCard for a release-tarball install (PLAN-56 Phase 3a)", () => {
     useUpdateStore.setState({ info: null, outcome: null, updating: false, checking: false });
   });
 
-  it("names the newer release and the installer command, and offers no in-place update", () => {
+  it("names the newer release and offers the in-place update (button and terminal command)", () => {
     useUpdateStore.setState({ info: tarballInfo({}) });
     render(<UpdateCard />);
-    expect(screen.getByText("Release 1.5.0 available; re-run the installer.")).toBeTruthy();
-    expect(screen.getByText(/main\/scripts\/install\.sh \| bash/)).toBeTruthy();
-    expect(screen.queryByText("Update now")).toBeNull();
+    expect(screen.getByText("Release 1.5.0 available.")).toBeTruthy();
+    expect(screen.getByText("bitterbot update")).toBeTruthy();
+    const button = screen.getByText("Update now") as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
     expect(screen.queryByTestId("update-card-container")).toBeNull();
+  });
+
+  it("confirming describes the tarball update and calls update.run", async () => {
+    const request = vi.fn(async () => ({ ok: true, result: { status: "ok" } }));
+    useGatewayStore.setState({ status: "connected", request, hello: null } as never);
+    useUpdateStore.setState({ info: tarballInfo({}) });
+    render(<UpdateCard />);
+    fireEvent.click(screen.getByText("Update now"));
+    expect(screen.getByText(/Downloads the signed release, snapshots your data/)).toBeTruthy();
+    fireEvent.click(screen.getByText("Confirm update"));
+    await waitFor(() => expect(request).toHaveBeenCalledWith("update.run", {}, expect.anything()));
+  });
+
+  it("disables Update now when the newest release is the running one", () => {
+    useUpdateStore.setState({
+      info: tarballInfo({
+        registryLatest: "1.4.0",
+        staleness: { behind: null, threshold: 20, stale: false, reason: "fresh" },
+      }),
+    });
+    render(<UpdateCard />);
+    expect((screen.getByText("Update now") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("says up to date when the latest release is the running one", () => {

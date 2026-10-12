@@ -94,7 +94,7 @@ export const FIELD_HELP: Record<string, string> = {
   "update.channel":
     'Update channel for git + npm installs ("stable", "beta", or "dev"). Unset: stable for npm installs, containers and git checkouts on a release tag; dev for git checkouts on a branch. Containers follow their image tag and update with `docker compose pull && docker compose up -d`.',
   "update.autoRollback.enabled":
-    "Git installs: if a freshly updated gateway never confirms a healthy boot, roll back once to the pre-update commit (clean worktree only; config and memory untouched) (default: true).",
+    "If a freshly updated gateway never confirms a healthy boot, roll back once: git installs reset to the pre-update commit (clean worktree only; config and memory untouched); installer (tarball) installs switch back to the previous version and restore a changed config, plus memory databases only if the new version migrated them past what the old one knows (default: true).",
   "update.checkOnStart":
     "Automatic update checks at gateway start and every 6 hours (default: true).",
   "update.promptBehindCommits":

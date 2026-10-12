@@ -166,6 +166,32 @@ describe.skipIf(process.platform === "win32")("launcher (bin/bitterbot)", () => 
       expect(run({})).toBe(`kind=tarball root=${real} args=${real}/dist/entry.js --version`);
       // The documented escape hatch survives the launcher.
       expect(run({ BITTERBOT_INSTALL_KIND: "package" })).toContain("kind=package");
+      // PATH keeps the user's Node first and names exactly one bundled
+      // runtime, this version's, however many restarts and updates it went
+      // through (each relaunch inherits the previous launcher's PATH).
+      fs.writeFileSync(
+        path.join(install, "runtime", "node", "bin", "node"),
+        '#!/bin/sh\necho "$PATH"\n',
+        { mode: 0o755 },
+      );
+      const appReal = fs.realpathSync(path.join(root, "app"));
+      const inherited = [
+        "/usr/local/bin",
+        `${appReal}/1.4.0/runtime/node/bin`,
+        "/usr/bin",
+        `${real}/runtime/node/bin`,
+        `${appReal}/current/runtime/node/bin`,
+        `${real}/runtime/node/bin`,
+        "/bin",
+      ].join(":");
+      expect(run({ PATH: inherited })).toBe(
+        `/usr/local/bin:/usr/bin:/bin:${real}/runtime/node/bin`,
+      );
+      const twice = spawnSync(link, [], {
+        encoding: "utf8",
+        env: { PATH: run({ PATH: inherited }), HOME: root },
+      }).stdout.trim();
+      expect(twice).toBe(`/usr/local/bin:/usr/bin:/bin:${real}/runtime/node/bin`);
       // Each launch leaves an in-use marker (its pid) in the version directory.
       expect(fs.readdirSync(path.join(install, ".pids")).length).toBeGreaterThan(0);
       expect(fs.readdirSync(path.join(install, ".pids")).every((n) => /^\d+$/.test(n))).toBe(true);

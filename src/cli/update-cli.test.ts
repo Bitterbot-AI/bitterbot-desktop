@@ -115,6 +115,9 @@ vi.mock("./update-cli/shared.js", async (importOriginal) => {
 vi.mock("../commands/doctor.js", () => ({
   doctorCommand: vi.fn(),
 }));
+const runTarballUpdateCommand = vi.fn();
+vi.mock("./update-cli/tarball.js", () => ({ runTarballUpdateCommand }));
+
 // Mock the daemon-cli module
 vi.mock("./daemon-cli.js", () => ({
   runDaemonRestart: vi.fn(),
@@ -229,6 +232,7 @@ describe("update-cli", () => {
     readPackageName.mockReset();
     readPackageVersion.mockReset();
     resolveGlobalManager.mockReset();
+    runTarballUpdateCommand.mockReset();
     vi.mocked(resolveBitterbotPackageRoot).mockResolvedValue(process.cwd());
     vi.mocked(readConfigFileSnapshot).mockResolvedValue(baseSnapshot);
     vi.mocked(fetchNpmTagVersion).mockResolvedValue({
@@ -347,21 +351,57 @@ describe("update-cli", () => {
     expect(errors.join("\n")).toContain("BITTERBOT_INSTALL_KIND=package");
   });
 
-  it("refuses to update a release-tarball install in place and names the installer (PLAN-56 Phase 3a)", async () => {
+  it("updates a release-tarball install in place through the tarball updater (PLAN-56 Phase 3b)", async () => {
+    vi.mocked(resolveBitterbotPackageRoot).mockResolvedValue("/home/u/.bitterbot/app/1.4.0");
     vi.mocked(checkUpdateStatus).mockResolvedValue({
       root: "/home/u/.bitterbot/app/1.4.0",
       installKind: "tarball",
       packageManager: "pnpm",
     });
 
-    await updateCommand({ yes: true });
+    await updateCommand({ yes: true, rollback: true });
 
     expect(runGatewayUpdate).not.toHaveBeenCalled();
     expect(resolveNpmChannelTag).not.toHaveBeenCalled();
+    expect(runTarballUpdateCommand).toHaveBeenCalledWith({
+      root: "/home/u/.bitterbot/app/1.4.0",
+      opts: { yes: true, rollback: true },
+    });
+  });
+
+  it("refuses the tarball-only flags for other install kinds", async () => {
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/repo",
+      installKind: "git",
+      packageManager: "pnpm",
+    });
+    await updateCommand({ rollback: true });
+    expect(runGatewayUpdate).not.toHaveBeenCalled();
     expect(defaultRuntime.exit).toHaveBeenCalledWith(1);
     const errors = vi.mocked(defaultRuntime.error).mock.calls.map((call) => String(call[0]));
-    expect(errors.join("\n")).toContain("main/scripts/install.sh | bash");
-    expect(errors.join("\n")).toContain("keeps the previous version");
+    expect(errors.join("\n")).toContain("release-tarball installs");
+  });
+
+  it("`update status --json` reaches the status command (no longer swallowed by `update --json`)", async () => {
+    const { Command } = await import("commander");
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/home/u/.bitterbot/app/1.4.0",
+      installKind: "tarball",
+      packageManager: "pnpm",
+    });
+    const program = new Command();
+    program.exitOverride();
+    registerUpdateCli(program);
+    await program.parseAsync(["node", "bitterbot", "update", "status", "--json"]);
+    expect(runGatewayUpdate).not.toHaveBeenCalled();
+    expect(runTarballUpdateCommand).not.toHaveBeenCalled();
+    const logged = vi.mocked(defaultRuntime.log).mock.calls.map((call) => String(call[0]));
+    const json = JSON.parse(logged.find((l) => l.trim().startsWith("{")) ?? "null") as {
+      update?: { installKind?: string };
+      channel?: { value?: string };
+    } | null;
+    expect(json?.update?.installKind).toBe("tarball");
+    expect(json?.channel?.value).toBe("stable");
   });
 
   it("defaults to dev channel for git installs when unset", async () => {
@@ -668,5 +708,24 @@ describe("update-cli", () => {
     } finally {
       envSnapshot.restore();
     }
+  });
+
+  it("updateWizardCommand drives the tarball updater for a release-tarball install", async () => {
+    setTty(true);
+    vi.mocked(resolveBitterbotPackageRoot).mockResolvedValue("/home/u/.bitterbot/app/1.4.0");
+    vi.mocked(checkUpdateStatus).mockResolvedValue({
+      root: "/home/u/.bitterbot/app/1.4.0",
+      installKind: "tarball",
+      packageManager: "pnpm",
+    });
+    select.mockResolvedValue("rollback");
+
+    await updateWizardCommand({});
+
+    expect(runGatewayUpdate).not.toHaveBeenCalled();
+    expect(runTarballUpdateCommand).toHaveBeenCalledTimes(1);
+    expect(runTarballUpdateCommand.mock.calls[0]?.[0]).toMatchObject({
+      opts: { rollback: true, check: false, restart: true },
+    });
   });
 });

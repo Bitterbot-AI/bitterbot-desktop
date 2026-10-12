@@ -11,7 +11,6 @@ import { spawnBootWatchdog } from "../../infra/boot-watchdog.js";
 import {
   CONTAINER_FALSE_POSITIVE_HINT,
   CONTAINER_UPDATE_COMMAND,
-  TARBALL_UPDATE_REFUSAL,
 } from "../../infra/install-kind.js";
 import {
   channelToNpmTag,
@@ -57,7 +56,9 @@ import {
   tryWriteCompletionCache,
   type UpdateCommandOptions,
 } from "./shared.js";
+import { updateStatusCommand } from "./status.js";
 import { suppressDeprecations } from "./suppress-deprecations.js";
+import { runTarballUpdateCommand } from "./tarball.js";
 
 const CLI_NAME = resolveCliName();
 
@@ -548,10 +549,20 @@ export async function updateCommand(opts: UpdateCommandOptions): Promise<void> {
     return;
   }
   if (installKind === "tarball") {
-    // PLAN-56 Phase 3a: no in-place tarball updater yet (Phase 3b). The
-    // installer is the updater; npm is never where a tarball install updates.
-    defaultRuntime.error(TARBALL_UPDATE_REFUSAL);
+    // PLAN-56 Phase 3b: verified in-place update with snapshot, auto-rollback
+    // and --rollback. npm is never where a tarball install updates.
+    await runTarballUpdateCommand({ root, opts });
+    return;
+  }
+  if (opts.rollback || opts.reinstall || opts.restoreData || opts.restoreConfig) {
+    defaultRuntime.error(
+      "--rollback, --reinstall, --restore-data and --restore-config are for release-tarball installs (install.sh). A source checkout rolls back with git; the boot watchdog does it automatically after a failed update.",
+    );
     defaultRuntime.exit(1);
+    return;
+  }
+  if (opts.check) {
+    await updateStatusCommand({ json: opts.json, timeout: opts.timeout });
     return;
   }
   const switchToGit = requestedChannel === "dev" && installKind !== "git";

@@ -50,12 +50,14 @@ describe("doctor update advice by install kind", () => {
     return mocks.note.mock.calls.map((c) => String(c[0])).join("\n");
   }
 
-  it("a release-tarball install is told to re-run the installer", async () => {
+  it("a release-tarball install is told to run the in-place updater", async () => {
     delete process.env.BITTERBOT_INSTALL_KIND;
     fs.writeFileSync(path.join(root, ".bitterbot-install-kind"), "tarball\n");
     const text = await run();
     expect(text).toContain(TARBALL_UPDATE_COMMAND);
+    expect(text).toContain("--rollback");
     expect(text).not.toContain("npm");
+    expect(text).not.toContain("install.sh");
   });
 
   it("a container is told to pull a newer image", async () => {

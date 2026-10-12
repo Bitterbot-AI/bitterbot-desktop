@@ -1,6 +1,10 @@
 import { formatCliCommand } from "../cli/command-format.js";
 import { isTruthyEnvValue } from "../infra/env.js";
-import { externalUpdateCommand, resolveInstallKind } from "../infra/install-kind.js";
+import {
+  externalUpdateCommand,
+  resolveInstallKind,
+  TARBALL_UPDATE_COMMAND,
+} from "../infra/install-kind.js";
 import { runGatewayUpdate } from "../infra/update-runner.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import type { RuntimeEnv } from "../runtime.js";
@@ -83,11 +87,23 @@ export async function maybeOfferUpdateBeforeDoctor(params: {
     if (external) {
       note(
         [
-          kind === "container"
-            ? "This Bitterbot runs in a container image. On the Docker host, update with:"
-            : "This Bitterbot was installed from a release tarball. Update by re-running the installer (it keeps the previous version):",
+          "This Bitterbot runs in a container image. On the Docker host, update with:",
           `  ${external}`,
           "Then rerun doctor.",
+        ].join("\n"),
+        "Update",
+      );
+      return { updated: false };
+    }
+    if (kind === "tarball") {
+      // PLAN-56 Phase 3b: in place, verified, snapshotted, auto-rollback.
+      note(
+        [
+          "This Bitterbot was installed from a release tarball. Update it in place with:",
+          `  ${formatCliCommand(TARBALL_UPDATE_COMMAND)}`,
+          "It verifies the signed release, snapshots ~/.bitterbot data, keeps the current version",
+          `for rollback (${formatCliCommand("bitterbot update --rollback")}) and switches back automatically`,
+          "if the new version does not boot.",
         ].join("\n"),
         "Update",
       );

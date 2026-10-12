@@ -495,7 +495,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
     ]);
     const removal = usesInclude
       ? { config: candidate, changes: [] }
-      : removeDeprecatedConfigKeys(candidate, deprecatedHits);
+      : removeDeprecatedConfigKeys(candidate, deprecatedHits, { applied: shouldRepair });
     if (removal.changes.length > 0) {
       const changeLines = [...removal.changes];
       if (json5HasComments(snapshot.raw)) {
@@ -542,7 +542,10 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
       if (next.p2p) {
         delete next.p2p.bootstrapPeers;
       }
-      note("- Removed p2p.bootstrapPeers (the frozen built-in fallback list).", "Doctor changes");
+      note(
+        `- ${shouldRepair ? "Removed" : "Would remove"} p2p.bootstrapPeers (the frozen built-in fallback list).`,
+        "Doctor changes",
+      );
       candidate = next;
       deprecatedOnlyChanges = !pendingChanges || deprecatedOnlyChanges;
       pendingChanges = true;

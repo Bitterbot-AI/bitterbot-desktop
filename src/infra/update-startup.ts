@@ -169,8 +169,8 @@ export async function runGatewayUpdateCheck(params: {
   }
 
   // Release-tarball installs (PLAN-56 Phase 3): the newest GitHub release
-  // that carries this platform's signed tarball. Updating is re-running
-  // install.sh until in-place tarball updates land (Phase 3b).
+  // that carries this platform's signed tarball. `bitterbot update` (or the
+  // Control UI's Update button) updates in place (Phase 3b).
   if (status.installKind === "tarball") {
     const target = githubReleaseTargetFor("tarball");
     const release = target
@@ -184,7 +184,7 @@ export async function runGatewayUpdateCheck(params: {
         state.lastNotifiedTag !== "tarball"
       ) {
         params.log.info(
-          `release v${release.latestVersion} available (running v${VERSION}). Re-run the installer to update: ${TARBALL_UPDATE_COMMAND}`,
+          `release v${release.latestVersion} available (running v${VERSION}). Update from the Control UI or run: ${TARBALL_UPDATE_COMMAND}`,
         );
         nextState.lastNotifiedVersion = release.latestVersion;
         nextState.lastNotifiedTag = "tarball";

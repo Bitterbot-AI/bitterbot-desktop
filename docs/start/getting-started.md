@@ -56,6 +56,10 @@ to `~/.bitterbot/app/<version>`, links `~/.local/bin/bitterbot`, and runs
 `bitterbot onboard`. To check a download by hand: `minisign -Vm checksums.txt`
 with the key on the [installer page](/start/install-script#verify-a-download-yourself),
 or `gh attestation verify <tarball> --repo Bitterbot-AI/bitterbot-desktop`.
+Later, `bitterbot update` updates it in place (verified, with a snapshot of
+your data and an automatic rollback; see
+[Updating](/start/install-script#updating)). On Windows, `install.ps1` runs the
+same installer inside WSL2 ([Windows](/start/install-script#windows-wsl2)).
 
 ## Prereqs (source install)
 

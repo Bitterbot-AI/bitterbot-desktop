@@ -171,14 +171,43 @@ open an issue.
   minisign or pass `--require-signature` to refuse that fallback.
 - **Platforms.** Tarballs exist for Linux x64/arm64 with glibc 2.28 or newer
   (the bundled Node 22's floor) and Apple-silicon macOS, from release 1.5.0
-  on. Intel Macs, musl Linux, older glibc and Windows use Docker.
+  on. Intel Macs, musl Linux and older glibc use Docker. Windows installs
+  inside WSL2 (`install.ps1` runs `install.sh` in the default WSL2
+  distribution) or uses Docker Desktop.
 - **Tarballs lag the release.** Each release's tarballs are signed only after
   a maintainer approves the signing step (one approval per release). Until
   then the installer keeps installing the previous complete release, and a
   pinned `--version` of the new one fails.
-- **Updates are a re-run.** `bitterbot update` does not update an
-  installer-based install in place yet: re-run `install.sh` (it keeps the
-  previous version for a manual rollback) and restart the gateway.
+- **Updates and rollback.** `bitterbot update` (or the Control UI) updates an
+  installer-based install in place on the stable channel only (no beta for
+  tarballs). It always checks the minisign signature (no SHA-256 only
+  fallback), takes a snapshot first, and rolls back automatically when the new
+  version does not confirm a healthy start (5 to 30 minutes, up to 90 when it
+  migrates memory databases on its first start; at once when the relaunched
+  process exits). Limits:
+  - The snapshot covers the config file, `.env`, the memory databases in
+    `~/.bitterbot/memory`, GENOME.md/MEMORY.md of the default agent and the
+    P2P keys. Other state (sessions, tasks, usage ledger, a memory store
+    configured outside `~/.bitterbot/memory`) is not snapshotted. Only the
+    newest three snapshots are kept; each takes about as much disk as your
+    memory databases, so three of them take about three times that.
+  - An automatic rollback restores a changed config file and `.env`; a manual
+    `--rollback` keeps both (`--restore-config` restores the config; `.env`
+    only by hand from the snapshot). Memory databases are kept unless the
+    failed version migrated them past what the old version knows (automatic
+    rollback) or you pass `--restore-data` (manual). Restoring a database
+    loses everything written since the update, and happens only once no
+    gateway is running (gateway lock free, gateway port silent); otherwise
+    the version switches and the databases stay as they are.
+    Replaced files go to `~/.bitterbot/update-displaced/` and stay until you
+    delete them.
+  - Only one version back: `previous` is the version you updated from.
+  - A gateway that is not the installed service and not reachable over RPC
+    (for example a custom supervisor) is not restarted; restart it yourself.
+    Under a supervisor this updater does not know, the automatic rollback
+    switches `current` back but cannot start the old version.
+  - Updating to a version older than the in-place updater (`--tag`) is refused:
+    it cannot run the activation check. Use `install.sh --version` for that.
 - **Size.** A tarball is about 390 MB to download and 1.5 GB unpacked (the
   Claude Agent SDK's bundled binary alone is about 230 MB). GPU builds of
   llama.cpp are left out, so local embeddings run on the CPU in an
@@ -190,6 +219,8 @@ open an issue.
 ## Platform
 
 - **Windows means WSL2.** Native Windows is not a supported gateway host.
+  `install.ps1` only finds WSL2 and runs the Linux installer inside it; it does
+  not install WSL2 for you, install natively, or register a Scheduled Task.
   Keep the checkout on the Linux filesystem (`~`), not `/mnt/c`: the 9p
   mount makes boots dramatically slower (measured 43x on one machine).
 - The Tauri desktop shell is experimental and not part of this release;

@@ -78,6 +78,7 @@ import { runSkillEvolutionChecks } from "./doctor-skill-evolution.js";
 import { runSkillsChecks } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import { runSubsystemChecks } from "./doctor-subsystems.js";
+import { runTarballInstallChecks } from "./doctor-tarball.js";
 import { runTaskSpineChecks } from "./doctor-tasks.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
 import { runUsageChecks } from "./doctor-usage.js";
@@ -152,6 +153,14 @@ async function runDoctor(
   // A post-update boot that never confirmed healthy is the highest-priority
   // signal — surface it before anything else.
   noteBootHealth();
+
+  // Release-tarball installs: links, manifest, snapshots (PLAN-56 Phase 3b).
+  await runTarballInstallChecks({
+    installKind,
+    root,
+    repair: prompter.shouldRepair,
+    deep: options.deep === true,
+  });
 
   const configResult = await loadAndMaybeMigrateDoctorConfig({
     options,

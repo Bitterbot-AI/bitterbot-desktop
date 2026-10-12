@@ -34,6 +34,7 @@ export function registerPreActionHooks(program: Command, programVersion: string)
       isTruthyEnvValue(process.env.BITTERBOT_HIDE_BANNER) ||
       commandPath[0] === "update" ||
       commandPath[0] === "completion" ||
+      commandPath[0] === "boot-watchdog" ||
       (commandPath[0] === "plugins" && commandPath[1] === "update");
     if (!hideBanner) {
       emitCliBanner(programVersion);
@@ -43,7 +44,16 @@ export function registerPreActionHooks(program: Command, programVersion: string)
     if (!verbose) {
       process.env.NODE_NO_WARNINGS ??= "1";
     }
-    if (commandPath[0] === "doctor" || commandPath[0] === "completion") {
+    // No config guard (and no config migration writes) for doctor, the boot
+    // watchdog (it must run whatever state the config is in: in tarball
+    // respawn mode it launches the gateway) and the read-only update
+    // preflight a NEW version runs before it is activated (PLAN-56 Phase 3b).
+    if (
+      commandPath[0] === "doctor" ||
+      commandPath[0] === "completion" ||
+      commandPath[0] === "boot-watchdog" ||
+      (commandPath[0] === "update" && commandPath[1] === "preflight")
+    ) {
       return;
     }
     const { ensureConfigReady } = await import("./config-guard.js");

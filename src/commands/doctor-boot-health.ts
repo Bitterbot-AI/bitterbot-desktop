@@ -17,7 +17,39 @@ export function noteBootHealth(now: number = Date.now()): void {
   const results = [];
 
   const rollback = readRollbackRecord();
-  if (rollback) {
+  if (rollback?.mode === "tarball") {
+    // Release-tarball rollback (PLAN-56 Phase 3b): a symlink switch.
+    const agoMin = Math.round((now - rollback.at) / 60_000);
+    const restored =
+      rollback.restored && rollback.restored.length > 0
+        ? `Restored from the pre-update snapshot: ${rollback.restored.join(", ")}.`
+        : "No data was restored (config and memory kept as they were).";
+    results.push(
+      rollback.ok
+        ? warn(
+            [
+              `The boot watchdog ROLLED BACK this node ~${agoMin} min ago: v${rollback.fromVersion ?? "?"} never`,
+              `confirmed a healthy boot, so \`current\` points at v${rollback.toVersion ?? "?"} again (${rollback.detail}).`,
+              restored,
+              rollback.snapshotDir ? `Snapshot: ${rollback.snapshotDir}` : "",
+              "The failed version is kept as `previous`. The next clean update clears this notice.",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          )
+        : error(
+            [
+              `The boot watchdog attempted a rollback ~${agoMin} min ago and FAILED:`,
+              rollback.detail,
+              "",
+              "Manual recovery: bitterbot update --rollback (or point ~/.bitterbot/app/current at the",
+              "previous version directory and restart the gateway).",
+              "A healthy gateway boot clears this error automatically",
+              "(watchdog log: <stateDir>/boot-watchdog.log).",
+            ].join("\n"),
+          ),
+    );
+  } else if (rollback) {
     const agoMin = Math.round((now - rollback.at) / 60_000);
     results.push(
       rollback.ok
@@ -53,7 +85,13 @@ export function noteBootHealth(now: number = Date.now()): void {
       `(armed ~${armedAgo} min ago and still unacknowledged). The node may be running the old`,
       "process, degraded, or down.",
     ];
-    if (stale.prevSha) {
+    if (stale.tarball) {
+      lines.push(
+        "",
+        `It expected v${stale.tarball.toVersion}. If the node is broken, switch back to v${stale.tarball.fromVersion}:`,
+        "  bitterbot update --rollback",
+      );
+    } else if (stale.prevSha) {
       lines.push(
         "",
         "If the node is broken, roll back to the previous known-good commit:",

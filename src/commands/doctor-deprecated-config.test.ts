@@ -56,6 +56,19 @@ describe("removeDeprecatedConfigKeys (doctor --fix)", () => {
     expect(raw).toEqual(original);
   });
 
+  it("says Removed only when the result is applied, Would remove in a preview", () => {
+    const raw = { agents: { list: [{ id: "a", runtime: { engine: "pi" } }] } };
+    const hits = findDeprecatedConfigKeys(raw);
+    const preview = removeDeprecatedConfigKeys(raw as BitterbotConfig, hits);
+    expect(preview.changes).toEqual([
+      "- Would remove agents.list[0].runtime.engine (deprecated, no effect).",
+    ]);
+    const applied = removeDeprecatedConfigKeys(raw as BitterbotConfig, hits, { applied: true });
+    expect(applied.changes).toEqual([
+      "- Removed agents.list[0].runtime.engine (deprecated, no effect).",
+    ]);
+  });
+
   it("leaves a live compaction mode alone", () => {
     const out = fix({ agents: { defaults: { compaction: { mode: "default" } } } });
     expect(out.changes).toEqual([]);
