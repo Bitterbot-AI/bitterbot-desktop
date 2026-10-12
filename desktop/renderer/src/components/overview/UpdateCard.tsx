@@ -97,15 +97,15 @@ function ContainerUpdateStatus({
 }
 
 /**
- * Release-tarball installs (PLAN-56 Phase 3a): no in-place updater yet, so
- * the card names the newest release and the installer one-liner, which
- * unpacks the new version next to this one and keeps it for rollback.
+ * Release-tarball installs (PLAN-56 Phase 3b): "Update now" downloads the
+ * newest signed release, checks it, snapshots the node's data, switches over
+ * and rolls back automatically if the new version does not boot.
  */
 function TarballUpdateStatus({ latest, stale }: { latest: string | null; stale: boolean }) {
   return (
     <div className="mb-3 space-y-1.5" data-testid="update-card-tarball">
       {latest && stale ? (
-        <p className="text-sm text-warning">Release {latest} available; re-run the installer.</p>
+        <p className="text-sm text-warning">Release {latest} available.</p>
       ) : latest ? (
         <p className="text-xs text-success">Up to date with the latest release (v{latest}).</p>
       ) : (
@@ -114,8 +114,9 @@ function TarballUpdateStatus({ latest, stale }: { latest: string | null; stale: 
         </p>
       )}
       <p className="text-xs text-muted-foreground">
-        This node was installed from a signed release tarball. To update, run the installer again in
-        a terminal on this machine (the previous version is kept):
+        Installed from a signed release tarball. Updating verifies the release signature, snapshots
+        your config and memory, keeps the current version for rollback, and switches back
+        automatically if the new version does not start. From a terminal on this machine:
       </p>
       <code className="block text-xs font-mono bg-muted/30 border border-border/20 rounded px-2 py-1 select-all break-all">
         {TARBALL_UPDATE_COMMAND}
@@ -204,7 +205,12 @@ export function UpdateCard() {
   }, [request, setUpdating, setOutcome]);
 
   const behind = info?.staleness.behind;
-  const upToDate = info != null && !info.staleness.stale && behind === 0;
+  // Release-tarball installs have no commit drift: up to date means the
+  // newest release is known and is not newer than this node.
+  const upToDate =
+    info != null &&
+    !info.staleness.stale &&
+    (info.installKind === "tarball" ? info.registryLatest != null : behind === 0);
 
   if (!supported) {
     return (
@@ -355,7 +361,9 @@ export function UpdateCard() {
             </button>
           ) : (
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              Rebuilds and restarts the node (can take 20+ minutes).
+              {info?.installKind === "tarball"
+                ? "Downloads the signed release, snapshots your data and restarts the node."
+                : "Rebuilds and restarts the node (can take 20+ minutes)."}
               <button
                 type="button"
                 onClick={() => void runUpdate()}

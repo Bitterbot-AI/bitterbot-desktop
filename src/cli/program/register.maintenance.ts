@@ -51,11 +51,20 @@ export function registerMaintenanceCommands(program: Command) {
     .command("boot-watchdog", { hidden: true })
     .requiredOption("--root <path>", "Bitterbot package root")
     .requiredOption("--armed-at <ms>", "armedAt of the beacon this watchdog guards")
+    .option("--respawn-argv <json>", "Tarball respawn: gateway argv (JSON array) to launch")
+    .option("--wait-pid <pid>", "Tarball respawn: wait for this pid to exit before launching")
     .action(async (opts) => {
       const { runBootWatchdog } = await import("../../infra/boot-watchdog.js");
+      let respawnArgv: string[] | null = null;
+      if (typeof opts.respawnArgv === "string") {
+        const parsed = JSON.parse(opts.respawnArgv) as unknown;
+        respawnArgv = Array.isArray(parsed) ? parsed.map(String) : null;
+      }
       await runBootWatchdog({
         root: String(opts.root),
         expectedArmedAt: Number(opts.armedAt),
+        respawnArgv,
+        waitPid: opts.waitPid ? Number(opts.waitPid) : null,
       });
       // Defensive: loaded CLI machinery must not keep a resolved watchdog
       // alive — one leaked process per update would accumulate forever.

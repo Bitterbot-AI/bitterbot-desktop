@@ -26,6 +26,14 @@ export type UpdateCommandOptions = {
   tag?: string;
   timeout?: string;
   yes?: boolean;
+  /** Only report whether an update is available. */
+  check?: boolean;
+  /** Release-tarball installs: switch back to the previous version. */
+  rollback?: boolean;
+  /** Release-tarball installs: re-download and replace the current version. */
+  reinstall?: boolean;
+  /** With --rollback: also restore the memory databases from the snapshot. */
+  restoreData?: boolean;
 };
 
 export type UpdateStatusOptions = {

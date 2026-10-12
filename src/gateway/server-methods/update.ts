@@ -7,14 +7,19 @@ import {
   CONTAINER_UPDATE_COMMAND,
   externalUpdateCommand,
   readDeclaredInstallKind,
-  TARBALL_UPDATE_REFUSAL,
 } from "../../infra/install-kind.js";
+import { isLikelySupervisedProcess } from "../../infra/process-respawn.js";
 import {
   formatDoctorNonInteractiveHint,
   type RestartSentinelPayload,
   writeRestartSentinel,
 } from "../../infra/restart-sentinel.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
+import {
+  armTarballBootVerify,
+  runTarballUpdateForGateway,
+} from "../../infra/tarball-update-flow.js";
+import { spawnTarballBootWatchdog } from "../../infra/tarball-watchdog-spawn.js";
 import {
   DEFAULT_PACKAGE_CHANNEL,
   normalizeUpdateChannel,
@@ -101,6 +106,42 @@ export const CONTAINER_UPDATE_REFUSAL =
   `(on a VPS from the template: /opt/bitterbot/update.sh; on Fly.io: fly deploy). ` +
   CONTAINER_FALSE_POSITIVE_HINT;
 
+/** The restart sentinel for an update.run outcome (git, package or tarball). */
+function buildUpdateSentinel(params: {
+  result: Awaited<ReturnType<typeof runGatewayUpdate>>;
+  sessionKey: ReturnType<typeof parseRestartRequestParams>["sessionKey"];
+  note: ReturnType<typeof parseRestartRequestParams>["note"];
+}): RestartSentinelPayload {
+  const { result } = params;
+  return {
+    kind: "update",
+    status: result.status,
+    ts: Date.now(),
+    sessionKey: params.sessionKey,
+    message: params.note ?? null,
+    doctorHint: formatDoctorNonInteractiveHint(),
+    stats: {
+      mode: result.mode,
+      root: result.root ?? undefined,
+      before: result.before ?? null,
+      after: result.after ?? null,
+      steps: result.steps.map((step) => ({
+        name: step.name,
+        command: step.command,
+        cwd: step.cwd,
+        durationMs: step.durationMs,
+        log: {
+          stdoutTail: step.stdoutTail ?? null,
+          stderrTail: step.stderrTail ?? null,
+          exitCode: step.exitCode ?? null,
+        },
+      })),
+      reason: result.reason ?? null,
+      durationMs: result.durationMs,
+    },
+  };
+}
+
 export const updateHandlers: GatewayRequestHandlers = {
   "update.check": async ({ params, respond }) => {
     if (!assertValidParams(params, validateUpdateCheckParams, "update.check", respond)) {
@@ -154,22 +195,57 @@ export const updateHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, CONTAINER_UPDATE_REFUSAL));
       return;
     }
-    // A release-tarball install (PLAN-56 Phase 3a) has no in-place updater
-    // yet: re-running install.sh is the update. Phase 3b replaces this
-    // refusal with snapshot/stage/activate/rollback.
-    if (
-      local?.installKind === "tarball" ||
-      (local === null && readDeclaredInstallKind() === "tarball")
-    ) {
-      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, TARBALL_UPDATE_REFUSAL));
-      return;
-    }
     const { sessionKey, note, restartDelayMs } = parseRestartRequestParams(params);
     const timeoutMsRaw = (params as { timeoutMs?: unknown }).timeoutMs;
     const timeoutMs =
       typeof timeoutMsRaw === "number" && Number.isFinite(timeoutMsRaw)
         ? Math.max(1000, Math.floor(timeoutMsRaw))
         : undefined;
+
+    // A release-tarball install (PLAN-56 Phase 3b) updates in place: verified
+    // download, snapshot, activation check, symlink switch; the boot watchdog
+    // rolls back if the new version never confirms a healthy boot. Always
+    // production rules (pinned key, GitHub Releases): the CLI-only test mode
+    // cannot be reached from here.
+    if (
+      local?.installKind === "tarball" ||
+      (local === null && readDeclaredInstallKind() === "tarball")
+    ) {
+      const config = loadConfig();
+      const run = await runTarballUpdateForGateway({ root, config, timeoutMs });
+      const result = run.result;
+      let restart = null;
+      if (result.status === "ok" && run.ctx && run.update) {
+        // Supervised (systemd/launchd): the supervisor brings `current` up and
+        // the watchdog only watches. Unsupervised: the respawn hands off to
+        // the watchdog, which launches `current` with this gateway's argv.
+        const supervised = isLikelySupervisedProcess(process.env);
+        const beacon = armTarballBootVerify({
+          ctx: run.ctx,
+          toVersion: run.update.to,
+          snapshotDir: run.update.snapshotDir,
+          restart: supervised ? "service" : "respawn",
+          reason: "update.run",
+        });
+        if (beacon && supervised && run.ctx.autoRollback) {
+          spawnTarballBootWatchdog({ root: run.ctx.root, armedAt: beacon.armedAt });
+        }
+        restart = scheduleGatewaySigusr1Restart({ delayMs: restartDelayMs, reason: "update.run" });
+      }
+      const payload = buildUpdateSentinel({ result, sessionKey, note });
+      let sentinelPath: string | null = null;
+      try {
+        sentinelPath = await writeRestartSentinel(payload);
+      } catch {
+        sentinelPath = null;
+      }
+      respond(
+        true,
+        { ok: true, result, restart, sentinel: { path: sentinelPath, payload } },
+        undefined,
+      );
+      return;
+    }
 
     let result: Awaited<ReturnType<typeof runGatewayUpdate>>;
     try {
@@ -204,33 +280,7 @@ export const updateHandlers: GatewayRequestHandlers = {
       };
     }
 
-    const payload: RestartSentinelPayload = {
-      kind: "update",
-      status: result.status,
-      ts: Date.now(),
-      sessionKey,
-      message: note ?? null,
-      doctorHint: formatDoctorNonInteractiveHint(),
-      stats: {
-        mode: result.mode,
-        root: result.root ?? undefined,
-        before: result.before ?? null,
-        after: result.after ?? null,
-        steps: result.steps.map((step) => ({
-          name: step.name,
-          command: step.command,
-          cwd: step.cwd,
-          durationMs: step.durationMs,
-          log: {
-            stdoutTail: step.stdoutTail ?? null,
-            stderrTail: step.stderrTail ?? null,
-            exitCode: step.exitCode ?? null,
-          },
-        })),
-        reason: result.reason ?? null,
-        durationMs: result.durationMs,
-      },
-    };
+    const payload = buildUpdateSentinel({ result, sessionKey, note });
 
     let sentinelPath: string | null = null;
     try {

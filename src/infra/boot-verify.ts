@@ -39,6 +39,32 @@ const ROLLBACK_RECORD_FILENAME = "rollback-performed.json";
 /** cron, browser). The beacon flags "boot never completed", not "boot slow". */
 export const DEFAULT_BOOT_VERIFY_DEADLINE_MS = 30 * 60 * 1000;
 
+/**
+ * Release-tarball updates (PLAN-56 Phase 3b): the boot watchdog rolls these
+ * back by switching the `current` symlink, not with git.
+ */
+export type TarballBootVerify = {
+  /** The install root holding the version directories. */
+  appDir: string;
+  /** Known-good version to return to. */
+  fromVersion: string;
+  /** The version the restart is expected to boot. */
+  toVersion: string;
+  /**
+   * How the gateway comes back: "service" means a supervisor (the installed
+   * systemd/launchd service) restarts it and the updater spawned the
+   * watchdog; "respawn" means an unsupervised gateway restarts itself, and
+   * its respawn spawns the watchdog that launches the new version.
+   */
+  restart: "service" | "respawn";
+  /** The pre-update snapshot, for the rollback data policy. */
+  snapshotDir: string | null;
+  /** Newest memory schema the known-good version understands. */
+  fromMemorySchemaLatest: number;
+  /** update.autoRollback.enabled at arming time. */
+  autoRollback: boolean;
+};
+
 export type BootVerifyRecord = {
   /** The sha to roll back to if the fresh boot never confirms. */
   prevSha: string | null;
@@ -54,6 +80,13 @@ export type BootVerifyRecord = {
    * second reset.
    */
   rollbackAttempted?: boolean;
+  /**
+   * Only a gateway reporting this version confirms the boot (tarball
+   * updates: the old version answering after a failed respawn must not look
+   * like a healthy update).
+   */
+  expectedVersion?: string;
+  tarball?: TarballBootVerify;
 };
 
 /** Written by the watchdog after it performs a rollback; read by doctor. */
@@ -67,6 +100,13 @@ export type RollbackRecord = {
   detail: string;
   /** True when reset+install+build all succeeded. */
   ok: boolean;
+  /** Tarball rollbacks: the versions instead of shas. */
+  mode?: "git" | "tarball";
+  fromVersion?: string;
+  toVersion?: string;
+  /** Files restored from the pre-update snapshot (tarball rollbacks). */
+  restored?: string[];
+  snapshotDir?: string | null;
 };
 
 function beaconPath(): string {
@@ -79,7 +119,10 @@ export function armBootVerify(params: {
   now?: number;
   deadlineMs?: number;
   reason?: string;
-}): void {
+  expectedVersion?: string;
+  tarball?: TarballBootVerify;
+  rollbackAttempted?: boolean;
+}): BootVerifyRecord | null {
   const now = params.now ?? Date.now();
   const deadlineMs = params.deadlineMs ?? DEFAULT_BOOT_VERIFY_DEADLINE_MS;
   const record: BootVerifyRecord = {
@@ -87,17 +130,33 @@ export function armBootVerify(params: {
     armedAt: now,
     deadlineAt: now + Math.max(60_000, deadlineMs),
     reason: params.reason,
+    ...(params.expectedVersion ? { expectedVersion: params.expectedVersion } : {}),
+    ...(params.tarball ? { tarball: params.tarball } : {}),
+    ...(params.rollbackAttempted ? { rollbackAttempted: true } : {}),
   };
   try {
     fs.mkdirSync(path.dirname(beaconPath()), { recursive: true });
     fs.writeFileSync(beaconPath(), JSON.stringify(record, null, 2), "utf-8");
+    return record;
   } catch {
     // A missing beacon just means no post-update health surface; never fatal.
+    return null;
   }
 }
 
-/** Clear the beacon — the gateway calls this the instant it is listening. */
-export function confirmBootHealthy(): void {
+/**
+ * Clear the beacon: the gateway calls this the instant it is listening,
+ * with its own version. A beacon that expects another version stays armed
+ * (a tarball update whose new version never came up, while the old one is
+ * answering again).
+ */
+export function confirmBootHealthy(version?: string): void {
+  if (version) {
+    const record = readBootVerify();
+    if (record?.expectedVersion && record.expectedVersion !== version) {
+      return;
+    }
+  }
   try {
     fs.rmSync(beaconPath(), { force: true });
   } catch {

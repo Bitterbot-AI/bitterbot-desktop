@@ -10,7 +10,7 @@ import { resolveControlUiRoot } from "../gateway/control-ui-assets.js";
 import {
   CONTAINER_UPDATE_COMMAND,
   type InstallKind,
-  TARBALL_UPDATE_COMMAND,
+  TARBALL_REINSTALL_COMMAND,
 } from "../infra/install-kind.js";
 import { renderSection, type CheckResult, error, info, ok } from "./doctor-check.js";
 
@@ -20,7 +20,7 @@ export function controlUiMissingFix(kind: InstallKind | undefined): string {
     case "container":
       return `the image should carry it; pull a current image on the Docker host: ${CONTAINER_UPDATE_COMMAND}`;
     case "tarball":
-      return `the release tarball should carry it; re-run the installer: ${TARBALL_UPDATE_COMMAND}`;
+      return `the release tarball should carry it; reinstall this version: ${TARBALL_REINSTALL_COMMAND}`;
     case "package":
       return "the package should carry it (dist/control-ui); reinstall the package";
     default:

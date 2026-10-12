@@ -104,6 +104,11 @@ its own Node runtime:
 curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
 ```
 
+`bitterbot update` keeps it current (signature checked, data snapshotted,
+rolled back automatically if the new version does not start). On Windows,
+[`install.ps1`](/start/install-script#windows-wsl2) runs the same installer
+inside WSL2.
+
 **From source instead** (to develop Bitterbot, or to use the browser tool,
 which the image does not include):
 

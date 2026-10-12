@@ -35,6 +35,50 @@ describe("noteBootHealth", () => {
     expect(findings()).toEqual([]);
   });
 
+  it("a tarball rollback names the versions and what was restored, not git", () => {
+    writeRollbackRecord({
+      fromSha: null,
+      toSha: "v1.4.0",
+      mode: "tarball",
+      fromVersion: "1.5.0",
+      toVersion: "1.4.0",
+      at: NOW - 5 * 60_000,
+      detail: "current -> 1.4.0",
+      ok: true,
+      restored: ["/h/.bitterbot/bitterbot.json"],
+      snapshotDir: "/h/.bitterbot/snapshots/x",
+    });
+    noteBootHealth(NOW);
+    const f = findings();
+    expect(f[0]?.level).toBe("warn");
+    expect(f[0]?.message).toContain("v1.5.0");
+    expect(f[0]?.message).toContain("v1.4.0");
+    expect(f[0]?.message).toContain("bitterbot.json");
+    expect(f[0]?.message).not.toContain("git reset");
+  });
+
+  it("a stale tarball beacon points at bitterbot update --rollback", () => {
+    armBootVerify({
+      prevSha: null,
+      now: NOW - 60 * 60_000,
+      expectedVersion: "1.5.0",
+      tarball: {
+        appDir: "/h/.bitterbot/app",
+        fromVersion: "1.4.0",
+        toVersion: "1.5.0",
+        restart: "service",
+        snapshotDir: null,
+        fromMemorySchemaLatest: 78,
+        autoRollback: false,
+      },
+    });
+    noteBootHealth(NOW);
+    const f = findings();
+    expect(f[0]?.level).toBe("error");
+    expect(f[0]?.message).toContain("bitterbot update --rollback");
+    expect(f[0]?.message).not.toContain("git reset");
+  });
+
   it("errors on a stale beacon (boot never confirmed)", () => {
     armBootVerify({ prevSha: "good000", now: NOW - 60 * 60_000 });
     noteBootHealth(NOW);

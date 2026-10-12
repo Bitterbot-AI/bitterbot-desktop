@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONTAINER_UPDATE_COMMAND, TARBALL_UPDATE_COMMAND } from "./install-kind.js";
+import { CONTAINER_UPDATE_COMMAND, TARBALL_REINSTALL_COMMAND } from "./install-kind.js";
 import { orchestratorMissingAdvice, orchestratorSignatureStatus } from "./orchestrator-advice.js";
 
 describe("orchestratorMissingAdvice", () => {
@@ -15,7 +15,7 @@ describe("orchestratorMissingAdvice", () => {
     expect(orchestratorMissingAdvice("container").join("\n")).toContain(CONTAINER_UPDATE_COMMAND);
     const tarball = orchestratorMissingAdvice("tarball").join("\n");
     expect(tarball).toContain("$BITTERBOT_INSTALL_ROOT/bin");
-    expect(tarball).toContain(TARBALL_UPDATE_COMMAND);
+    expect(tarball).toContain(TARBALL_REINSTALL_COMMAND);
     const git = orchestratorMissingAdvice("git").join("\n");
     expect(git).toContain("pnpm install");
     expect(git).toContain("cargo build --release");

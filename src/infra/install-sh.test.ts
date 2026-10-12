@@ -21,39 +21,19 @@ import {
   verifyMinisign,
 } from "../../scripts/orchestrator-signature.mjs";
 import { buildManifest } from "../../scripts/release-tarball-lib.mjs";
+import {
+  makeTestMinisignKey,
+  signTestMinisign,
+  type TestMinisignKey,
+} from "../test-utils/minisign.js";
 import { tarballPlatformId } from "./install-kind.js";
 
 const INSTALL_SH = fileURLToPath(new URL("../../scripts/install.sh", import.meta.url));
 const platformId = tarballPlatformId();
 
-type TestKey = { pubkeyB64: string; privateKey: crypto.KeyObject; keyId: Buffer };
-
-function makeKey(): TestKey {
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
-  const rawPub = publicKey.export({ format: "der", type: "spki" }).subarray(12);
-  const keyId = crypto.randomBytes(8);
-  const pubkeyB64 = Buffer.concat([Buffer.from("Ed"), keyId, rawPub]).toString("base64");
-  return { pubkeyB64, privateKey, keyId };
-}
-
-/** A minisign-format (prehashed "ED") signature, as `minisign -S -t <comment>` writes it. */
-function minisign(key: TestKey, message: Buffer, trustedComment: string): string {
-  const digest = crypto.createHash("blake2b512").update(message).digest();
-  const sig = crypto.sign(null, digest, key.privateKey);
-  const blob = Buffer.concat([Buffer.from("ED"), key.keyId, sig]);
-  const global = crypto.sign(
-    null,
-    Buffer.concat([sig, Buffer.from(trustedComment)]),
-    key.privateKey,
-  );
-  return [
-    "untrusted comment: signature from a throwaway test key",
-    blob.toString("base64"),
-    `trusted comment: ${trustedComment}`,
-    global.toString("base64"),
-    "",
-  ].join("\n");
-}
+type TestKey = TestMinisignKey;
+const makeKey = makeTestMinisignKey;
+const minisign = signTestMinisign;
 
 function sha256(buf: Buffer): string {
   return crypto.createHash("sha256").update(buf).digest("hex");

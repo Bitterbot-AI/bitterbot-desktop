@@ -10,8 +10,8 @@
  *   Its launcher (`bin/bitterbot`) sets `BITTERBOT_INSTALL_KIND=tarball` and
  *   the install root carries a `.bitterbot-install-kind` marker, so a gateway
  *   started any other way (systemd unit, `node dist/entry.js`) still knows.
- *   Until in-place tarball updates land (Phase 3b), updating means re-running
- *   install.sh, which keeps the previous version directory.
+ *   `bitterbot update` updates it in place (Phase 3b: verify, snapshot,
+ *   stage, activate, auto-rollback; src/infra/tarball-updater.ts).
  * - `unknown`: the package root could not be resolved.
  *
  * The image declares itself with `ENV BITTERBOT_INSTALL_KIND=container`
@@ -48,34 +48,31 @@ export const TARBALL_INSTALL_MARKER = ".bitterbot-install-kind";
 export const INSTALL_SH_URL =
   "https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh";
 
-/** The shell command a tarball install updates with (until Phase 3b). */
-export const TARBALL_UPDATE_COMMAND = `curl -fsSL ${INSTALL_SH_URL} | bash`;
+/** The installer one-liner (first install, or a repair when the updater cannot run). */
+export const TARBALL_INSTALLER_COMMAND = `curl -fsSL ${INSTALL_SH_URL} | bash`;
 
-/** Escape hatch printed with every tarball refusal, for a misdetection. */
+/**
+ * The command a tarball install updates with (PLAN-56 Phase 3b): verified,
+ * snapshotted and rolled back automatically when the new version does not
+ * boot.
+ */
+export const TARBALL_UPDATE_COMMAND = "bitterbot update";
+
+/** Re-download and replace the running version (a damaged version directory). */
+export const TARBALL_REINSTALL_COMMAND = "bitterbot update --reinstall";
+
+/** Escape hatch printed with tarball-specific advice, for a misdetection. */
 export const TARBALL_FALSE_POSITIVE_HINT =
   "Not actually a release-tarball install? Set BITTERBOT_INSTALL_KIND=package and retry.";
 
 /**
- * The shared refusal for an in-place update of a tarball install (CLI and
- * gateway). Re-running the installer is the update: it verifies the new
- * release, unpacks it next to the current one and switches `current` over,
- * keeping the previous version directory.
- */
-export const TARBALL_UPDATE_REFUSAL =
-  "This Bitterbot was installed from a release tarball and cannot update itself in place yet. " +
-  "Re-run the installer to update; it keeps the previous version for rollback. " +
-  `${TARBALL_FALSE_POSITIVE_HINT} Installer: ${TARBALL_UPDATE_COMMAND}`;
-
-/**
  * Install kinds whose code cannot be updated by the gateway itself; the
  * update surfaces show this command instead of an "Update now" action.
+ * Only containers since PLAN-56 Phase 3b (tarball installs update in place).
  */
 export function externalUpdateCommand(kind: InstallKind): string | null {
   if (kind === "container") {
     return CONTAINER_UPDATE_COMMAND;
-  }
-  if (kind === "tarball") {
-    return TARBALL_UPDATE_COMMAND;
   }
   return null;
 }

@@ -3,7 +3,8 @@ summary: "Install Bitterbot on a laptop with the one-line installer: what it dow
 read_when:
   - You want Bitterbot on a Linux or macOS laptop without Docker or a source checkout
   - You want to know what install.sh verifies before trusting it
-  - You need to update, pin, or remove an installer-based install
+  - You need to update, roll back, pin, or remove an installer-based install
+  - You are on Windows and want the WSL2 installer (install.ps1)
 title: "Installer (laptops)"
 ---
 
@@ -38,14 +39,14 @@ curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main
 
 ## Supported machines
 
-| Platform                  | Installer | Otherwise                                    |
-| ------------------------- | --------- | -------------------------------------------- |
-| Linux x64 (glibc 2.28+)   | yes       |                                              |
-| Linux arm64 (glibc 2.28+) | yes       |                                              |
-| macOS, Apple silicon      | yes       |                                              |
-| macOS, Intel              | no        | [Docker Desktop](/platforms/docker)          |
-| Linux with musl (Alpine)  | no        | [Docker](/platforms/docker)                  |
-| Windows                   | no        | [Docker Desktop or WSL2](/platforms/windows) |
+| Platform                  | Installer | Otherwise                              |
+| ------------------------- | --------- | -------------------------------------- |
+| Linux x64 (glibc 2.28+)   | yes       |                                        |
+| Linux arm64 (glibc 2.28+) | yes       |                                        |
+| macOS, Apple silicon      | yes       |                                        |
+| macOS, Intel              | no        | [Docker Desktop](/platforms/docker)    |
+| Linux with musl (Alpine)  | no        | [Docker](/platforms/docker)            |
+| Windows                   | via WSL2  | [install.ps1](#windows-wsl2) or Docker |
 
 On an unsupported machine the installer stops before downloading anything and
 points at Docker. glibc 2.28 is the floor of the bundled Node 22 (Debian 10,
@@ -154,22 +155,101 @@ gh attestation verify bitterbot-$V-linux-x64.tar.gz --repo Bitterbot-AI/bitterbo
 
 ## Updating
 
-Re-run the installer. It installs the new version next to the current one,
-switches `current` over, and keeps the old version in
-`~/.bitterbot/app/previous`. `bitterbot update status` and the Control UI's
-Update card tell you when a newer release exists (they check GitHub releases,
-not npm); `bitterbot update` and the UI's update button do not update an
-installer-based install in place yet, and say so. Restart the gateway after
-updating (`bitterbot gateway restart`, or stop and start it). A gateway service
-installed during onboarding runs `~/.bitterbot/app/current/bin/bitterbot`, so a
-restart picks up the new version. Re-running the installer for the version you
-already have leaves its directory in place.
+```bash
+bitterbot update            # newest complete release
+bitterbot update --check    # only say whether a newer release exists
+bitterbot update --tag 1.6.0
+```
 
-To go back one version by hand:
+The Control UI's **Update now** button does the same. Updates follow the
+stable channel (published, non-prerelease releases). Step by step:
+
+1. **Pick the target**: the newest release that has your platform's tarball,
+   `checksums.txt` and its signature (the rule the installer uses), or the
+   version you pinned. Already on it: nothing happens. A downgrade asks first
+   (`--yes` confirms).
+2. **Verify**: `checksums.txt.minisig` must verify against the pinned key,
+   its signed comment must read `v<version> checksums`, and the tarball's
+   SHA-256 must match. Unlike the installer there is no "SHA-256 only" level:
+   Bitterbot checks the signature itself (Node.js has Ed25519), so the update
+   stops on any failure.
+3. **Stage**: unpack into a temporary directory next to the install, then
+   check every file against `manifest.json`.
+4. **Check the new version** with its own launcher: `bin/bitterbot --version`
+   must print the target version, and `bin/bitterbot update preflight` (it
+   changes no config or data) must accept this machine. It refuses when your config file fails the
+   new version's schema, or when a memory database carries a newer schema than
+   the new version knows (a downgrade past a migration). Databases that only
+   need forward migrations are fine: the new version migrates them on start.
+5. **Snapshot** your data (below).
+6. **Activate**: move the new version to `~/.bitterbot/app/<version>`, point
+   `previous` at the version you had and `current` at the new one (each switch
+   is one atomic rename of a symlink), and remove older versions except one a
+   running Bitterbot still uses.
+7. **Restart and watch**: with a gateway service installed, the service is
+   restarted; with a gateway running in a terminal (or under `nohup`), it is
+   asked to restart itself into the new version; with no gateway running,
+   `bitterbot update` says how to start it. The update then waits until the new
+   version confirms a healthy start. If it does not (the process exits, or
+   nothing confirms within five minutes or three times the last measured
+   start, whichever is longer), a watchdog switches back automatically.
+
+Nothing is activated if any step before 6 fails, and the version you were
+running stays in `~/.bitterbot/app/previous` until the next update.
+
+### Snapshots
+
+Before switching, the update copies into
+`~/.bitterbot/snapshots/<time>-<from>-to-<to>/` (with a `manifest.json`
+listing every file and its SHA-256):
+
+- your config file and `~/.bitterbot/.env`
+- every memory database in `~/.bitterbot/memory/` (copied with SQLite's
+  `VACUUM INTO`, so a database in use is copied consistently)
+- `GENOME.md` and `MEMORY.md` of your default agent
+- your P2P identity (`node.key`, `node.pub` and the files beside them). These
+  are copied, never moved.
+
+The app directory is never part of a snapshot. Bitterbot keeps the newest
+three snapshots and removes older ones. The update stops before changing
+anything if the disk does not have room for the snapshot. Snapshots contain
+your keys and secrets, so the directory is readable only by you.
+
+### Rollback
+
+Switch back to the previous version by hand:
 
 ```bash
-cd ~/.bitterbot/app && ln -sfn "$(readlink previous)" current
+bitterbot update --rollback
 ```
+
+The automatic rollback after a failed start, and `--rollback`, restore data
+narrowly, because restoring a database throws away everything written since
+the update:
+
+| What                 | Automatic rollback (new version never started)                         | `bitterbot update --rollback`               |
+| -------------------- | ---------------------------------------------------------------------- | ------------------------------------------- |
+| Config file, `.env`  | restored if they changed since the snapshot                            | restored if they changed since the snapshot |
+| Memory databases     | restored only if the new version migrated them past what the old knows | kept; `--restore-data` restores them        |
+| GENOME.md, MEMORY.md | kept                                                                   | kept                                        |
+| Keys                 | kept                                                                   | kept                                        |
+
+Why: database migrations are forward only, and each release keeps the
+previous release able to read the migrated schema, so the old version works
+with your current memories. A config file is restored because the old
+version validates it strictly and would refuse a key the new version wrote.
+Every file that is replaced is first moved to `displaced-<time>/` inside the
+snapshot, never deleted. `--restore-data` needs the gateway stopped (it stops
+an installed service itself). GENOME.md, MEMORY.md and keys are not changed by
+an update; restore them from the snapshot by hand if you ever need to.
+
+`bitterbot doctor` reports an automatic rollback (which versions, what was
+restored) until the next clean update. Set `update.autoRollback.enabled` to
+`false` to turn the automatic switch off; a failed start is then only
+reported.
+
+Re-running the installer still works as an update too, without the snapshot
+and the automatic rollback.
 
 ## Uninstall
 
@@ -179,6 +259,33 @@ rm -rf ~/.bitterbot/app ~/.local/bin/bitterbot
 
 This leaves your data in `~/.bitterbot`; remove that directory too only if you
 want to delete your config, memory and keys.
+
+## Windows (WSL2)
+
+Bitterbot's release tarballs are built for Linux and macOS. On Windows,
+`install.ps1` runs the Linux installer inside WSL2:
+
+```powershell
+irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
+```
+
+It finds your default WSL2 distribution, prints its plan, and runs the
+installer above inside it, so Bitterbot lives in your Linux home
+(`~/.bitterbot`, on the Linux ext4 filesystem). It changes nothing on Windows
+and needs no administrator rights. Without WSL2 it prints how to enable it
+(`wsl --install`, which does need an administrator and a restart) and the
+[Docker Desktop](/platforms/docker) alternative, then exits with code 2.
+
+To pass options, save the script and run it:
+
+```powershell
+.\install.ps1 -Version 1.6.0 -NoOnboard   # also -Distro <name>, -Yes
+.\install.ps1 -WhatIf                     # print the plan, run nothing
+```
+
+If you also clone the source, clone it into your Linux home, not under
+`/mnt/c`. A native Windows install is not available yet; see
+[Windows](/platforms/windows).
 
 ## Troubleshooting
 
@@ -190,8 +297,15 @@ want to delete your config, memory and keys.
   installing the previous complete release.
 - `the GitHub releases API refused the request`: unauthenticated API calls are
   limited to 60 per hour per IP. Wait, or pin a release with `--version`.
-- `signature is INVALID` or `SHA-256 mismatch`: do not work around it. Report
-  it with the full output at
+- `signature is INVALID`, `signature check FAILED` or `SHA-256 mismatch`
+  (installer or `bitterbot update`): do not work around it. Report it with the
+  full output at
   [GitHub issues](https://github.com/Bitterbot-AI/bitterbot-desktop/issues).
+- `bitterbot update` says `refuses this machine's data`: the new version would
+  not start with your config, or your memory was written by a newer release.
+  Run `bitterbot doctor --fix`, or pin the release you are on.
+- A damaged installation (`bitterbot doctor` reports files that do not match
+  `manifest.json`): stop the gateway, then `bitterbot update --reinstall`
+  downloads and verifies the same version again.
 - `bitterbot: command not found`: add `~/.local/bin` to your `PATH` (the
   installer printed the line), or run `~/.bitterbot/app/current/bin/bitterbot`.

@@ -12,8 +12,9 @@ import {
   readDeclaredInstallKind,
   resolveInstallKind,
   TARBALL_INSTALL_MARKER,
+  TARBALL_INSTALLER_COMMAND,
+  TARBALL_REINSTALL_COMMAND,
   TARBALL_UPDATE_COMMAND,
-  TARBALL_UPDATE_REFUSAL,
   tarballAssetName,
   tarballPlatformId,
   type ContainerProbe,
@@ -141,16 +142,16 @@ describe("release-tarball install kind (PLAN-56 Phase 3a)", () => {
     expect(resolveInstallKind({ isGit: false, hasRoot: true, root, probe: p })).toBe("package");
   });
 
-  it("names the installer as the update path and keeps containers on compose", () => {
-    expect(externalUpdateCommand("tarball")).toBe(TARBALL_UPDATE_COMMAND);
+  it("tarball installs update in place; only containers update externally", () => {
+    expect(externalUpdateCommand("tarball")).toBeNull();
     expect(externalUpdateCommand("container")).toBe(CONTAINER_UPDATE_COMMAND);
     expect(externalUpdateCommand("git")).toBeNull();
     expect(externalUpdateCommand("package")).toBeNull();
-    expect(TARBALL_UPDATE_COMMAND).toBe(
+    expect(TARBALL_UPDATE_COMMAND).toBe("bitterbot update");
+    expect(TARBALL_REINSTALL_COMMAND).toBe("bitterbot update --reinstall");
+    expect(TARBALL_INSTALLER_COMMAND).toBe(
       "curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash",
     );
-    expect(TARBALL_UPDATE_REFUSAL).toContain(TARBALL_UPDATE_COMMAND);
-    expect(TARBALL_UPDATE_REFUSAL).toContain("BITTERBOT_INSTALL_KIND=package");
   });
 
   it("maps only the published platforms to tarball assets", () => {

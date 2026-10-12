@@ -95,7 +95,13 @@ below in one step.
     opening the Control UI repeatedly does not repeat the request;
   - installer (release tarball) install (`BITTERBOT_INSTALL_KIND=tarball`, set
     by its launcher): the same GitHub releases list, counting only a release
-    that carries the tarball for your platform, never npm.
+    that carries the tarball for your platform, never npm. The update itself
+    happens only when you run `bitterbot update` or press Update in the
+    Control UI: it reads the same list, then downloads `checksums.txt`,
+    `checksums.txt.minisig` and the platform tarball from
+    `github.com/Bitterbot-AI/bitterbot-desktop/releases/download/v<version>/`
+    (redirected to `objects.githubusercontent.com`), HTTPS only, nothing
+    uploaded.
 - **What:** standard git/registry/HTTPS requests; nothing about your node is
   sent beyond what those protocols carry (the GitHub request is
   unauthenticated, with a generic `bitterbot-update-check` User-Agent).

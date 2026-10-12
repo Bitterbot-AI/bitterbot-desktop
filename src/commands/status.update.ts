@@ -67,7 +67,7 @@ export function formatUpdateAvailableHint(update: UpdateCheckResult): string | n
     return `Image v${availability.latestVersion} available. Pull to update: ${CONTAINER_UPDATE_COMMAND}`;
   }
   if (update.installKind === "tarball" && availability.latestVersion) {
-    return `Release v${availability.latestVersion} available. Re-run the installer to update: ${TARBALL_UPDATE_COMMAND}`;
+    return `Release v${availability.latestVersion} available. Run: ${formatCliCommand(TARBALL_UPDATE_COMMAND)}`;
   }
   if (availability.hasRegistryUpdate && availability.latestVersion) {
     details.push(`npm ${availability.latestVersion}`);

@@ -3,7 +3,6 @@ import { readConfigFileSnapshot } from "../../config/config.js";
 import {
   CONTAINER_FALSE_POSITIVE_HINT,
   CONTAINER_UPDATE_COMMAND,
-  TARBALL_UPDATE_REFUSAL,
 } from "../../infra/install-kind.js";
 import {
   formatUpdateChannelLabel,
@@ -68,8 +67,37 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
     return;
   }
   if (updateStatus.installKind === "tarball") {
-    defaultRuntime.error(TARBALL_UPDATE_REFUSAL);
-    defaultRuntime.exit(1);
+    // PLAN-56 Phase 3b: release-tarball installs update in place (stable
+    // releases only), or switch back to the version kept as `previous`.
+    const action = await selectStyled({
+      message: "Release-tarball install",
+      options: [
+        {
+          value: "update",
+          label: "Update to the newest release",
+          hint: "verified, snapshotted, rolled back if it does not boot",
+        },
+        { value: "check", label: "Only check for a newer release" },
+        { value: "rollback", label: "Roll back to the previous version" },
+      ],
+      initialValue: "update",
+    });
+    if (isCancel(action)) {
+      defaultRuntime.log(theme.muted("Update cancelled."));
+      defaultRuntime.exit(0);
+      return;
+    }
+    try {
+      await updateCommand({
+        timeout: opts.timeout,
+        restart: true,
+        check: action === "check",
+        rollback: action === "rollback",
+      });
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
     return;
   }
 

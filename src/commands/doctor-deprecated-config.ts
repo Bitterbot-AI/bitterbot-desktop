@@ -72,17 +72,21 @@ function deleteAtPath(root: unknown, tokens: PathToken[]): boolean {
 
 /**
  * Remove the inert deprecated keys `hits` names from a copy of `config`.
- * Returns the new config and one line per change.
+ * Returns the new config and one line per change. `applied` says whether the
+ * caller will write the result (`doctor --fix`): a preview run says "Would
+ * remove", never "Removed", since nothing was written.
  */
 export function removeDeprecatedConfigKeys(
   config: BitterbotConfig,
   hits: DeprecatedConfigHit[],
+  opts: { applied?: boolean } = {},
 ): { config: BitterbotConfig; changes: string[] } {
   const next = structuredClone(config);
   const changes: string[] = [];
+  const verb = opts.applied ? "Removed" : "Would remove";
   for (const hit of hits) {
     if (deleteAtPath(next, parseConfigPath(hit.path))) {
-      changes.push(`- Removed ${hit.path} (deprecated, no effect).`);
+      changes.push(`- ${verb} ${hit.path} (deprecated, no effect).`);
     }
   }
   return { config: next, changes };

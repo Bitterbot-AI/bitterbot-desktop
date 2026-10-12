@@ -16,7 +16,8 @@
 import {
   CONTAINER_UPDATE_COMMAND,
   type InstallKind,
-  TARBALL_UPDATE_COMMAND,
+  TARBALL_INSTALLER_COMMAND,
+  TARBALL_REINSTALL_COMMAND,
 } from "./install-kind.js";
 import { type BinarySource, INSTALL_ROOT_ENV } from "./orchestrator-binary.js";
 
@@ -35,8 +36,9 @@ export function orchestratorMissingAdvice(kind: InstallKind): string[] {
       return [
         `The release tarball bundles it at $${INSTALL_ROOT_ENV}/bin; the \`bitterbot\``,
         `launcher sets ${INSTALL_ROOT_ENV}. A gateway started another way must set it.`,
-        "To restore a missing binary, re-run the installer:",
-        `  ${TARBALL_UPDATE_COMMAND}`,
+        "To restore a missing binary, reinstall this version (verified download):",
+        `  ${TARBALL_REINSTALL_COMMAND}`,
+        `  (or re-run the installer: ${TARBALL_INSTALLER_COMMAND})`,
       ];
     case "git":
       return [

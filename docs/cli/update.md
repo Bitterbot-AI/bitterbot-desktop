@@ -1,7 +1,8 @@
 ---
-summary: "CLI reference for `bitterbot update` (safe-ish source update + gateway auto-restart)"
+summary: "CLI reference for `bitterbot update` (source checkouts, installer-based installs with snapshot and rollback, containers)"
 read_when:
   - You want to update a source checkout safely
+  - You want to update or roll back an installer-based install
   - You need to understand `--update` shorthand behavior
 title: "update"
 ---
@@ -26,12 +27,14 @@ Update with `docker compose pull && docker compose up -d` on the Docker host
 For an **installer-based install** (the release tarball from
 [`install.sh`](/start/install-script); its launcher sets
 `BITTERBOT_INSTALL_KIND=tarball` and the install root carries a
-`.bitterbot-install-kind` marker), `bitterbot update` and the Control UI also
-refuse to update in place for now and print the installer one-liner instead:
-re-running `install.sh` installs the new version next to the current one and
-keeps the previous one. `update status` compares the running version with the
-newest GitHub release that carries a tarball for your platform. Set
-`BITTERBOT_INSTALL_KIND=package` if the detection is wrong.
+`.bitterbot-install-kind` marker), `bitterbot update` and the Control UI's
+Update button update in place: verified download, snapshot of your data,
+activation check by the new version, an atomic switch, and an automatic
+rollback when the new version does not start. See
+[Installer-based installs](#installer-based-installs) below. `update status`
+compares the running version with the newest GitHub release that carries a
+tarball for your platform. Set `BITTERBOT_INSTALL_KIND=package` if the
+detection is wrong.
 
 ## Default channel
 
@@ -51,6 +54,8 @@ bitterbot update --channel dev
 bitterbot update --tag beta
 bitterbot update --no-restart
 bitterbot update --json
+bitterbot update --check
+bitterbot update --rollback
 bitterbot --update
 ```
 
@@ -58,15 +63,27 @@ bitterbot --update
 
 - `--no-restart`: skip restarting the Gateway service after a successful update.
 - `--channel <stable|beta|dev>`: set the update channel (persisted in config).
-- `--tag <dist-tag|version>`: override the npm dist-tag or version for this update only (package installs).
-- `--json`: print machine-readable `UpdateRunResult` JSON.
+  Installer-based installs follow `stable` only.
+- `--tag <dist-tag|version>`: override the npm dist-tag or version for this
+  update only (package installs); for an installer-based install, the release
+  version to install (`1.6.0`).
+- `--json`: print machine-readable result JSON.
 - `--timeout <seconds>`: per-step timeout (default is 1200s).
+- `--yes`: skip confirmation prompts (downgrades, rollback).
+- `--check`: only report whether an update is available (no changes).
+- `--rollback`: installer-based installs only; switch back to the previous
+  version.
+- `--restore-data`: with `--rollback`, also restore the memory databases from
+  the pre-update snapshot (loses everything written since the update).
+- `--reinstall`: installer-based installs only; download and verify the
+  current version again and replace its directory (stop the gateway first).
 
 Note: downgrades require confirmation because older versions can break configuration.
 
 ## `update status`
 
 Show the active update channel + git tag/branch/SHA (for source checkouts), plus update availability.
+`--json` and `--timeout` work after `status` (`update status --json`).
 
 ```bash
 bitterbot update status
@@ -83,7 +100,46 @@ Options:
 
 Interactive flow to pick an update channel and confirm whether to restart the Gateway
 after updating (default is to restart). If you select `dev` without a git checkout, it
-offers to create one.
+offers to create one. On an installer-based install it offers: update to the newest
+release, only check, or roll back to the previous version.
+
+## Installer-based installs
+
+`bitterbot update` (and the Control UI's **Update now**) on an install from
+`install.sh`:
+
+1. Picks the target: the newest release that carries your platform's tarball,
+   `checksums.txt` and `checksums.txt.minisig` (the installer's rule), or
+   `--tag`. Already current: nothing to do. A downgrade asks first.
+2. Verifies `checksums.txt` against the pinned minisign key, requires the
+   signed comment `v<version> checksums`, and checks the tarball's SHA-256.
+   Any failure stops the update; there is no unsigned fallback.
+3. Unpacks into a staging directory next to the install and checks every file
+   against `manifest.json`.
+4. Runs the new version's own launcher: `--version` must print the target, and
+   `update preflight` (it changes no config or data) must accept this machine. It blocks when
+   the config file fails the new version's schema, or a memory database has a
+   schema newer than the new version knows. Forward migrations are fine.
+5. Snapshots config, memory databases, GENOME.md/MEMORY.md and keys into
+   `~/.bitterbot/snapshots/<time>-<from>-to-<to>/` (newest three kept; see
+   [Snapshots](/start/install-script#snapshots)).
+6. Activates: `previous` -> the old version, `current` -> the new one (atomic
+   symlink renames), then removes older versions that are not in use.
+7. Restarts: an installed gateway service is restarted; a gateway running in a
+   terminal or under `nohup` is asked (over RPC) to restart into `current`; with
+   no gateway running it prints how to start one. It then waits for the new
+   version to confirm a healthy start (at least 5 minutes, or three times the
+   last measured start, at most 30). If the new process exits or never
+   confirms, the boot watchdog switches `current` back, restores data per the
+   [rollback policy](/start/install-script#rollback), starts the old version,
+   and `bitterbot update` exits 1 with what happened.
+
+`bitterbot update --rollback` switches back by hand (config restored if it
+changed; databases kept unless `--restore-data`). The test-mode variables the
+installer CI uses (`BITTERBOT_INSTALL_TEST_MODE`, `BITTERBOT_INSTALL_BASE_URL`,
+`BITTERBOT_INSTALL_TEST_PUBKEY`) follow the same rules as in `install.sh` and
+only work from the CLI; `update.run` (and so the Control UI) always uses
+GitHub Releases and the pinned key.
 
 ## What it does
 
@@ -184,7 +240,8 @@ Known limitation: drift counting works on the `dev` channel (a tracked
 
 ## See also
 
-- `bitterbot doctor` (offers to run update first on git checkouts)
+- `bitterbot doctor` (offers to run update first on git checkouts; checks the
+  links, manifest and snapshots of an installer-based install)
 - [Install script](/start/install-script)
 - [Docker](/platforms/docker)
 - [CLI reference](/cli)

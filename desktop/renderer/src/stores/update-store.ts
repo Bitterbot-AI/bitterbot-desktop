@@ -14,12 +14,11 @@ export type InstallKind = "git" | "package" | "container" | "tarball" | "unknown
 export const CONTAINER_UPDATE_COMMAND = "docker compose pull && docker compose up -d";
 
 /**
- * Shown for release-tarball installs (PLAN-56 Phase 3a): re-running the
- * installer is the update until in-place tarball updates land. Mirrors
+ * The terminal equivalent of "Update now" for release-tarball installs
+ * (PLAN-56 Phase 3b: in-place, verified, auto-rollback). Mirrors
  * TARBALL_UPDATE_COMMAND in src/infra/install-kind.ts.
  */
-export const TARBALL_UPDATE_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash";
+export const TARBALL_UPDATE_COMMAND = "bitterbot update";
 
 function parseInstallKind(value: unknown): InstallKind {
   return value === "git" || value === "package" || value === "container" || value === "tarball"
@@ -27,9 +26,12 @@ function parseInstallKind(value: unknown): InstallKind {
     : "unknown";
 }
 
-/** Install kinds the gateway cannot update in place (no "Update now"). */
+/**
+ * Install kinds the gateway cannot update in place (no "Update now"). Only
+ * containers: release-tarball installs update in place since PLAN-56 Phase 3b.
+ */
 export function updatesExternally(kind: InstallKind | undefined): boolean {
-  return kind === "container" || kind === "tarball";
+  return kind === "container";
 }
 
 export type UpdateInfo = {
