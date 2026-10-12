@@ -46,6 +46,7 @@ import { walletHandlers } from "./server-methods/wallet.js";
 import { webHandlers } from "./server-methods/web.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
 import { workspaceHandlers } from "./server-methods/workspace.js";
+import { isSetupOnlyScopes, SETUP_METHODS } from "./setup-token.js";
 
 const ADMIN_SCOPE = "operator.admin";
 const READ_SCOPE = "operator.read";
@@ -295,6 +296,13 @@ export function authorizeGatewayMethod(method: string, client: GatewayRequestOpt
   }
   if (role !== "operator") {
     return errorShape(ErrorCodes.INVALID_REQUEST, `unauthorized role: ${role}`);
+  }
+  // PLAN-56 Phase 4: a setup-token connection may drive the wizard and
+  // nothing else (src/gateway/setup-token.ts).
+  if (isSetupOnlyScopes(scopes)) {
+    return SETUP_METHODS.has(method)
+      ? null
+      : errorShape(ErrorCodes.INVALID_REQUEST, "setup token grants wizard access only");
   }
   if (scopes.includes(ADMIN_SCOPE)) {
     return null;

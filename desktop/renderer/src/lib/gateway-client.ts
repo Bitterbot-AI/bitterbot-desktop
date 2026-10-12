@@ -86,6 +86,13 @@ export type GatewayClientOptions = {
   password?: string;
   clientName?: string;
   clientVersion?: string;
+  /**
+   * PLAN-56 Phase 4: a one-time setup token from the setup link. The gateway
+   * grants it the wizard RPCs only (scope operator.setup).
+   */
+  setupToken?: string;
+  /** Scopes to request; the Control UI's operator scopes by default. */
+  scopes?: string[];
   /** Default per-request timeout in ms. Override per-call via request() options. */
   defaultRequestTimeoutMs?: number;
   onHello?: (hello: GatewayHelloOk) => void;
@@ -246,10 +253,11 @@ export class GatewayClient {
         mode: "ui",
       },
       role: "operator",
-      scopes: ["operator.admin", "operator.approvals", "operator.pairing"],
+      scopes: this.opts.scopes ?? ["operator.admin", "operator.approvals", "operator.pairing"],
       caps: ["tool-events"],
-      auth:
-        this.opts.token || this.opts.password
+      auth: this.opts.setupToken
+        ? { setupToken: this.opts.setupToken }
+        : this.opts.token || this.opts.password
           ? { token: this.opts.token, password: this.opts.password }
           : undefined,
       userAgent: navigator.userAgent,

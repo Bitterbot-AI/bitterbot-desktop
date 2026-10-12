@@ -330,7 +330,7 @@ async function runOnboardingWizardInner(
           `  auth: ${formatAuth(quickstartGateway.authMode)}`,
           `  Tailscale: ${formatTailscale(quickstartGateway.tailscaleMode)}`,
           "",
-          "Skipping straight to channel setup.",
+          "Next: the setup steps (model key, model, memory, web search, channels, P2P, privacy).",
         ]
       : [
           "QuickStart defaults (re-run with --flow=manual or `bitterbot configure` to change):",
@@ -339,7 +339,7 @@ async function runOnboardingWizardInner(
           "  auth: Token (random, auto-generated)",
           "  Tailscale: off",
           "",
-          "Skipping straight to channel setup.",
+          "Next: the setup steps (model key, model, memory, web search, channels, P2P, privacy).",
         ];
     await prompter.note(quickstartLines.join("\n"), "QuickStart");
   }
@@ -411,136 +411,192 @@ async function runOnboardingWizardInner(
   const { applyOnboardingLocalWorkspaceConfig } = await import("../commands/onboard-config.js");
   let nextConfig: BitterbotConfig = applyOnboardingLocalWorkspaceConfig(baseConfig, workspaceDir);
 
-  const { ensureAuthProfileStore } = await import("../agents/auth-profiles.js");
-  const { promptAuthChoiceGrouped } = await import("../commands/auth-choice-prompt.js");
-  const { promptCustomApiConfig } = await import("../commands/onboard-custom.js");
-  const { applyAuthChoice, resolvePreferredProviderForAuthChoice, warnIfModelConfigLooksOff } =
-    await import("../commands/auth-choice.js");
-  const { applyPrimaryModel, promptDefaultModel } = await import("../commands/model-picker.js");
+  const { warnIfModelConfigLooksOff } = await import("../commands/auth-choice.js");
+  const { resolveBitterbotPackageRoot } = await import("../infra/bitterbot-root.js");
+  const { detectInstallKind } = await import("../infra/install-kind.js");
+  const packageRoot = await resolveBitterbotPackageRoot({
+    moduleUrl: import.meta.url,
+    argv1: process.argv[1],
+    cwd: process.cwd(),
+  }).catch(() => null);
+  const installKind = detectInstallKind(packageRoot);
 
-  const authStore = ensureAuthProfileStore(undefined, {
-    allowKeychainPrompt: false,
-  });
-  const authChoiceFromPrompt = opts.authChoice === undefined;
-  const authChoice =
-    opts.authChoice ??
-    (await promptAuthChoiceGrouped({
-      prompter,
-      store: authStore,
-      includeSkip: true,
-    }));
+  let settings: Awaited<
+    ReturnType<typeof import("./onboarding.gateway-config.js").configureGatewayForOnboarding>
+  >["settings"];
 
-  if (authChoice === "custom-api-key") {
-    const customResult = await promptCustomApiConfig({
-      prompter,
-      runtime,
-      config: nextConfig,
-    });
-    nextConfig = customResult.config;
-  } else {
-    const authResult = await applyAuthChoice({
-      authChoice,
-      config: nextConfig,
-      prompter,
-      runtime,
-      setDefaultModel: true,
-      opts: {
-        tokenProvider: opts.tokenProvider,
-        token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
-      },
-    });
-    nextConfig = authResult.config;
-  }
-
-  // QuickStart keeps the provider's default model (applyAuthChoice already
-  // set it) — the model picker is an advanced-flow prompt (PLAN-41 D-M).
-  if (authChoiceFromPrompt && authChoice !== "custom-api-key" && flow === "advanced") {
-    const modelSelection = await promptDefaultModel({
-      config: nextConfig,
-      prompter,
-      allowKeep: true,
-      ignoreAllowlist: true,
-      includeVllm: true,
-      preferredProvider: resolvePreferredProviderForAuthChoice(authChoice),
-    });
-    if (modelSelection.config) {
-      nextConfig = modelSelection.config;
+  if (flow === "quickstart") {
+    // PLAN-56 Phase 4: QuickStart IS the setup step model, the same steps the
+    // browser setup page renders over wizard.* (src/wizard/setup-steps.ts).
+    // An explicit --auth-choice still runs the provider-specific auth flow;
+    // the model's key and model steps then keep what it configured.
+    let presets: Partial<Record<"auth" | "model" | "channels", string>> | undefined;
+    if (opts.authChoice !== undefined) {
+      const { applyAuthChoice } = await import("../commands/auth-choice.js");
+      const authResult = await applyAuthChoice({
+        authChoice: opts.authChoice,
+        config: nextConfig,
+        prompter,
+        runtime,
+        setDefaultModel: true,
+        opts: {
+          tokenProvider: opts.tokenProvider,
+          token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
+        },
+      });
+      nextConfig = authResult.config;
+      presets = { auth: "skip", model: "keep" };
     }
-    if (modelSelection.model) {
-      nextConfig = applyPrimaryModel(nextConfig, modelSelection.model);
+    if (opts.skipChannels ?? opts.skipProviders) {
+      presets = { ...presets, channels: "later" };
     }
-  }
+    const { commitSetupKey, createSetupDraft, runSetupSteps } = await import("./setup-steps.js");
+    const { detectSetupKeys } = await import("./setup-keys.js");
+    const ctx = {
+      effective: baseConfig,
+      keys: detectSetupKeys(),
+      keyEnv: {},
+      installKind,
+      env: process.env,
+    };
+    const draft = createSetupDraft(nextConfig);
+    // Flags mean a scripted run: take the recommended answers for the rest.
+    await runSetupSteps({
+      ctx,
+      draft,
+      prompter,
+      presets,
+      acceptRecommended: opts.authChoice !== undefined,
+    });
+    await commitSetupKey(draft, ctx);
+    nextConfig = draft.config;
+    await warnIfModelConfigLooksOff(nextConfig, prompter);
 
-  await warnIfModelConfigLooksOff(nextConfig, prompter);
-
-  // Memory embeddings — set up a vector provider so long-term memory works.
-  // Runs after auth (the LLM provider just got configured, often the same
-  // API key works for embeddings) and before web search so the flow of
-  // "here's one more key we need" questions lands together.
-  {
-    const { setupEmbeddingsForOnboarding } = await import("./onboarding.embeddings.js");
-    nextConfig = await setupEmbeddingsForOnboarding({ config: nextConfig, flow, prompter });
-  }
-
-  // Web search — set up an API key so web_search/curiosity/dreams work.
-  // Runs after auth (the user already committed to a provider) and before
-  // gateway config (so the key is in config before the gateway starts).
-  {
-    const { setupWebSearchForOnboarding } = await import("./onboarding.web-search.js");
-    nextConfig = await setupWebSearchForOnboarding({ config: nextConfig, flow, prompter });
-  }
-
-  const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
-  const gateway = await configureGatewayForOnboarding({
-    flow,
-    baseConfig,
-    nextConfig,
-    localPort,
-    quickstartGateway,
-    prompter,
-    runtime,
-  });
-  nextConfig = gateway.nextConfig;
-  const settings = gateway.settings;
-
-  // P2P network step — lands after gateway config and before channels (so
-  // a slow P2P probe doesn't make channel setup feel like it's hanging).
-  // No node-tier prompt: all new nodes are edge, management is assigned
-  // manually post-install.
-  {
-    const { setupP2pForOnboarding } = await import("./onboarding.p2p.js");
-    const { resolveBitterbotPackageRoot } = await import("../infra/bitterbot-root.js");
-    const { detectInstallKind } = await import("../infra/install-kind.js");
-    const packageRoot = await resolveBitterbotPackageRoot({
-      moduleUrl: import.meta.url,
-      argv1: process.argv[1],
-      cwd: process.cwd(),
-    }).catch(() => null);
-    nextConfig = await setupP2pForOnboarding({
-      config: nextConfig,
+    const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
+    const gateway = await configureGatewayForOnboarding({
       flow,
+      baseConfig,
+      nextConfig,
+      localPort,
+      quickstartGateway,
       prompter,
       runtime,
-      installKind: detectInstallKind(packageRoot),
     });
-  }
+    nextConfig = gateway.nextConfig;
+    settings = gateway.settings;
 
-  if (opts.skipChannels ?? opts.skipProviders) {
-    await prompter.note("Skipping channel setup.", "Channels");
-  } else if (flow === "quickstart") {
-    // PLAN-41 D-M: QuickStart defers channels to the Control UI.
-    await prompter.note(
-      [
-        "Chat with your agent in the Control UI right away.",
-        `Connect WhatsApp, Telegram, and other channels later there or via \`${formatCliCommand("bitterbot channels add")}\`.`,
-      ].join("\n"),
-      "Channels",
-    );
+    if (draft.channelsNext && !(opts.skipChannels ?? opts.skipProviders)) {
+      const { setupChannels } = await import("../commands/onboard-channels.js");
+      nextConfig = await setupChannels(nextConfig, runtime, prompter, {
+        allowSignalInstall: true,
+      });
+    }
   } else {
-    const { setupChannels } = await import("../commands/onboard-channels.js");
-    nextConfig = await setupChannels(nextConfig, runtime, prompter, {
-      allowSignalInstall: true,
+    const { ensureAuthProfileStore } = await import("../agents/auth-profiles.js");
+    const { promptAuthChoiceGrouped } = await import("../commands/auth-choice-prompt.js");
+    const { promptCustomApiConfig } = await import("../commands/onboard-custom.js");
+    const { applyAuthChoice, resolvePreferredProviderForAuthChoice } =
+      await import("../commands/auth-choice.js");
+    const { applyPrimaryModel, promptDefaultModel } = await import("../commands/model-picker.js");
+
+    const authStore = ensureAuthProfileStore(undefined, {
+      allowKeychainPrompt: false,
     });
+    const authChoiceFromPrompt = opts.authChoice === undefined;
+    const authChoice =
+      opts.authChoice ??
+      (await promptAuthChoiceGrouped({
+        prompter,
+        store: authStore,
+        includeSkip: true,
+      }));
+
+    if (authChoice === "custom-api-key") {
+      const customResult = await promptCustomApiConfig({
+        prompter,
+        runtime,
+        config: nextConfig,
+      });
+      nextConfig = customResult.config;
+    } else {
+      const authResult = await applyAuthChoice({
+        authChoice,
+        config: nextConfig,
+        prompter,
+        runtime,
+        setDefaultModel: true,
+        opts: {
+          tokenProvider: opts.tokenProvider,
+          token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
+        },
+      });
+      nextConfig = authResult.config;
+    }
+
+    if (authChoiceFromPrompt && authChoice !== "custom-api-key") {
+      const modelSelection = await promptDefaultModel({
+        config: nextConfig,
+        prompter,
+        allowKeep: true,
+        ignoreAllowlist: true,
+        includeVllm: true,
+        preferredProvider: resolvePreferredProviderForAuthChoice(authChoice),
+      });
+      if (modelSelection.config) {
+        nextConfig = modelSelection.config;
+      }
+      if (modelSelection.model) {
+        nextConfig = applyPrimaryModel(nextConfig, modelSelection.model);
+      }
+    }
+
+    await warnIfModelConfigLooksOff(nextConfig, prompter);
+
+    // Memory embeddings, then web search: the "one more key" questions land
+    // together, after the LLM provider (often the same key works).
+    {
+      const { setupEmbeddingsForOnboarding } = await import("./onboarding.embeddings.js");
+      nextConfig = await setupEmbeddingsForOnboarding({ config: nextConfig, flow, prompter });
+    }
+    {
+      const { setupWebSearchForOnboarding } = await import("./onboarding.web-search.js");
+      nextConfig = await setupWebSearchForOnboarding({ config: nextConfig, flow, prompter });
+    }
+
+    const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
+    const gateway = await configureGatewayForOnboarding({
+      flow,
+      baseConfig,
+      nextConfig,
+      localPort,
+      quickstartGateway,
+      prompter,
+      runtime,
+    });
+    nextConfig = gateway.nextConfig;
+    settings = gateway.settings;
+
+    // P2P network step: after gateway config, before channels. No node-tier
+    // prompt: all new nodes are edge, management is assigned manually.
+    {
+      const { setupP2pForOnboarding } = await import("./onboarding.p2p.js");
+      nextConfig = await setupP2pForOnboarding({
+        config: nextConfig,
+        flow,
+        prompter,
+        runtime,
+        installKind,
+      });
+    }
+
+    if (opts.skipChannels ?? opts.skipProviders) {
+      await prompter.note("Skipping channel setup.", "Channels");
+    } else {
+      const { setupChannels } = await import("../commands/onboard-channels.js");
+      nextConfig = await setupChannels(nextConfig, runtime, prompter, {
+        allowSignalInstall: true,
+      });
+    }
   }
 
   await writeConfigFile(nextConfig);

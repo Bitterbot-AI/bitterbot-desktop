@@ -1,5 +1,6 @@
 import { MAX_BUFFERED_BYTES } from "./server-constants.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { isSetupOnlyScopes, SETUP_EVENTS } from "./setup-token.js";
 import { logWs, shouldLogWs, summarizeAgentEventForWsLog } from "./ws-log.js";
 
 const ADMIN_SCOPE = "operator.admin";
@@ -48,6 +49,10 @@ export type GatewayBroadcastToConnIdsFn = (
 ) => void;
 
 function hasEventScope(client: GatewayWsClient, event: string): boolean {
+  // Setup-token connections (PLAN-56 Phase 4) see no gateway activity.
+  if (isSetupOnlyScopes(client.connect.scopes)) {
+    return SETUP_EVENTS.has(event);
+  }
   const required = EVENT_SCOPE_GUARDS[event];
   if (!required) {
     return true;

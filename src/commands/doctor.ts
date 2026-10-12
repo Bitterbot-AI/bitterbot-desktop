@@ -52,6 +52,7 @@ import {
   maybeScanExtraGatewayServices,
 } from "./doctor-gateway-services.js";
 import { runIdentityChecks } from "./doctor-identity.js";
+import { runInstallHealthChecks } from "./doctor-install-health.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { runLivenessChecks } from "./doctor-liveness.js";
 import { runMemorySearchChecks } from "./doctor-memory-search.js";
@@ -171,6 +172,10 @@ async function runDoctor(
   // Runtime (Node version, pnpm, platform posture) first — every check
   // below assumes the runtime itself is viable. Runs config-only / fast.
   runRuntimeChecks({ config: cfg, installKind });
+
+  // Install kind + update channel, version drift, orchestrator signature,
+  // Playwright, local GGUF (PLAN-56 Phase 4). Offline and read-only.
+  await runInstallHealthChecks({ cfg, installKind, packageRoot: root, runningVersion: VERSION });
 
   const configPath = configResult.path ?? CONFIG_PATH;
   if (!cfg.gateway?.mode) {

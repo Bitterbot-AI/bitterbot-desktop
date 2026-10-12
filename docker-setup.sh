@@ -191,7 +191,7 @@ echo "  - Gateway token: $BITTERBOT_GATEWAY_TOKEN"
 echo "  - Tailscale exposure: Off"
 echo "  - Install Gateway daemon: No"
 echo ""
-docker compose "${COMPOSE_ARGS[@]}" run --rm bitterbot-cli onboard --no-install-daemon
+docker compose "${COMPOSE_ARGS[@]}" run --rm bitterbot-cli onboard --no-browser --no-install-daemon
 
 echo ""
 echo "==> Provider setup (optional)"

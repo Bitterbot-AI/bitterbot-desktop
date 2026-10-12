@@ -15,8 +15,40 @@ It configures a local Gateway or a remote Gateway connection, plus channels, ski
 and workspace defaults in one guided flow.
 
 ```bash
-bitterbot onboard
+bitterbot onboard               # finishes setup in your browser (default)
+bitterbot onboard --no-browser  # the same steps in the terminal
 ```
+
+## Setup in the browser (default)
+
+`bitterbot onboard` starts the gateway (or reuses the running one) and prints
+and opens a one-time link, `http://127.0.0.1:19001/setup?token=...`. The link
+works once, for 30 minutes, only on this machine, and only for the setup steps.
+Over SSH, in a container, or without a display, it prints the link instead of
+opening it; over SSH, forward the port first
+(`ssh -N -L 19001:127.0.0.1:19001 <host>`).
+
+The browser and the terminal QuickStart run **one list of steps**, so they ask
+the same things:
+
+1. **Model provider key**: keys found on this machine are offered by name and
+   last four characters; their values never reach the browser. The key you
+   pick is saved once, so you are not asked again.
+2. **Model**.
+3. **Memory embeddings**: the local model by default (about 330 MB, downloaded
+   on first use).
+4. **Web search** (optional): curiosity research needs it.
+5. **Channels**: later by default.
+6. **P2P network**: an explicit choice, with what joining sends (see
+   [What this node connects to](/network/egress)); your current setting is
+   preselected.
+7. **Privacy**: Bitterbot sends no telemetry to the project, and there is no
+   account.
+
+**Use recommended defaults** accepts every step in one click. When the config
+is written, setup runs a first reply on your model and shows it with its
+latency (Retry, Back and Skip on failure), then a read-only doctor summary.
+Details: [`bitterbot onboard`](/cli/onboard).
 
 <Info>
 Fastest first chat: open the Control UI (no channel setup needed). Run
@@ -31,36 +63,30 @@ bitterbot agents add <name>
 ```
 
 <Note>
-`--json` does not imply non-interactive mode. For scripts, use `--non-interactive`.
+`--json` does not imply non-interactive mode. For scripts, use `--non-interactive`;
+it runs the same steps with their recommended answers.
 </Note>
 
-<Tip>
-Recommended: set up a Brave Search API key so the agent can use `web_search`
-(`web_fetch` works without a key). Easiest path: `bitterbot configure --section web`
-which stores `tools.web.search.apiKey`. Docs: [Web tools](/tools/web).
-</Tip>
+## QuickStart vs Advanced (terminal)
 
-## QuickStart vs Advanced
-
-The wizard starts with **QuickStart** (defaults) vs **Advanced** (full control).
+The terminal wizard starts with **QuickStart** (the setup steps above) vs
+**Advanced** (full control).
 
 <Tabs>
-  <Tab title="QuickStart (defaults)">
-    Five prompts: risk acknowledgement, setup flow, provider + API key, and
-    P2P network consent. Everything else takes a sane default:
+  <Tab title="QuickStart (the setup steps)">
+    Risk acknowledgement and the flow choice, then the seven setup steps above
+    (or "Use recommended defaults"). Everything else takes a sane default:
 
-    - Local gateway (loopback), port **19001**, auth **Token** (auto‑generated), Tailscale **Off**
+    - Local gateway (loopback), port **19001**, auth **Token** (auto-generated), Tailscale **Off**
     - Workspace default (or existing workspace)
-    - The provider's default model (no model picker)
-    - Long-term memory runs on the bundled local embedding model unless a remote key already exists
     - Built-in hooks enabled automatically (session-memory, boot-md, command-logger)
-    - Channels, skills, web search, and the wallet are deferred — set them up
-      anytime in the Control UI or via `bitterbot configure`
+    - Skills and the wallet are deferred: set them up anytime in the Control UI
+      or via `bitterbot configure`
 
   </Tab>
   <Tab title="Advanced (full control)">
-    - Exposes every step (mode, workspace, gateway, model picker, embeddings,
-      web search, channels, daemon, skills, wallet, hooks).
+    - Exposes every step (mode, workspace, gateway, every provider, model picker,
+      embeddings, web search, channels, daemon, skills, wallet, hooks).
   </Tab>
 </Tabs>
 

@@ -37,7 +37,7 @@ from the `main` branch.
 </Note>
 
 Nothing needs editing. On first boot the gateway generates a gateway token,
-saves it, and prints it once in its log together with the address to open:
+saves it, and prints it once in its log together with a one-time setup link:
 
 ```bash
 docker compose logs bitterbot-gateway
@@ -45,12 +45,25 @@ docker compose logs bitterbot-gateway
 
 Look for the block that starts with `Bitterbot generated a gateway token`.
 
-1. Open [http://127.0.0.1:19001/](http://127.0.0.1:19001/) and paste the token.
-2. The first browser that signs in with the token is paired automatically
-   (once, only while no device is paired, only for the Control UI). Every
-   browser after that asks for approval from an already-paired one.
-3. Add a model key under **Models & Keys**, then start chatting. Connect chat
-   apps under **Channels**.
+1. Open the setup link from that block
+   (`http://127.0.0.1:19001/setup?token=...`; use your host port if you mapped
+   a different one). It works once, for 30 minutes, only for setup, and only
+   through the loopback port compose publishes. Setup asks for a model key
+   (keys passed to the container's environment are offered by name and last
+   four characters, never shown), the model, memory, web search, channels and
+   P2P, then shows a first reply from your agent with its latency and a
+   doctor summary. Same steps as `bitterbot onboard --no-browser`.
+2. Link expired, or you came back later? Get a fresh one:
+
+   ```bash
+   docker compose exec -u node bitterbot-gateway node bitterbot.mjs onboard
+   ```
+
+3. Open the Control UI at [http://127.0.0.1:19001/](http://127.0.0.1:19001/)
+   and paste the token. The first browser that signs in with the token is
+   paired automatically (once, only while no device is paired, only for the
+   Control UI). Every browser after that asks for approval from an
+   already-paired one. Connect chat apps under **Channels**.
 
 Lost the token? Print it again at any time:
 

@@ -14,13 +14,12 @@
  *   4. On success, persist to localStorage and reload into AppShell
  *
  * This is a bridge, not a replacement for onboarding. Full agent setup
- * (API keys, auth profiles, workspace, channels) happens in the terminal
- * wizard (`bitterbot onboard`; `pnpm bitterbot onboard` in a checkout) for
- * installer and source installs, or in the browser for Docker installs, where the first browser that connects with the
- * token is paired automatically (bootstrap pairing). FirstRun just handles
- * the final "now connect the browser UI to the running gateway" mile when
- * the same-origin token handoff can't answer (non-local viewer).
- * Browser-first onboarding for every install is PLAN-56 Phase 4.
+ * (API keys, model, memory, channels) happens on the setup page
+ * (`<basePath>/setup`, PLAN-56 Phase 4): `bitterbot onboard` prints and opens
+ * a one-time link to it, and a container's first boot prints one in
+ * `docker compose logs`. `bitterbot onboard --no-browser` runs the same steps
+ * in the terminal. FirstRun just handles "connect this browser to a running
+ * gateway" when the same-origin token handoff can't answer (non-local viewer).
  */
 
 import { useEffect, useState } from "react";
@@ -217,7 +216,7 @@ export function FirstRun({ onComplete }: { onComplete: () => void }) {
             if you set one). Installer and source installs without a token yet:{" "}
             <code className="px-1 py-0.5 bg-muted rounded text-2xs">bitterbot onboard</code> (or{" "}
             <code className="px-1 py-0.5 bg-muted rounded text-2xs">pnpm bitterbot onboard</code> in
-            a checkout) walks you through setup in the terminal and generates one.
+            a checkout) prints a one-time setup link that finishes setup in this browser.
           </p>
         </footer>
       </div>

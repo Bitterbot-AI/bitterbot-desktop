@@ -61,7 +61,6 @@ import { registerJudgeFromConfig } from "../tasks/judge-provider.js";
 import { startTaskStallSweep } from "../tasks/stall-sweep.js";
 import { startTaskStore } from "../tasks/store.js";
 import { VERSION } from "../version.js";
-import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
 import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
@@ -380,7 +379,8 @@ export async function startGatewayServer(
     ? createAuthRateLimiter(rateLimitConfig)
     : undefined;
 
-  const wizardRunner = opts.wizardRunner ?? runOnboardingWizard;
+  // Unset: wizard.* runs the setup step model (PLAN-56 Phase 4).
+  const wizardRunner = opts.wizardRunner;
   const { wizardSessions, findRunningWizard, purgeWizardSession } = createWizardSessionTracker();
 
   const deps = createDefaultDeps();

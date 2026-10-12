@@ -47,7 +47,9 @@ const AUTH_CHOICE_HELP = formatAuthChoiceChoicesForCli({
 export function registerOnboardCommand(program: Command) {
   const command = program
     .command("onboard")
-    .description("Interactive wizard to set up the gateway, workspace, and skills")
+    .description(
+      "Set up Bitterbot: a setup page in your browser, or the terminal wizard (--no-browser)",
+    )
     .addHelpText(
       "after",
       () =>
@@ -56,6 +58,11 @@ export function registerOnboardCommand(program: Command) {
     .option("--workspace <dir>", "Agent workspace directory (default: ~/.bitterbot/workspace)")
     .option("--reset", "Reset config + credentials + sessions + workspace before running wizard")
     .option("--non-interactive", "Run without prompts", false)
+    .option(
+      "--browser",
+      "Set up in the browser: print and open a one-time setup link (the default)",
+    )
+    .option("--no-browser", "Use the terminal wizard instead of the browser setup page")
     .option(
       "--accept-risk",
       "Acknowledge that agents are powerful and full system access is risky (required for --non-interactive)",
@@ -121,6 +128,7 @@ export function registerOnboardCommand(program: Command) {
         {
           workspace: opts.workspace as string | undefined,
           nonInteractive: Boolean(opts.nonInteractive),
+          browser: typeof opts.browser === "boolean" ? opts.browser : undefined,
           acceptRisk: Boolean(opts.acceptRisk),
           flow: opts.flow as "quickstart" | "advanced" | "manual" | undefined,
           mode: opts.mode as "local" | "remote" | undefined,

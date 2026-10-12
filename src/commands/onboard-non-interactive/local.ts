@@ -63,6 +63,35 @@ export async function runNonInteractiveOnboardingLocal(params: {
   }
   nextConfig = nextConfigAfterAuth;
 
+  // PLAN-56 Phase 4: the rest of setup is the shared step model with every
+  // recommended answer (what the "recommended defaults" fork accepts). With
+  // no auth flag, the model key is the first one found in the environment,
+  // ~/.bitterbot/.env or the auth store; flags keep the provider they chose.
+  {
+    const { commitSetupKey, createSetupDraft, runSetupSteps } =
+      await import("../../wizard/setup-steps.js");
+    const { detectSetupKeys } = await import("../../wizard/setup-keys.js");
+    const ctx = {
+      effective: baseConfig,
+      keys: detectSetupKeys(),
+      keyEnv: {},
+      installKind: "unknown" as const,
+      env: process.env,
+    };
+    const draft = createSetupDraft(nextConfig);
+    const authFromFlags = authChoice !== "skip";
+    await runSetupSteps({
+      ctx,
+      draft,
+      presets: authFromFlags ? { auth: "skip", model: "keep" } : undefined,
+    });
+    await commitSetupKey(draft, ctx);
+    nextConfig = draft.config;
+    if (!authFromFlags && draft.answers.auth && draft.answers.auth !== "skip" && !opts.json) {
+      runtime.log(`Model key: ${draft.answers.auth} (saved for the gateway)`);
+    }
+  }
+
   const gatewayBasePort = resolveGatewayPort(baseConfig);
   const gatewayResult = applyNonInteractiveGatewayConfig({
     nextConfig,

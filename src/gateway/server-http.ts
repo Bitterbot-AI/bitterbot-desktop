@@ -27,7 +27,7 @@ import {
   type ResolvedGatewayAuth,
 } from "./auth.js";
 import { handleAvatarRequest } from "./avatar-http.js";
-import { handleControlUiRequest } from "./control-ui-http.js";
+import { handleControlUiRequest, SETUP_PAGE_PATH, stripBasePath } from "./control-ui-http.js";
 import { handleSessionTokenRequest, SESSION_TOKEN_PATH } from "./control-ui-session-token.js";
 import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
@@ -56,6 +56,7 @@ import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { hostnameOf, LOOPBACK_HOSTS, setupTokenLive, verifySetupToken } from "./setup-token.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 import { renderWalletFundingPage } from "./wallet-funding-page.js";
 
@@ -186,6 +187,43 @@ function writeUpgradeAuthFailure(
     return;
   }
   socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+}
+
+function controlUiBasePathFor(cfg: { gateway?: { controlUi?: { basePath?: string } } }): string {
+  return normalizeControlUiBasePath(cfg.gateway?.controlUi?.basePath);
+}
+
+/**
+ * PLAN-56 Phase 4: the setup page for a browser holding a setup link, when
+ * the request is not a direct loopback one (Docker's port mapping). The page
+ * needs a live token in its query; its static assets (the public bundle, no
+ * secrets in it since PLAN-39) load while a setup link is live. Both require
+ * a loopback Host header, like the token itself.
+ */
+export function isSetupPageRequest(
+  req: IncomingMessage,
+  basePath: string,
+  opts?: { stateDir?: string },
+): boolean {
+  const host = hostnameOf(req.headers.host);
+  if (!host || !LOOPBACK_HOSTS.has(host)) {
+    return false;
+  }
+  let url: URL;
+  try {
+    url = new URL(req.url ?? "/", "http://localhost");
+  } catch {
+    return false;
+  }
+  const relative = stripBasePath(url.pathname, basePath);
+  if (relative === null) {
+    return false;
+  }
+  if (relative === SETUP_PAGE_PATH || relative === `${SETUP_PAGE_PATH}/`) {
+    return verifySetupToken(url.searchParams.get("token"), opts).ok;
+  }
+  const isAsset = relative !== "/" && !relative.endsWith(".html") && !relative.startsWith("/auth/");
+  return isAsset && setupTokenLive(opts);
 }
 
 export type HooksRequestHandler = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
@@ -766,6 +804,11 @@ export function createGatewayHttpServer(opts: {
             // Same trust the existing dashboard pages encode: a valid bearer
             // token, or a direct loopback request.
             if (isLocalDirectRequest(request, trustedProxies)) {
+              return true;
+            }
+            // PLAN-56 Phase 4: the setup page (and its assets) for a browser
+            // holding a live setup link, e.g. through Docker's port mapping.
+            if (isSetupPageRequest(request, controlUiBasePathFor(configSnapshot))) {
               return true;
             }
             const token = getBearerToken(request);

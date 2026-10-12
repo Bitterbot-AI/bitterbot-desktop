@@ -55,6 +55,16 @@ export const WizardStepOptionSchema = Type.Object(
   { additionalProperties: false },
 );
 
+export const WizardSectionSchema = Type.Object(
+  {
+    id: NonEmptyString,
+    title: NonEmptyString,
+    index: Type.Integer({ minimum: 1 }),
+    total: Type.Integer({ minimum: 1 }),
+  },
+  { additionalProperties: false },
+);
+
 export const WizardStepSchema = Type.Object(
   {
     id: NonEmptyString,
@@ -74,6 +84,12 @@ export const WizardStepSchema = Type.Object(
     placeholder: Type.Optional(Type.String()),
     sensitive: Type.Optional(Type.Boolean()),
     executor: Type.Optional(Type.Union([Type.Literal("gateway"), Type.Literal("client")])),
+    // PLAN-56 Phase 4: which setup step (src/wizard/setup-steps.ts) this
+    // prompt belongs to, so a renderer can show progress.
+    section: Type.Optional(WizardSectionSchema),
+    // Structured detail a renderer may show richly (first reply, doctor
+    // summary, completion). Never carries a secret.
+    data: Type.Optional(Type.Unknown()),
   },
   { additionalProperties: false },
 );

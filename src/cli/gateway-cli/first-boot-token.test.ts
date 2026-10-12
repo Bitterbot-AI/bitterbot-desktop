@@ -55,6 +55,7 @@ describe("generateFirstBootToken", () => {
       makeToken: () => "t0k3n",
       write,
       inContainer: true,
+      issueSetupToken: () => "s3tup",
       bootstrapPairing: true,
     });
     expect(token).toBe("t0k3n");
@@ -64,6 +65,8 @@ describe("generateFirstBootToken", () => {
     expect(write).toHaveBeenCalledOnce();
     const banner = write.mock.calls[0][0] as string;
     expect(banner).toContain("Token:  t0k3n");
+    // PLAN-56 Phase 4: the container banner carries the one-time setup link.
+    expect(banner).toContain("http://127.0.0.1:19001/setup?token=s3tup");
     expect(banner).toContain("the first browser that");
     expect(banner).toContain("http://127.0.0.1:19001/");
     expect(banner).toContain(

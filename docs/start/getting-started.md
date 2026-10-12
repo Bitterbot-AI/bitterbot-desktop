@@ -34,11 +34,16 @@ With Docker, the whole install is:
 mkdir bitterbot && cd bitterbot
 curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
 docker compose up -d
-docker compose logs bitterbot-gateway   # shows the generated token
+docker compose logs bitterbot-gateway   # shows a one-time setup link and the token
 ```
 
-Then open `http://127.0.0.1:19001/` and paste the token. The token is printed
-once; read it again any time with
+Open the setup link from the log (`http://127.0.0.1:19001/setup?token=...`,
+valid 30 minutes, works once) and finish setup in the browser: model key,
+model, memory, web search, channels, P2P, then a first reply from your agent
+with its latency. Link expired? Get a new one with
+`docker compose exec -u node bitterbot-gateway node bitterbot.mjs onboard`.
+Afterwards the Control UI is `http://127.0.0.1:19001/`; it asks for the token
+printed in the same log. The token is printed once; read it again any time with
 `docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token`
 (or use the value of `BITTERBOT_GATEWAY_TOKEN` if you set one). (The compose file is
 attached to releases from 1.5.0 on; before that, follow the `docker run` form
@@ -53,7 +58,8 @@ curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main
 It prints its plan, verifies the release's minisign signature (with
 `minisign` or OpenSSL 3; otherwise it says it checked SHA-256 only), unpacks
 to `~/.bitterbot/app/<version>`, links `~/.local/bin/bitterbot`, and runs
-`bitterbot onboard`. To check a download by hand: `minisign -Vm checksums.txt`
+`bitterbot onboard`, which starts the gateway and opens a one-time setup page
+in your browser (`--no-browser` keeps setup in the terminal). To check a download by hand: `minisign -Vm checksums.txt`
 with the key on the [installer page](/start/install-script#verify-a-download-yourself),
 or `gh attestation verify <tarball> --repo Bitterbot-AI/bitterbot-desktop`.
 Later, `bitterbot update` updates it in place (verified, with a snapshot of
@@ -99,8 +105,11 @@ Check your Node version with `node --version` if you are unsure.
     pnpm bitterbot onboard --install-daemon
     ```
 
-    The wizard configures auth, gateway settings, and optional channels.
-    See [Onboarding Wizard](/start/wizard) for details.
+    The wizard configures auth, gateway settings, and optional channels, and
+    installs the gateway service. Without `--install-daemon`,
+    `pnpm bitterbot onboard` starts the gateway and finishes setup on a
+    one-time page in your browser instead. See
+    [Onboarding Wizard](/start/wizard) for details.
 
   </Step>
   <Step title="Check the Gateway">

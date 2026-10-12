@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { WizardCancelledError, type WizardProgress, type WizardPrompter } from "./prompts.js";
+import {
+  WizardCancelledError,
+  type WizardProgress,
+  type WizardPrompter,
+  type WizardSectionInfo,
+} from "./prompts.js";
 
 export type WizardStepOption = {
   value: unknown;
@@ -17,6 +22,8 @@ export type WizardStep = {
   placeholder?: string;
   sensitive?: boolean;
   executor?: "gateway" | "client";
+  section?: WizardSectionInfo;
+  data?: unknown;
 };
 
 export type WizardSessionStatus = "running" | "done" | "cancelled" | "error";
@@ -45,7 +52,13 @@ function createDeferred<T>(): Deferred<T> {
 }
 
 class WizardSessionPrompter implements WizardPrompter {
+  private currentSection: WizardSectionInfo | undefined;
+
   constructor(private session: WizardSession) {}
+
+  section(info: WizardSectionInfo | null): void {
+    this.currentSection = info ? { ...info } : undefined;
+  }
 
   async intro(title: string): Promise<void> {
     await this.prompt({
@@ -65,14 +78,21 @@ class WizardSessionPrompter implements WizardPrompter {
     });
   }
 
-  async note(message: string, title?: string): Promise<void> {
-    await this.prompt({ type: "note", title, message, executor: "client" });
+  async note(message: string, title?: string, opts?: { data?: unknown }): Promise<void> {
+    await this.prompt({
+      type: "note",
+      title,
+      message,
+      executor: "client",
+      ...(opts?.data !== undefined ? { data: opts.data } : {}),
+    });
   }
 
   async select<T>(params: {
     message: string;
     options: Array<{ value: T; label: string; hint?: string }>;
     initialValue?: T;
+    data?: unknown;
   }): Promise<T> {
     const res = await this.prompt({
       type: "select",
@@ -84,6 +104,7 @@ class WizardSessionPrompter implements WizardPrompter {
       })),
       initialValue: params.initialValue,
       executor: "client",
+      ...(params.data !== undefined ? { data: params.data } : {}),
     });
     return res as T;
   }
@@ -112,6 +133,7 @@ class WizardSessionPrompter implements WizardPrompter {
     initialValue?: string;
     placeholder?: string;
     validate?: (value: string) => string | undefined;
+    sensitive?: boolean;
   }): Promise<string> {
     const res = await this.prompt({
       type: "text",
@@ -119,6 +141,7 @@ class WizardSessionPrompter implements WizardPrompter {
       initialValue: params.initialValue,
       placeholder: params.placeholder,
       executor: "client",
+      ...(params.sensitive ? { sensitive: true } : {}),
     });
     const value =
       res === null || res === undefined
@@ -155,12 +178,18 @@ class WizardSessionPrompter implements WizardPrompter {
   private async prompt(step: Omit<WizardStep, "id">): Promise<unknown> {
     return await this.session.awaitAnswer({
       ...step,
+      ...(this.currentSection ? { section: { ...this.currentSection } } : {}),
       id: randomUUID(),
     });
   }
 }
 
 export class WizardSession {
+  /**
+   * Who may resume this session after a page reload (PLAN-56 Phase 4): a
+   * setup token's hash, or "admin". Set by the wizard.start handler.
+   */
+  owner: string | undefined;
   private currentStep: WizardStep | null = null;
   private stepDeferred: Deferred<WizardStep | null> | null = null;
   private answerDeferred = new Map<string, Deferred<unknown>>();

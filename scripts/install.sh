@@ -701,13 +701,13 @@ main() {
   if [ "$onboard" = "1" ]; then
     if { : </dev/tty; } 2>/dev/null; then
       bb_say ""
-      bb_say "Starting setup: bitterbot onboard"
+      bb_say "Starting setup: bitterbot onboard (opens a one-time setup page in your browser; add --no-browser for the terminal)"
       "$bin_cmd" onboard </dev/tty || bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
     else
-      bb_say "No terminal for setup; run: $bin_cmd onboard"
+      bb_say "No terminal for setup; run: $bin_cmd onboard (it prints a one-time setup link)"
     fi
   else
-    bb_say "Next: $bin_cmd onboard"
+    bb_say "Next: $bin_cmd onboard (opens a one-time setup page in your browser)"
   fi
 }
 

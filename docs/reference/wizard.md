@@ -256,8 +256,24 @@ bitterbot agents add work \
 
 ## Gateway wizard RPC
 
-The Gateway exposes the wizard flow over RPC (`wizard.start`, `wizard.next`, `wizard.cancel`, `wizard.status`).
-Clients (Control UI) can render steps without re‑implementing onboarding logic.
+The Gateway exposes setup over RPC (`wizard.start`, `wizard.next`,
+`wizard.cancel`, `wizard.status`). `wizard.start` runs the same step model as
+the terminal QuickStart (`src/wizard/setup-steps.ts`), followed by a first
+reply on the chosen model and a doctor summary; the Control UI's `/setup` page
+renders the steps it returns. Each step is a prompt (`note`, `select`, `text`,
+`confirm`, `multiselect`) with an optional `section` (which setup step, index,
+total) and optional `data` (first reply, doctor summary, completion). Secrets
+never appear in a step: detected keys are listed by name and last four
+characters, and a pasted key is a `text` step marked `sensitive`.
+
+Who may call them:
+
+- An admin-authenticated client, any time.
+- A client that connected with a setup token (`auth.setupToken` in `connect`,
+  from the link `bitterbot onboard` prints): only these four methods, no
+  broadcast events, only while the token is live (30 minutes, deleted when
+  setup completes), only from a loopback Host, and only until onboarding is
+  complete.
 
 ## Signal setup (signal-cli)
 

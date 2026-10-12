@@ -25,6 +25,7 @@ import {
   writeConfigFile,
 } from "../../config/config.js";
 import { bootstrapPairingEnabled } from "../../gateway/bootstrap-pairing.js";
+import { issueSetupToken } from "../../gateway/setup-token.js";
 import { looksLikeContainer, readDeclaredInstallKind } from "../../infra/install-kind.js";
 
 /** Same shape as the wizard's and doctor's `randomToken()` (48 hex chars). */
@@ -58,6 +59,8 @@ export function formatFirstBootTokenBanner(params: {
   inContainer: boolean;
   /** Bootstrap pairing (BITTERBOT_BOOTSTRAP_PAIRING=1 or the config switch) is on. */
   bootstrapPairing?: boolean;
+  /** PLAN-56 Phase 4: one-time browser setup link (container only; it carries a token). */
+  setupUrl?: string;
 }): string {
   const rule = "=".repeat(72);
   const where = params.inContainer
@@ -70,11 +73,24 @@ export function formatFirstBootTokenBanner(params: {
   const tokenLine = params.inContainer
     ? `  Token:  ${params.token}`
     : `  Token:  run \`${formatTokenRetrievalCommand(false)}\``;
+  const setupLines =
+    params.inContainer && params.setupUrl
+      ? [
+          "Finish setup in your browser (link valid 30 minutes, works once):",
+          `  ${params.setupUrl}`,
+          "Link expired? Get a new one with:",
+          "  docker compose exec -u node bitterbot-gateway node bitterbot.mjs onboard",
+          "",
+        ]
+      : params.inContainer
+        ? []
+        : ["Finish setup with `bitterbot onboard` (it prints a one-time setup link).", ""];
   return [
     rule,
     "Bitterbot generated a gateway token on first boot and saved it to",
     `${params.configPath} (gateway.auth.token).`,
     "",
+    ...setupLines,
     `  Open:   ${where}`,
     tokenLine,
     "",
@@ -107,6 +123,7 @@ export async function generateFirstBootToken(params: {
   makeToken?: () => string;
   inContainer?: boolean;
   bootstrapPairing?: boolean;
+  issueSetupToken?: () => string;
 }): Promise<string> {
   const readSnapshot = params.readSnapshot ?? readConfigFileSnapshot;
   const writeConfig = params.writeConfig ?? writeConfigFile;
@@ -136,12 +153,24 @@ export async function generateFirstBootToken(params: {
   const inContainer =
     params.inContainer ?? (readDeclaredInstallKind() === "container" || looksLikeContainer());
   const write = params.write ?? ((text: string) => void process.stdout.write(text));
+  // PLAN-56 Phase 4: a container's first boot also prints a one-time setup
+  // link, so `docker compose logs` is all it takes to start setup.
+  let setupUrl: string | undefined;
+  if (inContainer) {
+    try {
+      const mint = params.issueSetupToken ?? (() => issueSetupToken().token);
+      setupUrl = `http://127.0.0.1:${params.port}/setup?token=${encodeURIComponent(mint())}`;
+    } catch {
+      setupUrl = undefined;
+    }
+  }
   write(
     formatFirstBootTokenBanner({
       token,
       configPath: snapshot.path,
       port: params.port,
       inContainer,
+      setupUrl,
       bootstrapPairing:
         params.bootstrapPairing ??
         bootstrapPairingEnabled(base.gateway?.controlUi?.bootstrapPairing),

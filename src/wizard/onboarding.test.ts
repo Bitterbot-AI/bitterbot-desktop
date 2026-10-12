@@ -377,6 +377,60 @@ describe("runOnboardingWizard", () => {
     await runTuiHatchTest({ writeBootstrapFile: false, expectedMessage: undefined });
   });
 
+  it("terminal QuickStart runs exactly the shared setup step model (PLAN-56 Phase 4)", async () => {
+    // The browser renderer is pinned to the same list in setup-wizard.test.ts:
+    // a prompt added to QuickStart outside the model, or a step the terminal
+    // skips, fails here.
+    const { SETUP_STEP_IDS } = await import("./setup-steps.js");
+    let current: string | null = null;
+    const sections: string[] = [];
+    const prompts: Array<{ kind: string; section: string | null; message: string }> = [];
+    const record = (kind: string, message: string) =>
+      prompts.push({ kind, section: current, message });
+    const select = vi.fn(async (params: Parameters<WizardPrompter["select"]>[0]) => {
+      record("select", params.message);
+      const values = new Set(params.options.map((o) => o.value as unknown));
+      if (values.has("quickstart")) {
+        return "quickstart";
+      }
+      if (values.has("custom")) {
+        return "custom";
+      }
+      return params.initialValue ?? params.options[0]?.value;
+    }) as WizardPrompter["select"];
+    const confirm = vi.fn(async (params: { message: string }) => {
+      record("confirm", params.message);
+      return true;
+    }) as WizardPrompter["confirm"];
+    const text = vi.fn(async (params: { message: string }) => {
+      record("text", params.message);
+      return "";
+    }) as WizardPrompter["text"];
+    const prompter = createWizardPrompter({
+      select,
+      confirm,
+      text,
+      section: (info) => {
+        current = info?.id ?? null;
+        if (info) {
+          sections.push(info.id);
+        }
+      },
+    });
+    await runOnboardingWizard(
+      { installDaemon: false, skipHealth: true, skipUi: true },
+      createRuntime({ throwsOnExit: true }),
+      prompter,
+    );
+    expect(sections).toEqual([...SETUP_STEP_IDS]);
+    const forkIndex = prompts.findIndex((p) => p.message.startsWith("Recommended defaults:"));
+    expect(forkIndex).toBeGreaterThan(-1);
+    // Before the model: the risk acknowledgement and the QuickStart/Manual
+    // choice. After the fork: only prompts that belong to a model step.
+    expect(prompts.slice(0, forkIndex).map((p) => p.kind)).toEqual(["confirm", "select"]);
+    expect(prompts.slice(forkIndex + 1).filter((p) => p.section === null)).toEqual([]);
+  });
+
   it("quickstart defers skills, hooks, channels, and the model pick (PLAN-41 D-M)", async () => {
     setupSkills.mockClear();
     setupChannels.mockClear();
