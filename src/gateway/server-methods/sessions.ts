@@ -425,6 +425,9 @@ export const sessionsHandlers: GatewayRequestHandlers = {
               target.agentId,
             ).filter((file) => fs.existsSync(file)),
             archive,
+            // PLAN-55 Phase 3 review M4: automatic housekeeping says so and
+            // gets the weaker, agent-strength cascade; everyone else is the owner.
+            initiator: p.initiator === "system" ? "system" : "owner",
           })
         : { archived: archive(), memory: null };
 

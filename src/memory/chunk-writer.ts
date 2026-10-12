@@ -372,14 +372,16 @@ export function insertImportedChunk(
     updatedAt: number;
     epistemicLayer: string | null;
     governanceJson: string | null;
+    /** Never first-party: an export's provenance cannot be verified. */
+    sessionTrust: "untrusted" | "unknown";
   },
 ): number {
   const res = db
     .prepare(
       `INSERT OR IGNORE INTO chunks (id, path, source, start_line, end_line, hash, model, text,
          embedding, updated_at, created_at, origin, memory_type, semantic_type, lifecycle,
-         importance_score, epistemic_layer, governance_json, access_count)
-       VALUES (?, ?, ?, 0, 0, ?, 'pending', ?, ?, ?, ?, 'import', 'plaintext', ?, ?, ?, ?, ?, 0)`,
+         importance_score, epistemic_layer, governance_json, access_count, session_trust)
+       VALUES (?, ?, ?, 0, 0, ?, 'pending', ?, ?, ?, ?, 'import', 'plaintext', ?, ?, ?, ?, ?, 0, ?)`,
     )
     .run(
       row.id,
@@ -395,6 +397,7 @@ export function insertImportedChunk(
       row.importance,
       row.epistemicLayer,
       row.governanceJson,
+      row.sessionTrust,
     );
   return Number(res.changes);
 }

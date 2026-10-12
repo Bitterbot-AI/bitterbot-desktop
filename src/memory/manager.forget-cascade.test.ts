@@ -43,8 +43,10 @@ type Mgr = {
   indexFile: (e: unknown, o: { source: string }) => Promise<void>;
   canonicalFacts: () => CanonicalFactsStore | null;
   ownerForgetMemory: (id: string, o?: { planHash?: string }) => Promise<unknown>;
+  ownerForgetPreview: (id: string) => Promise<{ planHash: string }>;
   ownerForgetSession: (
     files: string[],
+    opts?: { onCollected?: () => string[] | void; initiator?: "owner" | "system" },
   ) => Promise<{ retiredFacts: unknown[]; survivors: unknown[] }>;
   ownerExportTo: (sink: (p: string) => void) => Promise<{ memories: number }>;
   ownerImportMemories: (
@@ -160,6 +162,52 @@ describe("forget cascade through the manager", () => {
     expect(store.get("identity.name")?.status).toBe("active");
     expect(result.survivors).toEqual([{ key: "identity.name", value: "Victor", reason: "owner" }]);
     expect(sessionChunks(mgr.db)).toEqual([]);
+  });
+
+  it("H2: a transcript the archive did not move keeps its memories and facts", async () => {
+    const { mgr, sessionFile } = await boot(["We use pnpm in every repo here.", "Got it."]);
+    const chunk = sessionChunks(mgr.db)[0]!;
+    const store = mgr.canonicalFacts()!;
+    store.pin({
+      key: "project.package_manager",
+      value: "pnpm",
+      source: "extraction",
+      evidenceChunkIds: [chunk.id],
+    });
+    const before = sessionChunks(mgr.db).length;
+    // The archive step ran, but its rename failed: nothing is confirmed archived.
+    const result = await mgr.ownerForgetSession([sessionFile], { onCollected: () => [] });
+    expect(result.retiredFacts).toEqual([]);
+    expect(store.get("project.package_manager")?.status).toBe("active");
+    expect(sessionChunks(mgr.db)).toHaveLength(before);
+  });
+
+  it("caps concurrent previews (they scan without the maintenance lock)", async () => {
+    const { mgr } = await boot(["We use pnpm in every repo here.", "Got it."]);
+    const id = sessionChunks(mgr.db)[0]!.id;
+    const runs = [1, 2, 3].map(() => mgr.ownerForgetPreview(id));
+    const settled = await Promise.allSettled(runs);
+    expect(settled.filter((r) => r.status === "fulfilled")).toHaveLength(2);
+    const rejected = settled.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(String(rejected.reason)).toMatch(/still running/);
+    // Released afterwards.
+    await expect(mgr.ownerForgetPreview(id)).resolves.toHaveProperty("planHash");
+  });
+
+  it("an export aborts with a clear error when the database is swapped mid-export", async () => {
+    const { mgr } = await boot(["We use pnpm in every repo here.", "Got it."]);
+    const original = mgr.db;
+    let pieces = 0;
+    await expect(
+      mgr.ownerExportTo(() => {
+        pieces += 1;
+        if (pieces === 3) {
+          // What runSafeReindex does: the manager's handle now points elsewhere.
+          (mgr as unknown as { db: unknown }).db = { swapped: true };
+        }
+      }),
+    ).rejects.toThrow(/rebuilt during the export/);
+    (mgr as unknown as { db: DatabaseSync }).db = original;
   });
 
   it("exports and imports through the owner methods", async () => {

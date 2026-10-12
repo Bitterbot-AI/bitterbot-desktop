@@ -90,6 +90,78 @@ describe("memory export download", () => {
     expect(post.res.statusCode).toBe(405);
   });
 
+  it("removes its drain/close listeners after every wait (no leak over a long download)", async () => {
+    const link = mintMemoryExportToken("main");
+    const { res } = fakeRes();
+    const emitter = res as unknown as EventEmitter;
+    let maxListeners = 0;
+    const source = {
+      ownerExportTo: async (sink: (p: string) => void | Promise<void>) => {
+        for (let i = 0; i < 602; i++) {
+          await sink("x");
+          maxListeners = Math.max(
+            maxListeners,
+            emitter.listenerCount("drain"),
+            emitter.listenerCount("close"),
+          );
+        }
+        return { memories: 0, facts: 0, bytes: 602, redactions: 0 } as never;
+      },
+    };
+    await handleMemoryExportHttpRequest(req(link.path), res, {
+      openExportSource: async () => source,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(maxListeners).toBe(0);
+    expect(emitter.listenerCount("drain")).toBe(0);
+    expect(emitter.listenerCount("close")).toBe(0);
+    expect(emitter.listenerCount("error")).toBe(0);
+  });
+
+  it("stops the export when the response errors while waiting to drain", async () => {
+    const link = mintMemoryExportToken("main");
+    const { res } = fakeRes();
+    const emitter = res as unknown as EventEmitter;
+    (res as unknown as { write: () => boolean }).write = () => {
+      setImmediate(() => emitter.emit("error", new Error("EPIPE")));
+      return false;
+    };
+    let pieces = 0;
+    const source = {
+      ownerExportTo: async (sink: (p: string) => void | Promise<void>) => {
+        for (let i = 0; i < 5; i++) {
+          await sink("x");
+          pieces += 1;
+        }
+        return { memories: 0, facts: 0, bytes: 5, redactions: 0 } as never;
+      },
+    };
+    await handleMemoryExportHttpRequest(req(link.path), res, {
+      openExportSource: async () => source,
+    });
+    expect(pieces).toBe(0);
+    expect(res.destroyed).toBe(true);
+  });
+
+  it("serves the download under the Control UI base path", async () => {
+    const link = mintMemoryExportToken("main");
+    const { res, chunks } = fakeRes();
+    const source = {
+      ownerExportTo: async (sink: (p: string) => void | Promise<void>) => {
+        await sink("{}");
+        return { memories: 0, facts: 0, bytes: 2, redactions: 0 } as never;
+      },
+    };
+    expect(
+      await handleMemoryExportHttpRequest(req(`/bb${link.path}`), res, {
+        openExportSource: async () => source,
+        basePath: "/bb",
+      }),
+    ).toBe(true);
+    expect(res.statusCode).toBe(200);
+    expect(chunks.join("")).toBe("{}");
+  });
+
   it("ignores other paths", async () => {
     expect(await handleMemoryExportHttpRequest(req("/api/other"), fakeRes().res)).toBe(false);
   });

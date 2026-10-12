@@ -95,4 +95,29 @@ describe("redactSecretShapes (PLAN-55 Phase 3 export)", () => {
       redactions: 0,
     });
   });
+
+  it("leaves file paths and identifiers alone (review: no over-redaction)", () => {
+    for (const text of [
+      "/home/x/bitterbot-desktop/src/memory/forgetCascade/ManagerEmbeddingOps2v3.test.ts",
+      "C:/Users/Victor/Documents/Projects2024/BitterbotDesktop/src/index.ts",
+      "see MemoryIndexManagerOwnerForgetSessionWithCascade2Phase3 in the log",
+      "/home/vicmg/bb-plan55p3/src/memory/memory-export-import.test.ts",
+    ]) {
+      expect(redactSecretShapes(text)).toEqual({ text, redactions: 0 });
+      expect(looksLikeSecretValue(text)).toBe(false);
+    }
+  });
+
+  it("still redacts real key shapes, including base64 runs with slashes", () => {
+    for (const secret of [
+      // Built at runtime so secret scanners do not read the fixture as a key.
+      ["q7Rk2vNw", "Lp9/Xc4T", "mZ8bQe/3", "HsJ6yUf1", "Gd5aWt0K"].join(""),
+      ["ch9U+c48x4sv", "XstXnYDbf6pK", "W9JTMJuCbjBr0SMDq2"].join(""),
+      "aB3dE5fG7hI9jK1lM3nO5pQ7rS9tU1vW3xY5zA7bC9dE1fG3hI5jK7",
+      "sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
+      "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    ]) {
+      expect(redactSecretShapes(`key: ${secret} end`).text).toBe("key: [redacted] end");
+    }
+  });
 });

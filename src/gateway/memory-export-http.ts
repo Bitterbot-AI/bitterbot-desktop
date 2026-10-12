@@ -10,11 +10,12 @@
  *
  * The token is the credential: 32 random bytes, single use, valid for five
  * minutes, minted only for an operator with admin scope, kept only in this
- * process's memory. A used, unknown or expired token gets a 404.
+ * process's memory. A used, unknown or expired token gets a 404. The path is
+ * served at the root and under the Control UI's `basePath`, and the RPC
+ * hands out the link under the configured base path.
  */
 
 import crypto from "node:crypto";
-import { once } from "node:events";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { loadConfig } from "../config/config.js";
@@ -42,6 +43,38 @@ function prune(now: number): void {
     if (oldest === undefined) break;
     pending.delete(oldest);
   }
+}
+
+/** Strip the Control UI base path (normalised, "" for none) from a request path. */
+function exportPathname(pathname: string, basePath: string): string {
+  return basePath && pathname.startsWith(`${basePath}${MEMORY_EXPORT_HTTP_PREFIX}`)
+    ? pathname.slice(basePath.length)
+    : pathname;
+}
+
+/**
+ * Wait for the response to drain. Every listener it adds is removed again
+ * whichever event wins, so a long download does not pile up listeners.
+ */
+function waitForDrain(res: ServerResponse): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const settle = (err?: Error) => {
+      res.off("drain", onDrain);
+      res.off("close", onClose);
+      res.off("error", onError);
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    };
+    const onDrain = () => settle();
+    const onClose = () => settle(new Error("the client went away"));
+    const onError = (err: Error) => settle(err);
+    res.on("drain", onDrain);
+    res.on("close", onClose);
+    res.on("error", onError);
+  });
 }
 
 /** Mint a one-time download token for this agent's export. */
@@ -97,9 +130,17 @@ async function defaultOpenExportSource(agentId: string): Promise<ExportSource> {
 export async function handleMemoryExportHttpRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  deps: { openExportSource?: (agentId: string) => Promise<ExportSource>; now?: () => number } = {},
+  deps: {
+    openExportSource?: (agentId: string) => Promise<ExportSource>;
+    now?: () => number;
+    /** `gateway.controlUi.basePath`, normalised ("" when mounted at /). */
+    basePath?: string;
+  } = {},
 ): Promise<boolean> {
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const pathname = exportPathname(
+    new URL(req.url ?? "/", "http://localhost").pathname,
+    deps.basePath ?? "",
+  );
   if (!pathname.startsWith(MEMORY_EXPORT_HTTP_PREFIX)) {
     return false;
   }
@@ -137,12 +178,16 @@ export async function handleMemoryExportHttpRequest(
     "Content-Disposition",
     `attachment; filename="bitterbot-memory-${safeAgent}-${stamp}.json"`,
   );
+  // A socket error must not surface as an unhandled 'error' event; the
+  // sink's next write sees the destroyed response and stops the export.
+  const onResError = (err: Error) => log.warn(`memory export download: ${String(err)}`);
+  res.on("error", onResError);
   const sink: ExportSink = async (piece) => {
     if (res.destroyed || res.writableEnded) {
       throw new Error("the client went away");
     }
     if (!res.write(piece)) {
-      await Promise.race([once(res, "drain"), once(res, "close")]);
+      await waitForDrain(res);
     }
   };
   try {
@@ -154,6 +199,8 @@ export async function handleMemoryExportHttpRequest(
   } catch (err) {
     log.warn(`memory export download failed: ${String(err)}`);
     res.destroy(err instanceof Error ? err : new Error(String(err)));
+  } finally {
+    res.off("error", onResError);
   }
   return true;
 }

@@ -125,8 +125,9 @@ describe("forgetting", () => {
   it("forgets a memory indexed from a conversation, suppressing its text (PLAN-55 Phase 3)", async () => {
     await forgetMemory(db, "abc123", TABLES);
     expect(getMemory(db, "abc123")).toBeNull();
+    // A short passage (under 40 characters) is suppressed in its own transcript only.
     expect(db.prepare("SELECT kind, reason FROM memory_suppressions").all() as unknown[]).toEqual([
-      { kind: "chunk_hash", reason: "owner_forget" },
+      { kind: "session_chunk", reason: "owner_forget" },
     ]);
   });
 });

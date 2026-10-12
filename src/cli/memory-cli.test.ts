@@ -491,7 +491,7 @@ describe("memory cli owner controls (PLAN-55 Phase 3)", () => {
     const { out } = await run(["import", file, "--dry-run"], m);
     expect(m.ownerImportMemories).toHaveBeenCalledWith(
       { version: 2, memories: [] },
-      { dryRun: true, actor: "owner", keepOwnerTier: false, confirmOwnerTierGrants: undefined },
+      { dryRun: true, actor: "owner", keepOwnerTier: false, confirmOwnerTierGrantsHash: undefined },
     );
     expect(out).toContain("Dry run, nothing written.");
     expect(out).toContain("Memories: imported 2");
@@ -521,7 +521,7 @@ describe("memory cli owner controls (PLAN-55 Phase 3)", () => {
     });
     const { out, err } = await run(["import", file, "--keep-owner-tier"], m);
     expect(out).toContain(
-      "This will give 2 facts owner authority (they will override the agent and win every conflict)",
+      "This will give 2 facts owner authority (they will override the agent and win every conflict); none of them replace your current owner values.",
     );
     expect(err).toContain("--yes");
     expect(m.ownerImportMemories).toHaveBeenCalledTimes(1);
@@ -534,23 +534,26 @@ describe("memory cli owner controls (PLAN-55 Phase 3)", () => {
     await cleanup();
   });
 
-  it("--keep-owner-tier --yes applies with the dry run's count", async () => {
+  it("--keep-owner-tier --yes applies with the dry run's grants hash", async () => {
     const { file, cleanup } = await exportFile();
     const m = ownerManager({
       ownerImportMemories: vi.fn(async (_i: unknown, opts?: { dryRun?: boolean }) => ({
         dryRun: Boolean(opts?.dryRun),
         ownerTierGrants: 2,
+        ownerTierGrantsHash: "abc123",
+        replacesOwnerValues: 1,
         memories: {},
         facts: {},
         preferences: {},
       })),
     });
     const { out } = await run(["import", file, "--keep-owner-tier", "--yes"], m);
+    expect(out).toContain("; 1 of them replace your current owner values.");
     expect(m.ownerImportMemories).toHaveBeenLastCalledWith(expect.anything(), {
       dryRun: false,
       actor: "owner",
       keepOwnerTier: true,
-      confirmOwnerTierGrants: 2,
+      confirmOwnerTierGrantsHash: "abc123",
     });
     expect(out).toContain("Owner-tier grants: 2");
     await cleanup();

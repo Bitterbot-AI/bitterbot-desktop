@@ -106,7 +106,7 @@ import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
 import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
-import { type ExportSink, writeMemoryExport } from "./memory-export.js";
+import { type ExportSink, MemoryExportInterrupted, writeMemoryExport } from "./memory-export.js";
 import { type ImportActor, importMemories } from "./memory-import.js";
 import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
@@ -123,6 +123,8 @@ import {
   listPreferences as ownerListPreferences,
   collectSessionChunks as ownerCollectSessionChunks,
   forgetSessionMemories as ownerForgetSessionMemories,
+  sessionChunksForFiles as ownerSessionChunksForFiles,
+  OwnerEditRefused,
   type OwnerPinInput,
   previewEdit as ownerPreviewEdit,
   previewForget as ownerPreviewForget,
@@ -196,6 +198,8 @@ const FTS_TABLE = "chunks_fts";
 const SUPERSEDED_OVERFETCH = 10;
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const BATCH_FAILURE_LIMIT = 2;
+/** PLAN-55 Phase 3 review: concurrent forget/edit previews (unlocked full scans). */
+const MAX_OWNER_PREVIEWS_IN_FLIGHT = 2;
 
 const log = createSubsystemLogger("memory");
 
@@ -6186,6 +6190,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       agentId: this.agentId,
       workingMemory,
       genome: await this.readWorkspaceText("GENOME.md"),
+      assertCurrent: this.exportHandleGuard(),
     });
   }
 
@@ -6233,12 +6238,12 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /** What forgetting this memory would also change (read-only), with the plan hash. */
   async ownerForgetPreview(id: string) {
-    return await ownerPreviewForget(this.db, id);
+    return await this.ownerPreview(() => ownerPreviewForget(this.db, id));
   }
 
   /** What replacing this memory's text would also change (read-only). */
   async ownerEditPreview(id: string, text: string) {
-    return await ownerPreviewEdit(this.db, id, text);
+    return await this.ownerPreview(() => ownerPreviewEdit(this.db, id, text));
   }
 
   /**
@@ -6246,15 +6251,35 @@ export class MemoryIndexManager implements MemorySearchManager {
    * indexed memories go with the cascade; facts resting only on it are
    * retired below the owner tier, and the survivors are returned.
    */
-  async ownerForgetSession(sessionFiles: string[], opts: { onCollected?: () => void } = {}) {
+  async ownerForgetSession(
+    sessionFiles: string[],
+    opts: {
+      /**
+       * Runs once the memories are collected (the caller archives the
+       * transcript here). When it returns a list, only those files (the
+       * ones confirmed archived) are forgotten; a transcript whose archive
+       * failed keeps its memories and the facts resting on them.
+       */
+      onCollected?: () => string[] | void;
+      /** `system` for automatic housekeeping (forgetSessionMemories has the difference). */
+      initiator?: "owner" | "system";
+    } = {},
+  ) {
     // Collected first, outside the maintenance lock, so the caller can
     // archive the transcript right away; the cascade then waits its turn.
-    const chunks = await ownerCollectSessionChunks(this.db, sessionFiles);
-    opts.onCollected?.();
+    const collected = await ownerCollectSessionChunks(this.db, sessionFiles);
+    const confirmed = opts.onCollected?.();
+    const files = Array.isArray(confirmed)
+      ? sessionFiles.filter((f) => confirmed.includes(f))
+      : sessionFiles;
+    const chunks = Array.isArray(confirmed)
+      ? ownerSessionChunksForFiles(collected, files)
+      : collected;
     return await this.ownerChange("forget-session", () =>
-      ownerForgetSessionMemories(this.db, sessionFiles, this.ownerIndexTables(), {
+      ownerForgetSessionMemories(this.db, files, this.ownerIndexTables(), {
         store: this.canonicalFactsStore,
         chunks,
+        initiator: opts.initiator,
       }),
     );
   }
@@ -6269,11 +6294,44 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /** Export version 2 to any sink (the gateway's download streams it to the client). */
   async ownerExportTo(sink: ExportSink) {
+    const assertCurrent = this.exportHandleGuard();
     return await writeMemoryExport(this.db, sink, {
       agentId: this.agentId,
       workingMemory: await this.readWorkspaceText("MEMORY.md"),
       genome: await this.readWorkspaceText("GENOME.md"),
+      assertCurrent,
     });
+  }
+
+  /**
+   * PLAN-55 Phase 3 review: an export reads page by page across yields and a
+   * safe reindex can swap `this.db` in between; the guard throws
+   * MemoryExportInterrupted on the first page after a swap.
+   */
+  private exportHandleGuard(): () => void {
+    const db = this.db;
+    return () => {
+      if (this.db !== db) {
+        throw new MemoryExportInterrupted();
+      }
+    };
+  }
+
+  /** Previews running right now; they scan without the maintenance lock, so they are capped. */
+  private ownerPreviewsInFlight = 0;
+
+  private async ownerPreview<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.ownerPreviewsInFlight >= MAX_OWNER_PREVIEWS_IN_FLIGHT) {
+      throw new OwnerEditRefused(
+        "Another preview of what a forget or edit would change is still running; try again in a moment.",
+      );
+    }
+    this.ownerPreviewsInFlight += 1;
+    try {
+      return await fn();
+    } finally {
+      this.ownerPreviewsInFlight -= 1;
+    }
   }
 
   /** The memory database file, for the owner to copy (shown next to the download). */
@@ -6291,7 +6349,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       dryRun?: boolean;
       actor?: ImportActor;
       keepOwnerTier?: boolean;
-      confirmOwnerTierGrants?: number;
+      confirmOwnerTierGrantsHash?: string;
     } = {},
   ) {
     const result = await this.ownerChange("import", () =>
@@ -6299,7 +6357,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         actor: opts.actor ?? "owner",
         dryRun: opts.dryRun,
         keepOwnerTier: opts.keepOwnerTier,
-        confirmOwnerTierGrants: opts.confirmOwnerTierGrants,
+        confirmOwnerTierGrantsHash: opts.confirmOwnerTierGrantsHash,
         store: this.canonicalFactsStore,
         tables: this.ownerIndexTables(),
       }),

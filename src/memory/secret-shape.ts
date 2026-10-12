@@ -22,15 +22,42 @@ const EXTRA_SECRET_PATTERNS: RegExp[] = [
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
   // Long hex (api keys, hashes used as tokens).
   /\b[0-9a-f]{32,}\b/i,
-  // Long base64-ish run with no spaces (session tokens, secrets): mixed case
-  // AND digits, so a long plain word or a repeated letter is not one.
-  /(^|[^A-Za-z0-9+/=])(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*\d[A-Za-z0-9+/]*\d)[A-Za-z0-9+/]{40,}={0,2}(?=$|[^A-Za-z0-9+/=])/,
+  // (Long base64-ish runs are checked separately: BASE64_RUN_RX plus the
+  // word-likeness test, so file paths and identifiers are not secrets.)
   // Stripe / OpenAI / Anthropic style prefixes not in the redaction list.
   /\b(sk|pk|rk)_(live|test)_[A-Za-z0-9]{10,}\b/,
   /\bsk-ant-[A-Za-z0-9_-]{10,}\b/,
 ];
 
 const REDACT_RX: RegExp[] = DEFAULT_REDACT_PATTERNS.map((p) => new RegExp(p, "i"));
+
+/**
+ * Long base64-ish run with no spaces (session tokens, secrets): mixed case
+ * AND at least two digits, so a long plain word or a repeated letter is not
+ * one. Lookbehind keeps the character before the token.
+ */
+const BASE64_RUN_SOURCE = String.raw`(?<![A-Za-z0-9+/=])(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*\d[A-Za-z0-9+/]*\d)[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])`;
+
+/**
+ * True when a base64-shaped run is made of words: a file path
+ * (`bitterbot-desktop/src/memory/forgetCascade/Ops2v3.ts`) or a CamelCase
+ * identifier. At least 70% of it sits in word runs (`[A-Z]?[a-z]{3,}`);
+ * random base64 of 30 to 60 bytes stayed under 66% in 20,000 samples.
+ */
+export function isWordLikeRun(run: string): boolean {
+  const words = run.match(/[A-Z]?[a-z]{3,}/g) ?? [];
+  return words.reduce((n, w) => n + w.length, 0) / run.length >= 0.7;
+}
+
+/** A base64-shaped run in `text` that is not word-like. */
+function hasRandomBase64Run(text: string): boolean {
+  for (const m of text.matchAll(new RegExp(BASE64_RUN_SOURCE, "g"))) {
+    if (!isWordLikeRun(m[0])) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** Key names that name a credential, whatever the value. */
 export const SECRET_KEY_NAME_RX =
@@ -42,7 +69,11 @@ export function looksLikeSecretValue(value: string): boolean {
   if (!text) {
     return false;
   }
-  return EXTRA_SECRET_PATTERNS.some((rx) => rx.test(text)) || REDACT_RX.some((rx) => rx.test(text));
+  return (
+    EXTRA_SECRET_PATTERNS.some((rx) => rx.test(text)) ||
+    REDACT_RX.some((rx) => rx.test(text)) ||
+    hasRandomBase64Run(text)
+  );
 }
 
 /** True when the key names a credential. */
@@ -64,7 +95,8 @@ export function secretRejectionReason(key: string, value: string): string | null
 // PLAN-55 Phase 3: the export redacts credential-shaped text instead of
 // refusing it. Same shapes as looksLikeSecretValue, as global patterns; the
 // base64-run pattern uses lookbehind so the character before the token is
-// kept.
+// kept, and leaves word-like runs (paths, identifiers) alone.
+const BASE64_RUN_GLOBAL_RX = new RegExp(BASE64_RUN_SOURCE, "g");
 const REDACT_GLOBAL_RX: RegExp[] = [
   ...DEFAULT_REDACT_PATTERNS.map((p) => new RegExp(p, "gi")),
   /\bAKIA[0-9A-Z]{16}\b/g,
@@ -72,7 +104,7 @@ const REDACT_GLOBAL_RX: RegExp[] = [
   /-----BEGIN [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----[\s\S]*?-----END [A-Z ]*(?:PRIVATE KEY|CERTIFICATE)-----/g,
   /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
   /\b[0-9a-f]{32,}\b/gi,
-  /(?<![A-Za-z0-9+/=])(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*\d[A-Za-z0-9+/]*\d)[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/=])/g,
+  BASE64_RUN_GLOBAL_RX,
   /\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{10,}\b/g,
   /\bsk-ant-[A-Za-z0-9_-]{10,}\b/g,
 ];
@@ -98,7 +130,10 @@ export function redactSecretShapes(text: string): { text: string; redactions: nu
     rx.lastIndex = 0;
     next = next.replace(rx, (...args: unknown[]) => {
       const match = String(args[0]);
-      if (match.includes(SECRET_REDACTION)) {
+      if (
+        match.includes(SECRET_REDACTION) ||
+        (rx === BASE64_RUN_GLOBAL_RX && isWordLikeRun(match))
+      ) {
         return match;
       }
       redactions += 1;

@@ -28,6 +28,11 @@
  *   value>` (`preferenceValueHash`); the normalised value is kept in the
  *   `text` column so a reworded directive can be compared by word overlap
  *   (`directiveSimilarity`) against what the owner removed.
+ * - `session_chunk` (PLAN-55 Phase 3 review): sha256 of `<indexed transcript
+ *   path>\u0000<chunkTextHash>` (`sessionChunkSuppressionHash`). A forgotten
+ *   transcript passage too short to stand for itself ("ok, thanks", see
+ *   isShortSessionText) is suppressed in its own transcript only; a
+ *   `chunk_hash` would hide the same words in every conversation.
  *
  * Every function takes the database handle per call (the manager swaps it
  * during a reindex). Reads never throw on a database that predates v76 (a
@@ -43,7 +48,8 @@ export type SuppressionKind =
   | "chunk_hash"
   | "fact_key_value"
   | "preference_key"
-  | "preference_value";
+  | "preference_value"
+  | "session_chunk";
 
 export type Suppression = {
   id: string;
@@ -76,6 +82,45 @@ const sha256 = (s: string): string => crypto.createHash("sha256").update(s).dige
 /** Hash for `chunk_hash` suppressions: sha256 of the loosely normalised memory text. */
 export function chunkTextHash(text: string): string {
   return sha256(normalizeLoose(text));
+}
+
+/**
+ * Below this many characters (after loose normalisation), or with fewer than
+ * MIN_SESSION_SUPPRESSION_WORDS distinct words, a forgotten transcript
+ * passage is suppressed by transcript path plus text, not by text alone.
+ */
+export const MIN_SESSION_SUPPRESSION_CHARS = 40;
+export const MIN_SESSION_SUPPRESSION_WORDS = 5;
+
+/** True when a transcript passage is too short or repetitive to suppress by text alone. */
+export function isShortSessionText(text: string): boolean {
+  const loose = normalizeLoose(text);
+  return (
+    loose.length < MIN_SESSION_SUPPRESSION_CHARS ||
+    new Set(loose.split(" ").filter(Boolean)).size < MIN_SESSION_SUPPRESSION_WORDS
+  );
+}
+
+/** The `session_chunk` hash: a passage's text hash bound to its indexed transcript path. */
+export function sessionChunkSuppressionHash(indexedPath: string, textHash: string): string {
+  return sha256(`${indexedPath.replace(/\\/g, "/")}\u0000${textHash}`);
+}
+
+/**
+ * Whether a transcript passage about to be indexed was forgotten by the
+ * owner: by its text (`chunk_hash`) or, for a short one, by its text in this
+ * transcript (`session_chunk`).
+ */
+export function isSessionPassageSuppressed(
+  db: DatabaseSync,
+  indexedPath: string,
+  text: string,
+): boolean {
+  const textHash = chunkTextHash(text);
+  return Boolean(
+    isSuppressed(db, "chunk_hash", textHash) ||
+    isSuppressed(db, "session_chunk", sessionChunkSuppressionHash(indexedPath, textHash)),
+  );
 }
 
 /** Hash for `fact_key_value` suppressions: sha256 of `key\u0000value`, both exact-normalised. */

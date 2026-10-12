@@ -16,6 +16,7 @@ import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemoryIndexManager } from "../../memory/manager.js";
 import { MemoryImportRefused, parseMemoryExport } from "../../memory/memory-import.js";
 import { OwnerEditRefused } from "../../memory/owner-controls.js";
+import { normalizeControlUiBasePath } from "../control-ui-shared.js";
 import { mintMemoryExportToken } from "../memory-export-http.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
@@ -278,8 +279,11 @@ export const memoryHandlers: GatewayRequestHandlers = {
       const m = await memoryManager(str(params.agentId));
       const agentId = str(params.agentId) || resolveDefaultAgentId(loadConfig());
       const link = mintMemoryExportToken(agentId);
+      // Under the Control UI's base path when one is configured (the gateway
+      // serves the download at both).
+      const basePath = normalizeControlUiBasePath(loadConfig().gateway?.controlUi?.basePath);
       respond(true, {
-        url: link.path,
+        url: `${basePath}${link.path}`,
         expiresAt: link.expiresAt,
         sqlitePath: m.ownerDatabasePath(),
       });
@@ -295,8 +299,9 @@ export const memoryHandlers: GatewayRequestHandlers = {
    * skipped, and imported facts never outrank what is already there
    * (memory-import.ts). Facts that were owner-tier in the export import
    * below it (listed as `ownerFactsUnconfirmed`) unless `keepOwnerTier:
-   * true` comes with `confirmOwnerTierGrants` equal to the dry run's
-   * `ownerTierGrants`.
+   * true` comes with `confirmOwnerTierGrantsHash` equal to the dry run's
+   * `ownerTierGrantsHash` (a hash over the exact grants; the dry run also
+   * reports their count and `replacesOwnerValues` for display).
    */
   "memory.import": async ({ params, respond }) => {
     try {
@@ -311,11 +316,11 @@ export const memoryHandlers: GatewayRequestHandlers = {
           dryRun: params.dryRun === true,
           actor: "owner",
           // Rule C: owner-tier facts import below the owner tier unless the
-          // owner opts in and confirms the dry run's grant count.
+          // owner opts in and confirms the dry run's grants by their hash.
           keepOwnerTier: params.keepOwnerTier === true,
-          confirmOwnerTierGrants:
-            typeof params.confirmOwnerTierGrants === "number"
-              ? params.confirmOwnerTierGrants
+          confirmOwnerTierGrantsHash:
+            typeof params.confirmOwnerTierGrantsHash === "string"
+              ? params.confirmOwnerTierGrantsHash
               : undefined,
         }),
       );

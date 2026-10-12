@@ -26,7 +26,7 @@ import {
   type MemoryChunk,
   type MemoryFileEntry,
 } from "./internal.js";
-import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
+import { isSessionPassageSuppressed } from "./memory-suppressions.js";
 import type { SessionFileEntry } from "./session-files.js";
 import type { MemorySource } from "./types.js";
 
@@ -961,7 +961,7 @@ class MemoryManagerEmbeddingOps {
       // reindex of the (unchanged) transcript must not bring it back.
       if (
         options.source === "sessions" &&
-        isSuppressed(this.db, "chunk_hash", chunkTextHash(chunk.text))
+        isSessionPassageSuppressed(this.db, entry.path, chunk.text)
       ) {
         continue;
       }

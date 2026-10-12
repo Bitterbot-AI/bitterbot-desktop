@@ -641,7 +641,11 @@ export function createGatewayHttpServer(opts: {
       }
       // PLAN-55 Phase 3: the memory export download (one-time token minted
       // by the admin-scoped memory.exportDownload RPC).
-      if (await handleMemoryExportHttpRequest(req, res)) {
+      if (
+        await handleMemoryExportHttpRequest(req, res, {
+          basePath: normalizeControlUiBasePath(configSnapshot.gateway?.controlUi?.basePath),
+        })
+      ) {
         return;
       }
       if (handleA2aRequest) {

@@ -26,22 +26,49 @@
  *    by pinning it (`memory.pinFact`). A hand-edited or third-party export
  *    must not carry owner authority by accident. Opt-in: `keepOwnerTier`
  *    with an owner-initiated import (`actor: "owner"`) writes those facts at
- *    the owner tier, and only when `confirmOwnerTierGrants` equals the
- *    number of owner-tier grants computed at apply time (`ownerTierGrants`,
- *    which a dry run reports); a missing or different count is refused,
- *    like a stale planHash. An imported fact never replaces an active fact of a higher
+ *    the owner tier, and only when `confirmOwnerTierGrantsHash` equals the
+ *    hash of the exact grants computed at apply time (`ownerTierGrantsHash`:
+ *    sha256 over the sorted key/value/scope of every grant, which a dry run
+ *    reports with the count and `replacesOwnerValues`, how many grants
+ *    replace one of this agent's own owner-tier values); a missing or
+ *    different hash is refused, like a stale planHash, so a confirmation is
+ *    bound to content, not to a count. Only the current value of a key is
+ *    ever written at the owner tier; its history rows are written as
+ *    `import`. An imported fact never replaces an active fact of a higher
  *    tier (counted `lowerTier`); against an equal or lower tier the ledger's
  *    own pin rules decide, so the change is recorded and propagated like any
- *    other. A key the ledger does not have yet is restored with its full
- *    history (superseded and retired rows included).
+ *    other. A key the ledger does not have yet is restored with its history
+ *    (superseded and retired rows included).
  * 5. Credentials. A fact whose key or value has the shape of a secret is
- *    refused (`secret`), as the ledger refuses it from any source.
+ *    refused (`secret`), as the ledger refuses it from any source; a fact or
+ *    preference whose value holds the export's `[redacted]` placeholder is
+ *    skipped (`redacted`). History rows get the same checks as the current
+ *    one: a suppressed or credential-shaped history row is dropped
+ *    (`historyDropped`), so an import never restores a suppressed value in
+ *    any status.
+ * 6. Capacity. Facts that would become active are written only into the
+ *    ledger's free capacity (CanonicalFactsStore.freeSlots); the rest are
+ *    skipped and counted (`overCapacity`, also on a dry run). An import never
+ *    evicts a fact this agent already has.
+ * 7. Clamping. Imported values never outrank native ones by construction:
+ *    a fact's mention count is capped at MAX_IMPORTED_MENTIONS and its
+ *    timestamps are clamped to [2000-01-01, now]; a memory's importance to
+ *    [0, 1]; a preference's confidence to IMPORTED_PREFERENCE_CONFIDENCE
+ *    (the extraction default). A memory's `directive` epistemic layer and a
+ *    preference's `identity` or `directive` category (the ones proactive
+ *    recall always includes or ranks first) are downgraded (to `experience`
+ *    and `personal`, counted `downgraded`); the owner re-states what still
+ *    holds. Imported memories are stamped `session_trust = 'untrusted'`, so
+ *    nothing treats them as first-party.
  *
  * Imported memories land unembedded (model "pending") and keyword-indexed;
  * the caller re-embeds them in the background. Preferences have no source
  * column; imported rows get an `import_` id. One `owner_import` audit entry
- * records the counts. Writes are batched (one transaction per batch, a yield
- * between batches). `dryRun` makes every decision and writes nothing.
+ * records the counts. Every decision loop yields to the event loop every
+ * YIELD_EVERY items, and writes are batched (one transaction per batch, a
+ * yield between batches). `dryRun` makes every decision and writes nothing.
+ * The RPC's JSON.parse of the export is synchronous; it is bounded by the
+ * gateway's 8 MiB frame cap (the CLI's file import by MAX_IMPORT_BYTES).
  */
 
 import crypto from "node:crypto";
@@ -53,9 +80,10 @@ import {
   type CanonicalSource,
   normalizeCanonicalKey,
   normalizeCanonicalScope,
+  OWNER_TRUST_TIER,
 } from "./canonical-facts.js";
 import { insertImportedChunk } from "./chunk-writer.js";
-import { yieldToEventLoop } from "./event-loop.js";
+import { makeYieldEvery, yieldToEventLoop } from "./event-loop.js";
 import { hashText } from "./internal.js";
 import {
   chunkTextHash,
@@ -66,11 +94,21 @@ import {
   preferenceKeyHash,
   preferenceValueHash,
 } from "./memory-suppressions.js";
-import { secretRejectionReason } from "./secret-shape.js";
+import { SECRET_REDACTION, secretRejectionReason } from "./secret-shape.js";
 
 /** Largest export accepted as text (the gateway's WebSocket frame cap is lower, 8 MiB). */
 export const MAX_IMPORT_BYTES = 64 * 1024 * 1024;
 const BATCH = 200;
+/** Decision-loop items between yields to the event loop. */
+export const YIELD_EVERY = 250;
+/** An imported fact's mention count is capped here, so it cannot outscore native facts. */
+export const MAX_IMPORTED_MENTIONS = 3;
+/** Imported preferences never start above the extraction default. */
+export const IMPORTED_PREFERENCE_CONFIDENCE = 0.5;
+/** Earliest timestamp an import keeps (2000-01-01); earlier or later values are clamped. */
+const MIN_IMPORT_TS = Date.UTC(2000, 0, 1);
+/** Preference categories proactive recall always includes or ranks first. */
+const PRIVILEGED_PREFERENCE_CATEGORIES = new Set(["identity", "directive"]);
 
 const OWN_PREFIXES = [
   "fact_",
@@ -160,8 +198,8 @@ export type MemoryImportOptions = {
   dryRun?: boolean;
   /** Rule C opt-in: write facts that were owner-tier in the export at the owner tier. */
   keepOwnerTier?: boolean;
-  /** Required with keepOwnerTier (not on a dry run): the dry run's `ownerTierGrants`. */
-  confirmOwnerTierGrants?: number;
+  /** Required with keepOwnerTier (not on a dry run): the dry run's `ownerTierGrantsHash`. */
+  confirmOwnerTierGrantsHash?: string;
   store: CanonicalFactsStore | null;
   tables: { ftsTable: string | null };
 };
@@ -176,11 +214,25 @@ type Tally = {
 export type MemoryImportResult = {
   version: 1 | 2;
   dryRun: boolean;
-  memories: Tally & { fileBacked: number; forgotten: number };
-  facts: Tally & { lowerTier: number; secret: number; historyRows: number; ledgerOff: number };
-  preferences: Tally;
+  memories: Tally & { fileBacked: number; forgotten: number; downgraded: number };
+  facts: Tally & {
+    lowerTier: number;
+    secret: number;
+    redacted: number;
+    historyRows: number;
+    /** History rows dropped because they were suppressed, credential-shaped or redacted. */
+    historyDropped: number;
+    /** Facts skipped because the ledger had no free capacity for them. */
+    overCapacity: number;
+    ledgerOff: number;
+  };
+  preferences: Tally & { redacted: number; downgraded: number };
   /** How many facts this import writes (or would write) at the owner tier. */
   ownerTierGrants: number;
+  /** sha256 over the sorted key/value/scope of the owner-tier grants (what keepOwnerTier confirms). */
+  ownerTierGrantsHash: string;
+  /** Owner-tier grants that replace a different owner-tier value this agent already holds. */
+  replacesOwnerValues: number;
   /** Whether keepOwnerTier was used. */
   keepOwnerTier: boolean;
   /** Owner-tier facts in the export imported below the owner tier; pin one to confirm it. */
@@ -208,6 +260,23 @@ export function parseMemoryExport(raw: unknown, maxBytes: number = MAX_IMPORT_BY
 }
 
 const tally = (): Tally => ({ imported: 0, duplicate: 0, suppressed: 0, invalid: 0 });
+
+/** A timestamp from the export, clamped to [2000-01-01, now]; `fallback` when missing. */
+const clampTs = (t: number | null | undefined, now: number, fallback: number): number =>
+  typeof t === "number" && Number.isFinite(t)
+    ? Math.min(now, Math.max(MIN_IMPORT_TS, t))
+    : fallback;
+
+const isRedacted = (value: string | null | undefined): boolean =>
+  typeof value === "string" && value.includes(SECRET_REDACTION);
+
+/** The rule C confirmation hash: stable over the sorted key/value/scope of every grant. */
+export function hashOwnerTierGrants(
+  grants: Array<{ key: string; value: string; scope: string }>,
+): string {
+  const lines = grants.map((g) => `${g.key}\u0000${g.value}\u0000${g.scope}`).toSorted();
+  return crypto.createHash("sha256").update(JSON.stringify(lines)).digest("hex");
+}
 
 /** Run `ops` in batches, one transaction each, yielding between batches. */
 async function runBatched(db: DatabaseSync, ops: Array<() => void>, name: string): Promise<void> {
@@ -247,10 +316,21 @@ export async function importMemories(
   const result: MemoryImportResult = {
     version: doc.version ?? 1,
     dryRun,
-    memories: { ...tally(), fileBacked: 0, forgotten: 0 },
-    facts: { ...tally(), lowerTier: 0, secret: 0, historyRows: 0, ledgerOff: 0 },
-    preferences: tally(),
+    memories: { ...tally(), fileBacked: 0, forgotten: 0, downgraded: 0 },
+    facts: {
+      ...tally(),
+      lowerTier: 0,
+      secret: 0,
+      redacted: 0,
+      historyRows: 0,
+      historyDropped: 0,
+      overCapacity: 0,
+      ledgerOff: 0,
+    },
+    preferences: { ...tally(), redacted: 0, downgraded: 0 },
     ownerTierGrants: 0,
+    ownerTierGrantsHash: hashOwnerTierGrants([]),
+    replacesOwnerValues: 0,
     keepOwnerTier,
     ownerFactsUnconfirmed: [],
     importedChunkIds: [],
@@ -284,7 +364,9 @@ export async function importMemories(
   const idExists = db.prepare(`SELECT 1 FROM chunks WHERE id = ?`);
   const seenIds = new Set<string>();
   const memoryOps: Array<() => void> = [];
+  const memTick = makeYieldEvery(YIELD_EVERY);
   for (const raw of doc.memories) {
+    await memTick();
     const m = MemorySchema.safeParse(raw);
     if (!m.success) {
       result.memories.invalid += 1;
@@ -311,6 +393,12 @@ export async function importMemories(
     seenIds.add(mem.id);
     existingHashes.add(hash);
     result.memories.imported += 1;
+    // A directive is what the owner told the agent to do; an export cannot
+    // say that on their behalf.
+    const epistemicLayer = mem.epistemicLayer === "directive" ? "experience" : mem.epistemicLayer;
+    if (epistemicLayer !== mem.epistemicLayer) {
+      result.memories.downgraded += 1;
+    }
     if (dryRun) {
       continue;
     }
@@ -324,10 +412,12 @@ export async function importMemories(
         hash,
         semanticType: mem.semanticType ?? null,
         lifecycle: "generated",
-        importance: mem.importance ?? null,
-        createdAt: mem.createdAt ?? now,
+        importance:
+          typeof mem.importance === "number" ? Math.min(1, Math.max(0, mem.importance)) : null,
+        createdAt: clampTs(mem.createdAt, now, now),
         updatedAt: now,
-        epistemicLayer: mem.epistemicLayer ?? null,
+        epistemicLayer: epistemicLayer ?? null,
+        sessionTrust: "untrusted",
         governanceJson: mem.sensitivity ? JSON.stringify({ sensitivity: mem.sensitivity }) : null,
       });
       if (inserted && opts.tables.ftsTable) {
@@ -345,7 +435,9 @@ export async function importMemories(
 
   // ── Facts ──
   const factRows: Array<z.infer<typeof FactSchema>> = [];
+  const factTick = makeYieldEvery(YIELD_EVERY);
   for (const raw of doc.facts ?? []) {
+    await factTick();
     const f = FactSchema.safeParse(raw);
     if (!f.success || !normalizeCanonicalKey(f.data.key)) {
       result.facts.invalid += 1;
@@ -360,6 +452,7 @@ export async function importMemories(
     byKey.set(row.key, list);
   }
   const store = opts.store;
+  const grants: Array<{ key: string; value: string; scope: string }> = [];
   const noteOwnerTier = (
     key: string,
     row: { value: string; scope?: string | null; source?: string },
@@ -367,6 +460,11 @@ export async function importMemories(
   ) => {
     if (source === "owner") {
       result.ownerTierGrants += 1;
+      grants.push({
+        key,
+        value: row.value,
+        scope: normalizeCanonicalScope(row.scope ?? "global") ?? "global",
+      });
     } else if (wasOwner(row.source)) {
       result.ownerFactsUnconfirmed.push({
         key,
@@ -377,22 +475,27 @@ export async function importMemories(
   };
   const factOps: Array<() => void> = [];
   const pinOps: Array<() => void> = [];
-  let keysSeen = 0;
-  for (const [key, rows] of byKey) {
-    if (++keysSeen % BATCH === 0) {
-      await yieldToEventLoop();
-    }
+  // H1: what may become active is bounded by the ledger's free capacity, so
+  // an import never makes the next pin evict this agent's own facts.
+  let freeSlots = store ? store.freeSlots() : 0;
+  const keyTick = makeYieldEvery(YIELD_EVERY);
+  for (const [key, allRows] of byKey) {
+    await keyTick();
     if (!store) {
       result.facts.ledgerOff += 1;
       continue;
     }
     const current =
-      rows
+      allRows
         .filter((r) => r.valid_until == null)
         .toSorted((a, b) => (b.valid_from ?? 0) - (a.valid_from ?? 0))[0] ?? null;
-    const head = current ?? rows[0]!;
+    const head = current ?? allRows[0]!;
     if (secretRejectionReason(key, head.value)) {
       result.facts.secret += 1;
+      continue;
+    }
+    if (isRedacted(head.value)) {
+      result.facts.redacted += 1;
       continue;
     }
     const existing = store.get(key);
@@ -420,6 +523,21 @@ export async function importMemories(
         result.facts.lowerTier += 1;
         continue;
       }
+      // A key with no active row becomes active again: that takes a slot.
+      if (existing.status !== "active") {
+        if (freeSlots <= 0) {
+          result.facts.overCapacity += 1;
+          continue;
+        }
+        freeSlots -= 1;
+      }
+      if (
+        source === "owner" &&
+        existing.status === "active" &&
+        canonicalSourceTier(existing.source) >= OWNER_TRUST_TIER
+      ) {
+        result.replacesOwnerValues += 1;
+      }
       noteOwnerTier(key, current, source);
       if (dryRun) {
         result.facts.imported += 1;
@@ -444,14 +562,30 @@ export async function importMemories(
       });
       continue;
     }
-    // A key this ledger has never seen: restore it with its history.
-    if (
-      current &&
-      (current.status ?? "active") === "active" &&
-      isSuppressed(db, "fact_key_value", factKeyValueHash(key, current.value))
-    ) {
+    // A key this ledger has never seen: restore it with its history. A
+    // suppressed value never comes back, as the current row or as history.
+    const valueSuppressed = (value: string) =>
+      Boolean(isSuppressed(db, "fact_key_value", factKeyValueHash(key, value)));
+    if (current && valueSuppressed(current.value)) {
       result.facts.suppressed += 1;
       continue;
+    }
+    const rows = allRows.filter(
+      (r) =>
+        r === current ||
+        !(valueSuppressed(r.value) || secretRejectionReason(key, r.value) || isRedacted(r.value)),
+    );
+    result.facts.historyDropped += allRows.length - rows.length;
+    if (rows.length === 0) {
+      continue; // nothing left to restore for this key
+    }
+    const becomesActive = current !== null && (current.status ?? "active") === "active";
+    if (becomesActive) {
+      if (freeSlots <= 0) {
+        result.facts.overCapacity += 1;
+        continue;
+      }
+      freeSlots -= 1;
     }
     result.facts.imported += 1;
     result.facts.historyRows += rows.length - (current ? 1 : 0);
@@ -471,7 +605,9 @@ export async function importMemories(
     for (const r of ordered) {
       factOps.push(() => {
         const isCurrent = r === current;
-        const source = mappedSource(r.source);
+        // Only the current value can carry the owner tier (and is counted in
+        // the grants); history rows are written as `import`.
+        const source: CanonicalSource = isCurrent ? mappedSource(r.source) : "import";
         // History rows keep their history status; an "active" row that is
         // not the current one cannot be active.
         const rawStatus = r.status ?? "active";
@@ -495,11 +631,11 @@ export async function importMemories(
           r.statement ?? `${key}: ${r.value}`,
           r.category ?? key.split(".")[0] ?? "other",
           Math.min(Math.max(r.confidence ?? 0.7, 0), 1),
-          Math.max(1, Math.floor(r.mention_count ?? 1)),
-          r.first_seen_at ?? now,
-          r.last_confirmed_at ?? now,
-          r.valid_from ?? now,
-          isCurrent ? null : (r.valid_until ?? r.valid_from ?? now),
+          Math.min(MAX_IMPORTED_MENTIONS, Math.max(1, Math.floor(r.mention_count ?? 1))),
+          clampTs(r.first_seen_at, now, now),
+          clampTs(r.last_confirmed_at, now, now),
+          clampTs(r.valid_from, now, now),
+          isCurrent ? null : clampTs(r.valid_until ?? r.valid_from, now, now),
           r.superseded_by ? (idMap.get(r.superseded_by) ?? null) : null,
           source,
           typeof r.evidence_chunk_ids === "string" ? r.evidence_chunk_ids : "[]",
@@ -510,15 +646,17 @@ export async function importMemories(
       });
     }
   }
-  // Rule C: owner authority is granted only for the exact count the owner
-  // confirmed from a dry run; checked before anything is written.
-  if (keepOwnerTier && !dryRun && opts.confirmOwnerTierGrants !== result.ownerTierGrants) {
+  // Rule C: owner authority is granted only for the exact grants the owner
+  // confirmed from a dry run (their hash, not their number); checked before
+  // anything is written.
+  result.ownerTierGrantsHash = hashOwnerTierGrants(grants);
+  if (keepOwnerTier && !dryRun && opts.confirmOwnerTierGrantsHash !== result.ownerTierGrantsHash) {
     throw new MemoryImportRefused(
       `This import would give ${result.ownerTierGrants} fact(s) owner authority, but ${
-        opts.confirmOwnerTierGrants === undefined
-          ? "no confirmed count was given"
-          : `the confirmed count is ${opts.confirmOwnerTierGrants}`
-      }. Dry-run again and confirm the count it reports.`,
+        opts.confirmOwnerTierGrantsHash === undefined
+          ? "no confirmation hash was given"
+          : "the confirmation hash does not match them"
+      }. Dry-run again and confirm the ownerTierGrantsHash it reports.`,
     );
   }
   await runBatched(db, memoryOps, "owner_import_memories");
@@ -534,13 +672,23 @@ export async function importMemories(
     prefStmt = null; // no user model on this database: preferences are not restored
   }
   const seenPrefs = new Set<string>();
+  const prefTick = makeYieldEvery(YIELD_EVERY);
   for (const raw of prefStmt ? (doc.preferences ?? []) : []) {
+    await prefTick();
     const p = PreferenceSchema.safeParse(raw);
     if (!p.success) {
       result.preferences.invalid += 1;
       continue;
     }
-    const pref = p.data;
+    const parsedPref = p.data;
+    if (isRedacted(parsedPref.value)) {
+      result.preferences.redacted += 1;
+      continue;
+    }
+    // `identity` and `directive` are what proactive recall always includes
+    // or ranks first; an export cannot put words there for the owner.
+    const downgrade = PRIVILEGED_PREFERENCE_CATEGORIES.has(parsedPref.category);
+    const pref = downgrade ? { ...parsedPref, category: "personal" } : parsedPref;
     if (
       isSuppressed(db, "preference_key", preferenceKeyHash(pref.category, pref.key)) ||
       isSuppressed(db, "preference_value", preferenceValueHash(pref.category, pref.value))
@@ -555,6 +703,9 @@ export async function importMemories(
     }
     seenPrefs.add(k);
     result.preferences.imported += 1;
+    if (downgrade) {
+      result.preferences.downgraded += 1;
+    }
     if (dryRun) {
       continue;
     }
@@ -568,9 +719,9 @@ export async function importMemories(
         pref.category,
         pref.key,
         pref.value,
-        Math.min(Math.max(pref.confidence ?? 0.5, 0), 1),
+        Math.min(Math.max(pref.confidence ?? 0.5, 0), IMPORTED_PREFERENCE_CONFIDENCE),
         typeof pref.evidence_ids === "string" ? pref.evidence_ids : "[]",
-        pref.created_at ?? now,
+        clampTs(pref.created_at, now, now),
         now,
       );
     });
@@ -592,6 +743,8 @@ export async function importMemories(
           sourceAgentId: doc.agentId ?? null,
           keepOwnerTier,
           ownerTierGrants: result.ownerTierGrants,
+          ownerTierGrantsHash: result.ownerTierGrantsHash,
+          replacesOwnerValues: result.replacesOwnerValues,
           ownerFactsUnconfirmed: result.ownerFactsUnconfirmed.map((f) => ({
             key: f.key,
             exportedTier: "owner",

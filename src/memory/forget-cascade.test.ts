@@ -8,9 +8,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { CanonicalChangeEvent } from "./canonical-events.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
 import { ensureDreamSchema } from "./dream-schema.js";
-import { planForgetCascade, sessionRefFile, textStatesValue } from "./forget-cascade.js";
+import {
+  applyForgetCascade,
+  planForgetCascade,
+  sessionRefFile,
+  textStatesValue,
+} from "./forget-cascade.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
-import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
+import { chunkTextHash, isSessionPassageSuppressed, isSuppressed } from "./memory-suppressions.js";
 import {
   CascadePlanChanged,
   editMemory,
@@ -272,15 +277,24 @@ describe("preview and confirmation", () => {
   });
 
   it("forgets a transcript memory with a text-hash suppression", async () => {
-    insertChunk("sess123", "I live in Lisbon now", {
+    const text = "I live in Lisbon now, in the old town near the castle";
+    insertChunk("sess123", text, {
       source: "sessions",
       path: "sessions/s1.jsonl",
     });
     pin("identity.home_city", "Lisbon", "extraction", ["sess123"]);
     await forgetMemory(db, "sess123", TABLES, { store });
     expect(getMemory(db, "sess123")).toBeNull();
-    expect(isSuppressed(db, "chunk_hash", chunkTextHash("I live in Lisbon now"))).not.toBeNull();
+    expect(isSuppressed(db, "chunk_hash", chunkTextHash(text))).not.toBeNull();
     expect(factRow("identity.home_city")?.status).toBe("retired");
+  });
+
+  it("suppresses a short transcript passage in its own transcript only", async () => {
+    insertChunk("sessShort", "ok, thanks!", { source: "sessions", path: "sessions/s1.jsonl" });
+    await forgetMemory(db, "sessShort", TABLES, { store });
+    expect(isSuppressed(db, "chunk_hash", chunkTextHash("ok, thanks!"))).toBeNull();
+    expect(isSessionPassageSuppressed(db, "sessions/s1.jsonl", "OK thanks")).toBe(true);
+    expect(isSessionPassageSuppressed(db, "sessions/s2.jsonl", "ok, thanks!")).toBe(false);
   });
 });
 
@@ -435,5 +449,147 @@ describe("propagation of a cascade retire", () => {
     expect(canonicalChangeMarksStale({ ...base, retireReason: "evidence_removed" })).toBe(true);
     expect(isOwnerDrivenRetire({ ...base, retireReason: "evidence_removed" })).toBe(true);
     expect(canonicalChangeMarksStale({ ...base, retireReason: "decay" })).toBe(false);
+  });
+});
+
+describe("review fixes (PLAN-55 Phase 3 review)", () => {
+  const forgetPlan = () =>
+    planForgetCascade(db, {
+      mode: "forget",
+      chunks: [{ id: "fact_a", text: "Victor lives in Lisbon.", kind: "own" }],
+    });
+
+  it("H3: a pin landing between plan and apply is never retired, owner tier included", async () => {
+    pin("identity.home_city", "Lisbon", "extraction", ["fact_a"]);
+    const plan = await forgetPlan();
+    expect(plan.facts.retire.map((f) => f.key)).toEqual(["identity.home_city"]);
+    // The owner pins a new value while the cascade is between plan and apply.
+    pin("identity.home_city", "Porto", "owner", []);
+    const result = await applyForgetCascade(db, plan, {
+      store,
+      tables: TABLES,
+      suppressKinds: new Set(["own" as const]),
+    });
+    expect(factRow("identity.home_city")).toMatchObject({ value: "Porto", status: "active" });
+    expect(result.retiredFacts).toEqual([]);
+    expect(result.retireSkipped).toEqual([{ key: "identity.home_city", value: "Lisbon" }]);
+  });
+
+  it("H3: evidence added to the fact after the plan keeps it", async () => {
+    pin("project.repo", "bitterbot-desktop", "extraction", ["fact_a"]);
+    const plan = await forgetPlan();
+    expect(plan.facts.retire.map((f) => f.key)).toEqual(["project.repo"]);
+    pin("project.repo", "bitterbot-desktop", "extraction", ["fact_b"]);
+    const result = await applyForgetCascade(db, plan, {
+      store,
+      tables: TABLES,
+      suppressKinds: new Set(["own" as const]),
+    });
+    expect(factRow("project.repo")).toMatchObject({
+      status: "active",
+      evidenceChunkIds: ["fact_b"],
+    });
+    expect(result.retireSkipped).toEqual([{ key: "project.repo", value: "bitterbot-desktop" }]);
+  });
+
+  it("H3: the store refuses a cascade retire without the planned id or on an owner-tier row", () => {
+    pin("identity.home_city", "Lisbon", "owner", ["fact_a"]);
+    const row = factRow("identity.home_city")!;
+    expect(store.retire("identity.home_city", { reason: "evidence_removed" })).toBe(false);
+    expect(
+      store.retire("identity.home_city", { reason: "evidence_removed", expectedId: row.id }),
+    ).toBe(false);
+    expect(factRow("identity.home_city")?.status).toBe("active");
+  });
+
+  it("M4: a system-initiated session delete retires without owner strength or suppressions", async () => {
+    const { canonicalChangeMarksStale, isOwnerDrivenRetire } =
+      await import("./canonical-events.js");
+    const file = "/home/u/.bitterbot/agents/main/sessions/sub.jsonl";
+    insertChunk("sessSub", "the subagent looked up the deploy host for the release", {
+      source: "sessions",
+      path: "sessions/sub.jsonl",
+    });
+    pin("project.deploy_host", "box1", "extraction", ["sessSub"]);
+    pin("identity.employer", "Acme", "owner", ["sessSub"]);
+    const result = await forgetSessionMemories(db, [file], TABLES, {
+      store,
+      initiator: "system",
+    });
+    expect(result.retiredFacts).toEqual([{ key: "project.deploy_host", value: "box1" }]);
+    expect(factRow("identity.employer")?.status).toBe("active");
+    const retire = events.find((e) => e.op === "retire" && e.key === "project.deploy_host")!;
+    expect(retire.retireReason).toBe("evidence_removed_system");
+    expect(isOwnerDrivenRetire(retire)).toBe(false);
+    expect(canonicalChangeMarksStale(retire)).toBe(false);
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM memory_suppressions`).get()).toEqual({ n: 0 });
+    expect(
+      db.prepare(`SELECT actor FROM memory_audit_log WHERE event = 'system_forget_session'`).all(),
+    ).toEqual([{ actor: "system" }]);
+  });
+
+  it("M4: an owner-initiated session delete keeps the owner-strength retire", async () => {
+    const { isOwnerDrivenRetire } = await import("./canonical-events.js");
+    const file = "/home/u/.bitterbot/agents/main/sessions/mine.jsonl";
+    insertChunk("sessMine", "we decided the deploy host is box1 for now", {
+      source: "sessions",
+      path: "sessions/mine.jsonl",
+    });
+    pin("project.deploy_host", "box1", "extraction", ["sessMine"]);
+    await forgetSessionMemories(db, [file], TABLES, { store, initiator: "owner" });
+    const retire = events.find((e) => e.op === "retire" && e.key === "project.deploy_host")!;
+    expect(retire.retireReason).toBe("evidence_removed");
+    expect(isOwnerDrivenRetire(retire)).toBe(true);
+  });
+
+  it("a non-chunk evidence ref (URL, quote) is live evidence", async () => {
+    pin("project.docs_url", "docs.acme.com", "agent_pin", ["fact_a"], "https://docs.acme.com/");
+    await forgetMemory(db, "fact_a", TABLES, { store });
+    expect(factRow("project.docs_url")?.status).toBe("active");
+    expect(factRow("project.docs_url")?.evidenceChunkIds).toEqual([]);
+  });
+
+  it("deletes near-merge hints naming the memory on either side", async () => {
+    for (const [a, b] of [
+      ["fact_a", "fact_b"],
+      ["fact_b", "fact_a"],
+    ]) {
+      db.prepare(
+        `INSERT INTO near_merge_hints (chunk_id_a, chunk_id_b, base_similarity, snn_similarity, shared_neighbors, discovered_at)
+         VALUES (?, ?, 0.9, 0.9, 1, 1)`,
+      ).run(a, b);
+    }
+    await forgetMemory(db, "fact_a", TABLES, { store });
+    expect(db.prepare(`SELECT COUNT(*) AS n FROM near_merge_hints`).get()).toEqual({ n: 0 });
+  });
+
+  it("a rerun of an apply does not add the insight note twice", async () => {
+    db.prepare(
+      `INSERT INTO dream_insights (id, content, embedding, confidence, mode, source_chunk_ids, source_cluster_ids, dream_cycle_id, importance_score, access_count, created_at, updated_at)
+       VALUES ('ins1', 'x', '[]', 0.5, 'replay', '["fact_a"]', '[]', 'c1', 0.5, 0, 1, 1)`,
+    ).run();
+    const plan = await forgetPlan();
+    const ctx = { store, tables: TABLES, suppressKinds: new Set(["own" as const]) };
+    await applyForgetCascade(db, plan, ctx);
+    await applyForgetCascade(db, plan, ctx);
+    const row = db.prepare(`SELECT stale_fact FROM dream_insights WHERE id = 'ins1'`).get() as {
+      stale_fact: string;
+    };
+    expect(JSON.parse(row.stale_fact)).toHaveLength(1);
+  });
+
+  it("refuses an edit that changes only case, spacing or punctuation", async () => {
+    await expect(editMemory(db, "fact_a", "victor LIVES in lisbon", TABLES)).rejects.toThrow(
+      /same as the old one/,
+    );
+    expect(getMemory(db, "fact_a")).not.toBeNull();
+  });
+
+  it("deleting a conversation does not forget the owner's edit of a memory extracted from it", async () => {
+    const file = "/home/u/.bitterbot/agents/main/sessions/s7.jsonl";
+    insertChunk("fact_s7", "Victor prefers tea", { source: "memory", path: file });
+    const edited = await editMemory(db, "fact_s7", "Victor prefers green tea", TABLES, { store });
+    await forgetSessionMemories(db, [file], TABLES, { store });
+    expect(getMemory(db, edited.id)?.text).toBe("Victor prefers green tea");
   });
 });

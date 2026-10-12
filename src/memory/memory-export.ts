@@ -22,6 +22,13 @@
  * of a credential is replaced with `[redacted]` (secret-shape.ts), in
  * memory text, fact values, insight and finding text, audit metadata and
  * the two files.
+ *
+ * The export does not hold the maintenance lock (a slow download would stall
+ * dreams and consolidation for its whole length); instead the caller passes
+ * `assertCurrent`, checked before every page, so a reindex that swaps the
+ * database mid-export aborts it with MemoryExportInterrupted rather than
+ * truncating it silently. Other writes between pages are what a live
+ * snapshot-free export sees; each table is read in rowid order.
  */
 
 import type { DatabaseSync } from "node:sqlite";
@@ -57,7 +64,20 @@ export type MemoryExportExtra = {
   agentId: string;
   workingMemory?: string | null;
   genome?: string | null;
+  /**
+   * Called before every page of rows; throws when `db` stopped being the
+   * live database (a safe reindex swaps the manager's handle). The export
+   * then fails with that error instead of finishing from a stale handle.
+   */
+  assertCurrent?: () => void;
 };
+
+/** The memory database was rebuilt while an export was reading it. */
+export class MemoryExportInterrupted extends Error {
+  constructor() {
+    super("The memory database was rebuilt during the export (a reindex ran); export again.");
+  }
+}
 
 const OWN_PREFIXES = [
   "fact_",
@@ -143,6 +163,7 @@ export async function writeMemoryExport(
     let after = 0;
     let n = 0;
     for (;;) {
+      extra.assertCurrent?.();
       const rows = stmt.all(after, PAGE_ROWS) as Array<Record<string, unknown>>;
       if (rows.length === 0) {
         break;

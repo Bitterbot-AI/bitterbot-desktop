@@ -24,7 +24,8 @@ import { ErrorCodes } from "../protocol/index.js";
 import { memoryHandlers } from "./memory.js";
 
 vi.mock("../../memory/index.js", () => ({ getMemorySearchManager: vi.fn() }));
-vi.mock("../../config/config.js", () => ({ loadConfig: () => ({}) }));
+const cfgMock = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
+vi.mock("../../config/config.js", () => ({ loadConfig: () => cfgMock.value }));
 vi.mock("../../agents/agent-scope.js", () => ({ resolveDefaultAgentId: () => "main" }));
 
 type Call = { ok: boolean; payload?: unknown; error?: { code?: string; message?: string } };
@@ -100,7 +101,7 @@ beforeEach(() => {
         dryRun?: boolean;
         actor?: "owner";
         keepOwnerTier?: boolean;
-        confirmOwnerTierGrants?: number;
+        confirmOwnerTierGrantsHash?: string;
       },
     ) =>
       importMemories(db, input, {
@@ -181,7 +182,7 @@ describe("memory.forgetPreview / memory.forget / memory.edit (PLAN-55 Phase 3)",
 });
 
 describe("memory.exportDownload / memory.import", () => {
-  it("keepOwnerTier needs the dry run's grant count (rule C)", async () => {
+  it("keepOwnerTier needs the dry run's grants hash (rule C)", async () => {
     const doc = {
       version: 2,
       memories: [],
@@ -193,21 +194,23 @@ describe("memory.exportDownload / memory.import", () => {
       ownerFactsUnconfirmed: [{ key: "identity.name", value: "Victor", scope: "global" }],
     });
     const dry = await call("memory.import", { data: doc, dryRun: true, keepOwnerTier: true });
-    expect(dry.payload).toMatchObject({ ownerTierGrants: 1 });
+    expect(dry.payload).toMatchObject({ ownerTierGrants: 1, replacesOwnerValues: 0 });
+    const hash = (dry.payload as { ownerTierGrantsHash: string }).ownerTierGrantsHash;
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
     const missing = await call("memory.import", { data: doc, keepOwnerTier: true });
     expect(missing.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
     expect(missing.error?.message).toMatch(/Dry-run again/);
     const wrong = await call("memory.import", {
       data: doc,
       keepOwnerTier: true,
-      confirmOwnerTierGrants: 3,
+      confirmOwnerTierGrantsHash: "0".repeat(64),
     });
     expect(wrong.error?.code).toBe(ErrorCodes.INVALID_REQUEST);
     expect(store.get("identity.name")).toBeNull();
     const ok = await call("memory.import", {
       data: doc,
       keepOwnerTier: true,
-      confirmOwnerTierGrants: 1,
+      confirmOwnerTierGrantsHash: hash,
     });
     expect(ok.payload).toMatchObject({ keepOwnerTier: true, ownerTierGrants: 1 });
     expect(store.get("identity.name")?.source).toBe("owner");
@@ -222,6 +225,18 @@ describe("memory.exportDownload / memory.import", () => {
     const token = payload.url.split("/").pop()!;
     expect(consumeMemoryExportToken(token)).toMatchObject({ agentId: "main" });
     expect(consumeMemoryExportToken(token)).toBeNull();
+  });
+
+  it("builds the download link under the Control UI base path", async () => {
+    cfgMock.value = { gateway: { controlUi: { basePath: "/bb/" } } };
+    try {
+      const res = await call("memory.exportDownload", {});
+      expect((res.payload as { url: string }).url).toMatch(
+        /^\/bb\/api\/memory\/export\/[A-Za-z0-9_-]{40,}$/,
+      );
+    } finally {
+      cfgMock.value = {};
+    }
   });
 
   it("imports an export (dry run first), and refuses bad input", async () => {

@@ -51,6 +51,7 @@ import {
   type CascadeChunk,
   type CascadePlanSummary,
   type CascadeTargets,
+  emptyCounts as emptyCascadeCounts,
   type ForgetCascadePlan,
   type IndexTables,
   planForgetCascade,
@@ -258,11 +259,12 @@ function writeAudit(
   chunkId: string,
   event: string,
   metadata: Record<string, unknown>,
+  actor: "owner" | "system" = "owner",
 ): void {
   db.prepare(
     `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
      VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(crypto.randomUUID(), chunkId, event, Date.now(), "owner", JSON.stringify(metadata));
+  ).run(crypto.randomUUID(), chunkId, event, Date.now(), actor, JSON.stringify(metadata));
 }
 
 export type { IndexTables };
@@ -335,7 +337,10 @@ function editedChunkId(oldId: string, text: string): string {
 
 function forgetTargets(db: DatabaseSync, id: string): CascadeTargets {
   const memory = forgettableOrThrow(db, id);
-  return { mode: "forget", chunks: [{ id, text: memory.text, kind: memory.forgetKind }] };
+  return {
+    mode: "forget",
+    chunks: [{ id, text: memory.text, kind: memory.forgetKind, path: memory.path }],
+  };
 }
 
 function editTargets(db: DatabaseSync, id: string, text: string): CascadeTargets {
@@ -353,6 +358,13 @@ function editTargets(db: DatabaseSync, id: string, text: string): CascadeTargets
     );
   }
   editableOrThrow(db, id);
+  // A change of case, spacing or punctuation only is not an edit: the old
+  // text's suppression would also suppress the new one.
+  if (normalizeLoose(next) === normalizeLoose(memory!.text)) {
+    throw new OwnerEditRefused(
+      "The new text is the same as the old one apart from case, spacing or punctuation; nothing to change.",
+    );
+  }
   return {
     mode: "edit",
     chunks: [{ id, text: memory!.text, kind: "own" }],
@@ -632,6 +644,10 @@ export async function collectSessionChunks(
 ): Promise<CascadeTargets["chunks"]> {
   const files = [...new Set(sessionFiles.filter((f) => typeof f === "string" && f.trim()))];
   const chunks: CascadeTargets["chunks"] = [];
+  const editedStmt = db.prepare(
+    `SELECT 1 FROM memory_audit_log WHERE chunk_id = ? AND event = 'owner_edit' LIMIT 1`,
+  );
+  const isOwnerEdited = (id: string): boolean => Boolean(editedStmt.get(id));
   const select = db.prepare(
     `SELECT rowid AS rid, id, path, source, text FROM chunks
       WHERE path IN (?, ?) AND rowid > ? ORDER BY rowid LIMIT 1000`,
@@ -651,9 +667,12 @@ export async function collectSessionChunks(
         const own = kindOf(r.id) === "own";
         if (
           (!own && r.source === "sessions" && r.path === indexedPath) ||
-          (own && r.id.startsWith("fact_") && r.path === file)
+          // The owner's edit of an extracted memory keeps the transcript as
+          // its path (provenance) but is the owner's own text now: deleting
+          // the conversation does not forget it.
+          (own && r.id.startsWith("fact_") && r.path === file && !isOwnerEdited(r.id))
         ) {
-          chunks.push({ id: r.id, text: r.text, kind: own ? "own" : "session" });
+          chunks.push({ id: r.id, text: r.text, kind: own ? "own" : "session", path: r.path });
         }
       }
       if (rows.length < 1000) {
@@ -666,35 +685,73 @@ export async function collectSessionChunks(
   return chunks;
 }
 
+/** The collected memories that belong to `files` (by indexed or absolute transcript path). */
+export function sessionChunksForFiles(
+  chunks: CascadeTargets["chunks"],
+  files: string[],
+): CascadeTargets["chunks"] {
+  const paths = new Set<string>();
+  for (const file of files) {
+    paths.add(file);
+    paths.add(path.join("sessions", path.basename(file)).replace(/\\/g, "/"));
+  }
+  return chunks.filter((c) => typeof c.path === "string" && paths.has(c.path));
+}
+
 export async function forgetSessionMemories(
   db: DatabaseSync,
   sessionFiles: string[],
   tables: IndexTables,
   opts: {
     store?: CanonicalFactsStore | null;
-    actor?: string;
+    /**
+     * Who deleted the conversation (PLAN-55 Phase 3 review M4). `owner`
+     * (the Control UI, the CLI): evidence-empty facts are retired with
+     * `evidence_removed`, which propagates like the owner's retire.
+     * `system` (automatic housekeeping such as the subagent archive sweep):
+     * they are retired with `evidence_removed_system`, which propagates like
+     * the agent's own retire (no preference deletion, no stale marks), and
+     * no suppression is ever written.
+     */
+    initiator?: "owner" | "system";
     /** Collected earlier (collectSessionChunks), before the transcript was archived. */
     chunks?: CascadeTargets["chunks"];
   } = {},
 ): Promise<CascadeApplyResult & { survivors: SessionFactSurvivor[] }> {
   const files = [...new Set(sessionFiles.filter((f) => typeof f === "string" && f.trim()))];
+  if (files.length === 0) {
+    // Nothing was deleted (every archive failed): nothing to forget.
+    return {
+      planHash: "",
+      counts: emptyCascadeCounts(),
+      retiredFacts: [],
+      ownerFactsKept: [],
+      retireSkipped: [],
+      suppressionIds: [],
+      batches: 0,
+      survivors: [],
+    };
+  }
   const chunks = opts.chunks ?? (await collectSessionChunks(db, files));
   const plan = await planForgetCascade(db, { mode: "session", chunks, sessionFiles: files });
   const summary = summarizeCascadePlan(plan);
+  const initiator = opts.initiator ?? "owner";
   const result = await applyForgetCascade(db, plan, {
     store: opts.store ?? null,
     tables,
-    suppressKinds: new Set<CascadeKind>(["derived"]),
+    suppressKinds: new Set<CascadeKind>(initiator === "owner" ? ["derived"] : []),
+    retireReason: initiator === "owner" ? "evidence_removed" : "evidence_removed_system",
     after: () =>
       writeAudit(
         db,
         `session:${files.map((f) => path.basename(f)).join(",")}`,
-        "owner_forget_session",
+        initiator === "owner" ? "owner_forget_session" : "system_forget_session",
         {
-          actor: opts.actor ?? "owner",
+          initiator,
           planHash: plan.hash,
           cascade: plan.counts,
         },
+        initiator,
       ),
   });
   return {

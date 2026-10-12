@@ -528,7 +528,7 @@ type OwnerCliManager = {
       dryRun?: boolean;
       actor?: "owner" | "system";
       keepOwnerTier?: boolean;
-      confirmOwnerTierGrants?: number;
+      confirmOwnerTierGrantsHash?: string;
     },
   ) => Promise<Record<string, unknown>>;
   ownerDatabasePath?: () => string;
@@ -762,18 +762,27 @@ function registerOwnerMemoryCommands(memory: Command) {
         await withOwnerControls(opts, async (m) => {
           const input = parseMemoryExport(raw);
           const keepOwnerTier = Boolean(opts.keepOwnerTier);
-          let confirmOwnerTierGrants: number | undefined;
+          let confirmOwnerTierGrantsHash: string | undefined;
           if (keepOwnerTier && !opts.dryRun) {
-            // Rule C: count the grants with a dry run, say what they mean, and
-            // apply exactly that count.
+            // Rule C: list the grants with a dry run, say what they mean, and
+            // apply exactly those (bound by their hash, not their number).
             const dry = (await m.ownerImportMemories(input, {
               dryRun: true,
               actor: "owner",
               keepOwnerTier: true,
-            })) as { ownerTierGrants?: number };
+            })) as {
+              ownerTierGrants?: number;
+              ownerTierGrantsHash?: string;
+              replacesOwnerValues?: number;
+            };
             const grants = dry.ownerTierGrants ?? 0;
+            const replaces = dry.replacesOwnerValues ?? 0;
             if (grants > 0) {
-              const warning = `This will give ${grants} facts owner authority (they will override the agent and win every conflict).`;
+              const warning =
+                `This will give ${grants} facts owner authority (they will override the agent and win every conflict)` +
+                (replaces > 0
+                  ? `; ${replaces} of them replace your current owner values.`
+                  : "; none of them replace your current owner values.");
               defaultRuntime.log(warning);
               if (!opts.yes && !(await askYesNo("Continue?"))) {
                 defaultRuntime.error(
@@ -785,13 +794,13 @@ function registerOwnerMemoryCommands(memory: Command) {
                 return;
               }
             }
-            confirmOwnerTierGrants = grants;
+            confirmOwnerTierGrantsHash = dry.ownerTierGrantsHash;
           }
           const result = await m.ownerImportMemories(input, {
             dryRun: Boolean(opts.dryRun),
             actor: "owner",
             keepOwnerTier,
-            confirmOwnerTierGrants,
+            confirmOwnerTierGrantsHash,
           });
           if (opts.json) {
             defaultRuntime.log(JSON.stringify(result, null, 2));

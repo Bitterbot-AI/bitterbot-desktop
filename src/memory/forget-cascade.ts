@@ -29,7 +29,12 @@
  * The rules (also in docs/memory/controls.md):
  *
  * - A fact whose evidence set becomes empty is retired with reason
- *   `evidence_removed` (never deleted; it keeps its history). An owner-tier
+ *   `evidence_removed` (never deleted; it keeps its history). A fact with
+ *   an evidence ref that is not a forgotten transcript (a URL, a quote, a
+ *   line in another conversation) still has evidence and is kept. The
+ *   retire is bound to the planned row: a fact pinned again (or at the
+ *   owner tier) between the plan and the apply is skipped and reported in
+ *   `retireSkipped`. An owner-tier
  *   fact is never retired by the cascade: it loses the evidence id and is
  *   listed (`ownerKept`) so the owner can decide. A fact with other live
  *   evidence keeps it and loses only the forgotten id. Rows that are already
@@ -70,7 +75,9 @@ import {
   addSuppression,
   chunkTextHash,
   inSavepoint,
+  isShortSessionText,
   normalizeLoose,
+  sessionChunkSuppressionHash,
 } from "./memory-suppressions.js";
 
 /** Rows read per window while planning; a yield follows every window. */
@@ -86,6 +93,12 @@ export type CascadeChunk = {
   kind: "own" | "session" | "derived";
   /** Loose-normalised text hash (the suppression hash). */
   textHash: string;
+  /**
+   * A transcript passage too short to suppress by its text alone
+   * (isShortSessionText): its transcript path, so the suppression is bound
+   * to that transcript only. Unset otherwise.
+   */
+  sessionPath?: string;
 };
 
 export type CascadeFact = {
@@ -146,7 +159,8 @@ export type CascadeCounts = {
 
 export type CascadeTargets = {
   mode: CascadeMode;
-  chunks: Array<{ id: string; text: string; kind: "own" | "session" }>;
+  /** `path`: the chunk's indexed path (a transcript memory's `sessions/<file>`). */
+  chunks: Array<{ id: string; text: string; kind: "own" | "session"; path?: string | null }>;
   /** Edit only: the memory that replaces the forgotten one. */
   replacement?: { id: string; text: string };
   /** Session only: the deleted transcripts (absolute paths). */
@@ -238,7 +252,7 @@ function liveIds(db: DatabaseSync, ids: string[], removed: Set<string>): string[
   return candidates.filter((id) => live.has(id));
 }
 
-function emptyCounts(): CascadeCounts {
+export function emptyCounts(): CascadeCounts {
   return {
     chunks: 0,
     derivedChunks: 0,
@@ -263,7 +277,9 @@ export function hashCascadePlan(plan: Omit<ForgetCascadePlan, "hash" | "counts">
   const ev = (x: { evidence: string[] }) => x.evidence.toSorted().join(",");
   const canonical = {
     mode: plan.mode,
-    chunks: plan.chunks.map((c) => `${c.kind}:${c.id}:${c.textHash}`).toSorted(),
+    chunks: plan.chunks
+      .map((c) => `${c.kind}:${c.id}:${c.textHash}${c.sessionPath ? `@${c.sessionPath}` : ""}`)
+      .toSorted(),
     retire: ids(plan.facts.retire),
     ownerKept: ids(plan.facts.ownerKept),
     strip: ids(plan.facts.strip, ev),
@@ -292,6 +308,9 @@ export async function planForgetCascade(
     id: c.id,
     kind: c.kind,
     textHash: chunkTextHash(c.text),
+    ...(c.kind === "session" && c.path && isShortSessionText(c.text)
+      ? { sessionPath: c.path }
+      : {}),
   }));
   const replacement = targets.replacement ?? null;
   const sessionFiles = new Set((targets.sessionFiles ?? []).map((f) => path.basename(f)));
@@ -414,9 +433,12 @@ export async function planForgetCascade(
       };
       const kept = evidence.filter((id) => !removed.has(id));
       // A line ref into a transcript that is not being deleted is evidence
-      // too (the per-turn correction capture cites the owner's line that way).
+      // too (the per-turn correction capture cites the owner's line that way),
+      // and so is any other evidence ref (a URL, a quote): it does not live
+      // in the chunks being forgotten.
       const refFile = sessionRefFile(row.evidence_ref);
-      const refLive = refFile !== null && !sessionFiles.has(refFile);
+      const refPresent = typeof row.evidence_ref === "string" && row.evidence_ref.trim() !== "";
+      const refLive = refPresent && (refFile === null || !sessionFiles.has(refFile));
       const live = liveIds(db, kept, removed);
       const citedRemoved = evidence.some((id) => removed.has(id));
       if (replacement && citedRemoved && textStatesValue(replacement.text, row.value)) {
@@ -602,6 +624,13 @@ export type CascadeApplyContext = {
   tables: IndexTables;
   /** Record a text-hash suppression for each forgotten memory of these kinds. */
   suppressKinds: ReadonlySet<CascadeChunk["kind"]>;
+  /**
+   * How an evidence-empty fact is retired. `evidence_removed` (the default)
+   * is the owner's cascade and propagates like the owner's retire;
+   * `evidence_removed_system` is automatic housekeeping (PLAN-55 Phase 3
+   * review M4) and propagates like the agent's.
+   */
+  retireReason?: "evidence_removed" | "evidence_removed_system";
   /** Extra hashes per chunk id to suppress with it (an edited memory's earlier texts). */
   extraHashes?: ReadonlyMap<string, string[]>;
   /** Runs first, in the same transaction as the rest when the plan fits one. */
@@ -616,6 +645,11 @@ export type CascadeApplyResult = {
   counts: CascadeCounts;
   retiredFacts: Array<{ key: string; value: string }>;
   ownerFactsKept: Array<{ key: string; value: string }>;
+  /**
+   * Planned retires that were not made because the fact changed after the
+   * plan (a newer pin, possibly the owner's). Reported, never forced.
+   */
+  retireSkipped: Array<{ key: string; value: string }>;
   suppressionIds: string[];
   batches: number;
 };
@@ -632,12 +666,10 @@ const tryRun = (db: DatabaseSync, sql: string, ...args: Array<string | number | 
 export function deleteChunkEverywhere(db: DatabaseSync, id: string, tables: IndexTables): void {
   if (tables.vectorTable) tryRun(db, `DELETE FROM ${tables.vectorTable} WHERE id = ?`, id);
   if (tables.ftsTable) tryRun(db, `DELETE FROM ${tables.ftsTable} WHERE id = ?`, id);
-  for (const table of [
-    "near_merge_hints",
-    "orphan_replay_queue",
-    "curiosity_surprises",
-    "chunk_supersessions",
-  ]) {
+  // near_merge_hints pairs two chunks (chunk_id_a, chunk_id_b); a hint
+  // naming the forgotten memory on either side goes.
+  tryRun(db, `DELETE FROM near_merge_hints WHERE chunk_id_a = ? OR chunk_id_b = ?`, id, id);
+  for (const table of ["orphan_replay_queue", "curiosity_surprises", "chunk_supersessions"]) {
     tryRun(db, `DELETE FROM ${table} WHERE chunk_id = ?`, id);
   }
   db.prepare("DELETE FROM chunks WHERE id = ?").run(id);
@@ -659,27 +691,46 @@ export async function applyForgetCascade(
   );
   const derivedOps: Array<() => void> = [];
   const retiredFacts: CascadeApplyResult["retiredFacts"] = [];
+  const retireSkipped: CascadeApplyResult["retireSkipped"] = [];
+  const retireReason = ctx.retireReason ?? "evidence_removed";
 
   for (const f of [...plan.facts.strip, ...plan.facts.relink, ...plan.facts.ownerKept]) {
     derivedOps.push(() => {
       setFactEvidence.run(JSON.stringify(f.evidence), f.id);
     });
   }
+  const forgottenIds = new Set(plan.chunks.map((c) => c.id));
+  const factEvidence = db.prepare(`SELECT evidence_chunk_ids FROM canonical_facts WHERE id = ?`);
   for (const f of plan.facts.retire) {
     derivedOps.push(() => {
+      // Evidence added to the row since the plan (a re-extraction confirmed
+      // it) means it no longer rests only on what is forgotten: strip the
+      // forgotten ids, keep the fact.
+      const row = factEvidence.get(f.id) as { evidence_chunk_ids: string | null } | undefined;
+      const remaining = parseIds(row?.evidence_chunk_ids).filter((id) => !forgottenIds.has(id));
+      if (remaining.some((id) => !f.evidence.includes(id))) {
+        setFactEvidence.run(JSON.stringify(remaining), f.id);
+        retireSkipped.push({ key: f.key, value: f.value });
+        return;
+      }
       setFactEvidence.run(JSON.stringify(f.evidence), f.id);
+      // Bound to the planned row: the store refuses when the key's current
+      // row is another one or now at the owner tier (H3).
       const ok = ctx.store
-        ? ctx.store.retire(f.key, { reason: "evidence_removed" })
+        ? ctx.store.retire(f.key, { reason: retireReason, expectedId: f.id })
         : Number(
             db
               .prepare(
                 `UPDATE canonical_facts SET status = 'retired'
-                  WHERE id = ? AND status = 'active' AND valid_until IS NULL`,
+                  WHERE id = ? AND status = 'active' AND valid_until IS NULL
+                    AND source NOT IN ('owner', 'user_directive')`,
               )
               .run(f.id).changes,
           ) > 0;
       if (ok) {
         retiredFacts.push({ key: f.key, value: f.value });
+      } else {
+        retireSkipped.push({ key: f.key, value: f.value });
       }
     });
   }
@@ -728,6 +779,16 @@ export async function applyForgetCascade(
         return;
       }
       const notes = parseInsightNotes(row.stale_fact);
+      // Idempotent: a rerun of a batched apply that failed part-way does not
+      // add the same note again.
+      const want = ins.chunkIds.toSorted().join(",");
+      if (
+        notes.some(
+          (n) => n.reason === "forgotten_evidence" && n.chunkIds.toSorted().join(",") === want,
+        )
+      ) {
+        return;
+      }
       const note: InsightStaleNote = {
         reason: "forgotten_evidence",
         chunkIds: ins.chunkIds,
@@ -763,6 +824,19 @@ export async function applyForgetCascade(
   const chunkOps: Array<() => void> = plan.chunks.map((c) => () => {
     deleteChunkEverywhere(db, c.id, ctx.tables);
     if (ctx.suppressKinds.has(c.kind)) {
+      // A short transcript passage ("ok", "thanks!") is suppressed for its
+      // own transcript only: by text alone it would also hide the same words
+      // in every other conversation.
+      if (c.kind === "session" && c.sessionPath) {
+        suppressionIds.push(
+          addSuppression(db, {
+            kind: "session_chunk",
+            hash: sessionChunkSuppressionHash(c.sessionPath, c.textHash),
+            reason: "owner_forget",
+          }).id,
+        );
+        return;
+      }
       const hashes = new Set([c.textHash, ...(ctx.extraHashes?.get(c.id) ?? [])]);
       for (const hash of hashes) {
         suppressionIds.push(
@@ -804,6 +878,7 @@ export async function applyForgetCascade(
     counts: plan.counts,
     retiredFacts,
     ownerFactsKept: plan.facts.ownerKept.map((f) => ({ key: f.key, value: f.value })),
+    retireSkipped,
     suppressionIds: [...new Set(suppressionIds)],
     batches,
   };

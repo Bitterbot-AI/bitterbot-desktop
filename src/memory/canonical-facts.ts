@@ -120,8 +120,20 @@ export function canonicalSourceTier(source: string): number {
  * owner forgot every memory the fact rested on. It is a soft `retired`
  * (another source may establish the fact again) but it propagates like the
  * owner's retire, because the owner removed its grounds.
+ * `evidence_removed_system` is the same cascade started by automatic
+ * housekeeping (a subagent session swept by the gateway): the fact is
+ * retired but the change propagates like the agent's own retire, never
+ * like the owner's. Both cascade reasons need the planned fact id
+ * (`expectedId`) and refuse an owner-tier row: a pin that landed between
+ * the plan and the apply is never retired by it.
  */
-export type RetireReason = "owner" | "agent" | "decay" | "hygiene" | "evidence_removed";
+export type RetireReason =
+  | "owner"
+  | "agent"
+  | "decay"
+  | "hygiene"
+  | "evidence_removed"
+  | "evidence_removed_system";
 
 /**
  * A fact's status. `retired` (agent, decay, hygiene, capacity) is soft: any
@@ -1168,7 +1180,7 @@ export class CanonicalFactsStore {
    * an already `retired` or `unconfirmed` row. Without a reason the call is
    * treated as the agent's (the weakest actor), never the owner's.
    */
-  retire(key: string, opts?: { reason?: RetireReason }): boolean {
+  retire(key: string, opts?: { reason?: RetireReason; expectedId?: string }): boolean {
     const reason = opts?.reason ?? "agent";
     const current = this.get(key);
     if (!current) {
@@ -1203,15 +1215,28 @@ export class CanonicalFactsStore {
     if (current.status !== "active") {
       return false;
     }
-    // PLAN-55 Phase 3: the forget cascade, run on the owner's behalf. The
-    // caller (owner-controls) never passes an owner-tier fact here.
-    if (reason === "evidence_removed") {
+    // PLAN-55 Phase 3: the forget cascade. It retires exactly the row it
+    // planned on, and never an owner-tier one: a pin that landed between the
+    // plan and the apply (both yield) is a newer decision the cascade knows
+    // nothing about.
+    if (reason === "evidence_removed" || reason === "evidence_removed_system") {
+      if (
+        !opts?.expectedId ||
+        current.id !== opts.expectedId ||
+        canonicalSourceTier(current.source) >= OWNER_TRUST_TIER
+      ) {
+        log.info(
+          `canonical RETIRE SKIPPED (fact changed since the cascade plan): [${current.key}]`,
+        );
+        return false;
+      }
       this.db.prepare(`UPDATE canonical_facts SET status = 'retired' WHERE id = ?`).run(current.id);
-      log.info(`canonical RETIRE (evidence removed): [${current.key}]`);
+      log.info(`canonical RETIRE (${reason}): [${current.key}]`);
+      const byOwner = reason === "evidence_removed";
       this.emitChanged("retire", current, current.value, {
         previous: current,
-        tier: OWNER_TRUST_TIER,
-        source: "owner",
+        tier: byOwner ? OWNER_TRUST_TIER : 0,
+        source: byOwner ? "owner" : "system",
         retireReason: reason,
       });
       return true;
@@ -1399,6 +1424,15 @@ export class CanonicalFactsStore {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * PLAN-55 Phase 3 review (H1): how many more facts can become active
+   * without capacity eviction. memory.import never writes past this, so an
+   * import can never push native facts out of the ledger.
+   */
+  freeSlots(): number {
+    return Math.max(0, this.maxFacts - this.activeCount());
   }
 
   /** Count of active (injectable) facts. */

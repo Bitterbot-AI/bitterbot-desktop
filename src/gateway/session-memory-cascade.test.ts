@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { deleteSessionWithMemoryCascade } from "./session-memory-cascade.js";
+import {
+  confirmedArchivedFiles,
+  deleteSessionWithMemoryCascade,
+} from "./session-memory-cascade.js";
 
 vi.mock("../config/config.js", () => ({ loadConfig: () => ({}) }));
 
@@ -106,5 +109,62 @@ describe("sessions.delete memory cascade (PLAN-55 §3.5b)", () => {
       },
     });
     expect(noFiles).toEqual({ archived: [], memory: null });
+  });
+
+  it("H2: forgets only what the archive really moved", async () => {
+    const seen: Array<string[] | void> = [];
+    const manager = {
+      ownerForgetSession: async (
+        _files: string[],
+        opts?: { onCollected?: () => string[] | void; initiator?: string },
+      ) => {
+        seen.push(opts?.onCollected?.());
+        return { counts: { chunks: 0 }, retiredFacts: [], survivors: [] };
+      },
+    };
+    // archiveSessionTranscripts swallowed the rename failure: empty result.
+    const failed = await deleteSessionWithMemoryCascade({
+      agentId: "main",
+      files: ["/s/a.jsonl"],
+      archive: () => [],
+      openManager: async () => manager,
+      exists: () => true,
+    });
+    expect(failed.archived).toEqual([]);
+    expect(seen[0]).toEqual([]);
+    // Named in the result but the original is still there: not confirmed either.
+    expect(confirmedArchivedFiles(["/s/a.jsonl"], ["/s/a.jsonl.deleted.1"], () => true)).toEqual(
+      [],
+    );
+    expect(
+      confirmedArchivedFiles(["/s/a.jsonl", "/s/b.jsonl"], ["/s/a.jsonl.deleted.1"], () => false),
+    ).toEqual(["/s/a.jsonl"]);
+  });
+
+  it("M4: passes the initiator through, owner by default", async () => {
+    const initiators: Array<string | undefined> = [];
+    const manager = {
+      ownerForgetSession: async (
+        _files: string[],
+        opts?: { onCollected?: () => string[] | void; initiator?: string },
+      ) => {
+        initiators.push(opts?.initiator);
+        opts?.onCollected?.();
+        return { counts: { chunks: 0 }, retiredFacts: [], survivors: [] };
+      },
+    };
+    const base = {
+      agentId: "main",
+      files: ["/s/a.jsonl"],
+      archive: () => ["/s/a.jsonl.deleted.1"],
+      openManager: async () => manager,
+      exists: () => false,
+    };
+    await deleteSessionWithMemoryCascade(base);
+    await deleteSessionWithMemoryCascade({ ...base, initiator: "system" });
+    expect(initiators).toEqual(["owner", "system"]);
+    const { validateSessionsDeleteParams } = await import("./protocol/index.js");
+    expect(validateSessionsDeleteParams({ key: "k", initiator: "system" })).toBe(true);
+    expect(validateSessionsDeleteParams({ key: "k", initiator: "root" })).toBe(false);
   });
 });
