@@ -149,8 +149,16 @@ export async function checkOrchestrator(input: InstallHealthInput): Promise<Chec
     case "bundled": {
       const layout = resolveTarballLayout(input.packageRoot);
       const manifest = layout ? readTarballManifest(layout.versionDir) : null;
+      // resolveTarballLayout realpaths the root; compare like with like (a
+      // symlinked temp or home dir, e.g. macOS /var -> /private/var).
+      let probePath = probe.path;
+      try {
+        probePath = fs.realpathSync(probe.path);
+      } catch {
+        // keep the probed path
+      }
       const rel = layout
-        ? path.relative(layout.versionDir, probe.path).split(path.sep).join("/")
+        ? path.relative(layout.versionDir, probePath).split(path.sep).join("/")
         : "";
       const entry = manifest?.files.find((f) => f.path === rel);
       if (!entry || !("sha256" in entry)) {

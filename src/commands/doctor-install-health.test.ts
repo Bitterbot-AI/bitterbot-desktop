@@ -17,7 +17,8 @@ import {
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-install-health-"));
+  // Realpath: macOS os.tmpdir() is a symlink (/var -> /private/var).
+  dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bb-install-health-")));
 });
 afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
@@ -131,6 +132,39 @@ describe("orchestrator present and signature verified", () => {
     );
     expect(r?.level).toBe("ok");
     expect(r?.message).toContain("signed release manifest");
+  });
+
+  it("matches the manifest when the probe path runs through a symlink (macOS tmpdir)", async () => {
+    const versionDir = path.join(dir, "app", "1.5.0");
+    fs.mkdirSync(path.join(versionDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(versionDir, "bin", "bitterbot-orchestrator"), "bundled");
+    fs.writeFileSync(
+      path.join(versionDir, "manifest.json"),
+      JSON.stringify({
+        version: "1.5.0",
+        platform: "linux-x64",
+        files: [{ path: "bin/bitterbot-orchestrator", sha256: sha("bundled"), size: 7 }],
+      }),
+    );
+    // The probe reports the binary through a symlinked parent, the layout
+    // resolves to the real path: they must still line up.
+    const link = path.join(dir, "linked-home");
+    fs.symlinkSync(dir, link, "dir");
+    const viaLink = path.join(link, "app", "1.5.0", "bin", "bitterbot-orchestrator");
+    const probe = () => ({
+      found: true as const,
+      source: "bundled" as const,
+      path: viaLink,
+      candidates: [],
+    });
+    const [r] = await checkOrchestrator(
+      input({
+        installKind: "tarball",
+        packageRoot: path.join(link, "app", "1.5.0"),
+        probeOrchestrator: probe,
+      }),
+    );
+    expect(r?.level).toBe("ok");
   });
 
   it("trusts the image build in a container", async () => {
