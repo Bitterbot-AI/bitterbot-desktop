@@ -124,7 +124,7 @@ export async function requireSetupRiskAcknowledgement(prompter: WizardPrompter):
     message: RISK_ACKNOWLEDGEMENT_CONFIRM,
     initialValue: false,
   });
-  if (ok !== true) {
+  if (!ok) {
     throw new WizardCancelledError("risk not accepted");
   }
 }
