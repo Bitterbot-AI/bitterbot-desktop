@@ -180,7 +180,39 @@ export async function waitForPort(
   return false;
 }
 
+/** What `bitterbot gateway switch --check` would say about the gateway on the port. */
+export type OnboardGatewayCheck = {
+  /** The listener is a Bitterbot gateway from another install (older or different). */
+  otherInstall: boolean;
+  /** Something that must not be linked to (a foreign program, an unidentifiable gateway). */
+  blocked: string | null;
+  /** Plain-language lines describing what was found. */
+  summary: string[];
+  /** This install's version. */
+  version: string | null;
+};
+
+async function defaultCheckGateway(port: number): Promise<OnboardGatewayCheck> {
+  const { detectGatewaySwitch } = await import("../infra/gateway-switch-system.js");
+  const { describeFindings } = await import("../cli/daemon-cli/switch.js");
+  const { findings, decision } = await detectGatewaySwitch({ port });
+  const listener = findings.listener;
+  return {
+    otherInstall: Boolean(listener?.isGateway && !listener.isSelf),
+    blocked:
+      decision.action === "blocked" && listener && decision.reason !== "remote-mode"
+        ? decision.message
+        : null,
+    summary: describeFindings(findings, decision),
+    version: findings.self.version,
+  };
+}
+
 export type BrowserOnboardingDeps = {
+  /** Check who serves the port before linking to it (src/infra/gateway-switch.ts). */
+  checkGateway?: (port: number) => Promise<OnboardGatewayCheck>;
+  /** Run `bitterbot gateway switch` interactively; returns its exit code. */
+  switchGateway?: () => Promise<number>;
   stdinIsTty?: boolean;
   inContainer?: boolean;
   remote?: boolean;
@@ -209,6 +241,53 @@ export async function runBrowserOnboarding(
   const basePath = cfg.gateway?.controlUi?.basePath;
 
   const listening = await (deps.isListening ?? isPortListening)(port);
+  // Never link to a gateway from another install (a git clone, an older
+  // release): pre-1.5 gateways have no setup page, and setup would configure
+  // the old code. Offer the switch instead. A test that fakes isListening
+  // never runs the real process inspection.
+  const checkGateway =
+    deps.checkGateway ?? (deps.isListening || surface.inContainer ? null : defaultCheckGateway);
+  if (listening && checkGateway) {
+    const check = await checkGateway(port).catch(() => null);
+    if (check?.blocked) {
+      runtime.error(check.blocked);
+      runtime.exit(1);
+      return null;
+    }
+    if (check?.otherInstall) {
+      const interactive = deps.stdinIsTty ?? Boolean(process.stdin.isTTY);
+      if (!interactive || opts.fromInstaller) {
+        runtime.log(
+          [
+            ...check.summary,
+            `Not opening its setup page. To switch to ${check.version ?? "this version"}, run:`,
+            `  ${formatCliCommand("bitterbot gateway switch")}`,
+            `then run \`${formatCliCommand("bitterbot onboard")}\` again.`,
+          ].join("\n"),
+        );
+        return null;
+      }
+      const code = await (deps.switchGateway ?? defaultSwitchGateway)();
+      if (code !== 0) {
+        return null;
+      }
+    }
+  }
+  // A browser setup that lost its session before Finish is not "set up".
+  const alreadySetUp =
+    snapshot.exists && !isFirstBootOnlyConfig(snapshot.resolved) && !setupInProgress();
+  if (!listening && alreadySetUp && opts.fromInstaller) {
+    // Set up, but no gateway runs: say how to start it rather than starting
+    // a setup gateway with setup-only flags.
+    runtime.log(
+      [
+        "Bitterbot is already set up. Start it with:",
+        `  ${formatCliCommand("bitterbot gateway")}`,
+        `or keep it running in the background (starts on login): ${formatCliCommand("bitterbot gateway install")}`,
+      ].join("\n"),
+    );
+    return null;
+  }
   if (!listening) {
     if (surface.inContainer) {
       runtime.error(
@@ -231,11 +310,18 @@ export async function runBrowserOnboarding(
     }
   }
 
-  // A browser setup that lost its session before Finish is not "set up".
-  const alreadySetUp =
-    snapshot.exists && !isFirstBootOnlyConfig(snapshot.resolved) && !setupInProgress();
   let url: string;
-  if (alreadySetUp) {
+  if (alreadySetUp && opts.fromInstaller) {
+    // Straight from install.sh: no "already set up" detour, just the app.
+    url = buildControlUiUrl({ port, basePath });
+    runtime.log(
+      [
+        "Bitterbot is already set up. Open the Control UI:",
+        `  ${url}`,
+        `To run setup again: ${formatCliCommand("bitterbot onboard")}`,
+      ].join("\n"),
+    );
+  } else if (alreadySetUp) {
     // A setup token cannot re-run a finished setup; the admin sign-in can
     // (a browser on this machine is signed in automatically).
     url = buildSetupUrl({ port, basePath });
@@ -279,6 +365,17 @@ export async function runBrowserOnboarding(
     }
   }
   return { url, tokenIssued: !alreadySetUp };
+}
+
+async function defaultSwitchGateway(): Promise<number> {
+  const { runGatewaySwitch } = await import("../cli/daemon-cli/switch.js");
+  return await runGatewaySwitch({});
+}
+
+/** The Control UI's address on this machine. */
+export function buildControlUiUrl(params: { port: number; basePath?: string }): string {
+  const setup = buildSetupUrl({ port: params.port, basePath: params.basePath });
+  return setup.slice(0, -"setup".length);
 }
 
 /** The real environment for `resolveOnboardSurface`. */

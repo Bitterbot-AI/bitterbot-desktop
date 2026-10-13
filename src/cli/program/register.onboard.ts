@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { Option, type Command } from "commander";
 import { formatAuthChoiceChoicesForCli } from "../../commands/auth-choice-options.js";
 import type { GatewayDaemonRuntime } from "../../commands/daemon-runtime.js";
 import { ONBOARD_PROVIDER_AUTH_FLAGS } from "../../commands/onboard-provider-auth-flags.js";
@@ -112,7 +112,9 @@ export function registerOnboardCommand(program: Command) {
     .option("--skip-health", "Skip health check")
     .option("--skip-ui", "Skip Control UI/TUI prompts")
     .option("--node-manager <name>", "Node manager for skills: npm|pnpm|bun")
-    .option("--json", "Output JSON summary", false);
+    .option("--json", "Output JSON summary", false)
+    // install.sh runs `onboard --from-installer` right after installing.
+    .addOption(new Option("--from-installer").hideHelp());
 
   command.action(async (opts, commandRuntime) => {
     await runCommandWithRuntime(defaultRuntime, async () => {
@@ -126,6 +128,7 @@ export function registerOnboardCommand(program: Command) {
           workspace: opts.workspace as string | undefined,
           nonInteractive: Boolean(opts.nonInteractive),
           browser: typeof opts.browser === "boolean" ? opts.browser : undefined,
+          fromInstaller: Boolean(opts.fromInstaller),
           acceptRisk: Boolean(opts.acceptRisk),
           flow: opts.flow as "quickstart" | "advanced" | "manual" | undefined,
           mode: opts.mode as "local" | "remote" | undefined,
