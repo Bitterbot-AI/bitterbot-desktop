@@ -268,7 +268,19 @@ export async function runGatewaySwitch(
     return SWITCH_EXIT.notDone;
   }
   const deps = injected ?? (await defaultSwitchDeps({ timeoutMs: parsePositiveInt(opts.timeout) }));
-  const { findings, decision, execute } = await deps.detect({ port });
+  let detected: Awaited<ReturnType<GatewaySwitchCommandDeps["detect"]>>;
+  try {
+    detected = await deps.detect({ port });
+  } catch (err) {
+    const message = `Could not check what runs on the gateway port: ${err instanceof Error ? err.message : String(err)}`;
+    if (json) {
+      runtime.log(JSON.stringify({ ok: false, status: "error", error: message }));
+    } else {
+      runtime.error(message);
+    }
+    return SWITCH_EXIT.failed;
+  }
+  const { findings, decision, execute } = detected;
   const say = (lines: string[]) => {
     if (!json) {
       for (const line of lines) {

@@ -186,7 +186,7 @@ config, memory and keys are not changed.
 
 Options: `--check` (alias `--dry-run`) only reports; `-y`, `--yes` switches
 without asking; `--port <port>`; `--timeout <ms>` (how long to wait for the
-new gateway, default 120000); `--json`.
+new gateway, default 300000); `--json`.
 
 Exit codes: with `--check`, 0 nothing to switch, 10 a switch is available, 2
 something it will not touch is on the port. Otherwise 0 switched (or nothing

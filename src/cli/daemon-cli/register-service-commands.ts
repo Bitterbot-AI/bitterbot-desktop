@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { defaultRuntime } from "../../runtime.js";
 import {
   runDaemonInstall,
   runDaemonRestart,
@@ -77,7 +78,7 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
     .option("--dry-run", "Same as --check", false)
     .option("-y, --yes", "Switch without asking", false)
     .option("--port <port>", "Gateway port (default: from config)")
-    .option("--timeout <ms>", "How long to wait for the new gateway to answer", "120000")
+    .option("--timeout <ms>", "How long to wait for the new gateway to answer", "300000")
     .option("--json", "Output JSON", false)
     .action(async (cmdOpts) => {
       const { runGatewaySwitch } = await import("./switch.js");
@@ -88,7 +89,8 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
         port: cmdOpts.port,
         timeout: cmdOpts.timeout,
       });
-      process.exitCode = code;
+      // Exit explicitly: install.sh waits on this command.
+      defaultRuntime.exit(code);
     });
 
   parent

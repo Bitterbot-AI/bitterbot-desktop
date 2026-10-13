@@ -198,7 +198,8 @@ export type GatewaySwitchTimeouts = {
 export const DEFAULT_SWITCH_TIMEOUTS: GatewaySwitchTimeouts = {
   stopMs: 45_000,
   childrenMs: 15_000,
-  healthyMs: 120_000,
+  // The new version may migrate memory databases on its first start.
+  healthyMs: 300_000,
   restoreMs: 90_000,
   pollMs: 500,
 };
@@ -342,6 +343,15 @@ export function decideGatewaySwitch(findings: GatewaySwitchFindings): GatewaySwi
       action: "blocked",
       reason: "unidentified-listener",
       message: `A Bitterbot gateway is running on port ${port}, but its process could not be identified (run as the same user, or install lsof). Stop it yourself, then run: bitterbot gateway switch`,
+    };
+  }
+  // The service is re-installed, so its old definition must be readable to
+  // be restored if the switch fails.
+  if (service && !service.definition) {
+    return {
+      action: "blocked",
+      reason: "cannot-restore",
+      message: `The background service (${service.label}) could not be read, so it could not be put back if the switch failed. To point it at this version anyway: bitterbot gateway install --force`,
     };
   }
   // A foreground gateway (no service runs it) must be restartable before we
@@ -692,7 +702,9 @@ export async function executeGatewaySwitch(params: {
       const definition = await deps.buildServiceDefinition();
       const started = deps.startDetached({
         argv: [...definition.programArguments, ...(findings.extraGatewayArgs ?? [])],
-        cwd: definition.workingDirectory,
+        // Started from its own root, so it can be located (and recognised as
+        // this install) even when its command line becomes a process title.
+        cwd: definition.workingDirectory ?? findings.self.root ?? undefined,
         env,
       });
       detachedPid = started.pid;

@@ -346,6 +346,16 @@ describe("decideGatewaySwitch", () => {
     expect(d.action === "blocked" && d.reason).toBe("cannot-restore");
   });
 
+  it("a service whose definition cannot be read is never replaced (nothing to roll back to)", () => {
+    const d = decideGatewaySwitch(
+      findings({
+        listener: listener({ underService: true }),
+        service: service({ definition: null, runsFrom: null, pointsHere: true }),
+      }),
+    );
+    expect(d.action === "blocked" && d.reason).toBe("cannot-restore");
+  });
+
   it("a gateway whose pid could not be read is not stopped", () => {
     const d = decideGatewaySwitch(findings({ listener: listener({ pid: null }) }));
     expect(d.action === "blocked" && d.reason).toBe("unidentified-listener");

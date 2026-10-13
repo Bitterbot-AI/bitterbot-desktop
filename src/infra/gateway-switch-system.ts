@@ -466,6 +466,23 @@ export async function findLinuxListenerPid(
   return null;
 }
 
+/**
+ * Is anything listening on `port` on any address, read from the socket table
+ * only. Never test-binds the port (inspectPortUsage does when lsof finds
+ * nothing): during a switch that could steal the port from a gateway that is
+ * starting.
+ */
+async function hasListenerWithoutBinding(port: number): Promise<boolean> {
+  if (process.platform === "linux") {
+    return (await findLinuxListenerPid(port)) !== null;
+  }
+  if (process.platform === "darwin") {
+    const res = await run(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"]);
+    return res.code === 0 && res.stdout.trim().length > 0;
+  }
+  return false;
+}
+
 async function findListenerPid(
   port: number,
 ): Promise<{ pid: number | null; command: string | null } | null> {
@@ -530,12 +547,6 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
     } else {
       const proc = await resolveProcessRoot(found.pid);
       const command = proc.command ?? found.command;
-      const isGateway = isBitterbotGatewayCommand(command, Boolean(proc.root));
-      const reportedVersion = isGateway ? await queryGatewayVersion(cfg, port, configPort) : null;
-      const ref = await installRefFor(proc.root);
-      if (ref && reportedVersion) {
-        ref.version = reportedVersion;
-      }
       const underService = Boolean(
         service &&
         ((service.pid && proc.ancestors.includes(service.pid)) ||
@@ -544,14 +555,23 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
             proc.root &&
             sameRoot(proc.root, service.runsFrom?.root))),
       );
+      // A service-run gateway whose title hides its entry and whose working
+      // directory is not its root: it runs what the service definition runs.
+      const root = proc.root ?? (underService ? (service?.runsFrom?.root ?? null) : null);
+      const isGateway = isBitterbotGatewayCommand(command, Boolean(root));
+      const reportedVersion = isGateway ? await queryGatewayVersion(cfg, port, configPort) : null;
+      const ref = await installRefFor(root);
+      if (ref && reportedVersion) {
+        ref.version = reportedVersion;
+      }
       listener = {
         pid: found.pid,
         command,
         isGateway,
         runsFrom: ref,
         reportedVersion,
-        isSelf: proc.root
-          ? sameRoot(proc.root, self.root)
+        isSelf: root
+          ? sameRoot(root, self.root)
           : Boolean(reportedVersion && reportedVersion === self.version),
         underService,
         exePath: proc.exe,
@@ -683,12 +703,26 @@ export function createSystemSwitchDeps(params: {
     signal: (pid, sig) => {
       process.kill(pid, sig);
     },
-    isPortListening: (port) => isPortListening(port),
+    // A gateway bound to a tailnet or LAN address does not answer on
+    // 127.0.0.1: fall back to the socket table.
+    isPortListening: async (port) =>
+      (await isPortListening(port)) || (await hasListenerWithoutBinding(port)),
     probeGateway: async (port) => {
       const { resolveGatewayPort } = await import("../config/config.js");
       const version = await queryGatewayVersion(config, port, resolveGatewayPort(config, env));
       const found = await findListenerPid(port);
-      const root = found?.pid ? (await resolveProcessRoot(found.pid)).root : null;
+      if (!found?.pid) {
+        return { version, root: null };
+      }
+      const proc = await resolveProcessRoot(found.pid);
+      let root = proc.root;
+      if (!root) {
+        // Started by the (re-pointed) service: it runs what the service runs.
+        const svc = await inspectGatewayService({ self: findings.self, env });
+        if (svc?.pid && proc.ancestors.includes(svc.pid)) {
+          root = svc.runsFrom?.root ?? null;
+        }
+      }
       return { version, root };
     },
     swapCurrentLink: (appDir, version) => swapVersionLink(appDir, "current", version),

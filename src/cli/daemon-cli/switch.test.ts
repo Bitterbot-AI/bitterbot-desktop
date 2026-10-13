@@ -158,6 +158,15 @@ describe("bitterbot gateway switch", () => {
     expect(h.out.join("\n")).toContain("not a Bitterbot gateway");
   });
 
+  it("a detection error is reported, not thrown (exit 3)", async () => {
+    const h = harness({});
+    h.deps.detect = vi.fn(async () => {
+      throw new Error("config unreadable");
+    });
+    expect(await runGatewaySwitch({ check: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.failed);
+    expect(h.out.join("\n")).toContain("config unreadable");
+  });
+
   it("--json prints one JSON object", async () => {
     const h = harness({});
     await runGatewaySwitch({ check: true, json: true }, h.runtime, h.deps);
