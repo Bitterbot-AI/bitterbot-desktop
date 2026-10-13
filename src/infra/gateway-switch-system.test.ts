@@ -44,7 +44,7 @@ function writePkg(dir: string, version: string) {
 }
 
 beforeAll(() => {
-  work = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "bb-switch-")));
+  work = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "bb-switch-")));
   clone = path.join(work, "bitterbot-desktop");
   writePkg(clone, "1.4.0");
   fs.mkdirSync(path.join(clone, ".git"));
