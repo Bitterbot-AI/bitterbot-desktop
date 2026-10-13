@@ -402,6 +402,34 @@ If you see `Playwright is not available in this gateway build`, install the full
 Playwright package (not `playwright-core`) and restart the gateway, or reinstall
 Bitterbot with browser support.
 
+#### Playwright's own Chromium build
+
+The browser tool runs a system Chrome, Brave, Edge or Chromium (or a Chromium that
+Playwright downloaded, of any revision) and attaches to it, so it does not need a
+specific Playwright browser build. Code that calls `chromium.launch()` itself does:
+each Playwright version pins one Chromium revision (for example, Playwright 1.63.0
+pins revision 1243), and after a Playwright upgrade an older download fails with
+`Executable doesn't exist at .../chromium_headless_shell-<rev>/...`.
+
+`bitterbot doctor` (Install section) reports the revision the installed
+`playwright-core` expects, whether it is downloaded, and the exact command that
+downloads it for your install. The browser tool prints the same command when a
+launch fails this way. Typical forms:
+
+```bash
+# Source checkout
+pnpm exec playwright-core install chromium
+
+# Release tarball (install.sh); --with-browser does this at install time
+PLAYWRIGHT_BROWSERS_PATH=~/.bitterbot/browsers \
+  ~/.bitterbot/app/current/runtime/node/bin/node \
+  ~/.bitterbot/app/current/node_modules/playwright-core/cli.js install chromium
+```
+
+`install chromium` also downloads the matching headless shell. The installers do
+not download a browser by default (about 170 MB); use `install.sh --with-browser`
+on Linux, or install Chrome.
+
 #### Docker Playwright install
 
 If your Gateway runs in Docker, avoid `npx playwright` (npm override conflicts).

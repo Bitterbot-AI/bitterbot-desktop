@@ -7,6 +7,11 @@ import {
   startBrowserControlServiceFromConfig,
 } from "./control-service.js";
 import { isBrowserStarting } from "./launch-activity.js";
+import {
+  describeMissingPlaywrightBrowser,
+  looksLikeMissingPlaywrightBrowser,
+  resolvePlaywrightInstallCommand,
+} from "./playwright-browsers.js";
 import { createBrowserRouteDispatcher } from "./routes/dispatcher.js";
 
 type LoopbackBrowserAuthDeps = {
@@ -127,6 +132,17 @@ function responseErrorMessage(text: string, status: number): string {
  * code is running, the service is too.
  */
 function enhanceBrowserFetchError(url: string, err: unknown, timeoutMs: number): Error {
+  // Playwright's "Executable doesn't exist at .../chromium_headless_shell-NNNN"
+  // stack after a Playwright bump: say which build and the exact command that
+  // downloads it, instead of the raw stack.
+  const rawMessage = err instanceof Error ? err.message : String(err);
+  if (looksLikeMissingPlaywrightBrowser(rawMessage)) {
+    const status = err instanceof BrowserResponseError ? err.status : 500;
+    return new BrowserResponseError(
+      describeMissingPlaywrightBrowser(resolvePlaywrightInstallCommand(), rawMessage),
+      status,
+    );
+  }
   if (err instanceof BrowserResponseError) {
     return err;
   }

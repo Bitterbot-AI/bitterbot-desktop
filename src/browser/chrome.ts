@@ -29,6 +29,7 @@ import {
   DEFAULT_BITTERBOT_BROWSER_PROFILE_NAME,
 } from "./constants.js";
 import { trackBrowserLaunch } from "./launch-activity.js";
+import { resolvePlaywrightInstallCommand } from "./playwright-browsers.js";
 
 const log = createSubsystemLogger("browser").child("chrome");
 
@@ -248,7 +249,7 @@ async function launchChrome(
     throw new Error(
       "No supported browser found (Chrome/Brave/Edge/Chromium on macOS, Linux, or Windows).\n\n" +
         "Quick fixes:\n" +
-        "  1. Install Playwright Chromium:  npx playwright install chromium\n" +
+        `  1. Download Playwright's Chromium:  ${resolvePlaywrightInstallCommand()}\n` +
         "  2. Or install a system browser:  sudo apt install chromium-browser  (Linux)\n" +
         "  3. Or set a custom path:         browser.executablePath in your config\n\n" +
         "Docs: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/tools/browser.md",
