@@ -63,6 +63,24 @@ describe("browser request errors: the in-process control service", () => {
     expect(err.message).not.toMatch(/Can't reach|restart/i);
   });
 
+  it("replaces Playwright's missing-browser stack with the exact fix", async () => {
+    dispatch.mockResolvedValue({
+      status: 500,
+      body: {
+        error:
+          "browserType.launch: Executable doesn't exist at /home/u/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell\n" +
+          "Looks like Playwright Test or Playwright was just installed or updated.",
+      },
+    });
+
+    const err = await failure(fetchBrowserJson("/tabs/open", { method: "POST" }));
+
+    expect(err).toBeInstanceOf(BrowserResponseError);
+    expect(err.message).toContain("chromium_headless_shell-1243");
+    expect(err.message).toMatch(/Fix: run `[^`]*playwright-core[^`]* install chromium`/);
+    expect(err.message).not.toContain("browserType.launch");
+  });
+
   it("does not dress up a take-over refusal as an outage", async () => {
     const refusal =
       "A person has taken control of this browser in the live view, so this action was not performed.";

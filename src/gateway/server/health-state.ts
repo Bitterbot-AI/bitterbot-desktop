@@ -6,6 +6,7 @@ import { listSystemPresence } from "../../infra/system-presence.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { resolveGatewayAuth } from "../auth.js";
 import type { Snapshot } from "../protocol/index.js";
+import { buildGatewayRuntimeInfo } from "../runtime-info.js";
 
 let presenceVersion = 1;
 let healthVersion = 1;
@@ -29,6 +30,7 @@ export function buildGatewaySnapshot(): Snapshot {
     health: emptyHealth,
     stateVersion: { presence: presenceVersion, health: healthVersion },
     uptimeMs,
+    runtime: buildGatewayRuntimeInfo(),
     // Surface resolved paths so UIs can display the true config location.
     configPath: CONFIG_PATH,
     stateDir: STATE_DIR,

@@ -5,6 +5,7 @@
 
 import { looksLikeContainer, readDeclaredInstallKind } from "../../../infra/install-kind.js";
 import { checkBrowserOrigin } from "../../origin-check.js";
+import { resolveGatewayVersion } from "../../runtime-info.js";
 import { MAX_BUFFERED_BYTES, MAX_PAYLOAD_BYTES, TICK_INTERVAL_MS } from "../../server-constants.js";
 import {
   SETUP_EVENTS,
@@ -83,7 +84,7 @@ export function buildSetupHello(params: { connId: string; protocol: number }) {
     type: "hello-ok" as const,
     protocol: params.protocol,
     server: {
-      version: process.env.BITTERBOT_VERSION ?? process.env.npm_package_version ?? "dev",
+      version: resolveGatewayVersion(),
       connId: params.connId,
     },
     features: { methods: [...SETUP_METHODS], events: [...SETUP_EVENTS] },

@@ -22,7 +22,7 @@ function formatSkillHint(skill: {
 }): string {
   const desc = skill.description?.trim();
   const installLabel = skill.install[0]?.label?.trim();
-  const combined = desc && installLabel ? `${desc} — ${installLabel}` : desc || installLabel;
+  const combined = desc && installLabel ? `${desc} (${installLabel})` : desc || installLabel;
   if (!combined) {
     return "install";
   }
@@ -183,7 +183,7 @@ export async function setupSkills(
       }
       const code = result.code == null ? "" : ` (exit ${result.code})`;
       const detail = summarizeInstallFailure(result.message);
-      spin.stop(`Install failed: ${name}${code}${detail ? ` — ${detail}` : ""}`);
+      spin.stop(`Install failed: ${name}${code}${detail ? `: ${detail}` : ""}`);
       for (const warning of warnings) {
         runtime.log(warning);
       }

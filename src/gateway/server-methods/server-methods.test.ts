@@ -472,7 +472,11 @@ describe("gateway healthHandlers.status scope handling", () => {
     } as HealthStatusHandlerParams);
 
     expect(vi.mocked(status.getStatusSummary)).toHaveBeenCalledWith({ includeSensitive: false });
-    expect(respond).toHaveBeenCalledWith(true, { ok: true }, undefined);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      { ok: true, runtime: expect.objectContaining({ platform: process.platform }) },
+      undefined,
+    );
   });
 
   it("requests full status for admin clients", async () => {
@@ -486,7 +490,11 @@ describe("gateway healthHandlers.status scope handling", () => {
     } as HealthStatusHandlerParams);
 
     expect(vi.mocked(status.getStatusSummary)).toHaveBeenCalledWith({ includeSensitive: true });
-    expect(respond).toHaveBeenCalledWith(true, { ok: true }, undefined);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      { ok: true, runtime: expect.objectContaining({ platform: process.platform }) },
+      undefined,
+    );
   });
 });
 

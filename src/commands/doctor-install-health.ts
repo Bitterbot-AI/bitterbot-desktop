@@ -18,9 +18,13 @@
 
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
+import {
+  inspectPlaywrightBrowsers,
+  playwrightInstallCommand,
+  resolvePlaywrightCoreDir,
+} from "../browser/playwright-browsers.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { InstallKind } from "../infra/install-kind.js";
 import { orchestratorMissingAdvice } from "../infra/orchestrator-advice.js";
@@ -54,6 +58,16 @@ export type InstallHealthInput = {
   /** Test seams. */
   probeOrchestrator?: (cfg: BitterbotConfig["p2p"]) => OrchestratorBinaryProbe;
   resolvePlaywright?: (packageRoot: string | null) => string | null;
+  /** Filesystem seam for the Playwright browser-revision check. */
+  playwrightProbe?: {
+    readFile?: (p: string) => string;
+    exists?: (p: string) => boolean;
+    listDir?: (p: string) => string[];
+  };
+  /** Node binary the fix command names (defaults to the running one). */
+  execPath?: string;
+  /** Platform the fix command is written for (defaults to this one). */
+  platform?: NodeJS.Platform;
   findBrowser?: (cfg: BitterbotConfig) => { kind: string; path: string } | null;
 };
 
@@ -216,14 +230,7 @@ export async function checkOrchestrator(input: InstallHealthInput): Promise<Chec
 }
 
 function defaultResolvePlaywright(packageRoot: string | null): string | null {
-  try {
-    const req = createRequire(
-      packageRoot ? path.join(packageRoot, "package.json") : import.meta.url,
-    );
-    return path.dirname(req.resolve("playwright-core/package.json"));
-  } catch {
-    return null;
-  }
+  return resolvePlaywrightCoreDir(packageRoot);
 }
 
 async function defaultFindBrowser(cfg: BitterbotConfig) {
@@ -249,12 +256,48 @@ export async function checkPlaywright(input: InstallHealthInput): Promise<CheckR
       "Browser tool: Playwright (playwright-core) is not installed, so the agent cannot drive a browser. Fix: reinstall Bitterbot.",
     );
   }
+  const fix = playwrightInstallCommand({
+    installKind: input.installKind,
+    pwDir: pw,
+    env: input.env,
+    homedir: input.homedir,
+    execPath: input.execPath,
+    platform: input.platform,
+  });
+  // The Chromium build this playwright-core pins (its browsers.json), and
+  // whether it is downloaded. A Playwright bump moves the revision; an older
+  // download does not satisfy `chromium.launch()`.
+  const state = inspectPlaywrightBrowsers({
+    pwDir: pw,
+    env: input.env,
+    homedir: input.homedir,
+    probe: input.playwrightProbe,
+  });
+  const pinned = state?.revisions.headlessShell ?? state?.revisions.chromium;
+  const pinnedMissing = state ? !state.chromiumInstalled || !state.headlessShellInstalled : false;
+  const pinnedLabel = `Playwright ${state?.revisions.version ?? ""}`.trim();
+  const others = state?.installedRevisions.filter((rev) => rev !== pinned) ?? [];
+  const missingNote = pinnedMissing
+    ? `${pinnedLabel} expects Chromium revision ${pinned} in ${state?.browsersDir}, which is not downloaded${
+        others.length > 0 ? ` (found revision ${others.join(", ")} only)` : ""
+      }`
+    : "";
+
   const browser = input.findBrowser
     ? input.findBrowser(input.cfg)
     : await defaultFindBrowser(input.cfg);
   if (!browser) {
     return warn(
-      "Browser tool: Playwright is installed but no Chrome, Chromium, Brave or Edge was found. Fix: install one, or `npx playwright install chromium` (the installer's --with-browser does this).",
+      `Browser tool: Playwright is installed but no Chrome, Chromium, Brave or Edge was found${
+        missingNote ? `; ${missingNote}` : ""
+      }. Fix: \`${fix}\` (the installer's --with-browser does this), or install Chrome.`,
+    );
+  }
+  if (pinnedMissing) {
+    // The browser tool runs the browser it found directly, so it works; code
+    // that calls chromium.launch() (agent-written scripts, skills) does not.
+    return (others.length > 0 ? warn : info)(
+      `Browser tool: ${browser.kind} at ${browser.path}. ${missingNote}, so scripts that call chromium.launch() fail. Fix: \`${fix}\`.`,
     );
   }
   return ok(`Browser tool: Playwright present; ${browser.kind} at ${browser.path}.`);

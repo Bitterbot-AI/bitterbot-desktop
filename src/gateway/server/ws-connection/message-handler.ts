@@ -52,6 +52,7 @@ import {
   validateConnectParams,
   validateRequestFrame,
 } from "../../protocol/index.js";
+import { resolveGatewayVersion } from "../../runtime-info.js";
 import { MAX_BUFFERED_BYTES, MAX_PAYLOAD_BYTES, TICK_INTERVAL_MS } from "../../server-constants.js";
 import { handleGatewayRequest } from "../../server-methods.js";
 import type { GatewayRequestContext, GatewayRequestHandlers } from "../../server-methods/types.js";
@@ -921,7 +922,7 @@ export function attachGatewayWsMessageHandler(params: {
           type: "hello-ok",
           protocol: PROTOCOL_VERSION,
           server: {
-            version: process.env.BITTERBOT_VERSION ?? process.env.npm_package_version ?? "dev",
+            version: resolveGatewayVersion(),
             commit: process.env.GIT_COMMIT,
             host: os.hostname(),
             connId,

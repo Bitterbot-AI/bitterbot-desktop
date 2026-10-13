@@ -1,4 +1,5 @@
 import type { ChannelId } from "../channels/plugins/types.js";
+import type { GatewayRuntime } from "../gateway/protocol/index.js";
 
 export type SessionStatus = {
   agentId?: string;
@@ -32,6 +33,11 @@ export type HeartbeatStatus = {
 };
 
 export type StatusSummary = {
+  /**
+   * Set by the gateway `status` RPC (not the local CLI summary): the gateway
+   * process's version, uptime, platform and install kind.
+   */
+  runtime?: GatewayRuntime;
   linkChannel?: {
     id: ChannelId;
     label: string;

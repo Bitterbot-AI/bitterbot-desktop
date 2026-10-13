@@ -43,12 +43,41 @@ export const StateVersionSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/**
+ * What the gateway process itself is: the real package version (the same
+ * one the Control UI footer is built with), process uptime, and where it
+ * runs. Reported in the hello snapshot and in the `status` RPC so the
+ * Overview cards do not have to guess.
+ */
+export const GatewayRuntimeSchema = Type.Object(
+  {
+    version: NonEmptyString,
+    uptimeMs: Type.Integer({ minimum: 0 }),
+    /** `process.platform` (linux, darwin, win32, ...). */
+    platform: NonEmptyString,
+    /** `process.arch` (x64, arm64, ...). */
+    arch: NonEmptyString,
+    nodeVersion: Type.Optional(NonEmptyString),
+    installKind: Type.Optional(
+      Type.Union([
+        Type.Literal("git"),
+        Type.Literal("package"),
+        Type.Literal("container"),
+        Type.Literal("tarball"),
+        Type.Literal("unknown"),
+      ]),
+    ),
+  },
+  { additionalProperties: false },
+);
+
 export const SnapshotSchema = Type.Object(
   {
     presence: Type.Array(PresenceEntrySchema),
     health: HealthSnapshotSchema,
     stateVersion: StateVersionSchema,
     uptimeMs: Type.Integer({ minimum: 0 }),
+    runtime: Type.Optional(GatewayRuntimeSchema),
     configPath: Type.Optional(NonEmptyString),
     stateDir: Type.Optional(NonEmptyString),
     sessionDefaults: Type.Optional(SessionDefaultsSchema),

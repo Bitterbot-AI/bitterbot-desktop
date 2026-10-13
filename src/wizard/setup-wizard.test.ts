@@ -8,6 +8,7 @@ import {
   createSetupDraft,
   P2P_EGRESS_SENTENCE,
   RISK_ACKNOWLEDGEMENT_NOTE,
+  RISK_ACKNOWLEDGEMENT_TITLE,
   runSetupSteps,
   SETUP_STEP_IDS,
   TELEMETRY_STATEMENT,
@@ -142,6 +143,11 @@ describe("setup over the wizard session (the RPC renderer)", () => {
       "done",
     ]);
     expect(steps[0]?.message).toBe(RISK_ACKNOWLEDGEMENT_NOTE);
+    // User-facing setup copy carries no em-dashes (browser /setup + terminal).
+    expect(RISK_ACKNOWLEDGEMENT_TITLE).toBe("Security: at your own risk");
+    for (const text of [RISK_ACKNOWLEDGEMENT_TITLE, RISK_ACKNOWLEDGEMENT_NOTE]) {
+      expect(text).not.toContain("\u2014");
+    }
     expect(steps[1]?.initialValue).toBe(false);
     expect(steps[2]?.message).toContain(P2P_EGRESS_SENTENCE);
     expect(steps[2]?.message).toContain(TELEMETRY_STATEMENT);

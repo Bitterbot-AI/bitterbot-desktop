@@ -1,23 +1,25 @@
 import { create } from "zustand";
 
+/** The `health` RPC result (HealthSummary in src/commands/health.ts). */
 export type HealthSnapshot = {
   ts: number;
-  uptime?: number;
-  version?: string;
-  platform?: string;
-  nodeVersion?: string;
-  configPath?: string;
   channels?: Record<string, unknown>;
   [key: string]: unknown;
 };
 
-export type StatusSummary = {
+/** The gateway process's facts (GatewayRuntimeSchema in src/gateway/protocol/schema/snapshot.ts). */
+export type GatewayRuntimeInfo = {
   version?: string;
-  uptime?: number;
-  pid?: number;
+  uptimeMs?: number;
   platform?: string;
   arch?: string;
   nodeVersion?: string;
+  installKind?: "git" | "package" | "container" | "tarball" | "unknown";
+};
+
+/** The `status` RPC result: the CLI status summary plus `runtime`. */
+export type StatusSummary = {
+  runtime?: GatewayRuntimeInfo;
   configPath?: string;
   stateDir?: string;
   agents?: unknown[];

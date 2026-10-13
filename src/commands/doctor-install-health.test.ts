@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { playwrightInstallCommand } from "../browser/playwright-browsers.js";
 import {
   checkInstallKindAndChannel,
   checkLocalGguf,
@@ -187,9 +188,81 @@ describe("Playwright", () => {
   });
   it("warns without playwright-core or without a browser", async () => {
     expect((await checkPlaywright(input({ resolvePlaywright: () => null }))).level).toBe("warn");
-    expect((await checkPlaywright(input({ findBrowser: () => null }))).message).toContain(
-      "playwright install chromium",
+    const noBrowser = await checkPlaywright(
+      input({ findBrowser: () => null, execPath: "/opt/node/bin/node", platform: "linux" }),
     );
+    expect(noBrowser.level).toBe("warn");
+    expect(noBrowser.message).toContain(
+      "`/opt/node/bin/node /pkg/node_modules/playwright-core/cli.js install chromium`",
+    );
+  });
+
+  describe("pinned Chromium revision", () => {
+    let pwDir: string;
+    let browsers: string;
+    beforeEach(() => {
+      pwDir = path.join(dir, "node_modules", "playwright-core");
+      browsers = path.join(dir, "pw-browsers");
+      fs.mkdirSync(pwDir, { recursive: true });
+      fs.mkdirSync(browsers, { recursive: true });
+      fs.writeFileSync(path.join(pwDir, "package.json"), JSON.stringify({ version: "1.63.0" }));
+      fs.writeFileSync(
+        path.join(pwDir, "browsers.json"),
+        JSON.stringify({
+          browsers: [
+            { name: "chromium", revision: "1243" },
+            { name: "chromium-headless-shell", revision: "1243" },
+          ],
+        }),
+      );
+    });
+    const pwInput = (overrides: Partial<InstallHealthInput> = {}) =>
+      input({
+        resolvePlaywright: () => pwDir,
+        env: { PLAYWRIGHT_BROWSERS_PATH: browsers },
+        execPath: "/opt/node/bin/node",
+        ...overrides,
+      });
+
+    it("is ok when the pinned revision is downloaded", async () => {
+      fs.mkdirSync(path.join(browsers, "chromium-1243"));
+      fs.mkdirSync(path.join(browsers, "chromium_headless_shell-1243"));
+      expect((await checkPlaywright(pwInput())).level).toBe("ok");
+    });
+
+    it("warns on a stale revision and names the exact fix", async () => {
+      fs.mkdirSync(path.join(browsers, "chromium-1208"));
+      fs.mkdirSync(path.join(browsers, "chromium_headless_shell-1208"));
+      fs.mkdirSync(path.join(browsers, "chromium_headless_shell-1243"));
+      const r = await checkPlaywright(pwInput());
+      expect(r.level).toBe("warn");
+      expect(r.message).toContain("Playwright 1.63.0 expects Chromium revision 1243");
+      expect(r.message).toContain("found revision 1208 only");
+      const fix = playwrightInstallCommand({
+        installKind: "package",
+        pwDir,
+        env: { PLAYWRIGHT_BROWSERS_PATH: browsers },
+        execPath: "/opt/node/bin/node",
+      });
+      expect(r.message).toContain(`Fix: \`${fix}\``);
+      if (process.platform !== "win32") {
+        expect(fix).toBe(
+          `PLAYWRIGHT_BROWSERS_PATH=${browsers} /opt/node/bin/node ${pwDir}/cli.js install chromium`,
+        );
+      }
+    });
+
+    it("is info when nothing is downloaded but a system browser is there", async () => {
+      const r = await checkPlaywright(pwInput());
+      expect(r.level).toBe("info");
+      expect(r.message).toContain("chromium.launch()");
+    });
+
+    it("tells a source checkout to use its pinned Playwright via pnpm", async () => {
+      const r = await checkPlaywright(pwInput({ installKind: "git", findBrowser: () => null }));
+      expect(r.level).toBe("warn");
+      expect(r.message).toContain("`pnpm exec playwright-core install chromium`");
+    });
   });
   it("is info when the browser tool is off", async () => {
     expect((await checkPlaywright(input({ cfg: { browser: { enabled: false } } }))).level).toBe(
