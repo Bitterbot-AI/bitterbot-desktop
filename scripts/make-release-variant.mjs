@@ -10,9 +10,12 @@
  * - unpacks <A.tar.gz> (system tar, so pnpm's symlinks survive),
  * - renames the top directory to bitterbot-<B>-<platform>,
  * - sets "version" in package.json and dist/build-info.json,
- * - with --fail-gateway, makes bin/bitterbot exit 1 for `gateway` (a release
- *   whose gateway cannot boot; `--version` and `update preflight` still work,
- *   so the updater activates it and the boot watchdog must roll it back),
+ * - with --fail-gateway, makes bin/bitterbot exit 1 when it would RUN the
+ *   gateway (`gateway`, `gateway run`, `gateway --flags`): a release whose
+ *   gateway cannot boot. `--version`, `update preflight` and the gateway
+ *   management subcommands (`gateway switch`, `gateway status`, ...) still
+ *   work, so the updater activates it and the boot watchdog must roll it
+ *   back, and `gateway switch` must roll back to the gateway it replaced,
  * - rewrites manifest.json (version, sha256 and size of the changed files),
  * - packs <out>/bitterbot-<B>-<platform>.tar.gz and its .manifest.json.
  *
@@ -107,7 +110,7 @@ try {
       1,
       0,
       "# CI: a release whose gateway cannot boot (PLAN-56 Phase 3b rollback smoke).",
-      'if [ "${1:-}" = "gateway" ]; then echo "simulated boot failure" >&2; exit 1; fi',
+      'if [ "${1:-}" = "gateway" ]; then case "${2:-}" in "" | -* | run) echo "simulated boot failure" >&2; exit 1 ;; esac; fi',
     );
     fs.writeFileSync(launcher, lines.join("\n"));
     changed.push("bin/bitterbot");

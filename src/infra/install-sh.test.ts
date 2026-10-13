@@ -104,13 +104,17 @@ describeInstaller("scripts/install.sh", () => {
       signer?: TestKey;
       noSig?: boolean;
       api?: Override;
+      /** bin/bitterbot body (default: echo its arguments). */
+      launcher?: string;
     } = {},
   ) {
     const top = `bitterbot-${version}-${platformId}`;
     const src = path.join(work, "src", `${path.basename(releases)}-${version}`);
     fs.rmSync(src, { recursive: true, force: true });
     fs.mkdirSync(path.join(src, top, "bin"), { recursive: true });
-    const launcher = Buffer.from(`#!/bin/sh\necho "fake bitterbot ${version} $*"\n`);
+    const launcher = Buffer.from(
+      `#!/bin/sh\n${opts.launcher ?? `echo "fake bitterbot ${version} $*"`}\n`,
+    );
     fs.writeFileSync(path.join(src, top, "bin", "bitterbot"), launcher, { mode: 0o755 });
     const manifest = buildManifest({
       version,
@@ -424,6 +428,81 @@ describeInstaller("scripts/install.sh", () => {
     expect(fs.readlinkSync(path.join(home, ".local", "bin", "bitterbot"))).toContain(
       path.join(".bitterbot", "app", "current", "bin", "bitterbot"),
     );
+  });
+
+  /**
+   * A launcher that answers `gateway switch` like the real CLI (exit codes in
+   * src/cli/daemon-cli/switch.ts) and logs every call.
+   */
+  const SWITCH_LAUNCHER = [
+    'echo "$*" >> "$HOME/calls.log"',
+    'case "$*" in',
+    '  "gateway switch --check") echo "Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001."; exit "${FAKE_CHECK_RC:-10}" ;;',
+    '  "gateway switch --yes") echo "Done. Your settings and memory are unchanged."; exit "${FAKE_SWITCH_RC:-0}" ;;',
+    "esac",
+  ].join("\n");
+
+  function calls(home: string): string {
+    const file = path.join(home, "calls.log");
+    return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  }
+
+  describe("switching a running older Bitterbot", () => {
+    const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
+
+    it("--yes: announced in the plan, checked after linking, switched", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], env, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).toContain(
+        "Switch:    a running older Bitterbot (git clone or older release) is switched to the new version",
+      );
+      expect(res.out).toContain("Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)");
+      expect(res.out).toContain("Done. Your settings and memory are unchanged.");
+      expect(calls(home)).toBe("gateway switch --check\ngateway switch --yes\n");
+      expect(res.out).not.toMatch(/\u2014/);
+    });
+
+    it("a fresh machine gets no extra output or questions", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "0" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).not.toContain("Found Bitterbot");
+      expect(calls(home)).toBe("gateway switch --check\n");
+    });
+
+    it("--no-switch never runs the switch", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller(["--no-switch"], env, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).toContain("a running older Bitterbot is left alone (--no-switch)");
+      expect(calls(home)).toBe("");
+    });
+
+    it("a port held by something else: reported, nothing stopped, next steps printed", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "2" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(calls(home)).toBe("gateway switch --check\n");
+      expect(res.out).toContain("gateway switch, then");
+    });
+
+    it("a switch that did not complete fails the run with a warning", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_SWITCH_RC: "1" }, home);
+      expect(res.status, res.out).toBe(1);
+      expect(res.out).toContain("the switch to 2.0.0 did not complete (exit 1)");
+    });
   });
 
   it("never prunes or replaces a version a running process uses", async () => {

@@ -19,6 +19,7 @@ vi.mock("../daemon/service.js", () => ({
 }));
 
 import {
+  findLinuxListenerPid,
   inspectGatewayService,
   resolveProcessRoot,
   resolveRootFromArgs,
@@ -185,5 +186,31 @@ describe("inspectGatewayService", () => {
     const found = await inspectGatewayService({ self: selfRef(), env: {} });
     expect(found?.pointsHere).toBe(true);
     expect(found?.runsFrom).toBeNull();
+  });
+});
+
+describe("findLinuxListenerPid (no lsof)", () => {
+  it("maps a LISTEN socket on the port to the pid holding it", async () => {
+    const proc = path.join(work, "proc");
+    fs.mkdirSync(path.join(proc, "net"), { recursive: true });
+    const header =
+      "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n";
+    // 19001 = 0x4A39: one LISTEN (0A) socket, one ESTABLISHED (01) socket on the same port.
+    fs.writeFileSync(
+      path.join(proc, "net", "tcp"),
+      header +
+        "   0: 0100007F:4A39 00000000:0000 0A 00000000:00000000 00:00000000 00000000  1000        0 5555 1 0 100 0 0 10 0\n" +
+        "   1: 0100007F:4A39 0100007F:D431 01 00000000:00000000 00:00000000 00000000  1000        0 6666 1 0 20 4 30 10 -1\n",
+    );
+    fs.writeFileSync(path.join(proc, "net", "tcp6"), header);
+    for (const [pid, inode] of [
+      ["200", "6666"],
+      ["321", "5555"],
+    ] as const) {
+      fs.mkdirSync(path.join(proc, pid, "fd"), { recursive: true });
+      fs.symlinkSync(`socket:[${inode}]`, path.join(proc, pid, "fd", "7"));
+    }
+    expect(await findLinuxListenerPid(19001, proc)).toBe(321);
+    expect(await findLinuxListenerPid(19004, proc)).toBeNull();
   });
 });

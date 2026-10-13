@@ -24,7 +24,15 @@
 #      pass --require-signature to refuse that fallback.
 #   4. Unpacks to <dir>/<version>, switches <dir>/current to it, keeps the
 #      previous version (for rollback), links ~/.local/bin/bitterbot.
-#   5. Runs `bitterbot onboard` (skip with --no-onboard).
+#   5. If an older Bitterbot is running (a git clone started with pnpm, an
+#      older release) or set up as a background service, offers to switch it
+#      to the new version: `bitterbot gateway switch` stops the old gateway,
+#      points the service at the new one, waits until it answers, and puts
+#      the old one back if it does not. Asked once (default yes); --yes
+#      switches without asking; --no-switch leaves it alone. Your config,
+#      memory and keys in ~/.bitterbot are never touched.
+#   6. Runs `bitterbot onboard` (skip with --no-onboard): the setup page, or
+#      the Control UI link when Bitterbot is already set up.
 #
 # Everything lives in functions and the only top-level command is the last
 # line, so a partially downloaded script runs nothing.
@@ -39,7 +47,10 @@ Usage: install.sh [options]
       --dir PATH         Install root (default: ~/.bitterbot/app)
       --allow-root       Allow installing as root (not recommended)
       --no-onboard       Do not run `bitterbot onboard` afterwards
-  -y, --yes              Do not ask for confirmation
+      --no-switch        Leave a running older Bitterbot (git clone, older
+                         release) and its background service alone
+  -y, --yes              Do not ask for confirmation (also switches a running
+                         older Bitterbot to the new version)
       --with-browser     Linux: also download Playwright's Chromium (~170 MB)
                          into ~/.bitterbot/browsers for the browser tool
       --require-signature
@@ -319,6 +330,57 @@ bb_confirm() {
   esac
 }
 
+# Offer to switch a running (or service-installed) older Bitterbot to the
+# version just installed, through `bitterbot gateway switch` (exit codes in
+# src/cli/daemon-cli/switch.ts). Sets BB_SWITCH_STATE to none, switched,
+# declined, pending (no terminal to ask on), blocked or failed.
+bb_switch_gateway() {
+  local bin=$1 version=$2 summary rc=0 answer
+  BB_SWITCH_STATE=none
+  summary=$("$bin" gateway switch --check 2>&1) || rc=$?
+  case $rc in
+    0) return 0 ;;
+    10) ;;
+    2)
+      bb_say ""
+      bb_say "$summary"
+      BB_SWITCH_STATE=blocked
+      return 0
+      ;;
+    *)
+      bb_warn "could not check for a running older Bitterbot (exit $rc). To switch later: $bin gateway switch"
+      BB_SWITCH_STATE=pending
+      return 0
+      ;;
+  esac
+  bb_say ""
+  bb_say "$summary"
+  if [ "$BB_YES" != "1" ]; then
+    if ! { : </dev/tty; } 2>/dev/null; then
+      bb_say "To switch to $version, run: $bin gateway switch"
+      BB_SWITCH_STATE=pending
+      return 0
+    fi
+    printf 'Switch to %s now? [Y/n] ' "$version" >/dev/tty
+    read -r answer </dev/tty || answer=""
+    case $answer in
+      n | N | no | NO | No)
+        bb_say "Left it as it is. To switch later: $bin gateway switch"
+        BB_SWITCH_STATE=declined
+        return 0
+        ;;
+    esac
+  fi
+  rc=0
+  "$bin" gateway switch --yes || rc=$?
+  if [ "$rc" = "0" ]; then
+    BB_SWITCH_STATE=switched
+  else
+    BB_SWITCH_STATE=failed
+    bb_warn "the switch to $version did not complete (exit $rc); see above. Retry with: $bin gateway switch"
+  fi
+}
+
 main() {
   set -euo pipefail
 
@@ -332,7 +394,7 @@ main() {
   local pubkey=$PINNED_PUBKEY
 
   local version="" install_dir="${HOME}/.bitterbot/app" onboard=1 with_browser=0
-  local require_signature=0 allow_root=0
+  local require_signature=0 allow_root=0 switch=1
   BB_YES=0
   BB_TEST_MODE=0
   while [ $# -gt 0 ]; do
@@ -349,6 +411,10 @@ main() {
         ;;
       --no-onboard)
         onboard=0
+        shift
+        ;;
+      --no-switch)
+        switch=0
         shift
         ;;
       -y | --yes)
@@ -478,6 +544,13 @@ main() {
   fi
   if [ "$with_browser" = "1" ]; then
     bb_say "  Browser:   Playwright Chromium into ~/.bitterbot/browsers (Linux only)"
+  fi
+  if [ "$switch" = "0" ]; then
+    bb_say "  Switch:    a running older Bitterbot is left alone (--no-switch)"
+  elif [ "$BB_YES" = "1" ]; then
+    bb_say "  Switch:    a running older Bitterbot (git clone or older release) is switched to the new version"
+  else
+    bb_say "  Switch:    if an older Bitterbot is running, you are asked whether to switch it to the new version"
   fi
   if [ "$onboard" = "1" ]; then
     bb_say "  Then:      bitterbot onboard"
@@ -698,11 +771,26 @@ main() {
       ;;
   esac
 
+  BB_SWITCH_STATE=none
+  if [ "$switch" = "1" ]; then
+    bb_switch_gateway "$bin_cmd" "$version"
+  fi
+
+  case $BB_SWITCH_STATE in
+    failed)
+      # The switch reported what happened (and put the old one back).
+      return 1
+      ;;
+    declined | pending | blocked)
+      bb_say "Next: $bin_cmd gateway switch, then $bin_cmd onboard"
+      return 0
+      ;;
+  esac
   if [ "$onboard" = "1" ]; then
     if { : </dev/tty; } 2>/dev/null; then
       bb_say ""
-      bb_say "Starting setup: bitterbot onboard (opens a setup page in your browser; add --no-browser for the terminal)"
-      "$bin_cmd" onboard </dev/tty || bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
+      bb_say "Starting setup: bitterbot onboard (opens a setup page in your browser, or the Control UI when you are already set up)"
+      "$bin_cmd" onboard --from-installer </dev/tty || bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
     else
       bb_say "No terminal for setup; run: $bin_cmd onboard (it prints a setup link)"
     fi

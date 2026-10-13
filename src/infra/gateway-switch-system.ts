@@ -426,14 +426,64 @@ async function queryGatewayVersion(
   }
 }
 
+/**
+ * Linux without lsof: the pid owning a LISTEN socket on `port`, from
+ * /proc/net/tcp{,6} (socket inode) and /proc/<pid>/fd (who holds it).
+ */
+export async function findLinuxListenerPid(
+  port: number,
+  procRoot = "/proc",
+): Promise<number | null> {
+  const inodes = new Set<string>();
+  const portHex = port.toString(16).toUpperCase().padStart(4, "0");
+  for (const table of ["tcp", "tcp6"]) {
+    const raw = await fs.readFile(path.join(procRoot, "net", table), "utf8").catch(() => "");
+    for (const line of raw.split("\n").slice(1)) {
+      const cols = line.trim().split(/\s+/);
+      // sl local_address rem_address st ... inode (column 9); st 0A = LISTEN
+      if (cols[1]?.endsWith(`:${portHex}`) && cols[3] === "0A" && cols[9] && cols[9] !== "0") {
+        inodes.add(cols[9]);
+      }
+    }
+  }
+  if (inodes.size === 0) {
+    return null;
+  }
+  const pids = (await fs.readdir(procRoot).catch(() => [] as string[])).filter((e) =>
+    /^\d+$/.test(e),
+  );
+  for (const pid of pids) {
+    const fdDir = path.join(procRoot, pid, "fd");
+    const fds = await fs.readdir(fdDir).catch(() => [] as string[]);
+    for (const fd of fds) {
+      const target = await fs.readlink(path.join(fdDir, fd)).catch(() => "");
+      const m = /^socket:\[(\d+)\]$/.exec(target);
+      if (m?.[1] && inodes.has(m[1])) {
+        return Number.parseInt(pid, 10);
+      }
+    }
+  }
+  return null;
+}
+
 async function findListenerPid(
   port: number,
 ): Promise<{ pid: number | null; command: string | null } | null> {
   const usage = await inspectPortUsage(port);
-  if (usage.status !== "busy") {
-    return (await isPortListening(port)) ? { pid: null, command: null } : null;
+  if (usage.status !== "busy" && !(await isPortListening(port))) {
+    return null;
   }
   const withPid = usage.listeners.filter((l) => typeof l.pid === "number");
+  if (withPid.length === 0 && process.platform === "linux") {
+    // No lsof (minimal images): read the socket owner from /proc.
+    const pid = await findLinuxListenerPid(port);
+    if (pid) {
+      return { pid, command: (await readProcInfo(pid))?.commandLine ?? null };
+    }
+  }
+  if (withPid.length === 0) {
+    return { pid: null, command: null };
+  }
   const pick =
     withPid.find((l) => isBitterbotGatewayCommand(l.commandLine ?? l.command)) ??
     withPid[0] ??
