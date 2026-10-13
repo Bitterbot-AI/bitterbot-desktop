@@ -24,7 +24,7 @@
         {
           "type": "toml",
           "path": "desktop/src-tauri/Cargo.lock",
-          "jsonpath": "$.package[?(@.name=='bitterbot-desktop')].version"
+          "jsonpath": "$.package[?(@.name.value=='bitterbot-desktop')].version"
         },
         {
           "type": "json",
