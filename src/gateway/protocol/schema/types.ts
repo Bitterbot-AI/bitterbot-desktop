@@ -136,7 +136,12 @@ import type {
   UsageLedgerSummaryParamsSchema,
   UsageLedgerWhatIfParamsSchema,
 } from "./sessions.js";
-import type { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
+import type {
+  GatewayRuntimeSchema,
+  PresenceEntrySchema,
+  SnapshotSchema,
+  StateVersionSchema,
+} from "./snapshot.js";
 import type {
   WizardCancelParamsSchema,
   WizardNextParamsSchema,
@@ -155,6 +160,7 @@ export type ResponseFrame = Static<typeof ResponseFrameSchema>;
 export type EventFrame = Static<typeof EventFrameSchema>;
 export type GatewayFrame = Static<typeof GatewayFrameSchema>;
 export type Snapshot = Static<typeof SnapshotSchema>;
+export type GatewayRuntime = Static<typeof GatewayRuntimeSchema>;
 export type PresenceEntry = Static<typeof PresenceEntrySchema>;
 export type ErrorShape = Static<typeof ErrorShapeSchema>;
 export type StateVersion = Static<typeof StateVersionSchema>;

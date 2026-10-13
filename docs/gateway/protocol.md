@@ -77,6 +77,25 @@ Gateway → Client:
 }
 ```
 
+`hello-ok.server.version` is the gateway's package version, and
+`hello-ok.snapshot.runtime` (also returned by the `status` method as `runtime`)
+describes the gateway process:
+
+```json
+{
+  "runtime": {
+    "version": "1.5.0",
+    "uptimeMs": 3725000,
+    "platform": "linux",
+    "arch": "x64",
+    "nodeVersion": "22.12.0",
+    "installKind": "tarball"
+  }
+}
+```
+
+`installKind` is one of `git`, `package`, `container`, `tarball`, or `unknown`.
+
 When a device token is issued, `hello-ok` also includes:
 
 ```json
