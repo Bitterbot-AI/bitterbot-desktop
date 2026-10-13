@@ -32,10 +32,15 @@ jobs:
       - name: tsdown only (timed)
         run: |
           node -e "require('node:fs').rmSync('dist',{recursive:true,force:true})"
-          /usr/bin/time -v pnpm exec tsdown 2> time.txt; tail -n 30 time.txt | grep -E "Maximum resident|Elapsed|Exit status"
+          set +e
+          /usr/bin/time -v -o time.txt pnpm exec tsdown 2>&1 | grep -v "ℹ dist/"
+          rc=${PIPESTATUS[0]}
+          grep -E "Maximum resident|Elapsed|Exit status" time.txt
+          exit $rc
       - name: full build (timed)
         run: |
-          /usr/bin/time -v pnpm build 2> time.txt || (tail -50 time.txt; exit 1)
+          set -o pipefail
+          /usr/bin/time -v -o time.txt pnpm build 2>&1 | grep -v "ℹ dist/" | tail -60
           grep -E "Maximum resident|Elapsed|Exit status" time.txt
       - name: manifest
         run: |
@@ -79,13 +84,15 @@ jobs:
             return names.sort();
           };
           const bare = (f) => {
-            const src = fs.readFileSync(f, "utf8");
+            const sf = ts.createSourceFile(f, fs.readFileSync(f, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
             const set = new Set();
-            for (const m of src.matchAll(/(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)["']([^"'./][^"']*)["']/g)) {
-              const s = m[1];
-              if (s.startsWith("node:")) continue;
-              set.add(s);
-            }
+            const add = (n) => { if (n && ts.isStringLiteralLike(n) && !n.text.startsWith(".") && !n.text.startsWith("node:") && !n.text.startsWith("/")) set.add(n.text); };
+            const visit = (n) => {
+              if ((ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) && n.moduleSpecifier) add(n.moduleSpecifier);
+              else if (ts.isCallExpression(n) && n.arguments.length && (n.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(n.expression) && /^(require|__require)$/.test(n.expression.text)))) add(n.arguments[0]);
+              ts.forEachChild(n, visit);
+            };
+            visit(sf);
             return set;
           };
           const entries = ["dist/index.js", "dist/entry.js", "dist/daemon-cli.js", "dist/warning-filter.js", "dist/extensionAPI.js", "dist/plugin-sdk/index.js", "dist/plugin-sdk/account-id.js", "dist/llm-slug-generator.js", ...rest.filter((f) => f.endsWith("/handler.js"))];
