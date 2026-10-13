@@ -9,6 +9,9 @@ const serviceMock = vi.hoisted(() => ({
   readRuntime: vi.fn(),
 }));
 
+const callMock = vi.hoisted(() => vi.fn());
+vi.mock("../gateway/call.js", () => ({ callGateway: callMock }));
+
 vi.mock("../daemon/service.js", () => ({
   resolveGatewayService: () => ({
     label: "systemd",
@@ -19,6 +22,7 @@ vi.mock("../daemon/service.js", () => ({
 }));
 
 import {
+  queryGatewayStatus,
   findLinuxListenerPid,
   inspectGatewayService,
   rotateLog,
@@ -267,5 +271,19 @@ describe("rotateLog", () => {
     fs.writeFileSync(file, "small");
     rotateLog(file, 1024);
     expect(fs.readFileSync(file, "utf8")).toBe("small");
+  });
+});
+
+describe("queryGatewayStatus (the health probe)", () => {
+  it("connects in probe mode, so a torn-down probe never prints an error", async () => {
+    callMock.mockResolvedValueOnce({ runtime: { version: "1.5.0" } });
+    expect(await queryGatewayStatus({}, 19001, 19001)).toEqual({ version: "1.5.0", rpc: "ok" });
+    expect(callMock).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "status", mode: "probe", clientName: "bitterbot-probe" }),
+    );
+    callMock.mockRejectedValueOnce(new Error("gateway closed (1008): unauthorized"));
+    expect(await queryGatewayStatus({}, 19001, 19001)).toEqual({ version: null, rpc: "auth" });
+    callMock.mockRejectedValueOnce(new Error("gateway client stopped"));
+    expect(await queryGatewayStatus({}, 19001, 19001)).toEqual({ version: null, rpc: "error" });
   });
 });

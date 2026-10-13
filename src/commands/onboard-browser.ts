@@ -311,13 +311,7 @@ export async function runBrowserOnboarding(
   if (alreadySetUp && opts.fromInstaller) {
     // Straight from install.sh: no "already set up" detour, just the app.
     url = buildControlUiUrl({ port, basePath });
-    runtime.log(
-      [
-        "Bitterbot is already set up. Open the Control UI:",
-        `  ${url}`,
-        `To run setup again: ${formatCliCommand("bitterbot onboard")}`,
-      ].join("\n"),
-    );
+    runtime.log(`Open Bitterbot: ${url}`);
   } else if (alreadySetUp) {
     // A setup token cannot re-run a finished setup; the admin sign-in can
     // (a browser on this machine is signed in automatically).

@@ -12,6 +12,18 @@ import type { OnboardOptions } from "./onboard-types.js";
 
 export async function onboardCommand(opts: OnboardOptions, runtime: RuntimeEnv = defaultRuntime) {
   assertSupportedRuntime(runtime);
+  // The state dir holds config, keys and memory: private to its owner.
+  if (!process.env.VITEST) {
+    const { resolveStateDir } = await import("../config/paths.js");
+    const { securePrivateStateDir, stateDirPermsNotice } =
+      await import("../infra/state-dir-perms.js");
+    const notice = stateDirPermsNotice(
+      securePrivateStateDir({ stateDir: resolveStateDir(process.env) }),
+    );
+    if (notice) {
+      runtime.log(notice);
+    }
+  }
   const originalAuthChoice = opts.authChoice;
   const normalizedAuthChoice = normalizeLegacyOnboardAuthChoice(originalAuthChoice);
   if (opts.nonInteractive && isDeprecatedAuthChoice(originalAuthChoice)) {

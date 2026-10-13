@@ -436,9 +436,10 @@ describeInstaller("scripts/install.sh", () => {
    */
   const SWITCH_LAUNCHER = [
     'echo "$*" >> "$HOME/calls.log"',
+    'echo "${BITTERBOT_INSTALLER:-} ${BITTERBOT_HIDE_BANNER:-}" >> "$HOME/modes.log"',
     'case "$*" in',
     '  "gateway switch --check") echo "Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001."; exit "${FAKE_CHECK_RC:-10}" ;;',
-    '  "gateway switch --yes") echo "Done. Your settings and memory are unchanged."; exit "${FAKE_SWITCH_RC:-0}" ;;',
+    '  "gateway switch --yes --no-summary") echo "Done. Your settings and memory are unchanged."; exit "${FAKE_SWITCH_RC:-0}" ;;',
     "esac",
   ].join("\n");
 
@@ -461,7 +462,11 @@ describeInstaller("scripts/install.sh", () => {
       );
       expect(res.out).toContain("Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)");
       expect(res.out).toContain("Done. Your settings and memory are unchanged.");
-      expect(calls(home)).toBe("gateway switch --check\ngateway switch --yes\n");
+      expect(calls(home)).toBe("gateway switch --check\ngateway switch --yes --no-summary\n");
+      // Config advice once (the check), quiet afterwards; no banners.
+      expect(fs.readFileSync(path.join(home, "modes.log"), "utf8")).toBe("1 1\nquiet 1\n");
+      // The summary is printed once, before the switch.
+      expect(res.out.split("Found Bitterbot 1.4.0").length - 1).toBe(1);
       expect(res.out).not.toMatch(/\u2014/);
     });
 
@@ -551,6 +556,53 @@ describeInstaller("scripts/install.sh", () => {
       expect(res.status, res.out).toBe(1);
       expect(res.out).toContain("the switch to 2.0.0 did not complete (exit 1)");
     });
+  });
+
+  const hasScript = process.platform === "linux" && spawnSync("script", ["--version"]).status === 0;
+  (hasScript ? it : it.skip)(
+    "asks 'Proceed? [Y/n]' on the terminal: Enter installs, n aborts",
+    () => {
+      freshReleases();
+      publish("2.0.0");
+      const ask = (input: string) => {
+        const home = freshHome();
+        const res = spawnSync(
+          "script",
+          ["-qec", `bash ${INSTALL_SH} --no-onboard --no-switch`, "/dev/null"],
+          {
+            encoding: "utf8",
+            input,
+            env: baseEnv(home, { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }),
+          },
+        );
+        return { out: `${res.stdout}${res.stderr}`, home };
+      };
+      const enter = ask("\n");
+      expect(enter.out).toContain("Proceed? [Y/n]");
+      expect(fs.existsSync(path.join(enter.home, ".bitterbot", "app", "2.0.0"))).toBe(true);
+      const no = ask("n\n");
+      expect(no.out).toContain("aborted");
+      expect(fs.existsSync(path.join(no.home, ".bitterbot", "app"))).toBe(false);
+    },
+  );
+
+  it("makes the state dir private (only the directory, never its files)", () => {
+    freshReleases();
+    publish("2.0.0");
+    const home = freshHome();
+    const state = path.join(home, ".bitterbot");
+    fs.mkdirSync(state, { recursive: true });
+    fs.chmodSync(state, 0o755);
+    fs.writeFileSync(path.join(state, "bitterbot.json"), "{}");
+    fs.chmodSync(path.join(state, "bitterbot.json"), 0o644);
+    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, home);
+    expect(res.status, res.out).toBe(0);
+    expect(fs.statSync(state).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(path.join(state, "bitterbot.json")).mode & 0o777).toBe(0o644);
+    // A fresh machine: created private.
+    const fresh = freshHome();
+    expect(runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, fresh).status).toBe(0);
+    expect(fs.statSync(path.join(fresh, ".bitterbot")).mode & 0o777).toBe(0o700);
   });
 
   it("never prunes or replaces a version a running process uses", async () => {

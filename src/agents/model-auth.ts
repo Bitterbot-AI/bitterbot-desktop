@@ -2,6 +2,7 @@ import path from "node:path";
 import { type Api, getEnvApiKey, type Model } from "@mariozechner/pi-ai";
 import { formatCliCommand } from "../cli/command-format.js";
 import type { BitterbotConfig } from "../config/config.js";
+import { PROVIDER_API_KEY_ENV } from "../config/known-env-vars.js";
 import type { ModelProviderAuthMode, ModelProviderConfig } from "../config/types.js";
 import { getShellEnvAppliedKeys } from "../infra/shell-env.js";
 import {
@@ -306,32 +307,7 @@ export function resolveEnvApiKey(provider: string): EnvApiKeyResult | null {
     return pick("HUGGINGFACE_HUB_TOKEN") ?? pick("HF_TOKEN");
   }
 
-  const envMap: Record<string, string> = {
-    openai: "OPENAI_API_KEY",
-    google: "GEMINI_API_KEY",
-    voyage: "VOYAGE_API_KEY",
-    groq: "GROQ_API_KEY",
-    deepgram: "DEEPGRAM_API_KEY",
-    cerebras: "CEREBRAS_API_KEY",
-    xai: "XAI_API_KEY",
-    openrouter: "OPENROUTER_API_KEY",
-    litellm: "LITELLM_API_KEY",
-    "vercel-ai-gateway": "AI_GATEWAY_API_KEY",
-    "cloudflare-ai-gateway": "CLOUDFLARE_AI_GATEWAY_API_KEY",
-    moonshot: "MOONSHOT_API_KEY",
-    minimax: "MINIMAX_API_KEY",
-    nvidia: "NVIDIA_API_KEY",
-    xiaomi: "XIAOMI_API_KEY",
-    synthetic: "SYNTHETIC_API_KEY",
-    venice: "VENICE_API_KEY",
-    nearai: "NEARAI_API_KEY",
-    mistral: "MISTRAL_API_KEY",
-    opencode: "OPENCODE_API_KEY",
-    together: "TOGETHER_API_KEY",
-    qianfan: "QIANFAN_API_KEY",
-    ollama: "OLLAMA_API_KEY",
-    vllm: "VLLM_API_KEY",
-  };
+  const envMap = PROVIDER_API_KEY_ENV;
   const envVar = envMap[normalized];
   if (!envVar) {
     return null;

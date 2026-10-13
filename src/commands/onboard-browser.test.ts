@@ -308,8 +308,8 @@ describe("runBrowserOnboarding", () => {
       },
     );
     expect(result?.url).toBe("http://127.0.0.1:19001/");
-    expect(rt.lines.join("\n")).toContain("Open the Control UI");
-    expect(rt.lines.join("\n")).not.toContain("already set up. To run setup again, open");
+    // The last line of an upgrade: short, just the link.
+    expect(rt.lines).toEqual(["Open Bitterbot: http://127.0.0.1:19001/"]);
 
     // Nothing running: say how to start it; never start a setup gateway.
     const startGateway = vi.fn();

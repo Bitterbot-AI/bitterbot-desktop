@@ -16,6 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
+import { KNOWN_CREDENTIAL_ENV } from "../config/known-env-vars.js";
 
 /** Variables that belong to an install or a service manager, never carried. */
 const NOT_CARRIED = new Set([
@@ -129,18 +130,27 @@ export function copyDotEnvKeys(params: { source: string; target: string; now?: D
   return { copied: plan.keys, skipped: plan.skipped, backup };
 }
 
-const SECRET_NAME_RE = /^(BITTERBOT_[A-Z0-9_]+|[A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD|_KEY))$/;
 const PROCESS_ONLY_IGNORED = new Set([
   "BITTERBOT_NODE_OPTIONS_READY",
   "BITTERBOT_INSTALL_KIND",
   "BITTERBOT_INSTALL_ROOT",
+  "BITTERBOT_INSTALLER",
   "BITTERBOT_SERVICE_MARKER",
   "BITTERBOT_SERVICE_KIND",
   "BITTERBOT_SERVICE_VERSION",
 ]);
 
+/** A variable Bitterbot reads: a BITTERBOT_* setting or a credential it knows. */
+export function isBitterbotEnvName(name: string): boolean {
+  return (
+    (name.startsWith("BITTERBOT_") && !PROCESS_ONLY_IGNORED.has(name)) ||
+    KNOWN_CREDENTIAL_ENV.has(name)
+  );
+}
+
 /**
- * Names of provider keys and BITTERBOT_* settings the old process had that
+ * Names of credentials Bitterbot reads and BITTERBOT_* settings the old
+ * process had that
  * neither `.env` file, the old service definition nor this shell provide: a
  * new gateway would not see them. Names only.
  */
@@ -150,7 +160,7 @@ export function processOnlyEnvNames(params: {
 }): string[] {
   const out: string[] = [];
   for (const name of Object.keys(params.processEnv)) {
-    if (!SECRET_NAME_RE.test(name) || PROCESS_ONLY_IGNORED.has(name)) {
+    if (!isBitterbotEnvName(name)) {
       continue;
     }
     if (params.known.some((k) => k[name] !== undefined)) {

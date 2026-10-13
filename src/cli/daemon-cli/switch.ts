@@ -42,6 +42,8 @@ export const SWITCH_EXIT = {
 
 export type GatewaySwitchCommandOptions = {
   check?: boolean;
+  /** false: skip the "Found ... / This is ..." summary (the caller showed it). */
+  summary?: boolean;
   yes?: boolean;
   json?: boolean;
   port?: string | number;
@@ -400,7 +402,9 @@ export async function runGatewaySwitch(
     return SWITCH_EXIT.ok;
   }
 
-  say(describeFindings(findings, decision));
+  if (opts.summary !== false) {
+    say(describeFindings(findings, decision));
+  }
   const target = findings.self.version ?? "this version";
   if (!opts.yes) {
     if (json || !deps.isInteractive()) {

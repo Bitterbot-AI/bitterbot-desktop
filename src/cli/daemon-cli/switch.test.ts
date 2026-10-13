@@ -232,6 +232,13 @@ describe("bitterbot gateway switch", () => {
     expect(h.out).toContain("  Still starting (2m10s)...");
   });
 
+  it("--no-summary (install.sh already showed it) goes straight to Switching", async () => {
+    const h = harness({});
+    await runGatewaySwitch({ yes: true, summary: false }, h.runtime, h.deps);
+    expect(h.out[0]).toBe("Switching to 1.5.0...");
+    expect(h.out.join("\n")).not.toContain("Found Bitterbot");
+  });
+
   it("--json prints one JSON object", async () => {
     const h = harness({});
     await runGatewaySwitch({ check: true, json: true }, h.runtime, h.deps);

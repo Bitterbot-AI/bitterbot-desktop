@@ -56,8 +56,8 @@ Bitterbot runs as your user (`--allow-root` overrides this).
 
 ## What it does
 
-The installer prints this plan and asks before acting (`--yes` skips the
-question):
+The installer prints this plan and asks before acting, `Proceed? [Y/n]`
+(Enter means yes; `--yes` skips the question):
 
 1. Detects your OS and CPU.
 2. Without `--version`, asks the GitHub releases API for the newest release
@@ -88,7 +88,10 @@ question):
    Control UI address instead. See [`bitterbot onboard`](/cli/onboard).
 
 Your config, memory database and keys live in `~/.bitterbot` and are never
-touched by the installer.
+touched by the installer. It only makes that directory private to you
+(`chmod 700` on the directory itself, never on the files in it); the gateway
+and `bitterbot onboard` do the same once, with a one-line notice, and
+`bitterbot doctor` flags a state directory other users can open.
 
 Each tarball contains the built gateway and Control UI, its production
 dependencies for that platform, the P2P orchestrator binary, an official

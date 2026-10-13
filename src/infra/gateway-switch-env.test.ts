@@ -101,11 +101,13 @@ describe("carrying the old environment", () => {
     ).toEqual({ BITTERBOT_STATE_DIR: "/srv/bb", BITTERBOT_PROFILE: "work", OPENAI_API_KEY: "x" });
   });
 
-  it("names provider keys the old process had from neither .env (never values)", () => {
+  it("names only variables Bitterbot reads that the old process had from neither .env (never values)", () => {
     expect(
       processOnlyEnvNames({
         processEnv: {
           GITHUB_TOKEN: "ghp",
+          CLAUDE_CODE_MESSAGING_TOKEN: "not ours",
+          SOME_OTHER_API_KEY: "not ours",
           OPENAI_API_KEY: "sk",
           BITTERBOT_STATE_DIR: "/x",
           BITTERBOT_NODE_OPTIONS_READY: "1",

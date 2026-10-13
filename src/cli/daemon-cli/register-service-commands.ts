@@ -1,4 +1,4 @@
-import type { Command } from "commander";
+import { Option, type Command } from "commander";
 import { defaultRuntime } from "../../runtime.js";
 import {
   runDaemonInstall,
@@ -80,11 +80,14 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
     .option("--port <port>", "Gateway port (default: from config)")
     .option("--timeout <ms>", "How long to wait for the new gateway to answer", "300000")
     .option("--json", "Output JSON", false)
+    // install.sh already showed the summary before asking.
+    .addOption(new Option("--no-summary").hideHelp())
     .action(async (cmdOpts) => {
       const { runGatewaySwitch } = await import("./switch.js");
       const code = await runGatewaySwitch({
         check: Boolean(cmdOpts.check || cmdOpts.dryRun),
         yes: Boolean(cmdOpts.yes),
+        summary: cmdOpts.summary !== false,
         json: Boolean(cmdOpts.json),
         port: cmdOpts.port,
         timeout: cmdOpts.timeout,

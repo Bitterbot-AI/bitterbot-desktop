@@ -205,7 +205,7 @@ export async function noteStateIntegrity(
       const stat = fs.statSync(stateDir);
       if ((stat.mode & 0o077) !== 0) {
         warnings.push(
-          `- State directory permissions are too open (${displayStateDir}). Recommend chmod 700.`,
+          `- State directory permissions are too open (${displayStateDir}): other users on this machine can list your config, keys and memory files. Fix: bitterbot doctor --fix (or chmod 700 ${displayStateDir}).`,
         );
         const tighten = await prompter.confirmSkipInNonInteractive({
           message: `Tighten permissions on ${displayStateDir} to 700?`,

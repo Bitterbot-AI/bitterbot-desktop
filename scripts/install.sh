@@ -324,11 +324,11 @@ bb_confirm() {
     bb_die "no terminal to confirm on; re-run with --yes to proceed non-interactively"
   fi
   local answer
-  printf 'Proceed? [y/N] ' >/dev/tty
+  # Enter means yes: you ran the installer on purpose.
+  printf 'Proceed? [Y/n] ' >/dev/tty
   read -r answer </dev/tty || answer=""
   case $answer in
-    y | Y | yes | YES) ;;
-    *) bb_die "aborted" ;;
+    n | N | no | NO | No) bb_die "aborted" ;;
   esac
 }
 
@@ -368,7 +368,10 @@ bb_finish_versions() {
 bb_switch_gateway() {
   local bin=$1 version=$2 summary rc=0 answer
   BB_SWITCH_STATE=none
-  summary=$("$bin" gateway switch --check 2>&1) || rc=$?
+  # BITTERBOT_INSTALLER=1: config advice as one line (shown here, once);
+  # the later commands run with BITTERBOT_INSTALLER=quiet.
+  summary=$(BITTERBOT_INSTALLER=1 BITTERBOT_HIDE_BANNER=1 "$bin" gateway switch --check 2>&1) || rc=$?
+  BB_CONFIG_NOTED=1
   case $rc in
     0) return 0 ;;
     10) ;;
@@ -409,7 +412,8 @@ bb_switch_gateway() {
     esac
   fi
   rc=0
-  "$bin" gateway switch --yes || rc=$?
+  # The summary was shown above: straight to "Switching to ...".
+  BITTERBOT_INSTALLER=quiet BITTERBOT_HIDE_BANNER=1 "$bin" gateway switch --yes --no-summary || rc=$?
   if [ "$rc" = "0" ]; then
     BB_SWITCH_STATE=switched
   else
@@ -672,6 +676,17 @@ main() {
     fi
   fi
 
+  # The state dir (config, keys, memory) is private to you: only the
+  # directory itself is tightened, never the files in it, and only when it
+  # is yours.
+  local state_dir="${BITTERBOT_STATE_DIR:-$HOME/.bitterbot}"
+  case $install_dir in
+    "$state_dir" | "$state_dir"/*) mkdir -p "$state_dir" ;;
+  esac
+  if [ -d "$state_dir" ] && [ -O "$state_dir" ]; then
+    chmod 700 "$state_dir" || bb_warn "could not make $state_dir private (chmod 700)"
+  fi
+
   # Unpack next to the install root (same filesystem: the moves are renames).
   mkdir -p "$install_dir"
   install_dir=$(cd "$install_dir" && pwd -P)
@@ -790,6 +805,7 @@ main() {
   esac
 
   BB_SWITCH_STATE=none
+  BB_CONFIG_NOTED=0
   if [ "$switch" = "1" ]; then
     bb_switch_gateway "$bin_cmd" "$version"
   fi
@@ -816,9 +832,15 @@ main() {
   esac
   if [ "$onboard" = "1" ]; then
     if { : </dev/tty; } 2>/dev/null; then
+      # Set up already: one line with the link (and the browser opens it).
+      # Not yet: the setup page link. Config advice only if not shown above.
+      local installer_mode=1
+      if [ "$BB_CONFIG_NOTED" = "1" ]; then
+        installer_mode=quiet
+      fi
       bb_say ""
-      bb_say "Starting setup: bitterbot onboard (opens a setup page in your browser, or the Control UI when you are already set up)"
-      "$bin_cmd" onboard --from-installer </dev/tty || bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
+      BITTERBOT_INSTALLER=$installer_mode BITTERBOT_HIDE_BANNER=1 "$bin_cmd" onboard --from-installer </dev/tty ||
+        bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
     else
       bb_say "No terminal for setup; run: $bin_cmd onboard (it prints a setup link)"
     fi

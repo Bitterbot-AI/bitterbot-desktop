@@ -444,7 +444,7 @@ export function isPortListening(port: number, timeoutMs = 1500): Promise<boolean
 }
 
 /** The version a gateway reports over the status RPC (1.5+), and how the RPC went. */
-async function queryGatewayStatus(
+export async function queryGatewayStatus(
   cfg: BitterbotConfig,
   port: number,
   configPort: number,
@@ -454,10 +454,16 @@ async function queryGatewayStatus(
   }
   try {
     const { callGateway } = await import("../gateway/call.js");
+    const { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } =
+      await import("../utils/message-channel.js");
+    // Probe mode: a refused or torn-down connection is logged at debug level
+    // only, so nothing but our own progress lines reach the terminal.
     const status = await callGateway<{ runtime?: { version?: unknown } }>({
       config: cfg,
       method: "status",
       timeoutMs: 3_000,
+      clientName: GATEWAY_CLIENT_NAMES.PROBE,
+      mode: GATEWAY_CLIENT_MODES.PROBE,
     });
     const version = status?.runtime?.version;
     return {
@@ -791,6 +797,9 @@ function backgroundEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     "BITTERBOT_INSTALL_KIND",
     "BITTERBOT_INSTALL_ROOT",
     "BITTERBOT_NODE_OPTIONS_READY",
+    // The installer's quiet output settings are for its own commands only.
+    "BITTERBOT_INSTALLER",
+    "BITTERBOT_HIDE_BANNER",
     "BITTERBOT_INSTALL_TEST_MODE",
     "BITTERBOT_INSTALL_BASE_URL",
     "BITTERBOT_INSTALL_TEST_PUBKEY",
