@@ -161,3 +161,35 @@ Notes:
 
 - `gateway install` supports `--port`, `--runtime`, `--token`, `--force`, `--json`.
 - Lifecycle commands accept `--json` for scripting.
+
+### `gateway switch`
+
+Hands the running gateway and the background service over to the install
+you run this command from, for example after installing a release over a git
+clone or an older version (the installer runs it for you; see
+[Upgrading from a git clone or an older version](/start/install-script#upgrading-from-a-git-clone-or-an-older-version)).
+
+```bash
+bitterbot gateway switch --check
+bitterbot gateway switch
+bitterbot gateway switch --yes --json
+```
+
+It finds the installed service and what it runs, and the process on the
+gateway port, where it runs from and its version. When that is another
+install, it stops the old gateway (through its service manager, or a stop
+signal to a process verified to be a Bitterbot gateway), points the service at
+this install (as `gateway install --force` does) or starts this install in the
+background when there is no service, and waits until this version answers. If
+it does not, the old service definition or the old process is put back. Your
+config, memory and keys are not changed.
+
+Options: `--check` (alias `--dry-run`) only reports; `-y`, `--yes` switches
+without asking; `--port <port>`; `--timeout <ms>` (how long to wait for the
+new gateway, default 120000); `--json`.
+
+Exit codes: with `--check`, 0 nothing to switch, 10 a switch is available, 2
+something it will not touch is on the port. Otherwise 0 switched (or nothing
+to do), 1 not switched but the previous gateway runs as before, 2 not done
+(declined, needs `--yes`, or blocked), 3 failed and the previous gateway could
+not be restarted (the output says what to run).

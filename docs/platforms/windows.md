@@ -34,8 +34,14 @@ changes. Updates afterwards are `bitterbot update` inside WSL.
   (`wsl --install`, or `wsl --set-version <name> 2`) and the Docker Desktop
   alternative, and exits with code 2.
 - Options need the saved script: `.\install.ps1 -Version 1.6.0 -NoOnboard`,
-  `-Distro <name>`, `-Yes`, and `-WhatIf` to print the plan without running
-  anything (piped into `iex`, set `$env:BITTERBOT_INSTALL_DRY_RUN = '1'`).
+  `-Distro <name>`, `-Yes`, `-NoSwitch`, and `-WhatIf` to print the plan
+  without running anything (piped into `iex`, set
+  `$env:BITTERBOT_INSTALL_DRY_RUN = '1'`).
+- Already running Bitterbot inside WSL (a git clone, an older release)? The
+  installer offers to
+  [switch it to the new version](/start/install-script#upgrading-from-a-git-clone-or-an-older-version).
+  A gateway installed natively on Windows (the `Bitterbot Gateway` scheduled
+  task) is reported with the commands to stop it, and left alone.
 - Piped into `iex` it never closes your window or ends the script that runs
   it, and leaves no functions or settings (`$ErrorActionPreference`, strict
   mode) behind; its exit code is in `$LASTEXITCODE`.

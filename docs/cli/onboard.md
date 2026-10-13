@@ -8,8 +8,8 @@ title: "onboard"
 # `bitterbot onboard`
 
 Sets Bitterbot up. By default it finishes setup in your browser: it starts the
-gateway (or reuses the one already running), then prints and opens a setup
-link:
+gateway (or reuses the one already running, when it is this install), then
+prints and opens a setup link:
 
 ```text
 http://127.0.0.1:19001/setup?token=...
@@ -45,9 +45,11 @@ the same order, because both run one shared list of steps:
    user service, macOS LaunchAgent) so it keeps running and starts on login.
    Offered, and recommended, where the terminal QuickStart installs one; not in
    a container, on Linux without systemd user services, or when a service is
-   already installed. The Done screen says whether Bitterbot now runs as a
-   service; on Finish, the gateway `onboard` started for setup stops and the
-   service takes over its port.
+   already installed for this install. When the installed service still runs
+   another install (a git clone, an older release), the step offers **Use this
+   version for the background service** instead. The Done screen says whether
+   Bitterbot now runs as a service; on Finish, the gateway `onboard` started
+   for setup stops and the service takes over its port.
 8. **Privacy.** Bitterbot sends no telemetry to the project, and there is no
    account to create.
 
@@ -60,6 +62,12 @@ retries never land in your main chat, and a reply that takes too long is
 stopped before Retry is offered. Provider errors are shown with secrets
 masked. A read-only doctor summary closes the setup (`bitterbot doctor` has
 the full report).
+
+When the gateway already running on the port is a different install (a git
+clone, an older release), `onboard` does not link to it: in a terminal it
+offers to switch it to this version (`bitterbot gateway switch`), otherwise it
+prints that command. A program on the port that is not a Bitterbot gateway is
+an error.
 
 ## The setup link
 
