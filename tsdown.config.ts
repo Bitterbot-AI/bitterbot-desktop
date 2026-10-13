@@ -20,6 +20,13 @@ const base = {
   // tsdown 0.21 changed the default from "ci-only" to false. Keep warnings
   // (including rolldown warnings) fatal in CI.
   failOnWarn: "ci-only",
+  checks: {
+    // New rolldown diagnostic (not in rc.4): purely advisory, says a
+    // dynamic import cannot split a chunk because the module is also
+    // statically imported. It does not change the output; without this it
+    // becomes fatal under failOnWarn in CI.
+    ineffectiveDynamicImport: false,
+  },
   // rolldown rc.7 made `minify: "dce-only"` the default; the old output was
   // unminified.
   minify: false,
