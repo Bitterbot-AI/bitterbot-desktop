@@ -97,6 +97,12 @@ export async function describeServiceElsewhere(params: {
   if (!found || found.pointsHere) {
     return null;
   }
+  // A service for other settings (state dir, profile, port) is not this
+  // setup's to take over.
+  const { loadConfig, resolveGatewayPort } = await import("../config/config.js");
+  if (await system.serviceTargetMismatch(found, env, resolveGatewayPort(loadConfig(), env))) {
+    return null;
+  }
   const { describeInstall } = await import("../cli/daemon-cli/switch.js");
   return describeInstall(found.runsFrom);
 }
@@ -129,6 +135,12 @@ export async function installSetupGatewayService(params: {
     };
     const service = resolveGatewayService();
     const token = params.config.gateway?.auth?.token;
+    // Re-pointing a service from another install keeps its environment
+    // (keys set with `gateway install`, state dir, profile).
+    const previous = (await service.isLoaded({ env }).catch(() => false))
+      ? await service.readCommand(env).catch(() => null)
+      : null;
+    const { carriedServiceEnv } = await import("../infra/gateway-switch-env.js");
     const { programArguments, workingDirectory, environment } = await buildGatewayInstallPlan({
       env,
       port: params.port,
@@ -137,7 +149,13 @@ export async function installSetupGatewayService(params: {
       warn: () => {},
       config: params.config,
     });
-    await service.install({ env, stdout: sink, programArguments, workingDirectory, environment });
+    await service.install({
+      env,
+      stdout: sink,
+      programArguments,
+      workingDirectory,
+      environment: { ...carriedServiceEnv(previous?.environment), ...environment },
+    });
     await ensureSystemdUserLingerNonInteractive({ runtime: quiet, env });
     return { ok: true, label };
   } catch (err) {

@@ -9,22 +9,27 @@
  * call this module) finds what runs today, decides whether it is this
  * install, and hands over:
  *
+ *   0. snapshot the data an update could damage (the updater's snapshot:
+ *      config, .env, memory databases, GENOME/MEMORY, keys; copies only);
  *   1. stop the old gateway: through its service manager when the service
  *      runs it, otherwise a graceful SIGTERM to that pid, but ONLY when the
- *      process is verifiably a Bitterbot gateway; then wait for the port to
- *      free and for its children (the P2P orchestrator) to exit;
- *   2. re-point the background service at this install (the same plan as
- *      `bitterbot gateway install --force`) and start it, or, when there was
- *      no service, start this install's gateway in the background;
- *   3. wait until the gateway on the port is this version;
- *   4. on failure, roll back: stop the new gateway, restore the old service
- *      definition verbatim (and `current` for a tarball-to-tarball switch),
- *      restart the old process the way it was started, and say exactly what
- *      to run when that is not possible.
- *
- * The data directory (~/.bitterbot: config, memory, keys) is never read for
- * writing here: only the service definition, the process and, for a release
- * tarball, the `current` link move.
+ *      process is verifiably a Bitterbot gateway (and still the same process:
+ *      its start time is compared); then wait for the port to free and for
+ *      its children (the P2P orchestrator) to exit;
+ *   2. copy the keys of a git clone's `.env` that the state directory's
+ *      `.env` lacks (the old gateway loaded them from its working directory);
+ *   3. point the background service at this install (the same plan as
+ *      `bitterbot gateway install --force`, carrying the old service's
+ *      environment) or install one where a service manager exists; only
+ *      without one, start this install's gateway in the background;
+ *   4. wait until this version answers on the port and stays up, for as long
+ *      as it is alive and starting (a first start can migrate memory);
+ *   5. on failure, roll back: stop the new gateway and its children, restore
+ *      the snapshot's databases the new version migrated past what the old
+ *      one knew, put the old service definition file back byte for byte (and
+ *      `current` for a tarball-to-tarball switch), restart the old process the
+ *      way it was started once it has really exited, and say exactly what to
+ *      run when that is not possible.
  *
  * Every side effect goes through `GatewaySwitchDeps`, so the decision and
  * rollback logic is unit-tested without touching real processes, services or
@@ -50,10 +55,17 @@ export type ServiceDefinition = {
   sourcePath?: string;
 };
 
+/** The service definition file as it is on disk, for a byte-for-byte restore. */
+export type RawServiceDefinition = { path: string; content: string };
+
 export type ServiceFindings = {
   /** Human name of the service manager ("systemd user service"). */
   label: string;
   definition: ServiceDefinition | null;
+  /** The definition file's exact content (unit, plist, task script). */
+  raw: RawServiceDefinition | null;
+  /** systemd `EnvironmentFile=` values of the old unit (kept on the new one). */
+  environmentFiles: string[];
   /** The install the definition runs (null when it cannot be resolved). */
   runsFrom: InstallRef | null;
   /** The definition starts `<app>/current/bin/bitterbot` (follows tarball upgrades). */
@@ -66,6 +78,8 @@ export type ServiceFindings = {
 
 export type ListenerFindings = {
   pid: number | null;
+  /** Process start time at detection (pid reuse guard); null when unknown. */
+  startTime?: string | null;
   /** The command line (or process title) of the listening process. */
   command: string | null;
   /** Verified to be a Bitterbot gateway (never act on anything else). */
@@ -83,6 +97,23 @@ export type ListenerFindings = {
   childPids: number[];
 };
 
+/** Which config/state a gateway uses. */
+export type GatewayTarget = {
+  stateDir: string;
+  configPath: string | null;
+  profile: string | null;
+  port: number;
+};
+
+/** A git clone's `.env` keys the state directory's `.env` lacks. */
+export type EnvMigration = {
+  source: string;
+  target: string;
+  keys: string[];
+  /** Keys whose values cannot be written safely; copy them by hand. */
+  skipped: string[];
+};
+
 export type GatewaySwitchFindings = {
   port: number;
   self: InstallRef;
@@ -90,26 +121,39 @@ export type GatewaySwitchFindings = {
   listener: ListenerFindings | null;
   /** gateway.mode is "remote": the gateway is on another machine. */
   remoteMode: boolean;
+  /** A service manager exists here (systemd user, launchd, Task Scheduler). */
+  serviceManager?: boolean;
   /**
    * Extra `gateway` arguments for a gateway started in the background here
    * (`--allow-unconfigured` when the config does not set gateway.mode yet).
    */
   extraGatewayArgs?: string[];
+  /** What this switch targets (this command's state dir, profile and port). */
+  target?: GatewayTarget;
+  /** What the old gateway or service targets (from its environment). */
+  oldTarget?: GatewayTarget | null;
+  /** Environment of the old service carried to the new one. */
+  carriedEnv?: Record<string, string>;
+  envMigration?: EnvMigration | null;
+  /** Variables the old process had that come from neither `.env` (names only). */
+  processOnlyEnv?: string[];
 };
 
 export type GatewaySwitchDecision =
   | {
       action: "none";
-      reason: "fresh" | "already-current";
+      reason: "fresh" | "already-current" | "remote-mode" | "service-stopped";
+      /** Something worth saying anyway (a stopped service left alone). */
+      note?: string;
     }
   | {
       action: "blocked";
       reason:
-        | "remote-mode"
         | "container"
         | "foreign-listener"
         | "unidentified-listener"
-        | "cannot-restore";
+        | "cannot-restore"
+        | "target-mismatch";
       message: string;
     }
   | {
@@ -119,16 +163,22 @@ export type GatewaySwitchDecision =
       stopService: boolean;
       /** A verified gateway pid to SIGTERM when the service stop did not stop it. */
       stopPid: number | null;
-      /** Re-point (reinstall) the background service at this install. */
+      /** Point the background service at this install (reinstall, or a new one). */
       installService: boolean;
-      /** No service: start this install's gateway in the background. */
+      /** No service was installed before: a rollback uninstalls the new one. */
+      freshService: boolean;
+      /** No service manager: start this install's gateway in the background. */
       startDetached: boolean;
     };
 
 /** How to bring the old gateway back when the new one does not come up. */
 export type RestorePlan = {
-  /** Reinstall this service definition verbatim. */
+  /** The old definition file, restored byte for byte. */
+  rawDefinition: RawServiceDefinition | null;
+  /** Reinstall this service definition when the raw file is unavailable. */
   serviceDefinition: ServiceDefinition | null;
+  /** The old service was running (restart it after the restore). */
+  serviceWasRunning: boolean;
   /** Restart the old foreground gateway with this command. */
   restartCommand: { argv: string[]; cwd?: string } | null;
   /** For a tarball-to-tarball switch: point `<appDir>/current` back at `version`. */
@@ -138,10 +188,12 @@ export type RestorePlan = {
 };
 
 export type GatewaySwitchStep =
+  | "snapshot"
   | "stop-service"
   | "stop-process"
   | "wait-stopped"
   | "stop-children"
+  | "copy-env"
   | "install-service"
   | "start-gateway"
   | "wait-healthy"
@@ -154,35 +206,62 @@ export type GatewaySwitchOutcome = {
   decision: GatewaySwitchDecision;
   steps: Array<{ step: GatewaySwitchStep; ok: boolean; detail?: string }>;
   error?: string;
+  /** Keys copied into the state directory's `.env` (names only). */
+  envCopied?: string[];
+  snapshotDir?: string | null;
   rollback?: {
     ok: boolean;
     restored: "service" | "process" | "nothing";
     manual: string | null;
+    /** Files the snapshot restore put back. */
+    dataRestored?: string[];
   };
 };
 
-export type GatewayHealth = { ok: boolean; version: string | null; detail?: string };
-
 export type DetachedStart = { pid?: number; logPath: string };
+
+/** Who serves the port now. `rpc` is "auth" when the status RPC refused our credentials. */
+export type GatewayProbe = {
+  pid: number | null;
+  version: string | null;
+  root: string | null;
+  rpc?: "ok" | "auth" | "error";
+};
 
 export type GatewaySwitchDeps = {
   /** Stop the background service (its manager stops the gateway). */
   stopService: () => Promise<void>;
   /** Install (and start) the service with this definition. */
   installService: (definition: ServiceDefinition) => Promise<void>;
+  /** Remove a service this switch installed (rollback of a fresh install). */
+  uninstallService: () => Promise<void>;
+  /** Write the old definition file back exactly, reload, and start it when asked. */
+  restoreRawDefinition: (raw: RawServiceDefinition, opts: { start: boolean }) => Promise<void>;
+  /** Is the service's gateway process up (systemd ActiveState, launchd pid)? */
+  serviceRunning: () => Promise<boolean>;
   /** The service definition for THIS install (buildGatewayInstallPlan). */
   buildServiceDefinition: () => Promise<ServiceDefinition>;
   /** Start a gateway in the background, unsupervised. */
   startDetached: (cmd: { argv: string[]; cwd?: string; env?: NodeJS.ProcessEnv }) => DetachedStart;
   /** The process command line now (re-checked right before signalling). */
   readCommandLine: (pid: number) => Promise<string | null>;
+  /** The process start time (pid reuse guard), null when unknown. */
+  readStartTime: (pid: number) => Promise<string | null>;
+  listChildren: (pid: number) => Promise<number[]>;
   isPidAlive: (pid: number) => boolean;
   signal: (pid: number, signal: NodeJS.Signals) => void;
   isPortListening: (port: number) => Promise<boolean>;
-  /** Who serves the port now: version reported, and the install it runs from. */
-  probeGateway: (port: number) => Promise<{ version: string | null; root: string | null }>;
+  probeGateway: (port: number) => Promise<GatewayProbe>;
   /** Point `<appDir>/current` at `version`. */
   swapCurrentLink: (appDir: string, version: string) => void;
+  /** Snapshot config/.env/databases/keys before anything changes. */
+  snapshot: () => Promise<{ dir: string } | null>;
+  /** Restore what the new version changed (auto policy; never `.env`). */
+  restoreSnapshot: (snapshot: { dir: string }) => Promise<string[]>;
+  /** Copy the missing `.env` keys (backup first; never overwrite). */
+  copyEnv: (migration: EnvMigration) => Promise<{ copied: string[]; backup: string | null }>;
+  /** Interactive only: keep waiting for a gateway that is alive but still starting? */
+  askKeepWaiting?: (elapsedMs: number) => Promise<boolean>;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
 };
@@ -190,8 +269,15 @@ export type GatewaySwitchDeps = {
 export type GatewaySwitchTimeouts = {
   stopMs: number;
   childrenMs: number;
+  /** Wait this long, then ask (interactive) or keep going while alive up to maxHealthyMs. */
   healthyMs: number;
+  maxHealthyMs: number;
+  /** The new gateway must stay up (same pid) this long after it answers. */
+  stableMs: number;
+  /** A gateway started here that exits: give up after this grace. */
+  exitedGraceMs: number;
   restoreMs: number;
+  progressMs: number;
   pollMs: number;
 };
 
@@ -200,12 +286,17 @@ export const DEFAULT_SWITCH_TIMEOUTS: GatewaySwitchTimeouts = {
   childrenMs: 15_000,
   // The new version may migrate memory databases on its first start.
   healthyMs: 300_000,
-  restoreMs: 90_000,
+  maxHealthyMs: 20 * 60_000,
+  stableMs: 5_000,
+  exitedGraceMs: 15_000,
+  // CI's healthy() waits 240 s; a restore must not give up sooner.
+  restoreMs: 240_000,
+  progressMs: 30_000,
   pollMs: 500,
 };
 
-/** How long a gateway started here may be gone before the switch gives up on it. */
-const EXITED_GRACE_MS = 15_000;
+/** A new gateway seen dying this many times while it starts is crash-looping. */
+const CRASH_LOOP_DEATHS = 3;
 
 const GATEWAY_ENTRY_RE =
   /(?:^|[/\\])(?:dist[/\\](?:entry|index)\.(?:m?js)|bitterbot\.mjs|scripts[/\\]run-node\.mjs|src[/\\](?:entry|index)\.ts|bin[/\\]bitterbot)$/i;
@@ -270,7 +361,7 @@ export function definitionFollowsCurrent(definition: ServiceDefinition | null): 
   return /[/\\]current[/\\]bin[/\\]bitterbot$/.test(first);
 }
 
-/** The `--port` a definition passes, if any. */
+/** The `--port` a definition passes (or its BITTERBOT_GATEWAY_PORT), if any. */
 export function definitionPort(definition: ServiceDefinition | null): number | null {
   const args = definition?.programArguments ?? [];
   for (let i = 0; i < args.length; i += 1) {
@@ -283,7 +374,8 @@ export function definitionPort(definition: ServiceDefinition | null): number | n
       }
     }
   }
-  return null;
+  const envPort = Number.parseInt(definition?.environment?.BITTERBOT_GATEWAY_PORT ?? "", 10);
+  return Number.isFinite(envPort) && envPort > 0 ? envPort : null;
 }
 
 export function sameRoot(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -307,16 +399,39 @@ export function tarballVersionDir(
   return { appDir: path.dirname(ref.root), version };
 }
 
+/** Why the old gateway's target differs from this switch's, or null when it matches. */
+export function targetMismatch(
+  target: GatewayTarget | undefined,
+  old: GatewayTarget | null | undefined,
+): string | null {
+  if (!target || !old) {
+    return null;
+  }
+  const diffs: string[] = [];
+  if (!sameRoot(target.stateDir, old.stateDir)) {
+    diffs.push(`state directory ${old.stateDir} (this command uses ${target.stateDir})`);
+  }
+  if (old.configPath !== null && !sameRoot(old.configPath, target.configPath)) {
+    diffs.push(
+      `config ${old.configPath} (this command uses ${target.configPath ?? "the default"})`,
+    );
+  }
+  if (old.profile !== target.profile) {
+    diffs.push(
+      `profile ${old.profile ?? "default"} (this command uses ${target.profile ?? "default"})`,
+    );
+  }
+  if (old.port !== target.port) {
+    diffs.push(`port ${old.port} (this command uses ${target.port})`);
+  }
+  return diffs.length > 0 ? diffs.join("; ") : null;
+}
+
 /** Decide what to do from what was found. Pure. */
 export function decideGatewaySwitch(findings: GatewaySwitchFindings): GatewaySwitchDecision {
   const { self, service, listener, port } = findings;
   if (findings.remoteMode) {
-    return {
-      action: "blocked",
-      reason: "remote-mode",
-      message:
-        "This machine is set up to use a remote gateway (gateway.mode is remote), so there is no local gateway to switch.",
-    };
+    return { action: "none", reason: "remote-mode" };
   }
   if (self.kind === "container") {
     return {
@@ -330,13 +445,30 @@ export function decideGatewaySwitch(findings: GatewaySwitchFindings): GatewaySwi
     return {
       action: "blocked",
       reason: "foreign-listener",
-      message: `Port ${port} is used by another program${listener.pid ? ` (pid ${listener.pid}${listener.command ? `, ${listener.command}` : ""})` : ""}, not a Bitterbot gateway. It was left alone.`,
+      message: `Port ${port} is used by another program${listener.pid ? ` (pid ${listener.pid}${listener.command ? `, ${listener.command}` : ""})` : ""}, not a Bitterbot gateway. It was left alone. Free the port, or set another one with gateway.port in the config.`,
     };
   }
   const listenerOld = Boolean(listener && listener.isGateway && !listener.isSelf);
   const serviceElsewhere = Boolean(service && !service.pointsHere);
+  const listenerRunsService = Boolean(listener?.underService);
+  // A stopped service the user stopped on purpose stays stopped: never start it.
+  if (serviceElsewhere && service && !service.running && !listenerRunsService && !listenerOld) {
+    return {
+      action: "none",
+      reason: "service-stopped",
+      note: `The background service (${service.label}) is stopped and still set to run another install. It was left alone. To use this version for it: bitterbot gateway install --force`,
+    };
+  }
   if (!listenerOld && !serviceElsewhere) {
     return { action: "none", reason: listener || service ? "already-current" : "fresh" };
+  }
+  const mismatch = targetMismatch(findings.target, findings.oldTarget);
+  if (mismatch) {
+    return {
+      action: "blocked",
+      reason: "target-mismatch",
+      message: `The running Bitterbot uses ${mismatch}. Switching would point it at different settings, so nothing was changed. Run the switch with the same settings (for example BITTERBOT_STATE_DIR, BITTERBOT_PROFILE or --port), or switch it by hand.`,
+    };
   }
   if (listenerOld && listener && listener.pid === null) {
     return {
@@ -347,7 +479,7 @@ export function decideGatewaySwitch(findings: GatewaySwitchFindings): GatewaySwi
   }
   // The service is re-installed, so its old definition must be readable to
   // be restored if the switch fails.
-  if (service && !service.definition) {
+  if (service && !service.definition && !service.raw) {
     return {
       action: "blocked",
       reason: "cannot-restore",
@@ -356,7 +488,7 @@ export function decideGatewaySwitch(findings: GatewaySwitchFindings): GatewaySwi
   }
   // A foreground gateway (no service runs it) must be restartable before we
   // stop it, or a failed switch would leave nothing running.
-  if (listenerOld && listener && !listener.underService && !restartCommandFor(findings)) {
+  if (listener && listener.isGateway && !listener.underService && !restartCommandFor(findings)) {
     return {
       action: "blocked",
       reason: "cannot-restore",
@@ -364,13 +496,19 @@ export function decideGatewaySwitch(findings: GatewaySwitchFindings): GatewaySwi
     };
   }
   const from = listenerOld ? (listener?.runsFrom ?? null) : (service?.runsFrom ?? null);
+  const canInstall = Boolean(service) || findings.serviceManager === true;
+  // This install's own foreground gateway is stopped too when the service is
+  // taken over, so the service's gateway (not the foreground one) serves.
+  const foregroundPid =
+    listener && listener.isGateway && !listener.underService ? listener.pid : null;
   return {
     action: "switch",
     from,
-    stopService: Boolean(service && (service.running || listener?.underService)),
-    stopPid: listenerOld ? (listener?.pid ?? null) : null,
-    installService: Boolean(service),
-    startDetached: !service && listenerOld,
+    stopService: Boolean(service && (service.running || listenerRunsService)),
+    stopPid: listenerOld ? (listener?.pid ?? null) : canInstall ? foregroundPid : null,
+    installService: canInstall,
+    freshService: !service && canInstall,
+    startDetached: !canInstall && listenerOld,
   };
 }
 
@@ -404,13 +542,17 @@ export function restartCommandFor(
 /** What to restore if the switch fails. Pure. */
 export function buildRestorePlan(findings: GatewaySwitchFindings): RestorePlan {
   const definition = findings.service?.definition ?? null;
-  const oldRef = findings.listener?.isGateway
-    ? (findings.listener.runsFrom ?? null)
-    : (findings.service?.runsFrom ?? null);
+  const oldRef =
+    findings.listener?.isGateway && !findings.listener.isSelf
+      ? (findings.listener.runsFrom ?? null)
+      : (findings.service?.runsFrom ?? null);
   const oldTarball = tarballVersionDir(oldRef);
   const selfTarball = tarballVersionDir(findings.self);
   const currentLink =
-    oldTarball && selfTarball && sameRoot(oldTarball.appDir, selfTarball.appDir)
+    oldTarball &&
+    selfTarball &&
+    oldTarball.version !== selfTarball.version &&
+    sameRoot(oldTarball.appDir, selfTarball.appDir)
       ? oldTarball
       : null;
   const restartCommand =
@@ -423,7 +565,14 @@ export function buildRestorePlan(findings: GatewaySwitchFindings): RestorePlan {
       ? `Start the old gateway again from ${oldRef.root} (for a git clone: cd ${oldRef.root} && pnpm start gateway).`
       : "Start your previous gateway again the way you usually start it.";
   }
-  return { serviceDefinition: definition, restartCommand, currentLink, manual };
+  return {
+    rawDefinition: findings.service?.raw ?? null,
+    serviceDefinition: definition,
+    serviceWasRunning: Boolean(findings.service?.running || findings.listener?.underService),
+    restartCommand,
+    currentLink,
+    manual,
+  };
 }
 
 /** Env for restarting an OLD install: drop this install's launcher markers. */
@@ -435,44 +584,15 @@ export function envForOldInstall(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return next;
 }
 
-async function waitFor(
-  deps: GatewaySwitchDeps,
-  timeoutMs: number,
-  pollMs: number,
-  check: () => Promise<boolean> | boolean,
-): Promise<boolean> {
-  const until = deps.now() + timeoutMs;
-  for (;;) {
-    if (await check()) {
-      return true;
-    }
-    if (deps.now() >= until) {
-      return false;
-    }
-    await deps.sleep(pollMs);
-  }
+/** "2m10s". */
+export function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(s / 60);
+  return m > 0 ? `${m}m${String(s % 60).padStart(2, "0")}s` : `${s}s`;
 }
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-/** True when the gateway on the port is this install. */
-async function isSelfServing(
-  deps: GatewaySwitchDeps,
-  findings: GatewaySwitchFindings,
-): Promise<boolean> {
-  if (!(await deps.isPortListening(findings.port))) {
-    return false;
-  }
-  const probe = await deps.probeGateway(findings.port).catch(() => null);
-  if (!probe) {
-    return false;
-  }
-  if (probe.root && findings.self.root) {
-    return sameRoot(probe.root, findings.self.root);
-  }
-  return Boolean(probe.version && findings.self.version && probe.version === findings.self.version);
 }
 
 /**
@@ -486,6 +606,8 @@ export async function executeGatewaySwitch(params: {
   env?: NodeJS.ProcessEnv;
   timeouts?: Partial<GatewaySwitchTimeouts>;
   onStep?: (step: GatewaySwitchStep, detail?: string) => void;
+  /** Progress lines during long waits ("Still starting (2m10s)..."). */
+  onProgress?: (line: string) => void;
 }): Promise<GatewaySwitchOutcome> {
   const { findings, decision, deps } = params;
   const env = params.env ?? process.env;
@@ -494,6 +616,7 @@ export async function executeGatewaySwitch(params: {
   const record = (step: GatewaySwitchStep, ok: boolean, detail?: string) => {
     steps.push({ step, ok, ...(detail ? { detail } : {}) });
   };
+  const progress = (line: string) => params.onProgress?.(line);
   if (decision.action === "none") {
     return { ok: true, status: "nothing-to-do", findings, decision, steps };
   }
@@ -501,27 +624,120 @@ export async function executeGatewaySwitch(params: {
     return { ok: false, status: "blocked", findings, decision, steps, error: decision.message };
   }
 
+  /** Poll `check` until true or the timeout, with a progress line now and then. */
+  const waitFor = async (
+    timeoutMs: number,
+    check: () => Promise<boolean> | boolean,
+    label?: string,
+  ): Promise<boolean> => {
+    const start = deps.now();
+    let nextProgress = start + t.progressMs;
+    for (;;) {
+      if (await check()) {
+        return true;
+      }
+      const now = deps.now();
+      if (now - start >= timeoutMs) {
+        return false;
+      }
+      if (label && now >= nextProgress) {
+        progress(`  ${label} (${formatElapsed(now - start)})...`);
+        nextProgress = now + t.progressMs;
+      }
+      await deps.sleep(t.pollMs);
+    }
+  };
+
+  /** Children exit with their gateway; a verified orchestrator that lingers is ended. */
+  const waitChildren = async (children: number[]): Promise<boolean> => {
+    const alive = () => children.filter((c) => deps.isPidAlive(c));
+    if (children.length === 0) {
+      return true;
+    }
+    if (await waitFor(t.childrenMs, () => alive().length === 0)) {
+      return true;
+    }
+    for (const sig of ["SIGTERM", "SIGKILL"] as const) {
+      for (const child of alive()) {
+        const command = await deps.readCommandLine(child).catch(() => null);
+        if (command?.toLowerCase().includes("bitterbot-orchestrator")) {
+          try {
+            deps.signal(child, sig);
+          } catch {
+            // already gone
+          }
+        }
+      }
+      if (await waitFor(t.childrenMs, () => alive().length === 0)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const restore = buildRestorePlan(findings);
   const port = findings.port;
+  const oldPid = decision.stopPid;
   let serviceTouched = false;
   let oldStopped = false;
   let detachedPid: number | undefined;
+  let snapshot: { dir: string } | null = null;
+  let envCopied: string[] | undefined;
+  /** Pids seen serving as the new gateway (never mistaken for a restored old one). */
+  const newPids = new Set<number>();
 
   const rollback = async (reason: string): Promise<GatewaySwitchOutcome> => {
     params.onStep?.("rollback", reason);
-    // 1. Stop whatever the switch started.
-    if (serviceTouched) {
-      await deps.stopService().catch(() => {});
+    // 1. Stop whatever the switch started, and its children.
+    const newProbe = await deps.probeGateway(port).catch(() => null);
+    if (newProbe?.pid && newProbe.pid !== oldPid && (serviceTouched || detachedPid)) {
+      newPids.add(newProbe.pid);
     }
-    if (detachedPid && deps.isPidAlive(detachedPid)) {
-      try {
-        deps.signal(detachedPid, "SIGTERM");
-      } catch {
-        // already gone
+    if (detachedPid) {
+      newPids.add(detachedPid);
+    }
+    const newChildren: number[] = [];
+    for (const pid of newPids) {
+      newChildren.push(...(await deps.listChildren(pid).catch(() => [])));
+    }
+    if (serviceTouched) {
+      if (decision.freshService) {
+        await deps.uninstallService().catch(() => {});
+      } else {
+        await deps.stopService().catch(() => {});
       }
     }
-    await waitFor(deps, t.stopMs, t.pollMs, async () => !(await deps.isPortListening(port)));
-    // 2. Put the old code back.
+    for (const pid of newPids) {
+      if (pid !== oldPid && deps.isPidAlive(pid)) {
+        try {
+          deps.signal(pid, "SIGTERM");
+        } catch {
+          // already gone
+        }
+      }
+    }
+    // 2. The old foreground gateway must really be gone before it restarts
+    // (a slow shutdown still holds the port and the gateway lock).
+    const oldGone = await waitFor(
+      t.stopMs,
+      () => oldPid === null || !oldStopped || !deps.isPidAlive(oldPid),
+      "Waiting for the old gateway to finish stopping",
+    );
+    const newGone = await waitFor(
+      t.stopMs,
+      async () =>
+        [...newPids].every((p) => !deps.isPidAlive(p)) &&
+        (!oldGone || !oldStopped || !(await deps.isPortListening(port))),
+      "Waiting for the new gateway to stop",
+    );
+    const childrenGone = await waitChildren(newChildren);
+    // 3. Data the new version migrated past what the old one knows (only
+    // once no gateway can be writing it).
+    let dataRestored: string[] | undefined;
+    if (snapshot && newGone && oldGone && childrenGone) {
+      dataRestored = await deps.restoreSnapshot(snapshot).catch(() => undefined);
+    }
+    // 4. Put the old code back.
     if (restore.currentLink) {
       try {
         deps.swapCurrentLink(restore.currentLink.appDir, restore.currentLink.version);
@@ -529,28 +745,36 @@ export async function executeGatewaySwitch(params: {
         // keep going: the service definition below may pin the old root anyway
       }
     }
-    const serviceWasRunning = Boolean(findings.service?.running || findings.listener?.underService);
     let serviceRestored = false;
     let processRestarted = false;
     let manual = restore.manual;
-    if (restore.serviceDefinition && (serviceTouched || oldStopped)) {
+    if (serviceTouched && !decision.freshService) {
       try {
-        await deps.installService(restore.serviceDefinition);
-        serviceRestored = true;
-        // Installing starts it; a service that was not running before stays stopped.
-        if (!serviceWasRunning) {
-          await deps.stopService().catch(() => {});
+        if (restore.rawDefinition) {
+          await deps.restoreRawDefinition(restore.rawDefinition, {
+            start: restore.serviceWasRunning,
+          });
+        } else if (restore.serviceDefinition) {
+          await deps.installService(restore.serviceDefinition);
+          if (!restore.serviceWasRunning) {
+            await deps.stopService().catch(() => {});
+          }
         }
+        serviceRestored = Boolean(restore.rawDefinition || restore.serviceDefinition);
       } catch (err) {
         manual = `Restoring the background service failed (${errorText(err)}). Reinstall it from your previous install (for a git clone: cd <clone> && pnpm bitterbot gateway install --force).`;
       }
     }
     if (oldStopped && restore.restartCommand) {
-      try {
-        deps.startDetached({ ...restore.restartCommand, env: envForOldInstall(env) });
-        processRestarted = true;
-      } catch (err) {
-        manual = `Restarting the previous gateway failed (${errorText(err)}). Start it the way you usually do.`;
+      if (!oldGone) {
+        manual = `The previous gateway (pid ${oldPid}) is still shutting down. Once it has exited, start it again: ${restore.restartCommand.argv.join(" ")}`;
+      } else {
+        try {
+          deps.startDetached({ ...restore.restartCommand, env: envForOldInstall(env) });
+          processRestarted = true;
+        } catch (err) {
+          manual = `Restarting the previous gateway failed (${errorText(err)}). Start it the way you usually do.`;
+        }
       }
     }
     const restored: "service" | "process" | "nothing" = serviceRestored
@@ -558,11 +782,35 @@ export async function executeGatewaySwitch(params: {
       : processRestarted
         ? "process"
         : "nothing";
-    const wasRunning = Boolean(findings.listener?.isGateway) || serviceWasRunning;
-    const expectRunning = processRestarted || (serviceRestored && serviceWasRunning);
+    const wasRunning = Boolean(findings.listener?.isGateway) || restore.serviceWasRunning;
+    const expectRunning = processRestarted || (serviceRestored && restore.serviceWasRunning);
     let ok = true;
     if (wasRunning && expectRunning) {
-      ok = await waitFor(deps, t.restoreMs, t.pollMs, () => deps.isPortListening(port));
+      // Restored only when a gateway that is neither the old dying process
+      // nor the new one serves the port and stays up.
+      let candidate: number | null | undefined;
+      let since = 0;
+      ok = await waitFor(
+        t.restoreMs,
+        async () => {
+          if (!(await deps.isPortListening(port))) {
+            candidate = undefined;
+            return false;
+          }
+          const probe = await deps.probeGateway(port).catch(() => null);
+          const pid = probe?.pid ?? null;
+          if (pid !== null && (pid === oldPid || newPids.has(pid))) {
+            candidate = undefined;
+            return false;
+          }
+          if (candidate !== pid) {
+            candidate = pid;
+            since = deps.now();
+          }
+          return deps.now() - since >= t.stableMs;
+        },
+        "Waiting for the previous gateway to come back",
+      );
       if (!ok && !manual) {
         manual =
           "The previous gateway did not come back on its own. Start it the way you usually do.";
@@ -579,9 +827,38 @@ export async function executeGatewaySwitch(params: {
       decision,
       steps,
       error: reason,
-      rollback: { ok, restored, manual },
+      envCopied,
+      snapshotDir: snapshot?.dir ?? null,
+      rollback: {
+        ok,
+        restored,
+        manual,
+        ...(dataRestored && dataRestored.length > 0 ? { dataRestored } : {}),
+      },
     };
   };
+
+  const failed = (error: string): GatewaySwitchOutcome => ({
+    ok: false,
+    status: "failed",
+    findings,
+    decision,
+    steps,
+    error,
+    snapshotDir: snapshot?.dir ?? null,
+  });
+
+  // 0. Snapshot while nothing has changed yet.
+  params.onStep?.("snapshot");
+  try {
+    snapshot = await deps.snapshot();
+    record("snapshot", true, snapshot?.dir);
+  } catch (err) {
+    record("snapshot", false, errorText(err));
+    return failed(
+      `Could not take the safety snapshot of your data: ${errorText(err)}. Nothing was changed.`,
+    );
+  }
 
   // 1. Stop the old gateway.
   if (decision.stopService) {
@@ -593,98 +870,86 @@ export async function executeGatewaySwitch(params: {
       record("stop-service", true);
     } catch (err) {
       record("stop-service", false, errorText(err));
-      return {
-        ok: false,
-        status: "failed",
-        findings,
-        decision,
-        steps,
-        error: `Could not stop the background service: ${errorText(err)}. Nothing was changed.`,
-      };
+      return failed(
+        `Could not stop the background service: ${errorText(err)}. Nothing was changed.`,
+      );
     }
   }
-  const pid = decision.stopPid;
-  if (pid !== null && deps.isPidAlive(pid)) {
-    // Re-check right before signalling: the pid must still be a gateway.
-    const command = await deps.readCommandLine(pid).catch(() => null);
+  if (oldPid !== null && deps.isPidAlive(oldPid)) {
+    // Re-check right before signalling: the pid must still be the same gateway.
+    const command = await deps.readCommandLine(oldPid).catch(() => null);
     const knownRoot = Boolean(findings.listener?.runsFrom?.root);
-    if (!isBitterbotGatewayCommand(command, knownRoot)) {
-      record("stop-process", false, "pid is no longer a Bitterbot gateway");
+    const expectedStart = findings.listener?.startTime ?? null;
+    const startNow = expectedStart ? await deps.readStartTime(oldPid).catch(() => null) : null;
+    const sameProcess = !expectedStart || startNow === null || startNow === expectedStart;
+    if (!isBitterbotGatewayCommand(command, knownRoot) || !sameProcess) {
+      record("stop-process", false, "pid is no longer the same Bitterbot gateway");
       if (oldStopped) {
-        return await rollback(`Process ${pid} is no longer a Bitterbot gateway; not stopping it.`);
+        return await rollback(
+          `Process ${oldPid} is no longer the same Bitterbot gateway; not stopping it.`,
+        );
       }
-      return {
-        ok: false,
-        status: "failed",
-        findings,
-        decision,
-        steps,
-        error: `Process ${pid} is no longer a Bitterbot gateway; it was left alone.`,
-      };
+      return failed(
+        `Process ${oldPid} is no longer the same Bitterbot gateway; it was left alone.`,
+      );
     }
-    params.onStep?.("stop-process", String(pid));
+    params.onStep?.("stop-process", String(oldPid));
     try {
-      deps.signal(pid, "SIGTERM");
+      deps.signal(oldPid, "SIGTERM");
       oldStopped = true;
-      record("stop-process", true, String(pid));
+      record("stop-process", true, String(oldPid));
     } catch (err) {
       record("stop-process", false, errorText(err));
       if (oldStopped) {
-        return await rollback(`Could not stop process ${pid}: ${errorText(err)}`);
+        return await rollback(`Could not stop process ${oldPid}: ${errorText(err)}`);
       }
-      return {
-        ok: false,
-        status: "failed",
-        findings,
-        decision,
-        steps,
-        error: `Could not stop process ${pid}: ${errorText(err)}. Nothing was changed.`,
-      };
+      return failed(`Could not stop process ${oldPid}: ${errorText(err)}. Nothing was changed.`);
     }
   }
   if (oldStopped) {
     params.onStep?.("wait-stopped");
-    const stopped = await waitFor(deps, t.stopMs, t.pollMs, async () => {
-      const pidGone = pid === null || !deps.isPidAlive(pid);
-      return pidGone && !(await deps.isPortListening(port));
-    });
+    const stopped = await waitFor(
+      t.stopMs,
+      async () => {
+        const pidGone = oldPid === null || !deps.isPidAlive(oldPid);
+        return pidGone && !(await deps.isPortListening(port));
+      },
+      "Waiting for the old gateway to exit",
+    );
     record("wait-stopped", stopped);
     if (!stopped) {
       return await rollback(
         `The old gateway did not stop within ${Math.round(t.stopMs / 1000)} seconds.`,
       );
     }
-    // Its children (the P2P orchestrator) exit with it; nudge stragglers that
-    // are verifiably the orchestrator.
     const children = findings.listener?.childPids ?? [];
     if (children.length > 0) {
       params.onStep?.("stop-children");
-      let gone = await waitFor(deps, t.childrenMs, t.pollMs, () =>
-        children.every((c) => !deps.isPidAlive(c)),
-      );
+      const gone = await waitChildren(children);
+      record("stop-children", gone);
       if (!gone) {
-        for (const child of children) {
-          if (!deps.isPidAlive(child)) {
-            continue;
-          }
-          const command = await deps.readCommandLine(child).catch(() => null);
-          if (command?.toLowerCase().includes("bitterbot-orchestrator")) {
-            try {
-              deps.signal(child, "SIGTERM");
-            } catch {
-              // already gone
-            }
-          }
-        }
-        gone = await waitFor(deps, t.childrenMs, t.pollMs, () =>
-          children.every((c) => !deps.isPidAlive(c)),
+        return await rollback(
+          "The old gateway's P2P orchestrator did not exit; its port and socket would still be in use.",
         );
       }
-      record("stop-children", gone);
     }
   }
 
-  // 2. Start this install.
+  // 2. A git clone's .env keys the state directory lacks.
+  const migration = findings.envMigration;
+  if (migration && migration.keys.length > 0) {
+    params.onStep?.("copy-env");
+    try {
+      const res = await deps.copyEnv(migration);
+      envCopied = res.copied;
+      record("copy-env", true, res.copied.join(", "));
+    } catch (err) {
+      record("copy-env", false, errorText(err));
+      return await rollback(`Could not copy the .env keys: ${errorText(err)}`);
+    }
+  }
+
+  // 3. Start this install.
   if (decision.installService) {
     params.onStep?.("install-service");
     try {
@@ -705,7 +970,7 @@ export async function executeGatewaySwitch(params: {
         // Started from its own root, so it can be located (and recognised as
         // this install) even when its command line becomes a process title.
         cwd: definition.workingDirectory ?? findings.self.root ?? undefined,
-        env,
+        env: { ...env, ...findings.carriedEnv },
       });
       detachedPid = started.pid;
       record("start-gateway", true, `pid ${started.pid ?? "?"}, log ${started.logPath}`);
@@ -715,29 +980,110 @@ export async function executeGatewaySwitch(params: {
     }
   }
 
-  // 3. Healthy on this version?
+  // 4. Healthy: this version answers and the same process stays up. A
+  // gateway that is alive keeps getting time (first starts can migrate
+  // memory); one that exits fails fast.
   params.onStep?.("wait-healthy");
-  // A gateway started here that exits (a boot failure) fails fast, after a
-  // short grace in case it restarted itself under a fresh pid.
+  const started = deps.now();
+  let deadline = started + t.healthyMs;
+  let candidate: number | null | undefined;
+  let candidateSince = 0;
   let diedAt: number | null = null;
-  const healthy = await waitFor(deps, t.healthyMs, t.pollMs * 2, async () => {
-    if (await isSelfServing(deps, findings)) {
-      return true;
+  let nextProgress = started + t.progressMs;
+  const newAlive = async (): Promise<boolean> => {
+    if (detachedPid) {
+      return deps.isPidAlive(detachedPid);
     }
-    if (detachedPid && !deps.isPidAlive(detachedPid)) {
-      diedAt ??= deps.now();
-      return deps.now() - diedAt >= EXITED_GRACE_MS;
+    return await deps.serviceRunning().catch(() => true);
+  };
+  let healthy = false;
+  let exited = false;
+  let wasAlive = true;
+  let deaths = 0;
+  for (;;) {
+    const probe = (await deps.isPortListening(port))
+      ? await deps.probeGateway(port).catch(() => null)
+      : null;
+    const rootOk =
+      probe !== null &&
+      (probe.root && findings.self.root
+        ? sameRoot(probe.root, findings.self.root)
+        : Boolean(probe.version && probe.version === findings.self.version));
+    const versionOk =
+      probe !== null &&
+      ((probe.version !== null && probe.version === findings.self.version) ||
+        (probe.version === null && probe.rpc === "auth"));
+    const pid = probe?.pid ?? null;
+    if (rootOk && versionOk && (pid === null || pid !== oldPid)) {
+      if (pid !== null) {
+        newPids.add(pid);
+      }
+      if (candidate !== pid) {
+        candidate = pid;
+        candidateSince = deps.now();
+      }
+      if (deps.now() - candidateSince >= t.stableMs) {
+        healthy = true;
+        break;
+      }
+    } else {
+      candidate = undefined;
     }
-    return false;
-  });
-  const serving = healthy && (diedAt === null || (await isSelfServing(deps, findings)));
-  record("wait-healthy", serving);
-  if (!serving) {
+    const now = deps.now();
+    if (await newAlive()) {
+      diedAt = null;
+      wasAlive = true;
+    } else {
+      // A service manager restarts a gateway that crashes at boot: count
+      // the deaths, so a crash loop fails as fast as a plain exit.
+      if (wasAlive) {
+        deaths += 1;
+      }
+      wasAlive = false;
+      diedAt ??= now;
+      if (now - diedAt >= t.exitedGraceMs || deaths >= CRASH_LOOP_DEATHS) {
+        exited = true;
+        break;
+      }
+    }
+    if (now >= nextProgress) {
+      progress(
+        `  Still starting (${formatElapsed(now - started)})... a first start can take a few minutes while memory is upgraded.`,
+      );
+      nextProgress = now + t.progressMs;
+    }
+    if (now >= deadline) {
+      if (!(await newAlive())) {
+        break;
+      }
+      if (deps.askKeepWaiting) {
+        if (!(await deps.askKeepWaiting(now - started))) {
+          break;
+        }
+        deadline = now + t.healthyMs;
+      } else if (now - started >= t.maxHealthyMs) {
+        break;
+      } else {
+        deadline = Math.min(started + t.maxHealthyMs, now + t.healthyMs);
+      }
+    }
+    await deps.sleep(t.pollMs * 2);
+  }
+  record("wait-healthy", healthy);
+  if (!healthy) {
     return await rollback(
-      diedAt !== null
+      exited
         ? "The new gateway exited during startup."
-        : `The new gateway did not become healthy within ${Math.round(t.healthyMs / 1000)} seconds.`,
+        : `The new gateway did not become healthy within ${formatElapsed(deps.now() - started)}.`,
     );
   }
-  return { ok: true, status: "switched", findings, decision, steps };
+  return {
+    ok: true,
+    status: "switched",
+    findings,
+    decision,
+    steps,
+    envCopied,
+    snapshotDir: snapshot?.dir ?? null,
+  };
 }

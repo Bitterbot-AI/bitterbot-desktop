@@ -21,6 +21,8 @@ vi.mock("../daemon/service.js", () => ({
 import {
   findLinuxListenerPid,
   inspectGatewayService,
+  rotateLog,
+  serviceTargetMismatch,
   resolveProcessRoot,
   resolveRootFromArgs,
   tarballRootFromExe,
@@ -212,5 +214,58 @@ describe("findLinuxListenerPid (no lsof)", () => {
     }
     expect(await findLinuxListenerPid(19001, proc)).toBe(321);
     expect(await findLinuxListenerPid(19004, proc)).toBeNull();
+  });
+});
+
+describe("service definition file and settings", () => {
+  const selfRef = () => ({ root: v150, kind: "tarball" as const, version: "1.5.0" });
+
+  it("keeps the unit file's exact content (and its EnvironmentFile= lines on Linux)", async () => {
+    const unit = path.join(work, "bitterbot-gateway.service");
+    const content = `[Service]\nUser=u\nEnvironmentFile=${work}/secrets.env\nExecStart=/usr/bin/node ${clone}/dist/index.js gateway\n`;
+    fs.writeFileSync(unit, content);
+    serviceMock.isLoaded.mockResolvedValue(true);
+    serviceMock.readCommand.mockResolvedValue({
+      programArguments: ["/usr/bin/node", path.join(clone, "dist", "index.js"), "gateway"],
+      sourcePath: unit,
+    });
+    serviceMock.readRuntime.mockResolvedValue({ status: "running", pid: 5 });
+    const found = await inspectGatewayService({ self: selfRef(), env: {} });
+    expect(found?.raw).toEqual({ path: unit, content });
+    if (process.platform === "linux") {
+      expect(found?.environmentFiles).toEqual([`${work}/secrets.env`]);
+    }
+  });
+
+  it("flags a service that serves another state dir or port", async () => {
+    const base = { HOME: "/home/u" } as NodeJS.ProcessEnv;
+    const svc = (environment: Record<string, string>, port = "19001") => ({
+      label: "systemd user service",
+      definition: { programArguments: ["x", "gateway", "--port", port], environment },
+      raw: null,
+      environmentFiles: [],
+      runsFrom: null,
+      followsCurrent: false,
+      pointsHere: false,
+      running: true,
+    });
+    expect(await serviceTargetMismatch(svc({}), base, 19001)).toBeNull();
+    expect(
+      await serviceTargetMismatch(svc({ BITTERBOT_STATE_DIR: "/srv/bb" }), base, 19001),
+    ).toContain("state directory /srv/bb");
+    expect(await serviceTargetMismatch(svc({}, "19011"), base, 19001)).toContain("port 19011");
+  });
+});
+
+describe("rotateLog", () => {
+  it("keeps the background log bounded", () => {
+    const file = path.join(work, "gateway-switch.log");
+    fs.writeFileSync(file, "x".repeat(2048));
+    rotateLog(file, 1024);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(fs.statSync(`${file}.1`).size).toBe(2048);
+    fs.writeFileSync(file, "small");
+    rotateLog(file, 1024);
+    expect(fs.readFileSync(file, "utf8")).toBe("small");
   });
 });

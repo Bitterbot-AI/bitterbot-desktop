@@ -492,7 +492,55 @@ describeInstaller("scripts/install.sh", () => {
       const res = runInstaller([], { ...env, FAKE_CHECK_RC: "2" }, home);
       expect(res.status, res.out).toBe(0);
       expect(calls(home)).toBe("gateway switch --check\n");
-      expect(res.out).toContain("gateway switch, then");
+      expect(res.out).toContain("Next: once that is sorted out");
+    });
+
+    it("a remote gateway (check exit 0) goes straight on to onboarding", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "0" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).not.toContain("gateway switch");
+      expect(res.out).toContain("onboard (opens a setup page");
+    });
+
+    it("another program on the port (exit 5): says so, never suggests a switch", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "5" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(calls(home)).toBe("gateway switch --check\n");
+      expect(res.out).toContain("free the port (or set another one with gateway.port)");
+      expect(res.out).not.toContain(
+        "Next: " + path.join(home, ".local", "bin", "bitterbot") + " gateway switch",
+      );
+    });
+
+    it("a failed switch leaves `previous` and older versions as they were", () => {
+      freshReleases();
+      publish("1.0.0");
+      publish("1.1.0");
+      publish("1.2.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const app = path.join(home, ".bitterbot", "app");
+      expect(runInstaller(["--version", "1.0.0"], env, home).status).toBe(0);
+      expect(runInstaller(["--version", "1.1.0"], env, home).status).toBe(0);
+      expect(fs.readlinkSync(path.join(app, "previous"))).toBe("1.0.0");
+      const res = runInstaller(["--version", "1.2.0"], { ...env, FAKE_SWITCH_RC: "1" }, home);
+      expect(res.status, res.out).toBe(1);
+      expect(fs.readlinkSync(path.join(app, "previous"))).toBe("1.0.0");
+      expect(fs.existsSync(path.join(app, "1.0.0", "bin", "bitterbot"))).toBe(true);
+      expect(res.out).not.toContain("Removing old version");
+      // (the real switch's rollback points `current` back at the old version)
+      fs.rmSync(path.join(app, "current"));
+      fs.symlinkSync("1.1.0", path.join(app, "current"));
+      // A successful switch then moves `previous` and prunes as before.
+      const ok = runInstaller(["--version", "1.2.0"], env, home);
+      expect(ok.status, ok.out).toBe(0);
+      expect(fs.readlinkSync(path.join(app, "previous"))).toBe("1.1.0");
+      expect(fs.existsSync(path.join(app, "1.0.0"))).toBe(false);
     });
 
     it("a switch that did not complete fails the run with a warning", () => {

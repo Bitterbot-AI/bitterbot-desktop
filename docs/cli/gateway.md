@@ -177,19 +177,27 @@ bitterbot gateway switch --yes --json
 
 It finds the installed service and what it runs, and the process on the
 gateway port, where it runs from and its version. When that is another
-install, it stops the old gateway (through its service manager, or a stop
-signal to a process verified to be a Bitterbot gateway), points the service at
-this install (as `gateway install --force` does) or starts this install in the
-background when there is no service, and waits until this version answers. If
-it does not, the old service definition or the old process is put back. Your
-config, memory and keys are not changed.
+install, it takes the same safety snapshot as `bitterbot update`, stops the
+old gateway (through its service manager, or a stop signal to a process
+verified to be a Bitterbot gateway), copies the keys of a git clone's `.env`
+that `~/.bitterbot/.env` lacks (names only are printed; nothing is
+overwritten), points the service at this install (as `gateway install --force`
+does, keeping the old service's environment) or installs one, and waits until
+this version answers and stays up. Without any service manager it starts this
+install in the background instead. If the new version does not come up, the
+old service file is restored byte for byte (or the old process restarted once
+it has exited), with any memory database the new version upgraded restored
+from the snapshot. A stopped service is never started, and an old gateway that
+uses another state directory, profile or port is left alone.
 
 Options: `--check` (alias `--dry-run`) only reports; `-y`, `--yes` switches
 without asking; `--port <port>`; `--timeout <ms>` (how long to wait for the
-new gateway, default 300000); `--json`.
+new gateway before it asks, or keeps waiting up to 20 minutes while it is
+alive, default 300000); `--json`.
 
-Exit codes: with `--check`, 0 nothing to switch, 10 a switch is available, 2
-something it will not touch is on the port. Otherwise 0 switched (or nothing
-to do), 1 not switched but the previous gateway runs as before, 2 not done
-(declined, needs `--yes`, or blocked), 3 failed and the previous gateway could
-not be restarted (the output says what to run).
+Exit codes: with `--check`, 0 nothing to switch (including a remote gateway),
+10 a switch is available, 5 another program uses the gateway port, 2 blocked
+(the message says what to do). Otherwise 0 switched (or nothing to do), 1 not
+switched but the previous gateway runs as before, 2 not done (declined, needs
+`--yes`, or blocked), 3 failed and the previous gateway could not be restarted
+(the output says what to run), 5 as with `--check`.

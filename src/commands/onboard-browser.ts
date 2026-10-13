@@ -199,10 +199,7 @@ async function defaultCheckGateway(port: number): Promise<OnboardGatewayCheck> {
   const listener = findings.listener;
   return {
     otherInstall: Boolean(listener?.isGateway && !listener.isSelf),
-    blocked:
-      decision.action === "blocked" && listener && decision.reason !== "remote-mode"
-        ? decision.message
-        : null,
+    blocked: decision.action === "blocked" && listener ? decision.message : null,
     summary: describeFindings(findings, decision),
     version: findings.self.version,
   };

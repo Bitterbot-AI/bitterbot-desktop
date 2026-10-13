@@ -137,21 +137,51 @@ Switch to 1.5.0 now? [Y/n]
 
 Answering yes (or passing `--yes`) runs `bitterbot gateway switch`, which:
 
-1. Stops the old gateway: through its service manager when the background
+1. Takes a safety snapshot of your settings and memory first, the same one
+   `bitterbot update` takes (see [Snapshots](#snapshots)). If that is not
+   possible (for example the disk is full), nothing is changed.
+2. Stops the old gateway: through its service manager when the background
    service runs it, otherwise with a normal stop signal to that process. It
-   only ever stops a process that is a Bitterbot gateway; anything else on the
-   port is reported and left alone. It waits until the port is free and the
-   P2P orchestrator has exited.
-2. Points the background service at the new version (the same as
-   `bitterbot gateway install --force`) and starts it. Without a background
-   service, it starts the new gateway in the background; run
-   `bitterbot gateway install` afterwards to have it start on login.
-3. Waits until the new version answers on the gateway port.
-4. If it does not answer, puts the old one back: the previous service
-   definition exactly as it was, or the old gateway restarted from where it
-   ran before (for a release-to-release switch, `~/.bitterbot/app/current`
-   points back at the old version too). The installer then exits with an
-   error and says what is running.
+   only ever stops a process that is a Bitterbot gateway (and checks it is
+   still the same process right before); anything else on the port is
+   reported and left alone. It waits until the port is free and the P2P
+   orchestrator has exited.
+3. If the old gateway ran from a git clone with its own `.env` file, copies
+   the keys that `~/.bitterbot/.env` does not have yet into it. Existing keys
+   are never changed, the clone's file is only read, `~/.bitterbot/.env` is
+   backed up first (`.env.bak-<time>`), and only key names are printed:
+
+   ```text
+   Will copy 9 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env (existing keys are kept; a backup is made first): OPENAI_API_KEY, ...
+   ```
+
+   Settings the old gateway had only in its shell environment are named in a
+   warning so you can add them.
+4. Points the background service at the new version (the same as
+   `bitterbot gateway install --force`, keeping the old service's environment
+   and its `EnvironmentFile=` lines) and starts it. Without a background
+   service, it installs one (systemd user service, macOS LaunchAgent or
+   Windows scheduled task), so Bitterbot keeps running and starts on login.
+   Only where no service manager exists (for example WSL without systemd) is
+   the new gateway started in the background instead, logging to
+   `~/.bitterbot/logs/gateway-switch.log`.
+5. Waits until the new version answers on the gateway port and stays up. A
+   first start can take a few minutes while memory is upgraded: it prints
+   progress, and keeps waiting as long as the new gateway is alive (it asks
+   in a terminal after 5 minutes, and gives up after 20 minutes otherwise).
+6. If the new version exits or never answers, puts the old one back: the old
+   service file exactly as it was, or the old gateway restarted from where it
+   ran before once it has fully stopped (for a release-to-release switch,
+   `~/.bitterbot/app/current` points back at the old version too, and
+   `previous` and older versions are left as they were). Memory databases the
+   new version upgraded past what the old one reads are restored from the
+   snapshot. The `.env` keys copied in step 3 stay (they only add settings).
+   The installer then exits with an error and says what is running.
+
+A stopped background service that runs another install is left stopped; the
+installer says how to point it at the new version (`bitterbot gateway install
+--force`). If the old gateway uses a different state directory, profile or
+port than the new one would, nothing is switched and the installer says why.
 
 When it is done:
 
@@ -162,7 +192,9 @@ Your git clone at ~/bitterbot-desktop is no longer used. You can delete it once 
 
 The clone is never deleted for you. Without a terminal to ask on (and without
 `--yes`), nothing is stopped and the installer prints the command to run.
-`--no-switch` skips the check entirely.
+`--no-switch` skips the check entirely. With a remote gateway
+(`gateway.mode` is `remote`) there is nothing to switch; when another program
+uses the gateway port, the installer says so and leaves it alone.
 
 You can run the same check and switch yourself at any time:
 

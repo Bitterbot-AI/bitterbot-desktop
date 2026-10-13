@@ -26,11 +26,13 @@
 #      previous version (for rollback), links ~/.local/bin/bitterbot.
 #   5. If an older Bitterbot is running (a git clone started with pnpm, an
 #      older release) or set up as a background service, offers to switch it
-#      to the new version: `bitterbot gateway switch` stops the old gateway,
-#      points the service at the new one, waits until it answers, and puts
-#      the old one back if it does not. Asked once (default yes); --yes
-#      switches without asking; --no-switch leaves it alone. Your config,
-#      memory and keys in ~/.bitterbot are never touched.
+#      to the new version: `bitterbot gateway switch` snapshots your data
+#      (like `bitterbot update`), stops the old gateway, copies a git clone's
+#      missing .env keys into ~/.bitterbot/.env, points the service at the new
+#      one (or installs one, so it keeps running), waits until it answers, and
+#      puts the old one back if it does not. Asked once (default yes); --yes
+#      switches without asking; --no-switch leaves it alone. `previous` and
+#      older versions are only updated after a successful switch.
 #   6. Runs `bitterbot onboard` (skip with --no-onboard): the setup page, or
 #      the Control UI link when Bitterbot is already set up.
 #
@@ -330,10 +332,39 @@ bb_confirm() {
   esac
 }
 
+# After a successful (or unneeded) switch: point `previous` at the version
+# that was current before, then remove versions older than that, except one
+# a running Bitterbot still uses.
+bb_finish_versions() {
+  local install_dir=$1 version=$2 previous=$3 keep_prev="" entry busy
+  if [ -n "$previous" ] && [ "$previous" != "$version" ] && [ -d "$install_dir/$previous" ]; then
+    ln -sfn "$previous" "$install_dir/previous"
+  fi
+  if [ -L "$install_dir/previous" ]; then
+    keep_prev=$(readlink "$install_dir/previous")
+  fi
+  for entry in "$install_dir"/*; do
+    if [ ! -d "$entry" ] || [ -L "$entry" ]; then
+      continue
+    fi
+    entry=${entry##*/}
+    printf '%s' "$entry" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
+    if [ "$entry" != "$version" ] && [ "$entry" != "$keep_prev" ]; then
+      if busy=$(bb_version_in_use "$install_dir/$entry"); then
+        bb_say "Keeping old version $entry: in use by pid $busy"
+        continue
+      fi
+      bb_say "Removing old version $entry"
+      rm -rf "${install_dir:?}/$entry"
+    fi
+  done
+}
+
 # Offer to switch a running (or service-installed) older Bitterbot to the
 # version just installed, through `bitterbot gateway switch` (exit codes in
 # src/cli/daemon-cli/switch.ts). Sets BB_SWITCH_STATE to none, switched,
-# declined, pending (no terminal to ask on), blocked or failed.
+# declined, pending (no terminal to ask on), blocked (the message says what
+# to do), portinuse (another program holds the gateway port) or failed.
 bb_switch_gateway() {
   local bin=$1 version=$2 summary rc=0 answer
   BB_SWITCH_STATE=none
@@ -345,6 +376,12 @@ bb_switch_gateway() {
       bb_say ""
       bb_say "$summary"
       BB_SWITCH_STATE=blocked
+      return 0
+      ;;
+    5)
+      bb_say ""
+      bb_say "$summary"
+      BB_SWITCH_STATE=portinuse
       return 0
       ;;
     *)
@@ -549,8 +586,10 @@ main() {
     bb_say "  Switch:    a running older Bitterbot is left alone (--no-switch)"
   elif [ "$BB_YES" = "1" ]; then
     bb_say "  Switch:    a running older Bitterbot (git clone or older release) is switched to the new version"
+    bb_say "             and kept running in the background (a snapshot of your data is taken first)"
   else
     bb_say "  Switch:    if an older Bitterbot is running, you are asked whether to switch it to the new version"
+    bb_say "             and keep it running in the background (a snapshot of your data is taken first)"
   fi
   if [ "$onboard" = "1" ]; then
     bb_say "  Then:      bitterbot onboard"
@@ -685,33 +724,12 @@ main() {
     rm -f "$install_dir/current.new"
     ln -sfn "$version" "$install_dir/current"
   fi
-  if [ -n "$previous" ] && [ "$previous" != "$version" ] && [ -d "$install_dir/$previous" ]; then
-    ln -sfn "$previous" "$install_dir/previous"
-  fi
   if [ -n "$replaced" ]; then
     rm -rf "$replaced"
   fi
-
-  # Keep current + previous; older X.Y.Z directories are removed.
-  local keep_prev="" entry
-  if [ -L "$install_dir/previous" ]; then
-    keep_prev=$(readlink "$install_dir/previous")
-  fi
-  for entry in "$install_dir"/*; do
-    if [ ! -d "$entry" ] || [ -L "$entry" ]; then
-      continue
-    fi
-    entry=${entry##*/}
-    printf '%s' "$entry" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
-    if [ "$entry" != "$version" ] && [ "$entry" != "$keep_prev" ]; then
-      if busy=$(bb_version_in_use "$install_dir/$entry"); then
-        bb_say "Keeping old version $entry: in use by pid $busy"
-        continue
-      fi
-      bb_say "Removing old version $entry"
-      rm -rf "${install_dir:?}/$entry"
-    fi
-  done
+  # `previous` and the pruning of older versions wait until the switch below
+  # has succeeded: a failed switch puts the old version back in `current` and
+  # must find it (and `previous`) where they were.
 
   # ~/.local/bin/bitterbot -> <dir>/current/bin/bitterbot
   local target="$install_dir/current/bin/bitterbot" bin_cmd
@@ -775,14 +793,24 @@ main() {
   if [ "$switch" = "1" ]; then
     bb_switch_gateway "$bin_cmd" "$version"
   fi
+  if [ "$BB_SWITCH_STATE" = "failed" ]; then
+    # The switch reported what happened and put the old version back;
+    # `previous` and older versions are left exactly as they were.
+    return 1
+  fi
+  bb_finish_versions "$install_dir" "$version" "$previous"
 
   case $BB_SWITCH_STATE in
-    failed)
-      # The switch reported what happened (and put the old one back).
-      return 1
-      ;;
-    declined | pending | blocked)
+    declined | pending)
       bb_say "Next: $bin_cmd gateway switch, then $bin_cmd onboard"
+      return 0
+      ;;
+    blocked)
+      bb_say "Next: once that is sorted out, $bin_cmd onboard"
+      return 0
+      ;;
+    portinuse)
+      bb_say "Next: free the port (or set another one with gateway.port), then $bin_cmd onboard"
       return 0
       ;;
   esac

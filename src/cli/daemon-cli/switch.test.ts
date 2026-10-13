@@ -3,6 +3,7 @@ import {
   decideGatewaySwitch,
   type GatewaySwitchFindings,
   type GatewaySwitchOutcome,
+  type GatewaySwitchStep,
 } from "../../infra/gateway-switch.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { runGatewaySwitch, SWITCH_EXIT, type GatewaySwitchCommandDeps } from "./switch.js";
@@ -33,14 +34,19 @@ function harness(opts: {
 }) {
   const findings = opts.findings ?? CLONE_FINDINGS;
   const decision = decideGatewaySwitch(findings);
-  const execute = vi.fn(async (): Promise<GatewaySwitchOutcome> => ({
-    ok: true,
-    status: "switched",
-    findings,
-    decision,
-    steps: [],
-    ...opts.outcome,
-  }));
+  const execute = vi.fn(
+    async (
+      _onStep?: (step: GatewaySwitchStep) => void,
+      _onProgress?: (line: string) => void,
+    ): Promise<GatewaySwitchOutcome> => ({
+      ok: true,
+      status: "switched",
+      findings,
+      decision,
+      steps: [],
+      ...opts.outcome,
+    }),
+  );
   const deps: GatewaySwitchCommandDeps = {
     detect: vi.fn(async () => ({ findings, decision, execute })),
     confirm: vi.fn(async () => opts.answer ?? true),
@@ -142,7 +148,7 @@ describe("bitterbot gateway switch", () => {
     expect(h.out.join("\n")).toContain("pnpm start gateway");
   });
 
-  it("a foreign program on the port is reported and left alone (exit 2)", async () => {
+  it("a foreign program on the port is reported and left alone (exit 5)", async () => {
     const h = harness({
       findings: {
         ...CLONE_FINDINGS,
@@ -153,7 +159,7 @@ describe("bitterbot gateway switch", () => {
         },
       },
     });
-    expect(await runGatewaySwitch({ yes: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.notDone);
+    expect(await runGatewaySwitch({ yes: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.portInUse);
     expect(h.execute).not.toHaveBeenCalled();
     expect(h.out.join("\n")).toContain("not a Bitterbot gateway");
   });
@@ -165,6 +171,65 @@ describe("bitterbot gateway switch", () => {
     });
     expect(await runGatewaySwitch({ check: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.failed);
     expect(h.out.join("\n")).toContain("config unreadable");
+  });
+
+  it("--check exits 5 for a program that is not a gateway, 0 for a remote gateway", async () => {
+    const foreign = harness({
+      findings: {
+        ...CLONE_FINDINGS,
+        listener: { ...CLONE_FINDINGS.listener!, isGateway: false, command: "nginx" },
+      },
+    });
+    expect(await runGatewaySwitch({ check: true }, foreign.runtime, foreign.deps)).toBe(
+      SWITCH_EXIT.portInUse,
+    );
+    const remote = harness({ findings: { ...CLONE_FINDINGS, remoteMode: true } });
+    expect(await runGatewaySwitch({ check: true }, remote.runtime, remote.deps)).toBe(
+      SWITCH_EXIT.ok,
+    );
+    expect(remote.out.join("\n")).toContain("remote gateway");
+  });
+
+  it("names the .env keys it will copy and the settings it cannot carry (names, never values)", async () => {
+    const h = harness({
+      findings: {
+        ...CLONE_FINDINGS,
+        serviceManager: true,
+        envMigration: {
+          source: "/home/u/bitterbot-desktop/.env",
+          target: "/home/u/.bitterbot/.env",
+          keys: ["OPENAI_API_KEY", "RPC_URL"],
+          skipped: ["ODD_VALUE"],
+        },
+        processOnlyEnv: ["GITHUB_TOKEN"],
+      },
+      outcome: { envCopied: ["OPENAI_API_KEY", "RPC_URL"] },
+    });
+    await runGatewaySwitch({ yes: true }, h.runtime, h.deps);
+    const text = h.out.join("\n");
+    expect(text).toContain(
+      "Will copy 2 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env (existing keys are kept; a backup is made first): OPENAI_API_KEY, RPC_URL",
+    );
+    expect(text).toContain("copy these by hand from ~/bitterbot-desktop/.env): ODD_VALUE");
+    expect(text).toContain("will not see: GITHUB_TOKEN");
+    expect(text).toContain("keeps it running in the background");
+    expect(text).toContain("Copied 2 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env");
+  });
+
+  it("forwards progress lines while it waits", async () => {
+    const h = harness({});
+    h.execute.mockImplementation(async (_onStep, onProgress) => {
+      onProgress?.("  Still starting (2m10s)...");
+      return {
+        ok: true,
+        status: "switched",
+        findings: CLONE_FINDINGS,
+        decision: decideGatewaySwitch(CLONE_FINDINGS),
+        steps: [],
+      };
+    });
+    await runGatewaySwitch({ yes: true }, h.runtime, h.deps);
+    expect(h.out).toContain("  Still starting (2m10s)...");
   });
 
   it("--json prints one JSON object", async () => {

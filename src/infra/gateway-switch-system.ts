@@ -4,7 +4,10 @@
  * gateway port (Linux /proc, macOS ps + lsof, Windows CIM), the install it
  * runs from, and the deps that stop, install and start things.
  *
- * Detection only reads. Nothing here writes to the data directory.
+ * Detection only reads. The switch itself writes to the state directory in
+ * exactly three ways: the pre-switch snapshot (the updater's), the `.env`
+ * keys copied from a git clone (src/infra/gateway-switch-env.ts), and the
+ * background log of a gateway started without a service manager.
  */
 
 import { spawn } from "node:child_process";
@@ -20,18 +23,32 @@ import { runCommandWithTimeout } from "../process/exec.js";
 import { VERSION } from "../version.js";
 import { resolveBitterbotPackageRoot } from "./bitterbot-root.js";
 import {
+  carriedServiceEnv,
+  copyDotEnvKeys,
+  insertEnvironmentFiles,
+  parseEnvironmentFiles,
+  planDotEnvMerge,
+  processOnlyEnvNames,
+  readProcEnviron,
+} from "./gateway-switch-env.js";
+import {
   decideGatewaySwitch,
   definitionFollowsCurrent,
+  definitionPort,
   isBitterbotEntryArg,
   isBitterbotGatewayCommand,
   sameRoot,
   serviceLabelFor,
+  targetMismatch,
+  type EnvMigration,
   type GatewaySwitchDecision,
   type GatewaySwitchDeps,
   type GatewaySwitchFindings,
+  type GatewayTarget,
   type InstallRef,
   type ListenerFindings,
   type ServiceDefinition,
+  type RawServiceDefinition,
   type ServiceFindings,
 } from "./gateway-switch.js";
 import { detectInstallKind } from "./install-kind.js";
@@ -352,6 +369,25 @@ export async function resolveProcessRoot(
 
 const quietStream = () => new Writable({ write: (_chunk, _enc, cb) => cb() });
 
+/** The definition file exactly as it is (systemd unit, plist, task script). */
+async function readRawDefinition(
+  definition: ServiceDefinition | null,
+  env: NodeJS.ProcessEnv,
+): Promise<RawServiceDefinition | null> {
+  let file = definition?.sourcePath ?? null;
+  if (!file && process.platform === "win32") {
+    file = (await import("../daemon/schtasks.js")).resolveTaskScriptPath(env);
+  }
+  if (!file) {
+    return null;
+  }
+  try {
+    return { path: file, content: await fs.readFile(file, "utf8") };
+  } catch {
+    return null;
+  }
+}
+
 /** The installed gateway service and what it runs, or null when none is installed. */
 export async function inspectGatewayService(params: {
   self: InstallRef;
@@ -369,6 +405,7 @@ export async function inspectGatewayService(params: {
       .readCommand(env)
       .catch(() => null)) as ServiceDefinition | null;
     const runtime = await service.readRuntime(env).catch(() => null);
+    const raw = await readRawDefinition(definition, env);
     const root = definition
       ? await resolveRootFromArgs(definition.programArguments, definition.workingDirectory ?? null)
       : null;
@@ -376,6 +413,9 @@ export async function inspectGatewayService(params: {
     return {
       label: serviceLabelFor(process.platform),
       definition,
+      raw,
+      environmentFiles:
+        process.platform === "linux" && raw ? parseEnvironmentFiles(raw.content) : [],
       runsFrom,
       followsCurrent: definitionFollowsCurrent(definition),
       // Unresolvable definitions are left alone (never nag about them).
@@ -403,14 +443,14 @@ export function isPortListening(port: number, timeoutMs = 1500): Promise<boolean
   });
 }
 
-/** The version a gateway reports over the status RPC (1.5+), or null. */
-async function queryGatewayVersion(
+/** The version a gateway reports over the status RPC (1.5+), and how the RPC went. */
+async function queryGatewayStatus(
   cfg: BitterbotConfig,
   port: number,
   configPort: number,
-): Promise<string | null> {
+): Promise<{ version: string | null; rpc: "ok" | "auth" | "error" }> {
   if (port !== configPort) {
-    return null;
+    return { version: null, rpc: "error" };
   }
   try {
     const { callGateway } = await import("../gateway/call.js");
@@ -420,10 +460,39 @@ async function queryGatewayVersion(
       timeoutMs: 3_000,
     });
     const version = status?.runtime?.version;
-    return typeof version === "string" && version !== "dev" ? version : null;
-  } catch {
-    return null;
+    return {
+      version: typeof version === "string" && version !== "dev" ? version : null,
+      rpc: "ok",
+    };
+  } catch (err) {
+    const text = String(err instanceof Error ? err.message : err);
+    return {
+      version: null,
+      rpc: /unauthori|forbidden|auth|token|password|1008/i.test(text) ? "auth" : "error",
+    };
   }
+}
+
+async function queryGatewayVersion(
+  cfg: BitterbotConfig,
+  port: number,
+  configPort: number,
+): Promise<string | null> {
+  return (await queryGatewayStatus(cfg, port, configPort)).version;
+}
+
+/** Process start time, for the pid reuse check (Linux /proc, macOS ps). */
+export async function readStartTime(pid: number): Promise<string | null> {
+  if (process.platform === "linux") {
+    const { readProcStartTime } = await import("./tarball-updater.js");
+    const t = readProcStartTime(pid);
+    return t === null ? null : String(t);
+  }
+  if (process.platform === "darwin") {
+    const res = await run(["ps", "-o", "lstart=", "-p", String(pid)]);
+    return res.code === 0 && res.stdout.trim() ? res.stdout.trim() : null;
+  }
+  return null;
 }
 
 /**
@@ -514,6 +583,79 @@ export type DetectOptions = {
   config?: BitterbotConfig;
 };
 
+/** Is there a service manager to install the gateway service with? */
+async function hasServiceManager(): Promise<boolean> {
+  if (process.platform === "darwin" || process.platform === "win32") {
+    return true;
+  }
+  if (process.platform === "linux") {
+    try {
+      return await (await import("../daemon/systemd.js")).isSystemdUserServiceAvailable();
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function normalizeProfile(value: string | undefined): string | null {
+  const v = value?.trim();
+  return v && v.toLowerCase() !== "default" ? v : null;
+}
+
+/** The state dir / config / profile an environment selects. */
+async function targetFor(env: NodeJS.ProcessEnv, port: number): Promise<GatewayTarget> {
+  const { resolveStateDir, resolveConfigPath } = await import("../config/paths.js");
+  const stateDir = resolveStateDir(env);
+  return {
+    stateDir,
+    configPath: resolveConfigPath(env, stateDir),
+    profile: normalizeProfile(env.BITTERBOT_PROFILE),
+    port,
+  };
+}
+
+/** `env` with the old gateway's state-selecting variables (unset where it had none). */
+function withOldSelection(
+  env: NodeJS.ProcessEnv,
+  old: Record<string, string | undefined>,
+): NodeJS.ProcessEnv {
+  const next = { ...env };
+  for (const key of ["BITTERBOT_STATE_DIR", "BITTERBOT_CONFIG_PATH", "BITTERBOT_PROFILE"]) {
+    if (old[key] === undefined) {
+      delete next[key];
+    } else {
+      next[key] = old[key];
+    }
+  }
+  return next;
+}
+
+/**
+ * Why the installed service serves different settings than `env` / `port`
+ * (state dir, config, profile, port), or null when they match.
+ */
+export async function serviceTargetMismatch(
+  service: ServiceFindings,
+  env: NodeJS.ProcessEnv,
+  port: number,
+): Promise<string | null> {
+  const target = await targetFor(env, port);
+  const old = await targetFor(
+    withOldSelection(env, service.definition?.environment ?? {}),
+    definitionPort(service.definition) ?? port,
+  );
+  return targetMismatch(target, old);
+}
+
+function readTextSafe(file: string): string | null {
+  try {
+    return fsSync.readFileSync(file, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 /** Read everything the decision needs. Read-only. */
 export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
   findings: GatewaySwitchFindings;
@@ -529,6 +671,7 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
   const service = await inspectGatewayService({ self, env });
 
   let listener: ListenerFindings | null = null;
+  let listenerCwd: string | null = null;
   const found = await findListenerPid(port);
   if (found) {
     if (found.pid === null) {
@@ -546,6 +689,7 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
       };
     } else {
       const proc = await resolveProcessRoot(found.pid);
+      listenerCwd = (await readProcInfo(found.pid))?.cwd ?? null;
       const command = proc.command ?? found.command;
       const underService = Boolean(
         service &&
@@ -566,6 +710,7 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
       }
       listener = {
         pid: found.pid,
+        startTime: await readStartTime(found.pid).catch(() => null),
         command,
         isGateway,
         runsFrom: ref,
@@ -580,13 +725,60 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
     }
   }
 
+  // What the old gateway targets: the service's environment when the service
+  // runs it, else the old process's own environment (Linux).
+  const target = await targetFor(env, port);
+  const listenerOld = Boolean(listener?.isGateway && !listener.isSelf);
+  const serviceDefEnv = service?.definition?.environment;
+  let oldEnv: Record<string, string> | null = null;
+  let oldPort = port;
+  if (service && (!listenerOld || listener?.underService)) {
+    oldEnv = serviceDefEnv ?? {};
+    oldPort = definitionPort(service.definition) ?? port;
+  } else if (listenerOld && listener?.pid) {
+    oldEnv = process.platform === "linux" ? readProcEnviron(listener.pid) : null;
+  }
+  const oldTarget = oldEnv ? await targetFor(withOldSelection(env, oldEnv), oldPort) : null;
+
+  // A git clone's .env, which the old gateway loaded from its working directory.
+  const oldCwd = listenerOld ? listenerCwd : (service?.definition?.workingDirectory ?? null);
+  const envTarget = path.join(target.stateDir, ".env");
+  let envMigration: EnvMigration | null = null;
+  let sourceEnv: Record<string, string> = {};
+  if (oldCwd) {
+    const source = path.join(oldCwd, ".env");
+    const sourceText = !sameRoot(source, envTarget) ? readTextSafe(source) : null;
+    if (sourceText !== null) {
+      const plan = planDotEnvMerge(sourceText, readTextSafe(envTarget) ?? "");
+      if (plan.keys.length > 0 || plan.skipped.length > 0) {
+        envMigration = { source, target: envTarget, keys: plan.keys, skipped: plan.skipped };
+      }
+      const dotenv = (await import("dotenv")).default;
+      sourceEnv = dotenv.parse(sourceText);
+    }
+  }
+  let processOnlyEnv: string[] = [];
+  if (listenerOld && !listener?.underService && oldEnv) {
+    const dotenv = (await import("dotenv")).default;
+    processOnlyEnv = processOnlyEnvNames({
+      processEnv: oldEnv,
+      known: [sourceEnv, dotenv.parse(readTextSafe(envTarget) ?? ""), serviceDefEnv ?? {}, env],
+    });
+  }
+
   const findings: GatewaySwitchFindings = {
     port,
     self,
     service,
     listener,
     remoteMode: cfg.gateway?.mode === "remote",
+    serviceManager: service ? true : await hasServiceManager(),
     extraGatewayArgs: cfg.gateway?.mode ? [] : ["--allow-unconfigured"],
+    target,
+    oldTarget,
+    carriedEnv: carriedServiceEnv(serviceDefEnv),
+    envMigration,
+    processOnlyEnv,
   };
   return { findings, decision: decideGatewaySwitch(findings), config: cfg };
 }
@@ -595,6 +787,10 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
 function backgroundEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const next = { ...env };
   for (const key of [
+    // An install's markers come from its own launcher, never from this process.
+    "BITTERBOT_INSTALL_KIND",
+    "BITTERBOT_INSTALL_ROOT",
+    "BITTERBOT_NODE_OPTIONS_READY",
     "BITTERBOT_INSTALL_TEST_MODE",
     "BITTERBOT_INSTALL_BASE_URL",
     "BITTERBOT_INSTALL_TEST_PUBKEY",
@@ -605,17 +801,36 @@ function backgroundEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return next;
 }
 
-/** Start a gateway detached, logging to a file in the OS temp directory. */
+/** Rotate `file` to `file.1` once it passes `maxBytes`, so the log never grows unbounded. */
+export function rotateLog(file: string, maxBytes = 5 * 1024 * 1024): void {
+  try {
+    if (fsSync.statSync(file).size > maxBytes) {
+      fsSync.renameSync(file, `${file}.1`);
+    }
+  } catch {
+    // no log yet
+  }
+}
+
+/**
+ * Start a gateway detached (only where there is no service manager), logging
+ * next to the gateway's other logs (`<state dir>/logs/gateway-switch.log`,
+ * rotated at 5 MB).
+ */
 export function startDetachedGateway(cmd: {
   argv: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  logDir?: string;
 }): { pid?: number; logPath: string } {
   const [file, ...args] = cmd.argv;
   if (!file) {
     throw new Error("empty command");
   }
-  const logPath = path.join(os.tmpdir(), `bitterbot-gateway-switch-${Date.now()}.log`);
+  const logDir = cmd.logDir ?? path.join(os.homedir(), ".bitterbot", "logs");
+  fsSync.mkdirSync(logDir, { recursive: true, mode: 0o700 });
+  const logPath = path.join(logDir, "gateway-switch.log");
+  rotateLog(logPath);
   const fd = fsSync.openSync(logPath, "a", 0o600);
   try {
     const child = spawn(file, args, {
@@ -643,29 +858,78 @@ function toStringRecord(env: Record<string, string | undefined>): Record<string,
   return out;
 }
 
-/** The real deps: service manager, signals, ports, the `current` link. */
+/** The real deps: service manager, signals, ports, the `current` link, snapshot, .env. */
 export function createSystemSwitchDeps(params: {
   findings: GatewaySwitchFindings;
   config: BitterbotConfig;
   env?: NodeJS.ProcessEnv;
+  askKeepWaiting?: (elapsedMs: number) => Promise<boolean>;
 }): GatewaySwitchDeps {
   const env = params.env ?? process.env;
   const { findings, config } = params;
   const service = async () => (await import("../daemon/service.js")).resolveGatewayService();
+  const stateDir = findings.target?.stateDir ?? path.join(os.homedir(), ".bitterbot");
+  const systemctl = async (args: string[]) => {
+    const { execFileUtf8 } = await import("../daemon/exec-file.js");
+    const res = await execFileUtf8("systemctl", ["--user", ...args]);
+    if (res.code !== 0) {
+      throw new Error(`systemctl ${args.join(" ")} failed: ${res.stderr || res.stdout}`.trim());
+    }
+  };
+  const installService = async (definition: ServiceDefinition) => {
+    const svc = await service();
+    await svc.install({
+      env,
+      stdout: quietStream(),
+      programArguments: definition.programArguments,
+      workingDirectory: definition.workingDirectory,
+      environment: definition.environment,
+    });
+    // Keep the old unit's EnvironmentFile= lines (buildSystemdUnit has none).
+    const files = findings.service?.environmentFiles ?? [];
+    if (process.platform === "linux" && files.length > 0) {
+      const { resolveSystemdUserUnitPath } = await import("../daemon/systemd.js");
+      const unitPath = resolveSystemdUserUnitPath(env);
+      const unit = await fs.readFile(unitPath, "utf8");
+      const next = insertEnvironmentFiles(unit, files);
+      if (next !== unit) {
+        await fs.writeFile(unitPath, next, "utf8");
+        await systemctl(["daemon-reload"]);
+        await svc.restart({ env, stdout: quietStream() });
+      }
+    }
+  };
   return {
     stopService: async () => {
       await (await service()).stop({ env, stdout: quietStream() });
     },
-    installService: async (definition) => {
-      await (
-        await service()
-      ).install({
-        env,
-        stdout: quietStream(),
-        programArguments: definition.programArguments,
-        workingDirectory: definition.workingDirectory,
-        environment: definition.environment,
-      });
+    installService,
+    uninstallService: async () => {
+      await (await service()).uninstall({ env, stdout: quietStream() });
+    },
+    restoreRawDefinition: async (raw, opts) => {
+      await fs.writeFile(raw.path, raw.content, "utf8");
+      const svc = await service();
+      if (process.platform === "linux") {
+        await systemctl(["daemon-reload"]);
+        if (opts.start) {
+          await svc.restart({ env, stdout: quietStream() });
+        }
+      } else if (process.platform === "darwin") {
+        if (opts.start) {
+          const { repairLaunchAgentBootstrap } = await import("../daemon/launchd.js");
+          const res = await repairLaunchAgentBootstrap({ env });
+          if (!res.ok) {
+            throw new Error(`launchctl bootstrap failed: ${res.detail ?? "unknown error"}`);
+          }
+        }
+      } else if (opts.start) {
+        await svc.restart({ env, stdout: quietStream() });
+      }
+    },
+    serviceRunning: async () => {
+      const runtime = await (await service()).readRuntime(env);
+      return runtime.status !== "stopped";
     },
     buildServiceDefinition: async () => {
       const { buildGatewayInstallPlan } = await import("../commands/daemon-install-helpers.js");
@@ -687,11 +951,14 @@ export function createSystemSwitchDeps(params: {
       return {
         programArguments: plan.programArguments,
         ...(plan.workingDirectory ? { workingDirectory: plan.workingDirectory } : {}),
-        environment: toStringRecord(plan.environment),
+        // The old service's environment, with this install's plan on top.
+        environment: { ...findings.carriedEnv, ...toStringRecord(plan.environment) },
       };
     },
-    startDetached: startDetachedGateway,
+    startDetached: (cmd) => startDetachedGateway({ ...cmd, logDir: path.join(stateDir, "logs") }),
     readCommandLine: async (pid) => (await readProcInfo(pid))?.commandLine ?? null,
+    readStartTime,
+    listChildren: (pid) => listChildPids(pid),
     isPidAlive: (pid) => {
       try {
         process.kill(pid, 0);
@@ -709,10 +976,10 @@ export function createSystemSwitchDeps(params: {
       (await isPortListening(port)) || (await hasListenerWithoutBinding(port)),
     probeGateway: async (port) => {
       const { resolveGatewayPort } = await import("../config/config.js");
-      const version = await queryGatewayVersion(config, port, resolveGatewayPort(config, env));
+      const status = await queryGatewayStatus(config, port, resolveGatewayPort(config, env));
       const found = await findListenerPid(port);
       if (!found?.pid) {
-        return { version, root: null };
+        return { pid: null, version: status.version, root: null, rpc: status.rpc };
       }
       const proc = await resolveProcessRoot(found.pid);
       let root = proc.root;
@@ -723,9 +990,68 @@ export function createSystemSwitchDeps(params: {
           root = svc.runsFrom?.root ?? null;
         }
       }
-      return { version, root };
+      return { pid: found.pid, version: status.version, root, rpc: status.rpc };
     },
     swapCurrentLink: (appDir, version) => swapVersionLink(appDir, "current", version),
+    snapshot: async () => {
+      const { resolveConfigPath } = await import("../config/paths.js");
+      const { resolveAgentWorkspaceDir, resolveDefaultAgentId } =
+        await import("../agents/agent-scope.js");
+      const { resolveP2pKeyDir } = await import("./p2p-key-dir.js");
+      const { createUpdateSnapshot } = await import("./update-snapshot.js");
+      let workspaceDir: string | null = null;
+      try {
+        workspaceDir = resolveAgentWorkspaceDir(config, resolveDefaultAgentId(config));
+      } catch {
+        workspaceDir = null;
+      }
+      const from =
+        (findings.listener?.isGateway && !findings.listener.isSelf
+          ? findings.listener.runsFrom?.version
+          : findings.service?.runsFrom?.version) ?? null;
+      const versionName = (v: string | null | undefined) =>
+        v && /^\d+\.\d+\.\d+/.test(v) ? (/^\d+\.\d+\.\d+/.exec(v)?.[0] ?? "0.0.0") : "0.0.0";
+      const res = await createUpdateSnapshot({
+        sources: {
+          stateDir,
+          configPath: findings.target?.configPath ?? resolveConfigPath(env, stateDir),
+          workspaceDir,
+          keyDir: resolveP2pKeyDir(config.p2p?.keyDir),
+        },
+        from: versionName(from),
+        to: versionName(findings.self.version),
+        // Unknown for the old version: the restore uses the schema each
+        // database had at snapshot time instead.
+        fromMemorySchemaLatest: 0,
+      });
+      return { dir: res.dir };
+    },
+    restoreSnapshot: async (snap) => {
+      const { applySnapshotRestore, planSnapshotRestore, readSnapshotManifest } =
+        await import("./update-snapshot.js");
+      const manifest = readSnapshotManifest(snap.dir);
+      if (!manifest) {
+        return [];
+      }
+      // What the old version knows: the newest schema its databases had.
+      const known = manifest.entries
+        .map((e) => e.schemaVersion)
+        .filter((v): v is number => typeof v === "number");
+      const plan = await planSnapshotRestore({
+        manifest,
+        snapshotDir: snap.dir,
+        mode: "auto",
+        targetMemorySchemaLatest: known.length > 0 ? Math.max(...known) : Number.MAX_SAFE_INTEGER,
+      });
+      // The merged .env stays (it only gained keys); see the switch output.
+      plan.restore = plan.restore.filter((r) => path.basename(r.entry.file) !== ".env");
+      return applySnapshotRestore({ plan, snapshotDir: snap.dir, stateDir, manifest }).restored;
+    },
+    copyEnv: async (migration) => {
+      const res = copyDotEnvKeys({ source: migration.source, target: migration.target });
+      return { copied: res.copied, backup: res.backup };
+    },
+    ...(params.askKeepWaiting ? { askKeepWaiting: params.askKeepWaiting } : {}),
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     now: () => Date.now(),
   };
