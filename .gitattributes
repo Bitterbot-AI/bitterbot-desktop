@@ -5,3 +5,4 @@
 # src/memory/skill-evolution/canonical-corpus.ts; a CRLF checkout on Windows
 # breaks the byte-identity test. Never rewrite its line endings.
 benchmarks/skill-evolution/*.jsonl text eol=lf
+src/infra/__fixtures__/** -text

@@ -12,11 +12,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createReadTool as createPiReadTool } from "@mariozechner/pi-coding-agent";
 import sharp from "sharp";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { detectMime } from "../media/mime.js";
-import { createBitterbotReadTool, createSandboxedReadTool } from "./agent-tools.read.js";
+import { createSandboxedReadTool } from "./agent-tools.read.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
 import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
 
@@ -43,27 +41,6 @@ function localBridge(): SandboxFsBridge {
   } as unknown as SandboxFsBridge;
 }
 
-/** The same sandbox operations and wrapper, on pi's read tool (the behaviour before the port). */
-function piSandboxedReadTool(): AnyAgentTool {
-  const bridge = localBridge();
-  const base = createPiReadTool(root, {
-    operations: {
-      readFile: (absolutePath: string) => bridge.readFile({ filePath: absolutePath, cwd: root }),
-      access: async (absolutePath: string) => {
-        if (!(await bridge.stat({ filePath: absolutePath, cwd: root }))) {
-          throw new Error("ENOENT");
-        }
-      },
-      detectImageMimeType: async (absolutePath: string) => {
-        const buffer = await bridge.readFile({ filePath: absolutePath, cwd: root });
-        const mime = await detectMime({ buffer, filePath: absolutePath });
-        return mime && mime.startsWith("image/") ? mime : undefined;
-      },
-    },
-  }) as unknown as AnyAgentTool;
-  return createBitterbotReadTool(base);
-}
-
 async function read(tool: AnyAgentTool, file: string): Promise<Block[]> {
   const result = await tool.execute("call-1", { path: file }, undefined);
   return result.content as Block[];
@@ -87,13 +64,8 @@ afterAll(async () => {
 });
 
 describe("sandboxed read tool: image types the model APIs do not accept", () => {
+  // pi's read tool (before the port) answered these with "Image omitted" and no image block.
   for (const file of ["logo.svg", "scan.tiff", "photo.avif"]) {
-    it(`pi (before the port) returns no image block for ${file}`, async () => {
-      const blocks = await read(piSandboxedReadTool(), file);
-      expect(blocks.filter((block) => block.type === "image")).toEqual([]);
-      expect(blocks[0]?.text).toContain("Image omitted");
-    });
-
     it(`the port must not return ${file} as an image block with an unsupported media type`, async () => {
       const blocks = await read(createSandboxedReadTool({ root, bridge: localBridge() }), file);
       const unsupported = blocks

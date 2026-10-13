@@ -185,6 +185,9 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: Orchestrator ${{ steps.meta.outputs.version }}
+          # Never take GitHub's "Latest release" slot: that belongs to the app
+          # (v1.x). 0.2.3 did, and the repo page pointed people at a sidecar.
+          make_latest: false
           files: |
             release/bitterbot-orchestrator-*
             release/checksums.txt

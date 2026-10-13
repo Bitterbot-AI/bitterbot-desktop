@@ -327,7 +327,7 @@ function buildBaseConfigSchema(): ConfigSchemaResponse {
     unrepresentable: "any",
   });
   schema.title = "BitterbotConfig";
-  const hints = mapSensitivePaths(BitterbotSchema, "", buildBaseHints());
+  const hints = mapSensitivePaths(BitterbotSchema, "", buildBaseHints({ jsonSchema: schema }));
   const next = {
     schema: stripChannelSchema(schema),
     uiHints: hints,

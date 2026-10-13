@@ -4,14 +4,16 @@ type SessionHeaderEntry = { type: "session"; id?: string; cwd?: string };
 type SessionMessageEntry = { type: "message"; message?: { role?: string } };
 
 /**
- * pi-coding-agent SessionManager persistence quirk:
- * - If the file exists but has no assistant message, SessionManager marks itself `flushed=true`
- *   and will never persist the initial user message.
- * - If the file doesn't exist yet, SessionManager builds a new session in memory and flushes
- *   header+user+assistant once the first assistant arrives (good).
+ * Transcript store persistence rule (inherited from pi's SessionManager, kept
+ * by the owned `TranscriptStore`):
+ * - If the file exists but has no assistant message, the store treats it as
+ *   flushed and would never persist the initial user message.
+ * - If the file doesn't exist yet, the store builds a new session in memory
+ *   and flushes header+user+assistant once the first assistant arrives.
  *
- * This normalizes the file/session state so the first user prompt is persisted before the first
- * assistant entry, even for pre-created session files.
+ * This normalizes the file/session state so the first user prompt is persisted
+ * before the first assistant entry, even for pre-created session files, and
+ * stamps our session id and workspace on the header of a new file.
  */
 export async function prepareSessionManagerForRun(params: {
   sessionManager: unknown;

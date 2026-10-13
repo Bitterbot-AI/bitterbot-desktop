@@ -8,6 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Reporter, File, Task } from "vitest";
 
 interface SuiteScore {
@@ -17,6 +18,16 @@ interface SuiteScore {
   passed: number;
   failed: number;
   percentage: number;
+}
+
+// Report the version of the tree that produced the numbers (root package.json
+// is the single source of truth, see src/version-consistency.test.ts).
+function readSystemVersion(): string {
+  const dir = path.dirname(fileURLToPath(import.meta.url));
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(dir, "../../package.json"), "utf8")) as {
+    version: string;
+  };
+  return pkg.version;
 }
 
 const SUITE_WEIGHTS: Record<string, number> = {
@@ -85,7 +96,7 @@ export default class BioMemEvalReporter implements Reporter {
 
     const report = {
       system: "Bitterbot",
-      version: "2026.2.15-beta",
+      version: readSystemVersion(),
       timestamp: new Date().toISOString(),
       suites: suites.map((s) => ({
         suiteId: s.name,

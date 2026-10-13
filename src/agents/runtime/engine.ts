@@ -1,24 +1,42 @@
 /**
  * PLAN-52: which agent runtime drives a session.
  *
- * `agents.list[].runtime.engine` overrides `agents.defaults.runtime.engine`;
- * the default is "pi" until the Phase 6 soak gates hold. The engine never
- * changes the transcript format, so an agent can be switched either way
- * between turns.
+ * Since Phase 6 there is one: the owned runtime under `src/agents/runtime/`
+ * ("bitterbot"). The config keys `agents.defaults.runtime.engine` and
+ * `agents.list[].runtime.engine` are still accepted so existing configs
+ * parse; a value of "pi" is ignored with one warning per process.
  */
 
 import type { BitterbotConfig } from "../../config/config.js";
 import type { AgentRuntimeEngine } from "../../config/types.agent-defaults.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 
 export type RuntimeEngine = AgentRuntimeEngine;
 
-export const DEFAULT_RUNTIME_ENGINE: RuntimeEngine = "pi";
+export const DEFAULT_RUNTIME_ENGINE: RuntimeEngine = "bitterbot";
 
-function asEngine(value: unknown): RuntimeEngine | undefined {
-  return value === "pi" || value === "bitterbot" ? value : undefined;
+const log = createSubsystemLogger("agents/runtime");
+
+const warnedScopes = new Set<string>();
+
+function warnPiRemoved(scope: string): void {
+  if (warnedScopes.has(scope)) {
+    return;
+  }
+  warnedScopes.add(scope);
+  log.warn(`the pi engine was removed; ${scope} runs the owned runtime`);
 }
 
+/** @internal test seam */
+export function __resetRuntimeEngineWarningsForTest(): void {
+  warnedScopes.clear();
+}
+
+/**
+ * Always the owned runtime. Reads the legacy keys only to warn once when a
+ * config still names the removed engine.
+ */
 export function resolveRuntimeEngine(
   cfg: BitterbotConfig | undefined,
   agentId?: string,
@@ -27,10 +45,13 @@ export function resolveRuntimeEngine(
   if (agentId && Array.isArray(agents?.list)) {
     const id = normalizeAgentId(agentId);
     const entry = agents.list.find((candidate) => normalizeAgentId(candidate?.id) === id);
-    const perAgent = asEngine(entry?.runtime?.engine);
-    if (perAgent) {
-      return perAgent;
+    if (entry?.runtime?.engine === "pi") {
+      warnPiRemoved(`agent ${id}`);
+      return DEFAULT_RUNTIME_ENGINE;
     }
   }
-  return asEngine(agents?.defaults?.runtime?.engine) ?? DEFAULT_RUNTIME_ENGINE;
+  if (agents?.defaults?.runtime?.engine === "pi") {
+    warnPiRemoved("agents.defaults");
+  }
+  return DEFAULT_RUNTIME_ENGINE;
 }

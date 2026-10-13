@@ -1908,7 +1908,7 @@ description: test skill
       expect(capturedAuth?.token).toBe("local-token-abc123");
     });
 
-    it("prefers env token over local config token", async () => {
+    it("prefers the local config token over env, like the server (PLAN-56 Phase 2)", async () => {
       process.env.BITTERBOT_GATEWAY_TOKEN = "env-token";
       let capturedAuth: { token?: string; password?: string } | undefined;
       const cfg: BitterbotConfig = {
@@ -1940,7 +1940,7 @@ description: test skill
         },
       });
 
-      expect(capturedAuth?.token).toBe("env-token");
+      expect(capturedAuth?.token).toBe("local-token");
     });
 
     it("uses local auth when gateway.mode is undefined (default)", async () => {

@@ -97,7 +97,7 @@ async function deleteProbeSession(key: string): Promise<void> {
   try {
     await callGateway({
       method: "sessions.delete",
-      params: { key, deleteTranscript: true },
+      params: { key, deleteTranscript: true, initiator: "system" },
       timeoutMs: REAP_TIMEOUT_MS,
     });
   } catch {

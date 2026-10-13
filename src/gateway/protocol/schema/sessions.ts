@@ -94,6 +94,11 @@ export const SessionsDeleteParamsSchema = Type.Object(
   {
     key: NonEmptyString,
     deleteTranscript: Type.Optional(Type.Boolean()),
+    /**
+     * PLAN-55 Phase 3: who asked. `system` (automatic housekeeping) gets the
+     * weaker memory cascade; omitted means the owner.
+     */
+    initiator: Type.Optional(Type.Union([Type.Literal("owner"), Type.Literal("system")])),
   },
   { additionalProperties: false },
 );

@@ -345,25 +345,30 @@ export function wrapToolParamNormalization(
 ): AnyAgentTool {
   const patched = patchToolSchemaForClaudeCompatibility(tool);
   const basePrepare = tool.prepareArguments;
+  // Runs before schema validation (pi-agent-core >= 0.73): map Claude Code
+  // aliases first, then the tool's own shim (edit folds oldText/newText
+  // into edits[]). Idempotent, so running it again inside execute is safe.
+  const prepare = (args: unknown): unknown => {
+    const normalized = normalizeToolParams(args) ?? args;
+    const prepared = basePrepare ? basePrepare(normalized) : normalized;
+    return tool.name === "edit" ? sanitizeEditArguments(prepared) : prepared;
+  };
   return {
     ...patched,
-    // Runs before schema validation (pi-agent-core >= 0.73): map Claude Code
-    // aliases first, then the tool's own shim (edit folds oldText/newText
-    // into edits[]).
-    prepareArguments: (args: unknown) => {
-      const normalized = normalizeToolParams(args) ?? args;
-      const prepared = basePrepare ? basePrepare(normalized) : normalized;
-      return tool.name === "edit" ? sanitizeEditArguments(prepared) : prepared;
-    },
+    prepareArguments: prepare,
+    // A direct call (use_tool, plugins, tests) skips the agent loop and with it
+    // prepareArguments; apply the same conversion here or the legacy edit
+    // forms fail the required-parameter check below.
     execute: async (toolCallId, params, signal, onUpdate) => {
-      const normalized = normalizeToolParams(params);
+      const prepared = prepare(params);
       const record =
-        normalized ??
-        (params && typeof params === "object" ? (params as Record<string, unknown>) : undefined);
+        prepared && typeof prepared === "object"
+          ? (prepared as Record<string, unknown>)
+          : undefined;
       if (requiredParamGroups?.length) {
         assertRequiredParams(record, requiredParamGroups, tool.name);
       }
-      return tool.execute(toolCallId, normalized ?? params, signal, onUpdate);
+      return tool.execute(toolCallId, prepared, signal, onUpdate);
     },
   };
 }

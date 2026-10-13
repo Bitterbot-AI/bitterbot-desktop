@@ -89,9 +89,23 @@ jobs:
       - name: Build image
         run: docker build -t bitterbot:ci .
 
+      - name: Smoke test — image carries the orchestrator binary
+        # PLAN-56 Phase 0: images v1.0.0-v1.4.0 shipped without the P2P binary
+        # because postinstall could not read orchestrator/Cargo.toml. The
+        # Dockerfile fetches it into BITTERBOT_ORCHESTRATOR_INSTALL_DIR, which
+        # is the repo-relative path probeOrchestratorBinary() checks first.
+        run: |
+          docker run --rm bitterbot:ci \
+            sh -c 'test -x /app/orchestrator/target/release/bitterbot-orchestrator && ls -l /app/orchestrator/target/release/'
+
       - name: Smoke test — gateway boots and serves the Control UI
         run: |
-          docker run -d --name bb -p 19001:19001             -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token             bitterbot:ci             node bitterbot.mjs gateway --allow-unconfigured --bind lan
+          # A one-line config mounted from the host (the classic `docker run`
+          # form). The next step covers the no-config case.
+          mkdir -p /tmp/bbdata && chmod 777 /tmp/bbdata
+          printf '{ "p2p": { "enabled": true } }\n' > /tmp/bbdata/bitterbot.json
+          chmod 666 /tmp/bbdata/bitterbot.json
+          docker run -d --name bb -p 19001:19001 -v /tmp/bbdata:/home/node/.bitterbot             -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token             bitterbot:ci             node bitterbot.mjs gateway --allow-unconfigured --bind lan
           code=000
           for i in $(seq 1 90); do
             code=$(curl -s -o /dev/null -w '%{http_code}'               -H "Authorization: Bearer ci-smoke-token"               http://127.0.0.1:19001/ || true)
@@ -101,6 +115,127 @@ jobs:
           echo "GET / -> $code"
           docker logs bb 2>&1 | tail -30
           [ "$code" = "200" ]
+          # P2P is on by default: the boot log must say the orchestrator started
+          # from the image's binary, not warn that it is missing (no network
+          # assertion; the mesh may or may not be reachable from a runner).
+          started=1
+          for i in $(seq 1 30); do
+            if docker logs bb 2>&1 | grep -q "P2P orchestrator bridge started (binary: /app/orchestrator/target/release/bitterbot-orchestrator)"; then
+              started=0
+              break
+            fi
+            sleep 2
+          done
+          docker logs bb 2>&1 | grep -i "orchestrator" | tail -5
+          [ "$started" = "0" ]
+
+      - name: Smoke test — no config file still gets the defaults (P2P on) and install kind container
+        # PLAN-56 Phase 2: loadConfig() applies the same defaults chain when
+        # bitterbot.json is absent, so an unconfigured container joins the
+        # mesh exactly like one with an empty `{}` file. The token comes from
+        # the env, so nothing may create a config file.
+        run: |
+          docker run -d --name bbnc -p 19003:19001 -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token \
+            bitterbot:ci node bitterbot.mjs gateway --allow-unconfigured --bind lan
+          started=1
+          for i in $(seq 1 90); do
+            if docker logs bbnc 2>&1 | grep -q "P2P orchestrator bridge started (binary: /app/orchestrator/target/release/bitterbot-orchestrator)"; then
+              started=0
+              break
+            fi
+            sleep 2
+          done
+          docker logs bbnc 2>&1 | tail -30
+          [ "$started" = "0" ]
+          docker exec bbnc sh -c 'test ! -e "$HOME/.bitterbot/bitterbot.json"'
+          docker exec bbnc node bitterbot.mjs update status > /tmp/bbnc-update.txt || true
+          cat /tmp/bbnc-update.txt
+          grep -q "Install .*container image" /tmp/bbnc-update.txt
+          # Never npm for a container: the release source is GitHub ("image ...").
+          if grep -qi "npm" /tmp/bbnc-update.txt; then exit 1; fi
+          docker rm -f bbnc
+
+      - name: Smoke test, plain docker run as node with a fresh named volume (SECURITY.md example)
+        # The image pre-creates /home/node/.bitterbot owned by node, so a new
+        # named volume inherits that ownership and the gateway (running as
+        # node, no root entrypoint step) can write its state there.
+        run: |
+          docker volume rm -f bb-ci-vol >/dev/null 2>&1 || true
+          docker run -d --name bbvol --cap-drop=ALL -v bb-ci-vol:/home/node/.bitterbot \
+            -e BITTERBOT_GATEWAY_TOKEN=ci-smoke-token \
+            bitterbot:ci node bitterbot.mjs gateway --allow-unconfigured --bind lan
+          started=1
+          for i in $(seq 1 90); do
+            if docker logs bbvol 2>&1 | grep -q "P2P orchestrator bridge started"; then
+              started=0
+              break
+            fi
+            sleep 2
+          done
+          docker logs bbvol 2>&1 | tail -30
+          [ "$started" = "0" ]
+          [ "$(docker exec bbvol stat -c %U /home/node/.bitterbot)" = "node" ]
+          docker exec bbvol sh -c 'touch "$HOME/.bitterbot/.write-probe"'
+          docker rm -f bbvol
+          docker volume rm -f bb-ci-vol
+
+      - name: Smoke test — zero-edit docker compose up
+        # PLAN-56 Phase 2: the repo's docker-compose.yml with nothing set
+        # (only the image pointed at this build). Proves: Docker-created
+        # ./bitterbot-data is handed to `node`, the first boot generates,
+        # persists and prints a token, the healthcheck passes, both ports are
+        # bound to loopback, and the token works from the host.
+        run: |
+          # Free host port 19001 (the first smoke container still holds it).
+          docker rm -f bb || true
+          mkdir -p /tmp/compose && cp docker-compose.yml /tmp/compose/
+          cd /tmp/compose
+          # The file itself must render with no variables set at all.
+          docker compose config --quiet
+          docker compose config | grep -q 'ghcr.io/bitterbot-ai/bitterbot-desktop:1$'
+          export BITTERBOT_IMAGE=bitterbot:ci
+          docker compose up -d --wait --wait-timeout 300 || {
+            docker compose logs --tail 80; exit 1; }
+          docker compose logs bitterbot-gateway 2>&1 | tail -40
+          banner_token=$(docker compose logs --no-log-prefix bitterbot-gateway 2>&1 | sed -n 's/^ *Token: *//p' | head -1)
+          [ -n "$banner_token" ]
+          stored_token=$(docker compose exec -T -u node bitterbot-gateway \
+            node bitterbot.mjs config get gateway.auth.token | tail -1 | tr -d '\r')
+          [ "$banner_token" = "$stored_token" ]
+          [ "$(stat -c %u bitterbot-data)" = "1000" ]
+          [ "$(stat -c %u bitterbot-data/bitterbot.json)" = "1000" ]
+          cid=$(docker compose ps -q bitterbot-gateway)
+          docker port "$cid"
+          [ "$(docker port "$cid" 19001/tcp)" = "127.0.0.1:19001" ]
+          [ "$(docker port "$cid" 9100/tcp)" = "127.0.0.1:9100" ]
+          code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $stored_token" http://127.0.0.1:19001/)
+          echo "GET / with the generated token -> $code"
+          [ "$code" = "200" ]
+          # The token must not reach the gateway's own file log.
+          if docker compose exec -T -u node bitterbot-gateway sh -c 'grep -rl "$0" /tmp "$HOME/.bitterbot/logs" 2>/dev/null' "$stored_token"; then
+            echo "generated token found in a log file"; exit 1
+          fi
+          # Every process but tini (docker-init) runs as uid 1000: the gateway
+          # (which retitles itself) and the orchestrator. The healthcheck's
+          # transient `node -e fetch(...)` is an exec, not the gateway.
+          # (docker top needs the pid column.)
+          docker top "$cid" -eo pid,uid,args
+          [ "$(docker top "$cid" -eo pid,uid,args | tail -n +2 | grep -v -e docker-init -e 'fetch(' | awk '{print $2}' | sort -u)" = "1000" ]
+          [ "$(docker compose exec -T -u node bitterbot-gateway id -u | tr -d '\r')" = "1000" ]
+          # A root exec leaves a root-owned file; the next start hands it to node.
+          docker compose exec -T -u 0 bitterbot-gateway touch /home/node/.bitterbot/left-by-root.txt
+          [ "$(stat -c %u bitterbot-data/left-by-root.txt)" = "0" ]
+          docker compose restart bitterbot-gateway
+          docker compose up -d --wait --wait-timeout 300
+          [ "$(stat -c %u bitterbot-data/left-by-root.txt)" = "1000" ]
+          # A workspace mount owned by another uid is never re-owned.
+          sudo mkdir -p /tmp/ws-other && sudo touch /tmp/ws-other/keep.txt
+          sudo chown -R 2000:2000 /tmp/ws-other && sudo chmod 0777 /tmp/ws-other
+          BITTERBOT_WORKSPACE_DIR=/tmp/ws-other docker compose up -d --wait --wait-timeout 300 || {
+            docker compose logs --tail 60; exit 1; }
+          [ "$(stat -c %u /tmp/ws-other)" = "2000" ]
+          [ "$(stat -c %u /tmp/ws-other/keep.txt)" = "2000" ]
+          docker compose down
 
       - name: Smoke test — Fly template boots on a root-owned volume
         # PLAN-53 F1: Fly mounts volumes owned by root; the template's
@@ -124,6 +259,471 @@ jobs:
           docker top bbfly -o pid,user,args
           [ "$(docker top bbfly -o pid,user | tail -n +2 | awk '{print $2}' | grep -c '^root$')" = "0" ]
           [ "$(stat -c %u /tmp/flydata)" = "1000" ]
+
+  installer:
+    # PLAN-56 Phase 3a: build the linux-x64 release tarball from THIS tree
+    # with the release script, sign a release with a throwaway minisign key,
+    # serve it on loopback, and install it with `curl | bash` the way users
+    # will (test mode: the only way install.sh accepts a non-pinned key).
+    # Then boot the gateway from the installed copy with no config file.
+    #
+    # PLAN-56 Phase 3b extends it: two more releases derived from the same
+    # tarball (version B, and a B' whose gateway cannot boot), then
+    # `bitterbot update` A -> B with the gateway running, `--rollback` back to
+    # A, and A -> B' with the automatic rollback to A.
+    name: Release tarball + install.sh (linux-x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: shellcheck install.sh
+        run: shellcheck --version && shellcheck scripts/install.sh
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build the release tarball (verifies Node, orchestrator signature, native packages)
+        run: |
+          set -euo pipefail
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          node scripts/build-release-tarball.mjs --out "$RUNNER_TEMP/release-out"
+          # Reproducibility stamps: builtAt and every tar mtime are the commit time.
+          want=$(node -p "new Date(Number(process.env.SOURCE_DATE_EPOCH) * 1000).toISOString()")
+          grep -q "\"builtAt\": \"$want\"" "$RUNNER_TEMP"/release-out/bitterbot-*.manifest.json
+          stamp=$(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%d %H:%M:%S')
+          tar --full-time -tvzf "$RUNNER_TEMP"/release-out/bitterbot-*.tar.gz > "$RUNNER_TEMP/tar-list.txt"
+          wc -l < "$RUNNER_TEMP/tar-list.txt"
+          if grep -v -m5 "$stamp" "$RUNNER_TEMP/tar-list.txt"; then echo "entries without the SOURCE_DATE_EPOCH mtime"; exit 1; fi
+          if grep -v -m5 " 0/0 " "$RUNNER_TEMP/tar-list.txt"; then echo "entries not owned by 0/0"; exit 1; fi
+
+      - name: Sign a local release with a throwaway key and serve it on loopback
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y minisign
+          VERSION=$(node -p 'require("./package.json").version')
+          KEYS="$RUNNER_TEMP/keys" && mkdir -p "$KEYS"
+          minisign -G -W -p "$KEYS/test.pub" -s "$KEYS/test.key"
+          D="$RUNNER_TEMP/releases/download/v$VERSION" && mkdir -p "$D"
+          cp "$RUNNER_TEMP"/release-out/bitterbot-* "$D/"
+          cp scripts/install.sh "$D/install.sh"
+          (cd "$D" && sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh > checksums.txt             && minisign -S -s "$KEYS/test.key" -m checksums.txt -t "v$VERSION checksums")
+          # A fake GitHub releases API listing: the newest release (v99.0.0)
+          # has no tarball yet, so install.sh must pick this build's version.
+          # install.sh itself is served at the root, like raw main.
+          mkdir -p "$RUNNER_TEMP/releases/api"
+          node -e '
+            const fs = require("node:fs");
+            const [dir, version] = process.argv.slice(1);
+            const asset = (tag, n) => ({ name: n, browser_download_url: `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/${tag}/${n}` });
+            const listing = [
+              { tag_name: "v99.0.0", draft: false, prerelease: false, assets: [asset("v99.0.0", "docker-compose.yml")] },
+              { tag_name: `v${version}`, draft: false, prerelease: false, assets: fs.readdirSync(`${dir}/download/v${version}`).map((n) => asset(`v${version}`, n)) },
+            ];
+            fs.writeFileSync(`${dir}/api/releases.json`, JSON.stringify(listing));
+          ' "$RUNNER_TEMP/releases" "$VERSION"
+          cp scripts/install.sh "$RUNNER_TEMP/releases/install.sh"
+          ls -lh "$D"
+          echo "TEST_PUBKEY=$(sed -n 2p "$KEYS/test.pub")" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          nohup python3 -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/releases"             > "$RUNNER_TEMP/http.log" 2>&1 &
+          for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8765/ && break; sleep 0.5; done
+
+      - name: Production mode refuses the test key and the local URL
+        run: |
+          set +e -uo pipefail
+          out=$(BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"             BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765             HOME="$RUNNER_TEMP/home-refuse" bash scripts/install.sh --yes --no-onboard 2>&1)
+          status=$?
+          echo "$out"
+          [ "$status" -ne 0 ]
+          echo "$out" | grep -q "need BITTERBOT_INSTALL_TEST_MODE=1"
+          [ ! -e "$RUNNER_TEMP/home-refuse/.bitterbot/app" ]
+
+      - name: curl | bash install (minisign verification), then reinstall verifying with OpenSSL
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home" BITTERBOT_INSTALL_TEST_MODE=1             BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
+          curl -fsSL http://127.0.0.1:8765/install.sh | bash -s -- --yes --no-onboard | tee "$RUNNER_TEMP/install1.log"
+          grep -q "Newest complete release: $VERSION" "$RUNNER_TEMP/install1.log"
+          grep -q "Verified: minisign signature (pinned key)" "$RUNNER_TEMP/install1.log"
+          # Same build again: every file is re-checked against manifest.json
+          # and the directory is kept in place.
+          BITTERBOT_INSTALL_TEST_VERIFIER=openssl bash scripts/install.sh --yes --no-onboard --version "$VERSION" | tee "$RUNNER_TEMP/install2.log"
+          grep -q "Verified: minisign signature checked with OpenSSL (pinned key)" "$RUNNER_TEMP/install2.log"
+          grep -q "already installed and intact; keeping it in place" "$RUNNER_TEMP/install2.log"
+          ls -la "$HOME/.bitterbot/app" "$HOME/.local/bin"
+          du -sh "$HOME/.bitterbot/app/$VERSION"
+
+      - name: The installed copy runs and reports a tarball install on the stable channel
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          B="$HOME/.local/bin/bitterbot"
+          [ "$(readlink "$HOME/.bitterbot/app/current")" = "$VERSION" ]
+          test -x "$HOME/.bitterbot/app/current/bin/bitterbot-orchestrator"
+          test -x "$HOME/.bitterbot/app/current/runtime/node/bin/node"
+          v=$("$B" --version | tail -1)
+          echo "bitterbot --version -> $v"
+          echo "$v" | grep -qw "$VERSION"
+          # `update status --json` reaches the status command (Phase 3b fix).
+          "$B" update status --json > "$RUNNER_TEMP/update-status.json"
+          cat "$RUNNER_TEMP/update-status.json"
+          node -e '
+            const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            if (s.update.installKind !== "tarball") throw new Error("installKind " + s.update.installKind);
+            if (s.channel.value !== "stable") throw new Error("channel " + s.channel.value);
+          ' "$RUNNER_TEMP/update-status.json"
+          COLUMNS=200 "$B" update status > "$RUNNER_TEMP/update-status.txt"
+          grep -q "Install .*release tarball" "$RUNNER_TEMP/update-status.txt"
+          if grep -qi "npm" "$RUNNER_TEMP/update-status.txt"; then exit 1; fi
+          # Test-mode overrides are refused without BITTERBOT_INSTALL_TEST_MODE=1.
+          if BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY" \
+            "$B" update --check > "$RUNNER_TEMP/update-refuse.txt" 2>&1; then
+            echo "test overrides must be refused outside test mode"; exit 1
+          fi
+          grep -q "need BITTERBOT_INSTALL_TEST_MODE=1" "$RUNNER_TEMP/update-refuse.txt"
+
+      - name: Gateway boots from the installed copy with no config file
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          B="$HOME/.local/bin/bitterbot"
+          test ! -e "$HOME/.bitterbot/bitterbot.json"
+          (cd /tmp && BITTERBOT_GATEWAY_TOKEN=ci-smoke-token nohup "$B" gateway --allow-unconfigured             > "$RUNNER_TEMP/gateway.log" 2>&1 &)
+          code=000
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token"               http://127.0.0.1:19001/ || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "GET / -> $code"
+          tail -40 "$RUNNER_TEMP/gateway.log"
+          [ "$code" = "200" ]
+          # P2P is on by default: the orchestrator must start from the binary
+          # inside the installed tarball, not a cargo or ~/.bitterbot/bin copy.
+          started=1
+          for i in $(seq 1 30); do
+            if grep -q "P2P orchestrator bridge started (binary: $HOME/.bitterbot/app/$VERSION/bin/bitterbot-orchestrator)" "$RUNNER_TEMP/gateway.log"; then
+              started=0; break
+            fi
+            sleep 2
+          done
+          grep -i orchestrator "$RUNNER_TEMP/gateway.log" | tail -5 || true
+          [ "$started" = "0" ]
+          # The launcher marked its version directory as in use (install.sh
+          # never prunes or replaces it while that pid lives).
+          ls -la "$HOME/.bitterbot/app/$VERSION/.pids"
+          live=0
+          for f in "$HOME/.bitterbot/app/$VERSION/.pids"/*; do
+            if kill -0 "${f##*/}" 2>/dev/null; then live=1; fi
+          done
+          [ "$live" = "1" ]
+          test ! -e "$HOME/.bitterbot/bitterbot.json"
+          # The gateway renames its process to `bitterbot-gateway`; the
+          # launcher's parent keeps `dist/entry.js` in its command line.
+          pkill -f "^bitterbot-gateway" || true
+          pkill -f "app/$VERSION/dist/entry.js" || true
+
+      - name: Derive version B (same code) and a broken B' (gateway exits 1), sign B
+        run: |
+          set -euo pipefail
+          IFS=. read -r MA MI PA <<< "$VERSION"
+          VB="$MA.$MI.$((PA + 1))"
+          VC="$MA.$MI.$((PA + 2))"
+          A_TGZ="$RUNNER_TEMP/release-out/bitterbot-$VERSION-linux-x64.tar.gz"
+          node scripts/make-release-variant.mjs --tarball "$A_TGZ" --version "$VB" --out "$RUNNER_TEMP/variant-b"
+          node scripts/make-release-variant.mjs --tarball "$A_TGZ" --version "$VC" --out "$RUNNER_TEMP/variant-c" --fail-gateway
+          sign() {
+            local v=$1 src=$2 d="$RUNNER_TEMP/releases/download/v$1"
+            mkdir -p "$d"
+            mv "$src"/bitterbot-* "$d/"
+            (cd "$d" && sha256sum bitterbot-* > checksums.txt \
+              && minisign -S -s "$RUNNER_TEMP/keys/test.key" -m checksums.txt -t "v$v checksums")
+          }
+          sign "$VB" "$RUNNER_TEMP/variant-b"
+          # B' is signed now but published (added to the API listing) later.
+          sign "$VC" "$RUNNER_TEMP/variant-c"
+          mv "$RUNNER_TEMP/releases/download/v$VC" "$RUNNER_TEMP/staged-v$VC"
+          cat > "$RUNNER_TEMP/write-api.js" <<'JS'
+          const fs = require("node:fs");
+          const dir = process.argv[2];
+          const asset = (tag, n) => ({ name: n, browser_download_url: `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/${tag}/${n}` });
+          const listing = [{ tag_name: "v99.0.0", draft: false, prerelease: false, assets: [asset("v99.0.0", "docker-compose.yml")] }];
+          for (const tag of fs.readdirSync(`${dir}/download`)) {
+            listing.push({ tag_name: tag, draft: false, prerelease: false, assets: fs.readdirSync(`${dir}/download/${tag}`).map((n) => asset(tag, n)) });
+          }
+          fs.writeFileSync(`${dir}/api/releases.json`, JSON.stringify(listing));
+          JS
+          node "$RUNNER_TEMP/write-api.js" "$RUNNER_TEMP/releases"
+          rm -rf "$RUNNER_TEMP/variant-b" "$RUNNER_TEMP/variant-c"
+          echo "VB=$VB" >> "$GITHUB_ENV"
+          echo "VC=$VC" >> "$GITHUB_ENV"
+          df -h "$RUNNER_TEMP" | tail -1
+
+      - name: bitterbot update A -> B with the gateway running (verify, snapshot, restart, healthy on B)
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          B="$HOME/.local/bin/bitterbot"
+          APP="$HOME/.bitterbot/app"
+          # The previous step's gateway got SIGTERM; wait until it has exited
+          # (it holds the gateway lock and port 19001 while it shuts down).
+          pkill -f "^bitterbot-gateway" || true
+          pkill -f "dist/entry.js" || true
+          for i in $(seq 1 60); do
+            pgrep -f "^bitterbot-gateway" > /dev/null || curl -s -o /dev/null http://127.0.0.1:19001/ || break
+            sleep 1
+          done
+          if pgrep -af "^bitterbot-gateway"; then echo "an earlier gateway is still running"; exit 1; fi
+          cat > "$RUNNER_TEMP/gw.sh" <<'SH'
+          # gw_version: the app version every running gateway process executes
+          # (its process title is bitterbot-gateway; /proc/<pid>/exe is the
+          # bundled node inside ~/.bitterbot/app/<version>/runtime).
+          gw_versions() {
+            for pid in $(pgrep -f "^bitterbot-gateway"); do
+              readlink "/proc/$pid/exe" | sed -n 's#.*/app/\([0-9.]*\)/runtime/.*#\1#p'
+            done | sort -u
+          }
+          healthy() {
+            for i in $(seq 1 120); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19001/ || true)
+              if [ "$code" = "200" ] && [ "$(gw_versions)" = "$1" ]; then return 0; fi
+              sleep 2
+            done
+            echo "gateway not healthy on $1 (running: $(gw_versions | tr '\n' ' '))"
+            tail -60 "$RUNNER_TEMP/gateway-update.log"; return 1
+          }
+          SH
+          # The gateway runs WITHOUT the test-mode variables (only the CLI gets
+          # them) and without the runner's systemd variables, so it is an
+          # unsupervised gateway like `bitterbot gateway` in a terminal.
+          (cd /tmp && env -u BITTERBOT_INSTALL_TEST_MODE -u BITTERBOT_INSTALL_BASE_URL -u BITTERBOT_INSTALL_TEST_PUBKEY \
+            -u INVOCATION_ID -u JOURNAL_STREAM -u SYSTEMD_EXEC_PID \
+            BITTERBOT_GATEWAY_TOKEN=ci-smoke-token nohup "$B" gateway --allow-unconfigured \
+            > "$RUNNER_TEMP/gateway-update.log" 2>&1 &)
+          . "$RUNNER_TEMP/gw.sh"
+          healthy "$VERSION"
+          key_sha_before=$(sha256sum "$HOME/.bitterbot/keys/node.key" 2>/dev/null | cut -d' ' -f1 || true)
+          export BITTERBOT_GATEWAY_TOKEN=ci-smoke-token BITTERBOT_INSTALL_TEST_MODE=1 \
+            BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
+          "$B" update --check --json | tee "$RUNNER_TEMP/check.json"
+          grep -q "\"target\":\"$VB\"" "$RUNNER_TEMP/check.json"
+          grep -q '"updateAvailable":true' "$RUNNER_TEMP/check.json"
+          set +e
+          "$B" update --yes --json > "$RUNNER_TEMP/update-b.json" 2> "$RUNNER_TEMP/update-b.err"
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/update-b.json"; tail -20 "$RUNNER_TEMP/update-b.err"
+          [ "$rc" = "0" ] || { tail -80 "$RUNNER_TEMP/gateway-update.log"; cat "$HOME/.bitterbot/boot-watchdog.log" || true; exit 1; }
+          node -e '
+            const lines = require("node:fs").readFileSync(process.argv[1], "utf8").split("\n").filter((l) => l.startsWith("{"));
+            const r = JSON.parse(lines[lines.length - 1]);
+            if (r.status !== "ok" || r.boot?.status !== "healthy" || r.boot?.version !== process.argv[2]) throw new Error(JSON.stringify(r));
+            if (r.restart?.kind !== "respawn") throw new Error("restart " + JSON.stringify(r.restart));
+          ' "$RUNNER_TEMP/update-b.json" "$VB"
+          [ "$(readlink "$APP/current")" = "$VB" ]
+          [ "$(readlink "$APP/previous")" = "$VERSION" ]
+          snap=$(ls -d "$HOME/.bitterbot/snapshots/"*"-$VERSION-to-$VB")
+          cat "$snap/manifest.json"
+          test -f "$snap/manifest.json"
+          if [ -n "$key_sha_before" ]; then
+            # The identity key was COPIED into the snapshot; the original is untouched.
+            [ "$(sha256sum "$HOME/.bitterbot/keys/node.key" | cut -d' ' -f1)" = "$key_sha_before" ]
+            [ "$(sha256sum "$snap/keys/node.key" | cut -d' ' -f1)" = "$key_sha_before" ]
+          fi
+          # healthy() requires every running gateway to be B: A is gone.
+          healthy "$VB"
+          grep -q "spawned tarball watchdog" "$HOME/.bitterbot/boot-watchdog.log"
+
+      - name: bitterbot update --rollback B -> A (manual), gateway healthy on A
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home" BITTERBOT_GATEWAY_TOKEN=ci-smoke-token BITTERBOT_INSTALL_TEST_MODE=1 \
+            BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
+          B="$HOME/.local/bin/bitterbot"
+          APP="$HOME/.bitterbot/app"
+          "$B" update --rollback --yes --json | tee "$RUNNER_TEMP/rollback.json"
+          grep -q '"status":"ok"' "$RUNNER_TEMP/rollback.json"
+          [ "$(readlink "$APP/current")" = "$VERSION" ]
+          [ "$(readlink "$APP/previous")" = "$VB" ]
+          . "$RUNNER_TEMP/gw.sh"
+          healthy "$VERSION"
+          grep -q '"version":"'"$VERSION"'"' "$RUNNER_TEMP/rollback.json"
+
+      - name: bitterbot update A -> B' (gateway cannot boot) rolls back to A automatically
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          B="$HOME/.local/bin/bitterbot"
+          APP="$HOME/.bitterbot/app"
+          mv "$RUNNER_TEMP/staged-v$VC" "$RUNNER_TEMP/releases/download/v$VC"
+          node "$RUNNER_TEMP/write-api.js" "$RUNNER_TEMP/releases"
+          export BITTERBOT_GATEWAY_TOKEN=ci-smoke-token BITTERBOT_INSTALL_TEST_MODE=1 \
+            BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
+          set +e
+          "$B" update --yes --json > "$RUNNER_TEMP/update-c.json" 2> "$RUNNER_TEMP/update-c.err"
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/update-c.json"; tail -20 "$RUNNER_TEMP/update-c.err"
+          cat "$HOME/.bitterbot/boot-watchdog.log" || true
+          # The update itself is reported as failed: the new version never booted.
+          [ "$rc" = "1" ]
+          node -e '
+            const lines = require("node:fs").readFileSync(process.argv[1], "utf8").split("\n").filter((l) => l.startsWith("{"));
+            const r = JSON.parse(lines[lines.length - 1]);
+            if (r.boot?.status !== "rolled-back" || r.boot?.version !== process.argv[2] || r.boot?.healthy !== true) throw new Error(JSON.stringify(r));
+          ' "$RUNNER_TEMP/update-c.json" "$VERSION"
+          [ "$(readlink "$APP/current")" = "$VERSION" ]
+          [ "$(readlink "$APP/previous")" = "$VC" ]
+          grep -q '"mode": "tarball"' "$HOME/.bitterbot/rollback-performed.json"
+          grep -q '"ok": true' "$HOME/.bitterbot/rollback-performed.json"
+          grep -q "simulated boot failure" "$RUNNER_TEMP/gateway-update.log"
+          . "$RUNNER_TEMP/gw.sh"
+          healthy "$VERSION"
+          # doctor reports the rollback (warn), names the versions.
+          timeout 300 "$B" doctor --non-interactive > "$RUNNER_TEMP/doctor.txt" 2>&1 || true
+          grep -q "ROLLED BACK" "$RUNNER_TEMP/doctor.txt"
+          pkill -f "^bitterbot-gateway" || true
+          pkill -f "dist/entry.js" || true
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          tail -200 "$RUNNER_TEMP/gateway-update.log" || true
+          cat "$RUNNER_TEMP/home/.bitterbot/boot-watchdog.log" || true
+          ls -la "$RUNNER_TEMP/home/.bitterbot/app" || true
+
+  installer-windows:
+    # PLAN-56 Phase 3b: scripts/install.ps1 hands off to install.sh inside
+    # WSL2. Lint it with PSScriptAnalyzer and run it in dry-run mode on
+    # Windows PowerShell 5.1 (real detection, then each WSL state faked).
+    name: install.ps1 (PSScriptAnalyzer + dry run)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          if (-not (Get-Module -ListAvailable -Name PSScriptAnalyzer)) {
+            Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber
+          }
+          $results = Invoke-ScriptAnalyzer -Path scripts/install.ps1 -Severity Warning, Error
+          $results | Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+          if ($results) { exit 1 }
+
+      - name: Dry run on Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          Set-StrictMode -Version 2.0
+          $ErrorActionPreference = 'Continue'
+          $PSVersionTable.PSVersion | Out-String | Write-Host
+          function Invoke-Dry([string]$Fake, [string[]]$Extra) {
+            $env:BITTERBOT_INSTALL_PS1_FAKE_WSL = $Fake
+            $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 -WhatIf @Extra 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            Write-Host "--- fake=$Fake exit=$code"
+            Write-Host $out
+            return [pscustomobject]@{ Code = $code; Out = $out }
+          }
+          # Real detection on the runner: either a plan or the WSL2 instructions, never an error.
+          $real = Invoke-Dry -Fake '' -Extra @()
+          if ($real.Out -match 'ERROR') { throw 'install.ps1 errored during detection' }
+          if ($real.Code -ne 0 -and $real.Code -ne 2) { throw "unexpected exit $($real.Code)" }
+          $none = Invoke-Dry -Fake 'none' -Extra @()
+          if ($none.Code -ne 2 -or $none.Out -notmatch 'wsl --install' -or $none.Out -notmatch 'Docker Desktop') { throw 'no-WSL path' }
+          $wsl1 = Invoke-Dry -Fake 'wsl1' -Extra @()
+          if ($wsl1.Code -ne 2 -or $wsl1.Out -notmatch 'WSL1') { throw 'WSL1 path' }
+          $wsl2 = Invoke-Dry -Fake 'wsl2' -Extra @('-Version', '1.6.0', '-NoOnboard')
+          if ($wsl2.Code -ne 0 -or $wsl2.Out -notmatch 'install.sh \| bash -s -- --version 1.6.0 --no-onboard' -or $wsl2.Out -notmatch 'nothing was run') { throw 'WSL2 plan' }
+          if ($wsl2.Out -notmatch 'not under /mnt/c') { throw 'ext4 advice missing' }
+          $bad = Invoke-Dry -Fake 'wsl2' -Extra @('-Version', 'nope')
+          if ($bad.Code -ne 1) { throw 'bad version must fail' }
+          # The last native exit code (the refused -Version above) must not fail the step.
+          exit 0
+
+      - name: Piped into iex leaves the caller alone (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $work = Join-Path $env:RUNNER_TEMP 'bb-ps1'
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          # A caller SCRIPT (not the console) that pipes the installer into iex
+          # the documented way, then checks it got its session back: still
+          # running (no `exit`), same $ErrorActionPreference, no StrictMode,
+          # no installer functions or variables left behind.
+          $caller = Join-Path $work 'caller.ps1'
+          Set-Content -Path $caller -Encoding UTF8 -Value @'
+          param([string]$Installer, [string]$CallerEap)
+          $ErrorActionPreference = $CallerEap
+          Set-StrictMode -Off
+          $env:BITTERBOT_INSTALL_DRY_RUN = '1'
+          Get-Content -Raw $Installer | Invoke-Expression
+          $fails = @()
+          if ($ErrorActionPreference -ne $CallerEap) { $fails += "EAP is now $ErrorActionPreference" }
+          try { $null = $bbNeverDefinedVariable } catch { $fails += 'StrictMode leaked' }
+          $fns = @(Get-Command -CommandType Function -Name '*-Bb*' -ErrorAction SilentlyContinue)
+          if ($fns.Count -gt 0) { $fails += "functions leaked: $(($fns | ForEach-Object { $_.Name }) -join ', ')" }
+          foreach ($v in @('DryRun', 'Cmdlet', 'InstallShUrl', 'exitCode', 'plan')) {
+            if (Get-Variable -Name $v -Scope Global -ErrorAction SilentlyContinue) { $fails += "variable leaked: $v" }
+          }
+          Write-Host "caller continued (LASTEXITCODE=$LASTEXITCODE)"
+          if ($fails.Count -gt 0) { Write-Host ('LEAKS: ' + ($fails -join '; ')); exit 1 }
+          exit 0
+          '@
+          $installer = (Resolve-Path scripts/install.ps1).Path
+          function Invoke-Caller([string]$Eap) {
+            $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $caller -Installer $installer -CallerEap $Eap 2>&1 | Out-String
+            $code = $LASTEXITCODE
+            Write-Host "--- caller EAP=$Eap exit=$code"
+            Write-Host $out
+            return [pscustomobject]@{ Code = $code; Out = $out }
+          }
+          $env:BITTERBOT_INSTALL_PS1_FAKE_WSL = 'wsl2'
+          foreach ($eap in @('Continue', 'Stop')) {
+            $r = Invoke-Caller $eap
+            if ($r.Code -ne 0 -or $r.Out -notmatch 'caller continued \(LASTEXITCODE=0\)' -or $r.Out -notmatch 'nothing was run') { throw "iex run with caller EAP=$eap" }
+          }
+          # A wsl.exe that writes to stderr (WSL prints notices there) must not
+          # read as "no WSL": Windows PowerShell 5.1 turns redirected stderr
+          # into errors, which threw under the installer's own 'Stop'.
+          Remove-Item Env:BITTERBOT_INSTALL_PS1_FAKE_WSL
+          $fake = Join-Path $work 'fakewsl'
+          New-Item -ItemType Directory -Force -Path $fake | Out-Null
+          Add-Type -OutputType ConsoleApplication -OutputAssembly (Join-Path $fake 'wsl.exe') -TypeDefinition @'
+          public static class FakeWsl {
+            public static int Main(string[] args) {
+              System.Console.Error.WriteLine("wsl: a notice on stderr");
+              if (args.Length > 0 && args[0] == "--list") {
+                System.Console.WriteLine("  NAME          STATE           VERSION");
+                System.Console.WriteLine("* FakeDistro    Running         2");
+              }
+              return 0;
+            }
+          }
+          '@
+          $env:PATH = "$fake;$env:PATH"
+          $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install.ps1 -WhatIf 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Write-Host "--- fake stderr wsl exit=$code"
+          Write-Host $out
+          if ($code -ne 0 -or $out -notmatch 'WSL2 distribution: FakeDistro') { throw 'stderr from wsl.exe tripped the detection' }
+          $r = Invoke-Caller 'Stop'
+          if ($r.Code -ne 0 -or $r.Out -notmatch 'WSL2 distribution: FakeDistro') { throw 'stderr from wsl.exe tripped the detection (iex)' }
+          exit 0
 
   sandbox-images:
     # PLAN-53 A5: the sandbox build scripts and the browser entrypoint were

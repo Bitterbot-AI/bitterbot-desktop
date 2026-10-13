@@ -42,5 +42,5 @@ Prefer localhost, Tailscale Serve, or an SSH tunnel.
 ## If you see “unauthorized” / 1008
 
 - Ensure the gateway is reachable (local: `bitterbot status`; remote: SSH tunnel `ssh -N -L 19001:127.0.0.1:19001 user@host` then open `http://localhost:19001`).
-- Retrieve the token from the gateway host: `bitterbot config get gateway.auth.token` (or generate one: `bitterbot doctor --generate-gateway-token`).
+- Retrieve the token from the gateway host: `bitterbot config get gateway.auth.token`, or the value of `BITTERBOT_GATEWAY_TOKEN` if you set one (or generate one: `bitterbot doctor --generate-gateway-token`).
 - In the dashboard settings, paste the token into the auth field, then connect.

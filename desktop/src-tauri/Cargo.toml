@@ -1,6 +1,6 @@
 [package]
 name = "bitterbot-desktop"
-version = "0.1.0"
+version = "1.4.0"
 edition = "2021"
 description = "Bitterbot desktop shell — Tauri 2 wrapper for the Control UI"
 

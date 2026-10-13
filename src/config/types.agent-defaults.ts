@@ -146,10 +146,10 @@ export type AgentAnthropicRuntimeConfig = {
 };
 
 /**
- * Which agent runtime drives a session (PLAN-52).
- * - "pi": the pi-coding-agent session, loop, and transcript writer (default).
- * - "bitterbot": the owned runtime under `src/agents/runtime/`. Parts that are
- *   not built yet fall back to pi; the transcript format is identical.
+ * Agent runtime selector (PLAN-52). Since Phase 6 there is one engine, the
+ * owned runtime under `src/agents/runtime/`: the key is accepted and ignored,
+ * and a config that still says "pi" (the removed pi-coding-agent engine) gets
+ * one warning per scope at run time.
  */
 export type AgentRuntimeEngine = "pi" | "bitterbot";
 

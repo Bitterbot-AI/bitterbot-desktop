@@ -261,29 +261,39 @@ describe("gateway server models + voicewake", () => {
     expect(res2.ok).toBe(true);
 
     const models = res1.payload?.models ?? [];
+    // `allowed`/`featured` come from the model allowlist (none configured here,
+    // so everything is allowed and nothing featured).
     expect(models).toEqual([
       {
         id: "claude-test-a",
         name: "A-Model",
         provider: "anthropic",
         contextWindow: 200_000,
+        allowed: true,
+        featured: false,
       },
       {
         id: "claude-test-b",
         name: "B-Model",
         provider: "anthropic",
         contextWindow: 1000,
+        allowed: true,
+        featured: false,
       },
       {
         id: "gpt-test-a",
         name: "A-Model",
         provider: "openai",
         contextWindow: 8000,
+        allowed: true,
+        featured: false,
       },
       {
         id: "gpt-test-z",
         name: "gpt-test-z",
         provider: "openai",
+        allowed: true,
+        featured: false,
       },
     ]);
 

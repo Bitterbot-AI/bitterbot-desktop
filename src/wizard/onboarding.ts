@@ -15,8 +15,9 @@ import {
 import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath } from "../utils.js";
+import { isFirstBootOnlyConfig } from "./onboarding.first-boot.js";
 import type { QuickstartGatewayDefaults, WizardFlow } from "./onboarding.types.js";
-import { WizardCancelledError, type WizardPrompter } from "./prompts.js";
+import type { WizardPrompter } from "./prompts.js";
 
 async function requireRiskAcknowledgement(params: {
   opts: OnboardOptions;
@@ -25,59 +26,9 @@ async function requireRiskAcknowledgement(params: {
   if (params.opts.acceptRisk === true) {
     return;
   }
-
-  await params.prompter.note(
-    [
-      "Read this before going further.",
-      "",
-      "Bitterbot is in open beta. It remembers your life, runs real tools,",
-      "moves real USDC, and talks to other agents on a live P2P mesh.",
-      "That is the whole point — and it is also how you get hurt if you",
-      "skip the safety rails.",
-      "",
-      "What this agent can actually do once you enable its tools:",
-      "- Read and write files in its workspace",
-      "- Run code, browse the web, execute shell commands",
-      "- Send and receive messages on channels you connect (WhatsApp, Telegram, etc.)",
-      "- Hold a USDC wallet on Base, pay for paywalled APIs via x402, receive payments",
-      "- Publish skills to the P2P marketplace and ingest skills from other agents",
-      "",
-      "LLMs can be tricked. A malicious message, a hostile webpage, or a",
-      "poisoned skill from the network can steer the agent toward actions",
-      "you did not intend. Plan for that, not against it.",
-      "",
-      "Run Bitterbot at your own risk. We ship fast, patch fast, and trust",
-      "operators to harden their own nodes. If basic security and access",
-      "control are unfamiliar territory, pair with someone who can help",
-      "before enabling tools, channels, or the wallet.",
-      "",
-      "Recommended baseline:",
-      "- Pairing, allowlists, and mention gating for inbound messages.",
-      "- Sandbox + least-privilege tools. Start minimal; expand as you trust it.",
-      "- Keep secrets out of the agent's reachable filesystem (no .env in workspace).",
-      "- Use the strongest model available for any bot with tools or untrusted inboxes.",
-      "- Start the wallet with a small float you can afford to lose while you learn.",
-      "- P2P skill ingestion defaults to 'review' — don't flip to 'auto' until you",
-      "  have a trust list and understand the SkillVerifier + reputation gates.",
-      "",
-      "Run regularly:",
-      "  bitterbot security audit --deep",
-      "  bitterbot security audit --fix",
-      "  bitterbot doctor",
-      "",
-      "Must read: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/SECURITY.md",
-    ].join("\n"),
-    "Security — at your own risk",
-  );
-
-  const ok = await params.prompter.confirm({
-    message:
-      "I understand Bitterbot can act on my behalf, move funds, and connect to a live P2P network. I accept the risk. Continue?",
-    initialValue: false,
-  });
-  if (!ok) {
-    throw new WizardCancelledError("risk not accepted");
-  }
+  // The same acknowledgement the browser setup page asks (setup-steps.ts).
+  const { requireSetupRiskAcknowledgement } = await import("./setup-steps.js");
+  await requireSetupRiskAcknowledgement(params.prompter);
 }
 
 export async function runOnboardingWizard(
@@ -178,7 +129,18 @@ async function runOnboardingWizardInner(
     flow = "advanced";
   }
 
-  if (snapshot.exists) {
+  // A file holding only the token a first gateway start generated (the
+  // container image does this) is not a previous setup: keep the token and
+  // onboard as new. The defaults apply with or without a file (PLAN-56).
+  const firstBootOnly = snapshot.exists && isFirstBootOnlyConfig(snapshot.resolved);
+  if (firstBootOnly) {
+    await prompter.note(
+      "The config holds only a gateway token (what a first gateway start writes). Keeping the token; setting up everything else.",
+      "Config",
+    );
+  }
+
+  if (snapshot.exists && !firstBootOnly) {
     await prompter.note(
       onboardHelpers.summarizeExistingConfig(baseConfig),
       "Existing config detected",
@@ -318,7 +280,7 @@ async function runOnboardingWizardInner(
           `  auth: ${formatAuth(quickstartGateway.authMode)}`,
           `  Tailscale: ${formatTailscale(quickstartGateway.tailscaleMode)}`,
           "",
-          "Skipping straight to channel setup.",
+          "Next: the setup steps (model key, model, memory, web search, channels, P2P, privacy).",
         ]
       : [
           "QuickStart defaults (re-run with --flow=manual or `bitterbot configure` to change):",
@@ -327,7 +289,7 @@ async function runOnboardingWizardInner(
           "  auth: Token (random, auto-generated)",
           "  Tailscale: off",
           "",
-          "Skipping straight to channel setup.",
+          "Next: the setup steps (model key, model, memory, web search, channels, P2P, privacy).",
         ];
     await prompter.note(quickstartLines.join("\n"), "QuickStart");
   }
@@ -399,128 +361,210 @@ async function runOnboardingWizardInner(
   const { applyOnboardingLocalWorkspaceConfig } = await import("../commands/onboard-config.js");
   let nextConfig: BitterbotConfig = applyOnboardingLocalWorkspaceConfig(baseConfig, workspaceDir);
 
-  const { ensureAuthProfileStore } = await import("../agents/auth-profiles.js");
-  const { promptAuthChoiceGrouped } = await import("../commands/auth-choice-prompt.js");
-  const { promptCustomApiConfig } = await import("../commands/onboard-custom.js");
-  const { applyAuthChoice, resolvePreferredProviderForAuthChoice, warnIfModelConfigLooksOff } =
-    await import("../commands/auth-choice.js");
-  const { applyPrimaryModel, promptDefaultModel } = await import("../commands/model-picker.js");
+  const { warnIfModelConfigLooksOff } = await import("../commands/auth-choice.js");
+  const { resolveBitterbotPackageRoot } = await import("../infra/bitterbot-root.js");
+  const { detectInstallKind } = await import("../infra/install-kind.js");
+  const packageRoot = await resolveBitterbotPackageRoot({
+    moduleUrl: import.meta.url,
+    argv1: process.argv[1],
+    cwd: process.cwd(),
+  }).catch(() => null);
+  const installKind = detectInstallKind(packageRoot);
 
-  const authStore = ensureAuthProfileStore(undefined, {
-    allowKeychainPrompt: false,
-  });
-  const authChoiceFromPrompt = opts.authChoice === undefined;
-  const authChoice =
-    opts.authChoice ??
-    (await promptAuthChoiceGrouped({
-      prompter,
-      store: authStore,
-      includeSkip: true,
-    }));
+  // The options finalize sees (the "Keep running" step may set installDaemon).
+  let finalizeOpts: OnboardOptions = opts;
+  let settings: Awaited<
+    ReturnType<typeof import("./onboarding.gateway-config.js").configureGatewayForOnboarding>
+  >["settings"];
 
-  if (authChoice === "custom-api-key") {
-    const customResult = await promptCustomApiConfig({
-      prompter,
-      runtime,
-      config: nextConfig,
-    });
-    nextConfig = customResult.config;
-  } else {
-    const authResult = await applyAuthChoice({
-      authChoice,
-      config: nextConfig,
-      prompter,
-      runtime,
-      setDefaultModel: true,
-      opts: {
-        tokenProvider: opts.tokenProvider,
-        token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
-      },
-    });
-    nextConfig = authResult.config;
-  }
-
-  // QuickStart keeps the provider's default model (applyAuthChoice already
-  // set it) — the model picker is an advanced-flow prompt (PLAN-41 D-M).
-  if (authChoiceFromPrompt && authChoice !== "custom-api-key" && flow === "advanced") {
-    const modelSelection = await promptDefaultModel({
-      config: nextConfig,
-      prompter,
-      allowKeep: true,
-      ignoreAllowlist: true,
-      includeVllm: true,
-      preferredProvider: resolvePreferredProviderForAuthChoice(authChoice),
-    });
-    if (modelSelection.config) {
-      nextConfig = modelSelection.config;
+  if (flow === "quickstart") {
+    // PLAN-56 Phase 4: QuickStart IS the setup step model, the same steps the
+    // browser setup page renders over wizard.* (src/wizard/setup-steps.ts).
+    // An explicit --auth-choice still runs the provider-specific auth flow;
+    // the model's key and model steps then keep what it configured.
+    let presets: Partial<Record<"auth" | "model" | "channels" | "service", string>> | undefined;
+    if (opts.authChoice !== undefined) {
+      const { applyAuthChoice } = await import("../commands/auth-choice.js");
+      const authResult = await applyAuthChoice({
+        authChoice: opts.authChoice,
+        config: nextConfig,
+        prompter,
+        runtime,
+        setDefaultModel: true,
+        opts: {
+          tokenProvider: opts.tokenProvider,
+          token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
+        },
+      });
+      nextConfig = authResult.config;
+      presets = { auth: "skip", model: "keep" };
     }
-    if (modelSelection.model) {
-      nextConfig = applyPrimaryModel(nextConfig, modelSelection.model);
+    if (opts.skipChannels ?? opts.skipProviders) {
+      presets = { ...presets, channels: "later" };
     }
-  }
+    if (typeof opts.installDaemon === "boolean") {
+      presets = { ...presets, service: opts.installDaemon ? "install" : "no" };
+    }
+    const { commitSetupKey, createSetupDraft, runSetupSteps } = await import("./setup-steps.js");
+    const { detectSetupKeys, detectSignedInProfiles } = await import("./setup-keys.js");
+    const { detectSetupServiceSupport } = await import("./setup-service.js");
+    const ctx = {
+      effective: baseConfig,
+      keys: detectSetupKeys(),
+      profiles: detectSignedInProfiles(),
+      keyEnv: {},
+      installKind,
+      env: process.env,
+      service: await detectSetupServiceSupport({ installKind }),
+    };
+    const draft = createSetupDraft(nextConfig);
+    await runSetupSteps({
+      ctx,
+      draft,
+      prompter,
+      presets,
+      // Asked at the start of the wizard (or --accept-risk).
+      riskAcknowledged: true,
+      // Flags on a run nobody can answer take the recommended answers; an
+      // interactive terminal always sees the fork (P2P is a consent choice).
+      acceptRecommended: opts.authChoice !== undefined && !process.stdin.isTTY,
+    });
+    await commitSetupKey(draft, ctx);
+    for (const notice of draft.notices) {
+      await prompter.note(notice, "Your previous key was kept");
+    }
+    nextConfig = draft.config;
+    // The "Keep running" step decides the service install finalize does.
+    if (draft.answers.service === "install" || draft.answers.service === "no") {
+      finalizeOpts = { ...opts, installDaemon: draft.answers.service === "install" };
+    }
+    await warnIfModelConfigLooksOff(nextConfig, prompter);
 
-  await warnIfModelConfigLooksOff(nextConfig, prompter);
-
-  // Memory embeddings — set up a vector provider so long-term memory works.
-  // Runs after auth (the LLM provider just got configured, often the same
-  // API key works for embeddings) and before web search so the flow of
-  // "here's one more key we need" questions lands together.
-  {
-    const { setupEmbeddingsForOnboarding } = await import("./onboarding.embeddings.js");
-    nextConfig = await setupEmbeddingsForOnboarding({ config: nextConfig, flow, prompter });
-  }
-
-  // Web search — set up an API key so web_search/curiosity/dreams work.
-  // Runs after auth (the user already committed to a provider) and before
-  // gateway config (so the key is in config before the gateway starts).
-  {
-    const { setupWebSearchForOnboarding } = await import("./onboarding.web-search.js");
-    nextConfig = await setupWebSearchForOnboarding({ config: nextConfig, flow, prompter });
-  }
-
-  const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
-  const gateway = await configureGatewayForOnboarding({
-    flow,
-    baseConfig,
-    nextConfig,
-    localPort,
-    quickstartGateway,
-    prompter,
-    runtime,
-  });
-  nextConfig = gateway.nextConfig;
-  const settings = gateway.settings;
-
-  // P2P network step — lands after gateway config and before channels (so
-  // a slow P2P probe doesn't make channel setup feel like it's hanging).
-  // No node-tier prompt: all new nodes are edge, management is assigned
-  // manually post-install.
-  {
-    const { setupP2pForOnboarding } = await import("./onboarding.p2p.js");
-    nextConfig = await setupP2pForOnboarding({
-      config: nextConfig,
+    const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
+    const gateway = await configureGatewayForOnboarding({
       flow,
+      baseConfig,
+      nextConfig,
+      localPort,
+      quickstartGateway,
       prompter,
       runtime,
     });
-  }
+    nextConfig = gateway.nextConfig;
+    settings = gateway.settings;
 
-  if (opts.skipChannels ?? opts.skipProviders) {
-    await prompter.note("Skipping channel setup.", "Channels");
-  } else if (flow === "quickstart") {
-    // PLAN-41 D-M: QuickStart defers channels to the Control UI.
-    await prompter.note(
-      [
-        "Chat with your agent in the Control UI right away.",
-        `Connect WhatsApp, Telegram, and other channels later there or via \`${formatCliCommand("bitterbot channels add")}\`.`,
-      ].join("\n"),
-      "Channels",
-    );
+    if (draft.channelsNext && !(opts.skipChannels ?? opts.skipProviders)) {
+      const { setupChannels } = await import("../commands/onboard-channels.js");
+      nextConfig = await setupChannels(nextConfig, runtime, prompter, {
+        allowSignalInstall: true,
+      });
+    }
   } else {
-    const { setupChannels } = await import("../commands/onboard-channels.js");
-    nextConfig = await setupChannels(nextConfig, runtime, prompter, {
-      allowSignalInstall: true,
+    const { ensureAuthProfileStore } = await import("../agents/auth-profiles.js");
+    const { promptAuthChoiceGrouped } = await import("../commands/auth-choice-prompt.js");
+    const { promptCustomApiConfig } = await import("../commands/onboard-custom.js");
+    const { applyAuthChoice, resolvePreferredProviderForAuthChoice } =
+      await import("../commands/auth-choice.js");
+    const { applyPrimaryModel, promptDefaultModel } = await import("../commands/model-picker.js");
+
+    const authStore = ensureAuthProfileStore(undefined, {
+      allowKeychainPrompt: false,
     });
+    const authChoiceFromPrompt = opts.authChoice === undefined;
+    const authChoice =
+      opts.authChoice ??
+      (await promptAuthChoiceGrouped({
+        prompter,
+        store: authStore,
+        includeSkip: true,
+      }));
+
+    if (authChoice === "custom-api-key") {
+      const customResult = await promptCustomApiConfig({
+        prompter,
+        runtime,
+        config: nextConfig,
+      });
+      nextConfig = customResult.config;
+    } else {
+      const authResult = await applyAuthChoice({
+        authChoice,
+        config: nextConfig,
+        prompter,
+        runtime,
+        setDefaultModel: true,
+        opts: {
+          tokenProvider: opts.tokenProvider,
+          token: opts.authChoice === "apiKey" && opts.token ? opts.token : undefined,
+        },
+      });
+      nextConfig = authResult.config;
+    }
+
+    if (authChoiceFromPrompt && authChoice !== "custom-api-key") {
+      const modelSelection = await promptDefaultModel({
+        config: nextConfig,
+        prompter,
+        allowKeep: true,
+        ignoreAllowlist: true,
+        includeVllm: true,
+        preferredProvider: resolvePreferredProviderForAuthChoice(authChoice),
+      });
+      if (modelSelection.config) {
+        nextConfig = modelSelection.config;
+      }
+      if (modelSelection.model) {
+        nextConfig = applyPrimaryModel(nextConfig, modelSelection.model);
+      }
+    }
+
+    await warnIfModelConfigLooksOff(nextConfig, prompter);
+
+    // Memory embeddings, then web search: the "one more key" questions land
+    // together, after the LLM provider (often the same key works).
+    {
+      const { setupEmbeddingsForOnboarding } = await import("./onboarding.embeddings.js");
+      nextConfig = await setupEmbeddingsForOnboarding({ config: nextConfig, flow, prompter });
+    }
+    {
+      const { setupWebSearchForOnboarding } = await import("./onboarding.web-search.js");
+      nextConfig = await setupWebSearchForOnboarding({ config: nextConfig, flow, prompter });
+    }
+
+    const { configureGatewayForOnboarding } = await import("./onboarding.gateway-config.js");
+    const gateway = await configureGatewayForOnboarding({
+      flow,
+      baseConfig,
+      nextConfig,
+      localPort,
+      quickstartGateway,
+      prompter,
+      runtime,
+    });
+    nextConfig = gateway.nextConfig;
+    settings = gateway.settings;
+
+    // P2P network step: after gateway config, before channels. No node-tier
+    // prompt: all new nodes are edge, management is assigned manually.
+    {
+      const { setupP2pForOnboarding } = await import("./onboarding.p2p.js");
+      nextConfig = await setupP2pForOnboarding({
+        config: nextConfig,
+        flow,
+        prompter,
+        runtime,
+        installKind,
+      });
+    }
+
+    if (opts.skipChannels ?? opts.skipProviders) {
+      await prompter.note("Skipping channel setup.", "Channels");
+    } else {
+      const { setupChannels } = await import("../commands/onboard-channels.js");
+      nextConfig = await setupChannels(nextConfig, runtime, prompter, {
+        allowSignalInstall: true,
+      });
+    }
   }
 
   await writeConfigFile(nextConfig);
@@ -583,11 +627,13 @@ async function runOnboardingWizardInner(
 
   nextConfig = onboardHelpers.applyWizardMetadata(nextConfig, { command: "onboard", mode });
   await writeConfigFile(nextConfig);
+  // A browser setup abandoned halfway is finished now.
+  (await import("../gateway/setup-token.js")).clearSetupInProgress();
 
   const { finalizeOnboardingWizard } = await import("./onboarding.finalize.js");
   const { launchedTui } = await finalizeOnboardingWizard({
     flow,
-    opts,
+    opts: finalizeOpts,
     baseConfig,
     nextConfig,
     workspaceDir,

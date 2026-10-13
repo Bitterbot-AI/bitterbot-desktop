@@ -53,6 +53,8 @@ function stubMinimaxOkFetch() {
 
 function createMinimaxImageConfig(): BitterbotConfig {
   return {
+    // Hot-set off so `image` is listed by name rather than deferred behind use_tool.
+    tools: { hotSet: { enabled: false } },
     agents: {
       defaults: {
         model: { primary: "minimax/MiniMax-M2.1" },

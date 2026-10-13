@@ -71,8 +71,9 @@ function topN(map: Map<string, number>, n: number): string {
 const DAY_MS = 24 * 60 * 60_000;
 
 /**
- * PLAN-52: which runtime engine each agent runs on, and, when both engines
- * have recorded runs in the last 14 days, the numbers the soak gates compare.
+ * PLAN-52: the runtime engine (always the owned one since Phase 6) and, when
+ * the usage ledger still holds runs of more than one engine in the last 14
+ * days, one line per engine with the numbers the soak gates compared.
  */
 export function collectRuntimeEngineChecks(params: {
   config?: BitterbotConfig;

@@ -185,7 +185,21 @@ export async function runBootWatchdog(params: {
   root: string;
   expectedArmedAt: number;
   runCommand?: RunCommand;
+  /** Tarball respawn mode: the gateway argv to launch through `current`. */
+  respawnArgv?: string[] | null;
+  waitPid?: number | null;
 }): Promise<void> {
+  // Release-tarball updates (PLAN-56 Phase 3b) switch symlinks, not git.
+  if (readBootVerify()?.tarball || params.respawnArgv) {
+    const { runTarballWatchdog } = await import("./tarball-watchdog.js");
+    await runTarballWatchdog({
+      root: params.root,
+      expectedArmedAt: params.expectedArmedAt,
+      respawnArgv: params.respawnArgv ?? null,
+      waitPid: params.waitPid ?? null,
+    });
+    return;
+  }
   const startedAt = Date.now();
   log(`watchdog armed (root=${params.root}, armedAt=${params.expectedArmedAt})`);
 

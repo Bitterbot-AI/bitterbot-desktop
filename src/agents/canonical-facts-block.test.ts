@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stripCanonicalFactMetadata } from "./canonical-facts-block.js";
+import { resolveActiveProjectName, stripCanonicalFactMetadata } from "./canonical-facts-block.js";
 
 const HEADER = [
   "## Canonical Facts",
@@ -45,5 +45,22 @@ describe("stripCanonicalFactMetadata", () => {
       `${HEADER.join("\n")}\n- [k] Uses Node (v22) daily. (since 2026-01-01)`,
     );
     expect(out.endsWith("- [k] Uses Node (v22) daily.")).toBe(true);
+  });
+});
+
+/** PLAN-55 Phase 1: the active project is the workspace basename, slugified. */
+describe("resolveActiveProjectName", () => {
+  it("derives the project from the workspace directory name", () => {
+    expect(resolveActiveProjectName("/home/v/projects/Acme Corp")).toBe("acme-corp");
+    expect(resolveActiveProjectName("/srv/agents/globex/")).toBe("globex");
+    expect(resolveActiveProjectName("C:\\work\\Acme")).toBe("acme");
+  });
+
+  it("reads the shared default workspace, an empty path and dot paths as no project", () => {
+    expect(resolveActiveProjectName("/home/v/.bitterbot/workspace")).toBeNull();
+    expect(resolveActiveProjectName("")).toBeNull();
+    expect(resolveActiveProjectName(undefined)).toBeNull();
+    expect(resolveActiveProjectName("/")).toBeNull();
+    expect(resolveActiveProjectName(".")).toBeNull();
   });
 });

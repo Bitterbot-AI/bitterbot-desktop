@@ -51,7 +51,7 @@ vi.mock("../agents/model-auth.js", () => ({
   getCustomProviderApiKey,
 }));
 
-vi.mock("../agents/runtime/engines/pi/model-discovery.js", () => {
+vi.mock("../agents/runtime/models/index.js", () => {
   class MockModelRegistry {
     find(provider: string, id: string) {
       return (

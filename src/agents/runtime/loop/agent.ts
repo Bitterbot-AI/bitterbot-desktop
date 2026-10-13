@@ -21,7 +21,7 @@
  * 4. `abortBeforeModelCall` (option and field, default true); see
  *    `agent-loop.ts`.
  * 5. `steeringQueue` / `followUpQueue` are public readonly (private in pi's
- *    typings, although `engines/pi/tool-loop-compat.ts` reads them), and
+ *    typings, although the pi engine's compat wrapper read them), and
  *    `hasQueuedSteeringMessages()` is added.
  * 6. The failure message of a run gets its own zero-usage object (pi shares
  *    one module-level object between all failure messages).

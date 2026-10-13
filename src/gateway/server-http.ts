@@ -16,6 +16,7 @@ import {
 } from "../canvas-host/a2ui.js";
 import type { CanvasHostHandler } from "../canvas-host/server.js";
 import { loadConfig } from "../config/config.js";
+import { looksLikeContainer, readDeclaredInstallKind } from "../infra/install-kind.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
 import { handleSlackHttpRequest } from "../slack/http/index.js";
@@ -27,7 +28,7 @@ import {
   type ResolvedGatewayAuth,
 } from "./auth.js";
 import { handleAvatarRequest } from "./avatar-http.js";
-import { handleControlUiRequest } from "./control-ui-http.js";
+import { handleControlUiRequest, SETUP_PAGE_PATH, stripBasePath } from "./control-ui-http.js";
 import { handleSessionTokenRequest, SESSION_TOKEN_PATH } from "./control-ui-session-token.js";
 import { normalizeControlUiBasePath } from "./control-ui-shared.js";
 import { renderDreamDashboardPage } from "./dream-dashboard-page.js";
@@ -50,11 +51,13 @@ import {
 } from "./hooks.js";
 import { sendGatewayAuthFailure } from "./http-common.js";
 import { getBearerToken, getHeader } from "./http-utils.js";
+import { handleMemoryExportHttpRequest } from "./memory-export-http.js";
 import { getMobileAvatarBytes, renderMobileUiPage } from "./mobile-ui-page.js";
 import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { hostnameOf, LOOPBACK_HOSTS, setupTokenLive } from "./setup-token.js";
 import { handleToolsInvokeHttpRequest } from "./tools-invoke-http.js";
 import { renderWalletFundingPage } from "./wallet-funding-page.js";
 
@@ -185,6 +188,54 @@ function writeUpgradeAuthFailure(
     return;
   }
   socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+}
+
+function controlUiBasePathFor(cfg: { gateway?: { controlUi?: { basePath?: string } } }): string {
+  return normalizeControlUiBasePath(cfg.gateway?.controlUi?.basePath);
+}
+
+/**
+ * PLAN-56 Phase 4: the setup page for a browser holding a setup link when the
+ * request is not a direct loopback one. That only happens in a container,
+ * where Docker's port mapping delivers the host's loopback connection from
+ * the bridge address; everywhere else a non-loopback request gets nothing
+ * here (a forged Host header is not enough). In a container, while a setup
+ * link is live, the page shell and its static assets load (the bundle is
+ * public, no secrets in it since PLAN-39), including on a reload, whose URL
+ * no longer carries the token; the WebSocket still demands the token itself.
+ * Both require a loopback Host header, like the token.
+ */
+export function isSetupPageRequest(
+  req: IncomingMessage,
+  basePath: string,
+  opts?: { stateDir?: string; inContainer?: boolean },
+): boolean {
+  const inContainer =
+    opts?.inContainer ?? (readDeclaredInstallKind() === "container" || looksLikeContainer());
+  if (!inContainer) {
+    return false;
+  }
+  const host = hostnameOf(req.headers.host);
+  if (!host || !LOOPBACK_HOSTS.has(host)) {
+    return false;
+  }
+  if (!setupTokenLive(opts)) {
+    return false;
+  }
+  let url: URL;
+  try {
+    url = new URL(req.url ?? "/", "http://localhost");
+  } catch {
+    return false;
+  }
+  const relative = stripBasePath(url.pathname, basePath);
+  if (relative === null) {
+    return false;
+  }
+  if (relative === SETUP_PAGE_PATH || relative === `${SETUP_PAGE_PATH}/`) {
+    return true;
+  }
+  return relative !== "/" && !relative.endsWith(".html") && !relative.startsWith("/auth/");
 }
 
 export type HooksRequestHandler = (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
@@ -638,6 +689,15 @@ export function createGatewayHttpServer(opts: {
         res.end(renderWalletFundingPage(wsUrl, gatewayToken));
         return;
       }
+      // PLAN-55 Phase 3: the memory export download (one-time token minted
+      // by the admin-scoped memory.exportDownload RPC).
+      if (
+        await handleMemoryExportHttpRequest(req, res, {
+          basePath: normalizeControlUiBasePath(configSnapshot.gateway?.controlUi?.basePath),
+        })
+      ) {
+        return;
+      }
       if (handleA2aRequest) {
         if (
           await handleA2aRequest(req, res, {
@@ -756,6 +816,11 @@ export function createGatewayHttpServer(opts: {
             // Same trust the existing dashboard pages encode: a valid bearer
             // token, or a direct loopback request.
             if (isLocalDirectRequest(request, trustedProxies)) {
+              return true;
+            }
+            // PLAN-56 Phase 4: the setup page (and its assets) for a browser
+            // holding a live setup link, e.g. through Docker's port mapping.
+            if (isSetupPageRequest(request, controlUiBasePathFor(configSnapshot))) {
               return true;
             }
             const token = getBearerToken(request);

@@ -138,6 +138,7 @@ export async function runCliAgent(params: {
     config: params.config,
     agentId: sessionAgentId,
     promptMode: "full",
+    workspaceDir,
   }).catch(() => undefined);
 
   // PLAN-34 Phase 2b: idle-research findings surface on the next live turn.

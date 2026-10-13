@@ -1,7 +1,7 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { flushPendingToolResultsAfterIdle } from "./embedded-runner/wait-for-idle-before-flush.js";
+import { TranscriptStore as SessionManager } from "./runtime/transcript/store.js";
 import { guardSessionManager } from "./session-tool-result-guard-wrapper.js";
 
 function assistantToolCall(id: string): AgentMessage {

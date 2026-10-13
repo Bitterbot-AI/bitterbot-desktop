@@ -42,10 +42,11 @@ posting, seeded with the failure modes we already know:
   `~` (ext4). This is the most common Windows report.
 - Node < 22 → cryptic startup SyntaxError. `node --version` first.
 - `pnpm: command not found` → `corepack enable pnpm || npm install -g pnpm`.
-- Orchestrator binary 404 during `pnpm install` → normal until a prebuilt
-  release exists for the current `orchestrator/Cargo.toml` version; the
-  node runs local-only without it. _(Delete this entry the day the signed
-  orchestrator release ships.)_
+- Orchestrator fetch refused during `pnpm install` ("signature verification
+  FAILED" or ".minisig could not be fetched") → the signed release for the
+  `orchestrator/Cargo.toml` version is missing or was tampered with; the fetch
+  fails closed and the node runs local-only. Check the release assets, never
+  unpin the key.
 
 ## Posting
 

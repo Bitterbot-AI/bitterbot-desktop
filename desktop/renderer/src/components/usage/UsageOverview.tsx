@@ -35,9 +35,10 @@ function BudgetBars({ budgets }: { budgets: UsageLedgerSummary["budgets"] }) {
       <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-4">
         <h3 className="text-sm font-medium text-foreground mb-1">Budgets</h3>
         <p className="text-xs text-muted-foreground">
-          No spend budgets set. Add <code className="text-2xs">usage.budgets.daily.usd</code> (or
-          weekly / monthly / perModel / perFeature) in Settings to get 50 / 80 / 95 / 100% alerts
-          here and in the log.
+          No spend budgets set. In Settings, use "Add setting" to add{" "}
+          <code className="text-2xs">usage.budgets.daily.usd</code> (or weekly / monthly; perModel
+          and perFeature go in the raw editor) to get 50 / 80 / 95 / 100% alerts here and in the
+          log.
         </p>
       </div>
     );

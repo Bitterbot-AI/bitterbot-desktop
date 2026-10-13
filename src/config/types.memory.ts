@@ -107,6 +107,19 @@ export type MemoryConfig = {
      */
     maxTranscriptChars?: number;
   };
+  /**
+   * PLAN-55 Phase 1: immediate correction capture. After each owner turn in a
+   * first-party chat whose message has a corrective shape, one cheap-model
+   * call pins what the owner corrected or asked to remember (usage feature
+   * `memory/correction`). The model is `memory.extraction.model` (then the
+   * dream model, then the cheap default).
+   */
+  correction?: {
+    /** Run the per-turn pass (default: true). */
+    enabled?: boolean;
+    /** Append the one-line "Memory updated" confirmation to the reply (default: true). */
+    confirm?: boolean;
+  };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {
     /**

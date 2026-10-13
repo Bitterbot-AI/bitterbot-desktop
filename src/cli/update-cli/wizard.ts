@@ -1,6 +1,10 @@
 import { confirm, isCancel, select } from "@clack/prompts";
 import { readConfigFileSnapshot } from "../../config/config.js";
 import {
+  CONTAINER_FALSE_POSITIVE_HINT,
+  CONTAINER_UPDATE_COMMAND,
+} from "../../infra/install-kind.js";
+import {
   formatUpdateChannelLabel,
   normalizeUpdateChannel,
   resolveEffectiveUpdateChannel,
@@ -54,6 +58,48 @@ export async function updateWizardCommand(opts: UpdateWizardOptions = {}): Promi
     }),
     readConfigFileSnapshot(),
   ]);
+
+  if (updateStatus.installKind === "container") {
+    defaultRuntime.error(
+      `This Bitterbot runs in a container and cannot update itself. On the Docker host, run: ${CONTAINER_UPDATE_COMMAND}. ${CONTAINER_FALSE_POSITIVE_HINT}`,
+    );
+    defaultRuntime.exit(1);
+    return;
+  }
+  if (updateStatus.installKind === "tarball") {
+    // PLAN-56 Phase 3b: release-tarball installs update in place (stable
+    // releases only), or switch back to the version kept as `previous`.
+    const action = await selectStyled({
+      message: "Release-tarball install",
+      options: [
+        {
+          value: "update",
+          label: "Update to the newest release",
+          hint: "verified, snapshotted, rolled back if it does not boot",
+        },
+        { value: "check", label: "Only check for a newer release" },
+        { value: "rollback", label: "Roll back to the previous version" },
+      ],
+      initialValue: "update",
+    });
+    if (isCancel(action)) {
+      defaultRuntime.log(theme.muted("Update cancelled."));
+      defaultRuntime.exit(0);
+      return;
+    }
+    try {
+      await updateCommand({
+        timeout: opts.timeout,
+        restart: true,
+        check: action === "check",
+        rollback: action === "rollback",
+      });
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+    return;
+  }
 
   const configChannel = configSnapshot.valid
     ? normalizeUpdateChannel(configSnapshot.config.update?.channel)

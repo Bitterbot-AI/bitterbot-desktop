@@ -132,6 +132,12 @@ export type CuriosityConfig = {
     | import("./gccrf-reward.js").GCCRFConfig
     | Partial<import("./gccrf-reward.js").GCCRFConfig>;
   /** PLAN-11 Gap 1: converts repeated user queries into knowledge_gap targets. */
+  /**
+   * PLAN-54: autonomous research on the maintenance tick. On by default; the
+   * agent abstracts a question to a topic phrase, searches, reads, and
+   * remembers a cited answer. Visible on the Curiosity page, pausable there.
+   */
+  research?: import("./curiosity-researcher.js").CuriosityResearchConfig;
   requestFrequency?: {
     /** Enable the analyzer (default: true). */
     enabled?: boolean;

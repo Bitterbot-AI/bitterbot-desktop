@@ -301,7 +301,8 @@ export const skillsHandlers: GatewayRequestHandlers = {
       const ingest = getIngestOutcomeStats();
       return {
         ingest,
-        enabled: p2p?.enabled ?? false,
+        // Unset means ON, same rule as applyP2pDefaults / doctor-p2p (PLAN-56 Phase 1).
+        enabled: p2p?.enabled !== false,
         topics: p2p?.topics ?? {},
         security: p2p?.security ?? {},
         stats,
@@ -870,7 +871,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       return;
     }
     const cfg = loadConfig();
-    if (!cfg.p2p?.enabled) {
+    if (cfg.p2p?.enabled === false) {
       respond(
         false,
         undefined,

@@ -5,6 +5,46 @@ import { withTempHome } from "../../test/helpers/temp-home.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 
 describe("doctor config flow", () => {
+  it("removes inert deprecated keys on repair and keeps them without it", async () => {
+    await withTempHome(async (home) => {
+      const configDir = path.join(home, ".bitterbot");
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        path.join(configDir, "bitterbot.json"),
+        JSON.stringify(
+          {
+            memory: { backend: "builtin" },
+            update: { uiRestart: { enabled: true } },
+            agents: { list: [{ id: "main", runtime: { engine: "pi" } }] },
+          },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+
+      const kept = await loadAndMaybeMigrateDoctorConfig({
+        options: { nonInteractive: true },
+        confirm: async () => false,
+      });
+      expect((kept.cfg as Record<string, { backend?: string }>).memory?.backend).toBe("builtin");
+
+      const repaired = await loadAndMaybeMigrateDoctorConfig({
+        options: { nonInteractive: true, repair: true },
+        confirm: async () => false,
+      });
+      const cfg = repaired.cfg as {
+        memory?: { backend?: string };
+        update?: { uiRestart?: unknown };
+        agents?: { list?: Array<{ id: string; runtime?: unknown }> };
+      };
+      expect(cfg.memory?.backend).toBeUndefined();
+      expect(cfg.update?.uiRestart).toBeUndefined();
+      expect(cfg.agents?.list?.[0]).toEqual(expect.objectContaining({ id: "main" }));
+      expect(cfg.agents?.list?.[0]?.runtime).toBeUndefined();
+    });
+  });
+
   it("preserves invalid config for doctor repairs", async () => {
     await withTempHome(async (home) => {
       const configDir = path.join(home, ".bitterbot");
@@ -30,6 +70,66 @@ describe("doctor config flow", () => {
       expect((result.cfg as Record<string, unknown>).gateway).toEqual({
         auth: { mode: "token", token: 123 },
       });
+    });
+  });
+
+  it("never removes deprecated keys from a config that uses $include", async () => {
+    await withTempHome(async (home) => {
+      const configDir = path.join(home, ".bitterbot");
+      await fs.mkdir(configDir, { recursive: true });
+      const rootFile = path.join(configDir, "bitterbot.json");
+      const rootText = [
+        "// my comment",
+        "{",
+        '  "agents": { "$include": "./agents.json5" },',
+        '  "memory": { "backend": "builtin" }',
+        "}",
+        "",
+      ].join("\n");
+      await fs.writeFile(rootFile, rootText, "utf-8");
+      await fs.writeFile(
+        path.join(configDir, "agents.json5"),
+        JSON.stringify({ defaults: { contextPruning: { mode: "cache-ttl" } } }),
+        "utf-8",
+      );
+
+      const result = await loadAndMaybeMigrateDoctorConfig({
+        options: { nonInteractive: true, repair: true },
+        confirm: async () => false,
+      });
+      const cfg = result.cfg as {
+        memory?: { backend?: string };
+        agents?: { defaults?: { contextPruning?: unknown } };
+      };
+      expect(cfg.memory?.backend).toBe("builtin");
+      expect(cfg.agents?.defaults?.contextPruning).toBeDefined();
+      expect(result.shouldWriteConfig).toBe(false);
+      // The flow itself never touches the file.
+      expect(await fs.readFile(rootFile, "utf-8")).toBe(rootText);
+    });
+  });
+
+  it("the repair prompt for deprecated keys alone defaults to no", async () => {
+    await withTempHome(async (home) => {
+      const configDir = path.join(home, ".bitterbot");
+      await fs.mkdir(configDir, { recursive: true });
+      await fs.writeFile(
+        path.join(configDir, "bitterbot.json"),
+        JSON.stringify({ memory: { backend: "builtin" } }),
+        "utf-8",
+      );
+      const prompts: Array<{ message: string; initialValue: boolean }> = [];
+      const result = await loadAndMaybeMigrateDoctorConfig({
+        options: {},
+        confirm: async (p) => {
+          prompts.push(p);
+          return p.initialValue;
+        },
+      });
+      expect(prompts).toHaveLength(1);
+      expect(prompts[0]?.initialValue).toBe(false);
+      expect(prompts[0]?.message).toContain("deprecated");
+      expect(result.shouldWriteConfig).toBe(false);
     });
   });
 

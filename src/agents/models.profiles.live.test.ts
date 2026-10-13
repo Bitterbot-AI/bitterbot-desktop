@@ -13,7 +13,7 @@ import {
 import { isModernModelRef } from "./live-model-filter.js";
 import { getApiKeyForModel, requireApiKey } from "./model-auth.js";
 import { ensureBitterbotModelsJson } from "./models-config.js";
-import { discoverAuthStorage, discoverModels } from "./runtime/engines/pi/model-discovery.js";
+import { discoverAuthStorage, discoverModels } from "./runtime/models/index.js";
 
 const LIVE =
   isTruthyEnvValue(process.env.LIVE) || isTruthyEnvValue(process.env.BITTERBOT_LIVE_TEST);

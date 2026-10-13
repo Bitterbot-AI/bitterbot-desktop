@@ -107,6 +107,13 @@ export type SessionConfig = {
   };
   /** Automatic session store maintenance (pruning, capping, file rotation). */
   maintenance?: SessionMaintenanceConfig;
+  /**
+   * PLAN-55 Phase 1: "off" is the incognito switch. Session transcripts are
+   * not indexed into memory, the dream-time session extractor does not read
+   * them, and the per-turn correction capture does not run. Replies still
+   * work; nothing from the conversations is learned. Default: "on".
+   */
+  memory?: "on" | "off";
 };
 
 export type SessionMaintenanceMode = "enforce" | "warn";

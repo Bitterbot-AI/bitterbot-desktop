@@ -42,13 +42,12 @@ const ListToolsSchema = Type.Object({
 
 const UseToolSchema = Type.Object({
   name: Type.String({ description: "Tool name exactly as returned by list_tools." }),
-  input: Type.Object(
-    {},
-    {
-      additionalProperties: true,
-      description: "Arguments for the target tool; must satisfy its JSON schema.",
-    },
-  ),
+  // A bare object: JSON Schema allows extra keys by default, and the
+  // `additionalProperties` keyword itself is rejected by some providers.
+  input: Type.Unsafe<Record<string, unknown>>({
+    type: "object",
+    description: "Arguments for the target tool; must satisfy its JSON schema.",
+  }),
 });
 
 export function oneLineDescription(description: string | undefined): string {
@@ -165,13 +164,18 @@ export function createUseToolTool(params: { registry: readonly AnyAgentTool[] })
           : {};
       let validated: unknown;
       try {
+        // Same order as the agent loop (pi-agent-core >= 0.73 and
+        // runtime/loop/tool-execution.ts): the tool's prepareArguments shim
+        // runs first so legacy argument forms (edit's oldText/newText, Claude
+        // Code's old_string/new_string) are folded before the schema check.
+        const prepared = target.prepareArguments ? target.prepareArguments(args) : args;
         validated = validateToolArguments(
           { ...target, parameters: toPlainJsonSchema(target.parameters) },
           {
             type: "toolCall",
             id: toolCallId,
             name: target.name,
-            arguments: args,
+            arguments: prepared as Record<string, unknown>,
           },
         );
       } catch (err) {

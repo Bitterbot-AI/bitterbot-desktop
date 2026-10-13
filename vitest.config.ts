@@ -103,7 +103,7 @@ export default defineConfig({
         "src/agents/sandbox-paths.ts",
         "src/agents/sandbox.ts",
         "src/agents/skills-install.ts",
-        "src/agents/runtime/engines/pi/tool-definition-adapter.ts",
+        "src/agents/runtime/session/tool-definition-adapter.ts",
         "src/agents/tools/discord-actions*.ts",
         "src/agents/tools/slack-actions.ts",
 

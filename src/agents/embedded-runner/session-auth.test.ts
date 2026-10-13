@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type { StreamFn } from "@mariozechner/pi-agent-core";
 import {
   type AssistantMessage,
@@ -8,14 +5,10 @@ import {
   type Model,
   type SimpleStreamOptions,
 } from "@mariozechner/pi-ai";
-import {
-  AuthStorage,
-  createAgentSession,
-  ModelRegistry,
-  SessionManager,
-  SettingsManager,
-} from "@mariozechner/pi-coding-agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AuthStorage, ModelRegistry } from "../runtime/models/index.js";
+import { AgentSession, type SessionStore } from "../runtime/session/session.js";
+import { TranscriptStore } from "../runtime/transcript/store.js";
 import { withSessionRequestAuth } from "./session-auth.js";
 
 const model = {
@@ -31,11 +24,7 @@ const model = {
   maxTokens: 8_000,
 } as Model<"anthropic-messages">;
 
-const tempDirs: string[] = [];
 afterEach(() => {
-  for (const dir of tempDirs.splice(0)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
   vi.unstubAllEnvs();
 });
 
@@ -69,26 +58,22 @@ function recordingStream(seen: Array<SimpleStreamOptions | undefined>): StreamFn
 }
 
 describe("withSessionRequestAuth", () => {
-  it("delivers the runtime API key when the session streamFn is replaced", async () => {
+  it("delivers the runtime API key to the stream function a session turn calls", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "");
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "bb-session-auth-"));
-    tempDirs.push(cwd);
     const authStorage = AuthStorage.inMemory();
     authStorage.setRuntimeApiKey("anthropic", "sk-runtime-key");
     const modelRegistry = ModelRegistry.inMemory(authStorage);
-    const { session } = await createAgentSession({
-      cwd,
-      agentDir: cwd,
-      authStorage,
-      modelRegistry,
-      model,
-      tools: [],
-      sessionManager: SessionManager.inMemory(cwd),
-      settingsManager: SettingsManager.inMemory(),
-    });
 
     const seen: Array<SimpleStreamOptions | undefined> = [];
-    session.agent.streamFn = withSessionRequestAuth(recordingStream(seen), modelRegistry);
+    const session = new AgentSession({
+      model,
+      thinkingLevel: "off",
+      systemPrompt: "auth test",
+      tools: [],
+      store: TranscriptStore.inMemory() as unknown as SessionStore,
+      streamFn: withSessionRequestAuth(recordingStream(seen), modelRegistry),
+      resolveRequestAuth: (target) => modelRegistry.getApiKeyAndHeaders(target),
+    });
     await session.prompt("hello");
 
     expect(seen).toHaveLength(1);

@@ -116,6 +116,8 @@ pnpm exec playwright install --with-deps chromium   # browser automation
 > not `/mnt/c/...`: the 9p mount makes boots dramatically slower (43x measured).
 >
 > **Always-on server?** Run the public container image `ghcr.io/bitterbot-ai/bitterbot-desktop`, or the Fly.io and VPS templates, and finish setup in the browser: [docs/platforms/docker.md](docs/platforms/docker.md).
+>
+> **Laptop without a dev toolchain?** From release 1.5.0, a signed prebuilt tarball (Node runtime included) installs with one line on Linux and Apple-silicon macOS: [docs/start/install-script.md](docs/start/install-script.md).
 
 Run the onboarding wizard. It walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.
 
@@ -201,7 +203,8 @@ On a timer (every 2 hours by default, skipped when there is nothing new to proce
 | **Anticipation**                 | Prepares grounded briefs for questions you are likely to ask next                         | on      |
 | **Relationship Mining**          | Extracts typed relationship edges (people, projects, roles) into the knowledge graph      | on      |
 | **Canonical Promotion**          | Promotes durable, repeatedly-confirmed facts into the always-injected canonical ledger    | on      |
-| **Exploration**                  | Investigates unexplored knowledge frontiers identified by the Curiosity Engine            | opt-in  |
+| **Exploration**                  | Reflects on knowledge frontiers inside its own memory (no web)                            | opt-in  |
+| **Curiosity research**           | Goes and looks up its own open questions on the web, with sources, on a schedule          | on      |
 | **Interceptor Harvest**          | Watches what fails and drafts new executable guard skills for one-click promotion         | held    |
 | **Relationship Reconsolidation** | Revisits stored relationships and repairs them as new context refines or contradicts them | held    |
 | **Harness Evolution**            | Evolves the agent's own prompt fragments and tool descriptions, behind a validation gate  | held    |

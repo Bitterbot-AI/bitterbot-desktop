@@ -24,7 +24,7 @@ and decides during rest rather than on the hot path.
    a new edge of a mutually-exclusive relation type (currently `located_at`,
    `belongs_to`) conflicts with an existing active edge, the writer only records
    a `flag_contradiction` audit row. Both edges stay active (`valid_until IS
-NULL`). Nothing is ever closed or deleted on write.
+   NULL`). Nothing is ever closed or deleted on write.
 2. **Destructive revision happens only during a calm dream.** The 9th dream mode
    `relationship_reconsolidation` drains flagged contradictions. For each, it
    closes the losing edge via `supersedeRelationship` (sets `valid_until`) only

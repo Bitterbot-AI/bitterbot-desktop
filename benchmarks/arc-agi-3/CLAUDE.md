@@ -74,13 +74,13 @@ The server connects lazily (its module graph takes ~75s to JIT on cold start). T
 ### Grid analysis helpers (FREE — these are pure JS utilities)
 
 ```javascript
+import { compareFrames, getGrid, loadFrame } from "./helpers/frame-analysis.js";
 // Pattern detection on a 2D grid
 import {
   findConnectedComponents,
   analyzeColorDistribution,
   findRectangularRegions,
 } from "./helpers/grid-analysis.js";
-import { compareFrames, getGrid, loadFrame } from "./helpers/frame-analysis.js";
 import { gridToAscii, displayRegion, compareSideBySide } from "./helpers/grid-visualization.js";
 
 // Example: find connected blue regions in the current frame

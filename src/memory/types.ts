@@ -23,6 +23,12 @@ export type MemorySearchResult = {
    * synthesized from. Present on extracted facts; resolve with memory_expand.
    */
   evidenceRefs?: import("./session-extractor.js").EvidenceRef[];
+  /**
+   * PLAN-55 Phase 2: the chunk states a value the canonical ledger has since
+   * replaced (or the owner retired). Ranked after current results; the
+   * snippet carries a `[superseded]` tag. `currentValue` null = retired.
+   */
+  superseded?: Array<{ key: string; currentValue: string | null }>;
 };
 
 export type MemoryEmbeddingProbeResult = {
@@ -78,7 +84,13 @@ export type MemoryProviderStatus = {
 export interface MemorySearchManager {
   search(
     query: string,
-    opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
+    opts?: {
+      maxResults?: number;
+      minScore?: number;
+      sessionKey?: string;
+      /** PLAN-55 Phase 2: tag superseded results with ledger values (owner only; default true). */
+      tagSuperseded?: boolean;
+    },
   ): Promise<MemorySearchResult[]>;
   readFile(params: {
     relPath: string;

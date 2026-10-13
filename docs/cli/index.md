@@ -33,6 +33,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`system`](/cli/system)
 - [`models`](/cli/models)
 - [`memory`](/cli/memory)
+- [`curiosity`](/cli/curiosity)
 - [`nodes`](/cli/nodes)
 - [`devices`](/cli/devices)
 - [`node`](/cli/node)
@@ -126,6 +127,14 @@ bitterbot [--dev] [--profile <name>] <command>
     status
     index
     search
+  curiosity
+    status
+    list
+    ask
+    dismiss
+    pause
+    resume
+    run
   message
   agent
   agents

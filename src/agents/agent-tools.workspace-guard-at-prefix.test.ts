@@ -7,14 +7,13 @@
  * the guard sees "@/abs/path" as the relative path "<root>/@/abs/path" and
  * lets it through, then the tool strips the "@" and opens "/abs/path".
  *
- * The same hole existed with pi 0.73.1's tools (the last test shows it), so
- * this is not a regression of the port. It is listed because the path code is
+ * The same hole existed with pi 0.73.1's tools (verified before the pi engine
+ * was removed), so this is not a regression of the port. It is listed because the path code is
  * now owned here and its header says the guard-relevant rules are unchanged.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createReadTool as createPiReadTool } from "@mariozechner/pi-coding-agent";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   CLAUDE_PARAM_GROUPS,
@@ -112,15 +111,5 @@ describe("workspace-only guard vs the '@' prefix the file tools strip", () => {
       outcome: "rejected",
       content: "before\n",
     });
-  });
-
-  it("pi 0.73.1's read tool behind the guard is contained too (it had the same hole)", async () => {
-    const tool = wrapToolWorkspaceRootGuard(
-      createBitterbotReadTool(createPiReadTool(workspace) as unknown as AnyAgentTool),
-      workspace,
-    );
-    await expect(
-      tool.execute("call-1", { path: `@${path.join(outside, "secret.txt")}` }, undefined),
-    ).rejects.toThrow();
   });
 });

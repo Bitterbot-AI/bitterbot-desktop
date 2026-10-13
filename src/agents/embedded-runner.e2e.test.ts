@@ -348,7 +348,7 @@ describe("runEmbeddedPiAgent", () => {
     "appends new user + assistant after existing transcript entries",
     { timeout: 90_000 },
     async () => {
-      const { SessionManager } = await import("@mariozechner/pi-coding-agent");
+      const { TranscriptStore: SessionManager } = await import("./runtime/transcript/store.js");
       const sessionFile = nextSessionFile();
 
       const sessionManager = SessionManager.open(sessionFile);
@@ -475,7 +475,7 @@ describe("runEmbeddedPiAgent", () => {
   });
 
   it("repairs orphaned user messages and continues", async () => {
-    const { SessionManager } = await import("@mariozechner/pi-coding-agent");
+    const { TranscriptStore: SessionManager } = await import("./runtime/transcript/store.js");
     const sessionFile = nextSessionFile();
 
     const sessionManager = SessionManager.open(sessionFile);
@@ -506,7 +506,7 @@ describe("runEmbeddedPiAgent", () => {
   });
 
   it("repairs orphaned single-user sessions and continues", async () => {
-    const { SessionManager } = await import("@mariozechner/pi-coding-agent");
+    const { TranscriptStore: SessionManager } = await import("./runtime/transcript/store.js");
     const sessionFile = nextSessionFile();
 
     const sessionManager = SessionManager.open(sessionFile);

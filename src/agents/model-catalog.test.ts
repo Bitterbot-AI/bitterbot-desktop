@@ -6,7 +6,7 @@ import {
   resetModelCatalogCacheForTest,
 } from "./model-catalog.js";
 
-type PiSdkModule = typeof import("./runtime/engines/pi/model-discovery.js");
+type ModelsModule = typeof import("./runtime/models/index.js");
 
 const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
 
@@ -58,7 +58,7 @@ describe("loadModelCatalog", () => {
             },
           }),
         },
-      } as unknown as PiSdkModule;
+      } as unknown as ModelsModule;
     });
 
     const cfg = {} as BitterbotConfig;
@@ -92,7 +92,7 @@ describe("loadModelCatalog", () => {
               },
             }),
           },
-        }) as unknown as PiSdkModule,
+        }) as unknown as ModelsModule,
     );
 
     const result = await loadModelCatalog({ config: {} as BitterbotConfig });
@@ -126,7 +126,7 @@ describe("loadModelCatalog", () => {
               },
             }),
           },
-        }) as unknown as PiSdkModule,
+        }) as unknown as ModelsModule,
     );
 
     const result = await loadModelCatalog({ config: {} as BitterbotConfig });

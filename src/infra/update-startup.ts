@@ -5,8 +5,16 @@ import type { loadConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { VERSION } from "../version.js";
 import { resolveBitterbotPackageRoot } from "./bitterbot-root.js";
+import { CONTAINER_UPDATE_COMMAND, TARBALL_UPDATE_COMMAND } from "./install-kind.js";
 import { normalizeUpdateChannel, DEFAULT_PACKAGE_CHANNEL } from "./update-channels.js";
-import { compareSemverStrings, resolveNpmChannelTag, checkUpdateStatus } from "./update-check.js";
+import {
+  compareSemverStrings,
+  fetchLatestGithubRelease,
+  githubReleaseTargetFor,
+  resolveNpmChannelTag,
+  checkUpdateStatus,
+  type InstallKind,
+} from "./update-check.js";
 import { computeUpdateStaleness, type UpdateStaleness } from "./update-staleness.js";
 
 type UpdateCheckState = {
@@ -34,7 +42,7 @@ const UPDATE_CHECK_FLOOR_MS = 30 * 60 * 1000;
  */
 export type UpdateStatusEvent = {
   version: string;
-  installKind: "git" | "package" | "unknown";
+  installKind: InstallKind;
   sha: string | null;
   branch: string | null;
   registryLatest: string | null;
@@ -136,6 +144,50 @@ export async function runGatewayUpdateCheck(params: {
         );
         nextState.lastNotifiedVersion = resolved.version;
         nextState.lastNotifiedTag = resolved.tag;
+      }
+    }
+  }
+
+  // Container installs: the newest GitHub release is the newest image (D6).
+  // Never npm: the image cannot update itself and the npm name is unclaimed.
+  if (status.installKind === "container") {
+    const release = await fetchLatestGithubRelease({ timeoutMs: 2500 });
+    channelVersion = release.latestVersion;
+    const cmp = compareSemverStrings(VERSION, release.latestVersion);
+    if (release.latestVersion && cmp != null && cmp < 0) {
+      if (
+        state.lastNotifiedVersion !== release.latestVersion ||
+        state.lastNotifiedTag !== "image"
+      ) {
+        params.log.info(
+          `image v${release.latestVersion} available (running v${VERSION}). Pull to update: ${CONTAINER_UPDATE_COMMAND}`,
+        );
+        nextState.lastNotifiedVersion = release.latestVersion;
+        nextState.lastNotifiedTag = "image";
+      }
+    }
+  }
+
+  // Release-tarball installs (PLAN-56 Phase 3): the newest GitHub release
+  // that carries this platform's signed tarball. `bitterbot update` (or the
+  // Control UI's Update button) updates in place (Phase 3b).
+  if (status.installKind === "tarball") {
+    const target = githubReleaseTargetFor("tarball");
+    const release = target
+      ? await fetchLatestGithubRelease({ timeoutMs: 2500, target })
+      : { latestVersion: null };
+    channelVersion = release.latestVersion;
+    const cmp = compareSemverStrings(VERSION, release.latestVersion);
+    if (release.latestVersion && cmp != null && cmp < 0) {
+      if (
+        state.lastNotifiedVersion !== release.latestVersion ||
+        state.lastNotifiedTag !== "tarball"
+      ) {
+        params.log.info(
+          `release v${release.latestVersion} available (running v${VERSION}). Update from the Control UI or run: ${TARBALL_UPDATE_COMMAND}`,
+        );
+        nextState.lastNotifiedVersion = release.latestVersion;
+        nextState.lastNotifiedTag = "tarball";
       }
     }
   }

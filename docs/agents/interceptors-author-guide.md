@@ -131,9 +131,9 @@ Create `src/agents/skills/builtin-interceptors/my-guard.test.ts` modeled on the 
 
 ```ts
 import { describe, expect, it } from "vitest";
-import { myGuard } from "./my-guard.js";
 import { __testing as ctxTesting } from "../interceptor-context.js";
 import type { StepContext } from "../interceptor.js";
+import { myGuard } from "./my-guard.js";
 
 function mkCtx(over: Partial<StepContext> = {}): StepContext {
   return {

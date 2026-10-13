@@ -1,10 +1,10 @@
 /**
- * PLAN-52 Phase 4: the embedded runner on both engines.
+ * PLAN-52 Phase 4: the embedded runner end to end.
  *
  * `runEmbeddedPiAgent` and the explicit compaction path run a real turn with
- * a scripted model (no network), once with `runtime.engine: "pi"` and once
- * with `"bitterbot"`. The reply, the transcript, and what the model was sent
- * must be the same on both.
+ * a scripted model (no network). The reply, the transcript, and what the model
+ * was sent are checked; until Phase 6 the same run on the pi engine had to
+ * match, which is how these expectations were fixed.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -49,8 +49,6 @@ type Outcome = {
 async function runScenario(engine: RuntimeEngine, steps: ScriptStep[], compact: boolean) {
   const root = path.join(tempRoot, `${engine}-${compact ? "compact" : "turns"}`);
   const agentDir = path.join(root, "agent");
-  // The same workspace path text for both engines would need a shared dir; the
-  // system prompt is compared with the root replaced instead.
   const workspaceDir = path.join(root, "workspace");
   await fs.mkdir(agentDir, { recursive: true });
   await fs.mkdir(workspaceDir, { recursive: true });
@@ -134,7 +132,7 @@ const turnSteps: ScriptStep[] = [
   { kind: "text", text: "You're welcome." },
 ];
 
-describe("embedded runner on both engines", () => {
+describe("embedded runner", () => {
   const outcomes = new Map<string, Outcome>();
   const get = async (engine: RuntimeEngine, compact: boolean) => {
     const key = `${engine}:${compact}`;
@@ -152,9 +150,9 @@ describe("embedded runner on both engines", () => {
     return outcome;
   };
 
-  // Per-test timeouts: a cold pi engine run took 79 s on the macOS runner while
-  // the rest of the suite ran in parallel; 120 s was not enough.
-  for (const engine of ["pi", "bitterbot"] as const) {
+  // Per-test timeouts: a cold run took 79 s on the macOS runner while the rest
+  // of the suite ran in parallel; 120 s was not enough.
+  for (const engine of ["bitterbot"] as const) {
     it(`${engine}: a tool turn and a follow-up turn through runEmbeddedPiAgent`, async () => {
       const outcome = await get(engine, false);
       expect(outcome.replies).toEqual(["The note says hello.", "You're welcome."]);
@@ -172,29 +170,13 @@ describe("embedded runner on both engines", () => {
     }, 300_000);
   }
 
-  it("both engines send the model the same thing and write the same transcript", async () => {
-    const pi = await get("pi", false);
-    const owned = await get("bitterbot", false);
-    expect(owned.replies).toEqual(pi.replies);
-    expect(owned.calls.map((c) => c.tools)).toEqual(pi.calls.map((c) => c.tools));
-    expect(owned.calls.map((c) => c.messages)).toEqual(pi.calls.map((c) => c.messages));
-    expect(owned.calls.map((c) => c.system)).toEqual(pi.calls.map((c) => c.system));
-    expect(owned.transcript).toEqual(pi.transcript);
-  }, 300_000);
-
-  it("explicit compaction works on both engines and produces the same entry", async () => {
-    const pi = await get("pi", true);
-    const owned = await get("bitterbot", true);
-    for (const outcome of [pi, owned]) {
-      expect(outcome.compaction).toMatchObject({ ok: true, compacted: true });
-      expect(outcome.compaction?.summary).toContain("SUMMARY: the note says hello.");
-      expect(outcome.transcript.some((line) => line.includes('"type":"compaction"'))).toBe(true);
-    }
-    expect(owned.compaction).toEqual(pi.compaction);
-    expect(owned.transcript).toEqual(pi.transcript);
+  it("explicit compaction writes a compaction entry with the scripted summary", async () => {
+    const outcome = await get("bitterbot", true);
+    expect(outcome.compaction).toMatchObject({ ok: true, compacted: true });
+    expect(outcome.compaction?.summary).toContain("SUMMARY: the note says hello.");
+    expect(outcome.transcript.some((line) => line.includes('"type":"compaction"'))).toBe(true);
     // The summary request itself (prompt text and custom instructions).
-    expect(owned.calls.at(-1)!.messages).toEqual(pi.calls.at(-1)!.messages);
-    expect(owned.calls.at(-1)!.messages.join("\n")).toContain(
+    expect(outcome.calls.at(-1)!.messages.join("\n")).toContain(
       "Additional focus: keep the note content",
     );
   }, 300_000);

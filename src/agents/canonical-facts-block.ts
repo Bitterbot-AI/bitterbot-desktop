@@ -12,8 +12,37 @@
 
 import type { BitterbotConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { normalizeScopeName } from "../memory/canonical-facts.js";
 
 const log = createSubsystemLogger("canonical-block");
+
+/**
+ * PLAN-55 Phase 1: the "current project" a run belongs to, for
+ * `project:<name>` fact scoping. Bitterbot has no project model yet, so the
+ * project is the basename of the agent's workspace directory
+ * (`agents.list[].workspace`), slugified the same way a scope name is. The
+ * shared default workspace (`~/.bitterbot/workspace`) is nobody's project
+ * and reads as "no project", so project-scoped facts never render there.
+ */
+export const DEFAULT_WORKSPACE_BASENAME = "workspace";
+
+export function resolveActiveProjectName(workspaceDir: string | undefined | null): string | null {
+  const trimmed = workspaceDir?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  // Split on both separators: a Windows workspace path reaches this code
+  // on a Linux gateway (WSL, Docker) as a plain string.
+  const base =
+    trimmed
+      .replace(/[\\/]+$/, "")
+      .split(/[\\/]+/)
+      .at(-1) ?? "";
+  if (!base || base === DEFAULT_WORKSPACE_BASENAME || base === "." || base === "..") {
+    return null;
+  }
+  return normalizeScopeName(base);
+}
 
 /**
  * Categories injected for subagent/cron ("minimal") prompts: enough that a
@@ -60,6 +89,8 @@ export async function resolveCanonicalFactsBlock(params: {
   config?: BitterbotConfig;
   agentId: string;
   promptMode?: "full" | "minimal" | "none";
+  /** PLAN-55 Phase 1: the run's workspace, for project-scoped facts. */
+  workspaceDir?: string;
 }): Promise<string | undefined> {
   if (params.config?.memory?.canonicalLedger?.enabled === false) {
     return undefined;
@@ -80,6 +111,7 @@ export async function resolveCanonicalFactsBlock(params: {
     }
     const block = store.renderBlock({
       categories: params.promptMode === "minimal" ? MINIMAL_MODE_CATEGORIES : undefined,
+      activeProject: resolveActiveProjectName(params.workspaceDir),
     });
     // Observability: facts existing but never reaching a prompt is the
     // wired-but-dead class — count every injection attempt.

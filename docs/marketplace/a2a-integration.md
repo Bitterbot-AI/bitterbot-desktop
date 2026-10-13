@@ -477,8 +477,8 @@ Send the initial request, handle the 402, pay, and retry:
 
 ```typescript
 import { createWalletClient, http, parseUnits } from "viem";
-import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
 
@@ -872,7 +872,7 @@ AP2 Intent Mandates: **scope once, spend silently in-scope, escalate out-of-scop
 
 - **A spend grant** is a signed, revocable budget the owner sets once: an allowance
   per period, to a set of payees, with an expiry (`{allowed_payees, allowance,
-period_seconds, per_tx_max?, exp}`), signed by the node's owner/device Ed25519 key
+  period_seconds, per_tx_max?, exp}`), signed by the node's owner/device Ed25519 key
   so it is tamper-evident and non-repudiable. Managed via the `spendGrant.*` operator
   RPCs (`set` / `list` / `revoke`).
 - **In-scope spends** proceed with zero prompts and carry the grant's id into their
@@ -1137,7 +1137,7 @@ numeric field range-checked) and stored in `skill_attestations`.
   cached card for up to five minutes). It is read from the live config
   file; no restart is needed.
 - **Slashable seller bond, as a ledger.** `marketplace.postBond
-{ sellerPubkey, amountUsdc }` (operator write scope) records a stake at
+  { sellerPubkey, amountUsdc }` (operator write scope) records a stake at
   risk; no funds move anywhere in this path (invariant I7). The trigger is
   corroborated regression evidence, not a single failing task: this
   node's own regression attestation on a peer-origin skill from that

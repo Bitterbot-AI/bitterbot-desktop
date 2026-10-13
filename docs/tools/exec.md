@@ -16,7 +16,7 @@ Background sessions are scoped per agent; `process` only sees sessions from the 
 
 - `command` (required)
 - `workdir` (defaults to cwd)
-- `env` (key/value overrides)
+- `env` (key/value overrides; number and boolean values are converted to strings)
 - `yieldMs` (default 10000): auto-background after delay
 - `background` (bool): background immediately
 - `timeout` (seconds, default 1800): kill on expiry

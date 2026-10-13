@@ -13,7 +13,7 @@
 import type { Context, Message, Model, ThinkingLevel, Tool } from "@mariozechner/pi-ai";
 import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { toClaudeCodeName } from "./client.js";
-import { modelSupportsAdaptiveThinking } from "./config.js";
+import { modelRejectsTemperature, modelSupportsAdaptiveThinking } from "./config.js";
 import { sanitizeSurrogates, transformMessages } from "./pi-ai-vendored.js";
 import {
   filterToolReferences,
@@ -416,7 +416,20 @@ export function buildParams(
     ];
   }
   if (options?.temperature !== undefined) {
-    params.temperature = options.temperature;
+    // Divergence from pi-ai 0.52.12, which sent temperature unconditionally:
+    // the API rejects temperature alongside thinking, and models after Opus
+    // 4.6 reject the field. Both are a guaranteed 400, so drop it instead.
+    const thinkingOn = Boolean(options.thinkingEnabled && model.reasoning);
+    const rejected = modelRejectsTemperature(model.id);
+    if (thinkingOn || rejected) {
+      log.debug(
+        `dropping temperature=${options.temperature} for ${model.id}: ${
+          thinkingOn ? "thinking is enabled" : "model rejects the field"
+        }`,
+      );
+    } else {
+      params.temperature = options.temperature;
+    }
   }
   if (context.tools) {
     params.tools = convertTools(context.tools, isOAuthToken, extras.plan);
