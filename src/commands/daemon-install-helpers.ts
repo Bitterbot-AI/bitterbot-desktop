@@ -2,7 +2,10 @@ import { formatCliCommand } from "../cli/command-format.js";
 import { collectConfigEnvVars } from "../config/env-vars.js";
 import type { BitterbotConfig } from "../config/types.js";
 import { resolveGatewayLaunchAgentLabel } from "../daemon/constants.js";
-import { resolveGatewayProgramArguments } from "../daemon/program-args.js";
+import {
+  resolveGatewayProgramArguments,
+  resolveTarballLauncherForService,
+} from "../daemon/program-args.js";
 import {
   renderSystemNodeWarning,
   resolvePreferredNodePath,
@@ -37,12 +40,21 @@ export async function buildGatewayInstallPlan(params: {
   config?: BitterbotConfig;
 }): Promise<GatewayInstallPlan> {
   const devMode = params.devMode ?? resolveGatewayDevMode();
+  // A release-tarball install's service runs its stable launcher
+  // (<app>/current/bin/bitterbot, which follows upgrades); a system Node found
+  // on PATH must not turn that into a node + versioned entry path.
+  const tarballLauncher =
+    !devMode && params.runtime === "node" && !params.nodePath
+      ? await resolveTarballLauncherForService(params.env as NodeJS.ProcessEnv)
+      : null;
   const nodePath =
     params.nodePath ??
-    (await resolvePreferredNodePath({
-      env: params.env,
-      runtime: params.runtime,
-    }));
+    (tarballLauncher
+      ? undefined
+      : await resolvePreferredNodePath({
+          env: params.env,
+          runtime: params.runtime,
+        }));
   const { programArguments, workingDirectory } = await resolveGatewayProgramArguments({
     port: params.port,
     dev: devMode,

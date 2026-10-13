@@ -1,0 +1,168 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  decideGatewaySwitch,
+  type GatewaySwitchFindings,
+  type GatewaySwitchOutcome,
+} from "../../infra/gateway-switch.js";
+import type { RuntimeEnv } from "../../runtime.js";
+import { runGatewaySwitch, SWITCH_EXIT, type GatewaySwitchCommandDeps } from "./switch.js";
+
+const CLONE_FINDINGS: GatewaySwitchFindings = {
+  port: 19001,
+  self: { root: "/home/u/.bitterbot/app/1.5.0", kind: "tarball", version: "1.5.0" },
+  service: null,
+  listener: {
+    pid: 4242,
+    command: "bitterbot-gateway",
+    isGateway: true,
+    runsFrom: { root: "/home/u/bitterbot-desktop", kind: "git", version: "1.4.0" },
+    reportedVersion: null,
+    isSelf: false,
+    underService: false,
+    exePath: "/usr/bin/node",
+    childPids: [],
+  },
+  remoteMode: false,
+};
+
+function harness(opts: {
+  findings?: GatewaySwitchFindings;
+  outcome?: Partial<GatewaySwitchOutcome>;
+  interactive?: boolean;
+  answer?: boolean;
+}) {
+  const findings = opts.findings ?? CLONE_FINDINGS;
+  const decision = decideGatewaySwitch(findings);
+  const execute = vi.fn(async (): Promise<GatewaySwitchOutcome> => ({
+    ok: true,
+    status: "switched",
+    findings,
+    decision,
+    steps: [],
+    ...opts.outcome,
+  }));
+  const deps: GatewaySwitchCommandDeps = {
+    detect: vi.fn(async () => ({ findings, decision, execute })),
+    confirm: vi.fn(async () => opts.answer ?? true),
+    isInteractive: () => opts.interactive ?? false,
+  };
+  const out: string[] = [];
+  const runtime: RuntimeEnv = {
+    log: (...a: unknown[]) => void out.push(a.join(" ")),
+    error: (...a: unknown[]) => void out.push(a.join(" ")),
+    exit: (code: number) => {
+      throw new Error(`exit ${code}`);
+    },
+  };
+  return { deps, execute, out, runtime };
+}
+
+describe("bitterbot gateway switch", () => {
+  beforeEach(() => {
+    vi.stubEnv("HOME", "/home/u");
+    vi.stubEnv("BITTERBOT_HOME", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("--check reports a git clone in plain language and exits 10 without changing anything", async () => {
+    const h = harness({});
+    const code = await runGatewaySwitch({ check: true }, h.runtime, h.deps);
+    expect(code).toBe(SWITCH_EXIT.available);
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(h.out.join("\n")).toContain(
+      "Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001.",
+    );
+    expect(h.out.join("\n")).not.toMatch(/—/);
+  });
+
+  it("--check on a fresh machine exits 0", async () => {
+    const h = harness({ findings: { ...CLONE_FINDINGS, listener: null } });
+    expect(await runGatewaySwitch({ check: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.ok);
+    expect(h.out.join("\n")).toContain("Nothing to switch");
+  });
+
+  it("--yes switches and tells a clone user the clone can go (never deleting it)", async () => {
+    const h = harness({});
+    const code = await runGatewaySwitch({ yes: true }, h.runtime, h.deps);
+    expect(code).toBe(SWITCH_EXIT.ok);
+    const text = h.out.join("\n");
+    expect(text).toContain("Switching to 1.5.0...");
+    expect(text).toContain("Your settings and memory are unchanged.");
+    expect(text).toContain("Your git clone at ~/bitterbot-desktop is no longer used");
+    expect(text).toContain("nothing was deleted");
+  });
+
+  it("without --yes and without a terminal it changes nothing and prints the command", async () => {
+    const h = harness({ interactive: false });
+    expect(await runGatewaySwitch({}, h.runtime, h.deps)).toBe(SWITCH_EXIT.notDone);
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(h.out.join("\n")).toContain("bitterbot gateway switch --yes");
+  });
+
+  it("asks once in a terminal (default yes), and a no changes nothing", async () => {
+    const yes = harness({ interactive: true, answer: true });
+    expect(await runGatewaySwitch({}, yes.runtime, yes.deps)).toBe(SWITCH_EXIT.ok);
+    expect(yes.deps.confirm).toHaveBeenCalledWith("Switch to 1.5.0 now?");
+    const no = harness({ interactive: true, answer: false });
+    expect(await runGatewaySwitch({}, no.runtime, no.deps)).toBe(SWITCH_EXIT.notDone);
+    expect(no.execute).not.toHaveBeenCalled();
+  });
+
+  it("a rolled-back switch exits 1 and says the old version runs again", async () => {
+    const h = harness({
+      outcome: {
+        ok: false,
+        status: "rolled-back",
+        error: "The new gateway exited during startup.",
+        rollback: { ok: true, restored: "process", manual: null },
+      },
+    });
+    expect(await runGatewaySwitch({ yes: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.rolledBack);
+    expect(h.out.join("\n")).toContain(
+      "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) is running again, as before.",
+    );
+  });
+
+  it("a failed rollback exits 3 and says what to run", async () => {
+    const h = harness({
+      outcome: {
+        ok: false,
+        status: "rolled-back",
+        error: "boom",
+        rollback: {
+          ok: false,
+          restored: "nothing",
+          manual: "cd ~/bitterbot-desktop && pnpm start gateway",
+        },
+      },
+    });
+    expect(await runGatewaySwitch({ yes: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.failed);
+    expect(h.out.join("\n")).toContain("pnpm start gateway");
+  });
+
+  it("a foreign program on the port is reported and left alone (exit 2)", async () => {
+    const h = harness({
+      findings: {
+        ...CLONE_FINDINGS,
+        listener: {
+          ...CLONE_FINDINGS.listener!,
+          isGateway: false,
+          command: "python3 -m http.server",
+        },
+      },
+    });
+    expect(await runGatewaySwitch({ yes: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.notDone);
+    expect(h.execute).not.toHaveBeenCalled();
+    expect(h.out.join("\n")).toContain("not a Bitterbot gateway");
+  });
+
+  it("--json prints one JSON object", async () => {
+    const h = harness({});
+    await runGatewaySwitch({ check: true, json: true }, h.runtime, h.deps);
+    expect(h.out).toHaveLength(1);
+    const parsed = JSON.parse(h.out[0] ?? "{}") as Record<string, unknown>;
+    expect(parsed).toMatchObject({ status: "available", check: true, port: 19001 });
+  });
+});
