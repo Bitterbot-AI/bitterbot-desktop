@@ -93,4 +93,17 @@ describe("version consistency", () => {
       expect(extraPaths.has(rel), `${rel} missing from release-please extra-files`).toBe(true);
     }
   });
+
+  it("the Cargo.lock jsonpath filters on the tagged .value release-please parses", () => {
+    // release-please's toml parser wraps every scalar as {start, end, value},
+    // so a filter on `@.name` never matches and the lock silently stays on the
+    // old version (that is how 1.5.0 shipped with a red main).
+    const config = readJson("release-please-config.json") as {
+      packages: Record<string, { "extra-files"?: Array<{ path: string; jsonpath?: string }> }>;
+    };
+    const lockEntry = (config.packages["."]["extra-files"] ?? []).find(
+      (f) => f.path === "desktop/src-tauri/Cargo.lock",
+    );
+    expect(lockEntry?.jsonpath).toBe("$.package[?(@.name.value=='bitterbot-desktop')].version");
+  });
 });
