@@ -1,4 +1,5 @@
 import { Option, type Command } from "commander";
+import { installerOutputMode } from "../../infra/installer-env.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   runDaemonInstall,
@@ -88,6 +89,7 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
         check: Boolean(cmdOpts.check || cmdOpts.dryRun),
         yes: Boolean(cmdOpts.yes),
         summary: cmdOpts.summary !== false,
+        installer: installerOutputMode(process.env) !== null,
         json: Boolean(cmdOpts.json),
         port: cmdOpts.port,
         timeout: cmdOpts.timeout,

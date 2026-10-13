@@ -332,6 +332,46 @@ bb_confirm() {
   esac
 }
 
+# The state dir (config, keys, memory) is private to you. Same policy as
+# src/infra/state-dir-perms.ts: a default-umask mode (755, 775, 777) becomes
+# 700, any other mode only loses the "other users" bits (group sharing and
+# setgid are kept). Only the directory itself, only when it is yours, never
+# $HOME, / or a parent of $HOME, never a relative path, and not at all with
+# BITTERBOT_STATE_DIR_PERMS=keep. $1: the install root (the state dir is
+# created when the install root is inside it).
+bb_secure_state_dir() {
+  local install_dir=$1 state_dir mode
+  [ "${BITTERBOT_STATE_DIR_PERMS:-}" = "keep" ] && return 0
+  state_dir=${BITTERBOT_STATE_DIR:-}
+  # Trim surrounding whitespace and expand a leading ~ like resolveStateDir.
+  state_dir=${state_dir#"${state_dir%%[![:space:]]*}"}
+  state_dir=${state_dir%"${state_dir##*[![:space:]]}"}
+  case $state_dir in
+    "") state_dir="$HOME/.bitterbot" ;;
+    \~) state_dir=$HOME ;;
+    \~/*) state_dir="$HOME/${state_dir#\~/}" ;;
+  esac
+  state_dir=${state_dir%/}
+  case $state_dir in
+    /?*) ;;
+    *) return 0 ;;
+  esac
+  case "${HOME%/}/" in
+    "$state_dir"/*) return 0 ;;
+  esac
+  case $install_dir in
+    "$state_dir" | "$state_dir"/*) mkdir -p "$state_dir" ;;
+  esac
+  if [ ! -d "$state_dir" ] || [ ! -O "$state_dir" ]; then
+    return 0
+  fi
+  mode=$(stat -c %a "$state_dir" 2>/dev/null || stat -f %Lp "$state_dir" 2>/dev/null || true)
+  case $mode in
+    755 | 775 | 777) chmod 700 "$state_dir" || bb_warn "could not make $state_dir private (chmod 700)" ;;
+    *) chmod o-rwx "$state_dir" 2>/dev/null || true ;;
+  esac
+}
+
 # After a successful (or unneeded) switch: point `previous` at the version
 # that was current before, then remove versions older than that, except one
 # a running Bitterbot still uses.
@@ -373,7 +413,14 @@ bb_switch_gateway() {
   summary=$(BITTERBOT_INSTALLER=1 BITTERBOT_HIDE_BANNER=1 "$bin" gateway switch --check 2>&1) || rc=$?
   BB_CONFIG_NOTED=1
   case $rc in
-    0) return 0 ;;
+    0)
+      # Nothing to switch: only the config advice line (if any) to show.
+      if [ -n "$summary" ]; then
+        bb_say ""
+        bb_say "$summary"
+      fi
+      return 0
+      ;;
     10) ;;
     2)
       bb_say ""
@@ -388,6 +435,10 @@ bb_switch_gateway() {
       return 0
       ;;
     *)
+      if [ -n "$summary" ]; then
+        bb_say ""
+        bb_say "$summary"
+      fi
       bb_warn "could not check for a running older Bitterbot (exit $rc). To switch later: $bin gateway switch"
       BB_SWITCH_STATE=pending
       return 0
@@ -676,16 +727,7 @@ main() {
     fi
   fi
 
-  # The state dir (config, keys, memory) is private to you: only the
-  # directory itself is tightened, never the files in it, and only when it
-  # is yours.
-  local state_dir="${BITTERBOT_STATE_DIR:-$HOME/.bitterbot}"
-  case $install_dir in
-    "$state_dir" | "$state_dir"/*) mkdir -p "$state_dir" ;;
-  esac
-  if [ -d "$state_dir" ] && [ -O "$state_dir" ]; then
-    chmod 700 "$state_dir" || bb_warn "could not make $state_dir private (chmod 700)"
-  fi
+  bb_secure_state_dir "$install_dir"
 
   # Unpack next to the install root (same filesystem: the moves are renames).
   mkdir -p "$install_dir"

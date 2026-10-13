@@ -33,6 +33,7 @@ import {
   setupInProgress,
 } from "../gateway/setup-token.js";
 import { looksLikeContainer, readDeclaredInstallKind } from "../infra/install-kind.js";
+import { withoutInstallerEnv } from "../infra/installer-env.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { isFirstBootOnlyConfig } from "../wizard/onboarding.first-boot.js";
 import { isRemoteEnvironment } from "./oauth-env.js";
@@ -157,7 +158,7 @@ export function spawnSetupGateway(port: number): { pid?: number; logPath: string
     ],
     // Unsupervised: if setup installs the gateway service, this process
     // hands its port over at Finish (src/infra/setup-handover.ts).
-    { detached: true, stdio: ["ignore", fd, fd], env: process.env },
+    { detached: true, stdio: ["ignore", fd, fd], env: withoutInstallerEnv(process.env) },
   );
   child.unref();
   fs.closeSync(fd);

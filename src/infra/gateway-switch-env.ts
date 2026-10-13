@@ -17,6 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 import { KNOWN_CREDENTIAL_ENV } from "../config/known-env-vars.js";
+import { INSTALLER_ONLY_ENV } from "./installer-env.js";
 
 /** Variables that belong to an install or a service manager, never carried. */
 const NOT_CARRIED = new Set([
@@ -130,11 +131,11 @@ export function copyDotEnvKeys(params: { source: string; target: string; now?: D
   return { copied: plan.keys, skipped: plan.skipped, backup };
 }
 
-const PROCESS_ONLY_IGNORED = new Set([
+const PROCESS_ONLY_IGNORED = new Set<string>([
+  ...INSTALLER_ONLY_ENV,
   "BITTERBOT_NODE_OPTIONS_READY",
   "BITTERBOT_INSTALL_KIND",
   "BITTERBOT_INSTALL_ROOT",
-  "BITTERBOT_INSTALLER",
   "BITTERBOT_SERVICE_MARKER",
   "BITTERBOT_SERVICE_KIND",
   "BITTERBOT_SERVICE_VERSION",

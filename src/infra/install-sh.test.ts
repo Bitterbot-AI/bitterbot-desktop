@@ -438,7 +438,7 @@ describeInstaller("scripts/install.sh", () => {
     'echo "$*" >> "$HOME/calls.log"',
     'echo "${BITTERBOT_INSTALLER:-} ${BITTERBOT_HIDE_BANNER:-}" >> "$HOME/modes.log"',
     'case "$*" in',
-    '  "gateway switch --check") echo "Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001."; exit "${FAKE_CHECK_RC:-10}" ;;',
+    '  "gateway switch --check") if [ "${FAKE_CHECK_RC:-10}" = 0 ]; then printf "%s" "${FAKE_CHECK_OUT:-}"; else echo "Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001."; fi; exit "${FAKE_CHECK_RC:-10}" ;;',
     '  "gateway switch --yes --no-summary") echo "Done. Your settings and memory are unchanged."; exit "${FAKE_SWITCH_RC:-0}" ;;',
     "esac",
   ].join("\n");
@@ -478,6 +478,21 @@ describeInstaller("scripts/install.sh", () => {
       expect(res.status, res.out).toBe(0);
       expect(res.out).not.toContain("Found Bitterbot");
       expect(calls(home)).toBe("gateway switch --check\n");
+    });
+
+    it("nothing to switch: the one config line from the check is still shown, once", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const line =
+        "2 settings in your config are deprecated (still accepted this release, removed next release). Tidy them with: bitterbot doctor --fix";
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "0", FAKE_CHECK_OUT: line }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out.split(line).length - 1).toBe(1);
+      // A failing check still shows what it printed.
+      const bad = runInstaller([], { ...env, FAKE_CHECK_RC: "1", FAKE_CHECK_OUT: "" }, freshHome());
+      expect(bad.out).toContain("could not check for a running older Bitterbot (exit 1)");
+      expect(bad.out).toContain("Found Bitterbot 1.4.0");
     });
 
     it("--no-switch never runs the switch", () => {
@@ -603,6 +618,52 @@ describeInstaller("scripts/install.sh", () => {
     const fresh = freshHome();
     expect(runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, fresh).status).toBe(0);
     expect(fs.statSync(path.join(fresh, ".bitterbot")).mode & 0o777).toBe(0o700);
+  });
+
+  it("state dir policy: group sharing kept, $HOME and relative paths never touched, opt-out honoured", () => {
+    freshReleases();
+    publish("2.0.0");
+    const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
+    // Deliberate group sharing (2770 setgid): kept.
+    const shared = freshHome();
+    const sharedState = path.join(shared, ".bitterbot");
+    fs.mkdirSync(sharedState, { recursive: true });
+    fs.chmodSync(sharedState, 0o2770);
+    expect(runInstaller([], env, shared).status).toBe(0);
+    expect(fs.statSync(sharedState).mode & 0o7777).toBe(0o2770);
+    // 751: only the world bit goes.
+    const world = freshHome();
+    const worldState = path.join(world, ".bitterbot");
+    fs.mkdirSync(worldState, { recursive: true });
+    fs.chmodSync(worldState, 0o751);
+    expect(runInstaller([], env, world).status).toBe(0);
+    expect(fs.statSync(worldState).mode & 0o777).toBe(0o750);
+    // BITTERBOT_STATE_DIR=~ (home itself): never chmod $HOME.
+    const homeItself = freshHome();
+    fs.mkdirSync(homeItself, { recursive: true });
+    fs.chmodSync(homeItself, 0o755);
+    expect(
+      runInstaller(
+        ["--dir", path.join(homeItself, "app")],
+        { ...env, BITTERBOT_STATE_DIR: " ~ " },
+        homeItself,
+      ).status,
+    ).toBe(0);
+    expect(fs.statSync(homeItself).mode & 0o777).toBe(0o755);
+    // A leading ~ expands like resolveStateDir.
+    const tilde = freshHome();
+    const tildeState = path.join(tilde, "bbstate");
+    fs.mkdirSync(tildeState, { recursive: true });
+    fs.chmodSync(tildeState, 0o755);
+    expect(runInstaller([], { ...env, BITTERBOT_STATE_DIR: "~/bbstate" }, tilde).status).toBe(0);
+    expect(fs.statSync(tildeState).mode & 0o777).toBe(0o700);
+    // Opt-out.
+    const keep = freshHome();
+    const keepState = path.join(keep, ".bitterbot");
+    fs.mkdirSync(keepState, { recursive: true });
+    fs.chmodSync(keepState, 0o755);
+    expect(runInstaller([], { ...env, BITTERBOT_STATE_DIR_PERMS: "keep" }, keep).status).toBe(0);
+    expect(fs.statSync(keepState).mode & 0o777).toBe(0o755);
   });
 
   it("never prunes or replaces a version a running process uses", async () => {

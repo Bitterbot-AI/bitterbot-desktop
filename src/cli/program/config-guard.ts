@@ -3,6 +3,7 @@ import {
   type DoctorConfigOutput,
 } from "../../commands/doctor-config-flow.js";
 import { readConfigFileSnapshot } from "../../config/config.js";
+import { installerOutputMode } from "../../infra/installer-env.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { colorize, isRich, theme } from "../../terminal/theme.js";
 import { shortenHomePath } from "../../utils.js";
@@ -46,14 +47,7 @@ async function getConfigSnapshot() {
  * advice at most once. Errors that stop a command always print.
  */
 export function configGuardOutput(env: NodeJS.ProcessEnv): DoctorConfigOutput {
-  const mode = env.BITTERBOT_INSTALLER?.trim().toLowerCase();
-  if (mode === "quiet") {
-    return "silent";
-  }
-  if (mode) {
-    return "summary";
-  }
-  return "guard";
+  return installerOutputMode(env) ?? "guard";
 }
 
 export async function ensureConfigReady(params: {

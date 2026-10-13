@@ -239,6 +239,14 @@ describe("bitterbot gateway switch", () => {
     expect(h.out.join("\n")).not.toContain("Found Bitterbot");
   });
 
+  it("for the installer, nothing to switch prints nothing (its config line is all that shows)", async () => {
+    const h = harness({ findings: { ...CLONE_FINDINGS, listener: null } });
+    expect(await runGatewaySwitch({ check: true, installer: true }, h.runtime, h.deps)).toBe(
+      SWITCH_EXIT.ok,
+    );
+    expect(h.out).toEqual([]);
+  });
+
   it("--json prints one JSON object", async () => {
     const h = harness({});
     await runGatewaySwitch({ check: true, json: true }, h.runtime, h.deps);

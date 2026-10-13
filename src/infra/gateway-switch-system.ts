@@ -52,6 +52,7 @@ import {
   type ServiceFindings,
 } from "./gateway-switch.js";
 import { detectInstallKind } from "./install-kind.js";
+import { withoutInstallerEnv } from "./installer-env.js";
 import { inspectPortUsage } from "./ports-inspect.js";
 import { swapVersionLink } from "./tarball-install.js";
 
@@ -789,21 +790,14 @@ export async function detectGatewaySwitch(opts: DetectOptions = {}): Promise<{
   return { findings, decision: decideGatewaySwitch(findings), config: cfg };
 }
 
-/** Environment for a gateway started here: never the installer's test overrides. */
+/** Environment for a gateway started here: never the installer's per-command variables. */
 function backgroundEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const next = { ...env };
+  const next = withoutInstallerEnv(env);
+  // An install's markers come from its own launcher, never from this process.
   for (const key of [
-    // An install's markers come from its own launcher, never from this process.
     "BITTERBOT_INSTALL_KIND",
     "BITTERBOT_INSTALL_ROOT",
     "BITTERBOT_NODE_OPTIONS_READY",
-    // The installer's quiet output settings are for its own commands only.
-    "BITTERBOT_INSTALLER",
-    "BITTERBOT_HIDE_BANNER",
-    "BITTERBOT_INSTALL_TEST_MODE",
-    "BITTERBOT_INSTALL_BASE_URL",
-    "BITTERBOT_INSTALL_TEST_PUBKEY",
-    "BITTERBOT_INSTALL_TEST_VERIFIER",
   ]) {
     delete next[key];
   }

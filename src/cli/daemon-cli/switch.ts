@@ -44,6 +44,8 @@ export type GatewaySwitchCommandOptions = {
   check?: boolean;
   /** false: skip the "Found ... / This is ..." summary (the caller showed it). */
   summary?: boolean;
+  /** Run by install.sh: say nothing when there is nothing to switch. */
+  installer?: boolean;
   yes?: boolean;
   json?: boolean;
   port?: string | number;
@@ -390,7 +392,7 @@ export async function runGatewaySwitch(
   if (check || decision.action !== "switch") {
     if (json) {
       runtime.log(JSON.stringify(toJson(nothing, check)));
-    } else {
+    } else if (!(opts.installer && decision.action === "none" && !decision.note)) {
       say(describeFindings(findings, decision));
     }
     if (decision.action === "blocked") {

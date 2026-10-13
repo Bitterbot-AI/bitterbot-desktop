@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 import JSON5 from "json5";
 import { loadDotEnv } from "../infra/dotenv.js";
 import { resolveRequiredHomeDir } from "../infra/home-dir.js";
+import { installerOutputMode } from "../infra/installer-env.js";
 import {
   loadShellEnvFallback,
   resolveShellEnvFallbackTimeoutMs,
@@ -778,7 +779,7 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
         ).resolvedConfigRaw;
         warnOnConfigMiskeys(resolvedConfig, deps.logger);
         // The installer reports deprecated keys once, as one line.
-        if (!deps.env.BITTERBOT_INSTALLER?.trim()) {
+        if (!installerOutputMode(deps.env)) {
           warnOnDeprecatedConfigKeys(resolvedConfig, deps.logger);
         }
       }

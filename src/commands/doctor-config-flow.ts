@@ -14,6 +14,7 @@ import {
 import { isFrozenFallbackPeerList } from "../config/defaults.js";
 import { findDeprecatedConfigKeys, markDeprecatedConfigKeysWarned } from "../config/io.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
+import { getChildLogger } from "../logging/logger.js";
 import { listTelegramAccountIds, resolveTelegramAccount } from "../telegram/accounts.js";
 import { note } from "../terminal/note.js";
 import { isRecord } from "../utils.js";
@@ -412,9 +413,9 @@ async function maybeRepairTelegramAllowFromUsernames(cfg: BitterbotConfig): Prom
 
 export type DoctorConfigOutput = "doctor" | "guard" | "summary" | "silent";
 
-/** "5 old settings in your config are no longer used. Tidy them later with: ..." */
+/** "5 settings in your config are deprecated (still accepted this release, ...)". */
 export function deprecatedConfigSummaryLine(count: number): string {
-  return `${count} old setting${count === 1 ? " in your config is" : "s in your config are"} no longer used. Tidy ${count === 1 ? "it" : "them"} later with: ${formatCliCommand("bitterbot doctor --fix")}`;
+  return `${count} setting${count === 1 ? " in your config is" : "s in your config are"} deprecated (still accepted this release, removed next release). Tidy ${count === 1 ? "it" : "them"} with: ${formatCliCommand("bitterbot doctor --fix")}`;
 }
 
 export async function loadAndMaybeMigrateDoctorConfig(params: {
@@ -435,21 +436,24 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   const output = params.output ?? "doctor";
   const quiet = output === "summary" || output === "silent";
   const logLine = params.log ?? ((line: string) => console.log(line));
-  let suppressed = 0;
+  /** Titles of the notes a quiet run did not print (summarised at the end). */
+  const suppressed: string[] = [];
   const show: typeof note = (message, title) => {
     if (quiet) {
-      suppressed += 1;
+      suppressed.push(title ?? "");
       return;
     }
     note(message, title);
   };
   const section: typeof renderSection = (...args) => {
     if (quiet) {
-      suppressed += 1;
+      suppressed.push("Config");
       return;
     }
     renderSection(...args);
   };
+  /** "Doctor changes" notes about deprecated keys (summarised by their own line). */
+  let deprecatedNotes = 0;
 
   let snapshot = await readConfigFileSnapshot();
   const baseCfg = snapshot.config ?? {};
@@ -510,6 +514,12 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   // the root file with the included content inlined (drift-pass HIGH-1).
   let deprecatedOnlyChanges = false;
   const deprecatedHits = findDeprecatedConfigKeys(snapshot.resolved);
+  if (deprecatedHits.length > 0 && output !== "doctor") {
+    // The key names still go to the log file; the terminal gets one line.
+    getChildLogger({ subsystem: "config" }).warn(
+      `deprecated config keys: ${deprecatedHits.map((hit) => `${hit.path} (${hit.reason})`).join("; ")}`,
+    );
+  }
   if (deprecatedHits.length > 0 && output === "guard") {
     // One line before any command; the keys are not repeated when the
     // config loads (doctor lists them).
@@ -544,6 +554,7 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
         );
       }
       show(changeLines.join("\n"), "Doctor changes");
+      deprecatedNotes += 1;
       candidate = removal.config;
       deprecatedOnlyChanges = !pendingChanges;
       pendingChanges = true;
@@ -663,12 +674,40 @@ export async function loadAndMaybeMigrateDoctorConfig(params: {
   }
 
   if (output === "summary") {
+    // One short line per kind of finding, so the deprecated-keys line never
+    // hides a warning that matters.
     if (deprecatedHits.length > 0) {
       markDeprecatedConfigKeysWarned(deprecatedHits.map((hit) => hit.path));
       logLine(deprecatedConfigSummaryLine(deprecatedHits.length));
-    } else if (suppressed > 0) {
+    }
+    const count = (title: string) => suppressed.filter((t) => t === title).length;
+    if (count("Config warnings") > 0) {
+      logLine(`Your config has warnings. See them with: ${formatCliCommand("bitterbot doctor")}`);
+    }
+    if (count("Doctor warnings") > 0) {
       logLine(
-        `Your config has suggested fixes. Apply them later with: ${formatCliCommand("bitterbot doctor --fix")}`,
+        `A channel setting needs attention (for example Telegram allowFrom entries that authorize no one). See: ${formatCliCommand("bitterbot doctor")}`,
+      );
+    }
+    if (count("Unknown config keys") > 0) {
+      logLine(
+        `Your config has keys Bitterbot does not know (ignored). Remove them with: ${formatCliCommand("bitterbot doctor --fix")}`,
+      );
+    }
+    const other =
+      suppressed.filter(
+        (t) =>
+          t !== "Config warnings" &&
+          t !== "Doctor warnings" &&
+          t !== "Unknown config keys" &&
+          // An invalid config is reported by the caller; findings with a
+          // "Config" box also add their own fix note (counted here).
+          t !== "Config" &&
+          t !== "Doctor",
+      ).length - deprecatedNotes;
+    if (other > 0) {
+      logLine(
+        `Your config has suggested fixes. Apply them with: ${formatCliCommand("bitterbot doctor --fix")}`,
       );
     }
   } else if (output === "silent") {

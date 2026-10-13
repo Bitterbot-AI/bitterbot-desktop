@@ -54,6 +54,7 @@ describe("ensureConfigReady", () => {
     expect(configGuardOutput({})).toBe("guard");
     expect(configGuardOutput({ BITTERBOT_INSTALLER: "1" })).toBe("summary");
     expect(configGuardOutput({ BITTERBOT_INSTALLER: "quiet" })).toBe("silent");
+    expect(configGuardOutput({ BITTERBOT_INSTALLER: "true" })).toBe("guard");
     const saved = process.env.BITTERBOT_INSTALLER;
     process.env.BITTERBOT_INSTALLER = "quiet";
     try {

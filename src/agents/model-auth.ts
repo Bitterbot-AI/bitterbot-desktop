@@ -2,7 +2,7 @@ import path from "node:path";
 import { type Api, getEnvApiKey, type Model } from "@mariozechner/pi-ai";
 import { formatCliCommand } from "../cli/command-format.js";
 import type { BitterbotConfig } from "../config/config.js";
-import { PROVIDER_API_KEY_ENV } from "../config/known-env-vars.js";
+import { PROVIDER_API_KEY_ENV, PROVIDER_API_KEY_ENV_CHAINS } from "../config/known-env-vars.js";
 import type { ModelProviderAuthMode, ModelProviderConfig } from "../config/types.js";
 import { getShellEnvAppliedKeys } from "../infra/shell-env.js";
 import {
@@ -263,20 +263,17 @@ export function resolveEnvApiKey(provider: string): EnvApiKeyResult | null {
     return { apiKey: value, source };
   };
 
-  if (normalized === "github-copilot") {
-    return pick("COPILOT_GITHUB_TOKEN") ?? pick("GH_TOKEN") ?? pick("GITHUB_TOKEN");
-  }
-
-  if (normalized === "anthropic") {
-    return pick("ANTHROPIC_OAUTH_TOKEN") ?? pick("ANTHROPIC_API_KEY");
-  }
-
-  if (normalized === "chutes") {
-    return pick("CHUTES_OAUTH_TOKEN") ?? pick("CHUTES_API_KEY");
-  }
-
-  if (normalized === "zai") {
-    return pick("ZAI_API_KEY") ?? pick("Z_AI_API_KEY");
+  const chain = Object.hasOwn(PROVIDER_API_KEY_ENV_CHAINS, normalized)
+    ? PROVIDER_API_KEY_ENV_CHAINS[normalized]
+    : undefined;
+  if (chain) {
+    for (const envVar of chain) {
+      const found = pick(envVar);
+      if (found) {
+        return found;
+      }
+    }
+    return null;
   }
 
   if (normalized === "google-vertex") {
@@ -287,28 +284,9 @@ export function resolveEnvApiKey(provider: string): EnvApiKeyResult | null {
     return { apiKey: envKey, source: "gcloud adc" };
   }
 
-  if (normalized === "opencode") {
-    return pick("OPENCODE_API_KEY") ?? pick("OPENCODE_ZEN_API_KEY");
-  }
-
-  if (normalized === "qwen-portal") {
-    return pick("QWEN_OAUTH_TOKEN") ?? pick("QWEN_PORTAL_API_KEY");
-  }
-
-  if (normalized === "minimax-portal") {
-    return pick("MINIMAX_OAUTH_TOKEN") ?? pick("MINIMAX_API_KEY");
-  }
-
-  if (normalized === "kimi-coding") {
-    return pick("KIMI_API_KEY") ?? pick("KIMICODE_API_KEY");
-  }
-
-  if (normalized === "huggingface") {
-    return pick("HUGGINGFACE_HUB_TOKEN") ?? pick("HF_TOKEN");
-  }
-
-  const envMap = PROVIDER_API_KEY_ENV;
-  const envVar = envMap[normalized];
+  const envVar = Object.hasOwn(PROVIDER_API_KEY_ENV, normalized)
+    ? PROVIDER_API_KEY_ENV[normalized]
+    : undefined;
   if (!envVar) {
     return null;
   }
