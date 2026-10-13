@@ -311,6 +311,13 @@ jobs:
           if grep -v -m5 "$stamp" "$RUNNER_TEMP/tar-list.txt"; then echo "entries without the SOURCE_DATE_EPOCH mtime"; exit 1; fi
           if grep -v -m5 " 0/0 " "$RUNNER_TEMP/tar-list.txt"; then echo "entries not owned by 0/0"; exit 1; fi
 
+      - name: Keep the tarball for manual upgrade tests
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-tarball-linux-x64
+          path: ${{ runner.temp }}/release-out/bitterbot-*
+          retention-days: 3
+
       - name: Sign a local release with a throwaway key and serve it on loopback
         run: |
           set -euo pipefail
