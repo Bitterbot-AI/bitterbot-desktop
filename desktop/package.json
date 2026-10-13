@@ -65,13 +65,13 @@
     "@testing-library/user-event": "^14.6.7",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^6.1.2",
     "autoprefixer": "^10.6.1",
     "happy-dom": "^20.14.5",
     "postcss": "^8.5.29",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vite": "^8.3.4",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.11"
   }
 }
