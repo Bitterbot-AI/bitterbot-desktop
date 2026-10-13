@@ -59,11 +59,13 @@ export function resolveOverviewStats(
 
   const version =
     nonEmpty(runtime?.version) ?? nonEmpty(server?.version) ?? nonEmpty(hello?.version) ?? "—";
+  const runtimeUptime = runtime?.uptimeMs;
+  const snapshotUptime = snapshot?.uptimeMs;
   const uptimeMs =
-    typeof runtime?.uptimeMs === "number"
-      ? runtime.uptimeMs
-      : typeof snapshot?.uptimeMs === "number"
-        ? snapshot.uptimeMs
+    typeof runtimeUptime === "number"
+      ? runtimeUptime
+      : typeof snapshotUptime === "number"
+        ? snapshotUptime
         : null;
   const kind = runtime?.installKind;
   return {
