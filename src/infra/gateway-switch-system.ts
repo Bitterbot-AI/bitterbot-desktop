@@ -375,14 +375,15 @@ async function readRawDefinition(
   definition: ServiceDefinition | null,
   env: NodeJS.ProcessEnv,
 ): Promise<RawServiceDefinition | null> {
-  let file = definition?.sourcePath ?? null;
-  if (!file && process.platform === "win32") {
-    file = (await import("../daemon/schtasks.js")).resolveTaskScriptPath(env);
-  }
-  if (!file) {
-    return null;
-  }
   try {
+    let file = definition?.sourcePath ?? null;
+    if (!file && process.platform === "win32") {
+      // Throws without a home directory in env; no raw file then.
+      file = (await import("../daemon/schtasks.js")).resolveTaskScriptPath(env);
+    }
+    if (!file) {
+      return null;
+    }
     return { path: file, content: await fs.readFile(file, "utf8") };
   } catch {
     return null;

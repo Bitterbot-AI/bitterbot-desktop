@@ -95,7 +95,7 @@ directory itself changes, never the files in it, and never when it is your
 home directory, `/`, or owned by someone else. The gateway and
 `bitterbot onboard` check the same on start and print one line when they
 change something; `bitterbot doctor` flags a state directory other users can
-open. Set `BITTERBOT_STATE_DIR_PERMS=keep` to leave its permissions alone.
+open (not inside Docker, where the data folder is often shared with the host). Set `BITTERBOT_STATE_DIR_PERMS=keep` to leave its permissions alone.
 
 Each tarball contains the built gateway and Control UI, its production
 dependencies for that platform, the P2P orchestrator binary, an official

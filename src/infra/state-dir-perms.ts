@@ -20,6 +20,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { shortenHomePath } from "../utils.js";
+import { looksLikeContainer } from "./install-kind.js";
 
 export type StateDirPermsResult =
   | { action: "created" | "ok"; dir: string }
@@ -27,7 +28,14 @@ export type StateDirPermsResult =
   | {
       action: "skipped";
       dir: string;
-      reason: "windows" | "not-owner" | "opted-out" | "unsafe-dir" | "unsupported" | "error";
+      reason:
+        | "windows"
+        | "container"
+        | "not-owner"
+        | "opted-out"
+        | "unsafe-dir"
+        | "unsupported"
+        | "error";
       detail?: string;
     };
 
@@ -62,6 +70,8 @@ export function securePrivateStateDir(params: {
   env?: NodeJS.ProcessEnv;
   homedir?: string;
   getuid?: () => number;
+  /** Defaults to detecting a container (Docker, Podman). */
+  inContainer?: boolean;
   fsImpl?: Pick<typeof fs, "existsSync" | "mkdirSync" | "statSync" | "chmodSync">;
 }): StateDirPermsResult {
   const dir = params.stateDir;
@@ -70,6 +80,11 @@ export function securePrivateStateDir(params: {
   const fsImpl = params.fsImpl ?? fs;
   if (platform === "win32") {
     return { action: "skipped", dir, reason: "windows" };
+  }
+  // In a container the state dir is usually a bind mount the host user also
+  // reads (backups, `docker compose` volumes); the container is the isolation.
+  if (params.inContainer ?? looksLikeContainer()) {
+    return { action: "skipped", dir, reason: "container" };
   }
   if (env.BITTERBOT_STATE_DIR_PERMS?.trim().toLowerCase() === "keep") {
     return { action: "skipped", dir, reason: "opted-out" };

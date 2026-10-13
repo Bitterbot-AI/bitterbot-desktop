@@ -42,7 +42,24 @@ describePosix("securePrivateStateDir", () => {
     fs.rmSync(work, { recursive: true, force: true });
   });
   const run = (dir: string, extra: Partial<Parameters<typeof securePrivateStateDir>[0]> = {}) =>
-    securePrivateStateDir({ stateDir: dir, env: {}, homedir: home(), ...extra });
+    securePrivateStateDir({
+      stateDir: dir,
+      env: {},
+      homedir: home(),
+      inContainer: false,
+      ...extra,
+    });
+
+  it("leaves a container's state dir alone (often a bind mount the host user reads)", () => {
+    const dir = path.join(work, ".bitterbot");
+    fs.mkdirSync(dir, { mode: 0o755 });
+    fs.chmodSync(dir, 0o755);
+    expect(run(dir, { inContainer: true })).toMatchObject({
+      action: "skipped",
+      reason: "container",
+    });
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o755);
+  });
 
   it("creates a missing state dir 0700", () => {
     const dir = path.join(work, "a", ".bitterbot");
