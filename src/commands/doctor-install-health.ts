@@ -66,6 +66,8 @@ export type InstallHealthInput = {
   };
   /** Node binary the fix command names (defaults to the running one). */
   execPath?: string;
+  /** Platform the fix command is written for (defaults to this one). */
+  platform?: NodeJS.Platform;
   findBrowser?: (cfg: BitterbotConfig) => { kind: string; path: string } | null;
 };
 
@@ -260,6 +262,7 @@ export async function checkPlaywright(input: InstallHealthInput): Promise<CheckR
     env: input.env,
     homedir: input.homedir,
     execPath: input.execPath,
+    platform: input.platform,
   });
   // The Chromium build this playwright-core pins (its browsers.json), and
   // whether it is downloaded. A Playwright bump moves the revision; an older

@@ -162,7 +162,10 @@ export function inspectPlaywrightBrowsers(params: {
   };
 }
 
-function quoteArg(value: string): string {
+function quoteArg(value: string, platform: NodeJS.Platform): string {
+  if (platform === "win32") {
+    return /\s/.test(value) ? `"${value}"` : value;
+  }
   return /[\s"'$`\\]/.test(value) ? `"${value.replace(/(["$`\\])/g, "\\$1")}"` : value;
 }
 
@@ -191,7 +194,9 @@ export function playwrightInstallCommand(params: {
   const env = params.env ?? process.env;
   const platform = params.platform ?? process.platform;
   const execPath = params.execPath ?? process.execPath;
-  const cli = `${quoteArg(execPath)} ${quoteArg(path.join(params.pwDir, "cli.js"))} install chromium`;
+  // The command is for this machine's shell, so join with its separator.
+  const join = platform === "win32" ? path.win32.join : path.posix.join;
+  const cli = `${quoteArg(execPath, platform)} ${quoteArg(join(params.pwDir, "cli.js"), platform)} install chromium`;
   if (platform === "win32") {
     return cli;
   }
@@ -199,9 +204,9 @@ export function playwrightInstallCommand(params: {
   const browsersPath =
     explicit ||
     (params.installKind === "tarball"
-      ? path.join(params.homedir ?? os.homedir(), ".bitterbot", "browsers")
+      ? join(params.homedir ?? os.homedir(), ".bitterbot", "browsers")
       : "");
-  return browsersPath ? `PLAYWRIGHT_BROWSERS_PATH=${quoteArg(browsersPath)} ${cli}` : cli;
+  return browsersPath ? `PLAYWRIGHT_BROWSERS_PATH=${quoteArg(browsersPath, platform)} ${cli}` : cli;
 }
 
 /** The fix command for this process, detecting the install kind and playwright-core. */

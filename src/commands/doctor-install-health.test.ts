@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { playwrightInstallCommand } from "../browser/playwright-browsers.js";
 import {
   checkInstallKindAndChannel,
   checkLocalGguf,
@@ -188,7 +189,7 @@ describe("Playwright", () => {
   it("warns without playwright-core or without a browser", async () => {
     expect((await checkPlaywright(input({ resolvePlaywright: () => null }))).level).toBe("warn");
     const noBrowser = await checkPlaywright(
-      input({ findBrowser: () => null, execPath: "/opt/node/bin/node" }),
+      input({ findBrowser: () => null, execPath: "/opt/node/bin/node", platform: "linux" }),
     );
     expect(noBrowser.level).toBe("warn");
     expect(noBrowser.message).toContain(
@@ -237,9 +238,18 @@ describe("Playwright", () => {
       expect(r.level).toBe("warn");
       expect(r.message).toContain("Playwright 1.63.0 expects Chromium revision 1243");
       expect(r.message).toContain("found revision 1208 only");
-      expect(r.message).toContain(
-        `\`PLAYWRIGHT_BROWSERS_PATH=${browsers} /opt/node/bin/node ${pwDir}/cli.js install chromium\``,
-      );
+      const fix = playwrightInstallCommand({
+        installKind: "package",
+        pwDir,
+        env: { PLAYWRIGHT_BROWSERS_PATH: browsers },
+        execPath: "/opt/node/bin/node",
+      });
+      expect(r.message).toContain(`Fix: \`${fix}\``);
+      if (process.platform !== "win32") {
+        expect(fix).toBe(
+          `PLAYWRIGHT_BROWSERS_PATH=${browsers} /opt/node/bin/node ${pwDir}/cli.js install chromium`,
+        );
+      }
     });
 
     it("is info when nothing is downloaded but a system browser is there", async () => {
