@@ -209,6 +209,11 @@ export type GatewaySwitchOutcome = {
   /** Keys copied into the state directory's `.env` (names only). */
   envCopied?: string[];
   snapshotDir?: string | null;
+  /**
+   * Set when a new background service could not be set up and the gateway
+   * was started in the background instead (the reason, for the user).
+   */
+  serviceFallback?: string;
   rollback?: {
     ok: boolean;
     restored: "service" | "process" | "nothing";
@@ -950,6 +955,8 @@ export async function executeGatewaySwitch(params: {
   }
 
   // 3. Start this install.
+  let startDetached = decision.startDetached;
+  let serviceFallback: string | undefined;
   if (decision.installService) {
     params.onStep?.("install-service");
     try {
@@ -959,9 +966,25 @@ export async function executeGatewaySwitch(params: {
       record("install-service", true);
     } catch (err) {
       record("install-service", false, errorText(err));
-      return await rollback(`Could not set up the background service: ${errorText(err)}`);
+      // A brand-new service that the service manager refused (no user
+      // session bus, a unit directory it does not read, ...) is not a reason
+      // to undo the switch: the old gateway ran without one, so this one
+      // does too, and the user is told how to add the service later. A
+      // service that existed before is put back by the rollback instead.
+      const oldListener = findings.listener;
+      if (!(decision.freshService && oldListener?.isGateway && !oldListener.isSelf)) {
+        return await rollback(`Could not set up the background service: ${errorText(err)}`);
+      }
+      await deps.uninstallService().catch(() => {});
+      serviceTouched = false;
+      serviceFallback = errorText(err);
+      startDetached = true;
+      progress(
+        `  Could not set up a background service (${serviceFallback}); starting it in the background instead.`,
+      );
     }
-  } else if (decision.startDetached) {
+  }
+  if (startDetached) {
     params.onStep?.("start-gateway");
     try {
       const definition = await deps.buildServiceDefinition();
@@ -1085,5 +1108,6 @@ export async function executeGatewaySwitch(params: {
     steps,
     envCopied,
     snapshotDir: snapshot?.dir ?? null,
+    ...(serviceFallback ? { serviceFallback } : {}),
   };
 }

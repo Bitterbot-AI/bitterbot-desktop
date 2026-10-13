@@ -185,7 +185,11 @@ export function describeOutcome(outcome: GatewaySwitchOutcome): string[] {
         `Copied ${outcome.envCopied.length} key${outcome.envCopied.length === 1 ? "" : "s"}${m ? ` from ${shortenHomePath(m.source)} into ${shortenHomePath(m.target)}` : ""}: ${outcome.envCopied.join(", ")}`,
       );
     }
-    if (decision.action === "switch" && decision.freshService) {
+    if (outcome.serviceFallback) {
+      lines.push(
+        "It runs in the background until you log out or restart (a background service could not be set up). To start it on login: bitterbot gateway install",
+      );
+    } else if (decision.action === "switch" && decision.freshService) {
       lines.push(
         `It runs in the background as a ${serviceLabelFor(process.platform)} and starts on login.`,
       );

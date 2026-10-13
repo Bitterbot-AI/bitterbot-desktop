@@ -710,6 +710,18 @@ describe("executeGatewaySwitch", () => {
     expect(m.state.holder()).toBe(7000);
   });
 
+  it("a fresh service the service manager refuses: starts in the background instead of rolling back", async () => {
+    const f = findings({ listener: listener(), serviceManager: true });
+    const m = fakeMachine({ oldForeground: true, installFails: true });
+    const { outcome, progress } = await run(f, m);
+    expect(outcome.status).toBe("switched");
+    expect(outcome.serviceFallback).toContain("systemctl enable failed");
+    expect(m.state.uninstalls).toBe(1);
+    expect(m.state.detached[0]?.argv[0]).toBe(NEW_LAUNCHER);
+    expect(m.state.holder()).toBe(9000);
+    expect(progress.some((l) => l.includes("starting it in the background instead"))).toBe(true);
+  });
+
   it("slow but alive: keeps waiting past the healthy wait with progress lines (non-interactive)", async () => {
     const f = findings({ listener: listener({ underService: true }), service: service() });
     const m = fakeMachine({ oldUnderService: true, newBehavior: "slow", slowMs: 150_000 });

@@ -157,14 +157,16 @@ Answering yes (or passing `--yes`) runs `bitterbot gateway switch`, which:
 
    Settings the old gateway had only in its shell environment are named in a
    warning so you can add them.
+
 4. Points the background service at the new version (the same as
    `bitterbot gateway install --force`, keeping the old service's environment
    and its `EnvironmentFile=` lines) and starts it. Without a background
    service, it installs one (systemd user service, macOS LaunchAgent or
    Windows scheduled task), so Bitterbot keeps running and starts on login.
-   Only where no service manager exists (for example WSL without systemd) is
-   the new gateway started in the background instead, logging to
-   `~/.bitterbot/logs/gateway-switch.log`.
+   Where no service manager exists (for example WSL without systemd), or the
+   service manager refuses a new service, the new gateway is started in the
+   background instead, logging to `~/.bitterbot/logs/gateway-switch.log`;
+   run `bitterbot gateway install` later to have it start on login.
 5. Waits until the new version answers on the gateway port and stays up. A
    first start can take a few minutes while memory is upgraded: it prints
    progress, and keeps waiting as long as the new gateway is alive (it asks
