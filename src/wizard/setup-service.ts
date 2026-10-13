@@ -5,32 +5,30 @@
  * The decision mirrors the terminal QuickStart's finalize step
  * (src/wizard/onboarding.finalize.ts): no service in a container (the image
  * runs the gateway), none on Linux without systemd user services, nothing to
- * do when one is already installed. The install itself is the same one
+ * do when one is already installed for this install. When the installed one
+ * runs another install (a git clone, an older release; `elsewhere`), the step
+ * offers to point it at this version, the same re-install
+ * `bitterbot gateway switch` does. The install itself is the same one
  * `bitterbot onboard --non-interactive --install-daemon` runs, plus systemd
  * lingering so the service survives logout.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { serviceLabelFor } from "../infra/gateway-switch.js";
 import type { InstallKind } from "../infra/install-kind.js";
+
+export { serviceLabelFor };
 
 export type SetupServiceSupport =
   | { kind: "available"; label: string }
   | { kind: "installed"; label: string }
+  /**
+   * A service is installed but runs another install (a git clone, an older
+   * release): `runsFrom` names it ("Bitterbot 1.4.0 from ~/bitterbot-desktop
+   * (git clone)"). The step offers to point it at this version.
+   */
+  | { kind: "elsewhere"; label: string; runsFrom: string }
   | { kind: "unavailable"; reason: string };
-
-/** Human name of the service manager for this platform. */
-export function serviceLabelFor(platform: NodeJS.Platform): string {
-  switch (platform) {
-    case "darwin":
-      return "macOS LaunchAgent";
-    case "linux":
-      return "systemd user service";
-    case "win32":
-      return "Windows scheduled task";
-    default:
-      return "background service";
-  }
-}
 
 export async function detectSetupServiceSupport(params: {
   installKind: InstallKind;
@@ -39,6 +37,8 @@ export async function detectSetupServiceSupport(params: {
   /** Test seams. */
   systemdAvailable?: () => Promise<boolean>;
   isLoaded?: () => Promise<boolean>;
+  /** Where the installed service runs from: null when it runs this install (or is unknown). */
+  runsElsewhere?: () => Promise<string | null>;
 }): Promise<SetupServiceSupport> {
   const platform = params.platform ?? process.platform;
   const env = params.env ?? process.env;
@@ -68,10 +68,37 @@ export async function detectSetupServiceSupport(params: {
         const { resolveGatewayService } = await import("../daemon/service.js");
         return resolveGatewayService().isLoaded({ env });
       });
-    return (await isLoaded()) ? { kind: "installed", label } : { kind: "available", label };
+    if (!(await isLoaded())) {
+      return { kind: "available", label };
+    }
+    // A test that fakes isLoaded never reaches the real service reader.
+    const runsElsewhere =
+      params.runsElsewhere ??
+      (params.isLoaded ? async () => null : () => describeServiceElsewhere({ env }));
+    const runsFrom = await runsElsewhere().catch(() => null);
+    return runsFrom ? { kind: "elsewhere", label, runsFrom } : { kind: "installed", label };
   } catch {
     return { kind: "unavailable", reason: "probe-failed" };
   }
+}
+
+/**
+ * When the installed gateway service runs another install, a plain-language
+ * name for it (src/infra/gateway-switch-system.ts); null when it runs this
+ * install, none is installed, or its definition cannot be resolved.
+ */
+export async function describeServiceElsewhere(params: {
+  env?: NodeJS.ProcessEnv;
+}): Promise<string | null> {
+  const env = params.env ?? process.env;
+  const system = await import("../infra/gateway-switch-system.js");
+  const self = await system.resolveSelfInstall();
+  const found = await system.inspectGatewayService({ self, env });
+  if (!found || found.pointsHere) {
+    return null;
+  }
+  const { describeInstall } = await import("../cli/daemon-cli/switch.js");
+  return describeInstall(found.runsFrom);
 }
 
 export type SetupServiceInstallResult =

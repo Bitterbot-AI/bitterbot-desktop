@@ -45,6 +45,41 @@ describe("detectSetupServiceSupport (where the terminal QuickStart installs a se
     ).toEqual({ kind: "installed", label: "systemd user service" });
   });
 
+  it("an installed service that runs another install is reported as elsewhere", async () => {
+    expect(
+      await detectSetupServiceSupport({
+        installKind: "tarball",
+        platform: "linux",
+        systemdAvailable: yes,
+        isLoaded: yes,
+        runsElsewhere: async () => "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+      }),
+    ).toEqual({
+      kind: "elsewhere",
+      label: "systemd user service",
+      runsFrom: "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+    });
+    expect(
+      await detectSetupServiceSupport({
+        installKind: "tarball",
+        platform: "darwin",
+        isLoaded: yes,
+        runsElsewhere: async () => null,
+      }),
+    ).toEqual({ kind: "installed", label: "macOS LaunchAgent" });
+    // A failing probe never blocks setup: the service counts as this install's.
+    expect(
+      await detectSetupServiceSupport({
+        installKind: "tarball",
+        platform: "darwin",
+        isLoaded: yes,
+        runsElsewhere: async () => {
+          throw new Error("unreadable unit");
+        },
+      }),
+    ).toEqual({ kind: "installed", label: "macOS LaunchAgent" });
+  });
+
   it("never offers a real install from a test run", async () => {
     expect(
       await detectSetupServiceSupport({ installKind: "package", env: { VITEST: "true" } }),

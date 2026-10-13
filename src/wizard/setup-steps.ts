@@ -731,13 +731,36 @@ const serviceStep: SetupStepDef = {
   title: "Keep running",
   // Offered exactly where the terminal QuickStart installs a service: not in
   // a container, not on Linux without systemd user services, not when one is
-  // already installed (src/wizard/onboarding.finalize.ts).
-  applies: (ctx) => ctx.service?.kind === "available",
+  // already installed for this install (src/wizard/onboarding.finalize.ts).
+  // When the installed service runs another install (a git clone, an older
+  // release), it offers to point that service at this version instead.
+  applies: (ctx) => ctx.service?.kind === "available" || ctx.service?.kind === "elsewhere",
   skipped: "n/a",
   recommended: () => "install",
   describe: (ctx) =>
-    `Background service: install it (${ctx.service?.kind === "available" ? ctx.service.label : "service"}), so Bitterbot keeps running and starts on login`,
+    ctx.service?.kind === "elsewhere"
+      ? `Background service: it runs ${ctx.service.runsFrom}; use this version for it`
+      : `Background service: install it (${ctx.service?.kind === "available" ? ctx.service.label : "service"}), so Bitterbot keeps running and starts on login`,
   ask: async (ctx, _draft, prompter) => {
+    if (ctx.service?.kind === "elsewhere") {
+      const choice = await prompter.select({
+        message: `Your background service (${ctx.service.label}) still runs ${ctx.service.runsFrom}. Use this version for it instead? Your settings and memory stay as they are.`,
+        options: [
+          {
+            value: "install",
+            label: "Use this version for the background service",
+            hint: "Restarts the service on this version; the other install is left on disk",
+          },
+          {
+            value: "no",
+            label: "Leave it as it is",
+            hint: "Switch later with `bitterbot gateway switch`",
+          },
+        ],
+        initialValue: "install",
+      });
+      return { choice: choice === "no" ? "no" : "install" };
+    }
     const label = ctx.service?.kind === "available" ? ctx.service.label : "service";
     const choice = await prompter.select({
       message:
@@ -759,10 +782,8 @@ const serviceStep: SetupStepDef = {
     return { choice: choice === "no" ? "no" : "install" };
   },
   apply: (ctx, draft, answer) => {
-    if (
-      ctx.service?.kind !== "available" ||
-      (answer.choice !== "install" && answer.choice !== "no")
-    ) {
+    const offered = ctx.service?.kind === "available" || ctx.service?.kind === "elsewhere";
+    if (!offered || (answer.choice !== "install" && answer.choice !== "no")) {
       draft.installService = false;
       draft.answers.service = ctx.service?.kind === "installed" ? "installed" : "n/a";
       return;

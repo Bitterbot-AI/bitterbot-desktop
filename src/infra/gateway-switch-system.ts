@@ -25,6 +25,7 @@ import {
   isBitterbotEntryArg,
   isBitterbotGatewayCommand,
   sameRoot,
+  serviceLabelFor,
   type GatewaySwitchDecision,
   type GatewaySwitchDeps,
   type GatewaySwitchFindings,
@@ -347,19 +348,6 @@ export async function resolveProcessRoot(
     current = info.ppid;
   }
   return { root: null, exe, ancestors, command };
-}
-
-export function serviceLabelFor(platform: NodeJS.Platform): string {
-  switch (platform) {
-    case "darwin":
-      return "macOS LaunchAgent";
-    case "linux":
-      return "systemd user service";
-    case "win32":
-      return "Windows scheduled task";
-    default:
-      return "background service";
-  }
 }
 
 const quietStream = () => new Writable({ write: (_chunk, _enc, cb) => cb() });

@@ -182,6 +182,43 @@ describe("SetupWizard (the /setup page)", () => {
     );
   });
 
+  it("Done says when the background service still runs another install", async () => {
+    const done = {
+      id: "d1",
+      type: "note",
+      title: "Done",
+      message: "Setup is complete.",
+      data: {
+        kind: "done",
+        service: {
+          state: "elsewhere",
+          label: "systemd user service",
+          runsFrom: "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+        },
+      },
+    };
+    const { factory } = makeClientFactory((method) => {
+      if (method === "wizard.start") {
+        return { sessionId: "sess", done: false, status: "running", step: done };
+      }
+      if (method === "wizard.next") {
+        return { done: true, status: "done" };
+      }
+      return {};
+    });
+    render(
+      <SetupWizard
+        createClient={factory as never}
+        location={fakeLocation("http://127.0.0.1:19001/setup?token=tok123")}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Finish" }));
+    await screen.findByTestId("setup-done");
+    const text = screen.getByTestId("setup-service").textContent ?? "";
+    expect(text).toContain("still runs Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)");
+    expect(text).toContain("bitterbot gateway switch");
+  });
+
   it("explains an expired link when there is no admin sign-in to fall back to", async () => {
     const { factory } = makeClientFactory((method) =>
       method === "wizard.start"

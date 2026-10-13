@@ -246,6 +246,20 @@ export function isBitterbotEntryArg(arg: string): boolean {
   return GATEWAY_ENTRY_RE.test(arg.replace(/^"|"$/g, ""));
 }
 
+/** Human name of the service manager for this platform. */
+export function serviceLabelFor(platform: NodeJS.Platform): string {
+  switch (platform) {
+    case "darwin":
+      return "macOS LaunchAgent";
+    case "linux":
+      return "systemd user service";
+    case "win32":
+      return "Windows scheduled task";
+    default:
+      return "background service";
+  }
+}
+
 /** The definition starts the stable tarball launcher `<app>/current/bin/bitterbot`. */
 export function definitionFollowsCurrent(definition: ServiceDefinition | null): boolean {
   const first = definition?.programArguments[0];

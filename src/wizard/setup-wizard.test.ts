@@ -381,6 +381,49 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     expect(deps.onHandover).not.toHaveBeenCalled();
   });
 
+  it("Keep running: a service that runs another install is offered to this version", async () => {
+    const elsewhere = {
+      kind: "elsewhere" as const,
+      label: "systemd user service",
+      runsFrom: "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+    };
+    const deps = baseDeps({
+      service: elsewhere,
+      installService: vi.fn(async () => ({ ok: true as const, label: "systemd user service" })),
+      onHandover: vi.fn(),
+    });
+    const answer = (serviceChoice: string) => (step: WizardStep) => {
+      if (step.type === "select" && step.options?.some((o) => o.value === "custom")) {
+        return "custom";
+      }
+      if (step.section?.id === "service" && step.type === "select") {
+        return serviceChoice;
+      }
+      return step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null;
+    };
+    const { steps } = await drive(deps, answer("install"));
+    const ask = steps.find((s) => s.section?.id === "service" && s.type === "select");
+    expect(ask?.message).toContain(
+      "still runs Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+    );
+    expect(ask?.options?.find((o) => o.value === "install")?.label).toBe(
+      "Use this version for the background service",
+    );
+    expect(deps.installService).toHaveBeenCalledTimes(1);
+    const done = steps.find((s) => dataKind(s) === "done");
+    expect(done?.data).toMatchObject({ service: { state: "installed" } });
+    expect(deps.onHandover).toHaveBeenCalled();
+
+    // "Leave it as it is": nothing installed, Done says how to switch later.
+    const keep = baseDeps({ service: elsewhere, installService: vi.fn(), onHandover: vi.fn() });
+    const kept = await drive(keep, answer("no"));
+    expect(keep.installService).not.toHaveBeenCalled();
+    const keptDone = kept.steps.find((s) => dataKind(s) === "done");
+    expect(keptDone?.data).toMatchObject({ service: { state: "elsewhere" } });
+    expect(keptDone?.message).toContain("bitterbot gateway switch");
+    expect(keep.onHandover).not.toHaveBeenCalled();
+  });
+
   it("Keep running is not offered in a container or where a service already runs", async () => {
     for (const service of [
       { kind: "unavailable" as const, reason: "container" },

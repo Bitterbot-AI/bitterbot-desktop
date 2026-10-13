@@ -37,9 +37,11 @@ type NextResult = {
 type Phase = "connecting" | "running" | "done" | "cancelled" | "error";
 
 type ServiceInfo = {
-  state: "installed" | "existing" | "failed" | "declined" | "unavailable";
+  state: "installed" | "existing" | "elsewhere" | "failed" | "declined" | "unavailable";
   label?: string;
   error?: string;
+  /** state "elsewhere": the other install the service still runs. */
+  runsFrom?: string;
 };
 
 type DoneInfo = { channelsNext?: boolean; restart?: boolean; service?: ServiceInfo };
@@ -288,6 +290,11 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
             ) : doneInfo.service?.state === "existing" ? (
               <p className="text-sm" data-testid="setup-service">
                 Bitterbot runs in the background as a {doneInfo.service.label}.
+              </p>
+            ) : doneInfo.service?.state === "elsewhere" ? (
+              <p className="text-sm" data-testid="setup-service">
+                The {doneInfo.service.label} still runs {doneInfo.service.runsFrom}. Switch it to
+                this version any time with <code>bitterbot gateway switch</code>.
               </p>
             ) : doneInfo.service?.state === "failed" ? (
               <p className="text-sm text-destructive" data-testid="setup-service">
