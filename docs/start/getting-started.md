@@ -70,7 +70,7 @@ same installer inside WSL2 ([Windows](/start/install-script#windows-wsl2)).
 ## Prereqs (source install)
 
 - Node 22.12 or newer
-- pnpm — ships with Node via corepack: `corepack enable pnpm || npm install -g pnpm`
+- pnpm: ships with Node via corepack: `corepack enable pnpm || npm install -g pnpm`
 
 <Tip>
 Check your Node version with `node --version` if you are unsure.
@@ -144,7 +144,7 @@ way your install starts it: `docker compose up -d` (Docker), `bitterbot gateway`
 pnpm start gateway
 ```
 
-Open [http://127.0.0.1:19001](http://127.0.0.1:19001) in your browser to chat, view dreams, manage skills, and monitor the agent. (Developing the UI itself? `pnpm dev:all` runs the gateway plus a hot-reload Vite server on 5173 — dev only.)
+Open [http://127.0.0.1:19001](http://127.0.0.1:19001) in your browser to chat, view dreams, manage skills, and monitor the agent. (Developing the UI itself? `pnpm dev:all` runs the gateway plus a hot-reload Vite server on 5173, dev only.)
 
 ## Optional extras
 
@@ -164,7 +164,7 @@ Open [http://127.0.0.1:19001](http://127.0.0.1:19001) in your browser to chat, v
 Bitterbot joins a decentralized P2P mesh for skill trading, reputation, and bounties. The orchestrator listens on **TCP port 9100** by default.
 
 <Tip>
-Port 9100 open (inbound TCP) gives the best P2P performance, but is **not required**. Nodes behind NAT or firewalls automatically use circuit relay through the bootstrap node — no manual configuration needed.
+Port 9100 open (inbound TCP) gives the best P2P performance, but is **not required**. Nodes behind NAT or firewalls automatically use circuit relay through the bootstrap node, so no manual configuration is needed.
 </Tip>
 
 See [P2P configuration](/gateway/configuration-reference#p2p-network) for relay mode, security, and advanced options.

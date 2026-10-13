@@ -124,15 +124,15 @@ The terminal wizard starts with **QuickStart** (the setup steps above) vs
 
 **Local mode (default)** walks you through these steps:
 
-1. **Model/Auth** — Anthropic API key (recommended), OpenAI, or Custom Provider
+1. **Model/Auth**: Anthropic API key (recommended), OpenAI, or Custom Provider
    (OpenAI-compatible, Anthropic-compatible, or Unknown auto-detect). Advanced flow also picks a default model.
-2. **Workspace** — Location for agent files (default `~/.bitterbot/workspace`). Seeds bootstrap files.
-3. **Gateway** — Port, bind address, auth mode, Tailscale exposure.
-4. **Channels** _(Advanced)_ — WhatsApp, Telegram, Discord, Slack, or Signal.
+2. **Workspace**: Location for agent files (default `~/.bitterbot/workspace`). Seeds bootstrap files.
+3. **Gateway**: Port, bind address, auth mode, Tailscale exposure.
+4. **Channels** _(Advanced)_: WhatsApp, Telegram, Discord, Slack, or Signal.
    QuickStart defers this to the Control UI or `bitterbot channels add`.
-5. **Daemon** — Installs a LaunchAgent (macOS) or systemd user unit (Linux/WSL2).
-6. **Health check** — Starts the Gateway and verifies it's running.
-7. **Skills** _(Advanced)_ — Installs recommended skills and optional dependencies.
+5. **Daemon**: Installs a LaunchAgent (macOS) or systemd user unit (Linux/WSL2).
+6. **Health check**: Starts the Gateway and verifies it's running.
+7. **Skills** _(Advanced)_: Installs recommended skills and optional dependencies.
    QuickStart keeps the bundled skills and defers extras.
 
 <Note>

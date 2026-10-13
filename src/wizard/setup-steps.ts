@@ -68,13 +68,13 @@ export const P2P_EGRESS_SENTENCE =
   "scores (numbers only) once per dream cycle; and skills you mark shared or public.";
 
 /** The risk acknowledgement, word for word what the terminal wizard shows. */
-export const RISK_ACKNOWLEDGEMENT_TITLE = "Security — at your own risk";
+export const RISK_ACKNOWLEDGEMENT_TITLE = "Security: at your own risk";
 export const RISK_ACKNOWLEDGEMENT_NOTE = [
   "Read this before going further.",
   "",
   "Bitterbot is in open beta. It remembers your life, runs real tools,",
   "moves real USDC, and talks to other agents on a live P2P mesh.",
-  "That is the whole point — and it is also how you get hurt if you",
+  "That is the whole point, and it is also how you get hurt if you",
   "skip the safety rails.",
   "",
   "What this agent can actually do once you enable its tools:",
@@ -99,7 +99,7 @@ export const RISK_ACKNOWLEDGEMENT_NOTE = [
   "- Keep secrets out of the agent's reachable filesystem (no .env in workspace).",
   "- Use the strongest model available for any bot with tools or untrusted inboxes.",
   "- Start the wallet with a small float you can afford to lose while you learn.",
-  "- P2P skill ingestion defaults to 'review' — don't flip to 'auto' until you",
+  "- P2P skill ingestion defaults to 'review'. Don't flip to 'auto' until you",
   "  have a trust list and understand the SkillVerifier + reputation gates.",
   "",
   "Run regularly:",
