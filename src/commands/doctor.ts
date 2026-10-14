@@ -57,7 +57,7 @@ import { noteSourceInstallIssues } from "./doctor-install.js";
 import { runLivenessChecks } from "./doctor-liveness.js";
 import { runMemorySearchChecks } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
-import { runModelCheck } from "./doctor-model.js";
+import { runModelAliasCheck, runModelCheck } from "./doctor-model.js";
 import {
   doctorErrorMessages,
   doctorFindings,
@@ -401,6 +401,7 @@ async function runDoctor(
 
   // ── One real model round-trip — "configured" is not "works" ──
   await runModelCheck({ config: cfg });
+  await runModelAliasCheck({ config: cfg });
 
   // ── One real agent turn through the gateway — the model check proves the
   //    provider, this proves the pipeline (warn-only during burn-in) ──

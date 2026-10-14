@@ -304,6 +304,23 @@ export type UsageAggregateRow = {
   [extra: string]: unknown;
 };
 
+/** Token columns of a `provider`-cost row (see UsageLedger.providerCostRows). */
+export type RepriceRow = {
+  id: number;
+  ts: number;
+  input: number;
+  cache_read: number;
+  cache_write: number;
+  output: number;
+  reasoning: number;
+  total: number;
+  batch: number;
+  cache_ttl: string | null;
+  cache_write_5m: number | null;
+  cache_write_1h: number | null;
+  cost_total: number;
+};
+
 export type UsageEventFilters = {
   startMs?: number;
   endMs?: number;
@@ -963,6 +980,59 @@ export class UsageLedger {
     return Number(result.changes ?? 0);
   }
 
+  /** Distinct provider/model pairs whose rows carry a library-reported (`provider`) cost. */
+  providerCostIdentities(): Array<{ provider: string; model: string; rows: number }> {
+    return this.db
+      .prepare(
+        `SELECT provider, model, COUNT(*) AS rows FROM usage_events
+         WHERE cost_source = 'provider' AND provider IS NOT NULL AND model IS NOT NULL
+         GROUP BY provider, model`,
+      )
+      .all() as unknown as Array<{ provider: string; model: string; rows: number }>;
+  }
+
+  /** The token columns of one identity's `provider`-cost rows, for re-pricing. */
+  providerCostRows(provider: string, model: string): RepriceRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, ts, input, cache_read, cache_write, output, reasoning, total, batch, cache_ttl,
+                cache_write_5m, cache_write_1h, cost_total
+         FROM usage_events
+         WHERE cost_source = 'provider' AND provider = ? AND model = ?
+         ORDER BY id ASC`,
+      )
+      .all(provider, model) as unknown as RepriceRow[];
+  }
+
+  /**
+   * Overwrite one row's cost with a re-priced figure. Guarded by `cost_source = 'provider'` so a
+   * second pass (or a row re-priced since) is never touched twice. Returns rows changed (0 or 1).
+   */
+  applyRepricedCost(id: number, cost: UsageCost, price: ModelPrice, source: PricingSource): number {
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET cost_input = ?, cost_cache_read = ?, cost_cache_write = ?,
+           cost_output = ?, cost_total = ?, cost_source = ?, price_input = ?, price_output = ?,
+           price_cache_read = ?, price_cache_write = ?, cost_computed = ?
+         WHERE id = ? AND cost_source = 'provider'`,
+      )
+      .run(
+        cost.input,
+        cost.cacheRead,
+        cost.cacheWrite,
+        cost.output,
+        cost.total,
+        source,
+        price.input,
+        price.output,
+        price.cacheRead,
+        price.cacheWrite,
+        cost.total,
+        id,
+      );
+    return Number(result.changes ?? 0);
+  }
+
   /** Relabel reconciled rows (feature / session_key / channel) for one transcript. */
   relabelReconciled(
     sessionId: string,
@@ -1525,12 +1595,15 @@ export async function resolveUsageEvent(
     costComputed = priceUsageSplit(table.price, usage, split, priceOpts).total;
   }
 
+  // A forward-compat model's library-reported cost was computed from a borrowed price (the
+  // template's). An exact live price beats it; without one the borrowed figure is an estimate.
+  const borrowed = Boolean(table.borrowedFrom);
   if (input.costSource === "local") {
     cost = emptyUsageCost();
     costSource = "local";
     price = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
     costComputed = 0;
-  } else if (hasNonzeroCost(input.cost)) {
+  } else if (hasNonzeroCost(input.cost) && !(borrowed && table.source === "live")) {
     const c = input.cost ?? {};
     const n = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
     const parts = {
@@ -1553,7 +1626,7 @@ export async function resolveUsageEvent(
     }
     const total = parts.input + parts.cacheRead + parts.cacheWrite + parts.output;
     cost = { ...parts, total: rescale || !n(c.total) ? total : n(c.total) };
-    costSource = "provider";
+    costSource = borrowed ? "estimated" : "provider";
   } else {
     price = table.price;
     cost = priceUsageSplit(table.price, usage, split, priceOpts);
@@ -1629,7 +1702,7 @@ function resolveCacheWriteSplit(
 }
 
 /** priceUsage with the 1h share of cache writes priced at the 1h rate and the rest at 5m. */
-function priceUsageSplit(
+export function priceUsageSplit(
   price: ModelPrice,
   usage: UsageBuckets,
   split: { cacheWrite5m: number; cacheWrite1h: number } | null,
@@ -1787,6 +1860,19 @@ export async function backfillComputedCost(
 }
 
 /**
+ * One-time correction (`reprice:borrowed:v1`): rows a forward-compat model recorded at a borrowed
+ * price move to the exact live price. Needs snapshots, so it runs after the first refresh.
+ */
+async function repriceBorrowedOnce(ledger: UsageLedger, cfg?: BitterbotConfig): Promise<void> {
+  try {
+    const { repriceBorrowedRows } = await import("./usage-reprice.js");
+    await repriceBorrowedRows({ ledger, cfg });
+  } catch (err) {
+    log.debug(`usage reprice failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
  * Gateway boot: open the ledger, prune, and start the transcript reconciler (backfill on first
  * run, then a periodic safety net for any path that writes a transcript without recording live).
  */
@@ -1839,6 +1925,7 @@ export function startUsageLedger(opts?: {
     // delays the backfill more than a few seconds).
     const firstTimer = setTimeout(() => {
       void Promise.race([pricingReady, new Promise((r) => setTimeout(r, 8_000))])
+        .then(() => repriceBorrowedOnce(ledger, opts?.cfg))
         .then(() => run())
         .then(() => backfillComputedCost(ledger, opts?.cfg))
         .catch(() => {});

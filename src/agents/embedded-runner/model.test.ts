@@ -6,6 +6,7 @@ vi.mock("../runtime/models/index.js", () => ({
 }));
 
 import type { BitterbotConfig } from "../../config/config.js";
+import { borrowedPriceTemplate } from "../model-forward-compat.js";
 import { discoverModels } from "../runtime/models/index.js";
 import { buildInlineProviderModels, resolveModel } from "./model.js";
 import {
@@ -321,6 +322,40 @@ describe("resolveModel", () => {
     expect(resolveModel("anthropic", "not-a-claude", "/tmp/agent").error).toBe(
       "Unknown model: anthropic/not-a-claude",
     );
+  });
+
+  it("marks forward-compat clones as carrying a borrowed price; real entries are not", () => {
+    const base = {
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      maxTokens: 64000,
+      contextWindow: 1000000,
+    };
+    const catalog = [
+      {
+        ...base,
+        id: "claude-opus-4-7",
+        name: "Claude Opus 4.7",
+        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      },
+    ];
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn(
+        (provider: string, modelId: string) =>
+          catalog.find((m) => m.provider === provider && m.id === modelId) ?? null,
+      ),
+      getAll: vi.fn(() => catalog),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const fable = resolveModel("anthropic", "claude-fable-5-1", "/tmp/agent").model;
+    expect(borrowedPriceTemplate(fable)).toBe("claude-opus-4-7");
+    const real = resolveModel("anthropic", "claude-opus-4-7", "/tmp/agent").model;
+    expect(borrowedPriceTemplate(real)).toBeUndefined();
+    // The template entry itself is never mutated by the clone.
+    expect(borrowedPriceTemplate(catalog[0])).toBeUndefined();
   });
 
   it("refuses retired Google OAuth providers even when a stale models.json lists them", () => {

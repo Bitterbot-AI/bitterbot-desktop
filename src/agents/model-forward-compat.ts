@@ -27,6 +27,27 @@ const ANTHROPIC_OPUS_NEXT_TEMPLATE_MODEL_IDS = ["claude-opus-4-6", "claude-opus-
 const ZAI_GLM5_MODEL_ID = "glm-5";
 const ZAI_GLM5_TEMPLATE_MODEL_IDS = ["glm-4.7"] as const;
 
+/**
+ * A model cloned from a catalogued template carries the template's `cost`, which is a guess,
+ * not this model's price (claude-fable-5-1 cloned from Opus 4.7 was billed at $5/$25 per M while
+ * Anthropic charges $10/$50). The usage ledger reads this marker to prefer an exact live price
+ * and to label the borrowed one "estimated". The value is the template id the price came from.
+ */
+export type BorrowedPriceMarker = { pricingBorrowedFrom?: string };
+
+/** The template id whose price a forward-compat model borrowed, or undefined for a real entry. */
+export function borrowedPriceTemplate(model: unknown): string | undefined {
+  if (!model || typeof model !== "object") {
+    return undefined;
+  }
+  const from = (model as BorrowedPriceMarker).pricingBorrowedFrom;
+  return typeof from === "string" && from ? from : undefined;
+}
+
+function markBorrowedPrice(model: Model<Api>, templateId: string): Model<Api> {
+  return Object.assign(model, { pricingBorrowedFrom: templateId } satisfies BorrowedPriceMarker);
+}
+
 function cloneFirstTemplateModel(params: {
   normalizedProvider: string;
   trimmedModelId: string;
@@ -40,12 +61,15 @@ function cloneFirstTemplateModel(params: {
     if (!template) {
       continue;
     }
-    return normalizeModelCompat({
-      ...template,
-      id: trimmedModelId,
-      name: trimmedModelId,
-      ...params.patch,
-    } as Model<Api>);
+    return markBorrowedPrice(
+      normalizeModelCompat({
+        ...template,
+        id: trimmedModelId,
+        name: trimmedModelId,
+        ...params.patch,
+      } as Model<Api>),
+      templateId,
+    );
   }
   return undefined;
 }
@@ -69,11 +93,14 @@ function resolveOpenAICodexGpt53FallbackModel(
     if (!template) {
       continue;
     }
-    return normalizeModelCompat({
-      ...template,
-      id: trimmedModelId,
-      name: trimmedModelId,
-    } as Model<Api>);
+    return markBorrowedPrice(
+      normalizeModelCompat({
+        ...template,
+        id: trimmedModelId,
+        name: trimmedModelId,
+      } as Model<Api>),
+      templateId,
+    );
   }
 
   return normalizeModelCompat({
@@ -243,12 +270,15 @@ function resolveZaiGlm5ForwardCompatModel(
     if (!template) {
       continue;
     }
-    return normalizeModelCompat({
-      ...template,
-      id: trimmed,
-      name: trimmed,
-      reasoning: true,
-    } as Model<Api>);
+    return markBorrowedPrice(
+      normalizeModelCompat({
+        ...template,
+        id: trimmed,
+        name: trimmed,
+        reasoning: true,
+      } as Model<Api>),
+      templateId,
+    );
   }
 
   return normalizeModelCompat({

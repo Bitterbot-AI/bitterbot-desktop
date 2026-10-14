@@ -4,6 +4,9 @@
  * Resolution order (first hit wins):
  *   1. `override`  — `models.providers.<p>.models[].cost` in config with any non-zero field.
  *   2. `catalog`   — the pi model registry (vendored pi-ai catalog + models.json), any non-zero field.
+ *      A forward-compat model (a Claude id newer than the vendored catalog, cloned from an older
+ *      entry) carries a BORROWED price: it resolves to the exact live snapshot entry for its own
+ *      id when one exists (`live`), otherwise to the borrowed price labelled `estimated`.
  *   3. `embedding-catalog` — the small vendored table below for embedding models, which the
  *      chat catalog does not carry.
  *   4. `local`     — ollama/vllm/local inference: $0 by construction, and NOT a gap.
@@ -23,7 +26,15 @@ import type {
   UsageKind,
 } from "./usage-ledger.types.js";
 
-export type ResolvedPricing = { price: ModelPrice; source: PricingSource };
+export type ResolvedPricing = {
+  price: ModelPrice;
+  source: PricingSource;
+  /**
+   * Set when the registry entry is a forward-compat clone: the template id its catalog price was
+   * borrowed from. The ledger then never trusts a library-reported cost for this model.
+   */
+  borrowedFrom?: string;
+};
 
 export const LOCAL_MODEL_PROVIDERS: ReadonlySet<string> = new Set([
   "ollama",
@@ -148,12 +159,19 @@ async function lookupCatalog(
   provider: string,
   model: string,
   cfg: BitterbotConfig | undefined,
-): Promise<ModelPrice | undefined> {
+): Promise<{ price: ModelPrice; borrowedFrom?: string } | undefined> {
   try {
-    const { resolveModel } = await import("../agents/embedded-runner/model.js");
+    const [{ resolveModel }, { borrowedPriceTemplate }] = await Promise.all([
+      import("../agents/embedded-runner/model.js"),
+      import("../agents/model-forward-compat.js"),
+    ]);
     const resolved = resolveModel(provider, model, undefined, cfg);
     const cost = resolved.model?.cost as Partial<ModelPrice> | undefined;
-    return hasNonzeroPrice(cost) ? toPrice(cost) : undefined;
+    if (!hasNonzeroPrice(cost)) {
+      return undefined;
+    }
+    const borrowedFrom = borrowedPriceTemplate(resolved.model);
+    return borrowedFrom ? { price: toPrice(cost), borrowedFrom } : { price: toPrice(cost) };
   } catch {
     return undefined;
   }
@@ -203,8 +221,16 @@ export async function resolveModelPricing(params: {
   }
   if (!value) {
     const catalog = await lookupCatalog(provider, model, params.cfg);
-    if (catalog) {
-      value = { price: catalog, source: "catalog" };
+    if (catalog?.borrowedFrom) {
+      // A borrowed price is a guess. The live snapshot's entry for this exact id (normalized
+      // key, never a fuzzy neighbour) is the real price; without one, keep the guess as an
+      // estimate so the UI and doctor say so.
+      const live = lookupLivePrice(provider, model, params.ts);
+      value = live
+        ? { price: toPrice(live.price), source: "live", borrowedFrom: catalog.borrowedFrom }
+        : { price: catalog.price, source: "estimated", borrowedFrom: catalog.borrowedFrom };
+    } else if (catalog) {
+      value = { price: catalog.price, source: "catalog" };
     }
   }
   if (!value && kind === "search" && provider === "perplexity") {
@@ -215,7 +241,7 @@ export async function resolveModelPricing(params: {
       params.cfg,
     );
     if (viaOpenRouter) {
-      value = { price: viaOpenRouter, source: "catalog" };
+      value = { price: viaOpenRouter.price, source: "catalog" };
     }
   }
   if (!value) {
@@ -226,11 +252,15 @@ export async function resolveModelPricing(params: {
   }
   if (!value) {
     value = { price: ZERO_PRICE, source: "unpriced" };
-    // Do not remember "unpriced" before the first live snapshot has landed: backfilled history
-    // would otherwise stay $0 for five minutes after prices arrive.
-    if (getLivePricingStatus().snapshots === 0) {
-      return value;
-    }
+  }
+  // Do not remember "unpriced" or "estimated" before the first live snapshot has landed:
+  // backfilled history would otherwise keep the gap or the guess for five minutes after prices
+  // arrive.
+  if (
+    (value.source === "unpriced" || value.source === "estimated") &&
+    getLivePricingStatus().snapshots === 0
+  ) {
+    return value;
   }
   memo.set(memoKey, { at: now, value });
   return value;

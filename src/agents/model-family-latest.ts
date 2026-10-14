@@ -76,3 +76,50 @@ export function resolveFamilyAliasTarget<T extends { provider: string; model: st
   }
   return { ...ref, model: best.id };
 }
+
+/** Newest served model id of a Claude family, if the catalog has been recorded. */
+export function newestServedInFamily(provider: string, family: string): string | undefined {
+  return newest.get(provider.trim().toLowerCase())?.get(family)?.id;
+}
+
+export type AliasFreshnessNote = {
+  alias: string;
+  configured: string;
+  newest: string;
+  follows: boolean;
+};
+
+/**
+ * For doctor: aliases whose Claude target has a newer served model of the
+ * same family. `follows` = a family alias that already resolves to it; else a
+ * pin the user may want to update.
+ */
+export function aliasFreshnessNotes(
+  models: Record<string, { alias?: string } | undefined>,
+  opts: { restricted: boolean },
+): AliasFreshnessNote[] {
+  const notes: AliasFreshnessNote[] = [];
+  for (const [ref, entry] of Object.entries(models)) {
+    const alias = entry?.alias?.trim();
+    const slash = ref.indexOf("/");
+    if (!alias || slash <= 0) {
+      continue;
+    }
+    const provider = ref.slice(0, slash);
+    const v = claudeFamilyVersion(ref.slice(slash + 1));
+    const best = v ? newest.get(provider.trim().toLowerCase())?.get(v.family) : undefined;
+    if (!v || !best || best.version <= v.version) {
+      continue;
+    }
+    notes.push({
+      alias,
+      configured: ref,
+      newest: `${provider}/${best.id}`,
+      follows:
+        !opts.restricted &&
+        FAMILY_ALIASES.has(alias.toLowerCase()) &&
+        alias.toLowerCase() === v.family,
+    });
+  }
+  return notes.toSorted((a, b) => a.alias.localeCompare(b.alias));
+}

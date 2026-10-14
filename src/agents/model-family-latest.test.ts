@@ -91,3 +91,38 @@ describe("family shortcuts follow the newest served model", () => {
     expect(buildModelAliasLines(cfg)).toEqual(["- opus: anthropic/claude-opus-4-8"]);
   });
 });
+
+describe("doctor: shortcuts with a newer model of their family", () => {
+  afterEach(() => {
+    resetServedModelsForTest();
+  });
+
+  it("says where a family shortcut points now, and offers to move a pin", async () => {
+    const { aliasFreshnessNotes } = await import("./model-family-latest.js");
+    const { classifyAliasFreshness } = await import("../commands/doctor-model.js");
+    recordServedModels(served);
+    const models = {
+      "anthropic/claude-opus-4-8": { alias: "opus" },
+      "anthropic/claude-sonnet-4-6": { alias: "work" },
+      "anthropic/claude-sonnet-5-5": { alias: "sonnet" },
+      "openai/gpt-5": { alias: "gpt" },
+    };
+    const lines = classifyAliasFreshness(aliasFreshnessNotes(models, { restricted: false }));
+    expect(lines).toEqual([
+      {
+        level: "info",
+        message:
+          'Shortcut "opus" now means anthropic/claude-opus-5-5 (configured as anthropic/claude-opus-4-8; family shortcuts follow the newest model).',
+      },
+      {
+        level: "info",
+        message:
+          'Shortcut "work" is pinned to anthropic/claude-sonnet-4-6; anthropic/claude-sonnet-5-5 is newer. Point it there with: bitterbot models aliases add work anthropic/claude-sonnet-5-5',
+      },
+    ]);
+    // With an allowlist, the family shortcut is a pin too.
+    expect(
+      aliasFreshnessNotes(models, { restricted: true }).find((n) => n.alias === "opus")?.follows,
+    ).toBe(false);
+  });
+});

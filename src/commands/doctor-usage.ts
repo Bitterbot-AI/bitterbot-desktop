@@ -9,7 +9,16 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import { collectUsageDoctorLines } from "../infra/usage-doctor-checks.js";
+import {
+  getLivePricingStatus,
+  isLivePricingEnabled,
+  loadPricingSnapshots,
+} from "../infra/model-pricing-live.js";
+import {
+  collectUsageDoctorLines,
+  estimatedCostModelsCheck,
+  pricingSnapshotFreshnessCheck,
+} from "../infra/usage-doctor-checks.js";
 import {
   getUsageLedger,
   isUsageLedgerConfigEnabled,
@@ -90,6 +99,23 @@ export function collectUsageChecks(params: {
       ),
     );
   }
+  const estimated = estimatedCostModelsCheck({ models: summary.byModel, days: 30 });
+  const byLevel = { ok, info, warn, error } as const;
+  if (estimated) {
+    results.push(byLevel[estimated.level](estimated.message));
+  }
+  // The CLI never started the refresher; read the snapshots from disk.
+  if (getLivePricingStatus().snapshots === 0) {
+    loadPricingSnapshots();
+  }
+  const pricing = getLivePricingStatus();
+  const freshness = pricingSnapshotFreshnessCheck({
+    newestAt: pricing.newestAt,
+    nowMs,
+    enabled: isLivePricingEnabled(params.config),
+    lastError: pricing.lastError,
+  });
+  results.push(byLevel[freshness.level](freshness.message));
   const embeddings = summary.byKind.find((k) => k.key === "embedding");
   if (!embeddings) {
     results.push(
@@ -103,7 +129,6 @@ export function collectUsageChecks(params: {
     );
   }
   // Idle spend: unread cache writes (7d), heartbeat cost of pass (7d), idle-day floor (14d).
-  const byLevel = { ok, info, warn, error } as const;
   for (const line of collectUsageDoctorLines({ ledger, nowMs })) {
     results.push(byLevel[line.level](line.message));
   }

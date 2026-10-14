@@ -372,7 +372,9 @@ describe("provider-reported cost honours the cache TTL", () => {
     kind: "chat" as const,
     feature: "agent/heartbeat",
     provider: "anthropic",
-    model: "claude-opus-4-8",
+    // A vendored catalog entry: claude-opus-4-8 is a forward-compat clone whose price is
+    // borrowed, so its reported cost is labelled "estimated" (usage-borrowed-pricing.test.ts).
+    model: "claude-opus-4-7",
     usage: { input: 2, output: 13, cacheRead: 0, cacheWrite: 50_000 },
     // pi-ai prices the write at the 5-minute rate (1.25x input = $6.25/MTok on Opus).
     cost: { input: 0.00001, output: 0.000325, cacheRead: 0, cacheWrite: 0.3125, total: 0.312835 },
