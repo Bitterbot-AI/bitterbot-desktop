@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   decideGatewaySwitch,
@@ -10,13 +11,13 @@ import { runGatewaySwitch, SWITCH_EXIT, type GatewaySwitchCommandDeps } from "./
 
 const CLONE_FINDINGS: GatewaySwitchFindings = {
   port: 19001,
-  self: { root: "/home/u/.bitterbot/app/1.5.0", kind: "tarball", version: "1.5.0" },
+  self: { root: path.resolve("/home/u/.bitterbot/app/1.5.0"), kind: "tarball", version: "1.5.0" },
   service: null,
   listener: {
     pid: 4242,
     command: "bitterbot-gateway",
     isGateway: true,
-    runsFrom: { root: "/home/u/bitterbot-desktop", kind: "git", version: "1.4.0" },
+    runsFrom: { root: path.resolve("/home/u/bitterbot-desktop"), kind: "git", version: "1.4.0" },
     reportedVersion: null,
     isSelf: false,
     underService: false,
@@ -196,8 +197,8 @@ describe("bitterbot gateway switch", () => {
         ...CLONE_FINDINGS,
         serviceManager: true,
         envMigration: {
-          source: "/home/u/bitterbot-desktop/.env",
-          target: "/home/u/.bitterbot/.env",
+          source: path.resolve("/home/u/bitterbot-desktop/.env"),
+          target: path.resolve("/home/u/.bitterbot/.env"),
           keys: ["OPENAI_API_KEY", "RPC_URL"],
           skipped: ["ODD_VALUE"],
         },

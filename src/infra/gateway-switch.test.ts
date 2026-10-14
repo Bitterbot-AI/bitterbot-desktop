@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildRestorePlan,
@@ -555,7 +556,7 @@ describe("restart and restore plans", () => {
     ).toEqual({
       argv: [
         "/usr/bin/node",
-        "/home/u/bitterbot-desktop/bitterbot.mjs",
+        path.join("/home/u/bitterbot-desktop/bitterbot.mjs"),
         "gateway",
         "--port",
         "19001",
@@ -565,7 +566,12 @@ describe("restart and restore plans", () => {
     });
     expect(
       restartCommandFor(findings({ listener: listener({ runsFrom: OLD_TARBALL }) }))?.argv,
-    ).toEqual(["/home/u/.bitterbot/app/1.4.0/bin/bitterbot", "gateway", "--port", "19001"]);
+    ).toEqual([
+      path.join("/home/u/.bitterbot/app/1.4.0/bin/bitterbot"),
+      "gateway",
+      "--port",
+      "19001",
+    ]);
   });
 
   it("restores `current` for a tarball-to-tarball switch in the same app dir only; keeps the raw file", () => {
@@ -637,7 +643,9 @@ describe("executeGatewaySwitch", () => {
     const { outcome } = await run(f, bad);
     expect(outcome.status).toBe("rolled-back");
     expect(bad.state.uninstalls).toBe(1);
-    expect(bad.state.detached[0]?.argv[1]).toBe("/home/u/bitterbot-desktop/bitterbot.mjs");
+    expect(bad.state.detached[0]?.argv[1]).toBe(
+      path.join("/home/u/bitterbot-desktop/bitterbot.mjs"),
+    );
     expect(outcome.rollback).toMatchObject({ ok: true, restored: "process" });
   });
 
@@ -772,7 +780,7 @@ describe("executeGatewaySwitch", () => {
     expect(m.state.currentLink).toBe("1.4.0");
     const restart = m.state.detached.at(-1);
     expect(restart?.argv).toEqual([
-      "/home/u/.bitterbot/app/1.4.0/bin/bitterbot",
+      path.join("/home/u/.bitterbot/app/1.4.0/bin/bitterbot"),
       "gateway",
       "--port",
       "19001",
@@ -813,7 +821,7 @@ describe("executeGatewaySwitch", () => {
     expect(outcome.status).toBe("rolled-back");
     expect(outcome.error).toContain("did not stop");
     expect(m.state.detached.map((d) => d.argv[1])).toEqual([
-      "/home/u/bitterbot-desktop/bitterbot.mjs",
+      path.join("/home/u/bitterbot-desktop/bitterbot.mjs"),
     ]);
     expect(m.state.holder()).toBe(7000);
     expect(outcome.rollback?.ok).toBe(true);

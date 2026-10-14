@@ -256,7 +256,7 @@ describe("service definition file and settings", () => {
     expect(await serviceTargetMismatch(svc({}), base, 19001)).toBeNull();
     expect(
       await serviceTargetMismatch(svc({ BITTERBOT_STATE_DIR: "/srv/bb" }), base, 19001),
-    ).toContain("state directory /srv/bb");
+    ).toContain(`state directory ${path.resolve("/srv/bb")}`);
     expect(await serviceTargetMismatch(svc({}, "19011"), base, 19001)).toContain("port 19011");
   });
 });
