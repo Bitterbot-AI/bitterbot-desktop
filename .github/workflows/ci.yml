@@ -870,7 +870,7 @@ jobs:
           npm install -g --prefix "$RUNNER_TEMP/npmg" --foreground-scripts \
             "$RUNNER_TEMP"/pack/bitterbot-*.tgz 2>&1 | tee "$RUNNER_TEMP/npm-install.log"
           # A package install is not nagged about pnpm or build tools.
-          grep -q "\[preinstall-check\] .*(package install)" "$RUNNER_TEMP/npm-install.log"
+          grep -q "preinstall-check.*(package install)" "$RUNNER_TEMP/npm-install.log"
           if grep -q "preinstall-check WARN" "$RUNNER_TEMP/npm-install.log"; then exit 1; fi
           # The optional native peers are not downloaded.
           test ! -e "$RUNNER_TEMP/npmg/lib/node_modules/bitterbot/node_modules/node-llama-cpp"

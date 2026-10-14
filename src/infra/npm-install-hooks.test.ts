@@ -39,7 +39,7 @@ function stagePackage(opts: { workspace: boolean; scripts: string[] }): string {
 function run(root: string, script: string, env: Record<string, string>) {
   const clean = { ...process.env };
   for (const key of Object.keys(clean)) {
-    if (key.startsWith("npm_") || key.startsWith("BITTERBOT_")) {
+    if (/^(npm_|bitterbot_)/i.test(key)) {
       delete clean[key];
     }
   }
