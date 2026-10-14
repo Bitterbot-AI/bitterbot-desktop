@@ -233,6 +233,26 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
         );
         apply(result);
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/wizard not found/.test(message)) {
+          // The gateway restarted and its setup session went with it; the
+          // page has already reconnected. Start over: what was saved (a key
+          // that was stored) is offered again, nothing else was written.
+          try {
+            const restarted = await client.request<NextResult>(
+              "wizard.start",
+              {},
+              { timeoutMs: STEP_TIMEOUT_MS },
+            );
+            apply(restarted);
+            setError(
+              "Bitterbot restarted, so setup started again. Anything already saved is kept.",
+            );
+            return;
+          } catch {
+            // Fall through to the original error.
+          }
+        }
         setError(explain(err));
       } finally {
         setBusy(false);

@@ -263,6 +263,41 @@ describe("SetupWizard (the /setup page)", () => {
     await screen.findByTestId("setup-done");
   });
 
+  it("starts setup again when the gateway restarted and lost the session", async () => {
+    const step = {
+      id: "s1",
+      type: "text",
+      message: "Anthropic API key",
+      sensitive: true,
+      section: section("auth", 1, "Model provider key"),
+    };
+    let starts = 0;
+    const { factory, calls } = makeClientFactory((method) => {
+      if (method === "wizard.start") {
+        starts += 1;
+        return { sessionId: `sess${starts}`, done: false, status: "running", step };
+      }
+      if (method === "wizard.next") {
+        return new Error("wizard not found");
+      }
+      return {};
+    });
+    render(
+      <SetupWizard
+        createClient={factory as never}
+        location={fakeLocation("http://127.0.0.1:19001/setup?token=tok")}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText("Anthropic API key"), {
+      target: { value: "sk-ant-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText(/Bitterbot restarted, so setup started again/)).toBeTruthy();
+    expect(screen.queryByText("wizard not found")).toBeNull();
+    expect(calls.filter((c) => c.method === "wizard.start")).toHaveLength(2);
+    expect(screen.getByLabelText("Anthropic API key")).toBeTruthy();
+  });
+
   it("without a setup link, signs in as admin (re-running setup)", async () => {
     const { factory, created } = makeClientFactory(() => ({
       sessionId: "s",
