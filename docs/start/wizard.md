@@ -36,19 +36,28 @@ Setup starts with the same explicit risk acknowledgement as the terminal
 wizard. Then the browser and the terminal QuickStart run **one list of
 steps**, so they ask the same things:
 
-1. **Model provider key**: keys found on this machine are offered by name and
-   last four characters; their values never reach the browser. A saved sign-in
+1. **Model provider key**: keys found on this machine (`ANTHROPIC_API_KEY`,
+   `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`) are offered by
+   name and last four characters; their values never reach the browser. You
+   can also paste an Anthropic, OpenAI, OpenRouter or Google Gemini API key. A saved sign-in
    that is not a key (an OAuth sign-in or a setup token) is offered as
    "Already signed in" and kept. The key you pick is saved once, so you are not
    asked again. If a different key is already saved where it goes, the file is
    copied to a timestamped backup next to it first (`auth-profiles.json.bak-*`
    or `.env.bak-*`, readable by you only) and setup tells you where. Other
-   sign-in methods (Codex OAuth, Gemini, custom endpoints) are under "Other
-   sign-in methods": run `bitterbot onboard --no-browser --flow manual`.
+   sign-in methods (Codex OAuth, Anthropic setup tokens, Bedrock, local and
+   custom endpoints) are under "Other sign-in methods": run
+   `bitterbot onboard --no-browser --flow manual`.
 2. **Model**: a model already in your config is kept unless you pick another.
+   The recommended model is Claude Sonnet 5.5 for Anthropic, GPT-5.5 for
+   OpenAI, OpenRouter Auto for OpenRouter, and Gemini 3.1 Pro preview for
+   Google Gemini.
 3. **Memory embeddings**: the local model by default (about 330 MB, downloaded
-   on first use).
-4. **Web search** (optional): curiosity research needs it.
+   on first use). With an OpenAI or Google Gemini key, that provider's
+   embeddings are offered too.
+4. **Web search** (optional): curiosity research needs it. Use a search key
+   already in the environment, Parallel Search (free, no key), or paste a
+   Brave Search (free tier), Tavily, or Perplexity (paid per search) key.
 5. **Channels**: later by default.
 6. **P2P network**: an explicit choice, with what joining sends (see
    [What this node connects to](/network/egress)); your current setting is

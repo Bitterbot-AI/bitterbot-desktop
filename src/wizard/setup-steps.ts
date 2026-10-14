@@ -131,7 +131,7 @@ export async function requireSetupRiskAcknowledgement(prompter: WizardPrompter):
 
 /** Where to go for sign-in methods the setup page does not offer. */
 export const OTHER_SIGN_IN_HINT =
-  "Codex (ChatGPT) OAuth, Anthropic setup tokens, Gemini, Bedrock, local and custom endpoints: " +
+  "Codex (ChatGPT) OAuth, Anthropic setup tokens, Bedrock, local and custom endpoints: " +
   "run `bitterbot onboard --no-browser --flow manual` in a terminal, or add them later in Settings.";
 
 export const TELEMETRY_STATEMENT =
@@ -144,6 +144,32 @@ const WEB_SEARCH_ENV: Array<{ provider: string; envVar: string; label: string }>
   { provider: "tavily", envVar: "TAVILY_API_KEY", label: "Tavily" },
   { provider: "perplexity", envVar: "PERPLEXITY_API_KEY", label: "Perplexity" },
   { provider: "serply", envVar: "SERPLY_API_KEY", label: "Serply" },
+];
+
+/**
+ * Web search providers whose key can be pasted in setup. `topLevelKey`: the
+ * key lives at `tools.web.search.apiKey` (Brave); the others keep it in their
+ * own block, `tools.web.search.<provider>.apiKey`, where the web_search tool
+ * and the terminal web-search step read it (src/agents/tools/web-search.ts).
+ */
+const WEB_SEARCH_PASTE: Array<{
+  provider: "brave" | "tavily" | "perplexity";
+  label: string;
+  hint: string;
+  topLevelKey?: boolean;
+}> = [
+  {
+    provider: "brave",
+    label: "Brave Search",
+    hint: "Free tier: https://brave.com/search/api/",
+    topLevelKey: true,
+  },
+  { provider: "tavily", label: "Tavily", hint: "https://tavily.com" },
+  {
+    provider: "perplexity",
+    label: "Perplexity",
+    hint: "Paid per search: https://www.perplexity.ai/settings/api",
+  },
 ];
 
 export type SetupContext = {
@@ -204,6 +230,11 @@ type SetupStepDef = {
   ask: (ctx: SetupContext, draft: SetupDraft, prompter: WizardPrompter) => Promise<StepAnswer>;
   apply: (ctx: SetupContext, draft: SetupDraft, answer: StepAnswer) => void;
 };
+
+/** "an Anthropic", "a Google Gemini". */
+function withArticle(label: string): string {
+  return `${/^[aeiou]/i.test(label) ? "an" : "a"} ${label}`;
+}
 
 function keyLabel(key: DetectedKey): string {
   return `${SETUP_PROVIDERS[key.provider].label}: ${key.envVar} ${key.masked} (${describeKeySource(key.source)})`;
@@ -326,12 +357,12 @@ const authStep: SetupStepDef = {
       ...ctx.keys.map((key) => ({ value: key.id, label: keyLabel(key), hint: "Use this key" })),
       ...SETUP_PROVIDER_ORDER.map((provider) => ({
         value: `paste:${provider}`,
-        label: `Paste a ${SETUP_PROVIDERS[provider].label} API key`,
+        label: `Paste ${withArticle(SETUP_PROVIDERS[provider].label)} API key`,
         hint: SETUP_PROVIDERS[provider].keyUrl,
       })),
       {
         value: "other",
-        label: "Other sign-in methods (Codex OAuth, Gemini, custom endpoints)",
+        label: "Other sign-in methods (Codex OAuth, Bedrock, custom endpoints)",
         hint: "Set up in a terminal: bitterbot onboard --no-browser --flow manual",
       },
       {
@@ -354,7 +385,7 @@ const authStep: SetupStepDef = {
     }
     if (typeof choice === "string" && choice.startsWith("paste:")) {
       const provider = choice.slice("paste:".length) as SetupProvider;
-      if (!SETUP_PROVIDERS[provider]) {
+      if (!Object.hasOwn(SETUP_PROVIDERS, provider)) {
         return { choice: "skip" };
       }
       const secret = await askPastedKey(prompter, provider);
@@ -377,7 +408,7 @@ const authStep: SetupStepDef = {
         provider: profile.provider,
         mode: profile.mode,
       };
-      if (profile.provider in SETUP_PROVIDERS) {
+      if (Object.hasOwn(SETUP_PROVIDERS, profile.provider)) {
         draft.provider = profile.provider as SetupProvider;
       }
       draft.answers.auth = profile.id;
@@ -385,7 +416,7 @@ const authStep: SetupStepDef = {
     }
     if (answer.choice.startsWith("paste:") && answer.secret) {
       const provider = answer.choice.slice("paste:".length) as SetupProvider;
-      if (!SETUP_PROVIDERS[provider]) {
+      if (!Object.hasOwn(SETUP_PROVIDERS, provider)) {
         draft.answers.auth = "skip";
         return;
       }
@@ -501,6 +532,15 @@ const embeddingsStep: SetupStepDef = {
             },
           ]
         : []),
+      ...(draft.provider === "google"
+        ? [
+            {
+              value: "gemini",
+              label: "Gemini embeddings",
+              hint: "Uses your Gemini key; no download",
+            },
+          ]
+        : []),
     ];
     const choice = await prompter.select({
       message:
@@ -511,12 +551,15 @@ const embeddingsStep: SetupStepDef = {
     return { choice: typeof choice === "string" ? choice : "auto" };
   },
   apply: (_ctx, draft, answer) => {
-    const known = ["keep", "auto", "local", "openai"];
+    const known = ["keep", "auto", "local", "openai", "gemini"];
     draft.answers.embeddings = known.includes(answer.choice) ? answer.choice : "auto";
-    if (answer.choice !== "local" && answer.choice !== "openai") {
+    // A remote embeddings provider only with that provider's key in this setup.
+    const remoteOwner: Record<string, SetupProvider> = { openai: "openai", gemini: "google" };
+    const remote = Object.hasOwn(remoteOwner, answer.choice);
+    if (answer.choice !== "local" && !remote) {
       return;
     }
-    if (answer.choice === "openai" && draft.provider !== "openai") {
+    if (remote && draft.provider !== remoteOwner[answer.choice]) {
       draft.answers.embeddings = "auto";
       return;
     }
@@ -528,7 +571,7 @@ const embeddingsStep: SetupStepDef = {
           ...draft.config.agents?.defaults,
           memorySearch: {
             ...draft.config.agents?.defaults?.memorySearch,
-            provider: answer.choice as "local" | "openai",
+            provider: answer.choice as "local" | "openai" | "gemini",
           },
         },
       },
@@ -579,12 +622,11 @@ const webSearchStep: SetupStepDef = {
         : []),
       { value: "later", label: "Later", hint: "Add a provider in Settings when you want it" },
       { value: "parallel", label: "Parallel Search", hint: "Free, no key needed" },
-      {
-        value: "paste:brave",
-        label: "Paste a Brave Search key",
-        hint: "Free tier: https://brave.com/search/api/",
-      },
-      { value: "paste:tavily", label: "Paste a Tavily key", hint: "https://tavily.com" },
+      ...WEB_SEARCH_PASTE.map((entry) => ({
+        value: `paste:${entry.provider}`,
+        label: `Paste ${withArticle(entry.label)} key`,
+        hint: entry.hint,
+      })),
     ];
     const choice = await prompter.select({
       message:
@@ -593,16 +635,16 @@ const webSearchStep: SetupStepDef = {
       initialValue: webSearchStep.recommended(ctx, draft),
     });
     const value = typeof choice === "string" ? choice : "later";
-    if (value.startsWith("paste:")) {
-      const provider = value.slice("paste:".length);
+    const pasted = WEB_SEARCH_PASTE.find((entry) => value === `paste:${entry.provider}`);
+    if (pasted) {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const key = await prompter.text({
-          message: `${provider === "brave" ? "Brave Search" : "Tavily"} API key`,
+          message: `${pasted.label} API key`,
           sensitive: true,
         });
         const problem = validatePastedKey(key);
         if (!problem) {
-          return { choice: value, secret: key.trim(), webProvider: provider };
+          return { choice: value, secret: key.trim(), webProvider: pasted.provider };
         }
         await prompter.note(problem, "Web search");
       }
@@ -625,6 +667,7 @@ const webSearchStep: SetupStepDef = {
         },
       };
     };
+    const pastedSearch = WEB_SEARCH_PASTE.find((entry) => entry.provider === answer.webProvider);
     if (answer.choice === "parallel") {
       write({ provider: "parallel", enabled: true });
       draft.answers.webSearch = "parallel";
@@ -637,13 +680,13 @@ const webSearchStep: SetupStepDef = {
       write({ provider: answer.choice.slice(4), enabled: true });
       draft.answers.webSearch = answer.choice;
     } else if (
-      answer.choice.startsWith("paste:") &&
+      pastedSearch &&
       answer.secret &&
-      (answer.webProvider === "brave" || answer.webProvider === "tavily")
+      answer.choice === `paste:${pastedSearch.provider}`
     ) {
       // Same place the terminal web-search step stores a pasted key.
-      const provider = answer.webProvider;
-      if (provider === "brave") {
+      const provider = pastedSearch.provider;
+      if (pastedSearch.topLevelKey) {
         write({ provider, enabled: true, apiKey: answer.secret });
       } else {
         const block = (search as Record<string, unknown> | undefined)?.[provider];

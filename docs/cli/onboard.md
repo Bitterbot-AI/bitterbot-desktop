@@ -20,22 +20,36 @@ terminal wizard, then asks the same questions as the terminal QuickStart, in
 the same order, because both run one shared list of steps:
 
 1. **Model provider key.** Keys already on this machine
-   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY` in the gateway
-   environment or `~/.bitterbot/.env`, or a key an earlier setup saved) are
+   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`,
+   `GEMINI_API_KEY` in the gateway environment or `~/.bitterbot/.env`, or a
+   key an earlier setup saved) are
    offered by name and last four characters only; the value never reaches the
    browser. Saved sign-ins that are not API keys (OAuth, setup tokens) are
-   offered as "Already signed in" and kept as they are. The key you pick is
-   saved once where Bitterbot keeps that provider's key (the auth profile
-   store for Anthropic and OpenRouter, `~/.bitterbot/.env` with mode 0600 for
-   OpenAI), so setup will not ask again. A different key already stored there
+   offered as "Already signed in" and kept as they are. You can also paste a
+   new Anthropic, OpenAI, OpenRouter or Google Gemini API key. The key you pick
+   is saved once where Bitterbot keeps that provider's key (the auth profile
+   store for Anthropic, OpenRouter and Google Gemini, `~/.bitterbot/.env` with
+   mode 0600 for OpenAI), so setup will not ask again. A different key already stored there
    is never lost: the file is copied to `<file>.bak-<time>` (mode 0600) first.
    "Other sign-in methods" points to
-   `bitterbot onboard --no-browser --flow manual` for Codex OAuth, Gemini and
-   custom endpoints.
+   `bitterbot onboard --no-browser --flow manual` for Codex OAuth, Anthropic
+   setup tokens, Bedrock, local and custom endpoints.
 2. **Model.** A model already configured is kept unless you pick another.
+   Each provider's recommended model comes first: Claude Sonnet 5.5
+   (`anthropic/claude-sonnet-5-5`; Claude Opus 5.5, Claude Fable 5.1 and
+   Claude Haiku 4.5 are also offered), GPT-5.5 (`openai/gpt-5.5`; GPT-5 mini
+   also offered), OpenRouter Auto (`openrouter/auto`), and Gemini 3.1 Pro
+   preview (`google/gemini-3.1-pro-preview`; Gemini 3 Flash preview also
+   offered). Every model offered here is a featured model of the Control UI
+   model picker.
 3. **Memory embeddings.** The local model is the default (about 330 MB,
-   downloaded the first time memory needs it).
-4. **Web search** (optional). Curiosity research needs it.
+   downloaded the first time memory needs it). With an OpenAI or Google
+   Gemini key, that provider's embeddings are offered too.
+4. **Web search** (optional). Curiosity research needs it. Options: a search
+   key already in the environment, Parallel Search (free, no key), or paste a
+   Brave Search (free tier), Tavily, or Perplexity key. Perplexity is paid per
+   search. A pasted key is saved in the config where the `web_search` tool
+   reads it (see [Web search](/tools/web-search)).
 5. **Channels.** "Later" is the default; you can chat in the Control UI
    right away.
 6. **P2P network.** An explicit choice, with one sentence on what joining
