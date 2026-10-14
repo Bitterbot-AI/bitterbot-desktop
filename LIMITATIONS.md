@@ -248,9 +248,12 @@ open an issue.
   mount makes boots dramatically slower (measured 43x on one machine).
 - The Tauri desktop shell is experimental and not part of this release;
   the supported UI is the Control UI served by the gateway.
-- npm installs are not supported yet. Supported paths: Docker, the
-  installer (release tarballs, from 1.5.0), and a source checkout, where
-  `bitterbot update` tracks your git checkout.
+- Supported install paths: Docker, the installer (release tarballs, from
+  1.5.0), `npm install -g bitterbot` (from 1.6.0, Node 22.12 or newer), and
+  a source checkout, where `bitterbot update` tracks your git checkout. An
+  npm install leaves out the optional `node-llama-cpp` (local embeddings,
+  about 700 MB); without it, memory search needs a remote embeddings key
+  until you run `npm install -g node-llama-cpp@3.15.1`.
 
 ## Operational honesty
 

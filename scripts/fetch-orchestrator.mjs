@@ -4,7 +4,11 @@
  * current platform from GitHub Releases, verify its SHA-256, and drop
  * it at ~/.bitterbot/bin/bitterbot-orchestrator[.exe].
  *
- * Invoked by `pnpm install`. Non-fatal by design: any failure (offline,
+ * Invoked by `pnpm install` in a checkout and by `npm install -g bitterbot`
+ * (the published package ships this script, orchestrator-signature.mjs and
+ * orchestrator/Cargo.toml for it; scripts/release-check.ts fails the pack
+ * when a lifecycle script references a file the package does not ship).
+ * Non-fatal by design: any failure (offline,
  * release not yet published, flaky network, hash mismatch) logs a
  * clear message and exits 0 so `pnpm install` still succeeds. The
  * gateway will surface the missing-binary case loudly at runtime via
@@ -28,7 +32,6 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
-import { checkChecksumsSignature, resolvePinnedMinisignPubkey } from "./orchestrator-signature.mjs";
 
 const REPO = "Bitterbot-AI/bitterbot-desktop";
 // Overridable for container builds: the Docker image fetches into the
@@ -147,6 +150,10 @@ async function safeUnlink(path) {
 }
 
 async function main() {
+  // Imported here, not at the top: a missing or broken helper must land in
+  // main().catch below (exit 0), never crash the install that ran us.
+  const { checkChecksumsSignature, resolvePinnedMinisignPubkey } =
+    await import("./orchestrator-signature.mjs");
   if (process.env.BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD) {
     log("skipped: BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD is set");
     return;

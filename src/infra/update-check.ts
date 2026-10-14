@@ -93,6 +93,29 @@ async function detectPackageManager(root: string): Promise<PackageManager> {
   return (await detectPackageManagerImpl(root)) ?? "unknown";
 }
 
+/**
+ * Which tool put a package install on disk, read from where it sits. The
+ * package.json `packageManager` field names the repo's development tooling
+ * (pnpm), so for `npm install -g bitterbot` it would wrongly say pnpm.
+ * Checked on the path as given and on its realpath (pnpm's global dir is a
+ * symlink into its `.pnpm` store). Null when the layout says nothing.
+ */
+export function detectPackageInstallLayout(paths: Array<string | null>): PackageManager | null {
+  const normalized = paths
+    .filter((p): p is string => Boolean(p))
+    .map((p) => p.split(path.sep).join("/").replaceAll("\\", "/"));
+  if (normalized.some((p) => /\/\.bun\/install\/global\/node_modules\//.test(p))) {
+    return "bun";
+  }
+  if (normalized.some((p) => /\/\.pnpm\/|\/pnpm\/global\/[^/]+\/node_modules\//.test(p))) {
+    return "pnpm";
+  }
+  if (normalized.some((p) => path.posix.basename(path.posix.dirname(p)) === "node_modules")) {
+    return "npm";
+  }
+  return null;
+}
+
 async function detectGitRoot(root: string): Promise<string | null> {
   const res = await runCommandWithTimeout(["git", "-C", root, "rev-parse", "--show-toplevel"], {
     timeoutMs: 4000,
@@ -679,9 +702,12 @@ export async function checkUpdateStatus(params: {
     };
   }
 
-  const pm = await detectPackageManager(root);
   const gitRoot = await detectGitRoot(root);
   const isGit = Boolean(gitRoot && path.resolve(gitRoot) === root);
+  const realRoot = isGit ? root : await fs.realpath(root).catch(() => root);
+  const pm =
+    (isGit ? null : detectPackageInstallLayout([root, realRoot])) ??
+    (await detectPackageManager(root));
 
   const installKind = resolveInstallKind({
     isGit,

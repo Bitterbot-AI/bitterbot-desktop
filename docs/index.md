@@ -124,8 +124,8 @@ The wizard configures your provider, asks for network consent, starts the
 gateway, and opens the Control UI. On Windows without Docker Desktop, use WSL2
 and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
 
-**npm:** not yet. There is no npm package today; Docker, the installer and
-source are the supported paths.
+**npm (1.6.0 and later):** with Node 22.12 or newer, `npm install -g bitterbot`
+then `bitterbot onboard`. See [npm package](/start/npm).
 
 ## Start here
 

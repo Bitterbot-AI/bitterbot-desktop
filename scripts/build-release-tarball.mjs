@@ -216,8 +216,10 @@ function installProductionDeps(stage) {
   for (const file of ["pnpm-lock.yaml", "pnpm-workspace.yaml", ".npmrc", "desktop/package.json"]) {
     copyFilePreservingMode(path.join(ROOT, file), path.join(stage, file));
   }
-  // Root lifecycle scripts (preinstall check, orchestrator fetch) exist only
-  // for source installs; both are skipped by env and removed after.
+  // Root lifecycle scripts (preinstall check, orchestrator fetch): the npm
+  // file list already carries them for `npm install -g`; copied again here
+  // so this step never depends on that. The tarball bundles its own verified
+  // orchestrator, so both hooks are skipped by env and removed after.
   for (const file of [
     "scripts/preinstall-check.mjs",
     "scripts/fetch-orchestrator.mjs",

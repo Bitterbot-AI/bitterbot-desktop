@@ -46,6 +46,22 @@ export const INSTALL_HEALTH_SECTION = "Install";
 /** File name of the bundled local embedding model (src/memory/embeddings.ts DEFAULT_LOCAL_MODEL). */
 export const LOCAL_GGUF_FILE = "embeddinggemma-300m-qat-Q8_0.gguf";
 
+/**
+ * The node-llama-cpp the package pins (package.json peerDependencies). npm
+ * package installs leave this optional peer out (about 700 MB of GPU builds
+ * on linux-x64; scripts/npm-package.ts), so doctor names the add-on command.
+ */
+export const NODE_LLAMA_CPP_VERSION = "3.15.1";
+
+function defaultHasNodeLlamaCpp(): boolean {
+  try {
+    import.meta.resolve("node-llama-cpp");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const REMOTE_EMBEDDING_PROVIDERS = new Set(["openai", "gemini", "voyage", "mistral"]);
 
 export type InstallHealthInput = {
@@ -69,6 +85,8 @@ export type InstallHealthInput = {
   /** Platform the fix command is written for (defaults to this one). */
   platform?: NodeJS.Platform;
   findBrowser?: (cfg: BitterbotConfig) => { kind: string; path: string } | null;
+  /** Whether node-llama-cpp (local embeddings) resolves from this install. */
+  hasNodeLlamaCpp?: () => boolean;
 };
 
 function readPackageVersion(root: string | null): string | null {
@@ -344,6 +362,15 @@ export function checkLocalGguf(input: InstallHealthInput): CheckResult {
   const memorySearch = input.cfg.agents?.defaults?.memorySearch;
   if (memorySearch?.provider && REMOTE_EMBEDDING_PROVIDERS.has(memorySearch.provider)) {
     return info(`Local embedding model: not needed (memory uses ${memorySearch.provider}).`);
+  }
+  if (!(input.hasNodeLlamaCpp ?? defaultHasNodeLlamaCpp)()) {
+    const fix =
+      input.installKind === "git"
+        ? "run `pnpm install` in the checkout"
+        : `run \`npm install -g node-llama-cpp@${NODE_LLAMA_CPP_VERSION}\` (an \`npm install -g bitterbot\` install leaves this optional, roughly 700 MB add-on out)`;
+    return warn(
+      `Local embeddings: node-llama-cpp is not installed, so memory search needs a remote embeddings key (OpenAI, Gemini or Voyage). Fix: ${fix}, or add a remote key.`,
+    );
   }
   const found = findLocalGguf(input);
   if (found) {

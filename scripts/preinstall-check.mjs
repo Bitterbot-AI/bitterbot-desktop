@@ -17,6 +17,13 @@
  * clearly formatted warning so the user knows what to fix if/when
  * later steps blow up.
  *
+ * Package installs (`npm install -g bitterbot`, or any install of the
+ * published package) only get the Node check: the pnpm and build-tool
+ * warnings are about building a source checkout, and a registry install
+ * builds nothing of ours. An install counts as a package install when npm
+ * says it is global (npm_config_global) or when the package root has no
+ * pnpm-workspace.yaml (the published package never ships one).
+ *
  * Skip in CI or controlled environments with BITTERBOT_SKIP_PREINSTALL_CHECK=1.
  */
 
@@ -49,6 +56,11 @@ if (process.env.BITTERBOT_SKIP_PREINSTALL_CHECK) {
 let hardFailures = 0;
 let warnings = 0;
 
+const PACKAGE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const isPackageInstall =
+  process.env.npm_config_global === "true" ||
+  !existsSync(path.join(PACKAGE_ROOT, "pnpm-workspace.yaml"));
+
 // ── Node version ──
 // The floor is `engines.node` in package.json (">=22.12.0"), not just the
 // major: 22.0-22.11 lack APIs we rely on. This script is the enforcement
@@ -57,8 +69,7 @@ let warnings = 0;
 const FALLBACK_MIN_NODE = "22.12.0";
 function readMinNodeVersion() {
   try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const pkg = JSON.parse(readFileSync(path.join(here, "..", "package.json"), "utf8"));
+    const pkg = JSON.parse(readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8"));
     const match = /(\d+)\.(\d+)\.(\d+)/.exec(String(pkg.engines?.node ?? ""));
     return match ? match[0] : FALLBACK_MIN_NODE;
   } catch {
@@ -78,7 +89,7 @@ const MIN_MAJOR = parseVersion(MIN_NODE)[0];
 const actual = process.versions.node;
 if (parseVersion(actual).some(Number.isNaN) || compareVersions(actual, MIN_NODE) < 0) {
   fail(
-    `Node.js ${actual} detected. This repo requires Node ≥ ${MIN_NODE} (the ${MIN_MAJOR} LTS line).\n` +
+    `Node.js ${actual} detected. Bitterbot requires Node ≥ ${MIN_NODE} (the ${MIN_MAJOR} LTS line).\n` +
       `  Install via nvm: nvm install ${MIN_MAJOR} && nvm use ${MIN_MAJOR}\n` +
       `  Or fnm:          fnm install ${MIN_MAJOR} && fnm use ${MIN_MAJOR}\n` +
       `  Or volta:        volta install node@${MIN_MAJOR}`,
@@ -95,12 +106,14 @@ const ua = process.env.npm_config_user_agent ?? "";
 const isPnpm = ua.startsWith("pnpm/");
 const isNpm = ua.startsWith("npm/");
 const isYarn = ua.startsWith("yarn/");
-if (isPnpm) {
+if (isPackageInstall) {
+  // Any package manager can install the published package.
+} else if (isPnpm) {
   log(`pnpm ${ua.split(" ")[0].replace("pnpm/", "")} ✓`);
 } else if (isNpm || isYarn) {
   warn(
     `Running under ${isNpm ? "npm" : "yarn"} instead of pnpm. ` +
-      `This repo is designed for pnpm workspaces — some scripts may misbehave. ` +
+      `This repo is designed for pnpm workspaces, so some scripts may misbehave. ` +
       `Install pnpm via https://pnpm.io/installation and re-run with \`pnpm install\`.`,
   );
   warnings++;
@@ -110,7 +123,7 @@ if (isPnpm) {
 // we can't meaningfully diagnose.
 
 // ── Linux system deps (warning only) ──
-if (process.platform === "linux") {
+if (process.platform === "linux" && !isPackageInstall) {
   const checks = [
     { name: "pkg-config", path: ["/usr/bin/pkg-config", "/usr/local/bin/pkg-config"] },
     {
@@ -147,8 +160,11 @@ if (hardFailures > 0) {
   process.exit(1);
 }
 if (warnings > 0) {
-  log(`${warnings} warning(s) — install will continue; review the notes above.`);
+  log(`${warnings} warning(s); install will continue, review the notes above.`);
 } else {
-  log(`all checks passed on ${process.platform}/${process.arch} (${os.hostname()})`);
+  log(
+    `all checks passed on ${process.platform}/${process.arch} (${os.hostname()})` +
+      (isPackageInstall ? " (package install)" : ""),
+  );
 }
 process.exit(0);

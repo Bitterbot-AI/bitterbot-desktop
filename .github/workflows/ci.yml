@@ -818,6 +818,136 @@ jobs:
           docker logs sbb 2>&1 | tail -20
           [ "$ok" = "1" ]
 
+  npm-package:
+    # `npm install -g bitterbot` as a user runs it: the package this tree would
+    # publish (npm-package.ts prepare: optional native peers, npm-shrinkwrap.json
+    # with the security overrides), installed with plain npm into a clean
+    # prefix and HOME, install hooks included (preinstall check, orchestrator
+    # download). Then the installed copy runs: --version, doctor, update
+    # status, and a gateway that boots with no config file and serves the
+    # Control UI. npm-publish.yml publishes exactly this shape.
+    name: npm package install
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          # The build checkout needs no orchestrator; the package install below
+          # downloads its own through the postinstall hook.
+          BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Prepare the npm package (manifest + shrinkwrap) and gate it
+        run: |
+          node --import tsx scripts/npm-package.ts prepare
+          pnpm release:check --npm-publish
+
+      - name: npm pack
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/pack"
+          ls -lh "$RUNNER_TEMP/pack"
+          echo "VERSION=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
+
+      - name: npm install -g from the tarball (plain npm, clean prefix and HOME)
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/npm-home" && mkdir -p "$HOME"
+          cd "$RUNNER_TEMP"
+          npm install -g --prefix "$RUNNER_TEMP/npmg" --foreground-scripts \
+            "$RUNNER_TEMP"/pack/bitterbot-*.tgz 2>&1 | tee "$RUNNER_TEMP/npm-install.log"
+          # A package install is not nagged about pnpm or build tools.
+          grep -q "\[preinstall-check\] .*(package install)" "$RUNNER_TEMP/npm-install.log"
+          if grep -q "preinstall-check WARN" "$RUNNER_TEMP/npm-install.log"; then exit 1; fi
+          # The optional native peers are not downloaded.
+          test ! -e "$RUNNER_TEMP/npmg/lib/node_modules/bitterbot/node_modules/node-llama-cpp"
+          test ! -e "$RUNNER_TEMP/npmg/lib/node_modules/node-llama-cpp"
+          # postinstall fetched and verified the P2P orchestrator.
+          grep "\[orchestrator-fetch\]" "$RUNNER_TEMP/npm-install.log"
+          test -x "$HOME/.bitterbot/bin/bitterbot-orchestrator"
+          test -f "$HOME/.bitterbot/bin/bitterbot-orchestrator.verified.json"
+          du -sh "$RUNNER_TEMP/npmg/lib/node_modules/bitterbot"
+
+      - name: The installed copy runs (--version, doctor, update status)
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/npm-home" NPM_CONFIG_PREFIX="$RUNNER_TEMP/npmg"
+          export PATH="$RUNNER_TEMP/npmg/bin:$PATH"
+          cd "$RUNNER_TEMP"
+          [ "$(command -v bitterbot)" = "$RUNNER_TEMP/npmg/bin/bitterbot" ]
+          v=$(bitterbot --version | tail -1)
+          echo "bitterbot --version -> $v"
+          [ "$v" = "$VERSION" ]
+          # doctor loads dist, config, plugins and extensions; the last stdout
+          # line is the JSON report (its exit code reflects findings on a box
+          # with no model credentials, so only the report is asserted).
+          bitterbot doctor --json > "$RUNNER_TEMP/doctor.out" 2> "$RUNNER_TEMP/doctor.err" || true
+          tail -20 "$RUNNER_TEMP/doctor.err" || true
+          node -e '
+            const lines = require("node:fs").readFileSync(process.argv[1], "utf8").split("\n").filter((l) => l.startsWith("{"));
+            const r = JSON.parse(lines[lines.length - 1]);
+            console.log(JSON.stringify(r.findings, null, 1));
+            if (r.version !== process.argv[2]) throw new Error("doctor version " + r.version);
+          ' "$RUNNER_TEMP/doctor.out" "$VERSION"
+          # A global npm install is a package install updated through npm.
+          bitterbot update status --json > "$RUNNER_TEMP/update-status.json"
+          cat "$RUNNER_TEMP/update-status.json"
+          node -e '
+            const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            if (s.update.installKind !== "package") throw new Error("installKind " + s.update.installKind);
+            if (s.update.packageManager !== "npm") throw new Error("packageManager " + s.update.packageManager);
+            if (s.channel.value !== "stable") throw new Error("channel " + s.channel.value);
+            if (s.update.registry && s.update.registry.source !== "npm") throw new Error("registry " + s.update.registry.source);
+          ' "$RUNNER_TEMP/update-status.json"
+
+      - name: Gateway boots from the npm install with no config file
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/npm-home" PATH="$RUNNER_TEMP/npmg/bin:$PATH"
+          test ! -e "$HOME/.bitterbot/bitterbot.json"
+          (cd /tmp && BITTERBOT_GATEWAY_TOKEN=ci-smoke-token nohup bitterbot gateway --allow-unconfigured \
+            --port 19021 > "$RUNNER_TEMP/gateway.log" 2>&1 &)
+          code=000
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token" \
+              http://127.0.0.1:19021/ || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          echo "GET / -> $code"
+          tail -40 "$RUNNER_TEMP/gateway.log"
+          [ "$code" = "200" ]
+          # The Control UI came from the package's dist/control-ui.
+          curl -s -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19021/ | grep -qi "<html"
+          # P2P is on by default: the orchestrator the postinstall fetched starts.
+          started=1
+          for i in $(seq 1 30); do
+            if grep -q "P2P orchestrator bridge started (binary: $HOME/.bitterbot/bin/bitterbot-orchestrator)" "$RUNNER_TEMP/gateway.log"; then
+              started=0; break
+            fi
+            sleep 2
+          done
+          grep -i orchestrator "$RUNNER_TEMP/gateway.log" | tail -5 || true
+          [ "$started" = "0" ]
+          # Every bundled extension loads (their dependencies are hoisted to the
+          # package root, the only node_modules npm installs).
+          if grep -i "failed to load" "$RUNNER_TEMP/gateway.log"; then exit 1; fi
+          pkill -f "^bitterbot-gateway" || true
+          pkill -f "npmg/lib/node_modules/bitterbot" || true
+
   orchestrator-check:
     # Cargo PRs were previously "green" because nothing in CI compiled the
     # Rust tree — the only cargo touchpoint was the non-blocking audit. A

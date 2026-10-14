@@ -3,20 +3,41 @@
  * 64MB tarball that included the private audit docs under docs/reviews —
  * a disclosure incident waiting on the "publish" keypress. This script is
  * the tripwire: it dry-runs `npm pack` and fails on anything that must
- * never leave the machine.
+ * never leave the machine, or anything a registry install needs and lacks.
  *
  * Run: pnpm release:check   (CI runs it after the build step)
+ *      pnpm release:check --npm-publish   (npm-publish.yml, after
+ *        scripts/npm-package.ts prepare: also requires the npm manifest and
+ *        npm-shrinkwrap.json that prepare writes)
  *
  * Assertions:
  *   1. No internal docs (docs/reviews, docs/plans, docs/debug,
  *      docs/diagnostics) and no keys/ tree.
  *   2. No databases, env files, key material, or logs by extension.
- *   3. The pack actually contains the runtime (dist/index.js, bitterbot.mjs).
+ *   3. The pack actually contains the runtime (dist/index.js, bitterbot.mjs,
+ *      the Control UI, the bin target).
  *   4. Tarball + unpacked size ceilings — catches a runaway dist or an
  *      accidentally-included artifact dump before it ships.
+ *   5. Every file an install-time lifecycle script (preinstall, install,
+ *      postinstall) runs is in the pack, with every relative module it
+ *      imports, and the hooks use no tool a package install lacks (pnpm,
+ *      tsx). A registry install of 1.5.0 would have crashed in preinstall:
+ *      scripts/ was not in `files`.
+ *   6. No `workspace:`/`link:`/`file:` specs in the runtime dependency maps
+ *      (npm cannot resolve them from the registry).
  */
 
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import {
+  expectedOverrideVersions,
+  npmPublishManifestProblems,
+  type PackageManifest,
+  type Shrinkwrap,
+  shrinkwrapOverrideViolations,
+} from "./npm-package.ts";
 
 const FORBIDDEN_PREFIXES = [
   "docs/reviews/",
@@ -38,7 +59,21 @@ const FORBIDDEN_SUFFIXES = [
   "node.key",
 ];
 
-const REQUIRED_PATHS = ["dist/index.js", "bitterbot.mjs", "package.json"];
+export const REQUIRED_PATHS = [
+  "dist/index.js",
+  "dist/entry.js",
+  "bitterbot.mjs",
+  "package.json",
+  // The gateway serves the Control UI from here; without it a package
+  // install boots a gateway with no UI.
+  "dist/control-ui/index.html",
+  // scripts/fetch-orchestrator.mjs (postinstall) reads the orchestrator
+  // release version from it.
+  "orchestrator/Cargo.toml",
+];
+
+/** npm runs these on the consumer's machine for a registry install. */
+export const INSTALL_LIFECYCLE_SCRIPTS = ["preinstall", "install", "postinstall"] as const;
 
 // Current honest footprint is ~63MB packed / ~265MB unpacked (719 dist
 // chunks + bundled extensions + skills + public docs). The ceilings leave
@@ -54,7 +89,119 @@ type PackReport = {
   filename: string;
 };
 
-function main(): void {
+const SCRIPT_FILE = /^(?:\.\/)?([\w@.-]+(?:\/[\w@.-]+)*\.(?:mjs|cjs|js|ts|mts|cts|sh))$/;
+
+/** Package-relative files a lifecycle command runs (`node scripts/x.mjs`, `sh ./y.sh`). */
+export function lifecycleFileRefs(command: string): string[] {
+  const refs: string[] = [];
+  for (const token of command.split(/[\s;&|()]+/)) {
+    const m = SCRIPT_FILE.exec(token.replace(/^["']|["']$/g, ""));
+    if (m?.[1]) {
+      refs.push(m[1]);
+    }
+  }
+  return refs;
+}
+
+/** Relative specifiers a module imports (static, re-export and literal dynamic). */
+export function relativeImports(source: string): string[] {
+  const out = new Set<string>();
+  const patterns = [
+    /\bfrom\s*["'](\.{1,2}\/[^"']+)["']/g,
+    /\bimport\s*["'](\.{1,2}\/[^"']+)["']/g,
+    /\bimport\s*\(\s*["'](\.{1,2}\/[^"']+)["']\s*\)/g,
+  ];
+  for (const re of patterns) {
+    for (const m of source.matchAll(re)) {
+      if (m[1]) {
+        out.add(m[1]);
+      }
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Problems with the install-time lifecycle scripts of `pkg` against the pack
+ * file list. `readFile` reads a package-relative file from the tree being
+ * packed (null when unreadable), to follow its relative imports.
+ */
+export function lifecycleProblems(params: {
+  scripts: Record<string, string> | undefined;
+  packPaths: Set<string>;
+  readFile: (rel: string) => string | null;
+}): string[] {
+  const problems: string[] = [];
+  for (const hook of INSTALL_LIFECYCLE_SCRIPTS) {
+    const command = params.scripts?.[hook];
+    if (!command) {
+      continue;
+    }
+    const tool = /(?:^|[\s;&|(])(pnpm|tsx|yarn|bun)(?=\s|$)|--import[= ]tsx/.exec(command);
+    if (tool) {
+      problems.push(
+        `${hook} "${command}" needs ${tool[1] ?? "tsx"}, which a package install does not have`,
+      );
+    }
+    const seen = new Set<string>();
+    const queue = lifecycleFileRefs(command).map((file) => ({
+      file,
+      from: `${hook} "${command}"`,
+    }));
+    while (queue.length > 0) {
+      const next = queue.shift();
+      if (!next || seen.has(next.file)) {
+        continue;
+      }
+      seen.add(next.file);
+      if (!params.packPaths.has(next.file)) {
+        problems.push(`${next.from} needs ${next.file}, which is not in the package`);
+        continue;
+      }
+      const source = params.readFile(next.file);
+      if (source === null) {
+        continue;
+      }
+      for (const spec of relativeImports(source)) {
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(next.file), spec));
+        queue.push({ file: target, from: `${next.file} (run by ${hook})` });
+      }
+    }
+  }
+  return problems;
+}
+
+/** Runtime dependency specs npm cannot resolve from the registry. */
+export function unresolvableSpecProblems(pkg: PackageManifest): string[] {
+  const problems: string[] = [];
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"] as const) {
+    for (const [name, spec] of Object.entries(pkg[field] ?? {})) {
+      if (/^(workspace|link|file|portal):/.test(spec)) {
+        problems.push(`${field}.${name} is "${spec}", which npm cannot install from the registry`);
+      }
+    }
+  }
+  return problems;
+}
+
+/** The `bin` targets must ship. */
+export function binProblems(pkg: PackageManifest, packPaths: Set<string>): string[] {
+  const bin = pkg.bin;
+  const targets =
+    typeof bin === "string"
+      ? [bin]
+      : bin && typeof bin === "object"
+        ? Object.values(bin as Record<string, string>)
+        : [];
+  return targets
+    .map((t) => t.replace(/^\.\//, ""))
+    .filter((t) => !packPaths.has(t))
+    .map((t) => `bin target ${t} is not in the package`);
+}
+
+function main(argv: string[]): void {
+  const npmPublish = argv.includes("--npm-publish");
+  const root = process.cwd();
   // --ignore-scripts: prepack runs the full build; the gate checks whatever
   // dist is on disk (CI runs it right after its build step).
   const raw = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
@@ -70,6 +217,16 @@ function main(): void {
 
   const failures: string[] = [];
   const paths = new Set(report.files.map((f) => f.path));
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(root, "package.json"), "utf8"),
+  ) as PackageManifest;
+  const readFile = (rel: string): string | null => {
+    try {
+      return fs.readFileSync(path.join(root, rel), "utf8");
+    } catch {
+      return null;
+    }
+  };
 
   for (const file of report.files) {
     const p = file.path;
@@ -83,6 +240,26 @@ function main(): void {
   for (const required of REQUIRED_PATHS) {
     if (!paths.has(required)) {
       failures.push(`missing from pack (build incomplete?): ${required}`);
+    }
+  }
+
+  failures.push(...binProblems(pkg, paths));
+  failures.push(...lifecycleProblems({ scripts: pkg.scripts, packPaths: paths, readFile }));
+  failures.push(...unresolvableSpecProblems(pkg));
+
+  if (npmPublish) {
+    failures.push(...npmPublishManifestProblems(pkg));
+    if (!paths.has("npm-shrinkwrap.json")) {
+      failures.push(
+        "npm-shrinkwrap.json is not in the package (run scripts/npm-package.ts prepare)",
+      );
+    } else {
+      const shrinkwrap = JSON.parse(readFile("npm-shrinkwrap.json") ?? "{}") as Shrinkwrap;
+      failures.push(
+        ...shrinkwrapOverrideViolations(shrinkwrap, expectedOverrideVersions(pkg)).map(
+          (v) => `npm-shrinkwrap.json: ${v}`,
+        ),
+      );
     }
   }
 
@@ -110,10 +287,13 @@ function main(): void {
   }
 
   console.log(
-    `release-check: OK — ${report.files.length} files, ` +
+    `release-check: OK, ${report.files.length} files, ` +
       `${(report.size / 1e6).toFixed(1)}MB packed / ${(report.unpackedSize / 1e6).toFixed(1)}MB unpacked, ` +
-      "no internal docs, no databases, no key material.",
+      "no internal docs, no databases, no key material, install hooks self-contained" +
+      (npmPublish ? ", npm manifest and shrinkwrap in place." : "."),
   );
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main(process.argv.slice(2));
+}

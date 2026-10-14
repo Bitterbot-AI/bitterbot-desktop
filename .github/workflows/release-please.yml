@@ -66,3 +66,21 @@ jobs:
       attestations: write
     with:
       version: ${{ needs.release-please.outputs.version }}
+
+  # npm package: npm-publish.yml publishes with npm trusted publishing, which
+  # trusts THAT workflow file, so it runs on its own rather than as a
+  # workflow_call here. A workflow_dispatch is the one event the default
+  # GITHUB_TOKEN may raise that starts another workflow; the publish itself
+  # still waits for a maintainer's approval in the `npm` environment.
+  npm-publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch npm-publish.yml for the new release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: gh workflow run npm-publish.yml --repo "${{ github.repository }}" --ref main -f tag="v$VERSION"
