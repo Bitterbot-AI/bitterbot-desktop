@@ -2,6 +2,7 @@ import type { SkillEntry } from "../../agents/skills/types.js";
 import type { A2aConfig } from "../../config/types.a2a.js";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import { getLocalWalletCapability } from "../../infra/wallet-discovery.js";
+import { NANO_NETWORK, resolveNanoRail } from "../../services/nano-verify.js";
 import type { A2aAgentCard, A2aSkill } from "./types.js";
 
 const A2A_PROTOCOL_VERSION = "a2a/1.0.0";
@@ -61,6 +62,18 @@ export function buildAgentCard(params: {
       token: "USDC",
       address: paymentAddress,
       minPayment: String(a2a.payment.x402?.minPayment ?? 0.01),
+      pricing: "per-task",
+    };
+  }
+
+  // Opt-in Nano rail, advertised only when a2a.payment.nano is configured.
+  const nano = a2a.payment?.enabled ? resolveNanoRail(a2a.payment.nano) : undefined;
+  if (nano) {
+    extensions["nano-payment"] = {
+      network: NANO_NETWORK,
+      token: "XNO",
+      address: nano.address,
+      rawPerUsd: nano.rawPerUsd,
       pricing: "per-task",
     };
   }
