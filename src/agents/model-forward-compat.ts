@@ -159,6 +159,69 @@ function resolveAnthropicOpusNextForwardCompatModel(
   });
 }
 
+/** `claude-<family>-<major>[-<minor>]`, e.g. claude-sonnet-5-5, claude-fable-5-1. */
+const CLAUDE_FAMILY_ID = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:$|-)/;
+
+function claudeVersion(id: string): { family: string; version: number } | undefined {
+  const m = CLAUDE_FAMILY_ID.exec(id.toLowerCase());
+  if (!m) {
+    return undefined;
+  }
+  return { family: m[1] ?? "", version: Number(m[2]) * 100 + Number(m[3] ?? 0) };
+}
+
+/**
+ * Any Claude model newer than pi-ai's built-in catalog (the Claude 5 family:
+ * claude-sonnet-5-5, claude-opus-5-5, claude-fable-5-1, ...). The model picker
+ * lists what Anthropic's /v1/models serves (model-live-discovery), so without
+ * this the picker offered models the runner then refused as "Unknown model".
+ * Clones the newest catalogued model of the same family (Fable, a newer
+ * family, from Opus) so the API, reasoning flag and limits are Anthropic's.
+ */
+function resolveAnthropicFamilyForwardCompatModel(
+  provider: string,
+  modelId: string,
+  modelRegistry: ModelRegistry,
+): Model<Api> | undefined {
+  const normalizedProvider = normalizeProviderId(provider);
+  if (normalizedProvider !== "anthropic") {
+    return undefined;
+  }
+  const trimmedModelId = modelId.trim();
+  const wanted = claudeVersion(trimmedModelId);
+  if (!wanted) {
+    return undefined;
+  }
+  const newestOf = (family: string) => {
+    let best: { id: string; version: number } | undefined;
+    // Test doubles may implement only find().
+    for (const model of modelRegistry.getAll?.() ?? []) {
+      if (model.provider !== normalizedProvider) {
+        continue;
+      }
+      const v = claudeVersion(model.id);
+      // Undated ids only (claude-sonnet-4-6, not claude-sonnet-4-20250514).
+      if (!v || v.family !== family || /-\d{8}$/.test(model.id)) {
+        continue;
+      }
+      if (!best || v.version > best.version) {
+        best = { id: model.id, version: v.version };
+      }
+    }
+    return best?.id;
+  };
+  const templateId = newestOf(wanted.family) ?? newestOf("opus") ?? newestOf("sonnet");
+  if (!templateId) {
+    return undefined;
+  }
+  return cloneFirstTemplateModel({
+    normalizedProvider,
+    trimmedModelId,
+    templateIds: [templateId],
+    modelRegistry,
+  });
+}
+
 // Z.ai's GLM-5 may not be present in pi-ai's built-in model catalog yet.
 // When a user configures zai/glm-5 without a models.json entry, clone glm-4.7 as a forward-compat fallback.
 function resolveZaiGlm5ForwardCompatModel(
@@ -210,6 +273,7 @@ export function resolveForwardCompatModel(
     resolveOpenAICodexGpt53FallbackModel(provider, modelId, modelRegistry) ??
     resolveAnthropicOpus46ForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveAnthropicOpusNextForwardCompatModel(provider, modelId, modelRegistry) ??
+    resolveAnthropicFamilyForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveZaiGlm5ForwardCompatModel(provider, modelId, modelRegistry)
   );
 }
