@@ -9,6 +9,9 @@ import {
 import type { RuntimeEnv } from "../../runtime.js";
 import { runGatewaySwitch, SWITCH_EXIT, type GatewaySwitchCommandDeps } from "./switch.js";
 
+/** Home-relative paths print with the platform separator (`~\\x` on Windows). */
+const native = (s: string) => s.replaceAll("/", path.sep);
+
 const CLONE_FINDINGS: GatewaySwitchFindings = {
   port: 19001,
   self: { root: path.resolve("/home/u/.bitterbot/app/1.5.0"), kind: "tarball", version: "1.5.0" },
@@ -79,7 +82,7 @@ describe("bitterbot gateway switch", () => {
     expect(code).toBe(SWITCH_EXIT.available);
     expect(h.execute).not.toHaveBeenCalled();
     expect(h.out.join("\n")).toContain(
-      "Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001.",
+      native("Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001."),
     );
     expect(h.out.join("\n")).not.toMatch(/—/);
   });
@@ -97,7 +100,7 @@ describe("bitterbot gateway switch", () => {
     const text = h.out.join("\n");
     expect(text).toContain("Switching to 1.5.0...");
     expect(text).toContain("Your settings and memory are unchanged.");
-    expect(text).toContain("Your git clone at ~/bitterbot-desktop is no longer used");
+    expect(text).toContain(native("Your git clone at ~/bitterbot-desktop is no longer used"));
     expect(text).toContain("nothing was deleted");
   });
 
@@ -128,7 +131,7 @@ describe("bitterbot gateway switch", () => {
     });
     expect(await runGatewaySwitch({ yes: true }, h.runtime, h.deps)).toBe(SWITCH_EXIT.rolledBack);
     expect(h.out.join("\n")).toContain(
-      "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) is running again, as before.",
+      native("Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) is running again, as before."),
     );
   });
 
@@ -209,12 +212,16 @@ describe("bitterbot gateway switch", () => {
     await runGatewaySwitch({ yes: true }, h.runtime, h.deps);
     const text = h.out.join("\n");
     expect(text).toContain(
-      "Will copy 2 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env (existing keys are kept; a backup is made first): OPENAI_API_KEY, RPC_URL",
+      native(
+        "Will copy 2 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env (existing keys are kept; a backup is made first): OPENAI_API_KEY, RPC_URL",
+      ),
     );
-    expect(text).toContain("copy these by hand from ~/bitterbot-desktop/.env): ODD_VALUE");
+    expect(text).toContain(native("copy these by hand from ~/bitterbot-desktop/.env): ODD_VALUE"));
     expect(text).toContain("will not see: GITHUB_TOKEN");
     expect(text).toContain("keeps it running in the background");
-    expect(text).toContain("Copied 2 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env");
+    expect(text).toContain(
+      native("Copied 2 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env"),
+    );
   });
 
   it("forwards progress lines while it waits", async () => {
