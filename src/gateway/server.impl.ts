@@ -796,7 +796,12 @@ export async function startGatewayServer(
         });
 
         return startGatewayConfigReloader({
-          initialConfig: cfgAtStart,
+          // Not cfgAtStart: startup itself can write the config (the browser
+          // control service saves a generated gateway.auth.token when none
+          // exists). Diffing later edits against the pre-write copy reported
+          // `gateway` as changed and restarted the gateway on the next
+          // unrelated save, which cut the browser setup off mid-wizard.
+          initialConfig: loadConfig(),
           readSnapshot: readConfigFileSnapshot,
           onHotReload: applyHotReload,
           onRestart: requestGatewayRestart,

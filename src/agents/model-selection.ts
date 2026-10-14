@@ -2,6 +2,7 @@ import type { BitterbotConfig } from "../config/config.js";
 import { resolveAgentModelPrimary } from "./agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "./defaults.js";
 import type { ModelCatalogEntry } from "./model-catalog.js";
+import { resolveFamilyAliasTarget } from "./model-family-latest.js";
 import { normalizeGoogleModelId } from "./models-config.providers.js";
 
 export type ModelRef = {
@@ -162,6 +163,7 @@ export function buildModelAliasIndex(params: {
   const byKey = new Map<string, string[]>();
 
   const rawModels = params.cfg.agents?.defaults?.models ?? {};
+  const restricted = params.cfg.agents?.defaults?.restrictModels === true;
   for (const [keyRaw, entryRaw] of Object.entries(rawModels)) {
     const parsed = parseModelRef(String(keyRaw ?? ""), params.defaultProvider);
     if (!parsed) {
@@ -172,8 +174,11 @@ export function buildModelAliasIndex(params: {
       continue;
     }
     const aliasKey = normalizeAliasKey(alias);
-    byAlias.set(aliasKey, { alias, ref: parsed });
-    const key = modelKey(parsed.provider, parsed.model);
+    // A family alias (`opus`, ...) follows the newest served model of its
+    // family, unless an allowlist is on (the newer model may not be on it).
+    const target = restricted ? parsed : resolveFamilyAliasTarget(alias, parsed);
+    byAlias.set(aliasKey, { alias, ref: target });
+    const key = modelKey(target.provider, target.model);
     const existing = byKey.get(key) ?? [];
     existing.push(alias);
     byKey.set(key, existing);

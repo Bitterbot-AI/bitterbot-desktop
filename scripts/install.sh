@@ -24,7 +24,17 @@
 #      pass --require-signature to refuse that fallback.
 #   4. Unpacks to <dir>/<version>, switches <dir>/current to it, keeps the
 #      previous version (for rollback), links ~/.local/bin/bitterbot.
-#   5. Runs `bitterbot onboard` (skip with --no-onboard).
+#   5. If an older Bitterbot is running (a git clone started with pnpm, an
+#      older release) or set up as a background service, offers to switch it
+#      to the new version: `bitterbot gateway switch` snapshots your data
+#      (like `bitterbot update`), stops the old gateway, copies a git clone's
+#      missing .env keys into ~/.bitterbot/.env, points the service at the new
+#      one (or installs one, so it keeps running), waits until it answers, and
+#      puts the old one back if it does not. Asked once (default yes); --yes
+#      switches without asking; --no-switch leaves it alone. `previous` and
+#      older versions are only updated after a successful switch.
+#   6. Runs `bitterbot onboard` (skip with --no-onboard): the setup page, or
+#      the Control UI link when Bitterbot is already set up.
 #
 # Everything lives in functions and the only top-level command is the last
 # line, so a partially downloaded script runs nothing.
@@ -39,7 +49,10 @@ Usage: install.sh [options]
       --dir PATH         Install root (default: ~/.bitterbot/app)
       --allow-root       Allow installing as root (not recommended)
       --no-onboard       Do not run `bitterbot onboard` afterwards
-  -y, --yes              Do not ask for confirmation
+      --no-switch        Leave a running older Bitterbot (git clone, older
+                         release) and its background service alone
+  -y, --yes              Do not ask for confirmation (also switches a running
+                         older Bitterbot to the new version)
       --with-browser     Linux: also download Playwright's Chromium (~170 MB)
                          into ~/.bitterbot/browsers for the browser tool
       --require-signature
@@ -311,12 +324,153 @@ bb_confirm() {
     bb_die "no terminal to confirm on; re-run with --yes to proceed non-interactively"
   fi
   local answer
-  printf 'Proceed? [y/N] ' >/dev/tty
+  # Enter means yes: you ran the installer on purpose.
+  printf 'Proceed? [Y/n] ' >/dev/tty
   read -r answer </dev/tty || answer=""
   case $answer in
-    y | Y | yes | YES) ;;
-    *) bb_die "aborted" ;;
+    n | N | no | NO | No) bb_die "aborted" ;;
   esac
+}
+
+# The state dir (config, keys, memory) is private to you. Same policy as
+# src/infra/state-dir-perms.ts: a default-umask mode (755, 775, 777) becomes
+# 700, any other mode only loses the "other users" bits (group sharing and
+# setgid are kept). Only the directory itself, only when it is yours, never
+# $HOME, / or a parent of $HOME, never a relative path, and not at all with
+# BITTERBOT_STATE_DIR_PERMS=keep. $1: the install root (the state dir is
+# created when the install root is inside it).
+bb_secure_state_dir() {
+  local install_dir=$1 state_dir mode
+  [ "${BITTERBOT_STATE_DIR_PERMS:-}" = "keep" ] && return 0
+  state_dir=${BITTERBOT_STATE_DIR:-}
+  # Trim surrounding whitespace and expand a leading ~ like resolveStateDir.
+  state_dir=${state_dir#"${state_dir%%[![:space:]]*}"}
+  state_dir=${state_dir%"${state_dir##*[![:space:]]}"}
+  case $state_dir in
+    "") state_dir="$HOME/.bitterbot" ;;
+    \~) state_dir=$HOME ;;
+    \~/*) state_dir="$HOME/${state_dir#\~/}" ;;
+  esac
+  state_dir=${state_dir%/}
+  case $state_dir in
+    /?*) ;;
+    *) return 0 ;;
+  esac
+  case "${HOME%/}/" in
+    "$state_dir"/*) return 0 ;;
+  esac
+  case $install_dir in
+    "$state_dir" | "$state_dir"/*) mkdir -p "$state_dir" ;;
+  esac
+  if [ ! -d "$state_dir" ] || [ ! -O "$state_dir" ]; then
+    return 0
+  fi
+  mode=$(stat -c %a "$state_dir" 2>/dev/null || stat -f %Lp "$state_dir" 2>/dev/null || true)
+  case $mode in
+    755 | 775 | 777) chmod 700 "$state_dir" || bb_warn "could not make $state_dir private (chmod 700)" ;;
+    *) chmod o-rwx "$state_dir" 2>/dev/null || true ;;
+  esac
+}
+
+# After a successful (or unneeded) switch: point `previous` at the version
+# that was current before, then remove versions older than that, except one
+# a running Bitterbot still uses.
+bb_finish_versions() {
+  local install_dir=$1 version=$2 previous=$3 keep_prev="" entry busy
+  if [ -n "$previous" ] && [ "$previous" != "$version" ] && [ -d "$install_dir/$previous" ]; then
+    ln -sfn "$previous" "$install_dir/previous"
+  fi
+  if [ -L "$install_dir/previous" ]; then
+    keep_prev=$(readlink "$install_dir/previous")
+  fi
+  for entry in "$install_dir"/*; do
+    if [ ! -d "$entry" ] || [ -L "$entry" ]; then
+      continue
+    fi
+    entry=${entry##*/}
+    printf '%s' "$entry" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
+    if [ "$entry" != "$version" ] && [ "$entry" != "$keep_prev" ]; then
+      if busy=$(bb_version_in_use "$install_dir/$entry"); then
+        bb_say "Keeping old version $entry: in use by pid $busy"
+        continue
+      fi
+      bb_say "Removing old version $entry"
+      rm -rf "${install_dir:?}/$entry"
+    fi
+  done
+}
+
+# Offer to switch a running (or service-installed) older Bitterbot to the
+# version just installed, through `bitterbot gateway switch` (exit codes in
+# src/cli/daemon-cli/switch.ts). Sets BB_SWITCH_STATE to none, switched,
+# declined, pending (no terminal to ask on), blocked (the message says what
+# to do), portinuse (another program holds the gateway port) or failed.
+bb_switch_gateway() {
+  local bin=$1 version=$2 summary rc=0 answer
+  BB_SWITCH_STATE=none
+  # BITTERBOT_INSTALLER=1: config advice as one line (shown here, once);
+  # the later commands run with BITTERBOT_INSTALLER=quiet.
+  summary=$(BITTERBOT_INSTALLER=1 BITTERBOT_HIDE_BANNER=1 "$bin" gateway switch --check 2>&1) || rc=$?
+  BB_CONFIG_NOTED=1
+  case $rc in
+    0)
+      # Nothing to switch: only the config advice line (if any) to show.
+      if [ -n "$summary" ]; then
+        bb_say ""
+        bb_say "$summary"
+      fi
+      return 0
+      ;;
+    10) ;;
+    2)
+      bb_say ""
+      bb_say "$summary"
+      BB_SWITCH_STATE=blocked
+      return 0
+      ;;
+    5)
+      bb_say ""
+      bb_say "$summary"
+      BB_SWITCH_STATE=portinuse
+      return 0
+      ;;
+    *)
+      if [ -n "$summary" ]; then
+        bb_say ""
+        bb_say "$summary"
+      fi
+      bb_warn "could not check for a running older Bitterbot (exit $rc). To switch later: $bin gateway switch"
+      BB_SWITCH_STATE=pending
+      return 0
+      ;;
+  esac
+  bb_say ""
+  bb_say "$summary"
+  if [ "$BB_YES" != "1" ]; then
+    if ! { : </dev/tty; } 2>/dev/null; then
+      bb_say "To switch to $version, run: $bin gateway switch"
+      BB_SWITCH_STATE=pending
+      return 0
+    fi
+    printf 'Switch to %s now? [Y/n] ' "$version" >/dev/tty
+    read -r answer </dev/tty || answer=""
+    case $answer in
+      n | N | no | NO | No)
+        bb_say "Left it as it is. To switch later: $bin gateway switch"
+        BB_SWITCH_STATE=declined
+        return 0
+        ;;
+    esac
+  fi
+  rc=0
+  # The summary was shown above: straight to "Switching to ...".
+  BITTERBOT_INSTALLER=quiet BITTERBOT_HIDE_BANNER=1 "$bin" gateway switch --yes --no-summary || rc=$?
+  if [ "$rc" = "0" ]; then
+    BB_SWITCH_STATE=switched
+  else
+    BB_SWITCH_STATE=failed
+    bb_warn "the switch to $version did not complete (exit $rc); see above. Retry with: $bin gateway switch"
+  fi
 }
 
 main() {
@@ -332,7 +486,7 @@ main() {
   local pubkey=$PINNED_PUBKEY
 
   local version="" install_dir="${HOME}/.bitterbot/app" onboard=1 with_browser=0
-  local require_signature=0 allow_root=0
+  local require_signature=0 allow_root=0 switch=1
   BB_YES=0
   BB_TEST_MODE=0
   while [ $# -gt 0 ]; do
@@ -349,6 +503,10 @@ main() {
         ;;
       --no-onboard)
         onboard=0
+        shift
+        ;;
+      --no-switch)
+        switch=0
         shift
         ;;
       -y | --yes)
@@ -479,6 +637,15 @@ main() {
   if [ "$with_browser" = "1" ]; then
     bb_say "  Browser:   Playwright Chromium into ~/.bitterbot/browsers (Linux only)"
   fi
+  if [ "$switch" = "0" ]; then
+    bb_say "  Switch:    a running older Bitterbot is left alone (--no-switch)"
+  elif [ "$BB_YES" = "1" ]; then
+    bb_say "  Switch:    a running older Bitterbot (git clone or older release) is switched to the new version"
+    bb_say "             and kept running in the background (a snapshot of your data is taken first)"
+  else
+    bb_say "  Switch:    if an older Bitterbot is running, you are asked whether to switch it to the new version"
+    bb_say "             and keep it running in the background (a snapshot of your data is taken first)"
+  fi
   if [ "$onboard" = "1" ]; then
     bb_say "  Then:      bitterbot onboard"
   fi
@@ -560,6 +727,8 @@ main() {
     fi
   fi
 
+  bb_secure_state_dir "$install_dir"
+
   # Unpack next to the install root (same filesystem: the moves are renames).
   mkdir -p "$install_dir"
   install_dir=$(cd "$install_dir" && pwd -P)
@@ -612,33 +781,12 @@ main() {
     rm -f "$install_dir/current.new"
     ln -sfn "$version" "$install_dir/current"
   fi
-  if [ -n "$previous" ] && [ "$previous" != "$version" ] && [ -d "$install_dir/$previous" ]; then
-    ln -sfn "$previous" "$install_dir/previous"
-  fi
   if [ -n "$replaced" ]; then
     rm -rf "$replaced"
   fi
-
-  # Keep current + previous; older X.Y.Z directories are removed.
-  local keep_prev="" entry
-  if [ -L "$install_dir/previous" ]; then
-    keep_prev=$(readlink "$install_dir/previous")
-  fi
-  for entry in "$install_dir"/*; do
-    if [ ! -d "$entry" ] || [ -L "$entry" ]; then
-      continue
-    fi
-    entry=${entry##*/}
-    printf '%s' "$entry" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
-    if [ "$entry" != "$version" ] && [ "$entry" != "$keep_prev" ]; then
-      if busy=$(bb_version_in_use "$install_dir/$entry"); then
-        bb_say "Keeping old version $entry: in use by pid $busy"
-        continue
-      fi
-      bb_say "Removing old version $entry"
-      rm -rf "${install_dir:?}/$entry"
-    fi
-  done
+  # `previous` and the pruning of older versions wait until the switch below
+  # has succeeded: a failed switch puts the old version back in `current` and
+  # must find it (and `previous`) where they were.
 
   # ~/.local/bin/bitterbot -> <dir>/current/bin/bitterbot
   local target="$install_dir/current/bin/bitterbot" bin_cmd
@@ -698,11 +846,43 @@ main() {
       ;;
   esac
 
+  BB_SWITCH_STATE=none
+  BB_CONFIG_NOTED=0
+  if [ "$switch" = "1" ]; then
+    bb_switch_gateway "$bin_cmd" "$version"
+  fi
+  if [ "$BB_SWITCH_STATE" = "failed" ]; then
+    # The switch reported what happened and put the old version back;
+    # `previous` and older versions are left exactly as they were.
+    return 1
+  fi
+  bb_finish_versions "$install_dir" "$version" "$previous"
+
+  case $BB_SWITCH_STATE in
+    declined | pending)
+      bb_say "Next: $bin_cmd gateway switch, then $bin_cmd onboard"
+      return 0
+      ;;
+    blocked)
+      bb_say "Next: once that is sorted out, $bin_cmd onboard"
+      return 0
+      ;;
+    portinuse)
+      bb_say "Next: free the port (or set another one with gateway.port), then $bin_cmd onboard"
+      return 0
+      ;;
+  esac
   if [ "$onboard" = "1" ]; then
     if { : </dev/tty; } 2>/dev/null; then
+      # Set up already: one line with the link (and the browser opens it).
+      # Not yet: the setup page link. Config advice only if not shown above.
+      local installer_mode=1
+      if [ "$BB_CONFIG_NOTED" = "1" ]; then
+        installer_mode=quiet
+      fi
       bb_say ""
-      bb_say "Starting setup: bitterbot onboard (opens a setup page in your browser; add --no-browser for the terminal)"
-      "$bin_cmd" onboard </dev/tty || bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
+      BITTERBOT_INSTALLER=$installer_mode BITTERBOT_HIDE_BANNER=1 "$bin_cmd" onboard --from-installer </dev/tty ||
+        bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
     else
       bb_say "No terminal for setup; run: $bin_cmd onboard (it prints a setup link)"
     fi

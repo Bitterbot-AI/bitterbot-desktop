@@ -1,4 +1,6 @@
-import type { Command } from "commander";
+import { Option, type Command } from "commander";
+import { installerOutputMode } from "../../infra/installer-env.js";
+import { defaultRuntime } from "../../runtime.js";
 import {
   runDaemonInstall,
   runDaemonRestart,
@@ -62,6 +64,38 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
     .option("--json", "Output JSON", false)
     .action(async (cmdOpts) => {
       await runDaemonStop(cmdOpts);
+    });
+
+  parent
+    .command("switch")
+    .description(
+      "Switch the running gateway and the background service to this install (after installing over a git clone or an older version)",
+    )
+    .option(
+      "--check",
+      "Only report what would be switched (exit 10 when a switch is available)",
+      false,
+    )
+    .option("--dry-run", "Same as --check", false)
+    .option("-y, --yes", "Switch without asking", false)
+    .option("--port <port>", "Gateway port (default: from config)")
+    .option("--timeout <ms>", "How long to wait for the new gateway to answer", "300000")
+    .option("--json", "Output JSON", false)
+    // install.sh already showed the summary before asking.
+    .addOption(new Option("--no-summary").hideHelp())
+    .action(async (cmdOpts) => {
+      const { runGatewaySwitch } = await import("./switch.js");
+      const code = await runGatewaySwitch({
+        check: Boolean(cmdOpts.check || cmdOpts.dryRun),
+        yes: Boolean(cmdOpts.yes),
+        summary: cmdOpts.summary !== false,
+        installer: installerOutputMode(process.env) !== null,
+        json: Boolean(cmdOpts.json),
+        port: cmdOpts.port,
+        timeout: cmdOpts.timeout,
+      });
+      // Exit explicitly: install.sh waits on this command.
+      defaultRuntime.exit(code);
     });
 
   parent

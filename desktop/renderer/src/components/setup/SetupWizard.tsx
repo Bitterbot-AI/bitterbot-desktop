@@ -37,9 +37,11 @@ type NextResult = {
 type Phase = "connecting" | "running" | "done" | "cancelled" | "error";
 
 type ServiceInfo = {
-  state: "installed" | "existing" | "failed" | "declined" | "unavailable";
+  state: "installed" | "existing" | "elsewhere" | "failed" | "declined" | "unavailable";
   label?: string;
   error?: string;
+  /** state "elsewhere": the other install the service still runs. */
+  runsFrom?: string;
 };
 
 type DoneInfo = { channelsNext?: boolean; restart?: boolean; service?: ServiceInfo };
@@ -231,6 +233,26 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
         );
         apply(result);
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (/wizard not found/.test(message)) {
+          // The gateway restarted and its setup session went with it; the
+          // page has already reconnected. Start over: what was saved (a key
+          // that was stored) is offered again, nothing else was written.
+          try {
+            const restarted = await client.request<NextResult>(
+              "wizard.start",
+              {},
+              { timeoutMs: STEP_TIMEOUT_MS },
+            );
+            apply(restarted);
+            setError(
+              "Bitterbot restarted, so setup started again. Anything already saved is kept.",
+            );
+            return;
+          } catch {
+            // Fall through to the original error.
+          }
+        }
         setError(explain(err));
       } finally {
         setBusy(false);
@@ -288,6 +310,11 @@ export function SetupWizard({ createClient, resolveAdminToken, location }: Setup
             ) : doneInfo.service?.state === "existing" ? (
               <p className="text-sm" data-testid="setup-service">
                 Bitterbot runs in the background as a {doneInfo.service.label}.
+              </p>
+            ) : doneInfo.service?.state === "elsewhere" ? (
+              <p className="text-sm" data-testid="setup-service">
+                The {doneInfo.service.label} still runs {doneInfo.service.runsFrom}. Switch it to
+                this version any time with <code>bitterbot gateway switch</code>.
               </p>
             ) : doneInfo.service?.state === "failed" ? (
               <p className="text-sm text-destructive" data-testid="setup-service">

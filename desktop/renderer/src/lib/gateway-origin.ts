@@ -118,6 +118,34 @@ export async function resolveGatewayToken(opts?: {
   return readStoredGatewayToken() ?? (await fetchSessionToken(opts));
 }
 
+/** The gateway refused the token this page sent (it changed since it was stored). */
+export function isTokenMismatch(reason: string | undefined): boolean {
+  return /token[ _]mismatch/i.test(reason ?? "");
+}
+
+/**
+ * After a token mismatch: ask the gateway that served this page for its
+ * current token and store it. A reinstall, a reset, or another Bitterbot on
+ * the same address leaves this browser holding an old token for the origin;
+ * without this the page stays on "gateway token mismatch".
+ *
+ * Returns the new token, or null when there is none to switch to (a remote
+ * gateway, which never hands its token out, or the same token again).
+ */
+export async function recoverFromTokenMismatch(params: {
+  url: string;
+  staleToken: string;
+  origin?: string;
+  fetchImpl?: typeof fetch;
+}): Promise<string | null> {
+  const fresh = await fetchSessionToken({ origin: params.origin, fetchImpl: params.fetchImpl });
+  if (!fresh || fresh === params.staleToken) {
+    return null;
+  }
+  persistGatewayCredentials({ url: params.url, token: fresh });
+  return fresh;
+}
+
 export function persistGatewayCredentials(params: { url: string; token: string }): void {
   try {
     localStorage.setItem(LS_URL_KEY, params.url);

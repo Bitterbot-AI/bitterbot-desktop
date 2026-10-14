@@ -6,6 +6,7 @@ vi.mock("../runtime/models/index.js", () => ({
 }));
 
 import type { BitterbotConfig } from "../../config/config.js";
+import { borrowedPriceTemplate } from "../model-forward-compat.js";
 import { discoverModels } from "../runtime/models/index.js";
 import { buildInlineProviderModels, resolveModel } from "./model.js";
 import {
@@ -247,6 +248,114 @@ describe("resolveModel", () => {
 
     expect(result.error).toBeUndefined();
     expect(result.model).toMatchObject({ provider: "anthropic", id: "claude-opus-4-7" });
+  });
+
+  it("resolves Claude 5 models the built-in catalog predates from the same family", () => {
+    // The picker lists what Anthropic serves (claude-fable-5-1, claude-opus-5-5,
+    // claude-sonnet-5-5); the runner must accept them, not fail "Unknown model".
+    const base = {
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      maxTokens: 64000,
+    };
+    const catalog = [
+      {
+        ...base,
+        id: "claude-opus-4-1",
+        name: "Claude Opus 4.1",
+        contextWindow: 200000,
+        cost: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+      },
+      {
+        ...base,
+        id: "claude-opus-4-7",
+        name: "Claude Opus 4.7",
+        contextWindow: 1000000,
+        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      },
+      {
+        ...base,
+        id: "claude-sonnet-4-20250514",
+        name: "Claude Sonnet 4",
+        contextWindow: 200000,
+        cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+      },
+      {
+        ...base,
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        contextWindow: 1000000,
+        cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+      },
+    ];
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn(
+        (provider: string, modelId: string) =>
+          catalog.find((m) => m.provider === provider && m.id === modelId) ?? null,
+      ),
+      getAll: vi.fn(() => catalog),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const sonnet = resolveModel("anthropic", "claude-sonnet-5-5", "/tmp/agent");
+    expect(sonnet.error).toBeUndefined();
+    expect(sonnet.model).toMatchObject({
+      id: "claude-sonnet-5-5",
+      api: "anthropic-messages",
+      contextWindow: 1000000,
+      cost: { input: 3, output: 15 },
+    });
+    // Newest Opus is the template, not an older or dated one.
+    expect(resolveModel("anthropic", "claude-opus-5-5", "/tmp/agent").model).toMatchObject({
+      id: "claude-opus-5-5",
+      cost: { input: 5, output: 25 },
+    });
+    // A family the catalog has never seen (Fable) takes the newest Opus.
+    expect(resolveModel("anthropic", "claude-fable-5-1", "/tmp/agent").model).toMatchObject({
+      id: "claude-fable-5-1",
+      api: "anthropic-messages",
+      contextWindow: 1000000,
+    });
+    // Only Claude ids: anything else stays unknown.
+    expect(resolveModel("anthropic", "not-a-claude", "/tmp/agent").error).toBe(
+      "Unknown model: anthropic/not-a-claude",
+    );
+  });
+
+  it("marks forward-compat clones as carrying a borrowed price; real entries are not", () => {
+    const base = {
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      maxTokens: 64000,
+      contextWindow: 1000000,
+    };
+    const catalog = [
+      {
+        ...base,
+        id: "claude-opus-4-7",
+        name: "Claude Opus 4.7",
+        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      },
+    ];
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn(
+        (provider: string, modelId: string) =>
+          catalog.find((m) => m.provider === provider && m.id === modelId) ?? null,
+      ),
+      getAll: vi.fn(() => catalog),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const fable = resolveModel("anthropic", "claude-fable-5-1", "/tmp/agent").model;
+    expect(borrowedPriceTemplate(fable)).toBe("claude-opus-4-7");
+    const real = resolveModel("anthropic", "claude-opus-4-7", "/tmp/agent").model;
+    expect(borrowedPriceTemplate(real)).toBeUndefined();
+    // The template entry itself is never mutated by the clone.
+    expect(borrowedPriceTemplate(catalog[0])).toBeUndefined();
   });
 
   it("refuses retired Google OAuth providers even when a stale models.json lists them", () => {

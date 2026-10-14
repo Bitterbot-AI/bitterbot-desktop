@@ -297,6 +297,25 @@ wedged cron jobs). See [/cli/doctor](/cli/doctor) for details.
 
 Doctor reports the runtime engine in use. Since the pi engine was removed this is always `bitterbot`; a config that still sets `agents.defaults.runtime.engine: "pi"` is accepted, ignored, and logged once at startup. When the usage ledger still holds runs of more than one engine in the last 14 days (rows written before the switch), doctor adds one line per engine: runs, cost per run, model-call latency p50 and p95, tool error rate, and errored model calls. See [Usage tracking](/concepts/usage-tracking#runtime-engine).
 
+### 18d) Usage costs and pricing
+
+The "Usage & Cost (ledger)" section warns about models used in the last 30 days that have no
+known price (their cost shows as $0) and lists models whose cost is an estimate, such as a
+Claude model newer than the bundled catalog with no exact entry in the live price list yet.
+It also warns when the newest live pricing snapshot is more than 3 days old (the daily
+refresh is failing; the last error is shown when known) or when there is none. See
+[Usage tracking](/concepts/usage-tracking#models-newer-than-the-bundled-catalog).
+
+### 18e) Model shortcuts
+
+The "Model Shortcuts" section compares your model aliases with the models your
+provider serves now. A family shortcut (`opus`, `sonnet`, `haiku`, `fable`) is
+reported with the newer model it already resolves to; any other alias pinned to
+an older model of a family gets the command that points it at the newest one,
+for example `bitterbot models aliases add work anthropic/claude-sonnet-5-5`.
+Nothing is changed for you. See
+[Models](/concepts/models#family-shortcuts-follow-the-newest-model).
+
 ### 19) Workspace tips (backup + memory system)
 
 Doctor suggests a workspace memory system when missing and prints a backup tip

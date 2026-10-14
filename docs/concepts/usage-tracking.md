@@ -41,7 +41,8 @@ recall, dream embeddings, the provider Batch APIs, the bundled local model) and 
 - **CLI**: `bitterbot gateway usage [--days 30] [--by model|feature|provider|kind|agent|day] [--json]`.
   The older `bitterbot gateway usage-cost` (transcript scan, whole-node daily cost) still works.
 - **Chat commands**: `/usage off|tokens|full` per-response footer, `/usage cost`, `/status`.
-- **Doctor**: the "Usage & Cost (ledger)" section flags unpriced models, stale reconciles,
+- **Doctor**: the "Usage & Cost (ledger)" section flags unpriced models, models whose cost
+  is an estimate, a live pricing snapshot older than 3 days (or none at all), stale reconciles,
   estimated-only embeddings and budgets near or over their limit.
 - **Gateway RPC**: `usage.ledger.summary` (optionally per `sessionKey`), `usage.ledger.events`,
   `usage.ledger.whatif`, `usage.ledger.explain` (read scope); events `usage` (one per row) and
@@ -55,7 +56,31 @@ price table (embedding calls) → local providers (`ollama`, `vllm`, `local`, an
 OpenAI-compatible endpoints on localhost/private hosts) at $0 → the vendored model catalog →
 `unpriced`. Unpriced models show $0 with a red badge and a doctor warning rather than a made-up
 number. Batch-API embeddings are priced at half rate. Provider-reported cost, when the model
-library returns one, wins over the table.
+library returns one, wins over the table, with one exception below.
+
+### Models newer than the bundled catalog
+
+A Claude model released after the vendored catalog (for example `claude-fable-5-1` or
+`claude-opus-5-5`) still runs: the runner clones the closest catalogued model so the transport,
+limits and capabilities are right. The clone also carries that model's price, which is a guess.
+The ledger treats such a price as borrowed:
+
+- If the live pricing snapshot in force at the call has an entry for the model's exact id
+  (after the usual normalization: lowercase, dots to dashes, date suffix dropped; never a
+  nearby id), the call is priced from that entry and recorded with source `live`.
+- Otherwise the borrowed figure is kept and recorded as `estimated`. The Control UI shows it
+  with a tilde (`~$0.112`) and the `≈ estimated` badge, and doctor lists the model.
+
+Models in the vendored catalog keep the catalog price even when the snapshot lists a
+different one; to pin any price yourself, set `models.providers.<provider>.models[].cost`.
+
+Rows written before this rule existed are corrected once at gateway start (`usage_meta` key
+`reprice:borrowed:v1`, which also stores the per-model row count and old and new totals): rows
+with source `provider` whose model is not in the vendored catalog for a built-in provider, has
+no entry in your config, and has an exact snapshot entry are re-priced from their token columns
+at the snapshot in force at each row's time and relabelled `live`. No other row is changed and
+no row is deleted. If no snapshot is on disk yet, the correction waits for a later start. The
+gateway log carries one info line with the count and the affected models.
 
 Token buckets are stored _exclusively_ (a token is in exactly one of input / cache read /
 cache write / output); `reasoning` is a subset of output kept for display. This matches the
@@ -165,9 +190,11 @@ Chat turns, the task judge, deep recall, TTS and embeddings are never blocked.
 - Cost modes (Models tab): `reported` is what the model library returned with the call,
   `computed` is tokens times our price table, `both` shows the drift.
 - Live pricing: a dated snapshot of OpenRouter's model list is refreshed daily under
-  `<state>/model-pricing/` and used only for models the override, catalog and local tiers
-  do not know, priced by the snapshot in force at the event time. Disable with
-  `usage.pricing.liveRefresh: false`.
+  `<state>/model-pricing/` and used for models the override, catalog and local tiers do not
+  know, and for models whose catalog price is borrowed (see
+  [Models newer than the bundled catalog](#models-newer-than-the-bundled-catalog)), priced by
+  the snapshot in force at the event time. Doctor warns when the newest snapshot is more than
+  3 days old. Disable with `usage.pricing.liveRefresh: false`.
 - OpenTelemetry: with an OTLP endpoint configured, every row is exported as the per-modality
   counters `gen_ai.client.inference.usage.{input_tokens,output_tokens,cache_read.input_tokens,cache_write.input_tokens,reasoning.output_tokens}`,
   the `gen_ai.client.token.usage` histogram, and `bitterbot.usage.cost` (USD).

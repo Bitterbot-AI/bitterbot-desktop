@@ -182,6 +182,43 @@ describe("SetupWizard (the /setup page)", () => {
     );
   });
 
+  it("Done says when the background service still runs another install", async () => {
+    const done = {
+      id: "d1",
+      type: "note",
+      title: "Done",
+      message: "Setup is complete.",
+      data: {
+        kind: "done",
+        service: {
+          state: "elsewhere",
+          label: "systemd user service",
+          runsFrom: "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+        },
+      },
+    };
+    const { factory } = makeClientFactory((method) => {
+      if (method === "wizard.start") {
+        return { sessionId: "sess", done: false, status: "running", step: done };
+      }
+      if (method === "wizard.next") {
+        return { done: true, status: "done" };
+      }
+      return {};
+    });
+    render(
+      <SetupWizard
+        createClient={factory as never}
+        location={fakeLocation("http://127.0.0.1:19001/setup?token=tok123")}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Finish" }));
+    await screen.findByTestId("setup-done");
+    const text = screen.getByTestId("setup-service").textContent ?? "";
+    expect(text).toContain("still runs Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)");
+    expect(text).toContain("bitterbot gateway switch");
+  });
+
   it("explains an expired link when there is no admin sign-in to fall back to", async () => {
     const { factory } = makeClientFactory((method) =>
       method === "wizard.start"
@@ -224,6 +261,41 @@ describe("SetupWizard (the /setup page)", () => {
     expect(created[1]?.setupToken).toBeUndefined();
     expect(sessionStorage.getItem("bitterbot-setup-token")).toBeNull();
     await screen.findByTestId("setup-done");
+  });
+
+  it("starts setup again when the gateway restarted and lost the session", async () => {
+    const step = {
+      id: "s1",
+      type: "text",
+      message: "Anthropic API key",
+      sensitive: true,
+      section: section("auth", 1, "Model provider key"),
+    };
+    let starts = 0;
+    const { factory, calls } = makeClientFactory((method) => {
+      if (method === "wizard.start") {
+        starts += 1;
+        return { sessionId: `sess${starts}`, done: false, status: "running", step };
+      }
+      if (method === "wizard.next") {
+        return new Error("wizard not found");
+      }
+      return {};
+    });
+    render(
+      <SetupWizard
+        createClient={factory as never}
+        location={fakeLocation("http://127.0.0.1:19001/setup?token=tok")}
+      />,
+    );
+    fireEvent.change(await screen.findByLabelText("Anthropic API key"), {
+      target: { value: "sk-ant-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText(/Bitterbot restarted, so setup started again/)).toBeTruthy();
+    expect(screen.queryByText("wizard not found")).toBeNull();
+    expect(calls.filter((c) => c.method === "wizard.start")).toHaveLength(2);
+    expect(screen.getByLabelText("Anthropic API key")).toBeTruthy();
   });
 
   it("without a setup link, signs in as admin (re-running setup)", async () => {

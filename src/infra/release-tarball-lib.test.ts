@@ -163,7 +163,10 @@ describe.skipIf(process.platform === "win32")("launcher (bin/bitterbot)", () => 
           encoding: "utf8",
           env: { PATH: process.env.PATH ?? "", HOME: root, ...env },
         }).stdout.trim();
-      expect(run({})).toBe(`kind=tarball root=${real} args=${real}/dist/entry.js --version`);
+      // Node's ExperimentalWarning (SQLite) is never shown to users.
+      expect(run({})).toBe(
+        `kind=tarball root=${real} args=--disable-warning=ExperimentalWarning ${real}/dist/entry.js --version`,
+      );
       // The documented escape hatch survives the launcher.
       expect(run({ BITTERBOT_INSTALL_KIND: "package" })).toContain("kind=package");
       // PATH keeps the user's Node first and names exactly one bundled

@@ -17,6 +17,8 @@ import { runSetupWizard, type FirstTurnResult, type SetupWizardDeps } from "./se
 
 const ANTHROPIC = "sk-ant-api03-SECRET-anthropic-value-9f2c";
 const PASTED = "sk-ant-api03-SECRET-pasted-value-aaaa";
+const GEMINI = "AIza-FAKE-SECRET-gemini-value-5e6f";
+const PERPLEXITY = "pplx-FAKE-SECRET-perplexity-value-0c0c";
 
 let dir: string;
 let configPath: string;
@@ -42,7 +44,12 @@ beforeEach(() => {
   setEnv("BITTERBOT_DISABLE_CONFIG_CACHE", "1");
   setEnv("BITTERBOT_GATEWAY_TOKEN", undefined);
   setEnv("BITTERBOT_GATEWAY_PASSWORD", undefined);
-  for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"]) {
+  for (const key of [
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
+  ]) {
     setEnv(key, undefined);
   }
   for (const key of ["BRAVE_API_KEY", "TAVILY_API_KEY", "PERPLEXITY_API_KEY", "SERPLY_API_KEY"]) {
@@ -104,7 +111,7 @@ function baseDeps(overrides: Partial<SetupWizardDeps> = {}): SetupWizardDeps {
       ok: true,
       latencyMs: 1234,
       reply: "Hello! I can remember what you tell me.",
-      model: "anthropic/claude-opus-4-8",
+      model: "anthropic/claude-sonnet-5-5",
     })),
     collectDoctorSummary: vi.fn(async () => ({
       worstLevel: "warn" as const,
@@ -133,15 +140,20 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     );
     expect(status).toBe("done");
 
-    // Risk acknowledgement, fork, first reply, doctor, done: nothing else was asked.
+    // Risk acknowledgement, fork, web search (its recommended "Later" leaves
+    // curiosity research off, so it is still asked), first reply, doctor, done.
     expect(steps.map((s) => dataKind(s) ?? s.type)).toEqual([
       "risk",
       "confirm",
+      "select",
       "select",
       "first-turn",
       "doctor",
       "done",
     ]);
+    const webSearch = steps.splice(3, 1)[0];
+    expect(webSearch?.section).toMatchObject({ id: "webSearch", index: 1, total: 1 });
+    expect(webSearch?.initialValue).toBe("later");
     expect(steps[0]?.message).toBe(RISK_ACKNOWLEDGEMENT_NOTE);
     // User-facing setup copy carries no em-dashes (browser /setup + terminal).
     expect(RISK_ACKNOWLEDGEMENT_TITLE).toBe("Security: at your own risk");
@@ -181,6 +193,10 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     );
     expect(written).not.toHaveProperty("p2p");
     expect(written).not.toHaveProperty("tools");
+    // The recommended Anthropic model is the Control UI picker's default.
+    expect(
+      (written.agents as { defaults: { model: { primary: string } } }).defaults.model.primary,
+    ).toBe("anthropic/claude-sonnet-5-5");
     expect(written).not.toHaveProperty("memory");
     expect(
       (written.agents as { defaults?: Record<string, unknown> }).defaults?.memorySearch,
@@ -257,7 +273,7 @@ describe("setup over the wizard session (the RPC renderer)", () => {
         return "paste:anthropic";
       }
       if (step.section?.id === "model") {
-        return "anthropic/claude-sonnet-4-6";
+        return "anthropic/claude-opus-5-5";
       }
       return step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null;
     });
@@ -288,7 +304,7 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     expect(
       (readConfigFile().agents as { defaults: { model: { primary: string } } }).defaults.model
         .primary,
-    ).toBe("anthropic/claude-sonnet-4-6");
+    ).toBe("anthropic/claude-opus-5-5");
   });
 
   it("with no key found, recommended still asks for one; skipping skips the first reply", async () => {
@@ -305,11 +321,147 @@ describe("setup over the wizard session (the RPC renderer)", () => {
           : null,
     );
     expect(status).toBe("done");
-    expect(steps.filter((s) => s.section).map((s) => s.section?.id)).toEqual(["auth"]);
+    expect(steps.filter((s) => s.section).map((s) => [s.section?.id, s.section?.total])).toEqual([
+      ["auth", 2],
+      ["webSearch", 2],
+    ]);
     expect(steps.find((s) => dataKind(s) === "first-turn")?.data).toMatchObject({
       skipped: true,
     });
     expect(deps.runFirstTurn).not.toHaveBeenCalled();
+  });
+
+  it("recommended uses a web search key found in the environment without asking", async () => {
+    const env = {
+      ANTHROPIC_API_KEY: ANTHROPIC,
+      BRAVE_API_KEY: "brave-key-123456",
+    } as NodeJS.ProcessEnv;
+    const deps = baseDeps({
+      env,
+      keyEnv: { env, envFilePath: path.join(dir, ".env"), agentDir: path.join(dir, "agent") },
+    });
+    const { steps, status } = await drive(deps, (step) =>
+      step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null,
+    );
+    expect(status).toBe("done");
+    expect(steps.filter((s) => s.section)).toEqual([]);
+    const tools = readConfigFile().tools as { web?: { search?: { provider?: string } } };
+    expect(tools.web?.search?.provider).toBe("brave");
+  });
+
+  it("a pasted Perplexity key is saved where web_search reads it, never echoed", async () => {
+    const deps = baseDeps();
+    const { steps, status } = await drive(deps, (step) => {
+      if (step.type === "select" && step.options?.some((o) => o.value === "custom")) {
+        return "custom";
+      }
+      if (step.section?.id === "webSearch") {
+        return step.type === "text" ? PERPLEXITY : "paste:perplexity";
+      }
+      return step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null;
+    });
+    expect(status).toBe("done");
+    const webSearch = steps.find((s) => s.section?.id === "webSearch" && s.type === "select");
+    expect(webSearch?.options?.find((o) => o.value === "paste:perplexity")).toMatchObject({
+      label: "Paste a Perplexity key",
+      hint: expect.stringContaining("Paid per search"),
+    });
+    const keyPrompt = steps.find((s) => s.section?.id === "webSearch" && s.type === "text");
+    expect(keyPrompt?.message).toBe("Perplexity API key");
+    expect(keyPrompt?.sensitive).toBe(true);
+    expect(JSON.stringify(steps)).not.toContain(PERPLEXITY);
+    const search = (
+      readConfigFile().tools as {
+        web: { search: { provider: string; enabled: boolean; perplexity: { apiKey: string } } };
+      }
+    ).web.search;
+    expect(search).toMatchObject({
+      provider: "perplexity",
+      enabled: true,
+      perplexity: { apiKey: PERPLEXITY },
+    });
+  });
+
+  it("offers a GEMINI_API_KEY found in the environment, by name only", async () => {
+    const env = { GEMINI_API_KEY: GEMINI } as NodeJS.ProcessEnv;
+    const deps = baseDeps({
+      env,
+      keyEnv: { env, envFilePath: path.join(dir, ".env"), agentDir: path.join(dir, "agent") },
+    });
+    const { steps, status } = await drive(deps, (step) => {
+      if (step.type === "select" && step.options?.some((o) => o.value === "custom")) {
+        return "custom";
+      }
+      return step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null;
+    });
+    expect(status).toBe("done");
+    const auth = steps.find((s) => s.section?.id === "auth");
+    expect(auth?.initialValue).toBe("env:GEMINI_API_KEY");
+    expect(auth?.options?.find((o) => o.value === "env:GEMINI_API_KEY")?.label).toContain(
+      "Google Gemini: GEMINI_API_KEY ...5e6f",
+    );
+    const model = steps.find((s) => s.section?.id === "model");
+    expect(model?.initialValue).toBe("google/gemini-3.1-pro-preview");
+    const embeddings = steps.find((s) => s.section?.id === "embeddings");
+    expect(embeddings?.options?.map((o) => o.value)).toContain("gemini");
+    expect(JSON.stringify(steps)).not.toContain(GEMINI);
+    const store = JSON.parse(
+      fs.readFileSync(path.join(dir, "agent", "auth-profiles.json"), "utf8"),
+    );
+    expect(store.profiles["google:default"].key).toBe(GEMINI);
+  });
+
+  it("a pasted Gemini key lands in the auth store and the default model is Gemini", async () => {
+    const env = {} as NodeJS.ProcessEnv;
+    const deps = baseDeps({
+      env,
+      keyEnv: { env, envFilePath: path.join(dir, ".env"), agentDir: path.join(dir, "agent") },
+    });
+    const { steps, status } = await drive(deps, (step) => {
+      if (step.type === "select" && step.options?.some((o) => o.value === "custom")) {
+        return "custom";
+      }
+      if (step.section?.id === "auth") {
+        return step.type === "text" ? GEMINI : "paste:google";
+      }
+      if (step.section?.id === "embeddings") {
+        return "gemini";
+      }
+      return step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null;
+    });
+    expect(status).toBe("done");
+    const auth = steps.find((s) => s.section?.id === "auth" && s.type === "select");
+    expect(auth?.options?.find((o) => o.value === "paste:google")?.label).toBe(
+      "Paste a Google Gemini API key",
+    );
+    expect(auth?.options?.find((o) => o.value === "paste:anthropic")?.label).toBe(
+      "Paste an Anthropic API key",
+    );
+    const keyPrompt = steps.find((s) => s.section?.id === "auth" && s.type === "text");
+    expect(keyPrompt?.sensitive).toBe(true);
+    expect(keyPrompt?.message).toContain("https://aistudio.google.com/apikey");
+    expect(JSON.stringify(steps)).not.toContain(GEMINI);
+    expect(deps.runFirstTurn).toHaveBeenCalledOnce();
+
+    const store = JSON.parse(
+      fs.readFileSync(path.join(dir, "agent", "auth-profiles.json"), "utf8"),
+    );
+    expect(store.profiles["google:default"]).toMatchObject({
+      type: "api_key",
+      provider: "google",
+      key: GEMINI,
+    });
+    const written = readConfigFile() as {
+      auth: { profiles: Record<string, { provider: string; mode: string }> };
+      agents: { defaults: { model: { primary: string }; memorySearch: { provider: string } } };
+    };
+    expect(JSON.stringify(written)).not.toContain(GEMINI);
+    expect(written.auth.profiles["google:default"]).toMatchObject({
+      provider: "google",
+      mode: "api_key",
+    });
+    expect(written.agents.defaults.model.primary).toBe("google/gemini-3.1-pro-preview");
+    expect(written.agents.defaults.memorySearch.provider).toBe("gemini");
   });
 
   it("declining the risk acknowledgement cancels setup and writes nothing", async () => {
@@ -381,6 +533,49 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     expect(deps.onHandover).not.toHaveBeenCalled();
   });
 
+  it("Keep running: a service that runs another install is offered to this version", async () => {
+    const elsewhere = {
+      kind: "elsewhere" as const,
+      label: "systemd user service",
+      runsFrom: "Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+    };
+    const deps = baseDeps({
+      service: elsewhere,
+      installService: vi.fn(async () => ({ ok: true as const, label: "systemd user service" })),
+      onHandover: vi.fn(),
+    });
+    const answer = (serviceChoice: string) => (step: WizardStep) => {
+      if (step.type === "select" && step.options?.some((o) => o.value === "custom")) {
+        return "custom";
+      }
+      if (step.section?.id === "service" && step.type === "select") {
+        return serviceChoice;
+      }
+      return step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null;
+    };
+    const { steps } = await drive(deps, answer("install"));
+    const ask = steps.find((s) => s.section?.id === "service" && s.type === "select");
+    expect(ask?.message).toContain(
+      "still runs Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)",
+    );
+    expect(ask?.options?.find((o) => o.value === "install")?.label).toBe(
+      "Use this version for the background service",
+    );
+    expect(deps.installService).toHaveBeenCalledTimes(1);
+    const done = steps.find((s) => dataKind(s) === "done");
+    expect(done?.data).toMatchObject({ service: { state: "installed" } });
+    expect(deps.onHandover).toHaveBeenCalled();
+
+    // "Leave it as it is": nothing installed, Done says how to switch later.
+    const keep = baseDeps({ service: elsewhere, installService: vi.fn(), onHandover: vi.fn() });
+    const kept = await drive(keep, answer("no"));
+    expect(keep.installService).not.toHaveBeenCalled();
+    const keptDone = kept.steps.find((s) => dataKind(s) === "done");
+    expect(keptDone?.data).toMatchObject({ service: { state: "elsewhere" } });
+    expect(keptDone?.message).toContain("bitterbot gateway switch");
+    expect(keep.onHandover).not.toHaveBeenCalled();
+  });
+
   it("Keep running is not offered in a container or where a service already runs", async () => {
     for (const service of [
       { kind: "unavailable" as const, reason: "container" },
@@ -449,8 +644,11 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     });
     const auth = steps.find((s) => s.section?.id === "auth" && s.type === "select");
     expect(auth?.options?.find((o) => o.value === "other")).toBeDefined();
+    expect(auth?.options?.map((o) => o.value)).toContain("paste:google");
     const hint = steps.find((s) => s.title === "Other sign-in methods");
     expect(hint?.message).toContain("bitterbot onboard --no-browser --flow manual");
+    // Gemini is a paste-a-key provider on the page now, not a terminal-only one.
+    expect(hint?.message).not.toContain("Gemini");
     expect(deps.runFirstTurn).not.toHaveBeenCalled();
   });
 

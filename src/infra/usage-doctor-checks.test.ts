@@ -5,8 +5,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resetModelPricingMemoForTest } from "./model-pricing.js";
 import {
   countHeartbeatDeliveries,
+  estimatedCostModelsCheck,
   heartbeatCostCheck,
   idleDayFloorCheck,
+  pricingSnapshotFreshnessCheck,
   unreadCacheWriteCheck,
 } from "./usage-doctor-checks.js";
 import { UsageLedger, resolveUsageEvent } from "./usage-ledger.js";
@@ -197,5 +199,56 @@ describe("usage doctor lines", () => {
     expect(idleDayFloorCheck({ ledger: UsageLedger.openInMemory(), nowMs: NOW }).message).toContain(
       "no idle days",
     );
+  });
+});
+
+describe("pricing doctor lines", () => {
+  it("names models whose cost is an estimate, and stays quiet when there are none", () => {
+    const line = estimatedCostModelsCheck({
+      models: [
+        {
+          provider: "anthropic",
+          model: "claude-fable-5-1",
+          pricingSources: ["estimated"],
+          estimatedCalls: 3,
+        },
+        {
+          provider: "anthropic",
+          model: "claude-haiku-4-5",
+          pricingSources: ["provider"],
+          estimatedCalls: 0,
+        },
+      ],
+    });
+    expect(line?.level).toBe("info");
+    expect(line?.message).toContain("1 model(s) used in the last 30d have estimated costs");
+    expect(line?.message).toContain("anthropic/claude-fable-5-1 (3 calls)");
+    expect(line?.message).not.toContain("claude-haiku-4-5");
+    expect(
+      estimatedCostModelsCheck({
+        models: [{ provider: "a", model: "b", pricingSources: ["live"], estimatedCalls: 0 }],
+      }),
+    ).toBeNull();
+  });
+
+  it("warns when the newest live pricing snapshot is stale or missing", () => {
+    expect(
+      pricingSnapshotFreshnessCheck({ newestAt: NOW - DAY, nowMs: NOW, enabled: true }),
+    ).toEqual({ level: "ok", message: "live pricing snapshot 2026-09-18 (refreshed daily)" });
+    const stale = pricingSnapshotFreshnessCheck({
+      newestAt: NOW - 4 * DAY,
+      nowMs: NOW,
+      enabled: true,
+      lastError: "HTTP 503",
+    });
+    expect(stale.level).toBe("warn");
+    expect(stale.message).toContain("4 days old");
+    expect(stale.message).toContain("HTTP 503");
+    const none = pricingSnapshotFreshnessCheck({ newestAt: null, nowMs: NOW, enabled: true });
+    expect(none.level).toBe("warn");
+    expect(none.message).toContain("no live pricing snapshot");
+    expect(
+      pricingSnapshotFreshnessCheck({ newestAt: null, nowMs: NOW, enabled: false }).level,
+    ).toBe("info");
   });
 });

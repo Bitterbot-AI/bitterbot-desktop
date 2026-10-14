@@ -2,11 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { classifyFeatured } from "../agents/model-featured.js";
 import {
   detectSetupKeys,
   detectSignedInProfiles,
   maskKeySuffix,
   resolveDetectedKey,
+  SETUP_PROVIDER_ORDER,
+  SETUP_PROVIDERS,
   storeProviderKey,
   validatePastedKey,
 } from "./setup-keys.js";
@@ -14,6 +17,7 @@ import {
 const ANTHROPIC = "sk-ant-api03-SECRET-anthropic-value-9f2c";
 const OPENAI = "sk-proj-SECRET-openai-value-77ab";
 const OPENROUTER = "sk-or-v1-SECRET-openrouter-1234";
+const GEMINI = "AIza-FAKE-SECRET-gemini-value-5e6f";
 
 let dir: string;
 let agentDir: string;
@@ -36,6 +40,38 @@ describe("maskKeySuffix", () => {
   });
 });
 
+describe("setup's model lists", () => {
+  it("offer only featured models of the Control UI picker", () => {
+    for (const provider of SETUP_PROVIDER_ORDER) {
+      for (const model of SETUP_PROVIDERS[provider].models) {
+        const slash = model.id.indexOf("/");
+        expect(slash, model.id).toBeGreaterThan(0);
+        const modelProvider = model.id.slice(0, slash);
+        const id = model.id.slice(slash + 1);
+        expect(modelProvider, model.id).toBe(provider);
+        if (model.id === "openrouter/auto") {
+          // OpenRouter's router, not a catalog model: nothing to feature.
+          continue;
+        }
+        expect(classifyFeatured(modelProvider, id).featured, model.id).toBe(true);
+      }
+    }
+  });
+
+  it("recommend the picker's default Anthropic model", () => {
+    const recommended = SETUP_PROVIDERS.anthropic.models[0]?.id ?? "";
+    expect(classifyFeatured("anthropic", recommended.slice("anthropic/".length))).toMatchObject({
+      featured: true,
+      isDefault: true,
+    });
+  });
+
+  it("list Google Gemini after OpenRouter", () => {
+    expect(SETUP_PROVIDER_ORDER).toEqual(["anthropic", "openai", "openrouter", "google"]);
+    expect(SETUP_PROVIDERS.google.envVar).toBe("GEMINI_API_KEY");
+  });
+});
+
 describe("detectSetupKeys", () => {
   it("offers keys by name and masked suffix, never the value", () => {
     fs.writeFileSync(envFilePath, `OPENAI_API_KEY=${OPENAI}\n`);
@@ -53,6 +89,32 @@ describe("detectSetupKeys", () => {
     for (const secret of [ANTHROPIC, OPENAI, OPENROUTER, "SECRET"]) {
       expect(serialized).not.toContain(secret);
     }
+  });
+
+  it("finds a Gemini key in the environment, ~/.bitterbot/.env, or a saved profile", () => {
+    const fromEnv = detectSetupKeys({ env: { GEMINI_API_KEY: GEMINI }, envFilePath, agentDir });
+    expect(fromEnv.map((k) => [k.id, k.provider, k.masked])).toEqual([
+      ["env:GEMINI_API_KEY", "google", "...5e6f"],
+    ]);
+    expect(JSON.stringify(fromEnv)).not.toContain(GEMINI);
+
+    fs.writeFileSync(envFilePath, `GEMINI_API_KEY=${GEMINI}\n`);
+    expect(detectSetupKeys({ env: {}, envFilePath, agentDir }).map((k) => k.id)).toEqual([
+      "file:GEMINI_API_KEY",
+    ]);
+
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(agentDir, "auth-profiles.json"),
+      JSON.stringify({
+        version: 1,
+        profiles: { "google:default": { type: "api_key", provider: "google", key: GEMINI } },
+      }),
+    );
+    // The same value in the .env and the store is offered once, as saved.
+    expect(detectSetupKeys({ env: {}, envFilePath, agentDir }).map((k) => k.id)).toEqual([
+      "saved:google",
+    ]);
   });
 
   it("offers one entry when the same key is in several places", () => {
@@ -90,6 +152,30 @@ describe("storeProviderKey (ask once, remember)", () => {
     // The next setup run sees it as saved and offers it without the env var.
     const keys = detectSetupKeys({ env: {}, envFilePath, agentDir });
     expect(keys.map((k) => k.id)).toEqual(["saved:anthropic"]);
+  });
+
+  it("writes a Gemini key to the auth profile store as google:default", async () => {
+    const config = await storeProviderKey({
+      provider: "google",
+      key: GEMINI,
+      source: "pasted",
+      config: {},
+      agentDir,
+    });
+    expect(config.auth?.profiles?.["google:default"]).toMatchObject({
+      provider: "google",
+      mode: "api_key",
+    });
+    expect(JSON.stringify(config)).not.toContain(GEMINI);
+    const store = JSON.parse(fs.readFileSync(path.join(agentDir, "auth-profiles.json"), "utf8"));
+    expect(store.profiles["google:default"]).toMatchObject({
+      type: "api_key",
+      provider: "google",
+      key: GEMINI,
+    });
+    expect(detectSetupKeys({ env: {}, envFilePath, agentDir }).map((k) => k.id)).toEqual([
+      "saved:google",
+    ]);
   });
 
   it("writes an OpenAI key to the shared .env (the gateway loads it at start)", async () => {

@@ -131,7 +131,7 @@ export async function requireSetupRiskAcknowledgement(prompter: WizardPrompter):
 
 /** Where to go for sign-in methods the setup page does not offer. */
 export const OTHER_SIGN_IN_HINT =
-  "Codex (ChatGPT) OAuth, Anthropic setup tokens, Gemini, Bedrock, local and custom endpoints: " +
+  "Codex (ChatGPT) OAuth, Anthropic setup tokens, Bedrock, local and custom endpoints: " +
   "run `bitterbot onboard --no-browser --flow manual` in a terminal, or add them later in Settings.";
 
 export const TELEMETRY_STATEMENT =
@@ -144,6 +144,32 @@ const WEB_SEARCH_ENV: Array<{ provider: string; envVar: string; label: string }>
   { provider: "tavily", envVar: "TAVILY_API_KEY", label: "Tavily" },
   { provider: "perplexity", envVar: "PERPLEXITY_API_KEY", label: "Perplexity" },
   { provider: "serply", envVar: "SERPLY_API_KEY", label: "Serply" },
+];
+
+/**
+ * Web search providers whose key can be pasted in setup. `topLevelKey`: the
+ * key lives at `tools.web.search.apiKey` (Brave); the others keep it in their
+ * own block, `tools.web.search.<provider>.apiKey`, where the web_search tool
+ * and the terminal web-search step read it (src/agents/tools/web-search.ts).
+ */
+const WEB_SEARCH_PASTE: Array<{
+  provider: "brave" | "tavily" | "perplexity";
+  label: string;
+  hint: string;
+  topLevelKey?: boolean;
+}> = [
+  {
+    provider: "brave",
+    label: "Brave Search",
+    hint: "Free tier: https://brave.com/search/api/",
+    topLevelKey: true,
+  },
+  { provider: "tavily", label: "Tavily", hint: "https://tavily.com" },
+  {
+    provider: "perplexity",
+    label: "Perplexity",
+    hint: "Paid per search: https://www.perplexity.ai/settings/api",
+  },
 ];
 
 export type SetupContext = {
@@ -194,11 +220,21 @@ type SetupStepDef = {
   skipped?: string;
   /** The answer "recommended defaults" and --non-interactive take; undefined = ask. */
   recommended: (ctx: SetupContext, draft: SetupDraft) => string | undefined;
+  /**
+   * Asked even under "Use recommended defaults" when this returns true: the
+   * recommended answer leaves a feature off, so the user decides knowingly.
+   */
+  askUnderRecommended?: (ctx: SetupContext, draft: SetupDraft) => boolean;
   /** One line for the fork screen describing the recommended answer. */
   describe: (ctx: SetupContext, draft: SetupDraft) => string;
   ask: (ctx: SetupContext, draft: SetupDraft, prompter: WizardPrompter) => Promise<StepAnswer>;
   apply: (ctx: SetupContext, draft: SetupDraft, answer: StepAnswer) => void;
 };
+
+/** "an Anthropic", "a Google Gemini". */
+function withArticle(label: string): string {
+  return `${/^[aeiou]/i.test(label) ? "an" : "a"} ${label}`;
+}
 
 function keyLabel(key: DetectedKey): string {
   return `${SETUP_PROVIDERS[key.provider].label}: ${key.envVar} ${key.masked} (${describeKeySource(key.source)})`;
@@ -321,12 +357,12 @@ const authStep: SetupStepDef = {
       ...ctx.keys.map((key) => ({ value: key.id, label: keyLabel(key), hint: "Use this key" })),
       ...SETUP_PROVIDER_ORDER.map((provider) => ({
         value: `paste:${provider}`,
-        label: `Paste a ${SETUP_PROVIDERS[provider].label} API key`,
+        label: `Paste ${withArticle(SETUP_PROVIDERS[provider].label)} API key`,
         hint: SETUP_PROVIDERS[provider].keyUrl,
       })),
       {
         value: "other",
-        label: "Other sign-in methods (Codex OAuth, Gemini, custom endpoints)",
+        label: "Other sign-in methods (Codex OAuth, Bedrock, custom endpoints)",
         hint: "Set up in a terminal: bitterbot onboard --no-browser --flow manual",
       },
       {
@@ -349,7 +385,7 @@ const authStep: SetupStepDef = {
     }
     if (typeof choice === "string" && choice.startsWith("paste:")) {
       const provider = choice.slice("paste:".length) as SetupProvider;
-      if (!SETUP_PROVIDERS[provider]) {
+      if (!Object.hasOwn(SETUP_PROVIDERS, provider)) {
         return { choice: "skip" };
       }
       const secret = await askPastedKey(prompter, provider);
@@ -372,7 +408,7 @@ const authStep: SetupStepDef = {
         provider: profile.provider,
         mode: profile.mode,
       };
-      if (profile.provider in SETUP_PROVIDERS) {
+      if (Object.hasOwn(SETUP_PROVIDERS, profile.provider)) {
         draft.provider = profile.provider as SetupProvider;
       }
       draft.answers.auth = profile.id;
@@ -380,7 +416,7 @@ const authStep: SetupStepDef = {
     }
     if (answer.choice.startsWith("paste:") && answer.secret) {
       const provider = answer.choice.slice("paste:".length) as SetupProvider;
-      if (!SETUP_PROVIDERS[provider]) {
+      if (!Object.hasOwn(SETUP_PROVIDERS, provider)) {
         draft.answers.auth = "skip";
         return;
       }
@@ -496,6 +532,15 @@ const embeddingsStep: SetupStepDef = {
             },
           ]
         : []),
+      ...(draft.provider === "google"
+        ? [
+            {
+              value: "gemini",
+              label: "Gemini embeddings",
+              hint: "Uses your Gemini key; no download",
+            },
+          ]
+        : []),
     ];
     const choice = await prompter.select({
       message:
@@ -506,12 +551,15 @@ const embeddingsStep: SetupStepDef = {
     return { choice: typeof choice === "string" ? choice : "auto" };
   },
   apply: (_ctx, draft, answer) => {
-    const known = ["keep", "auto", "local", "openai"];
+    const known = ["keep", "auto", "local", "openai", "gemini"];
     draft.answers.embeddings = known.includes(answer.choice) ? answer.choice : "auto";
-    if (answer.choice !== "local" && answer.choice !== "openai") {
+    // A remote embeddings provider only with that provider's key in this setup.
+    const remoteOwner: Record<string, SetupProvider> = { openai: "openai", gemini: "google" };
+    const remote = Object.hasOwn(remoteOwner, answer.choice);
+    if (answer.choice !== "local" && !remote) {
       return;
     }
-    if (answer.choice === "openai" && draft.provider !== "openai") {
+    if (remote && draft.provider !== remoteOwner[answer.choice]) {
       draft.answers.embeddings = "auto";
       return;
     }
@@ -523,7 +571,7 @@ const embeddingsStep: SetupStepDef = {
           ...draft.config.agents?.defaults,
           memorySearch: {
             ...draft.config.agents?.defaults?.memorySearch,
-            provider: answer.choice as "local" | "openai",
+            provider: answer.choice as "local" | "openai" | "gemini",
           },
         },
       },
@@ -538,6 +586,9 @@ function detectSearchEnv(env: NodeJS.ProcessEnv) {
 const webSearchStep: SetupStepDef = {
   id: "webSearch",
   title: "Web search (optional)",
+  // "Later" switches curiosity research off; one click past the fork must
+  // not decide that silently (found on a fresh-install test, 2026-10-14).
+  askUnderRecommended: (ctx, draft) => webSearchStep.recommended(ctx, draft) === "later",
   recommended: (ctx) => {
     if (ctx.effective.tools?.web?.search?.provider) {
       return "keep";
@@ -552,7 +603,7 @@ const webSearchStep: SetupStepDef = {
     }
     return rec?.startsWith("env:")
       ? `Web search: ${rec.slice(4)} (key found in the environment)`
-      : "Web search: later (curiosity research stays off until a provider is set)";
+      : "Web search: asked next (optional; curiosity research needs it)";
   },
   ask: async (ctx, draft, prompter) => {
     const found = detectSearchEnv(ctx.env ?? process.env);
@@ -571,12 +622,11 @@ const webSearchStep: SetupStepDef = {
         : []),
       { value: "later", label: "Later", hint: "Add a provider in Settings when you want it" },
       { value: "parallel", label: "Parallel Search", hint: "Free, no key needed" },
-      {
-        value: "paste:brave",
-        label: "Paste a Brave Search key",
-        hint: "Free tier: https://brave.com/search/api/",
-      },
-      { value: "paste:tavily", label: "Paste a Tavily key", hint: "https://tavily.com" },
+      ...WEB_SEARCH_PASTE.map((entry) => ({
+        value: `paste:${entry.provider}`,
+        label: `Paste ${withArticle(entry.label)} key`,
+        hint: entry.hint,
+      })),
     ];
     const choice = await prompter.select({
       message:
@@ -585,16 +635,16 @@ const webSearchStep: SetupStepDef = {
       initialValue: webSearchStep.recommended(ctx, draft),
     });
     const value = typeof choice === "string" ? choice : "later";
-    if (value.startsWith("paste:")) {
-      const provider = value.slice("paste:".length);
+    const pasted = WEB_SEARCH_PASTE.find((entry) => value === `paste:${entry.provider}`);
+    if (pasted) {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const key = await prompter.text({
-          message: `${provider === "brave" ? "Brave Search" : "Tavily"} API key`,
+          message: `${pasted.label} API key`,
           sensitive: true,
         });
         const problem = validatePastedKey(key);
         if (!problem) {
-          return { choice: value, secret: key.trim(), webProvider: provider };
+          return { choice: value, secret: key.trim(), webProvider: pasted.provider };
         }
         await prompter.note(problem, "Web search");
       }
@@ -617,6 +667,7 @@ const webSearchStep: SetupStepDef = {
         },
       };
     };
+    const pastedSearch = WEB_SEARCH_PASTE.find((entry) => entry.provider === answer.webProvider);
     if (answer.choice === "parallel") {
       write({ provider: "parallel", enabled: true });
       draft.answers.webSearch = "parallel";
@@ -629,13 +680,13 @@ const webSearchStep: SetupStepDef = {
       write({ provider: answer.choice.slice(4), enabled: true });
       draft.answers.webSearch = answer.choice;
     } else if (
-      answer.choice.startsWith("paste:") &&
+      pastedSearch &&
       answer.secret &&
-      (answer.webProvider === "brave" || answer.webProvider === "tavily")
+      answer.choice === `paste:${pastedSearch.provider}`
     ) {
       // Same place the terminal web-search step stores a pasted key.
-      const provider = answer.webProvider;
-      if (provider === "brave") {
+      const provider = pastedSearch.provider;
+      if (pastedSearch.topLevelKey) {
         write({ provider, enabled: true, apiKey: answer.secret });
       } else {
         const block = (search as Record<string, unknown> | undefined)?.[provider];
@@ -731,13 +782,36 @@ const serviceStep: SetupStepDef = {
   title: "Keep running",
   // Offered exactly where the terminal QuickStart installs a service: not in
   // a container, not on Linux without systemd user services, not when one is
-  // already installed (src/wizard/onboarding.finalize.ts).
-  applies: (ctx) => ctx.service?.kind === "available",
+  // already installed for this install (src/wizard/onboarding.finalize.ts).
+  // When the installed service runs another install (a git clone, an older
+  // release), it offers to point that service at this version instead.
+  applies: (ctx) => ctx.service?.kind === "available" || ctx.service?.kind === "elsewhere",
   skipped: "n/a",
   recommended: () => "install",
   describe: (ctx) =>
-    `Background service: install it (${ctx.service?.kind === "available" ? ctx.service.label : "service"}), so Bitterbot keeps running and starts on login`,
+    ctx.service?.kind === "elsewhere"
+      ? `Background service: it runs ${ctx.service.runsFrom}; use this version for it`
+      : `Background service: install it (${ctx.service?.kind === "available" ? ctx.service.label : "service"}), so Bitterbot keeps running and starts on login`,
   ask: async (ctx, _draft, prompter) => {
+    if (ctx.service?.kind === "elsewhere") {
+      const choice = await prompter.select({
+        message: `Your background service (${ctx.service.label}) still runs ${ctx.service.runsFrom}. Use this version for it instead? Your settings and memory stay as they are.`,
+        options: [
+          {
+            value: "install",
+            label: "Use this version for the background service",
+            hint: "Restarts the service on this version; the other install is left on disk",
+          },
+          {
+            value: "no",
+            label: "Leave it as it is",
+            hint: "Switch later with `bitterbot gateway switch`",
+          },
+        ],
+        initialValue: "install",
+      });
+      return { choice: choice === "no" ? "no" : "install" };
+    }
     const label = ctx.service?.kind === "available" ? ctx.service.label : "service";
     const choice = await prompter.select({
       message:
@@ -759,10 +833,8 @@ const serviceStep: SetupStepDef = {
     return { choice: choice === "no" ? "no" : "install" };
   },
   apply: (ctx, draft, answer) => {
-    if (
-      ctx.service?.kind !== "available" ||
-      (answer.choice !== "install" && answer.choice !== "no")
-    ) {
+    const offered = ctx.service?.kind === "available" || ctx.service?.kind === "elsewhere";
+    if (!offered || (answer.choice !== "install" && answer.choice !== "no")) {
       draft.installService = false;
       draft.answers.service = ctx.service?.kind === "installed" ? "installed" : "n/a";
       return;
@@ -842,7 +914,7 @@ export async function runSetupSteps(params: {
   }
   const applicable = SETUP_STEPS.filter((step) => !step.applies || step.applies(ctx));
   const steps = SETUP_STEPS.filter((step) => !params.only || params.only.includes(step.id));
-  const askedSteps = steps.filter((step) => !step.applies || step.applies(ctx));
+  let askedSteps = steps.filter((step) => !step.applies || step.applies(ctx));
   let useRecommended = !prompter || params.acceptRecommended === true;
   if (prompter && !useRecommended && !params.skipFork && !params.only) {
     const lines = applicable.map((step) => `- ${step.describe(ctx, draft)}`);
@@ -865,6 +937,12 @@ export async function runSetupSteps(params: {
     });
     useRecommended = fork !== "custom";
   }
+  const asksUnderRecommended = (step: SetupStepDef) =>
+    step.recommended(ctx, draft) === undefined || step.askUnderRecommended?.(ctx, draft) === true;
+  if (useRecommended && prompter && params.acceptRecommended !== true) {
+    // "Step 1 of 2", not "of 8": count only what this path will ask.
+    askedSteps = askedSteps.filter(asksUnderRecommended);
+  }
   for (const step of steps) {
     if (step.applies && !step.applies(ctx)) {
       step.apply(ctx, draft, { choice: step.skipped ?? "n/a" });
@@ -876,7 +954,11 @@ export async function runSetupSteps(params: {
     let answer: StepAnswer;
     if (preset !== undefined) {
       answer = { choice: preset };
-    } else if (useRecommended && recommended !== undefined) {
+    } else if (
+      useRecommended &&
+      recommended !== undefined &&
+      (!prompter || params.acceptRecommended === true || !step.askUnderRecommended?.(ctx, draft))
+    ) {
       answer = { choice: recommended };
     } else if (prompter) {
       prompter.section?.({

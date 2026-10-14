@@ -14,6 +14,15 @@ export function formatUsdSmart(cost: number): string {
   return `$${cost.toFixed(2)}`;
 }
 
+/**
+ * A cost whose price is a guess (a borrowed price for a model newer than the bundled price
+ * list, or estimated token counts) reads "~$0.112" so it is never mistaken for a billed figure.
+ */
+export function formatUsdEstimate(cost: number, estimated: boolean): string {
+  const text = formatUsdSmart(cost);
+  return estimated && cost > 0 ? `~${text}` : text;
+}
+
 export function pricingSourceLabel(source: PricingSource): string {
   switch (source) {
     case "provider":

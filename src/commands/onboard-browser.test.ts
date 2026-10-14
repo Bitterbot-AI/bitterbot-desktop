@@ -193,6 +193,138 @@ describe("runBrowserOnboarding", () => {
     expect(result?.tokenIssued).toBe(true);
   });
 
+  const otherInstall = {
+    otherInstall: true,
+    blocked: null,
+    summary: ["Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001."],
+    version: "1.5.0",
+  };
+
+  it("never links to a gateway from another install; without a terminal it prints the switch command", async () => {
+    const rt = runtime();
+    const switchGateway = vi.fn(async () => 0);
+    const result = await runBrowserOnboarding(
+      {},
+      rt,
+      { kind: "browser", open: false, headless: false, inContainer: false },
+      {
+        isListening: async () => true,
+        checkGateway: async () => otherInstall,
+        switchGateway,
+        stdinIsTty: false,
+      },
+    );
+    expect(result).toBeNull();
+    expect(switchGateway).not.toHaveBeenCalled();
+    const text = rt.lines.join("\n");
+    expect(text).toContain("(git clone) running on port 19001");
+    expect(text).toContain("bitterbot gateway switch");
+    expect(text).not.toContain("/setup");
+    expect(fs.existsSync(path.join(dir, "setup-token.json"))).toBe(false);
+  });
+
+  it("in a terminal it offers the switch, then links to the new gateway", async () => {
+    const switchGateway = vi.fn(async () => 0);
+    const result = await runBrowserOnboarding(
+      {},
+      runtime(),
+      { kind: "browser", open: false, headless: false, inContainer: false },
+      {
+        isListening: async () => true,
+        checkGateway: async () => otherInstall,
+        switchGateway,
+        stdinIsTty: true,
+      },
+    );
+    expect(switchGateway).toHaveBeenCalledTimes(1);
+    expect(result?.url.startsWith("http://127.0.0.1:19001/setup?token=")).toBe(true);
+    // Declined or failed: no link.
+    const declined = await runBrowserOnboarding(
+      {},
+      runtime(),
+      { kind: "browser", open: false, headless: false, inContainer: false },
+      {
+        isListening: async () => true,
+        checkGateway: async () => otherInstall,
+        switchGateway: async () => 2,
+        stdinIsTty: true,
+      },
+    );
+    expect(declined).toBeNull();
+  });
+
+  it("from the installer it never asks again (install.sh already did)", async () => {
+    const switchGateway = vi.fn(async () => 0);
+    const result = await runBrowserOnboarding(
+      { fromInstaller: true },
+      runtime(),
+      { kind: "browser", open: false, headless: false, inContainer: false },
+      {
+        isListening: async () => true,
+        checkGateway: async () => otherInstall,
+        switchGateway,
+        stdinIsTty: true,
+      },
+    );
+    expect(result).toBeNull();
+    expect(switchGateway).not.toHaveBeenCalled();
+  });
+
+  it("a port held by another program is an error, not a link", async () => {
+    const rt = runtime();
+    await expect(
+      runBrowserOnboarding(
+        {},
+        rt,
+        { kind: "browser", open: false, headless: false, inContainer: false },
+        {
+          isListening: async () => true,
+          checkGateway: async () => ({
+            otherInstall: false,
+            blocked:
+              "Port 19001 is used by another program (pid 7, nginx), not a Bitterbot gateway.",
+            summary: [],
+            version: "1.5.0",
+          }),
+        },
+      ),
+    ).rejects.toThrow("exit 1");
+    expect(rt.lines.join("\n")).toContain("not a Bitterbot gateway");
+  });
+
+  it("from the installer, an already set-up install goes straight to the Control UI", async () => {
+    fs.writeFileSync(
+      path.join(dir, "bitterbot.json"),
+      JSON.stringify({ gateway: { mode: "local" }, agents: { defaults: { workspace: dir } } }),
+    );
+    const rt = runtime();
+    const result = await runBrowserOnboarding(
+      { fromInstaller: true },
+      rt,
+      { kind: "browser", open: false, headless: false, inContainer: false },
+      {
+        isListening: async () => true,
+        checkGateway: async () => ({ ...otherInstall, otherInstall: false, summary: [] }),
+      },
+    );
+    expect(result?.url).toBe("http://127.0.0.1:19001/");
+    // The last line of an upgrade: short, just the link.
+    expect(rt.lines).toEqual(["Open Bitterbot: http://127.0.0.1:19001/"]);
+
+    // Nothing running: say how to start it; never start a setup gateway.
+    const startGateway = vi.fn();
+    const idle = runtime();
+    const none = await runBrowserOnboarding(
+      { fromInstaller: true },
+      idle,
+      { kind: "browser", open: false, headless: false, inContainer: false },
+      { isListening: async () => false, startGateway },
+    );
+    expect(none).toBeNull();
+    expect(startGateway).not.toHaveBeenCalled();
+    expect(idle.lines.join("\n")).toContain("bitterbot gateway install");
+  });
+
   it("in a container, a stopped gateway is an error with the compose command", async () => {
     const rt = runtime();
     await expect(

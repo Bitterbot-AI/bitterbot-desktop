@@ -10,6 +10,10 @@
  * - tool results spilled (7d): count and average size of results that overflowed to disk.
  * - prefix stability (7d): warn when any session's cached prefix changed between turns
  *   less than 60 min apart, with the likely tier (tools | system).
+ * - estimated costs (30d): models whose cost is an estimate (a borrowed forward-compat price
+ *   with no exact live entry, or estimated token counts).
+ * - live pricing freshness: warn when the newest OpenRouter snapshot is older than 3 days
+ *   (the daily refresh is failing) or there is none.
  *
  * Pure over the ledger (plus the heartbeat considerations log for deliveries) so the checks
  * are testable with an in-memory database.
@@ -272,6 +276,68 @@ export function prefixStabilityCheck(params: {
     };
   }
   return { level: p.sessions > 0 ? "ok" : "info", message: describePrefixStability(p, days) };
+}
+
+export const PRICING_SNAPSHOT_STALE_DAYS = 3;
+
+/** Models used in the window whose cost is an estimate rather than a known price. */
+export function estimatedCostModelsCheck(params: {
+  models: ReadonlyArray<{
+    provider: string | null;
+    model: string | null;
+    pricingSources: readonly string[];
+    estimatedCalls: number;
+  }>;
+  days?: number;
+}): UsageDoctorLine | null {
+  const days = params.days ?? 30;
+  const estimated = params.models.filter(
+    (m) => m.pricingSources.includes("estimated") && m.estimatedCalls > 0,
+  );
+  if (estimated.length === 0) {
+    return null;
+  }
+  const names = estimated
+    .map((m) => `${m.provider ?? "?"}/${m.model ?? "?"} (${m.estimatedCalls} calls)`)
+    .join(", ");
+  return {
+    level: "info",
+    message: `${estimated.length} model(s) used in the last ${days}d have estimated costs (shown with ~ in the Control UI): ${names}. A model newer than the bundled price list borrows a similar model's price until the live price list has an exact entry for it; set models.providers.<provider>.models[].cost to pin a price.`,
+  };
+}
+
+/** Warn when the live price list has not refreshed in days (or never landed). */
+export function pricingSnapshotFreshnessCheck(params: {
+  newestAt: number | null;
+  nowMs: number;
+  enabled: boolean;
+  lastError?: string | null;
+}): UsageDoctorLine {
+  if (!params.enabled) {
+    return {
+      level: "info",
+      message:
+        "live pricing refresh is off (usage.pricing.liveRefresh=false); models newer than the bundled price list stay estimated or unpriced",
+    };
+  }
+  const why = params.lastError ? ` (last error: ${params.lastError})` : "";
+  if (params.newestAt === null) {
+    return {
+      level: "warn",
+      message: `no live pricing snapshot on disk; the gateway fetches one from OpenRouter at boot and daily${why}. Until it lands, newer models are estimated or unpriced.`,
+    };
+  }
+  const ageDays = (params.nowMs - params.newestAt) / DAY_MS;
+  if (ageDays > PRICING_SNAPSHOT_STALE_DAYS) {
+    return {
+      level: "warn",
+      message: `live pricing snapshot is ${Math.floor(ageDays)} days old; the daily refresh is failing${why}. Check that the gateway is running and can reach openrouter.ai.`,
+    };
+  }
+  return {
+    level: "ok",
+    message: `live pricing snapshot ${formatUsageDay(params.newestAt)} (refreshed daily)`,
+  };
 }
 
 export function collectUsageDoctorLines(params: {

@@ -8,8 +8,8 @@ title: "onboard"
 # `bitterbot onboard`
 
 Sets Bitterbot up. By default it finishes setup in your browser: it starts the
-gateway (or reuses the one already running), then prints and opens a setup
-link:
+gateway (or reuses the one already running, when it is this install), then
+prints and opens a setup link:
 
 ```text
 http://127.0.0.1:19001/setup?token=...
@@ -20,22 +20,36 @@ terminal wizard, then asks the same questions as the terminal QuickStart, in
 the same order, because both run one shared list of steps:
 
 1. **Model provider key.** Keys already on this machine
-   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY` in the gateway
-   environment or `~/.bitterbot/.env`, or a key an earlier setup saved) are
+   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`,
+   `GEMINI_API_KEY` in the gateway environment or `~/.bitterbot/.env`, or a
+   key an earlier setup saved) are
    offered by name and last four characters only; the value never reaches the
    browser. Saved sign-ins that are not API keys (OAuth, setup tokens) are
-   offered as "Already signed in" and kept as they are. The key you pick is
-   saved once where Bitterbot keeps that provider's key (the auth profile
-   store for Anthropic and OpenRouter, `~/.bitterbot/.env` with mode 0600 for
-   OpenAI), so setup will not ask again. A different key already stored there
+   offered as "Already signed in" and kept as they are. You can also paste a
+   new Anthropic, OpenAI, OpenRouter or Google Gemini API key. The key you pick
+   is saved once where Bitterbot keeps that provider's key (the auth profile
+   store for Anthropic, OpenRouter and Google Gemini, `~/.bitterbot/.env` with
+   mode 0600 for OpenAI), so setup will not ask again. A different key already stored there
    is never lost: the file is copied to `<file>.bak-<time>` (mode 0600) first.
    "Other sign-in methods" points to
-   `bitterbot onboard --no-browser --flow manual` for Codex OAuth, Gemini and
-   custom endpoints.
+   `bitterbot onboard --no-browser --flow manual` for Codex OAuth, Anthropic
+   setup tokens, Bedrock, local and custom endpoints.
 2. **Model.** A model already configured is kept unless you pick another.
+   Each provider's recommended model comes first: Claude Sonnet 5.5
+   (`anthropic/claude-sonnet-5-5`; Claude Opus 5.5, Claude Fable 5.1 and
+   Claude Haiku 4.5 are also offered), GPT-5.5 (`openai/gpt-5.5`; GPT-5 mini
+   also offered), OpenRouter Auto (`openrouter/auto`), and Gemini 3.1 Pro
+   preview (`google/gemini-3.1-pro-preview`; Gemini 3 Flash preview also
+   offered). Every model offered here is a featured model of the Control UI
+   model picker.
 3. **Memory embeddings.** The local model is the default (about 330 MB,
-   downloaded the first time memory needs it).
-4. **Web search** (optional). Curiosity research needs it.
+   downloaded the first time memory needs it). With an OpenAI or Google
+   Gemini key, that provider's embeddings are offered too.
+4. **Web search** (optional). Curiosity research needs it. Options: a search
+   key already in the environment, Parallel Search (free, no key), or paste a
+   Brave Search (free tier), Tavily, or Perplexity key. Perplexity is paid per
+   search. A pasted key is saved in the config where the `web_search` tool
+   reads it (see [Web search](/tools/web-search)).
 5. **Channels.** "Later" is the default; you can chat in the Control UI
    right away.
 6. **P2P network.** An explicit choice, with one sentence on what joining
@@ -45,14 +59,17 @@ the same order, because both run one shared list of steps:
    user service, macOS LaunchAgent) so it keeps running and starts on login.
    Offered, and recommended, where the terminal QuickStart installs one; not in
    a container, on Linux without systemd user services, or when a service is
-   already installed. The Done screen says whether Bitterbot now runs as a
-   service; on Finish, the gateway `onboard` started for setup stops and the
-   service takes over its port.
+   already installed for this install. When the installed service still runs
+   another install (a git clone, an older release), the step offers **Use this
+   version for the background service** instead. The Done screen says whether
+   Bitterbot now runs as a service; on Finish, the gateway `onboard` started
+   for setup stops and the service takes over its port.
 8. **Privacy.** Bitterbot sends no telemetry to the project, and there is no
    account to create.
 
-"Use recommended defaults" accepts all of them in one click (it still asks for
-a key when none was found). After the config is written, setup runs a first
+"Use recommended defaults" accepts all of them in one click. It still asks for
+a key when none was found, and it still asks about web search when no search
+key was found, since leaving it for later keeps curiosity research off. After the config is written, setup runs a first
 reply on the chosen model ("Say hello and tell me one thing you can do.") and
 shows it with its latency; a failure shows the provider's error with Retry,
 Back and Skip. The reply runs in its own session (`agent:<id>:setup`), so
@@ -60,6 +77,12 @@ retries never land in your main chat, and a reply that takes too long is
 stopped before Retry is offered. Provider errors are shown with secrets
 masked. A read-only doctor summary closes the setup (`bitterbot doctor` has
 the full report).
+
+When the gateway already running on the port is a different install (a git
+clone, an older release), `onboard` does not link to it: in a terminal it
+offers to switch it to this version (`bitterbot gateway switch`), otherwise it
+prints that command. A program on the port that is not a Bitterbot gateway is
+an error.
 
 ## The setup link
 

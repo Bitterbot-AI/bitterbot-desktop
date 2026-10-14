@@ -11,8 +11,8 @@
  * Bitterbot keeps that provider's key (the same writers the terminal wizard
  * uses), so the next setup finds it as a saved key and does not ask again.
  *
- *   - Anthropic, OpenRouter: the auth profile store (`auth-profiles.json`,
- *     profile `<provider>:default`).
+ *   - Anthropic, OpenRouter, Google Gemini: the auth profile store
+ *     (`auth-profiles.json`, profile `<provider>:default`).
  *   - OpenAI: `~/.bitterbot/.env` (`OPENAI_API_KEY`, mode 0600), which the
  *     gateway loads at start (src/infra/dotenv.ts).
  *
@@ -29,12 +29,11 @@ import path from "node:path";
 import dotenv from "dotenv";
 import { ensureAuthProfileStore } from "../agents/auth-profiles.js";
 import { resolveAuthStorePath } from "../agents/auth-profiles/paths.js";
-import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { upsertSharedEnvVar } from "../infra/env-file.js";
 import { resolveConfigDir } from "../utils.js";
 
-export type SetupProvider = "anthropic" | "openai" | "openrouter";
+export type SetupProvider = "anthropic" | "openai" | "openrouter" | "google";
 
 export type SetupModelOption = { id: string; label: string; hint: string };
 
@@ -46,7 +45,11 @@ export const SETUP_PROVIDERS: Record<
     /** Where a new key is created. */
     keyUrl: string;
     placeholder: string;
-    /** The provider's recommended model first. */
+    /**
+     * The provider's recommended model first. Every id here is a featured
+     * model of the Control UI picker (src/agents/model-featured.ts; a test
+     * keeps the two in step).
+     */
     models: SetupModelOption[];
   }
 > = {
@@ -57,15 +60,12 @@ export const SETUP_PROVIDERS: Record<
     placeholder: "sk-ant-api03-...",
     models: [
       {
-        id: `${DEFAULT_PROVIDER}/${DEFAULT_MODEL}`,
-        label: "Claude Opus 4.8",
-        hint: "Most capable (recommended)",
+        id: "anthropic/claude-sonnet-5-5",
+        label: "Claude Sonnet 5.5",
+        hint: "Balanced speed and cost (recommended)",
       },
-      {
-        id: "anthropic/claude-sonnet-4-6",
-        label: "Claude Sonnet 4.6",
-        hint: "Balanced speed and cost",
-      },
+      { id: "anthropic/claude-opus-5-5", label: "Claude Opus 5.5", hint: "Most capable" },
+      { id: "anthropic/claude-fable-5-1", label: "Claude Fable 5.1", hint: "Newest model family" },
       { id: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5", hint: "Fastest, cheapest" },
     ],
   },
@@ -75,8 +75,7 @@ export const SETUP_PROVIDERS: Record<
     keyUrl: "https://platform.openai.com/api-keys",
     placeholder: "sk-...",
     models: [
-      { id: "openai/gpt-5.1-codex", label: "GPT-5.1 Codex", hint: "Recommended" },
-      { id: "openai/gpt-5.2", label: "GPT-5.2", hint: "General purpose" },
+      { id: "openai/gpt-5.5", label: "GPT-5.5", hint: "Most capable (recommended)" },
       { id: "openai/gpt-5-mini", label: "GPT-5 mini", hint: "Fastest, cheapest" },
     ],
   },
@@ -93,9 +92,32 @@ export const SETUP_PROVIDERS: Record<
       },
     ],
   },
+  google: {
+    label: "Google Gemini",
+    envVar: "GEMINI_API_KEY",
+    keyUrl: "https://aistudio.google.com/apikey",
+    placeholder: "AIza...",
+    models: [
+      {
+        id: "google/gemini-3.1-pro-preview",
+        label: "Gemini 3.1 Pro (preview)",
+        hint: "Most capable (recommended)",
+      },
+      {
+        id: "google/gemini-3-flash-preview",
+        label: "Gemini 3 Flash (preview)",
+        hint: "Fastest, cheapest",
+      },
+    ],
+  },
 };
 
-export const SETUP_PROVIDER_ORDER: SetupProvider[] = ["anthropic", "openai", "openrouter"];
+export const SETUP_PROVIDER_ORDER: SetupProvider[] = [
+  "anthropic",
+  "openai",
+  "openrouter",
+  "google",
+];
 
 export type SetupKeySource = "environment" | "env-file" | "saved";
 
@@ -322,6 +344,7 @@ export async function storeProviderKey(params: {
     applyAuthProfileConfig,
     applyOpenrouterProviderConfig,
     setAnthropicApiKey,
+    setGeminiApiKey,
     setOpenrouterApiKey,
   } = await import("../commands/onboard-auth.js");
   if (provider === "openai") {
@@ -378,6 +401,8 @@ export async function storeProviderKey(params: {
     // auth profile store, where the gateway looks on every turn.
     if (provider === "anthropic") {
       await setAnthropicApiKey(key, params.agentDir);
+    } else if (provider === "google") {
+      await setGeminiApiKey(key, params.agentDir);
     } else {
       await setOpenrouterApiKey(key, params.agentDir);
     }

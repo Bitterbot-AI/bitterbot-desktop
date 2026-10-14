@@ -47,4 +47,30 @@ describe("ensureConfigReady", () => {
     await ensureConfigReady({ runtime: makeRuntime() as never, commandPath: ["message"] });
     expect(loadAndMaybeMigrateDoctorConfigMock).toHaveBeenCalledTimes(1);
   });
+
+  it("passes the installer's quiet modes to the config check", async () => {
+    vi.resetModules();
+    const { ensureConfigReady, configGuardOutput } = await import("./config-guard.js");
+    expect(configGuardOutput({})).toBe("guard");
+    expect(configGuardOutput({ BITTERBOT_INSTALLER: "1" })).toBe("summary");
+    expect(configGuardOutput({ BITTERBOT_INSTALLER: "quiet" })).toBe("silent");
+    expect(configGuardOutput({ BITTERBOT_INSTALLER: "true" })).toBe("guard");
+    const saved = process.env.BITTERBOT_INSTALLER;
+    process.env.BITTERBOT_INSTALLER = "quiet";
+    try {
+      await ensureConfigReady({
+        runtime: { ...makeRuntime(), log: vi.fn() } as never,
+        commandPath: ["gateway", "switch"],
+      });
+    } finally {
+      if (saved === undefined) {
+        delete process.env.BITTERBOT_INSTALLER;
+      } else {
+        process.env.BITTERBOT_INSTALLER = saved;
+      }
+    }
+    expect(loadAndMaybeMigrateDoctorConfigMock).toHaveBeenCalledWith(
+      expect.objectContaining({ output: "silent" }),
+    );
+  });
 });

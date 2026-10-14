@@ -301,6 +301,27 @@ describe("gateway hot reload", () => {
       expect(signalSpy).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("diffs later edits against the config as startup left it (a boot-time write is not a change)", async () => {
+    const { loadConfig, writeConfigFile } = await import("../config/config.js");
+    hoisted.startBrowserControlServerIfEnabled.mockImplementationOnce(async () => {
+      // Startup writing the config, as the browser control service does when
+      // it saves a generated gateway.auth.token. (The test harness pins
+      // gateway auth, so a channel setting stands in for the token here.)
+      const cfg = loadConfig();
+      await writeConfigFile({
+        ...cfg,
+        channels: { telegram: { botToken: "written-at-boot" } },
+      });
+      return { stop: hoisted.browserStop };
+    });
+    await withGatewayServer(async () => {
+      const opts = hoisted.startGatewayConfigReloader.mock.calls.at(-1)?.[0] as
+        | { initialConfig?: { channels?: { telegram?: { botToken?: string } } } }
+        | undefined;
+      expect(opts?.initialConfig?.channels?.telegram?.botToken).toBe("written-at-boot");
+    });
+  });
 });
 
 describe("gateway agents", () => {

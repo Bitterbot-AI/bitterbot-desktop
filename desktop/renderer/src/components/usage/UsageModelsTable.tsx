@@ -6,6 +6,7 @@ import { useUsageStore, type UsageModelSummary } from "../../stores/usage-store"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import {
   formatPct,
+  formatUsdEstimate,
   formatUsdSmart,
   kindLabel,
   pricingSourceLabel,
@@ -202,7 +203,17 @@ export function UsageModelsTable({ models }: { models: UsageModelSummary[] }) {
                     {m.kinds.includes("chat") ? formatPct(m.cacheHitRate) : "—"}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-brand font-medium">
-                    {showReported && <div>{formatUsdSmart(m.cost.total)}</div>}
+                    {showReported && (
+                      <div
+                        title={
+                          worstSource === "estimated"
+                            ? "Estimated: no exact price for this model yet"
+                            : undefined
+                        }
+                      >
+                        {formatUsdEstimate(m.cost.total, worstSource === "estimated")}
+                      </div>
+                    )}
                     {showComputed && (
                       <div
                         className={cn(

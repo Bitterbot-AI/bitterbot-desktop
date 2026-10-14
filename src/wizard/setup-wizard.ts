@@ -168,6 +168,8 @@ function summarizeDoctor(summary: DoctorSummary): string {
 export type ServiceOutcome =
   | { state: "installed"; label: string }
   | { state: "existing"; label: string }
+  /** The service runs another install and the user kept it that way. */
+  | { state: "elsewhere"; label: string; runsFrom: string }
   | { state: "failed"; label: string; error: string }
   | { state: "declined" }
   | { state: "unavailable" };
@@ -178,6 +180,8 @@ function describeService(service: ServiceOutcome): string {
       return `Bitterbot now runs in the background as a ${service.label} and starts on login.`;
     case "existing":
       return `Bitterbot runs in the background as a ${service.label} (already installed).`;
+    case "elsewhere":
+      return `The ${service.label} still runs ${service.runsFrom}. Switch it to this version any time with \`bitterbot gateway switch\`.`;
     case "failed":
       return `The ${service.label} could not be installed (${service.error}). Bitterbot runs only while this gateway process runs; try \`bitterbot gateway install\`.`;
     case "declined":
@@ -333,6 +337,8 @@ export async function runSetupWizard(
       : { state: "failed", label: result.label, error: result.error };
   } else if (ctx.service?.kind === "installed") {
     service = { state: "existing", label: ctx.service.label };
+  } else if (ctx.service?.kind === "elsewhere") {
+    service = { state: "elsewhere", label: ctx.service.label, runsFrom: ctx.service.runsFrom };
   } else if (draft.answers.service === "no") {
     service = { state: "declined" };
   } else {

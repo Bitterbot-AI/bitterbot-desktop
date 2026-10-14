@@ -100,6 +100,18 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
     await ensureDevGatewayConfig({ reset: Boolean(opts.reset) });
   }
 
+  // The state dir holds config, keys and memory: private to its owner.
+  if (!process.env.VITEST) {
+    const { securePrivateStateDir, stateDirPermsNotice } =
+      await import("../../infra/state-dir-perms.js");
+    const notice = stateDirPermsNotice(
+      securePrivateStateDir({ stateDir: resolveStateDir(process.env) }),
+    );
+    if (notice) {
+      gatewayLog.info(notice);
+    }
+  }
+
   const cfg = loadConfig();
   const portOverride = parsePort(opts.port);
   if (opts.port !== undefined && portOverride === null) {

@@ -15,6 +15,14 @@
   A native Windows install and a Scheduled Task runner are not part of this
   version (see docs/platforms/windows.md).
 
+  Upgrading: inside WSL the Linux installer offers to switch a running older
+  Bitterbot (a git clone started with pnpm, an older release, or its
+  background service) to the new version with `bitterbot gateway switch`,
+  asked once (default yes); -Yes switches without asking, -NoSwitch leaves
+  it alone. A gateway installed natively on Windows from a git clone (the
+  "Bitterbot Gateway" scheduled task) is detected and reported with the
+  commands to stop it; this script never changes it.
+
   Usage (PowerShell 5.1 or 7):
     irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
   or, to pass options, save it first:
@@ -37,7 +45,12 @@
   Do not run `bitterbot onboard` after installing.
 
 .PARAMETER Yes
-  Do not ask for confirmation inside the Linux installer.
+  Do not ask for confirmation inside the Linux installer (this also switches
+  a running older Bitterbot inside WSL to the new version).
+
+.PARAMETER NoSwitch
+  Leave a running older Bitterbot inside WSL (and its background service)
+  alone.
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification = 'Interactive installer output for a console user.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'Piped into iex the exit code is reported in $LASTEXITCODE, the way a native command reports it.')]
@@ -46,7 +59,8 @@ param(
   [string]$Version = '',
   [string]$Distro = '',
   [switch]$NoOnboard,
-  [switch]$Yes
+  [switch]$Yes,
+  [switch]$NoSwitch
 )
 
 # Everything runs inside one script block: its functions, variables,
@@ -60,6 +74,7 @@ param(
     [string]$DistroName,
     [bool]$SkipOnboard,
     [bool]$AssumeYes,
+    [bool]$SkipSwitch,
     [bool]$DryRun,
     $Cmdlet,
     [bool]$RunAsFile
@@ -156,11 +171,54 @@ param(
     Write-BbLine "More: $WindowsDocsUrl"
   }
 
+  # A gateway installed natively on Windows (a git clone's `bitterbot
+  # gateway install` registers the "Bitterbot Gateway" scheduled task). It
+  # holds the gateway port on the Windows side, which WSL's localhost
+  # forwarding then cannot use. Detection only: this script never changes it.
+  function Get-BbWindowsGateway {
+    $fake = $env:BITTERBOT_INSTALL_PS1_FAKE_WINTASK
+    if ($DryRun -and $fake) {
+      if ($fake -eq 'none') { return @() }
+      return @([pscustomobject]@{ TaskName = $fake; State = 'Running' })
+    }
+    if (-not (Get-Command -Name 'Get-ScheduledTask' -ErrorAction SilentlyContinue)) {
+      return @()
+    }
+    $tasks = @()
+    try {
+      $tasks = @(Get-ScheduledTask -TaskName 'Bitterbot Gateway*' -ErrorAction SilentlyContinue)
+    } catch {
+      $tasks = @()
+    }
+    $found = @()
+    foreach ($task in $tasks) {
+      if ($null -ne $task) {
+        $found += [pscustomobject]@{ TaskName = [string]$task.TaskName; State = [string]$task.State }
+      }
+    }
+    return $found
+  }
+
+  function Show-BbWindowsGatewayNote {
+    param($Tasks)
+    foreach ($task in $Tasks) {
+      Write-BbLine "Found a Bitterbot gateway installed natively on Windows: scheduled task '$($task.TaskName)' ($($task.State))."
+    }
+    Write-BbLine '  It uses the gateway port on Windows, so the WSL install cannot serve it while it runs.'
+    Write-BbLine '  This script leaves it alone. To use the WSL install instead (your Windows settings are not moved):'
+    foreach ($task in $Tasks) {
+      Write-BbLine "    Stop-ScheduledTask -TaskName '$($task.TaskName)'; Disable-ScheduledTask -TaskName '$($task.TaskName)'"
+    }
+    Write-BbLine '  (Enable-ScheduledTask and Start-ScheduledTask bring it back.)'
+    Write-BbLine ''
+  }
+
   function Get-BbInstallCommand {
     param(
       [string]$Pin,
       [bool]$NoOnboardFlag,
-      [bool]$YesFlag
+      [bool]$YesFlag,
+      [bool]$NoSwitchFlag
     )
     $flags = @()
     if ($Pin) {
@@ -170,6 +228,7 @@ param(
       $flags += @('--version', ($Pin -replace '^v', ''))
     }
     if ($NoOnboardFlag) { $flags += '--no-onboard' }
+    if ($NoSwitchFlag) { $flags += '--no-switch' }
     if ($YesFlag) { $flags += '--yes' }
     $tail = ''
     if ($flags.Count -gt 0) {
@@ -208,6 +267,7 @@ param(
     Write-BbLine "  Runs inside it:    $Command"
     Write-BbLine '  Installs to:       ~/.bitterbot/app in your Linux home (ext4), command ~/.local/bin/bitterbot'
     Write-BbLine '  Windows itself:    nothing is changed'
+    Write-BbLine '  Older Bitterbot:   one running inside WSL is switched to the new version (asked once; -NoSwitch leaves it)'
     Write-BbLine ''
     Write-BbLine 'Keep Bitterbot on the Linux filesystem: if you also clone the source, clone it into your'
     Write-BbLine 'Linux home (cd ~ && git clone ...), not under /mnt/c, which is much slower and breaks file watching.'
@@ -217,10 +277,14 @@ param(
 
   $exitCode = 1
   try {
-    $command = Get-BbInstallCommand -Pin $ReleaseVersion -NoOnboardFlag $SkipOnboard -YesFlag $AssumeYes
+    $command = Get-BbInstallCommand -Pin $ReleaseVersion -NoOnboardFlag $SkipOnboard -YesFlag $AssumeYes -NoSwitchFlag $SkipSwitch
     $plan = Get-BbInstallPlan -Wanted $DistroName -Command $command
     $exitCode = $plan.Code
     if ($plan.Code -eq 0) {
+      $windowsGateway = @(Get-BbWindowsGateway)
+      if ($windowsGateway.Count -gt 0) {
+        Show-BbWindowsGatewayNote -Tasks $windowsGateway
+      }
       $proceed = -not $DryRun
       if ($Cmdlet) {
         $proceed = $Cmdlet.ShouldProcess("WSL2 distribution '$($plan.Target.Name)'", 'Run the Bitterbot Linux installer') -and -not $DryRun
@@ -244,7 +308,7 @@ param(
             $exitCode = 1
           } else {
             Write-BbLine ''
-            Write-BbLine "Done. Open your WSL terminal (wsl -d $name) and run: bitterbot gateway"
+            Write-BbLine "Done. In your WSL terminal (wsl -d $name): bitterbot gateway status shows what runs; bitterbot gateway starts it."
             $exitCode = 0
           }
         }
@@ -258,7 +322,7 @@ param(
     Write-BbLine "(installer finished with code $exitCode)"
   }
   $global:LASTEXITCODE = $exitCode
-} -ReleaseVersion $Version -DistroName $Distro -SkipOnboard $NoOnboard.IsPresent -AssumeYes $Yes.IsPresent `
+} -ReleaseVersion $Version -DistroName $Distro -SkipOnboard $NoOnboard.IsPresent -AssumeYes $Yes.IsPresent -SkipSwitch $NoSwitch.IsPresent `
   -DryRun ([bool]$WhatIfPreference -or ($env:BITTERBOT_INSTALL_DRY_RUN -eq '1')) `
   -Cmdlet (Get-Variable -Name PSCmdlet -ValueOnly -ErrorAction SilentlyContinue) `
   -RunAsFile ([bool](({ }).File))

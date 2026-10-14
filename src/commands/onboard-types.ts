@@ -92,6 +92,13 @@ export type OnboardOptions = {
    * wizard (`--no-browser`), undefined = decide (onboard-browser.ts).
    */
   browser?: boolean;
+  /**
+   * Run by install.sh right after installing (hidden `--from-installer`):
+   * an already set-up install points at the Control UI instead of the setup
+   * page, and a gateway from another install is never offered a switch here
+   * (install.sh already asked).
+   */
+  fromInstaller?: boolean;
   /** Required for non-interactive onboarding; skips the interactive risk prompt when true. */
   acceptRisk?: boolean;
   reset?: boolean;

@@ -104,13 +104,17 @@ describeInstaller("scripts/install.sh", () => {
       signer?: TestKey;
       noSig?: boolean;
       api?: Override;
+      /** bin/bitterbot body (default: echo its arguments). */
+      launcher?: string;
     } = {},
   ) {
     const top = `bitterbot-${version}-${platformId}`;
     const src = path.join(work, "src", `${path.basename(releases)}-${version}`);
     fs.rmSync(src, { recursive: true, force: true });
     fs.mkdirSync(path.join(src, top, "bin"), { recursive: true });
-    const launcher = Buffer.from(`#!/bin/sh\necho "fake bitterbot ${version} $*"\n`);
+    const launcher = Buffer.from(
+      `#!/bin/sh\n${opts.launcher ?? `echo "fake bitterbot ${version} $*"`}\n`,
+    );
     fs.writeFileSync(path.join(src, top, "bin", "bitterbot"), launcher, { mode: 0o755 });
     const manifest = buildManifest({
       version,
@@ -424,6 +428,242 @@ describeInstaller("scripts/install.sh", () => {
     expect(fs.readlinkSync(path.join(home, ".local", "bin", "bitterbot"))).toContain(
       path.join(".bitterbot", "app", "current", "bin", "bitterbot"),
     );
+  });
+
+  /**
+   * A launcher that answers `gateway switch` like the real CLI (exit codes in
+   * src/cli/daemon-cli/switch.ts) and logs every call.
+   */
+  const SWITCH_LAUNCHER = [
+    'echo "$*" >> "$HOME/calls.log"',
+    'echo "${BITTERBOT_INSTALLER:-} ${BITTERBOT_HIDE_BANNER:-}" >> "$HOME/modes.log"',
+    'case "$*" in',
+    '  "gateway switch --check") if [ "${FAKE_CHECK_RC:-10}" = 0 ]; then printf "%s" "${FAKE_CHECK_OUT:-}"; else echo "Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001."; fi; exit "${FAKE_CHECK_RC:-10}" ;;',
+    '  "gateway switch --yes --no-summary") echo "Done. Your settings and memory are unchanged."; exit "${FAKE_SWITCH_RC:-0}" ;;',
+    "esac",
+  ].join("\n");
+
+  function calls(home: string): string {
+    const file = path.join(home, "calls.log");
+    return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+  }
+
+  describe("switching a running older Bitterbot", () => {
+    const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
+
+    it("--yes: announced in the plan, checked after linking, switched", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], env, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).toContain(
+        "Switch:    a running older Bitterbot (git clone or older release) is switched to the new version",
+      );
+      expect(res.out).toContain("Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone)");
+      expect(res.out).toContain("Done. Your settings and memory are unchanged.");
+      expect(calls(home)).toBe("gateway switch --check\ngateway switch --yes --no-summary\n");
+      // Config advice once (the check), quiet afterwards; no banners.
+      expect(fs.readFileSync(path.join(home, "modes.log"), "utf8")).toBe("1 1\nquiet 1\n");
+      // The summary is printed once, before the switch.
+      expect(res.out.split("Found Bitterbot 1.4.0").length - 1).toBe(1);
+      expect(res.out).not.toMatch(/\u2014/);
+    });
+
+    it("a fresh machine gets no extra output or questions", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "0" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).not.toContain("Found Bitterbot");
+      expect(calls(home)).toBe("gateway switch --check\n");
+    });
+
+    it("nothing to switch: the one config line from the check is still shown, once", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const line =
+        "2 settings in your config are deprecated (still accepted this release, removed next release). Tidy them with: bitterbot doctor --fix";
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "0", FAKE_CHECK_OUT: line }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out.split(line).length - 1).toBe(1);
+      // A failing check still shows what it printed.
+      const bad = runInstaller([], { ...env, FAKE_CHECK_RC: "1", FAKE_CHECK_OUT: "" }, freshHome());
+      expect(bad.out).toContain("could not check for a running older Bitterbot (exit 1)");
+      expect(bad.out).toContain("Found Bitterbot 1.4.0");
+    });
+
+    it("--no-switch never runs the switch", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller(["--no-switch"], env, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).toContain("a running older Bitterbot is left alone (--no-switch)");
+      expect(calls(home)).toBe("");
+    });
+
+    it("a port held by something else: reported, nothing stopped, next steps printed", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "2" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(calls(home)).toBe("gateway switch --check\n");
+      expect(res.out).toContain("Next: once that is sorted out");
+    });
+
+    it("a remote gateway (check exit 0) goes straight on to onboarding", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "0" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(res.out).not.toContain("gateway switch");
+      expect(res.out).toContain("onboard (opens a setup page");
+    });
+
+    it("another program on the port (exit 5): says so, never suggests a switch", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_CHECK_RC: "5" }, home);
+      expect(res.status, res.out).toBe(0);
+      expect(calls(home)).toBe("gateway switch --check\n");
+      expect(res.out).toContain("free the port (or set another one with gateway.port)");
+      expect(res.out).not.toContain(
+        "Next: " + path.join(home, ".local", "bin", "bitterbot") + " gateway switch",
+      );
+    });
+
+    it("a failed switch leaves `previous` and older versions as they were", () => {
+      freshReleases();
+      publish("1.0.0");
+      publish("1.1.0");
+      publish("1.2.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const app = path.join(home, ".bitterbot", "app");
+      expect(runInstaller(["--version", "1.0.0"], env, home).status).toBe(0);
+      expect(runInstaller(["--version", "1.1.0"], env, home).status).toBe(0);
+      expect(fs.readlinkSync(path.join(app, "previous"))).toBe("1.0.0");
+      const res = runInstaller(["--version", "1.2.0"], { ...env, FAKE_SWITCH_RC: "1" }, home);
+      expect(res.status, res.out).toBe(1);
+      expect(fs.readlinkSync(path.join(app, "previous"))).toBe("1.0.0");
+      expect(fs.existsSync(path.join(app, "1.0.0", "bin", "bitterbot"))).toBe(true);
+      expect(res.out).not.toContain("Removing old version");
+      // (the real switch's rollback points `current` back at the old version)
+      fs.rmSync(path.join(app, "current"));
+      fs.symlinkSync("1.1.0", path.join(app, "current"));
+      // A successful switch then moves `previous` and prunes as before.
+      const ok = runInstaller(["--version", "1.2.0"], env, home);
+      expect(ok.status, ok.out).toBe(0);
+      expect(fs.readlinkSync(path.join(app, "previous"))).toBe("1.1.0");
+      expect(fs.existsSync(path.join(app, "1.0.0"))).toBe(false);
+    });
+
+    it("a switch that did not complete fails the run with a warning", () => {
+      freshReleases();
+      publish("2.0.0", { launcher: SWITCH_LAUNCHER });
+      const home = freshHome();
+      const res = runInstaller([], { ...env, FAKE_SWITCH_RC: "1" }, home);
+      expect(res.status, res.out).toBe(1);
+      expect(res.out).toContain("the switch to 2.0.0 did not complete (exit 1)");
+    });
+  });
+
+  const hasScript = process.platform === "linux" && spawnSync("script", ["--version"]).status === 0;
+  (hasScript ? it : it.skip)(
+    "asks 'Proceed? [Y/n]' on the terminal: Enter installs, n aborts",
+    () => {
+      freshReleases();
+      publish("2.0.0");
+      const ask = (input: string) => {
+        const home = freshHome();
+        const res = spawnSync(
+          "script",
+          ["-qec", `bash ${INSTALL_SH} --no-onboard --no-switch`, "/dev/null"],
+          {
+            encoding: "utf8",
+            input,
+            env: baseEnv(home, { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }),
+          },
+        );
+        return { out: `${res.stdout}${res.stderr}`, home };
+      };
+      const enter = ask("\n");
+      expect(enter.out).toContain("Proceed? [Y/n]");
+      expect(fs.existsSync(path.join(enter.home, ".bitterbot", "app", "2.0.0"))).toBe(true);
+      const no = ask("n\n");
+      expect(no.out).toContain("aborted");
+      expect(fs.existsSync(path.join(no.home, ".bitterbot", "app"))).toBe(false);
+    },
+  );
+
+  it("makes the state dir private (only the directory, never its files)", () => {
+    freshReleases();
+    publish("2.0.0");
+    const home = freshHome();
+    const state = path.join(home, ".bitterbot");
+    fs.mkdirSync(state, { recursive: true });
+    fs.chmodSync(state, 0o755);
+    fs.writeFileSync(path.join(state, "bitterbot.json"), "{}");
+    fs.chmodSync(path.join(state, "bitterbot.json"), 0o644);
+    const res = runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, home);
+    expect(res.status, res.out).toBe(0);
+    expect(fs.statSync(state).mode & 0o777).toBe(0o700);
+    expect(fs.statSync(path.join(state, "bitterbot.json")).mode & 0o777).toBe(0o644);
+    // A fresh machine: created private.
+    const fresh = freshHome();
+    expect(runInstaller([], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, fresh).status).toBe(0);
+    expect(fs.statSync(path.join(fresh, ".bitterbot")).mode & 0o777).toBe(0o700);
+  });
+
+  it("state dir policy: group sharing kept, $HOME and relative paths never touched, opt-out honoured", () => {
+    freshReleases();
+    publish("2.0.0");
+    const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
+    // Deliberate group sharing (2770 setgid): kept.
+    const shared = freshHome();
+    const sharedState = path.join(shared, ".bitterbot");
+    fs.mkdirSync(sharedState, { recursive: true });
+    fs.chmodSync(sharedState, 0o2770);
+    expect(runInstaller([], env, shared).status).toBe(0);
+    expect(fs.statSync(sharedState).mode & 0o7777).toBe(0o2770);
+    // 751: only the world bit goes.
+    const world = freshHome();
+    const worldState = path.join(world, ".bitterbot");
+    fs.mkdirSync(worldState, { recursive: true });
+    fs.chmodSync(worldState, 0o751);
+    expect(runInstaller([], env, world).status).toBe(0);
+    expect(fs.statSync(worldState).mode & 0o777).toBe(0o750);
+    // BITTERBOT_STATE_DIR=~ (home itself): never chmod $HOME.
+    const homeItself = freshHome();
+    fs.mkdirSync(homeItself, { recursive: true });
+    fs.chmodSync(homeItself, 0o755);
+    expect(
+      runInstaller(
+        ["--dir", path.join(homeItself, "app")],
+        { ...env, BITTERBOT_STATE_DIR: " ~ " },
+        homeItself,
+      ).status,
+    ).toBe(0);
+    expect(fs.statSync(homeItself).mode & 0o777).toBe(0o755);
+    // A leading ~ expands like resolveStateDir.
+    const tilde = freshHome();
+    const tildeState = path.join(tilde, "bbstate");
+    fs.mkdirSync(tildeState, { recursive: true });
+    fs.chmodSync(tildeState, 0o755);
+    expect(runInstaller([], { ...env, BITTERBOT_STATE_DIR: "~/bbstate" }, tilde).status).toBe(0);
+    expect(fs.statSync(tildeState).mode & 0o777).toBe(0o700);
+    // Opt-out.
+    const keep = freshHome();
+    const keepState = path.join(keep, ".bitterbot");
+    fs.mkdirSync(keepState, { recursive: true });
+    fs.chmodSync(keepState, 0o755);
+    expect(runInstaller([], { ...env, BITTERBOT_STATE_DIR_PERMS: "keep" }, keep).status).toBe(0);
+    expect(fs.statSync(keepState).mode & 0o777).toBe(0o755);
   });
 
   it("never prunes or replaces a version a running process uses", async () => {

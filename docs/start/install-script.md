@@ -4,6 +4,7 @@ read_when:
   - You want Bitterbot on a Linux or macOS laptop without Docker or a source checkout
   - You want to know what install.sh verifies before trusting it
   - You need to update, roll back, pin, or remove an installer-based install
+  - You are installing over a git clone or an older Bitterbot that is running
   - You are on Windows and want the WSL2 installer (install.ps1)
 title: "Installer (laptops)"
 ---
@@ -55,8 +56,8 @@ Bitterbot runs as your user (`--allow-root` overrides this).
 
 ## What it does
 
-The installer prints this plan and asks before acting (`--yes` skips the
-question):
+The installer prints this plan and asks before acting, `Proceed? [Y/n]`
+(Enter means yes; `--yes` skips the question):
 
 1. Detects your OS and CPU.
 2. Without `--version`, asks the GitHub releases API for the newest release
@@ -73,14 +74,28 @@ question):
    something else). If `~/.local/bin` is not on your `PATH`, it prints the line
    to add to your shell profile, and it warns when another `bitterbot` comes
    first on your `PATH`.
-6. Runs `bitterbot onboard` (skip with `--no-onboard`). It starts the gateway
+6. If an older Bitterbot is running (a git clone started with `pnpm start
+   gateway`, an older release) or set up as a background service, shows what
+   it found and asks once whether to switch it to the new version (default
+   yes). See
+   [Upgrading from a git clone or an older version](#upgrading-from-a-git-clone-or-an-older-version).
+   On a fresh machine there is no extra question.
+7. Runs `bitterbot onboard` (skip with `--no-onboard`). It starts the gateway
    and opens a setup page in your browser
    (`http://127.0.0.1:19001/setup?token=...`, valid 30 minutes); without a
    browser it prints the link. `bitterbot onboard --no-browser` runs the same
-   steps in the terminal. See [`bitterbot onboard`](/cli/onboard).
+   steps in the terminal. When Bitterbot is already set up, it prints the
+   Control UI address instead. See [`bitterbot onboard`](/cli/onboard).
 
 Your config, memory database and keys live in `~/.bitterbot` and are never
-touched by the installer.
+touched by the installer. It only makes that directory private to you: a
+default mode (755, 775 or 777) becomes 700, and any other mode only loses the
+"other users" bits, so deliberate group sharing keeps working. Only the
+directory itself changes, never the files in it, and never when it is your
+home directory, `/`, or owned by someone else. The gateway and
+`bitterbot onboard` check the same on start and print one line when they
+change something; `bitterbot doctor` flags a state directory other users can
+open (not inside Docker, where the data folder is often shared with the host). Set `BITTERBOT_STATE_DIR_PERMS=keep` to leave its permissions alone.
 
 Each tarball contains the built gateway and Control UI, its production
 dependencies for that platform, the P2P orchestrator binary, an official
@@ -101,13 +116,111 @@ curl -fsSL .../install.sh | bash -s -- --version 1.5.0 --no-onboard
 - `--dir PATH`: install root (default `~/.bitterbot/app`; a relative path is
   taken from the current directory).
 - `--no-onboard`: skip `bitterbot onboard`.
-- `-y`, `--yes`: do not ask for confirmation.
+- `--no-switch`: leave a running older Bitterbot (and its background service)
+  alone.
+- `-y`, `--yes`: do not ask for confirmation. This also switches a running
+  older Bitterbot to the new version without asking.
 - `--with-browser`: Linux only; also downloads Playwright's Chromium (about
   170 MB) into `~/.bitterbot/browsers` for the browser tool. On macOS the
   browser tool uses an installed Chrome, Brave or Edge.
 - `--require-signature`: refuse to install unless the signature can be checked
   (needs `minisign` or OpenSSL 3).
 - `--allow-root`: allow installing as root (not recommended).
+
+## Upgrading from a git clone or an older version
+
+If you already run Bitterbot, run the installer the same way. Your config,
+memory and keys in `~/.bitterbot` are shared by every install and stay exactly
+as they are; only the code that runs changes.
+
+After installing, the installer checks what runs today and tells you, for
+example:
+
+```text
+Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001.
+This is Bitterbot 1.5.0 (~/.bitterbot/app/1.5.0).
+Switch to 1.5.0 now? [Y/n]
+```
+
+Answering yes (or passing `--yes`) runs `bitterbot gateway switch`, which:
+
+1. Takes a safety snapshot of your settings and memory first, the same one
+   `bitterbot update` takes (see [Snapshots](#snapshots)). If that is not
+   possible (for example the disk is full), nothing is changed.
+2. Stops the old gateway: through its service manager when the background
+   service runs it, otherwise with a normal stop signal to that process. It
+   only ever stops a process that is a Bitterbot gateway (and checks it is
+   still the same process right before); anything else on the port is
+   reported and left alone. It waits until the port is free and the P2P
+   orchestrator has exited.
+3. If the old gateway ran from a git clone with its own `.env` file, copies
+   the keys that `~/.bitterbot/.env` does not have yet into it. Existing keys
+   are never changed, the clone's file is only read, `~/.bitterbot/.env` is
+   backed up first (`.env.bak-<time>`), and only key names are printed:
+
+   ```text
+   Will copy 9 keys from ~/bitterbot-desktop/.env into ~/.bitterbot/.env (existing keys are kept; a backup is made first): OPENAI_API_KEY, ...
+   ```
+
+   Settings the old gateway had only in its shell environment are named in a
+   warning so you can add them.
+
+4. Points the background service at the new version (the same as
+   `bitterbot gateway install --force`, keeping the old service's environment
+   and its `EnvironmentFile=` lines) and starts it. Without a background
+   service, it installs one (systemd user service, macOS LaunchAgent or
+   Windows scheduled task), so Bitterbot keeps running and starts on login.
+   Where no service manager exists (for example WSL without systemd), or the
+   service manager refuses a new service, the new gateway is started in the
+   background instead, logging to `~/.bitterbot/logs/gateway-switch.log`;
+   run `bitterbot gateway install` later to have it start on login.
+5. Waits until the new version answers on the gateway port and stays up. A
+   first start can take a few minutes while memory is upgraded: it prints
+   progress, and keeps waiting as long as the new gateway is alive (it asks
+   in a terminal after 5 minutes, and gives up after 20 minutes otherwise).
+6. If the new version exits or never answers, puts the old one back: the old
+   service file exactly as it was, or the old gateway restarted from where it
+   ran before once it has fully stopped (for a release-to-release switch,
+   `~/.bitterbot/app/current` points back at the old version too, and
+   `previous` and older versions are left as they were). Memory databases the
+   new version upgraded past what the old one reads are restored from the
+   snapshot. The `.env` keys copied in step 3 stay (they only add settings).
+   The installer then exits with an error and says what is running.
+
+A stopped background service that runs another install is left stopped; the
+installer says how to point it at the new version (`bitterbot gateway install
+--force`). If the old gateway uses a different state directory, profile or
+port than the new one would, nothing is switched and the installer says why.
+
+When it is done:
+
+```text
+Done. Bitterbot 1.5.0 is running on port 19001. Your settings and memory are unchanged.
+Your git clone at ~/bitterbot-desktop is no longer used. You can delete it once you are happy with 1.5.0 (nothing was deleted).
+```
+
+The clone is never deleted for you. Without a terminal to ask on (and without
+`--yes`), nothing is stopped and the installer prints the command to run.
+`--no-switch` skips the check entirely. With a remote gateway
+(`gateway.mode` is `remote`) there is nothing to switch; when another program
+uses the gateway port, the installer says so and leaves it alone.
+
+You can run the same check and switch yourself at any time:
+
+```bash
+bitterbot gateway switch --check   # report only (exit 10 when a switch is available)
+bitterbot gateway switch           # asks once, then switches
+bitterbot gateway switch --yes     # no question (scripts)
+```
+
+`bitterbot onboard` and the setup page do the same check: `onboard` never
+links to a gateway from another install (it offers the switch instead), and
+the setup page's **Keep running** step offers **Use this version for the
+background service** when the installed service still runs another install.
+
+A foreground gateway whose origin cannot be determined is not stopped (it
+could not be restarted if the switch failed). Stop it yourself (Ctrl+C in its
+terminal), then run `bitterbot gateway switch`.
 
 ## What gets verified
 
@@ -310,9 +423,17 @@ in `$LASTEXITCODE`.
 To pass options, save the script and run it:
 
 ```powershell
-.\install.ps1 -Version 1.6.0 -NoOnboard   # also -Distro <name>, -Yes
+.\install.ps1 -Version 1.6.0 -NoOnboard   # also -Distro <name>, -Yes, -NoSwitch
 .\install.ps1 -WhatIf                     # print the plan, run nothing
 ```
+
+Inside WSL the Linux installer offers the
+[switch](#upgrading-from-a-git-clone-or-an-older-version) from an older
+Bitterbot running there; `-Yes` switches without asking and `-NoSwitch`
+leaves it alone. A gateway you installed natively on Windows from a git clone
+(the `Bitterbot Gateway` scheduled task) keeps the gateway port on the Windows
+side: `install.ps1` reports it and prints the commands to stop it
+(`Stop-ScheduledTask` and `Disable-ScheduledTask`), but never changes it.
 
 If you also clone the source, clone it into your Linux home, not under
 `/mnt/c`. A native Windows install is not available yet; see

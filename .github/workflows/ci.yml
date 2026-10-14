@@ -270,7 +270,9 @@ jobs:
     # PLAN-56 Phase 3b extends it: two more releases derived from the same
     # tarball (version B, and a B' whose gateway cannot boot), then
     # `bitterbot update` A -> B with the gateway running, `--rollback` back to
-    # A, and A -> B' with the automatic rollback to A.
+    # A, and A -> B' with the automatic rollback to A. Last, upgrades over a
+    # running gateway: install.sh --yes switches a running A to B through
+    # `bitterbot gateway switch`, and rolls back to B when B' cannot boot.
     name: Release tarball + install.sh (linux-x64)
     runs-on: ubuntu-latest
     timeout-minutes: 75
@@ -308,6 +310,13 @@ jobs:
           wc -l < "$RUNNER_TEMP/tar-list.txt"
           if grep -v -m5 "$stamp" "$RUNNER_TEMP/tar-list.txt"; then echo "entries without the SOURCE_DATE_EPOCH mtime"; exit 1; fi
           if grep -v -m5 " 0/0 " "$RUNNER_TEMP/tar-list.txt"; then echo "entries not owned by 0/0"; exit 1; fi
+
+      - name: Keep the tarball for manual upgrade tests
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-tarball-linux-x64
+          path: ${{ runner.temp }}/release-out/bitterbot-*
+          retention-days: 3
 
       - name: Sign a local release with a throwaway key and serve it on loopback
         run: |
@@ -598,6 +607,52 @@ jobs:
           pkill -f "^bitterbot-gateway" || true
           pkill -f "dist/entry.js" || true
 
+      - name: install.sh switches a running older gateway (A -> B) and rolls back from one that cannot boot (B -> B')
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          B="$HOME/.local/bin/bitterbot"
+          APP="$HOME/.bitterbot/app"
+          pkill -f "^bitterbot-gateway" || true
+          pkill -f "dist/entry.js" || true
+          for i in $(seq 1 60); do
+            pgrep -f "^bitterbot-gateway" > /dev/null || break
+            sleep 1
+          done
+          if pgrep -af "^bitterbot-gateway"; then echo "an earlier gateway is still running"; exit 1; fi
+          [ "$(readlink "$APP/current")" = "$VERSION" ]
+          # An older gateway the way a user runs one: `bitterbot gateway` in a
+          # terminal, unsupervised, from version A's own directory.
+          (cd /tmp && env -u INVOCATION_ID -u JOURNAL_STREAM -u SYSTEMD_EXEC_PID \
+            BITTERBOT_GATEWAY_TOKEN=ci-smoke-token nohup "$APP/$VERSION/bin/bitterbot" gateway --allow-unconfigured \
+            > "$RUNNER_TEMP/gateway-update.log" 2>&1 &)
+          . "$RUNNER_TEMP/gw.sh"
+          healthy "$VERSION"
+          export BITTERBOT_GATEWAY_TOKEN=ci-smoke-token BITTERBOT_INSTALL_TEST_MODE=1 \
+            BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
+          # A nothing-to-do check from the running version itself.
+          "$B" gateway switch --check
+          # Install B with --yes: the installer finds A and switches to B.
+          bash scripts/install.sh --yes --no-onboard --version "$VB" 2>&1 | tee "$RUNNER_TEMP/switch-b.log"
+          grep -q "Found Bitterbot $VERSION from ~/.bitterbot/app/$VERSION (installed release) running on port 19001" "$RUNNER_TEMP/switch-b.log"
+          grep -q "Done. Bitterbot $VB is running on port 19001. Your settings and memory are unchanged." "$RUNNER_TEMP/switch-b.log"
+          healthy "$VB"
+          [ "$(readlink "$APP/current")" = "$VB" ]
+          # B' cannot boot: the switch puts B back (process and `current`) and the run fails.
+          set +e
+          bash scripts/install.sh --yes --no-onboard --version "$VC" > "$RUNNER_TEMP/switch-c.log" 2>&1
+          rc=$?
+          set -e
+          cat "$RUNNER_TEMP/switch-c.log"
+          [ "$rc" = "1" ]
+          grep -q "The new gateway exited during startup." "$RUNNER_TEMP/switch-c.log"
+          grep -q "Bitterbot $VB from ~/.bitterbot/app/$VB (installed release) is running again, as before." "$RUNNER_TEMP/switch-c.log"
+          [ "$(readlink "$APP/current")" = "$VB" ]
+          healthy "$VB"
+          test ! -e "$HOME/.bitterbot/bitterbot.json"
+          pkill -f "^bitterbot-gateway" || true
+          pkill -f "dist/entry.js" || true
+
       - name: Logs on failure
         if: failure()
         run: |
@@ -650,6 +705,15 @@ jobs:
           $wsl2 = Invoke-Dry -Fake 'wsl2' -Extra @('-Version', '1.6.0', '-NoOnboard')
           if ($wsl2.Code -ne 0 -or $wsl2.Out -notmatch 'install.sh \| bash -s -- --version 1.6.0 --no-onboard' -or $wsl2.Out -notmatch 'nothing was run') { throw 'WSL2 plan' }
           if ($wsl2.Out -notmatch 'not under /mnt/c') { throw 'ext4 advice missing' }
+          if ($wsl2.Out -match 'installed natively on Windows') { throw 'no Windows task was faked' }
+          # Upgrades: -NoSwitch reaches install.sh; a native Windows gateway
+          # (scheduled task) is reported with the commands, never changed.
+          $noSwitch = Invoke-Dry -Fake 'wsl2' -Extra @('-NoSwitch', '-Yes')
+          if ($noSwitch.Code -ne 0 -or $noSwitch.Out -notmatch 'install.sh \| bash -s -- --no-switch --yes') { throw '-NoSwitch passthrough' }
+          $env:BITTERBOT_INSTALL_PS1_FAKE_WINTASK = 'Bitterbot Gateway'
+          $winTask = Invoke-Dry -Fake 'wsl2' -Extra @()
+          $env:BITTERBOT_INSTALL_PS1_FAKE_WINTASK = $null
+          if ($winTask.Code -ne 0 -or $winTask.Out -notmatch "scheduled task 'Bitterbot Gateway'" -or $winTask.Out -notmatch 'Disable-ScheduledTask') { throw 'Windows task note' }
           $bad = Invoke-Dry -Fake 'wsl2' -Extra @('-Version', 'nope')
           if ($bad.Code -ne 1) { throw 'bad version must fail' }
           # The last native exit code (the refused -Version above) must not fail the step.

@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 import JSON5 from "json5";
 import { loadDotEnv } from "../infra/dotenv.js";
 import { resolveRequiredHomeDir } from "../infra/home-dir.js";
+import { installerOutputMode } from "../infra/installer-env.js";
 import {
   loadShellEnvFallback,
   resolveShellEnvFallbackTimeoutMs,
@@ -36,6 +37,7 @@ import {
 } from "./env-substitution.js";
 import { applyConfigEnvVars } from "./env-vars.js";
 import { ConfigIncludeError, resolveConfigIncludes } from "./includes.js";
+import { SHELL_ENV_EXPECTED_KEYS } from "./known-env-vars.js";
 import { findLegacyConfigIssues } from "./legacy.js";
 import { applyMergePatch } from "./merge-patch.js";
 import { normalizeConfigPaths } from "./normalize-paths.js";
@@ -52,26 +54,6 @@ import { compareBitterbotVersions } from "./version.js";
 // Re-export for backwards compatibility
 export { CircularIncludeError, ConfigIncludeError } from "./includes.js";
 export { MissingEnvVarError } from "./env-substitution.js";
-
-const SHELL_ENV_EXPECTED_KEYS = [
-  "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
-  "ANTHROPIC_OAUTH_TOKEN",
-  "GEMINI_API_KEY",
-  "ZAI_API_KEY",
-  "OPENROUTER_API_KEY",
-  "AI_GATEWAY_API_KEY",
-  "MINIMAX_API_KEY",
-  "SYNTHETIC_API_KEY",
-  "NEARAI_API_KEY",
-  "ELEVENLABS_API_KEY",
-  "TELEGRAM_BOT_TOKEN",
-  "DISCORD_BOT_TOKEN",
-  "SLACK_BOT_TOKEN",
-  "SLACK_APP_TOKEN",
-  "BITTERBOT_GATEWAY_TOKEN",
-  "BITTERBOT_GATEWAY_PASSWORD",
-];
 
 const CONFIG_AUDIT_LOG_FILENAME = "config-audit.jsonl";
 const loggedInvalidConfigs = new Set<string>();
@@ -524,6 +506,17 @@ export function findDeprecatedConfigKeys(
 }
 
 /**
+ * Count these deprecated keys as already reported in this process (the
+ * config check before a command said so in one line), so loading the
+ * config does not list them again.
+ */
+export function markDeprecatedConfigKeysWarned(paths: string[]): void {
+  for (const p of paths) {
+    warnedDeprecatedKeys.add(p);
+  }
+}
+
+/**
  * PLAN-56 Phase 1: warn once per process for every deprecated key present in
  * the config (DEPRECATED_PATHS). Keys in DEPRECATED_ONLY_WHEN warn only for
  * the listed value. The schema keeps accepting them this release.
@@ -785,7 +778,10 @@ export function createConfigIO(overrides: ConfigIoDeps = {}) {
           deps.env,
         ).resolvedConfigRaw;
         warnOnConfigMiskeys(resolvedConfig, deps.logger);
-        warnOnDeprecatedConfigKeys(resolvedConfig, deps.logger);
+        // The installer reports deprecated keys once, as one line.
+        if (!installerOutputMode(deps.env)) {
+          warnOnDeprecatedConfigKeys(resolvedConfig, deps.logger);
+        }
       }
       if (typeof resolvedConfig !== "object" || resolvedConfig === null) {
         return {};

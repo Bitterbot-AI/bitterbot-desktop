@@ -1,7 +1,12 @@
 import { formatDateTime, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import type { UsageEventRow } from "../../stores/usage-store";
-import { formatUsdSmart, kindLabel, pricingSourceLabel, pricingSourceTone } from "./usage-format";
+import {
+  formatUsdEstimate,
+  kindLabel,
+  pricingSourceLabel,
+  pricingSourceTone,
+} from "./usage-format";
 
 /** The last N ledger rows, newest first, updated as `usage` events stream in. */
 export function UsageLiveFeed({
@@ -66,7 +71,9 @@ export function UsageLiveFeed({
                 </div>
               </div>
               <div className="text-right whitespace-nowrap">
-                <div className="text-brand tabular-nums">{formatUsdSmart(e.cost.total)}</div>
+                <div className="text-brand tabular-nums">
+                  {formatUsdEstimate(e.cost.total, e.costSource === "estimated")}
+                </div>
                 <span
                   className={cn("rounded border px-1 text-3xs", pricingSourceTone(e.costSource))}
                 >

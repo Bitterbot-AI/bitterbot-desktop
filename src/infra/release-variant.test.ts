@@ -1,7 +1,7 @@
 /**
  * scripts/make-release-variant.mjs (the CI helper that derives version B and
  * a broken B' from the PR's tarball): the variant is a valid release whose
- * manifest matches every file, and --fail-gateway only breaks `gateway`.
+ * manifest matches every file, and --fail-gateway only breaks running the gateway.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -97,6 +97,11 @@ describeUnix("make-release-variant", () => {
     expect((await verifyVersionDir(dir, { mode: "full" })).ok).toBe(true);
     const launcher = path.join(dir, "bin", "bitterbot");
     expect(spawnSync(launcher, ["gateway"]).status).toBe(1);
+    expect(spawnSync(launcher, ["gateway", "--allow-unconfigured"]).status).toBe(1);
+    expect(spawnSync(launcher, ["gateway", "run"]).status).toBe(1);
+    // Management subcommands reach the CLI (`gateway switch` must roll back).
+    const switchCheck = spawnSync(launcher, ["gateway", "switch", "--check"], { encoding: "utf8" });
+    expect(switchCheck.stderr).not.toContain("simulated boot failure");
     expect(spawnSync(launcher, ["--version"], { encoding: "utf8" }).stdout.trim()).toBe("1.4.0");
   });
 });

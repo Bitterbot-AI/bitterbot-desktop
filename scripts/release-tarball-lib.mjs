@@ -246,5 +246,7 @@ export PATH
 if mkdir -p "$root/.pids" 2>/dev/null; then
   : >"$root/.pids/$$" 2>/dev/null || true
 fi
-exec "$root/runtime/node/bin/node" "$root/dist/entry.js" "$@"
+# --disable-warning: Node's "SQLite is an experimental feature" notice is not
+# for users (the CLI would otherwise respawn itself just to add this flag).
+exec "$root/runtime/node/bin/node" --disable-warning=ExperimentalWarning "$root/dist/entry.js" "$@"
 `;
