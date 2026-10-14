@@ -63,7 +63,9 @@ steps**, so they ask the same things:
 8. **Privacy**: Bitterbot sends no telemetry to the project, and there is no
    account.
 
-**Use recommended defaults** accepts every step in one click. When the config
+**Use recommended defaults** accepts every step in one click, except two it
+still asks: the model key when none was found, and web search when no search
+key was found (leaving it for later keeps curiosity research off). When the config
 is written, setup runs a first reply on your model and shows it with its
 latency (Retry, Back and Skip on failure), then a read-only doctor summary.
 The first reply runs in its own session (`agent:<id>:setup`), not your main

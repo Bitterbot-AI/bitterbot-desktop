@@ -53,8 +53,9 @@ the same order, because both run one shared list of steps:
 8. **Privacy.** Bitterbot sends no telemetry to the project, and there is no
    account to create.
 
-"Use recommended defaults" accepts all of them in one click (it still asks for
-a key when none was found). After the config is written, setup runs a first
+"Use recommended defaults" accepts all of them in one click. It still asks for
+a key when none was found, and it still asks about web search when no search
+key was found, since leaving it for later keeps curiosity research off. After the config is written, setup runs a first
 reply on the chosen model ("Say hello and tell me one thing you can do.") and
 shows it with its latency; a failure shows the provider's error with Retry,
 Back and Skip. The reply runs in its own session (`agent:<id>:setup`), so

@@ -133,15 +133,20 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     );
     expect(status).toBe("done");
 
-    // Risk acknowledgement, fork, first reply, doctor, done: nothing else was asked.
+    // Risk acknowledgement, fork, web search (its recommended "Later" leaves
+    // curiosity research off, so it is still asked), first reply, doctor, done.
     expect(steps.map((s) => dataKind(s) ?? s.type)).toEqual([
       "risk",
       "confirm",
+      "select",
       "select",
       "first-turn",
       "doctor",
       "done",
     ]);
+    const webSearch = steps.splice(3, 1)[0];
+    expect(webSearch?.section).toMatchObject({ id: "webSearch", index: 1, total: 1 });
+    expect(webSearch?.initialValue).toBe("later");
     expect(steps[0]?.message).toBe(RISK_ACKNOWLEDGEMENT_NOTE);
     // User-facing setup copy carries no em-dashes (browser /setup + terminal).
     expect(RISK_ACKNOWLEDGEMENT_TITLE).toBe("Security: at your own risk");
@@ -305,11 +310,32 @@ describe("setup over the wizard session (the RPC renderer)", () => {
           : null,
     );
     expect(status).toBe("done");
-    expect(steps.filter((s) => s.section).map((s) => s.section?.id)).toEqual(["auth"]);
+    expect(steps.filter((s) => s.section).map((s) => [s.section?.id, s.section?.total])).toEqual([
+      ["auth", 2],
+      ["webSearch", 2],
+    ]);
     expect(steps.find((s) => dataKind(s) === "first-turn")?.data).toMatchObject({
       skipped: true,
     });
     expect(deps.runFirstTurn).not.toHaveBeenCalled();
+  });
+
+  it("recommended uses a web search key found in the environment without asking", async () => {
+    const env = {
+      ANTHROPIC_API_KEY: ANTHROPIC,
+      BRAVE_API_KEY: "brave-key-123456",
+    } as NodeJS.ProcessEnv;
+    const deps = baseDeps({
+      env,
+      keyEnv: { env, envFilePath: path.join(dir, ".env"), agentDir: path.join(dir, "agent") },
+    });
+    const { steps, status } = await drive(deps, (step) =>
+      step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null,
+    );
+    expect(status).toBe("done");
+    expect(steps.filter((s) => s.section)).toEqual([]);
+    const tools = readConfigFile().tools as { web?: { search?: { provider?: string } } };
+    expect(tools.web?.search?.provider).toBe("brave");
   });
 
   it("declining the risk acknowledgement cancels setup and writes nothing", async () => {

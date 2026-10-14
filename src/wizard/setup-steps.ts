@@ -194,6 +194,11 @@ type SetupStepDef = {
   skipped?: string;
   /** The answer "recommended defaults" and --non-interactive take; undefined = ask. */
   recommended: (ctx: SetupContext, draft: SetupDraft) => string | undefined;
+  /**
+   * Asked even under "Use recommended defaults" when this returns true: the
+   * recommended answer leaves a feature off, so the user decides knowingly.
+   */
+  askUnderRecommended?: (ctx: SetupContext, draft: SetupDraft) => boolean;
   /** One line for the fork screen describing the recommended answer. */
   describe: (ctx: SetupContext, draft: SetupDraft) => string;
   ask: (ctx: SetupContext, draft: SetupDraft, prompter: WizardPrompter) => Promise<StepAnswer>;
@@ -538,6 +543,9 @@ function detectSearchEnv(env: NodeJS.ProcessEnv) {
 const webSearchStep: SetupStepDef = {
   id: "webSearch",
   title: "Web search (optional)",
+  // "Later" switches curiosity research off; one click past the fork must
+  // not decide that silently (found on a fresh-install test, 2026-10-14).
+  askUnderRecommended: (ctx, draft) => webSearchStep.recommended(ctx, draft) === "later",
   recommended: (ctx) => {
     if (ctx.effective.tools?.web?.search?.provider) {
       return "keep";
@@ -552,7 +560,7 @@ const webSearchStep: SetupStepDef = {
     }
     return rec?.startsWith("env:")
       ? `Web search: ${rec.slice(4)} (key found in the environment)`
-      : "Web search: later (curiosity research stays off until a provider is set)";
+      : "Web search: asked next (optional; curiosity research needs it)";
   },
   ask: async (ctx, draft, prompter) => {
     const found = detectSearchEnv(ctx.env ?? process.env);
@@ -863,7 +871,7 @@ export async function runSetupSteps(params: {
   }
   const applicable = SETUP_STEPS.filter((step) => !step.applies || step.applies(ctx));
   const steps = SETUP_STEPS.filter((step) => !params.only || params.only.includes(step.id));
-  const askedSteps = steps.filter((step) => !step.applies || step.applies(ctx));
+  let askedSteps = steps.filter((step) => !step.applies || step.applies(ctx));
   let useRecommended = !prompter || params.acceptRecommended === true;
   if (prompter && !useRecommended && !params.skipFork && !params.only) {
     const lines = applicable.map((step) => `- ${step.describe(ctx, draft)}`);
@@ -886,6 +894,12 @@ export async function runSetupSteps(params: {
     });
     useRecommended = fork !== "custom";
   }
+  const asksUnderRecommended = (step: SetupStepDef) =>
+    step.recommended(ctx, draft) === undefined || step.askUnderRecommended?.(ctx, draft) === true;
+  if (useRecommended && prompter && params.acceptRecommended !== true) {
+    // "Step 1 of 2", not "of 8": count only what this path will ask.
+    askedSteps = askedSteps.filter(asksUnderRecommended);
+  }
   for (const step of steps) {
     if (step.applies && !step.applies(ctx)) {
       step.apply(ctx, draft, { choice: step.skipped ?? "n/a" });
@@ -897,7 +911,11 @@ export async function runSetupSteps(params: {
     let answer: StepAnswer;
     if (preset !== undefined) {
       answer = { choice: preset };
-    } else if (useRecommended && recommended !== undefined) {
+    } else if (
+      useRecommended &&
+      recommended !== undefined &&
+      (!prompter || params.acceptRecommended === true || !step.askUnderRecommended?.(ctx, draft))
+    ) {
       answer = { choice: recommended };
     } else if (prompter) {
       prompter.section?.({
