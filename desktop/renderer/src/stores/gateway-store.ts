@@ -75,9 +75,11 @@ export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 type EventListener = (evt: GatewayEventFrame) => void;
 
 import {
+  isTokenMismatch,
   LS_TOKEN_KEY,
   LS_URL_KEY,
   readStoredGatewayToken as readStoredToken,
+  recoverFromTokenMismatch,
   resolveGatewayWsUrl,
 } from "../lib/gateway-origin";
 
@@ -156,6 +158,9 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
     // No "local-dev-token" fallback: no server ever accepted it, so connecting with
     // it only produced a confusing auth failure instead of prompting for a token.
     const token = tokenOverride?.trim() || readStoredGatewayToken() || "";
+    // One recovery attempt per connection, and never for a token the user is
+    // testing (FirstRun passes it as an override).
+    let mismatchHandled = Boolean(tokenOverride);
 
     const client = new GatewayClient({
       url,
@@ -180,6 +185,14 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
           status: s.status === "connected" ? "connecting" : s.status,
           error: reason || `Connection closed (${code})`,
         }));
+        if (!mismatchHandled && isTokenMismatch(reason)) {
+          mismatchHandled = true;
+          void recoverFromTokenMismatch({ url, staleToken: token }).then((fresh) => {
+            if (fresh && get().client === client) {
+              get().connect(url, fresh);
+            }
+          });
+        }
       },
       onRequestError: (err) => {
         // One central place for all RPC failure UX. Individual callers
