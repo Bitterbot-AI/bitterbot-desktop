@@ -1,6 +1,7 @@
 import { type BitterbotConfig, loadConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveBitterbotAgentDir } from "./agent-paths.js";
+import { recordServedModels } from "./model-family-latest.js";
 import { applyLiveDiscovery, type ProviderMeta } from "./model-live-discovery.js";
 import { ensureBitterbotModelsJson } from "./models-config.js";
 
@@ -152,6 +153,7 @@ export async function loadModelCatalog(params?: {
       }
 
       const discovered = await maybeApplyLiveDiscovery(models, providerMeta, cfg);
+      recordServedModels(discovered);
       return sortModels(discovered);
     } catch (error) {
       if (!hasLoggedModelCatalogError) {

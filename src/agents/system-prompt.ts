@@ -4,6 +4,7 @@ import type { MemoryCitationsMode } from "../config/types.memory.js";
 import { listDeliverableMessageChannels } from "../utils/message-channel.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
 import type { EmbeddedContextFile } from "./embedded-helpers.js";
+import { claudeFamilyVersion } from "./model-family-latest.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
 import { assembleSystemPromptWithBoundary } from "./system-prompt-cache-boundary.js";
 import {
@@ -699,12 +700,51 @@ export function buildAgentSystemPrompt(params: {
     ...buildTimeSection({ userTimezone }),
     ...buildVolatileProjectContext(contextFiles.volatile),
     "## Runtime",
+    buildCurrentModelLine(runtimeInfo),
     ...buildInlineButtonsLine({ isMinimal, availableTools, inlineButtonsEnabled, runtimeChannel }),
     buildRuntimeLine(runtimeInfo, runtimeChannel, runtimeCapabilities, params.defaultThinkLevel),
     `Reasoning: ${reasoningLevel} (hidden unless on/stream). Toggle /reasoning; /status shows Reasoning when enabled.`,
   );
 
   return assembleSystemPromptWithBoundary({ stable, volatile });
+}
+
+/** "claude-opus-5-5" -> "Claude Opus 5.5"; other ids are shown as they are. */
+function modelDisplayName(ref: string): string {
+  const id = ref.slice(ref.indexOf("/") + 1);
+  const v = claudeFamilyVersion(id);
+  if (!v) {
+    return ref;
+  }
+  const family = v.family.charAt(0).toUpperCase() + v.family.slice(1);
+  const major = Math.floor(v.version / 100);
+  const minor = v.version % 100;
+  return `Claude ${family} ${minor > 0 ? `${major}.${minor}` : major} (${ref})`;
+}
+
+/**
+ * The model this turn runs on, stated on its own line. Rebuilt every turn
+ * (and per fallback attempt), so it is right after a mid-conversation switch;
+ * models otherwise tend to name themselves from training data.
+ */
+export function buildCurrentModelLine(runtimeInfo?: {
+  model?: string;
+  defaultModel?: string;
+}): string {
+  const model = runtimeInfo?.model?.trim();
+  if (!model) {
+    return "";
+  }
+  const defaultModel = runtimeInfo?.defaultModel?.trim();
+  return [
+    `Model: you are running on ${modelDisplayName(model)} for this turn.`,
+    "When asked which model you are, answer from this line, not from memory: it is set every turn, including right after a model switch.",
+    defaultModel && defaultModel !== model
+      ? `New conversations start on ${modelDisplayName(defaultModel)}.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function buildRuntimeLine(

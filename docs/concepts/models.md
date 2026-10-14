@@ -95,6 +95,26 @@ Example allowlist config:
 }
 ```
 
+## Family shortcuts follow the newest model
+
+An alias named after a Claude family (`opus`, `sonnet`, `haiku` or `fable`,
+any capitalization) that points at a model of that family resolves to the
+newest model of the family your provider serves. With
+`"anthropic/claude-opus-4-8": { alias: "opus" }`, `/model opus` picks Claude
+Opus 5.5 once Anthropic serves it, and the alias list the agent sees says so.
+The newest model comes from the model list the gateway loads at startup, so
+before that (or in a CLI command that does not load it) the alias resolves
+exactly as configured.
+
+Any other alias name is a pin and never moves: use `opus48` for
+`anthropic/claude-opus-4-8` to keep that exact model. With
+`restrictModels: true`, every alias resolves exactly as configured, since the
+newer model may not be on your allowlist.
+
+The agent is also told, on its own line every turn, which model it is running
+on (including right after a switch), and to answer "which model are you?"
+from that line rather than from memory.
+
 ## Switching models in chat (`/model`)
 
 You can switch models for the current session without restarting:
