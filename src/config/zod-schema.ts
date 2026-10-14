@@ -1081,6 +1081,20 @@ export const BitterbotSchema = z
               })
               .strict()
               .optional(),
+            nano: z
+              .object({
+                address: z
+                  .string()
+                  .regex(
+                    /^(?:nano|xrb)_[13][13456789abcdefghijkmnopqrstuwxyz]{59}$/,
+                    "must be a nano_ account",
+                  ),
+                rawPerUsd: z.string().regex(/^[1-9][0-9]*$/, "must be a positive integer string"),
+                rpcUrl: z.string().url().optional(),
+                maxAgeSeconds: z.number().int().positive().optional(),
+              })
+              .strict()
+              .optional(),
             ap2: z
               .object({
                 enabled: z.boolean().optional(),

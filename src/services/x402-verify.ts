@@ -41,7 +41,10 @@ const log = createSubsystemLogger("x402-verify");
  * marketplace DB's schema setup), not lazily here, so the single-use ledger is
  * schema-managed like the rest of the store. Callers pass that same DB handle.
  */
-function claimTxHashAtomically(db: import("node:sqlite").DatabaseSync, txHash: string): boolean {
+export function claimTxHashAtomically(
+  db: import("node:sqlite").DatabaseSync,
+  txHash: string,
+): boolean {
   try {
     db.prepare(`INSERT INTO x402_consumed_tx (tx_hash, consumed_at) VALUES (?, ?)`).run(
       txHash,
