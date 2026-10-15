@@ -46,6 +46,8 @@ Between conversations, it **dreams**: consolidating memories, preparing grounded
 
 Your agent's memory, identity, and skills live in files and SQLite on your disk. Inspect them. Back them up. Choose a different supported model. Modify the code. **The history you build stays under your control.**
 
+Meta's Muse and OpenAI's dots made the persistent personal agent mainstream: an AI that remembers you and keeps working after you close the app. Bitterbot is the same idea, built to be yours. It runs on your machine, its memory is plain files you can read and correct, you choose the model, and it's MIT-licensed.
+
 ## Put it to work
 
 Start with a task you already do. These are example requests to try after configuring the relevant tools and channels:
@@ -338,3 +340,5 @@ Bitterbot builds on [OpenClaw](https://github.com/openclaw/openclaw) for channel
 Deep Recall uses the Recursive Language Model pattern through [hampton-io/RLM](https://github.com/hampton-io/RLM). Optional external skill ingestion integrates [Skill Seekers](https://github.com/yusufkaraaslan/Skill_Seekers) by Yusuf Karaaslan alongside Bitterbot's native scraper. An earlier research dream mode was inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch).
 
 See [ATTRIBUTION.md](ATTRIBUTION.md) for provenance and third-party acknowledgments, and [LICENSE](LICENSE) for the MIT license.
+
+_Muse and dots are products of Meta and OpenAI. Bitterbot is not affiliated with either._
