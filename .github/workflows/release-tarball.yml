@@ -26,8 +26,15 @@
 # (the same check install.sh makes), build-provenance attestations, and only
 # then the upload. Any failure before the upload step uploads nothing.
 #
-# darwin-x64 is not built (Intel macOS runners are being retired; Intel Macs
-# use Docker). Windows is Docker Desktop / WSL2 until install.ps1 (Phase 3b).
+# darwin-x64 is built natively on the Intel `macos-15-intel` runner, so its
+# native prebuilds (sharp, sqlite-vec, @lydell/node-pty, node-llama-cpp's
+# mac-x64 build) and the bundled darwin-x64 Node are installed and
+# load-tested on x64 by build-release-tarball.mjs like every other platform.
+# Windows installs inside WSL2 (scripts/install.ps1) or uses Docker Desktop.
+#
+# The npm package (`npm install -g bitterbot`) is a launcher that downloads
+# these assets on first run, so npm-publish.yml runs only AFTER this
+# workflow's publish job has uploaded them (release-please.yml chains it).
 
 name: release-tarball
 
@@ -133,6 +140,8 @@ jobs:
             runner: ubuntu-22.04-arm
           - platform: darwin-arm64
             runner: macos-14
+          - platform: darwin-x64
+            runner: macos-15-intel
     env:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
     steps:
@@ -211,7 +220,7 @@ jobs:
           cp scripts/install.sh release/install.sh
           cd release
           # Every platform must be present; a missing one fails the release.
-          for p in linux-x64 linux-arm64 darwin-arm64; do
+          for p in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
             test -f "bitterbot-$VERSION-$p.tar.gz"
             test -f "bitterbot-$VERSION-$p.manifest.json"
           done

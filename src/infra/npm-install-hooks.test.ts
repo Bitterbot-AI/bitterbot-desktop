@@ -1,7 +1,9 @@
 /**
- * The install hooks as a registry install runs them: copied into a package
- * root WITHOUT pnpm-workspace.yaml (the published package never has one) or
- * flagged global by npm, versus a source checkout.
+ * The repo's own install hooks (preinstall check, orchestrator download):
+ * copied into a package root WITHOUT pnpm-workspace.yaml or flagged global,
+ * versus a source checkout. Since 1.6.2 the npm package is the launcher and
+ * carries no hooks at all (scripts/npm-package.ts); these hooks run for pnpm
+ * source installs and for other package roots built from the repo manifest.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";

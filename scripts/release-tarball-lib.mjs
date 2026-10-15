@@ -15,9 +15,9 @@
  */
 
 /**
- * Platforms a tarball is published for. darwin-x64 is NOT built: GitHub's
- * Intel macOS runners are being retired and cross-installing x64 native
- * packages on arm64 is unverified; Intel Macs use Docker or a source install.
+ * Platforms a tarball is published for, each built natively on its own
+ * runner (release-tarball.yml; darwin-x64 on the Intel `macos-15-intel`
+ * runner, so the x64 native prebuilds are installed and load-tested on x64).
  * Keep in step with tarballPlatformId() in src/infra/install-kind.ts and the
  * case statement in scripts/install.sh.
  */
@@ -39,6 +39,12 @@ export const RELEASE_PLATFORMS = {
     arch: "arm64",
     nodeDist: "darwin-arm64",
     orchestratorAsset: "bitterbot-orchestrator-darwin-arm64",
+  },
+  "darwin-x64": {
+    os: "darwin",
+    arch: "x64",
+    nodeDist: "darwin-x64",
+    orchestratorAsset: "bitterbot-orchestrator-darwin-x64",
   },
 };
 

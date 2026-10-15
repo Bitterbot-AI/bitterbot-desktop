@@ -18,9 +18,9 @@ Linux, macOS and Windows (WSL2) are supported today.
 
 - Windows: [Windows](/platforms/windows)
 - Linux: [Linux](/platforms/linux)
-- macOS: Apple silicon uses the [installer](/start/install-script),
-  [`npm install -g bitterbot`](/start/npm) (Node 22.12 or newer) or a source
-  install; Intel Macs use [Docker](/platforms/docker).
+- macOS (Apple silicon and Intel): the [installer](/start/install-script)
+  (recommended), [`npm install -g bitterbot`](/start/npm) or a source
+  install.
   The service runs under launchd (`ai.bitterbot.gateway`).
 
 ## VPS & hosting

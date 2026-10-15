@@ -11,8 +11,8 @@
 # (releases/download/vX.Y.Z/install.sh). It embeds the pinned public key.
 #
 # What it does, in order (it prints this plan before touching anything):
-#   1. Detects your OS/arch (Linux x64/arm64 with glibc >= 2.28, macOS Apple
-#      silicon). Refuses to run as root unless --allow-root.
+#   1. Detects your OS/arch (Linux x64/arm64 with glibc >= 2.28, macOS on
+#      Apple silicon or Intel). Refuses to run as root unless --allow-root.
 #   2. Without --version, asks the GitHub releases API for the newest release
 #      that carries this platform's tarball AND checksums.txt AND its .minisig
 #      (a release whose assets are still being built is skipped). Then
@@ -310,9 +310,9 @@ bb_detect_platform() {
     *) os=unsupported ;;
   esac
   case "$os-$arch" in
-    linux-x64 | linux-arm64 | darwin-arm64) printf '%s-%s\n' "$os" "$arch" ;;
+    linux-x64 | linux-arm64 | darwin-arm64 | darwin-x64) printf '%s-%s\n' "$os" "$arch" ;;
     *)
-      bb_die "no release tarball for $(uname -s) $(uname -m). Use Docker instead (Intel Macs and Windows: Docker Desktop): https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/docker.md"
+      bb_die "no release tarball for $(uname -s) $(uname -m). Use Docker instead (Windows: install.ps1 with WSL2, or Docker Desktop): https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/docker.md"
       ;;
   esac
 }
@@ -812,7 +812,7 @@ main() {
   fi
 
   if [ "$with_browser" = "1" ]; then
-    if [ "$platform" = "darwin-arm64" ]; then
+    if [ "${platform%%-*}" = "darwin" ]; then
       bb_say "--with-browser: skipped on macOS (the browser tool uses an installed Chrome, Brave or Edge)."
     else
       bb_say "Downloading Playwright Chromium into ~/.bitterbot/browsers..."

@@ -34,20 +34,31 @@ describe("release-tarball naming", () => {
       tarballAssetName("1.5.0", "darwin-arm64"),
     );
     expect(() => tarballBaseName("1.5", "linux-x64")).toThrow();
-    expect(() => tarballBaseName("1.5.0", "darwin-x64")).toThrow(/no release tarball/);
+    expect(`${tarballBaseName("1.6.2", "darwin-x64")}.tar.gz`).toBe(
+      tarballAssetName("1.6.2", "darwin-x64"),
+    );
+    expect(() => tarballBaseName("1.5.0", "win32-x64")).toThrow(/no release tarball/);
   });
 
   it("builds exactly the platforms the gateway and install.sh know", () => {
     const ids = Object.keys(RELEASE_PLATFORMS).toSorted();
-    expect(ids).toEqual(["darwin-arm64", "linux-arm64", "linux-x64"]);
+    expect(ids).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"]);
     for (const id of ids) {
       const p = RELEASE_PLATFORMS[id as keyof typeof RELEASE_PLATFORMS];
       expect(platformIdFor(p.os, p.arch)).toBe(id);
       expect(tarballPlatformId(p.os, p.arch)).toBe(id);
     }
-    expect(platformIdFor("darwin", "x64")).toBeNull();
+    expect(platformIdFor("win32", "x64")).toBeNull();
+    expect(tarballPlatformId("win32", "x64")).toBeNull();
     const installSh = fs.readFileSync(repoFile("scripts/install.sh"), "utf8");
-    expect(installSh).toContain("linux-x64 | linux-arm64 | darwin-arm64)");
+    expect(installSh).toContain("linux-x64 | linux-arm64 | darwin-arm64 | darwin-x64)");
+    // The release workflow builds and requires every platform.
+    const workflow = fs.readFileSync(repoFile(".github/workflows/release-tarball.yml"), "utf8");
+    for (const id of ids) {
+      expect(workflow).toContain(`platform: ${id}`);
+    }
+    expect(workflow).toContain(`for p in ${ids.toSorted().join(" ")}; do`);
+    expect(workflow).toContain("runner: macos-15-intel");
   });
 
   it("uses the marker file the install-kind detection reads", () => {

@@ -61,9 +61,13 @@ export function parseMinisignPublicKey(pubkeyB64: string): MinisignPublicKey {
 
 /** The key id as minisign prints it (hex, most significant byte first). */
 export function formatMinisignKeyId(keyId: Buffer): string {
-  return Buffer.from([...keyId].toReversed())
-    .toString("hex")
-    .toUpperCase();
+  // A plain loop, not toReversed(): the npm launcher bundles this module and
+  // supports Node 18, which lacks the change-array-by-copy methods.
+  const reversed = Buffer.alloc(keyId.length);
+  for (let i = 0; i < keyId.length; i += 1) {
+    reversed[i] = keyId[keyId.length - 1 - i]!;
+  }
+  return reversed.toString("hex").toUpperCase();
 }
 
 type ParsedSignature = {

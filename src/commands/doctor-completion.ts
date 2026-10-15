@@ -114,7 +114,7 @@ export async function doctorShellCompletion(
   // Profile has completion but no cache - auto-fix
   if (status.profileInstalled && !status.cacheExists) {
     note(
-      `Shell completion is configured in your ${status.shell} profile but the cache is missing.\nRegenerating cache...`,
+      `Shell completion is configured in your ${status.shell} profile but the cache is missing or outdated.\nRegenerating cache...`,
       "Shell completion",
     );
     const generated = await generateCompletionCache();

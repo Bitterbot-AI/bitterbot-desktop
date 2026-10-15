@@ -13,7 +13,7 @@ export type ReleasePlatform = {
 };
 
 export declare const RELEASE_PLATFORMS: Record<
-  "linux-x64" | "linux-arm64" | "darwin-arm64",
+  "linux-x64" | "linux-arm64" | "darwin-arm64" | "darwin-x64",
   ReleasePlatform
 >;
 export declare const BUNDLED_NODE_MAJOR: 22;

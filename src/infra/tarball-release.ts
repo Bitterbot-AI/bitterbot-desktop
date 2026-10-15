@@ -45,7 +45,7 @@ import {
   pickLatestTarballRelease,
   TARBALL_CHECKSUMS_ASSET,
   TARBALL_SIGNATURE_ASSET,
-} from "./update-check.js";
+} from "./release-assets.js";
 
 export const INSTALL_TEST_MODE_ENV = "BITTERBOT_INSTALL_TEST_MODE";
 export const INSTALL_BASE_URL_ENV = "BITTERBOT_INSTALL_BASE_URL";
@@ -57,10 +57,22 @@ export const PRODUCTION_RELEASES_BASE =
 /** Size caps: checksums and signatures are tiny; the API listing is bounded. */
 const MAX_TEXT_BYTES = 4 * 1024 * 1024;
 
+/**
+ * Why a release could not be used. `verification` (a bad or missing
+ * signature, a replayed trusted comment, a SHA-256 mismatch, a refused URL)
+ * must never be retried or worked around; `unavailable` (the release has no
+ * signed assets yet) and `network` (an HTTP error, a stalled download) are
+ * ordinary outages. The npm launcher runs an already installed version on
+ * the latter two, never on the first.
+ */
+export type ReleaseErrorCode = "verification" | "unavailable" | "network";
+
 export class ReleaseVerificationError extends Error {
-  constructor(message: string) {
+  readonly code: ReleaseErrorCode;
+  constructor(message: string, code: ReleaseErrorCode = "verification") {
     super(message);
     this.name = "ReleaseVerificationError";
+    this.code = code;
   }
 }
 
@@ -167,7 +179,7 @@ function httpGet(
     const req = get(url, { headers }, resolve);
     req.on("error", reject);
     req.setTimeout(Math.max(1000, Math.min(timeoutMs, 120_000)), () => {
-      req.destroy(new ReleaseVerificationError(`no data from ${url} for too long`));
+      req.destroy(new ReleaseVerificationError(`no data from ${url} for too long`, "network"));
     });
   });
 }
@@ -247,11 +259,37 @@ export async function fetchReleaseText(
     if (res.status === 403 || res.status === 429) {
       throw new ReleaseVerificationError(
         `${url} answered HTTP ${res.status} (unauthenticated GitHub API requests are limited to 60 per hour per IP); try again later or pin a version with --tag`,
+        "network",
       );
     }
-    throw new ReleaseVerificationError(`${url} answered HTTP ${res.status}`);
+    throw new ReleaseVerificationError(`${url} answered HTTP ${res.status}`, "network");
   }
   return (await readAll(res.body, MAX_TEXT_BYTES)).toString("utf8");
+}
+
+/**
+ * Download progress: bytes received so far and the expected total (the
+ * Content-Length, or the file size for file:// in test mode; null when the
+ * server does not say).
+ */
+export type DownloadProgress = (received: number, total: number | null) => void;
+
+function expectedLength(body: Readable): number | null {
+  const headers = (body as Partial<http.IncomingMessage>).headers;
+  const raw = headers?.["content-length"];
+  const n = typeof raw === "string" ? Number(raw) : Number.NaN;
+  if (Number.isFinite(n) && n > 0) {
+    return n;
+  }
+  const file = (body as Partial<fs.ReadStream>).path;
+  if (typeof file === "string") {
+    try {
+      return fs.statSync(file).size;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 /** Stream a release asset to `dest` and return its SHA-256. */
@@ -260,18 +298,27 @@ export async function downloadReleaseAsset(
   url: string,
   dest: string,
   timeoutMs: number,
+  onProgress?: DownloadProgress,
 ): Promise<string> {
   const res = await openUrl(source, url, timeoutMs);
   if (res.status !== 200 || !res.body) {
     res.body?.destroy();
-    throw new ReleaseVerificationError(`could not download ${url} (HTTP ${res.status})`);
+    throw new ReleaseVerificationError(
+      `could not download ${url} (HTTP ${res.status})`,
+      res.status === 404 ? "unavailable" : "network",
+    );
   }
   const hash = createHash("sha256");
+  const total = onProgress ? expectedLength(res.body) : null;
+  let received = 0;
+  onProgress?.(0, total);
   await pipeline(
     res.body,
     async function* (chunks: AsyncIterable<Buffer | Uint8Array>) {
       for await (const chunk of chunks) {
         hash.update(chunk);
+        received += chunk.length;
+        onProgress?.(received, total);
         yield chunk;
       }
     },
@@ -294,7 +341,7 @@ export async function resolveLatestTarballVersion(
     Accept: "application/vnd.github+json",
   });
   if (body === null) {
-    throw new ReleaseVerificationError(`${source.apiUrl} answered HTTP 404`);
+    throw new ReleaseVerificationError(`${source.apiUrl} answered HTTP 404`, "network");
   }
   let parsed: unknown;
   try {
@@ -338,6 +385,7 @@ export async function fetchVerifiedChecksums(
   if (checksums === null) {
     throw new ReleaseVerificationError(
       `release v${version} has no ${TARBALL_CHECKSUMS_ASSET} (not a tarball release, or its signing step has not run yet)`,
+      "unavailable",
     );
   }
   const minisig = await fetchReleaseText(
@@ -372,7 +420,12 @@ export async function fetchVerifiedChecksums(
   const asset = tarballAssetName(version, platformId);
   const tarballSha256 = lookupSha256(checksums, asset);
   if (!tarballSha256) {
-    throw new ReleaseVerificationError(`${TARBALL_CHECKSUMS_ASSET} has no entry for ${asset}`);
+    // A signed release without this platform's tarball (a platform added in
+    // a later release): nothing to install, not tampering.
+    throw new ReleaseVerificationError(
+      `${TARBALL_CHECKSUMS_ASSET} has no entry for ${asset}`,
+      "unavailable",
+    );
   }
   return { version, checksums, tarballSha256, asset, trustedComment };
 }
@@ -383,6 +436,7 @@ export async function downloadVerifiedTarball(
   verified: VerifiedChecksums,
   dir: string,
   timeoutMs: number,
+  onProgress?: DownloadProgress,
 ): Promise<string> {
   const dest = path.join(dir, verified.asset);
   const actual = await downloadReleaseAsset(
@@ -390,6 +444,7 @@ export async function downloadVerifiedTarball(
     releaseAssetUrl(source, verified.version, verified.asset),
     dest,
     timeoutMs,
+    onProgress,
   );
   if (actual !== verified.tarballSha256) {
     await fsp.rm(dest, { force: true });

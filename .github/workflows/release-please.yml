@@ -72,9 +72,14 @@ jobs:
   # workflow_call here. A workflow_dispatch is the one event the default
   # GITHUB_TOKEN may raise that starts another workflow; the publish itself
   # still waits for a maintainer's approval in the `npm` environment.
+  #
+  # The npm package is a launcher that downloads this release's signed
+  # tarballs on first run, so it is dispatched only AFTER release-tarball
+  # has uploaded them and published the release (npm-publish.yml also waits
+  # for them on the public URLs before it can publish).
   npm-publish:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    needs: [release-please, release-tarball]
+    if: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-tarball.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       actions: write

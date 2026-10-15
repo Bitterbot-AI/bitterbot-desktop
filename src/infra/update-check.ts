@@ -7,11 +7,16 @@ import {
   type ContainerProbe,
   type InstallKind,
   resolveInstallKind,
-  tarballAssetName,
   tarballPlatformId,
 } from "./install-kind.js";
 
 export type { InstallKind } from "./install-kind.js";
+import {
+  GITHUB_RELEASES_URL,
+  type GithubReleaseEntry,
+  pickLatestReleaseWithAsset,
+  pickLatestTarballRelease,
+} from "./release-assets.js";
 import { parseSemver } from "./runtime-guard.js";
 import { channelToNpmTag, type UpdateChannel } from "./update-channels.js";
 
@@ -359,12 +364,12 @@ export async function fetchNpmLatestVersion(params?: {
  * releases API needs no token (60 requests/hour per IP unauthenticated); the
  * request carries no identifying data beyond the IP and a generic User-Agent.
  */
-export const GITHUB_RELEASES_URL =
-  "https://api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30";
-
-/** Release-level checksums and their minisign signature (release-tarball.yml). */
-export const TARBALL_CHECKSUMS_ASSET = "checksums.txt";
-export const TARBALL_SIGNATURE_ASSET = "checksums.txt.minisig";
+export {
+  GITHUB_RELEASES_URL,
+  pickLatestTarballRelease,
+  TARBALL_CHECKSUMS_ASSET,
+  TARBALL_SIGNATURE_ASSET,
+} from "./release-assets.js";
 
 /** The release asset whose presence means "the image for this release is on GHCR". */
 export const COMPOSE_RELEASE_ASSET = "docker-compose.yml";
@@ -410,89 +415,12 @@ export function peekLatestGithubRelease(
   return cached.status;
 }
 
-/** Release tags are `vX.Y.Z` (release-please); anything else is not an app release. */
-function parseReleaseTag(tag: unknown): string | null {
-  if (typeof tag !== "string") {
-    return null;
-  }
-  const match = /^v(\d+\.\d+\.\d+)$/.exec(tag);
-  return match ? (match[1] ?? null) : null;
-}
-
-type GithubReleaseEntry = {
-  tag_name?: unknown;
-  draft?: unknown;
-  prerelease?: unknown;
-  assets?: unknown;
-};
-
-function releaseAssetNames(release: GithubReleaseEntry): Set<string> {
-  const names = new Set<string>();
-  const assets = Array.isArray(release.assets) ? release.assets : [];
-  for (const asset of assets) {
-    const name =
-      asset && typeof asset === "object" ? (asset as { name?: unknown }).name : undefined;
-    if (typeof name === "string") {
-      names.add(name);
-    }
-  }
-  return names;
-}
-
-/**
- * The highest `vX.Y.Z` among published, non-prerelease releases that carry
- * the asset `requiredAsset(version)` names; null when there is none.
- */
-function pickLatestReleaseWithAsset(
-  releases: GithubReleaseEntry[],
-  requiredAssets: (version: string) => string[],
-): string | null {
-  let best: string | null = null;
-  for (const release of releases) {
-    if (!release || release.draft === true || release.prerelease === true) {
-      continue;
-    }
-    const version = parseReleaseTag(release.tag_name);
-    if (!version) {
-      continue;
-    }
-    const names = releaseAssetNames(release);
-    if (!requiredAssets(version).every((name) => names.has(name))) {
-      continue;
-    }
-    const cmp = compareSemverStrings(version, best);
-    if (best === null || (cmp != null && cmp > 0)) {
-      best = version;
-    }
-  }
-  return best;
-}
-
 /**
  * The highest `vX.Y.Z` among published, non-prerelease releases that carry
  * the compose asset; null when there is none.
  */
 export function pickLatestImageRelease(releases: GithubReleaseEntry[]): string | null {
   return pickLatestReleaseWithAsset(releases, () => [COMPOSE_RELEASE_ASSET]);
-}
-
-/**
- * Release-tarball installs (PLAN-56 Phase 3): the highest release that
- * carries `bitterbot-<version>-<platformId>.tar.gz` AND `checksums.txt` AND
- * `checksums.txt.minisig`, i.e. one install.sh can actually install. A
- * release whose tarball job has not finished, is waiting for the signing
- * approval, or failed verification (and so uploaded nothing) is never
- * offered. scripts/install.sh applies the same rule (bb_pick_latest).
- */
-export function pickLatestTarballRelease(
-  releases: GithubReleaseEntry[],
-  platformId: string,
-): string | null {
-  return pickLatestReleaseWithAsset(releases, (version) => [
-    tarballAssetName(version, platformId),
-    TARBALL_CHECKSUMS_ASSET,
-    TARBALL_SIGNATURE_ASSET,
-  ]);
 }
 
 /**

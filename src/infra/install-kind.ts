@@ -82,8 +82,8 @@ export function externalUpdateCommand(kind: InstallKind): string | null {
 
 /**
  * The release-tarball platform id for this machine (`linux-x64`,
- * `linux-arm64`, `darwin-arm64`), or null where no tarball is published.
- * Must match RELEASE_PLATFORMS in scripts/release-tarball-lib.mjs.
+ * `linux-arm64`, `darwin-arm64`, `darwin-x64`), or null where no tarball is
+ * published. Must match RELEASE_PLATFORMS in scripts/release-tarball-lib.mjs.
  */
 export function tarballPlatformId(
   platform: NodeJS.Platform = process.platform,
@@ -92,8 +92,8 @@ export function tarballPlatformId(
   if (platform === "linux" && (arch === "x64" || arch === "arm64")) {
     return `linux-${arch}`;
   }
-  if (platform === "darwin" && arch === "arm64") {
-    return "darwin-arm64";
+  if (platform === "darwin" && (arch === "arm64" || arch === "x64")) {
+    return `darwin-${arch}`;
   }
   return null;
 }

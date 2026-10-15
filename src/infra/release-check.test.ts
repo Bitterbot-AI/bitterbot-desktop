@@ -3,8 +3,10 @@
  * stop a package `npm install` can not install from reaching the registry.
  */
 import { describe, expect, it } from "vitest";
+import { launcherManifest, LAUNCHER_PACKAGE_FILES } from "../../scripts/npm-package.ts";
 import {
   binProblems,
+  launcherPackProblems,
   lifecycleFileRefs,
   lifecycleProblems,
   relativeImports,
@@ -119,5 +121,38 @@ describe("manifest checks", () => {
     expect(REQUIRED_PATHS).toEqual(
       expect.arrayContaining(["dist/control-ui/index.html", "orchestrator/Cargo.toml"]),
     );
+  });
+});
+
+describe("launcherPackProblems (release:check --npm-publish)", () => {
+  const pkg = launcherManifest({
+    name: "bitterbot",
+    version: "1.6.2",
+    repository: { type: "git", url: "https://github.com/Bitterbot-AI/bitterbot-desktop.git" },
+  });
+  const packPaths = [...LAUNCHER_PACKAGE_FILES, "package.json"];
+  const bundle = '#!/usr/bin/env node\nimport fs from "node:fs";\n';
+
+  it("passes the launcher package", () => {
+    expect(
+      launcherPackProblems({ pkg, packPaths, unpackedSize: 80_000, bundleSource: bundle }),
+    ).toEqual([]);
+  });
+
+  it("fails extra or missing files, foreign imports, scripts and size", () => {
+    const problems = launcherPackProblems({
+      pkg: { ...pkg, scripts: { postinstall: "node scripts/fetch-orchestrator.mjs" } },
+      packPaths: [...packPaths.filter((p) => p !== "dist/index.js"), "npm-shrinkwrap.json"],
+      unpackedSize: 70 * 1024 * 1024,
+      bundleSource: 'import chalk from "chalk";\n',
+    });
+    expect(problems).toEqual([
+      "package.json has scripts (postinstall): the launcher package must have none",
+      "unexpected file in the launcher package: npm-shrinkwrap.json",
+      "missing from the launcher package: dist/index.js",
+      "bitterbot.mjs does not start with a node shebang",
+      "bitterbot.mjs imports non-built-in modules: chalk",
+      "launcher package is 71680 KB unpacked, over the 512 KB ceiling",
+    ]);
   });
 });

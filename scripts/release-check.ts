@@ -5,12 +5,19 @@
  * the tripwire: it dry-runs `npm pack` and fails on anything that must
  * never leave the machine, or anything a registry install needs and lacks.
  *
- * Run: pnpm release:check   (CI runs it after the build step)
- *      pnpm release:check --npm-publish   (npm-publish.yml, after
- *        scripts/npm-package.ts prepare: also requires the npm manifest and
- *        npm-shrinkwrap.json that prepare writes)
+ * Two packages are checked:
  *
- * Assertions:
+ *   pnpm release:check
+ *     The app's file list (CI runs it after the build step). The npm pack
+ *     list of the repo is what scripts/build-release-tarball.mjs copies into
+ *     every release tarball, so this gate still guards what ships. Below.
+ *
+ *   pnpm release:check --npm-publish --dir <launcher package dir>
+ *     The published npm package (scripts/npm-package.ts prepare --out <dir>):
+ *     a launcher with exactly LAUNCHER_PACKAGE_FILES, no dependencies, no
+ *     scripts, a bundle with only `node:` imports, a few hundred KB at most.
+ *
+ * Assertions for the app file list:
  *   1. No internal docs (docs/reviews, docs/plans, docs/debug,
  *      docs/diagnostics) and no keys/ tree.
  *   2. No databases, env files, key material, or logs by extension.
@@ -32,11 +39,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  expectedOverrideVersions,
-  npmPublishManifestProblems,
+  LAUNCHER_FILE,
+  LAUNCHER_PACKAGE_FILES,
+  launcherManifestProblems,
+  nonBuiltinImports,
   type PackageManifest,
-  type Shrinkwrap,
-  shrinkwrapOverrideViolations,
 } from "./npm-package.ts";
 
 const FORBIDDEN_PREFIXES = [
@@ -81,6 +88,9 @@ export const INSTALL_LIFECYCLE_SCRIPTS = ["preinstall", "install", "postinstall"
 // same commit that explains why.
 const MAX_TARBALL_BYTES = 90 * 1024 * 1024;
 const MAX_UNPACKED_BYTES = 320 * 1024 * 1024;
+
+// The launcher package is about 50 KB of bundle plus README and LICENSE.
+const MAX_LAUNCHER_UNPACKED_BYTES = 512 * 1024;
 
 type PackReport = {
   files: Array<{ path: string; size: number }>;
@@ -199,22 +209,111 @@ export function binProblems(pkg: PackageManifest, packPaths: Set<string>): strin
     .map((t) => `bin target ${t} is not in the package`);
 }
 
-function main(argv: string[]): void {
-  const npmPublish = argv.includes("--npm-publish");
-  const root = process.cwd();
+/**
+ * Problems with the launcher package as `npm pack` sees it: exactly the
+ * expected files, the manifest rules, a bundle that imports only `node:`
+ * built-ins, and a size that makes `npm install -g` a matter of seconds.
+ */
+export function launcherPackProblems(params: {
+  pkg: PackageManifest;
+  packPaths: string[];
+  unpackedSize: number;
+  bundleSource: string | null;
+}): string[] {
+  const problems = [...launcherManifestProblems(params.pkg)];
+  const expected = new Set<string>([...LAUNCHER_PACKAGE_FILES, "package.json"]);
+  for (const p of params.packPaths) {
+    if (!expected.has(p)) {
+      problems.push(`unexpected file in the launcher package: ${p}`);
+    }
+  }
+  for (const p of expected) {
+    if (!params.packPaths.includes(p)) {
+      problems.push(`missing from the launcher package: ${p}`);
+    }
+  }
+  if (params.bundleSource === null) {
+    problems.push(`${LAUNCHER_FILE} is unreadable`);
+  } else {
+    if (!params.bundleSource.startsWith("#!/usr/bin/env node\n")) {
+      problems.push(`${LAUNCHER_FILE} does not start with a node shebang`);
+    }
+    const foreign = nonBuiltinImports(params.bundleSource);
+    if (foreign.length > 0) {
+      problems.push(`${LAUNCHER_FILE} imports non-built-in modules: ${foreign.join(", ")}`);
+    }
+  }
+  if (params.unpackedSize > MAX_LAUNCHER_UNPACKED_BYTES) {
+    problems.push(
+      `launcher package is ${(params.unpackedSize / 1024).toFixed(0)} KB unpacked, over the ${MAX_LAUNCHER_UNPACKED_BYTES / 1024} KB ceiling`,
+    );
+  }
+  return problems;
+}
+
+function npmPackReport(cwd: string): PackReport {
   // --ignore-scripts: prepack runs the full build; the gate checks whatever
   // dist is on disk (CI runs it right after its build step).
   const raw = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+    cwd,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
   // npm may prefix the JSON with notice lines on some configs — find the array.
-  const jsonStart = raw.indexOf("[");
-  const report = (JSON.parse(raw.slice(jsonStart)) as PackReport[])[0];
+  const report = (JSON.parse(raw.slice(raw.indexOf("["))) as PackReport[])[0];
   if (!report) {
     throw new Error("npm pack --json returned no report");
   }
+  return report;
+}
 
+function checkLauncherPackage(dir: string): void {
+  const report = npmPackReport(dir);
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(dir, "package.json"), "utf8"),
+  ) as PackageManifest;
+  let bundleSource: string | null = null;
+  try {
+    bundleSource = fs.readFileSync(path.join(dir, LAUNCHER_FILE), "utf8");
+  } catch {
+    bundleSource = null;
+  }
+  const failures = launcherPackProblems({
+    pkg,
+    packPaths: report.files.map((f) => f.path),
+    unpackedSize: report.unpackedSize,
+    bundleSource,
+  });
+  if (failures.length > 0) {
+    console.error(
+      `release-check --npm-publish: ${failures.length} problem(s) in ${report.filename}:`,
+    );
+    for (const f of failures) {
+      console.error(`  ✘ ${f}`);
+    }
+    process.exit(1);
+  }
+  console.log(
+    `release-check --npm-publish: OK, ${report.filename}: ${report.files.length} files, ` +
+      `${(report.unpackedSize / 1024).toFixed(0)} KB unpacked, no dependencies, no scripts.`,
+  );
+}
+
+function main(argv: string[]): void {
+  if (argv.includes("--npm-publish")) {
+    const dirIdx = argv.indexOf("--dir");
+    const dir = dirIdx >= 0 ? argv[dirIdx + 1] : undefined;
+    if (!dir) {
+      console.error(
+        "usage: pnpm release:check --npm-publish --dir <dir from scripts/npm-package.ts prepare --out>",
+      );
+      process.exit(2);
+    }
+    checkLauncherPackage(path.resolve(dir));
+    return;
+  }
+  const root = process.cwd();
+  const report = npmPackReport(root);
   const failures: string[] = [];
   const paths = new Set(report.files.map((f) => f.path));
   const pkg = JSON.parse(
@@ -247,22 +346,6 @@ function main(argv: string[]): void {
   failures.push(...lifecycleProblems({ scripts: pkg.scripts, packPaths: paths, readFile }));
   failures.push(...unresolvableSpecProblems(pkg));
 
-  if (npmPublish) {
-    failures.push(...npmPublishManifestProblems(pkg));
-    if (!paths.has("npm-shrinkwrap.json")) {
-      failures.push(
-        "npm-shrinkwrap.json is not in the package (run scripts/npm-package.ts prepare)",
-      );
-    } else {
-      const shrinkwrap = JSON.parse(readFile("npm-shrinkwrap.json") ?? "{}") as Shrinkwrap;
-      failures.push(
-        ...shrinkwrapOverrideViolations(shrinkwrap, expectedOverrideVersions(pkg)).map(
-          (v) => `npm-shrinkwrap.json: ${v}`,
-        ),
-      );
-    }
-  }
-
   if (report.size > MAX_TARBALL_BYTES) {
     failures.push(
       `tarball ${(report.size / 1e6).toFixed(1)}MB exceeds ceiling ${(MAX_TARBALL_BYTES / 1e6).toFixed(0)}MB`,
@@ -289,8 +372,7 @@ function main(argv: string[]): void {
   console.log(
     `release-check: OK, ${report.files.length} files, ` +
       `${(report.size / 1e6).toFixed(1)}MB packed / ${(report.unpackedSize / 1e6).toFixed(1)}MB unpacked, ` +
-      "no internal docs, no databases, no key material, install hooks self-contained" +
-      (npmPublish ? ", npm manifest and shrinkwrap in place." : "."),
+      "no internal docs, no databases, no key material, install hooks self-contained.",
   );
 }
 
