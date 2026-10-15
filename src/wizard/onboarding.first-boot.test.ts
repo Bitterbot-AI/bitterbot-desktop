@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isFirstBootOnlyConfig } from "./onboarding.first-boot.js";
+import { isFirstBootOnlyConfig, isSetUpSnapshot } from "./onboarding.first-boot.js";
 
 describe("isFirstBootOnlyConfig", () => {
   it("a container first-boot file (token + meta + commands) is not a setup", () => {
@@ -29,5 +29,33 @@ describe("isFirstBootOnlyConfig", () => {
       isFirstBootOnlyConfig({ gateway: { auth: { mode: "token", token: "t", extra: 1 } } }),
     ).toBe(false);
     expect(isFirstBootOnlyConfig({ gateway: { auth: { mode: "trusted-proxy" } } })).toBe(false);
+  });
+});
+
+describe("isSetUpSnapshot", () => {
+  const done = { setupInProgress: false };
+  it("no config file is not set up", () => {
+    expect(isSetUpSnapshot({ exists: false, resolved: {} }, done)).toBe(false);
+  });
+
+  it("a first-boot-only file is not set up", () => {
+    expect(
+      isSetUpSnapshot({ exists: true, resolved: { gateway: { auth: { token: "t" } } } }, done),
+    ).toBe(false);
+  });
+
+  it("a config a person chose is set up", () => {
+    expect(
+      isSetUpSnapshot({ exists: true, resolved: { agents: { defaults: { model: "a/b" } } } }, done),
+    ).toBe(true);
+  });
+
+  it("a browser setup left half done is not set up", () => {
+    expect(
+      isSetUpSnapshot(
+        { exists: true, resolved: { agents: { defaults: { model: "a/b" } } } },
+        { setupInProgress: true },
+      ),
+    ).toBe(false);
   });
 });

@@ -42,3 +42,29 @@ export function isFirstBootOnlyConfig(raw: unknown): boolean {
   const tokenMode = authRecord.mode === undefined || authRecord.mode === "token";
   return onlyTokenKeys && tokenMode;
 }
+
+/**
+ * True when a config snapshot shows a finished setup: a config file holding
+ * more than a first gateway start writes, with no browser setup left half
+ * done (a setup that wrote part of the config and then lost its session is
+ * not finished; the next setup link may finish it). The one definition of
+ * "set up" for `wizard.start`, `bitterbot onboard` and the bare `bitterbot`
+ * command.
+ */
+export function isSetUpSnapshot(
+  snapshot: { exists: boolean; resolved: unknown },
+  opts: { setupInProgress: boolean },
+): boolean {
+  return snapshot.exists && !isFirstBootOnlyConfig(snapshot.resolved) && !opts.setupInProgress;
+}
+
+/** Reads the config file and the setup marker: `isSetUpSnapshot` for this machine. */
+export async function onboardingComplete(): Promise<boolean> {
+  const { setupInProgress } = await import("../gateway/setup-token.js");
+  if (setupInProgress()) {
+    return false;
+  }
+  const { readConfigFileSnapshot } = await import("../config/config.js");
+  const snapshot = await readConfigFileSnapshot();
+  return isSetUpSnapshot(snapshot, { setupInProgress: false });
+}

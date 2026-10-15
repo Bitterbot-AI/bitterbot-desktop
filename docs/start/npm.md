@@ -13,9 +13,13 @@ From 1.6.0, Bitterbot is published to npm as `bitterbot`. If you already run
 Node 22.12 or newer, this is the shortest install:
 
 ```bash
-npm install -g bitterbot
-bitterbot onboard
+npm install -g bitterbot && bitterbot onboard
 ```
+
+On a machine that is not set up yet, plain `bitterbot` (no arguments, in a
+terminal) does the same: it prints "Bitterbot isn't set up yet. Starting
+setup..." and runs `bitterbot onboard`. Once setup is done, plain `bitterbot`
+prints the command list as before.
 
 `bitterbot onboard` starts the gateway and opens a setup page in your
 browser (`--no-browser` keeps setup in the terminal): model key, model,
