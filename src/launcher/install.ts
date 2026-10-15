@@ -60,6 +60,8 @@ export class LauncherError extends Error {
   constructor(
     message: string,
     readonly kind: LauncherErrorKind,
+    /** For `unavailable`: the release itself is missing, or only this platform's build. */
+    readonly missing: "release" | "platform" | null = null,
   ) {
     super(message);
     this.name = "LauncherError";
@@ -87,7 +89,7 @@ export function classifyInstallError(err: unknown): LauncherError {
     return err;
   }
   if (err instanceof ReleaseVerificationError) {
-    return new LauncherError(err.message, err.code);
+    return new LauncherError(err.message, err.code, err.missing);
   }
   const code = (err as NodeJS.ErrnoException | undefined)?.code;
   const message = err instanceof Error ? err.message : String(err);

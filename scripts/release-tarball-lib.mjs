@@ -45,6 +45,10 @@ export const RELEASE_PLATFORMS = {
     arch: "x64",
     nodeDist: "darwin-x64",
     orchestratorAsset: "bitterbot-orchestrator-darwin-x64",
+    // New in 1.6.2 and built on an Intel runner nothing else uses: a failed
+    // build does not block a release (release-tarball.yml publishes the core
+    // platforms; npm-publish.yml waits only for those).
+    optional: true,
   },
 };
 

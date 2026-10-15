@@ -691,6 +691,57 @@ jobs:
           cat "$RUNNER_TEMP/home/.bitterbot/boot-watchdog.log" || true
           ls -la "$RUNNER_TEMP/home/.bitterbot/app" || true
 
+  release-tarball-darwin-x64:
+    # The Intel macOS release tarball (darwin-x64, new in 1.6.2) is built on
+    # a runner nothing else uses. Build it from this tree exactly as
+    # release-tarball.yml does (no signing, no upload): build-release-tarball
+    # installs the x64 native prebuilds (sharp, sqlite-vec, @lydell/node-pty,
+    # node-llama-cpp mac-x64), fetches the verified darwin-x64 orchestrator and
+    # Node runtime, and loads every native package with the bundled Node.
+    # Then the unpacked tarball must run.
+    name: Release tarball (darwin-x64 build)
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build the darwin-x64 release tarball (native packages load-checked with the bundled Node)
+        run: |
+          set -euo pipefail
+          [ "$(node -p 'process.platform + "-" + process.arch')" = "darwin-x64" ]
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          node scripts/build-release-tarball.mjs --out "$RUNNER_TEMP/release-out"
+          ls -lh "$RUNNER_TEMP"/release-out/
+
+      - name: The unpacked tarball runs
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p 'require("./package.json").version')
+          mkdir -p "$RUNNER_TEMP/unpacked"
+          tar -xzf "$RUNNER_TEMP/release-out/bitterbot-$VERSION-darwin-x64.tar.gz" -C "$RUNNER_TEMP/unpacked"
+          root="$RUNNER_TEMP/unpacked/bitterbot-$VERSION-darwin-x64"
+          file "$root/runtime/node/bin/node" | grep -q x86_64
+          file "$root/bin/bitterbot-orchestrator" | grep -q x86_64
+          export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
+          v=$("$root/bin/bitterbot" --version | tail -1)
+          echo "bitterbot --version -> $v"
+          echo "$v" | grep -qw "$VERSION"
+
   installer-windows:
     # PLAN-56 Phase 3b: scripts/install.ps1 hands off to install.sh inside
     # WSL2. Lint it with PSScriptAnalyzer and run it in dry-run mode on
@@ -906,6 +957,23 @@ jobs:
           TS
           node --import tsx "$RUNNER_TEMP/fixture.mts" "$RUNNER_TEMP/fixture"
           echo "TEST_PUBKEY=$(cat "$RUNNER_TEMP/fixture/test.pub")" >> "$GITHUB_ENV"
+
+      # The launcher's floor is Node 18 (engines >=18): the bundle must run
+      # there and install the signed fixture release.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: The launcher runs on Node 18
+        run: |
+          set -euo pipefail
+          node --version | grep -q '^v18\.'
+          export HOME="$RUNNER_TEMP/node18-home" && mkdir -p "$HOME"
+          export BITTERBOT_INSTALL_TEST_MODE=1 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY" \
+            BITTERBOT_INSTALL_BASE_URL="file://$RUNNER_TEMP/fixture/releases"
+          v=$(node "$RUNNER_TEMP/npm-package/bitterbot.mjs" --version)
+          [ "$v" = "$VERSION" ]
+          [ "$(readlink "$HOME/.bitterbot/app/current")" = "$VERSION" ]
 
       - uses: actions/setup-node@v4
         with:

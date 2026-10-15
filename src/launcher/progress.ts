@@ -5,6 +5,7 @@
  * service log, CI, a pipe) a plain line every 25%.
  */
 
+import fs from "node:fs";
 import os from "node:os";
 
 export type LauncherOutput = {
@@ -86,6 +87,67 @@ export function createLauncherOutput(
       if (done) {
         endProgress();
       }
+    },
+  };
+}
+
+/**
+ * The launcher's output: stderr, plus the controlling terminal when stderr
+ * is not one. The 1.6.0/1.6.1 updater runs the newly installed launcher
+ * (`bitterbot.mjs completion --write-state`) with its output captured, so a
+ * first-run download inside `bitterbot update` would otherwise look like a
+ * silent hang of several minutes. /dev/tty is opened only when there is
+ * something to say, and a process without a terminal (a service) simply
+ * keeps the stderr lines.
+ */
+export function createDefaultLauncherOutput(
+  opts: {
+    stderr?: { write: (chunk: string) => unknown; isTTY?: boolean };
+    openTty?: () => number;
+    writeFd?: (fd: number, chunk: string) => void;
+    platform?: NodeJS.Platform;
+  } = {},
+): LauncherOutput {
+  const stderr = opts.stderr ?? process.stderr;
+  const primary = createLauncherOutput(stderr);
+  if (stderr.isTTY || (opts.platform ?? process.platform) === "win32") {
+    return primary;
+  }
+  const openTty = opts.openTty ?? (() => fs.openSync("/dev/tty", "w"));
+  const writeFd = opts.writeFd ?? ((fd: number, chunk: string) => void fs.writeSync(fd, chunk));
+  let mirror: LauncherOutput | null | undefined;
+  const tty = (): LauncherOutput | null => {
+    if (mirror === undefined) {
+      try {
+        const fd = openTty();
+        mirror = createLauncherOutput({
+          isTTY: true,
+          write: (chunk) => {
+            try {
+              writeFd(fd, chunk);
+            } catch {
+              // the terminal went away: stderr still has the lines
+            }
+          },
+        });
+      } catch {
+        mirror = null;
+      }
+    }
+    return mirror;
+  };
+  return {
+    say: (line) => {
+      primary.say(line);
+      tty()?.say(line);
+    },
+    progress: (received, total) => {
+      primary.progress(received, total);
+      tty()?.progress(received, total);
+    },
+    endProgress: () => {
+      primary.endProgress();
+      mirror?.endProgress();
     },
   };
 }

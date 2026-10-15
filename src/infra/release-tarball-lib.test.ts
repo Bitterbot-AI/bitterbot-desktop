@@ -57,8 +57,18 @@ describe("release-tarball naming", () => {
     for (const id of ids) {
       expect(workflow).toContain(`platform: ${id}`);
     }
-    expect(workflow).toContain(`for p in ${ids.toSorted().join(" ")}; do`);
     expect(workflow).toContain("runner: macos-15-intel");
+    // darwin-x64 is optional: its failure does not block a release, and the
+    // publish job requires only the core platforms.
+    const optional = ids.filter(
+      (id) => RELEASE_PLATFORMS[id as keyof typeof RELEASE_PLATFORMS].optional,
+    );
+    expect(optional).toEqual(["darwin-x64"]);
+    expect(workflow).toContain("continue-on-error: ${{ matrix.optional == true }}");
+    expect(workflow).toContain("fail-fast: false");
+    expect(workflow).toContain("filter(([, p]) => !p.optional)");
+    const npmPublish = fs.readFileSync(repoFile(".github/workflows/npm-publish.yml"), "utf8");
+    expect(npmPublish).toContain("filter(([, p]) => !p.optional)");
   });
 
   it("uses the marker file the install-kind detection reads", () => {

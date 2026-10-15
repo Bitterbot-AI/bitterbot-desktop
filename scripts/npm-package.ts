@@ -67,9 +67,19 @@ export const LAUNCHER_FILE = "bitterbot.mjs";
  *     may also name entry.js.
  *
  * Each shim imports the launcher, which reads the same argv, so the old
- * command keeps working: it installs the release on first use (the doctor
- * run right after the update usually does this, before the service
- * restarts) and runs it.
+ * command keeps working: it installs the release on first use and runs it.
+ *
+ * Where that first download actually happens for a 1.6.x `bitterbot update`:
+ * the 1.6.x package-install path goes through update-runner (no doctor
+ * step of its own), then `tryWriteCompletionCache` runs
+ * `<node> <pkg>/bitterbot.mjs completion --write-state` with its output
+ * captured, which is this launcher's first run. The launcher mirrors its
+ * progress to /dev/tty there (src/launcher/progress.ts), so the update does
+ * not look hung. Without a terminal it happens on the next run, a service
+ * restart included. The old process then restarts the service and runs its
+ * own in-process doctor, whose lazily loaded chunks npm has just removed:
+ * it may end with a harmless "Doctor failed: ... ERR_MODULE_NOT_FOUND";
+ * running `bitterbot doctor` again is the fix.
  */
 export const COMPAT_SHIMS = ["dist/entry.js", "dist/index.js"] as const;
 

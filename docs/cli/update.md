@@ -185,11 +185,12 @@ Since 1.6.2, `npm install -g bitterbot` installs a small launcher that
 downloads the signed release on first run into `~/.bitterbot/app` (see
 [npm package](/start/npm)). The app it starts is a release install, so
 `bitterbot update` follows the [installer-based](#installer-based-installs)
-flow above: verified, snapshotted, rolled back automatically. Updating the
-launcher with `npm install -g bitterbot@latest` works too: the next
-`bitterbot` run installs that version (the old one is kept as `previous`).
-When the app is already newer than the launcher (after `bitterbot update`),
-the launcher simply runs it.
+flow above: verified, snapshotted, rolled back automatically. The launcher
+never replaces an installed version: it runs whatever `current` points at,
+so `--rollback` and `--tag <older>` stick. `npm install -g bitterbot@latest`
+updates only the launcher; when it is newer than the installed app, an
+interactive `bitterbot` prints one line suggesting `bitterbot update`, which
+does the upgrade.
 
 For older full-package installs (1.6.0 and 1.6.1, or a pnpm/Bun global
 install), `bitterbot update` checks that the running package is the one under
@@ -198,8 +199,13 @@ install), `bitterbot update` checks that the running package is the one under
 version or dist-tag given with `--tag`. A move to an older version asks for
 confirmation first. Afterwards it restarts the gateway service if one is
 installed; otherwise run `bitterbot gateway restart`. For 1.6.0 and 1.6.1 this
-update installs the launcher; a gateway service set up from the old package
-keeps working, because the package files it runs now forward to the launcher.
+update installs the launcher. The release (about 410 MB) is then downloaded
+during the update's shell-completion step (progress on your terminal), or on
+the next `bitterbot` run. A gateway service set up from the old package keeps
+working, because the package files it runs now forward to the launcher. The
+old process's own doctor run at the end may fail with
+`ERR_MODULE_NOT_FOUND` (npm replaced its files); run `bitterbot doctor`
+again.
 
 There is no snapshot or automatic rollback on that path; go back with
 `npm i -g bitterbot@<previous version>`. Installed with `--prefix <dir>`? Run

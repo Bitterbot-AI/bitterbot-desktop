@@ -97,7 +97,10 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          platforms=$(node --input-type=module -e "const m = await import('file://$GITHUB_WORKSPACE/scripts/release-tarball-lib.mjs'); console.log(Object.keys(m.RELEASE_PLATFORMS).join(' '))")
+          # The core platforms only: an optional one (darwin-x64 for now) may
+          # be missing from a release, and the launcher reports that as
+          # unavailable on that platform.
+          platforms=$(node --input-type=module -e "const m = await import('file://$GITHUB_WORKSPACE/scripts/release-tarball-lib.mjs'); console.log(Object.entries(m.RELEASE_PLATFORMS).filter(([, p]) => !p.optional).map(([id]) => id).join(' '))")
           base="https://github.com/$REPO/releases/download/v$VERSION"
           assets="checksums.txt checksums.txt.minisig"
           for p in $platforms; do assets="$assets bitterbot-$VERSION-$p.tar.gz"; done

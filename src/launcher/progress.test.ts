@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createLauncherOutput, formatMegabytes, tildify } from "./progress.js";
+import {
+  createDefaultLauncherOutput,
+  createLauncherOutput,
+  formatMegabytes,
+  tildify,
+} from "./progress.js";
 
 function sink(isTTY: boolean) {
   const chunks: string[] = [];
@@ -43,5 +48,61 @@ describe("launcher output", () => {
     expect(formatMegabytes(10)).toBe("1 MB");
     expect(tildify("/home/u/.bitterbot/app/1.6.2", "/home/u")).toBe("~/.bitterbot/app/1.6.2");
     expect(tildify("/opt/bitterbot", "/home/u")).toBe("/opt/bitterbot");
+  });
+});
+
+describe("output when stderr is captured (the 1.6.x updater's completion step)", () => {
+  it("mirrors to the terminal (/dev/tty) so a first-run download is visible, opened lazily", () => {
+    const stderr = sink(false);
+    const tty: string[] = [];
+    let opened = 0;
+    const out = createDefaultLauncherOutput({
+      stderr: stderr.stream,
+      platform: "darwin",
+      openTty: () => {
+        opened += 1;
+        return 9;
+      },
+      writeFd: (fd, chunk) => {
+        expect(fd).toBe(9);
+        tty.push(chunk);
+      },
+    });
+    expect(opened).toBe(0);
+    out.say("Bitterbot 1.6.2: first run, downloading the signed release (410 MB)...");
+    out.progress(205_000_000, 410_000_000);
+    out.say("Verified and installed to ~/.bitterbot/app/1.6.2.");
+    expect(opened).toBe(1);
+    expect(stderr.chunks.join("")).toContain("Verified and installed");
+    expect(tty.join("")).toContain("first run, downloading");
+    expect(tty.join("")).toMatch(/\r {2}\[#{12}-{12}\] {2}50%/);
+  });
+
+  it("keeps plain stderr lines when there is no terminal (a service)", () => {
+    const stderr = sink(false);
+    const out = createDefaultLauncherOutput({
+      stderr: stderr.stream,
+      platform: "linux",
+      openTty: () => {
+        throw Object.assign(new Error("no tty"), { code: "ENXIO" });
+      },
+    });
+    out.say("hello");
+    expect(stderr.chunks).toEqual(["hello\n"]);
+  });
+
+  it("uses stderr alone when it is a terminal", () => {
+    const stderr = sink(true);
+    let opened = false;
+    const out = createDefaultLauncherOutput({
+      stderr: stderr.stream,
+      platform: "linux",
+      openTty: () => {
+        opened = true;
+        return 1;
+      },
+    });
+    out.say("hi");
+    expect(opened).toBe(false);
   });
 });

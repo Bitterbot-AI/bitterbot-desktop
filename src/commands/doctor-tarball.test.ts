@@ -27,14 +27,14 @@ describeUnix("doctor checks for a release-tarball install", () => {
     fs.rmSync(home, { recursive: true, force: true });
   });
 
-  function run(repair: boolean, deep = false) {
+  function run(repair: boolean, deep = false, env: NodeJS.ProcessEnv = {}) {
     return runTarballInstallChecks({
       installKind: "tarball",
       root: path.join(appDir, "1.4.0"),
       repair,
       deep,
       homedir: home,
-      env: {},
+      env,
       stateDir: path.join(home, ".bitterbot"),
     });
   }
@@ -91,6 +91,36 @@ describeUnix("doctor checks for a release-tarball install", () => {
     const results = await run(true);
     expect(results.some((r) => r.message.includes("another install; left alone"))).toBe(true);
     expect(fs.readlinkSync(path.join(home, ".local", "bin", "bitterbot"))).toBe(other);
+  });
+
+  it("an npm-launcher install (env marker) needs no ~/.local/bin link and --fix creates none", async () => {
+    swapVersionLink(appDir, "current", "1.4.0");
+    const env = {
+      BITTERBOT_LAUNCHED_BY: "npm",
+      BITTERBOT_NPM_LAUNCHER: "/usr/local/lib/node_modules/bitterbot/bitterbot.mjs",
+    };
+    const results = await run(true, false, env);
+    expect(results.filter((r) => r.level === "warn" || r.level === "error")).toEqual([]);
+    expect(
+      results.some(
+        (r) =>
+          r.level === "ok" &&
+          r.message ===
+            "command: npm launcher (/usr/local/lib/node_modules/bitterbot/bitterbot.mjs)",
+      ),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(home, ".local", "bin", "bitterbot"))).toBe(false);
+  });
+
+  it("the app-dir marker the launcher writes counts too (a service started without the env)", async () => {
+    swapVersionLink(appDir, "current", "1.4.0");
+    const { writeNpmLauncherMarker } = await import("../infra/npm-launcher-marker.js");
+    writeNpmLauncherMarker(appDir, { launcher: "/opt/npm/bitterbot.mjs", version: "1.4.0" });
+    const results = await run(true);
+    expect(
+      results.some((r) => r.message === "command: npm launcher (/opt/npm/bitterbot.mjs)"),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(home, ".local", "bin", "bitterbot"))).toBe(false);
   });
 
   it("names the reinstall command for a version directory that fails its manifest", async () => {

@@ -118,10 +118,22 @@ If `bitterbot` still runs the old copy, open a new terminal (or run
   install; there is no unsigned fallback. Then it unpacks the release to
   `~/.bitterbot/app/<version>` and points `~/.bitterbot/app/current` at it,
   the same layout the installer uses. Set `BITTERBOT_APP_DIR` to install
-  somewhere else.
+  somewhere else; a variable set in your shell is not seen by a background
+  gateway service, so set it where the service can see it too, or keep the
+  default.
 - **Every run** starts `~/.bitterbot/app/current/bin/bitterbot` with your
-  arguments. Offline with an older version already installed, the launcher
-  says so and starts that one.
+  arguments, whatever version is installed there. The launcher never
+  replaces an installed version; upgrades and rollbacks are the job of
+  `bitterbot update` (below).
+- **No sudo.** The launcher refuses to run as root, and refuses an app
+  directory that belongs to another user (left behind by an earlier
+  `sudo` run), with the command that fixes it. Set `BITTERBOT_ALLOW_ROOT=1`
+  only where root is intended (a container).
+- **Proxies.** Downloads honour `HTTPS_PROXY` (or `HTTP_PROXY`) and
+  `NO_PROXY`, like `bitterbot update`.
+- The launcher starts the app as a release install and clears any
+  `BITTERBOT_INSTALL_KIND` from your environment: with the launcher you
+  never need that override.
 
 The release includes the P2P orchestrator and the local embeddings runtime
 (`node-llama-cpp`), so there are no add-ons to install. Browser automation
@@ -137,26 +149,34 @@ bitterbot update
 The app the launcher started is a release install, so `bitterbot update`
 updates it in place, the same way as for the installer: verified, with a
 snapshot of your data and automatic rollback if the new version does not
-start. The launcher then keeps running whatever `current` points at.
+start. The launcher then keeps running whatever `current` points at, so a
+`bitterbot update --rollback` stays rolled back.
 
-Updating through npm works too:
+`npm install -g bitterbot@latest` updates only the launcher. It does not
+swap the app under you: when the launcher is newer than the installed app,
+`bitterbot` prints one line at the terminal,
 
-```bash
-npm install -g bitterbot@latest
+```text
+Bitterbot 1.6.3 is available (you have 1.6.2). Run `bitterbot update` to upgrade safely.
 ```
 
-The next `bitterbot` run downloads and switches to that version (the
-previous one is kept for rollback). Details:
+and the upgrade itself is `bitterbot update`. Details:
 [`bitterbot update`](/cli/update#npm-package-installs).
 
 ### Coming from the 1.6.0 or 1.6.1 npm package
 
 Those versions installed the whole app through npm (a long install with many
 warnings). Updating them (`bitterbot update`, or
-`npm install -g bitterbot@latest`) replaces the package with the launcher;
-the update's own checks then download the release, and a gateway service
-installed from the old package keeps working: the files it points at
-forward to the launcher. Nothing in `~/.bitterbot` changes. To point the
+`npm install -g bitterbot@latest`) replaces the package with the launcher.
+The release itself (about 410 MB) is downloaded during the update's
+shell-completion step, with progress shown on your terminal, or otherwise
+on the next `bitterbot` run. A gateway service installed from the old
+package keeps working: the files it points at forward to the launcher.
+Nothing in `~/.bitterbot` changes.
+
+The old version's update may end with `Doctor failed: ...
+ERR_MODULE_NOT_FOUND`. That is harmless: the old process tried to load
+files npm had just replaced. Run `bitterbot doctor` again. To point the
 service at the release directly, run `bitterbot gateway install --force`
 once.
 

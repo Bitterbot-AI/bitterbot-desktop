@@ -37,6 +37,10 @@ const TERMINAL_SIGNALS = new Set<NodeJS.Signals>(["SIGINT", "SIGQUIT", "SIGWINCH
  * service (or the documented BITTERBOT_INSTALL_KIND=package escape hatch for
  * the old full package) would mislabel what is now a release-tarball
  * install, and entry.js's re-exec marker must not leak into a fresh app.
+ * BITTERBOT_INSTALL_KIND is therefore always dropped: an app started by the
+ * launcher IS a release-tarball install, and users of the launcher never
+ * need the override (docs/start/npm.md says so). The launcher's own markers
+ * (BITTERBOT_LAUNCHED_BY, BITTERBOT_NPM_LAUNCHER) pass through.
  */
 export function appEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...env };

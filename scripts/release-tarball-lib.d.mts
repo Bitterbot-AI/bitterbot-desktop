@@ -10,6 +10,8 @@ export type ReleasePlatform = {
   arch: "x64" | "arm64";
   nodeDist: string;
   orchestratorAsset: string;
+  /** A failed build of this platform does not block a release. */
+  optional?: boolean;
 };
 
 export declare const RELEASE_PLATFORMS: Record<

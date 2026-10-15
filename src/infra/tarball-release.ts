@@ -27,11 +27,11 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
-import https from "node:https";
 import path from "node:path";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { proxiedGet } from "./http-proxy.js";
 import { tarballAssetName } from "./install-kind.js";
 import {
   lookupSha256,
@@ -67,12 +67,21 @@ const MAX_TEXT_BYTES = 4 * 1024 * 1024;
  */
 export type ReleaseErrorCode = "verification" | "unavailable" | "network";
 
+/** For `unavailable`: the whole release is missing, or only this platform's build. */
+export type ReleaseMissing = "release" | "platform";
+
 export class ReleaseVerificationError extends Error {
   readonly code: ReleaseErrorCode;
-  constructor(message: string, code: ReleaseErrorCode = "verification") {
+  readonly missing: ReleaseMissing | null;
+  constructor(
+    message: string,
+    code: ReleaseErrorCode = "verification",
+    missing: ReleaseMissing | null = null,
+  ) {
     super(message);
     this.name = "ReleaseVerificationError";
     this.code = code;
+    this.missing = missing;
   }
 }
 
@@ -83,14 +92,17 @@ export type ReleaseSource = {
   /** The GitHub releases API listing (test mode: `<base>/api/releases.json`). */
   apiUrl: string;
   pubkeyB64: string;
+  /** Proxy settings (HTTPS_PROXY, NO_PROXY, ...); default process.env. */
+  env?: NodeJS.ProcessEnv;
 };
 
-function productionSource(): ReleaseSource {
+function productionSource(env: NodeJS.ProcessEnv): ReleaseSource {
   return {
     testMode: false,
     baseUrl: PRODUCTION_RELEASES_BASE,
     apiUrl: GITHUB_RELEASES_URL,
     pubkeyB64: RELEASE_MINISIGN_PUBKEY,
+    env,
   };
 }
 
@@ -110,14 +122,14 @@ export function resolveReleaseSource(params: {
   const baseOverride = env[INSTALL_BASE_URL_ENV]?.trim() ?? "";
   const keyOverride = env[INSTALL_TEST_PUBKEY_ENV]?.trim() ?? "";
   if (!baseOverride && !keyOverride) {
-    return productionSource();
+    return productionSource(env);
   }
   if (!params.allowTestMode) {
     // The gateway (update.run, the Control UI) never honours these.
     params.warn?.(
       `${INSTALL_BASE_URL_ENV} / ${INSTALL_TEST_PUBKEY_ENV} are ignored here: test mode exists only for the CLI. Using GitHub Releases and the pinned key.`,
     );
-    return productionSource();
+    return productionSource(env);
   }
   if (env[INSTALL_TEST_MODE_ENV] !== "1") {
     throw new ReleaseVerificationError(
@@ -145,6 +157,7 @@ export function resolveReleaseSource(params: {
     baseUrl,
     apiUrl: `${baseUrl}/api/releases.json`,
     pubkeyB64: keyOverride || RELEASE_MINISIGN_PUBKEY,
+    env,
   };
 }
 
@@ -173,14 +186,15 @@ function httpGet(
   url: string,
   headers: Record<string, string>,
   timeoutMs: number,
+  env: NodeJS.ProcessEnv | undefined,
 ): Promise<http.IncomingMessage> {
-  const get = url.startsWith("https:") ? https.get : http.get;
-  return new Promise((resolve, reject) => {
-    const req = get(url, { headers }, resolve);
-    req.on("error", reject);
-    req.setTimeout(Math.max(1000, Math.min(timeoutMs, 120_000)), () => {
-      req.destroy(new ReleaseVerificationError(`no data from ${url} for too long`, "network"));
-    });
+  // HTTPS_PROXY / NO_PROXY are honoured (http-proxy.ts, node: modules only).
+  return proxiedGet(url, {
+    headers,
+    timeoutMs: Math.max(1000, Math.min(timeoutMs, 120_000)),
+    env,
+    onTimeout: (req) =>
+      req.destroy(new ReleaseVerificationError(`no data from ${url} for too long`, "network")),
   });
 }
 
@@ -204,6 +218,7 @@ async function openUrl(
       current,
       { "User-Agent": "bitterbot-updater", ...headers },
       timeoutMs,
+      source.env,
     );
     const status = res.statusCode ?? 0;
     const location = res.headers.location;
@@ -306,6 +321,7 @@ export async function downloadReleaseAsset(
     throw new ReleaseVerificationError(
       `could not download ${url} (HTTP ${res.status})`,
       res.status === 404 ? "unavailable" : "network",
+      res.status === 404 ? "platform" : null,
     );
   }
   const hash = createHash("sha256");
@@ -386,6 +402,7 @@ export async function fetchVerifiedChecksums(
     throw new ReleaseVerificationError(
       `release v${version} has no ${TARBALL_CHECKSUMS_ASSET} (not a tarball release, or its signing step has not run yet)`,
       "unavailable",
+      "release",
     );
   }
   const minisig = await fetchReleaseText(
@@ -425,6 +442,7 @@ export async function fetchVerifiedChecksums(
     throw new ReleaseVerificationError(
       `${TARBALL_CHECKSUMS_ASSET} has no entry for ${asset}`,
       "unavailable",
+      "platform",
     );
   }
   return { version, checksums, tarballSha256, asset, trustedComment };

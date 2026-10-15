@@ -128,8 +128,14 @@ jobs:
     name: Build ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    # An optional platform (RELEASE_PLATFORMS[...].optional, darwin-x64 for
+    # now) may fail without blocking the release: the publish job then ships
+    # the core platforms and notes the missing one in the job summary.
+    continue-on-error: ${{ matrix.optional == true }}
     strategy:
-      fail-fast: true
+      # Not fail-fast: one platform failing must not cancel the others
+      # (an optional one is allowed to fail; a core one still fails the run).
+      fail-fast: false
       matrix:
         include:
           # 22.04 runners: the oldest glibc we can build on keeps the native
@@ -142,6 +148,7 @@ jobs:
             runner: macos-14
           - platform: darwin-x64
             runner: macos-15-intel
+            optional: true
     env:
       SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
     steps:
@@ -219,10 +226,22 @@ jobs:
           sudo apt-get update && sudo apt-get install -y minisign
           cp scripts/install.sh release/install.sh
           cd release
-          # Every platform must be present; a missing one fails the release.
-          for p in darwin-arm64 darwin-x64 linux-arm64 linux-x64; do
+          # Every core platform must be present (a missing one fails the
+          # release); an optional one (darwin-x64 for now) that did not build
+          # is left out and reported in the job summary.
+          lib="$GITHUB_WORKSPACE/scripts/release-tarball-lib.mjs"
+          required=$(node --input-type=module -e "const m = await import('file://$lib'); console.log(Object.entries(m.RELEASE_PLATFORMS).filter(([, p]) => !p.optional).map(([id]) => id).join(' '))")
+          optional=$(node --input-type=module -e "const m = await import('file://$lib'); console.log(Object.entries(m.RELEASE_PLATFORMS).filter(([, p]) => p.optional).map(([id]) => id).join(' '))")
+          for p in $required; do
             test -f "bitterbot-$VERSION-$p.tar.gz"
             test -f "bitterbot-$VERSION-$p.manifest.json"
+          done
+          for p in $optional; do
+            if [ ! -f "bitterbot-$VERSION-$p.tar.gz" ] || [ ! -f "bitterbot-$VERSION-$p.manifest.json" ]; then
+              rm -f "bitterbot-$VERSION-$p".*
+              echo "::warning::optional platform $p did not build; v$VERSION ships without it"
+              echo "- Optional platform **$p** did not build: v$VERSION ships without it (install.sh and the npm launcher report it as unavailable there)." >> "$GITHUB_STEP_SUMMARY"
+            fi
           done
           sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh > checksums.txt
           cat checksums.txt

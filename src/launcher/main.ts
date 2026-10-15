@@ -9,10 +9,20 @@
  * BITTERBOT_LAUNCHER_DEBUG=1.
  */
 
+import { fileURLToPath } from "node:url";
 import { runLauncher } from "./launcher.js";
 import { systemPlatformProbe } from "./platform.js";
 
 declare const __BITTERBOT_LAUNCHER_VERSION__: string;
+
+/** This bundle's own file (also when started through a dist/ compat shim). */
+function launcherFile(): string | null {
+  try {
+    return fileURLToPath(import.meta.url);
+  } catch {
+    return null;
+  }
+}
 
 const version =
   typeof __BITTERBOT_LAUNCHER_VERSION__ === "string" ? __BITTERBOT_LAUNCHER_VERSION__ : "0.0.0";
@@ -22,6 +32,7 @@ runLauncher({
   env: process.env,
   version,
   probe: systemPlatformProbe(),
+  launcherPath: launcherFile(),
 }).then(
   (code) => {
     process.exitCode = code;

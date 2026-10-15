@@ -11,6 +11,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { versionInUse } from "./tarball-install.js";
 
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 /** The lock is held by someone else (`pid`, when known). */
 export class TarballLockError extends Error {
   constructor(
@@ -230,7 +239,12 @@ export function acquireTarballLock(
   throw new TarballLockError(`could not take ${lockPath}`, null);
 }
 
-/** Leftovers of interrupted updates (we hold the lock, so none is live). */
+/**
+ * Leftovers of interrupted updates (we hold the lock, so none is live):
+ * staging dirs, displaced version dirs no process uses, and temporary
+ * `.current.<pid>.<ts>` / `.previous.<pid>.<ts>` links of a swap that died
+ * between symlink and rename.
+ */
 export function removeUpdateLeftovers(appDir: string, procRoot?: string | null): void {
   let names: string[] = [];
   try {
@@ -240,6 +254,15 @@ export function removeUpdateLeftovers(appDir: string, procRoot?: string | null):
   }
   for (const name of names) {
     const full = path.join(appDir, name);
+    const swapTemp = /^\.(current|previous)\.(\d+)\.[0-9a-z]+$/.exec(name);
+    if (swapTemp) {
+      // A temporary link from swapVersionLink that an interrupted process
+      // never renamed into place; only when that process is gone.
+      if (!pidAlive(Number(swapTemp[2]))) {
+        fs.rmSync(full, { force: true });
+      }
+      continue;
+    }
     if (name.startsWith(".update-")) {
       fs.rmSync(full, { recursive: true, force: true });
     } else if (

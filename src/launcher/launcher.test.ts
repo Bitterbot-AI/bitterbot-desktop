@@ -20,7 +20,14 @@ import {
   writeVersionDir,
 } from "../test-utils/fake-tarball-release.js";
 import { makeTestMinisignKey, type TestMinisignKey } from "../test-utils/minisign.js";
-import { decideLaunch, resolveAppDir, runLauncher, type LauncherDeps } from "./launcher.js";
+import {
+  decideLaunch,
+  ownershipProblem,
+  resolveAppDir,
+  runLauncher,
+  shouldShowUpgradeHint,
+  type LauncherDeps,
+} from "./launcher.js";
 import type { PlatformProbe } from "./platform.js";
 import type { LauncherOutput } from "./progress.js";
 
@@ -28,25 +35,25 @@ const hostPlatformId = tarballPlatformId();
 const describeHost = process.platform !== "win32" && hostPlatformId ? describe : describe.skip;
 
 describe("decideLaunch", () => {
-  it("installs on a first run and when the installed app is broken", () => {
+  it("installs only when nothing usable is installed", () => {
     expect(decideLaunch({ current: null, currentRunnable: false, target: "1.6.2" })).toEqual({
       action: "install",
-      from: null,
     });
     expect(decideLaunch({ current: "1.6.1", currentRunnable: false, target: "1.6.2" })).toEqual({
       action: "install",
-      from: null,
     });
   });
 
-  it("installs the launcher's version over an older app (npm update of the launcher)", () => {
+  it("runs an older installed app and only notes the newer launcher version (no forced upgrade)", () => {
     expect(decideLaunch({ current: "1.6.1", currentRunnable: true, target: "1.6.2" })).toEqual({
-      action: "install",
-      from: "1.6.1",
+      action: "run",
+      version: "1.6.1",
+      newer: "1.6.2",
     });
     expect(decideLaunch({ current: "1.9.0", currentRunnable: true, target: "1.10.0" })).toEqual({
-      action: "install",
-      from: "1.9.0",
+      action: "run",
+      version: "1.9.0",
+      newer: "1.10.0",
     });
   });
 
@@ -54,11 +61,51 @@ describe("decideLaunch", () => {
     expect(decideLaunch({ current: "1.6.2", currentRunnable: true, target: "1.6.2" })).toEqual({
       action: "run",
       version: "1.6.2",
+      newer: null,
     });
     expect(decideLaunch({ current: "1.10.0", currentRunnable: true, target: "1.9.9" })).toEqual({
       action: "run",
       version: "1.10.0",
+      newer: null,
     });
+  });
+});
+
+describe("shouldShowUpgradeHint", () => {
+  it("only for a person at a terminal, never for services, --version or JSON", () => {
+    expect(shouldShowUpgradeHint(["status"], true)).toBe(true);
+    expect(shouldShowUpgradeHint([], true)).toBe(true);
+    expect(shouldShowUpgradeHint(["status"], false)).toBe(false);
+    expect(shouldShowUpgradeHint(["gateway", "--port", "19001"], true)).toBe(false);
+    expect(shouldShowUpgradeHint(["--version"], true)).toBe(false);
+    expect(shouldShowUpgradeHint(["update", "status", "--json"], true)).toBe(false);
+  });
+});
+
+describe("ownershipProblem", () => {
+  it("refuses root unless BITTERBOT_ALLOW_ROOT=1, pointing at the no-sudo docs", () => {
+    const msg = ownershipProblem({ appDir: "/nonexistent/app", env: {}, uid: 0 });
+    expect(msg).toMatch(/refuses to run as root \(sudo\)/);
+    expect(msg).toContain("docs/start/npm.md#eacces-permission-denied");
+    expect(
+      ownershipProblem({ appDir: "/nonexistent/app", env: { BITTERBOT_ALLOW_ROOT: "1" }, uid: 0 }),
+    ).toBeNull();
+    expect(ownershipProblem({ appDir: "/nonexistent/app", env: {}, uid: null })).toBeNull();
+  });
+
+  it("refuses an app dir (or its parent) owned by another user", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-owner-"));
+    try {
+      const appDir = path.join(dir, "app");
+      const mine = fs.statSync(dir).uid;
+      expect(ownershipProblem({ appDir, env: {}, uid: mine })).toBeNull();
+      const msg = ownershipProblem({ appDir, env: {}, uid: mine + 4242 });
+      expect(msg).toMatch(/belongs to another user/);
+      expect(msg).toContain("sudo chown -R");
+      expect(msg).toContain("eacces-permission-denied");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -159,6 +206,8 @@ describeHost("runLauncher", () => {
       run: { spawn: fakeSpawn(calls) },
       procRoot: null,
       sleep: async () => {},
+      interactive: false,
+      launcherPath: "/npm/lib/node_modules/bitterbot/bitterbot.mjs",
       ...overrides,
     });
   }
@@ -178,6 +227,17 @@ describeHost("runLauncher", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]!.command).toBe(path.join(appDir, "current", "bin", "bitterbot"));
     expect(calls[0]!.args).toEqual(["gateway", "--port", "19001"]);
+    // The app (and doctor) can tell npm owns the `bitterbot` command.
+    expect(calls[0]!.env.BITTERBOT_LAUNCHED_BY).toBe("npm");
+    expect(calls[0]!.env.BITTERBOT_NPM_LAUNCHER).toBe(
+      "/npm/lib/node_modules/bitterbot/bitterbot.mjs",
+    );
+    expect(
+      JSON.parse(fs.readFileSync(path.join(appDir, ".npm-launcher.json"), "utf8")),
+    ).toMatchObject({
+      launcher: "/npm/lib/node_modules/bitterbot/bitterbot.mjs",
+      version: "1.6.2",
+    });
   });
 
   it("does not hand the app stale install-kind variables", async () => {
@@ -205,28 +265,31 @@ describeHost("runLauncher", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("catches an older app up to the launcher's version and keeps it as previous", async () => {
+  it("never replaces an older installed app (a rollback sticks); hints only at a terminal", async () => {
     installed("1.6.1");
     publish("1.6.2");
     expect(await launch()).toBe(0);
-    expect(readVersionLink(appDir, "current")).toBe("1.6.2");
-    expect(readVersionLink(appDir, "previous")).toBe("1.6.1");
-    expect(out.lines[0]).toMatch(/updating from 1\.6\.1/);
+    expect(readVersionLink(appDir, "current")).toBe("1.6.1");
+    expect(fs.existsSync(path.join(appDir, "1.6.2"))).toBe(false);
+    expect(out.lines).toEqual([]);
+    expect(calls).toHaveLength(1);
+
+    const hinted = captureOutput();
+    expect(await launch({ interactive: true, argv: ["status"], output: hinted.output })).toBe(0);
+    expect(hinted.lines).toEqual([
+      "Bitterbot 1.6.2 is available (you have 1.6.1). Run `bitterbot update` to upgrade safely.",
+    ]);
+    expect(readVersionLink(appDir, "current")).toBe("1.6.1");
+
+    // A gateway start (a service) never gets the hint, even at a terminal.
+    const quiet = captureOutput();
+    await launch({ interactive: true, output: quiet.output });
+    expect(quiet.lines).toEqual([]);
   });
 
   it("propagates the app's exit code", async () => {
     installed("1.6.2");
     expect(await launch({ run: { spawn: fakeSpawn(calls, 3) } })).toBe(3);
-  });
-
-  it("offline with an older app installed: says so and runs it", async () => {
-    installed("1.6.1");
-    expect(await launch()).toBe(0);
-    expect(readVersionLink(appDir, "current")).toBe("1.6.1");
-    expect(out.lines.join("\n")).toMatch(
-      /could not be installed right now .*running the installed 1\.6\.1/,
-    );
-    expect(calls).toHaveLength(1);
   });
 
   it("offline with nothing installed: one clear message, exit 1, nothing run", async () => {
@@ -250,14 +313,13 @@ describeHost("runLauncher", () => {
   ];
 
   for (const [what, opts, reason] of refusals) {
-    it(`refuses ${what}, changes nothing and does not fall back to the installed app`, async () => {
-      installed("1.6.1");
+    it(`refuses ${what} and installs nothing`, async () => {
       publish("1.6.2", opts);
       expect(await launch()).toBe(1);
       const text = out.lines.join("\n");
       expect(text).toMatch(/^Refusing to install Bitterbot 1\.6\.2: /m);
       expect(text).toMatch(reason);
-      expect(readVersionLink(appDir, "current")).toBe("1.6.1");
+      expect(readVersionLink(appDir, "current")).toBeNull();
       expect(fs.existsSync(path.join(appDir, "1.6.2"))).toBe(false);
       expect(calls).toEqual([]);
     });
@@ -309,7 +371,20 @@ describeHost("runLauncher", () => {
       signTestMinisign(key, checksums, "v1.6.2 checksums"),
     );
     expect(await launch()).toBe(1);
-    expect(out.lines.join("\n")).toMatch(/has no signed release build for/);
+    expect(out.lines.join("\n")).toMatch(/has no release build for .* yet/);
+  });
+
+  it("a release that is not on GitHub yet says so (not a platform problem)", async () => {
+    expect(await launch()).toBe(1);
+    expect(out.lines.join("\n")).toMatch(/Bitterbot 1\.6\.2 was not found on GitHub Releases yet/);
+  });
+
+  it("refuses to run as root, before touching anything", async () => {
+    publish("1.6.2");
+    expect(await launch({ uid: 0 })).toBe(1);
+    expect(out.lines.join("\n")).toMatch(/refuses to run as root/);
+    expect(fs.existsSync(appDir)).toBe(false);
+    expect(calls).toEqual([]);
   });
 
   it("waits for another install holding the lock, then runs what it installed", async () => {

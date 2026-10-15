@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="docs/public/Bitterbot_logo.svg" alt="Bitterbot logo" width="72">
+  <img src="https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docs/public/Bitterbot_logo.svg" alt="Bitterbot logo" width="72">
 </p>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/public/bitterbot-title-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/public/bitterbot-title-light.svg">
-    <img src="docs/public/bitterbot-title-light.svg" alt="bitterbot" height="48">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docs/public/bitterbot-title-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docs/public/bitterbot-title-light.svg">
+    <img src="https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docs/public/bitterbot-title-light.svg" alt="bitterbot" height="48">
   </picture>
 </p>
 
@@ -20,7 +20,7 @@
   <a href="https://github.com/Bitterbot-AI/bitterbot-desktop/releases"><img src="https://img.shields.io/github/v/release/Bitterbot-AI/bitterbot-desktop?filter=v*&label=version&color=7c3aed&style=flat-square" alt="Version"></a>
   <a href="https://www.npmjs.com/package/bitterbot"><img src="https://img.shields.io/npm/v/bitterbot?label=npm&color=8b5cf6&style=flat-square" alt="npm"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-a855f7?style=flat-square" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/node-%E2%89%A5%2022.12-c084fc?style=flat-square&logo=node.js&logoColor=white" alt="Node >= 22.12">
+  <img src="https://img.shields.io/badge/npm%20launcher-node%20%E2%89%A5%2018-c084fc?style=flat-square&logo=node.js&logoColor=white" alt="npm launcher: Node >= 18 (the installer needs no Node)">
   <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20WSL2-9333ea?style=flat-square" alt="macOS, Linux, Windows through WSL2">
   <a href="https://x.com/Bitterbot_AI"><img src="https://img.shields.io/badge/@Bitterbot__AI-000000?style=flat-square&logo=x&logoColor=white" alt="X / Twitter"></a>
 </p>
@@ -35,7 +35,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/public/bitterbot-hero.gif" alt="Bitterbot in action: chat with your agent and explore its Dream Engine" width="880">
+  <img src="https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/docs/public/bitterbot-hero.gif" alt="Bitterbot in action: chat with your agent and explore its Dream Engine" width="880">
 </p>
 
 **Build a history with your AI. Keep what it learns.**
