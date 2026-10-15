@@ -93,20 +93,24 @@ describe("ownershipProblem", () => {
     expect(ownershipProblem({ appDir: "/nonexistent/app", env: {}, uid: null })).toBeNull();
   });
 
-  it("refuses an app dir (or its parent) owned by another user", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-owner-"));
-    try {
-      const appDir = path.join(dir, "app");
-      const mine = fs.statSync(dir).uid;
-      expect(ownershipProblem({ appDir, env: {}, uid: mine })).toBeNull();
-      const msg = ownershipProblem({ appDir, env: {}, uid: mine + 4242 });
-      expect(msg).toMatch(/belongs to another user/);
-      expect(msg).toContain("sudo chown -R");
-      expect(msg).toContain("eacces-permission-denied");
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  // Windows reports uid 0 for every file, and the launcher refuses Windows anyway.
+  it.skipIf(process.platform === "win32")(
+    "refuses an app dir (or its parent) owned by another user",
+    () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bb-owner-"));
+      try {
+        const appDir = path.join(dir, "app");
+        const mine = fs.statSync(dir).uid;
+        expect(ownershipProblem({ appDir, env: {}, uid: mine })).toBeNull();
+        const msg = ownershipProblem({ appDir, env: {}, uid: mine + 4242 });
+        expect(msg).toMatch(/belongs to another user/);
+        expect(msg).toContain("sudo chown -R");
+        expect(msg).toContain("eacces-permission-denied");
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("resolveAppDir", () => {
