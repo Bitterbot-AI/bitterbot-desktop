@@ -1,6 +1,6 @@
 ---
 title: "npm Publishing"
-summary: "How the bitterbot npm package is published: trusted publishing from GitHub Actions, the approval gate, the publish-time manifest and shrinkwrap, and the one-time npmjs.com setup"
+summary: "How the bitterbot npm package (a launcher for the signed release tarball) is published: trusted publishing from GitHub Actions, the asset wait, the approval gate, and the one-time npmjs.com setup"
 read_when:
   - Setting up or changing npm trusted publishing for the bitterbot package
   - Publishing a release to npm by hand
@@ -13,6 +13,15 @@ The `bitterbot` package on npm is published by GitHub Actions with
 [npm trusted publishing](https://docs.npmjs.com/trusted-publishers) (OIDC).
 No npm token exists anywhere: npm accepts a publish only from the trusted
 workflow, and the workflow publishes only after a maintainer approves it.
+
+Since 1.6.2 the package is a launcher, not the app: one bundled file
+(`bitterbot.mjs`, built from `src/launcher/` with only `node:` imports), two
+compatibility shims, the README and the license, with no dependencies and
+no scripts. On first run it installs the release's signed per-platform
+tarball (the one `install.sh` installs) and runs it. npm 12 blocks install
+scripts on global installs and a package cannot approve its own, and the
+full 1.6.0/1.6.1 package (about 1,500 packages, 2.3 GB) took half an hour to
+install with dozens of warnings; the launcher installs in seconds with none.
 
 ## Pieces
 
@@ -29,12 +38,13 @@ The workflow is `.github/workflows/npm-publish.yml`. Its triggers:
 
 - `release: types: [published]`: a release published by hand. Only `vX.Y.Z`
   tags publish; `orchestrator-v*` and `desktop-v*` releases are skipped.
-- `workflow_dispatch` with a `tag` input (for example `v1.6.0`): publish an
+- `workflow_dispatch` with a `tag` input (for example `v1.6.2`): publish an
   existing release. `release-please.yml` dispatches this for every release it
-  creates, because a release created with the default `GITHUB_TOKEN` never
-  fires `release` events (a dispatch is the exception). The dispatch keeps
-  `npm-publish.yml` as the workflow npm sees, so one trusted publisher entry
-  covers both paths.
+  creates, after its `release-tarball` job has uploaded the signed assets and
+  published the release, because a release created with the default
+  `GITHUB_TOKEN` never fires `release` events (a dispatch is the exception).
+  The dispatch keeps `npm-publish.yml` as the workflow npm sees, so one
+  trusted publisher entry covers both paths.
 
 ## One-time setup
 
@@ -58,73 +68,87 @@ either name changes in the repo.
 
 ## What a publish run does
 
-The job checks out the release tag, so the package is built from the
-released code, and then:
+The `assets` job (no approval needed) resolves the tag and waits, for up to
+two hours, until every platform's tarball, `checksums.txt` and
+`checksums.txt.minisig` answer on the public
+`releases/download/v<version>/` URLs the launcher downloads from (a draft
+release does not). A launcher must never reach npm before the release it
+installs. It then builds the launcher from the tag and runs it in
+production mode (GitHub Releases, the pinned key, no overrides) on a clean
+`HOME`: it must install the public linux-x64 release and print the version.
+
+The `publish` job checks out the release tag and then:
 
 1. Checks that `package.json` `version` equals the tag.
 2. Upgrades npm to 11.x and checks it is at least 11.5.1 (trusted
    publishing needs it; Node 22 ships npm 10).
 3. Skips cleanly (green, nothing published) when that version is already on
    npm, so re-running or double-triggering is safe.
-4. `pnpm install --frozen-lockfile` and `pnpm build`.
-5. `node --import tsx scripts/npm-package.ts prepare`, which rewrites
-   `package.json` for npm and writes `npm-shrinkwrap.json` (below).
-6. `pnpm release:check --npm-publish`: the pack-content gate, plus the npm
-   manifest and shrinkwrap checks.
+4. `pnpm install --frozen-lockfile` (for esbuild and tsx only; the app itself
+   is not built here, it ships in the release tarball).
+5. `node --import tsx scripts/npm-package.ts prepare --out <dir>`, which
+   writes the launcher package into its own directory (below).
+6. `pnpm release:check --npm-publish --dir <dir>`: exactly the expected
+   files, no dependencies, no scripts, a bundle that imports only `node:`
+   built-ins, under 512 KB.
 7. Waits for the `npm` environment approval (the job starts only after it).
-8. `npm publish --provenance --access public --ignore-scripts`, then waits
-   until the registry serves the new version (polls every 30 seconds for up
-   to 25 minutes: npm took about 15 minutes to serve the 67 MB 1.6.0
-   package). If that wait runs out, the publish itself still happened: do
-   not publish again. Once `npm view bitterbot@<version> version` answers,
-   a re-run skips the publish (step 3) and goes green.
+8. `npm publish --provenance --access public --ignore-scripts` from that
+   directory, then waits until the registry serves the new version (polls
+   every 30 seconds for up to 15 minutes). If that wait runs out, the publish
+   itself still happened: do not publish again. Once
+   `npm view bitterbot@<version> version` answers, a re-run skips the
+   publish (step 3) and goes green.
 
 The CI job "npm package install" (`.github/workflows/ci.yml`, every push and
-pull request) runs steps 4 to 6, packs, installs the tarball with plain
-`npm install -g` into a clean prefix and `HOME`, and boots the installed
-copy: `--version`, `doctor`, `update status`, and a gateway that serves the
-Control UI and starts the orchestrator the postinstall downloaded.
+pull request) builds and gates the same package, installs it with npm 12
+into a clean prefix and `HOME`, and fails on any `npm warn`, deprecation,
+install-script or allow-scripts line, or any installed dependency. Then it
+runs the installed launcher against a fixture release signed with a
+throwaway key (test mode, which only accepts a loopback or `file://` URL):
+`bitterbot --version`, and the same through the `dist/index.js` and
+`dist/entry.js` shims. The "Release tarball + install.sh" job runs the
+launcher against the real linux-x64 tarball it builds.
 
-## The publish-time manifest
+## The launcher package
 
-`scripts/npm-package.ts prepare` changes two things that cannot live in the
-committed `package.json`:
+`scripts/npm-package.ts prepare --out <dir>` leaves the repo's
+`package.json` alone (it stays the source and release-tarball manifest, with
+the pnpm-only `preinstall` and `postinstall` hooks) and writes:
 
-- **Optional native peers.** `node-llama-cpp` and `@napi-rs/canvas` are
-  marked optional in `peerDependenciesMeta`, so npm does not download them
-  (node-llama-cpp is about 700 MB of GPU builds on Linux x64). The committed
-  file cannot say this: pnpm's `autoInstallPeers` skips optional peers, which
-  would drop node-llama-cpp from source checkouts, the Docker image and the
-  release tarball.
-- **npm-shrinkwrap.json.** npm reads `overrides` only from the root project,
-  and for `npm install -g bitterbot` the root is npm's global prefix, so the
-  committed `overrides` field protects nobody who installs from the
-  registry. The shrinkwrap is resolved with the overrides applied, checked
-  so every copy of an overridden package has the pinned version, and
-  published inside the package, where npm honours it.
+- `package.json`: name, version (the release the launcher installs), `bin`,
+  `engines.node` `>=18` (the launcher only downloads; the app brings its own
+  Node), `type: module`, and nothing that makes npm install or run anything.
+- `bitterbot.mjs`: the launcher, bundled by esbuild with the version built
+  in.
+- `dist/index.js` and `dist/entry.js`: compatibility shims. A gateway
+  service installed from the 1.6.0 or 1.6.1 package runs
+  `node <package>/dist/index.js gateway ...`, and the 1.6.x updater runs
+  `node <package>/dist/entry.js doctor` right after `npm i -g`. After that
+  update both paths forward to the launcher, which installs the release and
+  runs it.
+- `README.md` and `LICENSE`.
 
-The security overrides are kept in two places, `pnpm-workspace.yaml`
-(pnpm) and `package.json` `overrides` (npm); `src/infra/npm-package.test.ts`
-fails when they drift. For a package that is also a direct dependency npm
-requires the `"$name"` form, which resolves to the direct dependency's
-exact version; the test requires that version to be at or above the pnpm
-pin.
+The launcher verifies exactly like `install.sh` and `bitterbot update`, with
+the same code (`src/infra/tarball-release.ts`, `tarball-install.ts`,
+`tarball-lock.ts`): minisign over `checksums.txt` with the pinned key, the
+exact `v<version> checksums` trusted comment, then the tarball's SHA-256.
 
 ## Publishing an existing release by hand
 
 ```bash
-gh workflow run npm-publish.yml --repo Bitterbot-AI/bitterbot-desktop -f tag=v1.6.0
+gh workflow run npm-publish.yml --repo Bitterbot-AI/bitterbot-desktop -f tag=v1.6.2
 ```
 
 Then approve the run under Actions (the `npm` environment). The tag must
-contain `scripts/npm-package.ts`, so releases older than 1.6.0 cannot be
-published this way.
+contain the launcher (`scripts/npm-package.ts prepare --out`), so releases
+older than 1.6.2 cannot be published this way.
 
 ## Install hooks
 
-`preinstall` (`scripts/preinstall-check.mjs`) and `postinstall`
-(`scripts/fetch-orchestrator.mjs`, which imports
-`scripts/orchestrator-signature.mjs` and reads `orchestrator/Cargo.toml`)
-run on every user's machine, so those files are in `files`.
-`pnpm release:check` fails the pack when an install hook runs a file that is
-not packed, imports one that is not packed, or needs pnpm or tsx.
+The published launcher has none. The repo's `preinstall`
+(`scripts/preinstall-check.mjs`) and `postinstall`
+(`scripts/fetch-orchestrator.mjs`) run only for pnpm source installs (the
+release tarball build skips them by environment). `pnpm release:check`
+still checks the app file list the release tarball copies: it fails when a
+hook runs a file that is not in it, imports one that is not, or needs pnpm
+or tsx.

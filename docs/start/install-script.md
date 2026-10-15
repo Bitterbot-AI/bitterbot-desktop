@@ -14,8 +14,9 @@ title: "Installer (laptops)"
 For a laptop or desktop, the installer is the shortest path: it downloads a
 prebuilt, signed release for your machine and needs nothing installed first
 (no Node, no pnpm, no compiler). For an always-on server, use
-[Docker](/platforms/docker) instead. Already running Node 22.12 or newer?
-[`npm install -g bitterbot`](/start/npm) works too.
+[Docker](/platforms/docker) instead. Prefer npm?
+[`npm install -g bitterbot`](/start/npm) installs a small launcher that
+downloads this same signed release on first run.
 
 ```bash
 curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
@@ -52,7 +53,7 @@ switches a running gateway over (see
 | Linux x64 (glibc 2.28+)   | yes       |                                        |
 | Linux arm64 (glibc 2.28+) | yes       |                                        |
 | macOS, Apple silicon      | yes       |                                        |
-| macOS, Intel              | no        | [Docker Desktop](/platforms/docker)    |
+| macOS, Intel              | yes       |                                        |
 | Linux with musl (Alpine)  | no        | [Docker](/platforms/docker)            |
 | Windows                   | via WSL2  | [install.ps1](#windows-wsl2) or Docker |
 
@@ -416,11 +417,15 @@ want to delete your config, memory and keys.
 ## Windows (WSL2)
 
 Bitterbot's release tarballs are built for Linux and macOS. On Windows,
-`install.ps1` runs the Linux installer inside WSL2:
+`install.ps1` runs the Linux installer inside WSL2. Open **PowerShell** (not
+Ubuntu/WSL) and run:
 
 ```powershell
 irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
 ```
+
+Already in an Ubuntu/WSL terminal? Use the Linux one-liner at the top of this
+page instead, and run it from your Linux home (`cd ~`), not from `/mnt/c`.
 
 It downloads `install.sh` from the latest release as well, finds your default WSL2
 distribution, prints its plan, and runs that installer inside it, so Bitterbot lives in your Linux home

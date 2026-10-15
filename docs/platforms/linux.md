@@ -25,7 +25,7 @@ Native Linux companion apps are planned. Contributions are welcome if you want t
 
 On a Linux laptop or desktop (x64 or arm64, glibc), the
 [installer](/start/install-script) is the shorter path (update with
-`bitterbot update`); with Node 22.12 or newer, `npm install -g bitterbot`
+`bitterbot update`); with Node 18 or newer, `npm install -g bitterbot`
 works too (see [npm package](/start/npm)). A source checkout
 (`git clone`, `bash scripts/setup-deps.sh`, `pnpm install`,
 `pnpm bitterbot onboard --install-daemon`) is for development.

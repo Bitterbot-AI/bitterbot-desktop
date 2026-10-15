@@ -245,6 +245,8 @@ export async function runBrowserOnboarding(
   // never runs the real process inspection.
   const checkGateway =
     deps.checkGateway ?? (deps.isListening || surface.inContainer ? null : defaultCheckGateway);
+  // Set after a successful `gateway switch` here: an upgrade, not a setup.
+  let switchedTo: { version: string | null } | null = null;
   if (listening && checkGateway) {
     const check = await checkGateway(port).catch(() => null);
     if (check?.blocked) {
@@ -269,6 +271,7 @@ export async function runBrowserOnboarding(
       if (code !== 0) {
         return null;
       }
+      switchedTo = { version: check.version };
     }
   }
   // A browser setup that lost its session before Finish is not "set up".
@@ -308,7 +311,17 @@ export async function runBrowserOnboarding(
   }
 
   let url: string;
-  if (alreadySetUp && opts.fromInstaller) {
+  if (alreadySetUp && switchedTo) {
+    // Just switched a set-up install to this version: that is an upgrade,
+    // so open the app, not the "run setup again" page.
+    url = buildControlUiUrl({ port, basePath });
+    runtime.log(
+      [
+        `You're now on Bitterbot ${switchedTo.version ?? "(this version)"}.`,
+        `Open Bitterbot: ${url}`,
+      ].join("\n"),
+    );
+  } else if (alreadySetUp && opts.fromInstaller) {
     // Straight from install.sh: no "already set up" detour, just the app.
     url = buildControlUiUrl({ port, basePath });
     runtime.log(`Open Bitterbot: ${url}`);

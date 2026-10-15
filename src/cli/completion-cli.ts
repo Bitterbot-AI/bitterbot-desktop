@@ -54,13 +54,37 @@ export function resolveCompletionCachePath(shell: CompletionShell, binName: stri
   return path.join(resolveCompletionCacheDir(), `${basename}.${extension}`);
 }
 
-/** Check if the completion cache file exists for the given shell. */
+/**
+ * Marks a zsh completion script whose `compdef` is guarded. Cached files
+ * written before the guard (an unguarded `compdef` at the end) print
+ * "command not found: compdef" in shells without compinit; a cache without
+ * this marker counts as missing, so doctor, onboarding and `bitterbot update`
+ * regenerate it.
+ */
+export const ZSH_COMPDEF_GUARD_MARKER = "# bitterbot-completion: compdef guarded (v1)";
+
+/** True when a cached completion script is from before a fix that requires regenerating it. */
+export function isCompletionCacheOutdated(shell: CompletionShell, content: string): boolean {
+  return shell === "zsh" && !content.includes(ZSH_COMPDEF_GUARD_MARKER);
+}
+
+/**
+ * Check if a usable completion cache file exists for the given shell (an
+ * outdated one, see isCompletionCacheOutdated, does not count).
+ */
 export async function completionCacheExists(
   shell: CompletionShell,
   binName = "bitterbot",
 ): Promise<boolean> {
   const cachePath = resolveCompletionCachePath(shell, binName);
-  return pathExists(cachePath);
+  if (!(await pathExists(cachePath))) {
+    return false;
+  }
+  try {
+    return !isCompletionCacheOutdated(shell, await fs.readFile(cachePath, "utf-8"));
+  } catch {
+    return false;
+  }
 }
 
 function getCompletionScript(shell: CompletionShell, program: Command): string {
@@ -365,7 +389,8 @@ export async function installCompletion(shell: string, yes: boolean, binName = "
   }
 }
 
-function generateZshCompletion(program: Command): string {
+/** @internal exported for tests */
+export function generateZshCompletion(program: Command): string {
   const rootCmd = program.name();
   const script = `
 #compdef ${rootCmd}
@@ -390,7 +415,16 @@ _${rootCmd}_root_completion() {
 
 ${generateZshSubcommands(program, rootCmd)}
 
-compdef _${rootCmd}_root_completion ${rootCmd}
+${ZSH_COMPDEF_GUARD_MARKER}
+# compdef exists only after compinit. Sourced before it (plain zsh, conda,
+# some frameworks), a bare compdef prints "command not found: compdef":
+# load the completion system first, and register only if that worked.
+if ! (( $+functions[compdef] )); then
+  autoload -Uz compinit && compinit -i
+fi
+if (( $+functions[compdef] )); then
+  compdef _${rootCmd}_root_completion ${rootCmd}
+fi
 `;
   return script;
 }

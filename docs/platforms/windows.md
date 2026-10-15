@@ -19,10 +19,17 @@ WSL) is not available yet; native companion apps are planned.
 
 ## Install with install.ps1 (WSL2)
 
-In PowerShell (no administrator needed):
+Open **PowerShell** (not Ubuntu/WSL) and run this (no administrator needed):
 
 ```powershell
 irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
+```
+
+Already in an Ubuntu/WSL terminal? Use the Linux line instead, and run it
+from your Linux home (`cd ~`), not from `/mnt/c`:
+
+```bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
 The script finds your default WSL2 distribution, prints its plan, and runs the
@@ -179,7 +186,7 @@ inside WSL, or run `install.ps1` from PowerShell (above), which does the same:
 curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
-With Node 22.12 or newer inside WSL, `npm install -g bitterbot && bitterbot onboard`
+With Node 18 or newer inside WSL, `npm install -g bitterbot && bitterbot onboard`
 works too (see [npm package](/start/npm)). Either way,
 update later with `bitterbot update` inside WSL.
 

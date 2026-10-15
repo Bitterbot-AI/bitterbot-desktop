@@ -350,6 +350,37 @@ jobs:
           nohup python3 -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/releases"             > "$RUNNER_TEMP/http.log" 2>&1 &
           for i in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8765/ && break; sleep 0.5; done
 
+      # The npm package (a launcher, scripts/npm-package.ts) on the REAL
+      # tarball: `npm install -g` it, then its first run must verify, install
+      # and run this build exactly as install.sh would lay it out.
+      - name: npm launcher installs the real release tarball on first run
+        run: |
+          set -euo pipefail
+          node --import tsx scripts/npm-package.ts prepare --out "$RUNNER_TEMP/npm-package"
+          pnpm release:check --npm-publish --dir "$RUNNER_TEMP/npm-package"
+          mkdir -p "$RUNNER_TEMP/npm-pack"
+          (cd "$RUNNER_TEMP/npm-package" && npm pack --pack-destination "$RUNNER_TEMP/npm-pack")
+          export HOME="$RUNNER_TEMP/home-npm" && mkdir -p "$HOME"
+          npm install -g --prefix "$RUNNER_TEMP/npmg" "$RUNNER_TEMP"/npm-pack/bitterbot-*.tgz
+          export PATH="$RUNNER_TEMP/npmg/bin:$PATH" BITTERBOT_INSTALL_TEST_MODE=1 \
+            BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
+          v=$(bitterbot --version 2> "$RUNNER_TEMP/npm-launcher.err" | tail -1)
+          cat "$RUNNER_TEMP/npm-launcher.err"
+          echo "bitterbot --version -> $v"
+          echo "$v" | grep -qw "$VERSION"
+          grep -q "Verified and installed to ~/.bitterbot/app/$VERSION." "$RUNNER_TEMP/npm-launcher.err"
+          [ "$(readlink "$HOME/.bitterbot/app/current")" = "$VERSION" ]
+          test -x "$HOME/.bitterbot/app/current/runtime/node/bin/node"
+          # npm owns the `bitterbot` command here: no ~/.local/bin link.
+          test ! -e "$HOME/.local/bin/bitterbot"
+          # The app it runs is a release-tarball install (`bitterbot update` updates it in place).
+          env -u BITTERBOT_INSTALL_TEST_MODE -u BITTERBOT_INSTALL_BASE_URL -u BITTERBOT_INSTALL_TEST_PUBKEY \
+            bitterbot update status --json > "$RUNNER_TEMP/npm-update-status.json"
+          node -e '
+            const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            if (s.update.installKind !== "tarball") throw new Error("installKind " + s.update.installKind);
+          ' "$RUNNER_TEMP/npm-update-status.json"
+
       - name: Production mode refuses the test key and the local URL
         run: |
           set +e -uo pipefail
@@ -660,6 +691,57 @@ jobs:
           cat "$RUNNER_TEMP/home/.bitterbot/boot-watchdog.log" || true
           ls -la "$RUNNER_TEMP/home/.bitterbot/app" || true
 
+  release-tarball-darwin-x64:
+    # The Intel macOS release tarball (darwin-x64, new in 1.6.2) is built on
+    # a runner nothing else uses. Build it from this tree exactly as
+    # release-tarball.yml does (no signing, no upload): build-release-tarball
+    # installs the x64 native prebuilds (sharp, sqlite-vec, @lydell/node-pty,
+    # node-llama-cpp mac-x64), fetches the verified darwin-x64 orchestrator and
+    # Node runtime, and loads every native package with the bundled Node.
+    # Then the unpacked tarball must run.
+    name: Release tarball (darwin-x64 build)
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        env:
+          BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build the darwin-x64 release tarball (native packages load-checked with the bundled Node)
+        run: |
+          set -euo pipefail
+          [ "$(node -p 'process.platform + "-" + process.arch')" = "darwin-x64" ]
+          export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          node scripts/build-release-tarball.mjs --out "$RUNNER_TEMP/release-out"
+          ls -lh "$RUNNER_TEMP"/release-out/
+
+      - name: The unpacked tarball runs
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p 'require("./package.json").version')
+          mkdir -p "$RUNNER_TEMP/unpacked"
+          tar -xzf "$RUNNER_TEMP/release-out/bitterbot-$VERSION-darwin-x64.tar.gz" -C "$RUNNER_TEMP/unpacked"
+          root="$RUNNER_TEMP/unpacked/bitterbot-$VERSION-darwin-x64"
+          file "$root/runtime/node/bin/node" | grep -q x86_64
+          file "$root/bin/bitterbot-orchestrator" | grep -q x86_64
+          export HOME="$RUNNER_TEMP/home" && mkdir -p "$HOME"
+          v=$("$root/bin/bitterbot" --version | tail -1)
+          echo "bitterbot --version -> $v"
+          echo "$v" | grep -qw "$VERSION"
+
   installer-windows:
     # PLAN-56 Phase 3b: scripts/install.ps1 hands off to install.sh inside
     # WSL2. Lint it with PSScriptAnalyzer and run it in dry-run mode on
@@ -819,16 +901,18 @@ jobs:
           [ "$ok" = "1" ]
 
   npm-package:
-    # `npm install -g bitterbot` as a user runs it: the package this tree would
-    # publish (npm-package.ts prepare: optional native peers, npm-shrinkwrap.json
-    # with the security overrides), installed with plain npm into a clean
-    # prefix and HOME, install hooks included (preinstall check, orchestrator
-    # download). Then the installed copy runs: --version, doctor, update
-    # status, and a gateway that boots with no config file and serves the
-    # Control UI. npm-publish.yml publishes exactly this shape.
+    # `npm install -g bitterbot` as a user runs it, with npm 12 (which blocks
+    # dependency install scripts on global installs by default). The package
+    # is the launcher scripts/npm-package.ts builds (what npm-publish.yml
+    # publishes): it must install with no dependency, no install script and
+    # not one `npm warn` line. Then the installed launcher runs against a
+    # fixture release signed with a throwaway key (test mode, loopback-only
+    # by design) and must install it like install.sh and run it, via the bin
+    # and via the compat shims 1.6.x services point at. The installer job
+    # below runs the same launcher against the real release tarball.
     name: npm package install
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -841,112 +925,115 @@ jobs:
 
       - name: Install dependencies
         env:
-          # The build checkout needs no orchestrator; the package install below
-          # downloads its own through the postinstall hook.
           BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
-
-      - name: Prepare the npm package (manifest + shrinkwrap) and gate it
-        run: |
-          node --import tsx scripts/npm-package.ts prepare
-          pnpm release:check --npm-publish
-
-      - name: npm pack
+      - name: Build the launcher package and gate it
         run: |
           set -euo pipefail
+          node --import tsx scripts/npm-package.ts prepare --out "$RUNNER_TEMP/npm-package"
+          pnpm release:check --npm-publish --dir "$RUNNER_TEMP/npm-package"
           mkdir -p "$RUNNER_TEMP/pack"
-          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/pack"
-          ls -lh "$RUNNER_TEMP/pack"
+          (cd "$RUNNER_TEMP/npm-package" && npm pack --pack-destination "$RUNNER_TEMP/pack")
+          ls -l "$RUNNER_TEMP/pack"
           echo "VERSION=$(node -p 'require("./package.json").version')" >> "$GITHUB_ENV"
 
-      - name: npm install -g from the tarball (plain npm, clean prefix and HOME)
+      - name: A fixture release signed with a throwaway key
         run: |
           set -euo pipefail
+          cat > "$RUNNER_TEMP/fixture.mts" <<'TS'
+          import fs from "node:fs";
+          import path from "node:path";
+          const root = process.env.GITHUB_WORKSPACE;
+          const { publishFakeRelease, writeReleasesApi } = await import(`${root}/src/test-utils/fake-tarball-release.ts`);
+          const { makeTestMinisignKey } = await import(`${root}/src/test-utils/minisign.ts`);
+          const work = process.argv[2];
+          const releases = path.join(work, "releases");
+          fs.mkdirSync(releases, { recursive: true });
+          writeReleasesApi(releases);
+          const key = makeTestMinisignKey();
+          publishFakeRelease({ releases, work, version: process.env.VERSION, platformId: "linux-x64", key });
+          fs.writeFileSync(path.join(work, "test.pub"), key.pubkeyB64);
+          TS
+          node --import tsx "$RUNNER_TEMP/fixture.mts" "$RUNNER_TEMP/fixture"
+          echo "TEST_PUBKEY=$(cat "$RUNNER_TEMP/fixture/test.pub")" >> "$GITHUB_ENV"
+
+      # The launcher's floor is Node 18 (engines >=18): the bundle must run
+      # there and install the signed fixture release.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: The launcher runs on Node 18
+        run: |
+          set -euo pipefail
+          node --version | grep -q '^v18\.'
+          export HOME="$RUNNER_TEMP/node18-home" && mkdir -p "$HOME"
+          export BITTERBOT_INSTALL_TEST_MODE=1 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY" \
+            BITTERBOT_INSTALL_BASE_URL="file://$RUNNER_TEMP/fixture/releases"
+          v=$(node "$RUNNER_TEMP/npm-package/bitterbot.mjs" --version)
+          [ "$v" = "$VERSION" ]
+          [ "$(readlink "$HOME/.bitterbot/app/current")" = "$VERSION" ]
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: npm 12 installs it with no dependency, no install script and no warning
+        run: |
+          set -euo pipefail
+          npm install -g npm@12 > /dev/null 2>&1
+          npm --version | grep -q '^12\.'
+          echo "npm $(npm --version), node $(node --version)"
           export HOME="$RUNNER_TEMP/npm-home" && mkdir -p "$HOME"
           cd "$RUNNER_TEMP"
-          npm install -g --prefix "$RUNNER_TEMP/npmg" --foreground-scripts \
-            "$RUNNER_TEMP"/pack/bitterbot-*.tgz 2>&1 | tee "$RUNNER_TEMP/npm-install.log"
-          # A package install is not nagged about pnpm or build tools.
-          grep -q "preinstall-check.*(package install)" "$RUNNER_TEMP/npm-install.log"
-          if grep -q "preinstall-check WARN" "$RUNNER_TEMP/npm-install.log"; then exit 1; fi
-          # The optional native peers are not downloaded.
-          test ! -e "$RUNNER_TEMP/npmg/lib/node_modules/bitterbot/node_modules/node-llama-cpp"
-          test ! -e "$RUNNER_TEMP/npmg/lib/node_modules/node-llama-cpp"
-          # postinstall fetched and verified the P2P orchestrator.
-          grep "\[orchestrator-fetch\]" "$RUNNER_TEMP/npm-install.log"
-          test -x "$HOME/.bitterbot/bin/bitterbot-orchestrator"
-          test -f "$HOME/.bitterbot/bin/bitterbot-orchestrator.verified.json"
-          du -sh "$RUNNER_TEMP/npmg/lib/node_modules/bitterbot"
-
-      - name: The installed copy runs (--version, doctor, update status)
-        run: |
-          set -euo pipefail
-          export HOME="$RUNNER_TEMP/npm-home" NPM_CONFIG_PREFIX="$RUNNER_TEMP/npmg"
-          export PATH="$RUNNER_TEMP/npmg/bin:$PATH"
-          cd "$RUNNER_TEMP"
-          [ "$(command -v bitterbot)" = "$RUNNER_TEMP/npmg/bin/bitterbot" ]
-          v=$(bitterbot --version | tail -1)
-          echo "bitterbot --version -> $v"
-          [ "$v" = "$VERSION" ]
-          # doctor loads dist, config, plugins and extensions; the last stdout
-          # line is the JSON report (its exit code reflects findings on a box
-          # with no model credentials, so only the report is asserted).
-          bitterbot doctor --json > "$RUNNER_TEMP/doctor.out" 2> "$RUNNER_TEMP/doctor.err" || true
-          tail -20 "$RUNNER_TEMP/doctor.err" || true
+          start=$(date +%s)
+          npm install -g --prefix "$RUNNER_TEMP/npmg" "$RUNNER_TEMP"/pack/bitterbot-*.tgz \
+            > "$RUNNER_TEMP/npm-install.log" 2>&1
+          echo "installed in $(( $(date +%s) - start ))s"
+          cat "$RUNNER_TEMP/npm-install.log"
+          if grep -iE "npm warn|allow-scripts|install script|deprecated|npm error" "$RUNNER_TEMP/npm-install.log"; then
+            echo "::error::npm install -g printed warnings or script notices (above)"; exit 1
+          fi
+          grep -Eq "added 1 package" "$RUNNER_TEMP/npm-install.log"
+          pkg="$RUNNER_TEMP/npmg/lib/node_modules/bitterbot"
+          test ! -e "$pkg/node_modules"
           node -e '
-            const lines = require("node:fs").readFileSync(process.argv[1], "utf8").split("\n").filter((l) => l.startsWith("{"));
-            const r = JSON.parse(lines[lines.length - 1]);
-            console.log(JSON.stringify(r.findings, null, 1));
-            if (r.version !== process.argv[2]) throw new Error("doctor version " + r.version);
-          ' "$RUNNER_TEMP/doctor.out" "$VERSION"
-          # A global npm install is a package install updated through npm.
-          bitterbot update status --json > "$RUNNER_TEMP/update-status.json"
-          cat "$RUNNER_TEMP/update-status.json"
-          node -e '
-            const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
-            if (s.update.installKind !== "package") throw new Error("installKind " + s.update.installKind);
-            if (s.update.packageManager !== "npm") throw new Error("packageManager " + s.update.packageManager);
-            if (s.channel.value !== "stable") throw new Error("channel " + s.channel.value);
-            if (s.update.registry && s.update.registry.source !== "npm") throw new Error("registry " + s.update.registry.source);
-          ' "$RUNNER_TEMP/update-status.json"
+            const p = require(process.argv[1] + "/package.json");
+            for (const k of ["dependencies", "optionalDependencies", "peerDependencies", "scripts"]) {
+              if (p[k] && Object.keys(p[k]).length) throw new Error("installed package.json has " + k);
+            }
+          ' "$pkg"
+          ls -la "$pkg" "$pkg/dist"
 
-      - name: Gateway boots from the npm install with no config file
+      - name: The installed launcher installs the signed fixture release and runs it
         run: |
           set -euo pipefail
           export HOME="$RUNNER_TEMP/npm-home" PATH="$RUNNER_TEMP/npmg/bin:$PATH"
-          test ! -e "$HOME/.bitterbot/bitterbot.json"
-          (cd /tmp && BITTERBOT_GATEWAY_TOKEN=ci-smoke-token nohup bitterbot gateway --allow-unconfigured \
-            --port 19021 > "$RUNNER_TEMP/gateway.log" 2>&1 &)
-          code=000
-          for i in $(seq 1 90); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ci-smoke-token" \
-              http://127.0.0.1:19021/ || true)
-            [ "$code" = "200" ] && break
-            sleep 2
-          done
-          echo "GET / -> $code"
-          tail -40 "$RUNNER_TEMP/gateway.log"
-          [ "$code" = "200" ]
-          # The Control UI came from the package's dist/control-ui.
-          curl -s -H "Authorization: Bearer ci-smoke-token" http://127.0.0.1:19021/ | grep -qi "<html"
-          # P2P is on by default: the orchestrator the postinstall fetched starts.
-          started=1
-          for i in $(seq 1 30); do
-            if grep -q "P2P orchestrator bridge started (binary: $HOME/.bitterbot/bin/bitterbot-orchestrator)" "$RUNNER_TEMP/gateway.log"; then
-              started=0; break
-            fi
-            sleep 2
-          done
-          grep -i orchestrator "$RUNNER_TEMP/gateway.log" | tail -5 || true
-          [ "$started" = "0" ]
-          # Every bundled extension loads (their dependencies are hoisted to the
-          # package root, the only node_modules npm installs).
-          if grep -i "failed to load" "$RUNNER_TEMP/gateway.log"; then exit 1; fi
-          pkill -f "^bitterbot-gateway" || true
-          pkill -f "npmg/lib/node_modules/bitterbot" || true
+          [ "$(command -v bitterbot)" = "$RUNNER_TEMP/npmg/bin/bitterbot" ]
+          # Production mode refuses the test key and the local URL.
+          if BITTERBOT_INSTALL_BASE_URL="file://$RUNNER_TEMP/fixture/releases" \
+            BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY" bitterbot --version > "$RUNNER_TEMP/refuse.log" 2>&1; then
+            echo "test overrides must be refused outside test mode"; exit 1
+          fi
+          cat "$RUNNER_TEMP/refuse.log"
+          grep -q "need BITTERBOT_INSTALL_TEST_MODE=1" "$RUNNER_TEMP/refuse.log"
+          test ! -e "$HOME/.bitterbot/app/current"
+          export BITTERBOT_INSTALL_TEST_MODE=1 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY" \
+            BITTERBOT_INSTALL_BASE_URL="file://$RUNNER_TEMP/fixture/releases"
+          bitterbot --version > "$RUNNER_TEMP/first.out" 2> "$RUNNER_TEMP/first.err"
+          cat "$RUNNER_TEMP/first.err"
+          [ "$(cat "$RUNNER_TEMP/first.out")" = "$VERSION" ]
+          grep -q "first run, downloading the signed release" "$RUNNER_TEMP/first.err"
+          grep -q "Verified and installed to ~/.bitterbot/app/$VERSION." "$RUNNER_TEMP/first.err"
+          [ "$(readlink "$HOME/.bitterbot/app/current")" = "$VERSION" ]
+          test -f "$HOME/.bitterbot/app/$VERSION/.bitterbot-install-kind"
+          # Installed: the next run starts the app with no download and no output of its own.
+          [ "$(bitterbot --version 2>&1)" = "$VERSION" ]
+          # The paths 1.6.x gateway services and `bitterbot update` run.
+          pkg="$RUNNER_TEMP/npmg/lib/node_modules/bitterbot"
+          [ "$(node "$pkg/dist/index.js" --version 2>&1)" = "$VERSION" ]
+          [ "$(node "$pkg/dist/entry.js" --version 2>&1)" = "$VERSION" ]
 
   orchestrator-check:
     # Cargo PRs were previously "green" because nothing in CI compiled the

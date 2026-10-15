@@ -47,9 +47,11 @@ export const INSTALL_HEALTH_SECTION = "Install";
 export const LOCAL_GGUF_FILE = "embeddinggemma-300m-qat-Q8_0.gguf";
 
 /**
- * The node-llama-cpp the package pins (package.json peerDependencies). npm
- * package installs leave this optional peer out (about 700 MB of GPU builds
- * on linux-x64; scripts/npm-package.ts), so doctor names the add-on command.
+ * The node-llama-cpp the package pins (package.json peerDependencies). A
+ * package install without it (the full npm package of 1.6.0/1.6.1 left this
+ * optional peer out, about 700 MB of GPU builds on linux-x64; a pnpm global
+ * install can too) gets the add-on command from doctor. The release tarball,
+ * which the npm launcher installs since 1.6.2, includes it.
  */
 export const NODE_LLAMA_CPP_VERSION = "3.15.1";
 
@@ -367,7 +369,7 @@ export function checkLocalGguf(input: InstallHealthInput): CheckResult {
     const fix =
       input.installKind === "git"
         ? "run `pnpm install` in the checkout"
-        : `run \`npm install -g node-llama-cpp@${NODE_LLAMA_CPP_VERSION}\` (an \`npm install -g bitterbot\` install leaves this optional, roughly 700 MB add-on out)`;
+        : `run \`npm install -g node-llama-cpp@${NODE_LLAMA_CPP_VERSION}\` (a full-package npm install, bitterbot 1.6.1 or older, leaves this optional, roughly 700 MB add-on out; \`npm install -g bitterbot@latest\` moves to the release build, which includes it)`;
     return warn(
       `Local embeddings: node-llama-cpp is not installed, so memory search needs a remote embeddings key (OpenAI, Gemini or Voyage). Fix: ${fix}, or add a remote key.`,
     );

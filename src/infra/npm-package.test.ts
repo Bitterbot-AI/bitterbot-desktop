@@ -1,203 +1,236 @@
 /**
- * The npm view of the package (scripts/npm-package.ts) and the repo
- * invariants that keep `npm install -g bitterbot` working: security
- * overrides in step with pnpm, optional peers, bundled extension
- * dependencies reachable from the package root, and self-contained install
- * hooks.
+ * The published npm package is the launcher (scripts/npm-package.ts,
+ * src/launcher/): no dependencies, no scripts, one bundled file with only
+ * `node:` imports, compat shims for 1.6.x installs, and a publish pipeline
+ * that runs only after the release tarballs it downloads are public.
  */
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import YAML from "yaml";
 import {
-  expectedOverrideVersions,
-  NPM_OPTIONAL_PEERS,
-  npmPublishManifest,
-  npmPublishManifestProblems,
-  overrideSyncProblems,
+  COMPAT_SHIMS,
+  compatShimSource,
+  LAUNCHER_FILE,
+  LAUNCHER_PACKAGE_FILES,
+  launcherManifest,
+  launcherManifestProblems,
+  nonBuiltinImports,
   type PackageManifest,
-  shrinkwrapInputManifest,
-  shrinkwrapOverrideViolations,
+  prepareLauncherPackage,
 } from "../../scripts/npm-package.ts";
-import { lifecycleProblems, unresolvableSpecProblems } from "../../scripts/release-check.ts";
+import { lifecycleProblems } from "../../scripts/release-check.ts";
+import { publishFakeRelease, writeReleasesApi } from "../test-utils/fake-tarball-release.js";
+import { makeTestMinisignKey } from "../test-utils/minisign.js";
+import { tarballPlatformId } from "./install-kind.js";
 
 const repoFile = (rel: string) => fileURLToPath(new URL(`../../${rel}`, import.meta.url));
 const readPkg = (): PackageManifest =>
   JSON.parse(fs.readFileSync(repoFile("package.json"), "utf8")) as PackageManifest;
 
-describe("npmPublishManifest", () => {
-  it("marks the heavy native peers optional and keeps the key beside peerDependencies", () => {
-    const out = npmPublishManifest({
-      name: "bitterbot",
-      peerDependencies: { "@napi-rs/canvas": "^0.1.89", "node-llama-cpp": "3.15.1" },
-      engines: { node: ">=22.12.0" },
-    });
-    expect(out.peerDependenciesMeta).toEqual({
-      "@napi-rs/canvas": { optional: true },
-      "node-llama-cpp": { optional: true },
-    });
-    expect(Object.keys(out)).toEqual([
-      "name",
-      "peerDependencies",
-      "peerDependenciesMeta",
-      "engines",
-    ]);
-    expect(npmPublishManifestProblems(out)).toEqual([]);
-  });
-
-  it("flags any peer npm would auto-install", () => {
-    const problems = npmPublishManifestProblems({
-      peerDependencies: { "node-llama-cpp": "3.15.1", "some-new-peer": "^1.0.0" },
-      peerDependenciesMeta: { "node-llama-cpp": { optional: true } },
-    });
-    expect(problems).toHaveLength(1);
-    expect(problems[0]).toContain("some-new-peer");
-  });
-
-  it("covers every peer the real package.json declares", () => {
+describe("launcherManifest", () => {
+  it("publishes the repo's name and version with no dependencies and no scripts", () => {
     const pkg = readPkg();
-    expect(npmPublishManifestProblems(npmPublishManifest(pkg))).toEqual([]);
-    // The committed manifest must NOT mark them optional: pnpm's
-    // autoInstallPeers skips optional peers, which would drop node-llama-cpp
-    // from source checkouts, the image and the release tarball.
-    for (const name of NPM_OPTIONAL_PEERS) {
-      expect(pkg.peerDependencies?.[name]).toBeTruthy();
-      expect(pkg.peerDependenciesMeta?.[name]).toBeUndefined();
+    // The repo manifest has both (pnpm source installs); none may leak.
+    expect(Object.keys(pkg.dependencies ?? {}).length).toBeGreaterThan(0);
+    expect(pkg.scripts?.postinstall).toBeTruthy();
+    const out = launcherManifest(pkg);
+    expect(out.name).toBe("bitterbot");
+    expect(out.version).toBe(pkg.version);
+    expect(out.bin).toEqual({ bitterbot: "bitterbot.mjs" });
+    expect(out.engines).toEqual({ node: ">=18" });
+    expect(out.type).toBe("module");
+    expect(out.files).toEqual([...LAUNCHER_PACKAGE_FILES]);
+    for (const key of [
+      "dependencies",
+      "devDependencies",
+      "peerDependencies",
+      "optionalDependencies",
+      "overrides",
+      "scripts",
+      "main",
+      "exports",
+      "pnpm",
+      "packageManager",
+    ]) {
+      expect(out).not.toHaveProperty(key);
     }
+    expect((out.repository as { url: string }).url).toBe(
+      "git+https://github.com/Bitterbot-AI/bitterbot-desktop.git",
+    );
+    expect(launcherManifestProblems(out)).toEqual([]);
   });
 
-  it("resolves the shrinkwrap without devDependencies or scripts", () => {
-    const input = shrinkwrapInputManifest({
-      name: "bitterbot",
-      scripts: { postinstall: "node x.mjs" },
-      dependencies: { a: "1.0.0" },
-      devDependencies: { vitest: "^4.0.0" },
-      overrides: { qs: "6.14.2" },
-    });
-    expect(input).toEqual({
-      name: "bitterbot",
-      dependencies: { a: "1.0.0" },
-      overrides: { qs: "6.14.2" },
-    });
+  it("names every way the manifest could make npm install or run something", () => {
+    const base = launcherManifest(readPkg());
+    expect(
+      launcherManifestProblems({
+        ...base,
+        dependencies: { chalk: "^5.0.0" },
+        scripts: { postinstall: "node x.mjs" },
+        bin: { bitterbot: "dist/entry.js" },
+        engines: { node: ">=22.12.0" },
+        main: "dist/index.js",
+      }),
+    ).toEqual([
+      "package.json has dependencies: the launcher package must have no dependencies",
+      "package.json has scripts (postinstall): the launcher package must have none",
+      'bin must be exactly { "bitterbot": "bitterbot.mjs" }',
+      'engines.node must be ">=18"',
+      'package.json must not have "main"',
+    ]);
+    expect(launcherManifestProblems({ ...base, dependencies: {} })).toEqual([]);
   });
 });
 
-describe("overrides", () => {
-  it("package.json overrides (npm) stay in step with pnpm-workspace.yaml overrides", () => {
-    const pkg = readPkg();
-    const workspace = YAML.parse(fs.readFileSync(repoFile("pnpm-workspace.yaml"), "utf8")) as {
-      overrides?: Record<string, string>;
+describe("compat shims", () => {
+  it("cover the entry points 1.6.x services and the 1.6.x updater run", () => {
+    expect([...COMPAT_SHIMS]).toEqual(["dist/entry.js", "dist/index.js"]);
+    expect(compatShimSource("dist/index.js")).toContain('import "../bitterbot.mjs";');
+    expect(nonBuiltinImports(compatShimSource("dist/entry.js"))).toEqual(["../bitterbot.mjs"]);
+  });
+
+  it("match what the daemon writes for a package install", () => {
+    // program-args.ts resolves the npm bin link to <pkg>/dist/{index,entry}.js;
+    // the 1.6.x updater runs <pkg>/dist/entry.js doctor after npm i -g.
+    const programArgs = fs.readFileSync(repoFile("src/daemon/program-args.ts"), "utf8");
+    expect(programArgs).toContain('path.join(distDir, "index.js")');
+    expect(programArgs).toContain('path.join(distDir, "entry.js")');
+    const updateCommand = fs.readFileSync(repoFile("src/cli/update-cli/update-command.ts"), "utf8");
+    expect(updateCommand).toContain('path.join(pkgRoot, "dist", "entry.js")');
+  });
+});
+
+describe("nonBuiltinImports", () => {
+  it("finds bare and relative specifiers, ignores node: built-ins", () => {
+    const src = [
+      'import fs from "node:fs";',
+      'import { x } from "chalk";',
+      'import "./side.js";',
+      'const y = await import("undici");',
+      'const z = require("node:path");',
+      "// import nothing from here",
+    ].join("\n");
+    expect(nonBuiltinImports(src).toSorted()).toEqual(["./side.js", "chalk", "undici"]);
+  });
+});
+
+const platformId = tarballPlatformId();
+const describeBundle = process.platform !== "win32" && platformId ? describe : describe.skip;
+
+describeBundle("the built launcher package", () => {
+  let work: string;
+  let out: string;
+
+  beforeAll(async () => {
+    work = fs.mkdtempSync(path.join(os.tmpdir(), "bb-npm-launcher-"));
+    out = path.join(work, "package");
+    await prepareLauncherPackage({ root: repoFile("."), out });
+  });
+
+  afterAll(() => {
+    fs.rmSync(work, { recursive: true, force: true });
+  });
+
+  it("is exactly the launcher, its shims, README and LICENSE", () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const abs = path.join(dir, e.name);
+        if (e.isDirectory()) {
+          walk(abs);
+        } else {
+          files.push(path.relative(out, abs).split(path.sep).join("/"));
+        }
+      }
     };
-    expect(workspace.overrides && Object.keys(workspace.overrides).length).toBeGreaterThan(0);
+    walk(out);
+    expect(files.toSorted()).toEqual([...LAUNCHER_PACKAGE_FILES, "package.json"].toSorted());
+    const bundle = fs.readFileSync(path.join(out, LAUNCHER_FILE), "utf8");
+    expect(bundle.startsWith("#!/usr/bin/env node\n")).toBe(true);
+    expect(nonBuiltinImports(bundle)).toEqual([]);
+    expect(bundle).toContain(`"${readPkg().version}"`);
+    expect(fs.statSync(path.join(out, LAUNCHER_FILE)).mode & 0o111).not.toBe(0);
+    const manifest = JSON.parse(fs.readFileSync(path.join(out, "package.json"), "utf8"));
+    expect(launcherManifestProblems(manifest)).toEqual([]);
+    // npm runs no hook from it.
     expect(
-      overrideSyncProblems({
-        npmOverrides: pkg.overrides,
-        pnpmOverrides: workspace.overrides,
-        dependencies: pkg.dependencies,
-      }),
+      lifecycleProblems({ scripts: manifest.scripts, packPaths: new Set(), readFile: () => null }),
     ).toEqual([]);
   });
 
-  it("names a missing, extra, drifted or EOVERRIDE-shaped entry", () => {
-    const problems = overrideSyncProblems({
-      npmOverrides: { qs: "6.14.1", tar: "7.5.9", extra: "1.0.0", typebox: "$typebox" },
-      pnpmOverrides: { qs: "6.14.2", tar: "7.5.9", missing: "1.0.0", typebox: "0.34.48" },
-      dependencies: { tar: "7.5.22", typebox: "0.34.40" },
-    });
-    expect(problems.join("\n")).toMatch(/qs: npm override "6.14.1" differs/);
-    expect(problems.join("\n")).toMatch(/tar: is a direct dependency, so npm needs "\$tar"/);
-    expect(problems.join("\n")).toMatch(/missing: in pnpm-workspace.yaml/);
-    expect(problems.join("\n")).toMatch(/extra: in package.json overrides but not/);
-    expect(problems.join("\n")).toMatch(
-      /typebox: dependency 0.34.40 is below the pnpm security pin/,
-    );
-  });
-
-  it("expects $refs to resolve to the direct dependency's exact version", () => {
-    const expected = expectedOverrideVersions({
-      dependencies: { tar: "7.5.22" },
-      overrides: { tar: "$tar", qs: "6.14.2" },
-    });
-    expect(Object.fromEntries(expected)).toEqual({ tar: "7.5.22", qs: "6.14.2" });
-  });
-
-  it("finds every nested copy that escaped an override in the shrinkwrap", () => {
-    const violations = shrinkwrapOverrideViolations(
-      {
-        packages: {
-          "": {},
-          "node_modules/qs": { version: "6.14.2" },
-          "node_modules/express/node_modules/qs": { version: "6.13.0" },
-          "node_modules/vitest/node_modules/qs": { version: "6.0.0", dev: true },
-          "node_modules/tar": { version: "7.5.22" },
-        },
-      },
-      new Map([
-        ["qs", "6.14.2"],
-        ["tar", "7.5.22"],
-      ]),
-    );
-    expect(violations).toEqual([
-      "node_modules/express/node_modules/qs is 6.13.0, override pins 6.14.2",
-    ]);
-  });
-});
-
-describe("registry install invariants", () => {
-  it("declares every bundled extension's runtime dependency at the package root", () => {
-    // npm installs only the root package's dependencies; an extension's own
-    // package.json is never installed from, so its imports must resolve from
-    // the root node_modules (pnpm installs them per workspace member).
-    const pkg = readPkg();
-    const extDir = repoFile("extensions");
-    const missing: string[] = [];
-    for (const ext of fs.readdirSync(extDir)) {
-      const manifestPath = path.join(extDir, ext, "package.json");
-      if (!fs.existsSync(manifestPath)) {
-        continue;
-      }
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as PackageManifest;
-      for (const [name, spec] of Object.entries(manifest.dependencies ?? {})) {
-        if (pkg.dependencies?.[name] !== spec) {
-          missing.push(
-            `${ext}: ${name}@${spec} (root has ${pkg.dependencies?.[name] ?? "nothing"})`,
-          );
-        }
-      }
-    }
-    expect(missing).toEqual([]);
-  });
-
-  it("has no workspace/link/file specs in the runtime dependency maps", () => {
-    expect(unresolvableSpecProblems(readPkg())).toEqual([]);
-  });
-
-  it("ships every file the install hooks run, with their imports", () => {
-    const pkg = readPkg();
-    const files = (pkg.files as string[]) ?? [];
-    const packPaths = new Set<string>();
-    for (const entry of files) {
-      const abs = repoFile(entry);
-      if (entry.endsWith("/") || entry.startsWith("dist")) {
-        continue; // directories are not where hooks live; dist is not built here
-      }
-      if (fs.existsSync(abs) && fs.statSync(abs).isFile()) {
-        packPaths.add(entry);
-      }
-    }
-    const readFile = (rel: string) => {
-      try {
-        return fs.readFileSync(repoFile(rel), "utf8");
-      } catch {
-        return null;
-      }
+  it("installs a signed release on first run and runs it, through the bin and both shims", () => {
+    const version = readPkg().version!;
+    const releases = path.join(work, "releases");
+    fs.mkdirSync(releases, { recursive: true });
+    writeReleasesApi(releases);
+    const key = makeTestMinisignKey();
+    publishFakeRelease({ releases, work, version, platformId: platformId!, key });
+    const home = path.join(work, "home");
+    fs.mkdirSync(home);
+    const env = {
+      PATH: process.env.PATH,
+      HOME: home,
+      BITTERBOT_INSTALL_TEST_MODE: "1",
+      BITTERBOT_INSTALL_BASE_URL: pathToFileURL(releases).href,
+      BITTERBOT_INSTALL_TEST_PUBKEY: key.pubkeyB64,
     };
-    expect(pkg.scripts?.preinstall).toBeTruthy();
-    expect(pkg.scripts?.postinstall).toBeTruthy();
-    expect(lifecycleProblems({ scripts: pkg.scripts, packPaths, readFile })).toEqual([]);
-    // fetch-orchestrator.mjs reads the orchestrator version from this file.
-    expect(files).toContain("orchestrator/Cargo.toml");
+    const run = (file: string) =>
+      spawnSync(process.execPath, [path.join(out, file), "--version"], {
+        env,
+        encoding: "utf8",
+        timeout: 60_000,
+      });
+    const first = run(LAUNCHER_FILE);
+    expect(first.status).toBe(0);
+    expect(first.stdout.trim()).toBe(version);
+    expect(first.stderr).toContain(
+      `Bitterbot ${version}: first run, downloading the signed release`,
+    );
+    expect(first.stderr).toContain(`Verified and installed to ~/.bitterbot/app/${version}.`);
+    expect(fs.readlinkSync(path.join(home, ".bitterbot", "app", "current"))).toBe(version);
+    for (const shim of COMPAT_SHIMS) {
+      const res = run(shim);
+      expect(res.status).toBe(0);
+      expect(res.stdout.trim()).toBe(version);
+      expect(res.stderr).toBe("");
+    }
+  });
+
+  it("refuses a tampered release without a stack trace", () => {
+    const version = readPkg().version!;
+    const releases = path.join(work, "releases-bad");
+    fs.mkdirSync(releases, { recursive: true });
+    const key = makeTestMinisignKey();
+    publishFakeRelease({
+      releases,
+      work,
+      version,
+      platformId: platformId!,
+      key,
+      opts: { tamper: true },
+    });
+    const home = path.join(work, "home-bad");
+    fs.mkdirSync(home);
+    const res = spawnSync(process.execPath, [path.join(out, LAUNCHER_FILE), "--version"], {
+      env: {
+        PATH: process.env.PATH,
+        HOME: home,
+        BITTERBOT_INSTALL_TEST_MODE: "1",
+        BITTERBOT_INSTALL_BASE_URL: pathToFileURL(releases).href,
+        BITTERBOT_INSTALL_TEST_PUBKEY: key.pubkeyB64,
+      },
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+    expect(res.status).toBe(1);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toMatch(/^Refusing to install Bitterbot .*SHA-256 mismatch/m);
+    expect(res.stderr).not.toMatch(/\n\s+at /);
+    expect(fs.existsSync(path.join(home, ".bitterbot", "app", "current"))).toBe(false);
   });
 });
 
@@ -208,14 +241,22 @@ describe("publish wiring", () => {
       jobs: Record<
         string,
         {
+          needs?: string | string[];
+          if?: string;
           environment?: string;
           permissions?: Record<string, string>;
-          steps?: Array<{ run?: string }>;
+          steps?: Array<{
+            run?: string;
+            "working-directory"?: string;
+            with?: Record<string, unknown>;
+          }>;
         }
       >;
     };
+  const runsOf = (steps: Array<{ run?: string }> | undefined) =>
+    (steps ?? []).map((s) => s.run ?? "").join("\n");
 
-  it("npm-publish.yml is the trusted publisher: npm environment, OIDC, gated publish", () => {
+  it("npm-publish.yml is the trusted publisher and publishes the launcher directory", () => {
     // These names are what the npm trusted-publisher form is filled with
     // (docs/reference/npm-publishing.md); renaming either breaks publishing.
     const wf = workflow("npm-publish.yml");
@@ -224,24 +265,55 @@ describe("publish wiring", () => {
     const job = wf.jobs.publish;
     expect(job?.environment).toBe("npm");
     expect(job?.permissions?.["id-token"]).toBe("write");
-    const runs = (job?.steps ?? []).map((s) => s.run ?? "").join("\n");
-    expect(runs).toContain("node --import tsx scripts/npm-package.ts prepare");
-    expect(runs).toContain("pnpm release:check --npm-publish");
+    expect(job?.needs).toBe("assets");
+    const runs = runsOf(job?.steps);
+    expect(runs).toContain(
+      'node --import tsx scripts/npm-package.ts prepare --out "$RUNNER_TEMP/npm-package"',
+    );
+    expect(runs).toContain('pnpm release:check --npm-publish --dir "$RUNNER_TEMP/npm-package"');
     expect(runs).toContain("npm publish --provenance --access public");
     expect(runs).toContain("npm install -g npm@11");
     expect(runs).toMatch(/npm view "bitterbot@/);
     expect(runs).not.toMatch(/NPM_TOKEN|NODE_AUTH_TOKEN/);
+    // The app ships in the release tarball: no app build here.
+    expect(runs).not.toContain("pnpm build");
+    const publishStep = job?.steps?.find((s) => s.run?.includes("npm publish"));
+    expect(publishStep?.["working-directory"]).toBe("${{ runner.temp }}/npm-package");
   });
 
-  it("release-please dispatches it, and CI installs the same package shape", () => {
+  it("publishes only after the release assets the launcher downloads are public", () => {
+    const wf = workflow("npm-publish.yml");
+    const assets = runsOf(wf.jobs.assets?.steps);
+    expect(assets).toContain("releases/download/v$VERSION");
+    expect(assets).toContain("checksums.txt checksums.txt.minisig");
+    expect(assets).toContain("bitterbot-$VERSION-$p.tar.gz");
+    expect(assets).toContain("RELEASE_PLATFORMS");
+    // And the launcher from this tag installs the public release with the pinned key.
+    expect(assets).toContain('node "$RUNNER_TEMP/npm-package/bitterbot.mjs" --version');
+    expect(assets).not.toMatch(/BITTERBOT_INSTALL_(TEST_MODE|BASE_URL|TEST_PUBKEY)/);
+
     const rp = workflow("release-please.yml");
-    expect((rp.jobs["npm-publish"]?.steps ?? []).map((s) => s.run).join("\n")).toContain(
-      "gh workflow run npm-publish.yml",
-    );
+    const dispatch = rp.jobs["npm-publish"];
+    expect(dispatch?.needs).toEqual(["release-please", "release-tarball"]);
+    expect(dispatch?.if).toContain("needs.release-tarball.result == 'success'");
+    expect(runsOf(dispatch?.steps)).toContain("gh workflow run npm-publish.yml");
+  });
+
+  it("CI installs the launcher with npm 12 and fails on any warning, script or dependency", () => {
     const ci = workflow("ci.yml");
-    const runs = (ci.jobs["npm-package"]?.steps ?? []).map((s) => s.run ?? "").join("\n");
-    expect(runs).toContain("node --import tsx scripts/npm-package.ts prepare");
+    const job = ci.jobs["npm-package"];
+    const runs = runsOf(job?.steps);
+    expect(runs).toContain("node --import tsx scripts/npm-package.ts prepare --out");
+    expect(runs).toContain("npm install -g npm@12");
     expect(runs).toContain("npm install -g --prefix");
+    expect(runs).toMatch(/grep -iE "npm warn\|allow-scripts\|install script/);
+    expect(runs).toContain('test ! -e "$pkg/node_modules"');
+    expect(runs).toContain('node "$pkg/dist/index.js" --version');
+    expect((job?.steps ?? []).some((s) => s.with?.["node-version"] === 24)).toBe(true);
+    // The installer job runs the same launcher against the real tarball.
+    expect(runsOf(ci.jobs.installer?.steps)).toContain(
+      'grep -q "Verified and installed to ~/.bitterbot/app/$VERSION." "$RUNNER_TEMP/npm-launcher.err"',
+    );
   });
 
   it("the missing-local-embeddings advice names the pinned node-llama-cpp", () => {

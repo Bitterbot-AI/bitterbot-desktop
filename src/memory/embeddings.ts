@@ -346,7 +346,7 @@ function formatLocalSetupError(err: unknown): string {
     "To enable local embeddings:",
     "1) Use Node 22 LTS (recommended for installs/updates)",
     missing
-      ? "2) Reinstall the dependencies (this should install node-llama-cpp): run `pnpm install` in your Bitterbot checkout, or pull a fresh Docker image. An `npm install -g bitterbot` install leaves it out (about 700 MB); add it with `npm install -g node-llama-cpp@3.15.1`"
+      ? "2) Reinstall the dependencies (this should install node-llama-cpp): run `pnpm install` in your Bitterbot checkout, or pull a fresh Docker image. A full-package npm install (bitterbot 1.6.1 or older) leaves it out (about 700 MB); update to the npm launcher with `npm install -g bitterbot@latest`, or add it with `npm install -g node-llama-cpp@3.15.1`"
       : null,
     "3) If you use pnpm: pnpm approve-builds (select node-llama-cpp), then pnpm rebuild node-llama-cpp",
     ...REMOTE_EMBEDDING_PROVIDER_IDS.map(

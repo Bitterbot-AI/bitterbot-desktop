@@ -22,6 +22,7 @@ import {
   TARBALL_INSTALLER_COMMAND,
   TARBALL_REINSTALL_COMMAND,
 } from "../infra/install-kind.js";
+import { readNpmLauncher } from "../infra/npm-launcher-marker.js";
 import {
   CURRENT_LINK,
   listVersionDirs,
@@ -163,8 +164,13 @@ async function checkTarballInstall(params: {
   } catch {
     lst = null;
   }
+  // Driven by the npm launcher: npm owns the `bitterbot` command, and an
+  // install.sh link in ~/.local/bin would shadow it on PATH. Never create one.
+  const npmLauncher = readNpmLauncher(appDir, env);
   if (target === expected) {
     results.push(ok(`${commandLink} -> ${expected}`));
+  } else if (npmLauncher) {
+    results.push(ok(`command: npm launcher (${npmLauncher.launcher ?? "bitterbot from npm"})`));
   } else if (lst && !lst.isSymbolicLink()) {
     results.push(
       warn(

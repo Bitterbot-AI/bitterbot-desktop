@@ -18,7 +18,7 @@ Last updated: 2026-10-15
 ## TL;DR
 
 - **Tailoring lives outside the repo:** `~/.bitterbot/workspace` (workspace) + `~/.bitterbot/bitterbot.json` (config).
-- **Stable workflow:** Docker compose on a server, or the [installer](/start/install-script) or [`npm install -g bitterbot`](/start/npm) (Node 22.12+) on a laptop, then the onboarding wizard; let the service (or compose) run the Gateway. Upgrade with `bitterbot update` (installer, npm) or `docker compose pull && docker compose up -d` (Docker); see [`bitterbot update`](/cli/update).
+- **Stable workflow:** Docker compose on a server, or the [installer](/start/install-script) or [`npm install -g bitterbot`](/start/npm) (Node 18+) on a laptop, then the onboarding wizard; let the service (or compose) run the Gateway. Upgrade with `bitterbot update` (installer, npm) or `docker compose pull && docker compose up -d` (Docker); see [`bitterbot update`](/cli/update).
 - **Bleeding edge workflow:** run the Gateway yourself via `pnpm gateway:watch`.
 
 ## Prereqs (from source)

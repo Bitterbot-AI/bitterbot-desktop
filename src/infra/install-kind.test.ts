@@ -158,7 +158,7 @@ describe("release-tarball install kind (PLAN-56 Phase 3a)", () => {
     expect(tarballPlatformId("linux", "x64")).toBe("linux-x64");
     expect(tarballPlatformId("linux", "arm64")).toBe("linux-arm64");
     expect(tarballPlatformId("darwin", "arm64")).toBe("darwin-arm64");
-    expect(tarballPlatformId("darwin", "x64")).toBeNull();
+    expect(tarballPlatformId("darwin", "x64")).toBe("darwin-x64");
     expect(tarballPlatformId("win32", "x64")).toBeNull();
     expect(tarballAssetName("1.5.0", "linux-x64")).toBe("bitterbot-1.5.0-linux-x64.tar.gz");
   });

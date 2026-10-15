@@ -75,8 +75,7 @@
     "orchestrator/Cargo.toml",
     "scripts/preinstall-check.mjs",
     "scripts/fetch-orchestrator.mjs",
-    "scripts/orchestrator-signature.mjs",
-    "npm-shrinkwrap.json"
+    "scripts/orchestrator-signature.mjs"
   ],
   "type": "module",
   "main": "dist/index.js",

@@ -253,6 +253,36 @@ describe("runBrowserOnboarding", () => {
     expect(declined).toBeNull();
   });
 
+  it("after switching an already set-up install it opens the app, not the setup page", async () => {
+    fs.writeFileSync(
+      path.join(dir, "bitterbot.json"),
+      JSON.stringify({ gateway: { mode: "local" }, agents: { defaults: { workspace: dir } } }),
+    );
+    const rt = runtime();
+    const openUrl = vi.fn(async () => true);
+    const switchGateway = vi.fn(async () => 0);
+    const result = await runBrowserOnboarding(
+      {},
+      rt,
+      { kind: "browser", open: true, headless: false, inContainer: false },
+      {
+        isListening: async () => true,
+        checkGateway: async () => otherInstall,
+        switchGateway,
+        stdinIsTty: true,
+        openUrl,
+      },
+    );
+    expect(switchGateway).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ url: "http://127.0.0.1:19001/", tokenIssued: false });
+    expect(openUrl).toHaveBeenCalledWith("http://127.0.0.1:19001/");
+    expect(rt.lines).toEqual([
+      "You're now on Bitterbot 1.5.0.\nOpen Bitterbot: http://127.0.0.1:19001/",
+    ]);
+    expect(rt.lines.join("\n")).not.toContain("already set up");
+    expect(fs.existsSync(path.join(dir, "setup-token.json"))).toBe(false);
+  });
+
   it("from the installer it never asks again (install.sh already did)", async () => {
     const switchGateway = vi.fn(async () => 0);
     const result = await runBrowserOnboarding(
