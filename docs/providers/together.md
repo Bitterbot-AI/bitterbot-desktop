@@ -37,6 +37,7 @@ bitterbot onboard --auth-choice together-api-key
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --mode local \
   --auth-choice together-api-key \
   --together-api-key "$TOGETHER_API_KEY"

@@ -854,6 +854,7 @@
                 "pages": [
                   "providers/anthropic",
                   "providers/openai",
+                  "providers/google",
                   "providers/openrouter",
                   "providers/nearai",
                   "providers/bedrock",

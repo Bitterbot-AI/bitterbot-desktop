@@ -28,12 +28,10 @@ docker compose up -d
 ```
 
 <Note>
-The compose file is attached to each release once that release's image is on
-GHCR, starting with the first release after 1.4.0 (1.5.0). It needs image
-1.5.0 or later. Until that release exists, clone the repository at a release
-tag (`git clone --branch vX.Y.Z https://github.com/Bitterbot-AI/bitterbot-desktop.git`)
-and use the [`docker run` form](#without-compose); do not take the compose file
-from the `main` branch.
+Every release attaches its compose file once that release's image is on GHCR
+(`releases/latest/download/docker-compose.yml` is always the newest one). Take
+it from a release, not from the `main` branch. The compose file needs image
+1.5.0 or later; for an older image use the [`docker run` form](#without-compose).
 </Note>
 
 Nothing needs editing. On first boot the gateway generates a gateway token,
@@ -163,7 +161,10 @@ deliberate change of `BITTERBOT_IMAGE` after reading its release notes. The
 Control UI's **Node Version** card checks GitHub for the newest release and
 shows "image X.Y.Z available; pull to update" with this command; it cannot
 update a container itself (the image is the code, so the next restart would
-bring the old one back). Your data folder is untouched by updates.
+bring the old one back). Your data folder is untouched by updates. When a
+release's notes say the compose file changed, download it again with the
+`curl -fsSLO` line above before pulling; your overrides live in `.env` and
+are kept.
 
 To go back, set `BITTERBOT_IMAGE` to the previous version tag (for example
 `ghcr.io/bitterbot-ai/bitterbot-desktop:1.5.0`) and run `docker compose up -d`.
@@ -227,8 +228,8 @@ config file uses the same defaults as an empty one (P2P on, circles on).
 What is in the image, and what is not:
 
 - The P2P orchestrator binary ships inside the image (fetched at build time
-  from the matching `orchestrator-v*` release, SHA-256 checked, and
-  signature-verified once the release key is pinned; see
+  from the matching `orchestrator-v*` release, its minisign signature checked
+  against the pinned release key and its SHA-256 checked; see
   [LIMITATIONS.md](https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/LIMITATIONS.md)),
   so the node joins the mesh without a Rust toolchain. Images 1.0.0 through
   1.4.0 did not carry it and ran isolated.

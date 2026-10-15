@@ -1,5 +1,5 @@
 ---
-summary: "CLI reference for `bitterbot update` (source checkouts, installer-based installs with snapshot and rollback, containers)"
+summary: "CLI reference for `bitterbot update` (installer-based installs with snapshot and rollback, npm package installs, containers, source checkouts)"
 read_when:
   - You want to update a source checkout safely
   - You want to update or roll back an installer-based install
@@ -12,9 +12,23 @@ title: "update"
 Safely update Bitterbot and switch between stable/beta/dev channels.
 
 An install is a **source checkout**, a **container**, an
-**installer-based install**, or (from 1.6.0) an **npm package install**
+**installer-based install**, or an **npm package install**
 (`npm install -g bitterbot`, see [npm package](/start/npm)). Each updates
 its own way; `bitterbot update status` shows which one this is.
+
+| Install                                                               | Update with                                                                               | Safety net                                              |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| [Installer](/start/install-script)                                    | `bitterbot update` (or the Control UI's **Update now**), or run the installer again       | signature check, snapshot, automatic rollback           |
+| [npm package](/start/npm)                                             | `bitterbot update`, or `npm install -g bitterbot@latest` then `bitterbot gateway restart` | none; go back with `npm install -g bitterbot@<version>` |
+| [Docker](/platforms/docker)                                           | `docker compose pull && docker compose up -d` on the Docker host                          | pin the previous image tag in `BITTERBOT_IMAGE`         |
+| [Source checkout](/start/getting-started#quick-setup-from-source-cli) | `bitterbot update` (`pnpm bitterbot update`)                                              | clean-tree check, doctor gate, boot watchdog rollback   |
+
+Moving from one kind to another (for example from a git clone to the
+installer or npm): install the new one, then `bitterbot gateway switch` (the
+installer and `bitterbot onboard` offer it) hands the running gateway and its
+background service over, with a snapshot and a rollback if the new version
+does not start. See
+[Upgrading from a git clone or an older version](/start/install-script#upgrading-from-a-git-clone-or-an-older-version).
 
 In a **container** (the published image sets `BITTERBOT_INSTALL_KIND=container`;
 images that do not are detected from `/.dockerenv`, `/run/.containerenv` or the
@@ -167,7 +181,7 @@ install method aligned:
 
 ## npm package installs
 
-For `npm install -g bitterbot` (1.6.0 and later), `bitterbot update` checks
+For `npm install -g bitterbot`, `bitterbot update` checks
 that the running package is the one under `npm root -g` (likewise
 `pnpm root -g` or Bun's global directory), then runs
 `npm i -g bitterbot@<tag>`: `latest` on `stable`, `beta` on `beta`, or the

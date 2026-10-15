@@ -19,17 +19,26 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 
 ## Pick a path
 
-1. **Docker (recommended for servers):** one command, nothing to install but
-   Docker, updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
-2. **Installer (laptops):** a signed, prebuilt release for Linux x64/arm64 and
-   Apple-silicon macOS, with its own Node runtime, from release 1.5.0 on.
+1. **Installer (laptops):** a signed, prebuilt release for Linux x64/arm64 and
+   Apple-silicon macOS, with its own Node runtime (Windows: inside WSL2).
    See [Installer (laptops)](/start/install-script) for what it verifies.
-3. **From source (below):** for developing Bitterbot, or when you need the
-   browser tool in a container setup (the image ships without Chromium).
-4. **npm (1.6.0 and later):** if you already have Node 22.12 or newer,
+2. **npm:** if you already have Node 22.12 or newer,
    `npm install -g bitterbot` and then `bitterbot onboard`. See
    [npm package](/start/npm) for what the install downloads and how it
    updates.
+3. **Docker (recommended for servers):** nothing to install but Docker,
+   updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
+4. **From source (below):** for developing Bitterbot, or when you need the
+   browser tool in a container setup (the image ships without Chromium).
+
+| Path        | Upgrade                                                   |
+| ----------- | --------------------------------------------------------- |
+| Installer   | `bitterbot update` (or run the installer again)           |
+| npm         | `bitterbot update` (or `npm install -g bitterbot@latest`) |
+| Docker      | `docker compose pull && docker compose up -d`             |
+| From source | `bitterbot update` on a clean checkout                    |
+
+Details for each: [`bitterbot update`](/cli/update).
 
 With Docker, the whole install is:
 
@@ -48,9 +57,7 @@ reply from your agent with its latency. Link expired? Get a new one with
 Afterwards the Control UI is `http://127.0.0.1:19001/`; it asks for the token
 printed in the same log. The token is printed once; read it again any time with
 `docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token`
-(or use the value of `BITTERBOT_GATEWAY_TOKEN` if you set one). (The compose file is
-attached to releases from 1.5.0 on; before that, follow the `docker run` form
-on the [Docker page](/platforms/docker#without-compose).)
+(or use the value of `BITTERBOT_GATEWAY_TOKEN` if you set one).
 
 With the installer, the whole install is:
 
@@ -67,8 +74,26 @@ with the key on the [installer page](/start/install-script#verify-a-download-you
 or `gh attestation verify <tarball> --repo Bitterbot-AI/bitterbot-desktop`.
 Later, `bitterbot update` updates it in place (verified, with a snapshot of
 your data and an automatic rollback; see
-[Updating](/start/install-script#updating)). On Windows, `install.ps1` runs the
-same installer inside WSL2 ([Windows](/start/install-script#windows-wsl2)).
+[Updating](/start/install-script#updating)). Running the installer again also
+updates, and switches a running older Bitterbot (for example a git clone) to
+the new version. On Windows, `install.ps1` runs the same installer inside
+WSL2 ([Windows](/start/install-script#windows-wsl2)):
+
+```powershell
+irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
+```
+
+With npm, the whole install is:
+
+```bash
+npm install -g bitterbot   # Node 22.12 or newer
+bitterbot onboard
+```
+
+Local embeddings (memory search with no embeddings key) need one more
+package on this path: `npm install -g node-llama-cpp@3.15.1` (see
+[npm package](/start/npm#optional-add-ons)). Update later with
+`bitterbot update`.
 
 ## Prereqs (source install)
 
@@ -142,7 +167,7 @@ If the Control UI loads, your Gateway is ready for use.
 
 The gateway serves the Control UI itself: one process, one port. Start it the
 way your install starts it: `docker compose up -d` (Docker), `bitterbot gateway`
-(installer), or from a source checkout:
+(installer or npm), or from a source checkout:
 
 ```bash
 pnpm start gateway

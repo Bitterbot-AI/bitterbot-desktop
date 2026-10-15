@@ -14,7 +14,8 @@ title: "Installer (laptops)"
 For a laptop or desktop, the installer is the shortest path: it downloads a
 prebuilt, signed release for your machine and needs nothing installed first
 (no Node, no pnpm, no compiler). For an always-on server, use
-[Docker](/platforms/docker) instead.
+[Docker](/platforms/docker) instead. Already running Node 22.12 or newer?
+[`npm install -g bitterbot`](/start/npm) works too.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
@@ -24,19 +25,23 @@ The script comes from the `main` branch, so this URL always works; it then
 installs the newest release that is completely published and signed. It
 carries the release signing key inside it, so it is exactly as trustworthy as
 the repository itself. Every release also attaches its own copy of
-`install.sh` (`releases/download/v<version>/install.sh`) for pinned installs.
+`install.sh`, listed in that release's signed `checksums.txt`; use it to pin
+both the script and the release:
 
-<Note>
-Release tarballs exist from **1.5.0** on. Until that release is out, the
-installer stops with "no published release carries a signed tarball"; use
-[Docker](/platforms/docker) or a [source install](/start/getting-started#quick-setup-from-source-cli).
-</Note>
+```bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/v1.6.0/install.sh | bash -s -- --version 1.6.0
+```
 
 Read the script before running it (it is short and commented):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | less
 ```
+
+Already installed? Run `bitterbot update` (see [Updating](#updating)), or run
+the same one-liner again: it installs the new release next to the old one and
+switches a running gateway over (see
+[Upgrading from a git clone or an older version](#upgrading-from-a-git-clone-or-an-older-version)).
 
 ## Supported machines
 
@@ -108,7 +113,7 @@ model.
 ## Options
 
 ```bash
-curl -fsSL .../install.sh | bash -s -- --version 1.5.0 --no-onboard
+curl -fsSL .../install.sh | bash -s -- --version 1.6.0 --no-onboard
 ```
 
 - `-s`, `--version X.Y.Z`: install that release instead of the newest
@@ -137,9 +142,9 @@ After installing, the installer checks what runs today and tells you, for
 example:
 
 ```text
-Found Bitterbot 1.4.0 from ~/bitterbot-desktop (git clone) running on port 19001.
-This is Bitterbot 1.5.0 (~/.bitterbot/app/1.5.0).
-Switch to 1.5.0 now? [Y/n]
+Found Bitterbot 1.5.0 from ~/bitterbot-desktop (git clone) running on port 19001.
+This is Bitterbot 1.6.0 (~/.bitterbot/app/1.6.0).
+Switch to 1.6.0 now? [Y/n]
 ```
 
 Answering yes (or passing `--yes`) runs `bitterbot gateway switch`, which:
@@ -195,8 +200,8 @@ port than the new one would, nothing is switched and the installer says why.
 When it is done:
 
 ```text
-Done. Bitterbot 1.5.0 is running on port 19001. Your settings and memory are unchanged.
-Your git clone at ~/bitterbot-desktop is no longer used. You can delete it once you are happy with 1.5.0 (nothing was deleted).
+Done. Bitterbot 1.6.0 is running on port 19001. Your settings and memory are unchanged.
+Your git clone at ~/bitterbot-desktop is no longer used. You can delete it once you are happy with 1.6.0 (nothing was deleted).
 ```
 
 The clone is never deleted for you. Without a terminal to ask on (and without
@@ -259,7 +264,7 @@ stops instead of falling back to SHA-256 only.
 ## Verify a download yourself
 
 ```bash
-V=1.5.0
+V=1.6.0
 B=https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/v$V
 curl -fsSLO $B/checksums.txt -O $B/checksums.txt.minisig -O $B/bitterbot-$V-linux-x64.tar.gz
 minisign -Vm checksums.txt -P RWTU9k8zQeEQA5GbldCYMA7kgR3nwoLbtjhw5FWMGiwu+h72OMk2Ne04
@@ -267,8 +272,8 @@ sha256sum -c --ignore-missing checksums.txt     # macOS: shasum -a 256 -c --igno
 gh attestation verify bitterbot-$V-linux-x64.tar.gz --repo Bitterbot-AI/bitterbot-desktop
 ```
 
-`minisign` prints the trusted comment; it must be `v1.5.0 checksums` for
-1.5.0.
+`minisign` prints the trusted comment; it must be `v1.6.0 checksums` for
+1.6.0.
 
 ## Updating
 
@@ -388,8 +393,14 @@ restored) until the next clean update. Set `update.autoRollback.enabled` to
 `false` to turn the automatic switch off; a failed start is then only
 reported.
 
-Re-running the installer still works as an update too, without the snapshot
-and the automatic rollback.
+Re-running the installer also updates. It verifies the download as described
+in [What gets verified](#what-gets-verified) (including the SHA-256-only
+fallback that `bitterbot update` does not have), and when an older gateway is
+running it switches it over with a snapshot and a rollback on failure (see
+[Upgrading from a git clone or an older version](#upgrading-from-a-git-clone-or-an-older-version)).
+With no gateway running it only installs and links the new version.
+`bitterbot update` is the preferred path: it refuses unsigned downloads and
+checks the new version against your config and data before switching.
 
 ## Uninstall
 
@@ -409,8 +420,8 @@ Bitterbot's release tarballs are built for Linux and macOS. On Windows,
 irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
 ```
 
-It finds your default WSL2 distribution, prints its plan, and runs the
-installer above inside it, so Bitterbot lives in your Linux home
+It downloads `install.sh` from `main` as well, finds your default WSL2
+distribution, prints its plan, and runs that installer inside it, so Bitterbot lives in your Linux home
 (`~/.bitterbot`, on the Linux ext4 filesystem). It changes nothing on Windows
 and needs no administrator rights. Without WSL2 it prints how to enable it
 (`wsl --install`, which does need an administrator and a restart) and the

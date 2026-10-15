@@ -13,17 +13,17 @@ If you are setting up for the first time, start with [Getting Started](/start/ge
 For wizard details, see [Onboarding Wizard](/start/wizard).
 </Note>
 
-Last updated: 2026-01-01
+Last updated: 2026-10-15
 
 ## TL;DR
 
 - **Tailoring lives outside the repo:** `~/.bitterbot/workspace` (workspace) + `~/.bitterbot/bitterbot.json` (config).
-- **Stable workflow:** Docker compose on a server, or the [installer](/start/install-script) (1.5.0 and later) or [`npm install -g bitterbot`](/start/npm) (1.6.0 and later, Node 22.12+) on a laptop, then the onboarding wizard; let the service (or compose) run the Gateway.
+- **Stable workflow:** Docker compose on a server, or the [installer](/start/install-script) or [`npm install -g bitterbot`](/start/npm) (Node 22.12+) on a laptop, then the onboarding wizard; let the service (or compose) run the Gateway. Upgrade with `bitterbot update` (installer, npm) or `docker compose pull && docker compose up -d` (Docker); see [`bitterbot update`](/cli/update).
 - **Bleeding edge workflow:** run the Gateway yourself via `pnpm gateway:watch`.
 
 ## Prereqs (from source)
 
-- Node `>=22`
+- Node 22.12 or newer
 - `pnpm`
 - Docker (optional; only for containerized setup/e2e — see [Docker](/platforms/docker))
 
@@ -68,7 +68,7 @@ node bitterbot.mjs gateway --port 19001 --verbose
 
 ## Stable workflow (source checkout)
 
-Not developing? Use [Docker](/platforms/docker) or the [installer](/start/install-script) instead; this section is the source-checkout version.
+Not developing? Use [Docker](/platforms/docker), the [installer](/start/install-script) or [npm](/start/npm) instead; this section is the source-checkout version. Moving from this checkout to one of those later? Install it, then `bitterbot gateway switch` (the installer and `bitterbot onboard` offer it) hands the running gateway and its service over; your `~/.bitterbot` data stays.
 
 1. Install from source: `git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git && cd bitterbot-desktop && bash scripts/setup-deps.sh && pnpm install`
 2. Run the onboarding wizard: `pnpm bitterbot onboard --install-daemon`

@@ -102,6 +102,9 @@ an error.
   complete, a setup link no longer starts setup; open
   `http://127.0.0.1:19001/setup` in the signed-in Control UI to run it again
   (a tab whose link was refused falls back to that sign-in).
+- If the gateway restarts during setup, the page reconnects and starts setup
+  again by itself ("Bitterbot restarted, so setup started again"); anything
+  already saved, such as a key, is kept and offered again.
 - The page lives under the Control UI base path (`gateway.controlUi.basePath`).
 
 ## Choosing the surface
@@ -153,6 +156,7 @@ Non-interactive custom provider:
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --auth-choice custom-api-key \
   --custom-base-url "https://llm.example.com/v1" \
   --custom-model-id "foo-large" \
@@ -170,6 +174,7 @@ If you specifically want the GLM Coding Plan endpoints, pick `zai-coding-global`
 ```bash
 # Promptless endpoint selection
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --auth-choice zai-coding-global \
   --zai-api-key "$ZAI_API_KEY"
 

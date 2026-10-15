@@ -41,6 +41,7 @@ bitterbot onboard --auth-choice huggingface-api-key
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --mode local \
   --auth-choice huggingface-api-key \
   --huggingface-api-key "$HF_TOKEN"

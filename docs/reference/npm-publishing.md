@@ -73,7 +73,11 @@ released code, and then:
    manifest and shrinkwrap checks.
 7. Waits for the `npm` environment approval (the job starts only after it).
 8. `npm publish --provenance --access public --ignore-scripts`, then waits
-   until the registry serves the new version.
+   until the registry serves the new version (polls every 30 seconds for up
+   to 25 minutes: npm took about 15 minutes to serve the 67 MB 1.6.0
+   package). If that wait runs out, the publish itself still happened: do
+   not publish again. Once `npm view bitterbot@<version> version` answers,
+   a re-run skips the publish (step 3) and goes green.
 
 The CI job "npm package install" (`.github/workflows/ci.yml`, every push and
 pull request) runs steps 4 to 6, packs, installs the tarball with plain

@@ -38,6 +38,7 @@ bitterbot onboard --auth-choice ai-gateway-api-key
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --mode local \
   --auth-choice ai-gateway-api-key \
   --ai-gateway-api-key "$AI_GATEWAY_API_KEY"
