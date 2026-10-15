@@ -25,8 +25,16 @@ docker job means the image release surface is broken — stop here.
 release-please maintains a `chore(main): release X.Y.Z` PR. **Read the
 diff before merging**: the version fan-out (root, desktop, extensions,
 tauri.conf) and the CHANGELOG section are the release's public claims.
-Merging creates the git tag and the GitHub Release, and that event —
-not a tag push — triggers the GHCR publish.
+Merging creates the git tag and the GitHub Release as a **draft**, and
+release-please's `release_created` output (not a tag push) starts the GHCR
+publish, the installer tarballs and the npm publish.
+
+The draft stays hidden, and `releases/latest` keeps pointing at the previous
+release, until you approve the `release` environment for the tarball publish.
+That job uploads the signed tarballs and `install.sh`, then publishes the
+release and marks it latest, so the installer one-liner never resolves to a
+release that is still missing its files. If the publish job fails after the
+upload, publish the draft by hand on the Releases page.
 
 ## 3. Verify the image
 

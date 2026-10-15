@@ -6,8 +6,8 @@
 #   curl -fsSL .../install.sh | bash -s -- --version 1.5.0 --no-onboard
 #
 # The one-liner serves the copy attached to the latest release, which is listed
-# in that release's signed checksums.txt and only appears once the release is
-# approved; every release carries its own copy for pinned installs
+# in that release's signed checksums.txt. Releases stay drafts until their
+# signed files are uploaded, so "latest" is always complete; every release carries its own copy for pinned installs
 # (releases/download/vX.Y.Z/install.sh). It embeds the pinned public key.
 #
 # What it does, in order (it prints this plan before touching anything):

@@ -24,9 +24,9 @@ curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/dow
 The script is the copy attached to the latest release, listed in that
 release's signed `checksums.txt` and published only after the release is
 approved; it then installs the newest release that is completely published
-and signed, and carries the release signing key inside it. Right after a new
-release is created there can be a short window where this URL is not
-available yet: retry in a few minutes, or use a versioned URL. Every release
+and signed, and carries the release signing key inside it. A new release
+stays a hidden draft until its signed files are uploaded, so this URL always
+serves a complete release and never points at one still being built. Every release
 attaches its own copy of `install.sh`; use it to pin both the script and the
 release:
 

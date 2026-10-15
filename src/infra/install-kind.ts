@@ -44,9 +44,9 @@ export const TARBALL_INSTALL_MARKER = ".bitterbot-install-kind";
  * only uploaded after the release-tarball approval, so it is never newer than
  * a reviewed, signed release (raw main can be). The script embeds the pinned
  * public key and picks the newest release that is completely published and
- * signed. Trade-off: right after a release is created, and before its assets
- * are approved and uploaded, this URL can briefly 404; retry in a few minutes
- * or use a versioned `releases/download/vX.Y.Z/install.sh` URL.
+ * signed. Releases are created as drafts and published only after their
+ * signed assets are uploaded (release-tarball.yml), so `latest` never points
+ * at a release without install.sh.
  */
 export const INSTALL_SH_URL =
   "https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh";

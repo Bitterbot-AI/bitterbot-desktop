@@ -4,6 +4,8 @@
     ".": {
       "release-type": "node",
       "include-component-in-tag": false,
+      "draft": true,
+      "force-tag-creation": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
