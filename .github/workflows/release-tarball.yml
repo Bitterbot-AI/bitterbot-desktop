@@ -13,8 +13,11 @@
 # the bundled Node, and writes the tarball + manifest.json.
 #
 # Every release therefore needs ONE approval click in the "release"
-# environment before its tarballs exist; until then install.sh (served from
-# main) keeps installing the previous complete release.
+# environment before its tarballs exist. The one-liner URL
+# (releases/latest/download/install.sh) resolves to the newest release, so it
+# can 404 in that window until install.sh is uploaded below; versioned
+# releases/download/vX.Y.Z/install.sh URLs keep working, and the script itself
+# installs the newest release that is completely published and signed.
 #
 # Publish (one job, approval-gated like orchestrator-release.yml): checksums
 # over every asset, minisign signature with the trusted comment

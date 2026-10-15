@@ -150,7 +150,7 @@ describe("release-tarball install kind (PLAN-56 Phase 3a)", () => {
     expect(TARBALL_UPDATE_COMMAND).toBe("bitterbot update");
     expect(TARBALL_REINSTALL_COMMAND).toBe("bitterbot update --reinstall");
     expect(TARBALL_INSTALLER_COMMAND).toBe(
-      "curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash",
+      "curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash",
     );
   });
 

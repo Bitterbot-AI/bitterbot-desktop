@@ -9,7 +9,9 @@ import { describe, expect, it } from "vitest";
 import { INSTALL_SH_URL } from "./install-kind.js";
 
 const ROOT = process.cwd();
-const INSTALL_PS1_URL = INSTALL_SH_URL.replace(/install\.sh$/, "install.ps1");
+// install.ps1 is not a release asset, so its one-liner is served from main.
+const INSTALL_PS1_URL =
+  "https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1";
 // A release's own copy, for pinned installs.
 const PINNED_RELEASE_ASSET =
   /^https:\/\/github\.com\/Bitterbot-AI\/bitterbot-desktop\/releases\/download\/v\d+\.\d+\.\d+\/install\.sh$/;
@@ -43,6 +45,12 @@ function installerUrls(): Array<{ file: string; url: string }> {
 }
 
 describe("installer URLs in the docs", () => {
+  it("canonical install.sh is the signed latest-release asset, not raw main", () => {
+    expect(INSTALL_SH_URL).toBe(
+      "https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh",
+    );
+  });
+
   it("are the canonical one-liner URL (or a pinned release asset)", () => {
     const urls = installerUrls();
     expect(urls.length).toBeGreaterThan(0);

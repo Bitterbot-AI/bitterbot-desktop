@@ -331,7 +331,7 @@ jobs:
           (cd "$D" && sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh > checksums.txt             && minisign -S -s "$KEYS/test.key" -m checksums.txt -t "v$VERSION checksums")
           # A fake GitHub releases API listing: the newest release (v99.0.0)
           # has no tarball yet, so install.sh must pick this build's version.
-          # install.sh itself is served at the root, like raw main.
+          # install.sh itself is also served at the root, like the one-liner URL.
           mkdir -p "$RUNNER_TEMP/releases/api"
           node -e '
             const fs = require("node:fs");

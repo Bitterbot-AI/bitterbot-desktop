@@ -23,11 +23,11 @@ Bitterbot selects models in this order:
    next model.
 
 With no model configured at all, the runtime falls back to
-`anthropic/claude-opus-4-8`. Setup (`bitterbot onboard`) always writes a
-model: the provider's recommended one is Claude Sonnet 5.5
-(`anthropic/claude-sonnet-5-5`), GPT-5.5, OpenRouter Auto or Gemini 3.1 Pro
-(preview), and Claude Sonnet 5 is the everyday default the Control UI picker
-marks.
+`anthropic/claude-sonnet-5-5`, the model setup recommends for Anthropic.
+Setup (`bitterbot onboard`) always writes a model: the provider's recommended
+one is Claude Sonnet 5.5 (`anthropic/claude-sonnet-5-5`), GPT-5.5
+(`openai/gpt-5.5`), OpenRouter Auto or Gemini 3.1 Pro (preview), and Claude
+Sonnet 5 is the everyday default the Control UI picker marks.
 
 Related:
 
