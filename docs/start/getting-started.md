@@ -26,7 +26,10 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
    See [Installer (laptops)](/start/install-script) for what it verifies.
 3. **From source (below):** for developing Bitterbot, or when you need the
    browser tool in a container setup (the image ships without Chromium).
-4. **npm:** not yet. There is no npm package today.
+4. **npm (1.6.0 and later):** if you already have Node 22.12 or newer,
+   `npm install -g bitterbot` and then `bitterbot onboard`. See
+   [npm package](/start/npm) for what the install downloads and how it
+   updates.
 
 With Docker, the whole install is:
 
@@ -92,9 +95,10 @@ Check your Node version with `node --version` if you are unsure.
     ```
 
     <Note>
-    There is no npm package yet. Without a source checkout, use the
-    [installer](/start/install-script) on a laptop or the container image on a
-    server (see [Docker (recommended install)](/platforms/docker)).
+    Not developing Bitterbot? Skip the checkout: use the
+    [installer](/start/install-script) or [`npm install -g bitterbot`](/start/npm)
+    on a laptop, or the container image on a server (see
+    [Docker (recommended install)](/platforms/docker)).
     On Windows, use Docker Desktop, or WSL2 with the checkout on the Linux
     filesystem (`~`), not `/mnt/c`; boot is dramatically faster there.
     </Note>

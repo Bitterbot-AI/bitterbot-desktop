@@ -118,6 +118,8 @@ pnpm exec playwright install --with-deps chromium   # browser automation
 > **Always-on server?** Run the public container image `ghcr.io/bitterbot-ai/bitterbot-desktop`, or the Fly.io and VPS templates, and finish setup in the browser: [docs/platforms/docker.md](docs/platforms/docker.md).
 >
 > **Laptop without a dev toolchain?** From release 1.5.0, a signed prebuilt tarball (Node runtime included) installs with one line on Linux and Apple-silicon macOS: [docs/start/install-script.md](docs/start/install-script.md).
+>
+> **Already have Node 22.12+?** From release 1.6.0, `npm install -g bitterbot && bitterbot onboard` installs the published package (no pnpm, no build): [docs/start/npm.md](docs/start/npm.md).
 
 Run the onboarding wizard. It walks you through model auth (API keys), memory embeddings, web search, channels, wallet, and workspace setup, then **starts the gateway + Control UI for you and opens the browser**. When it finishes, Bitterbot is already running; there's nothing else to type.
 

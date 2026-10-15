@@ -589,6 +589,7 @@
                 "pages": [
                   "start/getting-started",
                   "start/install-script",
+                  "start/npm",
                   "start/onboarding-overview",
                   "start/wizard",
                   "start/onboarding"
@@ -1067,7 +1068,11 @@
               },
               {
                 "group": "Release notes",
-                "pages": ["reference/RELEASE-PROCEDURE", "reference/test"]
+                "pages": [
+                  "reference/RELEASE-PROCEDURE",
+                  "reference/npm-publishing",
+                  "reference/test"
+                ]
               },
               {
                 "group": "More reference",

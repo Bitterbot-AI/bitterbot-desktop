@@ -13,6 +13,7 @@ import {
   collectInstallHealth,
   type InstallHealthInput,
   LOCAL_GGUF_FILE,
+  NODE_LLAMA_CPP_VERSION,
 } from "./doctor-install-health.js";
 
 let dir: string;
@@ -35,6 +36,7 @@ function input(overrides: Partial<InstallHealthInput> = {}): InstallHealthInput 
     resolvePlaywright: () => "/pkg/node_modules/playwright-core",
     findBrowser: () => ({ kind: "chrome", path: "/usr/bin/google-chrome" }),
     probeOrchestrator: () => ({ found: false, candidates: [] }),
+    hasNodeLlamaCpp: () => true,
     ...overrides,
   };
 }
@@ -285,6 +287,22 @@ describe("local GGUF", () => {
     expect(
       checkLocalGguf(
         input({ cfg: { agents: { defaults: { memorySearch: { provider: "openai" } } } } }),
+      ).message,
+    ).toContain("not needed");
+  });
+  it("names the npm add-on when node-llama-cpp is not installed (npm package installs)", () => {
+    const r = checkLocalGguf(input({ hasNodeLlamaCpp: () => false }));
+    expect(r.level).toBe("warn");
+    expect(r.message).toContain(`npm install -g node-llama-cpp@${NODE_LLAMA_CPP_VERSION}`);
+    const git = checkLocalGguf(input({ installKind: "git", hasNodeLlamaCpp: () => false }));
+    expect(git.message).toContain("pnpm install");
+    // A remote embeddings provider does not need it at all.
+    expect(
+      checkLocalGguf(
+        input({
+          hasNodeLlamaCpp: () => false,
+          cfg: { agents: { defaults: { memorySearch: { provider: "openai" } } } },
+        }),
       ).message,
     ).toContain("not needed");
   });

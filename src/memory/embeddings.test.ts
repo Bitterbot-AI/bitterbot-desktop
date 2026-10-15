@@ -229,6 +229,15 @@ describe("embedding provider auto selection", () => {
         fallback: "none",
       }),
     ).rejects.toThrow(/Local embeddings unavailable/);
+    // npm package installs leave the optional peer out: say how to add it.
+    await expect(
+      createEmbeddingProvider({
+        config: {} as never,
+        provider: "auto",
+        model: "",
+        fallback: "none",
+      }),
+    ).rejects.toThrow(/npm install -g node-llama-cpp@3\.15\.1/);
   });
 
   it("prefers openai when a key resolves", async () => {

@@ -11,10 +11,10 @@ title: "update"
 
 Safely update Bitterbot and switch between stable/beta/dev channels.
 
-There is no installable npm package (the `bitterbot` name on npm is a
-placeholder), so in practice an install is a **source checkout**, a
-**container**, or an **installer-based install**. The package-manager flow
-below exists for a package install and is not a supported install path yet.
+An install is a **source checkout**, a **container**, an
+**installer-based install**, or (from 1.6.0) an **npm package install**
+(`npm install -g bitterbot`, see [npm package](/start/npm)). Each updates
+its own way; `bitterbot update status` shows which one this is.
 
 In a **container** (the published image sets `BITTERBOT_INSTALL_KIND=container`;
 images that do not are detected from `/.dockerenv`, `/run/.containerenv` or the
@@ -162,9 +162,26 @@ install method aligned:
 - `dev` → ensures a git checkout (default: `~/bitterbot`, override with `BITTERBOT_GIT_DIR`),
   updates it, and installs the global CLI from that checkout.
 - `stable`/`beta` → on a package install, installs from npm using the matching
-  dist-tag. Do not switch a checkout to these expecting npm: the npm package is
-  a placeholder. A checkout follows `stable`/`beta` by checking out the release
-  tag (below).
+  dist-tag (`latest` or `beta`). A checkout follows `stable`/`beta` by
+  checking out the release tag (below) and stays a checkout.
+
+## npm package installs
+
+For `npm install -g bitterbot` (1.6.0 and later), `bitterbot update` checks
+that the running package is the one under `npm root -g` (likewise
+`pnpm root -g` or Bun's global directory), then runs
+`npm i -g bitterbot@<tag>`: `latest` on `stable`, `beta` on `beta`, or the
+version or dist-tag given with `--tag`. A move to an older version asks for
+confirmation first. Afterwards it restarts the gateway service if one is
+installed; otherwise run `bitterbot gateway restart`. `update status` reports
+the install as a package install with npm as its manager and compares the
+running version with the npm registry.
+
+There is no snapshot or automatic rollback on this path (that is the
+installer's); go back with `npm i -g bitterbot@<previous version>`. Installed
+with `--prefix <dir>`? Run the update with `NPM_CONFIG_PREFIX=<dir>` so
+`npm root -g` finds the install; otherwise `bitterbot update` reports it
+cannot detect the package manager and prints the npm command to run.
 
 ## Git checkout flow
 

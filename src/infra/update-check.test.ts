@@ -1,5 +1,12 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveNpmChannelTag } from "./update-check.js";
+import {
+  checkUpdateStatus,
+  detectPackageInstallLayout,
+  resolveNpmChannelTag,
+} from "./update-check.js";
 
 describe("resolveNpmChannelTag", () => {
   let versionByTag: Record<string, string | null>;
@@ -71,6 +78,52 @@ describe("fetchNpmTagVersion not-published mapping (D-J)", () => {
       expect(res.version).toBeNull();
     } finally {
       fetchMock.mockRestore();
+    }
+  });
+});
+
+describe("package install manager", () => {
+  it("reads the installing tool from the install path, not the packageManager field", () => {
+    expect(detectPackageInstallLayout(["/usr/local/lib/node_modules/bitterbot"])).toBe("npm");
+    expect(
+      detectPackageInstallLayout(["C:\\Users\\v\\AppData\\Roaming\\npm\\node_modules\\bitterbot"]),
+    ).toBe("npm");
+    expect(
+      detectPackageInstallLayout([
+        "/home/v/.local/share/pnpm/global/5/node_modules/bitterbot",
+        "/home/v/.local/share/pnpm/global/5/.pnpm/bitterbot@1.6.0/node_modules/bitterbot",
+      ]),
+    ).toBe("pnpm");
+    expect(detectPackageInstallLayout(["/home/v/.bun/install/global/node_modules/bitterbot"])).toBe(
+      "bun",
+    );
+    expect(detectPackageInstallLayout(["/home/v/bitterbot-desktop", null])).toBeNull();
+  });
+
+  it("reports a global npm install as npm even though package.json names pnpm", async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bb-npm-global-"));
+    try {
+      const root = path.join(tmp, "lib", "node_modules", "bitterbot");
+      fs.mkdirSync(root, { recursive: true });
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name: "bitterbot", version: "1.6.0", packageManager: "pnpm@10.23.0" }),
+      );
+      const status = await checkUpdateStatus({
+        root,
+        includeRegistry: false,
+        containerProbe: {
+          env: {},
+          existsSync: () => false,
+          readFileSync: () => {
+            throw new Error("no cgroup");
+          },
+        },
+      });
+      expect(status.installKind).toBe("package");
+      expect(status.packageManager).toBe("npm");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });
