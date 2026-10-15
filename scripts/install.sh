@@ -2,12 +2,13 @@
 #
 # Bitterbot installer (PLAN-56 Phase 3a).
 #
-#   curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+#   curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 #   curl -fsSL .../install.sh | bash -s -- --version 1.5.0 --no-onboard
 #
-# The script is served from main (always available, whatever state the newest
-# release is in) and is also attached to every release for pinned installs.
-# It embeds the pinned public key, so it is exactly as trustworthy as main.
+# The one-liner serves the copy attached to the latest release, which is listed
+# in that release's signed checksums.txt. Releases stay drafts until their
+# signed files are uploaded, so "latest" is always complete; every release carries its own copy for pinned installs
+# (releases/download/vX.Y.Z/install.sh). It embeds the pinned public key.
 #
 # What it does, in order (it prints this plan before touching anything):
 #   1. Detects your OS/arch (Linux x64/arm64 with glibc >= 2.28, macOS Apple

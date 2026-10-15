@@ -13,8 +13,12 @@
 # the bundled Node, and writes the tarball + manifest.json.
 #
 # Every release therefore needs ONE approval click in the "release"
-# environment before its tarballs exist; until then install.sh (served from
-# main) keeps installing the previous complete release.
+# environment before its tarballs exist. release-please creates the release as
+# a DRAFT (release-please-config.json: draft + force-tag-creation, so the tag
+# exists for npm and Docker), and the publish job below un-drafts it and marks
+# it latest only after every asset is uploaded. The one-liner URL
+# (releases/latest/download/install.sh) therefore keeps serving the previous
+# complete release until this one is, and never 404s mid-release.
 #
 # Publish (one job, approval-gated like orchestrator-release.yml): checksums
 # over every asset, minisign signature with the trusted comment
@@ -251,3 +255,27 @@ jobs:
           gh release upload "v$VERSION" checksums.txt checksums.txt.minisig \
             --repo "${{ github.repository }}" --clobber
           gh release upload "v$VERSION" install.sh --repo "${{ github.repository }}" --clobber
+
+      # release-please creates the release as a draft, so it is invisible and
+      # never "latest" while its assets are missing. Publish it now that every
+      # asset is up. A release that is already public (a forced rebuild, or one
+      # published by hand) is left as it is.
+      - name: Publish the release and mark it latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view "v$VERSION" --repo "$REPO" --json isDraft -q .isDraft)" = "true" ]; then
+            gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
+            echo "published v$VERSION"
+          else
+            echo "v$VERSION is already published; not changing it"
+          fi
+          latest=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
+          if [ "$latest" != "v$VERSION" ]; then
+            echo "::warning::releases/latest is $latest, not v$VERSION (fine if a newer release exists)"
+          fi
+          # The one-liner must resolve now.
+          curl -fsSIL -o /dev/null "https://github.com/$REPO/releases/download/v$VERSION/install.sh"

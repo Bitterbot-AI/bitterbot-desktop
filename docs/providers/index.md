@@ -36,8 +36,8 @@ like [Venice AI](/providers/venice) and fully local inference via
 
 Setup recommends Claude Sonnet 5.5 for Anthropic, GPT-5.5 for OpenAI,
 OpenRouter Auto for OpenRouter and Gemini 3.1 Pro (preview) for Gemini. A
-gateway with no model configured at all falls back to
-`anthropic/claude-opus-4-8`.
+gateway with no model configured at all falls back to the same Anthropic
+recommendation, `anthropic/claude-sonnet-5-5`.
 
 ## Provider docs
 

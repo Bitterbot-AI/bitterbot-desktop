@@ -83,7 +83,7 @@ param(
   Set-StrictMode -Version 2.0
   $ErrorActionPreference = 'Stop'
 
-  $InstallShUrl = 'https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh'
+  $InstallShUrl = 'https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh'
   $DockerDocsUrl = 'https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/docker.md'
   $WindowsDocsUrl = 'https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/windows.md'
 

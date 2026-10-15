@@ -176,7 +176,7 @@ WSL is Linux, so the Linux paths work inside it. The
 inside WSL, or run `install.ps1` from PowerShell (above), which does the same:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
 With Node 22.12 or newer inside WSL, `npm install -g bitterbot` then

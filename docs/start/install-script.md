@@ -18,15 +18,17 @@ prebuilt, signed release for your machine and needs nothing installed first
 [`npm install -g bitterbot`](/start/npm) works too.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
-The script comes from the `main` branch, so this URL always works; it then
-installs the newest release that is completely published and signed. It
-carries the release signing key inside it, so it is exactly as trustworthy as
-the repository itself. Every release also attaches its own copy of
-`install.sh`, listed in that release's signed `checksums.txt`; use it to pin
-both the script and the release:
+The script is the copy attached to the latest release, listed in that
+release's signed `checksums.txt` and published only after the release is
+approved; it then installs the newest release that is completely published
+and signed, and carries the release signing key inside it. A new release
+stays a hidden draft until its signed files are uploaded, so this URL always
+serves a complete release and never points at one still being built. Every release
+attaches its own copy of `install.sh`; use it to pin both the script and the
+release:
 
 ```bash
 curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/v1.6.0/install.sh | bash -s -- --version 1.6.0
@@ -35,7 +37,7 @@ curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/v
 Read the script before running it (it is short and commented):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | less
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | less
 ```
 
 Already installed? Run `bitterbot update` (see [Updating](#updating)), or run
@@ -420,7 +422,7 @@ Bitterbot's release tarballs are built for Linux and macOS. On Windows,
 irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
 ```
 
-It downloads `install.sh` from `main` as well, finds your default WSL2
+It downloads `install.sh` from the latest release as well, finds your default WSL2
 distribution, prints its plan, and runs that installer inside it, so Bitterbot lives in your Linux home
 (`~/.bitterbot`, on the Linux ext4 filesystem). It changes nothing on Windows
 and needs no administrator rights. Without WSL2 it prints how to enable it

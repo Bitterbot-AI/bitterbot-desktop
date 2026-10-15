@@ -62,7 +62,7 @@ printed in the same log. The token is printed once; read it again any time with
 With the installer, the whole install is:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
 It prints its plan, verifies the release's minisign signature (with

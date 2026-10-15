@@ -39,14 +39,17 @@ export const CONTAINER_FALSE_POSITIVE_HINT =
 export const TARBALL_INSTALL_MARKER = ".bitterbot-install-kind";
 
 /**
- * The installer one-liner's URL: install.sh from main, which is always
- * available whatever state the newest release is in (it picks the newest
- * release that is completely published and signed). It embeds the pinned
- * public key, so it is as trustworthy as main. Every release also carries
- * install.sh as an asset for pinned installs.
+ * The installer one-liner's URL: the install.sh asset of the latest GitHub
+ * release. That copy is listed in the release's signed checksums.txt and is
+ * only uploaded after the release-tarball approval, so it is never newer than
+ * a reviewed, signed release (raw main can be). The script embeds the pinned
+ * public key and picks the newest release that is completely published and
+ * signed. Releases are created as drafts and published only after their
+ * signed assets are uploaded (release-tarball.yml), so `latest` never points
+ * at a release without install.sh.
  */
 export const INSTALL_SH_URL =
-  "https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh";
+  "https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh";
 
 /** The installer one-liner (first install, or a repair when the updater cannot run). */
 export const TARBALL_INSTALLER_COMMAND = `curl -fsSL ${INSTALL_SH_URL} | bash`;

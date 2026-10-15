@@ -68,7 +68,7 @@ Pick the path that fits your machine. Each one ends in the same setup wizard, wh
 **Laptop or desktop (Linux x64/arm64, Apple-silicon macOS).** A signed prebuilt release with its own Node runtime; nothing else to install:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
 On **Windows**, run the same installer inside WSL2 from PowerShell (no administrator rights needed once WSL2 is set up):
