@@ -5,10 +5,10 @@
   "description": "Bitterbot email channel: read a mailbox over IMAP, reply over SMTP",
   "type": "module",
   "dependencies": {
-    "imapflow": "^2.2.5",
-    "mailparser": "^3.9.36",
-    "nodemailer": "^10.0.15",
-    "zod": "^4.6.5"
+    "imapflow": "^2.4.0",
+    "mailparser": "^3.9.38",
+    "nodemailer": "^10.1.0",
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "bitterbot": "workspace:*"

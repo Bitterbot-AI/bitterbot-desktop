@@ -8,7 +8,7 @@
     "@twurple/api": "^8.2.0",
     "@twurple/auth": "^8.2.0",
     "@twurple/chat": "^8.2.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "bitterbot": "workspace:*"
