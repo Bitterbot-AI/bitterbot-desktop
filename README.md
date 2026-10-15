@@ -331,7 +331,7 @@ Built by **Victor Michael Gil** and the community. Follow [@Bitterbot_AI](https:
 
 ## Heritage and attribution
 
-Bitterbot builds on [OpenClaw](https://github.com/openclaw/openclaw) for channel infrastructure and the base embedded agent runner, originally built by [Mario Zechner](https://mariozechner.at/) as [pi-mono](https://github.com/badlogic/pi-mono). Its memory, dream, curiosity, hormonal, identity, and economic systems are Bitterbot work.
+Bitterbot builds on [OpenClaw](https://github.com/openclaw/openclaw) for channel infrastructure. Its agent runtime is Bitterbot's own, with parts ported from [Mario Zechner](https://mariozechner.at/)'s [pi-mono](https://github.com/badlogic/pi-mono); model provider connections still use pi-mono's `pi-ai`. Its memory, dream, curiosity, hormonal, identity, and economic systems are Bitterbot work.
 
 Deep Recall uses the Recursive Language Model pattern through [hampton-io/RLM](https://github.com/hampton-io/RLM). Optional external skill ingestion integrates [Skill Seekers](https://github.com/yusufkaraaslan/Skill_Seekers) by Yusuf Karaaslan alongside Bitterbot's native scraper. An earlier research dream mode was inspired by [Andrej Karpathy's autoresearch](https://github.com/karpathy/autoresearch).
 
