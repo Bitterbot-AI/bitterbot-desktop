@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.5.0...v1.6.0) (2026-10-15)
+
+
+### Features
+
+* **installer:** switch a running older Bitterbot to the new version ([#239](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/239)) ([a10e170](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a10e1708d1a33918c933ac26d0ce57ae9499fc10))
+* **release:** publish the bitterbot package to npm ([#240](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/240)) ([a980204](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a9802043bd1675aa2f29e1671cfb8ee451f4c4e0))
+
+
+### Bug Fixes
+
+* **release:** make release-please actually bump the desktop Cargo.lock ([#237](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/237)) ([b495b71](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b495b71b40845c18cd0308705e3f9e56da1e2c2b))
+
 ## [1.5.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.4.0...v1.5.0) (2026-10-13)
 
 
