@@ -373,7 +373,7 @@ describeInstaller("scripts/install.sh", () => {
         'case "$1" in',
         "  auth) exit 0 ;;",
         '  --version) echo "gh version 2.45.0 (2025-07-18)"; exit 0 ;;',
-        '  attestation) echo "unknown command \"attestation\" for \"gh\"" >&2; exit 1 ;;',
+        '  attestation) echo unknown command attestation >&2; exit 1 ;;',
         "esac",
         "exit 1",
       ].join("\n"),
