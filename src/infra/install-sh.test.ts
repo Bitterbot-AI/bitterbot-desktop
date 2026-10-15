@@ -354,6 +354,49 @@ describeInstaller("scripts/install.sh", () => {
     expect(strict.status).not.toBe(0);
   });
 
+  it("skips the attestation check on a gh without `gh attestation` instead of refusing", () => {
+    freshReleases();
+    publish("1.4.0");
+    // gh 2.45 (Ubuntu 24.04's package): logged in, but `gh attestation` is an unknown command.
+    const bin = fs.mkdtempSync(path.join(work, "gh-"));
+    const stub = (body: string) => {
+      fs.writeFileSync(path.join(bin, "gh"), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    };
+    const env = (extra: Record<string, string> = {}) => ({
+      BITTERBOT_INSTALL_TEST_VERIFIER: "none",
+      BITTERBOT_INSTALL_TEST_GH: "1",
+      PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}`,
+      ...extra,
+    });
+    stub(
+      [
+        'case "$1" in',
+        "  auth) exit 0 ;;",
+        '  --version) echo "gh version 2.45.0 (2025-07-18)"; exit 0 ;;',
+        "  attestation) echo unknown command attestation >&2; exit 1 ;;",
+        "esac",
+        "exit 1",
+      ].join("\n"),
+    );
+    const old = runInstaller([], env(), freshHome());
+    expect(old.status, old.out).toBe(0);
+    expect(old.out).toContain("gh 2.45.0 has no 'gh attestation'; skipping that extra check");
+    expect(old.out).not.toContain("attestation verify FAILED");
+
+    // A gh that has the command still runs it, and a failed verification still refuses.
+    stub('case "$1" in auth) exit 0 ;; attestation) exit 0 ;; esac\nexit 1');
+    const good = runInstaller([], env(), freshHome());
+    expect(good.status, good.out).toBe(0);
+    expect(good.out).toContain("GitHub build-provenance attestation (gh attestation verify)");
+
+    stub(
+      'case "$1" in auth) exit 0 ;; attestation) [ "$2" = verify ] && [ "$3" = --help ] && exit 0; exit 1 ;; esac\nexit 1',
+    );
+    const bad = runInstaller([], env(), freshHome());
+    expect(bad.status).not.toBe(0);
+    expect(bad.out).toContain("gh attestation verify FAILED");
+  });
+
   it("validates --version as a whole string", () => {
     const res = runInstaller(["--version", "1.5.0\nrm -rf /"], {}, freshHome());
     expect(res.status).not.toBe(0);

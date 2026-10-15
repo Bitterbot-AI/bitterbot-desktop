@@ -186,8 +186,8 @@ inside WSL, or run `install.ps1` from PowerShell (above), which does the same:
 curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
-With Node 18 or newer inside WSL, `npm install -g bitterbot` then
-`bitterbot onboard` works too (see [npm package](/start/npm)). Either way,
+With Node 18 or newer inside WSL, `npm install -g bitterbot && bitterbot onboard`
+works too (see [npm package](/start/npm)). Either way,
 update later with `bitterbot update` inside WSL.
 
 For development, use a source checkout instead (in your Linux home):

@@ -15,8 +15,7 @@ On macOS and Linux the recommended install is the
 `sudo`. If you prefer npm, that works too, with any Node 18 or newer:
 
 ```bash
-npm install -g bitterbot
-bitterbot onboard
+npm install -g bitterbot && bitterbot onboard
 ```
 
 Since 1.6.2 the npm package is a small launcher. It has no dependencies and
@@ -31,10 +30,15 @@ Bitterbot 1.6.2: first run, downloading the signed release (410 MB)...
 Verified and installed to ~/.bitterbot/app/1.6.2.
 ```
 
-Every later run starts Bitterbot directly. `bitterbot onboard` starts the
-gateway and opens a setup page in your browser (`--no-browser` keeps setup in
-the terminal): model key, model, memory, web search, channels and P2P.
-Afterwards the Control UI is at `http://127.0.0.1:19001/`.
+On a machine that is not set up yet, plain `bitterbot` (no arguments, in a
+terminal) starts setup: it prints "Bitterbot isn't set up yet. Starting
+setup..." and runs `bitterbot onboard`. Once setup is done, plain `bitterbot`
+prints the command list as before.
+
+`bitterbot onboard` starts the gateway and opens a setup page in your browser
+(`--no-browser` keeps setup in the terminal): model key, model, memory, web
+search, channels and P2P. Afterwards the Control UI is at
+`http://127.0.0.1:19001/`.
 
 Already running Bitterbot from a git clone or the installer? `bitterbot
 onboard` notices the older gateway on the port and offers to switch it to

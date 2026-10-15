@@ -35,7 +35,7 @@ import {
 import { looksLikeContainer, readDeclaredInstallKind } from "../infra/install-kind.js";
 import { withoutInstallerEnv } from "../infra/installer-env.js";
 import type { RuntimeEnv } from "../runtime.js";
-import { isFirstBootOnlyConfig } from "../wizard/onboarding.first-boot.js";
+import { isSetUpSnapshot } from "../wizard/onboarding.first-boot.js";
 import { isRemoteEnvironment } from "./oauth-env.js";
 import type { OnboardOptions } from "./onboard-types.js";
 
@@ -275,8 +275,7 @@ export async function runBrowserOnboarding(
     }
   }
   // A browser setup that lost its session before Finish is not "set up".
-  const alreadySetUp =
-    snapshot.exists && !isFirstBootOnlyConfig(snapshot.resolved) && !setupInProgress();
+  const alreadySetUp = isSetUpSnapshot(snapshot, { setupInProgress: setupInProgress() });
   if (!listening && alreadySetUp && opts.fromInstaller) {
     // Set up, but no gateway runs: say how to start it rather than starting
     // a setup gateway with setup-only flags.

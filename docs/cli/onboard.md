@@ -84,6 +84,18 @@ offers to switch it to this version (`bitterbot gateway switch`), otherwise it
 prints that command. A program on the port that is not a Bitterbot gateway is
 an error.
 
+## Plain `bitterbot` on a new machine
+
+You do not need to remember the word "onboard": running `bitterbot` with no
+arguments on a machine that is not set up yet prints "Bitterbot isn't set up
+yet. Starting setup..." and runs `bitterbot onboard` with its defaults. This
+happens only in an interactive terminal (stdin and stdout), when `CI` is not
+set, and when no argument or flag is given (`--help`, `--version`,
+`--profile` and `--dev` included). "Set up" means a config file holding more
+than a first gateway start writes, with no browser setup left half done: the
+same test the setup page uses. Once set up, plain `bitterbot` prints the
+command list as before.
+
 ## The setup link
 
 - Works until setup finishes, for at most 30 minutes, and only for the setup

@@ -84,8 +84,7 @@ What the installer verifies, and how to pin, roll back, or remove: [install scri
 **Prefer npm?** Any Node 18 or newer works:
 
 ```bash
-npm install -g bitterbot
-bitterbot onboard
+npm install -g bitterbot && bitterbot onboard
 ```
 
 The npm package is a small launcher: it installs in seconds with no dependencies and no warnings, and on first run downloads the same signed release as the installer (about 410 MB). Never use `sudo` with it; if npm says `EACCES`, see [npm package](docs/start/npm.md#eacces-permission-denied).

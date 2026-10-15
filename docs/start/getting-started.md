@@ -23,10 +23,10 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
    release for Linux x64/arm64 and macOS (Apple silicon or Intel), with its own
    Node runtime, no Node and no `sudo` needed (Windows: inside WSL2).
    See [Installer (laptops)](/start/install-script) for what it verifies.
-2. **npm:** `npm install -g bitterbot` (Node 18 or newer) and then
-   `bitterbot onboard`. The package is a small launcher that downloads the
-   same signed release on first run. See [npm package](/start/npm) for what
-   it downloads, how it updates, and fixing `EACCES` without `sudo`.
+2. **npm:** `npm install -g bitterbot && bitterbot onboard` (Node 18 or newer).
+   The package is a small launcher that downloads the same signed release on
+   first run. See [npm package](/start/npm) for what it downloads, how it
+   updates, and fixing `EACCES` without `sudo`.
 3. **Docker (recommended for servers):** nothing to install but Docker,
    updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
 4. **From source (below):** for developing Bitterbot, or when you need the
@@ -93,8 +93,7 @@ signed release on first run; never use `sudo`, see
 [EACCES](/start/npm#eacces-permission-denied)):
 
 ```bash
-npm install -g bitterbot   # Node 18 or newer
-bitterbot onboard
+npm install -g bitterbot && bitterbot onboard   # Node 18 or newer
 ```
 
 The release includes local embeddings and the P2P orchestrator, so there is

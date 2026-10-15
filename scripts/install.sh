@@ -21,7 +21,7 @@
 #      (with `minisign`, or OpenSSL 3 when minisign is absent), requires the
 #      signed trusted comment to name this exact release, then checks the
 #      tarball's SHA-256. Without either tool it says so and falls back to
-#      SHA-256 over HTTPS (plus `gh attestation verify` when gh is logged in);
+#      SHA-256 over HTTPS (plus `gh attestation verify` when gh 2.49+ is logged in);
 #      pass --require-signature to refuse that fallback.
 #   4. Unpacks to <dir>/<version>, switches <dir>/current to it, keeps the
 #      previous version (for rollback), links ~/.local/bin/bitterbot.
@@ -602,9 +602,18 @@ main() {
       *) bb_die "BITTERBOT_INSTALL_TEST_VERIFIER must be minisign, openssl or none" ;;
     esac
   fi
-  local gh_ok=0
-  if [ "$BB_TEST_MODE" != "1" ] && command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-    gh_ok=1
+  # The optional GitHub attestation check needs gh logged in AND new enough to
+  # have `gh attestation` (2.49+). An older gh is skipped with a note rather
+  # than read as a failed check; the minisign/OpenSSL signature still applies.
+  # Tests opt in with BITTERBOT_INSTALL_TEST_GH=1 and a stub gh on PATH.
+  local gh_ok=0 gh_old=""
+  if { [ "$BB_TEST_MODE" != "1" ] || [ "${BITTERBOT_INSTALL_TEST_GH:-}" = "1" ]; } &&
+    command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
+    if gh attestation verify --help >/dev/null 2>&1; then
+      gh_ok=1
+    else
+      gh_old=$(gh --version 2>/dev/null | sed -n '1s/^gh version \([^ ]*\).*/\1/p')
+    fi
   fi
   if [ "$sig_tool" = "none" ] && [ "$require_signature" = "1" ]; then
     bb_die "--require-signature: neither minisign nor OpenSSL 3 is available to verify the signature. Install minisign (brew install minisign / apt install minisign) and re-run."
@@ -634,6 +643,8 @@ main() {
   fi
   if [ "$gh_ok" = "1" ]; then
     bb_say "             + GitHub build-provenance attestation (gh attestation verify)"
+  elif [ -n "$gh_old" ]; then
+    bb_say "             (gh ${gh_old} has no 'gh attestation'; skipping that extra check, update gh to 2.49+ to add it)"
   fi
   if [ "$with_browser" = "1" ]; then
     bb_say "  Browser:   Playwright Chromium into ~/.bitterbot/browsers (Linux only)"

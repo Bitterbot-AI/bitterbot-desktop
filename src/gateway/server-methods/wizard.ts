@@ -17,7 +17,6 @@ import {
   liveSetupTokenHash,
   markSetupInProgress,
   revokeSetupToken,
-  setupInProgress,
   verifySetupToken,
 } from "../setup-token.js";
 import { formatForLog } from "../ws-log.js";
@@ -38,18 +37,12 @@ function isSetupOnlyClient(client: GatewayClient | null): boolean {
 /**
  * True once setup has run: a config file holding more than a first gateway
  * start writes (PLAN-56 Phase 2 `isFirstBootOnlyConfig`). After that, only an
- * admin-authenticated caller may run the wizard again.
+ * admin-authenticated caller may run the wizard again. The definition lives in
+ * src/wizard/onboarding.first-boot.ts so the CLI shares it.
  */
 export async function onboardingComplete(): Promise<boolean> {
-  // A browser setup that wrote part of the config and then lost its session
-  // is not complete: the next setup link may finish it.
-  if (setupInProgress()) {
-    return false;
-  }
-  const { readConfigFileSnapshot } = await import("../../config/config.js");
-  const { isFirstBootOnlyConfig } = await import("../../wizard/onboarding.first-boot.js");
-  const snapshot = await readConfigFileSnapshot();
-  return snapshot.exists && !isFirstBootOnlyConfig(snapshot.resolved);
+  const { onboardingComplete: complete } = await import("../../wizard/onboarding.first-boot.js");
+  return await complete();
 }
 
 /**
