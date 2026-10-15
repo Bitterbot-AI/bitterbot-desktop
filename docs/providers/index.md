@@ -23,19 +23,27 @@ like [Venice AI](/providers/venice) and fully local inference via
 
 ## Quick start
 
-1. Authenticate with the provider (usually via `bitterbot onboard`).
-2. Set the default model:
+1. Authenticate with the provider (usually via `bitterbot onboard`, which
+   offers Anthropic, OpenAI, OpenRouter and Google Gemini keys and sets the
+   model for you).
+2. Or set the default model yourself:
 
 ```json5
 {
-  agents: { defaults: { model: { primary: "anthropic/claude-opus-4-8" } } },
+  agents: { defaults: { model: { primary: "anthropic/claude-sonnet-5-5" } } },
 }
 ```
+
+Setup recommends Claude Sonnet 5.5 for Anthropic, GPT-5.5 for OpenAI,
+OpenRouter Auto for OpenRouter and Gemini 3.1 Pro (preview) for Gemini. A
+gateway with no model configured at all falls back to
+`anthropic/claude-opus-4-8`.
 
 ## Provider docs
 
 - [OpenAI (API + Codex)](/providers/openai)
 - [Anthropic (API + Claude Code CLI)](/providers/anthropic)
+- [Google Gemini](/providers/google)
 - [Qwen (OAuth)](/providers/qwen)
 - [OpenRouter](/providers/openrouter)
 - [Vercel AI Gateway](/providers/vercel-ai-gateway)

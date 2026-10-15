@@ -17,8 +17,18 @@ npm install -g bitterbot
 bitterbot onboard
 ```
 
-`bitterbot onboard` sets up your model provider and the gateway, starts the
-gateway and opens the Control UI at `http://127.0.0.1:19001/`.
+`bitterbot onboard` starts the gateway and opens a setup page in your
+browser (`--no-browser` keeps setup in the terminal): model key, model,
+memory, web search, channels and P2P. Afterwards the Control UI is at
+`http://127.0.0.1:19001/`. Expect the install to take about 2.3 GB on disk.
+
+Already running Bitterbot from a git clone or the installer? `bitterbot
+onboard` notices the older gateway on the port and offers to switch it to
+this install (`bitterbot gateway switch`, the same handoff the
+[installer](/start/install-script#upgrading-from-a-git-clone-or-an-older-version)
+does: snapshot, stop, point the service here, roll back if the new one does
+not start). Your config, memory and keys in `~/.bitterbot` are shared and stay
+as they are.
 
 Other install paths: the [installer](/start/install-script) (brings its own
 Node runtime, verified and with automatic rollback on update), [Docker](/platforms/docker)
@@ -78,13 +88,22 @@ installed Chrome (see [Browser](/tools/browser)).
 bitterbot update
 ```
 
+or, by hand:
+
+```bash
+npm install -g bitterbot@latest
+bitterbot gateway restart   # when the gateway is running
+```
+
 On an npm install, `bitterbot update` finds the package under `npm root -g`
 and runs `npm i -g bitterbot@<tag>` (`latest` on the default `stable`
 channel, `beta` on the beta channel), then restarts the gateway service if
 one is installed. `bitterbot update status` compares the running version
 with the npm registry. If you installed into a custom prefix with
 `--prefix`, run updates with the same prefix (`NPM_CONFIG_PREFIX=<prefix>`),
-or simply re-run `npm install -g bitterbot@latest` yourself. Details:
+or run `npm install -g bitterbot@latest` yourself. There is no snapshot or
+automatic rollback on this path; go back with
+`npm install -g bitterbot@<previous version>`. Details:
 [`bitterbot update`](/cli/update#npm-package-installs).
 
 ## Removing

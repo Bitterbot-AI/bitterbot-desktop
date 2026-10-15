@@ -83,6 +83,10 @@ Common signatures:
 - `device token mismatch` → stale device pairing token. Fix: delete
   `~/.bitterbot/identity/device-auth.json` and `~/.bitterbot/devices/paired.json`,
   then restart the gateway to trigger re-pairing.
+- `gateway token mismatch` → the browser kept an older token. A Control UI
+  opened from the local gateway (`127.0.0.1`) fetches the current token and
+  reconnects by itself; through a remote URL or tunnel, paste the token from
+  `bitterbot config get gateway.auth.token`.
 - `unauthorized` / reconnect loop → token/password mismatch.
 - `gateway connect failed:` → wrong host/port/url target.
 

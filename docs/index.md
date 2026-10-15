@@ -84,9 +84,8 @@ and supervises the P2P orchestrator.
     ```
 
     Nothing to edit: data lives in `./bitterbot-data`, the Control UI on
-    `127.0.0.1` only. The compose file ships with releases from 1.5.0 on;
-    before that, see the Docker page for the `docker run` form. Details, backups and updates:
-    [Docker (recommended install)](/platforms/docker).
+    `127.0.0.1` only. Update with `docker compose pull && docker compose up -d`.
+    Details and backups: [Docker (recommended install)](/platforms/docker).
 
   </Step>
   <Step title="Chat">
@@ -96,8 +95,8 @@ and supervises the P2P orchestrator.
   </Step>
 </Steps>
 
-**On a laptop** (Linux x64/arm64, Apple-silicon macOS), from release 1.5.0
-the [installer](/start/install-script) downloads a signed, prebuilt release with
+**On a laptop** (Linux x64/arm64, Apple-silicon macOS), the
+[installer](/start/install-script) downloads a signed, prebuilt release with
 its own Node runtime:
 
 ```bash
@@ -105,7 +104,9 @@ curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main
 ```
 
 `bitterbot update` keeps it current (signature checked, data snapshotted,
-rolled back automatically if the new version does not start). On Windows,
+rolled back automatically if the new version does not start). Running the
+installer over an older Bitterbot (a git clone or an older release) switches
+the running gateway to the new version. On Windows,
 [`install.ps1`](/start/install-script#windows-wsl2) runs the same installer
 inside WSL2.
 
@@ -124,8 +125,9 @@ The wizard configures your provider, asks for network consent, starts the
 gateway, and opens the Control UI. On Windows without Docker Desktop, use WSL2
 and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
 
-**npm (1.6.0 and later):** with Node 22.12 or newer, `npm install -g bitterbot`
-then `bitterbot onboard`. See [npm package](/start/npm).
+**With npm** (Node 22.12 or newer): `npm install -g bitterbot`, then
+`bitterbot onboard`; update with `bitterbot update`. See
+[npm package](/start/npm).
 
 ## Start here
 

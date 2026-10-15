@@ -43,7 +43,7 @@ jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     environment: npm
     permissions:
       contents: read
@@ -147,12 +147,20 @@ jobs:
 
       - name: Confirm the registry serves it
         if: steps.v.outputs.run == 'true' && steps.exists.outputs.published == 'false'
+        # npm can take 15 minutes or more to serve a large package after the
+        # publish call returns (1.6.0, 67 MB, took about 15). Poll every 30s
+        # for up to 25 minutes before calling it a failure.
+        timeout-minutes: 30
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
           set -euo pipefail
-          for i in $(seq 1 30); do
-            if [ "$(npm view "bitterbot@${{ steps.v.outputs.version }}" version 2>/dev/null)" = "${{ steps.v.outputs.version }}" ]; then
-              echo "bitterbot@${{ steps.v.outputs.version }} is live on npm"; exit 0
+          for i in $(seq 1 50); do
+            if [ "$(npm view "bitterbot@$VERSION" version 2>/dev/null)" = "$VERSION" ]; then
+              echo "bitterbot@$VERSION is live on npm (after about $(( (i - 1) * 30 / 60 )) min)"; exit 0
             fi
-            sleep 10
+            echo "registry does not serve bitterbot@$VERSION yet (check $i/50); waiting 30s"
+            sleep 30
           done
-          echo "::error::published, but the registry does not serve ${{ steps.v.outputs.version }} yet"; exit 1
+          echo "::error::npm publish succeeded, but after 25 minutes the registry still does not serve bitterbot@$VERSION. The publish call itself succeeded, so do not publish again: check npm view bitterbot@$VERSION version later. Once it answers, a re-run skips the publish (the version exists) and passes."
+          exit 1

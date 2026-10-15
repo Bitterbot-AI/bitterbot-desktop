@@ -78,8 +78,9 @@ Bitterbot ships with the pi‑ai catalog. These providers require **no**
 
 - Provider: `google`
 - Auth: `GEMINI_API_KEY`
-- Example model: `google/gemini-3-pro-preview`
+- Example model: `google/gemini-3.1-pro-preview` (setup's recommended Gemini model)
 - CLI: `bitterbot onboard --auth-choice gemini-api-key`
+- Setup page: pick **Google Gemini** and paste the key. Details: [Google Gemini](/providers/google)
 
 ### Google Vertex
 

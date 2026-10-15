@@ -24,15 +24,20 @@ bitterbot onboard
 # choose: Anthropic API key
 
 # or non-interactive
-bitterbot onboard --anthropic-api-key "$ANTHROPIC_API_KEY"
+bitterbot onboard --non-interactive --accept-risk --anthropic-api-key "$ANTHROPIC_API_KEY"
 ```
+
+Setup offers Claude Sonnet 5.5 (`anthropic/claude-sonnet-5-5`, recommended),
+Claude Opus 5.5, Claude Fable 5.1 and Claude Haiku 4.5. Family aliases such
+as `opus` or `sonnet` follow the newest model of that family Anthropic serves
+(see [Family shortcuts](/concepts/models#family-shortcuts-follow-the-newest-model)).
 
 ### Config snippet
 
 ```json5
 {
   env: { ANTHROPIC_API_KEY: "sk-ant-..." },
-  agents: { defaults: { model: { primary: "anthropic/claude-opus-4-6" } } },
+  agents: { defaults: { model: { primary: "anthropic/claude-sonnet-5-5" } } },
 }
 ```
 

@@ -22,6 +22,13 @@ Bitterbot selects models in this order:
 3. **Provider auth failover** happens inside a provider before moving to the
    next model.
 
+With no model configured at all, the runtime falls back to
+`anthropic/claude-opus-4-8`. Setup (`bitterbot onboard`) always writes a
+model: the provider's recommended one is Claude Sonnet 5.5
+(`anthropic/claude-sonnet-5-5`), GPT-5.5, OpenRouter Auto or Gemini 3.1 Pro
+(preview), and Claude Sonnet 5 is the everyday default the Control UI picker
+marks.
+
 Related:
 
 - `agents.defaults.models` is the catalog of models (aliases, per-model params). It restricts which models can be picked only when `agents.defaults.restrictModels: true`.

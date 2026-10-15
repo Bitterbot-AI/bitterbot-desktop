@@ -79,7 +79,9 @@ is written, setup runs a first reply on your model and shows it with its
 latency (Retry, Back and Skip on failure), then a read-only doctor summary.
 The first reply runs in its own session (`agent:<id>:setup`), not your main
 chat. Setup counts as finished only when you click Finish: if the tab closes
-halfway, run `bitterbot onboard` again for a new link that picks it up.
+halfway, run `bitterbot onboard` again for a new link that picks it up. If
+the gateway restarts during setup, the page reconnects and starts setup again
+by itself; anything already saved (such as a key) is kept and offered again.
 Details: [`bitterbot onboard`](/cli/onboard).
 
 <Note>

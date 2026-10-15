@@ -172,12 +172,16 @@ systemctl --user status
 ### 3) Install Bitterbot (inside WSL)
 
 WSL is Linux, so the Linux paths work inside it. The
-[installer](/start/install-script) (1.5.0 and later) is the short one; run it
+[installer](/start/install-script) is the short one; run it
 inside WSL, or run `install.ps1` from PowerShell (above), which does the same:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.sh | bash
 ```
+
+With Node 22.12 or newer inside WSL, `npm install -g bitterbot` then
+`bitterbot onboard` works too (see [npm package](/start/npm)). Either way,
+update later with `bitterbot update` inside WSL.
 
 For development, use a source checkout instead (in your Linux home):
 
