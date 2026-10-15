@@ -23,7 +23,7 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
    Apple-silicon macOS, with its own Node runtime (Windows: inside WSL2).
    See [Installer (laptops)](/start/install-script) for what it verifies.
 2. **npm:** if you already have Node 22.12 or newer,
-   `npm install -g bitterbot` and then `bitterbot onboard`. See
+   `npm install -g bitterbot && bitterbot onboard`. See
    [npm package](/start/npm) for what the install downloads and how it
    updates.
 3. **Docker (recommended for servers):** nothing to install but Docker,
@@ -86,8 +86,7 @@ irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/script
 With npm, the whole install is:
 
 ```bash
-npm install -g bitterbot   # Node 22.12 or newer
-bitterbot onboard
+npm install -g bitterbot && bitterbot onboard   # Node 22.12 or newer
 ```
 
 Local embeddings (memory search with no embeddings key) need one more

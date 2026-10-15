@@ -82,8 +82,7 @@ What the installer verifies, and how to pin, roll back, or remove: [install scri
 **Already have Node 22.12 or newer?** Install the npm package:
 
 ```bash
-npm install -g bitterbot
-bitterbot onboard
+npm install -g bitterbot && bitterbot onboard
 ```
 
 It is a large install (about 2 GB, mostly model provider SDKs). Details: [npm package](docs/start/npm.md).
