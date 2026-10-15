@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.6.0...v1.6.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* Sonnet 5.5 fallback, GPT-5.5 OpenAI default, release-asset installer with draft releases ([#244](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/244)) ([958af3f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/958af3f89aadee40fd27cb8fbd52906fc96daaf8))
+
 ## [1.6.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.5.0...v1.6.0) (2026-10-15)
 
 
