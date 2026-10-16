@@ -10,6 +10,7 @@ import {
   checkUpdateStatus,
   fetchLatestGithubRelease,
   GITHUB_RELEASES_URL,
+  peekGithubReleaseStatus,
   peekLatestGithubRelease,
   pickLatestImageRelease,
   pickLatestTarballRelease,
@@ -110,7 +111,7 @@ describe("fetchLatestGithubRelease", () => {
     expect(res.error).toContain("ENOTFOUND");
   });
 
-  it("caches answers (30 min) and failures (15 min) so the API is never hammered", async () => {
+  it("caches answers (30 min), rate limits (15 min) and other failures (2 min)", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse([release("v1.5.0")]));
     const f = fetchImpl as unknown as typeof fetch;
     const t0 = 1_000_000;
@@ -124,13 +125,52 @@ describe("fetchLatestGithubRelease", () => {
     expect(peekLatestGithubRelease(t0 + 62 * 60_000)).toBeNull();
 
     resetGithubReleaseCacheForTests();
-    const failing = vi.fn(async () => new Response("{}", { status: 500 }));
-    const g = failing as unknown as typeof fetch;
+    const limited = vi.fn(
+      async () => new Response("{}", { status: 403, headers: { "x-ratelimit-remaining": "0" } }),
+    );
+    const g = limited as unknown as typeof fetch;
     await fetchLatestGithubRelease({ fetchImpl: g, now: t0 });
     await fetchLatestGithubRelease({ fetchImpl: g, now: t0 + 14 * 60_000 });
-    expect(failing).toHaveBeenCalledTimes(1);
+    expect(limited).toHaveBeenCalledTimes(1);
     await fetchLatestGithubRelease({ fetchImpl: g, now: t0 + 16 * 60_000 });
+    expect(limited).toHaveBeenCalledTimes(2);
+
+    resetGithubReleaseCacheForTests();
+    const failing = vi.fn(async () => new Response("{}", { status: 500 }));
+    const h = failing as unknown as typeof fetch;
+    await fetchLatestGithubRelease({ fetchImpl: h, now: t0 });
+    await fetchLatestGithubRelease({ fetchImpl: h, now: t0 + 60_000 });
+    expect(failing).toHaveBeenCalledTimes(1);
+    await fetchLatestGithubRelease({ fetchImpl: h, now: t0 + 3 * 60_000 });
     expect(failing).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a slow GitHub as a timeout, not as unreachable", async () => {
+    const fetchImpl = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+          );
+        }),
+    );
+    const res = await fetchLatestGithubRelease({
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      timeoutMs: 250,
+    });
+    expect(res).toEqual({ latestVersion: null, source: "github-releases", error: "timeout" });
+  });
+
+  it("peekGithubReleaseStatus tells 'never asked' (null) from a cached failure", async () => {
+    const t0 = Date.now();
+    expect(peekGithubReleaseStatus(t0)).toBeNull();
+    const failing = vi.fn(async () => new Response("{}", { status: 500 }));
+    await fetchLatestGithubRelease({ fetchImpl: failing as unknown as typeof fetch, now: t0 });
+    expect(peekGithubReleaseStatus(t0 + 1000)).toMatchObject({
+      latestVersion: null,
+      error: "HTTP 500",
+    });
+    expect(peekGithubReleaseStatus(t0 + 3 * 60_000)).toBeNull();
   });
 });
 

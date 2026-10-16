@@ -376,8 +376,25 @@ export const COMPOSE_RELEASE_ASSET = "docker-compose.yml";
 
 /** Successful answers are reused this long, so a click-happy UI never fans out. */
 const GITHUB_RELEASE_CACHE_MS = 30 * 60 * 1000;
-/** Failures (offline, rate-limited) are remembered too, so retries back off. */
-const GITHUB_RELEASE_ERROR_CACHE_MS = 15 * 60 * 1000;
+/** A rate-limit answer is remembered long enough to let the hourly quota recover. */
+const GITHUB_RELEASE_RATE_LIMIT_CACHE_MS = 15 * 60 * 1000;
+/** Other failures (timeout, offline) are remembered briefly, so "Check" can retry soon. */
+const GITHUB_RELEASE_ERROR_CACHE_MS = 2 * 60 * 1000;
+/**
+ * How long one release-list request may take. The list is ~300 KB, and a
+ * freshly booted gateway can stall its event loop for several seconds, so a
+ * short budget turned a reachable GitHub into "unreachable".
+ */
+export const GITHUB_RELEASE_TIMEOUT_MS = 10_000;
+
+function githubReleaseCacheTtl(status: RegistryStatus): number {
+  if (status.latestVersion) {
+    return GITHUB_RELEASE_CACHE_MS;
+  }
+  return status.error === "rate-limited"
+    ? GITHUB_RELEASE_RATE_LIMIT_CACHE_MS
+    : GITHUB_RELEASE_ERROR_CACHE_MS;
+}
 
 /**
  * Which release asset proves a release is installable for this install kind:
@@ -398,6 +415,22 @@ const githubReleaseCache = new Map<string, { at: number; status: RegistryStatus 
 /** @internal */
 export function resetGithubReleaseCacheForTests(): void {
   githubReleaseCache.clear();
+}
+
+/**
+ * The last answer (a version or an error), if still fresh, WITHOUT a network
+ * request; null means GitHub has not been asked yet. Lets a no-fetch check
+ * tell "not checked" apart from "checked and failed".
+ */
+export function peekGithubReleaseStatus(
+  now = Date.now(),
+  target: GithubReleaseTarget = IMAGE_TARGET,
+): RegistryStatus | null {
+  const cached = githubReleaseCache.get(releaseTargetKey(target));
+  if (!cached || now - cached.at >= githubReleaseCacheTtl(cached.status)) {
+    return null;
+  }
+  return cached.status;
 }
 
 /**
@@ -451,13 +484,8 @@ export async function fetchLatestGithubRelease(params?: {
   const target = params?.target ?? IMAGE_TARGET;
   const key = releaseTargetKey(target);
   const cached = githubReleaseCache.get(key);
-  if (cached) {
-    const ttl = cached.status.latestVersion
-      ? GITHUB_RELEASE_CACHE_MS
-      : GITHUB_RELEASE_ERROR_CACHE_MS;
-    if (now - cached.at < ttl) {
-      return cached.status;
-    }
+  if (cached && now - cached.at < githubReleaseCacheTtl(cached.status)) {
+    return cached.status;
   }
   const status = await fetchLatestGithubReleaseUncached({ ...params, target });
   githubReleaseCache.set(key, { at: now, status });
@@ -469,7 +497,7 @@ async function fetchLatestGithubReleaseUncached(params: {
   fetchImpl?: typeof fetch;
   target: GithubReleaseTarget;
 }): Promise<RegistryStatus> {
-  const timeoutMs = Math.max(250, params.timeoutMs ?? 3500);
+  const timeoutMs = Math.max(250, params.timeoutMs ?? GITHUB_RELEASE_TIMEOUT_MS);
   try {
     const res = await fetchWithTimeout(
       GITHUB_RELEASES_URL,
@@ -513,7 +541,12 @@ async function fetchLatestGithubReleaseUncached(params: {
     }
     return { latestVersion: version, source: "github-releases" };
   } catch (err) {
-    return { latestVersion: null, source: "github-releases", error: String(err) };
+    const timedOut = err instanceof Error && err.name === "AbortError";
+    return {
+      latestVersion: null,
+      source: "github-releases",
+      error: timedOut ? "timeout" : String(err),
+    };
   }
 }
 

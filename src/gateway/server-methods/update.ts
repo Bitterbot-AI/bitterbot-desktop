@@ -28,8 +28,9 @@ import {
 import {
   checkUpdateStatus,
   fetchLatestGithubRelease,
+  GITHUB_RELEASE_TIMEOUT_MS,
   githubReleaseTargetFor,
-  peekLatestGithubRelease,
+  peekGithubReleaseStatus,
   resolveNpmChannelTag,
 } from "../../infra/update-check.js";
 import { runGatewayUpdate } from "../../infra/update-runner.js";
@@ -47,7 +48,7 @@ import { assertValidParams } from "./validation.js";
 
 // Single-flight: concurrent update.check calls share one underlying probe so
 // a click-happy client cannot fan out parallel `git fetch` subprocesses.
-let inflightCheck: Promise<Record<string, unknown>> | null = null;
+const inflightChecks = new Map<boolean, Promise<Record<string, unknown>>>();
 // Single-flight for update.run: a concurrent run is refused, not queued.
 let inflightRun: Promise<void> | null = null;
 
@@ -79,12 +80,21 @@ async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
   // Containers and release-tarball installs compare against the newest
   // GitHub release carrying their asset (cached for 30 min inside
   // fetchLatestGithubRelease, so repeated UI checks do not hit the API).
+  // A no-fetch check reports whatever is cached, including a cached failure;
+  // with nothing cached, GitHub was simply not asked (registryChecked false).
   const releaseTarget = githubReleaseTargetFor(check.installKind);
+  let registryChecked = true;
+  let registryError: string | null = null;
   if (releaseTarget) {
     const release = fetch
-      ? await fetchLatestGithubRelease({ timeoutMs: 2500, target: releaseTarget })
-      : peekLatestGithubRelease(Date.now(), releaseTarget);
+      ? await fetchLatestGithubRelease({
+          timeoutMs: GITHUB_RELEASE_TIMEOUT_MS,
+          target: releaseTarget,
+        })
+      : peekGithubReleaseStatus(Date.now(), releaseTarget);
     channelVersion = release?.latestVersion ?? null;
+    registryChecked = release != null;
+    registryError = release && !release.latestVersion ? (release.error ?? "unknown") : null;
   }
   const staleness = computeUpdateStaleness(check, config.update?.promptBehindCommits, {
     channelVersion,
@@ -95,6 +105,8 @@ async function performUpdateCheck(fetch: boolean, timeoutMs: number) {
     channel,
     check,
     registryLatest: channelVersion,
+    registryChecked,
+    registryError,
     updateCommand: externalUpdateCommand(check.installKind),
     staleness,
     checkedAt: Date.now(),
@@ -156,12 +168,16 @@ export const updateHandlers: GatewayRequestHandlers = {
         ? Math.min(120_000, Math.max(1000, Math.floor(timeoutMsRaw)))
         : 15_000;
     try {
-      if (!inflightCheck) {
-        inflightCheck = performUpdateCheck(fetch, timeoutMs).finally(() => {
-          inflightCheck = null;
+      // One in-flight check per mode: a fetching check must never be handed
+      // the answer of a no-fetch one that happened to be running.
+      let inflight = inflightChecks.get(fetch);
+      if (!inflight) {
+        inflight = performUpdateCheck(fetch, timeoutMs).finally(() => {
+          inflightChecks.delete(fetch);
         });
+        inflightChecks.set(fetch, inflight);
       }
-      respond(true, await inflightCheck);
+      respond(true, await inflight);
     } catch (err) {
       respond(
         false,
