@@ -48,7 +48,8 @@ function stripFrontMatter(content: string): string {
   return trimmed;
 }
 
-async function loadTemplate(name: string): Promise<string> {
+/** A workspace template (docs/reference/templates), front matter stripped. */
+export async function loadWorkspaceTemplate(name: string): Promise<string> {
   const cached = workspaceTemplateCache.get(name);
   if (cached) {
     return cached;
@@ -265,16 +266,19 @@ export async function ensureAgentWorkspace(params?: {
   })();
 
   // Biological identity files
-  await writeFileIfMissing(genomePath, await loadTemplate(DEFAULT_GENOME_FILENAME));
-  await writeFileIfMissing(protocolsPath, await loadTemplate(DEFAULT_PROTOCOLS_FILENAME));
-  await writeFileIfMissing(toolsPath, await loadTemplate(DEFAULT_TOOLS_FILENAME));
-  await writeFileIfMissing(heartbeatPath, await loadTemplate(DEFAULT_HEARTBEAT_FILENAME));
+  await writeFileIfMissing(genomePath, await loadWorkspaceTemplate(DEFAULT_GENOME_FILENAME));
+  await writeFileIfMissing(protocolsPath, await loadWorkspaceTemplate(DEFAULT_PROTOCOLS_FILENAME));
+  await writeFileIfMissing(toolsPath, await loadWorkspaceTemplate(DEFAULT_TOOLS_FILENAME));
+  await writeFileIfMissing(heartbeatPath, await loadWorkspaceTemplate(DEFAULT_HEARTBEAT_FILENAME));
   // Working memory — seeded with initial template, evolved by dream engine
-  await writeFileIfMissing(memoryPath, await loadTemplate(DEFAULT_MEMORY_FILENAME));
+  await writeFileIfMissing(memoryPath, await loadWorkspaceTemplate(DEFAULT_MEMORY_FILENAME));
   // Bootstrap Q&A ritual — only created for brand new workspaces, removed after first run
   if (isBrandNewWorkspace) {
     const bootstrapPath = path.join(dir, DEFAULT_BOOTSTRAP_FILENAME);
-    await writeFileIfMissing(bootstrapPath, await loadTemplate(DEFAULT_BOOTSTRAP_FILENAME));
+    await writeFileIfMissing(
+      bootstrapPath,
+      await loadWorkspaceTemplate(DEFAULT_BOOTSTRAP_FILENAME),
+    );
   }
 
   await ensureGitRepo(dir, isBrandNewWorkspace);

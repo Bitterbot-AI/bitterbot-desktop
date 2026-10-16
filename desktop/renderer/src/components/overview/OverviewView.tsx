@@ -9,6 +9,7 @@ import { GetStartedCard } from "./GetStartedCard";
 import { resolveOverviewStats } from "./overview-stats";
 import { RepairsCard } from "./RepairsCard";
 import { SpendCard } from "./SpendCard";
+import { TemperamentCard } from "./TemperamentCard";
 import { UpdateCard } from "./UpdateCard";
 
 function StatCard({
@@ -153,6 +154,9 @@ export function OverviewView() {
 
       {/* First-run checklist (self-dismisses when complete) */}
       <GetStartedCard channelsConfigured={configuredChannels.length > 0} />
+
+      {/* One-time offer: GENOME.md Temperament for agents created before it */}
+      <TemperamentCard />
 
       {/* Version & updates */}
       <UpdateCard />

@@ -10,6 +10,7 @@ import type {
   TailscaleMode,
 } from "../../commands/onboard-types.js";
 import { onboardCommand } from "../../commands/onboard.js";
+import { isTemperamentLevel, TEMPERAMENT_LEVELS } from "../../memory/genome-parser.js";
 import { defaultRuntime } from "../../runtime.js";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";
@@ -112,12 +113,22 @@ export function registerOnboardCommand(program: Command) {
     .option("--skip-health", "Skip health check")
     .option("--skip-ui", "Skip Control UI/TUI prompts")
     .option("--node-manager <name>", "Node manager for skills: npm|pnpm|bun")
+    .option(
+      "--vibe <level>",
+      "Your agent's starting voice, written to GENOME.md: calm|playful|irreverent (default: irreverent)",
+    )
     .option("--json", "Output JSON summary", false)
     // install.sh runs `onboard --from-installer` right after installing.
     .addOption(new Option("--from-installer").hideHelp());
 
   command.action(async (opts, commandRuntime) => {
     await runCommandWithRuntime(defaultRuntime, async () => {
+      const vibe = typeof opts.vibe === "string" ? opts.vibe.trim().toLowerCase() : undefined;
+      if (vibe !== undefined && !isTemperamentLevel(vibe)) {
+        defaultRuntime.error(`--vibe must be one of ${TEMPERAMENT_LEVELS.join(", ")}`);
+        defaultRuntime.exit(1);
+        return;
+      }
       const installDaemon = resolveInstallDaemonFlag(commandRuntime, {
         installDaemon: Boolean(opts.installDaemon),
       });
@@ -184,6 +195,7 @@ export function registerOnboardCommand(program: Command) {
           skipHealth: Boolean(opts.skipHealth),
           skipUi: Boolean(opts.skipUi),
           nodeManager: opts.nodeManager as NodeManagerChoice | undefined,
+          vibe,
           json: Boolean(opts.json),
         },
         defaultRuntime,

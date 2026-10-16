@@ -34,6 +34,7 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`models`](/cli/models)
 - [`memory`](/cli/memory)
 - [`curiosity`](/cli/curiosity)
+- [`genome`](/cli/genome)
 - [`nodes`](/cli/nodes)
 - [`devices`](/cli/devices)
 - [`node`](/cli/node)
@@ -135,6 +136,8 @@ bitterbot [--dev] [--profile <name>] <command>
     pause
     resume
     run
+  genome
+    temperament
   message
   agent
   agents

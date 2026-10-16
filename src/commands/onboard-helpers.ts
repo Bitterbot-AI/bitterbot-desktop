@@ -13,6 +13,7 @@ import { pickPrimaryLanIPv4, isValidIPv4 } from "../gateway/net.js";
 import { isSafeExecutableValue } from "../infra/exec-safety.js";
 import { pickPrimaryTailnetIPv4 } from "../infra/tailnet.js";
 import { isWSL } from "../infra/wsl.js";
+import type { TemperamentLevel } from "../memory/genome-parser.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { stylePromptTitle } from "../terminal/prompt-style.js";
@@ -287,16 +288,49 @@ export async function openUrlInBackground(url: string): Promise<boolean> {
 export async function ensureWorkspaceAndSessions(
   workspaceDir: string,
   runtime: RuntimeEnv,
-  options?: { skipBootstrap?: boolean; agentId?: string },
+  options?: {
+    skipBootstrap?: boolean;
+    agentId?: string;
+    /** The vibe picked in setup: written to GENOME.md's Temperament level. */
+    vibe?: TemperamentLevel;
+  },
 ) {
   const ws = await ensureAgentWorkspace({
     dir: workspaceDir,
     ensureBootstrapFiles: !options?.skipBootstrap,
   });
   runtime.log(`Workspace OK: ${shortenHomePath(ws.dir)}`);
+  if (options?.vibe) {
+    await applyVibe(ws.dir, options.vibe, runtime);
+  }
   const sessionsDir = resolveSessionTranscriptsDirForAgent(options?.agentId);
   await fs.mkdir(sessionsDir, { recursive: true });
   runtime.log(`Sessions OK: ${shortenHomePath(sessionsDir)}`);
+}
+
+/**
+ * Write setup's vibe pick into GENOME.md. A Genome from before the
+ * Temperament section is never rewritten here: the owner is pointed at the
+ * offer instead (the Control UI card, `bitterbot genome temperament`).
+ */
+async function applyVibe(
+  workspaceDir: string,
+  vibe: TemperamentLevel,
+  runtime: RuntimeEnv,
+): Promise<void> {
+  try {
+    const { applySetupVibe } = await import("../agents/genome-temperament.js");
+    const outcome = await applySetupVibe(workspaceDir, vibe);
+    if (outcome === "missing") {
+      runtime.log(
+        "Vibe: your GENOME.md has no Temperament section yet; add one with `bitterbot genome temperament --add`.",
+      );
+      return;
+    }
+    runtime.log(`Vibe: ${vibe} (GENOME.md Temperament)`);
+  } catch (err) {
+    runtime.log(`Vibe: could not write it to GENOME.md (${String(err)})`);
+  }
 }
 
 export function resolveNodeManagerOptions(): Array<{

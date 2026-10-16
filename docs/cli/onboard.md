@@ -42,20 +42,27 @@ the same order, because both run one shared list of steps:
    preview (`google/gemini-3.1-pro-preview`; Gemini 3 Flash preview also
    offered). Every model offered here is a featured model of the Control UI
    model picker.
-3. **Memory embeddings.** The local model is the default (about 330 MB,
+3. **Vibe.** "Pick a vibe": the agent's starting voice, written to the
+   Temperament section of the new workspace's `GENOME.md`. Calm is dry with
+   no swearing, playful has warm humor and swears only if you do, irreverent
+   (preselected) is witty and swears where it fits. The agent's Phenotype
+   evolves from it; change the level later with
+   [`bitterbot genome temperament --level`](/cli/genome). A `GENOME.md` from
+   before the Temperament section is left as it is.
+4. **Memory embeddings.** The local model is the default (about 330 MB,
    downloaded the first time memory needs it). With an OpenAI or Google
    Gemini key, that provider's embeddings are offered too.
-4. **Web search** (optional). Curiosity research needs it. Options: a search
+5. **Web search** (optional). Curiosity research needs it. Options: a search
    key already in the environment, Parallel Search (free, no key), or paste a
    Brave Search (free tier), Tavily, or Perplexity key. Perplexity is paid per
    search. A pasted key is saved in the config where the `web_search` tool
    reads it (see [Web search](/tools/web-search)).
-5. **Channels.** "Later" is the default; you can chat in the Control UI
+6. **Channels.** "Later" is the default; you can chat in the Control UI
    right away.
-6. **P2P network.** An explicit choice, with one sentence on what joining
+7. **P2P network.** An explicit choice, with one sentence on what joining
    sends (quoted in [What this node connects to](/network/egress)). Your
    current setting is preselected.
-7. **Keep running.** Install the gateway as a background service (systemd
+8. **Keep running.** Install the gateway as a background service (systemd
    user service, macOS LaunchAgent) so it keeps running and starts on login.
    Offered, and recommended, where the terminal QuickStart installs one; not in
    a container, on Linux without systemd user services, or when a service is
@@ -64,11 +71,12 @@ the same order, because both run one shared list of steps:
    version for the background service** instead. The Done screen says whether
    Bitterbot now runs as a service; on Finish, the gateway `onboard` started
    for setup stops and the service takes over its port.
-8. **Privacy.** Bitterbot sends no telemetry to the project, and there is no
+9. **Privacy.** Bitterbot sends no telemetry to the project, and there is no
    account to create.
 
 "Use recommended defaults" accepts all of them in one click. It still asks for
-a key when none was found, and it still asks about web search when no search
+a key when none was found, it always asks for the vibe (one click keeps
+irreverent), and it still asks about web search when no search
 key was found, since leaving it for later keeps curiosity research off. After the config is written, setup runs a first
 reply on the chosen model ("Say hello and tell me one thing you can do.") and
 shows it with its latency; a failure shows the provider's error with Retry,
@@ -129,6 +137,7 @@ command list as before.
 | `--no-browser`                                                             | The terminal wizard                              |
 | `--flow`, `--mode`, `--auth-choice`, provider key, gateway or daemon flags | The terminal wizard                              |
 | `--json`, `--skip-channels`, `--skip-health`, `--skip-skills`, `--skip-ui` | The terminal wizard                              |
+| `--vibe`                                                                   | The terminal wizard                              |
 | `--non-interactive`                                                        | No prompts: every recommended answer (see below) |
 | No terminal (a script), without `--browser` or `--non-interactive`         | Exits with an error explaining both              |
 
@@ -143,7 +152,8 @@ installs the service; without it, run `bitterbot gateway install` later.
 their recommended answers: a credential already found (a saved sign-in or key
 for the configured model's provider first, else the first key, as above)
 unless a provider flag picks one, the configured model kept (or the provider's
-recommended model when none is set), local embeddings, web search and
+recommended model when none is set), the irreverent vibe (`--vibe
+calm|playful|irreverent` picks another), local embeddings, web search and
 channels later, and P2P left as it is. A key found only in the process
 environment is used from there and not copied into any file.
 

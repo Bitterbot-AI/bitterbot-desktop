@@ -191,6 +191,9 @@ const BASE_METHODS = [
   "memory.forgetPreview",
   "memory.exportDownload",
   "memory.import",
+  // The Temperament offer for existing agents (GENOME.md, owner writes only)
+  "genome.temperament.status",
+  "genome.temperament.apply",
   // PLAN-54: the curiosity loop (visible, stoppable, never needs approval)
   "curiosity.status",
   "curiosity.list",

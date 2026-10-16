@@ -77,21 +77,22 @@ export function buildSystemPrompt(params: {
     agentId: params.agentId,
   });
   const defaultModelLabel = `${defaultModelRef.provider}/${defaultModelRef.model}`;
-  const { runtimeInfo, userTimezone, userTime, userTimeFormat } = buildSystemPromptParams({
-    config: params.config,
-    agentId: params.agentId,
-    workspaceDir: params.workspaceDir,
-    cwd: process.cwd(),
-    runtime: {
-      host: "bitterbot",
-      os: `${os.type()} ${os.release()}`,
-      arch: os.arch(),
-      node: process.version,
-      model: params.modelDisplay,
-      defaultModel: defaultModelLabel,
-      shell: detectRuntimeShell(),
-    },
-  });
+  const { runtimeInfo, userTimezone, userTime, userTimeFormat, agentName } =
+    buildSystemPromptParams({
+      config: params.config,
+      agentId: params.agentId,
+      workspaceDir: params.workspaceDir,
+      cwd: process.cwd(),
+      runtime: {
+        host: "bitterbot",
+        os: `${os.type()} ${os.release()}`,
+        arch: os.arch(),
+        node: process.version,
+        model: params.modelDisplay,
+        defaultModel: defaultModelLabel,
+        shell: detectRuntimeShell(),
+      },
+    });
   const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
@@ -113,6 +114,7 @@ export function buildSystemPrompt(params: {
     endocrineState: params.endocrineState,
     canonicalFacts: params.canonicalFacts,
     researchFindings: params.researchFindings,
+    agentName,
   });
 }
 

@@ -36,6 +36,7 @@ import {
   draftHasCredential,
   refreshSetupCredentials,
   runSetupSteps,
+  vibeLevelOf,
   type SetupContext,
   type SetupDraft,
 } from "./setup-steps.js";
@@ -263,6 +264,7 @@ export async function runSetupWizard(
     await writeConfigFile(split.hot);
     await ensureWorkspaceAndSessions(workspaceDir, quietRuntime, {
       skipBootstrap: Boolean(draft.config.agents?.defaults?.skipBootstrap),
+      vibe: draft.answers.vibe ? vibeLevelOf(draft.answers.vibe) : undefined,
     });
     if (!draftHasCredential(draft) || !deps.runFirstTurn) {
       await prompter.note(

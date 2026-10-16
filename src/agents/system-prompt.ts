@@ -16,6 +16,15 @@ import {
 } from "./system-prompt-context-files.js";
 import { buildCirclesSection, buildEconomicIdentitySection } from "./system-prompt-economy.js";
 import { buildEndocrineStateSection, type EndocrineStateInput } from "./system-prompt-endocrine.js";
+import {
+  buildFactsAndSourcesSection,
+  buildIdentityOpening,
+  buildTalkingAboutYourselfSection,
+  buildTemperamentVoiceSection,
+  describeAgent,
+  resolvePromptAgentName,
+  temperamentFromContextFiles,
+} from "./system-prompt-identity.js";
 import { buildSkillsSection } from "./system-prompt-skills.js";
 
 // Section renderers moved to sibling modules (token-efficiency W4); re-exported
@@ -104,6 +113,7 @@ function buildWorkflowSection(isMinimal: boolean) {
     "Keep working through your plan until EVERY task is done; do not stop just to share progress. Only pause to ask the user when genuinely BLOCKED (missing info, permission for a destructive action).",
     "### Completion",
     "When ALL tasks are finished, call the `complete` tool with a brief summary, the list of completed tasks and any relevant file paths as attachments. Finish all planned tasks before calling `complete`.",
+    "If you have updated the plan three times without finishing a task, simplify it. Mark a task done only with concrete evidence (output you saw, a check that passed, a file you wrote).",
     "",
   ];
 }
@@ -115,11 +125,46 @@ function buildUserIdentitySection(ownerLine: string | undefined, isMinimal: bool
   return ["## User Identity", ownerLine, ""];
 }
 
-function buildTimeSection(params: { userTimezone?: string }) {
+/**
+ * Today's date at day granularity in the user's time zone (below the cache
+ * boundary, so it never invalidates the cached prefix). Gateway chat and
+ * channel messages carry their own timestamps; runs that do not (the local
+ * `agent` command, some internal turns) still know the date from here.
+ */
+export function formatPromptDate(timeZone: string, now: Date = new Date()): string | undefined {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      weekday: "long",
+    }).formatToParts(now);
+    const get = (type: string) => parts.find((part) => part.type === type)?.value;
+    const year = get("year");
+    const month = get("month");
+    const day = get("day");
+    const weekday = get("weekday");
+    if (!year || !month || !day) {
+      return undefined;
+    }
+    return `${weekday ? `${weekday}, ` : ""}${year}-${month}-${day}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildTimeSection(params: { userTimezone?: string; now?: Date }) {
   if (!params.userTimezone) {
     return [];
   }
-  return ["## Current Date & Time", `Time zone: ${params.userTimezone}`, ""];
+  const today = formatPromptDate(params.userTimezone, params.now);
+  return [
+    "## Current Date & Time",
+    ...(today ? [`Today: ${today}`] : []),
+    `Time zone: ${params.userTimezone}`,
+    "",
+  ];
 }
 
 function buildReplyTagsSection(isMinimal: boolean) {
@@ -452,6 +497,12 @@ export function buildAgentSystemPrompt(params: {
     /** The `gh` CLI or a GitHub token is configured on this node. */
     githubAvailable?: boolean;
   };
+  /** The agent's display name (config identity); "Bitterbot" when unset. */
+  agentName?: string;
+  /** Someone the owner has not vouched for drives this turn: clean voice. */
+  guestTurn?: boolean;
+  /** Clock for the date line (tests). */
+  now?: Date;
 }) {
   const rawToolNames = (params.toolNames ?? []).map((tool) => tool.trim());
   const canonicalToolNames = rawToolNames.filter(Boolean);
@@ -559,14 +610,17 @@ export function buildAgentSystemPrompt(params: {
   );
   const omittedSectionsLine = renderOmittedSectionsLine(stableContextFiles);
 
+  const agentName = resolvePromptAgentName(params.agentName);
+  const identityOpening = buildIdentityOpening(agentName);
+
   // For "none" mode, return just the basic identity line
   if (promptMode === "none") {
-    return "You are a personal assistant running inside Bitterbot.";
+    return identityOpening;
   }
 
   // ---- STABLE HALF (above the cache boundary): constant for the session ----
   const stable: string[] = [
-    "You are a personal assistant running inside Bitterbot.",
+    identityOpening,
     "",
     "## Tooling",
     "Tool availability (filtered by policy):",
@@ -602,6 +656,7 @@ export function buildAgentSystemPrompt(params: {
     "For complex or multi-step tasks, create a brief structured plan before starting; simple tasks don't need one. For research (web searches, scraping, data gathering) narrate what you're looking for, share key findings as you go, and summarize before acting.",
     "",
     ...buildWorkflowSection(isMinimal),
+    ...buildFactsAndSourcesSection({ isMinimal, availableTools }),
     ...safetySection,
     ...buildWalletSection({
       isMinimal,
@@ -626,7 +681,7 @@ export function buildAgentSystemPrompt(params: {
     hasModelAliases ? (params.modelAliasLines ?? []).join("\n") : "",
     "",
     userTimezone
-      ? "If you need the current date, time, or day of week, run session_status (📊 session_status)."
+      ? "The current date is under Current Date & Time at the end of this prompt; for the exact time, run session_status (📊 session_status)."
       : "",
     "## Workspace",
     `Your working directory is: ${displayWorkspaceDir}`,
@@ -679,6 +734,18 @@ export function buildAgentSystemPrompt(params: {
     );
   }
 
+  // Who it is and how it sounds close the cached half: after the long
+  // workspace files, so the voice is the last thing read before the turn.
+  if (!isMinimal) {
+    stable.push(
+      ...buildTalkingAboutYourselfSection(isMinimal),
+      ...buildTemperamentVoiceSection({
+        temperament: temperamentFromContextFiles(contextFiles.stable),
+        guest: params.guestTurn,
+      }),
+    );
+  }
+
   // ---- VOLATILE HALF (below the cache boundary): may change every call ----
   const volatile: string[] = [
     // PLAN-34 Phase 2b: idle-research findings (full prompt mode only; the
@@ -697,10 +764,10 @@ export function buildAgentSystemPrompt(params: {
   }
   volatile.push(
     ...buildReactionsSection(params.reactionGuidance),
-    ...buildTimeSection({ userTimezone }),
+    ...buildTimeSection({ userTimezone, now: params.now }),
     ...buildVolatileProjectContext(contextFiles.volatile),
     "## Runtime",
-    buildCurrentModelLine(runtimeInfo),
+    buildCurrentModelLine(runtimeInfo, agentName),
     ...buildInlineButtonsLine({ isMinimal, availableTools, inlineButtonsEnabled, runtimeChannel }),
     buildRuntimeLine(runtimeInfo, runtimeChannel, runtimeCapabilities, params.defaultThinkLevel),
     `Reasoning: ${reasoningLevel} (hidden unless on/stream). Toggle /reasoning; /status shows Reasoning when enabled.`,
@@ -727,10 +794,13 @@ function modelDisplayName(ref: string): string {
  * (and per fallback attempt), so it is right after a mid-conversation switch;
  * models otherwise tend to name themselves from training data.
  */
-export function buildCurrentModelLine(runtimeInfo?: {
-  model?: string;
-  defaultModel?: string;
-}): string {
+export function buildCurrentModelLine(
+  runtimeInfo?: {
+    model?: string;
+    defaultModel?: string;
+  },
+  agentName?: string,
+): string {
   const model = runtimeInfo?.model?.trim();
   if (!model) {
     return "";
@@ -738,7 +808,7 @@ export function buildCurrentModelLine(runtimeInfo?: {
   const defaultModel = runtimeInfo?.defaultModel?.trim();
   return [
     `Model: you are running on ${modelDisplayName(model)} for this turn.`,
-    "When asked which model you are, answer from this line, not from memory: it is set every turn, including right after a model switch.",
+    `If asked what model you are, say so plainly: you are ${describeAgent(agentName)}, the model is ${modelDisplayName(model)}, and your owner can switch it. Never claim a model of your own; answer from this line, not from memory: it is set every turn, including right after a model switch.`,
     defaultModel && defaultModel !== model
       ? `New conversations start on ${modelDisplayName(defaultModel)}.`
       : "",
