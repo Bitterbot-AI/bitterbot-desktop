@@ -120,10 +120,10 @@ export async function browserProfiles(baseUrl?: string): Promise<ProfileStatus[]
 
 /**
  * Budget for the calls that may have to launch the browser first. A cold
- * launch waits up to 10 s for the profile and 12 s for the debugging port
- * before the request itself runs, so 15 s lost the race on a slow machine.
+ * launch waits up to 10 s for the profile and 25 s for the debugging port
+ * (CDP_READY_WAIT_MS) before the request itself runs.
  */
-export const BROWSER_LAUNCHING_CALL_TIMEOUT_MS = 45_000;
+export const BROWSER_LAUNCHING_CALL_TIMEOUT_MS = 60_000;
 
 export async function browserStart(baseUrl?: string, opts?: { profile?: string }): Promise<void> {
   const q = buildProfileQuery(opts?.profile);

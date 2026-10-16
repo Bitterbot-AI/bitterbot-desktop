@@ -381,11 +381,12 @@ async function launchChrome(
 
   const proc = spawnOnce();
   const launch = watchBrowserLaunch(proc);
-  // Wait for CDP to come up. Kept under the browser client's 15 s request
-  // timeout, so a failed start is reported as what it is and not as a timeout.
+  // Wait for CDP to come up. Kept under the browser client's launching-call
+  // timeout (BROWSER_LAUNCHING_CALL_TIMEOUT_MS), so a failed start is reported
+  // as what it is and not as a timeout.
   let readyDeadline = Date.now() + CDP_READY_WAIT_MS;
   while (Date.now() < readyDeadline) {
-    if (await isChromeReachable(cdpReachableUrl, 500)) {
+    if (await isChromeReachable(cdpReachableUrl, CDP_PROBE_TIMEOUT_MS)) {
       break;
     }
     const ended = launch.ended();
@@ -397,7 +398,7 @@ async function launchChrome(
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  if (!(await isChromeReachable(cdpReachableUrl, 500))) {
+  if (!(await isChromeReachable(cdpReachableUrl, CDP_PROBE_TIMEOUT_MS))) {
     try {
       proc.kill("SIGKILL");
     } catch {
@@ -432,8 +433,15 @@ async function launchChrome(
   };
 }
 
-/** How long to wait for a started browser to open its debugging port. */
-const CDP_READY_WAIT_MS = 12_000;
+/**
+ * How long to wait for a started browser to open its debugging port. The
+ * first start after a reboot reads a cold ~400 MB browser from disk; on WSL
+ * that took longer than the old 12 s (2026-10-16), while a warm start takes
+ * under 2 s.
+ */
+export const CDP_READY_WAIT_MS = 25_000;
+/** One readiness probe. A cold browser can take over 500 ms to answer /json/version. */
+const CDP_PROBE_TIMEOUT_MS = 1_500;
 /** After the launched process exits, how much longer a handed-off browser gets. */
 const EXITED_LAUNCHER_GRACE_MS = 3_000;
 const OUTPUT_TAIL_CHARS = 1_500;
@@ -481,11 +489,14 @@ export function describeBrowserLaunchFailure(params: {
           ended.signal ? `signal ${ended.signal}` : `code ${ended.code ?? "unknown"}`
         }) before opening its debugging port.`
       : `The browser did not open its debugging port within ${Math.round(params.waitedMs / 1000)}s.`;
-  // D-Bus noise is on every Linux launch and explains nothing.
+  // D-Bus noise (bus.cc, object_proxy.cc, ...) is on every Linux and WSL
+  // launch and explains nothing; an agent reading it blames D-Bus.
   const lines = params.output
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line && !/dbus\/bus\.cc|Failed to connect to the bus/.test(line));
+    .filter(
+      (line) => line && !/dbus\/|org\.freedesktop\.DBus|Failed to connect to the bus/.test(line),
+    );
   const said = lines.length > 0 ? ` It said: ${lines.slice(-4).join(" | ").slice(0, 600)}` : "";
   return (
     `Failed to start Chrome CDP on port ${params.port} for profile "${params.profile}". ` +
