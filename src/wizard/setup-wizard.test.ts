@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resolveDefaultAgentWorkspaceDir } from "../agents/workspace.js";
 import { WizardSession, type WizardStep } from "./session.js";
 import { detectSetupKeys } from "./setup-keys.js";
 import {
@@ -68,6 +69,10 @@ afterEach(() => {
   }
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+function readGenome(): string {
+  return fs.readFileSync(path.join(resolveDefaultAgentWorkspaceDir(), "GENOME.md"), "utf8");
+}
 
 function readConfigFile(): Record<string, unknown> {
   return JSON.parse(fs.readFileSync(configPath, "utf8")) as Record<string, unknown>;
@@ -140,20 +145,28 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     );
     expect(status).toBe("done");
 
-    // Risk acknowledgement, fork, web search (its recommended "Later" leaves
+    // Risk acknowledgement, fork, vibe (a swearing voice is chosen knowingly,
+    // so it is always asked), web search (its recommended "Later" leaves
     // curiosity research off, so it is still asked), first reply, doctor, done.
     expect(steps.map((s) => dataKind(s) ?? s.type)).toEqual([
       "risk",
       "confirm",
       "select",
       "select",
+      "select",
       "first-turn",
       "doctor",
       "done",
     ]);
-    const webSearch = steps.splice(3, 1)[0];
-    expect(webSearch?.section).toMatchObject({ id: "webSearch", index: 1, total: 1 });
+    const [vibe, webSearch] = steps.splice(3, 2);
+    expect(vibe?.section).toMatchObject({ id: "vibe", index: 1, total: 2 });
+    expect(vibe?.initialValue).toBe("irreverent");
+    expect(vibe?.options?.map((o) => o.value)).toEqual(["calm", "playful", "irreverent"]);
+    expect(vibe?.message).not.toContain("\u2014");
+    expect(webSearch?.section).toMatchObject({ id: "webSearch", index: 2, total: 2 });
     expect(webSearch?.initialValue).toBe("later");
+    // The new workspace's Genome carries the picked (default) vibe.
+    expect(readGenome()).toMatch(/^level: irreverent\b/m);
     expect(steps[0]?.message).toBe(RISK_ACKNOWLEDGEMENT_NOTE);
     // User-facing setup copy carries no em-dashes (browser /setup + terminal).
     expect(RISK_ACKNOWLEDGEMENT_TITLE).toBe("Security: at your own risk");
@@ -211,6 +224,7 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     const answers: Record<string, unknown> = {
       auth: "env:ANTHROPIC_API_KEY",
       model: "anthropic/claude-haiku-4-5",
+      vibe: "calm",
       embeddings: "local",
       webSearch: "parallel",
       channels: "now",
@@ -248,6 +262,8 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     expect(written.tools.web.search.provider).toBe("parallel");
     expect(written.p2p.enabled).toBe(false);
     expect(written.circles.enabled).toBe(false);
+    // The vibe pick is the Temperament level of the new workspace's Genome.
+    expect(readGenome()).toMatch(/^level: calm\b/m);
   });
 
   it("a failed first reply shows the provider error, then Retry and Back work", async () => {
@@ -322,8 +338,9 @@ describe("setup over the wizard session (the RPC renderer)", () => {
     );
     expect(status).toBe("done");
     expect(steps.filter((s) => s.section).map((s) => [s.section?.id, s.section?.total])).toEqual([
-      ["auth", 2],
-      ["webSearch", 2],
+      ["auth", 3],
+      ["vibe", 3],
+      ["webSearch", 3],
     ]);
     expect(steps.find((s) => dataKind(s) === "first-turn")?.data).toMatchObject({
       skipped: true,
@@ -344,7 +361,7 @@ describe("setup over the wizard session (the RPC renderer)", () => {
       step.type === "select" ? (step.initialValue ?? step.options?.[0]?.value) : null,
     );
     expect(status).toBe("done");
-    expect(steps.filter((s) => s.section)).toEqual([]);
+    expect(steps.filter((s) => s.section).map((s) => s.section?.id)).toEqual(["vibe"]);
     const tools = readConfigFile().tools as { web?: { search?: { provider?: string } } };
     expect(tools.web?.search?.provider).toBe("brave");
   });
@@ -718,5 +735,39 @@ describe("--non-interactive uses the same model", () => {
     // env:<anything> is not a provider whose key is in the environment.
     expect(draft.answers.webSearch).toBe("later");
     expect(draft.config.tools).toBeUndefined();
+  });
+});
+
+describe("the vibe step", () => {
+  const run = async (workspace: string, presets?: Record<string, string>) => {
+    const env = { ANTHROPIC_API_KEY: ANTHROPIC } as NodeJS.ProcessEnv;
+    const keyEnv = { env, envFilePath: path.join(dir, ".env"), agentDir: path.join(dir, "agent") };
+    const draft = createSetupDraft({});
+    await runSetupSteps({
+      ctx: {
+        effective: { agents: { defaults: { workspace } } },
+        keys: detectSetupKeys(keyEnv),
+        keyEnv,
+        installKind: "package",
+        env,
+      },
+      draft,
+      presets,
+    });
+    return draft.answers.vibe;
+  };
+
+  it("recommends irreverent for a new workspace, and keeps the level a Genome already has", async () => {
+    const workspace = path.join(dir, "ws");
+    expect(await run(workspace)).toBe("irreverent");
+    fs.mkdirSync(workspace, { recursive: true });
+    fs.writeFileSync(
+      path.join(workspace, "GENOME.md"),
+      "# Genome\n\n## Temperament\n\nlevel: calm\n\n- Dry.\n",
+    );
+    expect(await run(workspace)).toBe("calm");
+    // --vibe wins; an unknown value falls back to the default.
+    expect(await run(workspace, { vibe: "playful" })).toBe("playful");
+    expect(await run(workspace, { vibe: "feral" })).toBe("irreverent");
   });
 });

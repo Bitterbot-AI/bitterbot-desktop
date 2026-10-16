@@ -4897,11 +4897,14 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     // Parse phenotype constraints from GENOME.md
     let phenotypeConstraints: string[] | undefined;
+    let temperament: WorkingMemoryContext["temperament"];
     try {
       const genomePath = path.join(this.workspaceDir, "GENOME.md");
       const genomeContent = await fs.readFile(genomePath, "utf-8");
-      const { parsePhenotypeConstraints } = await import("./genome-parser.js");
+      const { parsePhenotypeConstraints, parseGenomeTemperament } =
+        await import("./genome-parser.js");
       phenotypeConstraints = parsePhenotypeConstraints(genomeContent);
+      temperament = parseGenomeTemperament(genomeContent) ?? undefined;
     } catch {
       // No GENOME.md — no constraints
     }
@@ -4956,6 +4959,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       maturity: this.curiosityEngine?.getMaturity() ?? 0,
       alpha: this.curiosityEngine?.getCurrentAlpha() ?? -3.0,
       phenotypeConstraints,
+      temperament,
       networkIdentity,
       emotionalAnchors,
       userPreferences,

@@ -30,9 +30,10 @@ blank-line runs collapsed) so cosmetic differences can never bust the cache.
 
 ### Above the boundary (cached, stable per session), in order
 
-1. Identity line.
+1. Identity line: `You are Bitterbot` (or `You are <name>, a Bitterbot agent` when `identity.name` is set), a personal agent on the owner's machine with memory, idle consolidation and a mood; its voice and values are in `GENOME.md` and who it has become is in its Phenotype. It says Bitterbot is not a model; the model is named in the Runtime section below the boundary.
+   Then **Voice** (full mode, only when `GENOME.md` has a `## Temperament` section): one instruction for the level (`calm`, `playful`, `irreverent`), or the clean voice on a guest turn whatever the level. The Temperament bullets themselves reach the prompt once, inside `GENOME.md` under Project Context. Then **Talking About Yourself** (full mode): describe how you work when asked, what you can notice rather than the code, honest that it is experimental, no consciousness claims, no unprompted info-dumps.
 2. **Tooling**: one sorted line of tool _names_ only (`Tools: a2a_status, exec, ...`). No prose summaries: descriptions already ship in the `tools` parameter and a recap in the prompt is pure inflation.
-3. **Tool Call Style**, **Work Planning**, **Workflow Management**.
+3. **Tool Call Style**, **Work Planning**, **Workflow Management** (including the plan thrash guard: simplify after three plan updates without a finished task; mark a task done only with evidence), **Facts and Sources** (never state what a file, page or output says without reading it in this conversation; extract numbers with a tool; keep verified apart from remembered; with a web tool in full mode, also search before fetching, cross-check, check dates and cite with links). Facts and Sources keeps its first two rules in minimal mode.
 4. **Safety**: short guardrail reminders (enforced at runtime by tool policy, exec approvals and sandboxing).
 5. **Agent Wallet** (when the `wallet` tool is present), **Bitterbot CLI Quick Reference**.
 6. **Skills (mandatory)**: the `<available_skills>` index, compacted to name + one short line per skill and capped at ~1k tokens (descriptions step down 160 -> 80 -> 40 chars, then names only; skills are never dropped). Skills whose file sits at `<root>/<name>/SKILL.md` under the dominant root (the bundled dir on a stock install) share one `Default location:` line instead of a ~70-char `<location>` each. The PLAN-13 P2P trust notice, when present, is compacted to its operative rule (~110 tokens) and the skills preamble sentences that the Skills rules restate are dropped. Bodies load on demand with `read`.
@@ -57,9 +58,9 @@ On Anthropic the whole volatile half is sent as an unmarked `<runtime-state>` bl
 
 1. **Research Findings** (one-shot idle-research brief).
 2. **Endocrine State**: hormones bucketed to one decimal with a level label (`- Dopamine: 0.6 elevated (DOMINANT)`), budget pressure in 10% steps, self-concept, last-session brief, proactive memories, session coherence, developmental note.
-3. **Group Chat Context** / **Subagent Context**, **Reactions**, **Current Date & Time** (time zone only).
+3. **Group Chat Context** / **Subagent Context**, **Reactions**, **Current Date & Time** (today's date at day granularity in the user's time zone, and the time zone). Gateway chat messages and channel envelopes also carry a timestamp; this line covers runs that have none, such as `bitterbot agent --local`.
 4. **Project Context (live)**: `memory/scratch.md` and, on heartbeat runs only, `HEARTBEAT.md`.
-5. **Runtime** line (host, model, channel, capabilities, thinking level) and the Reasoning visibility line.
+5. **Runtime**: the model line (this turn's model; asked what model it is, the agent says it is Bitterbot, the model is that one, and the owner can switch it), the Runtime line (host, model, channel, capabilities, thinking level) and the Reasoning visibility line.
 
 Operators can prove the split holds with the cache trace (`BITTERBOT_CACHE_TRACE=1`, JSONL at `<state>/logs/cache-trace.jsonl`): every `stream:context` event carries `stableDigest`, `volatileDigest` and `toolsDigest`, and `stream:usage` carries the provider's `cacheRead` / `cacheWrite`. Across turns of one session `stableDigest` and `toolsDigest` must not change; see [Anthropic provider: prompt caching](/providers/anthropic#prompt-caching-anthropic-api) for the marker layout.
 
@@ -99,7 +100,7 @@ Bitterbot renders different prompt sizes depending on the session type:
 | --------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `full`    | Main sessions, direct chats             | Everything above                                                                                                    |
 | `minimal` | Sub-agents, cron jobs, background tasks | Tooling, Safety, Workspace, Sandbox, Date/Time, Runtime. Omits Skills, Memory, Self-Update, Heartbeats, Reply Tags. |
-| `none`    | Internal operations                     | Base identity line only                                                                                             |
+| `none`    | Internal operations                     | The identity line only                                                                                              |
 
 When `promptMode=minimal`, injected context is labeled **Subagent Context** instead of **Group Chat Context**.
 

@@ -69,6 +69,11 @@ export type WorkingMemoryContext = {
   alpha: number;
   /** Phenotype constraints from GENOME.md — guardrails on personality evolution */
   phenotypeConstraints?: string[];
+  /**
+   * GENOME.md's Temperament: the voice the Phenotype starts from and evolves
+   * away from only on evidence. Absent when the Genome has no such section.
+   */
+  temperament?: { level: string; bullets: string[] };
   /** Emotional anchors for dream integration */
   emotionalAnchors?: Array<{
     label: string;
@@ -412,16 +417,40 @@ function buildNetworkIdentityInputBlock(ctx: WorkingMemoryContext): string {
  * Build the phenotype constraint guardrails block for the synthesis prompt.
  */
 function buildPhenotypeConstraintBlock(ctx: WorkingMemoryContext): string {
-  if (!ctx.phenotypeConstraints || ctx.phenotypeConstraints.length === 0) {
+  const blocks: string[] = [];
+  if (ctx.phenotypeConstraints && ctx.phenotypeConstraints.length > 0) {
+    blocks.push(
+      [
+        "## Phenotype Guardrails (from Genome — DO NOT violate)",
+        ...ctx.phenotypeConstraints.map((c) => `- ${c}`),
+        "",
+        "When writing The Phenotype section, ensure it does not contradict these constraints.",
+        "The Phenotype should EVOLVE (reflect what the agent has actually done and learned) but WITHIN these bounds.",
+      ].join("\n"),
+    );
+  }
+  const temperamentBlock = buildTemperamentBlock(ctx);
+  if (temperamentBlock) {
+    blocks.push(temperamentBlock);
+  }
+  return blocks.join("\n\n");
+}
+
+/**
+ * The Genome's Temperament as the Phenotype's starting point. The guardrails
+ * above (honesty, no sycophancy, the user's stated preferences) win over it.
+ */
+export function buildTemperamentBlock(ctx: Pick<WorkingMemoryContext, "temperament">): string {
+  const temperament = ctx.temperament;
+  if (!temperament) {
     return "";
   }
-
   return [
-    "## Phenotype Guardrails (from Genome — DO NOT violate)",
-    ...ctx.phenotypeConstraints.map((c) => `- ${c}`),
+    `## Starting Temperament (from Genome, level: ${temperament.level})`,
+    ...temperament.bullets.map((b) => `- ${b}`),
     "",
-    "When writing The Phenotype section, ensure it does not contradict these constraints.",
-    "The Phenotype should EVOLVE (reflect what the agent has actually done and learned) but WITHIN these bounds.",
+    "This is the voice the agent started with. When writing The Phenotype's communication pattern, start from it and move away from it only where the interactions above show a reason (the user's style, what worked, what landed badly).",
+    "The guardrails above win over it: never evolve toward sycophancy or against the user's stated preferences to keep the bit going.",
   ].join("\n");
 }
 

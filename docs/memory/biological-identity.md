@@ -22,6 +22,7 @@ The Genome defines:
 - **What the agent's resting temperament feels like** (Hormonal Homeostasis)
 - **How far the personality is allowed to drift** (Phenotype Constraints)
 - **What the agent fundamentally values** (Core Values)
+- **How the agent sounds when it starts out** (Temperament)
 
 Think of it as constitutional law for the agent's personality. Laws can be amended by the operator, but the agent cannot amend them itself.
 
@@ -39,6 +40,20 @@ Phenotype = what you ARE right now (evolved through lived experience)
 A Genome that sets high oxytocin homeostasis and a constraint of "stay warm and personal" might produce a Phenotype that reads: "I communicate with genuine warmth. I remember details about the user's life and reference them naturally. My strength is making technical topics feel approachable." But that Phenotype was not written by anyone -- it emerged from hundreds of interactions, dream syntheses, and hormonal weightings.
 
 The Phenotype can never contradict the Genome. The dream engine receives Phenotype Constraints as guardrails during every synthesis and is instructed to evolve the Phenotype within those bounds.
+
+### Temperament (Starting Voice)
+
+The `## Temperament` section of `GENOME.md` is the voice a new agent starts from: a `level:` line and a few bullets in plain words. The level is one of:
+
+| Level        | Voice                                                                    |
+| ------------ | ------------------------------------------------------------------------ |
+| `calm`       | Dry and understated, few jokes, no swearing                              |
+| `playful`    | Warm humor and light teasing, swears only if the person it talks to does |
+| `irreverent` | Witty and a little mischievous, swears where it fits (the default)       |
+
+The system prompt turns the level into a short voice instruction, so changing `level:` changes behavior from the next turn. Every level drops the jokes for money, health, deletions and bad news. People the owner has not vouched for (group members, approved contacts, Circles peers) always get a clean voice, whatever the level. The dream engine reads the Temperament when it rewrites the Phenotype and evolves the communication pattern from it; the Phenotype Constraints (honesty, no sycophancy, the user's stated preferences) win over it.
+
+New workspaces get the section from the template, with the level picked during setup ("Pick a vibe"). A `GENOME.md` from before the section existed is never changed silently: the Control UI shows a one-time card ("A base personality is available for your agent") and [`bitterbot genome temperament`](/cli/genome) shows the section and adds it. Adding it writes only that section and keeps a copy of the previous `GENOME.md` under `~/.bitterbot/genome-guard/`. The agent cannot do either; it is the owner's choice.
 
 ---
 
@@ -61,7 +76,7 @@ Concretely, the dream engine:
 3. Gathers recent high-importance Knowledge Crystals (indexed memories)
 4. Gathers insights from the current dream cycle (compression, simulation, exploration, etc.)
 5. Reads the current hormonal state (dopamine, cortisol, oxytocin levels)
-6. Parses Phenotype Constraints from GENOME.md
+6. Parses Phenotype Constraints and the Temperament from GENOME.md
 7. Feeds all of this to an LLM with a structured synthesis prompt
 8. Writes the new MEMORY.md, which includes 7 sections:
    - **The Phenotype** -- the agent's evolving self-concept

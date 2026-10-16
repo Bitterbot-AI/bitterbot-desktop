@@ -1018,6 +1018,7 @@
                   "cli/docs",
                   "cli/doctor",
                   "cli/gateway",
+                  "cli/genome",
                   "cli/health",
                   "cli/hooks",
                   "cli/logs",

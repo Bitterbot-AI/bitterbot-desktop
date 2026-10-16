@@ -66,6 +66,8 @@ const TERMINAL_ONLY_KEYS: Array<keyof OnboardOptions> = [
   "gatewayPassword",
   "tailscale",
   "nodeManager",
+  // The browser setup asks the vibe itself.
+  "vibe",
 ];
 
 /** Switches the CLI always passes (false when absent): they count when on. */

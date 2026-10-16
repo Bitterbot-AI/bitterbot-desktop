@@ -34,6 +34,24 @@ describe("working-memory-prompt", () => {
       }
     });
 
+    it("gives the Genome's Temperament as the Phenotype's starting point, under the guardrails", () => {
+      const prompt = buildWorkingMemorySynthesisPrompt(
+        makeContext({
+          phenotypeConstraints: ["Maintain honesty, do not evolve toward sycophancy"],
+          temperament: { level: "playful", bullets: ["Warm humor, light teasing."] },
+        }),
+      );
+      expect(prompt).toContain("## Starting Temperament (from Genome, level: playful)");
+      expect(prompt).toContain("- Warm humor, light teasing.");
+      expect(prompt).toContain("The guardrails above win over it");
+      expect(prompt.indexOf("## Phenotype Guardrails")).toBeLessThan(
+        prompt.indexOf("## Starting Temperament"),
+      );
+      expect(buildWorkingMemorySynthesisPrompt(makeContext())).not.toContain(
+        "Starting Temperament",
+      );
+    });
+
     it("should include RLM state update instructions", () => {
       const prompt = buildWorkingMemorySynthesisPrompt(makeContext());
       expect(prompt).toContain("Reinforce");

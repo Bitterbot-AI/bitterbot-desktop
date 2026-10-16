@@ -462,24 +462,25 @@ export async function runEmbeddedAttempt(
       agentId: sessionAgentId,
     });
     const defaultModelLabel = `${defaultModelRef.provider}/${defaultModelRef.model}`;
-    const { runtimeInfo, userTimezone, userTime, userTimeFormat } = buildSystemPromptParams({
-      config: params.config,
-      agentId: sessionAgentId,
-      workspaceDir: effectiveWorkspace,
-      cwd: process.cwd(),
-      runtime: {
-        host: machineName,
-        os: `${os.type()} ${os.release()}`,
-        arch: os.arch(),
-        node: process.version,
-        model: `${params.provider}/${params.modelId}`,
-        defaultModel: defaultModelLabel,
-        shell: detectRuntimeShell(),
-        channel: runtimeChannel,
-        capabilities: runtimeCapabilities,
-        channelActions,
-      },
-    });
+    const { runtimeInfo, userTimezone, userTime, userTimeFormat, agentName } =
+      buildSystemPromptParams({
+        config: params.config,
+        agentId: sessionAgentId,
+        workspaceDir: effectiveWorkspace,
+        cwd: process.cwd(),
+        runtime: {
+          host: machineName,
+          os: `${os.type()} ${os.release()}`,
+          arch: os.arch(),
+          node: process.version,
+          model: `${params.provider}/${params.modelId}`,
+          defaultModel: defaultModelLabel,
+          shell: detectRuntimeShell(),
+          channel: runtimeChannel,
+          capabilities: runtimeCapabilities,
+          channelActions,
+        },
+      });
     const isDefaultAgent = sessionAgentId === defaultAgentId;
     // PLAN-43 s3.2b: an inbound A2A task turn executes a REMOTE caller's
     // request. It must be hermetic on the prompt side too: minimal mode,
@@ -666,6 +667,8 @@ export async function runEmbeddedAttempt(
       endocrineState,
       canonicalFacts,
       researchFindings,
+      agentName,
+      guestTurn,
     });
     // PLAN-25: append any evolved prompt fragments to the system prompt. Empty
     // string (and thus byte-identical prompt) until a policy is promoted.

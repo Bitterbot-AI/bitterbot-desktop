@@ -264,6 +264,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "genome",
+    description: "Your agent's GENOME.md: show, add or change its base personality (temperament)",
+    register: async (program) => {
+      const mod = await import("../genome-cli.js");
+      mod.registerGenomeCli(program);
+    },
+  },
+  {
     name: "checkpoints",
     description: "Inspect, fork, and replay session checkpoint graphs",
     hidden: true,

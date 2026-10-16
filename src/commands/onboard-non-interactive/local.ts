@@ -2,6 +2,7 @@ import { formatCliCommand } from "../../cli/command-format.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import { resolveGatewayPort, writeConfigFile } from "../../config/config.js";
 import { logConfigUpdated } from "../../config/logging.js";
+import type { TemperamentLevel } from "../../memory/genome-parser.js";
 import type { RuntimeEnv } from "../../runtime.js";
 import { DEFAULT_GATEWAY_DAEMON_RUNTIME } from "../daemon-runtime.js";
 import { healthCommand } from "../health.js";
@@ -63,6 +64,8 @@ export async function runNonInteractiveOnboardingLocal(params: {
   }
   nextConfig = nextConfigAfterAuth;
 
+  // The vibe (GENOME.md Temperament level): --vibe, else the recommended one.
+  let vibe: TemperamentLevel | undefined;
   // PLAN-56 Phase 4: the rest of setup is the shared step model with every
   // recommended answer (what the "recommended defaults" fork accepts). With
   // no auth flag, the model credential is one already found (a saved sign-in
@@ -71,7 +74,7 @@ export async function runNonInteractiveOnboardingLocal(params: {
   // key found only in the process environment is used in place, never
   // copied into a file.
   {
-    const { commitSetupKey, createSetupDraft, runSetupSteps } =
+    const { commitSetupKey, createSetupDraft, runSetupSteps, vibeLevelOf } =
       await import("../../wizard/setup-steps.js");
     const { detectSetupKeys, detectSignedInProfiles } = await import("../../wizard/setup-keys.js");
     const ctx = {
@@ -87,8 +90,12 @@ export async function runNonInteractiveOnboardingLocal(params: {
     await runSetupSteps({
       ctx,
       draft,
-      presets: authFromFlags ? { auth: "skip", model: "keep" } : undefined,
+      presets: {
+        ...(authFromFlags ? { auth: "skip", model: "keep" } : {}),
+        ...(opts.vibe ? { vibe: opts.vibe } : {}),
+      },
     });
+    vibe = vibeLevelOf(draft.answers.vibe);
     await commitSetupKey(draft, ctx, { persistEnvironmentKey: false });
     nextConfig = draft.config;
     if (!authFromFlags && draft.answers.auth && draft.answers.auth !== "skip" && !opts.json) {
@@ -125,6 +132,7 @@ export async function runNonInteractiveOnboardingLocal(params: {
 
   await ensureWorkspaceAndSessions(workspaceDir, runtime, {
     skipBootstrap: Boolean(nextConfig.agents?.defaults?.skipBootstrap),
+    vibe,
   });
 
   await installGatewayDaemonNonInteractive({

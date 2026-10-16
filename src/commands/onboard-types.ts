@@ -1,4 +1,5 @@
 import type { ChannelId } from "../channels/plugins/types.js";
+import type { TemperamentLevel } from "../memory/genome-parser.js";
 import type { GatewayDaemonRuntime } from "./daemon-runtime.js";
 
 export type OnboardMode = "local" | "remote";
@@ -154,6 +155,8 @@ export type OnboardOptions = {
   skipHealth?: boolean;
   skipUi?: boolean;
   nodeManager?: NodeManagerChoice;
+  /** The agent's starting voice (GENOME.md Temperament level). */
+  vibe?: TemperamentLevel;
   remoteUrl?: string;
   remoteToken?: string;
   json?: boolean;

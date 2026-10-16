@@ -42,6 +42,7 @@ import {
   validateGeminiTurns,
 } from "../embedded-helpers.js";
 import { resolveEndocrineState } from "../endocrine-state.js";
+import { resolveIdentityName } from "../identity.js";
 import { getApiKeyForModel, resolveModelAuthMode } from "../model-auth.js";
 import { ensureBitterbotModelsJson } from "../models-config.js";
 import { createOllamaStreamFn, OLLAMA_NATIVE_BASE_URL } from "../ollama-stream.js";
@@ -557,6 +558,7 @@ export async function compactEmbeddedPiSessionDirect(
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
       canonicalFacts,
+      agentName: params.config ? resolveIdentityName(params.config, sessionAgentId) : undefined,
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
 

@@ -18,6 +18,7 @@ import { doctorHandlers } from "./server-methods/doctor.js";
 import { dreamHandlers } from "./server-methods/dream.js";
 import { execApprovalsHandlers } from "./server-methods/exec-approvals.js";
 import { forageHandlers } from "./server-methods/forage.js";
+import { genomeHandlers } from "./server-methods/genome.js";
 import { guardsHandlers } from "./server-methods/guards.js";
 import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
@@ -82,6 +83,7 @@ const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
 const READ_METHODS = new Set([
   "health",
   "curiosity.status",
+  "genome.temperament.status",
   "curiosity.list",
   "doctor.findings",
   "logs.tail",
@@ -397,6 +399,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...dreamHandlers,
   ...memoryHandlers,
   ...curiosityHandlers,
+  ...genomeHandlers,
   ...circlesHandlers,
   ...forageHandlers,
   ...spendGrantHandlers,

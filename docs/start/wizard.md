@@ -52,29 +52,35 @@ steps**, so they ask the same things:
    The recommended model is Claude Sonnet 5.5 for Anthropic, GPT-5.5 for
    OpenAI, OpenRouter Auto for OpenRouter, and Gemini 3.1 Pro preview for
    Google Gemini.
-3. **Memory embeddings**: the local model by default (about 330 MB, downloaded
+3. **Vibe**: your agent's starting voice, written to the Temperament section
+   of `GENOME.md`: calm (dry, no swearing), playful (warm humor, swears only
+   if you do) or irreverent (witty, swears where it fits; preselected). It
+   evolves from there; change it later with
+   [`bitterbot genome temperament --level`](/cli/genome).
+4. **Memory embeddings**: the local model by default (about 330 MB, downloaded
    on first use). With an OpenAI or Google Gemini key, that provider's
    embeddings are offered too.
-4. **Web search** (optional): curiosity research needs it. Use a search key
+5. **Web search** (optional): curiosity research needs it. Use a search key
    already in the environment, Parallel Search (free, no key), or paste a
    Brave Search (free tier), Tavily, or Perplexity (paid per search) key.
-5. **Channels**: later by default.
-6. **P2P network**: an explicit choice, with what joining sends (see
+6. **Channels**: later by default.
+7. **P2P network**: an explicit choice, with what joining sends (see
    [What this node connects to](/network/egress)); your current setting is
    preselected.
-7. **Keep running**: install the gateway as a background service (systemd
+8. **Keep running**: install the gateway as a background service (systemd
    user service on Linux, LaunchAgent on macOS) so it keeps running and starts
    on login. Recommended wherever the terminal QuickStart installs one; not
    offered in a container, on Linux without systemd user services, or when a
    service is already installed. The Done screen says whether it is running as
    a service. The gateway `bitterbot onboard` started for setup hands its port
    to the service when you click Finish.
-8. **Privacy**: Bitterbot sends no telemetry to the project, and there is no
+9. **Privacy**: Bitterbot sends no telemetry to the project, and there is no
    account.
 
-**Use recommended defaults** accepts every step in one click, except two it
-still asks: the model key when none was found, and web search when no search
-key was found (leaving it for later keeps curiosity research off). When the config
+**Use recommended defaults** accepts every step in one click, except three it
+still asks: the model key when none was found, the vibe (one click keeps
+irreverent), and web search when no search key was found (leaving it for later
+keeps curiosity research off). When the config
 is written, setup runs a first reply on your model and shows it with its
 latency (Retry, Back and Skip on failure), then a read-only doctor summary.
 The first reply runs in its own session (`agent:<id>:setup`), not your main
@@ -147,6 +153,8 @@ The terminal wizard starts with **QuickStart** (the setup steps above) vs
 6. **Health check**: Starts the Gateway and verifies it's running.
 7. **Skills** _(Advanced)_: Installs recommended skills and optional dependencies.
    QuickStart keeps the bundled skills and defers extras.
+8. **Genome** _(Advanced)_: The vibe pick (QuickStart asks it as a setup
+   step) and an optional look at `GENOME.md` in your editor.
 
 <Note>
 Re-running the wizard does **not** wipe anything unless you explicitly choose **Reset** (or pass `--reset`).

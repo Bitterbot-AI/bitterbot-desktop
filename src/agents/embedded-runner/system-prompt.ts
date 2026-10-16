@@ -68,6 +68,10 @@ export function buildEmbeddedSystemPrompt(params: {
   canonicalFacts?: string;
   /** PLAN-34 Phase 2b: pre-rendered Research Findings block (independent of endocrine). */
   researchFindings?: string;
+  /** The agent's display name (config identity); "Bitterbot" when unset. */
+  agentName?: string;
+  /** A guest (someone the owner has not vouched for) drives this turn. */
+  guestTurn?: boolean;
 }): string {
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
@@ -99,6 +103,8 @@ export function buildEmbeddedSystemPrompt(params: {
     endocrineState: params.endocrineState,
     canonicalFacts: params.canonicalFacts,
     researchFindings: params.researchFindings,
+    agentName: params.agentName,
+    guestTurn: params.guestTurn,
   });
 }
 

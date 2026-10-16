@@ -98,5 +98,7 @@ describe("what a guest's agent is given", () => {
     expect(prompt).toContain("Your mood right now: upbeat");
     expect(prompt).toContain("Builds Bitterbot.");
     expect(prompt).not.toContain("note to owner");
+    // Clean voice for people the owner has not vouched for, whatever the level.
+    expect(prompt).toContain("Keep it clean: no swearing");
   });
 });

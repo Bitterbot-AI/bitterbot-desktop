@@ -21,8 +21,18 @@
  * --non-interactive needs --accept-risk instead.
  */
 
+import fs from "node:fs";
+import path from "node:path";
+import { resolveDefaultAgentWorkspaceDir } from "../agents/workspace.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { InstallKind } from "../infra/install-kind.js";
+import {
+  DEFAULT_TEMPERAMENT_LEVEL,
+  isTemperamentLevel,
+  parseGenomeTemperament,
+  type TemperamentLevel,
+} from "../memory/genome-parser.js";
+import { resolveUserPath } from "../utils.js";
 import { applyLocalOnlyPreset } from "./onboarding.p2p.js";
 import { WizardCancelledError, type WizardPrompter } from "./prompts.js";
 import {
@@ -45,6 +55,7 @@ import type { SetupServiceSupport } from "./setup-service.js";
 export const SETUP_STEP_IDS = [
   "auth",
   "model",
+  "vibe",
   "embeddings",
   "webSearch",
   "channels",
@@ -703,6 +714,62 @@ const webSearchStep: SetupStepDef = {
   },
 };
 
+/** The vibe options, in the order setup shows them. */
+export const VIBE_OPTIONS: Array<{ value: TemperamentLevel; label: string; hint: string }> = [
+  { value: "calm", label: "Calm", hint: "Dry and understated, few jokes, no swearing" },
+  { value: "playful", label: "Playful", hint: "Warm humor, light teasing, swears only if you do" },
+  {
+    value: "irreverent",
+    label: "Irreverent",
+    hint: "Witty and a little mischievous, swears where it fits; straight when it matters",
+  },
+];
+
+/** The level a setup answer stands for (anything unknown is the default). */
+export function vibeLevelOf(answer: string | undefined): TemperamentLevel {
+  return isTemperamentLevel(answer) ? answer : DEFAULT_TEMPERAMENT_LEVEL;
+}
+
+/**
+ * The level the workspace's Genome already has (setup run again keeps it),
+ * else the default. A Genome without the section is never changed by setup.
+ */
+export function currentVibe(ctx: Pick<SetupContext, "effective" | "env">): TemperamentLevel {
+  try {
+    const configured = ctx.effective.agents?.defaults?.workspace;
+    const dir = configured
+      ? resolveUserPath(configured)
+      : resolveDefaultAgentWorkspaceDir(ctx.env ?? process.env);
+    const genome = fs.readFileSync(path.join(dir, "GENOME.md"), "utf-8");
+    return parseGenomeTemperament(genome)?.level ?? DEFAULT_TEMPERAMENT_LEVEL;
+  } catch {
+    return DEFAULT_TEMPERAMENT_LEVEL;
+  }
+}
+
+const vibeStep: SetupStepDef = {
+  id: "vibe",
+  title: "Vibe",
+  recommended: (ctx) => currentVibe(ctx),
+  // A voice that swears is a choice the owner makes knowingly, so it is
+  // asked even under "Use recommended defaults" (one click to keep it).
+  askUnderRecommended: () => true,
+  describe: (ctx) =>
+    `Vibe: ${currentVibe(ctx)} (your agent's starting voice, written to GENOME.md; it evolves from there)`,
+  ask: async (ctx, _draft, prompter) => {
+    const choice = await prompter.select({
+      message:
+        "Pick a vibe: your agent's starting voice. It is written to GENOME.md, evolves as the agent gets to know you, and you can change it any time with `bitterbot genome temperament --level`.",
+      options: VIBE_OPTIONS,
+      initialValue: currentVibe(ctx),
+    });
+    return { choice: vibeLevelOf(choice) };
+  },
+  apply: (_ctx, draft, answer) => {
+    draft.answers.vibe = vibeLevelOf(answer.choice);
+  },
+};
+
 const channelsStep: SetupStepDef = {
   id: "channels",
   title: "Chat channels",
@@ -862,6 +929,7 @@ const telemetryStep: SetupStepDef = {
 export const SETUP_STEPS: readonly SetupStepDef[] = [
   authStep,
   modelStep,
+  vibeStep,
   embeddingsStep,
   webSearchStep,
   channelsStep,

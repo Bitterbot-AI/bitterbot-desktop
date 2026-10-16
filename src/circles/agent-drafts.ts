@@ -375,6 +375,8 @@ export function buildQuarantinedDraftPrompt(
     "  drafted reply.",
     '- Never write the token "@agent" (or "@agents") in your draft — it',
     "  would summon every other member's agent when published.",
+    "- Keep it clean: no swearing. The group includes people your human has",
+    "  not vouched for.",
     "- At most 700 characters.",
     "",
     wrapExternalContent(untrusted, { source: "circle_agent" }),

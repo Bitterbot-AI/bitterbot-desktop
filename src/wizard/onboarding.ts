@@ -12,6 +12,7 @@ import {
   resolveGatewayPort,
   writeConfigFile,
 } from "../config/config.js";
+import type { TemperamentLevel } from "../memory/genome-parser.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath } from "../utils.js";
@@ -373,6 +374,8 @@ async function runOnboardingWizardInner(
 
   // The options finalize sees (the "Keep running" step may set installDaemon).
   let finalizeOpts: OnboardOptions = opts;
+  // The vibe picked in QuickStart (the advanced flow asks in the Genome step).
+  let vibe: TemperamentLevel | undefined;
   let settings: Awaited<
     ReturnType<typeof import("./onboarding.gateway-config.js").configureGatewayForOnboarding>
   >["settings"];
@@ -382,7 +385,9 @@ async function runOnboardingWizardInner(
     // browser setup page renders over wizard.* (src/wizard/setup-steps.ts).
     // An explicit --auth-choice still runs the provider-specific auth flow;
     // the model's key and model steps then keep what it configured.
-    let presets: Partial<Record<"auth" | "model" | "channels" | "service", string>> | undefined;
+    let presets:
+      | Partial<Record<"auth" | "model" | "vibe" | "channels" | "service", string>>
+      | undefined;
     if (opts.authChoice !== undefined) {
       const { applyAuthChoice } = await import("../commands/auth-choice.js");
       const authResult = await applyAuthChoice({
@@ -405,7 +410,11 @@ async function runOnboardingWizardInner(
     if (typeof opts.installDaemon === "boolean") {
       presets = { ...presets, service: opts.installDaemon ? "install" : "no" };
     }
-    const { commitSetupKey, createSetupDraft, runSetupSteps } = await import("./setup-steps.js");
+    if (opts.vibe !== undefined) {
+      presets = { ...presets, vibe: opts.vibe };
+    }
+    const { commitSetupKey, createSetupDraft, runSetupSteps, vibeLevelOf } =
+      await import("./setup-steps.js");
     const { detectSetupKeys, detectSignedInProfiles } = await import("./setup-keys.js");
     const { detectSetupServiceSupport } = await import("./setup-service.js");
     const ctx = {
@@ -434,6 +443,7 @@ async function runOnboardingWizardInner(
       await prompter.note(notice, "Your previous key was kept");
     }
     nextConfig = draft.config;
+    vibe = draft.answers.vibe ? vibeLevelOf(draft.answers.vibe) : undefined;
     // The "Keep running" step decides the service install finalize does.
     if (draft.answers.service === "install" || draft.answers.service === "no") {
       finalizeOpts = { ...opts, installDaemon: draft.answers.service === "install" };
@@ -572,6 +582,7 @@ async function runOnboardingWizardInner(
   logConfigUpdated(runtime);
   await onboardHelpers.ensureWorkspaceAndSessions(workspaceDir, runtime, {
     skipBootstrap: Boolean(nextConfig.agents?.defaults?.skipBootstrap),
+    vibe,
   });
 
   if (opts.skipSkills) {
@@ -591,7 +602,7 @@ async function runOnboardingWizardInner(
   // agent starts shaping its personality. No-op in quickstart.
   {
     const { setupGenomeForOnboarding } = await import("./onboarding.genome.js");
-    await setupGenomeForOnboarding({ workspaceDir, flow, prompter });
+    await setupGenomeForOnboarding({ workspaceDir, flow, prompter, vibe: opts.vibe });
   }
 
   // Wallet step — explain the economic layer and confirm enable + spend caps.

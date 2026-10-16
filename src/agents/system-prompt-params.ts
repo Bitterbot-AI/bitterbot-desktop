@@ -7,6 +7,7 @@ import {
   resolveUserTimezone,
   type ResolvedTimeFormat,
 } from "./date-time.js";
+import { resolveIdentityName } from "./identity.js";
 
 export type RuntimeInfoInput = {
   agentId?: string;
@@ -29,6 +30,8 @@ export type SystemPromptRuntimeParams = {
   userTimezone: string;
   userTime?: string;
   userTimeFormat?: ResolvedTimeFormat;
+  /** The agent's configured display name (identity.name), if any. */
+  agentName?: string;
 };
 
 export function buildSystemPromptParams(params: {
@@ -55,6 +58,10 @@ export function buildSystemPromptParams(params: {
     userTimezone,
     userTime,
     userTimeFormat,
+    agentName:
+      params.config && params.agentId
+        ? resolveIdentityName(params.config, params.agentId)
+        : undefined,
   };
 }
 
