@@ -163,5 +163,13 @@ homeostasis:
       expect(parseGenomeTemperament(after)?.level).toBe("calm");
       expect(appendGenomeTemperament(after, section)).toBeNull();
     });
+
+    it("keeps a CRLF Genome CRLF and parses it", () => {
+      const crlf = OLD_GENOME.replace(/\n/g, "\r\n");
+      const after = appendGenomeTemperament(crlf, "## Temperament\n\nlevel: playful\n\n- Dry.")!;
+      expect(after.replace(/\r\n/g, "")).not.toContain("\n");
+      expect(parseGenomeTemperament(after)).toEqual({ level: "playful", bullets: ["Dry."] });
+      expect(parseGenomeTemperament(setGenomeTemperamentLevel(after, "calm")!)?.level).toBe("calm");
+    });
   });
 });

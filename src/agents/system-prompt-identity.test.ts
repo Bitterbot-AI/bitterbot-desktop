@@ -32,12 +32,12 @@ describe("identity opening", () => {
   it("opens as Bitterbot, not as a generic assistant, in full and none modes", () => {
     for (const mode of ["full", "minimal", "none"] as const) {
       const p = prompt({ promptMode: mode });
-      expect(
-        p.startsWith("You are Bitterbot: a personal agent that runs on your owner's machine"),
-      ).toBe(true);
+      expect(p.startsWith("You are Bitterbot: a personal agent on your owner's machine")).toBe(
+        true,
+      );
       expect(p).not.toContain("personal assistant running inside Bitterbot");
     }
-    expect(prompt({ promptMode: "none" })).toContain("who you've become is in your Phenotype");
+    expect(prompt({ promptMode: "none" })).toContain("who you've become is your Phenotype");
   });
 
   it("uses the agent's configured name", () => {
@@ -101,23 +101,23 @@ describe("talking about yourself, facts and sources, plan honesty", () => {
   it("full mode has the self-description rules", () => {
     const p = prompt();
     expect(p).toContain("## Talking About Yourself");
-    expect(p).toContain("Do not claim consciousness or feelings as fact");
+    expect(p).toContain("never claim consciousness or feelings as fact");
     expect(prompt({ promptMode: "minimal" })).not.toContain("## Talking About Yourself");
   });
 
   it("data integrity is in every mode but none; research rules need a web tool", () => {
     const full = prompt({ toolNames: ["read", "web_search", "web_fetch"] });
     expect(full).toContain("Never state what a file, PDF, web page or command output says");
-    expect(full).toContain("search first, fetch a page only when the snippets are not enough");
-    expect(full).toContain("cite them with links");
-    expect(full).toContain("Check publication dates");
+    expect(full).toContain("search first, fetch only when snippets are not enough");
+    expect(full).toContain("Cite sources with links");
+    expect(full).toContain("Check dates and say how old information is");
 
     const noWeb = prompt({ toolNames: ["read"] });
     expect(noWeb).toContain("Never state what a file, PDF, web page or command output says");
     expect(noWeb).not.toContain("search first");
 
     const minimal = prompt({ promptMode: "minimal", toolNames: ["read", "web_search"] });
-    expect(minimal).toContain("Extract numbers with a tool instead of estimating them");
+    expect(minimal).toContain("extract numbers with a tool, never estimate them");
     expect(minimal).not.toContain("search first");
   });
 

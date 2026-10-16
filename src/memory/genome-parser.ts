@@ -165,6 +165,9 @@ export function appendGenomeTemperament(genomeContent: string, section: string):
   if (findTemperamentSection(genomeContent)) {
     return null;
   }
+  // Keep the Genome's own line endings (a Genome edited on Windows is CRLF).
+  const eol = genomeContent.includes("\r\n") ? "\r\n" : "\n";
   const head = genomeContent.replace(/\s+$/, "");
-  return `${head}${head ? "\n\n" : ""}${section.trim()}\n`;
+  const body = section.trim().replace(/\r?\n/g, eol);
+  return `${head}${head ? eol + eol : ""}${body}${eol}`;
 }

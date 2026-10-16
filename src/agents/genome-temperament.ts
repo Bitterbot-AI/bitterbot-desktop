@@ -51,7 +51,8 @@ export type TemperamentWriteResult = {
 export async function templateTemperamentSection(
   level: TemperamentLevel = DEFAULT_TEMPERAMENT_LEVEL,
 ): Promise<string> {
-  const template = await loadWorkspaceTemplate(DEFAULT_GENOME_FILENAME);
+  // LF, whatever the checkout: appendGenomeTemperament matches the Genome's own line endings.
+  const template = (await loadWorkspaceTemplate(DEFAULT_GENOME_FILENAME)).replace(/\r\n?/g, "\n");
   const range = findTemperamentSection(template);
   if (!range) {
     throw new Error("The GENOME.md template has no Temperament section.");

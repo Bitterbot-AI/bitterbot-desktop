@@ -25,7 +25,8 @@ const TEMPLATES_DIR = path.resolve(__dirname, "../../docs/reference/templates");
 
 /** Workspace template without its docs frontmatter, as a fresh install ships it. */
 function readTemplate(name: string): string {
-  const raw = fs.readFileSync(path.join(TEMPLATES_DIR, name), "utf8");
+  // A Windows checkout has CRLF templates; the shipped files are LF.
+  const raw = fs.readFileSync(path.join(TEMPLATES_DIR, name), "utf8").replace(/\r\n?/g, "\n");
   return raw.replace(/^---\n[\s\S]*?\n---\n/, "").trim();
 }
 

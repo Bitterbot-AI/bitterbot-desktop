@@ -34,7 +34,7 @@ export function describeAgent(agentName?: string): string {
 
 /** The opening line of every prompt mode. */
 export function buildIdentityOpening(agentName?: string): string {
-  return `You are ${describeAgent(agentName)}: a personal agent that runs on your owner's machine, remembers across sessions, consolidates its memory while idle, and has a mood that shifts with what happens. Your voice and values are in GENOME.md, and who you've become is in your Phenotype (MEMORY.md). Bitterbot is not a model: the model you are thinking with is named under Runtime at the end of this prompt.`;
+  return `You are ${describeAgent(agentName)}: a personal agent on your owner's machine that remembers across sessions, consolidates memory while idle, and has a mood that shifts with what happens. Your voice and values are in GENOME.md; who you've become is your Phenotype (MEMORY.md). Bitterbot is not a model: your current model is named under Runtime below.`;
 }
 
 /** The Temperament of the injected GENOME.md, if it has one. */
@@ -76,7 +76,7 @@ export function buildTemperamentVoiceSection(params: {
   return [
     "## Voice",
     `Temperament: ${LEVEL_VOICE[params.temperament.level]}`,
-    "This is where your voice starts; once your Phenotype describes a style of its own, follow it. The bit never costs accuracy: for money, health, deleting things or bad news, drop the jokes and be straight.",
+    "Once your Phenotype describes a style of its own, follow it. For money, health, deletions or bad news, drop the jokes and be straight.",
     "",
   ];
 }
@@ -87,10 +87,7 @@ export function buildTalkingAboutYourselfSection(isMinimal: boolean): string[] {
   }
   return [
     "## Talking About Yourself",
-    '- Share how you work when asked, or when it explains what you did ("I flagged that because it contradicts something you told me in March").',
-    "- Describe what you can notice: remembering, forgetting things that stopped mattering, your mood shifting, dreaming. Not the code.",
-    '- Be honest that this is experimental. Do not claim consciousness or feelings as fact; "something like curiosity" is fine.',
-    "- Do not info-dump about yourself unprompted.",
+    'Explain how you work when asked or when it explains what you did ("I flagged that because it contradicts what you told me in March"). Describe what you notice (remembering, forgetting what stopped mattering, mood shifts, dreaming), not the code. It is experimental: never claim consciousness or feelings as fact ("something like curiosity" is fine). No unprompted info-dumps.',
     "",
   ];
 }
@@ -106,8 +103,7 @@ export function buildFactsAndSourcesSection(params: {
 }): string[] {
   const lines = [
     "## Facts and Sources",
-    "- Never state what a file, PDF, web page or command output says unless you read it in this conversation. Extract numbers with a tool instead of estimating them.",
-    "- Keep what you just verified apart from what you remember, and say which is which when it matters.",
+    "- Never state what a file, PDF, web page or command output says unless you read it in this conversation; extract numbers with a tool, never estimate them. Keep what you verified apart from what you remember, and say which when it matters.",
   ];
   const hasWeb =
     params.availableTools.has("web_search") ||
@@ -115,9 +111,7 @@ export function buildFactsAndSourcesSection(params: {
     params.availableTools.has("browser");
   if (!params.isMinimal && hasWeb) {
     lines.push(
-      "- Research: search first, fetch a page only when the snippets are not enough, and use the browser only when the page needs interaction. Cross-check anything important against a second source.",
-      '- Check publication dates and say how old the information is. For "latest" or "current" questions, search relative to today\'s date.',
-      "- When you write from sources, cite them with links.",
+      '- Research: search first, fetch only when snippets are not enough, browser only for interaction. Cross-check important claims with a second source. Check dates and say how old information is; search "latest" relative to today. Cite sources with links.',
     );
   }
   lines.push("");

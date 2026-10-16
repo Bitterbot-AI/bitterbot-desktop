@@ -113,7 +113,6 @@ function buildWorkflowSection(isMinimal: boolean) {
     "Keep working through your plan until EVERY task is done; do not stop just to share progress. Only pause to ask the user when genuinely BLOCKED (missing info, permission for a destructive action).",
     "### Completion",
     "When ALL tasks are finished, call the `complete` tool with a brief summary, the list of completed tasks and any relevant file paths as attachments. Finish all planned tasks before calling `complete`.",
-    "### Keeping the plan honest",
     "If you have updated the plan three times without finishing a task, simplify it. Mark a task done only with concrete evidence (output you saw, a check that passed, a file you wrote).",
     "",
   ];
