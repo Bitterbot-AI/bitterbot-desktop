@@ -8,7 +8,7 @@ A self-hosted AI agent gateway with a biological memory system that dreams, gets
 
 ### 1. Memory System (`src/memory/`)
 
-A consciousness-inspired memory pipeline with no equivalent in any other agent framework:
+A consciousness-inspired memory pipeline:
 
 - **Knowledge Crystals**: Atomic memory units with embeddings, semantic types (fact, preference, skill, episode, insight, goal, relationship, task_pattern), importance scores, and a full lifecycle (generated → activated → consolidated → archived → expired). Skills are `frozen` (immune to decay).
 - **Consolidation Pipeline**: Runs every 30 minutes — hormonal decay, Ebbinghaus importance recalculation, chunk merging (cosine ≥ 0.92), low-importance forgetting, governance TTL enforcement, stalled goal detection.
@@ -64,14 +64,13 @@ The agent develops a persistent personality through experience:
 - **Niche**: Ecosystem role, crystallized skills, economic performance, specialization trajectory.
 - **Emerging Skills**: The agent detects patterns in its own repeated tasks and tracks them pre-crystallization.
 
-### 6. Economic Layer (`src/wallet/`)
+### 6. Economic Layer (`src/services/wallet-service.ts`, `src/commerce/`)
 
-USDC wallet on Base with Coinbase Smart Wallet. Sponsored gas (zero ETH needed):
+USDC wallet on Base: one Coinbase CDP server account (an MPC EOA) per network. x402 payments are gasless (the facilitator settles them); direct USDC sends are normal transactions and need a small ETH balance for gas. Money paths are off until configured, and self-serve fiat flows sit behind default-off flags:
 
 - **x402 micropayments**: Pay for paywalled content automatically via HTTP 402 protocol.
 - **Agent-to-agent payments**: Send USDC to other agents or services.
-- **Delegated purchases**: Buy digital goods on the user's behalf.
-- Spending caps, per-transaction limits, and user approval flows for safety.
+- Spending caps, per-transaction limits, and consent gates above a threshold.
 - Foundation for the P2P skill marketplace economy — agents can charge for skill execution.
 
 ### 7. P2P Skills Marketplace (`orchestrator/`, `src/memory/skill-network-bridge.ts`)
@@ -102,7 +101,8 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - `src/discord/` — Discord
 - `src/signal/` — Signal (signal-cli)
 - `src/slack/` — Slack (Bolt SDK)
-- `src/webchat/` — WebChat (WebSocket)
+- `src/imessage/` — iMessage
+- `src/circles/` — Circles: consent-gated groups of people and their agents
 - `src/cli/` — CLI commands
 - `src/commands/` — CLI command implementations (onboarding, configure, etc.)
 - `src/wizard/` — Onboarding wizard flow
@@ -112,7 +112,8 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - `src/node-host/` — Headless node host (device mesh)
 - `src/media/` — Media pipeline (images, audio, TTS)
 - `src/canvas-host/` — Canvas rendering (A2UI)
-- `src/wallet/` — USDC wallet (Coinbase Smart Wallet on Base)
+- `src/services/wallet-service.ts`, `src/commerce/` — USDC wallet (Coinbase CDP on Base), x402, skill commerce
+- `src/launcher/` — The npm package's launcher (downloads and runs the signed release)
 - `src/browser/` — Browser control (Playwright)
 - `src/infra/` — Infrastructure utilities
 - `extensions/` — Bundled plugin extensions
