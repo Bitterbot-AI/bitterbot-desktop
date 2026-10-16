@@ -8,6 +8,7 @@ import { getChildLogger } from "../../logging/logger.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { saveMediaBuffer } from "../../media/store.js";
 import { jidToE164, resolveJidToE164 } from "../../utils.js";
+import { closeWaSocketTransport } from "../close-socket.js";
 import { createWaSocket, getStatusCode, waitForWaConnection } from "../session.js";
 import { checkInboundAccessControl } from "./access-control.js";
 import { isRecentInboundMessage } from "./dedupe.js";
@@ -392,7 +393,7 @@ export async function monitorWebInbox(options: {
           ev.removeListener("messages.upsert", messagesUpsertHandler);
           ev.removeListener("connection.update", connectionUpdateHandler);
         }
-        sock.ws?.close();
+        closeWaSocketTransport(sock, (err) => logVerbose(`Socket close failed: ${String(err)}`));
       } catch (err) {
         logVerbose(`Socket close failed: ${String(err)}`);
       }

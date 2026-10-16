@@ -5,6 +5,7 @@ import { danger, info, success } from "../globals.js";
 import { logInfo } from "../logger.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { resolveWhatsAppAccount } from "./accounts.js";
+import { closeWaSocketTransport } from "./close-socket.js";
 import { renderQrPngBase64 } from "./qr-image.js";
 import {
   createWaSocket,
@@ -39,11 +40,7 @@ const ACTIVE_LOGIN_TTL_MS = 3 * 60_000;
 const activeLogins = new Map<string, ActiveLogin>();
 
 function closeSocket(sock: WaSocket) {
-  try {
-    sock.ws?.close();
-  } catch {
-    // ignore
-  }
+  closeWaSocketTransport(sock);
 }
 
 async function resetActiveLogin(accountId: string, reason?: string) {
