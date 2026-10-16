@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.7.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.6.1...v1.7.0) (2026-10-16)
+
+
+### Features
+
+* **cli:** plain `bitterbot` starts setup on a machine that isn't set up ([#253](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/253)) ([4774759](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4774759d9e0da53711772a6380a09987bc490906))
+* **npm:** npm package is a thin launcher over the signed release tarball (+ Intel Mac tarball, zsh compdef guard) ([#254](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/254)) ([3d13220](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3d132202b7f09c0977354910111ac5d8302b9721))
+* **persona:** base personality (GENOME Temperament), Bitterbot identity opening, source rules ([#257](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/257)) ([2aedf1c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2aedf1c08519824db8608fa261ed25890f0485cf))
+
+
+### Bug Fixes
+
+* **installer:** an older gh skips the attestation check instead of refusing ([#252](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/252)) ([bbfd3f4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bbfd3f476d9c5f4ad9e72fde9ae911ccf8f24025))
+* **whatsapp:** baileys 7.0.0-rc14 (GHSA-qvv5-jq5g-4cgg message spoofing) ([#259](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/259)) ([660953f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/660953fca121bbae1903b465948d298bc37b6dbb))
+
 ## [1.6.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.6.0...v1.6.1) (2026-10-15)
 
 
