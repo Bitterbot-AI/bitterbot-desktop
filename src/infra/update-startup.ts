@@ -10,6 +10,7 @@ import { normalizeUpdateChannel, DEFAULT_PACKAGE_CHANNEL } from "./update-channe
 import {
   compareSemverStrings,
   fetchLatestGithubRelease,
+  GITHUB_RELEASE_TIMEOUT_MS,
   githubReleaseTargetFor,
   resolveNpmChannelTag,
   checkUpdateStatus,
@@ -46,6 +47,13 @@ export type UpdateStatusEvent = {
   sha: string | null;
   branch: string | null;
   registryLatest: string | null;
+  /**
+   * Containers and release-tarball installs: false when GitHub was not asked
+   * (a no-fetch check with nothing cached), so "unknown" is not a failure.
+   */
+  registryChecked?: boolean;
+  /** Why `registryLatest` is null after GitHub was asked ("rate-limited", "timeout", ...). */
+  registryError?: string | null;
   /** False when the pre-check `git fetch` failed — behind counts are stale. */
   fetchOk: boolean | null;
   staleness: UpdateStaleness;
@@ -130,6 +138,8 @@ export async function runGatewayUpdateCheck(params: {
   // Package installs: compare against the node's own channel tag (a beta node
   // must not be nagged toward `latest`), and keep the once-per-version log.
   let channelVersion: string | null = null;
+  // Why the newest release is unknown (containers and tarball installs only).
+  let registryError: string | null = null;
   if (status.installKind === "package") {
     const channel = normalizeUpdateChannel(params.cfg.update?.channel) ?? DEFAULT_PACKAGE_CHANNEL;
     const resolved = await resolveNpmChannelTag({ channel, timeoutMs: 2500 });
@@ -151,8 +161,9 @@ export async function runGatewayUpdateCheck(params: {
   // Container installs: the newest GitHub release is the newest image (D6).
   // Never npm: the image cannot update itself and the npm name is unclaimed.
   if (status.installKind === "container") {
-    const release = await fetchLatestGithubRelease({ timeoutMs: 2500 });
+    const release = await fetchLatestGithubRelease({ timeoutMs: GITHUB_RELEASE_TIMEOUT_MS });
     channelVersion = release.latestVersion;
+    registryError = release.latestVersion ? null : (release.error ?? "unknown");
     const cmp = compareSemverStrings(VERSION, release.latestVersion);
     if (release.latestVersion && cmp != null && cmp < 0) {
       if (
@@ -174,9 +185,10 @@ export async function runGatewayUpdateCheck(params: {
   if (status.installKind === "tarball") {
     const target = githubReleaseTargetFor("tarball");
     const release = target
-      ? await fetchLatestGithubRelease({ timeoutMs: 2500, target })
-      : { latestVersion: null };
+      ? await fetchLatestGithubRelease({ timeoutMs: GITHUB_RELEASE_TIMEOUT_MS, target })
+      : { latestVersion: null, error: "unsupported-platform" };
     channelVersion = release.latestVersion;
+    registryError = release.latestVersion ? null : (release.error ?? "unknown");
     const cmp = compareSemverStrings(VERSION, release.latestVersion);
     if (release.latestVersion && cmp != null && cmp < 0) {
       if (
@@ -207,6 +219,8 @@ export async function runGatewayUpdateCheck(params: {
     sha: status.git?.sha ?? null,
     branch: status.git?.branch ?? null,
     registryLatest: channelVersion,
+    registryChecked: true,
+    registryError,
     fetchOk: status.git?.fetchOk ?? null,
     staleness,
     checkedAt: Date.now(),

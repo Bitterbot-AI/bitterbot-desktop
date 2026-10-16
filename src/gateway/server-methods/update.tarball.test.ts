@@ -5,13 +5,19 @@
  * that carries this platform's tarball and offers the in-place update.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { tarballPlatformId } from "../../infra/install-kind.js";
 import { scheduleGatewaySigusr1Restart } from "../../infra/restart.js";
 import {
   armTarballBootVerify,
   runTarballUpdateForGateway,
 } from "../../infra/tarball-update-flow.js";
 import { spawnTarballBootWatchdog } from "../../infra/tarball-watchdog-spawn.js";
-import { checkUpdateStatus, fetchLatestGithubRelease } from "../../infra/update-check.js";
+import {
+  checkUpdateStatus,
+  fetchLatestGithubRelease,
+  GITHUB_RELEASE_TIMEOUT_MS,
+  resetGithubReleaseCacheForTests,
+} from "../../infra/update-check.js";
 import { runGatewayUpdate } from "../../infra/update-runner.js";
 import { updateHandlers } from "./update.js";
 
@@ -194,10 +200,12 @@ describe("update RPCs for a release-tarball install", () => {
       staleness: { stale: boolean; reason: string };
     };
     expect(payload.registryLatest).toBe("999.0.0");
+    expect(payload).toMatchObject({ registryChecked: true, registryError: null });
     // Not external any more: the UI shows its Update button.
     expect(payload.updateCommand).toBeNull();
     expect(payload.staleness).toMatchObject({ stale: true, reason: "package-version" });
     const call = vi.mocked(fetchLatestGithubRelease).mock.calls[0]?.[0];
+    expect(call?.timeoutMs).toBe(GITHUB_RELEASE_TIMEOUT_MS);
     if (
       process.platform === "linux" ||
       (process.platform === "darwin" && process.arch === "arm64")
@@ -205,6 +213,58 @@ describe("update RPCs for a release-tarball install", () => {
       expect(call?.target).toEqual({
         kind: "tarball",
         platformId: `${process.platform}-${process.arch}`,
+      });
+    }
+  });
+  it("update.check reports why the newest release is unknown", async () => {
+    vi.mocked(fetchLatestGithubRelease).mockResolvedValue({
+      latestVersion: null,
+      source: "github-releases",
+      error: "timeout",
+    });
+    const { calls, respond } = capture();
+    await updateHandlers["update.check"]!({ params: { fetch: true }, respond } as never);
+    expect(calls[0]?.payload).toMatchObject({
+      registryLatest: null,
+      registryChecked: true,
+      registryError: "timeout",
+    });
+  });
+
+  it("a no-fetch update.check with nothing cached says GitHub was not asked", async () => {
+    resetGithubReleaseCacheForTests();
+    vi.mocked(fetchLatestGithubRelease).mockClear();
+    const { calls, respond } = capture();
+    await updateHandlers["update.check"]!({ params: { fetch: false }, respond } as never);
+    expect(fetchLatestGithubRelease).not.toHaveBeenCalled();
+    if (tarballPlatformId()) {
+      expect(calls[0]?.payload).toMatchObject({
+        registryLatest: null,
+        registryChecked: false,
+        registryError: null,
+      });
+    }
+  });
+  it("a fetching update.check is not handed a concurrent no-fetch answer", async () => {
+    resetGithubReleaseCacheForTests();
+    vi.mocked(fetchLatestGithubRelease).mockClear();
+    vi.mocked(fetchLatestGithubRelease).mockResolvedValue({
+      latestVersion: "999.0.0",
+      source: "github-releases",
+    });
+    const quick = capture();
+    const full = capture();
+    await Promise.all([
+      updateHandlers["update.check"]!({
+        params: { fetch: false },
+        respond: quick.respond,
+      } as never),
+      updateHandlers["update.check"]!({ params: { fetch: true }, respond: full.respond } as never),
+    ]);
+    if (tarballPlatformId()) {
+      expect(full.calls[0]?.payload).toMatchObject({
+        registryLatest: "999.0.0",
+        registryChecked: true,
       });
     }
   });

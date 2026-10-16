@@ -179,4 +179,69 @@ describe("UpdateCard for a release-tarball install (PLAN-56 Phase 3b)", () => {
     });
     expect(parsed?.installKind).toBe("tarball");
   });
+
+  it("a release GitHub was not asked about yet is 'not checked', and the card asks once", async () => {
+    const request = vi.fn(async () => ({
+      ok: true,
+      version: "1.4.0",
+      channel: null,
+      check: { installKind: "tarball" },
+      registryLatest: "1.5.0",
+      registryChecked: true,
+      registryError: null,
+      staleness: { behind: null, threshold: 20, stale: true, reason: "package-version" },
+      checkedAt: Date.now(),
+    }));
+    useGatewayStore.setState({ status: "connected", request, hello: null } as never);
+    useUpdateStore.setState({
+      info: tarballInfo({
+        registryLatest: null,
+        registryChecked: false,
+        staleness: { behind: null, threshold: 20, stale: false, reason: "unknown" },
+      }),
+    });
+    render(<UpdateCard />);
+    expect(screen.queryByText(/unreachable/)).toBeNull();
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith("update.check", { fetch: true }, expect.anything()),
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByText("Release 1.5.0 available.")).toBeTruthy());
+  });
+
+  it.each([
+    ["rate-limited", /limit of 60 update checks an hour/],
+    ["timeout", /GitHub did not answer in time/],
+    ["no-tarball-release", /No release for this platform has been published yet/],
+    ["HTTP 502", /Could not reach GitHub \(HTTP 502\)/],
+  ])("explains a failed release check (%s)", (error, text) => {
+    useUpdateStore.setState({
+      info: tarballInfo({
+        registryLatest: null,
+        registryChecked: true,
+        registryError: error,
+        staleness: { behind: null, threshold: 20, stale: false, reason: "unknown" },
+      }),
+    });
+    render(<UpdateCard />);
+    expect(screen.getByText(text)).toBeTruthy();
+  });
+
+  it("describes the tarball update while it runs, not a source build", () => {
+    useUpdateStore.setState({ info: tarballInfo({}), updating: true });
+    render(<UpdateCard />);
+    expect(screen.getByText(/downloads the signed release, verifies its signature/)).toBeTruthy();
+    expect(screen.queryByText(/verifies it builds/)).toBeNull();
+  });
+
+  it("the update event and check response carry registryChecked and registryError", () => {
+    const parsed = parseUpdateEvent({
+      version: "1.4.0",
+      installKind: "tarball",
+      registryChecked: true,
+      registryError: "timeout",
+      staleness: { behind: null, threshold: 20, stale: false, reason: "unknown" },
+    });
+    expect(parsed).toMatchObject({ registryChecked: true, registryError: "timeout" });
+  });
 });

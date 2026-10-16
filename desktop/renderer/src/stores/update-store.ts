@@ -40,6 +40,14 @@ export type UpdateInfo = {
   sha: string | null;
   branch: string | null;
   registryLatest: string | null;
+  /**
+   * Containers and tarball installs: false when the gateway has not asked
+   * GitHub yet (a no-fetch check with nothing cached). Undefined from older
+   * gateways, which never said.
+   */
+  registryChecked?: boolean;
+  /** Why the newest release is unknown after GitHub was asked. */
+  registryError?: string | null;
   staleness: UpdateStaleness;
   checkedAt: number;
   /** False when the staleness numbers come from a failed `git fetch`. */
@@ -139,6 +147,8 @@ export type UpdateCheckResponse = {
     };
   };
   registryLatest: string | null;
+  registryChecked?: boolean;
+  registryError?: string | null;
   staleness: UpdateStaleness;
   checkedAt: number;
 };
@@ -151,6 +161,8 @@ export function parseCheckResponse(resp: UpdateCheckResponse): UpdateInfo {
     sha: resp.check.git?.sha ?? null,
     branch: resp.check.git?.branch ?? null,
     registryLatest: resp.registryLatest ?? null,
+    registryChecked: typeof resp.registryChecked === "boolean" ? resp.registryChecked : undefined,
+    registryError: typeof resp.registryError === "string" ? resp.registryError : null,
     staleness: resp.staleness,
     checkedAt: resp.checkedAt,
     fetchOk: resp.check.git?.fetchOk ?? null,
@@ -171,6 +183,8 @@ export function parseUpdateEvent(payload: unknown): UpdateInfo | null {
     sha: typeof p.sha === "string" ? p.sha : null,
     branch: typeof p.branch === "string" ? p.branch : null,
     registryLatest: typeof p.registryLatest === "string" ? p.registryLatest : null,
+    registryChecked: typeof p.registryChecked === "boolean" ? p.registryChecked : undefined,
+    registryError: typeof p.registryError === "string" ? p.registryError : null,
     staleness,
     checkedAt: typeof p.checkedAt === "number" ? p.checkedAt : Date.now(),
     fetchOk: typeof p.fetchOk === "boolean" ? p.fetchOk : null,

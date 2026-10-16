@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
@@ -47,6 +47,65 @@ function describeSkipReason(reason: string | null): string {
   }
 }
 
+/**
+ * Why the newest release is unknown, in words: never asked yet, a GitHub rate
+ * limit, a slow answer, or nothing published for this platform. Only a real
+ * failure says GitHub could not be reached.
+ */
+export function describeUnknownRelease(params: {
+  what: "release" | "image";
+  checked: boolean | undefined;
+  error: string | null | undefined;
+  checking: boolean;
+}): string {
+  const { what, checked, error, checking } = params;
+  if (checking) {
+    return `Checking GitHub for the latest ${what}…`;
+  }
+  if (checked === false) {
+    return `Not checked yet. Press Check for updates to look for a newer ${what}.`;
+  }
+  switch (error) {
+    case "rate-limited":
+      return "GitHub's limit of 60 update checks an hour for this network was reached; try again in about 15 minutes.";
+    case "timeout":
+      return "GitHub did not answer in time; press Check for updates to try again.";
+    case "no-tarball-release":
+    case "no-image-release":
+      return `No ${what} for this platform has been published yet.`;
+    case "unsupported-platform":
+      return "No signed release is built for this platform.";
+    case null:
+    case undefined:
+      // An older gateway that does not report why.
+      return `Latest ${what} unknown (GitHub unreachable or rate-limited); try again later.`;
+    default:
+      return `Could not reach GitHub (${error}); press Check for updates to try again.`;
+  }
+}
+
+/** What "Updating…" means for this install kind, while update.run is in flight. */
+export function describeUpdating(kind: string | undefined): string {
+  if (kind === "tarball") {
+    return (
+      "Updating… the node downloads the signed release, verifies its signature, snapshots " +
+      "your config and memory, then switches to it and restarts. If the new version does not " +
+      "start, it switches back on its own. The connection will drop while it restarts."
+    );
+  }
+  if (kind === "package") {
+    return (
+      "Updating… the node installs the new version with its package manager, then restarts. " +
+      "The connection will drop while it restarts."
+    );
+  }
+  return (
+    "Updating… the node fetches the latest code, verifies it builds (the dev channel preflights " +
+    "in a throwaway worktree), then applies it and restarts. This can take a while; the " +
+    "connection will drop when it restarts."
+  );
+}
+
 function majorOf(version: string | null | undefined): number | null {
   const m = /^v?(\d+)\./.exec(version ?? "");
   return m ? Number(m[1]) : null;
@@ -60,10 +119,12 @@ function ContainerUpdateStatus({
   version,
   latest,
   stale,
+  unknownText,
 }: {
   version: string;
   latest: string | null;
   stale: boolean;
+  unknownText: string;
 }) {
   const runningMajor = majorOf(version);
   const latestMajor = majorOf(latest);
@@ -75,9 +136,7 @@ function ContainerUpdateStatus({
       ) : latest ? (
         <p className="text-xs text-success">Up to date with the latest image (v{latest}).</p>
       ) : (
-        <p className="text-xs text-muted-foreground">
-          Latest image unknown (GitHub unreachable or rate-limited); try again later.
-        </p>
+        <p className="text-xs text-muted-foreground">{unknownText}</p>
       )}
       <p className="text-xs text-muted-foreground">
         This node runs in a container and updates by pulling a newer image. On the Docker host, in
@@ -101,7 +160,15 @@ function ContainerUpdateStatus({
  * newest signed release, checks it, snapshots the node's data, switches over
  * and rolls back automatically if the new version does not boot.
  */
-function TarballUpdateStatus({ latest, stale }: { latest: string | null; stale: boolean }) {
+function TarballUpdateStatus({
+  latest,
+  stale,
+  unknownText,
+}: {
+  latest: string | null;
+  stale: boolean;
+  unknownText: string;
+}) {
   return (
     <div className="mb-3 space-y-1.5" data-testid="update-card-tarball">
       {latest && stale ? (
@@ -109,9 +176,7 @@ function TarballUpdateStatus({ latest, stale }: { latest: string | null; stale: 
       ) : latest ? (
         <p className="text-xs text-success">Up to date with the latest release (v{latest}).</p>
       ) : (
-        <p className="text-xs text-muted-foreground">
-          Latest release unknown (GitHub unreachable or rate-limited); try again later.
-        </p>
+        <p className="text-xs text-muted-foreground">{unknownText}</p>
       )}
       <p className="text-xs text-muted-foreground">
         Installed from a signed release tarball. Updating verifies the release signature, snapshots
@@ -167,6 +232,27 @@ export function UpdateCard() {
     },
     [request, setChecking, setInfo],
   );
+
+  // The page-load check is no-fetch (instant, no network), so a container or
+  // tarball node that has not asked GitHub yet reports "not checked". Ask once
+  // on its behalf; the gateway caches the answer, so this is one request.
+  const autoCheckedRef = useRef(false);
+  const needsReleaseCheck =
+    info?.registryChecked === false &&
+    (info.installKind === "tarball" || info.installKind === "container");
+  useEffect(() => {
+    if (
+      !needsReleaseCheck ||
+      autoCheckedRef.current ||
+      checking ||
+      updating ||
+      connectionStatus !== "connected"
+    ) {
+      return;
+    }
+    autoCheckedRef.current = true;
+    void runCheck(true);
+  }, [needsReleaseCheck, checking, updating, connectionStatus, runCheck]);
 
   const runUpdate = useCallback(async () => {
     setConfirming(false);
@@ -279,11 +365,26 @@ export function UpdateCard() {
           version={info.version}
           latest={info.registryLatest}
           stale={info.staleness.stale}
+          unknownText={describeUnknownRelease({
+            what: "image",
+            checked: info.registryChecked,
+            error: info.registryError,
+            checking,
+          })}
         />
       )}
 
       {info?.installKind === "tarball" && (
-        <TarballUpdateStatus latest={info.registryLatest} stale={info.staleness.stale} />
+        <TarballUpdateStatus
+          latest={info.registryLatest}
+          stale={info.staleness.stale}
+          unknownText={describeUnknownRelease({
+            what: "release",
+            checked: info.registryChecked,
+            error: info.registryError,
+            checking,
+          })}
+        />
       )}
 
       {/* What an update brings, BEFORE install (sota-bar rec 2) */}
@@ -307,15 +408,12 @@ export function UpdateCard() {
         )}
 
       {updating ? (
-        <p className="text-sm text-brand">
-          Updating… the node fetches the latest code, verifies it builds (the dev channel preflights
-          in a throwaway worktree), then applies it and restarts. This can take a while; the
-          connection will drop when it restarts.
-        </p>
+        <p className="text-sm text-brand">{describeUpdating(info?.installKind)}</p>
       ) : outcome?.restarting ? (
         <p className="text-sm text-success">
-          Update applied. The node is rebuilding and restarting; this page will reconnect on its
-          own.
+          {info?.installKind === "tarball"
+            ? "Update applied. The node is restarting on the new version; this page will reconnect on its own."
+            : "Update applied. The node is rebuilding and restarting; this page will reconnect on its own."}
         </p>
       ) : outcome?.status === "interrupted" ? (
         <p className="text-sm text-warning">

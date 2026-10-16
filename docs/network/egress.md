@@ -101,8 +101,10 @@ not change the default.
   - container image (`BITTERBOT_INSTALL_KIND=container`, set by the image):
     `api.github.com/repos/Bitterbot-AI/bitterbot-desktop/releases?per_page=30`
     (the newest `vX.Y.Z` release that carries the `docker-compose.yml` asset,
-    which is attached only once its image is on GHCR), never npm. The answer is cached for 30 minutes (15 after a failure), so
-    opening the Control UI repeatedly does not repeat the request;
+    which is attached only once its image is on GHCR), never npm. The answer is cached for 30 minutes (15 after a
+    GitHub rate limit, 2 after a timeout or other failure), so opening the
+    Control UI repeatedly does not repeat the request. Opening the Control UI
+    asks once when the gateway has no answer yet;
   - installer (release tarball) install (`BITTERBOT_INSTALL_KIND=tarball`, set
     by its launcher): the same GitHub releases list, counting only a release
     that carries the tarball for your platform, never npm. The update itself
