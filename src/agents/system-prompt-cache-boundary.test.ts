@@ -32,7 +32,12 @@ function readTemplate(name: string): string {
 
 /** chars / 2.7 tracks Anthropic's count_tokens on this prompt (40,942 chars = 15,220 tokens on 2026-09-20). */
 const estimateTokens = (text: string): number => Math.round(text.length / 2.7);
-export const STABLE_HALF_TOKEN_BUDGET = 9_000;
+/**
+ * 9,000 until the base personality: the GENOME.md Temperament section (owner-
+ * approved text, ~330 tokens) and the level's Voice block with its example
+ * lines sit in the cached half, so the budget moved by 150.
+ */
+export const STABLE_HALF_TOKEN_BUDGET = 9_150;
 
 /**
  * Production-shaped fixture: a stock install's GENOME/PROTOCOLS/TOOLS/MEMORY

@@ -508,7 +508,7 @@ export class HormonalStateManager {
       curiosityExpression,
       assertiveness,
       empathyExpression,
-      briefing: hints.length > 0 ? hints.join("; ") : "neutral tone — be natural",
+      briefing: hints.length > 0 ? hints.join("; ") : "your usual voice, be natural",
     };
   }
 

@@ -622,13 +622,6 @@ export function buildAgentSystemPrompt(params: {
   const stable: string[] = [
     identityOpening,
     "",
-    ...(isMinimal
-      ? []
-      : buildTemperamentVoiceSection({
-          temperament: temperamentFromContextFiles(contextFiles.stable),
-          guest: params.guestTurn,
-        })),
-    ...buildTalkingAboutYourselfSection(isMinimal),
     "## Tooling",
     "Tool availability (filtered by policy):",
     "Tool names are case-sensitive. Call tools exactly as listed.",
@@ -738,6 +731,18 @@ export function buildAgentSystemPrompt(params: {
       heartbeatPromptLine,
       'On a heartbeat poll (a user message matching that prompt) with nothing needing attention, reply exactly HEARTBEAT_OK and nothing else (a leading/trailing "HEARTBEAT_OK" is treated as the ack and may be discarded). If something needs attention, reply with the alert text and do NOT include "HEARTBEAT_OK".',
       "",
+    );
+  }
+
+  // Who it is and how it sounds close the cached half: after the long
+  // workspace files, so the voice is the last thing read before the turn.
+  if (!isMinimal) {
+    stable.push(
+      ...buildTalkingAboutYourselfSection(isMinimal),
+      ...buildTemperamentVoiceSection({
+        temperament: temperamentFromContextFiles(contextFiles.stable),
+        guest: params.guestTurn,
+      }),
     );
   }
 

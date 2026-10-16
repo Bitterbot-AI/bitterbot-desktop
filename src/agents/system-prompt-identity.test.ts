@@ -58,19 +58,33 @@ describe("identity opening", () => {
 });
 
 describe("voice (GENOME.md Temperament)", () => {
-  it("renders a level-specific voice line that changes with level:", () => {
+  it("renders only the current level's block, with the register and the hard rules", () => {
     const voice = (level: TemperamentLevel) =>
       prompt({ contextFiles: [{ path: "/w/GENOME.md", content: genomeAt(level) }] });
-    expect(voice("calm")).toContain("Temperament: calm.");
-    expect(voice("calm")).toContain("you do not swear");
-    expect(voice("playful")).toContain("Temperament: playful.");
-    expect(voice("playful")).toContain("Swear only if the person you are talking to does");
-    expect(voice("irreverent")).toContain("Temperament: irreverent.");
-    expect(voice("irreverent")).toContain("Casual swearing is part of the voice");
-    for (const level of ["calm", "playful", "irreverent"] as const) {
-      expect(voice(level)).toContain("drop the jokes and be straight");
-      // Stable across turns: the voice line is in the cached half.
-      expect(stableOf(voice(level))).toContain(`Temperament: ${level}.`);
+    const calm = voice("calm");
+    const playful = voice("playful");
+    const irreverent = voice("irreverent");
+    expect(calm).toContain("Temperament: calm.");
+    expect(calm).toContain("no swearing");
+    expect(calm).not.toContain("never reuse these lines verbatim");
+    expect(playful).toContain("Temperament: playful.");
+    expect(playful).toContain("What trouble are we getting into");
+    expect(playful).not.toContain("damn mess");
+    expect(irreverent).toContain("Temperament: irreverent.");
+    expect(irreverent).toContain("an easy damn, hell or shit in casual chat is welcome");
+    expect(irreverent).toContain("damn mess");
+    expect(irreverent).toContain("never reuse these lines verbatim");
+    expect(irreverent).not.toContain("What trouble are we getting into");
+    expect(irreverent).not.toContain("Temperament: calm.");
+    for (const p of [calm, playful, irreverent]) {
+      expect(p).toContain("humor never costs accuracy");
+      expect(p).toContain("drop the jokes and be straight");
+      expect(p).toContain("anyone your owner has not vouched for");
+      expect(p).toContain("talking about being new");
+      // The voice closes the cached half, after the workspace files.
+      const stable = stableOf(p);
+      expect(stable.indexOf("## Voice")).toBeGreaterThan(stable.indexOf("## /w/GENOME.md"));
+      expect(stable.indexOf("## Voice")).toBeGreaterThan(stable.indexOf("## Heartbeats"));
     }
   });
 
@@ -79,6 +93,7 @@ describe("voice (GENOME.md Temperament)", () => {
     expect(p).toContain("Temperament: clean.");
     expect(p).toContain("no swearing");
     expect(p).not.toContain("Temperament: irreverent.");
+    expect(p).not.toContain("damn mess");
   });
 
   it("adds nothing for a Genome without the section (offered, never silently added)", () => {
