@@ -316,7 +316,7 @@ dependencies = [
 
 [[package]]
 name = "bitterbot-desktop"
-version = "1.6.1"
+version = "1.7.0"
 dependencies = [
  "env_logger",
  "libc",
