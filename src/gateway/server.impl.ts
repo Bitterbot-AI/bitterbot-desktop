@@ -43,7 +43,6 @@ import {
   refreshRemoteBinsForConnectedNodes,
   setSkillsRemoteRegistry,
 } from "../infra/skills-remote.js";
-import { startSoapboxService } from "../infra/soapbox-service.js";
 import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
@@ -693,7 +692,6 @@ export async function startGatewayServer(
   }
 
   // Run gateway_start plugin hook (fire-and-forget)
-  const stopSoapbox = minimalTestGateway ? async () => {} : await startSoapboxService();
   if (!minimalTestGateway) {
     const hookRunner = getGlobalHookRunner();
     if (hookRunner?.hasHooks("gateway_start")) {
@@ -786,7 +784,6 @@ export async function startGatewayServer(
       }
       skillsChangeUnsub();
       authRateLimiter?.dispose();
-      await stopSoapbox();
       await close(opts);
     },
   };

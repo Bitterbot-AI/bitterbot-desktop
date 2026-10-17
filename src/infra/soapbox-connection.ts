@@ -31,9 +31,8 @@ export function parseSoapboxConnection(value: unknown): SoapboxConnection {
   )
     throw new Error("Invalid Base Sepolia enrollment file");
   new SoapboxClient(c.url, c.token);
-  const rpc = new URL(c.rpc_url);
-  if (rpc.protocol !== "https:" || rpc.username || rpc.password || rpc.hash)
-    throw new Error("Payment RPC requires HTTPS without embedded credentials");
+  if (!["https://sepolia.base.org", "https://sepolia.base.org/"].includes(c.rpc_url))
+    throw new Error("Enrollment must use the public Base Sepolia RPC endpoint");
   return c as SoapboxConnection;
 }
 export function verifySoapboxConnection(c: SoapboxConnection, s: SoapboxStatus): void {

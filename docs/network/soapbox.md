@@ -8,7 +8,38 @@ title: "Soapbox Compute"
 # Soapbox Compute
 
 Soapbox is an independent Rust service for paid, private and collective compute pools.
-The desktop integration is **Compute** in the main sidebar and is disabled by default.
+The desktop integration is **Compute** in the main sidebar and is enabled by default.
+Opening Compute shows setup; running a worker or funding a job still requires the user's action.
+The `soapbox-compute` plugin is the sole registrar for `soapbox.*` gateway methods and owns
+participant clients and service lifetimes. The older core env-based service path is no longer
+started by the gateway. The historical development sections below are not an alternate
+enable switch.
+
+### Private pilot funding and wallet identity
+
+New Compute accounts use the CDP name `bitterbot-compute-base-sepolia`. Activation
+and funding reject a Compute address that matches the main wallet's stored address
+or owner address. Existing `bitterbot-owner-base-sepolia` Compute accounts retain
+their identity and funds when the main wallet remains on Base; they are blocked if
+the main wallet uses Base Sepolia. Do not overwrite or delete an existing wallet
+file to change identities. An intentional migration requires a new Compute account,
+a newly issued enrollment and separate handling of any remaining test funds.
+The installer never transfers those funds or silently changes an enrolled identity.
+
+Funding and payment refresh require `operator.admin`. Each funding request includes
+the quote displayed when the user clicks Fund. The gateway fetches the current quote
+and rejects changed fields before constructing a signing wallet. The Compute wallet
+also requires that approved quote and records a `user_reviewed` entry in its private
+`funding-approvals.jsonl` before signing. Per-job and rolling daily caps still apply.
+Receipt waits are bounded; a timeout retains the spend reservation. Refresh payment
+state before retrying an ambiguous submission.
+
+The private release pins its approved Base Sepolia escrow address and bytecode hash
+in `src/infra/soapbox-payment-policy.ts`; enrollment cannot substitute another
+contract. Enrollment exports and accepts only the public Base Sepolia RPC endpoint.
+These checks support this explicit-click private pilot. Integration with the newer
+desktop AP2 mandate policy remains a separate merge requirement before general
+agent-initiated payments are enabled.
 
 Version 0.2 supports isolated CPU SHA-256 batches, real GPU embeddings through a digest-pinned
 Ollama model, persistent job accounting, and temporary account-scoped artifacts. Paid jobs can

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { createPublicClient, encodeFunctionData, http, parseAbi, type Hex } from "viem";
 import { baseSepolia } from "viem/chains";
 import type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
+import { SOAPBOX_PAYMENT_POLICY } from "../infra/soapbox-payment-policy.js";
 export type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
 
 export const soapboxEscrowAbi = parseAbi([
@@ -11,6 +12,23 @@ export const soapboxEscrowAbi = parseAbi([
 ]);
 const approveAbi = parseAbi(["function approve(address,uint256) returns (bool)"]);
 const usdc = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+export function assertApprovedSoapboxQuote(approved: unknown, quote: SoapboxPaymentQuote): void {
+  if (!approved || typeof approved !== "object" || Array.isArray(approved))
+    throw new Error("Review and approve this payment quote in Compute");
+  for (const field of [
+    "chain_id",
+    "token",
+    "escrow",
+    "key",
+    "buyer",
+    "operator",
+    "amount_microusdc",
+    "expires",
+  ] as const)
+    if ((approved as Record<string, unknown>)[field] !== quote[field])
+      throw new Error("Payment quote changed; review it again before funding");
+}
 export function validateSoapboxQuote(quote: SoapboxPaymentQuote, buyer: string, network: string) {
   if (network !== "base-sepolia" || quote.chain_id !== 84532)
     throw new Error("Soapbox payments currently require Base Sepolia");
@@ -47,13 +65,19 @@ export async function fundSoapboxEscrow(options: {
   const { quote, buyer, network, send, reserve, env = process.env } = options;
   validateSoapboxQuote(quote, buyer, network);
   if (
-    env.BITTERBOT_SOAPBOX_ESCROW?.toLowerCase() !== quote.escrow.toLowerCase() ||
-    !/^[\da-f]{64}$/.test(env.BITTERBOT_SOAPBOX_ESCROW_CODE_SHA256 ?? "")
+    quote.escrow.toLowerCase() !== SOAPBOX_PAYMENT_POLICY.escrow ||
+    (env.BITTERBOT_SOAPBOX_ESCROW &&
+      env.BITTERBOT_SOAPBOX_ESCROW.toLowerCase() !== SOAPBOX_PAYMENT_POLICY.escrow) ||
+    (env.BITTERBOT_SOAPBOX_ESCROW_CODE_SHA256 &&
+      env.BITTERBOT_SOAPBOX_ESCROW_CODE_SHA256 !== SOAPBOX_PAYMENT_POLICY.codeSha256)
   )
-    throw new Error("Operator must pin the escrow address and deployed bytecode hash");
+    throw new Error("Payment escrow is not the approved private pilot deployment");
   const rpcUrl = env.BITTERBOT_SOAPBOX_RPC_URL ?? "https://sepolia.base.org";
   if (new URL(rpcUrl).protocol !== "https:") throw new Error("Payment RPC requires HTTPS");
-  const client = createPublicClient({ chain: baseSepolia, transport: http(rpcUrl) });
+  const client = createPublicClient({
+    chain: baseSepolia,
+    transport: http(rpcUrl, { timeout: 8000, retryCount: 1 }),
+  });
   if ((await client.getChainId()) !== 84532) throw new Error("Wrong payment chain");
   const address = quote.escrow as Hex;
   const code = await client.getCode({ address });
@@ -61,7 +85,7 @@ export async function fundSoapboxEscrow(options: {
     !code ||
     createHash("sha256")
       .update(Buffer.from(code.slice(2), "hex"))
-      .digest("hex") !== env.BITTERBOT_SOAPBOX_ESCROW_CODE_SHA256
+      .digest("hex") !== SOAPBOX_PAYMENT_POLICY.codeSha256
   )
     throw new Error("Escrow bytecode does not match the operator's pin");
   const token = await client.readContract({
@@ -98,7 +122,11 @@ export async function fundSoapboxEscrow(options: {
       args: [address, BigInt(quote.amount_microusdc)],
     }),
   });
-  const approved = await client.waitForTransactionReceipt({ hash: approval, confirmations: 2 });
+  const approved = await client.waitForTransactionReceipt({
+    hash: approval,
+    confirmations: 2,
+    timeout: 45000,
+  });
   if (approved.status !== "success") throw new Error("USDC approval reverted");
   const txHash = await send({
     to: address,
@@ -109,7 +137,11 @@ export async function fundSoapboxEscrow(options: {
       args: [key, quote.operator as Hex, BigInt(quote.amount_microusdc), BigInt(quote.expires)],
     }),
   });
-  const funded = await client.waitForTransactionReceipt({ hash: txHash, confirmations: 2 });
+  const funded = await client.waitForTransactionReceipt({
+    hash: txHash,
+    confirmations: 2,
+    timeout: 45000,
+  });
   if (funded.status !== "success") throw new Error("Escrow funding reverted");
   return { status: "funded", txHash };
 }

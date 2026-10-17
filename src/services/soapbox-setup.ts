@@ -117,7 +117,8 @@ export class SoapboxSetup {
     }
     if (
       c.role === "buyer" &&
-      (await soapboxWalletIdentity())?.toLowerCase() !== c.address.toLowerCase()
+      (await soapboxWalletIdentity(this.options.mainWallet))?.toLowerCase() !==
+        c.address.toLowerCase()
     )
       throw new Error(
         "Enrollment address must match your separate Compute test wallet. Create the wallet first, then request an enrollment for that address.",
@@ -154,7 +155,8 @@ export class SoapboxSetup {
     verifySoapboxConnection(c, await new SoapboxClient(c.url, c.token).status());
     if (
       c.role === "buyer" &&
-      (await soapboxWalletIdentity())?.toLowerCase() !== c.address.toLowerCase()
+      (await soapboxWalletIdentity(this.options.mainWallet))?.toLowerCase() !==
+        c.address.toLowerCase()
     )
       throw new Error("Buyer wallet identity changed; import enrollment again");
     if (c.role === "operator" && !this.runtime.ready)

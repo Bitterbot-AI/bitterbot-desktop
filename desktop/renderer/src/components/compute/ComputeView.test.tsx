@@ -105,8 +105,11 @@ describe("Compute view", () => {
     await waitFor(() =>
       expect(fake.request).toHaveBeenCalledWith(
         "soapbox.payment.fund",
-        { id: "paid-job" },
-        { timeoutMs: 600000 },
+        {
+          id: "paid-job",
+          approval: expect.objectContaining({ chain_id: 84532, amount_microusdc: 2000 }),
+        },
+        { timeoutMs: 180000 },
       ),
     );
   });

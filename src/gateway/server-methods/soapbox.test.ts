@@ -22,7 +22,11 @@ afterEach(() => {
 });
 async function invoke(method: string, params: Record<string, unknown>) {
   const respond = vi.fn();
-  await soapboxHandlers[method]({ params, respond } as unknown as GatewayRequestHandlerOptions);
+  await soapboxHandlers[method]({
+    params,
+    respond,
+    client: { connect: { role: "operator", scopes: ["operator.admin"] } },
+  } as unknown as GatewayRequestHandlerOptions);
   return respond;
 }
 describe("Soapbox gateway adapter", () => {
@@ -55,13 +59,32 @@ describe("Soapbox gateway adapter", () => {
       .mockResolvedValueOnce({ status: "queued" });
     const respond = vi.fn();
     await createSoapboxHandlers(main)["soapbox.payment.fund"]({
-      params: { id: "job-1" },
+      params: { id: "job-1", approval: payment },
+      client: { connect: { role: "operator", scopes: ["operator.admin"] } },
       respond,
     } as unknown as GatewayRequestHandlerOptions);
-    expect(fake.wallet).toHaveBeenCalledWith(main);
+    expect(fake.wallet).toHaveBeenCalledWith(main, payment);
     expect(fake.fund).toHaveBeenCalledWith(payment);
     expect(main.network).toBe("base");
     expect(respond.mock.calls[0][0]).toBe(true);
+  });
+  it("requires admin and the reviewed quote before constructing a signing wallet", async () => {
+    const payment = { chain_id: 84532, amount_microusdc: 2000 };
+    fake.request.mockResolvedValue({ status: "awaiting_payment", payment });
+    for (const scopes of [["operator.write"], ["operator.read"], []]) {
+      await soapboxHandlers["soapbox.payment.fund"]({
+        params: { id: "job-1", approval: payment },
+        client: { connect: { role: "operator", scopes } },
+        respond: vi.fn(),
+      } as unknown as GatewayRequestHandlerOptions);
+    }
+    expect(fake.request).not.toHaveBeenCalled();
+    await invoke("soapbox.payment.fund", { id: "job-1" });
+    await invoke("soapbox.payment.fund", {
+      id: "job-1",
+      approval: { ...payment, amount_microusdc: 1 },
+    });
+    expect(fake.wallet).not.toHaveBeenCalled();
   });
   it("returns a disabled state without connecting", async () => {
     fake.enabled = false;

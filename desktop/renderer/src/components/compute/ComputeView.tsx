@@ -511,8 +511,8 @@ export function ComputeView() {
                   void run(async () => {
                     const response = await request<{ job: SoapboxJob }>(
                       "soapbox.payment.fund",
-                      { id: selected.id },
-                      { timeoutMs: 600000 },
+                      { id: selected.id, approval: selected.payment },
+                      { timeoutMs: 180000 },
                     );
                     setSelected(response.job);
                     await refresh();

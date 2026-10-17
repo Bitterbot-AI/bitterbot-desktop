@@ -104,7 +104,12 @@ const ERC20_BALANCE_ABI = [
 
 export function createWalletService(
   config: WalletConfig,
-  authentication?: { walletSecret: string; rpcUrl?: string },
+  authentication?: {
+    walletSecret: string;
+    rpcUrl?: string;
+    accountName?: string;
+    expectedAddress?: string;
+  },
 ): WalletService {
   const network = config.network ?? "base-sepolia";
   // AgentKit's CDP wallet providers expect CDP network IDs ("base-mainnet",
@@ -161,8 +166,13 @@ export function createWalletService(
     // Resolve (or create) the single server account (MPC EOA) for this network.
     // This is the one wallet for receiving, send_usdc, and x402.
     const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
-    const accountName = `bitterbot-owner-${network}`;
+    const accountName = authentication?.accountName ?? `bitterbot-owner-${network}`;
     const account = await cdp.evm.getOrCreateAccount({ name: accountName });
+    if (
+      authentication?.expectedAddress &&
+      account.address.toLowerCase() !== authentication.expectedAddress.toLowerCase()
+    )
+      throw new Error("Wallet account does not match the stored identity");
 
     const provider = await CdpEvmWalletProvider.configureWithWallet({
       apiKeyId,
@@ -278,8 +288,13 @@ export function createWalletService(
       if (!apiKeyId || !apiKeySecret || !walletSecret)
         throw new Error("Missing required CDP credentials");
       const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
-      const name = `bitterbot-owner-${network}`;
+      const name = authentication?.accountName ?? `bitterbot-owner-${network}`;
       const account = await cdp.evm.getOrCreateAccount({ name });
+      if (
+        authentication?.expectedAddress &&
+        account.address.toLowerCase() !== authentication.expectedAddress.toLowerCase()
+      )
+        throw new Error("Wallet account does not match the stored identity");
       validateSoapboxQuote(quote, account.address, network);
       validateTransactionAmount(quote.amount_microusdc / 1e6);
       await savePersistedWallet({ name, address: account.address, ownerAddress: account.address });

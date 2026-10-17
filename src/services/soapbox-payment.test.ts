@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { validateSoapboxQuote, type SoapboxPaymentQuote } from "./soapbox-payment.js";
+import {
+  assertApprovedSoapboxQuote,
+  validateSoapboxQuote,
+  type SoapboxPaymentQuote,
+} from "./soapbox-payment.js";
 
 const buyer = `0x${"1".repeat(40)}`;
 const quote = (): SoapboxPaymentQuote => ({
@@ -13,6 +17,24 @@ const quote = (): SoapboxPaymentQuote => ({
   expires: Math.floor(Date.now() / 1000) + 3600,
 });
 describe("Soapbox wallet funding boundary", () => {
+  it("requires approval of every payment field and rejects changed quotes", () => {
+    const payment = quote();
+    expect(() => assertApprovedSoapboxQuote(undefined, payment)).toThrow("approve");
+    expect(() => assertApprovedSoapboxQuote({ ...payment }, payment)).not.toThrow();
+    for (const field of [
+      "chain_id",
+      "token",
+      "escrow",
+      "key",
+      "buyer",
+      "operator",
+      "amount_microusdc",
+      "expires",
+    ])
+      expect(() => assertApprovedSoapboxQuote({ ...payment, [field]: "changed" }, payment)).toThrow(
+        "changed",
+      );
+  });
   it("allows exact integer test-USDC quotes for the current buyer", () => {
     expect(() => validateSoapboxQuote(quote(), buyer, "base-sepolia")).not.toThrow();
   });

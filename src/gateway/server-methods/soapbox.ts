@@ -5,6 +5,7 @@ import {
   type SoapboxJob,
   type SoapboxClient,
 } from "../../infra/soapbox-client.js";
+import { assertApprovedSoapboxQuote } from "../../services/soapbox-payment.js";
 import { createSoapboxWallet, getSoapboxWalletStatus } from "../../services/soapbox-wallet.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 
@@ -67,15 +68,21 @@ export function createSoapboxHandlers(
         respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(error)));
       }
     },
-    "soapbox.payment.fund": async ({ params, respond }) => {
+    "soapbox.payment.fund": async ({ params, respond, client: gatewayClient }) => {
       try {
+        if (
+          gatewayClient?.connect.role !== "operator" ||
+          !gatewayClient.connect.scopes?.includes("operator.admin")
+        )
+          throw new Error("Compute funding requires operator.admin");
         requireBuyer();
         const client = getClient();
         if (!client) throw new Error("Soapbox is disabled");
         const job = await client.request<SoapboxJob>("GET", `/v1/jobs/${id(params.id)}`);
         if (!job.payment || job.status !== "awaiting_payment")
           throw new Error("Job is not awaiting USDC funding");
-        const wallet = await createSoapboxWallet(mainWallet);
+        assertApprovedSoapboxQuote(params.approval, job.payment);
+        const wallet = await createSoapboxWallet(mainWallet, job.payment);
         const funding = await wallet.fundSoapbox!(job.payment);
         const updated = await client.request<SoapboxJob>(
           "POST",
@@ -83,8 +90,15 @@ export function createSoapboxHandlers(
           {},
         );
         respond(true, { funding, job: updated });
-      } catch (error) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(error)));
+      } catch {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "Compute funding did not complete. Use an admin connection, review the current quote, and refresh its payment state before retrying.",
+          ),
+        );
       }
     },
     "soapbox.status": async ({ respond }) => {

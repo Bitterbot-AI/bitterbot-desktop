@@ -1,11 +1,16 @@
-import { mkdir, readFile, realpath, writeFile, rename } from "node:fs/promises";
+import { appendFile, mkdir, readFile, realpath, writeFile, rename } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createPublicClient, formatUnits, http, parseAbi } from "viem";
 import { baseSepolia } from "viem/chains";
 import type { WalletConfig } from "../config/types.wallet.js";
 import type { SoapboxWalletStatus } from "../infra/soapbox-client.js";
+import type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
+import { assertApprovedSoapboxQuote } from "./soapbox-payment.js";
 import { createWalletService } from "./wallet-service.js";
+
+export const SOAPBOX_ACCOUNT_NAME = "bitterbot-compute-base-sepolia";
+const LEGACY_ACCOUNT_NAME = "bitterbot-owner-base-sepolia";
 
 export const soapboxWalletDirectory = path.join(
   homedir(),
@@ -27,7 +32,10 @@ export function soapboxWalletConfig(mainWallet?: WalletConfig): WalletConfig {
   };
 }
 
-export async function createSoapboxWallet(mainWallet?: WalletConfig) {
+export async function createSoapboxWallet(
+  mainWallet?: WalletConfig,
+  approvedQuote?: SoapboxPaymentQuote,
+) {
   await mkdir(soapboxWalletDirectory, { recursive: true, mode: 0o700 });
   const mainDirectory = mainWallet?.walletStorePath ?? path.join(homedir(), ".bitterbot", "wallet");
   const mainResolved = await realpath(mainDirectory).catch((error: NodeJS.ErrnoException) => {
@@ -36,8 +44,11 @@ export async function createSoapboxWallet(mainWallet?: WalletConfig) {
   });
   if ((await realpath(soapboxWalletDirectory)) === mainResolved)
     throw new Error("Compute and main wallet stores must be separate");
+  const identity = await readComputeIdentity();
+  if (identity) await assertWalletSeparation(identity, mainWallet);
   const auth = await soapboxWalletAuthentication(mainWallet);
-  return createWalletService(
+  const approved = approvedQuote ? structuredClone(approvedQuote) : undefined;
+  const wallet = createWalletService(
     {
       ...soapboxWalletConfig(mainWallet),
       cdpApiKeyId: auth.apiKeyId,
@@ -46,8 +57,32 @@ export async function createSoapboxWallet(mainWallet?: WalletConfig) {
     {
       walletSecret: auth.walletSecret,
       rpcUrl: process.env.BITTERBOT_SOAPBOX_RPC_URL ?? "https://sepolia.base.org",
+      accountName: identity?.name ?? SOAPBOX_ACCOUNT_NAME,
+      expectedAddress: identity?.address,
     },
   );
+  return {
+    ...wallet,
+    async fundSoapbox(quote: SoapboxPaymentQuote) {
+      assertApprovedSoapboxQuote(approved, quote);
+      const current = await readComputeIdentity();
+      if (current) await assertWalletSeparation(current, mainWallet);
+      await appendFile(
+        path.join(soapboxWalletDirectory, "funding-approvals.jsonl"),
+        JSON.stringify({
+          at: new Date().toISOString(),
+          decision: "user_reviewed",
+          chain_id: quote.chain_id,
+          key: quote.key,
+          escrow: quote.escrow,
+          operator: quote.operator,
+          amount_microusdc: quote.amount_microusdc,
+        }) + "\n",
+        { mode: 0o600 },
+      );
+      return wallet.fundSoapbox!(quote);
+    },
+  };
 }
 
 export type SoapboxWalletAuthentication = {
@@ -72,18 +107,53 @@ export async function soapboxWalletAuthentication(
   };
 }
 
-export async function soapboxWalletIdentity(): Promise<string | null> {
+async function readComputeIdentity(): Promise<{ name: string; address: string } | null> {
   try {
     const stored = JSON.parse(
       await readFile(path.join(soapboxWalletDirectory, "wallet-data.json"), "utf8"),
     );
-    if (stored.name !== "bitterbot-owner-base-sepolia" || !/^0x[\da-f]{40}$/i.test(stored.address))
+    if (
+      ![SOAPBOX_ACCOUNT_NAME, LEGACY_ACCOUNT_NAME].includes(stored.name) ||
+      !/^0x[\da-f]{40}$/i.test(stored.address)
+    )
       throw new Error("Invalid Compute test wallet identity");
-    return stored.address;
+    return { name: stored.name, address: stored.address };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
+}
+
+async function assertWalletSeparation(
+  identity: { name: string; address: string },
+  mainWallet?: WalletConfig,
+): Promise<void> {
+  if (identity.name === LEGACY_ACCOUNT_NAME && mainWallet?.network === "base-sepolia")
+    throw new Error(
+      "Legacy Compute identity conflicts with the main testnet account; migrate Compute before continuing",
+    );
+  const mainDirectory = mainWallet?.walletStorePath ?? path.join(homedir(), ".bitterbot", "wallet");
+  let main: { address?: string; ownerAddress?: string };
+  try {
+    main = JSON.parse(await readFile(path.join(mainDirectory, "wallet-data.json"), "utf8"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    // oxlint-disable-next-line preserve-caught-error -- Wallet file errors may include private data; intentionally discard the cause.
+    throw new Error("Main wallet identity could not be checked");
+  }
+  if (
+    [main.address, main.ownerAddress].some(
+      (address) =>
+        typeof address === "string" && address.toLowerCase() === identity.address.toLowerCase(),
+    )
+  )
+    throw new Error("Compute and main wallet addresses must be separate");
+}
+
+export async function soapboxWalletIdentity(mainWallet?: WalletConfig): Promise<string | null> {
+  const identity = await readComputeIdentity();
+  if (identity) await assertWalletSeparation(identity, mainWallet);
+  return identity?.address ?? null;
 }
 
 /** Provision the test account without loading AgentKit or changing the main wallet/env. */
@@ -99,13 +169,18 @@ export async function initializeSoapboxWallet(
     )
   )
     throw new Error("Enter all three CDP credentials for the test wallet");
-  const existing = await soapboxWalletIdentity();
+  const existing = await readComputeIdentity();
+  if (existing) await assertWalletSeparation(existing, mainWallet);
   const { CdpClient } = await import("@coinbase/cdp-sdk");
   const account = await new CdpClient(auth).evm.getOrCreateAccount({
-    name: "bitterbot-owner-base-sepolia",
+    name: existing?.name ?? SOAPBOX_ACCOUNT_NAME,
   });
-  if (existing && existing.toLowerCase() !== account.address.toLowerCase())
+  if (existing && existing.address.toLowerCase() !== account.address.toLowerCase())
     throw new Error("These credentials belong to a different test wallet");
+  await assertWalletSeparation(
+    { name: existing?.name ?? SOAPBOX_ACCOUNT_NAME, address: account.address },
+    mainWallet,
+  );
   // Also enforce separation from a user-configured main-wallet store before writing.
   await createSoapboxWallet(mainWallet);
   const save = async (file: string, value: unknown) => {
@@ -114,7 +189,7 @@ export async function initializeSoapboxWallet(
   };
   if (supplied) await save(credentialsFile, auth);
   await save(path.join(soapboxWalletDirectory, "wallet-data.json"), {
-    name: "bitterbot-owner-base-sepolia",
+    name: existing?.name ?? SOAPBOX_ACCOUNT_NAME,
     address: account.address,
     ownerAddress: account.address,
   });
@@ -134,7 +209,10 @@ export async function getSoapboxWalletStatus(): Promise<SoapboxWalletStatus> {
     const stored = JSON.parse(
       await readFile(path.join(soapboxWalletDirectory, "wallet-data.json"), "utf8"),
     );
-    if (stored.name !== "bitterbot-owner-base-sepolia" || !/^0x[\da-f]{40}$/i.test(stored.address))
+    if (
+      ![SOAPBOX_ACCOUNT_NAME, LEGACY_ACCOUNT_NAME].includes(stored.name) ||
+      !/^0x[\da-f]{40}$/i.test(stored.address)
+    )
       throw new Error("Invalid Compute test wallet identity");
     status.address = stored.address;
     const rpc = process.env.BITTERBOT_SOAPBOX_RPC_URL ?? "https://sepolia.base.org";

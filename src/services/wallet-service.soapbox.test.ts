@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
 import { createWalletService } from "./wallet-service.js";
 
-const fake = vi.hoisted(() => ({ send: vi.fn(), address: `0x${"2".repeat(40)}` }));
+const fake = vi.hoisted(() => ({
+  send: vi.fn(),
+  account: vi.fn(),
+  address: `0x${"2".repeat(40)}`,
+}));
 vi.mock("@coinbase/agentkit", () => ({
   CdpEvmWalletProvider: {
     configureWithWallet: async () => ({
@@ -16,7 +20,7 @@ vi.mock("@coinbase/agentkit", () => ({
 }));
 vi.mock("@coinbase/cdp-sdk", () => ({
   CdpClient: class {
-    evm = { getOrCreateAccount: async () => ({ address: fake.address }) };
+    evm = { getOrCreateAccount: fake.account };
   },
 }));
 vi.mock("./soapbox-payment.js", () => ({
@@ -34,6 +38,7 @@ beforeEach(async () => {
   vi.stubEnv("CDP_API_KEY_SECRET", "test");
   vi.stubEnv("CDP_WALLET_SECRET", "test");
   fake.send.mockClear();
+  fake.account.mockReset().mockResolvedValue({ address: fake.address });
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -53,6 +58,24 @@ const service = (walletStorePath: string) =>
     perTransactionCapUsd: 0.1,
   });
 describe("Soapbox wallet spend reservations", () => {
+  it("uses the dedicated account and rejects identity changes before signing or overwriting storage", async () => {
+    const wallet = createWalletService(
+      { network: "base-sepolia", walletStorePath: store },
+      {
+        walletSecret: "test",
+        accountName: "bitterbot-compute-base-sepolia",
+        expectedAddress: fake.address,
+      },
+    );
+    await wallet.fundSoapbox!(quote);
+    expect(fake.account).toHaveBeenCalledWith({ name: "bitterbot-compute-base-sepolia" });
+    const file = path.join(store, "wallet-data.json");
+    const before = await readFile(file, "utf8");
+    fake.account.mockResolvedValue({ address: `0x${"9".repeat(40)}` });
+    await expect(wallet.fundSoapbox!(quote)).rejects.toThrow("stored identity");
+    expect(fake.send).toHaveBeenCalledTimes(1);
+    expect(await readFile(file, "utf8")).toBe(before);
+  });
   it("rejects mainnet and an over-cap quote before broadcasting", async () => {
     await expect(
       createWalletService({ network: "base", walletStorePath: store }).fundSoapbox!(quote),

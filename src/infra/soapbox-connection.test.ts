@@ -22,6 +22,8 @@ describe("participant enrollment", () => {
       { chain_id: 8453 },
       { url: "http://remote.example" },
       { url: "https://user:password@example.com" },
+      { rpc_url: "https://provider.example/v2/private-provider-key" },
+      { rpc_url: "https://sepolia.base.org?api-key=private-provider-key" },
       { address: `0x${"0".repeat(40)}` },
     ])
       expect(() => parseSoapboxConnection({ ...connection, ...patch })).toThrow();
