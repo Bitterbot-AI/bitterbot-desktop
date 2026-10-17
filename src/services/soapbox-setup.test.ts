@@ -138,4 +138,20 @@ describe("Compute onboarding", () => {
     } as GatewayRequestHandlerOptions);
     expect(respond).toHaveBeenCalledWith(true, expect.objectContaining({ configured: false }));
   });
+  it("does not prepare a bundled runtime before operator enrollment or with damaged bytes", async () => {
+    const archive = path.join(directory, "runtime.tar.gz");
+    await writeFile(archive, "damaged");
+    const bundled = new SoapboxSetup({
+      root: directory,
+      configPath,
+      bundledRuntimeArchive: archive,
+    });
+    await expect(bundled.prepareBundledRuntime()).rejects.toThrow("operator enrollment");
+    coordinatorStatus.mockResolvedValue({
+      principal: { id: "tester", roles: ["worker"] },
+      payment_account: { chain_id: 84532, address },
+    } as SoapboxStatus);
+    await bundled.import({ ...connection, role: "operator" }, "operator");
+    await expect(bundled.prepareBundledRuntime()).rejects.toThrow("damaged");
+  });
 });

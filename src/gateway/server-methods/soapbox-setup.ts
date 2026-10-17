@@ -24,6 +24,10 @@ export function createSoapboxSetupHandlers(setup: SoapboxSetup): GatewayRequestH
       await setup.runtime.prepare(p.id);
       return setup.status();
     },
+    "runtime.bundled": async () => {
+      await setup.prepareBundledRuntime();
+      return setup.status();
+    },
     activate: () => setup.activate(),
   };
   return Object.fromEntries(

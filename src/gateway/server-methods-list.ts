@@ -7,6 +7,7 @@ const BASE_METHODS = [
   "soapbox.setup.runtime.begin",
   "soapbox.setup.runtime.chunk",
   "soapbox.setup.runtime.prepare",
+  "soapbox.setup.runtime.bundled",
   "soapbox.setup.activate",
   "soapbox.status",
   "soapbox.wallet",

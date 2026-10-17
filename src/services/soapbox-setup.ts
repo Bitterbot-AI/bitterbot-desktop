@@ -1,6 +1,6 @@
 import JSON5 from "json5";
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/types.js";
 import type { WalletConfig } from "../config/types.wallet.js";
@@ -30,6 +30,7 @@ export class SoapboxSetup {
       configPath: string;
       mainWallet?: WalletConfig;
       configuredRole?: string;
+      bundledRuntimeArchive?: string;
     },
   ) {
     this.runtime = new SoapboxSetupRuntime(path.join(options.root, "runtime"));
@@ -42,6 +43,7 @@ export class SoapboxSetup {
       configured: Boolean(this.options.configuredRole || this.activated),
       configuredRole: this.options.configuredRole ?? (this.activated ? c?.role : undefined),
       platformSupported: process.platform === "linux" && process.arch === "x64",
+      bundledRuntimeAvailable: Boolean(this.options.bundledRuntimeArchive),
       hasWalletCredentials: Boolean(auth.apiKeyId && auth.apiKeySecret && auth.walletSecret),
       walletAddress: await soapboxWalletIdentity(),
       release: {
@@ -126,6 +128,24 @@ export class SoapboxSetup {
   requireOperator(): void {
     if (this.enrollment?.role !== "operator")
       throw new Error("Verify an operator enrollment first");
+  }
+
+  async prepareBundledRuntime(): Promise<void> {
+    this.requireOperator();
+    const archive = this.options.bundledRuntimeArchive;
+    if (!archive || !path.isAbsolute(archive)) throw new Error("Bundled runtime unavailable");
+    if ((await stat(archive)).size !== SOAPBOX_SETUP_RELEASE.bytes)
+      throw new Error("Bundled runtime is damaged; reinstall the test release");
+    const bytes = await readFile(archive);
+    const { id } = await this.runtime.begin();
+    for (let offset = 0; offset < bytes.length; offset += 262144)
+      await this.runtime.chunk(
+        id,
+        offset,
+        bytes.subarray(offset, offset + 262144).toString("base64"),
+      );
+    // Uses the same pinned SHA-256 and sandbox checks as a browser upload.
+    await this.runtime.prepare(id);
   }
 
   async activate(): Promise<{ activated: true }> {

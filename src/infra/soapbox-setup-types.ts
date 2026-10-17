@@ -2,6 +2,7 @@ export type SoapboxSetupStatus = {
   configured: boolean;
   configuredRole?: string;
   platformSupported: boolean;
+  bundledRuntimeAvailable?: boolean;
   hasWalletCredentials: boolean;
   walletAddress: string | null;
   release: { url: string; filename: string; bytes: number };

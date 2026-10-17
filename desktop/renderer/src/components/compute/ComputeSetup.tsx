@@ -277,32 +277,54 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
                     gateway, or choose Buyer.
                   </p>
                 )}
-                <p className="text-sm">
-                  <a
-                    className="underline"
-                    href={status.release.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Download the approved runtime from the private release
-                  </a>
-                  , then choose <span className="font-mono text-xs">{status.release.filename}</span>{" "}
-                  below. GitHub access must be granted by the repository owner.
-                </p>
-                <label className="block text-sm">
-                  GPU runtime archive
-                  <input
-                    className={field}
-                    type="file"
-                    accept=".gz"
-                    disabled={locked || !enrolled || !status.platformSupported}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = "";
-                      if (file) void run(() => importRuntime(file));
-                    }}
-                  />
-                </label>
+                {status.bundledRuntimeAvailable ? (
+                  <div className="space-y-2">
+                    <p className="text-sm">
+                      The approved GPU runtime is included in this installation.
+                    </p>
+                    <button
+                      className={button}
+                      disabled={locked || !enrolled || !status.platformSupported}
+                      onClick={() =>
+                        void run(async () => {
+                          await request("soapbox.setup.runtime.bundled");
+                        })
+                      }
+                    >
+                      Prepare GPU runtime
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-sm">
+                      <a
+                        className="underline"
+                        href={status.release.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Download the approved runtime from the private release
+                      </a>
+                      , then choose{" "}
+                      <span className="font-mono text-xs">{status.release.filename}</span> below.
+                      GitHub access must be granted by the repository owner.
+                    </p>
+                    <label className="block text-sm">
+                      GPU runtime archive
+                      <input
+                        className={field}
+                        type="file"
+                        accept=".gz"
+                        disabled={locked || !enrolled || !status.platformSupported}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = "";
+                          if (file) void run(() => importRuntime(file));
+                        }}
+                      />
+                    </label>
+                  </>
+                )}
                 {(upload !== undefined || status.progress.state !== "idle") && (
                   <div role="status" aria-live="polite">
                     <p className="text-sm">

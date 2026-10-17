@@ -20,6 +20,10 @@ export default {
       root: path.join(resolveStateDir(), "compute/setup"),
       configPath: resolveConfigPath(),
       mainWallet: api.config.tools?.wallet,
+      bundledRuntimeArchive:
+        typeof api.pluginConfig?.bundledRuntimeArchive === "string"
+          ? api.pluginConfig.bundledRuntimeArchive
+          : undefined,
       configuredRole: setupOnly
         ? undefined
         : api.pluginConfig?.mode === "participant"

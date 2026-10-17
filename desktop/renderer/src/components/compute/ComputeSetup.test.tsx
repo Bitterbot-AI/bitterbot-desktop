@@ -97,3 +97,21 @@ it("clears a transient status error after the gateway reconnects", async () => {
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull(), { timeout: 4000 });
   expect(screen.getByRole("button", { name: "Create test wallet" })).toBeTruthy();
 });
+
+it("prepares the bundled runtime without asking the operator to download another archive", async () => {
+  status.bundledRuntimeAvailable = true;
+  status.enrollment = {
+    role: "operator",
+    id: "gpu-test",
+    url: "https://compute.example",
+    address: `0x${"2".repeat(40)}`,
+    chain_id: 84532,
+  };
+  render(<ComputeSetup onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Prepare GPU runtime" }));
+  await waitFor(() => expect(fake.request).toHaveBeenCalledWith("soapbox.setup.runtime.bundled"));
+  expect(screen.queryByLabelText("GPU runtime archive")).toBeNull();
+  expect(
+    (screen.getByRole("button", { name: "Activate operator" }) as HTMLButtonElement).disabled,
+  ).toBe(true);
+});
