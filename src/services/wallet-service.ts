@@ -39,6 +39,9 @@ export type X402PaymentResult = {
 };
 
 export interface WalletService {
+  fundSoapbox?(
+    quote: import("./soapbox-payment.js").SoapboxPaymentQuote,
+  ): Promise<{ status: string; txHash: string | null }>;
   getAddress(): Promise<string>;
   getBalance(token?: string): Promise<BalanceResult>;
   sendUsdc(to: string, amount: number, opts?: SendUsdcOptions): Promise<SendResult>;
@@ -233,9 +236,11 @@ export function createWalletService(config: WalletConfig): WalletService {
         history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
       } catch {}
       history.push(record);
-      if (history.length > 500) {
-        history = history.slice(-500);
-      }
+      // Keep every spend inside the daily-limit window, even for high-volume micropayments.
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      history = history.filter(
+        (entry, index) => entry.timestamp >= cutoff || index >= history.length - 500,
+      );
       await fs.writeFile(historyPath, JSON.stringify(history, null, 2), "utf-8");
     } finally {
       await release();
@@ -257,6 +262,65 @@ export function createWalletService(config: WalletConfig): WalletService {
   }
 
   return {
+    async fundSoapbox(quote) {
+      const { fundSoapboxEscrow, validateSoapboxQuote } = await import("./soapbox-payment.js");
+      if (network !== "base-sepolia")
+        throw new Error("Soapbox funding requires the Base Sepolia wallet");
+      // Funding needs only CDP signing, without loading AgentKit's action integrations.
+      const { CdpClient } = await import("@coinbase/cdp-sdk");
+      const apiKeyId = config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
+      const apiKeySecret = config.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET;
+      const walletSecret = process.env.CDP_WALLET_SECRET;
+      if (!apiKeyId || !apiKeySecret || !walletSecret)
+        throw new Error("Missing required CDP credentials");
+      const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
+      const name = `bitterbot-owner-${network}`;
+      const account = await cdp.evm.getOrCreateAccount({ name });
+      validateSoapboxQuote(quote, account.address, network);
+      validateTransactionAmount(quote.amount_microusdc / 1e6);
+      await savePersistedWallet({ name, address: account.address, ownerAddress: account.address });
+      await ensureStoreDir();
+      const guardPath = path.join(storePath, "soapbox-funding");
+      await fs.writeFile(guardPath, "", { flag: "a" });
+      const release = await lockfile.lock(guardPath, { retries: 0, stale: 120_000 });
+      try {
+        return await fundSoapboxEscrow({
+          quote,
+          buyer: account.address,
+          network,
+          send: async (transaction) =>
+            (
+              await cdp.evm.sendTransaction({
+                address: account.address,
+                network: "base-sepolia",
+                transaction,
+              })
+            ).transactionHash,
+          reserve: async () => {
+            const reference = `soapbox:${quote.chain_id}:${quote.escrow.toLowerCase()}:${quote.key}`;
+            let history: TransactionRecord[] = [];
+            try {
+              history = JSON.parse(
+                await fs.readFile(path.join(storePath, "tx-history.json"), "utf8"),
+              );
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            }
+            if (history.some((record) => record.txHash === reference)) return;
+            await assertDailyLimit(quote.amount_microusdc / 1e6);
+            await recordTransaction({
+              txHash: reference,
+              type: "send",
+              amount: String(quote.amount_microusdc / 1e6),
+              token: "USDC",
+              timestamp: Date.now(),
+            });
+          },
+        });
+      } finally {
+        await release();
+      }
+    },
     async getAddress(): Promise<string> {
       const provider = await getProvider();
       return provider.getAddress();

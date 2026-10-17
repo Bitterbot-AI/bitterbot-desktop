@@ -1,0 +1,10 @@
+{
+  "name": "@bitterbot/soapbox-compute",
+  "version": "0.2.0",
+  "type": "module",
+  "bitterbot": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

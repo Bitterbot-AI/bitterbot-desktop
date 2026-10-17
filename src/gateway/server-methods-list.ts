@@ -1,6 +1,17 @@
 import { listChannelPlugins } from "../channels/plugins/index.js";
 
 const BASE_METHODS = [
+  "soapbox.status",
+  "soapbox.wallet",
+  "soapbox.payment.fund",
+  "soapbox.payment.refresh",
+  "soapbox.jobs",
+  "soapbox.job",
+  "soapbox.submit",
+  "soapbox.cancel",
+  "soapbox.worker.pause",
+  "soapbox.artifact.put",
+  "soapbox.artifact.get",
   "health",
   "doctor.findings",
   "logs.tail",

@@ -1,0 +1,41 @@
+{
+  "validated_at": "2026-10-17T14:47:27.9964316Z",
+  "app_version": "1.7.0",
+  "app_url": "http://127.0.0.1:19001/",
+  "separate_gateway_stopped": 19031,
+  "job_id": "d253cbe2-1433-4462-98ac-5c6936f362bf",
+  "submitted_and_funded_through_main_ui": true,
+  "status": "succeeded",
+  "attempts": 1,
+  "gpu": "NVIDIA GeForce RTX 4080",
+  "vectors": 2,
+  "dimensions": 384,
+  "fully_gpu_resident_worker_reported": true,
+  "result_sha256": "2347566ea7e14aec8ff9ff8d0aa55224f51197b8bca05f5cbc3e08c371889fed",
+  "payment": {
+    "chain_id": 84532,
+    "amount_microusdc": 2000,
+    "buyer": "0x6206c0743e09D07e2F29673f23A2cBD0F86e0795",
+    "operator": "0xCD457D157357627e2048B4BE958D8b937C1C7af5",
+    "payout_transaction": "0x829f8341b96709acf82ebb4091c520a7f8c8729f385efd55928a4b8c4dee3320",
+    "independent_rpc_receipt_status": "0x1",
+    "independent_rpc_transfer_microusdc": 2000,
+    "operator_balance_after_microusdc": 37000,
+    "buyer_balance_before_usdc": "0.965",
+    "buyer_balance_after_usdc": "0.963"
+  },
+  "main_wallet": {
+    "network": "base",
+    "address": "0x1593294B7FCECEBD1Cc85091cCc5B18Cb478d2b9",
+    "configuration_unchanged": true,
+    "identity_file_sha256_unchanged": true,
+    "displayed_usdc_before": "8.99",
+    "displayed_usdc_after": "8.99"
+  },
+  "checks": {
+    "focused_backend_tests": 13,
+    "release_ui_tests": 6,
+    "typescript": "passed",
+    "installed_gateway_plugin_preflight": "loaded; no diagnostics"
+  }
+}

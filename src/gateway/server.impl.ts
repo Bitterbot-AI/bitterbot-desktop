@@ -43,6 +43,7 @@ import {
   refreshRemoteBinsForConnectedNodes,
   setSkillsRemoteRegistry,
 } from "../infra/skills-remote.js";
+import { startSoapboxService } from "../infra/soapbox-service.js";
 import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
@@ -62,6 +63,7 @@ import { NodeRegistry } from "./node-registry.js";
 import { createChannelManager } from "./server-channels.js";
 import { createAgentEventHandler } from "./server-chat.js";
 import { createGatewayCloseHandler } from "./server-close.js";
+import { TICK_INTERVAL_MS } from "./server-constants.js";
 import { startGatewayDiscovery } from "./server-discovery-runtime.js";
 import { applyGatewayLaneConcurrency } from "./server-lanes.js";
 import { startGatewayMaintenanceTimers } from "./server-maintenance.js";
@@ -477,7 +479,13 @@ export async function startGatewayServer(
       });
 
   const noopInterval = () => setInterval(() => {}, 1 << 30);
-  let tickInterval = noopInterval();
+  // Minimal integration servers still need protocol heartbeats for long-running jobs.
+  let tickInterval = minimalTestGateway
+    ? setInterval(
+        () => broadcast("tick", { ts: Date.now() }, { dropIfSlow: true }),
+        TICK_INTERVAL_MS,
+      )
+    : noopInterval();
   let healthInterval = noopInterval();
   let dedupeCleanup = noopInterval();
   let eventLoopMonitor: EventLoopMonitorHandle = { stop: () => {} };
@@ -685,6 +693,7 @@ export async function startGatewayServer(
   }
 
   // Run gateway_start plugin hook (fire-and-forget)
+  const stopSoapbox = minimalTestGateway ? async () => {} : await startSoapboxService();
   if (!minimalTestGateway) {
     const hookRunner = getGlobalHookRunner();
     if (hookRunner?.hasHooks("gateway_start")) {
@@ -777,6 +786,7 @@ export async function startGatewayServer(
       }
       skillsChangeUnsub();
       authRateLimiter?.dispose();
+      await stopSoapbox();
       await close(opts);
     },
   };
