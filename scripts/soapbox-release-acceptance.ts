@@ -10,6 +10,7 @@ import type { SoapboxJob, SoapboxStatus } from "../src/infra/soapbox-client.js";
 import { GatewayClient } from "../src/gateway/client.js";
 
 const home = homedir();
+console.log("Checking Base Sepolia and connecting the two desktop profiles");
 const json = async (file: string) => JSON.parse(await readFile(file, "utf8"));
 const operatorState = path.join(home, ".bitterbot-soapbox-release-test");
 const operatorId = "release-operator";
@@ -21,7 +22,10 @@ const walletHash = createHash("sha256")
   .update(await readFile(walletFile))
   .digest("hex");
 const connection = await json(path.join(operatorState, "operator.json"));
-const rpc = createPublicClient({ chain: baseSepolia, transport: http("https://sepolia.base.org") });
+const rpc = createPublicClient({
+  chain: baseSepolia,
+  transport: http("https://base-sepolia-rpc.publicnode.com", { timeout: 10000, retryCount: 1 }),
+});
 assert.equal(await rpc.getChainId(), 84532);
 const balance = () =>
   rpc.readContract({
@@ -55,10 +59,12 @@ const connect = (port: number, token: string) =>
   });
 try {
   const buyer = await connect(19001, main.gateway.auth.token);
+  console.log("Buyer desktop connected");
   const operator = await connect(
     19041,
     (await json(path.join(operatorState, "bitterbot.json"))).gateway.auth.token,
   );
+  console.log("Operator desktop connected; checking access controls");
   assert.equal(
     (await operator.request<SoapboxStatus>("soapbox.status", {})).principal?.id,
     operatorId,
@@ -67,6 +73,7 @@ try {
     await assert.rejects(operator.request(method, { id: "not-a-job" }));
   await assert.rejects(operator.request("soapbox.worker.pause", { id: "worker", paused: true }));
   let runtime;
+  console.log("Waiting for isolated GPU operator readiness");
   for (let n = 0; n < 120; n++) {
     const s = await buyer.request<SoapboxStatus>("soapbox.status", {});
     const node = s.nodes?.find(
@@ -92,7 +99,7 @@ try {
         "Base Sepolia GPU payment through two desktop profiles",
       ],
     },
-    resources: { cpu_threads: 1, memory_mib: 2048, require_gpu: true },
+    resources: { cpu_threads: 1, memory_mib: 1024, require_gpu: true },
   });
   assert.equal(job.status, "awaiting_payment");
   assert.equal(job.payment?.operator.toLowerCase(), connection.address.toLowerCase());
@@ -152,10 +159,9 @@ try {
     main_wallet_configuration_and_identity_unchanged: true,
     completed_at: new Date().toISOString(),
   };
-  const output = path.resolve(
-    import.meta.dirname,
-    "../docs/network/soapbox-release-validation.json",
-  );
+  const output =
+    process.env.SOAPBOX_RELEASE_REPORT ??
+    path.resolve(import.meta.dirname, "../docs/network/soapbox-release-validation.json");
   await writeFile(output, JSON.stringify(evidence, null, 2));
   console.log(
     JSON.stringify(

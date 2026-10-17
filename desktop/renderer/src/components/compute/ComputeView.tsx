@@ -141,7 +141,7 @@ export function ComputeView() {
           !node.operator_paused &&
           !node.offer.paused &&
           node.offer.gpu_observed &&
-          node.offer.memory_mib >= 2048 &&
+          node.offer.memory_mib >= 1024 &&
           (mode !== "paid" || !usdc || node.id === selectedOperator) &&
           node.offer.modes.includes(mode) &&
           (mode === "paid" ||
@@ -184,7 +184,7 @@ export function ComputeView() {
             },
       resources: {
         cpu_threads: 1,
-        memory_mib: workload === "embeddings" ? 2048 : 256,
+        memory_mib: workload === "embeddings" ? 1024 : 256,
         require_gpu: workload === "embeddings" && gpu,
       },
     });
