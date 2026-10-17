@@ -7,11 +7,10 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "mode": { "type": "string", "enum": ["pilot", "participant"] },
+      "mode": { "type": "string", "enum": ["setup", "pilot", "participant"] },
       "binary": { "type": "string", "minLength": 1 },
       "repository": { "type": "string", "minLength": 1 },
       "stateDirectory": { "type": "string", "minLength": 1 }
-    },
-    "required": ["stateDirectory"]
+    }
   }
 }

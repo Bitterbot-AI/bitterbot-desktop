@@ -113,7 +113,7 @@ describe("Compute view", () => {
   it("explains opt-in setup when the service is disabled", async () => {
     fake.request.mockResolvedValue({ enabled: false });
     render(<ComputeView />);
-    expect(await screen.findByText("Connect a Soapbox service")).toBeTruthy();
+    expect(await screen.findByText("Get started with Compute")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Submit job" })).toBeNull();
   });
   it("submits a private job using an authorized pool and displays test-credit limits", async () => {

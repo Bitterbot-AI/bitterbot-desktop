@@ -1,6 +1,13 @@
 import { listChannelPlugins } from "../channels/plugins/index.js";
 
 const BASE_METHODS = [
+  "soapbox.setup.status",
+  "soapbox.setup.wallet",
+  "soapbox.setup.import",
+  "soapbox.setup.runtime.begin",
+  "soapbox.setup.runtime.chunk",
+  "soapbox.setup.runtime.prepare",
+  "soapbox.setup.activate",
   "soapbox.status",
   "soapbox.wallet",
   "soapbox.payment.fund",

@@ -6,6 +6,7 @@ import type {
 } from "../../../../../src/infra/soapbox-client";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { ArtifactPanel } from "./ArtifactPanel";
+import { ComputeSetup } from "./ComputeSetup";
 import { ComputeWalletPanel } from "./ComputeWalletPanel";
 import { PaymentPanel } from "./PaymentPanel";
 import { WorkerPanel } from "./WorkerPanel";
@@ -24,6 +25,7 @@ export function ComputeView() {
   const [snapshot, setSnapshot] = useState<SoapboxStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [mode, setMode] = useState<SoapboxMode["kind"]>("private");
   const [scope, setScope] = useState("");
   const [workload, setWorkload] = useState<"sha256" | "embeddings">("sha256");
@@ -202,9 +204,18 @@ export function ComputeView() {
             Run work on resources shared by participating operators.
           </p>
         </div>
-        <button className={button} disabled={!connected || busy} onClick={() => void run(refresh)}>
-          Refresh
-        </button>
+        <div className="flex gap-2">
+          <button className={button} disabled={!connected} onClick={() => setSetupOpen(true)}>
+            Set up buyer or operator
+          </button>
+          <button
+            className={button}
+            disabled={!connected || busy}
+            onClick={() => void run(refresh)}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
       {!connected && <p role="status">Connect to the gateway to use Soapbox.</p>}
       {error && (
@@ -212,13 +223,13 @@ export function ComputeView() {
           {error}
         </p>
       )}
-      {snapshot?.enabled === false && (
+      {setupOpen && <ComputeSetup onClose={() => setSetupOpen(false)} />}
+      {snapshot?.enabled === false && !setupOpen && (
         <div className="rounded-xl border border-border p-5 space-y-2">
-          <h2 className="font-medium">Connect a Soapbox service</h2>
+          <h2 className="font-medium">Get started with Compute</h2>
           <p className="text-sm text-muted-foreground">
-            Soapbox is optional and currently disabled on this gateway. Your operator can connect a
-            coordinator and choose whether this device contributes resources. Setup instructions are
-            in docs/network/soapbox.md.
+            Choose Buyer to submit work or GPU operator to contribute this device’s resources. Use
+            “Set up buyer or operator” above to import your enrollment and prepare this device.
           </p>
         </div>
       )}

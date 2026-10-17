@@ -3,7 +3,10 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { resolveStateDir, resolveConfigPath } from "../../src/config/paths.js";
+import { createSoapboxSetupHandlers } from "../../src/gateway/server-methods/soapbox-setup.js";
 import { createSoapboxHandlers } from "../../src/gateway/server-methods/soapbox.js";
+import { SoapboxSetup } from "../../src/services/soapbox-setup.js";
 import { registerParticipant } from "./participant.js";
 
 export default {
@@ -11,6 +14,27 @@ export default {
   register(api: BitterbotPluginApi) {
     const repository = api.pluginConfig?.repository;
     const directory = api.pluginConfig?.stateDirectory;
+    const setupOnly =
+      api.pluginConfig?.mode === "setup" || (!api.pluginConfig?.mode && !repository);
+    const setup = new SoapboxSetup({
+      root: path.join(resolveStateDir(), "compute/setup"),
+      configPath: resolveConfigPath(),
+      mainWallet: api.config.tools?.wallet,
+      configuredRole: setupOnly
+        ? undefined
+        : api.pluginConfig?.mode === "participant"
+          ? "participant"
+          : "pilot",
+    });
+    for (const [name, handler] of Object.entries(createSoapboxSetupHandlers(setup)))
+      api.registerGatewayMethod(name, handler);
+    api.registerService({ id: "soapbox-setup", start() {}, stop: () => setup.runtime.stop() });
+    if (setupOnly) {
+      api.registerGatewayMethod("soapbox.status", ({ respond }) =>
+        respond(true, { enabled: false }),
+      );
+      return;
+    }
     if (api.pluginConfig?.mode === "participant") {
       if (typeof directory !== "string" || !path.isAbsolute(directory))
         throw new Error("Absolute stateDirectory required");

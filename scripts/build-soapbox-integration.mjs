@@ -87,6 +87,10 @@ await cp(
   path.join(root, "src/infra/soapbox-client.ts"),
   path.join(stage, "src/infra/soapbox-client.ts"),
 );
+await cp(
+  path.join(root, "src/infra/soapbox-setup-types.ts"),
+  path.join(stage, "src/infra/soapbox-setup-types.ts"),
+);
 const patch = async (file, from, to) => {
   const target = path.join(stage, file);
   const text = await readFile(target, "utf8");

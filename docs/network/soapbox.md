@@ -201,3 +201,50 @@ recovery without duplicate payout. See the standalone repository's
 `docs/PHASE-2-PAYMENT-VALIDATION.md` for transaction links, evidence and reproduction details.
 For repeat validation, `SOAPBOX_TESTNET_REUSE_REPORT` can point to a previous testnet report;
 the harness rechecks the escrow code, token and settlement signer before reusing it.
+
+## Setup from the desktop app
+
+In an updated Bitterbot desktop app, open **Compute → Set up buyer or operator**.
+The bundled extension registers setup without starting a coordinator or worker. Setup requires
+an authenticated `operator.admin` session. Existing pilot/participant configurations remain
+read-only in the wizard; set up the tester's own gateway instead.
+
+### Buyer
+
+1. Select **Buyer** and create the separate Base Sepolia test wallet. Use the gateway's existing
+   CDP authentication or enter the three CDP credentials in the password fields. New credentials
+   are stored with owner-only permissions under the Compute test-wallet directory, never in
+   the main wallet config, browser storage, enrollment file, or worker environment.
+2. Give the public test-wallet address to the coordinator owner. Import their buyer enrollment
+   JSON. The gateway checks the coordinator's role, identity and payment address, and requires
+   the enrollment address to match this local test wallet.
+3. Review the coordinator, participant and address, acknowledge, then select **Activate buyer**.
+   The gateway saves a private configuration backup and reconnects with the new participant.
+4. Obtain Base Sepolia test USDC and ETH for gas. Submit a job in Compute and review its quote
+   before funding. Caps remain 0.10 test USDC per job and 1 test USDC per day.
+
+### GPU operator
+
+1. Select **GPU operator** and import the operator enrollment provided by the coordinator owner.
+   Its payment address is the operator's Base Sepolia payout address; signing keys are unnecessary.
+2. Download the linked runtime archive from the private Soapbox release using a GitHub account
+   with repository access, then select it in **GPU runtime archive**. The gateway accepts only
+   the exact size and SHA-256 of the approved release, before extraction or execution.
+3. Watch setup check Docker/NVIDIA, build the pinned image, download the approved embedding
+   model, and verify GPU execution in isolation. The gateway must run on Ubuntu x64 or WSL2,
+   with Docker/NVIDIA support, swap limits and at least 3 GB of free disk space already available.
+4. Review the payout address and allow approved paid jobs with a 1 GiB memory allowance.
+   Select **Activate operator**. After reconnection, use **Pause new work** to stop accepting jobs.
+
+The initial GUI operator setup enables paid test jobs only. Private-pool and collective-project
+memberships still require coordinator enrollment and explicit worker configuration. The wizard
+never grants membership, creates an admin token, changes the mainnet wallet, or funds a job.
+Runtime preparation can take several minutes. Closing the panel leaves preparation running;
+reopen it to see progress. An interrupted upload can be restarted by selecting the archive again.
+Activation keeps all other gateway settings and retains a private `bitterbot.before.json` backup
+beside `connection.json`. Existing configured gateways cannot be overwritten through this wizard.
+
+The `soapbox.setup.*` RPC family is admin-only, including status. Runtime upload uses bounded,
+ordered chunks; token/signing secrets are absent from status responses and child-process output.
+On gateway shutdown, preparation is interrupted and its model-download container is removed.
+The independent two-machine test remains a separate acceptance step when a tester is available.

@@ -30,6 +30,8 @@ export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   "discord",
   "slack",
   "signal",
+  // Registers local onboarding only until the owner activates an enrollment.
+  "soapbox-compute",
 ]);
 
 const normalizeList = (value: unknown): string[] => {

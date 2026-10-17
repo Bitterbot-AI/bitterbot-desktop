@@ -64,7 +64,7 @@ const PAIRING_METHODS = new Set([
   "device.token.revoke",
   "node.rename",
 ]);
-const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
+const ADMIN_METHOD_PREFIXES = ["exec.approvals.", "soapbox.setup."];
 const READ_METHODS = new Set([
   "soapbox.wallet",
   "soapbox.status",

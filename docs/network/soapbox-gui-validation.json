@@ -1,0 +1,170 @@
+{
+  "version": "0.3.0-rc.1",
+  "topology": "two desktop gateway profiles on one physical host",
+  "physical_two_machine_test": false,
+  "chain_id": 84532,
+  "job": {
+    "payment": {
+      "chain_id": 84532,
+      "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "escrow": "0x85dbc619cd8f05e06a5fc231d04483b6aa7bff17",
+      "key": "0x40fa428b577946f24ebf649ed6757d1fb902e81a9dc81dbe77a1637ccfb5d00a",
+      "buyer": "0x6206c0743e09d07e2f29673f23a2cbd0f86e0795",
+      "operator": "0xcd457d157357627e2048b4be958d8b937c1c7af5",
+      "operator_id": "release-operator",
+      "amount_microusdc": 2000,
+      "expires": 1792263383,
+      "confirmed_block": "0x2e02c25",
+      "confirmed_block_hash": "0x31de92b9b2f13cea24dce02349544be1c85659fef918cda51a6bd34637104857"
+    },
+    "id": "0c3a70ce-bc8f-4f91-8f99-a07b44bb237e",
+    "owner": "buyer",
+    "spec": {
+      "idempotency_key": "9f8c8e94-3e34-4dcc-80d8-3fd9a0b36f86",
+      "mode": {
+        "kind": "paid_usdc",
+        "max_cost_microusdc": 2000,
+        "operator": "release-operator"
+      },
+      "workload": {
+        "kind": "embeddings",
+        "model": "all-minilm:latest",
+        "texts": [
+          "Installable buyer and operator test release",
+          "Base Sepolia GPU payment through two desktop profiles"
+        ],
+        "model_digest": "1b226e2802dbb772b5fc32a58f103ca1804ef7501331012de126ab22f67475ef"
+      },
+      "resources": {
+        "cpu_threads": 1,
+        "memory_mib": 1024,
+        "require_gpu": true
+      }
+    },
+    "status": "succeeded",
+    "attempts": 1,
+    "created_at": 1792259783,
+    "deadline": 1792260383,
+    "worker": "release-operator",
+    "lease_id": "6c36ac4f-6196-4970-9853-43862cec1f60",
+    "lease_until": 1792259900,
+    "run_started_at": 1792259798,
+    "error": null,
+    "receipt": {
+      "amount_microusdc": 2000,
+      "authority": "coordinator",
+      "chain_id": 84532,
+      "charged_credits": null,
+      "completed_at": 1792259875,
+      "confirmed_block_hash": "0x31de92b9b2f13cea24dce02349544be1c85659fef918cda51a6bd34637104857",
+      "currency": "USDC",
+      "elapsed_seconds": 77,
+      "escrow": "0x85dbc619cd8f05e06a5fc231d04483b6aa7bff17",
+      "execution": {
+        "backend": "ollama",
+        "batches": 1,
+        "dimensions": 384,
+        "fully_gpu_resident": true,
+        "gpu_bytes": 27137146,
+        "hardware": [
+          {
+            "driver": "610.88",
+            "memory_free_mib": 15098,
+            "memory_total_mib": 16376,
+            "name": "NVIDIA GeForce RTX 4080",
+            "temperature_c": 46,
+            "utilization_pct": 1,
+            "uuid": "GPU-b02ef7d8-a20c-f939-e352-bffb28d93663"
+          }
+        ],
+        "load_duration_ns": 98280580,
+        "model": "all-minilm:latest",
+        "model_bytes": 27137146,
+        "model_digest": "1b226e2802dbb772b5fc32a58f103ca1804ef7501331012de126ab22f67475ef",
+        "prompt_tokens": 22,
+        "runtime_version": "0.40.5",
+        "total_duration_ns": 10893913721,
+        "wall_ms": 39826
+      },
+      "execution_assurance": "worker_reported",
+      "job_id": "0c3a70ce-bc8f-4f91-8f99-a07b44bb237e",
+      "mode": "paid",
+      "operator_address": "0xcd457d157357627e2048b4be958d8b937c1c7af5",
+      "payment_state": "paid",
+      "redeemable": false,
+      "result_sha256": "c1ff39e917ce2d4b4624514d87d665946ecafdb41a44524b953dae067d356118",
+      "signature": null,
+      "verification": "shape_only_trusted_worker",
+      "version": 1,
+      "worker": "release-operator"
+    },
+    "reserved_credits": 0
+  },
+  "funding": {
+    "funding": {
+      "status": "funded",
+      "txHash": "0xafb2550ba05263701164dbe30a6dfc62143656cc49325cac3fecc90286c55b5f"
+    },
+    "job": {
+      "payment": {
+        "chain_id": 84532,
+        "token": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+        "escrow": "0x85dbc619cd8f05e06a5fc231d04483b6aa7bff17",
+        "key": "0x40fa428b577946f24ebf649ed6757d1fb902e81a9dc81dbe77a1637ccfb5d00a",
+        "buyer": "0x6206c0743e09d07e2f29673f23a2cbd0f86e0795",
+        "operator": "0xcd457d157357627e2048b4be958d8b937c1c7af5",
+        "operator_id": "release-operator",
+        "amount_microusdc": 2000,
+        "expires": 1792263383,
+        "confirmed_block": "0x2e02bf9",
+        "confirmed_block_hash": "0x338639a19c99b0fcdadadf305214e4eeaee0db08f12ed019e1371fe91e55d17d"
+      },
+      "id": "0c3a70ce-bc8f-4f91-8f99-a07b44bb237e",
+      "owner": "buyer",
+      "spec": {
+        "idempotency_key": "9f8c8e94-3e34-4dcc-80d8-3fd9a0b36f86",
+        "mode": {
+          "kind": "paid_usdc",
+          "max_cost_microusdc": 2000,
+          "operator": "release-operator"
+        },
+        "workload": {
+          "kind": "embeddings",
+          "model": "all-minilm:latest",
+          "texts": [
+            "Installable buyer and operator test release",
+            "Base Sepolia GPU payment through two desktop profiles"
+          ],
+          "model_digest": "1b226e2802dbb772b5fc32a58f103ca1804ef7501331012de126ab22f67475ef"
+        },
+        "resources": {
+          "cpu_threads": 1,
+          "memory_mib": 1024,
+          "require_gpu": true
+        }
+      },
+      "status": "queued",
+      "attempts": 0,
+      "created_at": 1792259783,
+      "deadline": 1792260383,
+      "worker": null,
+      "lease_id": null,
+      "lease_until": null,
+      "run_started_at": null,
+      "result": null,
+      "error": null,
+      "receipt": null,
+      "reserved_credits": 0
+    }
+  },
+  "operator_before_microusdc": "39000",
+  "operator_after_microusdc": "41000",
+  "vectors": 2,
+  "dimensions": 384,
+  "operator_wallet_access_rejected": true,
+  "operator_cross_worker_pause_rejected": true,
+  "unassigned_job_access_rejected": true,
+  "repeat_payment_refresh_no_duplicate_payout": true,
+  "main_wallet_configuration_and_identity_unchanged": true,
+  "completed_at": "2026-10-17T17:58:09.422Z"
+}

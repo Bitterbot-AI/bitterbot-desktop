@@ -102,7 +102,10 @@ const ERC20_BALANCE_ABI = [
   },
 ] as const;
 
-export function createWalletService(config: WalletConfig): WalletService {
+export function createWalletService(
+  config: WalletConfig,
+  authentication?: { walletSecret: string; rpcUrl?: string },
+): WalletService {
   const network = config.network ?? "base-sepolia";
   // AgentKit's CDP wallet providers expect CDP network IDs ("base-mainnet",
   // "base-sepolia"), NOT the short "base" alias we use everywhere else for
@@ -147,7 +150,7 @@ export function createWalletService(config: WalletConfig): WalletService {
 
     const apiKeyId = config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
     const apiKeySecret = config.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET;
-    const walletSecret = process.env.CDP_WALLET_SECRET;
+    const walletSecret = authentication?.walletSecret ?? process.env.CDP_WALLET_SECRET;
     if (!apiKeyId || !apiKeySecret || !walletSecret) {
       throw new Error(
         "Missing required CDP credentials. Set CDP_API_KEY_ID, CDP_API_KEY_SECRET, " +
@@ -164,7 +167,8 @@ export function createWalletService(config: WalletConfig): WalletService {
     const provider = await CdpEvmWalletProvider.configureWithWallet({
       apiKeyId,
       apiKeySecret,
-      // walletSecret falls through to process.env.CDP_WALLET_SECRET.
+      walletSecret,
+      rpcUrl: authentication?.rpcUrl,
       networkId,
       address: account.address as `0x${string}`,
     });
@@ -270,7 +274,7 @@ export function createWalletService(config: WalletConfig): WalletService {
       const { CdpClient } = await import("@coinbase/cdp-sdk");
       const apiKeyId = config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
       const apiKeySecret = config.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET;
-      const walletSecret = process.env.CDP_WALLET_SECRET;
+      const walletSecret = authentication?.walletSecret ?? process.env.CDP_WALLET_SECRET;
       if (!apiKeyId || !apiKeySecret || !walletSecret)
         throw new Error("Missing required CDP credentials");
       const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
