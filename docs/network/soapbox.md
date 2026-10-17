@@ -248,3 +248,10 @@ The `soapbox.setup.*` RPC family is admin-only, including status. Runtime upload
 ordered chunks; token/signing secrets are absent from status responses and child-process output.
 On gateway shutdown, preparation is interrupted and its model-download container is removed.
 The independent two-machine test remains a separate acceptance step when a tester is available.
+
+GUI validation used separate gateway profiles on one RTX 4080 host: buyer wallet creation and
+activation, operator enrollment/upload/activation, and a paid isolated GPU job that transferred
+0.002 Base Sepolia USDC to the operator. The buyer-only test enrollment was revoked afterward.
+The evidence is in `soapbox-gui-validation.json`; 32 focused tests and the workspace TypeScript
+check also passed. The immutable v0.3.0-rc.1 runtime archive predates this setup UI, so testers
+need a desktop build containing the updated integration snapshot from the private Soapbox repo.

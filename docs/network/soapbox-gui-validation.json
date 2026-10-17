@@ -166,5 +166,33 @@
   "unassigned_job_access_rejected": true,
   "repeat_payment_refresh_no_duplicate_payout": true,
   "main_wallet_configuration_and_identity_unchanged": true,
-  "completed_at": "2026-10-17T17:58:09.422Z"
+  "completed_at": "2026-10-17T17:58:09.422Z",
+  "desktop_onboarding": {
+    "buyer": {
+      "id": "gui-buyer",
+      "chain_id": 84532,
+      "wallet_address": "0x6206c0743e09D07e2F29673f23A2cBD0F86e0795",
+      "wallet_created_via_ui": true,
+      "enrollment_import_verified_via_rpc": true,
+      "activation_via_ui": true,
+      "reconnected_to_buyer_dashboard": true,
+      "paid_gpu_submission_form_enabled": true,
+      "coordinator_roles": ["submitter"],
+      "temporary_enrollment_revoked": true,
+      "revoked_token_rejected": true
+    },
+    "operator": {
+      "id": "release-operator",
+      "enrollment_import_via_ui": true,
+      "runtime_upload_via_ui": true,
+      "gpu_preparation_passed": true,
+      "activation_via_ui": true,
+      "paid_job_id": "0c3a70ce-bc8f-4f91-8f99-a07b44bb237e"
+    },
+    "focused_tests_passed": 32,
+    "typecheck_passed": true,
+    "checked_at": "2026-10-17T18:20:15.449Z",
+    "main_gpu_worker_restored": true,
+    "cleanup_verified_at": "2026-10-17T18:22:44.108Z"
+  }
 }
