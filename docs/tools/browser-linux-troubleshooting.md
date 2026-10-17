@@ -29,6 +29,8 @@ This is NOT a real browser — it's just a wrapper.
 
 Bitterbot now checks for this. A snap wrapper with no snap installed behind it (the usual state under WSL) is skipped during detection, and if no other system browser is found, the Chromium that `playwright install chromium` downloaded is used. When a launch still fails, the error says whether the browser process exited or never opened its debugging port, quotes the browser's last output, and names the executable it tried. Two fixes cover most cases: set `browser.executablePath` to a working browser, or run `bitterbot browser reset-profile` if the profile was created by a different browser build.
 
+The first browser start after a reboot can take well over 10 seconds on WSL, because the browser is read from a cold disk; later starts take a second or two. Bitterbot waits up to 25 seconds for the debugging port. Lines mentioning D-Bus (`dbus/bus.cc`, `dbus/object_proxy.cc`, `org.freedesktop.DBus`) appear on every Linux and WSL launch and are harmless, so they are left out of the error.
+
 ### Solution 1: Install Google Chrome (Recommended)
 
 Install the official Google Chrome `.deb` package, which is not sandboxed by snap:

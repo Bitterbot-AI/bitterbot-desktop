@@ -16,7 +16,7 @@ const base = {
   port: 19012,
   profile: "bitterbot",
   executable: "/usr/bin/chromium-browser",
-  waitedMs: 12_000,
+  waitedMs: 25_000,
 };
 
 describe("watchBrowserLaunch", () => {
@@ -98,7 +98,7 @@ describe("describeBrowserLaunchFailure", () => {
   it("says it timed out when the browser is running but never opened the port", () => {
     const message = describeBrowserLaunchFailure({ ...base, ended: null, output: "" });
 
-    expect(message).toContain("did not open its debugging port within 12s");
+    expect(message).toContain("did not open its debugging port within 25s");
     expect(message).not.toContain("It said:");
   });
 
@@ -113,6 +113,25 @@ describe("describeBrowserLaunchFailure", () => {
 
     expect(message).toContain("the real reason");
     expect(message).not.toContain("Failed to connect to the bus");
+  });
+
+  it("leaves out the WSL object_proxy D-Bus lines too (the 2026-10-16 cold start)", () => {
+    // What Chromium printed on Victor's WSL box when a cold first start ran past
+    // the readiness wait: the agent read the D-Bus lines and blamed D-Bus.
+    const message = describeBrowserLaunchFailure({
+      ...base,
+      ended: null,
+      output:
+        "DevTools listening on ws://127.0.0.1:19012/devtools/browser/97f2\n" +
+        "[4943:4943:1016/143005.018582:ERROR:dbus/object_proxy.cc:572] Failed to call method: " +
+        "org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type:\n" +
+        "[4943:4943:1016/143005.303474:ERROR:dbus/object_proxy.cc:572] Failed to call method: " +
+        "org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type:",
+    });
+
+    expect(message).not.toMatch(/dbus/i);
+    expect(message).toContain("DevTools listening on");
+    expect(message).toContain("within 25s");
   });
 
   it("never tells anyone to restart the gateway", () => {
