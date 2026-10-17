@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.7.0...v1.8.0) (2026-10-17)
+
+
+### Features
+
+* **installer:** put ~/.local/bin on PATH, show download progress, no fresh-install prompt, refuse sudo not root ([#265](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/265)) ([7a9e254](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7a9e254c9ab25fda81e69ef76658ede58e36f727))
+
+
+### Bug Fixes
+
+* **browser:** a cold first start after a reboot no longer fails, and D-Bus noise stays out of the error ([#263](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/263)) ([bf59c3e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bf59c3e5d1f80f6e55b8262bceff38531907cd28))
+* **update:** the update card says why the latest release is unknown, and describes a tarball update ([#261](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/261)) ([ba3143d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ba3143d724868124b7421b4b68ddcd207d39324c))
+
 ## [1.7.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.6.1...v1.7.0) (2026-10-16)
 
 
