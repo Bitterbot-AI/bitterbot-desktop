@@ -45,6 +45,8 @@ export interface PaymentGateResult {
   skillId?: string;
   buyerPeerId?: string;
   amountUsdc?: number;
+  /** Settlement network when it is not the x402 Base rail (e.g. "nano:mainnet"). */
+  network?: string;
   pricing?: {
     priceUsdc: number;
     skills: Array<{ id: string; name: string; price: number }>;
@@ -158,6 +160,18 @@ async function enforceInboundAp2Mandate(
   }
 }
 
+/** The `network` a payment token names, if it is base64 JSON that names one. */
+function tokenNetwork(token: string): string | undefined {
+  try {
+    const decoded = JSON.parse(Buffer.from(token, "base64").toString("utf-8")) as {
+      network?: unknown;
+    };
+    return typeof decoded?.network === "string" ? decoded.network : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function verifyA2aPayment(
   req: IncomingMessage,
   config: BitterbotConfig,
@@ -194,6 +208,46 @@ export async function verifyA2aPayment(
         skills: listings.map((l) => ({ id: l.skillCrystalId, name: l.name, price: l.priceUsdc })),
       },
     };
+  }
+
+  // Opt-in Nano rail (a2a.payment.nano): a token that names nano:mainnet goes
+  // to the Nano verifier; every other token takes the x402 path below.
+  const token = paymentToken ?? paymentHeader!;
+  if (tokenNetwork(token) === "nano:mainnet") {
+    try {
+      const { resolveNanoRail, verifyNanoPayment } = await import("../../services/nano-verify.js");
+      const nano = resolveNanoRail(config.a2a?.payment?.nano);
+      if (!nano) {
+        log.debug("Nano payment received but a2a.payment.nano is not configured");
+        return { paid: false };
+      }
+      const verification = await verifyNanoPayment({
+        paymentToken: token,
+        expectedRecipient: nano.address,
+        minimumUsd: requiredAmount,
+        rawPerUsd: nano.rawPerUsd,
+        rpcUrl: nano.rpcUrl,
+        maxAgeSeconds: nano.maxAgeSeconds,
+        db: marketplace?.getDb?.(),
+      });
+      if (!verification.valid) {
+        log.debug(`Nano payment verification failed: ${verification.error}`);
+        return { paid: false };
+      }
+      // amountUsdc carries the USD price the buyer paid at the operator's
+      // configured rate, so sales and revenue shares stay in one unit.
+      return {
+        paid: true,
+        txHash: `nano:${verification.blockHash}`,
+        amountUsdc: requiredAmount,
+        buyerPeerId: verification.senderAccount,
+        skillId: resolveRequestedSkillId(rpcParams),
+        network: "nano:mainnet",
+      };
+    } catch (err) {
+      log.debug(`Nano payment verification error: ${String(err)}`);
+      return { paid: false };
+    }
   }
 
   // Verify x402 payment on Base
