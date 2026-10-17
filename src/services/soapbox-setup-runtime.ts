@@ -17,10 +17,10 @@ import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 import { soapboxOperatorEnvironment } from "../infra/soapbox-connection.js";
 
 export const SOAPBOX_SETUP_RELEASE = {
-  url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.1",
-  filename: "soapbox-0.3.0-rc.1-linux-x64.tar.gz",
-  bytes: 15824317,
-  sha256: "03c4c2de8e42032c6710ce0b4f1170d893c2a36b26a0ad88398173cd16ff9588",
+  url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.3",
+  filename: "soapbox-runtime-0.3.0-rc.3-linux-x64.tar.gz",
+  bytes: 4297661,
+  sha256: "2bcabeeb13ca212ecaf9af0e2860b30d53f3a4b13f1956fb962bf0ebf2936190",
 };
 
 /** Fresh operator profiles do not have the wallet-created shared runtime directory. */
@@ -171,7 +171,7 @@ export class SoapboxSetupRuntime {
       30000,
     );
     await run("tar", ["-xzf", path.join(directory, "runtime.tar.gz"), "-C", directory]);
-    const released = path.join(directory, "soapbox-0.3.0-rc.1-linux-x64");
+    const released = path.join(directory, SOAPBOX_SETUP_RELEASE.filename.replace(/\.tar\.gz$/, ""));
     const build = path.join(directory, "image"),
       models = path.join(directory, "models");
     if (/[\n,]/.test(models)) throw new Error("Unsupported runtime directory");

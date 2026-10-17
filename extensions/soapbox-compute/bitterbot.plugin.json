@@ -1,7 +1,7 @@
 {
   "id": "soapbox-compute",
   "name": "Soapbox Compute",
-  "version": "0.3.0-rc.2",
+  "version": "0.3.0-rc.3",
   "description": "Isolated compute with a separate Base Sepolia wallet",
   "configSchema": {
     "type": "object",

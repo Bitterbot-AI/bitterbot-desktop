@@ -24,18 +24,11 @@
     "buyer_balance_before_usdc": "0.965",
     "buyer_balance_after_usdc": "0.963"
   },
-  "main_wallet": {
-    "network": "base",
-    "address": "0x1593294B7FCECEBD1Cc85091cCc5B18Cb478d2b9",
-    "configuration_unchanged": true,
-    "identity_file_sha256_unchanged": true,
-    "displayed_usdc_before": "8.99",
-    "displayed_usdc_after": "8.99"
-  },
   "checks": {
     "focused_backend_tests": 13,
     "release_ui_tests": 6,
     "typescript": "passed",
     "installed_gateway_plugin_preflight": "loaded; no diagnostics"
-  }
+  },
+  "main_wallet_details": "Omitted; preservation was verified without distributing account identity or balance."
 }
