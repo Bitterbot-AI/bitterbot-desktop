@@ -64,36 +64,56 @@ Bitterbot runs as your user (`--allow-root` overrides this).
 
 ## What it does
 
-The installer prints this plan and asks before acting, `Proceed? [Y/n]`
-(Enter means yes; `--yes` skips the question):
+The installer prints this plan and gets on with it. On a fresh machine it
+asks nothing; the two questions it can ask are whether to replace a
+`~/.local/bin/bitterbot` link that points somewhere else, and whether to
+switch a running older Bitterbot (step 6). `--yes` answers both.
 
-1. Detects your OS and CPU.
+1. Detects your OS and CPU (WSL 1 is refused with the command that moves the
+   distribution to WSL 2). Running it with `sudo` from a normal user is
+   refused too: the install belongs in that user's home. Plain root (a VPS,
+   a container) is fine.
 2. Without `--version`, asks the GitHub releases API for the newest release
    that has your platform's tarball, `checksums.txt` and
    `checksums.txt.minisig` (a release still being built is skipped), then
-   downloads those three files from `releases/download/v<version>/`.
+   downloads those three files from `releases/download/v<version>/`. The
+   tarball download shows its size and a progress bar when you are watching
+   in a terminal.
 3. Verifies them (see below). Any failure stops the install with nothing
    changed.
 4. Unpacks to `~/.bitterbot/app/<version>/`, points `~/.bitterbot/app/current`
    at it, keeps the version you had before (`~/.bitterbot/app/previous`), and
    removes anything older than that, except a version a running Bitterbot
    still uses (each launch leaves its pid in `<version>/.pids`).
-5. Links `~/.local/bin/bitterbot` (the plan says so if it replaces a link to
-   something else). If `~/.local/bin` is not on your `PATH`, it prints the line
-   to add to your shell profile, and it warns when another `bitterbot` comes
-   first on your `PATH`.
+5. Links `~/.local/bin/bitterbot` (the plan says so, and it asks, if that
+   link currently points somewhere else) and makes it work in new terminals:
+   it writes `~/.bitterbot/env` (a few lines of `sh` that put `~/.local/bin`
+   on `PATH` if it is not there yet) and `~/.bitterbot/env.fish`, then adds
+   one line sourcing it to your shell profiles: `~/.profile` (created if
+   missing), `~/.bash_profile`, `~/.bash_login` and `~/.bashrc` where they
+   exist, `~/.zshrc` (created when zsh is your login shell) and `~/.zprofile`
+   where it exists, and `~/.config/fish/conf.d/bitterbot.fish` for fish. A
+   profile that already mentions `.bitterbot/env` is left alone, so running
+   the installer again never adds a second line. `--no-modify-path` skips
+   all of this and prints the `export PATH` line instead. In the terminal
+   you installed from, `. ~/.bitterbot/env` makes `bitterbot` work right away.
+   It also warns when another `bitterbot` comes first on your `PATH`.
 6. If an older Bitterbot is running (a git clone started with `pnpm start
    gateway`, an older release) or set up as a background service, shows what
    it found and asks once whether to switch it to the new version (default
    yes). See
    [Upgrading from a git clone or an older version](#upgrading-from-a-git-clone-or-an-older-version).
-   On a fresh machine there is no extra question.
+   On a fresh machine there is no question.
 7. Runs `bitterbot onboard` (skip with `--no-onboard`). It starts the gateway
    and opens a setup page in your browser
    (`http://127.0.0.1:19001/setup?token=...`, valid 30 minutes); without a
    browser it prints the link. `bitterbot onboard --no-browser` runs the same
    steps in the terminal. When Bitterbot is already set up, it prints the
-   Control UI address instead. See [`bitterbot onboard`](/cli/onboard).
+   Control UI address instead. See [`bitterbot onboard`](/cli/onboard). If
+   setup is killed (exit 137 usually means the machine ran out of memory),
+   the installer restores the terminal and tells you to run
+   `bitterbot onboard` again; without a terminal (a piped `ssh` command, a
+   container build) it prints that command instead of running it.
 
 Your config, memory database and keys live in `~/.bitterbot` and are never
 touched by the installer. It only makes that directory private to you: a
@@ -123,17 +143,21 @@ curl -fsSL .../install.sh | bash -s -- --version 1.6.0 --no-onboard
   complete one.
 - `--dir PATH`: install root (default `~/.bitterbot/app`; a relative path is
   taken from the current directory).
+- `--no-modify-path`: do not touch your shell profiles; the installer prints
+  the `export PATH` line for you to add instead.
 - `--no-onboard`: skip `bitterbot onboard`.
 - `--no-switch`: leave a running older Bitterbot (and its background service)
   alone.
-- `-y`, `--yes`: do not ask for confirmation. This also switches a running
-  older Bitterbot to the new version without asking.
+- `-y`, `--yes`: never ask. A `~/.local/bin/bitterbot` link that points
+  somewhere else is replaced, and a running older Bitterbot is switched to the
+  new version, without a question.
 - `--with-browser`: Linux only; also downloads Playwright's Chromium (about
   170 MB) into `~/.bitterbot/browsers` for the browser tool. On macOS the
   browser tool uses an installed Chrome, Brave or Edge.
 - `--require-signature`: refuse to install unless the signature can be checked
   (needs `minisign` or OpenSSL 3).
-- `--allow-root`: allow installing as root (not recommended).
+- `--allow-root`: allow installing with `sudo` from a normal user (not
+  recommended: everything would belong to root). Plain root needs no flag.
 
 ## Upgrading from a git clone or an older version
 
@@ -408,11 +432,13 @@ checks the new version against your config and data before switching.
 ## Uninstall
 
 ```bash
-rm -rf ~/.bitterbot/app ~/.local/bin/bitterbot
+rm -rf ~/.bitterbot/app ~/.local/bin/bitterbot ~/.bitterbot/env ~/.bitterbot/env.fish
 ```
 
 This leaves your data in `~/.bitterbot`; remove that directory too only if you
-want to delete your config, memory and keys.
+want to delete your config, memory and keys. The line the installer added to
+your shell profiles (`if [ -r "$HOME/.bitterbot/env" ]; then ...`) does
+nothing once `~/.bitterbot/env` is gone; delete it whenever you like.
 
 ## Windows (WSL2)
 
@@ -477,5 +503,11 @@ If you also clone the source, clone it into your Linux home, not under
 - A damaged installation (`bitterbot doctor` reports files that do not match
   `manifest.json`): stop the gateway, then `bitterbot update --reinstall`
   downloads and verifies the same version again.
-- `bitterbot: command not found`: add `~/.local/bin` to your `PATH` (the
-  installer printed the line), or run `~/.bitterbot/app/current/bin/bitterbot`.
+- `bitterbot: command not found`: in the terminal you installed from, run
+  `. ~/.bitterbot/env` (or open a new terminal: the installer added that line
+  to your shell profile). If you installed with `--no-modify-path`, add
+  `export PATH="$HOME/.local/bin:$PATH"` to your profile yourself, or run
+  `~/.bitterbot/app/current/bin/bitterbot`.
+- You ran the one-liner inside WSL 1 and it stopped with `this is WSL 1`:
+  in PowerShell, `wsl --set-version <distro> 2`, then run it again. See
+  [Windows](/platforms/windows).
