@@ -420,7 +420,7 @@ jobs:
           # The env file is idempotent and makes `bitterbot` resolve in a bare sh.
           env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c '. "$HOME/.bitterbot/env"; . "$HOME/.bitterbot/env"; [ "$(command -v bitterbot)" = "$HOME/.local/bin/bitterbot" ] && [ "${PATH#"$HOME/.local/bin:"}" = /usr/bin:/bin ]'
           # --no-modify-path leaves the profiles alone and prints the line instead.
-          HOME="$RUNNER_TEMP/home-nopath" bash scripts/install.sh --yes --no-onboard --no-switch --no-modify-path --version "$VERSION" | tee "$RUNNER_TEMP/install-nopath.log"
+          HOME="$RUNNER_TEMP/home-nopath" bash scripts/install.sh --yes --no-onboard --no-switch --no-modify-path --version "$VERSION" 2>&1 | tee "$RUNNER_TEMP/install-nopath.log"
           grep -q "TEST MODE" "$RUNNER_TEMP/install-nopath.log"
           grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$RUNNER_TEMP/install-nopath.log"
           [ ! -e "$RUNNER_TEMP/home-nopath/.profile" ] && [ ! -e "$RUNNER_TEMP/home-nopath/.bitterbot/env" ]
