@@ -15,6 +15,7 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
   const [customCredentials, setCustomCredentials] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [connectionError, setConnectionError] = useState("");
   const [upload, setUpload] = useState<number>();
   const [activating, setActivating] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -32,10 +33,11 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
         const next = await request<SoapboxSetupStatus>("soapbox.setup.status");
         if (!disposed) {
           setStatus(next);
+          setConnectionError("");
           if (next.enrollment) setRole(next.enrollment.role);
         }
       } catch (e) {
-        if (!disposed && !activating) setError(String(e));
+        if (!disposed && !activating) setConnectionError(String(e));
       } finally {
         if (!disposed) timer = setTimeout(() => void poll(), 2000);
       }
@@ -104,9 +106,9 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
         Base Sepolia test network. Compute uses a separate wallet and spending history. Your main
         wallet stays on its current network.
       </p>
-      {error && (
+      {(error || connectionError) && (
         <p role="alert" className="text-sm text-danger">
-          {error}
+          {error || connectionError}
         </p>
       )}
       {!status && <p role="status">Loading setup…</p>}

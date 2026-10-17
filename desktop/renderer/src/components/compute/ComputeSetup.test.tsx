@@ -89,3 +89,11 @@ it("keeps configured gateways read only and explains where the tester runs setup
   expect(screen.queryByLabelText("Enrollment file")).toBeNull();
   expect(screen.getByText(/tester’s own Bitterbot app/)).toBeTruthy();
 });
+
+it("clears a transient status error after the gateway reconnects", async () => {
+  fake.request.mockRejectedValueOnce(new Error("Gateway restarting"));
+  render(<ComputeSetup onClose={() => {}} />);
+  await screen.findByRole("alert");
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull(), { timeout: 4000 });
+  expect(screen.getByRole("button", { name: "Create test wallet" })).toBeTruthy();
+});
