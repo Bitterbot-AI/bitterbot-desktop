@@ -204,6 +204,13 @@ the harness rechecks the escrow code, token and settlement signer before reusing
 
 ## Setup from the desktop app
 
+The private Soapbox **v0.3.0-rc.2** add-on installs the wizard into Bitterbot 1.8.0 on
+Ubuntu 24.04 x64 / WSL2. Extract the release and open **Soapbox-Setup.exe** on Windows
+(using the default WSL distribution) or **Soapbox-Setup** on Ubuntu. The local setup page
+checks prerequisites, installs the integration and offers guarded rollback. Wallet files are
+preserved. Restart Bitterbot normally if it does not reconnect automatically. This unsigned
+test preview does not install Docker/drivers or change security settings.
+
 In an updated Bitterbot desktop app, open **Compute → Set up buyer or operator**.
 The bundled extension registers setup without starting a coordinator or worker. Setup requires
 an authenticated `operator.admin` session. Existing pilot/participant configurations remain
@@ -227,9 +234,9 @@ read-only in the wizard; set up the tester's own gateway instead.
 
 1. Select **GPU operator** and import the operator enrollment provided by the coordinator owner.
    Its payment address is the operator's Base Sepolia payout address; signing keys are unnecessary.
-2. Download the linked runtime archive from the private Soapbox release using a GitHub account
-   with repository access, then select it in **GPU runtime archive**. The gateway accepts only
-   the exact size and SHA-256 of the approved release, before extraction or execution.
+2. Click **Prepare GPU runtime** when the installer has included the runtime. For earlier
+   source integrations, download the linked archive and select it in **GPU runtime archive**.
+   Both paths require the exact size and SHA-256 of the approved runtime before execution.
 3. Watch setup check Docker/NVIDIA, build the pinned image, download the approved embedding
    model, and verify GPU execution in isolation. The gateway must run on Ubuntu x64 or WSL2,
    with Docker/NVIDIA support, swap limits and at least 3 GB of free disk space already available.
@@ -253,5 +260,5 @@ GUI validation used separate gateway profiles on one RTX 4080 host: buyer wallet
 activation, operator enrollment/upload/activation, and a paid isolated GPU job that transferred
 0.002 Base Sepolia USDC to the operator. The buyer-only test enrollment was revoked afterward.
 The evidence is in `soapbox-gui-validation.json`; 32 focused tests and the workspace TypeScript
-check also passed. The immutable v0.3.0-rc.1 runtime archive predates this setup UI, so testers
-need a desktop build containing the updated integration snapshot from the private Soapbox repo.
+check also passed. The immutable v0.3.0-rc.1 runtime remains the execution input; the rc2
+installer packages it with the updated UI/plugin and prerequisite/rollback tools.
