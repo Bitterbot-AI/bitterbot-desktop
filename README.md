@@ -65,13 +65,13 @@ Talk through the **Control UI, WhatsApp, Telegram, Discord, Signal, Slack, or em
 
 ## Quick Start
 
-Pick the path that fits your machine. Each one ends in the same setup wizard, which asks for a model key, offers web search, and opens the Control UI at **[http://127.0.0.1:19001](http://127.0.0.1:19001)**.
-
-**Laptop or desktop (macOS on Apple silicon or Intel, Linux x64/arm64).** The recommended path: a signed prebuilt release with its own Node runtime. No Node, no sudo, nothing else to install:
+One command. Paste it into a terminal on macOS (Apple silicon or Intel) or Linux (x64/arm64) and it takes you straight into setup:
 
 ```bash
 curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
+
+It downloads a signed release with its own Node runtime (no Node, no `sudo`, nothing else to install), verifies it, and runs the setup wizard, which asks for a model key, offers web search, and opens the Control UI at **[http://127.0.0.1:19001](http://127.0.0.1:19001)**. What it verifies, and how to pin, roll back, or remove: [install script guide](docs/start/install-script.md).
 
 **Windows:** open **PowerShell** (not Ubuntu/WSL) and run this. It installs inside WSL2 for you (no administrator rights needed once WSL2 is set up):
 
@@ -80,16 +80,6 @@ irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/script
 ```
 
 Already in an Ubuntu/WSL terminal? Use the macOS/Linux line instead, and run it from your Linux home (`cd ~`), not from `/mnt/c`.
-
-What the installer verifies, and how to pin, roll back, or remove: [install script guide](docs/start/install-script.md).
-
-**Prefer npm?** Any Node 18 or newer works:
-
-```bash
-npm install -g bitterbot && bitterbot onboard
-```
-
-The npm package is a small launcher: it installs in seconds with no dependencies and no warnings, and on first run downloads the same signed release as the installer (about 410 MB). Never use `sudo` with it; if npm says `EACCES`, see [npm package](docs/start/npm.md#eacces-permission-denied).
 
 **Server (Docker).** The compose file is attached to every release:
 
@@ -100,6 +90,8 @@ docker compose up -d
 ```
 
 Get the gateway token with `docker compose exec -u node bitterbot-gateway node bitterbot.mjs config get gateway.auth.token` (or use your `BITTERBOT_GATEWAY_TOKEN`), then open `http://127.0.0.1:19001`. Fly.io and VPS templates: [Docker guide](docs/platforms/docker.md).
+
+**Already manage Node with nvm, fnm, Volta or Homebrew?** Then `npm install -g bitterbot && bitterbot onboard` works too (Node 18 or newer); the package is a small launcher that downloads the same signed release on first run. Never run it with `sudo`. With Node from nodejs.org or from `apt`, npm cannot write to its global folder and fails with `EACCES`; the fix is the one command above, not `sudo`. Details: [npm package](docs/start/npm.md).
 
 **Developing Bitterbot.** Install from source with pnpm, below.
 
@@ -303,7 +295,7 @@ In a source checkout use `pnpm bitterbot doctor`; in Docker, `docker compose exe
 
 - **Control UI shows "Disconnected" or the first-run screen.** Open the UI at `http://127.0.0.1:19001` on the gateway machine, or through an SSH tunnel to it: the token handoff only works over loopback.
 - **Port 19001 already in use.** Another gateway is running. Find it with `ss -tlnp | grep 19001` (Linux) or `lsof -i :19001` (macOS), or start on another port with `BITTERBOT_GATEWAY_PORT=19002`.
-- **`npm install -g bitterbot` fails with `EACCES`.** Do not use `sudo`. Give npm a prefix you own (`npm config set prefix ~/.npm-global`), or use the installer one-liner instead: [fix it step by step](docs/start/npm.md#eacces-permission-denied).
+- **`npm install -g bitterbot` fails with `EACCES`.** Your npm cannot write to its global folder (normal with Node from nodejs.org or `apt`). Do not use `sudo`. Run the one command from Quick Start instead; it needs no npm. If you must stay on npm: [give npm a folder you own](docs/start/npm.md#eacces-permission-denied).
 - **"Orchestrator binary NOT FOUND".** No prebuilt P2P orchestrator was available for your platform. Build it with `cargo build --release --manifest-path orchestrator/Cargo.toml` from a checkout.
 - **P2P peers not connecting.** The P2P Network section of `bitterbot doctor` shows whether bootstrap DNS resolves and the fallback peer is reachable; firewall problems show up there.
 

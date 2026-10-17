@@ -186,9 +186,12 @@ inside WSL, or run `install.ps1` from PowerShell (above), which does the same:
 curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
-With Node 18 or newer inside WSL, `npm install -g bitterbot && bitterbot onboard`
-works too (see [npm package](/start/npm)). Either way,
-update later with `bitterbot update` inside WSL.
+Skip npm here unless you already manage Node inside WSL with nvm or fnm:
+Ubuntu's own `nodejs` package is too old for the launcher on 22.04 and
+earlier, and its npm cannot write to `/usr` without `sudo`, so
+`npm install -g bitterbot` fails with `EACCES` (see
+[npm package](/start/npm#eacces-permission-denied)). Update later with
+`bitterbot update` inside WSL.
 
 For development, use a source checkout instead (in your Linux home):
 
