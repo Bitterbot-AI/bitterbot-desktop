@@ -125,8 +125,9 @@ The wizard configures your provider, asks for network consent, starts the
 gateway, and opens the Control UI. On Windows without Docker Desktop, use WSL2
 and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
 
-**With npm** (Node 18 or newer; a small launcher that downloads the same signed release):
-`npm install -g bitterbot && bitterbot onboard`; update with `bitterbot update`. See
+**With npm**, only if you already manage Node with nvm, fnm, Volta or Homebrew
+(Node 18 or newer; a small launcher that downloads the same signed release):
+`npm install -g bitterbot && bitterbot onboard`, never with `sudo`. See
 [npm package](/start/npm).
 
 ## Start here

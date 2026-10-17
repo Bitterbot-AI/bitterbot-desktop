@@ -19,16 +19,19 @@ Docs: [Dashboard](/web/dashboard) and [Control UI](/web/control-ui).
 
 ## Pick a path
 
-1. **Installer (laptops, recommended on macOS and Linux):** a signed, prebuilt
-   release for Linux x64/arm64 and macOS (Apple silicon or Intel), with its own
-   Node runtime, no Node and no `sudo` needed (Windows: inside WSL2).
-   See [Installer (laptops)](/start/install-script) for what it verifies.
-2. **npm:** `npm install -g bitterbot && bitterbot onboard` (Node 18 or newer).
-   The package is a small launcher that downloads the same signed release on
-   first run. See [npm package](/start/npm) for what it downloads, how it
-   updates, and fixing `EACCES` without `sudo`.
-3. **Docker (recommended for servers):** nothing to install but Docker,
+1. **Installer (laptops, recommended on macOS and Linux):** one command, a
+   signed, prebuilt release for Linux x64/arm64 and macOS (Apple silicon or
+   Intel), with its own Node runtime, no Node and no `sudo` needed (Windows:
+   inside WSL2). It runs setup for you. See
+   [Installer (laptops)](/start/install-script) for what it verifies.
+2. **Docker (recommended for servers):** nothing to install but Docker,
    updates are a `pull`. Follow [Docker (recommended install)](/platforms/docker).
+3. **npm (only if you already manage Node with nvm, fnm, Volta or
+   Homebrew):** `npm install -g bitterbot && bitterbot onboard` (Node 18 or
+   newer). The package is a small launcher that downloads the same signed
+   release on first run. Never with `sudo`; with Node from nodejs.org or
+   `apt` it fails with `EACCES`, and the fix is the installer. See
+   [npm package](/start/npm).
 4. **From source (below):** for developing Bitterbot, or when you need the
    browser tool in a container setup (the image ships without Chromium).
 
@@ -88,9 +91,10 @@ irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/script
 Already in an Ubuntu/WSL terminal? Use the Linux line above instead, and run
 it from your Linux home (`cd ~`), not from `/mnt/c`.
 
-With npm, the whole install is (a small launcher that downloads the same
-signed release on first run; never use `sudo`, see
-[EACCES](/start/npm#eacces-permission-denied)):
+With npm, if your Node comes from nvm, fnm, Volta or Homebrew (never use
+`sudo`; with Node from nodejs.org or `apt` this fails with
+[EACCES](/start/npm#eacces-permission-denied), and the fix is the installer
+above):
 
 ```bash
 npm install -g bitterbot && bitterbot onboard   # Node 18 or newer

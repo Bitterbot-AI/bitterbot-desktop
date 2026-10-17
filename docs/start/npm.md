@@ -10,13 +10,25 @@ title: "npm package"
 
 # npm package
 
-On macOS and Linux the recommended install is the
-[installer one-liner](/start/install-script): it needs no Node and no
-`sudo`. If you prefer npm, that works too, with any Node 18 or newer:
+On macOS and Linux the recommended install is the one-command
+[installer](/start/install-script): it needs no Node and no `sudo`, and it
+takes you straight into setup:
+
+```bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
+```
+
+Use npm instead only if you already manage Node with a version manager
+(nvm, fnm, Volta) or Homebrew, so that `npm install -g` works for your user
+without `sudo`. Then, with Node 18 or newer:
 
 ```bash
 npm install -g bitterbot && bitterbot onboard
 ```
+
+With Node from nodejs.org or from your distribution's `apt` packages, that
+command fails with `EACCES` (see below); the fix is the installer above,
+not `sudo`.
 
 Since 1.6.2 the npm package is a small launcher. It has no dependencies and
 no install scripts, so `npm install -g bitterbot` finishes in seconds and
@@ -67,15 +79,24 @@ development.
 ## EACCES: permission denied
 
 With Node from the nodejs.org installer, npm's global prefix is
-`/usr/local`, which your user cannot write to, so `npm install -g` fails with
-`EACCES`. Do not use `sudo` to get around it: everything would be owned by
-root, the launcher would install into root's home instead of yours, and
-every later update would need `sudo` again.
+`/usr/local`; with Debian's or Ubuntu's `nodejs` and `npm` packages it is
+`/usr` (the error mentions `/usr/share/nodejs/...`). Your user cannot write
+to either, so `npm install -g` fails with `EACCES`. The error happens inside
+npm before Bitterbot runs at all, so nothing in the package can prevent it.
+Do not use `sudo` to get around it: everything would be owned by root, the
+launcher would install into root's home instead of yours, `npx` would break
+too (npm's cache becomes root-owned), and every later update would need
+`sudo` again.
 
-Pick one fix:
+The simplest fix is to stop using npm for this. The installer needs no Node
+and no `sudo`, and runs setup for you:
 
-- **Use the installer instead.** It needs no Node and no `sudo`:
-  `curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash`
+```bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
+```
+
+If you want to stay on npm, pick one:
+
 - **Give npm a prefix in your home directory** (zsh, the macOS default
   shell):
 
@@ -92,7 +113,9 @@ Pick one fix:
 
 - **Install Node with a version manager or Homebrew**
   ([nvm](https://github.com/nvm-sh/nvm), fnm, Volta, or `brew install node`).
-  Their global prefix is already yours.
+  Their global prefix is already yours. This also replaces the old Node that
+  `apt` ships on Ubuntu 22.04 and earlier (Node 12 or older), which the
+  launcher cannot run on.
 
 ### Moving from a sudo install
 
