@@ -819,12 +819,18 @@ main() {
   # No "Proceed?" on a fresh machine: you ran the installer on purpose, and
   # nothing above replaces anything of yours. The one thing that would is a
   # bitterbot link pointing somewhere else, so that is the one question.
-  local replace_link=1
+  local replace_link=yes ask_rc=0
   if [ -n "$link_now" ]; then
-    bb_ask "Replace the existing $link_dir/bitterbot link?" || replace_link=$?
-    case $replace_link in
-      1) bb_say "Leaving $link_dir/bitterbot as it is." ;;
-      2) bb_say "No terminal to ask on: leaving $link_dir/bitterbot as it is (re-run with --yes to replace it)." ;;
+    bb_ask "Replace the existing $link_dir/bitterbot link?" || ask_rc=$?
+    case $ask_rc in
+      1)
+        replace_link=no
+        bb_say "Leaving $link_dir/bitterbot as it is."
+        ;;
+      2)
+        replace_link=no
+        bb_say "No terminal to ask on: leaving $link_dir/bitterbot as it is (re-run with --yes to replace it)."
+        ;;
     esac
     bb_say ""
   fi
@@ -974,7 +980,7 @@ main() {
   if [ -e "$link_dir/bitterbot" ] && [ ! -L "$link_dir/bitterbot" ]; then
     bb_warn "$link_dir/bitterbot exists and is not a symlink; left it alone. Run $target directly or remove that file and re-run."
     bin_cmd=$target
-  elif [ -n "$link_now" ] && [ "$replace_link" != "1" ]; then
+  elif [ -n "$link_now" ] && [ "$replace_link" != "yes" ]; then
     # Declined above (or no terminal to ask on).
     bb_warn "$link_dir/bitterbot still points to $link_now; this install is reachable as $target"
     bin_cmd=$target
