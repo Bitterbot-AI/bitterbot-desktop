@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SOAPBOX_PAYMENT_POLICY } from "../infra/soapbox-payment-policy.js";
 import {
   assertApprovedSoapboxQuote,
   validateSoapboxQuote,
@@ -17,6 +18,14 @@ const quote = (): SoapboxPaymentQuote => ({
   expires: Math.floor(Date.now() / 1000) + 3600,
 });
 describe("Soapbox wallet funding boundary", () => {
+  it("ships a valid Base Sepolia deployment pin without mocking release policy", () => {
+    expect(SOAPBOX_PAYMENT_POLICY.chainId).toBe(84532);
+    expect(SOAPBOX_PAYMENT_POLICY.escrow).toMatch(/^0x[\da-f]{40}$/);
+    expect(SOAPBOX_PAYMENT_POLICY.codeSha256).toMatch(/^[\da-f]{64}$/);
+    expect(Buffer.from(SOAPBOX_PAYMENT_POLICY.codeSha256, "hex").toString("hex")).toBe(
+      SOAPBOX_PAYMENT_POLICY.codeSha256,
+    );
+  });
   it("requires approval of every payment field and rejects changed quotes", () => {
     const payment = quote();
     expect(() => assertApprovedSoapboxQuote(undefined, payment)).toThrow("approve");

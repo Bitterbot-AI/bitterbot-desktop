@@ -17,7 +17,7 @@ import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 import { soapboxOperatorEnvironment } from "../infra/soapbox-connection.js";
 
 export const SOAPBOX_SETUP_RELEASE = {
-  url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.3",
+  url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.4",
   filename: "soapbox-runtime-0.3.0-rc.3-linux-x64.tar.gz",
   bytes: 4297661,
   sha256: "2bcabeeb13ca212ecaf9af0e2860b30d53f3a4b13f1956fb962bf0ebf2936190",

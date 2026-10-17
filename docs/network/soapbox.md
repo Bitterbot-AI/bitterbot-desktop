@@ -15,7 +15,7 @@ Base Sepolia test USDC. Mainnet settlement is disabled.
 ## Install the private test release
 
 Download the Windows/WSL ZIP or Linux archive from the private
-[Soapbox release](https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.3).
+[Soapbox release](https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.4).
 Extract the entire archive, then open **Soapbox-Setup.exe** on Windows or
 **Soapbox-Setup** on Ubuntu. Choose Buyer or GPU operator and run the prerequisite
 checks. Acknowledge the installation, install the wizard and follow the Open
