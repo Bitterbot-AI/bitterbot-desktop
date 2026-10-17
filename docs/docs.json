@@ -768,6 +768,7 @@
                 "group": "Built-in tools",
                 "pages": [
                   "tools/exec",
+                  "tools/compute",
                   "tools/web",
                   "tools/web-search",
                   "tools/brave-search",

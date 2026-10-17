@@ -30,6 +30,8 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "update.autoRollback.enabled": true,
   // src/monitors/runtime.ts:60 — only `=== false` skips the engine.
   "monitors.enabled": true,
+  // src/agents/tools/compute-tool.ts (createComputeTool): only `=== false` hides the tool.
+  "compute.enabled": true,
   // src/agents/tools/browser-tool.ts:251 — `!== false`.
   "browser.replay.enabled": true,
   // src/agents/tools/browser-tool.ts:429 and src/gateway/server-methods/browser-live.ts:32 — `=== false` turns it off.

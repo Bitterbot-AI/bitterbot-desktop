@@ -1,0 +1,25 @@
+export {
+  type ComputeBackend,
+  type ComputeCredits,
+  type ComputeJobSummary,
+  type ComputePool,
+  type ComputeResult,
+  type ComputeSnapshot,
+  type ComputeWorker,
+  type ComputeWorkloadKind,
+  type SoapboxJobLike,
+  type SoapboxStatusLike,
+  defaultPoolTrust,
+  getComputeBackend,
+  registerComputeBackend,
+  resetComputeBackendForTest,
+  snapshotFromSoapboxStatus,
+  summariseSoapboxJob,
+} from "./backend.js";
+export {
+  type ComputeEstimate,
+  type ComputeEstimateOption,
+  estimateCompute,
+  recordComputeDuration,
+  resetComputeEstimatesForTest,
+} from "./estimate.js";

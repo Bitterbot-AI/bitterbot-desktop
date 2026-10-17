@@ -1208,6 +1208,7 @@ export const BitterbotSchema = z
       .strict()
       .optional(),
     monitors: z.object({ enabled: z.boolean().optional() }).strict().optional(),
+    compute: z.object({ enabled: z.boolean().optional() }).strict().optional(),
     shop: z
       .object({ enabled: z.boolean().optional(), ucpProfileUrl: z.string().url().optional() })
       .strict()
