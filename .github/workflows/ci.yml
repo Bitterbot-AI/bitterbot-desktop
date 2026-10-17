@@ -409,7 +409,10 @@ jobs:
       - name: The installer put ~/.local/bin on PATH for new shells (once, even after two runs)
         run: |
           set -euo pipefail
-          export HOME="$RUNNER_TEMP/home"
+          # Test mode again (each step is a fresh shell): installs below must come
+          # from the local fake release server, never from GitHub.
+          export HOME="$RUNNER_TEMP/home" BITTERBOT_INSTALL_TEST_MODE=1 \
+            BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
           grep -q "Added $HOME/.local/bin to PATH for new terminals" "$RUNNER_TEMP/install1.log"
           # Second run: nothing new to add, so no "Added" line and no second profile line.
           ! grep -q "Added $HOME/.local/bin to PATH" "$RUNNER_TEMP/install2.log"
@@ -417,13 +420,16 @@ jobs:
           # The env file is idempotent and makes `bitterbot` resolve in a bare sh.
           env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c '. "$HOME/.bitterbot/env"; . "$HOME/.bitterbot/env"; [ "$(command -v bitterbot)" = "$HOME/.local/bin/bitterbot" ] && [ "${PATH#"$HOME/.local/bin:"}" = /usr/bin:/bin ]'
           # --no-modify-path leaves the profiles alone and prints the line instead.
-          HOME="$RUNNER_TEMP/home-nopath" bash scripts/install.sh --yes --no-onboard --no-modify-path --version "$VERSION" | tee "$RUNNER_TEMP/install-nopath.log"
+          HOME="$RUNNER_TEMP/home-nopath" bash scripts/install.sh --yes --no-onboard --no-switch --no-modify-path --version "$VERSION" 2>&1 | tee "$RUNNER_TEMP/install-nopath.log"
+          grep -q "TEST MODE" "$RUNNER_TEMP/install-nopath.log"
           grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$RUNNER_TEMP/install-nopath.log"
           [ ! -e "$RUNNER_TEMP/home-nopath/.profile" ] && [ ! -e "$RUNNER_TEMP/home-nopath/.bitterbot/env" ]
 
       - name: sudo from a normal user is refused before anything is downloaded; plain root is not
         run: |
           set -euo pipefail
+          export BITTERBOT_INSTALL_TEST_MODE=1 \
+            BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
           mkdir -p "$RUNNER_TEMP/fakebin" "$RUNNER_TEMP/home-sudo"
           printf '#!/bin/sh\n[ "$1" = -u ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > "$RUNNER_TEMP/fakebin/id"
           chmod +x "$RUNNER_TEMP/fakebin/id"
@@ -436,9 +442,11 @@ jobs:
           echo "$out" | grep -q "you ran this with sudo"
           echo "$out" | grep -q "again as alice, without sudo"
           [ ! -e "$RUNNER_TEMP/home-sudo/.bitterbot" ]
-          # Plain root (no SUDO_USER) gets past the check: the run proceeds to the download step.
+          # Plain root (no SUDO_USER) gets past the check and installs from the fake server.
           HOME="$RUNNER_TEMP/home-sudo" PATH="$RUNNER_TEMP/fakebin:$PATH" bash scripts/install.sh --yes --no-onboard --no-switch --version "$VERSION" > "$RUNNER_TEMP/install-root.log" 2>&1
+          grep -q "TEST MODE" "$RUNNER_TEMP/install-root.log"
           grep -q "Downloading Bitterbot $VERSION" "$RUNNER_TEMP/install-root.log"
+          grep -q "Installed Bitterbot $VERSION" "$RUNNER_TEMP/install-root.log"
 
       - name: The installed copy runs and reports a tarball install on the stable channel
         run: |
