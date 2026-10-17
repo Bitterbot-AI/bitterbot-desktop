@@ -10,9 +10,13 @@
 # signed files are uploaded, so "latest" is always complete; every release carries its own copy for pinned installs
 # (releases/download/vX.Y.Z/install.sh). It embeds the pinned public key.
 #
-# What it does, in order (it prints this plan before touching anything):
+# What it does, in order (it prints this plan before touching anything, and
+# does not stop to ask on a fresh machine: the only questions are whether to
+# replace a bitterbot link that points somewhere else and whether to switch a
+# running older Bitterbot):
 #   1. Detects your OS/arch (Linux x64/arm64 with glibc >= 2.28, macOS on
-#      Apple silicon or Intel). Refuses to run as root unless --allow-root.
+#      Apple silicon or Intel; WSL 1 is refused). Refuses `sudo` from a normal
+#      user (the install belongs in that user's home); plain root is fine.
 #   2. Without --version, asks the GitHub releases API for the newest release
 #      that carries this platform's tarball AND checksums.txt AND its .minisig
 #      (a release whose assets are still being built is skipped). Then
@@ -24,7 +28,10 @@
 #      SHA-256 over HTTPS (plus `gh attestation verify` when gh 2.49+ is logged in);
 #      pass --require-signature to refuse that fallback.
 #   4. Unpacks to <dir>/<version>, switches <dir>/current to it, keeps the
-#      previous version (for rollback), links ~/.local/bin/bitterbot.
+#      previous version (for rollback), links ~/.local/bin/bitterbot, and puts
+#      ~/.local/bin on PATH for new terminals: writes ~/.bitterbot/env (and
+#      env.fish) and adds one guarded line sourcing it to your shell profiles
+#      (skip with --no-modify-path).
 #   5. If an older Bitterbot is running (a git clone started with pnpm, an
 #      older release) or set up as a background service, offers to switch it
 #      to the new version: `bitterbot gateway switch` snapshots your data
@@ -48,12 +55,14 @@ Usage: install.sh [options]
 
   -s, --version X.Y.Z    Install this release instead of the newest complete one
       --dir PATH         Install root (default: ~/.bitterbot/app)
-      --allow-root       Allow installing as root (not recommended)
+      --no-modify-path   Do not add ~/.local/bin to PATH in your shell profiles
+      --allow-root       Allow installing with sudo (not recommended; plain
+                         root needs no flag)
       --no-onboard       Do not run `bitterbot onboard` afterwards
       --no-switch        Leave a running older Bitterbot (git clone, older
                          release) and its background service alone
-  -y, --yes              Do not ask for confirmation (also switches a running
-                         older Bitterbot to the new version)
+  -y, --yes              Never ask: replace a foreign bitterbot link and switch
+                         a running older Bitterbot without a question
       --with-browser     Linux: also download Playwright's Chromium (~170 MB)
                          into ~/.bitterbot/browsers for the browser tool
       --require-signature
@@ -78,18 +87,146 @@ bb_need() {
 
 # curl flags. Production: HTTPS only, redirects too (GitHub serves assets
 # through a redirect). Test mode: http/file only, no redirects at all, no
-# proxy, so a loopback URL can never be bounced somewhere else.
-bb_curl() {
-  if [ "$BB_TEST_MODE" = "1" ]; then
-    curl -sSL --max-redirs 0 --proto '=http,file' --proto-redir '=http,file' --noproxy '*' "$@"
-  else
-    curl -sSL --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 "$@"
+# proxy, so a loopback URL can never be bounced somewhere else. $1 is the
+# verbosity: -sS (quiet, errors only) or -S with --progress-bar.
+bb_curl_v() {
+  local -a v=("$1")
+  shift
+  if [ "${v[0]}" = "--progress-bar" ]; then
+    v=(-S --progress-bar)
   fi
+  if [ "$BB_TEST_MODE" = "1" ]; then
+    curl "${v[@]}" -L --max-redirs 0 --proto '=http,file' --proto-redir '=http,file' --noproxy '*' "$@"
+  else
+    curl "${v[@]}" -L --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 2 "$@"
+  fi
+}
+
+bb_curl() {
+  bb_curl_v -sS "$@"
 }
 
 # Download $1 to $2, failing on HTTP errors.
 bb_fetch() {
   bb_curl -f -o "$2" "$1"
+}
+
+# Same, for the big one: a progress bar when there is a terminal to draw it
+# on (curl draws it on stderr), nothing animated in a log.
+bb_fetch_big() {
+  if [ -t 2 ]; then
+    bb_curl_v --progress-bar -f -o "$2" "$1"
+  else
+    bb_fetch "$1" "$2"
+  fi
+}
+
+# Size of $1 in MB from a HEAD request, or nothing (best effort, for the
+# "Downloading ... (390 MB)" line; the download itself does not depend on it).
+bb_remote_mb() {
+  local bytes
+  bytes=$(bb_curl -I "$1" 2>/dev/null | tr -d '\r' | awk 'tolower($1) == "content-length:" { s = $2 } END { print s }')
+  case $bytes in
+    '' | *[!0-9]*) return 0 ;;
+  esac
+  printf '%d\n' $((bytes / 1000000))
+}
+
+# ~/.bitterbot/env: puts $1 first on PATH unless it is already there; safe to
+# source any number of times. env.fish is the same for fish. $1 is written as
+# "$HOME/.local/bin" (not expanded) so the file survives a moved home.
+bb_write_env_files() {
+  local link_dir=$1 env_dir=$2 tpl
+  case $link_dir in
+    "$HOME"/*) tpl="\$HOME/${link_dir#"$HOME"/}" ;;
+    *) tpl=$link_dir ;;
+  esac
+  mkdir -p "$env_dir"
+  cat >"$env_dir/env" <<EOF
+#!/bin/sh
+# Bitterbot: puts $tpl on PATH. Written by the Bitterbot installer; sourced
+# from your shell profile. Safe to source more than once.
+case ":\${PATH}:" in
+  *:"$tpl":*) ;;
+  *) export PATH="$tpl:\$PATH" ;;
+esac
+EOF
+  cat >"$env_dir/env.fish" <<EOF
+# Bitterbot: puts $tpl on PATH. Written by the Bitterbot installer.
+if not contains "$tpl" \$PATH
+  set -gx PATH "$tpl" \$PATH
+end
+EOF
+}
+
+# Append line $2 to profile $1 once (a file that already mentions
+# .bitterbot/env is left alone). $3 = create: make the file when it is
+# missing; otherwise a missing file is skipped. Touched files are collected
+# in BB_RC_TOUCHED.
+bb_add_profile_line() {
+  local file=$1 line=$2 create=${3:-}
+  if [ ! -e "$file" ]; then
+    [ "$create" = "create" ] || return 0
+  elif grep -Fqs -- '.bitterbot/env' "$file"; then
+    return 0
+  fi
+  {
+    printf '\n%s\n' "$line"
+  } >>"$file" 2>/dev/null || {
+    bb_warn "could not write $file; add this line to it yourself: $line"
+    return 0
+  }
+  BB_RC_TOUCHED="${BB_RC_TOUCHED:+$BB_RC_TOUCHED, }${file/#"$HOME"/\~}"
+  return 0
+}
+
+# Make ~/.local/bin resolve in NEW terminals, the way rustup and uv do it:
+# one guarded line in every profile a shell on this machine may read.
+#   sh/bash: ~/.profile (created), plus .bash_profile/.bash_login/.bashrc
+#            when they exist (bash reads the first of the three it finds for
+#            login shells and .bashrc for the rest)
+#   zsh:     .zshrc (created when zsh is the login shell, so a fresh macOS
+#            user is covered), .zprofile when it exists
+#   fish:    a conf.d drop-in
+# Done whether or not the installer's own PATH already has it: the PATH a
+# piped script inherits says little about what the next terminal gets.
+bb_modify_path() {
+  local link_dir=$1 env_dir=$2 zdot=${ZDOTDIR:-$HOME} f
+  local line='if [ -r "$HOME/.bitterbot/env" ]; then . "$HOME/.bitterbot/env"; fi'
+  BB_RC_TOUCHED=""
+  bb_write_env_files "$link_dir" "$env_dir"
+  bb_add_profile_line "$HOME/.profile" "$line" create
+  for f in .bash_profile .bash_login .bashrc; do
+    bb_add_profile_line "$HOME/$f" "$line"
+  done
+  case ${SHELL:-} in
+    */zsh) bb_add_profile_line "$zdot/.zshrc" "$line" create ;;
+    *) bb_add_profile_line "$zdot/.zshrc" "$line" ;;
+  esac
+  bb_add_profile_line "$zdot/.zprofile" "$line"
+  local fish_ok=0
+  case ${SHELL:-} in */fish) fish_ok=1 ;; esac
+  if [ -d "$HOME/.config/fish" ]; then
+    fish_ok=1
+  fi
+  if [ "$fish_ok" = "1" ] && [ ! -e "$HOME/.config/fish/conf.d/bitterbot.fish" ]; then
+    if mkdir -p "$HOME/.config/fish/conf.d" 2>/dev/null &&
+      printf '%s\n' 'test -r "$HOME/.bitterbot/env.fish"; and source "$HOME/.bitterbot/env.fish"' \
+        >"$HOME/.config/fish/conf.d/bitterbot.fish" 2>/dev/null; then
+      BB_RC_TOUCHED="${BB_RC_TOUCHED:+$BB_RC_TOUCHED, }~/.config/fish/conf.d/bitterbot.fish"
+    fi
+  fi
+}
+
+# WSL 1 runs no Linux kernel: the bundled Node and the orchestrator do not
+# start there. WSL 1 kernels report "...-Microsoft", WSL 2 "...-microsoft-standard-WSL2".
+bb_refuse_wsl1() {
+  case "$(uname -r 2>/dev/null)" in
+    *WSL2*) ;;
+    *Microsoft*)
+      bb_die "this is WSL 1, which Bitterbot cannot run on. In PowerShell: wsl --set-version <your distro> 2 (and wsl --set-default-version 2), then run this installer again. Details: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/platforms/windows.md"
+      ;;
+  esac
 }
 
 # Newest complete release for platform $2 from a GitHub releases API listing
@@ -317,20 +454,22 @@ bb_detect_platform() {
   esac
 }
 
-bb_confirm() {
+# Ask "$1 [Y/n]" on the terminal. Returns 0 for yes (Enter means yes, and
+# --yes never asks), 1 for no, 2 when there is no terminal to ask on.
+bb_ask() {
   if [ "$BB_YES" = "1" ]; then
     return 0
   fi
   if ! { : </dev/tty; } 2>/dev/null; then
-    bb_die "no terminal to confirm on; re-run with --yes to proceed non-interactively"
+    return 2
   fi
   local answer
-  # Enter means yes: you ran the installer on purpose.
-  printf 'Proceed? [Y/n] ' >/dev/tty
+  printf '%s [Y/n] ' "$1" >/dev/tty
   read -r answer </dev/tty || answer=""
   case $answer in
-    n | N | no | NO | No) bb_die "aborted" ;;
+    n | N | no | NO | No) return 1 ;;
   esac
+  return 0
 }
 
 # The state dir (config, keys, memory) is private to you. Same policy as
@@ -487,7 +626,7 @@ main() {
   local pubkey=$PINNED_PUBKEY
 
   local version="" install_dir="${HOME}/.bitterbot/app" onboard=1 with_browser=0
-  local require_signature=0 allow_root=0 switch=1
+  local require_signature=0 allow_root=0 switch=1 modify_path=1
   BB_YES=0
   BB_TEST_MODE=0
   while [ $# -gt 0 ]; do
@@ -508,6 +647,10 @@ main() {
         ;;
       --no-switch)
         switch=0
+        shift
+        ;;
+      --no-modify-path)
+        modify_path=0
         shift
         ;;
       -y | --yes)
@@ -541,8 +684,12 @@ main() {
     /*) ;;
     *) install_dir="$PWD/$install_dir" ;;
   esac
-  if [ "$(id -u)" = "0" ] && [ "$allow_root" != "1" ]; then
-    bb_die "refusing to install as root: Bitterbot runs as your user and keeps its data in ~/.bitterbot. Re-run as your normal user (no sudo), or pass --allow-root if you really mean it."
+  # sudo from a normal user is the mistake worth catching: the install would
+  # land in root's home, owned by root, and every update would need sudo
+  # again. Plain root (a VPS, a container) has only one home and is fine.
+  if [ "$(id -u)" = "0" ] && [ "$allow_root" != "1" ] &&
+    [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    bb_die "you ran this with sudo. Bitterbot installs into your own home directory and never needs sudo; with it, everything would belong to root and every update would need sudo too. Run the same command again as $SUDO_USER, without sudo (or pass --allow-root if you really mean it)."
   fi
 
   # Test mode (CI only). The base-URL and public-key overrides exist so CI
@@ -581,6 +728,7 @@ main() {
 
   local platform
   platform=$(bb_detect_platform)
+  bb_refuse_wsl1
 
   # The releases API (test mode: a JSON file next to the fake releases).
   local api_url="https://api.github.com/repos/${REPO}/releases?per_page=30"
@@ -626,6 +774,11 @@ main() {
   bb_say "  From:      $base_url/download/v${version:-<version>}/"
   bb_say "  Install:   $install_dir/<version> (current -> the new version; the previous one is kept)"
   bb_say "  Command:   $link_dir/bitterbot"
+  if [ "$modify_path" = "1" ]; then
+    bb_say "  PATH:      $link_dir is added to PATH for new terminals (one line in your shell profile; --no-modify-path skips this)"
+  else
+    bb_say "  PATH:      left alone (--no-modify-path)"
+  fi
   case $sig_tool in
     minisign) bb_say "  Verify:    minisign signature (pinned key) + SHA-256" ;;
     openssl) bb_say "  Verify:    minisign signature checked with OpenSSL 3 (pinned key) + SHA-256" ;;
@@ -639,7 +792,7 @@ main() {
     esac
   fi
   if [ -n "$link_now" ]; then
-    bb_say "             (replaces the existing link to $link_now)"
+    bb_say "             (currently a link to $link_now; you are asked before it is replaced)"
   fi
   if [ "$gh_ok" = "1" ]; then
     bb_say "             + GitHub build-provenance attestation (gh attestation verify)"
@@ -663,7 +816,24 @@ main() {
   fi
   bb_say "  Data:      your config and memory stay in ~/.bitterbot (never touched here)"
   bb_say ""
-  bb_confirm
+  # No "Proceed?" on a fresh machine: you ran the installer on purpose, and
+  # nothing above replaces anything of yours. The one thing that would is a
+  # bitterbot link pointing somewhere else, so that is the one question.
+  local replace_link=yes ask_rc=0
+  if [ -n "$link_now" ]; then
+    bb_ask "Replace the existing $link_dir/bitterbot link?" || ask_rc=$?
+    case $ask_rc in
+      1)
+        replace_link=no
+        bb_say "Leaving $link_dir/bitterbot as it is."
+        ;;
+      2)
+        replace_link=no
+        bb_say "No terminal to ask on: leaving $link_dir/bitterbot as it is (re-run with --yes to replace it)."
+        ;;
+    esac
+    bb_say ""
+  fi
 
   local tmp
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/bitterbot-install.XXXXXX")
@@ -722,8 +892,11 @@ main() {
     bb_die "signature is for '$trusted', not '$expected_comment' (a signature replayed from another release?). Refusing."
   fi
 
-  bb_say "Downloading $asset..."
-  bb_fetch "$download_base/$asset" "$tmp/$asset" || bb_die "could not download $asset"
+  local mb
+  mb=$(bb_remote_mb "$download_base/$asset" || true)
+  bb_say "Downloading Bitterbot $version for $platform${mb:+ ($mb MB)}..."
+  bb_fetch_big "$download_base/$asset" "$tmp/$asset" || bb_die "could not download $asset"
+  bb_say "Verifying $asset..."
   local actual_sha
   actual_sha=$(bb_sha256 "$tmp/$asset")
   [ "$actual_sha" = "$expected_sha" ] ||
@@ -748,6 +921,7 @@ main() {
   stage=$(mktemp -d "$install_dir/.staging.XXXXXX")
   # shellcheck disable=SC2064 # expand now: both are locals of main()
   trap "rm -rf '$tmp' '$stage'" EXIT
+  bb_say "Unpacking to $install_dir/$version..."
   tar -xzf "$tmp/$asset" -C "$stage" || bb_die "could not unpack $asset"
   [ -x "$stage/$top/bin/bitterbot" ] || bb_die "$asset does not contain $top/bin/bitterbot"
   if ! grep -q "\"version\": \"$version\"" "$stage/$top/manifest.json" ||
@@ -806,9 +980,11 @@ main() {
   if [ -e "$link_dir/bitterbot" ] && [ ! -L "$link_dir/bitterbot" ]; then
     bb_warn "$link_dir/bitterbot exists and is not a symlink; left it alone. Run $target directly or remove that file and re-run."
     bin_cmd=$target
+  elif [ -n "$link_now" ] && [ "$replace_link" != "yes" ]; then
+    # Declined above (or no terminal to ask on).
+    bb_warn "$link_dir/bitterbot still points to $link_now; this install is reachable as $target"
+    bin_cmd=$target
   else
-    # A link pointing outside the install root was announced in the plan
-    # above, so it is replaced only after the confirmation (or --yes).
     if [ -n "$link_now" ]; then
       bb_warn "replacing $link_dir/bitterbot (it pointed to $link_now)"
     fi
@@ -849,12 +1025,23 @@ main() {
   if [ -n "$previous" ] && [ "$previous" != "$version" ]; then
     bb_say "Previous version $previous kept at $install_dir/$previous"
   fi
+  BB_RC_TOUCHED=""
+  if [ "$modify_path" = "1" ]; then
+    bb_modify_path "$link_dir" "$HOME/.bitterbot"
+    if [ -n "$BB_RC_TOUCHED" ]; then
+      bb_say "Added $link_dir to PATH for new terminals (in $BB_RC_TOUCHED, via ~/.bitterbot/env)"
+    fi
+  fi
   case ":$PATH:" in
     *":$link_dir:"*) ;;
     *)
       bb_say ""
-      bb_say "$link_dir is not on your PATH. Add this line to your shell profile (~/.bashrc, ~/.zshrc):"
-      bb_say "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+      if [ "$modify_path" = "1" ]; then
+        bb_say "In this terminal, \`bitterbot\` works after: . ~/.bitterbot/env   (new terminals need nothing)"
+      else
+        bb_say "$link_dir is not on your PATH. Add this line to your shell profile (~/.bashrc, ~/.zshrc):"
+        bb_say "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+      fi
       ;;
   esac
 
@@ -893,8 +1080,19 @@ main() {
         installer_mode=quiet
       fi
       bb_say ""
-      BITTERBOT_INSTALLER=$installer_mode BITTERBOT_HIDE_BANNER=1 "$bin_cmd" onboard --from-installer </dev/tty ||
-        bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
+      local onboard_rc=0
+      BITTERBOT_INSTALLER=$installer_mode BITTERBOT_HIDE_BANNER=1 "$bin_cmd" onboard --from-installer </dev/tty || onboard_rc=$?
+      if [ "$onboard_rc" != "0" ]; then
+        if [ "$onboard_rc" -ge 128 ]; then
+          # Killed by a signal: the terminal may be left in raw mode.
+          stty sane </dev/tty 2>/dev/null || true
+        fi
+        if [ "$onboard_rc" = "137" ]; then
+          bb_warn "setup was killed (exit 137), which usually means the machine ran out of memory. Close some programs and run: $bin_cmd onboard"
+        else
+          bb_warn "onboarding did not finish; run '$bin_cmd onboard' to resume."
+        fi
+      fi
     else
       bb_say "No terminal for setup; run: $bin_cmd onboard (it prints a setup link)"
     fi

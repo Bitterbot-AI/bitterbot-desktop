@@ -406,6 +406,40 @@ jobs:
           ls -la "$HOME/.bitterbot/app" "$HOME/.local/bin"
           du -sh "$HOME/.bitterbot/app/$VERSION"
 
+      - name: The installer put ~/.local/bin on PATH for new shells (once, even after two runs)
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/home"
+          grep -q "Added $HOME/.local/bin to PATH for new terminals" "$RUNNER_TEMP/install1.log"
+          # Second run: nothing new to add, so no "Added" line and no second profile line.
+          ! grep -q "Added $HOME/.local/bin to PATH" "$RUNNER_TEMP/install2.log"
+          [ "$(grep -c '.bitterbot/env' "$HOME/.profile")" = "1" ]
+          # The env file is idempotent and makes `bitterbot` resolve in a bare sh.
+          env -i HOME="$HOME" PATH=/usr/bin:/bin sh -c '. "$HOME/.bitterbot/env"; . "$HOME/.bitterbot/env"; [ "$(command -v bitterbot)" = "$HOME/.local/bin/bitterbot" ] && [ "${PATH#"$HOME/.local/bin:"}" = /usr/bin:/bin ]'
+          # --no-modify-path leaves the profiles alone and prints the line instead.
+          HOME="$RUNNER_TEMP/home-nopath" bash scripts/install.sh --yes --no-onboard --no-modify-path --version "$VERSION" | tee "$RUNNER_TEMP/install-nopath.log"
+          grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$RUNNER_TEMP/install-nopath.log"
+          [ ! -e "$RUNNER_TEMP/home-nopath/.profile" ] && [ ! -e "$RUNNER_TEMP/home-nopath/.bitterbot/env" ]
+
+      - name: sudo from a normal user is refused before anything is downloaded; plain root is not
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/fakebin" "$RUNNER_TEMP/home-sudo"
+          printf '#!/bin/sh\n[ "$1" = -u ] && { echo 0; exit 0; }\nexec /usr/bin/id "$@"\n' > "$RUNNER_TEMP/fakebin/id"
+          chmod +x "$RUNNER_TEMP/fakebin/id"
+          set +e
+          out=$(HOME="$RUNNER_TEMP/home-sudo" SUDO_USER=alice PATH="$RUNNER_TEMP/fakebin:$PATH" bash scripts/install.sh --yes --no-onboard --version "$VERSION" 2>&1)
+          status=$?
+          set -e
+          echo "$out"
+          [ "$status" -ne 0 ]
+          echo "$out" | grep -q "you ran this with sudo"
+          echo "$out" | grep -q "again as alice, without sudo"
+          [ ! -e "$RUNNER_TEMP/home-sudo/.bitterbot" ]
+          # Plain root (no SUDO_USER) gets past the check: the run proceeds to the download step.
+          HOME="$RUNNER_TEMP/home-sudo" PATH="$RUNNER_TEMP/fakebin:$PATH" bash scripts/install.sh --yes --no-onboard --no-switch --version "$VERSION" > "$RUNNER_TEMP/install-root.log" 2>&1
+          grep -q "Downloading Bitterbot $VERSION" "$RUNNER_TEMP/install-root.log"
+
       - name: The installed copy runs and reports a tarball install on the stable channel
         run: |
           set -euo pipefail

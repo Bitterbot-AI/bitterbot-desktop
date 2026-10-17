@@ -4,8 +4,9 @@
  * newest COMPLETE release, upgrade-in-place with the previous version kept,
  * in-use versions never pruned, and every refusal (tampering, replayed or
  * foreign signatures, test-only overrides outside test mode, loopback-guard
- * bypasses, redirects, musl / old glibc, root). The real tarball is exercised end to end by
- * the `installer` job in .github/workflows/ci.yml.
+ * bypasses, redirects, musl / old glibc, WSL 1, sudo), PATH setup in the
+ * shell profiles, and the two questions it can ask. The real tarball is
+ * exercised end to end by the `installer` job in .github/workflows/ci.yml.
  */
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -175,14 +176,26 @@ describeInstaller("scripts/install.sh", () => {
     args: string[],
     env: Record<string, string | undefined> = {},
     home = path.join(work, "home"),
-    opts: { cwd?: string } = {},
+    opts: { cwd?: string; yes?: boolean } = {},
   ) {
-    const res = spawnSync("bash", [INSTALL_SH, "--yes", "--no-onboard", ...args], {
+    const yes = opts.yes === false ? [] : ["--yes"];
+    const res = spawnSync("bash", [INSTALL_SH, ...yes, "--no-onboard", ...args], {
       encoding: "utf8",
       cwd: opts.cwd,
       env: baseEnv(home, env),
     });
     return { status: res.status, out: `${res.stdout}${res.stderr}`, home };
+  }
+
+  /** How many profile lines source ~/.bitterbot/env in `file` (0 when it does not exist). */
+  function envLines(file: string): number {
+    if (!fs.existsSync(file)) {
+      return 0;
+    }
+    return fs
+      .readFileSync(file, "utf8")
+      .split("\n")
+      .filter((l) => l.includes(".bitterbot/env")).length;
   }
 
   /** Async variant, for tests that serve HTTP from this process. */
@@ -403,16 +416,43 @@ describeInstaller("scripts/install.sh", () => {
     expect(res.out).toContain("--version must look like 1.5.0");
   });
 
-  it("refuses to run as root unless --allow-root", () => {
+  it("refuses sudo from a normal user before touching anything; plain root and --allow-root proceed", () => {
     freshReleases();
     publish("1.4.0");
     const bin = fakeBin({ id: 'if [ "$1" = "-u" ]; then echo 0; else exec /usr/bin/id "$@"; fi' });
     const env = { PATH: `${bin}:${process.env.PATH}`, BITTERBOT_INSTALL_TEST_VERIFIER: "none" };
-    const refused = runInstaller([], env, freshHome());
+    const refused = runInstaller([], { ...env, SUDO_USER: "alice" }, freshHome());
     expect(refused.status).not.toBe(0);
-    expect(refused.out).toContain("refusing to install as root");
-    const allowed = runInstaller(["--allow-root"], env, freshHome());
+    expect(refused.out).toContain("you ran this with sudo");
+    expect(refused.out).toContain("again as alice, without sudo");
+    expect(fs.existsSync(path.join(refused.home, ".bitterbot"))).toBe(false);
+    const allowed = runInstaller(["--allow-root"], { ...env, SUDO_USER: "alice" }, freshHome());
     expect(allowed.status, allowed.out).toBe(0);
+    // uid 0 without SUDO_USER: a VPS or a container, where root is the only user.
+    const root = runInstaller([], env, freshHome());
+    expect(root.status, root.out).toBe(0);
+    expect(root.out).not.toContain("sudo");
+  });
+
+  it("refuses WSL 1 with the command that moves the distribution to WSL 2", () => {
+    const bin = fakeBin({
+      uname:
+        'case "$1" in -s) echo Linux ;; -m) echo x86_64 ;; -r) echo 4.4.0-19041-Microsoft ;; *) echo Linux ;; esac',
+    });
+    const res = runInstaller([], { PATH: `${bin}:${process.env.PATH}` }, freshHome());
+    expect(res.status).not.toBe(0);
+    expect(res.out).toContain("this is WSL 1");
+    expect(res.out).toContain("wsl --set-version");
+    const wsl2 = fakeBin({
+      uname:
+        'case "$1" in -s) echo Linux ;; -m) echo x86_64 ;; -r) echo 6.6.87.2-microsoft-standard-WSL2 ;; *) echo Linux ;; esac',
+    });
+    const ok = runInstaller(
+      ["--version", "0.0.1"],
+      { PATH: `${wsl2}:${process.env.PATH}` },
+      freshHome(),
+    );
+    expect(ok.out).not.toContain("WSL 1");
   });
 
   it("refuses musl Linux even though `ldd --version` exits non-zero there", () => {
@@ -453,7 +493,7 @@ describeInstaller("scripts/install.sh", () => {
     expect(link).toBe(path.join(fs.realpathSync(cwd), "rel-app", "current", "bin", "bitterbot"));
   });
 
-  it("announces and replaces a foreign ~/.local/bin/bitterbot link, and warns about an earlier one on PATH", () => {
+  it("announces a foreign ~/.local/bin/bitterbot link, replaces it with --yes, and warns about an earlier one on PATH", () => {
     freshReleases();
     publish("1.4.0");
     const home = freshHome();
@@ -466,11 +506,98 @@ describeInstaller("scripts/install.sh", () => {
       home,
     );
     expect(res.status, res.out).toBe(0);
-    expect(res.out).toContain("(replaces the existing link to /usr/bin/true)");
+    expect(res.out).toContain(
+      "(currently a link to /usr/bin/true; you are asked before it is replaced)",
+    );
+    expect(res.out).toContain("replacing");
     expect(res.out).toContain("another bitterbot comes first on your PATH");
     expect(fs.readlinkSync(path.join(home, ".local", "bin", "bitterbot"))).toContain(
       path.join(".bitterbot", "app", "current", "bin", "bitterbot"),
     );
+  });
+
+  it("without a terminal and without --yes, a foreign link is left alone and the install still completes", () => {
+    freshReleases();
+    publish("1.4.0");
+    const home = freshHome();
+    fs.mkdirSync(path.join(home, ".local", "bin"), { recursive: true });
+    fs.symlinkSync("/usr/bin/true", path.join(home, ".local", "bin", "bitterbot"));
+    const res = runInstaller(["--no-switch"], { BITTERBOT_INSTALL_TEST_VERIFIER: "none" }, home, {
+      yes: false,
+    });
+    expect(res.status, res.out).toBe(0);
+    expect(res.out).toContain("No terminal to ask on: leaving");
+    expect(res.out).toContain("re-run with --yes to replace it");
+    expect(res.out).toContain("still points to /usr/bin/true");
+    expect(fs.readlinkSync(path.join(home, ".local", "bin", "bitterbot"))).toBe("/usr/bin/true");
+    expect(fs.existsSync(path.join(home, ".bitterbot", "app", "1.4.0", "bin", "bitterbot"))).toBe(
+      true,
+    );
+  });
+
+  it("puts ~/.local/bin on PATH for new shells: env files, one guarded line per profile, never twice", () => {
+    freshReleases();
+    publish("1.4.0");
+    const home = freshHome();
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(path.join(home, ".bashrc"), "# mine\n");
+    fs.mkdirSync(path.join(home, ".config", "fish"), { recursive: true });
+    const env = { BITTERBOT_INSTALL_TEST_VERIFIER: "none", SHELL: "/bin/zsh" };
+    const first = runInstaller([], env, home);
+    expect(first.status, first.out).toBe(0);
+    expect(first.out).toContain(`Added ${home}/.local/bin to PATH for new terminals`);
+    expect(first.out).toContain("via ~/.bitterbot/env");
+    expect(first.out).toContain("In this terminal, `bitterbot` works after: . ~/.bitterbot/env");
+    // Created: .profile (always), .zshrc (zsh is the login shell), the fish drop-in.
+    // Appended: the .bashrc that was there. Not created: .bash_profile, .zprofile.
+    expect(envLines(path.join(home, ".profile"))).toBe(1);
+    expect(envLines(path.join(home, ".zshrc"))).toBe(1);
+    expect(envLines(path.join(home, ".bashrc"))).toBe(1);
+    expect(fs.readFileSync(path.join(home, ".bashrc"), "utf8").startsWith("# mine\n")).toBe(true);
+    expect(fs.existsSync(path.join(home, ".bash_profile"))).toBe(false);
+    expect(fs.existsSync(path.join(home, ".zprofile"))).toBe(false);
+    expect(
+      fs.readFileSync(path.join(home, ".config", "fish", "conf.d", "bitterbot.fish"), "utf8"),
+    ).toContain('source "$HOME/.bitterbot/env.fish"');
+    // The profile line is guarded, and the env file itself is idempotent.
+    expect(fs.readFileSync(path.join(home, ".profile"), "utf8")).toContain(
+      'if [ -r "$HOME/.bitterbot/env" ]; then . "$HOME/.bitterbot/env"; fi',
+    );
+    const sh = spawnSync(
+      "sh",
+      [
+        "-c",
+        '. "$HOME/.bitterbot/env"; . "$HOME/.bitterbot/env"; command -v bitterbot; printf "%s" "$PATH"',
+      ],
+      { encoding: "utf8", env: { HOME: home, PATH: "/usr/bin:/bin" } },
+    );
+    expect(sh.stdout).toBe(`${home}/.local/bin/bitterbot\n${home}/.local/bin:/usr/bin:/bin`);
+    // Second run: nothing to add, nothing added.
+    const second = runInstaller([], env, home);
+    expect(second.status, second.out).toBe(0);
+    expect(second.out).not.toContain("Added");
+    expect(envLines(path.join(home, ".profile"))).toBe(1);
+    expect(envLines(path.join(home, ".zshrc"))).toBe(1);
+    expect(envLines(path.join(home, ".bashrc"))).toBe(1);
+    expect(second.out).not.toMatch(/—/);
+  });
+
+  it("--no-modify-path leaves the profiles alone and prints the export line", () => {
+    freshReleases();
+    publish("1.4.0");
+    const home = freshHome();
+    const res = runInstaller(
+      ["--no-modify-path"],
+      { BITTERBOT_INSTALL_TEST_VERIFIER: "none", SHELL: "/bin/zsh" },
+      home,
+    );
+    expect(res.status, res.out).toBe(0);
+    expect(res.out).toContain("PATH:      left alone (--no-modify-path)");
+    expect(res.out).toContain('export PATH="$HOME/.local/bin:$PATH"');
+    expect(res.out).not.toContain("Added");
+    expect(fs.existsSync(path.join(home, ".profile"))).toBe(false);
+    expect(fs.existsSync(path.join(home, ".zshrc"))).toBe(false);
+    expect(fs.existsSync(path.join(home, ".bitterbot", "env"))).toBe(false);
   });
 
   /**
@@ -618,12 +745,16 @@ describeInstaller("scripts/install.sh", () => {
 
   const hasScript = process.platform === "linux" && spawnSync("script", ["--version"]).status === 0;
   (hasScript ? it : it.skip)(
-    "asks 'Proceed? [Y/n]' on the terminal: Enter installs, n aborts",
+    "on a terminal: a fresh machine is asked nothing; a foreign link asks once (Enter replaces, n keeps)",
     () => {
       freshReleases();
       publish("2.0.0");
-      const ask = (input: string) => {
+      const ask = (input: string, foreignLink: boolean) => {
         const home = freshHome();
+        if (foreignLink) {
+          fs.mkdirSync(path.join(home, ".local", "bin"), { recursive: true });
+          fs.symlinkSync("/usr/bin/true", path.join(home, ".local", "bin", "bitterbot"));
+        }
         const res = spawnSync(
           "script",
           ["-qec", `bash ${INSTALL_SH} --no-onboard --no-switch`, "/dev/null"],
@@ -635,12 +766,23 @@ describeInstaller("scripts/install.sh", () => {
         );
         return { out: `${res.stdout}${res.stderr}`, home };
       };
-      const enter = ask("\n");
-      expect(enter.out).toContain("Proceed? [Y/n]");
-      expect(fs.existsSync(path.join(enter.home, ".bitterbot", "app", "2.0.0"))).toBe(true);
-      const no = ask("n\n");
-      expect(no.out).toContain("aborted");
-      expect(fs.existsSync(path.join(no.home, ".bitterbot", "app"))).toBe(false);
+      const fresh = ask("", false);
+      expect(fresh.out).not.toContain("[Y/n]");
+      expect(fresh.out).not.toContain("Proceed");
+      expect(fs.existsSync(path.join(fresh.home, ".bitterbot", "app", "2.0.0"))).toBe(true);
+      const link = (home: string) => fs.readlinkSync(path.join(home, ".local", "bin", "bitterbot"));
+      const enter = ask("\n", true);
+      expect(enter.out).toContain("Replace the existing");
+      expect(enter.out).toContain("[Y/n]");
+      expect(link(enter.home)).toContain(
+        path.join(".bitterbot", "app", "current", "bin", "bitterbot"),
+      );
+      const no = ask("n\n", true);
+      expect(no.out).toContain("Leaving");
+      expect(no.out).toContain("as it is");
+      expect(link(no.home)).toBe("/usr/bin/true");
+      // Declining the link question does not abort the install.
+      expect(fs.existsSync(path.join(no.home, ".bitterbot", "app", "2.0.0"))).toBe(true);
     },
   );
 
