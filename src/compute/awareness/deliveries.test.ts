@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ComputeDeliveryStore, resolveComputeDbPath } from "./deliveries.js";
 
@@ -6,9 +7,10 @@ describe("ComputeDeliveryStore", () => {
   afterEach(() => store?.close());
 
   it("resolves its default path under the state dir, with an env override", () => {
-    expect(resolveComputeDbPath({ HOME: "/home/x" } as NodeJS.ProcessEnv)).toMatch(
-      /\/compute\/deliveries\.sqlite$/,
-    );
+    const resolved = resolveComputeDbPath({ HOME: "/home/x" } as NodeJS.ProcessEnv);
+    // Separator-agnostic: Windows resolves this under a drive letter with backslashes.
+    expect(path.basename(resolved)).toBe("deliveries.sqlite");
+    expect(path.basename(path.dirname(resolved))).toBe("compute");
     expect(
       resolveComputeDbPath({ BITTERBOT_COMPUTE_DB: "/tmp/x.sqlite" } as NodeJS.ProcessEnv),
     ).toBe("/tmp/x.sqlite");
