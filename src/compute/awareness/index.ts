@@ -5,6 +5,8 @@ export {
   type ComputePool,
   type ComputeResult,
   type ComputeSnapshot,
+  type ComputeSubmitRequest,
+  type ComputeSubmitResult,
   type ComputeWorker,
   type ComputeWorkloadKind,
   type SoapboxJobLike,
@@ -34,12 +36,14 @@ export {
   renderComputeStateBlock,
   resetComputeStateForTest,
   resolveComputeStateBlock,
+  resolveComputeStateBlockFromConfig,
   setComputeDeferredCount,
   setComputeInternalJobs,
 } from "./state.js";
 export {
   type ComputeDeliveryRow,
   type ComputeJobOrigin,
+  type ComputeOriginInput,
   type ComputeOriginRow,
   ComputeDeliveryStore,
   resolveComputeDbPath,
@@ -52,3 +56,15 @@ export {
   formatTransition,
   startComputeWatcher,
 } from "./watcher.js";
+export {
+  type ComputeRuntime,
+  getComputeRuntime,
+  registerComputeRuntime,
+  resetComputeRuntimeForTest,
+} from "./runtime.js";
+export {
+  type ComputeTaskLink,
+  COMPUTE_TASK_FALLBACK_WAKEUP_MS,
+  completeComputeTaskLink,
+  linkComputeJobToTask,
+} from "./task-link.js";

@@ -91,6 +91,23 @@ export type ComputeResult = {
   error?: string;
 };
 
+/** PLAN-57 Phase 2: what the agent may submit. Paid modes are not on this surface. */
+export type ComputeSubmitRequest = {
+  mode: { kind: "private"; poolId: string } | { kind: "collective"; projectId: string };
+  workload: ComputeWorkloadKind;
+  inputs: string[];
+  /** Embedding model and digest; required for embeddings. */
+  model?: string;
+  modelDigest?: string;
+  /** Idempotency key so a retried tool call never submits twice. */
+  idempotencyKey: string;
+};
+
+export type ComputeSubmitResult = {
+  id: string;
+  status: string;
+};
+
 export type ComputeBackend = {
   /** Current view. Implementations should serve a cached snapshot; the tool never polls. */
   snapshot(): Promise<ComputeSnapshot>;
@@ -98,6 +115,9 @@ export type ComputeBackend = {
   jobs(opts?: { limit?: number; status?: string }): Promise<ComputeJobSummary[]>;
   job(id: string): Promise<ComputeJobSummary | null>;
   result(id: string): Promise<ComputeResult | null>;
+  /** Optional: backends that cannot submit leave these out and the tool stays read-only. */
+  submit?(req: ComputeSubmitRequest): Promise<ComputeSubmitResult>;
+  cancel?(id: string): Promise<{ ok: boolean; status?: string; error?: string }>;
 };
 
 let registered: ComputeBackend | null = null;

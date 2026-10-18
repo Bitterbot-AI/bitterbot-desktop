@@ -128,6 +128,41 @@ What never wakes the agent: worker or GPU count changes, credit changes,
 progress, queue depth, and anything started by the memory system for its own
 use (those jobs are recorded with origin `internal`).
 
+## Starting work from the agent
+
+On an owner turn, and only when the node's backend supports it, the tool
+also offers:
+
+| action   | what it does                                                                                                                                                                                                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `submit` | run a batch on a `private` pool or a `collective` project: `mode`, `scope` (pool or project id), `workload`, `inputs` (1 to 128 strings, 256 KiB total), and for embeddings `model` and `model_digest`. Optional `task_id` links the job to a long-horizon task; optional `reason` is recorded on it. Returns the job id. |
+| `cancel` | cancel a job this agent started. `job_id`. Jobs started by the owner or by the memory system cannot be cancelled from here.                                                                                                                                                                                               |
+
+Rules the code enforces, not the prompt:
+
+- Non-owner turns get a refusal before anything reaches the coordinator.
+- `paid` and `paid_usdc` are rejected. The agent can quote a paid job with
+  `estimate`; only the owner submits and funds paid work.
+- Inputs are validated gateway-side (count, size, embedding model present)
+  before the coordinator sees them; the coordinator's limits are the second
+  line.
+- Every agent-started job is recorded with origin `agent` and the session it
+  came from, so its completion is delivered back to that session.
+- A retried tool call cannot submit twice: the idempotency key is derived
+  from the tool call id.
+
+When `task_id` is given, the task moves to `waiting_external`, the job is
+recorded under `metadata.computeJobs`, and a fallback cron wakeup is
+scheduled twelve minutes out (jobs expire after ten) with the same payload
+`task_schedule_wakeup` uses. When the job finishes, the watcher records the
+outcome on the task and pulls that wakeup forward to now, so the task resumes
+through the normal PLAN-16 path (isolated session, latest handoff) as soon
+as the completion lands. If the task store is not active, `submit` still
+succeeds and says the link failed rather than pretending.
+
+Oversized results (`result` above 20,000 characters) are written to
+`<workspace>/compute/<job id>.json` (mode 0600) and the path is returned.
+
 ## What the agent can never do
 
 There is no action that funds, approves or signs anything. Funding a paid
@@ -154,4 +189,8 @@ To get the state block and completion delivery, also:
   agent-started jobs, `"internal"` for anything the node does for itself.
   Jobs with no recorded origin are shown in `status` but never delivered,
   because the watcher cannot tell whose they are;
-- call `watcher.kick()` after a submit so polling resumes at once.
+- call `watcher.kick()` after a submit so polling resumes at once;
+- to let the agent submit and cancel, implement `submit(req)` and
+  `cancel(id)` on the backend (private and collective modes only; the tool
+  never sends paid modes) and call `registerComputeRuntime({ store, watcher })`.
+  Without both, the tool stays read-only.

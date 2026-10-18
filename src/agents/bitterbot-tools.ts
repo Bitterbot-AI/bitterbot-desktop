@@ -343,7 +343,12 @@ export function createBitterbotTools(options?: {
     tools.push(purchaseTool);
   }
   // PLAN-57: present only when a compute backend (the Soapbox plugin) is loaded.
-  const computeTool = createComputeTool({ config: options?.config });
+  const computeTool = createComputeTool({
+    config: options?.config,
+    senderIsOwner: options?.senderIsOwner === true,
+    agentSessionKey: options?.agentSessionKey,
+    workspaceDir,
+  });
   if (computeTool) {
     tools.push(computeTool);
   }
