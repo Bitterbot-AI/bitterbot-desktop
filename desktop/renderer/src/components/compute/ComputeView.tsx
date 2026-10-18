@@ -10,6 +10,7 @@ import { ComputeSetup } from "./ComputeSetup";
 import { ComputeWalletPanel } from "./ComputeWalletPanel";
 import { MeshPanel } from "./MeshPanel";
 import { PaymentPanel } from "./PaymentPanel";
+import { SoapboxLogo } from "./SoapboxLogo";
 import { WorkerPanel } from "./WorkerPanel";
 
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
@@ -199,14 +200,17 @@ export function ComputeView() {
 
   return (
     <div className="h-full overflow-auto p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Soapbox Compute</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="flex flex-wrap items-center gap-3 text-xl font-semibold">
+            <SoapboxLogo />
+            <span>Compute</span>
+          </h1>
+          <p className="text-sm text-muted-foreground mt-3">
             Run work on resources shared by participating operators.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button className={button} disabled={!connected} onClick={() => setSetupOpen(true)}>
             Set up buyer or operator
           </button>

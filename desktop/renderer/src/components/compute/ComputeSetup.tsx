@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SoapboxSetupStatus } from "../../../../../src/infra/soapbox-setup-types";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { SoapboxLogo } from "./SoapboxLogo";
 
 const button = "rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-40";
 const field = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm";
@@ -104,8 +105,11 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
 
   return (
     <section aria-label="Compute setup" className="rounded-xl border border-border p-5 space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <h2 className="font-semibold">Set up this device</h2>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <SoapboxLogo compact />
+          <h2 className="font-semibold">Set up this device</h2>
+        </div>
         <button className="text-sm underline" disabled={busy} onClick={onClose}>
           Close setup
         </button>
