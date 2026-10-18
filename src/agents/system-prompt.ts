@@ -248,6 +248,27 @@ function buildWalletSection(params: { isMinimal: boolean; availableTools: Set<st
   ];
 }
 
+/**
+ * PLAN-57 §4.2: capability awareness for compute pools. Static by design:
+ * this sits above the cache boundary, so it names what pools are and how to
+ * ask, never a number. Live state belongs to the `compute` tool now and to
+ * the `<compute-state>` tail block in Phase 1.
+ */
+function buildComputeSection(params: { isMinimal: boolean; availableTools: Set<string> }) {
+  if (params.isMinimal) {
+    return [];
+  }
+  if (!params.availableTools.has("compute")) {
+    return [];
+  }
+  return [
+    "## Compute Pools",
+    "This node can run batches of work (sha256 batches, text embeddings on a pinned model) on compute pools: its own machine, private pools of machines the owner trusts, and collective pools shared with a group. `compute` actions: status (pools, workers, credits, jobs in flight), jobs, job, result, estimate (where a batch would run, how long, what it costs, and the local alternative).",
+    "Rules: call `compute` status or estimate before saying what compute is available; never guess counts. State each result's verification level (recomputed, shape_only_trusted_worker, redundant); shape-checked results come from trusted workers, not proofs. Personal and confidential memory never leaves this machine. You may quote a paid job; only the owner funds it, and a paid job waits at awaiting_payment until they do.",
+    "",
+  ];
+}
+
 function buildVoiceSection(params: { isMinimal: boolean; ttsHint?: string }) {
   if (params.isMinimal) {
     return [];
@@ -659,6 +680,10 @@ export function buildAgentSystemPrompt(params: {
     ...buildFactsAndSourcesSection({ isMinimal, availableTools }),
     ...safetySection,
     ...buildWalletSection({
+      isMinimal,
+      availableTools,
+    }),
+    ...buildComputeSection({
       isMinimal,
       availableTools,
     }),

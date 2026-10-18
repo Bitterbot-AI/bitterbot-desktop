@@ -12,6 +12,7 @@ import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCirclesTool } from "./tools/circles-tool.js";
 import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
 import { type AnyAgentTool, jsonResult } from "./tools/common.js";
+import { createComputeTool } from "./tools/compute-tool.js";
 import { createComputerUseTool } from "./tools/computer-use-tool.js";
 import { createCronTool } from "./tools/cron-tool.js";
 import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
@@ -340,6 +341,11 @@ export function createBitterbotTools(options?: {
   });
   if (purchaseTool) {
     tools.push(purchaseTool);
+  }
+  // PLAN-57: present only when a compute backend (the Soapbox plugin) is loaded.
+  const computeTool = createComputeTool({ config: options?.config });
+  if (computeTool) {
+    tools.push(computeTool);
   }
   const shopTool = createShopTool({ config: options?.config });
   if (shopTool) {

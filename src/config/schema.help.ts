@@ -155,6 +155,8 @@ export const FIELD_HELP: Record<string, string> = {
     "The public agent profile stores fetch to identify this agent. Defaults to the profile published in the Bitterbot repository.",
   "monitors.enabled":
     "Run monitors: watches on a page or API that are checked with a plain fetch and wake the agent only when something changes (default: true).",
+  "compute.enabled":
+    "Give the agent the `compute` tool and a short prompt section about compute pools (default: true). It only takes effect when the Soapbox compute plugin is loaded, and the agent can never fund a paid job itself.",
   "notifications.owner.channel":
     "Channel to push gateway notices to (a failed or turned-off scheduled job, a stranded task). Without it, notices go where the heartbeat would deliver. Every notice is also kept in the main session.",
   "notifications.owner.to": "Recipient on that channel for gateway notices.",

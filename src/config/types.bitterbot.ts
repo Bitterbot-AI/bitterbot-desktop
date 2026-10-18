@@ -7,6 +7,7 @@ import type { BrowserConfig } from "./types.browser.js";
 import type { ChannelsConfig } from "./types.channels.js";
 import type { CirclesConfig } from "./types.circles.js";
 import type { CommerceConfig } from "./types.commerce.js";
+import type { ComputeConfig } from "./types.compute.js";
 import type { CronConfig } from "./types.cron.js";
 import type {
   CanvasHostConfig,
@@ -183,6 +184,8 @@ export type BitterbotConfig = {
   review?: ReviewConfig;
   /** Monitors: watch a page or API and wake the agent on change. Default: on. */
   monitors?: { enabled?: boolean };
+  /** PLAN-57: the agent-facing compute surface (the `compute` tool). Default: on. */
+  compute?: ComputeConfig;
   /**
    * Shopping on stores that support agent shopping (Shopify UCP): search,
    * carts, and a checkout link for the owner. Default: on.
