@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.8.0...v1.9.0) (2026-10-18)
+
+
+### Features
+
+* **compute:** PLAN-57 Phase 0, the read-only `compute` tool and its prompt section ([#268](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/268)) ([d989031](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d9890310e5a14c6467c33dd4724b2ed1aabb89e0))
+
 ## [1.8.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.7.0...v1.8.0) (2026-10-17)
 
 
