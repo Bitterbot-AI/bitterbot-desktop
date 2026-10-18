@@ -14,6 +14,9 @@
 
 export type ComputeWorkloadKind = "sha256" | "embeddings";
 
+/** Inputs per submitted job; the coordinator enforces the same cap. */
+export const COMPUTE_MAX_INPUTS = 128;
+
 export type ComputeWorker = {
   id: string;
   online: boolean;

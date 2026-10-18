@@ -31,6 +31,8 @@ bitterbot memory search "release checklist"
 bitterbot memory status --agent main
 bitterbot memory index --agent main --verbose
 bitterbot memory backfill-embeddings --agent main
+bitterbot memory migrate-embeddings
+bitterbot memory migrate-embeddings --yes
 bitterbot memory forget fact_0f3c... --preview
 bitterbot memory forget fact_0f3c... --yes
 bitterbot memory edit fact_0f3c... "The deploy endpoint is api2.acme.com." --yes
@@ -54,6 +56,7 @@ Notes:
 - `memory status --deep --index` runs a reindex if the store is dirty.
 - `memory index --verbose` prints per-phase details (provider, model, sources, batch activity).
 - `memory status` includes any extra paths configured via `memorySearch.extraPaths`.
+- `memory migrate-embeddings` rebuilds the index under the current embedding profile after a change the index cannot absorb silently: the model's weights changed under the same name (an Ollama tag pulled again, a GGUF replaced), its dimensions changed, or the chunker changed. Until then the index is on hold (no new vectors, vector search paused, keyword search working). Without `--yes` it prints the conflict and changes nothing; `--json` prints the plan. See [compute](/tools/compute#when-the-model-changes).
 - `memory backfill-embeddings` embeds and indexes crystals stored with placeholder embeddings (extracted facts, scratch notes, handover briefs) so they become searchable through both vector and keyword channels. The gateway also runs this automatically (bounded) at the end of each sync cycle; the command exists to clear a large backlog on demand. Use `--limit <n>` to cap chunks embedded per batch.
 
 ## Owner controls

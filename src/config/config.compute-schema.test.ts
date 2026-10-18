@@ -22,8 +22,41 @@ describe("compute config (PLAN-57)", () => {
     expect(validateConfigObject({}).ok).toBe(true);
   });
 
+  it("accepts the Phase 3 keys: pool trust, embedding routing and the egress class", () => {
+    const res = validateConfigObject({
+      compute: {
+        pools: { lab: { trust: "trusted" }, proj: {} },
+        embeddings: {
+          provider: "pool",
+          marginMs: 250,
+          cooldownMs: 60_000,
+          timeoutMs: 30_000,
+          modelDigest: "sha256:abcdef0123",
+        },
+        egress: { transcriptsDefaultClass: "normal" },
+      },
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.config.compute?.pools?.lab?.trust).toBe("trusted");
+      expect(res.config.compute?.embeddings?.provider).toBe("pool");
+    }
+    expect(validateConfigObject({ compute: { pools: { lab: { trust: "local" } } } }).ok).toBe(
+      false,
+    );
+    expect(validateConfigObject({ compute: { embeddings: { provider: "remote" } } }).ok).toBe(
+      false,
+    );
+    expect(
+      validateConfigObject({ compute: { egress: { transcriptsDefaultClass: "secret" } } }).ok,
+    ).toBe(false);
+    expect(FIELD_DEFAULTS["compute.embeddings.provider"]).toBe("pool");
+    expect(FIELD_DEFAULTS["compute.egress.transcriptsDefaultClass"]).toBe("personal");
+    expect(FIELD_LABELS["compute.embeddings.provider"]).toBe("Compute: Embedding Routing");
+  });
+
   it("rejects unknown keys and out-of-range budgets (keys land with the code that reads them)", () => {
-    expect(validateConfigObject({ compute: { embeddings: { provider: "pool" } } }).ok).toBe(false);
+    expect(validateConfigObject({ compute: { paid: { enabled: true } } }).ok).toBe(false);
     expect(validateConfigObject({ compute: { awareness: { maxTokens: 10 } } }).ok).toBe(false);
     expect(validateConfigObject({ compute: { awareness: { wakeBudgetPerHour: -1 } } }).ok).toBe(
       false,

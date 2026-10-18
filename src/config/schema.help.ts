@@ -165,6 +165,18 @@ export const FIELD_HELP: Record<string, string> = {
     "When available compute credits fall below this, the state block says so (default 10).",
   "compute.awareness.wakeBudgetPerHour":
     "How many times per hour a finished compute job may wake the agent (default 20). Over the budget, completions are queued and shown as waiting; none are lost.",
+  "compute.embeddings.provider":
+    "Where memory embedding batches may run (default: pool). A pool worker is used only when its pinned model digest, dimensions and processing rules equal the local embedding profile and the content's governance class allows that pool; everything else runs locally. `local` turns pool routing off. Queries always run locally.",
+  "compute.embeddings.marginMs":
+    "A pool worker must be estimated faster than local by at least this many milliseconds to be chosen (default 500). Estimates come from measured batches, never from a model.",
+  "compute.embeddings.cooldownMs":
+    "After a timeout, a digest or dimension mismatch, or a policy violation, the worker is skipped for this long (default 300000, five minutes).",
+  "compute.embeddings.timeoutMs":
+    "A pool batch that has not finished within this many milliseconds is cancelled and run locally instead (default 60000).",
+  "compute.embeddings.modelDigest":
+    "Override the local embedding model digest used for pool parity checks. Only for providers that cannot report one; a wrong value makes the pool produce vectors that are never written, not corrupt ones.",
+  "compute.egress.transcriptsDefaultClass":
+    "Governance class for session transcript chunks that carry no higher tag (default: personal, which keeps them on this machine or trusted pools). `normal` allows untrusted pools; `confidential` keeps them local.",
   "notifications.owner.channel":
     "Channel to push gateway notices to (a failed or turned-off scheduled job, a stranded task). Without it, notices go where the heartbeat would deliver. Every notice is also kept in the main session.",
   "notifications.owner.to": "Recipient on that channel for gateway notices.",

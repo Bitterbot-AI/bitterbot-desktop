@@ -11,6 +11,12 @@ import { recordUsage } from "../infra/usage-ledger.js";
 export type EmbedCallOptions = {
   /** Ledger attribution, e.g. "memory/search". Defaults to "memory/embeddings". */
   feature?: string;
+  /**
+   * PLAN-57 §4.6: governance class per input, aligned with `texts`. The pool
+   * provider routes each class under its own egress ceiling; inputs without
+   * a class are treated as `personal`. Other providers ignore it.
+   */
+  classes?: ReadonlyArray<"normal" | "personal" | "confidential">;
 };
 
 const LOCAL_HOST_RE =

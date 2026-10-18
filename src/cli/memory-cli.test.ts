@@ -567,3 +567,39 @@ describe("memory cli owner controls (PLAN-55 Phase 3)", () => {
     expect(process.exitCode).toBe(1);
   });
 });
+
+describe("memory migrate-embeddings", () => {
+  it("shows the hold and changes nothing without --yes, then migrates with --yes", async () => {
+    const { registerMemoryCli } = await import("./memory-cli.js");
+    const { defaultRuntime } = await import("../runtime.js");
+    const migrate = vi.fn(async () => {});
+    let held = true;
+    const manager = {
+      sync: vi.fn(async () => {}),
+      status: () => ({ provider: "local", chunks: 12 }),
+      embeddingMigrationPlan: () => ({
+        hold: held ? { conflicts: ["model digest aaaa -> bbbb"], stored: {} } : null,
+        current: { provider: "local", model: "m", modelDigest: "sha256:bbbb", dimensions: 3 },
+      }),
+      migrateEmbeddingProfile: migrate.mockImplementation(async () => {
+        held = false;
+      }),
+      close: vi.fn(async () => {}),
+    };
+    getMemorySearchManager.mockResolvedValue({ manager });
+    const log = vi.spyOn(defaultRuntime, "log").mockImplementation(() => {});
+    const program = new Command();
+    program.name("test");
+    registerMemoryCli(program);
+    await program.parseAsync(["memory", "migrate-embeddings"], { from: "user" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("model digest aaaa -> bbbb"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Re-run with --yes"));
+    expect(migrate).not.toHaveBeenCalled();
+    await program.parseAsync(["memory", "migrate-embeddings", "--yes"], { from: "user" });
+    expect(migrate).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Embedding migration complete"));
+    log.mockClear();
+    await program.parseAsync(["memory", "migrate-embeddings"], { from: "user" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Nothing to migrate"));
+  });
+});

@@ -11,10 +11,10 @@ title: "compute"
 
 The `compute` tool is how the agent knows that this node can run batches of
 work on compute pools, and what those pools are doing right now. It is the
-first piece of PLAN-57 (compute awareness). This release ships the
-read-only half: the agent can look, estimate and report. Submitting work
-from the agent and the live state block in the prompt tail follow in later
-releases.
+agent-facing half of PLAN-57 (compute awareness): the agent can look,
+estimate, report, start work and be told when it finishes. The node-facing
+half, memory embeddings routed to a pool under an egress policy, is described
+at the end of this page.
 
 ## When the tool exists
 
@@ -163,6 +163,82 @@ succeeds and says the link failed rather than pretending.
 Oversized results (`result` above 20,000 characters) are written to
 `<workspace>/compute/<job id>.json` (mode 0600) and the path is returned.
 
+## Embeddings on the pool
+
+The node's own memory system is the daily consumer of compute: every chunk it
+indexes is embedded. With `compute.embeddings.provider: pool` (the default)
+an embedding batch may run on a pool worker instead of this machine, under
+three rules the code enforces. None of them is a prompt instruction, and the
+agent cannot change any of them.
+
+**Same computation, or nothing.** Every memory index is written under an
+embedding profile: provider, model, the model's content digest, dimensions,
+normalisation, truncation and chunking rules. The profile is stored on the
+index and compared on every sync. A pool worker is eligible only when its
+pinned model digest equals the local one, and the result it returns is
+checked again on receipt: vector count, digest, dimensions and the worker's
+reported processing rules. Any mismatch puts that worker in cooldown
+(`compute.embeddings.cooldownMs`, default five minutes), runs the batch
+locally, and writes a ledger row saying why. There is never a per-batch mix.
+
+In practice this means pool embeddings work when the node embeds through a
+local Ollama (an OpenAI-compatible `remote.baseUrl` on localhost) and the pool
+workers pin the same Ollama model; the digest is read from Ollama's manifest.
+A node on the bundled GGUF model hashes that file as its digest, which no
+Ollama worker matches, so its batches stay local by construction. Remote APIs
+report no digest and never route.
+
+**Egress by governance class.** Each pool carries the owner's trust level:
+`local` (this machine), `trusted` (set with `compute.pools.<id>.trust:
+trusted`), or `untrusted` (the default for every other pool, including
+collectives). Each input carries the same governance class the memory row
+gets, raised by what the text says:
+
+| class          | may run on                    |
+| -------------- | ----------------------------- |
+| `confidential` | this machine only             |
+| `personal`     | this machine or trusted pools |
+| `normal`       | any pool                      |
+
+Session transcripts are `personal` unless `compute.egress.transcriptsDefaultClass`
+says otherwise, so they stay on this machine or on machines you trust. A batch
+is split by class and each part is routed under its own ceiling. Inputs with
+no known class count as `personal`. Queries always run locally.
+
+**Nothing waits on the pool.** Routing is deterministic: among eligible,
+permitted workers not in cooldown, the pool is chosen when a GPU worker's
+measured estimate beats the local estimate by `compute.embeddings.marginMs`
+(default 500). Until local has one measured batch, nothing routes. A pool
+batch that exceeds `compute.embeddings.timeoutMs` (default 60 s) is cancelled
+and run locally. Pool jobs are recorded with origin `internal`: they never
+appear in the state block and never wake the agent, except once after ten
+consecutive fallbacks, when the block says local embedding is in effect.
+
+Every routed sub-batch lands in the compute ledger
+(`~/.bitterbot/compute/deliveries.sqlite`, table `compute_embedding_batches`):
+route, pool, worker, trust, class, items, profile, job id, duration, and the
+fallback reason. `bitterbot doctor` summarises the last week under "Compute
+embeddings": a policy violation row is an error (the guard ran the batch
+locally, but the router disagreed with the policy); mismatch cooldowns and a
+high fallback share are warnings.
+
+### When the model changes
+
+A provider or model change is handled as before: the index is rebuilt
+automatically under the new model. A change under the same model name (an
+Ollama tag pulled again with new weights, a GGUF replaced in place, a chunker
+change) is different: the index goes on hold. No new vector is written,
+vector search is paused (keyword search keeps working), `bitterbot memory
+status` shows the conflict, and the log says so once. Rebuild with:
+
+```bash
+bitterbot memory migrate-embeddings          # shows what changed, changes nothing
+bitterbot memory migrate-embeddings --yes    # rebuilds under the new profile
+```
+
+`bitterbot memory index --force` does the same rebuild. Both re-embed every
+chunk, so on a large index expect the same time a first index took.
+
 ## What the agent can never do
 
 There is no action that funds, approves or signs anything. Funding a paid
@@ -193,4 +269,11 @@ To get the state block and completion delivery, also:
 - to let the agent submit and cancel, implement `submit(req)` and
   `cancel(id)` on the backend (private and collective modes only; the tool
   never sends paid modes) and call `registerComputeRuntime({ store, watcher })`.
-  Without both, the tool stays read-only.
+  Without both, the tool stays read-only;
+- for pool embeddings, `result(id)` of an embeddings job must return the
+  Soapbox shape unchanged: `{ embeddings: number[][], execution: { model,
+  model_digest, dimensions, ... } }`. The memory system verifies the digest
+  and dimensions from `execution` before writing anything; a worker that
+  also reports `truncate` and `normalize` is checked on those too. Report
+  pool trust through `snapshotFromSoapboxStatus(status, { poolTrust })` with
+  `resolvePoolTrust(config, poolId)` so the tool and the router agree.

@@ -34,6 +34,13 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "compute.enabled": true,
   // src/compute/awareness/state.ts (resolveComputeStateBlockFromConfig): only `=== false` disables the block.
   "compute.awareness.stateBlock": true,
+  // src/memory/embeddings-pool.ts (createPoolEmbeddingProvider): "local" turns routing off; anything else routes.
+  "compute.embeddings.provider": "pool",
+  "compute.embeddings.marginMs": 500,
+  "compute.embeddings.cooldownMs": 300_000,
+  "compute.embeddings.timeoutMs": 60_000,
+  // src/compute/awareness/egress.ts (classifyForEgress).
+  "compute.egress.transcriptsDefaultClass": "personal",
   // src/agents/tools/browser-tool.ts:251 — `!== false`.
   "browser.replay.enabled": true,
   // src/agents/tools/browser-tool.ts:429 and src/gateway/server-methods/browser-live.ts:32 — `=== false` turns it off.

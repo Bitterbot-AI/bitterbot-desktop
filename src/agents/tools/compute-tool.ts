@@ -28,6 +28,7 @@ import {
   getComputeBackend,
   getComputeRuntime,
   linkComputeJobToTask,
+  COMPUTE_MAX_INPUTS,
 } from "../../compute/awareness/index.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import { stringEnum } from "../schema/typebox.js";
@@ -47,7 +48,7 @@ const WORKLOADS: readonly ComputeWorkloadKind[] = ["sha256", "embeddings"];
 /** Results larger than this are written to the workspace instead of inlined. */
 export const COMPUTE_RESULT_MAX_CHARS = 20_000;
 /** Same bounds as the coordinator: 1..128 inputs, 256 KiB total. */
-export const COMPUTE_MAX_INPUTS = 128;
+export { COMPUTE_MAX_INPUTS };
 export const COMPUTE_MAX_INPUT_BYTES = 256 * 1024;
 
 // Flattened schema (not a union): Claude on Vertex rejects nested anyOf.

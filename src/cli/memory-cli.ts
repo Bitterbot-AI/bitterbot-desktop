@@ -432,6 +432,26 @@ export async function runMemoryStatus(opts: MemoryCommandOptions) {
       if (status.vector.dims) {
         lines.push(`${label("Vector dims")} ${info(String(status.vector.dims))}`);
       }
+      if (status.embeddingProfile) {
+        const p = status.embeddingProfile;
+        lines.push(
+          `${label("Embedding profile")} ${info(
+            [
+              p.modelDigest ? p.modelDigest.slice(0, 19) : "no digest",
+              p.dimensions ? `${p.dimensions} dims` : "dims unknown",
+              p.normalise,
+              `routing ${status.computeRouting ?? "local"}`,
+            ].join(", "),
+          )}`,
+        );
+      }
+      if (status.embeddingHold) {
+        lines.push(
+          `${label("Embedding hold")} ${warn(
+            `${status.embeddingHold.conflicts.join("; ")}. Run: bitterbot memory migrate-embeddings`,
+          )}`,
+        );
+      }
       if (status.vector.extensionPath) {
         lines.push(`${label("Vector path")} ${info(shortenHomePath(status.vector.extensionPath))}`);
       }
@@ -997,6 +1017,114 @@ export function registerMemoryCli(program: Command) {
             } catch (err) {
               const message = formatErrorMessage(err);
               defaultRuntime.error(`Memory index failed (${agentId}): ${message}`);
+              process.exitCode = 1;
+            }
+          },
+        });
+      }
+    });
+
+  memory
+    .command("migrate-embeddings")
+    .description(
+      "Rebuild the index under the current embedding profile (after a model digest, dimension or chunker change)",
+    )
+    .option("--agent <id>", "Agent id (default: default agent)")
+    .option("--yes", "Rebuild without asking", false)
+    .option("--json", "Print JSON")
+    .action(async (opts: { agent?: string; yes?: boolean; json?: boolean }) => {
+      const cfg = loadConfig();
+      const agentIds = resolveAgentIds(cfg, opts.agent);
+      for (const agentId of agentIds) {
+        await withManager<MemoryManager>({
+          getManager: () => getMemorySearchManager({ cfg, agentId }),
+          onMissing: (error) => defaultRuntime.log(error ?? "Memory search disabled."),
+          onCloseError: (err) =>
+            defaultRuntime.error(`Memory manager close failed: ${formatErrorMessage(err)}`),
+          close: async (manager) => {
+            await manager.close?.();
+          },
+          run: async (manager) => {
+            if (!manager.embeddingMigrationPlan || !manager.migrateEmbeddingProfile) {
+              defaultRuntime.log("Memory backend does not support embedding migration.");
+              return;
+            }
+            // A sync resolves the live profile and detects the hold without writing anything while held.
+            try {
+              await manager.sync?.({ reason: "migrate-embeddings-plan" });
+            } catch (err) {
+              defaultRuntime.error(`Could not read the index: ${formatErrorMessage(err)}`);
+              process.exitCode = 1;
+              return;
+            }
+            const plan = manager.embeddingMigrationPlan();
+            const status = manager.status();
+            if (opts.json && !opts.yes) {
+              defaultRuntime.log(JSON.stringify({ agentId, plan, chunks: status.chunks }, null, 2));
+              return;
+            }
+            if (!plan.hold) {
+              const current = plan.current;
+              const describe = current
+                ? [
+                    `${current.provider}/${current.model}`,
+                    current.modelDigest ? current.modelDigest.slice(0, 19) : null,
+                    current.dimensions ? `${current.dimensions} dims` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", ")
+                : null;
+              defaultRuntime.log(
+                `Nothing to migrate (${agentId}): the index already carries the live embedding profile${describe ? ` (${describe})` : ""}.`,
+              );
+              if (!opts.yes) {
+                return;
+              }
+              defaultRuntime.log("--yes given: rebuilding anyway.");
+            } else {
+              defaultRuntime.log(
+                [
+                  `Embedding profile changed under the same model (${agentId}):`,
+                  ...plan.hold.conflicts.map((c) => `  - ${c}`),
+                  `The index is on hold: no new vectors are written and vector search is paused.`,
+                  `Migration rebuilds the index (${status.chunks ?? 0} chunks re-embedded) under the new profile; the old index serves until the swap.`,
+                ].join("\n"),
+              );
+              if (!opts.yes) {
+                defaultRuntime.log("Nothing changed. Re-run with --yes to migrate.");
+                return;
+              }
+            }
+            const startedAt = Date.now();
+            try {
+              await withProgressTotals(
+                { label: "Migrating embeddings…", total: 0 },
+                async (update) => {
+                  await manager.migrateEmbeddingProfile!({
+                    progress: (u) =>
+                      update({
+                        completed: u.completed,
+                        total: u.total,
+                        label: u.label ?? "Migrating embeddings…",
+                      }),
+                  });
+                },
+              );
+              const after = manager.embeddingMigrationPlan();
+              const seconds = Math.round((Date.now() - startedAt) / 1000);
+              defaultRuntime.log(
+                opts.json
+                  ? JSON.stringify(
+                      { agentId, migrated: true, seconds, profile: after.current },
+                      null,
+                      2,
+                    )
+                  : `Embedding migration complete (${agentId}) in ${seconds}s.`,
+              );
+            } catch (err) {
+              defaultRuntime.error(
+                `Embedding migration failed (${agentId}): ${formatErrorMessage(err)}`,
+              );
               process.exitCode = 1;
             }
           },
