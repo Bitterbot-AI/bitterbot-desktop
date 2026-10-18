@@ -22,7 +22,8 @@
  * grammy/twitter-api-v2 dead-weight.
  */
 import { build } from "esbuild";
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import process from "node:process";
 
@@ -192,9 +193,14 @@ if (inlinedSqliteVec.length > 0) {
 // level require.resolve("@mariozechner/jiti") doesn't find it. esbuild already
 // resolved the path via its own walker — pull it back out of the metafile so
 // we don't duplicate resolution logic or hard-code the pnpm hash.
-const babelInput = Object.keys(result.metafile.inputs).find((p) =>
-  p.endsWith("jiti/dist/babel.cjs"),
-);
+let babelInput = Object.keys(result.metafile.inputs).find((p) => p.endsWith("jiti/dist/babel.cjs"));
+// Some supported release versions load jiti dynamically, so its transformer is
+// absent from esbuild's input graph. Resolve the installed package in that case.
+if (!babelInput) {
+  const require = createRequire(resolve("package.json"));
+  const candidate = resolve(dirname(require.resolve("jiti")), "../dist/babel.cjs");
+  if (existsSync(candidate)) babelInput = candidate;
+}
 if (!babelInput) {
   console.error("[build-gateway-entry] could not locate jiti/dist/babel.cjs in metafile");
   process.exit(1);

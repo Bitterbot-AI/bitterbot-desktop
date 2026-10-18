@@ -17,10 +17,10 @@ import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 import { soapboxOperatorEnvironment } from "../infra/soapbox-connection.js";
 
 export const SOAPBOX_SETUP_RELEASE = {
-  url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.4",
-  filename: "soapbox-runtime-0.3.0-rc.3-linux-x64.tar.gz",
-  bytes: 4297661,
-  sha256: "2bcabeeb13ca212ecaf9af0e2860b30d53f3a4b13f1956fb962bf0ebf2936190",
+  url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.5",
+  filename: "soapbox-runtime-0.3.0-rc.5-linux-x64.tar.gz",
+  bytes: 4319991,
+  sha256: "23da212a0b72ab497a3503c327d70009d986271a59cc1dbdc02d11c565589be2",
 };
 
 /** Fresh operator profiles do not have the wallet-created shared runtime directory. */
@@ -88,8 +88,8 @@ export class SoapboxSetupRuntime {
       directory = path.join(this.root, id);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const space = await statfs(directory);
-    if (space.bavail * space.bsize < 3 * 1024 ** 3)
-      throw new Error("At least 3 GB of free disk space is required");
+    if (space.bavail * space.bsize < 4 * 1024 ** 3)
+      throw new Error("At least 4 GiB of free disk space is required");
     this.ready = undefined;
     this.upload = { id, directory, offset: 0, expires: Date.now() + 600000 };
     this.progress = { state: "uploading", message: "Receiving approved runtime", percent: 0 };
@@ -165,6 +165,8 @@ export class SoapboxSetupRuntime {
       this.run(cmd, args, signal, timeout);
     if ((await run("docker", ["info", "--format", "{{.SwapLimit}}"], 30000)) !== "true")
       throw new Error("Docker must enforce swap limits");
+    if ((await run("docker", ["info", "--format", "{{.CgroupVersion}}"], 30000)) !== "2")
+      throw new Error("Docker requires cgroup v2 for resource isolation");
     await run(
       existsSync("/usr/lib/wsl/lib/nvidia-smi") ? "/usr/lib/wsl/lib/nvidia-smi" : "nvidia-smi",
       ["--query-gpu=name", "--format=csv,noheader"],
@@ -250,7 +252,7 @@ export class SoapboxSetupRuntime {
         modes: ["paid"],
         pools: [],
         projects: [],
-        memory_mib: 1024,
+        memory_mib: 2048,
         ollama_model: "all-minilm:latest",
         ollama_digest: "1b226e2802dbb772b5fc32a58f103ca1804ef7501331012de126ab22f67475ef",
         max_gpu_temperature_c: 80,
@@ -277,5 +279,10 @@ export class SoapboxSetupRuntime {
   async stop(): Promise<void> {
     this.controller?.abort();
     await this.task;
+  }
+
+  async waitUntilReady(): Promise<void> {
+    await this.task;
+    if (!this.ready || this.progress.state !== "ready") throw new Error(this.progress.message);
   }
 }

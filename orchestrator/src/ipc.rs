@@ -97,6 +97,11 @@ pub enum IpcCommand {
         id: String,
         respond: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
+    SignComputeDescriptor {
+        id: String,
+        descriptor: String,
+        respond: tokio::sync::oneshot::Sender<serde_json::Value>,
+    },
     ComputeEigenTrust {
         id: String,
         payload: EigenTrustPayload,
@@ -422,6 +427,11 @@ async fn handle_client_line(
         },
         "get_identity" => IpcCommand::GetIdentity {
             id: msg.id,
+            respond: resp_tx,
+        },
+        "sign_compute_descriptor" => IpcCommand::SignComputeDescriptor {
+            id: msg.id,
+            descriptor: msg.payload.get("descriptor").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             respond: resp_tx,
         },
         "compute_eigentrust" => {

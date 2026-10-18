@@ -432,9 +432,8 @@ export class OrchestratorBridge {
     return this.sendCommand("publish_skill", { skill_md: skillMdBase64, name });
   }
 
-  // PLAN-36 Phase 4: dynamic per-circle gossip topics. The orchestrator only
-  // permits bitterbot/circle/*/v1 here; a circle rides its blinded topic so
-  // messages reach members over the mesh without a public a2a URL.
+  // The orchestrator permits blinded circle topics and the exact Compute topic.
+  // These share the same bounded IPC primitive and existing peer network.
   async subscribeCircleTopic(topic: string): Promise<unknown> {
     return this.sendCommand("subscribe_topic", { topic }, TOPIC_VERB_TIMEOUT_MS);
   }
@@ -443,7 +442,7 @@ export class OrchestratorBridge {
     return this.sendCommand("unsubscribe_topic", { topic }, TOPIC_VERB_TIMEOUT_MS);
   }
 
-  /** Publish opaque frame bytes (base64) to a circle topic. */
+  /** Publish opaque frame bytes (base64) to an allowed gateway topic. */
   async publishCircleTopic(topic: string, dataB64: string): Promise<unknown> {
     return this.sendCommand("publish_topic", { topic, data_b64: dataB64 }, TOPIC_VERB_TIMEOUT_MS);
   }
@@ -571,6 +570,16 @@ export class OrchestratorBridge {
       nodeTier: result.node_tier,
     };
     return this.cachedIdentity;
+  }
+
+  async signComputeDescriptor(payload: Record<string, unknown>): Promise<string> {
+    const { canonicalJson } = await import("../commerce/sku.js");
+    const result = (await this.sendCommand("sign_compute_descriptor", {
+      descriptor: canonicalJson(payload as import("../commerce/sku.js").JsonValue),
+    })) as { ok?: boolean; signature?: string };
+    if (!result?.ok || typeof result.signature !== "string")
+      throw new Error("Compute descriptor signing unavailable; update the orchestrator");
+    return result.signature;
   }
 
   /** True if the IPC socket is connected and ready to accept commands. */

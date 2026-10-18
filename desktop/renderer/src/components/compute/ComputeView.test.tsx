@@ -83,7 +83,12 @@ describe("Compute view", () => {
       false,
     );
     expect(
-      Array.from(document.querySelectorAll("input,select,textarea"))
+      Array.from(
+        screen
+          .getByRole("button", { name: "Submit job" })
+          .closest("form")!
+          .querySelectorAll("input,select,textarea"),
+      )
         .filter((element) => !(element as HTMLInputElement).checkValidity())
         .map((element) => ({
           html: element.outerHTML,

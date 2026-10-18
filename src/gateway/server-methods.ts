@@ -8,6 +8,7 @@ import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
 import { circlesHandlers } from "./server-methods/circles.js";
+import { computeMeshHandlers } from "./server-methods/compute-mesh.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
@@ -296,6 +297,7 @@ export function authorizeGatewayMethod(method: string, client: GatewayRequestOpt
 }
 
 export const coreGatewayHandlers: GatewayRequestHandlers = {
+  ...computeMeshHandlers,
   ...connectHandlers,
   ...logsHandlers,
   ...voicewakeHandlers,

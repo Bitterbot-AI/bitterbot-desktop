@@ -66,6 +66,8 @@ export type SoapboxWalletStatus = {
 
 export type SoapboxStatus = {
   enabled: boolean;
+  local_operator?: boolean;
+  capabilities?: { mesh_admissions?: boolean };
   api_version?: number;
   settlement?: string;
   principal?: { id: string; roles: string[]; pools: string[]; projects: string[] };

@@ -1,13 +1,13 @@
 {
   "id": "soapbox-compute",
   "name": "Soapbox Compute",
-  "version": "0.3.0-rc.4",
+  "version": "0.3.0-rc.5",
   "description": "Isolated compute with a separate Base Sepolia wallet",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "mode": { "type": "string", "enum": ["setup", "pilot", "participant"] },
+      "mode": { "type": "string", "enum": ["setup", "pilot", "participant", "mesh-operator"] },
       "binary": { "type": "string", "minLength": 1 },
       "bundledRuntimeArchive": { "type": "string", "minLength": 1 },
       "repository": { "type": "string", "minLength": 1 },

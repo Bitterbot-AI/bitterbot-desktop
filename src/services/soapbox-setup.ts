@@ -11,6 +11,7 @@ import {
   verifySoapboxConnection,
   type SoapboxConnection,
 } from "../infra/soapbox-connection.js";
+import { LocalOperatorService, prepareLocalOperator } from "./soapbox-local-operator.js";
 import { SOAPBOX_SETUP_RELEASE, SoapboxSetupRuntime } from "./soapbox-setup-runtime.js";
 import {
   initializeSoapboxWallet,
@@ -24,6 +25,10 @@ export class SoapboxSetup {
   private enrollment?: SoapboxConnection;
   private busy = false;
   private activated = false;
+  private localSetup?: Promise<void>;
+  private localRunning = false;
+  private stopping = false;
+  private localService?: LocalOperatorService;
   constructor(
     private options: {
       root: string;
@@ -41,7 +46,8 @@ export class SoapboxSetup {
     const auth = await soapboxWalletAuthentication(this.options.mainWallet);
     return {
       configured: Boolean(this.options.configuredRole || this.activated),
-      configuredRole: this.options.configuredRole ?? (this.activated ? c?.role : undefined),
+      configuredRole:
+        this.options.configuredRole ?? (this.activated ? (c?.role ?? "mesh-operator") : undefined),
       platformSupported: process.platform === "linux" && process.arch === "x64",
       bundledRuntimeAvailable: Boolean(this.options.bundledRuntimeArchive),
       hasWalletCredentials: Boolean(auth.apiKeyId && auth.apiKeySecret && auth.walletSecret),
@@ -57,7 +63,7 @@ export class SoapboxSetup {
   }
 
   async mutate<T>(action: () => Promise<T>): Promise<T> {
-    if (this.busy) throw new Error("Another setup action is in progress");
+    if (this.busy || this.localRunning) throw new Error("Another setup action is in progress");
     if (this.options.configuredRole || this.activated)
       throw new Error("This gateway already has a Compute setup");
     this.busy = true;
@@ -133,6 +139,10 @@ export class SoapboxSetup {
 
   async prepareBundledRuntime(): Promise<void> {
     this.requireOperator();
+    await this.prepareArchive();
+  }
+
+  private async prepareArchive(): Promise<void> {
     const archive = this.options.bundledRuntimeArchive;
     if (!archive || !path.isAbsolute(archive)) throw new Error("Bundled runtime unavailable");
     if ((await stat(archive)).size !== SOAPBOX_SETUP_RELEASE.bytes)
@@ -147,6 +157,101 @@ export class SoapboxSetup {
       );
     // Uses the same pinned SHA-256 and sandbox checks as a browser upload.
     await this.runtime.prepare(id);
+  }
+
+  async enableLocalOperator(): Promise<void> {
+    if (this.enrollment)
+      throw new Error("Clear enrollment by reopening setup before choosing a local pool");
+    if (!this.options.bundledRuntimeArchive)
+      throw new Error("Install the matching Compute release first");
+    this.localRunning = true;
+    this.runtime.progress = {
+      state: "uploading",
+      message: "Checking the included runtime",
+      percent: 0,
+    };
+    this.localSetup = this.finishLocalOperator()
+      .catch((error: unknown) => {
+        this.runtime.progress = {
+          state: "failed",
+          percent: 0,
+          message: error instanceof Error ? error.message : "Operator setup failed; retry",
+        };
+      })
+      .finally(() => {
+        this.localRunning = false;
+      });
+  }
+
+  private async finishLocalOperator(): Promise<void> {
+    await this.prepareArchive();
+    await this.runtime.waitUntilReady();
+    if (this.stopping) return;
+    const original = await readFile(this.options.configPath, "utf8");
+    const config = JSON5.parse(original) as BitterbotConfig;
+    if (
+      !config ||
+      typeof config !== "object" ||
+      Array.isArray(config) ||
+      /"\$include"\s*:/.test(JSON.stringify(config))
+    )
+      throw new Error("Externally managed configuration cannot be changed automatically");
+    const existing = config.plugins?.entries?.["soapbox-compute"]?.config;
+    if (existing && existing.mode !== "setup")
+      throw new Error("Compute was configured elsewhere; refresh before continuing");
+    const directory = path.join(this.options.root, `operator-${randomUUID()}`);
+    await prepareLocalOperator(directory, this.runtime.ready!);
+    const service = new LocalOperatorService(directory, this.runtime.ready!.binary);
+    this.localService = service;
+    this.runtime.progress = {
+      state: "preparing",
+      message: "Verifying your local P2P operator",
+      percent: 95,
+    };
+    try {
+      await service.start();
+      await service.waitForGpu();
+    } finally {
+      await service.stop();
+      this.localService = undefined;
+    }
+    if (this.stopping) return;
+    config.plugins ??= {};
+    config.plugins.entries ??= {};
+    config.plugins.entries["soapbox-compute"] = {
+      enabled: true,
+      config: {
+        mode: "mesh-operator",
+        stateDirectory: directory,
+        binary: this.runtime.ready!.binary,
+        bundledRuntimeArchive: this.options.bundledRuntimeArchive,
+      },
+    };
+    config.p2p = { ...config.p2p, enabled: true };
+    await writeFile(path.join(directory, "bitterbot.before.json"), original, { mode: 0o600 });
+    const temporary = `${this.options.configPath}.soapbox-${randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+    if ((await readFile(this.options.configPath, "utf8")) !== original)
+      throw new Error("Gateway settings changed during setup; retry");
+    await rename(temporary, this.options.configPath);
+    this.activated = true;
+    this.runtime.progress = {
+      state: "ready",
+      message: "Operator enabled. Reconnecting to the gateway…",
+      percent: 100,
+    };
+  }
+
+  async stop(): Promise<void> {
+    this.stopping = true;
+    await this.runtime.stop();
+    await this.localService?.stop();
+    await this.localSetup;
+  }
+
+  async waitForLocalSetup(): Promise<void> {
+    await this.localSetup;
+    if (!this.activated) throw new Error(this.runtime.progress.message);
   }
 
   async activate(): Promise<{ activated: true }> {
@@ -175,7 +280,10 @@ export class SoapboxSetup {
     const existing = config.plugins?.entries?.["soapbox-compute"]?.config;
     if (
       existing &&
-      (existing.mode === "participant" || existing.mode === "pilot" || existing.repository)
+      (existing.mode === "participant" ||
+        existing.mode === "pilot" ||
+        existing.mode === "mesh-operator" ||
+        existing.repository)
     )
       throw new Error("Compute was configured elsewhere; refresh before continuing");
     const directory = path.join(this.options.root, `participant-${randomUUID()}`);

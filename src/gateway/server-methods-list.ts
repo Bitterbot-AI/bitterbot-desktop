@@ -2,6 +2,13 @@ import { listChannelPlugins } from "../channels/plugins/index.js";
 
 const BASE_METHODS = [
   "soapbox.setup.status",
+  "soapbox.setup.operator.enable",
+  "soapbox.mesh.status",
+  "soapbox.mesh.grant",
+  "soapbox.mesh.revoke",
+  "soapbox.mesh.submit",
+  "soapbox.mesh.batch",
+  "soapbox.mesh.cancel",
   "soapbox.setup.wallet",
   "soapbox.setup.import",
   "soapbox.setup.runtime.begin",

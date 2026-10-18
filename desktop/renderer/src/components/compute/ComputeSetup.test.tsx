@@ -31,6 +31,17 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
+it("enables a local operator in one action without enrollment or wallet calls", async () => {
+  status.bundledRuntimeAvailable = true;
+  render(<ComputeSetup onClose={() => {}} />);
+  fireEvent.click(await screen.findByLabelText("GPU operator · share this device"));
+  expect(screen.queryByLabelText("Enrollment file")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Enable this GPU operator" }));
+  await waitFor(() => expect(fake.request).toHaveBeenCalledWith("soapbox.setup.operator.enable"));
+  expect(fake.request.mock.calls.some(([method]) => /wallet|payment|import/.test(method))).toBe(
+    false,
+  );
+});
 it("creates a separate buyer wallet and clears entered secrets", async () => {
   render(<ComputeSetup onClose={() => {}} />);
   fireEvent.change(await screen.findByLabelText("CDP API key ID"), { target: { value: "key" } });

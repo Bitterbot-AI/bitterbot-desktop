@@ -6,6 +6,10 @@ import { ErrorCodes, errorShape } from "../protocol/index.js";
 export function createSoapboxSetupHandlers(setup: SoapboxSetup): GatewayRequestHandlers {
   const actions: Record<string, (params: Record<string, unknown>) => Promise<unknown>> = {
     status: () => setup.status(),
+    "operator.enable": async () => {
+      await setup.enableLocalOperator();
+      return setup.status();
+    },
     wallet: (p) => setup.wallet(p.credentials),
     import: async (p) => {
       await setup.import(p.enrollment, p.role);

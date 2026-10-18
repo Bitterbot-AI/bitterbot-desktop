@@ -113,6 +113,35 @@ function bobNodeWithAnaMember(anaKey: KeyPair): { db: DatabaseSync; circleId: st
 }
 
 describe("circle p2p rpc transport", () => {
+  it("dispatches only the four explicit Compute verbs with the authenticated peer identity", async () => {
+    const mesh = new FakeMesh();
+    const calls: unknown[][] = [];
+    const transport = startCircleP2pTransport({
+      bridge: mesh.bridgeFor(BOB_PEER),
+      resolveCirclesDb: async () => undefined,
+      compute: {
+        handle: async (...args) => {
+          calls.push(args);
+          return { ok: true, result: { accepted: true } };
+        },
+      },
+    });
+    const bridge = mesh.bridgeFor(ANA_PEER);
+    for (const method of ["compute/v1/access", "wallet.send", "compute/v1/admin"]) {
+      const reply = JSON.parse(
+        Buffer.from(
+          await bridge.circleRequest(
+            BOB_PEER,
+            Buffer.from(JSON.stringify({ method, params: { scope: "team" } })).toString("base64"),
+          ),
+          "base64",
+        ).toString(),
+      );
+      expect(reply.ok).toBe(method === "compute/v1/access");
+    }
+    expect(calls).toEqual([[ANA_PEER, "compute/v1/access", { scope: "team" }]]);
+    transport.stop();
+  });
   it("delivers a signed circle verb peer-to-peer through the real dispatcher", async () => {
     const mesh = new FakeMesh();
     const anaKey = generateKeyPair();

@@ -316,6 +316,8 @@ export async function startGatewayServer(
   let pluginServices: PluginServicesHandle | null = null;
   let orchestratorBridge: import("../infra/orchestrator-bridge.js").OrchestratorBridge | null =
     null;
+  let computeMesh: import("../compute/mesh-service.js").ComputeMeshService | undefined;
+  let peerRpcTransport: { stop(): void } | undefined;
   const runtimeConfig = await resolveGatewayRuntimeConfig({
     cfg: cfgAtStart,
     port,
@@ -668,26 +670,28 @@ export async function startGatewayServer(
 
   let browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> = null;
   if (!minimalTestGateway) {
-    ({ browserControl, pluginServices, orchestratorBridge } = await startGatewaySidecars({
-      cfg: cfgAtStart,
-      pluginRegistry,
-      defaultWorkspaceDir,
-      deps,
-      startChannels,
-      log,
-      logHooks,
-      logChannels,
-      logBrowser,
-      onSkillNetworkBridgeReady: (bridge) => {
-        // Memory backend init is fire-and-forget; this fires once the
-        // SkillNetworkBridge is wired so handlers see it.
-        requestContext.skillNetworkBridge = bridge;
-      },
-    }));
+    ({ browserControl, pluginServices, orchestratorBridge, computeMesh, peerRpcTransport } =
+      await startGatewaySidecars({
+        cfg: cfgAtStart,
+        pluginRegistry,
+        defaultWorkspaceDir,
+        deps,
+        startChannels,
+        log,
+        logHooks,
+        logChannels,
+        logBrowser,
+        onSkillNetworkBridgeReady: (bridge) => {
+          // Memory backend init is fire-and-forget; this fires once the
+          // SkillNetworkBridge is wired so handlers see it.
+          requestContext.skillNetworkBridge = bridge;
+        },
+      }));
     // Patch the live request context so handlers see the actual orchestrator
     // bridge — without this, the object literal would forever hold the
     // pre-sidecar `undefined`.
     requestContext.orchestratorBridge = orchestratorBridge ?? undefined;
+    requestContext.computeMesh = computeMesh;
     bootStep("start-sidecars");
   }
 
@@ -761,6 +765,8 @@ export async function startGatewayServer(
     configReloader,
     browserControl,
     orchestratorBridge,
+    computeMesh,
+    peerRpcTransport,
     wss,
     httpServer,
     httpServers,

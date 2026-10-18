@@ -7,6 +7,7 @@ import { resolveStateDir, resolveConfigPath } from "../../src/config/paths.js";
 import { createSoapboxSetupHandlers } from "../../src/gateway/server-methods/soapbox-setup.js";
 import { createSoapboxHandlers } from "../../src/gateway/server-methods/soapbox.js";
 import { SoapboxSetup } from "../../src/services/soapbox-setup.js";
+import { registerLocalOperator } from "./local-operator.js";
 import { registerParticipant } from "./participant.js";
 
 export default {
@@ -28,15 +29,23 @@ export default {
         ? undefined
         : api.pluginConfig?.mode === "participant"
           ? "participant"
-          : "pilot",
+          : api.pluginConfig?.mode === "mesh-operator"
+            ? "mesh-operator"
+            : "pilot",
     });
     for (const [name, handler] of Object.entries(createSoapboxSetupHandlers(setup)))
       api.registerGatewayMethod(name, handler);
-    api.registerService({ id: "soapbox-setup", start() {}, stop: () => setup.runtime.stop() });
+    api.registerService({ id: "soapbox-setup", start() {}, stop: () => setup.stop() });
     if (setupOnly) {
       api.registerGatewayMethod("soapbox.status", ({ respond }) =>
         respond(true, { enabled: false }),
       );
+      return;
+    }
+    if (api.pluginConfig?.mode === "mesh-operator") {
+      if (typeof directory !== "string" || !path.isAbsolute(directory))
+        throw new Error("Absolute stateDirectory required");
+      registerLocalOperator(api, directory);
       return;
     }
     if (api.pluginConfig?.mode === "participant") {

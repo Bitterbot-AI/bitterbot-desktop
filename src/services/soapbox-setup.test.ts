@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import type { GatewayRequestHandlerOptions } from "../gateway/server-methods/types.js";
 import { createSoapboxSetupHandlers } from "../gateway/server-methods/soapbox-setup.js";
 import { SoapboxClient, type SoapboxStatus } from "../infra/soapbox-client.js";
+import { LocalOperatorService } from "./soapbox-local-operator.js";
+import { SOAPBOX_SETUP_RELEASE } from "./soapbox-setup-runtime.js";
 import { SoapboxSetup } from "./soapbox-setup.js";
 
 const address = `0x${"1".repeat(40)}`;
@@ -54,6 +56,48 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 describe("Compute onboarding", () => {
+  it("creates a verified local operator without enrollment and preserves wallet settings", async () => {
+    const original = JSON.parse(await readFile(configPath, "utf8"));
+    const archive = path.join(directory, "runtime.tar.gz");
+    await writeFile(archive, Buffer.alloc(SOAPBOX_SETUP_RELEASE.bytes));
+    const local = new SoapboxSetup({ root: directory, configPath, bundledRuntimeArchive: archive });
+    const worker = path.join(directory, "verified-worker.json");
+    await writeFile(
+      worker,
+      JSON.stringify({ sandbox: { image: "verified" }, allow_unsafe_host: false }),
+    );
+    vi.spyOn(local.runtime, "begin").mockResolvedValue({ id: "test", offset: 0 });
+    vi.spyOn(local.runtime, "chunk").mockResolvedValue({ offset: 0 });
+    vi.spyOn(local.runtime, "prepare").mockImplementation(async () => {
+      local.runtime.ready = { binary: path.join(directory, "soapbox"), worker };
+      local.runtime.progress = { state: "ready", message: "verified", percent: 100 };
+    });
+    vi.spyOn(LocalOperatorService.prototype, "start").mockResolvedValue();
+    vi.spyOn(LocalOperatorService.prototype, "waitForGpu").mockResolvedValue();
+    vi.spyOn(LocalOperatorService.prototype, "stop").mockResolvedValue();
+    await local.mutate(() => local.enableLocalOperator());
+    await expect(local.mutate(() => local.enableLocalOperator())).rejects.toThrow("in progress");
+    await local.waitForLocalSetup();
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    expect(config.tools).toEqual(original.tools);
+    expect(config.channels).toEqual(original.channels);
+    expect(config.p2p.enabled).toBe(true);
+    expect(config.plugins.entries["soapbox-compute"]).toMatchObject({
+      enabled: true,
+      config: { mode: "mesh-operator" },
+    });
+    expect((await local.status()).configuredRole).toBe("mesh-operator");
+  });
+  it("keeps configuration intact when one-click runtime verification fails", async () => {
+    const before = await readFile(configPath, "utf8");
+    const archive = path.join(directory, "damaged.tar.gz");
+    await writeFile(archive, "damaged");
+    const local = new SoapboxSetup({ root: directory, configPath, bundledRuntimeArchive: archive });
+    await local.mutate(() => local.enableLocalOperator());
+    await expect(local.waitForLocalSetup()).rejects.toThrow("damaged");
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    expect((await local.status()).progress.state).toBe("failed");
+  });
   it("activates a verified buyer while preserving main wallet and channel settings", async () => {
     const before = JSON.parse(await readFile(configPath, "utf8"));
     await setup.import({ ...connection, extra: "must-not-persist" }, "buyer");

@@ -8,6 +8,7 @@ import { useGatewayStore } from "../../stores/gateway-store";
 import { ArtifactPanel } from "./ArtifactPanel";
 import { ComputeSetup } from "./ComputeSetup";
 import { ComputeWalletPanel } from "./ComputeWalletPanel";
+import { MeshPanel } from "./MeshPanel";
 import { PaymentPanel } from "./PaymentPanel";
 import { WorkerPanel } from "./WorkerPanel";
 
@@ -39,8 +40,9 @@ export function ComputeView() {
   const [operator, setOperator] = useState("");
   const usdc = snapshot?.settlement === "usdc_escrow";
   const operatorOnly =
-    snapshot?.principal?.roles.includes("worker") &&
-    !snapshot.principal.roles.includes("submitter");
+    snapshot?.local_operator ||
+    (snapshot?.principal?.roles.includes("worker") &&
+      !snapshot.principal.roles.includes("submitter"));
   const operators =
     snapshot?.nodes?.filter(
       (node) =>
@@ -224,6 +226,7 @@ export function ComputeView() {
         </p>
       )}
       {setupOpen && <ComputeSetup onClose={() => setSetupOpen(false)} />}
+      <MeshPanel />
       {snapshot?.enabled === false && !setupOpen && (
         <div className="rounded-xl border border-border p-5 space-y-2">
           <h2 className="font-medium">Get started with Compute</h2>
@@ -245,41 +248,58 @@ export function ComputeView() {
               aria-label="Operator account"
             >
               <h2 className="font-medium">Operator · {snapshot.principal?.id}</h2>
-              <p className="text-sm">Payout network: Base Sepolia</p>
-              <p className="font-mono text-xs break-all">{snapshot.payment_account?.address}</p>
-              <p className="text-sm">
-                Confirmed earnings in recent jobs:{" "}
-                {(
-                  (snapshot.jobs ?? [])
-                    .filter((j) => j.status === "succeeded" && j.payment)
-                    .reduce((sum, j) => sum + (j.payment?.amount_microusdc ?? 0), 0) / 1e6
-                ).toFixed(6)}{" "}
-                test USDC
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Only jobs assigned to this operator appear below. Payouts go directly to this
-                address. No buyer wallet is needed.
-              </p>
+              {snapshot.local_operator ? (
+                <p className="text-sm">
+                  Local P2P pool · private and collective workloads. Grant peers access below; no
+                  wallet or payment is required.
+                </p>
+              ) : (
+                <>
+                  <p className="text-sm">Payout network: Base Sepolia</p>
+                  <p className="font-mono text-xs break-all">{snapshot.payment_account?.address}</p>
+                  <p className="text-sm">
+                    Confirmed earnings in recent jobs:{" "}
+                    {(
+                      (snapshot.jobs ?? [])
+                        .filter((j) => j.status === "succeeded" && j.payment)
+                        .reduce((sum, j) => sum + (j.payment?.amount_microusdc ?? 0), 0) / 1e6
+                    ).toFixed(6)}{" "}
+                    test USDC
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Only jobs assigned to this operator appear below. Payouts go directly to this
+                    address. No buyer wallet is needed.
+                  </p>
+                </>
+              )}
             </section>
           )}
           <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">
-            {usdc
-              ? "Pilot network · Paid jobs use Base Sepolia test USDC escrow. Review and fund each quote before execution."
-              : "Pilot network · Paid jobs use non-redeemable test credits."}{" "}
+            {snapshot.local_operator
+              ? "P2P pilot · Private and collective jobs use your approved resource limits."
+              : usdc
+                ? "Pilot network · Paid jobs use Base Sepolia test USDC escrow. Review and fund each quote before execution."
+                : "Pilot network · Paid jobs use non-redeemable test credits."}{" "}
             Storage is temporary. Only approved workloads run.
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
-            {(usdc
+            {(snapshot.local_operator
               ? [
-                  ["Settlement", "Base Sepolia"],
-                  ["Funding", "Per-job escrow"],
+                  ["Participation", "Private and collective"],
+                  ["Access", "Approved peers"],
                   ["Workers online", snapshot.nodes?.filter((n) => n.online).length ?? 0],
                 ]
-              : [
-                  ["Available credits", snapshot.account?.available_credits ?? 0],
-                  ["Reserved credits", snapshot.account?.reserved_credits ?? 0],
-                  ["Workers online", snapshot.nodes?.filter((n) => n.online).length ?? 0],
-                ]
+              : usdc
+                ? [
+                    ["Settlement", "Base Sepolia"],
+                    ["Funding", "Per-job escrow"],
+                    ["Workers online", snapshot.nodes?.filter((n) => n.online).length ?? 0],
+                  ]
+                : [
+                    ["Available credits", snapshot.account?.available_credits ?? 0],
+                    ["Reserved credits", snapshot.account?.reserved_credits ?? 0],
+                    ["Workers online", snapshot.nodes?.filter((n) => n.online).length ?? 0],
+                  ]
             ).map(([label, value]) => (
               <div key={label} className="rounded-xl border border-border p-4">
                 <p className="text-sm text-muted-foreground">{label}</p>

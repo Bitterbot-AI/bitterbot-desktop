@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
 import { useP2pStore } from "../../stores/p2p-store";
+import { MeshPanel } from "../compute/MeshPanel";
 import { CensusBreakdown } from "./CensusBreakdown";
 import { ContributionCard } from "./ContributionCard";
 import { NetworkGrowthSparkline } from "./NetworkGrowthSparkline";
@@ -97,6 +98,7 @@ export function P2pDashboard() {
         <div className="text-sm text-muted-foreground">Loading network stats...</div>
       )}
 
+      <MeshPanel />
       {/* Contribution Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <ContributionCard
