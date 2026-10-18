@@ -29,6 +29,7 @@ import {
   setComputeDeferredCount,
   setComputeInternalJobs,
 } from "./state.js";
+import { completeComputeTaskLink } from "./task-link.js";
 
 const log = createSubsystemLogger("compute/watcher");
 
@@ -63,6 +64,7 @@ export type ComputeWatcherOptions = {
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
   subscribeHeartbeat?: (listener: (evt: HeartbeatEventPayload) => void) => () => void;
+  completeTaskLink?: typeof completeComputeTaskLink;
 };
 
 export type ComputeWatcher = {
@@ -139,9 +141,12 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
     setComputeDeferredCount(opts.store.deferredCount());
   }
 
-  function routeFor(
-    job: ComputeJobSummary,
-  ): { sessionKey: string; origin: ComputeJobOrigin } | null {
+  function routeFor(job: ComputeJobSummary): {
+    sessionKey: string;
+    origin: ComputeJobOrigin;
+    taskId: string | null;
+    wakeupJobId: string | null;
+  } | null {
     const origin = opts.store.originOf(job.id);
     if (!origin) {
       return null;
@@ -149,7 +154,28 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
     if (origin.origin === "internal") {
       return null;
     }
-    return { sessionKey: origin.sessionKey ?? opts.ownerSessionKey(), origin: origin.origin };
+    return {
+      sessionKey: origin.sessionKey ?? opts.ownerSessionKey(),
+      origin: origin.origin,
+      taskId: origin.taskId,
+      wakeupJobId: origin.wakeupJobId,
+    };
+  }
+
+  /** PLAN-16 linkage (§4.5): record the outcome on the task and resume it now. */
+  function linkTask(
+    route: { taskId: string | null; wakeupJobId: string | null },
+    job: ComputeJobSummary,
+  ): void {
+    if (!route.taskId) {
+      return;
+    }
+    const complete = opts.completeTaskLink ?? completeComputeTaskLink;
+    void complete({ taskId: route.taskId, wakeupJobId: route.wakeupJobId, job }).catch((err) => {
+      log.warn(
+        `compute task link failed job=${job.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
   }
 
   function handleTransitions(jobs: ComputeJobSummary[]): void {
@@ -167,6 +193,9 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
         continue;
       }
       deliver(job, route.sessionKey, created);
+      if (created) {
+        linkTask(route, job);
+      }
     }
   }
 
@@ -258,6 +287,10 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
         if (created || isUndelivered(job)) {
           deliver(job, route.sessionKey, created);
           delivered += 1;
+          if (created) {
+            // A job that finished while the gateway was down still resumes its task.
+            linkTask(route, job);
+          }
         }
       }
       lastStatuses = new Map(jobs.map((j) => [j.id, j.status]));

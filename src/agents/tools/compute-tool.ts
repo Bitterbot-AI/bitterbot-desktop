@@ -1,22 +1,33 @@
 /**
- * PLAN-57 Phase 0: the `compute` tool. Read-only in this phase: status,
- * jobs, job, result, estimate. Submit and cancel arrive in Phase 2, and
+ * PLAN-57: the `compute` tool.
+ *
+ * Phase 0: status, jobs, job, result, estimate (read-only).
+ * Phase 2: submit and cancel for private and collective pools, owner turns
+ * only, with PLAN-16 task linkage. Paid modes are not on this surface, and
  * funding never arrives here at all (§4.8: the agent has no path to fund an
  * escrow; the owner approves through the review rail).
  *
  * The tool exists only when `compute.enabled` is not false AND a backend
  * is registered (the Soapbox plugin registers one). Without a backend the
  * tool is absent and the prompt section with it, so a node with no pool
- * spends nothing on compute awareness.
+ * spends nothing on compute awareness. Submit and cancel exist only when the
+ * backend implements them and the runtime (delivery store, watcher) is
+ * registered, so a read-only backend yields a read-only tool.
  */
 
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import {
   type ComputeJobSummary,
   type ComputeSnapshot,
+  type ComputeSubmitRequest,
   type ComputeWorkloadKind,
   estimateCompute,
   getComputeBackend,
+  getComputeRuntime,
+  linkComputeJobToTask,
 } from "../../compute/awareness/index.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import { stringEnum } from "../schema/typebox.js";
@@ -25,41 +36,80 @@ import {
   ToolInputError,
   jsonResult,
   readNumberParam,
+  readStringArrayParam,
   readStringParam,
 } from "./common.js";
 
-const COMPUTE_ACTIONS = ["status", "jobs", "job", "result", "estimate"] as const;
+const READ_ACTIONS = ["status", "jobs", "job", "result", "estimate"] as const;
+const WRITE_ACTIONS = ["submit", "cancel"] as const;
 const WORKLOADS: readonly ComputeWorkloadKind[] = ["sha256", "embeddings"];
 
-/** Results larger than this are summarised; the agent asks for the file in Phase 2. */
+/** Results larger than this are written to the workspace instead of inlined. */
 export const COMPUTE_RESULT_MAX_CHARS = 20_000;
+/** Same bounds as the coordinator: 1..128 inputs, 256 KiB total. */
+export const COMPUTE_MAX_INPUTS = 128;
+export const COMPUTE_MAX_INPUT_BYTES = 256 * 1024;
 
 // Flattened schema (not a union): Claude on Vertex rejects nested anyOf.
-const ComputeToolSchema = Type.Object({
-  action: stringEnum(COMPUTE_ACTIONS, {
-    description: "status, jobs, job, result, or estimate.",
-  }),
-  job_id: Type.Optional(Type.String({ description: "Job id (for job, result)." })),
-  limit: Type.Optional(
-    Type.Number({ description: "Max jobs to return (for jobs, default 10, max 50)." }),
-  ),
-  status_filter: Type.Optional(
-    Type.String({ description: "Only jobs in this status (for jobs), e.g. running." }),
-  ),
-  workload: Type.Optional(
-    Type.String({ description: "Workload kind for estimate: sha256 or embeddings." }),
-  ),
-  items: Type.Optional(Type.Number({ description: "Number of inputs (for estimate)." })),
-  scope: Type.Optional(
-    Type.String({ description: "Restrict an estimate to one pool or project id." }),
-  ),
-  model_digest: Type.Optional(
-    Type.String({ description: "Embedding model digest the job needs (for estimate)." }),
-  ),
-});
+function buildSchema(actions: readonly string[]) {
+  return Type.Object({
+    action: stringEnum(actions as readonly [string, ...string[]], {
+      description: actions.join(", ") + ".",
+    }),
+    job_id: Type.Optional(Type.String({ description: "Job id (for job, result, cancel)." })),
+    limit: Type.Optional(
+      Type.Number({ description: "Max jobs to return (for jobs, default 10, max 50)." }),
+    ),
+    status_filter: Type.Optional(
+      Type.String({ description: "Only jobs in this status (for jobs), e.g. running." }),
+    ),
+    workload: Type.Optional(
+      Type.String({ description: "Workload kind (for estimate, submit): sha256 or embeddings." }),
+    ),
+    items: Type.Optional(Type.Number({ description: "Number of inputs (for estimate)." })),
+    scope: Type.Optional(
+      Type.String({
+        description:
+          "Pool id (mode private) or project id (mode collective). Restricts an estimate; required for submit.",
+      }),
+    ),
+    mode: Type.Optional(
+      Type.String({
+        description: "private or collective (for submit). Paid modes are not available here.",
+      }),
+    ),
+    inputs: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "The texts to process (for submit): 1 to 128 strings, 256 KiB in total.",
+      }),
+    ),
+    model: Type.Optional(
+      Type.String({ description: "Embedding model name (for submit, embeddings)." }),
+    ),
+    model_digest: Type.Optional(
+      Type.String({ description: "Embedding model digest (for estimate and submit)." }),
+    ),
+    task_id: Type.Optional(
+      Type.String({
+        description:
+          "Long-horizon task this job belongs to (for submit). The task waits on the job and resumes when it finishes.",
+      }),
+    ),
+    reason: Type.Optional(
+      Type.String({
+        description: "Why this job is being submitted (for submit, recorded on the task).",
+      }),
+    ),
+  });
+}
 
 type ComputeToolOptions = {
   config?: BitterbotConfig;
+  /** Only `true` is an owner; submit and cancel are refused otherwise. */
+  senderIsOwner?: boolean;
+  agentSessionKey?: string;
+  /** Where oversized results are written (`<workspace>/compute/<job>.json`). */
+  workspaceDir?: string;
 };
 
 export function createComputeTool(opts?: ComputeToolOptions): AnyAgentTool | undefined {
@@ -70,6 +120,16 @@ export function createComputeTool(opts?: ComputeToolOptions): AnyAgentTool | und
   if (!backend) {
     return undefined;
   }
+  const runtime = getComputeRuntime();
+  const canWrite = typeof backend.submit === "function" && runtime !== null;
+  const actions = canWrite ? [...READ_ACTIONS, ...WRITE_ACTIONS] : [...READ_ACTIONS];
+  const isOwner = opts?.senderIsOwner === true;
+
+  const writeDoc = canWrite
+    ? `
+- submit: run a batch on a pool. Requires: mode (private|collective), scope (pool or project id), workload, inputs. For embeddings also model and model_digest. Optional: task_id (the task waits and resumes when the job finishes), reason. Owner turns only. Paid modes are not available here.
+- cancel: cancel a job you started. Requires: job_id. Owner turns only.`
+    : "";
 
   return {
     label: "Compute",
@@ -78,11 +138,11 @@ export function createComputeTool(opts?: ComputeToolOptions): AnyAgentTool | und
 - status: pools, workers (online, GPU, paused), credits, jobs in flight. Read this before quoting what compute is available.
 - jobs: recent jobs. Optional: limit, status_filter.
 - job: one job's state. Requires: job_id.
-- result: a finished job's result and receipt (large results are summarised). Requires: job_id.
-- estimate: where a batch would run, how long, what it would cost, with the local alternative. Requires: workload, items. Optional: scope, model_digest.
+- result: a finished job's result and receipt (large results are written to the workspace and the path returned). Requires: job_id.
+- estimate: where a batch would run, how long, what it would cost, with the local alternative. Requires: workload, items. Optional: scope, model_digest.${writeDoc}
 Each job carries a verification level (recomputed, shape_only_trusted_worker, redundant); state it when you report a result. You cannot fund paid jobs: a paid job stops at awaiting_payment until the owner approves it.`,
-    parameters: ComputeToolSchema,
-    execute: async (_toolCallId, args) => {
+    parameters: buildSchema(actions),
+    execute: async (toolCallId, args) => {
       const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
 
@@ -113,7 +173,11 @@ Each job carries a verification level (recomputed, shape_only_trusted_worker, re
             return jsonResult({ found: false, job_id: id });
           }
           const serialised = JSON.stringify(res.result ?? null);
-          const truncated = serialised.length > COMPUTE_RESULT_MAX_CHARS;
+          const oversized = serialised.length > COMPUTE_RESULT_MAX_CHARS;
+          let resultPath: string | undefined;
+          if (oversized && opts?.workspaceDir) {
+            resultPath = writeResultFile(opts.workspaceDir, res.id, serialised);
+          }
           return jsonResult({
             found: true,
             job_id: res.id,
@@ -121,17 +185,17 @@ Each job carries a verification level (recomputed, shape_only_trusted_worker, re
             verification: res.verification ?? "unknown",
             error: res.error ?? null,
             receipt: res.receipt ?? null,
-            result: truncated ? null : res.result,
-            result_summary: truncated
-              ? `Result is ${serialised.length} characters; too large to inline. It stays on the coordinator under this job id.`
+            result: oversized ? null : res.result,
+            result_path: resultPath,
+            result_summary: oversized
+              ? resultPath
+                ? `Result is ${serialised.length} characters; written to ${resultPath}.`
+                : `Result is ${serialised.length} characters; too large to inline. It stays on the coordinator under this job id.`
               : undefined,
           });
         }
         case "estimate": {
-          const workload = readStringParam(params, "workload", { required: true });
-          if (!WORKLOADS.includes(workload as ComputeWorkloadKind)) {
-            throw new ToolInputError(`workload must be one of: ${WORKLOADS.join(", ")}`);
-          }
+          const workload = readWorkload(params);
           const items = readNumberParam(params, "items", { required: true, integer: true });
           if (items < 1) {
             throw new ToolInputError("items must be at least 1");
@@ -139,7 +203,7 @@ Each job carries a verification level (recomputed, shape_only_trusted_worker, re
           const snapshot = await backend.snapshot();
           const estimate = estimateCompute({
             snapshot,
-            workload: workload as ComputeWorkloadKind,
+            workload,
             items,
             scope: readStringParam(params, "scope"),
             modelDigest: readStringParam(params, "model_digest"),
@@ -150,11 +214,157 @@ Each job carries a verification level (recomputed, shape_only_trusted_worker, re
               "Local processing on this machine is always available and free; use it when no option is eligible or the estimate is not worth the handoff.",
           });
         }
+        case "submit": {
+          if (!canWrite || !backend.submit || !runtime) {
+            throw new ToolInputError("submit is not available on this node's compute backend");
+          }
+          if (!isOwner) {
+            return jsonResult({
+              ok: false,
+              error: "Not available in this conversation: only the owner can start compute jobs.",
+            });
+          }
+          const req = readSubmitRequest(params, toolCallId);
+          const submitted = await backend.submit(req);
+          runtime.store.recordOrigin(submitted.id, "agent", opts?.agentSessionKey ?? null);
+          runtime.watcher?.kick();
+          const taskId = readStringParam(params, "task_id");
+          let task: Record<string, unknown> | undefined;
+          if (taskId) {
+            const link = await linkComputeJobToTask({
+              taskId,
+              jobId: submitted.id,
+              workload: req.workload,
+              items: req.inputs.length,
+              reason: readStringParam(params, "reason"),
+            });
+            if ("error" in link) {
+              task = { task_id: taskId, linked: false, error: link.error };
+            } else {
+              runtime.store.recordOrigin(submitted.id, "agent", opts?.agentSessionKey ?? null, {
+                taskId: link.taskId,
+                wakeupJobId: link.wakeupJobId,
+              });
+              task = {
+                task_id: link.taskId,
+                linked: true,
+                status: "waiting_external",
+                fallback_wakeup: link.wakeupJobId,
+              };
+            }
+          }
+          return jsonResult({
+            ok: true,
+            job_id: submitted.id,
+            status: submitted.status,
+            mode: req.mode.kind,
+            scope: req.mode.kind === "private" ? req.mode.poolId : req.mode.projectId,
+            workload: req.workload,
+            items: req.inputs.length,
+            task,
+            note: "You will be told when it finishes. Do not poll `job` in a loop; check on demand only.",
+          });
+        }
+        case "cancel": {
+          if (!canWrite || !backend.cancel || !runtime) {
+            throw new ToolInputError("cancel is not available on this node's compute backend");
+          }
+          if (!isOwner) {
+            return jsonResult({
+              ok: false,
+              error: "Not available in this conversation: only the owner can cancel compute jobs.",
+            });
+          }
+          const id = readStringParam(params, "job_id", { required: true });
+          const origin = runtime.store.originOf(id);
+          if (!origin || origin.origin !== "agent") {
+            return jsonResult({
+              ok: false,
+              job_id: id,
+              error: "Only jobs this agent started can be cancelled from here.",
+            });
+          }
+          const res = await backend.cancel(id);
+          runtime.watcher?.kick();
+          return jsonResult({
+            ok: res.ok,
+            job_id: id,
+            status: res.status ?? null,
+            error: res.error ?? null,
+          });
+        }
         default:
           throw new ToolInputError(`Unknown action: ${action}`);
       }
     },
   };
+}
+
+function readWorkload(params: Record<string, unknown>): ComputeWorkloadKind {
+  const workload = readStringParam(params, "workload", { required: true });
+  if (!WORKLOADS.includes(workload as ComputeWorkloadKind)) {
+    throw new ToolInputError(`workload must be one of: ${WORKLOADS.join(", ")}`);
+  }
+  return workload as ComputeWorkloadKind;
+}
+
+/** Gateway-side validation; the coordinator's own limits are the second line. */
+export function readSubmitRequest(
+  params: Record<string, unknown>,
+  toolCallId: string,
+): ComputeSubmitRequest {
+  const modeRaw = readStringParam(params, "mode", { required: true });
+  const scope = readStringParam(params, "scope", { required: true });
+  if (modeRaw === "paid" || modeRaw === "paid_usdc") {
+    throw new ToolInputError(
+      "Paid jobs cannot be started from the agent. Quote the cost with estimate; the owner submits and funds paid work.",
+    );
+  }
+  if (modeRaw !== "private" && modeRaw !== "collective") {
+    throw new ToolInputError("mode must be private or collective");
+  }
+  const workload = readWorkload(params);
+  const inputs = readStringArrayParam(params, "inputs", { required: true });
+  if (inputs.length < 1 || inputs.length > COMPUTE_MAX_INPUTS) {
+    throw new ToolInputError(`inputs must hold 1 to ${COMPUTE_MAX_INPUTS} strings`);
+  }
+  let bytes = 0;
+  for (const text of inputs) {
+    if (typeof text !== "string" || text.length === 0) {
+      throw new ToolInputError("every input must be a non-empty string");
+    }
+    bytes += Buffer.byteLength(text, "utf8");
+  }
+  if (bytes > COMPUTE_MAX_INPUT_BYTES) {
+    throw new ToolInputError(`inputs exceed ${COMPUTE_MAX_INPUT_BYTES} bytes in total`);
+  }
+  const model = readStringParam(params, "model");
+  const modelDigest = readStringParam(params, "model_digest");
+  if (workload === "embeddings" && (!model || !modelDigest)) {
+    throw new ToolInputError(
+      "embeddings need model and model_digest (see compute status for the worker's pinned model)",
+    );
+  }
+  return {
+    mode:
+      modeRaw === "private"
+        ? { kind: "private", poolId: scope }
+        : { kind: "collective", projectId: scope },
+    workload,
+    inputs,
+    model,
+    modelDigest,
+    idempotencyKey: `agent:${toolCallId || randomUUID()}`,
+  };
+}
+
+function writeResultFile(workspaceDir: string, jobId: string, serialised: string): string {
+  const safe = jobId.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80) || "job";
+  const dir = path.join(workspaceDir, "compute");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${safe}.json`);
+  fs.writeFileSync(file, serialised, { encoding: "utf8", mode: 0o600 });
+  return file;
 }
 
 /** The status view the agent sees. Field names are the vocabulary of the prompt section. */

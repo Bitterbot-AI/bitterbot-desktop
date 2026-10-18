@@ -30,6 +30,17 @@ export type ComputeOriginRow = {
   sessionKey: string | null;
   origin: ComputeJobOrigin;
   createdAt: number;
+  /** PLAN-16 task this job belongs to, for agent-started jobs. */
+  taskId: string | null;
+  /** The fallback cron wakeup scheduled at submit, pulled forward on completion. */
+  wakeupJobId: string | null;
+};
+
+export type ComputeOriginInput = {
+  sessionKey?: string | null;
+  taskId?: string | null;
+  wakeupJobId?: string | null;
+  now?: number;
 };
 
 export type ComputeDeliveryRow = {
@@ -73,9 +84,27 @@ export function resolveComputeDbPath(env: NodeJS.ProcessEnv = process.env): stri
   return path.join(resolveStateDir(env), "compute", "deliveries.sqlite");
 }
 
+/** Columns added after the first release; each is applied once, guarded by table_info. */
+const ORIGIN_COLUMNS: Array<[name: string, ddl: string]> = [
+  ["task_id", "TEXT"],
+  ["wakeup_job_id", "TEXT"],
+];
+
 export class ComputeDeliveryStore {
   private constructor(private readonly db: DatabaseSync) {
     db.exec(SCHEMA);
+    const have = new Set(
+      (
+        db.prepare(`PRAGMA table_info(compute_job_origins)`).all() as unknown as Array<{
+          name: string;
+        }>
+      ).map((c) => c.name),
+    );
+    for (const [name, ddl] of ORIGIN_COLUMNS) {
+      if (!have.has(name)) {
+        db.exec(`ALTER TABLE compute_job_origins ADD COLUMN ${name} ${ddl}`);
+      }
+    }
   }
 
   static open(dbPath: string = resolveComputeDbPath()): ComputeDeliveryStore {
@@ -100,24 +129,45 @@ export class ComputeDeliveryStore {
     jobId: string,
     origin: ComputeJobOrigin,
     sessionKey: string | null,
-    now = Date.now(),
+    nowOrInput: number | ComputeOriginInput = Date.now(),
   ): void {
+    const input: ComputeOriginInput =
+      typeof nowOrInput === "number" ? { now: nowOrInput } : nowOrInput;
     this.db
       .prepare(
-        `INSERT INTO compute_job_origins (job_id, session_key, origin, created_at)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(job_id) DO UPDATE SET session_key = excluded.session_key, origin = excluded.origin`,
+        `INSERT INTO compute_job_origins (job_id, session_key, origin, created_at, task_id, wakeup_job_id)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(job_id) DO UPDATE SET
+           session_key = excluded.session_key,
+           origin = excluded.origin,
+           task_id = COALESCE(excluded.task_id, compute_job_origins.task_id),
+           wakeup_job_id = COALESCE(excluded.wakeup_job_id, compute_job_origins.wakeup_job_id)`,
       )
-      .run(jobId, sessionKey, origin, now);
+      .run(
+        jobId,
+        input.sessionKey !== undefined ? input.sessionKey : sessionKey,
+        origin,
+        input.now ?? Date.now(),
+        input.taskId ?? null,
+        input.wakeupJobId ?? null,
+      );
   }
 
   originOf(jobId: string): ComputeOriginRow | null {
     const row = this.db
       .prepare(
-        `SELECT job_id, session_key, origin, created_at FROM compute_job_origins WHERE job_id = ?`,
+        `SELECT job_id, session_key, origin, created_at, task_id, wakeup_job_id
+         FROM compute_job_origins WHERE job_id = ?`,
       )
       .get(jobId) as
-      | { job_id: string; session_key: string | null; origin: string; created_at: number }
+      | {
+          job_id: string;
+          session_key: string | null;
+          origin: string;
+          created_at: number;
+          task_id: string | null;
+          wakeup_job_id: string | null;
+        }
       | undefined;
     if (!row) {
       return null;
@@ -127,6 +177,8 @@ export class ComputeDeliveryStore {
       sessionKey: row.session_key,
       origin: row.origin as ComputeJobOrigin,
       createdAt: row.created_at,
+      taskId: row.task_id ?? null,
+      wakeupJobId: row.wakeup_job_id ?? null,
     };
   }
 
