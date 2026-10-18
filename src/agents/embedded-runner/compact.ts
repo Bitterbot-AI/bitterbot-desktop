@@ -531,6 +531,11 @@ export async function compactEmbeddedPiSessionDirect(
       workspaceDir: resolvedWorkspace,
     }).catch(() => undefined);
 
+    // PLAN-57 §4.3: the compute state block is volatile and rebuilt here too.
+    const computeState = (
+      await import("../../compute/awareness/state.js")
+    ).resolveComputeStateBlockFromConfig(params.config);
+
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -558,6 +563,7 @@ export async function compactEmbeddedPiSessionDirect(
       memoryCitationsMode: params.config?.memory?.citations,
       endocrineState,
       canonicalFacts,
+      computeState,
       agentName: params.config ? resolveIdentityName(params.config, sessionAgentId) : undefined,
     });
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);

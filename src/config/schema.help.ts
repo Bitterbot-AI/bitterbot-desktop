@@ -157,6 +157,14 @@ export const FIELD_HELP: Record<string, string> = {
     "Run monitors: watches on a page or API that are checked with a plain fetch and wake the agent only when something changes (default: true).",
   "compute.enabled":
     "Give the agent the `compute` tool and a short prompt section about compute pools (default: true). It only takes effect when the Soapbox compute plugin is loaded, and the agent can never fund a paid job itself.",
+  "compute.awareness.stateBlock":
+    "Put a short compute-state block at the end of the prompt when something is actionable: a job in flight, a job waiting on you, a completion the agent has not seen, low credits (default: true). Omitted entirely when nothing is happening, so an idle node pays nothing for it.",
+  "compute.awareness.maxTokens":
+    "Upper bound for the compute-state block, in tokens (default 120). Lower-value lines are clipped first.",
+  "compute.awareness.creditFloor":
+    "When available compute credits fall below this, the state block says so (default 10).",
+  "compute.awareness.wakeBudgetPerHour":
+    "How many times per hour a finished compute job may wake the agent (default 20). Over the budget, completions are queued and shown as waiting; none are lost.",
   "notifications.owner.channel":
     "Channel to push gateway notices to (a failed or turned-off scheduled job, a stranded task). Without it, notices go where the heartbeat would deliver. Every notice is also kept in the main session.",
   "notifications.owner.to": "Recipient on that channel for gateway notices.",

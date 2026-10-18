@@ -66,6 +66,68 @@ names the actions, and sets four rules:
 The section carries no numbers, so it sits in the cached part of the prompt
 and costs nothing after the first turn. Numbers come from the tool.
 
+## The live state block
+
+When something is actionable, the end of the system prompt (after the cache
+boundary, so it never disturbs the cached prefix) carries a short block:
+
+```text
+<compute-state v=418 as_of=12s_ago>
+pools: local(1/1 online, 1 gpu), lab(2/3 online, 1 gpu, trusted)
+credits: 140 TEST_CREDIT
+jobs: 2 running (embeddings x96 on gpu-2, sha256 x12 on w1)
+needs owner: pay1 awaiting_payment 0.4 USDC
+last: a81c succeeded 3m_ago (embeddings x96 on gpu-2, recomputed)
+</compute-state>
+```
+
+Lines appear in that fixed order and only when they have something to say:
+
+- a job in flight that the agent or the owner started
+- a job waiting on the owner (`awaiting_payment`, `payment_review`)
+- a completion the agent has not been shown yet (shown once, then dropped)
+- a pool other than the local one joined or changed its worker count (once)
+- credits below `compute.awareness.creditFloor`
+- completions held because the wake budget is spent
+- the coordinator is unreachable
+
+At steady state (only the local worker, nothing running, nothing new) the
+block is omitted entirely. It is capped at `compute.awareness.maxTokens`
+(default 120), carries a monotonic version `v` and an age `as_of`, excludes
+jobs the memory system starts for itself, and never appears for subagents.
+Coordinator strings are escaped: no angle brackets, no newlines. It is not
+part of the heartbeat's hashed inputs, so a running job never re-arms an
+interval tick. Turn it off with `compute.awareness.stateBlock: false`; the
+tool keeps working.
+
+## How a finished job reaches the agent
+
+A gateway-side watcher polls the coordinator with backoff (2 s while a job is
+running, growing to 30 s) and stops when nothing is in flight; an idle node
+has zero ticks. When a job the agent or the owner started reaches
+`succeeded`, `failed`, `expired`, `cancelled`, `refunded`,
+`awaiting_payment` or `payment_review`:
+
+1. A row is written to `compute_deliveries` (SQLite,
+   `~/.bitterbot/compute/deliveries.sqlite`), one per job and transition,
+   before anything else happens.
+2. A system event is queued in the session that started the job (the task's
+   session for agent-started jobs, the owner's main session otherwise).
+3. The heartbeat is woken with reason `compute-event`, which bypasses the
+   empty-`HEARTBEAT.md` skip and is not hash-gated, at most
+   `compute.awareness.wakeBudgetPerHour` times per hour (default 20). Over
+   the budget, the event is still queued, the row is marked deferred, the
+   state block shows it as waiting, and it is delivered on the next heartbeat
+   or user turn, or when the budget resets. Nothing is dropped.
+4. The row is marked delivered when a heartbeat turn completes for that
+   session. On gateway start the watcher reconciles rows against the
+   coordinator, so a job that finished while the gateway was down is still
+   reported, once.
+
+What never wakes the agent: worker or GPU count changes, credit changes,
+progress, queue depth, and anything started by the memory system for its own
+use (those jobs are recorded with origin `internal`).
+
 ## What the agent can never do
 
 There is no action that funds, approves or signs anything. Funding a paid
@@ -81,3 +143,15 @@ A backend is any object with `snapshot()`, `jobs()`, `job(id)` and
 `status` payload into the secret-free snapshot the tool renders: it copies
 named fields only, so bearer tokens, RPC URLs, escrow addresses and wallet
 secrets never reach the agent.
+
+To get the state block and completion delivery, also:
+
+- open the delivery store (`ComputeDeliveryStore.open()`) and start the
+  watcher (`startComputeWatcher({ backend, store, ownerSessionKey })`);
+- record an origin for every job you submit, before or right after the
+  coordinator accepts it: `store.recordOrigin(jobId, "owner", null)` for the
+  Compute tab and CLI, `"agent"` with the task's session key for
+  agent-started jobs, `"internal"` for anything the node does for itself.
+  Jobs with no recorded origin are shown in `status` but never delivered,
+  because the watcher cannot tell whose they are;
+- call `watcher.kick()` after a submit so polling resumes at once.

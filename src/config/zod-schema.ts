@@ -1208,7 +1208,21 @@ export const BitterbotSchema = z
       .strict()
       .optional(),
     monitors: z.object({ enabled: z.boolean().optional() }).strict().optional(),
-    compute: z.object({ enabled: z.boolean().optional() }).strict().optional(),
+    compute: z
+      .object({
+        enabled: z.boolean().optional(),
+        awareness: z
+          .object({
+            stateBlock: z.boolean().optional(),
+            maxTokens: z.number().int().min(40).max(400).optional(),
+            creditFloor: z.number().min(0).optional(),
+            wakeBudgetPerHour: z.number().int().min(0).max(1000).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
     shop: z
       .object({ enabled: z.boolean().optional(), ucpProfileUrl: z.string().url().optional() })
       .strict()

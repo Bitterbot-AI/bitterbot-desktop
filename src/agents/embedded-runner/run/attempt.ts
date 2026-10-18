@@ -631,6 +631,16 @@ export async function runEmbeddedAttempt(
           ownerTurn,
         }).catch(() => undefined);
 
+    // PLAN-57 §4.3: the compute state block, from the watcher's snapshot
+    // store. Undefined at steady state. Node-private, so never on remote task
+    // or guest turns; the builder also drops it in minimal mode.
+    const computeState =
+      remoteTaskTurn || guestTurn
+        ? undefined
+        : (await import("../../../compute/awareness/state.js")).resolveComputeStateBlockFromConfig(
+            params.config,
+          );
+
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -667,6 +677,7 @@ export async function runEmbeddedAttempt(
       endocrineState,
       canonicalFacts,
       researchFindings,
+      computeState,
       agentName,
       guestTurn,
     });
