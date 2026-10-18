@@ -22,6 +22,7 @@ import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { resolveStateDir } from "../../config/paths.js";
 import { requireNodeSqlite } from "../../memory/sqlite.js";
+import { ComputeLedger } from "./ledger.js";
 
 export type ComputeJobOrigin = "agent" | "owner" | "internal";
 
@@ -117,6 +118,14 @@ export class ComputeDeliveryStore {
 
   static inMemory(): ComputeDeliveryStore {
     return ComputeDeliveryStore.open(":memory:");
+  }
+
+  private ledgerInstance: ComputeLedger | null = null;
+
+  /** PLAN-57 §4.6: the embedding ledger shares this database. */
+  ledger(): ComputeLedger {
+    this.ledgerInstance ??= new ComputeLedger(this.db);
+    return this.ledgerInstance;
   }
 
   close(): void {

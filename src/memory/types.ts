@@ -78,6 +78,17 @@ export type MemoryProviderStatus = {
     lastProvider?: string;
   };
   custom?: Record<string, unknown>;
+  /** PLAN-57 §4.6: the exact key this index is written under. */
+  embeddingProfile?: {
+    key: string;
+    modelDigest?: string;
+    dimensions?: number;
+    normalise: string;
+  };
+  /** Set when the live profile conflicts with the index and writes are held until `memory migrate-embeddings`. */
+  embeddingHold?: { conflicts: string[] };
+  /** `pool` when memory batches may be routed to compute pools (PLAN-57), else `local`. */
+  computeRouting?: "pool" | "local";
   crystals?: Record<string, unknown>;
 };
 
@@ -115,6 +126,15 @@ export interface MemorySearchManager {
   sync?(params?: {
     reason?: string;
     force?: boolean;
+    progress?: (update: MemorySyncProgressUpdate) => void;
+  }): Promise<void>;
+  /** PLAN-57 §4.6: what `memory migrate-embeddings` would do. */
+  embeddingMigrationPlan?(): {
+    hold: { conflicts: string[]; stored: import("./embedding-profile.js").EmbeddingProfile } | null;
+    current: import("./embedding-profile.js").EmbeddingProfile | null;
+  };
+  /** PLAN-57 §4.6: rebuild the index under the live embedding profile and clear the hold. */
+  migrateEmbeddingProfile?(params?: {
     progress?: (update: MemorySyncProgressUpdate) => void;
   }): Promise<void>;
   probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult>;

@@ -51,7 +51,8 @@ export function resetComputeEstimatesForTest(): void {
   history.clear();
 }
 
-function medianMsPerItem(workerId: string, workload: ComputeWorkloadKind): number | null {
+/** Median measured ms per item for a worker and workload, or null without history. */
+export function learnedMsPerItem(workerId: string, workload: ComputeWorkloadKind): number | null {
   const ring = history.get(key(workerId, workload));
   if (!ring || ring.length === 0) {
     return null;
@@ -137,7 +138,7 @@ function optionFor(
   items: number,
 ): ComputeEstimateOption {
   const pool = params.scope ?? w.pools[0] ?? w.projects[0];
-  const learned = medianMsPerItem(w.id, params.workload);
+  const learned = learnedMsPerItem(w.id, params.workload);
   const prior = PRIOR_MS_PER_ITEM[params.workload][w.gpu ? "gpu" : "cpu"];
   const perItem = learned ?? prior;
   const estSeconds = Math.max(1, Math.round((FIXED_OVERHEAD_MS + perItem * items) / 1000));

@@ -1,4 +1,5 @@
 import { requireApiKey, resolveApiKeyForProvider } from "../agents/model-auth.js";
+import { digestFromOllama } from "./embedding-profile.js";
 import {
   isLocalEmbeddingBaseUrl,
   recordEmbeddingUsage,
@@ -77,6 +78,13 @@ export async function createOpenAiEmbeddingProvider(
       id: "openai",
       model: client.model,
       maxInputTokens: OPENAI_MAX_INPUT_TOKENS[client.model],
+      // PLAN-57 §4.6: a loopback OpenAI-compatible endpoint is usually Ollama;
+      // its manifest digest is what pool workers pin, so parity can be checked.
+      ...(localEndpoint
+        ? {
+            resolveDigest: () => digestFromOllama({ baseUrl: client.baseUrl, model: client.model }),
+          }
+        : {}),
       embedQuery: async (text, opts) => {
         const [vec] = await embed([text], opts);
         return vec ?? [];

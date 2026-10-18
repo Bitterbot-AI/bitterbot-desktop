@@ -11,6 +11,7 @@ export {
   type ComputeWorkloadKind,
   type SoapboxJobLike,
   type SoapboxStatusLike,
+  COMPUTE_MAX_INPUTS,
   defaultPoolTrust,
   getComputeBackend,
   registerComputeBackend,
@@ -22,6 +23,7 @@ export {
   type ComputeEstimate,
   type ComputeEstimateOption,
   estimateCompute,
+  learnedMsPerItem,
   recordComputeDuration,
   resetComputeEstimatesForTest,
 } from "./estimate.js";
@@ -68,3 +70,27 @@ export {
   completeComputeTaskLink,
   linkComputeJobToTask,
 } from "./task-link.js";
+export {
+  type GovernanceClass,
+  type PoolTrust,
+  CLASS_CEILING,
+  TRUST_RANK,
+  classifyForEgress,
+  egressPermitted,
+  groupByClass,
+  resolvePoolTrust,
+} from "./egress.js";
+export {
+  type Cooldown,
+  type CooldownReason,
+  type EmbeddingRoute,
+  CooldownBook,
+  LOCAL_WORKER_ID,
+  chooseEmbeddingRoute,
+} from "./routing.js";
+export {
+  type ComputeLedgerRow,
+  type ComputeLedgerSummary,
+  type LedgerRoute,
+  ComputeLedger,
+} from "./ledger.js";

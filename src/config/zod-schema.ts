@@ -1220,6 +1220,28 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        pools: z
+          .record(
+            z.string().min(1).max(64),
+            z.object({ trust: z.enum(["trusted", "untrusted"]).optional() }).strict(),
+          )
+          .optional(),
+        embeddings: z
+          .object({
+            provider: z.enum(["pool", "local"]).optional(),
+            marginMs: z.number().int().min(0).max(600_000).optional(),
+            cooldownMs: z.number().int().min(1000).max(86_400_000).optional(),
+            timeoutMs: z.number().int().min(1000).max(600_000).optional(),
+            modelDigest: z.string().min(8).max(128).optional(),
+          })
+          .strict()
+          .optional(),
+        egress: z
+          .object({
+            transcriptsDefaultClass: z.enum(["normal", "personal", "confidential"]).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

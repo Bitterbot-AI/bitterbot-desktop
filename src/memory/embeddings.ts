@@ -4,6 +4,7 @@ import type { BitterbotConfig } from "../config/config.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveUserPath } from "../utils.js";
+import { type DigestResolver, digestOfFile } from "./embedding-profile.js";
 import { createGeminiEmbeddingProvider, type GeminiEmbeddingClient } from "./embeddings-gemini.js";
 import { createOpenAiEmbeddingProvider, type OpenAiEmbeddingClient } from "./embeddings-openai.js";
 import { createVoyageEmbeddingProvider, type VoyageEmbeddingClient } from "./embeddings-voyage.js";
@@ -11,7 +12,7 @@ import { importNodeLlamaCpp } from "./node-llama.js";
 
 const log = createSubsystemLogger("memory/embeddings");
 
-function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
+export function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
   const sanitized = vec.map((value) => (Number.isFinite(value) ? value : 0));
   const magnitude = Math.sqrt(sanitized.reduce((sum, value) => sum + value * value, 0));
   if (magnitude < 1e-10) {
@@ -31,6 +32,12 @@ export type EmbeddingProvider = {
   id: string;
   model: string;
   maxInputTokens?: number;
+  /**
+   * PLAN-57 §4.6: name the weights. Local GGUF providers hash the file; an
+   * OpenAI-compatible endpoint on localhost asks Ollama for its manifest
+   * digest. Remote APIs leave this out and never take part in pool parity.
+   */
+  resolveDigest?: DigestResolver;
   /** PLAN-50: `opts.feature` attributes the call in the usage ledger. */
   embedQuery: (text: string, opts?: EmbedCallOptionsLocal) => Promise<number[]>;
   embedBatch: (texts: string[], opts?: EmbedCallOptionsLocal) => Promise<number[][]>;
@@ -155,6 +162,13 @@ async function createLocalEmbeddingProvider(
   return {
     id: "local",
     model: modelPath,
+    resolveDigest: async (hint) => {
+      const resolved = await resolveModelFile(modelPath, {
+        directory: modelCacheDir || undefined,
+        cli: false,
+      });
+      return digestOfFile(resolved, hint);
+    },
     embedQuery: async (text, opts) => {
       const ctx = await ensureContext();
       const started = Date.now();

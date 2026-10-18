@@ -16,6 +16,11 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { resolveUserPath } from "../utils.js";
 import {
+  type EmbeddingProfile,
+  buildEmbeddingProfile,
+  compareEmbeddingProfiles,
+} from "./embedding-profile.js";
+import {
   buildFileEntry,
   ensureDir,
   isMemoryPath,
@@ -44,7 +49,11 @@ type MemoryIndexMeta = {
   chunkTokens: number;
   chunkOverlap: number;
   vectorDims?: number;
+  /** PLAN-57 §4.6: the exact profile this index is written under. */
+  profile?: EmbeddingProfile;
 };
+
+const PROFILE_DIGEST_TIMEOUT_MS = 30_000;
 
 type MemorySyncProgressState = {
   completed: number;
@@ -1098,6 +1107,17 @@ class MemoryManagerSyncOps {
     }
     const vectorReady = await this.ensureVectorReady();
     const meta = this.readMeta();
+    await this.ensureEmbeddingProfile(meta, { force: Boolean(params?.force) });
+    if (this.embeddingProfileHold) {
+      if (!this.embeddingHoldLogged) {
+        this.embeddingHoldLogged = true;
+        log.error(
+          `memory index on hold: the embedding profile changed under the same model (${this.embeddingProfileHold.conflicts.join("; ")}). ` +
+            `No new vectors are written and vector search is paused until you run \`bitterbot memory migrate-embeddings\`.`,
+        );
+      }
+      return;
+    }
     const needsFullReindex =
       params?.force ||
       !meta ||
@@ -1367,6 +1387,10 @@ class MemoryManagerSyncOps {
       if (this.vector.available && this.vector.dims) {
         nextMeta.vectorDims = this.vector.dims;
       }
+      const rebuiltProfile = this.currentEmbeddingProfile();
+      if (rebuiltProfile) {
+        nextMeta.profile = rebuiltProfile;
+      }
 
       this.writeMeta(nextMeta);
       this.pruneEmbeddingCacheIfNeeded();
@@ -1460,6 +1484,10 @@ class MemoryManagerSyncOps {
     if (this.vector.available && this.vector.dims) {
       nextMeta.vectorDims = this.vector.dims;
     }
+    const syncedProfile = this.currentEmbeddingProfile();
+    if (syncedProfile) {
+      nextMeta.profile = syncedProfile;
+    }
 
     this.writeMeta(nextMeta);
     this.pruneEmbeddingCacheIfNeeded();
@@ -1476,6 +1504,98 @@ class MemoryManagerSyncOps {
     this.dropVectorTable();
     this.vector.dims = undefined;
     this.sessionsDirtyFiles.clear();
+  }
+
+  /**
+   * PLAN-57 §4.6. Resolve the live embedding profile once (the digest may
+   * hash a GGUF or ask Ollama) and compare it with the one on the index.
+   * A provider or model change keeps its existing automatic safe reindex;
+   * a change under the same model (digest, dimensions, processing, chunker)
+   * puts the index on hold until an explicit migration.
+   */
+  private async ensureEmbeddingProfile(
+    meta: MemoryIndexMeta | null,
+    opts?: { force?: boolean },
+  ): Promise<void> {
+    if (!this.embeddingProfile) {
+      const override = this.cfg.compute?.embeddings?.modelDigest?.trim();
+      let resolved: { digest: string; fingerprint?: string } | undefined = override
+        ? { digest: override }
+        : undefined;
+      if (!resolved && typeof this.provider.resolveDigest === "function") {
+        try {
+          resolved = await this.withTimeout(
+            this.provider.resolveDigest({
+              fingerprint: meta?.profile?.digestFingerprint,
+              digest: meta?.profile?.modelDigest,
+            }),
+            PROFILE_DIGEST_TIMEOUT_MS,
+            "embedding model digest resolution timed out",
+          );
+        } catch (err) {
+          log.warn(`embedding model digest unavailable: ${String(err)}`);
+        }
+      }
+      this.embeddingProfile = buildEmbeddingProfile({
+        provider: this.provider.id,
+        model: this.provider.model,
+        chunking: this.settings.chunking,
+        modelDigest: resolved?.digest,
+        digestFingerprint: resolved?.fingerprint,
+      });
+    }
+    if (opts?.force) {
+      // A forced sync (migration, or `memory index --force`) is the owner
+      // choosing to rebuild under the live profile; it is not a silent switch.
+      this.embeddingProfileHold = null;
+      return;
+    }
+    const current = this.currentEmbeddingProfile();
+    const cmp = compareEmbeddingProfiles(meta?.profile, current!);
+    if (!cmp.same && cmp.kind === "parity" && meta?.profile) {
+      if (!this.embeddingProfileHold) {
+        this.embeddingHoldLogged = false;
+      }
+      this.embeddingProfileHold = { conflicts: cmp.conflicts, stored: meta.profile };
+    } else {
+      this.embeddingProfileHold = null;
+    }
+  }
+
+  /** The live profile with the dimensions the vector table knows, or null before the first sync. */
+  currentEmbeddingProfile(): EmbeddingProfile | null {
+    if (!this.embeddingProfile) {
+      return null;
+    }
+    const dims = this.vector?.dims;
+    return dims && dims > 0
+      ? { ...this.embeddingProfile, dimensions: dims }
+      : this.embeddingProfile;
+  }
+
+  /** What `memory migrate-embeddings` shows before it rebuilds. */
+  embeddingMigrationPlan(): {
+    hold: { conflicts: string[]; stored: EmbeddingProfile } | null;
+    current: EmbeddingProfile | null;
+  } {
+    return { hold: this.embeddingProfileHold, current: this.currentEmbeddingProfile() };
+  }
+
+  /**
+   * Rebuild the index under the live profile: a new database, re-embedding
+   * on the normal path, carry-over of everything that is not a vector, then
+   * the swap. The old index serves until the swap. Clears the hold.
+   */
+  async migrateEmbeddingProfile(params?: {
+    progress?: (update: MemorySyncProgressUpdate) => void;
+  }): Promise<void> {
+    this.embeddingProfileHold = null;
+    this.embeddingHoldLogged = false;
+    await this.sync({
+      reason: "embedding-profile-migration",
+      force: true,
+      progress: params?.progress,
+    });
   }
 
   private readMeta(): MemoryIndexMeta | null {

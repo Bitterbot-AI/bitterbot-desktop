@@ -61,6 +61,8 @@ import {
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
 import type { DreamStats, SynthesizeFn } from "./dream-types.js";
 import { DEFAULT_DREAM_CONFIG } from "./dream-types.js";
+import { type EmbeddingProfile, embeddingProfileKey } from "./embedding-profile.js";
+import { createPoolEmbeddingProvider, isPoolEmbeddingProvider } from "./embeddings-pool.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -255,6 +257,11 @@ export class MemoryIndexManager implements MemorySearchManager {
   private readonly workspaceDir: string;
   private readonly settings: ResolvedMemorySearchConfig;
   private provider: EmbeddingProvider;
+  /** PLAN-57 §4.6: resolved once per process on the first sync (digest may need I/O). */
+  private embeddingProfile: EmbeddingProfile | null = null;
+  /** Set when the live profile conflicts with the index; writes and vector search pause until migration. */
+  private embeddingProfileHold: { conflicts: string[]; stored: EmbeddingProfile } | null = null;
+  private embeddingHoldLogged = false;
   private readonly requestedProvider: "openai" | "local" | "gemini" | "voyage" | "auto";
   private fallbackFrom?: "openai" | "local" | "gemini" | "voyage";
   private fallbackReason?: string;
@@ -545,7 +552,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     const build = (async (): Promise<MemoryIndexManager> => {
       const providerStart = Date.now();
-      const providerResult = await createEmbeddingProvider({
+      const baseProviderResult = await createEmbeddingProvider({
         config: cfg,
         agentDir: resolveAgentDir(cfg, agentId),
         agentId,
@@ -555,6 +562,22 @@ export class MemoryIndexManager implements MemorySearchManager {
         fallback: settings.fallback,
         local: settings.local,
       });
+      // PLAN-57 §4.6: batches may route to a compute pool. The wrapper keeps
+      // the provider's id and model (the index key) and is a pass-through
+      // until a backend, a runtime and a resolved profile all exist.
+      let built: MemoryIndexManager | null = null;
+      const providerResult: EmbeddingProviderResult =
+        cfg.compute?.enabled !== false && cfg.compute?.embeddings?.provider !== "local"
+          ? {
+              ...baseProviderResult,
+              provider: createPoolEmbeddingProvider({
+                local: baseProviderResult.provider,
+                config: cfg,
+                agentId,
+                getProfile: () => built?.currentEmbeddingProfile() ?? null,
+              }),
+            }
+          : baseProviderResult;
       const providerMs = Date.now() - providerStart;
       const ctorStart = Date.now();
       const manager = new MemoryIndexManager({
@@ -566,6 +589,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         providerResult,
         purpose: params.purpose,
       });
+      built = manager;
       log.info("memory manager build timing", {
         agentId,
         purpose: params.purpose ?? "default",
@@ -1972,6 +1996,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     limit: number,
     queryText?: string,
   ): Promise<Array<MemorySearchResult & { id: string; importanceScore: number }>> {
+    if (this.embeddingProfileHold) {
+      // The query vector comes from a profile the stored vectors do not share;
+      // a similarity score between them would be noise. Keyword search still runs.
+      return [];
+    }
     const results = await searchVector({
       db: this.db,
       vectorTable: VECTOR_TABLE,
@@ -2189,6 +2218,23 @@ export class MemoryIndexManager implements MemorySearchManager {
       provider: this.provider.id,
       model: this.provider.model,
       requestedProvider: this.requestedProvider,
+      ...(() => {
+        const profile = this.currentEmbeddingProfile();
+        return profile
+          ? {
+              embeddingProfile: {
+                key: embeddingProfileKey(profile),
+                modelDigest: profile.modelDigest,
+                dimensions: profile.dimensions,
+                normalise: profile.normalise,
+              },
+            }
+          : {};
+      })(),
+      ...(this.embeddingProfileHold
+        ? { embeddingHold: { conflicts: this.embeddingProfileHold.conflicts } }
+        : {}),
+      computeRouting: isPoolEmbeddingProvider(this.provider) ? "pool" : "local",
       sources: Array.from(this.sources),
       extraPaths: this.settings.extraPaths,
       sourceCounts,

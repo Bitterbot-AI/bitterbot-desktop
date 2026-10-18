@@ -1,6 +1,7 @@
 // @ts-nocheck
 // oxlint-disable eslint/no-unused-vars, typescript/no-explicit-any
 import fs from "node:fs/promises";
+import { type GovernanceClass, classifyForEgress } from "../compute/awareness/egress.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runGeminiEmbeddingBatches, type GeminiBatchRequest } from "./batch-gemini.js";
@@ -198,9 +199,17 @@ class MemoryManagerEmbeddingOps {
       .run(excess);
   }
 
-  private async embedChunksInBatches(chunks: MemoryChunk[]): Promise<number[][]> {
+  private async embedChunksInBatches(
+    chunks: MemoryChunk[],
+    egress?: { source?: MemorySource; classes?: GovernanceClass[] },
+  ): Promise<number[][]> {
     if (chunks.length === 0) {
       return [];
+    }
+    if (this.embeddingProfileHold) {
+      // PLAN-57 §4.6: never write a vector under a profile the index does not
+      // carry. Rows stay pending and the backfill picks them up after migration.
+      return chunks.map(() => []);
     }
     const { embeddings, missing } = this.collectCachedEmbeddings(chunks);
 
@@ -216,8 +225,21 @@ class MemoryManagerEmbeddingOps {
     let cursor = 0;
     let failed = 0;
     let splits = 0;
+    // PLAN-57 §4.6: each input's governance class travels with it so the pool
+    // provider can split the batch and route each class under its ceiling.
+    const classByHash = new Map<string, GovernanceClass>();
+    missing.forEach((m, i) => {
+      classByHash.set(
+        m.chunk.hash,
+        egress?.classes?.[m.index] ??
+          classifyForEgress({ text: m.chunk.text, source: egress?.source, config: this.cfg }),
+      );
+    });
     for (const batch of batches) {
-      const result = await this.embedBatchResilient(batch.map((chunk) => chunk.text));
+      const result = await this.embedBatchResilient(
+        batch.map((chunk) => chunk.text),
+        batch.map((chunk) => classByHash.get(chunk.hash) ?? "personal"),
+      );
       failed += result.failed;
       splits += result.splits;
       for (let i = 0; i < batch.length; i += 1) {
@@ -258,12 +280,13 @@ class MemoryManagerEmbeddingOps {
    */
   private async embedBatchResilient(
     texts: string[],
+    classes?: GovernanceClass[],
   ): Promise<{ embeddings: number[][]; failed: number; splits: number }> {
     if (texts.length === 0) {
       return { embeddings: [], failed: 0, splits: 0 };
     }
     try {
-      const embeddings = await this.embedBatchWithRetry(texts);
+      const embeddings = await this.embedBatchWithRetry(texts, undefined, classes);
       return { embeddings, failed: 0, splits: 0 };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -280,8 +303,8 @@ class MemoryManagerEmbeddingOps {
       log.warn(
         `memory embeddings: batch of ${texts.length} failed (${message}); bisecting into ${mid}+${texts.length - mid}`,
       );
-      const left = await this.embedBatchResilient(texts.slice(0, mid));
-      const right = await this.embedBatchResilient(texts.slice(mid));
+      const left = await this.embedBatchResilient(texts.slice(0, mid), classes?.slice(0, mid));
+      const right = await this.embedBatchResilient(texts.slice(mid), classes?.slice(mid));
       return {
         embeddings: [...left.embeddings, ...right.embeddings],
         failed: left.failed + right.failed,
@@ -351,7 +374,7 @@ class MemoryManagerEmbeddingOps {
     if (this.provider.id === "voyage" && this.voyage) {
       return this.embedChunksWithVoyageBatch(chunks, entry, source);
     }
-    return this.embedChunksInBatches(chunks);
+    return this.embedChunksInBatches(chunks, { source });
   }
 
   private collectCachedEmbeddings(chunks: MemoryChunk[]): {
@@ -589,6 +612,7 @@ class MemoryManagerEmbeddingOps {
   private async embedBatchWithRetry(
     texts: string[],
     feature: string = USAGE_FEATURES.memoryIndex,
+    classes?: GovernanceClass[],
   ): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
@@ -604,7 +628,7 @@ class MemoryManagerEmbeddingOps {
           timeoutMs,
         });
         return await this.withTimeout(
-          this.provider.embedBatch(texts, { feature }),
+          this.provider.embedBatch(texts, { feature, classes }),
           timeoutMs,
           `memory embeddings batch timed out after ${Math.round(timeoutMs / 1000)}s`,
         );
@@ -857,7 +881,7 @@ class MemoryManagerEmbeddingOps {
     this.maybeReenableBatchAfterCooldown();
     const embeddings = this.batch.enabled
       ? await this.embedChunksWithBatch(chunks, entry, options.source)
-      : await this.embedChunksInBatches(chunks);
+      : await this.embedChunksInBatches(chunks, { source: options.source });
     const sample = embeddings.find((embedding) => embedding.length > 0);
     const vectorReady = sample ? await this.ensureVectorReady(sample.length) : false;
     const now = Date.now();
@@ -1190,7 +1214,11 @@ class MemoryManagerEmbeddingOps {
         hash: row.hash,
       })),
     );
-    const embeddings = await this.embedChunksInBatches(chunks);
+    const embeddings = await this.embedChunksInBatches(chunks, {
+      classes: rows.map((row) =>
+        classifyForEgress({ text: row.text, source: row.source, config: this.cfg }),
+      ),
+    });
     const sample = embeddings.find((embedding) => embedding.length > 0);
     const vectorReady = sample ? await this.ensureVectorReady(sample.length) : false;
     const now = Date.now();
