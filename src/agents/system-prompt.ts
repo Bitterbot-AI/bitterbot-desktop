@@ -507,6 +507,12 @@ export function buildAgentSystemPrompt(params: {
    */
   researchFindings?: string;
   /**
+   * PLAN-57 §4.3: pre-rendered `<compute-state>` block
+   * (resolveComputeStateBlock). Volatile: rendered after the cache
+   * boundary, omitted at steady state, never in minimal mode.
+   */
+  computeState?: string;
+  /**
    * Session-scoped facts that select conditional sections of the injected
    * workspace files (constant for the life of a session, so cache-safe).
    * Defaults: `group` = full mode with a Group Chat Context; `githubAvailable`
@@ -780,6 +786,9 @@ export function buildAgentSystemPrompt(params: {
       endocrineState: params.endocrineState,
       isMinimal,
     }),
+    // PLAN-57 §4.3: compute state, only when actionable (the resolver returns
+    // undefined otherwise) and never for subagents.
+    ...(params.computeState && !isMinimal ? [params.computeState, ""] : []),
   ];
   if (extraSystemPrompt) {
     // Use "Subagent Context" header for minimal mode (subagents), otherwise "Group Chat Context"

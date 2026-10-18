@@ -71,6 +71,8 @@ export function buildSystemPrompt(params: {
   canonicalFacts?: string;
   /** PLAN-34 Phase 2b: pre-rendered Research Findings block. */
   researchFindings?: string;
+  /** PLAN-57: pre-rendered `<compute-state>` block (volatile tail). */
+  computeState?: string;
 }) {
   const defaultModelRef = resolveDefaultModelForAgent({
     cfg: params.config ?? {},
@@ -114,6 +116,7 @@ export function buildSystemPrompt(params: {
     endocrineState: params.endocrineState,
     canonicalFacts: params.canonicalFacts,
     researchFindings: params.researchFindings,
+    computeState: params.computeState,
     agentName,
   });
 }

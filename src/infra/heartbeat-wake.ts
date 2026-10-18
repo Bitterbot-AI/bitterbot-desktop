@@ -32,7 +32,12 @@ const REASON_PRIORITY = {
 } as const;
 
 function isActionWakeReason(reason: string): boolean {
-  return reason === "manual" || reason === "exec-event" || reason.startsWith(HOOK_REASON_PREFIX);
+  return (
+    reason === "manual" ||
+    reason === "exec-event" ||
+    reason === "compute-event" ||
+    reason.startsWith(HOOK_REASON_PREFIX)
+  );
 }
 
 function resolveReasonPriority(reason: string): number {

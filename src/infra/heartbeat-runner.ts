@@ -367,6 +367,8 @@ export async function runHeartbeatOnce(opts: {
   const isExecEventReason = opts.reason === "exec-event";
   const isCronEventReason = Boolean(opts.reason?.startsWith("cron:"));
   const isWakeReason = opts.reason === "wake" || Boolean(opts.reason?.startsWith("hook:"));
+  // PLAN-57 §4.4: a compute completion has a pending system event too.
+  const isComputeEventReason = opts.reason === "compute-event";
   const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
   const heartbeatFilePath = path.join(workspaceDir, DEFAULT_HEARTBEAT_FILENAME);
   // Kept for the content-hash gate below (undefined = file missing).
@@ -377,7 +379,8 @@ export async function runHeartbeatOnce(opts: {
       isHeartbeatContentEffectivelyEmpty(heartbeatFileContent) &&
       !isExecEventReason &&
       !isCronEventReason &&
-      !isWakeReason
+      !isWakeReason &&
+      !isComputeEventReason
     ) {
       emitHeartbeatEvent({
         status: "skipped",
