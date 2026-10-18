@@ -65,6 +65,21 @@ export type ComputeEgressConfig = {
   transcriptsDefaultClass?: "normal" | "personal" | "confidential";
 };
 
+/** PLAN-57 §4.8: paid compute. Off for the beta; funding is always the owner's act. */
+export type ComputePaidConfig = {
+  /**
+   * Let the agent submit `paid_usdc` jobs (default off). A submitted paid job
+   * waits at `awaiting_payment`; nothing is funded until the owner approves
+   * it in the Control UI or with `bitterbot compute approve`. The coordinator
+   * must also report paid work as available to this node.
+   */
+  enabled?: boolean;
+  /** Most USDC one job may be funded for (default 5). Larger quotes are refused at the signer. */
+  maxUsdcPerJob?: number;
+  /** Most USDC compute funding may total in a rolling 24 hours (default 20). */
+  maxUsdcPerDay?: number;
+};
+
 export type ComputeConfig = {
   /**
    * Master switch for the agent-facing compute surface: the `compute` tool,
@@ -78,4 +93,5 @@ export type ComputeConfig = {
   pools?: Record<string, ComputePoolConfig>;
   embeddings?: ComputeEmbeddingsConfig;
   egress?: ComputeEgressConfig;
+  paid?: ComputePaidConfig;
 };

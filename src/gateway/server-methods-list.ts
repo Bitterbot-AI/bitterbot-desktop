@@ -149,6 +149,9 @@ const BASE_METHODS = [
   "review.get",
   "review.resolve",
   "review.spends",
+  // PLAN-57 §4.8: paid compute jobs; approve is the owner's funding surface.
+  "compute.quote",
+  "compute.approve",
   // WebChat WebSocket-native chat methods
   "chat.history",
   "chat.abort",

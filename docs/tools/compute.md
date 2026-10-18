@@ -60,7 +60,7 @@ names the actions, and sets four rules:
    is not a proof; `redundant` means a second worker agreed.
 3. Personal and confidential memory never leaves this machine.
 4. The agent may quote a paid job; only the owner funds it. A paid job waits
-   at `awaiting_payment` until the owner approves it in the Compute tab or
+   at `awaiting_payment` until the owner approves it in the Control UI or
    on the command line.
 
 The section carries no numbers, so it sits in the cached part of the prompt
@@ -133,16 +133,19 @@ use (those jobs are recorded with origin `internal`).
 On an owner turn, and only when the node's backend supports it, the tool
 also offers:
 
-| action   | what it does                                                                                                                                                                                                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `submit` | run a batch on a `private` pool or a `collective` project: `mode`, `scope` (pool or project id), `workload`, `inputs` (1 to 128 strings, 256 KiB total), and for embeddings `model` and `model_digest`. Optional `task_id` links the job to a long-horizon task; optional `reason` is recorded on it. Returns the job id. |
-| `cancel` | cancel a job this agent started. `job_id`. Jobs started by the owner or by the memory system cannot be cancelled from here.                                                                                                                                                                                               |
+| action   | what it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `submit` | run a batch on a `private` pool or a `collective` project: `mode`, `scope` (pool or project id), `workload`, `inputs` (1 to 128 strings, 256 KiB total), and for embeddings `model` and `model_digest`. Optional `task_id` links the job to a long-horizon task; optional `reason` is recorded on it. Returns the job id. Where paid compute is enabled, `mode: paid_usdc` with `max_cost_usdc` and no `scope` submits a paid job that waits for the owner (see [Paid jobs](#paid-jobs-and-who-pays)). |
+| `cancel` | cancel a job this agent started. `job_id`. Jobs started by the owner or by the memory system cannot be cancelled from here.                                                                                                                                                                                                                                                                                                                                                                            |
 
 Rules the code enforces, not the prompt:
 
 - Non-owner turns get a refusal before anything reaches the coordinator.
-- `paid` and `paid_usdc` are rejected. The agent can quote a paid job with
-  `estimate`; only the owner submits and funds paid work.
+- `paid` (credits) is rejected. `paid_usdc` is accepted only when
+  `compute.paid.enabled` is on and the coordinator offers paid work to this
+  node; the job then stops at `awaiting_payment` and the owner decides (see
+  [Paid jobs](#paid-jobs-and-who-pays)). Otherwise the agent can quote a
+  paid job with `estimate` and nothing more.
 - Inputs are validated gateway-side (count, size, embedding model present)
   before the coordinator sees them; the coordinator's limits are the second
   line.
@@ -239,12 +242,81 @@ bitterbot memory migrate-embeddings --yes    # rebuilds under the new profile
 `bitterbot memory index --force` does the same rebuild. Both re-embed every
 chunk, so on a large index expect the same time a first index took.
 
+## Paid jobs and who pays
+
+Paid compute is off by default (`compute.paid.enabled: false`). When the
+owner turns it on, and the coordinator reports paid work as available to
+this node (the invite flag), an owner turn may submit `mode: paid_usdc` with
+`max_cost_usdc`. The coordinator accepts the job and parks it at
+`awaiting_payment` with a quote: an exact amount, a payee and a hash over
+both. The tool then does two things and stops:
+
+- it puts a hold in the review queue ("Fund compute job j-42: 0.42 USDC to
+  0xabc...") in the session that asked, and
+- it tells the agent the cost and that the job is waiting for the owner.
+
+Nothing is funded yet. The owner approves in one of two places, and both
+run the same code:
+
+- the review queue (Control UI, Activity), which resolves the hold through
+  `review.resolve`, or
+- `bitterbot compute approve <job>`, which calls the admin-only
+  `compute.approve` gateway method with the quote hash it displayed and
+  settles the hold if there is one. A Control UI client can call the same
+  method; a chat reply or the node's internal connection cannot use it.
+
+Approving mints an **approval token** that carries the job id, the exact
+quote hash, the scopes of the gateway connection that decided, the surface
+that decided and a five-minute expiry, signed with a per-process secret. The
+gateway checks it without consuming it; the backend's signer (which runs in
+the gateway process as part of the plugin) verifies it again before building
+a transaction, and that verification consumes it, so a token is good for one
+transaction. A signer in another process cannot verify a token at all:
+funding authority never leaves the gateway process. The funding call runs
+inside the spend gate as an `rpc` spend, so it lands in the payment record
+next to every other outbound payment, and one job is funded by one caller at
+a time (a second approval while one is in flight is refused as
+`in_progress`).
+
+The signer refuses, logs, writes a ledger row and counts:
+
+| refusal               | when                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `agent_origin`        | the request carries origin `agent` (a tool call, whatever it claims); refused before the quote is read        |
+| `chat_decision`       | the approval was labelled as a chat reply (`/approve`)                                                        |
+| `internal_connection` | the deciding gateway connection is the node's own internal (`backend` mode) client, whatever its scopes       |
+| `missing_scope`       | the deciding connection lacks `operator.admin` and `operator.approvals`                                       |
+| `paid_disabled`       | `compute.paid.enabled` is off                                                                                 |
+| `ledger_unavailable`  | the compute runtime is not registered, so there is no ledger to enforce the caps and the already-funded guard |
+| `over_cap`            | the quote is above `compute.paid.maxUsdcPerJob` (default 5 USDC)                                              |
+| `over_daily_cap`      | funding in the last 24 hours plus this quote exceeds `maxUsdcPerDay` (default 20)                             |
+| `quote_changed`       | the coordinator now quotes something other than what was approved                                             |
+| `already_funded`      | the ledger has a funded row for the job                                                                       |
+| `in_progress`         | another approval is funding the job, or a funding started less than ten minutes ago and never settled         |
+| `bad_token:*`         | missing, malformed, tampered, expired, mismatched or reused token                                             |
+
+The chat `/approve` command is also turned away one step earlier: the
+`review.resolve` handler refuses to approve a compute hold from a chat reply
+or an internal connection and leaves the hold pending, so the owner can
+still approve it from the Control UI or the CLI. Denying from chat works.
+
+`bitterbot doctor` reports the week's funding and refusals under "Compute
+payments". An `agent_origin` refusal is an error there: nothing moved, but
+something tried.
+
 ## What the agent can never do
 
-There is no action that funds, approves or signs anything. Funding a paid
-job goes through the owner's review rail, bound to an authenticated owner
-session; nothing the agent can call produces a funding transaction. This is
-a structural property of the tool surface, not a prompt instruction.
+There is no action that funds, approves or signs anything. The paid path
+above starts from an authenticated owner connection and ends at a signer that
+verifies the owner's token. An agent-origin or internal-origin request is
+refused by the signer before a quote is even read; a chat reply and the
+node's internal connection are refused at the review handler and again at
+the signer. A test builds every registered tool as an owner turn with paid
+compute on, throws funding-shaped calls at each of them and asserts that the
+backend's `fund()` never runs and no token is minted; a second test pins
+`compute.approve` to `operator.admin`. The GENOME axiom ("never fund,
+approve or sign a payment on your own authority") and the considerations log
+remain, as the belt to the signer's suspenders.
 
 ## For plugin authors
 
@@ -267,9 +339,22 @@ To get the state block and completion delivery, also:
   because the watcher cannot tell whose they are;
 - call `watcher.kick()` after a submit so polling resumes at once;
 - to let the agent submit and cancel, implement `submit(req)` and
-  `cancel(id)` on the backend (private and collective modes only; the tool
-  never sends paid modes) and call `registerComputeRuntime({ store, watcher })`.
-  Without both, the tool stays read-only;
+  `cancel(id)` on the backend and call `registerComputeRuntime({ store, watcher })`.
+  Without both, the tool stays read-only. `submit` receives
+  `{ kind: "paid_usdc", maxCostUsdc }` only when the owner enabled paid
+  compute and the snapshot's `paid.available` is true; set that flag from
+  the coordinator's invite state;
+- for paid jobs, implement `quote(id)` (the `awaiting_payment` amount, payee
+  and `computeQuoteHash(...)` of them; null when the job is not waiting) and
+  `fund(req)`. `fund` is called only by `approveComputeFunding` in
+  `src/compute/awareness/payment.ts`, inside the spend gate, with a verified
+  `approvalToken`. Your signer (`fundSoapbox`) must still call
+  `verifyComputeApprovalToken(req.approvalToken, { jobId, quoteHash })`
+  before building a transaction and refuse on any failure; use
+  `req.idempotencyKey` so a retried approval never funds twice. The payment
+  ledger (funded rows, the daily cap, the already-funded guard) lives in the
+  delivery store, so `registerComputeRuntime` must have run before paid
+  jobs are offered;
 - for pool embeddings, `result(id)` of an embeddings job must return the
   Soapbox shape unchanged: `{ embeddings: number[][], execution: { model,
   model_digest, dimensions, ... } }`. The memory system verifies the digest

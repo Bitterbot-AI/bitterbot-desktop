@@ -55,8 +55,22 @@ describe("compute config (PLAN-57)", () => {
     expect(FIELD_LABELS["compute.embeddings.provider"]).toBe("Compute: Embedding Routing");
   });
 
+  it("accepts the Phase 4 paid keys with their caps, default off", () => {
+    expect(
+      validateConfigObject({
+        compute: { paid: { enabled: true, maxUsdcPerJob: 2, maxUsdcPerDay: 10 } },
+      }).ok,
+    ).toBe(true);
+    expect(validateConfigObject({ compute: { paid: { maxUsdcPerJob: -1 } } }).ok).toBe(false);
+    expect(validateConfigObject({ compute: { paid: { autoFund: true } } }).ok).toBe(false);
+    expect(FIELD_DEFAULTS["compute.paid.enabled"]).toBe(false);
+    expect(FIELD_DEFAULTS["compute.paid.maxUsdcPerJob"]).toBe(5);
+    expect(FIELD_DEFAULTS["compute.paid.maxUsdcPerDay"]).toBe(20);
+    expect(FIELD_LABELS["compute.paid.enabled"]).toBe("Compute: Paid Jobs");
+  });
+
   it("rejects unknown keys and out-of-range budgets (keys land with the code that reads them)", () => {
-    expect(validateConfigObject({ compute: { paid: { enabled: true } } }).ok).toBe(false);
+    expect(validateConfigObject({ compute: { local: { pool: true } } }).ok).toBe(false);
     expect(validateConfigObject({ compute: { awareness: { maxTokens: 10 } } }).ok).toBe(false);
     expect(validateConfigObject({ compute: { awareness: { wakeBudgetPerHour: -1 } } }).ok).toBe(
       false,

@@ -9,6 +9,7 @@ import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
 import { circlesHandlers } from "./server-methods/circles.js";
+import { computeHandlers } from "./server-methods/compute.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
@@ -82,6 +83,8 @@ const PAIRING_METHODS = new Set([
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
 const READ_METHODS = new Set([
   "health",
+  // PLAN-57 §4.8: reading a paid job's quote; compute.approve stays admin-only.
+  "compute.quote",
   "curiosity.status",
   "genome.temperament.status",
   "curiosity.list",
@@ -393,6 +396,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...browserReplayHandlers,
   ...toolOutputHandlers,
   ...reviewHandlers,
+  ...computeHandlers,
   ...projectsHandlers,
   ...walletHandlers,
   ...workspaceHandlers,

@@ -34,6 +34,10 @@ const SPEND_ALLOW = new Set([
   "src/gateway/server-methods/wallet.ts", // the wallet gateway RPC (pay_for_resource)
   "src/memory/manager.ts", // PLAN-8 revenue/bounty payout dispatch (markPaymentProcessed)
   "src/payments/ap2/gate.ts", // the spend gate: wraps the service's two paying methods
+  // PLAN-57 §4.8: the one path that funds a paid compute job. The call is on a
+  // wallet returned by gatedWallet(), so the gate records and limits it; the
+  // wallet underneath is the backend's fund() behind a verified approval token.
+  "src/compute/awareness/payment.ts",
 ]);
 
 // Pattern C (PLAN-53 C0): a wallet that pays must be one the spend gate

@@ -23,7 +23,7 @@ describe("compute section in the system prompt", () => {
     expect(prompt).toContain("never guess counts");
     expect(prompt).toContain("shape_only_trusted_worker");
     expect(prompt).toContain("Personal and confidential memory never leaves this machine");
-    expect(prompt).toContain("only the owner funds it");
+    expect(prompt).toContain("You cannot fund, approve or sign a payment");
   });
 
   it("is absent in minimal (subagent) mode", () => {

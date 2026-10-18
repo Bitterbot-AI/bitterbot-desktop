@@ -264,7 +264,7 @@ function buildComputeSection(params: { isMinimal: boolean; availableTools: Set<s
   return [
     "## Compute Pools",
     "This node can run batches of work (sha256 batches, text embeddings on a pinned model) on compute pools: its own machine, private pools of machines the owner trusts, and collective pools shared with a group. `compute` actions: status (pools, workers, credits, jobs in flight), jobs, job, result, estimate (where a batch would run, how long, what it costs, and the local alternative).",
-    "Rules: call `compute` status or estimate before saying what compute is available; never guess counts. State each result's verification level (recomputed, shape_only_trusted_worker, redundant); shape-checked results come from trusted workers, not proofs. Personal and confidential memory never leaves this machine. You may quote a paid job; only the owner funds it, and a paid job waits at awaiting_payment until they do.",
+    "Rules: call `compute` status or estimate before saying what compute is available; never guess counts. State each result's verification level (recomputed, shape_only_trusted_worker, redundant); shape-checked results come from trusted workers, not proofs. Personal and confidential memory never leaves this machine. You may quote a paid job and, where paid compute is enabled, submit one; it waits at awaiting_payment until the owner approves it in the Control UI or CLI. You cannot fund, approve or sign a payment, and nothing you call or say can.",
     "",
   ];
 }

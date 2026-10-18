@@ -79,6 +79,11 @@ export type ComputeSnapshot = {
   reachable: boolean;
   settlement?: string;
   credits?: ComputeCredits;
+  /**
+   * Whether the coordinator accepts paid (USDC) jobs from this node: the
+   * invite flag. Absent means no. `compute.paid.enabled` must also be on.
+   */
+  paid?: { available: boolean; reason?: string };
   pools: ComputePool[];
   workers: ComputeWorker[];
   jobs: ComputeJobSummary[];
@@ -94,9 +99,17 @@ export type ComputeResult = {
   error?: string;
 };
 
-/** PLAN-57 Phase 2: what the agent may submit. Paid modes are not on this surface. */
+/**
+ * PLAN-57 Phase 2: what the agent may submit. Phase 4 adds `paid_usdc`, which
+ * only reaches a coordinator when `compute.paid.enabled` is on and the
+ * backend reports paid work as available; the job then stops at
+ * `awaiting_payment` until the owner funds it (see payment.ts).
+ */
 export type ComputeSubmitRequest = {
-  mode: { kind: "private"; poolId: string } | { kind: "collective"; projectId: string };
+  mode:
+    | { kind: "private"; poolId: string }
+    | { kind: "collective"; projectId: string }
+    | { kind: "paid_usdc"; maxCostUsdc: number };
   workload: ComputeWorkloadKind;
   inputs: string[];
   /** Embedding model and digest; required for embeddings. */
@@ -111,6 +124,41 @@ export type ComputeSubmitResult = {
   status: string;
 };
 
+/**
+ * PLAN-57 §4.8: what a paid job is waiting for. `quoteHash` binds the exact
+ * amount and payee; an approval is for this hash and nothing else.
+ */
+export type ComputeQuote = {
+  jobId: string;
+  /** Amount in USDC the escrow needs, as the coordinator quoted it. */
+  amountUsdc: number;
+  /** Who is paid: the operator or escrow address the coordinator names. */
+  payee: string;
+  network?: string;
+  /** When the coordinator stops honouring the quote, epoch ms. */
+  expiresAt?: number;
+  quoteHash: string;
+};
+
+export type ComputeFundRequest = {
+  jobId: string;
+  quoteHash: string;
+  amountUsdc: number;
+  /**
+   * The approval token minted by the review rail. The backend's signer must
+   * verify it with `verifyComputeApprovalToken` before building a transaction,
+   * even though core has already done so: the signer trusts nothing upstream.
+   */
+  approvalToken: string;
+  /** Stable per (job, quote); a retried approval never funds twice. */
+  idempotencyKey: string;
+};
+
+export type ComputeFundResult = {
+  txHash: string;
+  status: string;
+};
+
 export type ComputeBackend = {
   /** Current view. Implementations should serve a cached snapshot; the tool never polls. */
   snapshot(): Promise<ComputeSnapshot>;
@@ -121,6 +169,13 @@ export type ComputeBackend = {
   /** Optional: backends that cannot submit leave these out and the tool stays read-only. */
   submit?(req: ComputeSubmitRequest): Promise<ComputeSubmitResult>;
   cancel?(id: string): Promise<{ ok: boolean; status?: string; error?: string }>;
+  /** Optional: the quote a job at `awaiting_payment` is waiting for; null when it is not. */
+  quote?(id: string): Promise<ComputeQuote | null>;
+  /**
+   * Optional: fund a paid job. Called only by `approveComputeFunding` in
+   * payment.ts, inside the spend gate, with a verified approval token.
+   */
+  fund?(req: ComputeFundRequest): Promise<ComputeFundResult>;
 };
 
 let registered: ComputeBackend | null = null;

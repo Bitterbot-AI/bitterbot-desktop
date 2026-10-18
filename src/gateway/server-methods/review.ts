@@ -20,6 +20,11 @@ const STATUSES = new Set<string>([
   "all",
 ]);
 
+/** Chat replies and internal (backend-mode) connections are not owner surfaces for money. */
+function ownerSurfaceForFunding(via: string, mode: string | null | undefined): boolean {
+  return via.trim().toLowerCase() !== "chat" && (mode ?? "").toLowerCase() !== "backend";
+}
+
 export const reviewHandlers: GatewayRequestHandlers = {
   "review.list": ({ params, respond }) => {
     const status =
@@ -67,12 +72,35 @@ export const reviewHandlers: GatewayRequestHandlers = {
       client?.connect?.client?.displayName ||
       client?.connect?.client?.id ||
       "operator";
+    const decidedVia = typeof params.via === "string" ? params.via.slice(0, 40) : "control-ui";
+    const connectionMode = client?.connect?.client?.mode ?? null;
+    // PLAN-57 §4.8: a compute funding hold is approved only from an owner
+    // surface. A chat reply or the node's own internal connection would be
+    // refused by the signer anyway; refusing here leaves the row pending for
+    // the owner instead of marking it failed.
+    if (decision === "approve" && !ownerSurfaceForFunding(decidedVia, connectionMode)) {
+      const pending = getReviewService().get(id);
+      if (pending?.tool === "compute" && pending.status === "pending") {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "compute funding cannot be approved from here; approve it in the Control UI or with `bitterbot compute approve <job>`",
+          ),
+        );
+        return;
+      }
+    }
     const action = await getReviewService().resolve(id, decision, {
       decidedBy: String(decidedBy).slice(0, 120),
-      decidedVia: typeof params.via === "string" ? params.via.slice(0, 40) : "control-ui",
+      decidedVia,
       note: typeof params.note === "string" ? params.note.slice(0, 500) : undefined,
       // For a shell command: allow it from now on, not only this once.
       ...(params.always === true ? { always: true } : {}),
+      // PLAN-57 §4.8: executors that move money bind to the deciding connection.
+      scopes: client?.connect?.scopes ?? [],
+      connectionMode,
     });
     if (!action) {
       respond(

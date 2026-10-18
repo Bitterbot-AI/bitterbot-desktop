@@ -41,6 +41,10 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "compute.embeddings.timeoutMs": 60_000,
   // src/compute/awareness/egress.ts (classifyForEgress).
   "compute.egress.transcriptsDefaultClass": "personal",
+  // src/compute/awareness/payment.ts (mintComputeApprovalToken): only `=== true` allows paid jobs.
+  "compute.paid.enabled": false,
+  "compute.paid.maxUsdcPerJob": 5,
+  "compute.paid.maxUsdcPerDay": 20,
   // src/agents/tools/browser-tool.ts:251 — `!== false`.
   "browser.replay.enabled": true,
   // src/agents/tools/browser-tool.ts:429 and src/gateway/server-methods/browser-live.ts:32 — `=== false` turns it off.

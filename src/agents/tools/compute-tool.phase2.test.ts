@@ -126,10 +126,13 @@ describe("compute tool, Phase 2 (submit and cancel)", () => {
     const { submit } = arm();
     const tool = createComputeTool({ config: {}, senderIsOwner: true })!;
     await expect(tool.execute("1", { ...goodSubmit, mode: "paid_usdc" })).rejects.toThrow(
-      /Paid jobs cannot be started/,
+      /Paid compute is off/,
+    );
+    await expect(tool.execute("1b", { ...goodSubmit, mode: "paid" })).rejects.toThrow(
+      /Credit-paid jobs cannot be started/,
     );
     await expect(tool.execute("2", { ...goodSubmit, mode: "whatever" })).rejects.toThrow(
-      /private or collective/,
+      /private, collective or paid_usdc/,
     );
     await expect(tool.execute("3", { ...goodSubmit, inputs: [] })).rejects.toThrow(
       /inputs required/,

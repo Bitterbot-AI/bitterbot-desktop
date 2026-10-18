@@ -36,6 +36,8 @@ export type ConsiderationCategory =
   | "skill-crystallize"
   | "compaction"
   | "spawn"
+  /** PLAN-57 §4.8: a paid compute job quoted, held, funded or refused. */
+  | "compute-payment"
   | "other";
 
 export type ConsiderationDecision = "acted" | "skipped" | "deferred" | "blocked";

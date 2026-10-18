@@ -119,6 +119,40 @@ export function createDefaultExecutors(
     return runTool(tool ?? undefined, action);
   });
 
+  // PLAN-57 §4.8: a paid compute job the agent submitted was held at its
+  // quote. Approving it funds the job, with the authority of the connection
+  // that approved (its scopes travel in `by`); the agent's tool is not run.
+  executors.set("compute", async (action, by) => {
+    const { approveComputeFunding } = await import("../compute/awareness/payment.js");
+    const p =
+      action.params && typeof action.params === "object"
+        ? (action.params as Record<string, unknown>)
+        : {};
+    const jobId = typeof p.job_id === "string" ? p.job_id : "";
+    if (!jobId) {
+      return { ok: false, summary: "the held compute action names no job" };
+    }
+    const result = await approveComputeFunding({
+      jobId,
+      expectedQuoteHash: typeof p.quote_hash === "string" ? p.quote_hash : null,
+      authority: {
+        origin: "owner",
+        scopes: by.scopes ?? [],
+        via: by.decidedVia,
+        connectionMode: by.connectionMode ?? null,
+        decidedBy: by.decidedBy,
+        reviewId: action.id,
+      },
+      config: getConfig(),
+    });
+    return result.ok
+      ? {
+          ok: true,
+          summary: `Funded compute job ${result.jobId}: ${result.amountUsdc} USDC to ${result.payee}. Transaction ${result.txHash} (${result.status}).`,
+        }
+      : { ok: false, summary: result.message };
+  });
+
   executors.set("message", async (action) => {
     const { createMessageTool } = await import("../agents/tools/message-tool.js");
     const tool = createMessageTool({ config: getConfig() }) as unknown as ToolLike;
