@@ -48,8 +48,12 @@ export type EmbeddingProfile = {
   dimensions?: number;
   /** `l2`: Bitterbot normalises vectors before storing them (local GGUF). `provider`: stored as returned. */
   normalise: EmbeddingNormalisation;
-  /** Inputs are pre-fitted to the model's token budget client-side; no provider is ever asked to truncate. */
-  truncation: "client";
+  /**
+   * `client`: inputs are pre-fitted to the model's token budget before they
+   * are sent and no provider is asked to truncate (every current provider).
+   * `provider`: the provider truncates; vectors of long inputs differ.
+   */
+  truncation: "client" | "provider";
   chunking: { tokens: number; overlap: number };
   chunkerVersion: number;
 };
