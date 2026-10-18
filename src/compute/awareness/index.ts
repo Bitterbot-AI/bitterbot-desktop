@@ -23,3 +23,32 @@ export {
   recordComputeDuration,
   resetComputeEstimatesForTest,
 } from "./estimate.js";
+export {
+  type ComputeTransition,
+  type RenderComputeStateInput,
+  type RenderedComputeState,
+  DEFAULT_COMPUTE_STATE_MAX_CHARS,
+  getComputeSnapshot,
+  publishComputeSnapshot,
+  pushComputeTransition,
+  renderComputeStateBlock,
+  resetComputeStateForTest,
+  resolveComputeStateBlock,
+  setComputeDeferredCount,
+  setComputeInternalJobs,
+} from "./state.js";
+export {
+  type ComputeDeliveryRow,
+  type ComputeJobOrigin,
+  type ComputeOriginRow,
+  ComputeDeliveryStore,
+  resolveComputeDbPath,
+} from "./deliveries.js";
+export {
+  type ComputeWatcher,
+  type ComputeWatcherOptions,
+  COMPUTE_WAKE_REASON,
+  DELIVERABLE_STATUSES,
+  formatTransition,
+  startComputeWatcher,
+} from "./watcher.js";

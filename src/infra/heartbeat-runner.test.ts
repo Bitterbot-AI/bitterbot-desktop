@@ -192,6 +192,21 @@ describe("runHeartbeatOnce – content-hash gate", () => {
       expect(replySpy).not.toHaveBeenCalled();
     });
   });
+
+  it("a compute-event wake runs even when HEARTBEAT.md is empty (PLAN-57 §4.4)", async () => {
+    await withFixture({}, async ({ tmpDir, cfg }) => {
+      await fs.writeFile(
+        path.join(tmpDir, "HEARTBEAT.md"),
+        "_No active heartbeat tasks. If nothing needs attention, reply HEARTBEAT_OK._\n",
+      );
+      const replySpy = vi
+        .spyOn(replyModule, "getReplyFromConfig")
+        .mockResolvedValue({ text: "HEARTBEAT_OK" });
+      const result = await runHeartbeatOnce({ cfg, reason: "compute-event", deps });
+      expect(result.status).not.toBe("skipped");
+      expect(replySpy).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe("runHeartbeatOnce – isolated light session", () => {

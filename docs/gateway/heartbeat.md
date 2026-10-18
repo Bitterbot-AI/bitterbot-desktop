@@ -65,7 +65,9 @@ Every tick passes these gates in order; the first one that fails ends the tick:
 1. **enabled**: heartbeats on, agent has a heartbeat, interval parses.
 2. **activeHours**: inside the configured window.
 3. **busy**: main command lane is idle (`requests-in-flight` otherwise; retried).
-4. **empty-file**: `HEARTBEAT.md` has actionable content (interval ticks only).
+4. **empty-file**: `HEARTBEAT.md` has actionable content (interval ticks only;
+   `exec-event`, `cron:*`, `wake`, `hook:*` and `compute-event` reasons carry a
+   pending system event and skip this gate).
 5. **hash gate** (`skipWhenUnchanged`): inputs differ from the last completed
    tick (interval and cache-warm ticks only).
 6. **run**: the model is called, in the isolated session when eligible.
@@ -245,9 +247,11 @@ Use `accountId` to target a specific account on multi-account channels like Tele
   the heartbeat session. If it matches the hash committed by the last tick whose
   model call completed, the tick is skipped with reason `unchanged-hash` (no API
   call, schedule advances). Nothing else is hashed: not the clock, not the
-  model, not the delivery target. `wake`, `exec-event`, `cron:*`, `hook:*`,
-  `manual` and `retry` reasons bypass the gate because they carry new input by
-  definition. The last hash is kept in memory and at
+  model, not the delivery target. `wake`, `exec-event`, `compute-event`,
+  `cron:*`, `hook:*`, `manual` and `retry` reasons bypass the gate because they
+  carry new input by definition. The compute state block (PLAN-57) is rendered
+  after the cache boundary from the watcher's own snapshot and is never part of
+  the hashed inputs, so a running compute job cannot re-arm interval ticks. The last hash is kept in memory and at
   `~/.bitterbot/heartbeat/last-input-hash-<agentId>.json` so a restart does not
   trigger a spurious tick.
 - `isolatedSession` (default `true`): interval ticks run in
@@ -368,7 +372,9 @@ placeholder prose such as `_No active heartbeat tasks._`, `Nothing to do` or
 that shipped in an early workspace and defeated the old check). Any other line
 counts as a task. If the file is missing, the heartbeat still runs and the model
 decides what to do (and the hash gate then skips every following tick until
-something changes).
+something changes). Event-driven wakes (`exec-event`, `cron:*`, `wake`,
+`hook:*`, `compute-event`) run even when the file is empty: they exist to
+deliver a queued system event, such as a finished compute job.
 
 Keep it tiny (short checklist or reminders) to avoid prompt bloat.
 

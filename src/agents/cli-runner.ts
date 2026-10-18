@@ -164,6 +164,11 @@ export async function runCliAgent(params: {
     }),
   }).catch(() => undefined);
 
+  // PLAN-57 §4.3: the compute state block, from the watcher's snapshot store.
+  // Undefined at steady state or when nothing has published a snapshot.
+  const { resolveComputeStateBlockFromConfig } = await import("../compute/awareness/state.js");
+  const computeState = resolveComputeStateBlockFromConfig(params.config);
+
   const systemPrompt = buildSystemPrompt({
     workspaceDir,
     config: params.config,
@@ -179,6 +184,7 @@ export async function runCliAgent(params: {
     endocrineState,
     canonicalFacts,
     researchFindings,
+    computeState,
   });
 
   const { sessionId: cliSessionIdToSend, isNew } = resolveSessionIdToSend({
