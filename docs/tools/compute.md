@@ -304,6 +304,22 @@ still approve it from the Control UI or the CLI. Denying from chat works.
 payments". An `agent_origin` refusal is an error there: nothing moved, but
 something tried.
 
+## What memory keeps
+
+Every finished job the agent or the owner started becomes an `episode`
+chunk in memory ("Compute job j-42 (sha256 x200, private in lab on worker
+w1) succeeded, recorded 2026-10-18 14:02 UTC; started by the agent."),
+written when the watcher delivers the completion (after a gateway outage,
+when it reconciles), so later questions about what the pool ran are
+answered from memory rather than from the coordinator. The node's own
+embedding batches are never episodes, and only the first clause of a
+coordinator error is kept. Episodes go to the default agent's memory. The dream cycle's
+working-memory rewrite also receives a compute block built from the ledger
+(pools and trust, jobs consumed and their outcomes, embedding batches by
+route and class, paid jobs funded), which The Niche section reflects; a
+node with no compute activity gets no block. See
+[Compute pools](/network/compute).
+
 ## What the agent can never do
 
 There is no action that funds, approves or signs anything. The paid path

@@ -8,23 +8,41 @@ title: "compute"
 
 # `bitterbot compute`
 
-The owner's terminal surface for paid compute (PLAN-57). The agent can
-quote and, where paid compute is enabled, submit a paid job; only you can
-fund one. These commands hold an admin connection to the gateway, and the
-funding is bound to that connection.
+The owner's terminal surface for compute pools (PLAN-57). `status` and
+`jobs` show what the agent sees. `quote` and `approve` handle a paid job:
+the agent can quote and, where paid compute is enabled, submit one; only
+you can fund it, and the funding is bound to the admin connection these
+commands hold. `pause` rests one of this node's workers; `trust` decides
+what memory may reach a pool.
 
 Related:
 
 - The agent's tool and the paid path: [compute](/tools/compute)
+- The network view, trust model and every setting: [Compute pools](/network/compute)
 - Holds in the review queue: [Action review](/tools/action-review)
 
 ## Commands
 
 ```bash
+bitterbot compute status                   # pools, workers, credits, jobs in flight
+bitterbot compute jobs [--limit 20] [--status running]
 bitterbot compute quote <jobId>            # what the job is waiting for
 bitterbot compute approve <jobId>          # show the quote; nothing funded
 bitterbot compute approve <jobId> --yes    # fund it at the quoted amount
+bitterbot compute pause <workerId>         # pause one of this node's workers
+bitterbot compute pause <workerId> --resume
+bitterbot compute trust <poolId> trusted   # or untrusted
 ```
+
+`status` prints the coordinator's reachability, credits, each pool with its
+trust (and your configured trust when it differs from what the coordinator
+reports), each worker's state and pinned model, the jobs in flight, and
+whether paid jobs are enabled and offered. `jobs` lists recent jobs with
+their outcome and verification level.
+
+`pause` and `trust` need `operator.admin`. `trust` writes
+`compute.pools.<poolId>.trust`; the egress policy reads it when the memory
+system starts, so it applies after the next gateway restart.
 
 `quote` prints the amount, the payee, how long the quote is valid, whether
 the agent's hold for this job is pending in the review queue, and whether

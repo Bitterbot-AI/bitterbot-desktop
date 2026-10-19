@@ -10,6 +10,16 @@ import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
+import {
+  type ComputeEpisode,
+  type ComputeEpisodeSink,
+  formatComputeEpisode,
+  getComputeEpisodeSink,
+  registerComputeEpisodeSink,
+} from "../compute/awareness/episodes.js";
+import { computeNicheFacts, hasComputeActivity } from "../compute/awareness/niche.js";
+import { getComputeRuntime } from "../compute/awareness/runtime.js";
+import { getComputeSnapshot } from "../compute/awareness/state.js";
 import { loadConfig, type BitterbotConfig } from "../config/config.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -262,6 +272,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   /** Set when the live profile conflicts with the index; writes and vector search pause until migration. */
   private embeddingProfileHold: { conflicts: string[]; stored: EmbeddingProfile } | null = null;
   private embeddingHoldLogged = false;
+  /** PLAN-57 §4.7: the compute episode sink this manager registered, if any. */
+  private episodeSink: ComputeEpisodeSink | null = null;
   private readonly requestedProvider: "openai" | "local" | "gemini" | "voyage" | "auto";
   private fallbackFrom?: "openai" | "local" | "gemini" | "voyage";
   private fallbackReason?: string;
@@ -590,6 +602,16 @@ export class MemoryIndexManager implements MemorySearchManager {
         purpose: params.purpose,
       });
       built = manager;
+      // PLAN-57 §4.7: the first default-purpose manager receives compute
+      // episodes (terminal jobs the agent or owner started) as memory.
+      if (
+        params.purpose === undefined &&
+        cfg.compute?.enabled !== false &&
+        !getComputeEpisodeSink()
+      ) {
+        manager.episodeSink = (episode) => manager.writeComputeEpisodeChunk(episode);
+        registerComputeEpisodeSink(manager.episodeSink);
+      }
       log.info("memory manager build timing", {
         agentId,
         purpose: params.purpose ?? "default",
@@ -5007,6 +5029,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       phenotypeConstraints,
       temperament,
       networkIdentity,
+      compute: this.computeFactsForSynthesis(),
       emotionalAnchors,
       userPreferences,
       ...loadCanonicalSynthesisContext(this.db, this.canonicalFactsStore),
@@ -5226,6 +5249,91 @@ export class MemoryIndexManager implements MemorySearchManager {
   /** Read working-memory rewrite provenance records, newest last. */
   async getWorkingMemoryProvenance(limit = 50): Promise<WorkingMemoryProvenance[]> {
     return readWorkingMemoryProvenance(this.workspaceDir, limit);
+  }
+
+  /**
+   * PLAN-57 §4.7: the week's compute facts for The Niche, from the local
+   * compute ledger. Undefined when no compute runtime is registered or
+   * nothing happened, so the prompt carries no compute block on such nodes.
+   */
+  private computeFactsForSynthesis(): WorkingMemoryContext["compute"] {
+    try {
+      const runtime = getComputeRuntime();
+      if (!runtime) {
+        return undefined;
+      }
+      const facts = computeNicheFacts({ store: runtime.store, snapshot: getComputeSnapshot() });
+      return hasComputeActivity(facts) ? facts : undefined;
+    } catch (err) {
+      log.debug(`Failed to gather compute facts: ${String(err)}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * PLAN-57 §4.7: a finished compute job the agent or owner started, written
+   * as a searchable `episode` chunk. One per (job, status); re-delivery of
+   * the same transition is a no-op.
+   */
+  async writeComputeEpisodeChunk(episode: ComputeEpisode): Promise<string | null> {
+    if (this.closed) {
+      return null;
+    }
+    const text = formatComputeEpisode(episode);
+    const id = `compute_${episode.jobId.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80)}_${episode.status}`;
+    const existing = this.db.prepare(`SELECT 1 FROM chunks WHERE id = ?`).get(id);
+    if (existing) {
+      return null;
+    }
+    const now = Date.now();
+    const hash = crypto.createHash("sha256").update(text).digest("hex");
+    const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
+    let embedding: number[] = [];
+    try {
+      embedding =
+        ((await this.embedQueryWithTimeout(text, USAGE_FEATURES.memoryIndex)) as number[]) ?? [];
+    } catch {
+      /* pending backfill */
+    }
+    const model = embedding.length > 0 ? this.provider.model : "pending";
+    const vectorReady =
+      embedding.length > 0 ? await this.ensureVectorReady(embedding.length) : false;
+    const chunkPath = `compute/episode/${episode.jobId}`;
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+             importance_score, lifecycle, origin, semantic_type, access_count, created_at, updated_at)
+           VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, 0.5, 'activated', 'compute', 'episode', 0, ?, ?)`,
+        )
+        .run(id, chunkPath, source, text, hash, model, embeddingToBlob(embedding), now, now);
+    } catch (err) {
+      log.debug(`compute episode insert failed: ${String(err)}`);
+      return null;
+    }
+    if (vectorReady && embedding.length > 0) {
+      try {
+        this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
+        this.db
+          .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
+          .run(id, Buffer.from(new Float32Array(embedding).buffer));
+      } catch {
+        /* vec absent */
+      }
+    }
+    if (this.fts.enabled && this.fts.available) {
+      try {
+        this.db
+          .prepare(
+            `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
+             VALUES (?, ?, ?, ?, ?, 0, 0)`,
+          )
+          .run(text, id, chunkPath, source, model);
+      } catch {
+        /* fts absent */
+      }
+    }
+    return id;
   }
 
   /**
@@ -7520,6 +7628,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     this.closed = true;
+    // PLAN-57 §4.7: let the next default manager take over compute episodes.
+    if (this.episodeSink && getComputeEpisodeSink() === this.episodeSink) {
+      registerComputeEpisodeSink(null);
+    }
+    this.episodeSink = null;
     this.canonicalPropagation?.close();
     if (this.watchTimer) {
       clearTimeout(this.watchTimer);

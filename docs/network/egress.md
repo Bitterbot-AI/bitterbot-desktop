@@ -173,6 +173,24 @@ not change the default.
   the store fetches to identify the agent. No card or account details.
 - **Off switch:** `shop.enabled: false`.
 
+## 9. Compute pools (runtime, only with a coordinator configured)
+
+- **When:** only when the Soapbox plugin is configured with a coordinator
+  and this node has joined a pool, started a job, or routed a memory
+  embedding batch to a pool worker. A node with no coordinator opens nothing.
+- **Where:** the coordinator URL the plugin is configured with, and the
+  pool's workers through it. The local pool is loopback only.
+- **What:** job specs (hashes to compute, or the texts of memory chunks to
+  embed), job status polls while a job is in flight, and results. Which
+  memory content may leave the machine is decided by the egress policy in
+  [Compute pools](/network/compute): `confidential` never, `personal` only to
+  pools you marked `trusted`, `normal` to any pool. Paid jobs additionally
+  reach the settlement network the coordinator names, only after you approve
+  the quote.
+- **Off switch:** `compute.enabled: false` (everything), or
+  `compute.embeddings.provider: "local"` (memory stays local, the tool
+  remains).
+
 ## Everything else is opt-in
 
 Web search (Brave/Tavily/Perplexity/xAI/Serply with your key; Parallel Search MCP at

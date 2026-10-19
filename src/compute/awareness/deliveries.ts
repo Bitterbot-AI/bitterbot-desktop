@@ -276,6 +276,32 @@ export class ComputeDeliveryStore {
     return Number(row.n);
   }
 
+  /**
+   * PLAN-57 §4.7: terminal transitions delivered since `sinceMs`, by who
+   * started the job and how it ended. One row per (origin, transition).
+   */
+  jobOutcomes(
+    sinceMs: number,
+  ): Array<{ origin: ComputeJobOrigin; transition: string; jobs: number }> {
+    const rows = this.db
+      .prepare(
+        `SELECT o.origin AS origin, d.transition AS transition, COUNT(DISTINCT d.job_id) AS jobs
+           FROM compute_deliveries d
+           JOIN compute_job_origins o ON o.job_id = d.job_id
+          WHERE d.created_at >= ?
+            AND o.origin <> 'internal'
+            AND d.transition IN ('succeeded', 'failed', 'expired', 'cancelled', 'refunded')
+          GROUP BY o.origin, d.transition
+          ORDER BY o.origin, d.transition`,
+      )
+      .all(sinceMs) as unknown as Array<{ origin: string; transition: string; jobs: number }>;
+    return rows.map((r) => ({
+      origin: r.origin as ComputeJobOrigin,
+      transition: r.transition,
+      jobs: Number(r.jobs),
+    }));
+  }
+
   hasDelivery(jobId: string, transition: string): boolean {
     const row = this.db
       .prepare(`SELECT 1 AS x FROM compute_deliveries WHERE job_id = ? AND transition = ?`)

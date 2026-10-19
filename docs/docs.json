@@ -751,6 +751,7 @@
                   "network/core-systems",
                   "network/management-nodes",
                   "network/mailbox-host",
+                  "network/compute",
                   "network/egress",
                   "gateway/network"
                 ]

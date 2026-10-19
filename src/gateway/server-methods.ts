@@ -83,7 +83,10 @@ const PAIRING_METHODS = new Set([
 const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
 const READ_METHODS = new Set([
   "health",
-  // PLAN-57 §4.8: reading a paid job's quote; compute.approve stays admin-only.
+  // PLAN-57: reading compute state; compute.approve, compute.pause and
+  // compute.trust stay admin-only.
+  "compute.status",
+  "compute.jobs",
   "compute.quote",
   "curiosity.status",
   "genome.temperament.status",
