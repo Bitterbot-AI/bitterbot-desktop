@@ -93,6 +93,8 @@ describe("review.resolve", () => {
       decidedBy: "Control UI",
       decidedVia: "control-ui",
       note: undefined,
+      scopes: [],
+      connectionMode: null,
     });
     expect(payload).toMatchObject({ status: "executed", resultSummary: "tx 0x1" });
   });
@@ -109,7 +111,53 @@ describe("review.resolve", () => {
       decidedBy: "telegram:42",
       decidedVia: "chat",
       note: undefined,
+      scopes: [],
+      connectionMode: null,
     });
+  });
+
+  it("forwards the connection's scopes and mode to the service (PLAN-57 §4.8)", async () => {
+    await call(
+      "review.resolve",
+      { id: "rv-00000001", decision: "approve" },
+      { connect: { client: { id: "cli", mode: "cli" }, scopes: ["operator.admin"] } },
+    );
+    expect(svc.resolve).toHaveBeenLastCalledWith(
+      "rv-00000001",
+      "approve",
+      expect.objectContaining({ scopes: ["operator.admin"], connectionMode: "cli" }),
+    );
+  });
+
+  it("refuses to approve a compute funding hold from chat or an internal connection, leaving it pending", async () => {
+    const hold = { ...action, tool: "compute", preview: "Fund compute job j1: 0.5 USDC" };
+    svc.get.mockReturnValue(hold);
+    const [chatOk, , chatErr] = await call("review.resolve", {
+      id: "rv-00000001",
+      decision: "approve",
+      via: "chat",
+    });
+    expect(chatOk).toBe(false);
+    expect(String((chatErr as { message?: string })?.message)).toContain("compute funding");
+    const [internalOk] = await call(
+      "review.resolve",
+      { id: "rv-00000001", decision: "approve" },
+      { connect: { client: { id: "gw", mode: "backend" }, scopes: ["operator.admin"] } },
+    );
+    expect(internalOk).toBe(false);
+    expect(svc.resolve).not.toHaveBeenCalled();
+    // Denying from chat is fine, and an owner surface approves normally.
+    await call("review.resolve", { id: "rv-00000001", decision: "deny", via: "chat" });
+    await call(
+      "review.resolve",
+      { id: "rv-00000001", decision: "approve" },
+      { connect: { client: { id: "ui", mode: "ui" }, scopes: ["operator.approvals"] } },
+    );
+    expect(svc.resolve).toHaveBeenCalledTimes(2);
+    // Other tools are unaffected by the surface check.
+    svc.get.mockReturnValue(action);
+    await call("review.resolve", { id: "rv-00000001", decision: "approve", via: "chat" });
+    expect(svc.resolve).toHaveBeenCalledTimes(3);
   });
 
   it("passes on always-allow for a shell command", async () => {

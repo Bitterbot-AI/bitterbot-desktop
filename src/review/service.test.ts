@@ -394,3 +394,68 @@ describe("ReviewService.resolve", () => {
     });
   });
 });
+
+describe("PLAN-57 §4.8: executors learn who decided", () => {
+  it("passes the decider, scopes included, to the executor and settles holds from other surfaces", async () => {
+    const seen: Array<{ decidedBy: string; decidedVia: string; scopes?: ReadonlyArray<string> }> =
+      [];
+    const svc = new ReviewService({
+      store,
+      executors: new Map([
+        [
+          "compute",
+          async (_action, by) => {
+            seen.push(by);
+            return { ok: true, summary: "funded" };
+          },
+        ],
+      ]),
+      newId: () => `rv-c${seen.length + 1}`,
+    });
+    svc.holdSpend({
+      toolName: "compute",
+      params: { action: "fund", job_id: "j1", quote_hash: "q" },
+      preview: "Fund compute job j1: 0.5 USDC",
+      ctx: CTX,
+    });
+    const [hold] = svc.pendingFor("compute", { job_id: "j1" });
+    expect(hold).toBeDefined();
+    expect(svc.pendingFor("compute", { job_id: "other" })).toEqual([]);
+    const done = await svc.resolve(hold!.id, "approve", {
+      decidedBy: "victor",
+      decidedVia: "control-ui",
+      scopes: ["operator.approvals"],
+    });
+    expect(done?.status).toBe("executed");
+    expect(seen).toEqual([
+      { decidedBy: "victor", decidedVia: "control-ui", scopes: ["operator.approvals"] },
+    ]);
+
+    svc.holdSpend({
+      toolName: "compute",
+      params: { action: "fund", job_id: "j2", quote_hash: "q" },
+      preview: "Fund compute job j2: 0.5 USDC",
+      ctx: CTX,
+    });
+    const [second] = svc.pendingFor("compute", { job_id: "j2" });
+    const settled = svc.settleExternally(
+      second!.id,
+      { decidedBy: "victor", decidedVia: "cli", scopes: ["operator.admin"] },
+      { ok: true, summary: "Funded elsewhere" },
+    );
+    expect(settled).toMatchObject({
+      status: "executed",
+      decidedVia: "cli",
+      resultSummary: "Funded elsewhere",
+    });
+    // The executor did not run a second time, and a settled row cannot be settled again.
+    expect(seen).toHaveLength(1);
+    expect(
+      svc.settleExternally(
+        second!.id,
+        { decidedBy: "x", decidedVia: "cli" },
+        { ok: true, summary: "" },
+      ),
+    ).toBeNull();
+  });
+});

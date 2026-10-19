@@ -11,7 +11,7 @@
 
 import fsSync from "node:fs";
 import { ComputeDeliveryStore, resolveComputeDbPath } from "../compute/awareness/index.js";
-import type { ComputeLedgerSummary } from "../compute/awareness/ledger.js";
+import type { ComputeLedgerSummary, ComputePaymentSummary } from "../compute/awareness/ledger.js";
 import type { BitterbotConfig } from "../config/config.js";
 import {
   type CheckResult,
@@ -23,6 +23,7 @@ import {
 } from "./doctor-check.js";
 
 const SECTION = "Compute embeddings";
+const PAYMENT_SECTION = "Compute payments";
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 export async function runComputeEmbeddingChecks(cfg: BitterbotConfig): Promise<void> {
@@ -118,6 +119,96 @@ export function summarise(s: ComputeLedgerSummary): CheckResult[] {
   if (egress.length > 0) {
     results.push(
       info(`Pool batches by class and trust: ${egress.map(([k, v]) => `${k} ${v}`).join(", ")}.`),
+    );
+  }
+  return results;
+}
+
+// ── payments (PLAN-57 §4.8) ──
+
+export async function runComputePaymentChecks(cfg: BitterbotConfig): Promise<void> {
+  renderSectionQuietIfAllInfo(PAYMENT_SECTION, collectComputePaymentResults(cfg));
+}
+
+export function collectComputePaymentResults(
+  cfg: BitterbotConfig,
+  opts?: { dbPath?: string; now?: number },
+): CheckResult[] {
+  if (cfg.compute?.enabled === false) {
+    return [info("Compute is disabled (compute.enabled: false).")];
+  }
+  const dbPath = opts?.dbPath ?? resolveComputeDbPath();
+  if (dbPath !== ":memory:" && !fsSync.existsSync(dbPath)) {
+    return [
+      info(
+        cfg.compute?.paid?.enabled === true
+          ? "Paid compute is on; no funding has been attempted yet."
+          : "Paid compute is off (compute.paid.enabled); the agent can quote paid jobs but not submit them.",
+      ),
+    ];
+  }
+  let summary: ComputePaymentSummary;
+  try {
+    const store = ComputeDeliveryStore.open(dbPath);
+    try {
+      summary = store.ledger().paymentSummary((opts?.now ?? Date.now()) - WEEK_MS);
+    } finally {
+      store.close();
+    }
+  } catch (err) {
+    return [
+      warn(`Compute ledger could not be read: ${err instanceof Error ? err.message : String(err)}`),
+    ];
+  }
+  return summarisePayments(summary, cfg.compute?.paid?.enabled === true);
+}
+
+export function summarisePayments(s: ComputePaymentSummary, paidEnabled: boolean): CheckResult[] {
+  const results: CheckResult[] = [];
+  if (s.attempts === 0) {
+    results.push(
+      info(
+        paidEnabled
+          ? "Paid compute is on; no funding was attempted in the last 7 days."
+          : "Paid compute is off (compute.paid.enabled); no funding was attempted in the last 7 days.",
+      ),
+    );
+    return results;
+  }
+  if (s.funded > 0) {
+    results.push(ok(`Last 7 days: ${s.funded} job(s) funded, ${s.fundedUsdc} USDC in total.`));
+  }
+  if (s.agentOriginRefusals > 0) {
+    results.push(
+      error(
+        `${s.agentOriginRefusals} funding request(s) from an agent-origin path reached the signer and were refused. Nothing moved, but something tried to fund compute without the owner. Report this.`,
+      ),
+    );
+  }
+  const otherRefusals = Object.entries(s.refusalsByReason).filter(([k]) => k !== "agent_origin");
+  if (otherRefusals.length > 0) {
+    results.push(
+      warn(
+        `${otherRefusals.reduce((n, [, v]) => n + v, 0)} funding request(s) refused: ${otherRefusals
+          .map(([k, v]) => `${k} ${v}`)
+          .join(
+            ", ",
+          )}. A refusal means the signer disagreed with the approval surface; check caps and who approved.`,
+      ),
+    );
+  }
+  if (s.failed > 0) {
+    results.push(
+      warn(
+        `${s.failed} approved funding(s) failed at the coordinator or on chain; the job is still unfunded and can be approved again.`,
+      ),
+    );
+  }
+  if (s.pending > 0) {
+    results.push(
+      warn(
+        `${s.pending} funding(s) started but never settled (the gateway stopped mid-way). Check the coordinator and the wallet history before approving those jobs again.`,
+      ),
     );
   }
   return results;

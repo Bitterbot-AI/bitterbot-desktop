@@ -41,7 +41,7 @@ import { runCanvasChecks } from "./doctor-canvas.js";
 import { runChannelsChecks } from "./doctor-channels.js";
 import { error, info, renderSection, setDoctorJsonMode, warn } from "./doctor-check.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
-import { runComputeEmbeddingChecks } from "./doctor-compute.js";
+import { runComputeEmbeddingChecks, runComputePaymentChecks } from "./doctor-compute.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 import { runControlUiChecks } from "./doctor-control-ui.js";
 import { runEconomyChecks } from "./doctor-economy.js";
@@ -330,6 +330,7 @@ async function runDoctor(
   noteWorkspaceStatus(cfg);
   await runMemorySearchChecks(cfg);
   await runComputeEmbeddingChecks(cfg);
+  await runComputePaymentChecks(cfg);
 
   // Check and fix shell completion
   await doctorShellCompletion(runtime, prompter, {

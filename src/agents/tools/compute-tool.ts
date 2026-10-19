@@ -3,7 +3,10 @@
  *
  * Phase 0: status, jobs, job, result, estimate (read-only).
  * Phase 2: submit and cancel for private and collective pools, owner turns
- * only, with PLAN-16 task linkage. Paid modes are not on this surface, and
+ * only, with PLAN-16 task linkage. Phase 4 lets an owner turn submit a
+ * `paid_usdc` job when `compute.paid.enabled` is on; the job stops at
+ * awaiting_payment and the quote becomes a review hold. Funding is not on
+ * this surface at all (there is no action for it), and
  * funding never arrives here at all (§4.8: the agent has no path to fund an
  * escrow; the owner approves through the review rail).
  *
@@ -20,10 +23,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import {
+  type ComputeBackend,
   type ComputeJobSummary,
+  type ComputeQuote,
   type ComputeSnapshot,
   type ComputeSubmitRequest,
   type ComputeWorkloadKind,
+  DEFAULT_MAX_USDC_PER_JOB,
   estimateCompute,
   getComputeBackend,
   getComputeRuntime,
@@ -76,7 +82,14 @@ function buildSchema(actions: readonly string[]) {
     ),
     mode: Type.Optional(
       Type.String({
-        description: "private or collective (for submit). Paid modes are not available here.",
+        description:
+          "private or collective (for submit); paid_usdc only where paid compute is enabled, and then the job waits for the owner to fund it.",
+      }),
+    ),
+    max_cost_usdc: Type.Optional(
+      Type.Number({
+        description:
+          "Ceiling in USDC for a paid_usdc submit; the coordinator quotes at or below it.",
       }),
     ),
     inputs: Type.Optional(
@@ -125,10 +138,15 @@ export function createComputeTool(opts?: ComputeToolOptions): AnyAgentTool | und
   const canWrite = typeof backend.submit === "function" && runtime !== null;
   const actions = canWrite ? [...READ_ACTIONS, ...WRITE_ACTIONS] : [...READ_ACTIONS];
   const isOwner = opts?.senderIsOwner === true;
+  const paidEnabled = opts?.config?.compute?.paid?.enabled === true;
+  const maxUsdcPerJob = opts?.config?.compute?.paid?.maxUsdcPerJob ?? DEFAULT_MAX_USDC_PER_JOB;
 
+  const paidDoc = paidEnabled
+    ? ` Or mode paid_usdc with max_cost_usdc (no scope): the job then waits at awaiting_payment with its quote until the owner approves it; you cannot fund it.`
+    : ` Paid modes are not available here.`;
   const writeDoc = canWrite
     ? `
-- submit: run a batch on a pool. Requires: mode (private|collective), scope (pool or project id), workload, inputs. For embeddings also model and model_digest. Optional: task_id (the task waits and resumes when the job finishes), reason. Owner turns only. Paid modes are not available here.
+- submit: run a batch on a pool. Requires: mode (private|collective), scope (pool or project id), workload, inputs. For embeddings also model and model_digest. Optional: task_id (the task waits and resumes when the job finishes), reason. Owner turns only.${paidDoc}
 - cancel: cancel a job you started. Requires: job_id. Owner turns only.`
     : "";
 
@@ -225,10 +243,40 @@ Each job carries a verification level (recomputed, shape_only_trusted_worker, re
               error: "Not available in this conversation: only the owner can start compute jobs.",
             });
           }
-          const req = readSubmitRequest(params, toolCallId);
+          const req = readSubmitRequest(params, toolCallId, { paidEnabled, maxUsdcPerJob });
+          if (req.mode.kind === "paid_usdc") {
+            const snapshot = await backend.snapshot();
+            if (snapshot.paid?.available !== true) {
+              return jsonResult({
+                ok: false,
+                error:
+                  "The coordinator does not offer paid work to this node" +
+                  (snapshot.paid?.reason ? ` (${snapshot.paid.reason})` : "") +
+                  ". Use a private or collective pool, or the local alternative.",
+              });
+            }
+          }
           const submitted = await backend.submit(req);
           runtime.store.recordOrigin(submitted.id, "agent", opts?.agentSessionKey ?? null);
           runtime.watcher?.kick();
+          if (req.mode.kind === "paid_usdc") {
+            return jsonResult({
+              ok: true,
+              job_id: submitted.id,
+              status: submitted.status,
+              mode: "paid_usdc",
+              workload: req.workload,
+              items: req.inputs.length,
+              awaiting_payment: await holdPaidJob({
+                backend,
+                jobId: submitted.id,
+                workload: req.workload,
+                items: req.inputs.length,
+                sessionKey: opts?.agentSessionKey,
+              }),
+              note: "Tell the user the cost and that it is waiting for their approval. You cannot fund it, and asking again does not help; you will be told when it finishes.",
+            });
+          }
           const taskId = readStringParam(params, "task_id");
           let task: Record<string, unknown> | undefined;
           if (taskId) {
@@ -259,7 +307,12 @@ Each job carries a verification level (recomputed, shape_only_trusted_worker, re
             job_id: submitted.id,
             status: submitted.status,
             mode: req.mode.kind,
-            scope: req.mode.kind === "private" ? req.mode.poolId : req.mode.projectId,
+            scope:
+              req.mode.kind === "private"
+                ? req.mode.poolId
+                : req.mode.kind === "collective"
+                  ? req.mode.projectId
+                  : null,
             workload: req.workload,
             items: req.inputs.length,
             task,
@@ -309,20 +362,107 @@ function readWorkload(params: Record<string, unknown>): ComputeWorkloadKind {
   return workload as ComputeWorkloadKind;
 }
 
+/**
+ * PLAN-57 §4.8: a paid job the agent submitted becomes a review hold at its
+ * quote. The hold is what the owner approves; approving it runs the funding
+ * path with the approving connection's authority, never the agent's.
+ */
+async function holdPaidJob(input: {
+  backend: ComputeBackend;
+  jobId: string;
+  workload: ComputeWorkloadKind;
+  items: number;
+  sessionKey?: string;
+}): Promise<Record<string, unknown>> {
+  const how =
+    "The owner approves it in the Control UI (Activity) or with `bitterbot compute approve <job>`.";
+  let quote: ComputeQuote | null = null;
+  try {
+    quote = (await input.backend.quote?.(input.jobId)) ?? null;
+  } catch {
+    quote = null;
+  }
+  if (!quote) {
+    return { quoted: false, how };
+  }
+  let reviewId: string | null = null;
+  try {
+    const { getReviewService } = await import("../../review/runtime.js");
+    const service = getReviewService();
+    service.holdSpend({
+      toolName: "compute",
+      params: {
+        action: "fund",
+        job_id: input.jobId,
+        quote_hash: quote.quoteHash,
+        amount_usdc: quote.amountUsdc,
+        payee: quote.payee,
+      },
+      preview: `Fund compute job ${input.jobId}: ${quote.amountUsdc} USDC to ${quote.payee} (${input.items} ${input.workload} items)`,
+      ctx: { sessionKey: input.sessionKey },
+    });
+    reviewId = service.pendingFor("compute", { job_id: input.jobId })[0]?.id ?? null;
+  } catch {
+    reviewId = null;
+  }
+  try {
+    const { recordConsideration } = await import("../../infra/heartbeat-considerations.js");
+    recordConsideration({
+      category: "compute-payment",
+      subject: `compute job ${input.jobId}`,
+      decision: "deferred",
+      reason: "paid job quoted; waiting for the owner's approval",
+      sessionKey: input.sessionKey,
+      payload: { amountUsdc: quote.amountUsdc, payee: quote.payee, reviewId },
+    });
+  } catch {
+    // Never fail a submit over the considerations log.
+  }
+  return {
+    quoted: true,
+    amount_usdc: quote.amountUsdc,
+    payee: quote.payee,
+    quote_hash: quote.quoteHash,
+    review_id: reviewId,
+    how,
+  };
+}
+
 /** Gateway-side validation; the coordinator's own limits are the second line. */
 export function readSubmitRequest(
   params: Record<string, unknown>,
   toolCallId: string,
+  paid: { paidEnabled: boolean; maxUsdcPerJob: number } = {
+    paidEnabled: false,
+    maxUsdcPerJob: DEFAULT_MAX_USDC_PER_JOB,
+  },
 ): ComputeSubmitRequest {
   const modeRaw = readStringParam(params, "mode", { required: true });
-  const scope = readStringParam(params, "scope", { required: true });
-  if (modeRaw === "paid" || modeRaw === "paid_usdc") {
+  if (modeRaw === "paid") {
     throw new ToolInputError(
-      "Paid jobs cannot be started from the agent. Quote the cost with estimate; the owner submits and funds paid work.",
+      "Credit-paid jobs cannot be started from the agent. Quote the cost with estimate; the owner submits and funds paid work.",
     );
   }
-  if (modeRaw !== "private" && modeRaw !== "collective") {
-    throw new ToolInputError("mode must be private or collective");
+  if (modeRaw === "paid_usdc" && !paid.paidEnabled) {
+    throw new ToolInputError(
+      "Paid compute is off on this node (compute.paid.enabled). Quote the cost with estimate; the owner can turn paid compute on.",
+    );
+  }
+  if (modeRaw !== "private" && modeRaw !== "collective" && modeRaw !== "paid_usdc") {
+    throw new ToolInputError("mode must be private, collective or paid_usdc");
+  }
+  const scope = readStringParam(params, "scope", { required: modeRaw !== "paid_usdc" });
+  let maxCostUsdc = 0;
+  if (modeRaw === "paid_usdc") {
+    maxCostUsdc = readNumberParam(params, "max_cost_usdc", { required: true });
+    if (!Number.isFinite(maxCostUsdc) || maxCostUsdc <= 0) {
+      throw new ToolInputError("max_cost_usdc must be a positive number of USDC");
+    }
+    if (maxCostUsdc > paid.maxUsdcPerJob) {
+      throw new ToolInputError(
+        `max_cost_usdc ${maxCostUsdc} is above the owner's per-job cap of ${paid.maxUsdcPerJob} USDC (compute.paid.maxUsdcPerJob)`,
+      );
+    }
   }
   const workload = readWorkload(params);
   const inputs = readStringArrayParam(params, "inputs", { required: true });
@@ -348,9 +488,11 @@ export function readSubmitRequest(
   }
   return {
     mode:
-      modeRaw === "private"
-        ? { kind: "private", poolId: scope }
-        : { kind: "collective", projectId: scope },
+      modeRaw === "paid_usdc"
+        ? { kind: "paid_usdc", maxCostUsdc }
+        : modeRaw === "private"
+          ? { kind: "private", poolId: scope ?? "" }
+          : { kind: "collective", projectId: scope ?? "" },
     workload,
     inputs,
     model,

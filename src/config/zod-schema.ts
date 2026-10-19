@@ -1242,6 +1242,14 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        paid: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxUsdcPerJob: z.number().min(0).max(10_000).optional(),
+            maxUsdcPerDay: z.number().min(0).max(100_000).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

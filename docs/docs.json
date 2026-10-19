@@ -1010,6 +1010,7 @@
                   "cli/approvals",
                   "cli/browser",
                   "cli/channels",
+                  "cli/compute",
                   "cli/configure",
                   "cli/cron",
                   "cli/curiosity",

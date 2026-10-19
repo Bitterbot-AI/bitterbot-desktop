@@ -46,6 +46,10 @@ A standing spend grant that covers the payee and the amount counts as a decision
 
 A task sent to another agent with `a2a_client` may come back with a price. Because the price is only known at that point, the hold happens there: the task is not paid for, a request appears in the queue ("Pay 0.30 USDC to 0x... for a task from the agent at ..."), and approving it runs the task again and pays. A standing grant that covers the seller and the amount pays without asking.
 
+### Paid compute jobs
+
+When paid compute is on (`compute.paid.enabled`), the agent may submit a `paid_usdc` job on an owner turn. The coordinator parks it at `awaiting_payment` with a quote, and the hold happens there: a request appears in the queue ("Fund compute job j-42: 0.42 USDC to 0x... (200 sha256 items)"). Approving it funds the job with the authority of the connection that approved, which the signer checks: a connection without `operator.approvals` or `operator.admin` is refused, and so is the node's own internal connection. A chat reply (`/approve`) cannot approve one of these at all: the request is turned away and the hold stays pending for you to decide in the Control UI. `bitterbot compute approve <job>` funds the same job from the terminal and settles the hold. See [Paid jobs and who pays](/tools/compute#paid-jobs-and-who-pays).
+
 ### What is not held
 
 Payouts of money already owed to other people (skill royalties, bounty rewards) go out without waiting for you. They pass through the same spend gate as everything else: the per-transaction and daily limits apply, each one is recorded, and you get a notice when a batch goes out or when one is waiting because it is above your per-transaction limit.

@@ -115,6 +115,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "compute",
+    description: "Compute pools: quotes and approvals for paid jobs",
+    register: async (program) => {
+      const mod = await import("../compute-cli.js");
+      mod.registerComputeCli(program);
+    },
+  },
+  {
     name: "node",
     description: "Node control",
     hidden: true,

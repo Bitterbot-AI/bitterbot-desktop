@@ -177,6 +177,12 @@ export const FIELD_HELP: Record<string, string> = {
     "Override the local embedding model digest used for pool parity checks. Only for providers that cannot report one; a wrong value makes the pool produce vectors that are never written, not corrupt ones.",
   "compute.egress.transcriptsDefaultClass":
     "Governance class for session transcript chunks that carry no higher tag (default: personal, which keeps them on this machine or trusted pools). `normal` allows untrusted pools; `confidential` keeps them local.",
+  "compute.paid.enabled":
+    "Let the agent submit paid (USDC) compute jobs (default: off). A paid job waits at awaiting_payment; nothing is funded until you approve it in the Control UI or with `bitterbot compute approve`. The agent can never fund one.",
+  "compute.paid.maxUsdcPerJob":
+    "Most USDC a single compute job may be funded for (default: 5). A quote above it is refused at the signer, whoever approved it.",
+  "compute.paid.maxUsdcPerDay":
+    "Most USDC compute funding may total in a rolling 24 hours (default: 20), counted from the compute ledger.",
   "notifications.owner.channel":
     "Channel to push gateway notices to (a failed or turned-off scheduled job, a stranded task). Without it, notices go where the heartbeat would deliver. Every notice is also kept in the main session.",
   "notifications.owner.to": "Recipient on that channel for gateway notices.",

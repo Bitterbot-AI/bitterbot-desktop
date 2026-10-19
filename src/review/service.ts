@@ -69,8 +69,27 @@ export type StandingPermission = boolean | { release: () => void };
 
 export type ExecutionResult = { ok: boolean; summary: string };
 
+/**
+ * Who resolved a review row and through which surface. Executors that move
+ * money for the owner (PLAN-57 §4.8) bind their authority to it: `scopes`
+ * are the resolving gateway connection's, absent for a decision that did
+ * not come through one.
+ */
+export type ReviewDecider = {
+  decidedBy: string;
+  decidedVia: string;
+  note?: string;
+  always?: boolean;
+  scopes?: ReadonlyArray<string>;
+  /** The resolving gateway connection's client mode (cli, ui, webchat, backend...). */
+  connectionMode?: string | null;
+};
+
 /** Runs an approved action with owner authority. One per gated tool. */
-export type ApprovedExecutor = (action: ReviewAction) => Promise<ExecutionResult>;
+export type ApprovedExecutor = (
+  action: ReviewAction,
+  by: ReviewDecider,
+) => Promise<ExecutionResult>;
 
 export type ReviewServiceDeps = {
   store: ReviewStore;
@@ -208,7 +227,7 @@ export class ReviewService {
   async resolve(
     id: string,
     decision: "approve" | "deny",
-    by: { decidedBy: string; decidedVia: string; note?: string; always?: boolean },
+    by: ReviewDecider,
   ): Promise<ReviewAction | null> {
     const status = decision === "approve" ? "approved" : "denied";
     const before = this.deps.store.get(id);
@@ -241,7 +260,7 @@ export class ReviewService {
       return action;
     }
     if (decision === "approve") {
-      const outcome = await this.execute(action);
+      const outcome = await this.execute(action, by);
       this.deps.store.markExecution(id, outcome);
       if (outcome.ok && action.cls === "contact") {
         // Approved and delivered: this recipient is no longer a first contact.
@@ -286,7 +305,7 @@ export class ReviewService {
     return true;
   }
 
-  private async execute(action: ReviewAction): Promise<ExecutionResult> {
+  private async execute(action: ReviewAction, by: ReviewDecider): Promise<ExecutionResult> {
     const connector = getConnectorExecutor();
     const executor =
       this.deps.executors.get(action.tool) ??
@@ -297,7 +316,7 @@ export class ReviewService {
       return { ok: false, summary: `no executor is registered for the ${action.tool} tool` };
     }
     try {
-      return await runAsApproved(action.fingerprint, () => executor(action));
+      return await runAsApproved(action.fingerprint, () => executor(action, by));
     } catch (err) {
       return { ok: false, summary: err instanceof Error ? err.message : String(err) };
     }
@@ -337,6 +356,38 @@ export class ReviewService {
 
   recordSpendDecision(decision: SpendDecision): void {
     this.deps.store.recordSpendDecision(decision);
+  }
+
+  /**
+   * The owner carried a held action out through another surface (PLAN-57:
+   * a compute job funded with `bitterbot compute approve` while its hold was
+   * still pending). Record the decision and the outcome without running the
+   * executor again. False if the row was not pending.
+   */
+  settleExternally(id: string, by: ReviewDecider, outcome: ExecutionResult): ReviewAction | null {
+    if (!this.deps.store.decide(id, "approved", by)) {
+      return null;
+    }
+    this.deps.store.markExecution(id, outcome);
+    const action = this.deps.store.get(id);
+    if (action) {
+      this.deps.broadcast?.("review.resolved", publicView(action));
+      if (action.sessionKey) {
+        this.deps.notifySession?.(action.sessionKey, sessionOutcomeText(action), `review:${id}`);
+      }
+    }
+    return action;
+  }
+
+  /** Pending holds for one tool whose params match `where` (shallow, string equality). */
+  pendingFor(tool: string, where: Record<string, string>): ReviewAction[] {
+    return this.deps.store.list({ status: "pending" }).filter((a) => {
+      if (a.tool !== tool || !a.params || typeof a.params !== "object") {
+        return false;
+      }
+      const p = a.params as Record<string, unknown>;
+      return Object.entries(where).every(([k, v]) => p[k] === v);
+    });
   }
 
   listSpendDecisions(limit?: number): SpendDecision[] {
