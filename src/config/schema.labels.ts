@@ -264,6 +264,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "compute.awareness.maxTokens": "Compute: State Block Token Budget",
   "compute.awareness.creditFloor": "Compute: Low Credit Floor",
   "compute.awareness.wakeBudgetPerHour": "Compute: Wakes per Hour",
+  "compute.awareness.nudges": "Compute: Hormonal Nudges",
   "compute.embeddings.provider": "Compute: Embedding Routing",
   "compute.embeddings.marginMs": "Compute: Pool Speed Margin (ms)",
   "compute.embeddings.cooldownMs": "Compute: Worker Cooldown (ms)",

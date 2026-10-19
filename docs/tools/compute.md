@@ -320,6 +320,25 @@ route and class, paid jobs funded), which The Niche section reflects; a
 node with no compute activity gets no block. See
 [Compute pools](/network/compute).
 
+## Hormones
+
+Compute leaves a small mark on the agent's mood, nothing more. A job you
+can see succeed on the pool, one the watcher saw running, gives a dopamine
+lift the size of a recalled happy memory (0.05); a worker still listed but
+offline since the previous poll, the coordinator going unreachable, or
+memory embeddings falling back to local for a sustained run gives a
+cortisol rise of the same size. The node's own batches never lift; their
+one setback is that sustained-fallback event. Jobs first seen already
+finished (after an outage) never nudge, and a poll after an idle stretch
+starts a fresh baseline instead of blaming the gap on a worker.
+
+The bounds are the point: one nudge per kind every thirty minutes and four
+per hour, and at that size and spacing two nudges of one kind cannot add up
+to the dream engine's hormonal rise trigger (0.15), so compute colours the
+mood and never starts a dream or an automatic scratch note.
+`compute.awareness.nudges: false` registers no sink at all, and every nudge
+is then a no-op whatever the plugin passes.
+
 ## What the agent can never do
 
 There is no action that funds, approves or signs anything. The paid path
@@ -346,7 +365,11 @@ secrets never reach the agent.
 To get the state block and completion delivery, also:
 
 - open the delivery store (`ComputeDeliveryStore.open()`) and start the
-  watcher (`startComputeWatcher({ backend, store, ownerSessionKey })`);
+  watcher (`startComputeWatcher({ backend, store, ownerSessionKey, wakeBudgetPerHour, nudges })`,
+  passing `compute.awareness.wakeBudgetPerHour` and `compute.awareness.nudges`
+  from the config; report an unreachable coordinator as `reachable: false`
+  in the snapshot rather than throwing, so the state block and the setback
+  nudge can see it);
 - record an origin for every job you submit, before or right after the
   coordinator accepts it: `store.recordOrigin(jobId, "owner", null)` for the
   Compute tab and CLI, `"agent"` with the task's session key for

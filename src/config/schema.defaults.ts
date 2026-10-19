@@ -34,6 +34,8 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "compute.enabled": true,
   // src/compute/awareness/state.ts (resolveComputeStateBlockFromConfig): only `=== false` disables the block.
   "compute.awareness.stateBlock": true,
+  // src/compute/awareness/nudges.ts (nudgeCompute): only `=== false` turns nudges off.
+  "compute.awareness.nudges": true,
   // src/memory/embeddings-pool.ts (createPoolEmbeddingProvider): "local" turns routing off; anything else routes.
   "compute.embeddings.provider": "pool",
   "compute.embeddings.marginMs": 500,
