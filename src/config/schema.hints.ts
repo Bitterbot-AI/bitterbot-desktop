@@ -78,6 +78,7 @@ const GROUP_LABELS: Record<string, string> = {
   payments: "Payments",
   shop: "Shop",
   monitors: "Monitors",
+  compute: "Compute",
   notifications: "Notifications",
   auth: "Auth Profiles",
   meta: "Config Metadata",
@@ -114,6 +115,7 @@ const GROUP_ORDER: Record<string, number> = {
   payments: 194,
   shop: 196,
   monitors: 198,
+  compute: 197,
   notifications: 199,
   skills: 200,
   plugins: 205,
@@ -129,6 +131,8 @@ const GROUP_ORDER: Record<string, number> = {
  * One entry per group that needs more than its field help can carry.
  */
 export const GROUP_HELP: Record<string, string> = {
+  compute:
+    "Compute pools (PLAN-57): the agent's view of your own machine and any pools this node has joined, memory embeddings routed to eligible workers under the egress policy (confidential never leaves, personal only to pools you mark trusted), and the paid path, which is off by default and always needs your approval. compute.enabled is the one kill switch.",
   review:
     "Money leaving the node passes three layers: review.spend decides whether a payment is held for your approval (ask) or not (allow); a standing spend grant (Spend Grants page, a2a.payment.consent) lets a matching payee and amount through without asking; and the wallet caps (tools.wallet.perTransactionCapUsd, tools.wallet.sessionSpendCapUsd, tools.wallet.dailySpendLimitUsd, tools.wallet.x402.maxCostPerRequestUsd) are hard ceilings that apply even when a payment is allowed. Card purchases (payments.link, payments.privacy) are approved per purchase in the card provider's app.",
 };

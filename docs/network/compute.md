@@ -105,6 +105,27 @@ rules and refusal reasons are in
 - `bitterbot doctor` has two sections, "Compute embeddings" and "Compute
   payments", read from the same local ledger.
 
+## Upgrading
+
+Compute awareness is on by default, on new installs and on upgrades alike:
+a config without a `compute` key behaves as `compute.enabled: true`. On a
+node without the Soapbox plugin loaded that means nothing at all. The
+`compute` tool and its prompt section exist only when a backend (the
+plugin with a coordinator) is loaded, the state block renders only when
+something is actionable, the compute block in working memory appears only
+once there is activity, and no connection is opened. An idle upgraded node
+spends no extra tokens and dials nothing new. The Settings form does gain a
+Compute group with every key below on every node, so the switches are
+visible before they matter.
+
+What does change once the plugin is loaded and a pool exists: memory
+embedding batches may route to eligible pool workers under the egress
+policy (`compute.embeddings.provider: pool` is the default; set `local` to
+keep them home), finished jobs become episodes, and compute colours the
+agent's mood a little. Paid jobs stay off until you turn
+`compute.paid.enabled` on. `compute.enabled: false` turns everything off at
+once.
+
 ## Settings
 
 All keys live under `compute` in `~/.bitterbot/bitterbot.json` and in the
@@ -117,6 +138,7 @@ Settings form.
 | `compute.awareness.maxTokens`            | `120`       | Token budget for that block.                                                                   |
 | `compute.awareness.creditFloor`          | `10`        | Below this many credits the block says so.                                                     |
 | `compute.awareness.wakeBudgetPerHour`    | `20`        | Most agent wakes per hour from compute completions; the rest are deferred, never dropped.      |
+| `compute.awareness.nudges`               | `true`      | Small hormonal nudges on owner-visible successes and setbacks; rate-limited.                   |
 | `compute.pools.<id>.trust`               | `untrusted` | Which memory classes may reach the pool (see above).                                           |
 | `compute.embeddings.provider`            | `pool`      | Route memory embedding batches to eligible pool workers; `local` turns routing off.            |
 | `compute.embeddings.marginMs`            | `500`       | A worker must beat the local estimate by this much to be chosen.                               |

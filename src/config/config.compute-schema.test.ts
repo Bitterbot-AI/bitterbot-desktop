@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { FIELD_DEFAULTS } from "./schema.defaults.js";
+import { buildConfigSchema } from "./schema.js";
 import { FIELD_LABELS } from "./schema.labels.js";
 import { validateConfigObject } from "./validation.js";
 
@@ -67,6 +68,17 @@ describe("compute config (PLAN-57)", () => {
     expect(FIELD_DEFAULTS["compute.paid.maxUsdcPerJob"]).toBe(5);
     expect(FIELD_DEFAULTS["compute.paid.maxUsdcPerDay"]).toBe(20);
     expect(FIELD_LABELS["compute.paid.enabled"]).toBe("Compute: Paid Jobs");
+  });
+
+  it("accepts the Phase 6 nudges switch, default on, and files compute under its own Settings group", () => {
+    expect(validateConfigObject({ compute: { awareness: { nudges: false } } }).ok).toBe(true);
+    expect(validateConfigObject({ compute: { awareness: { nudges: "yes" } } }).ok).toBe(false);
+    expect(FIELD_DEFAULTS["compute.awareness.nudges"]).toBe(true);
+    expect(FIELD_LABELS["compute.awareness.nudges"]).toBe("Compute: Hormonal Nudges");
+    const hints = buildConfigSchema().uiHints;
+    expect(hints.compute).toMatchObject({ label: "Compute", group: "Compute", order: 197 });
+    expect(hints.compute?.help).toContain("compute.enabled is the one kill switch");
+    expect(hints["compute.awareness.nudges"]?.label).toBe("Compute: Hormonal Nudges");
   });
 
   it("rejects unknown keys and out-of-range budgets (keys land with the code that reads them)", () => {

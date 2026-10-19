@@ -1217,6 +1217,7 @@ export const BitterbotSchema = z
             maxTokens: z.number().int().min(40).max(400).optional(),
             creditFloor: z.number().min(0).optional(),
             wakeBudgetPerHour: z.number().int().min(0).max(1000).optional(),
+            nudges: z.boolean().optional(),
           })
           .strict()
           .optional(),

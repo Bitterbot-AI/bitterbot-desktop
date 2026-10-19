@@ -24,18 +24,20 @@ value = baseline + (value - baseline) × 2^(-elapsed / halfLife)
 
 Events stimulate specific hormones. Each event has a magnitude (how much to add) and a target hormone:
 
-| Event               | Hormone            | Magnitude    | Trigger                                |
-| ------------------- | ------------------ | ------------ | -------------------------------------- |
-| `reward`            | dopamine           | +0.30        | Positive feedback                      |
-| `achievement`       | dopamine, oxytocin | +0.40, +0.20 | Task completion, breakthrough          |
-| `curiosity_high`    | dopamine           | +0.25        | Curiosity reward > 0.7                 |
-| `error`             | cortisol           | +0.30        | Bug, error, frustration                |
-| `urgency`           | cortisol           | +0.40        | Time pressure detected                 |
-| `social`            | oxytocin           | +0.30        | Personal sharing, trust building       |
-| `marketplace_sale`  | dopamine, oxytocin | +0.15, +0.05 | Skill sold on marketplace              |
-| `recall_positive`   | dopamine           | +0.05        | Retrieved positive memories            |
-| `recall_negative`   | cortisol           | +0.05        | Retrieved negative memories            |
-| `recall_relational` | oxytocin           | +0.05        | Retrieved personal/relational memories |
+| Event               | Hormone            | Magnitude    | Trigger                                                                                               |
+| ------------------- | ------------------ | ------------ | ----------------------------------------------------------------------------------------------------- |
+| `reward`            | dopamine           | +0.30        | Positive feedback                                                                                     |
+| `achievement`       | dopamine, oxytocin | +0.40, +0.20 | Task completion, breakthrough                                                                         |
+| `curiosity_high`    | dopamine           | +0.25        | Curiosity reward > 0.7                                                                                |
+| `error`             | cortisol           | +0.30        | Bug, error, frustration                                                                               |
+| `urgency`           | cortisol           | +0.40        | Time pressure detected                                                                                |
+| `social`            | oxytocin           | +0.30        | Personal sharing, trust building                                                                      |
+| `marketplace_sale`  | dopamine, oxytocin | +0.15, +0.05 | Skill sold on marketplace                                                                             |
+| `recall_positive`   | dopamine           | +0.05        | Retrieved positive memories                                                                           |
+| `recall_negative`   | cortisol           | +0.05        | Retrieved negative memories                                                                           |
+| `recall_relational` | oxytocin           | +0.05        | Retrieved personal/relational memories                                                                |
+| `compute_success`   | dopamine           | +0.05        | A compute job you can see succeeded on the pool (rate-limited)                                        |
+| `compute_setback`   | cortisol           | +0.05        | A pool worker went offline, the coordinator went away, or embeddings keep falling back (rate-limited) |
 
 Note the **recall events** have smaller magnitudes (0.05) than direct events (0.10-0.40) to prevent runaway feedback loops.
 

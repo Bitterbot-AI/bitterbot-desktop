@@ -35,6 +35,7 @@ import {
 } from "../compute/awareness/egress.js";
 import { recordComputeDuration } from "../compute/awareness/estimate.js";
 import type { ComputeLedgerRow } from "../compute/awareness/ledger.js";
+import { nudgeCompute } from "../compute/awareness/nudges.js";
 import {
   type CooldownReason,
   CooldownBook,
@@ -199,6 +200,13 @@ export function createPoolEmbeddingProvider(params: {
           status: "degraded",
           summary: `pool embeddings falling back to local (${reason})`,
           at: deps.now(),
+        });
+        // Phase 6: a sustained fallback is a small setback, bounded by the nudge rate limits.
+        nudgeCompute({
+          kind: "setback",
+          reason: `sustained embedding fallback (${reason})`,
+          enabled: config.compute?.awareness?.nudges !== false,
+          now: deps.now(),
         });
       }
     };

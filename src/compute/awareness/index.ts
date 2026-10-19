@@ -140,3 +140,14 @@ export {
   hasComputeActivity,
   renderComputeNicheInput,
 } from "./niche.js";
+export {
+  type ComputeNudge,
+  type ComputeNudgeKind,
+  type ComputeNudgeSink,
+  COMPUTE_NUDGE_COOLDOWN_MS,
+  COMPUTE_NUDGE_HOURLY_CAP,
+  getComputeNudgeSink,
+  nudgeCompute,
+  registerComputeNudgeSink,
+  resetComputeNudgesForTest,
+} from "./nudges.js";

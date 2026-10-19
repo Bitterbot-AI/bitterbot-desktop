@@ -18,6 +18,11 @@ import {
   registerComputeEpisodeSink,
 } from "../compute/awareness/episodes.js";
 import { computeNicheFacts, hasComputeActivity } from "../compute/awareness/niche.js";
+import {
+  type ComputeNudgeSink,
+  getComputeNudgeSink,
+  registerComputeNudgeSink,
+} from "../compute/awareness/nudges.js";
 import { getComputeRuntime } from "../compute/awareness/runtime.js";
 import { getComputeSnapshot } from "../compute/awareness/state.js";
 import { loadConfig, type BitterbotConfig } from "../config/config.js";
@@ -274,6 +279,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   private embeddingHoldLogged = false;
   /** PLAN-57 §4.7: the compute episode sink this manager registered, if any. */
   private episodeSink: ComputeEpisodeSink | null = null;
+  /** PLAN-57 Phase 6: the compute nudge sink this manager registered, if any. */
+  private nudgeSink: ComputeNudgeSink | null = null;
   private readonly requestedProvider: "openai" | "local" | "gemini" | "voyage" | "auto";
   private fallbackFrom?: "openai" | "local" | "gemini" | "voyage";
   private fallbackReason?: string;
@@ -611,6 +618,19 @@ export class MemoryIndexManager implements MemorySearchManager {
       ) {
         manager.episodeSink = (episode) => manager.writeComputeEpisodeChunk(episode);
         registerComputeEpisodeSink(manager.episodeSink);
+      }
+      // Phase 6: the same manager's hormones take the compute nudges.
+      if (
+        params.purpose === undefined &&
+        cfg.compute?.enabled !== false &&
+        cfg.compute?.awareness?.nudges !== false &&
+        !getComputeNudgeSink()
+      ) {
+        manager.nudgeSink = (nudge) =>
+          manager.hormonalManager?.stimulate(
+            nudge.kind === "success" ? "compute_success" : "compute_setback",
+          );
+        registerComputeNudgeSink(manager.nudgeSink);
       }
       log.info("memory manager build timing", {
         agentId,
@@ -7633,6 +7653,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       registerComputeEpisodeSink(null);
     }
     this.episodeSink = null;
+    if (this.nudgeSink && getComputeNudgeSink() === this.nudgeSink) {
+      registerComputeNudgeSink(null);
+    }
+    this.nudgeSink = null;
     this.canonicalPropagation?.close();
     if (this.watchTimer) {
       clearTimeout(this.watchTimer);

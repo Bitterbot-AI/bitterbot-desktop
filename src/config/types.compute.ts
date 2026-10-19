@@ -19,6 +19,14 @@ export type ComputeAwarenessConfig = {
    * shows them as waiting; nothing is dropped.
    */
   wakeBudgetPerHour?: number;
+  /**
+   * Small hormonal nudges from compute (default on): a dopamine lift when a
+   * job you can see succeeds on the pool, a cortisol rise when a worker drops
+   * out, the coordinator goes unreachable or embeddings keep falling back.
+   * Recall-sized and rate-limited so they never start a dream; the node's
+   * own batches never lift. Off means no nudge sink is registered.
+   */
+  nudges?: boolean;
 };
 
 /** PLAN-57 §4.6: the owner's trust in a pool decides which memory may reach it. */

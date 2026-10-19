@@ -11,6 +11,11 @@ import {
   getComputeEpisodeSink,
   resetComputeEpisodesForTest,
 } from "../compute/awareness/episodes.js";
+import {
+  getComputeNudgeSink,
+  nudgeCompute,
+  resetComputeNudgesForTest,
+} from "../compute/awareness/nudges.js";
 import { getMemorySearchManager } from "./index.js";
 
 const embedBatch = vi.fn(async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3]));
@@ -51,6 +56,7 @@ function createCfg(workspaceDir: string, indexPath: string) {
 let fixtureRoot: string | null = null;
 afterEach(async () => {
   resetComputeEpisodesForTest();
+  resetComputeNudgesForTest();
   if (fixtureRoot) {
     await fs.rm(fixtureRoot, { recursive: true, force: true });
     fixtureRoot = null;
@@ -60,6 +66,7 @@ afterEach(async () => {
 describe("compute episodes in memory", () => {
   it("registers the sink on the default manager and writes one episode chunk per job outcome", async () => {
     resetComputeEpisodesForTest();
+    resetComputeNudgesForTest();
     fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-compute-episodes-"));
     const workspaceDir = path.join(fixtureRoot, "workspace");
     await fs.mkdir(path.join(workspaceDir, "memory"), { recursive: true });
@@ -72,6 +79,18 @@ describe("compute episodes in memory", () => {
       agentId: "main",
     });
     expect(getComputeEpisodeSink()).not.toBeNull();
+    // Phase 6: the nudge sink reaches this manager's hormones.
+    expect(getComputeNudgeSink()).not.toBeNull();
+    const hormones = (
+      manager as unknown as {
+        hormonalManager: { getState: () => { dopamine: number; cortisol: number } };
+      }
+    ).hormonalManager;
+    const beforeNudge = hormones.getState();
+    expect(nudgeCompute({ kind: "success", reason: "test" })).toBe(true);
+    expect(hormones.getState().dopamine).toBeGreaterThan(beforeNudge.dopamine);
+    expect(nudgeCompute({ kind: "setback", reason: "test" })).toBe(true);
+    expect(hormones.getState().cortisol).toBeGreaterThan(beforeNudge.cortisol);
     const mgr = manager as unknown as {
       sync: (o: { reason: string }) => Promise<void>;
       writeComputeEpisodeChunk: (ep: unknown) => Promise<string | null>;
@@ -142,6 +161,7 @@ describe("compute episodes in memory", () => {
     // Closing the manager hands the sink back; a closed manager writes nothing.
     await manager.close();
     expect(getComputeEpisodeSink()).toBeNull();
+    expect(getComputeNudgeSink()).toBeNull();
     expect(await mgr.writeComputeEpisodeChunk({ ...episode, status: "expired" })).toBeNull();
   }, 60_000);
 });

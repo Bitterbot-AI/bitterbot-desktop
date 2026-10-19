@@ -24,6 +24,7 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { ComputeBackend, ComputeJobSummary, ComputeSnapshot } from "./backend.js";
 import type { ComputeDeliveryStore, ComputeJobOrigin } from "./deliveries.js";
 import { emitComputeEpisode, episodeFromJob } from "./episodes.js";
+import { nudgeCompute } from "./nudges.js";
 import {
   publishComputeSnapshot,
   pushComputeTransition,
@@ -55,6 +56,8 @@ export type ComputeWatcherOptions = {
   /** The owner's main session: where owner-started jobs report. */
   ownerSessionKey: () => string;
   wakeBudgetPerHour?: number;
+  /** PLAN-57 Phase 6: hormonal nudges on owner-visible successes and setbacks (compute.awareness.nudges, default on). */
+  nudges?: boolean;
   minPollMs?: number;
   maxPollMs?: number;
   reconcileLimit?: number;
@@ -95,6 +98,14 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
   let stopped = false;
   let polling = false;
   let lastStatuses = new Map<string, string>();
+  // Phase 6: what the previous poll saw, to notice a worker dropping out or
+  // the coordinator going away.
+  let lastOnlineWorkers: Set<string> | null = null;
+  let lastReachable: boolean | null = null;
+  let lastPollAt: number | null = null;
+  const nudgesOn = opts.nudges !== false;
+  // A baseline older than this says nothing about what happened since.
+  const baselineMaxAgeMs = 2 * maxPoll;
   const wakes: number[] = [];
 
   const unsubscribe = subscribe((evt) => {
@@ -179,6 +190,45 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
     });
   }
 
+  /**
+   * A worker that was online at the previous poll and is now listed offline,
+   * or a coordinator that went away. The previous poll must be recent: after
+   * an idle stretch the baseline says nothing about what happened since, and
+   * a worker that simply left the pool is not a setback.
+   */
+  function noticeSetbacks(snapshot: ComputeSnapshot): void {
+    const at = now();
+    const fresh = lastPollAt !== null && at - lastPollAt <= baselineMaxAgeMs;
+    if (fresh && lastReachable === true && !snapshot.reachable) {
+      nudgeCompute({
+        kind: "setback",
+        reason: "coordinator unreachable",
+        enabled: nudgesOn,
+        now: at,
+      });
+    }
+    lastReachable = snapshot.reachable;
+    const byId = new Map(snapshot.workers.map((w) => [w.id, w]));
+    if (fresh && lastOnlineWorkers && snapshot.reachable) {
+      const lost = [...lastOnlineWorkers].filter((id) => {
+        const w = byId.get(id);
+        return w !== undefined && !w.online;
+      });
+      if (lost.length > 0) {
+        nudgeCompute({
+          kind: "setback",
+          reason: `worker offline: ${lost.slice(0, 3).join(", ")}`,
+          enabled: nudgesOn,
+          now: at,
+        });
+      }
+    }
+    if (snapshot.reachable) {
+      lastOnlineWorkers = new Set(snapshot.workers.filter((w) => w.online).map((w) => w.id));
+    }
+    lastPollAt = at;
+  }
+
   function handleTransitions(jobs: ComputeJobSummary[]): void {
     for (const job of jobs) {
       const prev = lastStatuses.get(job.id);
@@ -198,6 +248,12 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
         linkTask(route, job);
         // §4.7: a finished job the agent or owner started becomes an episode.
         emitComputeEpisode(episodeFromJob(job, route, now()));
+        // Phase 6: an owner-visible success the watcher saw in flight is a
+        // small lift. A job first seen already finished (reconciled after an
+        // outage, or found by a refresh during startup) does not nudge.
+        if (job.status === "succeeded" && prev !== undefined) {
+          nudgeCompute({ kind: "success", reason: `job ${job.id}`, enabled: nudgesOn, now: now() });
+        }
       }
     }
   }
@@ -229,6 +285,7 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
       const snapshot = await opts.backend.snapshot();
       publishComputeSnapshot(snapshot);
       setComputeInternalJobs(opts.store.internalJobIds());
+      noticeSetbacks(snapshot);
       handleTransitions(snapshot.jobs);
       lastStatuses = new Map(snapshot.jobs.map((j) => [j.id, j.status]));
       retryDeferred();

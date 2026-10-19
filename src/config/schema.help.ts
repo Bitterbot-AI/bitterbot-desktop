@@ -165,6 +165,8 @@ export const FIELD_HELP: Record<string, string> = {
     "When available compute credits fall below this, the state block says so (default 10).",
   "compute.awareness.wakeBudgetPerHour":
     "How many times per hour a finished compute job may wake the agent (default 20). Over the budget, completions are queued and shown as waiting; none are lost.",
+  "compute.awareness.nudges":
+    "Small hormonal nudges from compute (default: on): a dopamine lift when a job you can see succeeds on the pool, a cortisol rise when a worker drops out, the coordinator goes unreachable or memory embeddings keep falling back to local. Recall-sized (0.05), at most one per kind every thirty minutes and four per hour, too small and too spaced to start a dream. The node's own batches never lift; their one setback is the sustained-fallback event. Off means no sink is registered at all.",
   "compute.embeddings.provider":
     "Where memory embedding batches may run (default: pool). A pool worker is used only when its pinned model digest, dimensions and processing rules equal the local embedding profile and the content's governance class allows that pool; everything else runs locally. `local` turns pool routing off. Queries always run locally.",
   "compute.embeddings.marginMs":
