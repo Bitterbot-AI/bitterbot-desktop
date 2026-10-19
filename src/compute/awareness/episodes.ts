@@ -43,7 +43,7 @@ export type ComputeEpisode = {
   at: number;
 };
 
-export type ComputeEpisodeSink = (episode: ComputeEpisode) => Promise<unknown> | unknown;
+export type ComputeEpisodeSink = (episode: ComputeEpisode) => unknown;
 
 let sink: ComputeEpisodeSink | null = null;
 
