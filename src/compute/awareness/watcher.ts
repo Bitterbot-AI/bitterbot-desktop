@@ -23,6 +23,7 @@ import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type { ComputeBackend, ComputeJobSummary, ComputeSnapshot } from "./backend.js";
 import type { ComputeDeliveryStore, ComputeJobOrigin } from "./deliveries.js";
+import { emitComputeEpisode, episodeFromJob } from "./episodes.js";
 import {
   publishComputeSnapshot,
   pushComputeTransition,
@@ -143,7 +144,7 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
 
   function routeFor(job: ComputeJobSummary): {
     sessionKey: string;
-    origin: ComputeJobOrigin;
+    origin: Exclude<ComputeJobOrigin, "internal">;
     taskId: string | null;
     wakeupJobId: string | null;
   } | null {
@@ -195,6 +196,8 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
       deliver(job, route.sessionKey, created);
       if (created) {
         linkTask(route, job);
+        // §4.7: a finished job the agent or owner started becomes an episode.
+        emitComputeEpisode(episodeFromJob(job, route, now()));
       }
     }
   }
@@ -288,8 +291,10 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
           deliver(job, route.sessionKey, created);
           delivered += 1;
           if (created) {
-            // A job that finished while the gateway was down still resumes its task.
+            // A job that finished while the gateway was down still resumes
+            // its task and still becomes an episode.
             linkTask(route, job);
+            emitComputeEpisode(episodeFromJob(job, route, now()));
           }
         }
       }

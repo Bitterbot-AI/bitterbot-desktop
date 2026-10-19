@@ -16,6 +16,11 @@
  */
 
 import {
+  type ComputeNicheFacts,
+  hasComputeActivity,
+  renderComputeNicheInput,
+} from "../compute/awareness/niche.js";
+import {
   buildCanonicalKeysInputBlock,
   type CanonicalSynthesisContext,
 } from "./working-memory-canonical.js";
@@ -107,6 +112,8 @@ export type WorkingMemoryContext = {
     value: string;
     confidence: number;
   }>;
+  /** PLAN-57 §4.7: compute facts for The Niche (pools, jobs, embeddings routed, paid jobs). */
+  compute?: ComputeNicheFacts;
   /** PLAN-55 Phase 2: active ledger facts for the rewrite (working-memory-canonical.ts). */
   canonicalFacts?: CanonicalSynthesisContext["canonicalFacts"];
   /** PLAN-55 Phase 2: the last N supersedes and owner retires, newest first. */
@@ -215,6 +222,8 @@ ${buildEmotionalAnchorsInputBlock(ctx)}
 
 ${buildNetworkIdentityInputBlock(ctx)}
 
+${buildComputeInputBlock(ctx)}
+
 ${buildPhenotypeConstraintBlock(ctx)}
 
 ${buildCanonicalKeysInputBlock(ctx)}
@@ -256,6 +265,7 @@ Write the new Working Memory state using this exact schema. Keep total output un
 {Skills I've imported from peers — my influences and lineage}
 {Peer connections and reputation — how the network sees me}
 {Economic performance — earnings, spending, ROI trajectory}
+{Compute — pools I belong to and their trust, jobs the pool ran for me and how they went, memory embeddings routed to the pool, paid jobs the owner funded; omit if there is no compute activity}
 {Specialization trajectory — am I trending generalist or specialist?}
 {Market position — what skills are in demand that I could learn?}
 {If no network activity yet: "Pre-network — building local expertise before contributing to the ecosystem."}
@@ -411,6 +421,17 @@ function buildNetworkIdentityInputBlock(ctx: WorkingMemoryContext): string {
   }
 
   return lines.join("\n");
+}
+
+/**
+ * PLAN-57 §4.7: the compute facts block. Absent when the node has no pools
+ * and nothing was routed, so a node without compute pays no tokens for it.
+ */
+function buildComputeInputBlock(ctx: WorkingMemoryContext): string {
+  if (!ctx.compute || !hasComputeActivity(ctx.compute)) {
+    return "";
+  }
+  return renderComputeNicheInput(ctx.compute).join("\n");
 }
 
 /**

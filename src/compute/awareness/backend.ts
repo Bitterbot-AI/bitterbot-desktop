@@ -176,6 +176,11 @@ export type ComputeBackend = {
    * payment.ts, inside the spend gate, with a verified approval token.
    */
   fund?(req: ComputeFundRequest): Promise<ComputeFundResult>;
+  /** Optional: pause or resume one of this node's own workers (owner surfaces only). */
+  pauseWorker?(
+    workerId: string,
+    paused: boolean,
+  ): Promise<{ ok: boolean; paused?: boolean; error?: string }>;
 };
 
 let registered: ComputeBackend | null = null;

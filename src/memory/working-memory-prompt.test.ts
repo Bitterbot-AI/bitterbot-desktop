@@ -455,3 +455,49 @@ describe("bounded synthesis repair", () => {
     expect(validateWorkingMemory(repaired!).collapsed).toBe(false);
   });
 });
+
+describe("PLAN-57 §4.7: compute facts in the Niche input", () => {
+  const facts = {
+    windowDays: 7,
+    jobs: {
+      total: 3,
+      byOrigin: { agent: 2, owner: 1 },
+      byOutcome: { succeeded: 3 },
+      successRate: 1,
+    },
+    embeddings: {
+      batches: 4,
+      items: 80,
+      pool: 3,
+      local: 1,
+      fallback: 0,
+      poolByClassTrust: { "personal@trusted": 3 },
+      poolItemsPerSecond: 30,
+      localItemsPerSecond: 4,
+      policyViolations: 0,
+    },
+    payments: { funded: 0, fundedUsdc: 0, refused: 0 },
+    pools: [{ id: "lab", kind: "private", trust: "trusted", workersOnline: 1, workersTotal: 1 }],
+    reachable: true,
+  };
+
+  it("adds a compute input block only when there is activity, and asks the Niche to reflect it", () => {
+    const withFacts = buildWorkingMemorySynthesisPrompt(makeContext({ compute: facts }));
+    expect(withFacts).toContain("## Input: Compute (last 7 days)");
+    expect(withFacts).toContain("Jobs consumed: 3 (agent 2, owner 1)");
+    expect(withFacts).toContain("{Compute — pools I belong to");
+    const without = buildWorkingMemorySynthesisPrompt(makeContext());
+    expect(without).not.toContain("## Input: Compute");
+    const idle = buildWorkingMemorySynthesisPrompt(
+      makeContext({
+        compute: {
+          ...facts,
+          jobs: { total: 0, byOrigin: { agent: 0, owner: 0 }, byOutcome: {}, successRate: null },
+          embeddings: { ...facts.embeddings, batches: 0 },
+          pools: [],
+        },
+      }),
+    );
+    expect(idle).not.toContain("## Input: Compute");
+  });
+});

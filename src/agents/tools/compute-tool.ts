@@ -548,7 +548,7 @@ export function isInFlight(status: string): boolean {
   return status === "queued" || status === "running" || status === "settlement_pending";
 }
 
-function renderJob(j: ComputeJobSummary) {
+export function renderJob(j: ComputeJobSummary) {
   return {
     id: j.id,
     status: j.status,

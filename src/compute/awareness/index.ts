@@ -122,3 +122,21 @@ export {
   toMicroUsdc,
   verifyComputeApprovalToken,
 } from "./payment.js";
+export {
+  type ComputeEpisode,
+  type ComputeEpisodeSink,
+  TERMINAL_JOB_STATUSES,
+  emitComputeEpisode,
+  episodeFromJob,
+  formatComputeEpisode,
+  getComputeEpisodeSink,
+  registerComputeEpisodeSink,
+  resetComputeEpisodesForTest,
+} from "./episodes.js";
+export {
+  type ComputeNicheFacts,
+  COMPUTE_NICHE_WINDOW_MS,
+  computeNicheFacts,
+  hasComputeActivity,
+  renderComputeNicheInput,
+} from "./niche.js";

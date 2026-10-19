@@ -1,25 +1,52 @@
 /**
- * compute.quote / compute.approve (PLAN-57 §4.8): the owner's view of a paid
- * compute job waiting for money, and the one gateway surface that funds it.
- * `compute.quote` needs operator.read. `compute.approve` is admin-only and
- * passes the connection's scopes to the signer, which binds the approval to
- * them; the Control UI's Compute tab and `bitterbot compute approve` call it.
+ * The compute gateway methods (PLAN-57 §4.8 and Phase 5).
+ *
+ * Read (operator.read): `compute.status` (the secret-free snapshot the agent
+ * sees, plus the owner's trust settings), `compute.jobs`, `compute.quote`.
+ * Admin only: `compute.approve` (the one surface that funds a paid job; it
+ * passes the connection's scopes and mode to the signer), `compute.pause`
+ * (pause or resume one of this node's workers) and `compute.trust` (set a
+ * pool's trust in the config). `bitterbot compute` is the CLI over them.
  */
 
+import { renderJob, renderStatus } from "../../agents/tools/compute-tool.js";
 import {
   type ComputeQuote,
+  type ComputeSnapshot,
+  defaultPoolTrust,
   getComputeBackend,
   getComputeRuntime,
+  resolvePoolTrust,
 } from "../../compute/awareness/index.js";
 import {
   approveComputeFunding,
   DEFAULT_MAX_USDC_PER_DAY,
   DEFAULT_MAX_USDC_PER_JOB,
 } from "../../compute/awareness/payment.js";
-import { loadConfig } from "../../config/config.js";
+import {
+  loadConfig,
+  readConfigFileSnapshotForWrite,
+  validateConfigObject,
+  writeConfigFile,
+} from "../../config/config.js";
+import type { BitterbotConfig } from "../../config/types.bitterbot.js";
 import { getReviewService } from "../../review/runtime.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
+
+const TRUST_LEVELS = new Set(["trusted", "untrusted"]);
+const POOL_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/u;
+/** Keys that must never become object properties on the config object. */
+const FORBIDDEN_POOL_IDS = new Set(["__proto__", "constructor", "prototype"]);
+
+function paidView(cfg: BitterbotConfig) {
+  const paid = cfg.compute?.paid;
+  return {
+    enabled: paid?.enabled === true,
+    maxUsdcPerJob: paid?.maxUsdcPerJob ?? DEFAULT_MAX_USDC_PER_JOB,
+    maxUsdcPerDay: paid?.maxUsdcPerDay ?? DEFAULT_MAX_USDC_PER_DAY,
+  };
+}
 
 function readJobId(params: Record<string, unknown>): string {
   const raw = params.jobId ?? params.job_id;
@@ -61,7 +88,6 @@ export const computeHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const paid = loadConfig().compute?.paid;
     let fundedTx: string | null = null;
     try {
       fundedTx = getComputeRuntime()?.store.ledger().fundedTxFor(jobId) ?? null;
@@ -81,11 +107,177 @@ export const computeHandlers: GatewayRequestHandlers = {
         : null,
       pendingReview: pendingHoldsFor(jobId)[0]?.id ?? null,
       fundedTx,
-      paid: {
-        enabled: paid?.enabled === true,
-        maxUsdcPerJob: paid?.maxUsdcPerJob ?? DEFAULT_MAX_USDC_PER_JOB,
-        maxUsdcPerDay: paid?.maxUsdcPerDay ?? DEFAULT_MAX_USDC_PER_DAY,
-      },
+      paid: paidView(loadConfig()),
+    });
+  },
+
+  /** The owner's view: what the agent sees in `compute status`, plus the trust settings. */
+  "compute.status": async ({ respond }) => {
+    const backend = getComputeBackend();
+    if (!backend) {
+      respond(true, {
+        backend: false,
+        reachable: false,
+        pools: [],
+        workers: [],
+        jobs_in_flight: [],
+      });
+      return;
+    }
+    let snapshot: ComputeSnapshot;
+    try {
+      snapshot = await backend.snapshot();
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, err instanceof Error ? err.message : String(err)),
+      );
+      return;
+    }
+    const cfg = loadConfig();
+    const view = renderStatus(snapshot);
+    respond(true, {
+      backend: true,
+      ...view,
+      pools: view.pools.map((p) => ({ ...p, configured_trust: resolvePoolTrust(cfg, p.id) })),
+      paid: { ...paidView(cfg), available: snapshot.paid?.available === true },
+      runtime: getComputeRuntime() !== null,
+    });
+  },
+
+  "compute.jobs": async ({ params, respond }) => {
+    const backend = getComputeBackend();
+    if (!backend) {
+      respond(true, { jobs: [] });
+      return;
+    }
+    const limit =
+      typeof params.limit === "number" && Number.isFinite(params.limit)
+        ? Math.max(1, Math.min(200, Math.floor(params.limit)))
+        : 20;
+    const status = typeof params.status === "string" ? params.status.trim() : "";
+    try {
+      const jobs = await backend.jobs({ limit, ...(status ? { status } : {}) });
+      respond(true, { jobs: jobs.map(renderJob) });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+
+  /** Pause or resume one of this node's workers. Admin only. */
+  "compute.pause": async ({ params, respond }) => {
+    const workerId = typeof params.workerId === "string" ? params.workerId.trim() : "";
+    if (!workerId) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "workerId is required"));
+      return;
+    }
+    const paused = params.paused !== false;
+    const backend = getComputeBackend();
+    if (!backend || typeof backend.pauseWorker !== "function") {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "this node's compute backend cannot pause workers"),
+      );
+      return;
+    }
+    try {
+      const res = await backend.pauseWorker(workerId, paused);
+      if (!res.ok) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, res.error ?? "the backend refused"),
+        );
+        return;
+      }
+      getComputeRuntime()?.watcher?.kick();
+      respond(true, { workerId, paused: res.paused ?? paused });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, err instanceof Error ? err.message : String(err)),
+      );
+    }
+  },
+
+  /**
+   * Set a pool's trust (`compute.pools.<id>.trust`). Admin only. The egress
+   * policy reads it when the memory manager is built, so it applies on the
+   * next gateway restart; the response says so.
+   */
+  "compute.trust": async ({ params, respond }) => {
+    const poolId = typeof params.poolId === "string" ? params.poolId.trim() : "";
+    const trust = typeof params.trust === "string" ? params.trust.trim() : "";
+    const invalid = (message: string) => {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
+    };
+    if (!POOL_ID_RE.test(poolId) || FORBIDDEN_POOL_IDS.has(poolId)) {
+      invalid("poolId must be 1 to 64 characters of letters, digits, '.', '_', ':' or '-'");
+      return;
+    }
+    if (defaultPoolTrust(poolId) === "local") {
+      invalid(`${poolId} is this machine's own pool; its trust is always local and cannot be set`);
+      return;
+    }
+    if (!TRUST_LEVELS.has(trust)) {
+      invalid("trust must be trusted or untrusted");
+      return;
+    }
+    const { snapshot, writeOptions } = await readConfigFileSnapshotForWrite();
+    // A config that does not parse is never overwritten from here: the owner
+    // would lose the file to a one-key replacement (config-cli guards the same).
+    if (!snapshot.exists || !snapshot.valid) {
+      invalid(
+        snapshot.exists
+          ? `the config file is invalid and was left untouched: ${snapshot.issues
+              .map((i) => `${i.path || "<root>"}: ${i.message}`)
+              .join("; ")}`
+          : "no config file exists yet; run `bitterbot onboard` first",
+      );
+      return;
+    }
+    // Edit the resolved file contents, not the runtime-merged config, so no
+    // defaults leak into the written file.
+    const next = structuredClone(snapshot.resolved) as Record<string, unknown>;
+    const compute =
+      next.compute && typeof next.compute === "object"
+        ? (next.compute as Record<string, unknown>)
+        : {};
+    const pools =
+      compute.pools && typeof compute.pools === "object"
+        ? (compute.pools as Record<string, unknown>)
+        : {};
+    const entry =
+      pools[poolId] && typeof pools[poolId] === "object"
+        ? (pools[poolId] as Record<string, unknown>)
+        : {};
+    pools[poolId] = { ...entry, trust };
+    compute.pools = pools;
+    next.compute = compute;
+    const validated = validateConfigObject(next);
+    if (!validated.ok) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `config would be invalid: ${validated.issues.map((i) => `${i.path}: ${i.message}`).join("; ")}`,
+        ),
+      );
+      return;
+    }
+    await writeConfigFile(next as BitterbotConfig, writeOptions);
+    respond(true, {
+      poolId,
+      trust,
+      note: "Applies to new memory embedding batches after the next gateway restart.",
     });
   },
 
