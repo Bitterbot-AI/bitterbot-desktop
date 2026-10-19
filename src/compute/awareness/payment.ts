@@ -691,11 +691,10 @@ function fundingWallet(
       if (to !== quote.payee || toMicroUsdc(amount) !== toMicroUsdc(quote.amountUsdc)) {
         throw new Error("the funding request does not match the quote");
       }
-      const fund = backend.fund;
-      if (!fund) {
+      if (!backend.fund) {
         throw new Error("the compute backend cannot fund jobs");
       }
-      return await fund.call(backend, req);
+      return await backend.fund(req);
     },
   };
 }

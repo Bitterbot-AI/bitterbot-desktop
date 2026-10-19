@@ -87,19 +87,20 @@ describe("compute tool, Phase 4 (paid_usdc submit becomes a hold, never a paymen
       fund,
     };
     registerComputeBackend(backend);
+    const kick = vi.fn();
     const watcher: ComputeWatcher = {
-      kick: vi.fn(),
+      kick,
       pollOnce: async () => null,
       reconcile: async () => 0,
       stop: () => undefined,
       isPolling: () => false,
     };
     registerComputeRuntime({ store, watcher });
-    return { submit, quote, fund, watcher };
+    return { submit, quote, fund, kick };
   }
 
   it("submits a paid job on an owner turn, holds its quote for the owner and funds nothing", async () => {
-    const { submit, quote, fund, watcher } = arm({ available: true });
+    const { submit, quote, fund, kick } = arm({ available: true });
     const tool = createComputeTool({
       config: paidCfg,
       senderIsOwner: true,
@@ -136,7 +137,7 @@ describe("compute tool, Phase 4 (paid_usdc submit becomes a hold, never a paymen
     });
     expect(quote).toHaveBeenCalledWith("job-p");
     expect(fund).not.toHaveBeenCalled();
-    expect(watcher.kick).toHaveBeenCalled();
+    expect(kick).toHaveBeenCalled();
     expect(store.originOf("job-p")).toMatchObject({
       origin: "agent",
       sessionKey: "agent:main:main",
