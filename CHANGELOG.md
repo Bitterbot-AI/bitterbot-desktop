@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.9.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.8.0...v1.9.0) (2026-10-19)
+
+
+### Features
+
+* **compute:** PLAN-57 Phase 0, the read-only `compute` tool and its prompt section ([#268](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/268)) ([d989031](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d9890310e5a14c6467c33dd4724b2ed1aabb89e0))
+* **compute:** PLAN-57 Phase 1, the compute state block, the watcher and durable completion delivery ([#270](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/270)) ([26fbefd](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/26fbefd04922d37664e902e0877e3b455fa22e49))
+* **compute:** PLAN-57 Phase 2, agent-initiated submit and cancel with PLAN-16 task linkage ([#272](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/272)) ([a5cbbdd](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a5cbbdd226b97f41d6520be5293adf12d4a74820))
+* **compute:** PLAN-57 Phase 3, embedding profiles, pool-routed embeddings under an egress policy, and the migration command ([#273](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/273)) ([a0ad537](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a0ad537969ca566f44edc74cda5ac8e5ce2c8859))
+* **compute:** PLAN-57 Phase 4, payment authority enforced at the signer for paid compute ([#274](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/274)) ([a46af5d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a46af5dd7b151bc5b692d0964516c3390220b2a2))
+* **compute:** PLAN-57 Phase 5, compute facts in the Niche, job episodes, and the owner's compute CLI ([#275](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/275)) ([02ebdf2](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/02ebdf27a78526c763582bdb0dcc1dedb9ecb57d))
+* **compute:** PLAN-57 Phase 6, bounded hormonal nudges, the Compute settings group, and the upgrade story ([#276](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/276)) ([3ddb21a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3ddb21abba9f07d45479510c9eb32837dba56308))
+
 ## [1.8.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.7.0...v1.8.0) (2026-10-17)
 
 
