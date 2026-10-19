@@ -16,12 +16,12 @@ Demo tokens only: `usdc`, `weth`, `cbbtc`, `aero`, `degen`.
 curl -s "https://api.greyridgesignals.ai/gate/swap/preview?token=aero"
 ```
 
-## Paid check for any Base token ($0.01 USDC)
+## Paid check for any Base token ($0.008 USDC)
 
 Use the wallet's `pay_for_resource` (see the `wallet-payments` skill) with:
 
 - `resource_url`: `https://api.greyridgesignals.ai/gate/swap?token=<0xTOKEN>&side=buy&notional_usd=<USD size>`
-- `amount`: `0.01`
+- `amount`: `0.008`
 - `reason`: "pre-trade safety check for <token>"
 
 Tell the user the cost first, per the wallet spending rules.
