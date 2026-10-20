@@ -475,7 +475,7 @@ dependencies = [
  "image",
  "libp2p",
  "lru",
- "rand 0.8.5",
+ "rand 0.10.3",
  "reqwest",
  "serde",
  "serde_json",
