@@ -13,8 +13,8 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 import { soapboxOperatorEnvironment } from "../infra/soapbox-connection.js";
+import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 
 export const SOAPBOX_SETUP_RELEASE = {
   url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.5",

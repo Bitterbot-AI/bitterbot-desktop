@@ -5,9 +5,9 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ComputeMeshSnapshot } from "../src/compute/mesh-types.js";
 import { ComputeMeshService } from "../src/compute/mesh-service.js";
 import { ComputeMeshStore } from "../src/compute/mesh-store.js";
+import type { ComputeMeshSnapshot } from "../src/compute/mesh-types.js";
 import { GatewayClient } from "../src/gateway/client.js";
 
 const profile = JSON.parse(await readFile(process.argv[2]!, "utf8"));

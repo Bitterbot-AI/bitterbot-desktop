@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import type { GatewayRequestOptions } from "./server-methods/types.js";
 import { authorizeGatewayMethod } from "./server-methods.js";
 import { soapboxHandlers } from "./server-methods/soapbox.js";
+import type { GatewayRequestOptions } from "./server-methods/types.js";
 
 // Isolate unrelated gateways: this suite tests the real core registry and Compute plugin.
 vi.mock("./server-methods/agent-runtime.js", () => ({ agentRuntimeHandlers: {} }));

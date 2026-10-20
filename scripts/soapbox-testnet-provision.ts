@@ -1,8 +1,8 @@
-import { CdpClient } from "@coinbase/cdp-sdk";
 /** Create isolated Base Sepolia pilot accounts using the configured CDP project. Never changes the live wallet. */
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { CdpClient } from "@coinbase/cdp-sdk";
 import { createPublicClient, http, parseAbi } from "viem";
 import { baseSepolia } from "viem/chains";
 

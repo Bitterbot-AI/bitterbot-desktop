@@ -1,10 +1,10 @@
-import { build } from "esbuild";
 /** Build a gateway plugin and an additive UI overlay against the installed release source. */
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, symlink, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { build } from "esbuild";
 
 const root = path.resolve(import.meta.dirname, "..");
 const release = path.resolve(process.argv[2] ?? root);

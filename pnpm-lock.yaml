@@ -507,6 +507,8 @@ importers:
         specifier: workspace:*
         version: link:../..
 
+  extensions/soapbox-compute: {}
+
   extensions/telegram:
     devDependencies:
       bitterbot:

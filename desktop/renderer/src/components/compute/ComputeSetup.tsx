@@ -84,7 +84,7 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
     setUpload(0);
     try {
       const started = await request<{ id: string }>("soapbox.setup.runtime.begin");
-      for (let offset = 0; offset < file.size; ) {
+      for (let offset = 0; offset < file.size;) {
         const bytes = new Uint8Array(await file.slice(offset, offset + 262144).arrayBuffer());
         let binary = "";
         for (let i = 0; i < bytes.length; i += 8192)

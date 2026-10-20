@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
-import type { GatewayRequestHandlerOptions } from "./types.js";
 import { computeMeshHandlers } from "./compute-mesh.js";
+import type { GatewayRequestHandlerOptions } from "./types.js";
 it("requires local admin scope before exposing inputs or changing peer access", async () => {
   const grant = vi.fn();
   for (const method of Object.keys(computeMeshHandlers)) {

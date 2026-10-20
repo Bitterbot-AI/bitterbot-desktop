@@ -361,6 +361,6 @@ describe("Compute escrow spend gate", () => {
     await expect(gated.fundSoapbox!(quote)).rejects.toThrow("RPC unavailable");
     expect(decisions[0]).toMatchObject({ outcome: "failed", error: "RPC unavailable" });
     expect(sessionSpentUsd("compute", now)).toBe(0);
-    expect(gateWallet(wallet(), { origin: "rpc" }).fundSoapbox).toBeUndefined();
+    expect(gateWallet(wallet(), { origin: "rpc" })).not.toHaveProperty("fundSoapbox");
   });
 });

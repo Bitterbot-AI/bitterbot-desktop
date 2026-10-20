@@ -34,7 +34,7 @@ it.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       );
       await expect(runtime.chunk("different-id", 0, "YQ==")).rejects.toThrow("expired");
       await expect(runtime.prepare(id)).rejects.toThrow("Complete");
-      for (let offset = 0; offset < SOAPBOX_SETUP_RELEASE.bytes; ) {
+      for (let offset = 0; offset < SOAPBOX_SETUP_RELEASE.bytes;) {
         const bytes = Buffer.alloc(Math.min(262144, SOAPBOX_SETUP_RELEASE.bytes - offset));
         offset = (await runtime.chunk(id, offset, bytes.toString("base64"))).offset;
       }

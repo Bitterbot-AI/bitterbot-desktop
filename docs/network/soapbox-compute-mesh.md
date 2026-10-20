@@ -5,6 +5,18 @@ operator to grant a peer access to an existing private pool or collective projec
 Compute screen and P2P dashboard show the same discovered capacity, batch progress and
 local activity history.
 
+## Sidecar compatibility
+
+Compute discovery and signing require orchestrator **0.2.4** or newer. The normal
+installer fetches the version pinned in `orchestrator/Cargo.toml` and verifies its
+signed checksums. The `orchestrator-v0.2.4` binaries must be published before an app
+release containing this integration is distributed. The older 0.2.3 binary
+rejects the Compute topic; the gateway reports that it needs an updated
+orchestrator rather than advertising capacity it cannot use.
+
+Source builds can compile `orchestrator/` from the same revision as the gateway.
+An explicitly configured older P2P binary must be updated as well.
+
 ## Architecture
 
 ```mermaid

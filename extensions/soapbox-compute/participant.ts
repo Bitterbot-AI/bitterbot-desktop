@@ -1,7 +1,7 @@
-import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readFileSync } from "node:fs";
 import path from "node:path";
+import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
 import { createSoapboxHandlers } from "../../src/gateway/server-methods/soapbox.js";
 import { SoapboxClient } from "../../src/infra/soapbox-client.js";
 import {

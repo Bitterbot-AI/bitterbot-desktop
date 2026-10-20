@@ -1,6 +1,6 @@
 import type { SoapboxSetup } from "../../services/soapbox-setup.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 /** Setup changes local configuration and provisions credentials: all endpoints require admin. */
 export function createSoapboxSetupHandlers(setup: SoapboxSetup): GatewayRequestHandlers {

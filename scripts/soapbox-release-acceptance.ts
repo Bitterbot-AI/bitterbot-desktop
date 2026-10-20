@@ -6,8 +6,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { createPublicClient, http, parseAbi } from "viem";
 import { baseSepolia } from "viem/chains";
-import type { SoapboxJob, SoapboxStatus } from "../src/infra/soapbox-client.js";
 import { GatewayClient } from "../src/gateway/client.js";
+import type { SoapboxJob, SoapboxStatus } from "../src/infra/soapbox-client.js";
 
 const home = homedir();
 console.log("Checking Base Sepolia and connecting the two desktop profiles");

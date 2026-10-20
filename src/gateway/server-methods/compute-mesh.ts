@@ -1,6 +1,6 @@
 import type { BatchRequest } from "../../compute/mesh-work.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 export const computeMeshHandlers: GatewayRequestHandlers = Object.fromEntries(
   ["status", "grant", "revoke", "submit", "batch", "cancel"].map((action) => [

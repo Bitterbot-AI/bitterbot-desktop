@@ -87,7 +87,7 @@ jobs:
         working-directory: orchestrator
         env:
           RUSTFLAGS: "-C strip=symbols"
-        run: cargo build --release --target ${{ matrix.rust-target }}
+        run: cargo build --locked --release --target ${{ matrix.rust-target }}
 
       - name: Stage binary
         shell: bash

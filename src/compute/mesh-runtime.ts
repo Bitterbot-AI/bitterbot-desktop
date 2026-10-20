@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { loadConfig } from "../config/config.js";
-import type { MeshBridge } from "./mesh-protocol.js";
 import { resolveStateDir } from "../config/paths.js";
 import { SoapboxClient } from "../infra/soapbox-client.js";
+import type { MeshBridge } from "./mesh-protocol.js";
 import { ComputeMeshService, type MeshBackend } from "./mesh-service.js";
 import { ComputeMeshStore } from "./mesh-store.js";
 

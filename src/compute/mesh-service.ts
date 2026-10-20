@@ -1,6 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { SoapboxJob, SoapboxStatus } from "../infra/soapbox-client.js";
-import type { ComputeMeshSnapshot } from "./mesh-types.js";
 import { SoapboxClient } from "../infra/soapbox-client.js";
 import {
   COMPUTE_TOPIC,
@@ -12,6 +11,7 @@ import {
   type ComputeDescriptor,
 } from "./mesh-protocol.js";
 import { ComputeMeshStore, type MeshBatch, type MeshGrant } from "./mesh-store.js";
+import type { ComputeMeshSnapshot } from "./mesh-types.js";
 import { advanceBatch, validateBatch, type BatchRequest } from "./mesh-work.js";
 
 export type MeshBackend = { admin: SoapboxClient; client(token: string): SoapboxClient };

@@ -1,16 +1,16 @@
-import JSON5 from "json5";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import JSON5 from "json5";
 import type { BitterbotConfig } from "../config/types.js";
 import type { WalletConfig } from "../config/types.wallet.js";
-import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 import { SoapboxClient } from "../infra/soapbox-client.js";
 import {
   parseSoapboxConnection,
   verifySoapboxConnection,
   type SoapboxConnection,
 } from "../infra/soapbox-connection.js";
+import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 import { LocalOperatorService, prepareLocalOperator } from "./soapbox-local-operator.js";
 import { SOAPBOX_SETUP_RELEASE, SoapboxSetupRuntime } from "./soapbox-setup-runtime.js";
 import {

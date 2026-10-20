@@ -10,9 +10,9 @@ import { mkdtemp, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { OrchestratorBridge as BridgeType } from "../src/infra/orchestrator-bridge.js";
 import { ComputeMeshService } from "../src/compute/mesh-service.js";
 import { ComputeMeshStore } from "../src/compute/mesh-store.js";
+import type { OrchestratorBridge as BridgeType } from "../src/infra/orchestrator-bridge.js";
 import { SoapboxClient } from "../src/infra/soapbox-client.js";
 
 const root = await mkdtemp(path.join(tmpdir(), "compute-mesh-e2e-"));
