@@ -3227,11 +3227,11 @@ pub async fn build_swarm(
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
                         autonat: autonat::v2::client::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                             autonat::v2::client::Config::default(),
                         ),
                         autonat_server: autonat::v2::server::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                         ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(Some(relay_client_behaviour)),
@@ -3261,11 +3261,11 @@ pub async fn build_swarm(
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
                         autonat: autonat::v2::client::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                             autonat::v2::client::Config::default(),
                         ),
                         autonat_server: autonat::v2::server::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                         ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),
@@ -3297,11 +3297,11 @@ pub async fn build_swarm(
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
                         autonat: autonat::v2::client::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                             autonat::v2::client::Config::default(),
                         ),
                         autonat_server: autonat::v2::server::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                         ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),

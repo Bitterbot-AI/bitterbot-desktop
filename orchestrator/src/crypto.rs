@@ -44,8 +44,8 @@ pub fn load_or_generate_keypair(
     }
 
     // Generate new keypair
-    let mut rng = rand::thread_rng();
-    let signing_key = SigningKey::generate(&mut rng);
+    let seed: [u8; 32] = rand::random();
+    let signing_key = SigningKey::from_bytes(&seed);
     let verifying_key = signing_key.verifying_key();
 
     // Save as raw 32-byte seed (compact format)
