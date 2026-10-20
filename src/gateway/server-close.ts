@@ -36,6 +36,8 @@ export function createGatewayCloseHandler(params: {
   configReloader: { stop: () => Promise<void> };
   browserControl: { stop: () => Promise<void> } | null;
   orchestratorBridge?: { stop: () => Promise<void> } | null;
+  computeMesh?: { stop: () => Promise<void> };
+  peerRpcTransport?: { stop: () => void };
   wss: WebSocketServer;
   httpServer: HttpServer;
   httpServers?: HttpServer[];
@@ -135,6 +137,8 @@ export function createGatewayCloseHandler(params: {
       await params.browserControl.stop().catch(() => {});
     }
     if (params.orchestratorBridge) {
+      params.peerRpcTransport?.stop();
+      await params.computeMesh?.stop().catch(() => {});
       await params.orchestratorBridge.stop().catch(() => {});
     }
     await new Promise<void>((resolve) => params.wss.close(() => resolve()));

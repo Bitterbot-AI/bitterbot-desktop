@@ -9,6 +9,7 @@ import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
 import { circlesHandlers } from "./server-methods/circles.js";
+import { computeMeshHandlers } from "./server-methods/compute-mesh.js";
 import { computeHandlers } from "./server-methods/compute.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
@@ -80,8 +81,13 @@ const PAIRING_METHODS = new Set([
   "device.token.revoke",
   "node.rename",
 ]);
-const ADMIN_METHOD_PREFIXES = ["exec.approvals."];
+const ADMIN_METHOD_PREFIXES = ["exec.approvals.", "soapbox.setup."];
 const READ_METHODS = new Set([
+  "soapbox.wallet",
+  "soapbox.status",
+  "soapbox.jobs",
+  "soapbox.job",
+  "soapbox.artifact.get",
   "health",
   // PLAN-57: reading compute state; compute.approve, compute.pause and
   // compute.trust stay admin-only.
@@ -192,6 +198,9 @@ const READ_METHODS = new Set([
   "guards.status",
 ]);
 const WRITE_METHODS = new Set([
+  "soapbox.submit",
+  "soapbox.cancel",
+  "soapbox.artifact.put",
   "send",
   "curiosity.pause",
   "curiosity.resume",
@@ -367,6 +376,7 @@ export function authorizeGatewayMethod(method: string, client: GatewayRequestOpt
 }
 
 export const coreGatewayHandlers: GatewayRequestHandlers = {
+  ...computeMeshHandlers,
   ...connectHandlers,
   ...logsHandlers,
   ...voicewakeHandlers,

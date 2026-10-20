@@ -5,6 +5,7 @@ import { ChatView } from "../chat/ChatView";
 import { ToolCallPanel } from "../chat/ToolCallPanel";
 import { CirclesGlobalSync } from "../circles/CirclesGlobalSync";
 import { CirclesView } from "../circles/CirclesView";
+import { ComputeView } from "../compute/ComputeView";
 import { ConfigView } from "../config/ConfigView";
 import { ConnectorsView } from "../connectors/ConnectorsView";
 import { CronView } from "../cron/CronView";
@@ -52,6 +53,7 @@ const VIEW_MAP: Record<TabId, () => JSX.Element> = {
   management: () => <ManagementView />,
   models: () => <ModelsView />,
   config: () => <ConfigView />,
+  compute: () => <ComputeView />,
   logs: () => <LogsView />,
 };
 

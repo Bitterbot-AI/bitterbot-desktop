@@ -65,6 +65,35 @@ pub fn peer_id_from_keypair(keypair: &SigningKey) -> libp2p::PeerId {
     libp2p::PeerId::from_public_key(&libp2p_pk)
 }
 
+/// Domain-separated capacity metadata. No arbitrary transaction/signing API.
+pub fn sign_compute_descriptor(key: &SigningKey, descriptor: &str) -> Result<String, &'static str> {
+    if descriptor.len() > 8192 {
+        return Err("descriptor too large");
+    }
+    let value: serde_json::Value = serde_json::from_str(descriptor).map_err(|_| "invalid descriptor")?;
+    let fields = [
+        "version", "peerId", "pubkey", "issuedAt", "expiresAt", "region", "accepting",
+        "cpuSlots", "gpuSlots", "memoryMib", "models",
+    ];
+    let object = value.as_object().ok_or("invalid descriptor")?;
+    if object.len() != fields.len()
+        || object.keys().any(|k| !fields.contains(&k.as_str()))
+        || value["version"] != 1
+        || value["peerId"] != peer_id_from_keypair(key).to_string()
+        || value["pubkey"]
+            != base64::engine::general_purpose::STANDARD.encode(key.verifying_key().to_bytes())
+    {
+        return Err("invalid compute identity or fields");
+    }
+    let bytes = format!("bitterbot/compute/v1\n{descriptor}");
+    let signature: Signature = key.sign(bytes.as_bytes());
+    Ok(signature
+        .to_bytes()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
+}
+
 /// The author pubkey this node stamps on skills it publishes (see sign_skill):
 /// standard base64 of the Ed25519 verifying key. Used to recognize our own
 /// skills echoed back by a peer that re-published them.
@@ -367,6 +396,27 @@ fn pem_to_der(pem: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compute_signing_binds_identity_and_domain() {
+        let key = SigningKey::from_bytes(&[7u8; 32]);
+        let mut descriptor = serde_json::json!({
+            "version": 1,
+            "peerId": peer_id_from_keypair(&key).to_string(),
+            "pubkey": base64::engine::general_purpose::STANDARD.encode(key.verifying_key().to_bytes()),
+            "issuedAt": 1, "expiresAt": 2, "region": "", "accepting": false,
+            "cpuSlots": 0, "gpuSlots": 0, "memoryMib": 0, "models": [],
+        });
+        let json = descriptor.to_string();
+        let signature = Signature::from_slice(
+            &hex::decode(sign_compute_descriptor(&key, &json).unwrap()).unwrap(),
+        ).unwrap();
+        assert!(key.verifying_key()
+            .verify_strict(format!("bitterbot/compute/v1\n{json}").as_bytes(), &signature).is_ok());
+        assert!(key.verifying_key()
+            .verify_strict(json.as_bytes(), &signature).is_err());
+        descriptor["peerId"] = "someone-else".into();
+        assert!(sign_compute_descriptor(&key, &descriptor.to_string()).is_err());
+    }
     use tempfile::TempDir;
 
     #[test]

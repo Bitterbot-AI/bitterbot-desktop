@@ -60,6 +60,7 @@ const NAV_MANIFEST_LITERAL = [
   { id: "cron", label: "Automations", icon: Clock, group: "main" },
   { id: "models", label: "Models & Keys", icon: KeyRound, group: "main" },
   { id: "config", label: "Settings", icon: Settings, group: "main" },
+  { id: "compute", label: "Compute", icon: Server, group: "main" },
   // ── Advanced ──
   { id: "people", label: "Circles", icon: Users, group: "advanced" },
   { id: "p2p", label: "P2P Network", icon: Globe, group: "advanced" },

@@ -26,8 +26,10 @@ const ROOT = "src";
 // Pattern A: outbound spend method calls. The interface signature and the
 // `async sendUsdc(` definition in wallet-service.ts have no leading dot, so they
 // do not match; only actual `x.sendUsdc(...)` / `x.payForResource(...)` calls do.
-const SPEND_CALL_RE = /\.(sendUsdc|payForResource)\s*\(/g;
+const SPEND_CALL_RE = /\.(sendUsdc|payForResource|fundSoapbox)\s*!?\s*\(/g;
 const SPEND_ALLOW = new Set([
+  "src/gateway/server-methods/soapbox.ts", // authenticated owner and exact quote
+  "src/services/soapbox-wallet.ts", // exact quote plus the shared spend gate
   "src/agents/tools/wallet-tool.ts", // the gated wallet tool (opt-in + session caps)
   "src/services/a2a-client.ts", // A2A auto-pay for a 402-gated peer task
   "src/services/wallet-service.ts", // the service itself (definition + internal use)
@@ -57,6 +59,9 @@ const EIP3009_RE = /functionName:\s*["']transferWithAuthorization["']/g;
 const EIP3009_ALLOW = new Set([
   "src/commerce/cdp-adapters.ts", // the sole EIP-3009 transferWithAuthorization submitter
 ]);
+
+const RAW_CDP_SEND_RE = /\.evm\.sendTransaction\s*\(/g;
+const RAW_CDP_SEND_ALLOW = new Set(["src/services/wallet-service.ts"]);
 
 function walk(dir) {
   const out = [];
@@ -100,6 +105,13 @@ for (const file of walk(ROOT)) {
     for (const m of src.matchAll(EIP3009_RE)) {
       violations.push(
         `${norm}:${lineOf(src, m.index)}  onchain transferWithAuthorization outside cdp-adapters.ts`,
+      );
+    }
+  }
+  if (!RAW_CDP_SEND_ALLOW.has(norm)) {
+    for (const m of src.matchAll(RAW_CDP_SEND_RE)) {
+      violations.push(
+        `${norm}:${lineOf(src, m.index)} raw CDP transaction outside wallet-service.ts`,
       );
     }
   }

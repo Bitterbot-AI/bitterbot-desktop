@@ -86,6 +86,7 @@ export type GatewayRequestContext = {
   ) => Promise<void>;
   broadcastVoiceWakeChanged: (triggers: string[]) => void;
   orchestratorBridge?: OrchestratorBridge;
+  computeMesh?: import("../../compute/mesh-service.js").ComputeMeshService;
   skillNetworkBridge?: SkillNetworkBridge | null;
 };
 

@@ -14,6 +14,7 @@
  */
 
 import crypto from "node:crypto";
+import type { SoapboxPaymentQuote } from "../../infra/soapbox-client.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import type {
   SendResult,
@@ -235,7 +236,7 @@ export type GatedSendOptions = SendUsdcOptions & {
 };
 
 /**
- * Wrap a wallet service so its two paying methods go through the gate.
+ * Wrap a wallet service so all its paying methods go through the gate.
  * Everything else (balance, address, history, signing) passes straight through.
  */
 export function gateWallet(
@@ -261,6 +262,50 @@ export function gateWallet(
 
   return {
     ...wallet,
+    ...(wallet.fundSoapbox
+      ? {
+          async fundSoapbox(quote: SoapboxPaymentQuote) {
+            const deps = resolveDeps(overrides);
+            const amount = quote.amount_microusdc / 1e6;
+            const record = base("usdc", quote.escrow, amount, deps);
+            const auth = authorize(ctx, { payee: quote.escrow, amountUsd: amount }, deps);
+            if (!auth.ok) {
+              safeRecord(deps, {
+                ...record,
+                verdict: "deny",
+                reason: auth.reason,
+                outcome: "refused",
+              });
+              throw new SpendRefusedError(auth.message);
+            }
+            const hold = holdSessionSpend(ctx.sessionKey, amount, deps.now());
+            try {
+              const result = await wallet.fundSoapbox!(quote);
+              const charged = result.status === "already_funded" ? 0 : amount;
+              hold.settle(charged);
+              safeRecord(deps, {
+                ...record,
+                amountUsd: charged,
+                verdict: "allow",
+                reason: auth.reason,
+                outcome: "sent",
+                ...(result.txHash ? { txHash: result.txHash } : {}),
+              });
+              return result;
+            } catch (err) {
+              hold.release();
+              safeRecord(deps, {
+                ...record,
+                verdict: "allow",
+                reason: auth.reason,
+                outcome: "failed",
+                error: (err instanceof Error ? err.message : String(err)).slice(0, 300),
+              });
+              throw err;
+            }
+          },
+        }
+      : {}),
     async sendUsdc(to: string, amount: number, opts?: GatedSendOptions): Promise<SendResult> {
       const deps = resolveDeps(overrides);
       const record = base("usdc", to, amount, deps);

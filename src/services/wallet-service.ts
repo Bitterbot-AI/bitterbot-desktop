@@ -40,6 +40,9 @@ export type X402PaymentResult = {
 };
 
 export interface WalletService {
+  fundSoapbox?(
+    quote: import("./soapbox-payment.js").SoapboxPaymentQuote,
+  ): Promise<{ status: string; txHash: string | null }>;
   getAddress(): Promise<string>;
   getBalance(token?: string): Promise<BalanceResult>;
   sendUsdc(to: string, amount: number, opts?: SendUsdcOptions): Promise<SendResult>;
@@ -152,7 +155,15 @@ const ERC20_BALANCE_ABI = [
   },
 ] as const;
 
-export function createWalletService(config: WalletConfig): WalletService {
+export function createWalletService(
+  config: WalletConfig,
+  authentication?: {
+    walletSecret: string;
+    rpcUrl?: string;
+    accountName?: string;
+    expectedAddress?: string;
+  },
+): WalletService {
   const network = config.network ?? "base-sepolia";
   // AgentKit's CDP wallet providers expect CDP network IDs ("base-mainnet",
   // "base-sepolia"), NOT the short "base" alias we use everywhere else for
@@ -197,7 +208,7 @@ export function createWalletService(config: WalletConfig): WalletService {
 
     const apiKeyId = config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
     const apiKeySecret = config.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET;
-    const walletSecret = process.env.CDP_WALLET_SECRET;
+    const walletSecret = authentication?.walletSecret ?? process.env.CDP_WALLET_SECRET;
     if (!apiKeyId || !apiKeySecret || !walletSecret) {
       throw new Error(
         "Missing required CDP credentials. Set CDP_API_KEY_ID, CDP_API_KEY_SECRET, " +
@@ -208,13 +219,19 @@ export function createWalletService(config: WalletConfig): WalletService {
     // Resolve (or create) the single server account (MPC EOA) for this network.
     // This is the one wallet for receiving, send_usdc, and x402.
     const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
-    const accountName = `bitterbot-owner-${network}`;
+    const accountName = authentication?.accountName ?? `bitterbot-owner-${network}`;
     const account = await cdp.evm.getOrCreateAccount({ name: accountName });
+    if (
+      authentication?.expectedAddress &&
+      account.address.toLowerCase() !== authentication.expectedAddress.toLowerCase()
+    )
+      throw new Error("Wallet account does not match the stored identity");
 
     const provider = await CdpEvmWalletProvider.configureWithWallet({
       apiKeyId,
       apiKeySecret,
-      // walletSecret falls through to process.env.CDP_WALLET_SECRET.
+      walletSecret,
+      rpcUrl: authentication?.rpcUrl,
       networkId,
       address: account.address as `0x${string}`,
     });
@@ -266,13 +283,14 @@ export function createWalletService(config: WalletConfig): WalletService {
     return run;
   }
 
-  function reserveDailyLimit(amount: number): Promise<() => void> {
+  function reserveDailyLimit(amount: number, strictHistory = false): Promise<() => void> {
     return inOrder(async () => {
       const historyPath = path.join(storePath, "tx-history.json");
       let history: TransactionRecord[] = [];
       try {
         history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
-      } catch {
+      } catch (error) {
+        if (strictHistory && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         // no history yet — nothing spent
       }
       const cutoff = Date.now() - 24 * 60 * 60 * 1000;
@@ -314,15 +332,7 @@ export function createWalletService(config: WalletConfig): WalletService {
    */
   async function recordSpend(record: TransactionRecord): Promise<void> {
     try {
-      await inOrder(async () => {
-        const pending = ledger.unrecorded.splice(0);
-        try {
-          await writeTransactions([...pending, record]);
-        } catch (err) {
-          ledger.unrecorded.push(...pending);
-          throw err;
-        }
-      });
+      await persistSpend(record);
     } catch (err) {
       ledger.unrecorded.push(record);
       log.error(
@@ -330,6 +340,19 @@ export function createWalletService(config: WalletConfig): WalletService {
           `${err instanceof Error ? err.message : String(err)}. It still counts against the daily limit.`,
       );
     }
+  }
+
+  /** Persist this row and recover prior sends whose history writes failed. */
+  function persistSpend(record: TransactionRecord): Promise<void> {
+    return inOrder(async () => {
+      const pending = ledger.unrecorded.splice(0);
+      try {
+        await writeTransactions([...pending, record]);
+      } catch (err) {
+        ledger.unrecorded.push(...pending);
+        throw err;
+      }
+    });
   }
 
   async function writeTransactions(records: TransactionRecord[]): Promise<void> {
@@ -353,9 +376,11 @@ export function createWalletService(config: WalletConfig): WalletService {
         history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
       } catch {}
       history.push(...records);
-      if (history.length > 500) {
-        history = history.slice(-500);
-      }
+      // Keep every spend inside the daily-limit window, even for high-volume micropayments.
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      history = history.filter(
+        (entry, index) => entry.timestamp >= cutoff || index >= history.length - 500,
+      );
       await fs.writeFile(historyPath, JSON.stringify(history, null, 2), "utf-8");
     } finally {
       await release();
@@ -377,6 +402,76 @@ export function createWalletService(config: WalletConfig): WalletService {
   }
 
   return {
+    async fundSoapbox(quote) {
+      const { fundSoapboxEscrow, validateSoapboxQuote } = await import("./soapbox-payment.js");
+      if (network !== "base-sepolia")
+        throw new Error("Soapbox funding requires the Base Sepolia wallet");
+      // Funding needs only CDP signing, without loading AgentKit's action integrations.
+      const { CdpClient } = await import("@coinbase/cdp-sdk");
+      const apiKeyId = config.cdpApiKeyId ?? process.env.CDP_API_KEY_ID;
+      const apiKeySecret = config.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET;
+      const walletSecret = authentication?.walletSecret ?? process.env.CDP_WALLET_SECRET;
+      if (!apiKeyId || !apiKeySecret || !walletSecret)
+        throw new Error("Missing required CDP credentials");
+      const cdp = new CdpClient({ apiKeyId, apiKeySecret, walletSecret });
+      const name = authentication?.accountName ?? `bitterbot-owner-${network}`;
+      const account = await cdp.evm.getOrCreateAccount({ name });
+      if (
+        authentication?.expectedAddress &&
+        account.address.toLowerCase() !== authentication.expectedAddress.toLowerCase()
+      )
+        throw new Error("Wallet account does not match the stored identity");
+      validateSoapboxQuote(quote, account.address, network);
+      validateTransactionAmount(quote.amount_microusdc / 1e6);
+      await savePersistedWallet({ name, address: account.address, ownerAddress: account.address });
+      await ensureStoreDir();
+      const guardPath = path.join(storePath, "soapbox-funding");
+      await fs.writeFile(guardPath, "", { flag: "a" });
+      const release = await lockfile.lock(guardPath, { retries: 0, stale: 120_000 });
+      try {
+        return await fundSoapboxEscrow({
+          quote,
+          buyer: account.address,
+          network,
+          send: async (transaction) =>
+            (
+              await cdp.evm.sendTransaction({
+                address: account.address,
+                network: "base-sepolia",
+                transaction,
+              })
+            ).transactionHash,
+          reserve: async () => {
+            const reference = `soapbox:${quote.chain_id}:${quote.escrow.toLowerCase()}:${quote.key}`;
+            let history: TransactionRecord[] = [];
+            try {
+              history = JSON.parse(
+                await fs.readFile(path.join(storePath, "tx-history.json"), "utf8"),
+              );
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            }
+            if (history.some((record) => record.txHash === reference)) return;
+            const releaseHold = await reserveDailyLimit(quote.amount_microusdc / 1e6, true);
+            try {
+              // Persist before signing. A failed or ambiguous send keeps this
+              // reservation; a retry of the same escrow cannot spend twice.
+              await persistSpend({
+                txHash: reference,
+                type: "send",
+                amount: String(quote.amount_microusdc / 1e6),
+                token: "USDC",
+                timestamp: Date.now(),
+              });
+            } finally {
+              releaseHold();
+            }
+          },
+        });
+      } finally {
+        await release();
+      }
+    },
     async getAddress(): Promise<string> {
       const provider = await getProvider();
       return provider.getAddress();

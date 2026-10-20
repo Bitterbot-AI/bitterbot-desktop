@@ -174,6 +174,8 @@ export async function startGatewaySidecars(params: {
     null;
   let skillNetworkBridge: import("../memory/skill-network-bridge.js").SkillNetworkBridge | null =
     null;
+  let computeMesh: import("../compute/mesh-service.js").ComputeMeshService | undefined;
+  let peerRpcTransport: { stop(): void } | undefined;
   if (params.cfg.p2p?.enabled) {
     try {
       const { OrchestratorBridge: Bridge, setActiveOrchestratorBridge } =
@@ -184,6 +186,12 @@ export async function startGatewaySidecars(params: {
       // (computer_use IPC, etc.) without threading it through every
       // tool factory.
       setActiveOrchestratorBridge(orchestratorBridge);
+      try {
+        const { startComputeMesh } = await import("../compute/mesh-runtime.js");
+        computeMesh = await startComputeMesh(orchestratorBridge, params.cfg);
+      } catch {
+        params.log.warn("Compute mesh unavailable; matching orchestrator and runtime are required");
+      }
       // Publish initial status snapshot for system prompt / doctor / UI consumers.
       // peer_connected/peer_disconnected callbacks below maintain peerCount live.
       // Use patch (not set) so the census/identity defaults from p2p-status.ts
@@ -385,8 +393,8 @@ export async function startGatewaySidecars(params: {
       // circles.p2pDial.enabled=false turns off outbound dialing (inbound
       // dispatch stays: answering members over the mesh costs nothing and
       // every verb re-checks membership auth).
-      if (params.cfg.circles?.enabled === true) {
-        void (async () => {
+      {
+        await (async () => {
           try {
             const [{ startCircleP2pTransport }, { MemoryIndexManager }, { resolveDefaultAgentId }] =
               await Promise.all([
@@ -394,9 +402,11 @@ export async function startGatewaySidecars(params: {
                 import("../memory/manager.js"),
                 import("../agents/agent-scope.js"),
               ]);
-            startCircleP2pTransport({
+            peerRpcTransport = startCircleP2pTransport({
               bridge: orchestratorBridge,
+              compute: computeMesh,
               resolveCirclesDb: async () => {
+                if (params.cfg.circles?.enabled !== true) return undefined;
                 const mgr = await MemoryIndexManager.get({
                   cfg: params.cfg,
                   agentId: resolveDefaultAgentId(params.cfg),
@@ -512,5 +522,12 @@ export async function startGatewaySidecars(params: {
     params.log.warn(`monitor engine failed to start: ${String(err)}`);
   });
 
-  return { browserControl, pluginServices, orchestratorBridge, skillNetworkBridge };
+  return {
+    browserControl,
+    pluginServices,
+    orchestratorBridge,
+    skillNetworkBridge,
+    computeMesh,
+    peerRpcTransport,
+  };
 }

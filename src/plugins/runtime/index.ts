@@ -54,6 +54,7 @@ import { telegramMessageActions } from "../../channels/plugins/actions/telegram.
 import { createWhatsAppLoginTool } from "../../channels/plugins/agent-tools/whatsapp-login.js";
 import { recordInboundSession } from "../../channels/session.js";
 import { registerMemoryCli } from "../../cli/memory-cli.js";
+import { registerSoapboxPlugin } from "../../compute/soapbox-plugin.js";
 import { loadConfig, writeConfigFile } from "../../config/config.js";
 import {
   resolveChannelGroupPolicy,
@@ -231,6 +232,7 @@ function loadWhatsAppActions() {
 export function createPluginRuntime(): PluginRuntime {
   return {
     version: resolveVersion(),
+    compute: { registerSoapbox: registerSoapboxPlugin },
     config: {
       loadConfig,
       writeConfigFile,

@@ -70,6 +70,7 @@ import type { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import { createChannelManager } from "./server-channels.js";
 import { createAgentEventHandler } from "./server-chat.js";
 import { createGatewayCloseHandler } from "./server-close.js";
+import { TICK_INTERVAL_MS } from "./server-constants.js";
 import { startGatewayDiscovery } from "./server-discovery-runtime.js";
 import { applyGatewayLaneConcurrency } from "./server-lanes.js";
 import { startGatewayMaintenanceTimers } from "./server-maintenance.js";
@@ -349,6 +350,8 @@ export async function startGatewayServer(
   let pluginServices: PluginServicesHandle | null = null;
   let orchestratorBridge: import("../infra/orchestrator-bridge.js").OrchestratorBridge | null =
     null;
+  let computeMesh: import("../compute/mesh-service.js").ComputeMeshService | undefined;
+  let peerRpcTransport: { stop(): void } | undefined;
   const runtimeConfig = await resolveGatewayRuntimeConfig({
     cfg: cfgAtStart,
     port,
@@ -512,7 +515,13 @@ export async function startGatewayServer(
       });
 
   const noopInterval = () => setInterval(() => {}, 1 << 30);
-  let tickInterval = noopInterval();
+  // Minimal integration servers still need protocol heartbeats for long-running jobs.
+  let tickInterval = minimalTestGateway
+    ? setInterval(
+        () => broadcast("tick", { ts: Date.now() }, { dropIfSlow: true }),
+        TICK_INTERVAL_MS,
+      )
+    : noopInterval();
   let healthInterval = noopInterval();
   let dedupeCleanup = noopInterval();
   let eventLoopMonitor: EventLoopMonitorHandle = { stop: () => {} };
@@ -738,26 +747,28 @@ export async function startGatewayServer(
 
   let browserControl: Awaited<ReturnType<typeof startBrowserControlServerIfEnabled>> = null;
   if (!minimalTestGateway) {
-    ({ browserControl, pluginServices, orchestratorBridge } = await startGatewaySidecars({
-      cfg: cfgAtStart,
-      pluginRegistry,
-      defaultWorkspaceDir,
-      deps,
-      startChannels,
-      log,
-      logHooks,
-      logChannels,
-      logBrowser,
-      onSkillNetworkBridgeReady: (bridge) => {
-        // Memory backend init is fire-and-forget; this fires once the
-        // SkillNetworkBridge is wired so handlers see it.
-        requestContext.skillNetworkBridge = bridge;
-      },
-    }));
+    ({ browserControl, pluginServices, orchestratorBridge, computeMesh, peerRpcTransport } =
+      await startGatewaySidecars({
+        cfg: cfgAtStart,
+        pluginRegistry,
+        defaultWorkspaceDir,
+        deps,
+        startChannels,
+        log,
+        logHooks,
+        logChannels,
+        logBrowser,
+        onSkillNetworkBridgeReady: (bridge) => {
+          // Memory backend init is fire-and-forget; this fires once the
+          // SkillNetworkBridge is wired so handlers see it.
+          requestContext.skillNetworkBridge = bridge;
+        },
+      }));
     // Patch the live request context so handlers see the actual orchestrator
     // bridge — without this, the object literal would forever hold the
     // pre-sidecar `undefined`.
     requestContext.orchestratorBridge = orchestratorBridge ?? undefined;
+    requestContext.computeMesh = computeMesh;
     bootStep("start-sidecars");
   }
 
@@ -839,6 +850,8 @@ export async function startGatewayServer(
     configReloader,
     browserControl,
     orchestratorBridge,
+    computeMesh,
+    peerRpcTransport,
     wss,
     httpServer,
     httpServers,

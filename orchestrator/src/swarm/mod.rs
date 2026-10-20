@@ -38,9 +38,15 @@ pub const BOUNTIES_TOPIC: &str = "bitterbot/bounties/v1";
 pub const CENSUS_TOPIC: &str = "bitterbot/census/v1";
 /// Gossipsub topic for peer-to-peer knowledge queries.
 pub const QUERIES_TOPIC: &str = "bitterbot/queries/v1";
+/// Signed, expiring capacity descriptors; never workload inputs or credentials.
+pub const COMPUTE_TOPIC: &str = "bitterbot/compute/v1";
 
-/// Per-circle gossip topics (PLAN-36 Phase 4) are the only topics the gateway
-/// may subscribe/publish at runtime. The name is a blinded hash
+fn is_gateway_topic(topic: &str) -> bool {
+    topic == COMPUTE_TOPIC || is_circle_topic(topic)
+}
+
+/// Alongside the exact Compute topic, the gateway may subscribe/publish
+/// per-circle gossip topics (PLAN-36 Phase 4). The name is a blinded hash
 /// (`bitterbot/circle/<sha256(id:epoch)>/v1`) minted TS-side; here we only gate
 /// the namespace so the dynamic primitive can't touch the builtin topics or
 /// become a subscribe-anything lever.
@@ -1421,7 +1427,10 @@ impl SwarmHandle {
                         }
                         Err(e) => warn!("Failed to deserialize census snapshot: {}", e),
                     }
-                } else if is_circle_topic(&topic_str) {
+                } else if is_gateway_topic(&topic_str) {
+                    if topic_str == COMPUTE_TOPIC && message.data.len() > 8192 {
+                        return;
+                    }
                     let from = match &message.source {
                         Some(p) => p.to_string(),
                         None => String::new(),
@@ -1538,7 +1547,7 @@ impl SwarmHandle {
                 // could never exchange a circle frame. When a peer announces
                 // a circle topic (IdentTopic: hashes are the readable names),
                 // a relay subscribes too, purely to forward.
-                if self.relay_mode == RelayMode::Server && is_circle_topic(topic.as_str()) {
+                if self.relay_mode == RelayMode::Server && is_gateway_topic(topic.as_str()) {
                     self.note_carried_circle_topic(&topic, &peer_id.to_string());
                 }
             }
@@ -2018,6 +2027,13 @@ impl SwarmHandle {
                     }
                 }));
             }
+            IpcCommand::SignComputeDescriptor { id, descriptor, respond } => {
+                let payload = match crypto::sign_compute_descriptor(&self.signing_key, &descriptor) {
+                    Ok(signature) => serde_json::json!({ "ok": true, "signature": signature }),
+                    Err(error) => serde_json::json!({ "ok": false, "error": error }),
+                };
+                let _ = respond.send(serde_json::json!({ "type": "response", "id": id, "payload": payload }));
+            }
             IpcCommand::ComputeEigenTrust {
                 id,
                 payload,
@@ -2318,10 +2334,10 @@ impl SwarmHandle {
                 }
             }
             IpcCommand::SubscribeTopic { id, topic, respond } => {
-                // PLAN-36 Phase 4: only per-circle topics may be subscribed at
-                // runtime — the builtin topics stay compile-time, and this keeps
-                // the primitive from being a general subscribe-anything lever.
-                if is_circle_topic(&topic) {
+                // Only blinded circles and the exact Compute topic are dynamic;
+                // builtin topics stay compile-time rather than exposing a
+                // general subscribe-anything primitive.
+                if is_gateway_topic(&topic) {
                     let t = gossipsub::IdentTopic::new(topic.clone());
                     match self.swarm.behaviour_mut().gossipsub.subscribe(&t) {
                         Ok(_) => {
@@ -2340,7 +2356,7 @@ impl SwarmHandle {
                 } else {
                     let _ = respond.send(serde_json::json!({
                         "type": "response", "id": id,
-                        "payload": { "ok": false, "error": "only bitterbot/circle/*/v1 topics allowed" }
+                        "payload": { "ok": false, "error": "only exact Compute or valid blinded circle topics allowed" }
                     }));
                 }
             }
@@ -2348,10 +2364,10 @@ impl SwarmHandle {
                 // Same gate as subscribe/publish: without it, the IPC verb can
                 // detach the node from the compile-time core topics
                 // (skills/census/queries), silently partitioning it (C7).
-                if !is_circle_topic(&topic) {
+                if !is_gateway_topic(&topic) {
                     let _ = respond.send(serde_json::json!({
                         "type": "response", "id": id,
-                        "payload": { "ok": false, "error": "only bitterbot/circle/*/v1 topics allowed" }
+                        "payload": { "ok": false, "error": "only exact Compute or valid blinded circle topics allowed" }
                     }));
                 } else {
                     let t = gossipsub::IdentTopic::new(topic.clone());
@@ -2363,10 +2379,10 @@ impl SwarmHandle {
                 }
             }
             IpcCommand::PublishTopic { id, topic, data_b64, respond } => {
-                if !is_circle_topic(&topic) {
+                if !is_gateway_topic(&topic) {
                     let _ = respond.send(serde_json::json!({
                         "type": "response", "id": id,
-                        "payload": { "ok": false, "error": "only bitterbot/circle/*/v1 topics allowed" }
+                        "payload": { "ok": false, "error": "only exact Compute or valid blinded circle topics allowed" }
                     }));
                 } else {
                     match base64::engine::general_purpose::STANDARD.decode(&data_b64) {
@@ -3441,6 +3457,13 @@ pub async fn build_swarm(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn compute_topic_allowlist_is_exact() {
+        assert!(is_gateway_topic(COMPUTE_TOPIC));
+        assert!(!is_gateway_topic("bitterbot/compute/v2"));
+        assert!(!is_gateway_topic("bitterbot/compute/v1/secret"));
+        assert!(!is_gateway_topic("bitterbot/skills/v1"));
+    }
 
     #[test]
     fn is_circle_topic_requires_exact_shape() {

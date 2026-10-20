@@ -128,6 +128,9 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
+!.env.*.example
 .venv
 # docker-compose.yml's default data folder: config, SQLite memory, P2P keys
 # and the generated gateway token (PLAN-56 Phase 2). Never commit it.
@@ -216,6 +219,8 @@ research/
 
 # Wallet seed data (should never be in repo)
 wallet-data.json
+# Local release/test profiles may contain credentials, logs and job data.
+reports/
 benchmarks/longmemeval/data/longmemeval_s.json
 benchmarks/longmemeval/data/
 

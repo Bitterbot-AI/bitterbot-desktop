@@ -126,6 +126,8 @@ export function startCircleP2pTransport(deps: {
   resolveCirclesDb: () => Promise<DatabaseSync | undefined>;
   /** Injectable for tests; defaults to the node's real box keys. */
   boxKeys?: BoxKeyPair;
+  /** Dedicated, identity-bound Compute protocol; never a generic gateway proxy. */
+  compute?: { handle(peerId: string, method: string, params: unknown): Promise<unknown> };
 }): { stop: () => void } {
   const state: ActiveP2p = { bridge: deps.bridge, localPeerId: null };
   active = state;
@@ -152,6 +154,7 @@ export function startCircleP2pTransport(deps: {
       let method = "";
       let params: unknown = {};
       try {
+        if (event.data_b64.length > 1024 * 1024) throw new Error("request too large");
         const req = JSON.parse(Buffer.from(event.data_b64, "base64").toString("utf-8")) as {
           method?: string;
           params?: unknown;
@@ -162,7 +165,20 @@ export function startCircleP2pTransport(deps: {
         await respond({ ok: false, error: "malformed request" });
         return;
       }
-      // ONLY circle verbs — this transport must never widen into a general
+      if (
+        ["compute/v1/access", "compute/v1/submit", "compute/v1/job", "compute/v1/cancel"].includes(
+          method,
+        ) &&
+        deps.compute
+      ) {
+        try {
+          await respond(await deps.compute.handle(event.from_peer_id, method, params));
+        } catch {
+          await respond({ ok: false, error: "Compute unavailable" });
+        }
+        return;
+      }
+      // ONLY explicit Compute and circle verbs — never a general
       // RPC surface (no mailbox/*, no gateway methods). The circle handlers
       // carry their own auth; an unauthorized envelope is refused exactly as
       // it would be over HTTP.

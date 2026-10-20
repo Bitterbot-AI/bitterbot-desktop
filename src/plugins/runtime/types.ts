@@ -172,6 +172,10 @@ export type RuntimeLogger = {
 
 export type PluginRuntime = {
   version: string;
+  /** Core-owned Compute registration; absent on older gateway runtimes. */
+  compute?: {
+    registerSoapbox: typeof import("../../compute/soapbox-plugin.js").registerSoapboxPlugin;
+  };
   config: {
     loadConfig: LoadConfig;
     writeConfigFile: WriteConfigFile;

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { SoapboxPaymentQuote } from "../../infra/soapbox-client.js";
 import type { WalletService } from "../../services/wallet-service.js";
 import {
   gateWallet,
@@ -298,5 +299,68 @@ describe("session cap under concurrent payments", () => {
     await expect(gated.payForResource("https://api.test/data", 1)).resolves.toMatchObject({
       success: true,
     });
+  });
+});
+
+describe("Compute escrow spend gate", () => {
+  const quote = { amount_microusdc: 2000, escrow: "0xescrow" } as SoapboxPaymentQuote;
+
+  it("records owner-approved test USDC funding and enforces the session cap", async () => {
+    const fundSoapbox = vi.fn(async () => ({ status: "funded", txHash: "0xfund" }));
+    const gated = gateWallet(
+      { ...wallet(), fundSoapbox },
+      { origin: "rpc", sessionKey: "compute", sessionCapUsd: 0.003 },
+      deps(),
+    );
+    await expect(gated.fundSoapbox!(quote)).resolves.toMatchObject({ txHash: "0xfund" });
+    await expect(gated.fundSoapbox!(quote)).rejects.toThrow(SpendRefusedError);
+    expect(fundSoapbox).toHaveBeenCalledTimes(1);
+    expect(decisions[0]).toMatchObject({
+      rail: "usdc",
+      payee: "0xescrow",
+      amountUsd: 0.002,
+      reason: "sent by the owner",
+      outcome: "sent",
+      txHash: "0xfund",
+    });
+  });
+
+  it("refuses unapproved agent funding before the signer runs", async () => {
+    const fundSoapbox = vi.fn();
+    const gated = gateWallet(
+      { ...wallet(), fundSoapbox },
+      { origin: "a2a", approvalRequired: true },
+      deps(),
+    );
+    await expect(gated.fundSoapbox!(quote)).rejects.toThrow(SpendRefusedError);
+    expect(fundSoapbox).not.toHaveBeenCalled();
+    expect(decisions[0]).toMatchObject({ verdict: "deny", outcome: "refused" });
+  });
+
+  it("does not charge the session again for an already funded escrow", async () => {
+    const fundSoapbox = vi.fn(async () => ({ status: "already_funded", txHash: null }));
+    const gated = gateWallet(
+      { ...wallet(), fundSoapbox },
+      { origin: "rpc", sessionKey: "compute" },
+      deps(),
+    );
+    await gated.fundSoapbox!(quote);
+    expect(sessionSpentUsd("compute", now)).toBe(0);
+    expect(decisions[0].amountUsd).toBe(0);
+  });
+
+  it("records funding failures and leaves non-Compute wallets unchanged", async () => {
+    const fundSoapbox = vi.fn(async () => {
+      throw new Error("RPC unavailable");
+    });
+    const gated = gateWallet(
+      { ...wallet(), fundSoapbox },
+      { origin: "rpc", sessionKey: "compute" },
+      deps(),
+    );
+    await expect(gated.fundSoapbox!(quote)).rejects.toThrow("RPC unavailable");
+    expect(decisions[0]).toMatchObject({ outcome: "failed", error: "RPC unavailable" });
+    expect(sessionSpentUsd("compute", now)).toBe(0);
+    expect(gateWallet(wallet(), { origin: "rpc" })).not.toHaveProperty("fundSoapbox");
   });
 });
