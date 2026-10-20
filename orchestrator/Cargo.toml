@@ -33,7 +33,7 @@ base64 = "0.23"
 rand = "0.8"
 clap = { version = "4", features = ["derive", "env"] }
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.7", features = ["cors"] }
 http = "1"
 tokio-stream = "0.1"
 hex = "0.4"
