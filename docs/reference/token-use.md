@@ -48,12 +48,20 @@ Use these in chat:
   - Persists per session (stored as `responseUsage`).
   - OAuth auth **hides cost** (tokens only).
 - `/usage cost` → shows a local cost summary from Bitterbot session logs.
+- `/usage why [today|7d|30d]` → explains the window against the one before it
+  (which features, models and sessions moved the bill), from the usage ledger.
 
 Other surfaces:
 
-- **TUI/Web TUI:** `/status` + `/usage` are supported.
-- **CLI:** `bitterbot status --usage` and `bitterbot channels list` show
-  provider quota windows (not per-response costs).
+- **Control UI → Usage:** the usage ledger, which counts every model call
+  (chat, embeddings, dreams, extraction, evolution, judge, speech, search) per
+  model, feature, session and day, with cache health, burn rate, budgets,
+  cost per outcome and what-if replay. See
+  [Usage tracking](/concepts/usage-tracking).
+- **CLI:** `bitterbot gateway usage [--by model|feature|provider|kind|agent|day]
+  [--why] [--whatif provider/model] [--json]` reads the same ledger.
+- **CLI (provider quotas):** `bitterbot status --usage` and
+  `bitterbot channels list` show provider quota windows (not per-response costs).
 
 ## Cost estimation (when shown)
 
@@ -69,25 +77,31 @@ never show dollar cost.
 
 ## Cache TTL and pruning impact
 
-Provider prompt caching only applies within the cache TTL window. Bitterbot can
-optionally run **cache-ttl pruning**: it prunes the session once the cache TTL
-has expired, then resets the cache window so subsequent requests can re-use the
-freshly cached context instead of re-caching the full history. This keeps cache
-write costs lower when a session goes idle past the TTL.
+Provider prompt caching only applies within the cache TTL window. The old
+**cache-ttl pruning** (`agents.defaults.contextPruning`) no longer runs: the key
+is accepted, has no effect and warns at load (see
+[Session pruning](/concepts/session-pruning)). Tool-output growth is handled by
+compaction's tool-output stubs instead.
 
-Configure it in [Gateway configuration](/gateway/configuration) and see the
-behavior details in [Session pruning](/concepts/session-pruning).
-
-Heartbeat can keep the cache **warm** across idle gaps. If your model cache TTL
-is `1h`, setting the heartbeat interval just under that (e.g., `55m`) can avoid
-re-caching the full prompt, reducing cache write costs.
+Heartbeats no longer warm the main-session cache by default. Since the
+token-efficiency build, an interval heartbeat is skipped outright when its inputs
+(`HEARTBEAT.md`, the heartbeat prompt, queued system events) are unchanged
+(`heartbeat.skipWhenUnchanged`), and when it does run it uses an isolated session
+with a minimal prompt on the cheap model tier (`heartbeat.isolatedSession`,
+`heartbeat.lightContext`). That is a different, much smaller prefix, so it cannot
+refresh the chat prefix. If you specifically want a keep-warm tick, set
+`isolatedSession: false`, `lightContext: false`, `skipWhenUnchanged: false`, pick
+an interval under the cache TTL, and confirm with the usage ledger that
+`cache_read` is non-zero on heartbeat rows; otherwise every tick is a full cache
+write that is never read back. See [Heartbeat](/gateway/heartbeat) for the cost
+model.
 
 For Anthropic API pricing, cache reads are significantly cheaper than input
 tokens, while cache writes are billed at a higher multiplier. See Anthropic’s
 prompt caching pricing for the latest rates and TTL multipliers:
 [https://docs.anthropic.com/docs/build-with-claude/prompt-caching](https://docs.anthropic.com/docs/build-with-claude/prompt-caching)
 
-### Example: keep 1h cache warm with heartbeat
+### Example: keep 1h cache warm with heartbeat (opt-in)
 
 ```yaml
 agents:
@@ -100,6 +114,9 @@ agents:
           cacheRetention: "long"
     heartbeat:
       every: "55m"
+      skipWhenUnchanged: false
+      isolatedSession: false
+      lightContext: false
 ```
 
 ## Tips for reducing token pressure

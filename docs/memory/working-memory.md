@@ -111,6 +111,8 @@ The `validateWorkingMemory()` function includes three collapse guards:
 Every rewrite of MEMORY.md is **evidence-backed and reversible** (`working-memory-snapshots.ts`):
 
 - **Snapshot before overwrite:** the previous state is saved to `memory/memory-snapshots/MEMORY-<timestamp>.md` (last 10 kept) before the new state is written.
+- **Output cap matches the prompt (token-efficiency pass 2026-09-19):** the synthesis prompt asks for up to ~4,500 output tokens across 7 sections, but the synthesis lane inherited the 2,048-token default of `buildLlmCallFn`, so every call ended at `stop_reason=length`, failed section validation and fell back to the heuristic builder (100% of synthesis spend wasted). The lane now uses `memory.dream.synthesisMaxTokens` (default 6144).
+- **Heuristic builder is idempotent:** the fallback used to carry each section over WITH its italic sub-header and then prepend its own, so every heuristic rewrite added one more `*Who am I becoming?*` line (the live MEMORY.md reached 21 copies, injected into every prompt). `stripSectionSubheaders` now removes every sub-header line from a carried section; running the builder on its own output produces byte-identical section bodies, and an already-polluted file is repaired on the next rewrite.
 - **Provenance record:** each rewrite appends a JSONL record to `memory/memory-snapshots/provenance.jsonl` — trigger (dream cycle id, `first-breath-*`, or `event-<reason>`), synthesis model, whether the heuristic fallback fired, the validation outcome (collapsed/valid/warnings/bond drift), and before/after lengths. Provenance survives snapshot pruning.
 - **Rollback:** `manager.restoreWorkingMemory(fileName?)` restores a snapshot (latest by default). The bad state is snapshotted first, so a restore is itself reversible. `manager.listWorkingMemorySnapshots()` and `manager.getWorkingMemoryProvenance()` expose the history.
 
@@ -158,7 +160,7 @@ The agent reads the pointer in its prompt. If the user asks about it, the agent 
 
 ### The Problem
 
-The agent is a stateless LLM. If it learns something important mid-session (a name, a deadline, a preference) but the dream cycle is 2 hours away and the session might end, that information is lost. This creates trust-destroying amnesia.
+The agent is a stateless LLM. If it learns something important mid-session (a name, a deadline, a preference) but the next full dream cycle may be hours away (full cycles run at most every 8 hours) and the session might end, that information is lost. This creates trust-destroying amnesia.
 
 ### The Solution
 
@@ -192,7 +194,7 @@ When the next dream cycle fires, scratch notes are:
 
 ### Belt AND Suspenders: Auto-Scratch from Hormonal Spikes
 
-Even if the agent forgets to call `working_memory_note`, the hormonal system provides backup. During each consolidation cycle (every 30 min), if hormonal levels are elevated (dopamine > 0.7, cortisol > 0.7, or oxytocin > 0.7), an automatic scratch note is generated:
+Even if the agent forgets to call `working_memory_note`, the hormonal system provides backup. During each consolidation cycle (every 30 min), if a hormone has risen by 0.15 or more since the last check (`hormonalTriggerDelta`), an automatic scratch note is generated (deduplicated against the previous automatic note):
 
 ```markdown
 - [2026-03-12T15:30:00Z] (importance: 0.8) [AUTO] Hormonal event: dopamine spike
@@ -293,7 +295,7 @@ MEMORY.md token budget scales based on model context window to work across diffe
 | 64K            | 4,000                    | ~1,000  |
 | 32K            | 3,200                    | ~800    |
 
-If MEMORY.md exceeds its budget, it's truncated with a note: `[Full working memory available via memory_search]`.
+If MEMORY.md exceeds its budget, it's truncated with a constant note, `(truncated, use memory tools)`, so the injected text never carries a changing character count into the cached prompt prefix.
 
 ---
 
@@ -336,7 +338,7 @@ flowchart TD
         Scratch --> Prompt
     end
 
-    subgraph Dream ["Dream Cycle (every 2hrs)"]
+    subgraph Dream ["Dream Cycle (full cycle at most every 8 h)"]
         MEMORY --> RLM["RLM State Update<br/>f(Old + Scratch + Crystals + Insights)"]
         Scratch --> RLM
         Crystals --> RLM
@@ -349,7 +351,7 @@ flowchart TD
     end
 
     subgraph Consolidation ["Consolidation (every 30min)"]
-        HormCheck{"Hormones > 0.7?"} -->|Yes| AutoScratch["Auto-scratch note"]
+        HormCheck{"Hormone rose by 0.15+?"} -->|Yes| AutoScratch["Auto-scratch note"]
         AutoScratch --> Scratch
     end
 ```

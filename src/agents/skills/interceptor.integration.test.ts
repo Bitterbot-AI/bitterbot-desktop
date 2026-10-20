@@ -14,7 +14,6 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import type { PreActionInterceptor } from "./interceptor.js";
 import { onAgentEvent, resetAgentRunContextForTest } from "../../infra/agent-events.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { runMigrations } from "../../memory/migrations.js";
@@ -26,6 +25,7 @@ import {
 } from "./interceptor-context.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
 import { runInterceptors, resetInterceptorRunnerState } from "./interceptor-runner.js";
+import type { PreActionInterceptor } from "./interceptor.js";
 import {
   setInterventionSigner,
   setInterventionStore,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { MsgContext } from "../../auto-reply/templating.js";
 import { expectInboundContextContract } from "../../../test/helpers/inbound-contract.js";
+import type { MsgContext } from "../../auto-reply/templating.js";
 
 let capturedCtx: MsgContext | undefined;
 

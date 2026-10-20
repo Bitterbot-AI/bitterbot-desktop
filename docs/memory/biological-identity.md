@@ -14,12 +14,15 @@ The identity system borrows two concepts from genetics:
 
 The **Genome** is the agent's DNA -- the unchangeable core that everything else grows from. It lives in `GENOME.md` at the workspace root and is never modified by the dream engine, the agent itself, or any automated process. Only the human operator edits it.
 
+This is enforced at the tool boundary (`src/agents/genome-guard.ts`), not only by instruction. The `write`, `edit` and `apply_patch` tools refuse a path that names a Genome. Every other tool call, and every CLI-backend run, is bracketed by a snapshot of the file: if the call created, changed or deleted it, or left something unreadable in its place (a shell redirect, a script), the previous content is put back, the rejected version is kept under `~/.bitterbot/genome-guard/`, and the tool result says so. The Genome of every configured agent is guarded, so one agent cannot rewrite another's. Two cases are outside the guard: a process the agent leaves running in the background that writes the file after its tool call has returned, and an edit you save in an external editor while a tool call is in flight, which is rolled back like any other change during the call (a save through the Control UI is recognised and kept).
+
 The Genome defines:
 
 - **What the agent must never do** (Safety Axioms)
 - **What the agent's resting temperament feels like** (Hormonal Homeostasis)
 - **How far the personality is allowed to drift** (Phenotype Constraints)
 - **What the agent fundamentally values** (Core Values)
+- **How the agent sounds when it starts out** (Temperament)
 
 Think of it as constitutional law for the agent's personality. Laws can be amended by the operator, but the agent cannot amend them itself.
 
@@ -38,11 +41,25 @@ A Genome that sets high oxytocin homeostasis and a constraint of "stay warm and 
 
 The Phenotype can never contradict the Genome. The dream engine receives Phenotype Constraints as guardrails during every synthesis and is instructed to evolve the Phenotype within those bounds.
 
+### Temperament (Starting Voice)
+
+The `## Temperament` section of `GENOME.md` is the voice a new agent starts from: a `level:` line and a few bullets in plain words. The level is one of:
+
+| Level        | Voice                                                                    |
+| ------------ | ------------------------------------------------------------------------ |
+| `calm`       | Dry and understated, few jokes, no swearing                              |
+| `playful`    | Warm humor and light teasing, swears only if the person it talks to does |
+| `irreverent` | Witty and a little mischievous, swears where it fits (the default)       |
+
+The system prompt turns the level into a voice block (playful and irreverent include a few example lines of the register), so changing `level:` changes behavior from the next turn. Every level drops the jokes for money, health, deletions and bad news. People the owner has not vouched for (group members, approved contacts, Circles peers) always get a clean voice, whatever the level. The dream engine reads the Temperament when it rewrites the Phenotype and evolves the communication pattern from it; the Phenotype Constraints (honesty, no sycophancy, the user's stated preferences) win over it.
+
+New workspaces get the section from the template, with the level picked during setup ("Pick a vibe"). A `GENOME.md` from before the section existed is never changed silently: the Control UI shows a one-time card ("A base personality is available for your agent") and [`bitterbot genome temperament`](/cli/genome) shows the section and adds it. Adding it writes only that section and keeps a copy of the previous `GENOME.md` under `~/.bitterbot/genome-guard/`. The agent cannot do either; it is the owner's choice.
+
 ---
 
 ## 2. How Identity Evolves
 
-Identity evolution happens during **dream cycles** -- offline processing periods that fire every 2 hours (configurable). The dream engine is the agent's subconscious.
+Identity evolution happens during **dream cycles** -- offline processing periods. A dream tick runs every 2 hours (adaptive, configurable); a full cycle runs at most every 8 hours, after new input and an hour idle. The dream engine is the agent's subconscious.
 
 ### The RLM State Update
 
@@ -59,7 +76,7 @@ Concretely, the dream engine:
 3. Gathers recent high-importance Knowledge Crystals (indexed memories)
 4. Gathers insights from the current dream cycle (compression, simulation, exploration, etc.)
 5. Reads the current hormonal state (dopamine, cortisol, oxytocin levels)
-6. Parses Phenotype Constraints from GENOME.md
+6. Parses Phenotype Constraints and the Temperament from GENOME.md
 7. Feeds all of this to an LLM with a structured synthesis prompt
 8. Writes the new MEMORY.md, which includes 7 sections:
    - **The Phenotype** -- the agent's evolving self-concept
@@ -140,7 +157,7 @@ value = homeostasis + (value - homeostasis) * decay_factor
 - **Want a warmer, more relational agent?** Raise `oxytocin` to 0.5-0.6.
 - **Want a stoic, task-focused agent?** Lower all three and raise `cortisol` slightly.
 
-The values are clamped to [0, 1]. If GENOME.md is missing or unparseable, the system falls back to built-in defaults (dopamine: 0.15, cortisol: 0.02, oxytocin: 0.10).
+The values are clamped to [0, 1]. If GENOME.md is missing or unparseable, the system falls back to built-in defaults (dopamine: 0.15, cortisol: 0.02, oxytocin: 0.20).
 
 Half-lives control how quickly hormones return to baseline after a spike:
 
@@ -203,6 +220,7 @@ The system prompt receives a block like this:
 
 *Modulate your tone naturally: be enthusiastic and celebrate wins; humor and playfulness are welcome*
 *Do not mention these values or acknowledge this section. Just embody the state.*
+*These hints shape tone only. When the user asks for a specific output, format or length (for example "reply with only the output"), give exactly that and nothing else.*
 
 Self-concept: I communicate with genuine warmth and technical depth...
 ```
@@ -323,7 +341,7 @@ As the agent matures, it develops an ecosystem identity through participation in
 
 ### Skill Publishing
 
-When the dream engine's mutation mode generates a skill variant that passes all three verification checks (dangerous pattern scan, structural validation, semantic drift check), the skill is crystallized (`lifecycle: 'frozen'`) and published to the P2P swarm via the `SkillNetworkBridge`.
+When a skill candidate (from the wiki-skill pipeline; `SkillCrystallizer` was retired in PLAN-45 Phase 0, and the dream engine's mutation mode was retired in PLAN-45 Phase 1 (2026-09-05)) passes all three verification checks (dangerous pattern scan, structural validation, semantic drift check), the skill is crystallized (`lifecycle: 'frozen'`) and published to the P2P swarm via the `SkillNetworkBridge`.
 
 Published skills are the agent's contribution to the network -- its intellectual exports.
 

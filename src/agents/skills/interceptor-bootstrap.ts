@@ -12,8 +12,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { HormonalStateManager } from "../../memory/hormonal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { HormonalStateManager } from "../../memory/hormonal.js";
 import { registerBuiltinInterceptors } from "./builtin-interceptors/index.js";
 import {
   setInterceptorContextProviders,

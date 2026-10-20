@@ -1,4 +1,3 @@
-import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
 import { buildProjectContext } from "../../agents/project-rag.js";
 import {
   listProjects,
@@ -10,6 +9,7 @@ import {
   listProjectFiles,
   deleteProjectFile,
 } from "../../agents/projects.js";
+import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
 
 const projectsList: GatewayRequestHandler = async ({ respond }) => {
   const projects = listProjects();

@@ -9,8 +9,7 @@
  *
  *   1. Mode eligible — extrapolation and simulation only (LLM-backed,
  *      citation-capable). Compression is heuristic template synthesis with
- *      no LLM to attest anything; exploration outputs questions; mutation
- *      is the skill-refiner's channel (exempt).
+ *      no LLM to attest anything; exploration outputs questions.
  *   2. Mechanical grounding (ungameable): each accepted source chunk must
  *      clear an embedding-similarity floor to the insight AND rank among
  *      the most-similar of the offered inputs; >= 2 distinct such sources,

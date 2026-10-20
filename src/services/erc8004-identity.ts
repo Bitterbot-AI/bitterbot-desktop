@@ -103,6 +103,16 @@ const REPUTATION_ABI = [
   },
 ] as const;
 
+/** keccak256("Transfer(address,address,uint256)") — the ERC-721 mint/transfer topic. */
+const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+
+/** Minimal receipt-reader (a viem PublicClient satisfies this) for reading back a mint. */
+export interface ReceiptReader {
+  getTransactionReceipt(args: { hash: `0x${string}` }): Promise<{
+    logs: Array<{ address?: string; topics: Array<string | undefined> }>;
+  }>;
+}
+
 export type ERC8004Network = "base" | "base-sepolia";
 
 export interface ERC8004Config {
@@ -180,15 +190,24 @@ export class AgentIdentityService {
    * Register the agent on the ERC-8004 Identity Registry.
    * The agentURI should point to the Agent Card / registration file.
    * Requires a funded wallet (gas cost ~$0.05-0.20 on Base).
+   *
+   * When a `publicClient` is supplied, the minted agentId (ERC-721 tokenId) is
+   * read back from the registration receipt and returned/stored — so the
+   * operator gets the concrete tokenId to put in `a2a.erc8004.tokenId` instead
+   * of the old "pending" placeholder (PLAN-47 Phase 3). Without a publicClient
+   * the behavior is unchanged (returns "pending").
    */
-  async register(walletClient: {
-    writeContract(args: {
-      address: string;
-      abi: readonly unknown[];
-      functionName: string;
-      args: unknown[];
-    }): Promise<string>;
-  }): Promise<{ agentId: string; txHash: string }> {
+  async register(
+    walletClient: {
+      writeContract(args: {
+        address: string;
+        abi: readonly unknown[];
+        functionName: string;
+        args: unknown[];
+      }): Promise<string>;
+    },
+    opts?: { publicClient?: ReceiptReader },
+  ): Promise<{ agentId: string; txHash: string }> {
     const txHash = await walletClient.writeContract({
       address: this.registryAddresses.identity,
       abi: IDENTITY_ABI,
@@ -196,8 +215,46 @@ export class AgentIdentityService {
       args: [this.config.agentCardUrl],
     });
 
-    log.info("ERC-8004 agent registered", { txHash, agentCardUrl: this.config.agentCardUrl });
-    return { agentId: "pending", txHash };
+    let agentId = "pending";
+    if (opts?.publicClient) {
+      const minted = await this.readMintedAgentId(opts.publicClient, txHash);
+      if (minted !== null) {
+        this.agentId = minted;
+        agentId = minted.toString();
+      }
+    }
+    log.info("ERC-8004 agent registered", {
+      txHash,
+      agentId,
+      agentCardUrl: this.config.agentCardUrl,
+    });
+    return { agentId, txHash };
+  }
+
+  /**
+   * Read the minted tokenId from a registration receipt. The Identity Registry
+   * is an ERC-721, so registration emits a standard Transfer(from=0x0, to,
+   * tokenId) event from the registry contract; tokenId is the 4th topic.
+   * Returns null if no such mint log is found (e.g. receipt not yet available).
+   */
+  async readMintedAgentId(publicClient: ReceiptReader, txHash: string): Promise<bigint | null> {
+    try {
+      const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+      const identity = this.registryAddresses.identity.toLowerCase();
+      const zero32 = "0x" + "0".repeat(64);
+      for (const logEntry of receipt.logs) {
+        if (logEntry.address?.toLowerCase() !== identity) continue;
+        if (logEntry.topics[0] !== TRANSFER_TOPIC) continue;
+        // Mint = Transfer from the zero address. tokenId is the indexed 4th topic.
+        if (logEntry.topics[1]?.toLowerCase() !== zero32) continue;
+        const tokenIdTopic = logEntry.topics[3];
+        if (tokenIdTopic) return BigInt(tokenIdTopic);
+      }
+      return null;
+    } catch (err) {
+      log.debug(`could not read minted agentId: ${String(err)}`);
+      return null;
+    }
   }
 
   /**
@@ -219,11 +276,23 @@ export class AgentIdentityService {
       tag1: string;
       tag2?: string;
       endpoint?: string;
+      /** Optional offchain feedback document URI. */
+      feedbackURI?: string;
+      /** Optional offchain feedback content; its keccak256 becomes feedbackHash. */
+      feedbackContent?: string;
     },
   ): Promise<string> {
     // value is -1.0 to 1.0, stored as int128 with 2 decimals
     const scaledValue = BigInt(Math.round(params.value * 100));
-    const feedbackHash = "0x" + "0".repeat(64); // placeholder — no offchain URI
+    // feedbackHash binds the onchain attestation to the offchain feedback
+    // document. When content is supplied, hash it (keccak256, the EVM norm);
+    // a zero hash is only correct when there is genuinely no offchain detail
+    // (PLAN-47 Phase 3 — was previously always zero).
+    let feedbackHash = "0x" + "0".repeat(64);
+    if (params.feedbackContent) {
+      const { keccak256, toHex } = await import("viem");
+      feedbackHash = keccak256(toHex(params.feedbackContent));
+    }
 
     const txHash = await walletClient.writeContract({
       address: this.registryAddresses.reputation,
@@ -236,7 +305,7 @@ export class AgentIdentityService {
         params.tag1,
         params.tag2 ?? "",
         params.endpoint ?? "",
-        "", // feedbackURI — offchain detail (optional)
+        params.feedbackURI ?? "",
         feedbackHash,
       ],
     });
@@ -321,4 +390,34 @@ export class AgentIdentityService {
   setAgentId(id: bigint): void {
     this.agentId = id;
   }
+}
+
+/** Feedback args ready to pass to `giveFeedback`. */
+export interface ReputationFeedback {
+  value: number;
+  tag1: string;
+  tag2: string;
+}
+
+/**
+ * Bridge an internal reputation summary (Forage delivery / commerce outcomes)
+ * into ERC-8004 Reputation feedback (PLAN-47 Phase 3). Maps a success rate in
+ * [0,1] to the registry's [-1,1] value scale. Returns null below a minimum
+ * sample size so we never project a confident onchain score from thin data
+ * (the plan's "keep the reputation path conservative" caveat).
+ */
+export function buildReputationFeedback(
+  summary: { successRate: number; sampleSize: number },
+  opts?: { minSample?: number; tag1?: string },
+): ReputationFeedback | null {
+  const minSample = opts?.minSample ?? 5;
+  if (!Number.isFinite(summary.successRate) || summary.sampleSize < minSample) {
+    return null;
+  }
+  const clamped = Math.max(0, Math.min(1, summary.successRate));
+  return {
+    value: clamped * 2 - 1, // [0,1] -> [-1,1]
+    tag1: opts?.tag1 ?? "commerce",
+    tag2: `n=${summary.sampleSize}`,
+  };
 }

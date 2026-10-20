@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { describeSchedule } from "./schedule.js";
+import { describeSchedule, oneShotTime } from "./schedule.js";
 import {
   type CronDelivery,
   type CronJob,
@@ -18,6 +18,7 @@ export function buildJobFromParams(params: Record<string, unknown>): CronJob {
   const now = Date.now();
   const jobId = pickId(params) ?? `cron_${shortId()}`;
   const schedule = pickSchedule(params);
+  assertOneShotNotInThePast(schedule, now);
   const sessionTarget = pickSessionTarget(params, schedule);
   const payload = pickPayload(params, sessionTarget);
   if (sessionTarget === "main" && payload.kind !== "systemEvent") {
@@ -34,6 +35,7 @@ export function buildJobFromParams(params: Record<string, unknown>): CronJob {
   const delivery = pickDelivery(params, sessionTarget);
   const notify = params.notify === undefined ? undefined : Boolean(params.notify);
   const deleteAfterRun = pickDeleteAfterRun(params, schedule);
+  const retryUntilMs = pickRetryUntil(params.retryUntilMs);
 
   return {
     jobId,
@@ -48,10 +50,28 @@ export function buildJobFromParams(params: Record<string, unknown>): CronJob {
     delivery,
     notify,
     deleteAfterRun,
+    ...(schedule.kind === "at" && retryUntilMs !== undefined ? { retryUntilMs } : {}),
     consecutiveErrors: 0,
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/** Clock skew and a slow caller are fine; "an hour ago" is a mistake. */
+const PAST_ONE_SHOT_TOLERANCE_MS = 60_000;
+
+/**
+ * A new one-shot job must name a time that has not passed. The engine runs a
+ * missed one-shot at the next tick, so a past time would fire at once; the
+ * usual cause is a local time written without an offset (read as UTC).
+ */
+function assertOneShotNotInThePast(schedule: CronSchedule, nowMs: number): void {
+  const at = oneShotTime(schedule);
+  if (at !== null && at < nowMs - PAST_ONE_SHOT_TOLERANCE_MS) {
+    throw new Error(
+      `schedule.at (${new Date(at).toISOString()}) is in the past; a one-shot job needs a future time. A time without an offset is read as UTC.`,
+    );
+  }
 }
 
 export function applyJobPatch(existing: CronJob, patch: Record<string, unknown>): CronJob {
@@ -83,6 +103,9 @@ export function applyJobPatch(existing: CronJob, patch: Record<string, unknown>)
   }
   if ("notify" in patch) {
     out.notify = patch.notify === null ? undefined : Boolean(patch.notify);
+  }
+  if ("retryUntilMs" in patch) {
+    out.retryUntilMs = pickRetryUntil(patch.retryUntilMs);
   }
   if ("deleteAfterRun" in patch) {
     out.deleteAfterRun = patch.deleteAfterRun === null ? undefined : Boolean(patch.deleteAfterRun);
@@ -132,7 +155,20 @@ export function jobToWire(job: CronJob): CronJobWire {
     deleteAfterRun: job.deleteAfterRun,
     consecutiveErrors: job.consecutiveErrors,
     lastRunStatus: job.lastRunStatus,
+    retryUntilMs: job.retryUntilMs,
   };
+}
+
+/** A retry deadline as unix ms; an ISO time is accepted too. */
+function pickRetryUntil(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function pickId(params: Record<string, unknown>): string | undefined {

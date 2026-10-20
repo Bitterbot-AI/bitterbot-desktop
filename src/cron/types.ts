@@ -22,6 +22,12 @@ export type CronPayloadAgentTurn = {
   thinking?: string;
   timeoutSeconds?: number;
   /**
+   * `false` when the job was scheduled by a run whose sender was not an
+   * owner: the turn it starts gets no owner-only tools. Absent means owner
+   * (jobs added by the operator through the CLI, the Control UI or the RPC).
+   */
+  senderIsOwner?: false;
+  /**
    * PLAN-16 Phase C: when set, the agent invocation triggered by this
    * job is correlated to a long-horizon Task. The receiving runner
    * tags emitted events with `taskId` so `task_monitor` can stream the
@@ -66,10 +72,22 @@ export type CronJob = {
   notify?: boolean;
   deleteAfterRun?: boolean;
   consecutiveErrors: number;
+  /** Set, and saved, when a run starts. A started one-shot is never started again. */
+  lastStartedAt?: number;
   lastRunAt?: number;
   lastRunStatus?: CronRunStatus;
   nextRunAt?: number;
+  /**
+   * A one-shot that fails is retried, with backoff, until this time (unix ms).
+   * Without it a failed one-shot is not run again.
+   */
   retryUntilMs?: number;
+  /**
+   * The fixed point an `every` schedule counts from, saved with the job. Runs
+   * fall on anchor + k * everyMs, so a restart does not push the next run a
+   * full interval into the future.
+   */
+  everyAnchorMs?: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -110,6 +128,7 @@ export type CronJobWire = {
   delivery?: CronDelivery;
   notify?: boolean;
   deleteAfterRun?: boolean;
+  retryUntilMs?: number;
   consecutiveErrors?: number;
   lastRunStatus?: CronRunStatus;
 };

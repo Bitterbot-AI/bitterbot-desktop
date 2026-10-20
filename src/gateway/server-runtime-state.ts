@@ -1,19 +1,20 @@
 import type { Server as HttpServer } from "node:http";
 import { WebSocketServer } from "ws";
+import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
+import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/server.js";
 import type { CliDeps } from "../cli/deps.js";
+import { setCronBroadcast } from "../cron/runtime.js";
+import { setOwnerNoticeBroadcast } from "../infra/owner-notify.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
+import { setMonitorBroadcast } from "../monitors/runtime.js";
 import type { PluginRegistry } from "../plugins/registry.js";
+import { setReviewBroadcast } from "../review/runtime.js";
 import type { RuntimeEnv } from "../runtime.js";
+import { createA2aHttpHandler } from "./a2a/a2a-http.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
 import type { ChatAbortControllerEntry } from "./chat-abort.js";
 import type { HooksConfigResolved } from "./hooks.js";
-import type { DedupeEntry } from "./server-shared.js";
-import type { GatewayTlsRuntime } from "./server/tls.js";
-import type { GatewayWsClient } from "./server/ws-types.js";
-import { CANVAS_HOST_PATH } from "../canvas-host/a2ui.js";
-import { type CanvasHostHandler, createCanvasHostHandler } from "../canvas-host/server.js";
-import { createA2aHttpHandler } from "./a2a/a2a-http.js";
 import { resolveGatewayListenHosts } from "./net.js";
 import {
   createGatewayBroadcaster,
@@ -27,9 +28,12 @@ import {
 } from "./server-chat.js";
 import { MAX_PAYLOAD_BYTES } from "./server-constants.js";
 import { attachGatewayUpgradeHandler, createGatewayHttpServer } from "./server-http.js";
+import type { DedupeEntry } from "./server-shared.js";
 import { createGatewayHooksRequestHandler } from "./server/hooks.js";
 import { listenGatewayHttpServer } from "./server/http-listen.js";
 import { createGatewayPluginRequestHandler } from "./server/plugins-http.js";
+import type { GatewayTlsRuntime } from "./server/tls.js";
+import type { GatewayWsClient } from "./server/ws-types.js";
 
 export async function createGatewayRuntimeState(params: {
   cfg: import("../config/config.js").BitterbotConfig;
@@ -105,6 +109,12 @@ export async function createGatewayRuntimeState(params: {
 
   const clients = new Set<GatewayWsClient>();
   const { broadcast, broadcastToConnIds } = createGatewayBroadcaster({ clients });
+  // PLAN-53 Track B: held actions and their decisions reach every approvals-scoped window.
+  setReviewBroadcast((event, payload) => broadcast(event, payload));
+  // PLAN-53 Track E: scheduled-job runs and gateway notices for the owner.
+  setCronBroadcast((payload) => broadcast("cron", payload, { dropIfSlow: true }));
+  setOwnerNoticeBroadcast((payload) => broadcast("owner.notice", payload));
+  setMonitorBroadcast((payload) => broadcast("monitor", payload, { dropIfSlow: true }));
 
   const handleHooksRequest = createGatewayHooksRequestHandler({
     deps: params.deps,

@@ -2,50 +2,29 @@
  * Execution Tracking Hook: an `after_tool_call` plugin hook that feeds
  * tool execution outcomes into the SkillExecutionTracker.
  *
- * This is the primary data-ingestion point for the autoresearch loop:
- * every tool call is matched against existing skill crystals, and when
- * a match is found the outcome is recorded so that the dream engine's
- * research mode has empirical data to work with.
+ * What a row here MEANS (PLAN-45 Phase 0): "a tool whose name matches a
+ * skill crystal's category ran and did not report an error". That is
+ * tool-level evidence (`recorded_by = 'after_tool_call'`), never a judgment
+ * that the user's task succeeded. Competence consumers must not read it as
+ * such; Phase 1 back-fills run-level outcomes from the event journal.
+ *
+ * `reward_score` is written as NULL. The previous value was a bucket of the
+ * result's character count (0.5-0.8), which also fired the hormonal "reward"
+ * stimulus for any response over 200 characters. A length is not a reward.
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
+import {
+  isA2aTaskSessionKey,
+  isSkillEvolveValidationSessionKey,
+} from "../sessions/session-key-utils.js";
 import type { ExecutionOutcome } from "./crystal-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
+import { RUN_EVIDENCE_WHERE, type SkillExecutionTracker } from "./skill-execution-tracker.js";
 
 const log = createSubsystemLogger("memory/exec-hook");
-
-/**
- * Compute a reward score (0-1) from the tool call result.
- *
- * - 1.0 for a successful call
- * - 0.0 for an error
- * - 0.5-0.8 scaled by result content length (for non-error, non-trivial results)
- */
-export function computeReward(result: unknown, error: string | undefined): number {
-  if (error) {
-    return 0.0;
-  }
-  if (result == null) {
-    return 0.5;
-  }
-
-  const str = typeof result === "string" ? result : JSON.stringify(result);
-  const len = str.length;
-
-  if (len === 0) {
-    return 0.5;
-  }
-  if (len < 50) {
-    return 0.6;
-  }
-  if (len < 200) {
-    return 0.7;
-  }
-  return 0.8;
-}
 
 /**
  * Normalize a tool name for matching against skill_category.
@@ -92,7 +71,8 @@ function findMatchingSkill(db: DatabaseSync, toolName: string): string | null {
 /**
  * Publish maturity gate (mirrors checkBountyClaimQuality's execution floor in
  * skill-network-bridge.ts): re-attempt network publish once a skill has this
- * many completed executions.
+ * many completed executions with RUN-level evidence (PLAN-45 Phase 1.1: a
+ * fresh hook row is never counted; the back-fill stamps earlier runs).
  */
 const PUBLISH_MATURITY_EXECUTIONS = 3;
 
@@ -117,15 +97,20 @@ export function createExecutionTrackingHook(
 ): (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void {
   return (event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext): void => {
     try {
-      const reward = computeReward(event.result, event.error);
-
-      // Hormonal events from tool outcomes — personality reacts in real-time
-      if (hormonalManager) {
-        if (event.error) {
-          hormonalManager.stimulate("error");
-        } else if (reward >= 0.7) {
-          hormonalManager.stimulate("reward");
-        }
+      // PLAN-43 Phase 1 (R2): a remote A2A caller's turn must not move
+      // node state — no hormonal stimulation, no skill execution records,
+      // no steering rewards, no maturity-triggered publish re-attempts.
+      if (
+        isA2aTaskSessionKey(ctx.sessionKey) ||
+        isSkillEvolveValidationSessionKey(ctx.sessionKey)
+      ) {
+        return;
+      }
+      // Hormonal events from tool outcomes: an error is a real signal. A
+      // non-error is NOT a reward (PLAN-45 Phase 0); verified task completion
+      // stimulates reward through registerTaskRewardHook instead.
+      if (hormonalManager && event.error) {
+        hormonalManager.stimulate("error");
       }
 
       const skillId = findMatchingSkill(db, event.toolName);
@@ -136,11 +121,14 @@ export function createExecutionTrackingHook(
       const execId = tracker.startExecution(skillId, ctx.sessionKey, {
         toolName: event.toolName,
         recordedBy: "after_tool_call",
+        runId: ctx.runId,
+        toolCallId: ctx.toolCallId,
+        evidence: "tool",
       });
 
       const outcome: ExecutionOutcome = {
         success: !event.error,
-        rewardScore: reward,
+        rewardScore: undefined,
         errorType: event.error ? "tool_error" : null,
         errorDetail: event.error ?? null,
         executionTimeMs: event.durationMs,
@@ -154,7 +142,8 @@ export function createExecutionTrackingHook(
           const mature = db
             .prepare(
               `SELECT (SELECT COUNT(*) FROM skill_executions
-                        WHERE skill_crystal_id = ? AND completed_at IS NOT NULL) AS execs,
+                        WHERE skill_crystal_id = ? AND completed_at IS NOT NULL
+                          AND ${RUN_EVIDENCE_WHERE}) AS execs,
                       (SELECT published_at FROM chunks WHERE id = ?) AS published_at`,
             )
             .get(skillId, skillId) as { execs: number; published_at: number | null } | undefined;

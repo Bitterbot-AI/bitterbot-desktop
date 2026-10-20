@@ -22,9 +22,16 @@ Bitterbot selects models in this order:
 3. **Provider auth failover** happens inside a provider before moving to the
    next model.
 
+With no model configured at all, the runtime falls back to
+`anthropic/claude-sonnet-5-5`, the model setup recommends for Anthropic.
+Setup (`bitterbot onboard`) always writes a model: the provider's recommended
+one is Claude Sonnet 5.5 (`anthropic/claude-sonnet-5-5`), GPT-5.5
+(`openai/gpt-5.5`), OpenRouter Auto or Gemini 3.1 Pro (preview), and Claude
+Sonnet 5 is the everyday default the Control UI picker marks.
+
 Related:
 
-- `agents.defaults.models` is the allowlist/catalog of models Bitterbot can use (plus aliases).
+- `agents.defaults.models` is the catalog of models (aliases, per-model params). It restricts which models can be picked only when `agents.defaults.restrictModels: true`.
 - `agents.defaults.imageModel` is used **only when** the primary model can’t accept images.
 - Per-agent defaults can override `agents.defaults.model` via `agents.list[].model` plus bindings (see [/concepts/multi-agent](/concepts/multi-agent)).
 
@@ -49,7 +56,7 @@ setup-token` also supported).
 
 - `agents.defaults.model.primary` and `agents.defaults.model.fallbacks`
 - `agents.defaults.imageModel.primary` and `agents.defaults.imageModel.fallbacks`
-- `agents.defaults.models` (allowlist + aliases + provider params)
+- `agents.defaults.models` (catalog: aliases + provider params; an allowlist only with `agents.defaults.restrictModels: true`)
 - `models.providers` (custom providers written into `models.json`)
 
 Model refs are normalized to lowercase. Provider aliases like `z.ai/*` normalize
@@ -60,9 +67,12 @@ Provider configuration examples (including OpenCode Zen) live in
 
 ## “Model is not allowed” (and why replies stop)
 
-If `agents.defaults.models` is set, it becomes the **allowlist** for `/model` and for
-session overrides. When a user selects a model that isn’t in that allowlist,
-Bitterbot returns:
+`agents.defaults.models` is a catalog, not a restriction: setting a default
+model registers it there, and that alone must not forbid every other model.
+To restrict which models `/model` and session overrides may pick, opt in with
+`agents.defaults.restrictModels: true`; the map is then enforced as the
+**allowlist** (the current default is always allowed). When a user selects a
+model that isn’t in that allowlist, Bitterbot returns:
 
 ```
 Model "provider/model" is not allowed. Use /model to list available models.
@@ -72,22 +82,45 @@ This happens **before** a normal reply is generated, so the message can feel
 like it “didn’t respond.” The fix is to either:
 
 - Add the model to `agents.defaults.models`, or
-- Clear the allowlist (remove `agents.defaults.models`), or
+- Turn the restriction off (`agents.defaults.restrictModels: false`, the default), or
 - Pick a model from `/model list`.
 
 Example allowlist config:
 
 ```json5
 {
-  agent: {
-    model: { primary: "anthropic/claude-sonnet-4-5" },
-    models: {
-      "anthropic/claude-sonnet-4-5": { alias: "Sonnet" },
-      "anthropic/claude-opus-4-6": { alias: "Opus" },
+  agents: {
+    defaults: {
+      restrictModels: true,
+      model: { primary: "anthropic/claude-sonnet-4-5" },
+      models: {
+        "anthropic/claude-sonnet-4-5": { alias: "Sonnet" },
+        "anthropic/claude-opus-4-6": { alias: "Opus" },
+      },
     },
   },
 }
 ```
+
+## Family shortcuts follow the newest model
+
+An alias named after a Claude family (`opus`, `sonnet`, `haiku` or `fable`,
+any capitalization) that points at a model of that family resolves to the
+newest model of the family your provider serves. With
+`"anthropic/claude-opus-4-8": { alias: "opus" }`, `/model opus` picks Claude
+Opus 5.5 once Anthropic serves it, and the alias list the agent sees says so.
+The newest model comes from the model list the gateway loads at startup, so
+before that (or in a CLI command that does not load it) the alias resolves
+exactly as configured.
+
+Any other alias name is a pin and never moves: use `opus48` for
+`anthropic/claude-opus-4-8` to keep that exact model. With
+`restrictModels: true`, every alias resolves exactly as configured, since the
+newer model may not be on your allowlist.
+
+The agent is also told, on its own line every turn, which model it is running
+on (including right after a switch), and to answer "which model are you?"
+from that line rather than from memory.
 
 ## Switching models in chat (`/model`)
 
@@ -244,7 +277,7 @@ Discovered IDs are the source of truth for _which_ models exist; capability
 metadata (context window, image support, reasoning) is joined from the vendored
 catalog, and synthesized from the provider's richest known model for IDs the SDK
 has never seen. Providers without a listable endpoint (Bedrock via SigV4, Codex
-/ Gemini-CLI / Antigravity via OAuth) keep their vendored/curated entries.
+via OAuth) keep their vendored/curated entries.
 
 Discovery is **safe by construction**: any missing credential, non-200, timeout,
 or parse failure falls back to the vendored list for that provider — a failed

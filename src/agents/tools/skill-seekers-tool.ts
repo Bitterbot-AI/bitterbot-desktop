@@ -15,10 +15,10 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const SkillSeekersIngestSchema = Type.Object({
@@ -94,7 +94,8 @@ export function createSkillSeekersIngestTool(options: {
     description:
       "Generate a new skill on demand by scraping a documentation URL through Skill Seekers. Use this when you encounter an unfamiliar library, API, or tool and want to learn it before continuing. The generated skill is signed, enters quarantine by default, and expires according to your config's TTL. Respects the per-cycle budget shared with the dream engine.",
     parameters: SkillSeekersIngestSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const url = readStringParam(params, "url", { required: true });
       const name = readStringParam(params, "name");
       const description = readStringParam(params, "description");

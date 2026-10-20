@@ -15,5 +15,5 @@ jobs:
       pull-requests: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: tesslio/skill-review@22e928dd837202b2b1d1397e0114c92e0fae5ead

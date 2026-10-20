@@ -1,4 +1,5 @@
 import type { ChannelId } from "../channels/plugins/types.js";
+import type { TemperamentLevel } from "../memory/genome-parser.js";
 import type { GatewayDaemonRuntime } from "./daemon-runtime.js";
 
 export type OnboardMode = "local" | "remote";
@@ -27,8 +28,6 @@ export type AuthChoice =
   | "codex-cli"
   | "apiKey"
   | "gemini-api-key"
-  | "google-antigravity"
-  | "google-gemini-cli"
   | "zai-api-key"
   | "zai-coding-global"
   | "zai-coding-cn"
@@ -89,6 +88,18 @@ export type OnboardOptions = {
   flow?: "quickstart" | "advanced" | "manual";
   workspace?: string;
   nonInteractive?: boolean;
+  /**
+   * PLAN-56 Phase 4: true = browser setup (`--browser`), false = terminal
+   * wizard (`--no-browser`), undefined = decide (onboard-browser.ts).
+   */
+  browser?: boolean;
+  /**
+   * Run by install.sh right after installing (hidden `--from-installer`):
+   * an already set-up install points at the Control UI instead of the setup
+   * page, and a gateway from another install is never offered a switch here
+   * (install.sh already asked).
+   */
+  fromInstaller?: boolean;
   /** Required for non-interactive onboarding; skips the interactive risk prompt when true. */
   acceptRisk?: boolean;
   reset?: boolean;
@@ -144,6 +155,8 @@ export type OnboardOptions = {
   skipHealth?: boolean;
   skipUi?: boolean;
   nodeManager?: NodeManagerChoice;
+  /** The agent's starting voice (GENOME.md Temperament level). */
+  vibe?: TemperamentLevel;
   remoteUrl?: string;
   remoteToken?: string;
   json?: boolean;

@@ -1,5 +1,5 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash } from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { resolveFileWithinRoot } from "../canvas-host/file-resolver.js";
 import { mimeFromExtension } from "../media/mime.js";
@@ -13,7 +13,8 @@ import { normalizeControlUiBasePath } from "./control-ui-shared.js";
  * so every existing route (/dreams, /management, /m, /wallet/fund, /a2a, /v1/*,
  * hooks, Slack, canvas, avatars and runtime plugin routes) still wins. There is
  * deliberately no SPA history fallback: the renderer has no client-side router,
- * so an unknown path is a genuine 404 rather than a silent index.html.
+ * so an unknown path is a genuine 404 rather than a silent index.html. The one
+ * exception is `/setup` (PLAN-56 Phase 4), which serves index.html.
  */
 
 export type ControlUiHttpOptions = {
@@ -41,6 +42,9 @@ export function stripBasePath(urlPath: string, basePath: string): string | null 
   return null;
 }
 
+/** The setup page's path, relative to the Control UI base path. */
+export const SETUP_PAGE_PATH = "/setup";
+
 const weakEtag = (buf: Buffer): string => `W/"${createHash("sha1").update(buf).digest("base64")}"`;
 
 /**
@@ -65,8 +69,11 @@ export async function handleControlUiRequest(
     return false;
   }
   let pathname: string;
+  let search: string;
   try {
-    pathname = new URL(rawUrl, "http://localhost").pathname;
+    const parsed = new URL(rawUrl, "http://localhost");
+    pathname = parsed.pathname;
+    search = parsed.search;
   } catch {
     return false;
   }
@@ -93,7 +100,21 @@ export async function handleControlUiRequest(
     return true;
   }
 
-  const opened = await resolveFileWithinRoot(root, relative).catch(() => null);
+  // `/setup/` would resolve the page's relative asset URLs under /setup/ and
+  // render blank: send it to `/setup`, keeping the query (the setup link).
+  if (relative === `${SETUP_PAGE_PATH}/`) {
+    res.statusCode = 302;
+    res.setHeader("Location", `${basePath}${SETUP_PAGE_PATH}${search}`);
+    res.setHeader("Cache-Control", "no-store");
+    res.end();
+    return true;
+  }
+
+  // PLAN-56 Phase 4: `/setup` is the browser setup page, a client-side view
+  // of the same bundle (the renderer switches on the path). The only route
+  // besides the files themselves; everything else stays a genuine 404.
+  const fileRelative = relative === SETUP_PAGE_PATH ? "/index.html" : relative;
+  const opened = await resolveFileWithinRoot(root, fileRelative).catch(() => null);
   if (!opened) {
     return false;
   }

@@ -1,0 +1,1946 @@
+/**
+ * PLAN-50: the usage ledger — one durable, indexed, append-only row per model call.
+ *
+ * Every token the node spends (chat turns, hidden LLM lanes, embeddings, vision) is recorded
+ * here with exclusive token buckets, the USD cost frozen at write time, the price used and where
+ * it came from, and an attribution `feature`. The gateway aggregates from this table instead of
+ * re-scanning every session transcript; the UI streams new rows over the `usage` event.
+ *
+ * Default DB: `<state>/usage-ledger.sqlite` (override `BITTERBOT_USAGE_LEDGER_DB`). On by
+ * default; `BITTERBOT_USAGE_LEDGER=0` disables. Recording never throws into callers.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
+import { resolveRuntimeEngine } from "../agents/runtime/engine.js";
+import type { NormalizedUsage } from "../agents/usage.js";
+import type { BitterbotConfig } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { requireNodeSqlite } from "../memory/sqlite.js";
+import { resolveUserPath } from "../utils.js";
+import { startPricingRefresh, stopPricingRefresh } from "./model-pricing-live.js";
+import { priceUsage, resolveModelPricing } from "./model-pricing.js";
+import type {
+  CacheTtlLabel,
+  CacheTurnState,
+  ModelPrice,
+  PricingSource,
+  ToolCallRow,
+  ToolCallVia,
+  UsageBuckets,
+  UsageCost,
+  UsageEventRow,
+  UsageEventsPage,
+  UsageKind,
+  UsageLedgerHealth,
+} from "./usage-ledger.types.js";
+import { emptyUsageCost, formatUsageDay } from "./usage-ledger.types.js";
+
+const log = createSubsystemLogger("usage-ledger");
+
+export const DEFAULT_USAGE_RETENTION_DAYS = 365;
+
+const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS usage_events (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts               INTEGER NOT NULL,
+  day              TEXT NOT NULL,
+  dedupe_key       TEXT,
+  kind             TEXT NOT NULL,
+  feature          TEXT NOT NULL,
+  provider         TEXT,
+  model            TEXT,
+  api              TEXT,
+  agent_id         TEXT,
+  session_key      TEXT,
+  session_id       TEXT,
+  run_id           TEXT,
+  task_id          TEXT,
+  channel          TEXT,
+  input            INTEGER NOT NULL DEFAULT 0,
+  cache_read       INTEGER NOT NULL DEFAULT 0,
+  cache_write      INTEGER NOT NULL DEFAULT 0,
+  output           INTEGER NOT NULL DEFAULT 0,
+  reasoning        INTEGER NOT NULL DEFAULT 0,
+  total            INTEGER NOT NULL DEFAULT 0,
+  cost_input       REAL NOT NULL DEFAULT 0,
+  cost_cache_read  REAL NOT NULL DEFAULT 0,
+  cost_cache_write REAL NOT NULL DEFAULT 0,
+  cost_output      REAL NOT NULL DEFAULT 0,
+  cost_total       REAL NOT NULL DEFAULT 0,
+  cost_source      TEXT NOT NULL,
+  price_input      REAL,
+  price_output     REAL,
+  price_cache_read REAL,
+  price_cache_write REAL,
+  duration_ms      INTEGER,
+  status           TEXT NOT NULL DEFAULT 'ok',
+  stop_reason      TEXT,
+  batch            INTEGER NOT NULL DEFAULT 0,
+  items            INTEGER,
+  source           TEXT NOT NULL DEFAULT 'live',
+  cost_computed    REAL,
+  cache_state      TEXT,
+  cache_bust_reason TEXT,
+  cache_ttl        TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_events_dedupe ON usage_events(dedupe_key) WHERE dedupe_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_usage_events_ts      ON usage_events(ts);
+CREATE INDEX IF NOT EXISTS idx_usage_events_day     ON usage_events(day);
+CREATE INDEX IF NOT EXISTS idx_usage_events_model   ON usage_events(provider, model);
+CREATE INDEX IF NOT EXISTS idx_usage_events_feature ON usage_events(feature);
+CREATE INDEX IF NOT EXISTS idx_usage_events_session ON usage_events(session_key);
+CREATE INDEX IF NOT EXISTS idx_usage_events_run     ON usage_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_usage_events_task    ON usage_events(task_id);
+CREATE TABLE IF NOT EXISTS usage_meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tool_calls (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts           INTEGER NOT NULL,
+  day          TEXT NOT NULL,
+  agent_id     TEXT,
+  session_key  TEXT,
+  run_id       TEXT,
+  tool         TEXT NOT NULL,
+  via          TEXT NOT NULL,
+  ok           INTEGER NOT NULL DEFAULT 1,
+  error_class  TEXT,
+  duration_ms  INTEGER,
+  result_chars INTEGER,
+  spilled      INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_ts   ON tool_calls(ts);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_tool ON tool_calls(tool, via);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_run  ON tool_calls(run_id);
+`;
+
+/**
+ * Columns added after the first release; applied with ALTER TABLE on existing databases.
+ * - `usage:v2` (2026-09-15): cost_computed, cache_state, cache_bust_reason, cache_ttl.
+ * - `usage:v3` (2026-09-20): cache_write_5m / cache_write_1h (Anthropic per-TTL split),
+ *   prefix_digest / tools_digest (prefix-stability telemetry). The `tool_calls` table is
+ *   created by the schema block above on the same open.
+ * - `usage:v4` (2026-10-01): engine (PLAN-52: the agent runtime engine, for the soak comparison).
+ */
+const MIGRATION_COLUMNS: Array<[string, string]> = [
+  ["cost_computed", "REAL"],
+  ["cache_state", "TEXT"],
+  ["cache_bust_reason", "TEXT"],
+  ["cache_ttl", "TEXT"],
+  ["cache_write_5m", "INTEGER"],
+  ["cache_write_1h", "INTEGER"],
+  ["prefix_digest", "TEXT"],
+  ["tools_digest", "TEXT"],
+  ["engine", "TEXT"],
+];
+
+export type UsageEventInput = {
+  ts?: number;
+  kind: UsageKind;
+  feature: string;
+  provider?: string | null;
+  model?: string | null;
+  api?: string | null;
+  agentId?: string | null;
+  sessionKey?: string | null;
+  sessionId?: string | null;
+  runId?: string | null;
+  taskId?: string | null;
+  channel?: string | null;
+  /** Exclusive buckets in any provider spelling; `reasoning` is a subset of output. */
+  usage: (NormalizedUsage & { reasoning?: number }) | null | undefined;
+  /** Library/provider-reported USD cost (pi-ai `usage.cost`). Preferred when non-zero. */
+  cost?: Partial<UsageCost> | null;
+  /** Force a source; used for `local` and `estimated` rows whose cost is known by construction. */
+  costSource?: PricingSource;
+  durationMs?: number | null;
+  status?: "ok" | "error";
+  stopReason?: string | null;
+  batch?: boolean;
+  items?: number | null;
+  /** PLAN-50 Phase 5: prompt-cache observation for this turn (chat rows). */
+  cacheState?: CacheTurnState | null;
+  cacheBustReason?: string | null;
+  cacheTtl?: CacheTtlLabel | null;
+  /**
+   * Anthropic's per-TTL cache_creation split (`usage.cacheWrite5m` / `usage.cacheWrite1h`)
+   * when the provider reports it. When present it sets `cacheTtl` exactly and the 1h share
+   * is priced at the 1h rate; when absent the configured TTL label is used as before.
+   */
+  cacheWrite5m?: number | null;
+  cacheWrite1h?: number | null;
+  /** Prefix-stability digests (stable system block, sorted tool names) for this request. */
+  prefixDigest?: string | null;
+  toolsDigest?: string | null;
+  /** Agent runtime engine; resolved from the config and the agent id when omitted. */
+  engine?: string | null;
+  /** Stable key so live rows and transcript reconcile rows never double count. */
+  dedupeKey?: string | null;
+  source?: "live" | "reconcile";
+  /** Config for override pricing; loaded lazily when omitted. */
+  config?: BitterbotConfig;
+};
+
+type RawRow = {
+  id: number;
+  ts: number;
+  day: string;
+  kind: string;
+  feature: string;
+  provider: string | null;
+  model: string | null;
+  api: string | null;
+  agent_id: string | null;
+  session_key: string | null;
+  session_id: string | null;
+  run_id: string | null;
+  task_id: string | null;
+  channel: string | null;
+  input: number;
+  cache_read: number;
+  cache_write: number;
+  output: number;
+  reasoning: number;
+  total: number;
+  cost_input: number;
+  cost_cache_read: number;
+  cost_cache_write: number;
+  cost_output: number;
+  cost_total: number;
+  cost_source: string;
+  price_input: number | null;
+  price_output: number | null;
+  price_cache_read: number | null;
+  price_cache_write: number | null;
+  duration_ms: number | null;
+  status: string;
+  stop_reason: string | null;
+  batch: number;
+  items: number | null;
+  source: string;
+  cost_computed: number | null;
+  cache_state: string | null;
+  cache_bust_reason: string | null;
+  cache_ttl: string | null;
+  cache_write_5m: number | null;
+  cache_write_1h: number | null;
+  prefix_digest: string | null;
+  tools_digest: string | null;
+  engine: string | null;
+};
+
+type RawToolCallRow = {
+  id: number;
+  ts: number;
+  day: string;
+  agent_id: string | null;
+  session_key: string | null;
+  run_id: string | null;
+  tool: string;
+  via: string;
+  ok: number;
+  error_class: string | null;
+  duration_ms: number | null;
+  result_chars: number | null;
+  spilled: number;
+};
+
+export type ToolCallInput = {
+  ts?: number;
+  agentId?: string | null;
+  sessionKey?: string | null;
+  runId?: string | null;
+  tool: string;
+  via: ToolCallVia;
+  ok: boolean;
+  errorClass?: string | null;
+  durationMs?: number | null;
+  resultChars?: number | null;
+  spilled?: boolean;
+  /** Config for `usage.ledger.enabled`; loaded lazily when omitted. */
+  config?: BitterbotConfig;
+};
+
+export type EngineComparisonRow = {
+  engine: string;
+  runs: number;
+  modelCalls: number;
+  costUsd: number;
+  costPerRunUsd: number;
+  errorCalls: number;
+  durationP50Ms: number | null;
+  durationP95Ms: number | null;
+  toolCalls: number;
+  toolErrors: number;
+  toolErrorRate: number | null;
+};
+
+export type UsageAggregateRow = {
+  group_key?: string | null;
+  calls: number;
+  errors: number;
+  input: number;
+  cache_read: number;
+  cache_write: number;
+  output: number;
+  reasoning: number;
+  total: number;
+  cost_input: number;
+  cost_cache_read: number;
+  cost_cache_write: number;
+  cost_output: number;
+  cost_total: number;
+  cost_computed: number;
+  computed_calls: number;
+  cost_reported_on_computed: number;
+  reported_calls: number;
+  unpriced_calls: number;
+  estimated_calls: number;
+  last_ts: number | null;
+  [extra: string]: unknown;
+};
+
+/** Token columns of a `provider`-cost row (see UsageLedger.providerCostRows). */
+export type RepriceRow = {
+  id: number;
+  ts: number;
+  input: number;
+  cache_read: number;
+  cache_write: number;
+  output: number;
+  reasoning: number;
+  total: number;
+  batch: number;
+  cache_ttl: string | null;
+  cache_write_5m: number | null;
+  cache_write_1h: number | null;
+  cost_total: number;
+};
+
+export type UsageEventFilters = {
+  startMs?: number;
+  endMs?: number;
+  agentId?: string;
+  feature?: string;
+  kind?: UsageKind;
+  provider?: string;
+  model?: string;
+  sessionKey?: string;
+  runId?: string;
+  taskId?: string;
+  channel?: string;
+  engine?: string;
+};
+
+const nz = (v: number | undefined | null): number =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+
+export function toUsageBuckets(
+  usage: (NormalizedUsage & { reasoning?: number }) | null | undefined,
+): UsageBuckets {
+  const input = nz(usage?.input);
+  const cacheRead = nz(usage?.cacheRead);
+  const cacheWrite = nz(usage?.cacheWrite);
+  const output = nz(usage?.output);
+  const reasoning = Math.min(nz(usage?.reasoning), output);
+  const derived = input + cacheRead + cacheWrite + output;
+  // Providers that report only a total (embeddings) land in `input`.
+  const total = derived > 0 ? derived : nz(usage?.total);
+  return {
+    input: derived > 0 ? input : total,
+    cacheRead,
+    cacheWrite,
+    output,
+    reasoning,
+    total,
+  };
+}
+
+function rowToEvent(row: RawRow): UsageEventRow {
+  const price: ModelPrice | null =
+    row.price_input === null && row.price_output === null
+      ? null
+      : {
+          input: row.price_input ?? 0,
+          output: row.price_output ?? 0,
+          cacheRead: row.price_cache_read ?? 0,
+          cacheWrite: row.price_cache_write ?? 0,
+        };
+  return {
+    id: row.id,
+    ts: row.ts,
+    day: row.day,
+    kind: row.kind as UsageKind,
+    feature: row.feature,
+    provider: row.provider,
+    model: row.model,
+    api: row.api,
+    agentId: row.agent_id,
+    sessionKey: row.session_key,
+    sessionId: row.session_id,
+    runId: row.run_id,
+    taskId: row.task_id,
+    channel: row.channel,
+    usage: {
+      input: row.input,
+      cacheRead: row.cache_read,
+      cacheWrite: row.cache_write,
+      output: row.output,
+      reasoning: row.reasoning,
+      total: row.total,
+    },
+    cost: {
+      input: row.cost_input,
+      cacheRead: row.cost_cache_read,
+      cacheWrite: row.cost_cache_write,
+      output: row.cost_output,
+      total: row.cost_total,
+    },
+    costSource: row.cost_source as PricingSource,
+    price,
+    durationMs: row.duration_ms,
+    status: row.status === "error" ? "error" : "ok",
+    stopReason: row.stop_reason,
+    batch: row.batch === 1,
+    items: row.items,
+    source: row.source === "reconcile" ? "reconcile" : "live",
+    costComputed: typeof row.cost_computed === "number" ? row.cost_computed : null,
+    cacheState: (row.cache_state as CacheTurnState | null) ?? null,
+    cacheBustReason: row.cache_bust_reason ?? null,
+    cacheTtl: (row.cache_ttl as CacheTtlLabel | null) ?? null,
+    cacheWrite5m: typeof row.cache_write_5m === "number" ? row.cache_write_5m : null,
+    cacheWrite1h: typeof row.cache_write_1h === "number" ? row.cache_write_1h : null,
+    prefixDigest: row.prefix_digest ?? null,
+    toolsDigest: row.tools_digest ?? null,
+    engine: row.engine ?? null,
+  };
+}
+
+function rowToToolCall(row: RawToolCallRow): ToolCallRow {
+  return {
+    id: row.id,
+    ts: row.ts,
+    day: row.day,
+    agentId: row.agent_id,
+    sessionKey: row.session_key,
+    runId: row.run_id,
+    tool: row.tool,
+    via: (TOOL_CALL_VIAS.has(row.via) ? row.via : "direct") as ToolCallVia,
+    ok: row.ok === 1,
+    errorClass: row.error_class,
+    durationMs: row.duration_ms,
+    resultChars: row.result_chars,
+    spilled: row.spilled === 1,
+  };
+}
+
+const TOOL_CALL_VIAS: ReadonlySet<string> = new Set([
+  "direct",
+  "use_tool",
+  "native-search",
+  "list_tools",
+]);
+
+function buildWhere(filters: UsageEventFilters | undefined): {
+  where: string;
+  args: Array<string | number>;
+} {
+  const clauses: string[] = [];
+  const args: Array<string | number> = [];
+  if (!filters) {
+    return { where: "", args };
+  }
+  if (typeof filters.startMs === "number") {
+    clauses.push("ts >= ?");
+    args.push(filters.startMs);
+  }
+  if (typeof filters.endMs === "number") {
+    clauses.push("ts <= ?");
+    args.push(filters.endMs);
+  }
+  const eq: Array<[keyof UsageEventFilters, string]> = [
+    ["agentId", "agent_id"],
+    ["feature", "feature"],
+    ["kind", "kind"],
+    ["provider", "provider"],
+    ["model", "model"],
+    ["sessionKey", "session_key"],
+    ["runId", "run_id"],
+    ["taskId", "task_id"],
+    ["channel", "channel"],
+    ["engine", "engine"],
+  ];
+  for (const [key, column] of eq) {
+    const value = filters[key];
+    if (typeof value === "string" && value.trim()) {
+      clauses.push(`${column} = ?`);
+      args.push(value.trim());
+    }
+  }
+  return { where: clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "", args };
+}
+
+export type ResolvedUsageEvent = Omit<UsageEventRow, "id">;
+
+export class UsageLedger {
+  private readonly db: DatabaseSync;
+  readonly dbPath: string | null;
+
+  constructor(db: DatabaseSync, dbPath: string | null = null) {
+    this.db = db;
+    this.dbPath = dbPath;
+    this.db.exec(SCHEMA_SQL);
+    this.ensureColumns();
+  }
+
+  private ensureColumns(): void {
+    const existing = new Set(
+      (
+        this.db.prepare("PRAGMA table_info(usage_events)").all() as unknown as Array<{
+          name: string;
+        }>
+      ).map((c) => c.name),
+    );
+    for (const [name, type] of MIGRATION_COLUMNS) {
+      if (!existing.has(name)) {
+        this.db.exec(`ALTER TABLE usage_events ADD COLUMN ${name} ${type}`);
+      }
+    }
+  }
+
+  static open(dbPath: string): UsageLedger {
+    const resolved = resolveUserPath(dbPath);
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    const { DatabaseSync } = requireNodeSqlite();
+    const db = new DatabaseSync(resolved);
+    try {
+      db.prepare("PRAGMA journal_mode=WAL").get();
+    } catch {
+      // older SQLite — default journal.
+    }
+    try {
+      db.exec("PRAGMA synchronous=NORMAL");
+      db.exec("PRAGMA busy_timeout=5000");
+    } catch {
+      // non-essential.
+    }
+    return new UsageLedger(db, resolved);
+  }
+
+  static openInMemory(): UsageLedger {
+    const { DatabaseSync } = requireNodeSqlite();
+    return new UsageLedger(new DatabaseSync(":memory:"), null);
+  }
+
+  close(): void {
+    try {
+      this.db.close();
+    } catch {
+      // already closed
+    }
+  }
+
+  /** Run many inserts in one transaction (the first-run backfill is thousands of rows). */
+  transaction<T>(fn: () => T): T {
+    this.db.exec("BEGIN");
+    try {
+      const result = fn();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (err) {
+      try {
+        this.db.exec("ROLLBACK");
+      } catch {
+        // nothing to roll back
+      }
+      throw err;
+    }
+  }
+
+  /** Insert a fully-resolved event. Returns the row id, or null when the dedupe key already exists. */
+  insert(evt: ResolvedUsageEvent & { dedupeKey?: string | null }): number | null {
+    const result = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO usage_events
+          (ts, day, dedupe_key, kind, feature, provider, model, api, agent_id, session_key, session_id,
+           run_id, task_id, channel, input, cache_read, cache_write, output, reasoning, total,
+           cost_input, cost_cache_read, cost_cache_write, cost_output, cost_total, cost_source,
+           price_input, price_output, price_cache_read, price_cache_write,
+           duration_ms, status, stop_reason, batch, items, source,
+           cost_computed, cache_state, cache_bust_reason, cache_ttl,
+           cache_write_5m, cache_write_1h, prefix_digest, tools_digest, engine)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        evt.ts,
+        evt.day,
+        evt.dedupeKey ?? null,
+        evt.kind,
+        evt.feature,
+        evt.provider,
+        evt.model,
+        evt.api,
+        evt.agentId,
+        evt.sessionKey,
+        evt.sessionId,
+        evt.runId,
+        evt.taskId,
+        evt.channel,
+        evt.usage.input,
+        evt.usage.cacheRead,
+        evt.usage.cacheWrite,
+        evt.usage.output,
+        evt.usage.reasoning,
+        evt.usage.total,
+        evt.cost.input,
+        evt.cost.cacheRead,
+        evt.cost.cacheWrite,
+        evt.cost.output,
+        evt.cost.total,
+        evt.costSource,
+        evt.price?.input ?? null,
+        evt.price?.output ?? null,
+        evt.price?.cacheRead ?? null,
+        evt.price?.cacheWrite ?? null,
+        evt.durationMs ?? null,
+        evt.status,
+        evt.stopReason ?? null,
+        evt.batch ? 1 : 0,
+        evt.items ?? null,
+        evt.source,
+        evt.costComputed ?? null,
+        evt.cacheState ?? null,
+        evt.cacheBustReason ?? null,
+        evt.cacheTtl ?? null,
+        evt.cacheWrite5m ?? null,
+        evt.cacheWrite1h ?? null,
+        evt.prefixDigest ?? null,
+        evt.toolsDigest ?? null,
+        evt.engine ?? null,
+      );
+    const changes = Number(result.changes ?? 0);
+    if (changes === 0) {
+      if (evt.source === "live" && evt.dedupeKey) {
+        this.adoptLiveAttribution(evt);
+      }
+      return null;
+    }
+    return Number(result.lastInsertRowid);
+  }
+
+  /**
+   * A reconcile pass that read the transcript line before the live queue landed inserted the
+   * row with weaker attribution; the live event carries the truth (feature, session, run,
+   * cache observation), so it wins on the dedupe conflict.
+   */
+  private adoptLiveAttribution(evt: ResolvedUsageEvent & { dedupeKey?: string | null }): void {
+    this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, session_key = COALESCE(?, session_key),
+           channel = COALESCE(?, channel), run_id = COALESCE(?, run_id), task_id = COALESCE(?, task_id),
+           cache_state = COALESCE(?, cache_state), cache_bust_reason = COALESCE(?, cache_bust_reason),
+           cache_ttl = COALESCE(?, cache_ttl), prefix_digest = COALESCE(?, prefix_digest),
+           tools_digest = COALESCE(?, tools_digest), source = 'live'
+         WHERE dedupe_key = ? AND source = 'reconcile'`,
+      )
+      .run(
+        evt.feature,
+        evt.sessionKey,
+        evt.channel,
+        evt.runId,
+        evt.taskId,
+        evt.cacheState ?? null,
+        evt.cacheBustReason ?? null,
+        evt.cacheTtl ?? null,
+        evt.prefixDigest ?? null,
+        evt.toolsDigest ?? null,
+        evt.dedupeKey ?? null,
+      );
+  }
+
+  events(params: UsageEventFilters & { limit?: number; beforeId?: number } = {}): UsageEventsPage {
+    const { where, args } = buildWhere(params);
+    const clauses: string[] = [];
+    if (typeof params.beforeId === "number") {
+      clauses.push("id < ?");
+      args.push(params.beforeId);
+    }
+    const fullWhere =
+      clauses.length > 0
+        ? where
+          ? `${where} AND ${clauses.join(" AND ")}`
+          : `WHERE ${clauses.join(" AND ")}`
+        : where;
+    const limit = Math.max(1, Math.min(params.limit ?? 50, 1000));
+    const rows = this.db
+      .prepare(`SELECT * FROM usage_events ${fullWhere} ORDER BY id DESC LIMIT ?`)
+      .all(...args, limit) as unknown as RawRow[];
+    const events = rows.map(rowToEvent);
+    const last = events.at(-1);
+    return { events, nextBeforeId: events.length === limit && last ? last.id : null };
+  }
+
+  // ---------------------------------------------------------------------------
+  // PLAN-50 Phase 6: SQL-side aggregation. The summary used to materialize every row in range
+  // on the gateway event loop; these run one GROUP BY per pivot instead. Text-to-speech rows
+  // store characters in `input`, so token sums exclude kind='tts'.
+  // ---------------------------------------------------------------------------
+
+  /** Session class of a row: the shared main session, another keyed session, or none. */
+  private static readonly SESSION_CLASS_EXPR = `CASE
+    WHEN session_key IS NULL THEN 'none'
+    WHEN session_key = 'global' OR session_key GLOB 'agent:*:main' THEN 'main'
+    ELSE 'session' END`;
+
+  private static readonly TOTALS_SELECT = `
+    COUNT(*) AS calls,
+    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE input END) AS input,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE cache_read END) AS cache_read,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE cache_write END) AS cache_write,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE output END) AS output,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE reasoning END) AS reasoning,
+    SUM(CASE WHEN kind = 'tts' THEN 0 ELSE total END) AS total,
+    SUM(cost_input) AS cost_input,
+    SUM(cost_cache_read) AS cost_cache_read,
+    SUM(cost_cache_write) AS cost_cache_write,
+    SUM(cost_output) AS cost_output,
+    SUM(cost_total) AS cost_total,
+    SUM(COALESCE(cost_computed, 0)) AS cost_computed,
+    SUM(CASE WHEN cost_computed IS NOT NULL THEN 1 ELSE 0 END) AS computed_calls,
+    SUM(CASE WHEN cost_computed IS NOT NULL THEN cost_total ELSE 0 END) AS cost_reported_on_computed,
+    SUM(CASE WHEN cost_source = 'provider' THEN 1 ELSE 0 END) AS reported_calls,
+    SUM(CASE WHEN cost_source = 'unpriced' THEN 1 ELSE 0 END) AS unpriced_calls,
+    SUM(CASE WHEN cost_source = 'estimated' THEN 1 ELSE 0 END) AS estimated_calls,
+    MAX(ts) AS last_ts`;
+
+  /** Totals for the filter, or for each value of `groupExpr` when given (one row per group). */
+  aggregate(filters: UsageEventFilters, groupExpr?: string, extraSelect = ""): UsageAggregateRow[] {
+    const { where, args } = buildWhere(filters);
+    const groupSelect = groupExpr ? `${groupExpr} AS group_key, ` : "";
+    const groupBy = groupExpr ? `GROUP BY ${groupExpr}` : "";
+    const rows = this.db
+      .prepare(
+        `SELECT ${groupSelect}${UsageLedger.TOTALS_SELECT}${extraSelect} FROM usage_events ${where} ${groupBy}`,
+      )
+      .all(...args) as unknown as UsageAggregateRow[];
+    return rows;
+  }
+
+  /** Per model, the pricing sources and kinds seen (small; one row per model/source/kind). */
+  modelFacets(filters: UsageEventFilters): Array<{
+    provider: string | null;
+    model: string | null;
+    kind: string;
+    cost_source: string;
+    calls: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    return this.db
+      .prepare(
+        `SELECT provider, model, kind, cost_source, COUNT(*) AS calls FROM usage_events ${where}
+         GROUP BY provider, model, kind, cost_source`,
+      )
+      .all(...args) as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      kind: string;
+      cost_source: string;
+      calls: number;
+    }>;
+  }
+
+  /** Per (day, model) and per (day, kind) sums for stacked charts. */
+  dailyBy(
+    filters: UsageEventFilters,
+    dimension: "model" | "kind",
+  ): Array<{
+    day: string;
+    provider: string | null;
+    model: string | null;
+    kind: string | null;
+    tokens: number;
+    cost: number;
+    calls: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    const cols =
+      dimension === "model"
+        ? "provider, model, NULL AS kind"
+        : "NULL AS provider, NULL AS model, kind";
+    const group = dimension === "model" ? "day, provider, model" : "day, kind";
+    return this.db
+      .prepare(
+        `SELECT day, ${cols}, SUM(CASE WHEN kind = 'tts' THEN 0 ELSE total END) AS tokens,
+                SUM(cost_total) AS cost, COUNT(*) AS calls
+         FROM usage_events ${where} GROUP BY ${group}`,
+      )
+      .all(...args) as unknown as Array<{
+      day: string;
+      provider: string | null;
+      model: string | null;
+      kind: string | null;
+      tokens: number;
+      cost: number;
+      calls: number;
+    }>;
+  }
+
+  /** Hourly cost/token buckets (for peak-block search without loading rows). */
+  hourly(
+    filters: UsageEventFilters,
+  ): Array<{ hour: number; cost: number; tokens: number; calls: number }> {
+    const { where, args } = buildWhere(filters);
+    return this.db
+      .prepare(
+        `SELECT (ts / 3600000) AS hour, SUM(cost_total) AS cost,
+                SUM(CASE WHEN kind = 'tts' THEN 0 ELSE total END) AS tokens, COUNT(*) AS calls
+         FROM usage_events ${where} GROUP BY hour ORDER BY hour`,
+      )
+      .all(...args) as unknown as Array<{
+      hour: number;
+      cost: number;
+      tokens: number;
+      calls: number;
+    }>;
+  }
+
+  /** Cache observations per model, feature and bust reason (chat rows on cache-capable providers). */
+  cacheFacets(filters: UsageEventFilters): Array<{
+    provider: string | null;
+    model: string | null;
+    feature: string;
+    /** main (agent:<id>:main / global), session (any other key) or none (unattributed). */
+    session_class: string;
+    cache_bust_reason: string | null;
+    calls: number;
+    input: number;
+    cache_read: number;
+    cache_write: number;
+    cost_cache_write: number;
+    last_ts: number | null;
+    last_ttl: string | null;
+  }> {
+    const { where, args } = buildWhere({ ...filters, kind: "chat" });
+    return this.db
+      .prepare(
+        `SELECT provider, model, feature, ${UsageLedger.SESSION_CLASS_EXPR} AS session_class,
+                cache_bust_reason, COUNT(*) AS calls, SUM(input) AS input,
+                SUM(cache_read) AS cache_read, SUM(cache_write) AS cache_write,
+                SUM(cost_cache_write) AS cost_cache_write, MAX(ts) AS last_ts,
+                MAX(CASE WHEN cache_ttl IS NOT NULL THEN cache_ttl END) AS last_ttl
+         FROM usage_events ${where ? `${where} AND` : "WHERE"} provider IN ('anthropic', 'openai')
+         GROUP BY provider, model, feature, session_class, cache_bust_reason`,
+      )
+      .all(...args) as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      feature: string;
+      session_class: string;
+      cache_bust_reason: string | null;
+      calls: number;
+      input: number;
+      cache_read: number;
+      cache_write: number;
+      cost_cache_write: number;
+      last_ts: number | null;
+      last_ttl: string | null;
+    }>;
+  }
+
+  /** Per-run cost, newest first, for the runaway-run detector. */
+  runCosts(
+    filters: UsageEventFilters,
+    limit = 2000,
+  ): Array<{
+    run_id: string;
+    session_key: string | null;
+    feature: string;
+    cost: number;
+    calls: number;
+    first_ts: number;
+    last_ts: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    const clause = where ? `${where} AND run_id IS NOT NULL` : "WHERE run_id IS NOT NULL";
+    return this.db
+      .prepare(
+        `SELECT run_id, MIN(session_key) AS session_key, MIN(feature) AS feature, SUM(cost_total) AS cost,
+                COUNT(*) AS calls, MIN(ts) AS first_ts, MAX(ts) AS last_ts
+         FROM usage_events ${clause} GROUP BY run_id ORDER BY last_ts DESC LIMIT ?`,
+      )
+      .all(...args, limit) as unknown as Array<{
+      run_id: string;
+      session_key: string | null;
+      feature: string;
+      cost: number;
+      calls: number;
+      first_ts: number;
+      last_ts: number;
+    }>;
+  }
+
+  /** Token buckets per (provider, model, batch) for chat-like rows: the input to a what-if replay. */
+  replayBuckets(filters: UsageEventFilters): Array<{
+    provider: string | null;
+    model: string | null;
+    kind: string;
+    batch: number;
+    input: number;
+    cache_read: number;
+    cache_write: number;
+    output: number;
+    cost: number;
+    calls: number;
+  }> {
+    const { where, args } = buildWhere(filters);
+    return this.db
+      .prepare(
+        `SELECT provider, model, kind, batch, SUM(input) AS input, SUM(cache_read) AS cache_read,
+                SUM(cache_write) AS cache_write, SUM(output) AS output, SUM(cost_total) AS cost, COUNT(*) AS calls
+         FROM usage_events ${where} GROUP BY provider, model, kind, batch`,
+      )
+      .all(...args) as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      kind: string;
+      batch: number;
+      input: number;
+      cache_read: number;
+      cache_write: number;
+      output: number;
+      cost: number;
+      calls: number;
+    }>;
+  }
+
+  /** Distinct pricing identities of rows that still lack a computed cost (for the backfill). */
+  uncomputedIdentities(): Array<{
+    provider: string | null;
+    model: string | null;
+    kind: string;
+    batch: number;
+    cache_ttl: string | null;
+    rows: number;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT provider, model, kind, batch, cache_ttl, COUNT(*) AS rows FROM usage_events
+         WHERE cost_computed IS NULL AND provider IS NOT NULL AND model IS NOT NULL
+           AND kind IN ('chat', 'vision', 'search', 'embedding')
+         GROUP BY provider, model, kind, batch, cache_ttl`,
+      )
+      .all() as unknown as Array<{
+      provider: string | null;
+      model: string | null;
+      kind: string;
+      batch: number;
+      cache_ttl: string | null;
+      rows: number;
+    }>;
+  }
+
+  /** Apply a per-million price to every row of one pricing identity that lacks cost_computed. */
+  applyComputedCost(
+    identity: {
+      provider: string;
+      model: string;
+      kind: string;
+      batch: number;
+      cache_ttl: string | null;
+    },
+    price: ModelPrice,
+    cacheWriteRate: number,
+  ): number {
+    const factor = identity.batch ? 0.5 : 1;
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET cost_computed =
+           ((input * ?) + (cache_read * ?) + (cache_write * ?) + (output * ?)) * ? / 1000000.0
+         WHERE cost_computed IS NULL AND provider = ? AND model = ? AND kind = ? AND batch = ?
+           AND ((cache_ttl IS NULL AND ? IS NULL) OR cache_ttl = ?)`,
+      )
+      .run(
+        price.input,
+        price.cacheRead,
+        cacheWriteRate,
+        price.output,
+        factor,
+        identity.provider,
+        identity.model,
+        identity.kind,
+        identity.batch,
+        identity.cache_ttl,
+        identity.cache_ttl,
+      );
+    return Number(result.changes ?? 0);
+  }
+
+  /** Distinct provider/model pairs whose rows carry a library-reported (`provider`) cost. */
+  providerCostIdentities(): Array<{ provider: string; model: string; rows: number }> {
+    return this.db
+      .prepare(
+        `SELECT provider, model, COUNT(*) AS rows FROM usage_events
+         WHERE cost_source = 'provider' AND provider IS NOT NULL AND model IS NOT NULL
+         GROUP BY provider, model`,
+      )
+      .all() as unknown as Array<{ provider: string; model: string; rows: number }>;
+  }
+
+  /** The token columns of one identity's `provider`-cost rows, for re-pricing. */
+  providerCostRows(provider: string, model: string): RepriceRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, ts, input, cache_read, cache_write, output, reasoning, total, batch, cache_ttl,
+                cache_write_5m, cache_write_1h, cost_total
+         FROM usage_events
+         WHERE cost_source = 'provider' AND provider = ? AND model = ?
+         ORDER BY id ASC`,
+      )
+      .all(provider, model) as unknown as RepriceRow[];
+  }
+
+  /**
+   * Overwrite one row's cost with a re-priced figure. Guarded by `cost_source = 'provider'` so a
+   * second pass (or a row re-priced since) is never touched twice. Returns rows changed (0 or 1).
+   */
+  applyRepricedCost(id: number, cost: UsageCost, price: ModelPrice, source: PricingSource): number {
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET cost_input = ?, cost_cache_read = ?, cost_cache_write = ?,
+           cost_output = ?, cost_total = ?, cost_source = ?, price_input = ?, price_output = ?,
+           price_cache_read = ?, price_cache_write = ?, cost_computed = ?
+         WHERE id = ? AND cost_source = 'provider'`,
+      )
+      .run(
+        cost.input,
+        cost.cacheRead,
+        cost.cacheWrite,
+        cost.output,
+        cost.total,
+        source,
+        price.input,
+        price.output,
+        price.cacheRead,
+        price.cacheWrite,
+        cost.total,
+        id,
+      );
+    return Number(result.changes ?? 0);
+  }
+
+  /** Relabel reconciled rows (feature / session_key / channel) for one transcript. */
+  relabelReconciled(
+    sessionId: string,
+    agentId: string | null,
+    patch: { feature: string; sessionKey: string | null; channel: string | null },
+  ): number {
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, session_key = COALESCE(?, session_key), channel = COALESCE(?, channel)
+         WHERE source = 'reconcile' AND session_id = ? AND (agent_id = ? OR (agent_id IS NULL AND ? IS NULL))`,
+      )
+      .run(patch.feature, patch.sessionKey, patch.channel, sessionId, agentId, agentId);
+    return Number(result.changes ?? 0);
+  }
+
+  /** relabel:v3 — reconciled chat-turn rows whose transcript content says heartbeat. */
+  relabelReconciledByDedupeKeys(
+    dedupeKeys: readonly string[],
+    patch: { feature: string; channel: string },
+  ): number {
+    if (dedupeKeys.length === 0) {
+      return 0;
+    }
+    const marks = dedupeKeys.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, channel = ?
+         WHERE source = 'reconcile' AND feature = 'agent/turn' AND dedupe_key IN (${marks})`,
+      )
+      .run(patch.feature, patch.channel, ...dedupeKeys);
+    return Number(result.changes ?? 0);
+  }
+
+  /** relabel:v3 fallback for pruned transcripts: the heartbeat signature (tiny ack, no cache read). */
+  relabelHeartbeatSignature(
+    agentId: string,
+    sessionIds: readonly string[],
+    patch: { feature: string; channel: string },
+  ): number {
+    if (sessionIds.length === 0) {
+      return 0;
+    }
+    const marks = sessionIds.map(() => "?").join(", ");
+    const result = this.db
+      .prepare(
+        `UPDATE usage_events SET feature = ?, channel = ?
+         WHERE source = 'reconcile' AND feature = 'agent/turn' AND session_key IS NULL
+           AND output <= 20 AND cache_read = 0 AND agent_id = ? AND session_id IN (${marks})`,
+      )
+      .run(patch.feature, patch.channel, agentId, ...sessionIds);
+    return Number(result.changes ?? 0);
+  }
+
+  /** Distinct transcript ids with reconciled rows of one feature for an agent. */
+  reconciledSessionIds(agentId: string, feature: string): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT session_id FROM usage_events
+         WHERE source = 'reconcile' AND agent_id = ? AND feature = ? AND session_id IS NOT NULL`,
+      )
+      .all(agentId, feature) as unknown as Array<{ session_id: string }>;
+    return rows.map((r) => r.session_id);
+  }
+
+  /** Raw rows for aggregation; callers group in JS so one query serves every pivot. */
+  rows(filters: UsageEventFilters): UsageEventRow[] {
+    const { where, args } = buildWhere(filters);
+    const rows = this.db
+      .prepare(`SELECT * FROM usage_events ${where} ORDER BY ts ASC`)
+      .all(...args) as unknown as RawRow[];
+    return rows.map(rowToEvent);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tool-call telemetry (hot-set proof) and prefix-stability rows.
+  // ---------------------------------------------------------------------------
+
+  insertToolCall(input: ToolCallInput): number {
+    const ts = typeof input.ts === "number" && Number.isFinite(input.ts) ? input.ts : Date.now();
+    const result = this.db
+      .prepare(
+        `INSERT INTO tool_calls (ts, day, agent_id, session_key, run_id, tool, via, ok, error_class,
+           duration_ms, result_chars, spilled)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        ts,
+        formatUsageDay(ts),
+        input.agentId?.trim() || null,
+        input.sessionKey?.trim() || null,
+        input.runId?.trim() || null,
+        input.tool.trim() || "unknown",
+        input.via,
+        input.ok ? 1 : 0,
+        input.errorClass?.trim() || null,
+        typeof input.durationMs === "number" && Number.isFinite(input.durationMs)
+          ? Math.round(input.durationMs)
+          : null,
+        typeof input.resultChars === "number" && Number.isFinite(input.resultChars)
+          ? Math.round(input.resultChars)
+          : null,
+        input.spilled ? 1 : 0,
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  toolCalls(params: { startMs?: number; endMs?: number; limit?: number } = {}): ToolCallRow[] {
+    const clauses: string[] = [];
+    const args: number[] = [];
+    if (typeof params.startMs === "number") {
+      clauses.push("ts >= ?");
+      args.push(params.startMs);
+    }
+    if (typeof params.endMs === "number") {
+      clauses.push("ts <= ?");
+      args.push(params.endMs);
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limit = Math.max(1, Math.min(params.limit ?? 200, 5000));
+    const rows = this.db
+      .prepare(`SELECT * FROM tool_calls ${where} ORDER BY id DESC LIMIT ?`)
+      .all(...args, limit) as unknown as RawToolCallRow[];
+    return rows.map(rowToToolCall);
+  }
+
+  /** Per (tool, via) counts, failures, spills and result sizes for a window. */
+  toolCallFacets(params: { startMs: number; endMs: number }): Array<{
+    tool: string;
+    via: ToolCallVia;
+    calls: number;
+    failed: number;
+    spilled: number;
+    spilled_chars: number;
+    avg_duration_ms: number | null;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT tool, via, COUNT(*) AS calls, SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END) AS failed,
+                SUM(spilled) AS spilled,
+                SUM(CASE WHEN spilled = 1 THEN COALESCE(result_chars, 0) ELSE 0 END) AS spilled_chars,
+                AVG(duration_ms) AS avg_duration_ms
+         FROM tool_calls WHERE ts >= ? AND ts <= ? GROUP BY tool, via`,
+      )
+      .all(params.startMs, params.endMs) as unknown as Array<{
+      tool: string;
+      via: string;
+      calls: number;
+      failed: number;
+      spilled: number;
+      spilled_chars: number;
+      avg_duration_ms: number | null;
+    }>;
+    return rows.map((r) => ({
+      ...r,
+      via: (TOOL_CALL_VIAS.has(r.via) ? r.via : "direct") as ToolCallVia,
+    }));
+  }
+
+  toolErrorClasses(params: {
+    startMs: number;
+    endMs: number;
+  }): Array<{ error_class: string; calls: number }> {
+    return this.db
+      .prepare(
+        `SELECT error_class, COUNT(*) AS calls FROM tool_calls
+         WHERE ts >= ? AND ts <= ? AND ok = 0 AND error_class IS NOT NULL
+         GROUP BY error_class ORDER BY calls DESC`,
+      )
+      .all(params.startMs, params.endMs) as unknown as Array<{
+      error_class: string;
+      calls: number;
+    }>;
+  }
+
+  /** Chat rows that carry prefix digests, ordered per session for the stability walk. */
+  prefixDigestRows(params: { startMs: number; endMs: number }): Array<{
+    session_key: string;
+    ts: number;
+    prefix_digest: string | null;
+    tools_digest: string | null;
+  }> {
+    return this.db
+      .prepare(
+        `SELECT session_key, ts, prefix_digest, tools_digest FROM usage_events
+         WHERE ts >= ? AND ts <= ? AND kind = 'chat' AND session_key IS NOT NULL
+           AND (prefix_digest IS NOT NULL OR tools_digest IS NOT NULL)
+         ORDER BY session_key ASC, ts ASC`,
+      )
+      .all(params.startMs, params.endMs) as unknown as Array<{
+      session_key: string;
+      ts: number;
+      prefix_digest: string | null;
+      tools_digest: string | null;
+    }>;
+  }
+
+  /** Sum of cost_total in a window, optionally scoped. Cheap: SQL-side. */
+  /**
+   * PLAN-52 soak gates (6.7): per runtime engine, the numbers the flip is decided on.
+   * Chat rows only; a "run" is one `run_id`. Tool calls are joined by run id.
+   */
+  engineComparison(params: { startMs?: number; agentId?: string } = {}): EngineComparisonRow[] {
+    const clauses = ["engine IS NOT NULL", "kind = 'chat'", "run_id IS NOT NULL"];
+    const args: Array<string | number> = [];
+    if (typeof params.startMs === "number") {
+      clauses.push("ts >= ?");
+      args.push(params.startMs);
+    }
+    if (params.agentId?.trim()) {
+      clauses.push("agent_id = ?");
+      args.push(params.agentId.trim());
+    }
+    const where = `WHERE ${clauses.join(" AND ")}`;
+    const totals = this.db
+      .prepare(
+        `SELECT engine, COUNT(DISTINCT run_id) AS runs, COUNT(*) AS calls,
+                COALESCE(SUM(cost_total), 0) AS cost,
+                SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors
+         FROM usage_events ${where} GROUP BY engine ORDER BY engine`,
+      )
+      .all(...args) as unknown as Array<{
+      engine: string;
+      runs: number;
+      calls: number;
+      cost: number;
+      errors: number;
+    }>;
+    const durations = this.db
+      .prepare(
+        `SELECT engine, duration_ms FROM usage_events ${where} AND duration_ms IS NOT NULL
+         ORDER BY engine, duration_ms`,
+      )
+      .all(...args) as unknown as Array<{ engine: string; duration_ms: number }>;
+    const byEngine = new Map<string, number[]>();
+    for (const row of durations) {
+      const list = byEngine.get(row.engine) ?? [];
+      list.push(row.duration_ms);
+      byEngine.set(row.engine, list);
+    }
+    const percentile = (sorted: number[], p: number): number | null =>
+      sorted.length === 0
+        ? null
+        : sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)]!;
+    const tools = this.db
+      .prepare(
+        `SELECT e.engine AS engine, COUNT(*) AS calls,
+                SUM(CASE WHEN t.ok = 0 THEN 1 ELSE 0 END) AS failed
+         FROM tool_calls t
+         JOIN (SELECT DISTINCT run_id, engine FROM usage_events ${where}) e ON e.run_id = t.run_id
+         GROUP BY e.engine`,
+      )
+      .all(...args) as unknown as Array<{ engine: string; calls: number; failed: number }>;
+    const toolsByEngine = new Map(tools.map((row) => [row.engine, row]));
+    return totals.map((row) => {
+      const sorted = byEngine.get(row.engine) ?? [];
+      const tool = toolsByEngine.get(row.engine);
+      return {
+        engine: row.engine,
+        runs: row.runs,
+        modelCalls: row.calls,
+        costUsd: row.cost,
+        costPerRunUsd: row.runs > 0 ? row.cost / row.runs : 0,
+        errorCalls: row.errors,
+        durationP50Ms: percentile(sorted, 0.5),
+        durationP95Ms: percentile(sorted, 0.95),
+        toolCalls: tool?.calls ?? 0,
+        toolErrors: tool?.failed ?? 0,
+        toolErrorRate: tool && tool.calls > 0 ? tool.failed / tool.calls : null,
+      };
+    });
+  }
+
+  spend(filters: UsageEventFilters): number {
+    const { where, args } = buildWhere(filters);
+    const row = this.db
+      .prepare(`SELECT COALESCE(SUM(cost_total), 0) AS s FROM usage_events ${where}`)
+      .get(...args) as { s: number } | undefined;
+    return Number(row?.s ?? 0);
+  }
+
+  count(): number {
+    const row = this.db.prepare(`SELECT COUNT(*) AS c FROM usage_events`).get() as { c: number };
+    return row.c;
+  }
+
+  pruneOlderThan(cutoffMs: number): number {
+    const result = this.db.prepare(`DELETE FROM usage_events WHERE ts < ?`).run(cutoffMs);
+    try {
+      this.db.prepare(`DELETE FROM tool_calls WHERE ts < ?`).run(cutoffMs);
+    } catch {
+      // tool_calls is created on open; a failure here is not worth failing the prune.
+    }
+    return Number(result.changes ?? 0);
+  }
+
+  getMeta(key: string): string | null {
+    const row = this.db.prepare(`SELECT value FROM usage_meta WHERE key = ?`).get(key) as
+      | { value: string }
+      | undefined;
+    return row?.value ?? null;
+  }
+
+  setMeta(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO usage_meta (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(key, value);
+  }
+
+  health(retentionDays: number): UsageLedgerHealth {
+    const agg = this.db
+      .prepare(`SELECT COUNT(*) AS c, MIN(ts) AS lo, MAX(ts) AS hi FROM usage_events`)
+      .get() as { c: number; lo: number | null; hi: number | null };
+    let dbBytes: number | null = null;
+    if (this.dbPath) {
+      try {
+        dbBytes = fs.statSync(this.dbPath).size;
+      } catch {
+        dbBytes = null;
+      }
+    }
+    const lastReconcileAt = Number(this.getMeta("reconcile:lastAt") ?? "");
+    const lastReconcileRows = Number(this.getMeta("reconcile:lastRows") ?? "");
+    return {
+      enabled: true,
+      dbPath: this.dbPath,
+      events: agg.c,
+      oldestTs: agg.lo,
+      newestTs: agg.hi,
+      dbBytes,
+      lastReconcileAt:
+        Number.isFinite(lastReconcileAt) && lastReconcileAt > 0 ? lastReconcileAt : null,
+      lastReconcileRows: Number.isFinite(lastReconcileRows) ? lastReconcileRows : null,
+      retentionDays,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Singleton + recording pipeline
+// ---------------------------------------------------------------------------
+
+type LedgerState = {
+  ledger: UsageLedger;
+  reconcileTimer: NodeJS.Timeout | null;
+};
+
+let state: LedgerState | null = null;
+let openFailed = false;
+/** Set by startUsageLedger()/ensureUsageLedger() from `usage.ledger.enabled`; null = not yet checked. */
+let configEnabled: boolean | null = null;
+/** Set by stopUsageLedger(); prevents a straggling recordUsage from reopening the DB during teardown. */
+let closed = false;
+let queue: Promise<void> = Promise.resolve();
+let cachedConfig: { at: number; value: BitterbotConfig | undefined } | null = null;
+const CONFIG_MEMO_MS = 60_000;
+const listeners = new Set<(evt: UsageEventRow) => void>();
+
+export function isUsageLedgerEnabled(): boolean {
+  const v = process.env.BITTERBOT_USAGE_LEDGER;
+  if (v === undefined) {
+    return true;
+  }
+  return v === "1" || v === "true";
+}
+
+export function defaultUsageLedgerDbPath(): string {
+  return (
+    process.env.BITTERBOT_USAGE_LEDGER_DB ?? path.join(resolveStateDir(), "usage-ledger.sqlite")
+  );
+}
+
+/** Lazily open the process-wide ledger. Returns null when disabled or unavailable. */
+export function getUsageLedger(): UsageLedger | null {
+  if (state) {
+    return state.ledger;
+  }
+  if (openFailed || closed || configEnabled === false || !isUsageLedgerEnabled()) {
+    return null;
+  }
+  const dbPath = defaultUsageLedgerDbPath();
+  try {
+    const ledger = UsageLedger.open(dbPath);
+    state = { ledger, reconcileTimer: null };
+    return ledger;
+  } catch (err) {
+    openFailed = true;
+    log.warn(
+      `failed to open usage ledger at ${dbPath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
+/** Test seam: use an explicit ledger instance (usually in-memory). */
+export function setUsageLedgerForTest(ledger: UsageLedger | null): void {
+  if (state?.reconcileTimer) {
+    clearInterval(state.reconcileTimer);
+  }
+  state = ledger ? { ledger, reconcileTimer: null } : null;
+  openFailed = false;
+  closed = false;
+  configEnabled = null;
+  cachedConfig = null;
+  queue = Promise.resolve();
+}
+
+/** Test seam: simulate `usage.ledger.enabled` without loading config. */
+export function setUsageLedgerConfigEnabledForTest(enabled: boolean | null): void {
+  configEnabled = enabled;
+}
+
+export function stopUsageLedger(): void {
+  closed = true;
+  stopPricingRefresh();
+  if (!state) {
+    return;
+  }
+  if (state.reconcileTimer) {
+    clearInterval(state.reconcileTimer);
+  }
+  state.ledger.close();
+  state = null;
+}
+
+export function onUsageEvent(listener: (evt: UsageEventRow) => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function emit(evt: UsageEventRow): void {
+  for (const listener of listeners) {
+    try {
+      listener(evt);
+    } catch (err) {
+      log.debug(`usage listener failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+}
+
+/**
+ * Library-reported cost (pi-ai `usage.cost`) is trusted when non-zero. Known upstream quirk:
+ * pi-ai's openai-completions adapter adds `reasoning_tokens` on top of `completion_tokens`
+ * (which already includes them), so o-series/gpt-5 output and cost are slightly inflated there.
+ */
+function hasNonzeroCost(cost: Partial<UsageCost> | null | undefined): boolean {
+  if (!cost) {
+    return false;
+  }
+  return [cost.total, cost.input, cost.output, cost.cacheRead, cost.cacheWrite].some(
+    (v) => typeof v === "number" && Number.isFinite(v) && v > 0,
+  );
+}
+
+async function loadConfigLazy(): Promise<BitterbotConfig | undefined> {
+  const now = Date.now();
+  if (cachedConfig && now - cachedConfig.at < CONFIG_MEMO_MS) {
+    return cachedConfig.value;
+  }
+  let value: BitterbotConfig | undefined;
+  try {
+    const { loadConfig } = await import("../config/config.js");
+    value = loadConfig();
+  } catch {
+    value = undefined;
+  }
+  cachedConfig = { at: now, value };
+  return value;
+}
+
+/**
+ * Async variant of getUsageLedger() that honors `usage.ledger.enabled` in processes that never
+ * call startUsageLedger() (the CLI). Checks config once per process.
+ */
+async function ensureUsageLedger(input?: {
+  config?: BitterbotConfig;
+}): Promise<UsageLedger | null> {
+  if (configEnabled === null) {
+    const cfg = input?.config ?? (await loadConfigLazy());
+    configEnabled = isUsageLedgerConfigEnabled(cfg);
+  }
+  return getUsageLedger();
+}
+
+/**
+ * Factor to apply to a library-reported cache-write cost when the row's TTL is 1h: the library
+ * assumes the 5-minute rate (1.25x input on Anthropic) while the 1-hour rate is 2x input. Returns
+ * the frozen price too, with `cacheWrite` at the rate actually charged.
+ */
+function providerCacheWriteRescale(params: {
+  cacheTtl: CacheTtlLabel | null;
+  provider: string | null;
+  table: Awaited<ReturnType<typeof resolveModelPricing>>;
+}): { factor: number; price: ModelPrice | null } | null {
+  if (params.cacheTtl !== "1h" || (params.provider ?? "").toLowerCase() !== "anthropic") {
+    return null;
+  }
+  const base = params.table.price;
+  const priced = params.table.source !== "unpriced" && params.table.source !== "local";
+  const published =
+    priced && params.table.source !== "override" && typeof base.cacheWrite1h === "number"
+      ? base.cacheWrite1h
+      : undefined;
+  const factor =
+    published && published > 0 && base.cacheWrite > 0 ? published / base.cacheWrite : 2 / 1.25;
+  if (!priced) {
+    return { factor, price: null };
+  }
+  return { factor, price: { ...base, cacheWrite: published ?? base.cacheWrite * factor } };
+}
+
+/** The runtime engine configured for an agent, or null when the row has no agent. */
+function resolveEngineForAgent(
+  cfg: BitterbotConfig | undefined,
+  agentId: string | null | undefined,
+): string | null {
+  const id = agentId?.trim();
+  return id ? resolveRuntimeEngine(cfg, id) : null;
+}
+
+/** Resolve pricing and cost for an input; exported for the reconciler and tests. */
+export async function resolveUsageEvent(
+  input: UsageEventInput,
+): Promise<ResolvedUsageEvent | null> {
+  const usage = toUsageBuckets(input.usage);
+  const hasItems =
+    typeof input.items === "number" && Number.isFinite(input.items) && input.items > 0;
+  // Zero-token rows are kept only when they still represent a billable call (per-request
+  // pricing such as speech-to-text minutes) or an error.
+  if (usage.total <= 0 && input.status !== "error" && !hasItems) {
+    return null;
+  }
+  const ts = typeof input.ts === "number" && Number.isFinite(input.ts) ? input.ts : Date.now();
+  const provider = input.provider?.trim() || null;
+  const model = input.model?.trim() || null;
+  // Per-TTL split (Anthropic `cache_creation.ephemeral_{5m,1h}_input_tokens`), when reported.
+  // It decides the TTL label exactly; the configured label is only the fallback.
+  const split = resolveCacheWriteSplit(input, usage.cacheWrite);
+  const cacheTtl: CacheTtlLabel | null = split
+    ? split.cacheWrite1h > 0
+      ? "1h"
+      : split.cacheWrite5m > 0
+        ? "5m"
+        : (input.cacheTtl ?? null)
+    : (input.cacheTtl ?? null);
+
+  let cost: UsageCost;
+  let costSource: PricingSource;
+  let price: ModelPrice | null = null;
+  let costComputed: number | null = null;
+
+  const cfg = input.config ?? (await loadConfigLazy());
+  // Always resolve our own table so "computed" is available next to a library-reported cost.
+  const table = await resolveModelPricing({ provider, model, kind: input.kind, cfg, ts });
+  const tablePriced = table.source !== "unpriced" && table.source !== "local";
+  const priceOpts = { batch: input.batch, cacheTtl, provider, source: table.source };
+  if (tablePriced) {
+    costComputed = priceUsageSplit(table.price, usage, split, priceOpts).total;
+  }
+
+  // A forward-compat model's library-reported cost was computed from a borrowed price (the
+  // template's). An exact live price beats it; without one the borrowed figure is an estimate.
+  const borrowed = Boolean(table.borrowedFrom);
+  if (input.costSource === "local") {
+    cost = emptyUsageCost();
+    costSource = "local";
+    price = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+    costComputed = 0;
+  } else if (hasNonzeroCost(input.cost) && !(borrowed && table.source === "live")) {
+    const c = input.cost ?? {};
+    const n = (v: number | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+    const parts = {
+      input: n(c.input),
+      cacheRead: n(c.cacheRead),
+      cacheWrite: n(c.cacheWrite),
+      output: n(c.output),
+    };
+    // The model library prices cache writes at the 5-minute rate regardless of TTL; an
+    // Anthropic 1-hour write costs 2x input, so rescale and freeze the price used on the row.
+    // With a per-TTL split only the 1h share is rescaled.
+    const rescale = providerCacheWriteRescale({ cacheTtl, provider, table });
+    if (rescale) {
+      const share =
+        split && split.cacheWrite5m + split.cacheWrite1h > 0
+          ? split.cacheWrite1h / (split.cacheWrite5m + split.cacheWrite1h)
+          : 1;
+      parts.cacheWrite *= 1 + (rescale.factor - 1) * share;
+      price = rescale.price;
+    }
+    const total = parts.input + parts.cacheRead + parts.cacheWrite + parts.output;
+    cost = { ...parts, total: rescale || !n(c.total) ? total : n(c.total) };
+    costSource = borrowed ? "estimated" : "provider";
+  } else {
+    price = table.price;
+    cost = priceUsageSplit(table.price, usage, split, priceOpts);
+    costSource = table.source;
+    if (table.source === "local") {
+      costComputed = 0;
+    }
+  }
+  if (input.costSource === "estimated" && costSource !== "unpriced" && costSource !== "local") {
+    costSource = "estimated";
+  }
+
+  return {
+    ts,
+    day: formatUsageDay(ts),
+    kind: input.kind,
+    feature: input.feature.trim() || "unknown",
+    provider,
+    model,
+    api: input.api?.trim() || null,
+    agentId: input.agentId?.trim() || null,
+    sessionKey: input.sessionKey?.trim() || null,
+    sessionId: input.sessionId?.trim() || null,
+    runId: input.runId?.trim() || null,
+    taskId: input.taskId?.trim() || null,
+    channel: input.channel?.trim() || null,
+    usage,
+    cost,
+    costSource,
+    price,
+    durationMs:
+      typeof input.durationMs === "number" && Number.isFinite(input.durationMs)
+        ? Math.round(input.durationMs)
+        : null,
+    status: input.status === "error" ? "error" : "ok",
+    stopReason: input.stopReason?.trim() || null,
+    batch: input.batch === true,
+    items:
+      typeof input.items === "number" && Number.isFinite(input.items)
+        ? Math.round(input.items)
+        : null,
+    source: input.source ?? "live",
+    costComputed,
+    cacheState: input.cacheState ?? null,
+    cacheBustReason: input.cacheBustReason?.trim() || null,
+    cacheTtl,
+    cacheWrite5m: split ? split.cacheWrite5m : null,
+    cacheWrite1h: split ? split.cacheWrite1h : null,
+    prefixDigest: input.prefixDigest?.trim() || null,
+    toolsDigest: input.toolsDigest?.trim() || null,
+    engine: input.engine?.trim() || resolveEngineForAgent(cfg, input.agentId),
+  };
+}
+
+/**
+ * The per-TTL cache-write split, when the caller reported one. Both halves are clamped to the
+ * aggregate so a provider quirk can never price more tokens than were counted.
+ */
+function resolveCacheWriteSplit(
+  input: Pick<UsageEventInput, "cacheWrite5m" | "cacheWrite1h">,
+  cacheWrite: number,
+): { cacheWrite5m: number; cacheWrite1h: number } | null {
+  const has5m = typeof input.cacheWrite5m === "number" && Number.isFinite(input.cacheWrite5m);
+  const has1h = typeof input.cacheWrite1h === "number" && Number.isFinite(input.cacheWrite1h);
+  if (!has5m && !has1h) {
+    return null;
+  }
+  const raw1h = has1h ? (input.cacheWrite1h as number) : 0;
+  const w1h = Math.min(cacheWrite, Math.max(0, Math.round(raw1h)));
+  const raw5m = has5m ? (input.cacheWrite5m as number) : cacheWrite - w1h;
+  const w5m = Math.min(cacheWrite - w1h, Math.max(0, Math.round(raw5m)));
+  return { cacheWrite5m: w5m, cacheWrite1h: w1h };
+}
+
+/** priceUsage with the 1h share of cache writes priced at the 1h rate and the rest at 5m. */
+export function priceUsageSplit(
+  price: ModelPrice,
+  usage: UsageBuckets,
+  split: { cacheWrite5m: number; cacheWrite1h: number } | null,
+  opts: Parameters<typeof priceUsage>[2],
+): UsageCost {
+  if (!split || split.cacheWrite1h === 0 || split.cacheWrite5m === 0) {
+    return priceUsage(price, usage, opts);
+  }
+  const base = priceUsage(
+    price,
+    { ...usage, cacheWrite: split.cacheWrite5m },
+    { ...opts, cacheTtl: "5m" },
+  );
+  const long = priceUsage(
+    price,
+    { input: 0, cacheRead: 0, cacheWrite: split.cacheWrite1h, output: 0, reasoning: 0, total: 0 },
+    { ...opts, cacheTtl: "1h" },
+  );
+  const cacheWrite = base.cacheWrite + long.cacheWrite;
+  return { ...base, cacheWrite, total: base.input + base.cacheRead + cacheWrite + base.output };
+}
+
+/**
+ * Record one model call. Fire-and-forget: pricing resolution and the insert run on an ordered
+ * queue, failures are logged, and callers are never blocked or thrown at.
+ */
+export function recordUsage(input: UsageEventInput): void {
+  if (openFailed || closed || configEnabled === false || !isUsageLedgerEnabled()) {
+    return;
+  }
+  queue = queue
+    .then(async () => {
+      const ledger = await ensureUsageLedger(input);
+      if (!ledger) {
+        return;
+      }
+      const resolved = await resolveUsageEvent(input);
+      if (!resolved) {
+        return;
+      }
+      const id = ledger.insert({ ...resolved, dedupeKey: input.dedupeKey ?? null });
+      if (id === null) {
+        return;
+      }
+      emit({ id, ...resolved });
+    })
+    .catch((err) => {
+      log.debug(`recordUsage failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+}
+
+/** Await every queued record; tests and shutdown hooks use this. */
+export async function flushUsageLedger(): Promise<void> {
+  await queue;
+}
+
+/**
+ * Record one tool call (hot-set proof). Same fire-and-forget queue as recordUsage: the tool
+ * result reaches the model regardless of what happens here.
+ */
+export function recordToolCall(input: ToolCallInput): void {
+  if (openFailed || closed || configEnabled === false || !isUsageLedgerEnabled()) {
+    return;
+  }
+  queue = queue
+    .then(async () => {
+      const ledger = await ensureUsageLedger(input);
+      if (!ledger) {
+        return;
+      }
+      ledger.insertToolCall(input);
+    })
+    .catch((err) => {
+      log.debug(`recordToolCall failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
+}
+
+export function resolveUsageRetentionDays(cfg: BitterbotConfig | undefined): number {
+  const raw = (cfg as { usage?: { ledger?: { retentionDays?: number } } } | undefined)?.usage
+    ?.ledger?.retentionDays;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.floor(raw);
+  }
+  return DEFAULT_USAGE_RETENTION_DAYS;
+}
+
+export function isUsageLedgerConfigEnabled(cfg: BitterbotConfig | undefined): boolean {
+  const raw = (cfg as { usage?: { ledger?: { enabled?: boolean } } } | undefined)?.usage?.ledger
+    ?.enabled;
+  return raw !== false;
+}
+
+const RECONCILE_INTERVAL_MS = 10 * 60_000;
+
+/**
+ * PLAN-50 Phase 6: fill `cost_computed` on rows written before the column existed (and on any
+ * row whose price was unknown at write time), one pricing identity at a time. Rows that still
+ * have no price are left NULL so "computed" never fabricates a number.
+ */
+export async function backfillComputedCost(
+  ledger: UsageLedger,
+  cfg?: BitterbotConfig,
+): Promise<number> {
+  const identities = ledger.uncomputedIdentities();
+  let updated = 0;
+  for (const identity of identities) {
+    if (!identity.provider || !identity.model) {
+      continue;
+    }
+    const resolved = await resolveModelPricing({
+      provider: identity.provider,
+      model: identity.model,
+      kind: identity.kind as UsageKind,
+      cfg,
+    });
+    if (resolved.source === "unpriced") {
+      continue;
+    }
+    const price = resolved.price;
+    let cacheWriteRate = price.cacheWrite;
+    if (identity.cache_ttl === "1h" && resolved.source !== "override") {
+      cacheWriteRate =
+        typeof price.cacheWrite1h === "number" && price.cacheWrite1h > 0
+          ? price.cacheWrite1h
+          : identity.provider.toLowerCase() === "anthropic"
+            ? price.cacheWrite * (2 / 1.25)
+            : price.cacheWrite;
+    }
+    if (resolved.source === "local") {
+      cacheWriteRate = 0;
+    }
+    try {
+      updated += ledger.applyComputedCost(
+        {
+          provider: identity.provider,
+          model: identity.model,
+          kind: identity.kind,
+          batch: identity.batch,
+          cache_ttl: identity.cache_ttl,
+        },
+        resolved.source === "local" ? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } : price,
+        cacheWriteRate,
+      );
+    } catch (err) {
+      log.debug(
+        `cost_computed backfill failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
+  if (updated > 0) {
+    log.info(`usage ledger: computed cost filled on ${updated} rows`);
+  }
+  return updated;
+}
+
+/**
+ * One-time correction (`reprice:borrowed:v1`): rows a forward-compat model recorded at a borrowed
+ * price move to the exact live price. Needs snapshots, so it runs after the first refresh.
+ */
+async function repriceBorrowedOnce(ledger: UsageLedger, cfg?: BitterbotConfig): Promise<void> {
+  try {
+    const { repriceBorrowedRows } = await import("./usage-reprice.js");
+    await repriceBorrowedRows({ ledger, cfg });
+  } catch (err) {
+    log.debug(`usage reprice failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * Gateway boot: open the ledger, prune, and start the transcript reconciler (backfill on first
+ * run, then a periodic safety net for any path that writes a transcript without recording live).
+ */
+export function startUsageLedger(opts?: {
+  cfg?: BitterbotConfig;
+  reconcile?: boolean;
+}): UsageLedger | null {
+  closed = false;
+  if (opts?.cfg) {
+    configEnabled = isUsageLedgerConfigEnabled(opts.cfg);
+    if (!configEnabled) {
+      log.info("usage ledger disabled by usage.ledger.enabled=false");
+      return null;
+    }
+  }
+  const ledger = getUsageLedger();
+  if (!ledger || !state) {
+    return null;
+  }
+  const retentionDays = resolveUsageRetentionDays(opts?.cfg);
+  try {
+    const pruned = ledger.pruneOlderThan(Date.now() - retentionDays * 24 * 60 * 60_000);
+    if (pruned > 0) {
+      log.info(`pruned ${pruned} usage rows older than ${retentionDays}d`);
+    }
+  } catch (err) {
+    log.debug(`usage prune failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  // PLAN-50 Phase 5: dated live-pricing snapshots (OpenRouter), refreshed daily. The first
+  // refresh completes before the first backfill so history for live-only models is priced.
+  let pricingReady: Promise<void> = Promise.resolve();
+  try {
+    pricingReady = startPricingRefresh({ cfg: opts?.cfg });
+  } catch (err) {
+    log.debug(`live pricing start failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (opts?.reconcile !== false && !state.reconcileTimer) {
+    const run = (): Promise<void> =>
+      import("./usage-reconcile.js")
+        .then(({ reconcileTranscripts }) => reconcileTranscripts({ ledger, cfg: opts?.cfg }))
+        .then((res) => {
+          if (res.rows > 0) {
+            log.info(`usage reconcile: ${res.rows} rows from ${res.files} transcript files`);
+          }
+        })
+        .catch((err) => {
+          log.debug(`usage reconcile failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
+    // First pass shortly after boot, once prices are in (capped so a slow network never
+    // delays the backfill more than a few seconds).
+    const firstTimer = setTimeout(() => {
+      void Promise.race([pricingReady, new Promise((r) => setTimeout(r, 8_000))])
+        .then(() => repriceBorrowedOnce(ledger, opts?.cfg))
+        .then(() => run())
+        .then(() => backfillComputedCost(ledger, opts?.cfg))
+        .catch(() => {});
+    }, 2_000);
+    firstTimer.unref?.();
+    state.reconcileTimer = setInterval(() => {
+      void run();
+      // Retention is enforced on a schedule too, not only at boot.
+      try {
+        ledger.pruneOlderThan(Date.now() - retentionDays * 24 * 60 * 60_000);
+      } catch {
+        // non-essential
+      }
+    }, RECONCILE_INTERVAL_MS);
+    state.reconcileTimer.unref?.();
+  }
+  return ledger;
+}

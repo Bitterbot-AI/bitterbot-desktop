@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { UpdateCheckResult } from "./update-check.js";
 import { VERSION } from "../version.js";
+import type { UpdateCheckResult } from "./update-check.js";
 import { computeUpdateStaleness, DEFAULT_PROMPT_BEHIND_COMMITS } from "./update-staleness.js";
 
 function gitCheck(behind: number | null): UpdateCheckResult {

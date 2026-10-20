@@ -11,8 +11,9 @@ import {
   Trophy,
 } from "lucide-react";
 import { memo, useCallback } from "react";
-import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
+import { formatCost, formatTokens } from "../../lib/format";
 import { cn } from "../../lib/utils";
+import type { ChatMessage, ToolCallItem } from "../../stores/chat-store";
 import { useUIStore } from "../../stores/ui-store";
 import { Markdown } from "../ui/markdown";
 import { ArtifactChip } from "./ArtifactChip";
@@ -240,6 +241,17 @@ export const MessageBubble = memo(function MessageBubble({
                 Open Models &amp; Keys
               </button>
             )}
+          </div>
+        )}
+
+        {/* PLAN-50: per-message token badge (assistant turns only; cost lives in the Usage tab). */}
+        {isAssistant && message.usage && message.usage.total > 0 && (
+          <div
+            className="mt-1 text-3xs text-muted-foreground/60 tabular-nums"
+            title="Tokens for this reply: prompt (including cached) · output"
+          >
+            ⬆ {formatTokens(message.usage.input)} · ⬇ {formatTokens(message.usage.output)}
+            {typeof message.usage.cost === "number" ? ` · ${formatCost(message.usage.cost)}` : ""}
           </div>
         )}
 

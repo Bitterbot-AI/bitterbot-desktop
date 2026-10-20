@@ -16,15 +16,15 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { OracleSpec } from "../../memory/bounty-oracle.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getLocalWalletCapability } from "../../infra/wallet-discovery.js";
+import type { OracleSpec } from "../../memory/bounty-oracle.js";
 import { postForageBounty } from "../../memory/bounty-post.js";
 import { getForageStats, getTape } from "../../memory/bounty-tape.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 type EconomicsLike = {
   getDb?: () => DatabaseSync | undefined;

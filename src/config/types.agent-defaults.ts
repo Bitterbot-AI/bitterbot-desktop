@@ -121,9 +121,47 @@ export type CliBackendConfig = {
   };
 };
 
+/**
+ * In-tree Anthropic Messages runtime (src/agents/providers/anthropic).
+ * `runtime: "vendored"` is the kill switch back to pi-ai 0.52.12's provider
+ * (byte-identical requests, no tool search, no system-message placement).
+ */
+export type AgentAnthropicRuntimeConfig = {
+  /** Default: "native". */
+  runtime?: "native" | "vendored";
+  /** Native tool search: full registry sent, hot set loaded, the rest `defer_loading`. */
+  toolSearch?: {
+    /** Default: true (api.anthropic.com + API key + a model with tool search). */
+    enabled?: boolean;
+    /** Server-side search variant. Default: "bm25". */
+    variant?: "bm25" | "regex";
+  };
+  /**
+   * Where the volatile `<runtime-state>` half of the prompt goes:
+   * "auto" (default) = a `role: "system"` message after the last user message
+   * on models that support it (Opus 4.8+, Fable), user-message tail elsewhere
+   * and after a 400; "user-tail" / "system-message" force one placement.
+   */
+  runtimeStatePlacement?: "auto" | "user-tail" | "system-message";
+};
+
+/**
+ * Agent runtime selector (PLAN-52). Since Phase 6 there is one engine, the
+ * owned runtime under `src/agents/runtime/`: the key is accepted and ignored,
+ * and a config that still says "pi" (the removed pi-coding-agent engine) gets
+ * one warning per scope at run time.
+ */
+export type AgentRuntimeEngine = "pi" | "bitterbot";
+
+export type AgentRuntimeConfig = {
+  engine?: AgentRuntimeEngine;
+};
+
 export type AgentDefaultsConfig = {
   /** Primary model and fallbacks (provider/model). */
   model?: AgentModelListConfig;
+  /** In-tree Anthropic runtime, tool search, and runtime-state placement. */
+  anthropic?: AgentAnthropicRuntimeConfig;
   /** Optional image-capable model and fallbacks (provider/model). */
   imageModel?: AgentModelListConfig;
   /** Model catalog with optional aliases (full provider/model keys). */
@@ -171,6 +209,8 @@ export type AgentDefaultsConfig = {
   contextPruning?: AgentContextPruningConfig;
   /** Compaction tuning and pre-compaction memory flush behavior. */
   compaction?: AgentCompactionConfig;
+  /** Agent runtime selection (PLAN-52). */
+  runtime?: AgentRuntimeConfig;
   /** PLAN-25 self-optimizing harness loop. On by default; set enabled:false to disable. */
   harnessEvolve?: AgentHarnessEvolveConfig;
   /** Tool result caching (in-memory LRU with TTL). */
@@ -231,7 +271,7 @@ export type AgentDefaultsConfig = {
     to?: string;
     /** Optional account id for multi-account channels. */
     accountId?: string;
-    /** Override the heartbeat prompt body (default: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK."). */
+    /** Override the heartbeat prompt body (default: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked."). */
     prompt?: string;
     /** Max chars allowed after HEARTBEAT_OK before delivery (default: 30). */
     ackMaxChars?: number;
@@ -242,6 +282,32 @@ export type AgentDefaultsConfig = {
      * Default: false (only the final heartbeat payload is delivered).
      */
     includeReasoning?: boolean;
+    /**
+     * Content-hash gate: before an interval tick calls the model, hash HEARTBEAT.md,
+     * the resolved heartbeat prompt, and the pending system events for the session.
+     * If the hash matches the last completed tick, skip the model call entirely
+     * (reason `unchanged-hash`). Wake/exec/cron/hook/manual reasons bypass the gate.
+     *
+     * Default: true.
+     */
+    skipWhenUnchanged?: boolean;
+    /**
+     * Run interval heartbeats in a dedicated `<mainKey>:heartbeat` session with a fresh
+     * transcript each tick instead of the shared main session. Delivery (`target: "last"`)
+     * still resolves from the main session. Ticks that must drain pending system events
+     * (exec completions, cron, wake) stay in the main session.
+     *
+     * Default: true.
+     */
+    isolatedSession?: boolean;
+    /**
+     * Light context for heartbeat runs: minimal system prompt, only HEARTBEAT.md injected
+     * (no other workspace bootstrap files), thinking pinned low, and a cheap-tier model
+     * when `model` is not set and a matching API key is present.
+     *
+     * Default: true.
+     */
+    lightContext?: boolean;
   };
   /** Max concurrent agent runs across all conversations. Default: 1 (sequential). */
   maxConcurrent?: number;
@@ -302,12 +368,73 @@ export type AgentHarnessEvolveConfig = {
 export type AgentCompactionConfig = {
   /** Compaction summarization mode. */
   mode?: AgentCompactionMode;
+  /**
+   * PLAN-52A compaction policy. `summary` = LLM summary (today's behaviour);
+   * `offload` = deterministic context offload with a transcript ledger and the
+   * recall tools. Default: `summary` until the offline evaluation passes.
+   */
+  policy?: AgentCompactionPolicy;
+  /** Settings for the `offload` policy. */
+  offload?: AgentCompactionOffloadConfig;
   /** Minimum reserve tokens enforced for Pi compaction (0 disables the floor). */
   reserveTokensFloor?: number;
   /** Max share of context window for history during safeguard pruning (0.1–0.9, default 0.5). */
   maxHistoryShare?: number;
   /** Pre-compaction memory flush (agentic turn). Default: enabled. */
   memoryFlush?: AgentCompactionMemoryFlushConfig;
+};
+
+export type AgentCompactionPolicy = "summary" | "offload";
+
+export type AgentCompactionOffloadConfig = {
+  /**
+   * Whether `recall_range` may read sessions other than the current one.
+   * `off` (default): current conversation only. `owner`: other sessions of
+   * this agent, owner senders only. Decision 11 (2026-10-01).
+   */
+  recallCrossSession?: "off" | "owner";
+  /**
+   * Tool-output stubs (PLAN-52A T3): when a turn passes the mid-turn trigger,
+   * replace the oldest tool outputs with a stub naming the tool call id; the
+   * full text stays in the transcript and `recall_range` returns it. Stubs are
+   * recorded in the transcript and re-applied every turn. Independent of
+   * `policy`. Default true.
+   */
+  toolOutputStubs?: boolean;
+  /** Turn-end (between turns) trigger as a fraction of the context window. Default 0.55. */
+  triggerTurnEndFraction?: number;
+  /** Turn-start safety-net trigger. Default 0.70. */
+  triggerTurnStartFraction?: number;
+  /** Mid-turn (after a tool result) trigger; stubs only. Default 0.80. */
+  triggerMidTurnFraction?: number;
+  /** Target window share after a horizon cut. Default 0.35. */
+  targetFraction?: number;
+  /** Target window share after mid-turn stubs. Default 0.50. */
+  midTurnTargetFraction?: number;
+  /** Complete real user turns always kept (bare heartbeat pairs do not count). Default 2. */
+  minKeepUserTurns?: number;
+  /** Tool outputs below this estimate are never stubbed. Default 1000 tokens. */
+  toolOutputStubMinTokens?: number;
+  /** Most recent tool outputs never stubbed. Default 2. */
+  spareRecentToolResults?: number;
+  /** Drop bare heartbeat prompt-and-ack pairs. Default true. */
+  elideHeartbeats?: boolean;
+  /** Ledger text budget. Default 1200 tokens. */
+  ledgerBudgetTokens?: number;
+  /** A horizon cut must elide at least this many tokens (overflow and manual ignore it). Default 2000. */
+  minElidedTokens?: number;
+  /**
+   * Cheap-model summary appended to the ledger: off | idle (between turns,
+   * manual) | always. Default `always` (decision 13, 2026-10-01): the
+   * evaluation showed the ledger alone losing 0.25 accuracy against a summary.
+   */
+  summary?: "off" | "idle" | "always";
+  /** Model for the cheap summary. Default anthropic/claude-haiku-4-5. */
+  summaryModel?: string;
+  /** Inject proactive recall over the elided range at turn start. Default true. */
+  proactiveRecall?: boolean;
+  /** Daily deep_recall budget across offloaded sessions (USD). Default 1.0. */
+  recallBudgetUsdPerDay?: number;
 };
 
 export type AgentCompactionMemoryFlushConfig = {

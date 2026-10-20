@@ -120,7 +120,10 @@ export function computeSkillPrice(
   }
 
   // Dynamic pricing components
-  const qualityMultiplier = input.metrics.successRate * Math.max(0.1, input.metrics.avgRewardScore);
+  // PLAN-45 Phase 0: avgRewardScore was a result-length bucket and is now
+  // always NULL at the source; quality is the success rate alone until Phase 1
+  // replaces both with run-level outcomes.
+  const qualityMultiplier = input.metrics.successRate;
   const demandMultiplier = 1 + Math.log(input.downloadCount + input.bountyMatches + 1) * 0.1;
   const reputationMultiplier = Math.max(0.1, input.reputationScore);
   const scarcityBonus =

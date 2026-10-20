@@ -5,6 +5,7 @@ import {
   AgentModelSchema,
   MemorySearchSchema,
 } from "./zod-schema.agent-runtime.js";
+import { CompactionOffloadSchema, CompactionPolicySchema } from "./zod-schema.compaction.js";
 import {
   BlockStreamingChunkSchema,
   BlockStreamingCoalesceSchema,
@@ -28,6 +29,33 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    anthropic: z
+      .object({
+        runtime: z
+          .union([z.literal("native"), z.literal("vendored")])
+          .optional()
+          .describe(
+            'In-tree Anthropic Messages runtime ("native", default) or vendored pi-ai provider ("vendored", kill switch).',
+          ),
+        toolSearch: z
+          .object({
+            enabled: z.boolean().optional().describe("Default: true"),
+            variant: z
+              .union([z.literal("bm25"), z.literal("regex")])
+              .optional()
+              .describe('Server-side tool search variant. Default: "bm25"'),
+          })
+          .strict()
+          .optional(),
+        runtimeStatePlacement: z
+          .union([z.literal("auto"), z.literal("user-tail"), z.literal("system-message")])
+          .optional()
+          .describe(
+            'Placement of the volatile <runtime-state> block: "auto" (default; role:system message on Opus 4.8+/Fable), "user-tail", or "system-message".',
+          ),
+      })
+      .strict()
+      .optional(),
     models: z
       .record(
         z.string(),
@@ -42,6 +70,8 @@ export const AgentDefaultsSchema = z
           .strict(),
       )
       .optional(),
+    /** Enforce `models` as the allowlist for /model and session overrides (default false: it is a catalog). */
+    restrictModels: z.boolean().optional(),
     workspace: z.string().optional(),
     repoRoot: z.string().optional(),
     skipBootstrap: z.boolean().optional(),
@@ -91,6 +121,8 @@ export const AgentDefaultsSchema = z
     compaction: z
       .object({
         mode: z.union([z.literal("default"), z.literal("safeguard")]).optional(),
+        policy: CompactionPolicySchema.optional(),
+        offload: CompactionOffloadSchema.optional(),
         reserveTokensFloor: z.number().int().nonnegative().optional(),
         maxHistoryShare: z.number().min(0.1).max(0.9).optional(),
         memoryFlush: z
@@ -108,6 +140,12 @@ export const AgentDefaultsSchema = z
     harnessEvolve: z
       .object({
         enabled: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
+    runtime: z
+      .object({
+        engine: z.union([z.literal("pi"), z.literal("bitterbot")]).optional(),
       })
       .strict()
       .optional(),

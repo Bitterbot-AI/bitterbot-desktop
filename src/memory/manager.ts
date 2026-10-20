@@ -1,32 +1,63 @@
-import type { DatabaseSync } from "node:sqlite";
-import { type FSWatcher } from "chokidar";
 import crypto from "node:crypto";
-import { appendFileSync, mkdirSync, existsSync } from "node:fs";
+import { appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
-import type { BitterbotConfig } from "../config/config.js";
-import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
-import type { CuriosityState } from "./curiosity-types.js";
-import type { DreamStats, SynthesizeFn } from "./dream-types.js";
-import type { ManagementNodeService } from "./management-node-service.js";
-import type {
-  MemoryEmbeddingProbeResult,
-  MemoryProviderStatus,
-  MemorySearchManager,
-  MemorySearchResult,
-  MemorySource,
-  MemorySyncProgressUpdate,
-} from "./types.js";
+import type { DatabaseSync } from "node:sqlite";
+import { type FSWatcher } from "chokidar";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
+import { resolveHarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
+import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
-import { resolveHarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
+import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
+import {
+  type ComputeEpisode,
+  type ComputeEpisodeSink,
+  formatComputeEpisode,
+  getComputeEpisodeSink,
+  registerComputeEpisodeSink,
+} from "../compute/awareness/episodes.js";
+import { computeNicheFacts, hasComputeActivity } from "../compute/awareness/niche.js";
+import {
+  type ComputeNudgeSink,
+  getComputeNudgeSink,
+  registerComputeNudgeSink,
+} from "../compute/awareness/nudges.js";
+import { getComputeRuntime } from "../compute/awareness/runtime.js";
+import { getComputeSnapshot } from "../compute/awareness/state.js";
+import { loadConfig, type BitterbotConfig } from "../config/config.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
+import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
+import {
+  evidenceTouchesUntrusted,
+  findExternalUntrustedLineRanges,
+} from "../security/external-content.js";
+import { registerTaskRewardHook } from "../tasks/judge.js";
 import { CanonicalFactsStore } from "./canonical-facts.js";
+import {
+  applySupersededMarks,
+  CANONICAL_CHANGED_EVENT,
+  CanonicalPropagation,
+  hasSupersessionMarks,
+  loadCanonicalSynthesisContext,
+  preserveOwnerSections,
+  stripOwnerSections,
+} from "./canonical-propagation.js";
+import { setChunkLifecycle } from "./chunk-writer.js";
 import { ConsolidationEngine, type ConsolidationStats } from "./consolidation.js";
+import { ContributorStatusLedger } from "./contributor-status.js";
+import { CORRECTION_LLM_LANE } from "./correction-capture.js";
 import { CuriosityEngine } from "./curiosity-engine.js";
+import {
+  insertNovelTargets,
+  looksLikeOwnerQuestion,
+  parseCuriosityGaps,
+} from "./curiosity-gaps.js";
+import { resolveCuriosityResearchConfig } from "./curiosity-researcher.js";
+import type { CuriosityState } from "./curiosity-types.js";
+import { recordCuriosityUse, recordCuriosityUseByTarget } from "./curiosity-use.js";
 import { applyDirectiveResolutions, finalizeAnsweredDirectives } from "./directive-resolution.js";
 import {
   DiscoveryAgent,
@@ -34,8 +65,19 @@ import {
   type SuggestSkillsConfig,
 } from "./discovery-agent.js";
 import { DreamEngine, createDefaultSynthesizeFn } from "./dream-engine.js";
+import {
+  AUTO_SCRATCH_PREFIX,
+  autoScratchEventText,
+  DreamGateState,
+  evaluateDreamGate,
+  HormonalDeltaTrigger,
+  lastAutoScratchEvent,
+} from "./dream-gate.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
+import type { DreamStats, SynthesizeFn } from "./dream-types.js";
 import { DEFAULT_DREAM_CONFIG } from "./dream-types.js";
+import { type EmbeddingProfile, embeddingProfileKey } from "./embedding-profile.js";
+import { createPoolEmbeddingProvider, isPoolEmbeddingProvider } from "./embeddings-pool.js";
 import {
   createEmbeddingProvider,
   type EmbeddingProvider,
@@ -49,9 +91,15 @@ import { yieldToEventLoop } from "./event-loop.js";
 import { parseEvidenceRefs, scoreCitationSupport } from "./evidence-expand.js";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ExperienceSignalCollector } from "./experience-signal-collector.js";
+import {
+  clearExtractionFailure,
+  recordExtractionFailure,
+  shouldSkipExtraction,
+} from "./extraction-failures.js";
 import { MemoryGovernance } from "./governance.js";
 import { detectGraphGaps, emitGraphBridgeSignal } from "./graph-bridge-target.js";
 import { insertTrainingPair } from "./graph-optimizer.js";
+import { filterGuestResults, guestMayReadPath } from "./guest-access.js";
 import { HormonalStateManager } from "./hormonal.js";
 import {
   bm25RankToScore,
@@ -60,11 +108,14 @@ import {
   mergeHybridResultsRRF,
   type HybridGraphResult,
 } from "./hybrid.js";
-import { isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
+import { resolveEmotionDecayResistance } from "./importance.js";
+import { embeddingToBlob, isMemoryPath, normalizeExtraMemoryPaths } from "./internal.js";
 import { backfillTypedRelationships } from "./kg-backfill.js";
 import * as kgAdmission from "./kg-entity-admission.js";
 import * as kgExtract from "./kg-relationship-extract.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
+import { MaintenanceMutex } from "./maintenance-mutex.js";
+import type { ManagementNodeService } from "./management-node-service.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import { searchKeyword, searchVector } from "./manager-search.js";
 import { memoryManagerSyncOps } from "./manager-sync-ops.js";
@@ -72,12 +123,38 @@ import { MarketplaceEconomics } from "./marketplace-economics.js";
 import { MarketplaceIntelligence } from "./marketplace-intelligence.js";
 import { MemStore } from "./mem-store.js";
 import { runArchitectCycle, selectRulesForState } from "./memory-architect.js";
+import { type ExportSink, MemoryExportInterrupted, writeMemoryExport } from "./memory-export.js";
+import { type ImportActor, importMemories } from "./memory-import.js";
+import { chunkTextHash, isSuppressed } from "./memory-suppressions.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
+import {
+  deletePreference as ownerDeletePreference,
+  editMemory as ownerEditMemory,
+  exportMemories as ownerExportMemories,
+  forgetMemory as ownerForgetMemory,
+  getMemory as ownerGetMemory,
+  type IndexTables,
+  listMemories as ownerListMemories,
+  type ListOptions as OwnerListOptions,
+  listAuditLog as ownerListAuditLog,
+  listPreferences as ownerListPreferences,
+  collectSessionChunks as ownerCollectSessionChunks,
+  forgetSessionMemories as ownerForgetSessionMemories,
+  sessionChunksForFiles as ownerSessionChunksForFiles,
+  OwnerEditRefused,
+  type OwnerPinInput,
+  previewEdit as ownerPreviewEdit,
+  previewForget as ownerPreviewForget,
+  pinFact as ownerPinFact,
+  retireFact as ownerRetireFact,
+  unretireFact as ownerUnretireFact,
+} from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { truncateAtSentence } from "./proactive-recall.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
 import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
+import { readRegistryProvenances } from "./registry-provenance.js";
 import {
   RetrievalObservability,
   TIME_WINDOW_LANE_MS,
@@ -90,25 +167,35 @@ import {
 } from "./retrieval-trace.js";
 import { sageRetrieve, DEFAULT_SAGE_CONFIG, type SageConfig } from "./sage-memory.js";
 import { MemoryScheduler } from "./scheduler.js";
+import { attachResultMetadata } from "./search-result-metadata.js";
 import { runSeedCrystalMigration, runSkillBootstrap } from "./seed-crystal-migration.js";
 import { SessionCoherenceTracker } from "./session-coherence.js";
 import { extractSessionFacts, type HormonalBias } from "./session-extractor.js";
 import { listSessionFilesForAgent } from "./session-files.js";
 import { formatHandoverBrief, handoverPath, briefToChunkText } from "./session-handover.js";
-import { SkillCrystallizer } from "./skill-crystallizer.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { stripHeartbeatTurns } from "./session-transcript-prep.js";
+import { setActiveEvolutionLlm } from "./skill-evolution/active-llm.js";
+import { makeAttesterWeight, resolveOwnAttesterPubkey } from "./skill-evolution/attester-weight.js";
+import { readValidationSummaries } from "./skill-evolution/validation-summaries.js";
+import { SkillExecutionTracker, runEvidenceWhere } from "./skill-execution-tracker.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { SkillRefiner } from "./skill-refiner.js";
 import { SkillVerifier } from "./skill-verifier.js";
 import { recordAccess } from "./spacing-effect.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
+import type {
+  MemoryEmbeddingProbeResult,
+  MemoryProviderStatus,
+  MemorySearchManager,
+  MemorySearchResult,
+  MemorySource,
+  MemorySyncProgressUpdate,
+} from "./types.js";
 import { UserModelManager } from "./user-model.js";
 import {
-  buildWorkingMemorySynthesisPrompt,
+  synthesizeValidatedWorkingMemory,
   buildHeuristicWorkingMemory,
-  validateWorkingMemory,
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
 } from "./working-memory-prompt.js";
@@ -124,8 +211,12 @@ import { scanForOpenLoops } from "./zeigarnik-effect.js";
 const SNIPPET_MAX_CHARS = 700;
 const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
+/** PLAN-55 Phase 2: extra results fetched while superseded marks exist. */
+const SUPERSEDED_OVERFETCH = 10;
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const BATCH_FAILURE_LIMIT = 2;
+/** PLAN-55 Phase 3 review: concurrent forget/edit previews (unlocked full scans). */
+const MAX_OWNER_PREVIEWS_IN_FLIGHT = 2;
 
 const log = createSubsystemLogger("memory");
 
@@ -181,6 +272,15 @@ export class MemoryIndexManager implements MemorySearchManager {
   private readonly workspaceDir: string;
   private readonly settings: ResolvedMemorySearchConfig;
   private provider: EmbeddingProvider;
+  /** PLAN-57 §4.6: resolved once per process on the first sync (digest may need I/O). */
+  private embeddingProfile: EmbeddingProfile | null = null;
+  /** Set when the live profile conflicts with the index; writes and vector search pause until migration. */
+  private embeddingProfileHold: { conflicts: string[]; stored: EmbeddingProfile } | null = null;
+  private embeddingHoldLogged = false;
+  /** PLAN-57 §4.7: the compute episode sink this manager registered, if any. */
+  private episodeSink: ComputeEpisodeSink | null = null;
+  /** PLAN-57 Phase 6: the compute nudge sink this manager registered, if any. */
+  private nudgeSink: ComputeNudgeSink | null = null;
   private readonly requestedProvider: "openai" | "local" | "gemini" | "voyage" | "auto";
   private fallbackFrom?: "openai" | "local" | "gemini" | "voyage";
   private fallbackReason?: string;
@@ -243,6 +343,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   >();
   private sessionWarm = new Set<string>();
   private syncing: Promise<void> | null = null;
+  /** PLAN-46 Phase 4: serializes heavy maintenance jobs (I4). */
+  private readonly maintenanceMutex = new MaintenanceMutex();
   private consolidationTimer: NodeJS.Timeout | null = null;
   private dreamTimer: NodeJS.Timeout | null = null;
   /**
@@ -265,6 +367,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     | null = null;
   private dreamEngine: DreamEngine | null = null;
   private dreamLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  /** PLAN-50: dedicated session-extraction lane (attributed to memory/extraction). */
+  private extractionLlmCall: ((prompt: string) => Promise<string>) | null = null;
+  /** PLAN-55 Phase 1: the per-turn correction lane (same model as extraction, live, own feature). */
+  private correctionLlmCallFn:
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null = null;
   private dreamSynthesisLlmCall: ((prompt: string) => Promise<string>) | null = null;
   /** PLAN-18 Phase 1 — small fast LLM call for query decomposition. Lazy-built. */
   private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
@@ -272,7 +380,6 @@ export class MemoryIndexManager implements MemorySearchManager {
   private curiosityEngine: CuriosityEngine | null = null;
   private hormonalManager: HormonalStateManager | null = null;
   private userModelManager: UserModelManager | null = null;
-  private skillRefiner: SkillRefiner | null = null;
   private governance: MemoryGovernance | null = null;
   private taskMemory: TaskMemoryManager | null = null;
   private scheduler: MemoryScheduler | null = null;
@@ -287,6 +394,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private discoveryAgent: DiscoveryAgent | null = null;
   private marketplaceEconomics: MarketplaceEconomics | null = null;
   private skillMarketplace: SkillMarketplace | null = null;
+  private contributorStatus?: ContributorStatusLedger;
   managementNodeService: ManagementNodeService | null = null;
   private knowledgeGraph: KnowledgeGraphManager | null = null;
   private reconsolidationEngine: ReconsolidationEngine | null = null;
@@ -310,9 +418,6 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     if (this.executionTracker) {
       (this.executionTracker as unknown as { db: DatabaseSync }).db = this.db;
-    }
-    if (this.skillRefiner) {
-      (this.skillRefiner as unknown as { db: DatabaseSync }).db = this.db;
     }
     if (this.memStore) {
       (this.memStore as unknown as { db: DatabaseSync }).db = this.db;
@@ -373,7 +478,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         id TEXT PRIMARY KEY, skill_crystal_id TEXT NOT NULL, session_id TEXT,
         started_at INTEGER NOT NULL, completed_at INTEGER, success INTEGER,
         reward_score REAL, error_type TEXT, error_detail TEXT,
-        execution_time_ms INTEGER, tool_calls_count INTEGER, user_feedback INTEGER
+        execution_time_ms INTEGER, tool_calls_count INTEGER, user_feedback INTEGER,
+        context_json TEXT, tool_name TEXT, recorded_by TEXT,
+        run_id TEXT, tool_call_id TEXT, evidence TEXT,
+        run_outcome_level INTEGER, run_outcome_label TEXT, run_outcome_at INTEGER
       )`);
       // Peer reputation table
       this.db.exec(`CREATE TABLE IF NOT EXISTS peer_reputation (
@@ -425,6 +533,21 @@ export class MemoryIndexManager implements MemorySearchManager {
     log.debug("propagated new DB handle and schemas to subsystems after reindex");
   }
 
+  /**
+   * PLAN-55 Phase 1: the already-open manager for this agent, or null. Never
+   * builds one: a caller that only wants to read what an earlier tool call
+   * wrote (the confirmation line after a turn with no corrective shape) must
+   * not open the memory database on a turn that never touched memory.
+   */
+  static peek(params: { cfg: BitterbotConfig; agentId: string }): MemoryIndexManager | null {
+    const settings = resolveMemorySearchConfig(params.cfg, params.agentId);
+    if (!settings) {
+      return null;
+    }
+    const workspaceDir = resolveAgentWorkspaceDir(params.cfg, params.agentId);
+    return INDEX_CACHE.get(`${params.agentId}:${workspaceDir}:${JSON.stringify(settings)}`) ?? null;
+  }
+
   static async get(params: {
     cfg: BitterbotConfig;
     agentId: string;
@@ -448,15 +571,32 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     const build = (async (): Promise<MemoryIndexManager> => {
       const providerStart = Date.now();
-      const providerResult = await createEmbeddingProvider({
+      const baseProviderResult = await createEmbeddingProvider({
         config: cfg,
         agentDir: resolveAgentDir(cfg, agentId),
+        agentId,
         provider: settings.provider,
         remote: settings.remote,
         model: settings.model,
         fallback: settings.fallback,
         local: settings.local,
       });
+      // PLAN-57 §4.6: batches may route to a compute pool. The wrapper keeps
+      // the provider's id and model (the index key) and is a pass-through
+      // until a backend, a runtime and a resolved profile all exist.
+      let built: MemoryIndexManager | null = null;
+      const providerResult: EmbeddingProviderResult =
+        cfg.compute?.enabled !== false && cfg.compute?.embeddings?.provider !== "local"
+          ? {
+              ...baseProviderResult,
+              provider: createPoolEmbeddingProvider({
+                local: baseProviderResult.provider,
+                config: cfg,
+                agentId,
+                getProfile: () => built?.currentEmbeddingProfile() ?? null,
+              }),
+            }
+          : baseProviderResult;
       const providerMs = Date.now() - providerStart;
       const ctorStart = Date.now();
       const manager = new MemoryIndexManager({
@@ -468,6 +608,30 @@ export class MemoryIndexManager implements MemorySearchManager {
         providerResult,
         purpose: params.purpose,
       });
+      built = manager;
+      // PLAN-57 §4.7: the first default-purpose manager receives compute
+      // episodes (terminal jobs the agent or owner started) as memory.
+      if (
+        params.purpose === undefined &&
+        cfg.compute?.enabled !== false &&
+        !getComputeEpisodeSink()
+      ) {
+        manager.episodeSink = (episode) => manager.writeComputeEpisodeChunk(episode);
+        registerComputeEpisodeSink(manager.episodeSink);
+      }
+      // Phase 6: the same manager's hormones take the compute nudges.
+      if (
+        params.purpose === undefined &&
+        cfg.compute?.enabled !== false &&
+        cfg.compute?.awareness?.nudges !== false &&
+        !getComputeNudgeSink()
+      ) {
+        manager.nudgeSink = (nudge) =>
+          manager.hormonalManager?.stimulate(
+            nudge.kind === "success" ? "compute_success" : "compute_setback",
+          );
+        registerComputeNudgeSink(manager.nudgeSink);
+      }
       log.info("memory manager build timing", {
         agentId,
         purpose: params.purpose ?? "default",
@@ -574,7 +738,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     step("ensureUserModelManager");
     this.ensureCanonicalFacts();
     step("ensureCanonicalFacts");
-    this.ensureSkillRefiner();
+    this.ensureExecutionTracker();
     this.ensureGovernance();
     this.ensureTaskMemory();
     this.ensureScheduler();
@@ -634,7 +798,19 @@ export class MemoryIndexManager implements MemorySearchManager {
    * emotional state reacts in real-time, not retroactively at index time.
    */
   stimulateFromLiveMessage(text: string): void {
-    if (!this.hormonalManager || !text) {
+    if (!text) {
+      return;
+    }
+    // Dream gate: count live (non-heartbeat) user turns. Heartbeat prompt
+    // builds skip recallForUserTurn entirely, so they never land here.
+    if (text !== this.lastLiveMessage || Date.now() - this.lastLiveMessageAt >= 5_000) {
+      try {
+        this.getDreamGateState().recordUserTurn();
+      } catch {
+        // Non-critical.
+      }
+    }
+    if (!this.hormonalManager) {
       return;
     }
     // Dedupe: prompt assembly can run more than once for the same user turn
@@ -712,7 +888,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     let embedding: number[] | null = null;
     try {
-      const vec = (await this.embedQueryWithTimeout(text)) as number[];
+      const vec = (await this.embedQueryWithTimeout(text, USAGE_FEATURES.memoryRecall)) as number[];
       embedding = Array.isArray(vec) && vec.length > 0 ? vec : null;
     } catch (err) {
       log.debug(`proactive recall: query embed failed: ${String(err)}`);
@@ -739,6 +915,7 @@ export class MemoryIndexManager implements MemorySearchManager {
             recentlySurfaced: this.proactiveRecallCooldown,
             currentTurn: this.turnCount,
             hormonalModulation: this.hormonalManager?.getRetrievalModulation() ?? null,
+            hormonalState: this.hormonalManager?.getState() ?? null,
             // PLAN-27: graph-anchored recall for entity/identity turns.
             kg: this.knowledgeGraph,
             userName: this.resolveUserName(),
@@ -778,6 +955,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       // minimal-mode assembly discards this block after selection, and a
       // selection-time stamp would re-create the vanity-metric disease.
       const includedDreamChunkIds: string[] = [];
+      // PLAN-54: a self-learned fact that comes to mind unprompted counts as used.
+      recordCuriosityUse(
+        this.db,
+        result.facts
+          .filter((f) => f.origin === "curiosity" && typeof f.chunkId === "string")
+          .map((f) => f.chunkId as string),
+      );
       const facts =
         result.facts.length > 0
           ? formatProactiveFacts(result.facts, { includedDreamChunkIds })
@@ -944,7 +1128,42 @@ export class MemoryIndexManager implements MemorySearchManager {
   // ── Emotional Dream Triggering (Plan 6, Phase 4) ──
 
   private lastMiniDreamTrigger = 0;
-  private readonly miniDreamCooldown = 10 * 60 * 1000; // 10 min
+  /**
+   * Token-efficiency pass (2026-09-19): the cooldown must exceed the 30-min
+   * consolidation tick or a pinned hormone re-fires a mini-dream every tick.
+   */
+  private get miniDreamCooldown(): number {
+    return (
+      (this.cfg.memory?.dream?.miniDreamCooldownMinutes ??
+        DEFAULT_DREAM_CONFIG.miniDreamCooldownMinutes) *
+      60 *
+      1000
+    );
+  }
+  /** Mini-dreams fire on a hormonal RISE since the last check, never on a level. */
+  private miniDreamTriggerInstance: HormonalDeltaTrigger | null = null;
+  private autoScratchTriggerInstance: HormonalDeltaTrigger | null = null;
+  private get hormonalTriggerDelta(): number {
+    return (
+      this.cfg.memory?.dream?.hormonalTriggerDelta ?? DEFAULT_DREAM_CONFIG.hormonalTriggerDelta
+    );
+  }
+  private get miniDreamTrigger(): HormonalDeltaTrigger {
+    this.miniDreamTriggerInstance ??= new HormonalDeltaTrigger(this.hormonalTriggerDelta);
+    return this.miniDreamTriggerInstance;
+  }
+  private get autoScratchTrigger(): HormonalDeltaTrigger {
+    this.autoScratchTriggerInstance ??= new HormonalDeltaTrigger(this.hormonalTriggerDelta);
+    return this.autoScratchTriggerInstance;
+  }
+  /** Persisted counters behind the scheduled full-cycle gate. */
+  private dreamGateState: DreamGateState | null = null;
+  private getDreamGateState(): DreamGateState {
+    if (!this.dreamGateState) {
+      this.dreamGateState = new DreamGateState(this.db);
+    }
+    return this.dreamGateState;
+  }
 
   // Plan 7: Cognitive coherence state
   readonly coherenceTracker = new SessionCoherenceTracker();
@@ -1002,6 +1221,8 @@ export class MemoryIndexManager implements MemorySearchManager {
   );
   /** PLAN-33: the canonical facts ledger (null when disabled/failed). */
   private canonicalFactsStore: CanonicalFactsStore | null = null;
+  /** PLAN-55 Phase 2: canonical:changed consumers, run off the write path. */
+  private canonicalPropagation: CanonicalPropagation | null = null;
   /** PLAN-33: last canonical-block injection, for retrievalHealth. */
   private lastCanonicalInjection: { at: number; count: number } | null = null;
   /** PLAN-28 B2: persisted-trace sampling rate (env-tunable, 0 disables). */
@@ -1024,15 +1245,20 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     const state = this.hormonalManager.getState();
 
-    if (state.dopamine > 0.7) {
+    // Token-efficiency pass (2026-09-19): GCCRF stimulation on every
+    // consolidation tick plus recall_relational on every prompt build pinned
+    // dopamine above 0.7 while idle, so the old absolute-level check fired a
+    // mini-dream every 30 minutes. A spike is now a RISE since the last check.
+    const spikes = this.miniDreamTrigger.check(state);
+    const reason = spikes.includes("dopamine_spike")
+      ? "dopamine_spike"
+      : spikes.includes("cortisol_spike")
+        ? "cortisol_spike"
+        : null;
+    if (reason) {
       this.lastMiniDreamTrigger = now;
       void this.dreamEngine
-        .runMiniDream("dopamine_spike")
-        .catch((err) => log.warn(`mini-dream failed: ${String(err)}`));
-    } else if (state.cortisol > 0.8) {
-      this.lastMiniDreamTrigger = now;
-      void this.dreamEngine
-        .runMiniDream("cortisol_spike")
+        .runMiniDream(reason)
         .catch((err) => log.warn(`mini-dream failed: ${String(err)}`));
     }
 
@@ -1055,21 +1281,55 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
   }
 
+  /** PLAN-53 G2: search for a non-owner sender. Over-fetches, then filters. */
+  async guestSearch(
+    query: string,
+    opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
+  ): Promise<MemorySearchResult[]> {
+    const want = opts?.maxResults ?? this.settings.query.maxResults;
+    // PLAN-55 Phase 2: superseded tags carry ledger values; never for a guest.
+    const results = await this.search(query, {
+      ...opts,
+      maxResults: want * 3,
+      tagSuperseded: false,
+    });
+    return filterGuestResults(this.db, results).slice(0, want);
+  }
+
+  guestMayRead(relPath: string): boolean {
+    return guestMayReadPath(this.db, relPath);
+  }
+
   async search(
     query: string,
     opts?: {
       maxResults?: number;
       minScore?: number;
       sessionKey?: string;
+      /**
+       * PLAN-55 Phase 2: rank superseded results last and tag them with the
+       * ledger's current value. Owner searches only; guestSearch passes false.
+       */
+      tagSuperseded?: boolean;
     },
   ): Promise<MemorySearchResult[]> {
+    // PLAN-55 Phase 2: over-fetch while marks exist, so demoted results never
+    // take a slot a current one could fill.
+    const tagSuperseded =
+      opts?.tagSuperseded !== false &&
+      this.cfg.memory?.canonicalLedger?.enabled !== false &&
+      hasSupersessionMarks(this.db);
+    const want = opts?.maxResults ?? this.settings.query.maxResults;
+    const innerOpts = tagSuperseded
+      ? { ...opts, maxResults: want + Math.min(want, SUPERSEDED_OVERFETCH) }
+      : opts;
     // PLAN-28 B1: per-layer retrieval counts, filled by searchInner and attached
     // as span attributes + fed to the dead-wire detector / sampled trace below.
     const layers: SearchLayerCounts = emptySearchCounts();
     const results = await withSpanAttrs(
       "memory.search",
       async (setAttr) => {
-        const r = await this.searchInner(query, opts, layers);
+        const r = await this.searchInner(query, innerOpts, layers);
         setAttr("memory.vector_hits", layers.vectorHits);
         setAttr("memory.keyword_hits", layers.keywordHits);
         setAttr("memory.graph_hits", layers.graphHits);
@@ -1093,6 +1353,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       sampleRate: this.retrievalTraceRate,
     });
     this.attachEvidenceRefs(results);
+    if (tagSuperseded) {
+      applySupersededMarks(this.db, results);
+      results.splice(want);
+    }
     if (results.length === 0) {
       this.recordCoverageMiss(query);
     }
@@ -1341,6 +1605,17 @@ export class MemoryIndexManager implements MemorySearchManager {
         graph: graphChannel,
       });
 
+      // The boosts below key on a memory's type, epistemic layer and age, which
+      // the search channels do not select. Look them up once for the merged
+      // set (without this the mood bonus never saw a type, every result aged at
+      // the default rate, and age was measured from "now").
+      attachResultMetadata(this.db, merged);
+      // PLAN-54: a self-learned fact that search returns counts as used.
+      recordCuriosityUse(
+        this.db,
+        merged.map((m) => m.id),
+      );
+
       // Hormonal retrieval modulation: emotional state influences what memories surface.
       // Cortisol (stress) sharpens focus on recent memories via recency bias.
       // Dopamine boosts importance weight slightly (optimism lifts all boats).
@@ -1576,7 +1851,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       ? ["anthropic/claude-haiku-4-5-20251001", "anthropic/claude-haiku-4-5"]
       : ["openai/gpt-4o-mini"];
     for (const spec of candidates) {
-      const raw = this.buildLlmCallFn(spec);
+      const raw = this.buildLlmCallFn(spec, { feature: USAGE_FEATURES.memoryPlanner });
       if (!raw) {
         continue;
       }
@@ -1763,6 +2038,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     limit: number,
     queryText?: string,
   ): Promise<Array<MemorySearchResult & { id: string; importanceScore: number }>> {
+    if (this.embeddingProfileHold) {
+      // The query vector comes from a profile the stored vectors do not share;
+      // a similarity score between them would be noise. Keyword search still runs.
+      return [];
+    }
     const results = await searchVector({
       db: this.db,
       vectorTable: VECTOR_TABLE,
@@ -1980,6 +2260,23 @@ export class MemoryIndexManager implements MemorySearchManager {
       provider: this.provider.id,
       model: this.provider.model,
       requestedProvider: this.requestedProvider,
+      ...(() => {
+        const profile = this.currentEmbeddingProfile();
+        return profile
+          ? {
+              embeddingProfile: {
+                key: embeddingProfileKey(profile),
+                modelDigest: profile.modelDigest,
+                dimensions: profile.dimensions,
+                normalise: profile.normalise,
+              },
+            }
+          : {};
+      })(),
+      ...(this.embeddingProfileHold
+        ? { embeddingHold: { conflicts: this.embeddingProfileHold.conflicts } }
+        : {}),
+      computeRouting: isPoolEmbeddingProvider(this.provider) ? "pool" : "local",
       sources: Array.from(this.sources),
       extraPaths: this.settings.extraPaths,
       sourceCounts,
@@ -2182,7 +2479,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   async probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult> {
     try {
-      await this.embedBatchWithRetry(["ping"]);
+      await this.embedBatchWithRetry(["ping"], USAGE_FEATURES.memoryProbe);
       return { ok: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -2210,11 +2507,11 @@ export class MemoryIndexManager implements MemorySearchManager {
       promoteThreshold: consolidationCfg?.promoteThreshold,
       forgetThreshold: scaledForgetThreshold,
       mergeOverlapThreshold: hormonalMod?.mergeThreshold ?? consolidationCfg?.mergeOverlapThreshold,
-      emotionDecayResistance: hormonalMod
-        ? hormonalMod.decayResistance
-        : emotionalCfg?.enabled !== false
-          ? (emotionalCfg?.decayResistance ?? 0.5)
-          : 0,
+      emotionDecayResistance: resolveEmotionDecayResistance({
+        enabled: emotionalCfg?.enabled,
+        configured: emotionalCfg?.decayResistance,
+        hormonal: hormonalMod?.decayResistance,
+      }),
     });
     return engine.run();
   }
@@ -2265,7 +2562,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         // 2. Consolidation (Ebbinghaus decay + merge). The engine yields to the
         //    event loop across its O(n^2) similarity sweeps; awaiting it lets the
         //    gateway keepalive flush instead of freezing for the whole pass.
-        await this.consolidate();
+        await this.maintenanceMutex.run("consolidation", () => this.consolidate(), 60_000);
         // 2b. GC: physically delete forgotten/expired tombstones past the
         //     retention window. `purgeExpired` was implemented but never called,
         //     so forgotten chunks (and their dead vec/fts rows) accumulated
@@ -2297,6 +2594,13 @@ export class MemoryIndexManager implements MemorySearchManager {
         }
         // 3c. PLAN-11 Gap 1: convert repeated user queries into knowledge_gap targets
         void this.runRequestFrequencyAnalyzer();
+        // 3d. PLAN-54: one target per weak search query, then go and learn.
+        //     Network + model work, OUTSIDE the maintenance mutex (a slow
+        //     provider must never stall dreams or Memory-page edits); one
+        //     pass at a time, never blocks this tick.
+        void this.curiosityResearchTick().catch((err) =>
+          log.debug(`curiosity research tick failed: ${String(err)}`),
+        );
         // 4. Governance: enforce TTL lifespan policies
         this.governance?.enforceLifespan();
         // 5. Task memory: mark stalled goals
@@ -2345,22 +2649,46 @@ export class MemoryIndexManager implements MemorySearchManager {
               log.debug(`quarantine sweep failed: ${String(err)}`);
             });
         }
-        // 8. Crystallize successful execution patterns into skills
+        // 8. (retired, PLAN-45 Phase 0) The SkillCrystallizer used to mint a
+        // "skill" chunk here from any tool name with >=3 non-erroring calls.
+        // Tool-level success is not skill competence, its dedup never matched
+        // (frozen vs generated), and it kept minting from execution rows whose
+        // crystal was deleted. Skills now come only from the evolution pass
+        // (src/memory/skill-evolution/), which gates on held-out task outcomes.
         await yieldToEventLoop();
-        if (this.executionTracker) {
-          const crystallizer = new SkillCrystallizer(this.db, this.executionTracker);
-          const newSkills = crystallizer.crystallizePatterns();
-          if (newSkills > 0) {
-            log.info(`crystallized ${newSkills} new skill(s) from execution patterns`);
+        // 8b. PLAN-45 Phase 1.1: ground the tool-level execution rows in their
+        // run's outcome HERE, on every consolidation, so competence consumers
+        // (pricing, bridge gate, distillation, tiers, metrics) see stamped rows
+        // on keyless nodes and between evolution passes too. Needs no LLM.
+        try {
+          const [{ backfillExecutionOutcomes }, { getActiveEventJournal }] = await Promise.all([
+            import("./skill-evolution/execution-outcomes.js"),
+            import("../infra/event-journal.js"),
+          ]);
+          const r = await backfillExecutionOutcomes({
+            journal: getActiveEventJournal(),
+            db: this.db,
+          });
+          if (r.stamped > 0) {
+            log.debug(`execution outcomes stamped: ${r.stamped} row(s) over ${r.runs} run(s)`);
           }
+        } catch (err) {
+          log.debug(`execution outcome back-fill skipped: ${String(err)}`);
         }
-        // 9. Decay steering rewards to prevent unbounded accumulation
-        {
-          const engine = new ConsolidationEngine(this.db);
-          engine.decaySteeringRewards();
-        }
+        // 9. (removed, memory audit 2026-09-07 C2) Steering-reward decay ran
+        // HERE and again inside consolidate() -> ConsolidationEngine.run(), so
+        // the reward decayed ~0.9025 instead of the configured 0.95 per tick.
+        // run() is the single decay site now.
         // 10. GCCRF: batch-score pending chunks and persist state (via unified CuriosityEngine)
         await this.curiosityEngine?.scorePendingChunks();
+        // 10b. PLAN-43 Phase 4: recompute contributor standings from verified signals.
+        try {
+          this.contributorStatus?.recompute({
+            trustedAttesters: new Set(this.cfg.a2a?.attestation?.trustedAttesters ?? []),
+          });
+        } catch (err) {
+          log.debug(`contributor status recompute skipped: ${String(err)}`);
+        }
         // 11. Marketplace: refresh listings and prices
         if (this.marketplaceEconomics) {
           const repScore = this.getOwnReputationScore();
@@ -2617,9 +2945,17 @@ export class MemoryIndexManager implements MemorySearchManager {
     // not true model independence — configure a different
     // memory.dream.synthesisModel for that.
     const synthesisModelSpec = dreamCfg?.synthesisModel ?? this.resolveCheapLlmSpec();
+    // Token-efficiency pass (2026-09-19): the synthesis prompt asks for up to
+    // ~4.5k output tokens across 7 sections; the lane default (2048) ended
+    // every call at stop_reason=length, failed section validation, and fell
+    // back to the heuristic builder on every cycle.
     const builtSynthesisLlmCall =
       dreamCfg?.synthesisLlmCall ??
-      (synthesisModelSpec ? this.buildLlmCallFn(synthesisModelSpec) : null);
+      (synthesisModelSpec
+        ? this.buildLlmCallFn(synthesisModelSpec, {
+            maxTokens: dreamCfg?.synthesisMaxTokens ?? DEFAULT_DREAM_CONFIG.synthesisMaxTokens,
+          })
+        : null);
     // PLAN-34 Phase 2c: the local-tier call was previously destructured out
     // and DISCARDED (wired-but-dead). It now powers local-tier modes and —
     // critically — the depersonalization rewrite that gates all autonomous
@@ -2659,6 +2995,73 @@ export class MemoryIndexManager implements MemorySearchManager {
         : {}),
       // PLAN-34 Phase 4: dream-insight promotion kill switch.
       ...(dreamCfg?.insightPromotion ? { insightPromotion: dreamCfg.insightPromotion } : {}),
+      // PLAN-42: WikiSkill evolution pass rides skills.evolution (default
+      // ON; plain data, structuredClone-safe).
+      ...(this.cfg.skills?.evolution ? { skillEvolution: this.cfg.skills.evolution } : {}),
+      // PLAN-45 4.1: reputation orders peer-skill evaluation, nothing more.
+      attesterPriority: (pubkey: string) =>
+        this.peerReputationManager?.getTrustScore(pubkey) ?? 0.5,
+      // PLAN-45 Phase 3.5: the substrate evolved skills are measured on.
+      ...(() => {
+        const spec = this.resolvePrimaryLlmSpec();
+        return spec ? { runtimeModelTag: spec } : {};
+      })(),
+      ...(this.cfg.a2a?.attestation ? { a2aAttestation: this.cfg.a2a.attestation } : {}),
+      // PLAN-42 live fix: the maintainer/proposer emit large JSON (full
+      // index + pattern pages / full SKILL.md); the default 2048-token cap
+      // truncated them mid-object on the first live iteration. Dedicated
+      // call lane with an 8k output budget, honoring judgeModel.
+      ...(() => {
+        const spec =
+          this.cfg.skills?.evolution?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
+        const call = spec
+          ? this.buildLlmCallFn(spec, { maxTokens: 8192, feature: USAGE_FEATURES.skillsEvolution })
+          : null;
+        return call ? { evolutionLlmCall: call } : {};
+      })(),
+      // PLAN-42: dedicated proposer lane — a stronger model holds the strict
+      // ReAct JSON protocol better than the cheap maintainer lane.
+      // PLAN-44 Phase 0 (D-1): when neither proposerModel nor judgeModel is
+      // configured, the proposer runs on the agent's PRIMARY model (the model
+      // that will execute the skill also proposes it — the paper's
+      // self-evolution reading). Live finding: on the cheap lane the proposer
+      // failed its own JSON protocol in 3 of 5 iterations.
+      // Token-efficiency pass (2026-09-19): the primary-model default spent
+      // ~$0.40 of Opus per iteration even when the only trace was a clean
+      // PASS. The proposer now defaults to the cheap lane; set
+      // skills.evolution.proposerModel explicitly for a stronger model.
+      ...(() => {
+        const evo = this.cfg.skills?.evolution;
+        const spec =
+          evo?.proposerModel ?? evo?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
+        // The proposer's ReAct loop is many dependent round-trips: never the Batches API.
+        const call = spec
+          ? this.buildLlmCallFn(spec, {
+              maxTokens: 8192,
+              feature: USAGE_FEATURES.skillsEvolution,
+              batch: false,
+            })
+          : null;
+        // PLAN-44 Phase 5c: expose the lanes to on-demand gateway RPCs — the
+        // same 8k evolution lane housekeeping uses, plus the proposer lane.
+        const evoSpec =
+          this.cfg.skills?.evolution?.judgeModel ?? dreamCfg?.model ?? this.resolveCheapLlmSpec();
+        // On-demand RPC lanes: an operator is waiting, so no batch queue here either.
+        setActiveEvolutionLlm({
+          evolution: evoSpec
+            ? this.buildLlmCallFn(evoSpec, {
+                maxTokens: 8192,
+                feature: USAGE_FEATURES.skillsEvolution,
+                batch: false,
+              })
+            : null,
+          proposer: call,
+        });
+        // PLAN-45 4.6 (I8): the evolver model rides every published skill.
+        return call
+          ? { evolutionProposerLlmCall: call, ...(spec ? { evolutionProposerModelTag: spec } : {}) }
+          : {};
+      })(),
     };
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so
@@ -2682,23 +3085,37 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     const embedBatchFn = async (texts: string[]) => {
-      return await this.embedBatchWithRetry(texts);
+      return await this.embedBatchWithRetry(texts, USAGE_FEATURES.memoryDream);
     };
 
     this.dreamLlmCall = builtLlmCall;
     this.dreamSynthesisLlmCall = builtSynthesisLlmCall;
+    // PLAN-50: session fact extraction gets its own lane so its spend is attributed separately
+    // from dreaming (same model, different feature). An injected llmCall is reused as-is.
+    this.extractionLlmCall = dreamCfg?.llmCall
+      ? builtLlmCall
+      : this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec(), {
+          feature: USAGE_FEATURES.memoryExtraction,
+          // Token-efficiency pass (2026-09-19): 20 cited facts + a handover
+          // brief do not fit the 2048 lane default; truncated JSON never parsed.
+          maxTokens: this.cfg.memory?.extraction?.maxTokens ?? 6144,
+        });
+    // PLAN-55 Phase 1: the per-turn correction capture reuses the extraction
+    // model choice (memory.extraction.model, else the dream model, else the
+    // cheap default) on its own ledger lane, `memory/correction`, and never
+    // through the Batches API: the owner's reply is waiting on it.
+    this.correctionLlmCallFn = dreamCfg?.llmCall
+      ? builtLlmCall
+      : this.buildLlmCallFn(
+          this.cfg.memory?.extraction?.model ?? dreamCfg?.model ?? this.resolveCheapLlmSpec(),
+          CORRECTION_LLM_LANE,
+        );
     this.dreamEngine = new DreamEngine(this.db, engineCfg, synthesizeFn, embedBatchFn);
 
     if (this.hormonalManager) {
       this.dreamEngine.setHormonalStateGetter(() => this.hormonalManager?.getState() ?? null);
       this.dreamEngine.setHormonalManager(this.hormonalManager);
     }
-
-    // Wire execution tracker for research mode
-    if (!this.executionTracker) {
-      this.executionTracker = new SkillExecutionTracker(this.db);
-    }
-    this.dreamEngine.setExecutionTracker(this.executionTracker);
 
     // PLAN-34 Phase 4: the searchable-chunk writer for promoted dream
     // insights. The manager owns the live embedding model and vec/fts state,
@@ -2749,7 +3166,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
       let triggerEmbedding: number[] | undefined;
       try {
-        const vecs = await this.embedBatchWithRetry([p.trigger]);
+        const vecs = await this.embedBatchWithRetry([p.trigger], USAGE_FEATURES.memoryDream);
         if (vecs[0] && vecs[0].length > 0) {
           triggerEmbedding = vecs[0];
         }
@@ -2802,7 +3219,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.dreamInitialTimer = setTimeout(() => {
         this.dreamInitialTimer = null;
         log.info("initial dream cycle starting (trigger-on-start)");
-        void this.dream().catch((err) => {
+        void this.dream({ scheduled: true }).catch((err) => {
           log.warn(`initial dream cycle failed: ${String(err)}`);
         });
       }, initialDelayMs);
@@ -2837,7 +3254,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       } else {
         const ms = minutes * 60 * 1000;
         this.dreamTimer = setInterval(() => {
-          void this.dream().catch((err) => {
+          void this.dream({ scheduled: true }).catch((err) => {
             log.warn(`dream cycle failed: ${String(err)}`);
           });
         }, ms);
@@ -2875,7 +3292,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     this.dreamTimer = setTimeout(
       () => {
         this.dreamTimer = null;
-        void this.dream()
+        void this.dream({ scheduled: true })
           .catch((err) => {
             log.warn(`dream cycle failed: ${String(err)}`);
           })
@@ -2917,13 +3334,307 @@ export class MemoryIndexManager implements MemorySearchManager {
     });
   }
 
+  // ── PLAN-54: the curiosity loop ─────────────────────────────────────────
+
+  private curiosityEmbed(): (text: string) => Promise<number[] | null> {
+    return async (text) => {
+      try {
+        return (await this.embedQueryWithTimeout(text, USAGE_FEATURES.memoryCuriosity)) as number[];
+      } catch {
+        return null;
+      }
+    };
+  }
+
+  private curiosityResearchConfig() {
+    return resolveCuriosityResearchConfig(
+      this.cfg.memory?.curiosity?.research,
+      this.cfg.memory?.curiosity?.autoResearch?.enabled,
+    );
+  }
+
+  /** Queue the `## Curiosity Gaps` bullets of a fresh MEMORY.md as questions. */
+  async ingestCuriosityGaps(memoryMd: string): Promise<number> {
+    if (this.cfg.memory?.curiosity?.enabled === false) {
+      return 0;
+    }
+    const questions = parseCuriosityGaps(memoryMd);
+    if (questions.length === 0) {
+      return 0;
+    }
+    const ids = await insertNovelTargets(this.db, {
+      targets: questions.map((q) => ({
+        type: "question" as const,
+        description: q,
+        priority: 0.75,
+        metadata: { source: "working_memory" },
+      })),
+      embed: this.curiosityEmbed(),
+    });
+    if (ids.length > 0) {
+      log.info(`curiosity: ${ids.length} new question(s) from working memory`);
+    }
+    return ids.length;
+  }
+
+  /** One target per search query that kept scoring poorly (the owner asked; memory had nothing). */
+  private async ingestKnowledgeGapTargets(): Promise<number> {
+    const threshold = this.cfg.memory?.curiosity?.gapScoreThreshold ?? 0.5;
+    let rows: Array<{ query: string; region_id: string | null; n: number }> = [];
+    try {
+      rows = this.db
+        .prepare(
+          `SELECT query, region_id, COUNT(*) AS n FROM curiosity_queries
+            WHERE top_score < ? AND length(query) >= 12
+              AND NOT EXISTS (SELECT 1 FROM curiosity_targets t
+                               WHERE t.description = curiosity_queries.query
+                                 AND (t.resolved_at IS NULL OR t.resolved_at >= ?))
+            GROUP BY query ORDER BY n DESC, MAX(timestamp) DESC LIMIT 5`,
+        )
+        .all(threshold, Date.now() - 30 * 24 * 60 * 60 * 1000) as unknown as typeof rows;
+    } catch {
+      return 0;
+    }
+    // curiosity_queries records EVERY search, including the dream engine's and
+    // the working-memory synthesis's own probes ("recent goals tasks
+    // projects"). Only something shaped like a question a person asked is a
+    // gap worth researching.
+    rows = rows.filter((r) => looksLikeOwnerQuestion(r.query));
+    if (rows.length === 0) {
+      return 0;
+    }
+    const ids = await insertNovelTargets(this.db, {
+      targets: rows.map((r) => ({
+        type: "knowledge_gap" as const,
+        description: r.query,
+        priority: Math.min(0.9, 0.55 + 0.1 * Math.log1p(r.n)),
+        regionId: r.region_id,
+        metadata: { source: "weak_search", queryCount: r.n },
+      })),
+      embed: this.curiosityEmbed(),
+    });
+    return ids.length;
+  }
+
+  /** One pass at a time: a tick or a click while a pass runs joins it instead of queueing another. */
+  private curiosityPassInFlight: Promise<
+    import("./curiosity-researcher.js").CuriosityRunSummary
+  > | null = null;
+
+  private curiosityResearchTick(
+    opts: { force?: boolean } = {},
+  ): Promise<import("./curiosity-researcher.js").CuriosityRunSummary> {
+    if (this.curiosityPassInFlight) {
+      return this.curiosityPassInFlight;
+    }
+    const run = this.curiosityResearchPass(opts).finally(() => {
+      this.curiosityPassInFlight = null;
+    });
+    this.curiosityPassInFlight = run;
+    return run;
+  }
+
+  private async curiosityResearchPass(
+    opts: { force?: boolean } = {},
+  ): Promise<import("./curiosity-researcher.js").CuriosityRunSummary> {
+    const idle = { ran: false, attempted: 0, learned: 0, outcomes: {}, costUsd: 0 };
+    if (this.cfg.memory?.curiosity?.enabled === false) {
+      return { ...idle, reason: "memory.curiosity.enabled is false" };
+    }
+    const { runCuriosityResearch } = await import("./curiosity-researcher.js");
+    const { runConfiguredWebSearch, isWebSearchConfigured } =
+      await import("../agents/tools/web-search.js");
+    const { fetchReadablePage } = await import("./curiosity-fetch.js");
+    await this.ingestKnowledgeGapTargets();
+    const cfg = this.curiosityResearchConfig();
+    const modelSpec = this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec();
+    const llm = modelSpec ? this.buildCostedLlmCall(modelSpec) : null;
+    if (!llm) {
+      return { ...idle, reason: "no model" };
+    }
+    const localSpec = this.cfg.memory?.dream?.modelTiers?.localModel;
+    const llmLocal =
+      localSpec && isLocalModelSpec(localSpec) ? this.buildCostedLlmCall(localSpec) : null;
+    const searchConfigured = isWebSearchConfigured(this.cfg);
+    const summary = await runCuriosityResearch(
+      {
+        db: this.db,
+        config: cfg,
+        search: searchConfigured ? (q, n) => runConfiguredWebSearch(this.cfg, q, n) : null,
+        fetchPage: fetchReadablePage,
+        llm,
+        llmLocal,
+        embed: this.curiosityEmbed(),
+        hormonal: () => this.hormonalManager?.getState() ?? null,
+        onEvent: (event) => this.hormonalManager?.stimulate(event),
+        ownerNames: this.curiosityOwnerNames(),
+        searchProvider: String(this.cfg.tools?.web?.search?.provider ?? "web-search"),
+      },
+      opts,
+    );
+    if (summary.ran) {
+      log.info(
+        `curiosity research: attempted ${summary.attempted}, learned ${summary.learned}` +
+          (summary.costUsd > 0 ? ` ($${summary.costUsd.toFixed(4)})` : ""),
+      );
+      if (summary.learned > 0) {
+        // Make what it just learned retrievable now, not at the next index
+        // sync: the new chunk is stored with a pending embedding.
+        void this.backfillPendingEmbeddings({ limit: 5 }).catch(() => {});
+      }
+    }
+    return summary;
+  }
+
+  /**
+   * Names that must never appear in an outgoing search phrase: the owner, and
+   * every person the knowledge graph knows (owners type their friends' names
+   * in lowercase, which the entity-case check cannot see).
+   */
+  private curiosityOwnerNames(): string[] {
+    const names = new Set<string>();
+    const me = this.resolveUserName();
+    if (me) {
+      names.add(me);
+    }
+    try {
+      const rows = this.db
+        .prepare(
+          `SELECT name FROM entities
+            WHERE lower(entity_type) IN ('person', 'people', 'human', 'contact', 'friend', 'family', 'organization', 'project')
+            LIMIT 500`,
+        )
+        .all() as unknown as Array<{ name: string }>;
+      for (const r of rows) {
+        if (typeof r.name === "string" && r.name.trim().length >= 2) {
+          names.add(r.name.trim());
+        }
+      }
+    } catch {
+      // no knowledge graph on this node
+    }
+    return [...names];
+  }
+
+  /** Like buildLlmCallFn, but the ledger cost rides back so a finding can carry it. */
+  private buildCostedLlmCall(
+    modelSpec: string,
+  ): ((prompt: string) => Promise<{ text: string; costUsd: number }>) | null {
+    const parts = modelSpec.split("/");
+    if (parts.length < 2) {
+      return null;
+    }
+    const provider = parts[0]!;
+    const modelId = parts.slice(1).join("/");
+    const agentDir = resolveAgentDir(this.cfg, this.agentId);
+    return async (prompt) => {
+      const { completeAttributed } = await import("../agents/complete-attributed.js");
+      const { text, costUsd } = await completeAttributed({
+        provider,
+        modelId,
+        cfg: this.cfg,
+        agentDir,
+        prompt,
+        maxTokens: 1024,
+        feature: USAGE_FEATURES.memoryCuriosity,
+        agentId: this.agentId,
+        errorPrefix: `curiosity llm error (${modelSpec})`,
+        batch: false,
+        // A hung provider must not hold a pass open.
+        signal: AbortSignal.timeout(90_000),
+      });
+      return { text, costUsd };
+    };
+  }
+
+  async curiosityStatus() {
+    const { curiosityStatus } = await import("./curiosity-researcher.js");
+    const { isWebSearchConfigured } = await import("../agents/tools/web-search.js");
+    const c = this.cfg.memory?.curiosity;
+    const disabledBy =
+      c?.enabled === false
+        ? "memory.curiosity.enabled"
+        : c?.research?.enabled === false
+          ? "memory.curiosity.research.enabled"
+          : c?.autoResearch?.enabled === false && c?.research?.enabled !== true
+            ? "memory.curiosity.autoResearch.enabled"
+            : null;
+    return curiosityStatus(this.db, this.curiosityResearchConfig(), {
+      searchConfigured: isWebSearchConfigured(this.cfg),
+      hormonal: this.hormonalManager?.getState() ?? null,
+      disabledBy,
+    });
+  }
+
+  async curiosityList(limit?: number) {
+    const { listCuriosity } = await import("./curiosity-researcher.js");
+    return listCuriosity(this.db, { limit });
+  }
+
+  async curiosityPause(paused: boolean): Promise<void> {
+    const { setCuriosityPaused } = await import("./curiosity-researcher.js");
+    setCuriosityPaused(this.db, paused);
+    log.info(`curiosity research ${paused ? "paused" : "resumed"} by the owner`);
+  }
+
+  async curiosityDismiss(id: string): Promise<boolean> {
+    const { dismissCuriosityTarget } = await import("./curiosity-researcher.js");
+    return dismissCuriosityTarget(this.db, id);
+  }
+
+  async curiosityAsk(question: string): Promise<string | null> {
+    const { askCuriosity } = await import("./curiosity-researcher.js");
+    return askCuriosity(this.db, question, this.curiosityEmbed());
+  }
+
+  /**
+   * Owner-triggered pass: ignores the interval, honors pause and the daily
+   * budget. Returns at once (a pass can take minutes; the Control UI request
+   * times out at 30 s); the page polls status to watch it.
+   */
+  curiosityRunNow(): { started: boolean } {
+    const started = this.curiosityPassInFlight === null;
+    void this.curiosityResearchTick({ force: true }).catch((err) =>
+      log.debug(`curiosity run-now failed: ${String(err)}`),
+    );
+    return { started };
+  }
+
+  /** PLAN-53 G4: tell the owner what the agent dreamed and learned today. */
+  async sendDreamBrief(opts: { force?: boolean } = {}): Promise<string | null> {
+    if (this.cfg.memory?.dreamBrief?.enabled === false && !opts.force) {
+      return null;
+    }
+    try {
+      const { buildDreamBrief, briefIsWorthSending, renderDreamBrief } =
+        await import("./dream-brief.js");
+      const brief = buildDreamBrief(this.db, Date.now() - 24 * 60 * 60 * 1000);
+      if (!briefIsWorthSending(brief) && !opts.force) {
+        return null;
+      }
+      const text = renderDreamBrief(brief);
+      const { notifyOwner } = await import("../infra/owner-notify.js");
+      await notifyOwner({
+        kind: "dream-brief",
+        dedupeKey: `dream-brief:${this.agentId}:${new Date().toISOString().slice(0, 10)}`,
+        text,
+      });
+      return text;
+    } catch (err) {
+      log.warn(`dream brief failed: ${String(err)}`);
+      return null;
+    }
+  }
+
   private scheduleDigestFire(msUntilNext: number): void {
     this.digestTimer = setTimeout(() => {
       this.digestTimer = null;
-      void this.runDigest({ deliver: true })
+      void this.maintenanceMutex
+        .run("digest", () => this.runDigest({ deliver: true }))
         .catch((err) => {
           log.warn(`digest delivery failed: ${String(err)}`);
         })
+        .then(() => this.sendDreamBrief())
         .finally(() => {
           // Reschedule for the same time next day.
           this.ensureDigestInterval();
@@ -2993,7 +3704,7 @@ export class MemoryIndexManager implements MemorySearchManager {
                   (Date.now() - lastAt) / 3_600_000,
                 )}h ago — running a catch-up now`,
           );
-          await this.runHealthSweep();
+          await this.maintenanceMutex.run("health-sweep", () => this.runHealthSweep(), 60_000);
         } catch (err) {
           log.debug(`health sweep catch-up failed: ${String(err)}`);
         }
@@ -3103,7 +3814,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     const { SkillMarketabilityPredictor } = await import("./skill-marketability-predictor.js");
     const modelSpec =
       predictorCfg?.model ?? this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec();
-    const llmCall = this.buildLlmCallFn(modelSpec);
+    const llmCall = this.buildLlmCallFn(modelSpec, { feature: USAGE_FEATURES.memoryMarketability });
     this.marketabilityPredictor = new SkillMarketabilityPredictor(
       this.db,
       {
@@ -3142,9 +3853,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
     const ms = intervalHours * 60 * 60 * 1000;
     this.trendingSweepTimer = setInterval(() => {
-      void this.runTrendingSweep().catch((err) => {
-        log.warn(`trending sweep failed: ${String(err)}`);
-      });
+      void this.maintenanceMutex
+        .run("trending", () => this.runTrendingSweep())
+        .catch((err) => {
+          log.warn(`trending sweep failed: ${String(err)}`);
+        });
     }, ms);
     if (this.trendingSweepTimer.unref) {
       this.trendingSweepTimer.unref();
@@ -3153,9 +3866,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     // pulling from external APIs.
     const initialDelayMs = Math.min(ms, 10 * 60 * 1000); // 10 min or 1 interval
     setTimeout(() => {
-      void this.runTrendingSweep().catch((err) => {
-        log.warn(`trending sweep failed: ${String(err)}`);
-      });
+      void this.maintenanceMutex
+        .run("trending", () => this.runTrendingSweep())
+        .catch((err) => {
+          log.warn(`trending sweep failed: ${String(err)}`);
+        });
     }, initialDelayMs).unref?.();
   }
 
@@ -3224,71 +3939,110 @@ export class MemoryIndexManager implements MemorySearchManager {
     return resolveCheapLlmSpec(process.env);
   }
 
-  private buildLlmCallFn(modelSpec: string): ((prompt: string) => Promise<string>) | null {
+  /**
+   * PLAN-44 Phase 0 (D-1): the agent's primary model as a "provider/model"
+   * spec, for lanes that must match the runtime agent's capability (the
+   * skill proposer). Null when config resolution throws, so callers fall
+   * back to their previous default.
+   */
+  private resolvePrimaryLlmSpec(): string | null {
+    try {
+      const ref = resolveDefaultModelForAgent({ cfg: this.cfg, agentId: this.agentId });
+      return ref.provider && ref.model ? `${ref.provider}/${ref.model}` : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private buildLlmCallFn(
+    modelSpec: string,
+    opts?: {
+      maxTokens?: number;
+      feature?: string;
+      /**
+       * Route through the Anthropic Message Batches API (50% price, up to
+       * `memory.batch.maxWaitMinutes` of latency, live fallback). Default: the
+       * lane decision from `memory.batch.lanes`; pass `false` for anything a
+       * user is waiting on (the proposer ReAct loop, on-demand RPC lanes).
+       */
+      batch?: boolean;
+    },
+  ): ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>) | null {
     const parts = modelSpec.split("/");
     if (parts.length < 2) {
       return null;
     }
     const provider = parts[0]!;
     const modelId = parts.slice(1).join("/");
+    // PLAN-50: every hidden lane records to the usage ledger under its feature and honors the
+    // background budget gate (dream, extraction, evolution pause when `usage.budgets.mode` is
+    // "enforce" and a covering budget is exceeded).
+    const feature = opts?.feature ?? USAGE_FEATURES.memoryDream;
+    const agentDir = resolveAgentDir(this.cfg, this.agentId);
 
-    try {
-      // Lazy imports to avoid circular deps and keep cold path fast
-      const resolveModelFn = async () => {
-        const { resolveModel } = await import("../agents/pi-embedded-runner/model.js");
-        const { getApiKeyForModel } = await import("../agents/model-auth.js");
-        const resolved = resolveModel(provider, modelId, undefined, this.cfg);
-        if (!resolved.model) {
-          return null;
-        }
-        const auth = await getApiKeyForModel({ model: resolved.model, cfg: this.cfg });
-        return { model: resolved.model, apiKey: auth?.apiKey };
-      };
-
-      return async (prompt: string): Promise<string> => {
-        const { completeSimple } = await import("@mariozechner/pi-ai");
-        const ctx = await resolveModelFn();
-        if (!ctx) {
-          throw new Error(`Cannot resolve model: ${modelSpec}`);
-        }
-
-        const res = await completeSimple(
-          ctx.model,
-          {
-            messages: [{ role: "user" as const, content: prompt, timestamp: Date.now() }],
-          },
-          {
-            apiKey: ctx.apiKey,
-            maxTokens: 2048,
-            // No sampling params: current Anthropic models 400 on temperature,
-            // and completeSimple embeds that error instead of throwing.
-          },
-        );
-        const failure = res as { stopReason?: string; errorMessage?: string };
-        if (failure.stopReason === "error") {
-          throw new Error(`llm error (${modelSpec}): ${failure.errorMessage ?? "unknown"}`);
-        }
-
-        return (
-          res.content
-            ?.filter((b: { type: string }) => b.type === "text")
-            .map((b: { type: string; text?: string }) => b.text ?? "")
-            .join("\n") ?? ""
-        );
-      };
-    } catch (err) {
-      log.warn(`Failed to build LLM call for ${modelSpec}: ${String(err)}`);
-      return null;
-    }
+    return async (prompt: string, callOpts?: { signal?: AbortSignal }): Promise<string> => {
+      // Lazy import to avoid circular deps and keep cold path fast.
+      const { completeAttributed } = await import("../agents/complete-attributed.js");
+      const { text } = await completeAttributed({
+        provider,
+        modelId,
+        cfg: this.cfg,
+        agentDir,
+        prompt,
+        maxTokens: opts?.maxTokens ?? 2048,
+        feature,
+        agentId: this.agentId,
+        errorPrefix: `llm error (${modelSpec})`,
+        // PLAN-55 Phase 1 review (item 12): a caller on the reply path can
+        // cancel the call instead of abandoning it to bill and write later.
+        ...(callOpts?.signal ? { signal: callOpts.signal } : {}),
+        // Token-efficiency item 3: latency-tolerant lanes (dream, extraction, discovery,
+        // evolution judge/maintainer) go through the Batches API; completeAttributed falls
+        // back to the live call on timeout or error and records batch rows at 50%.
+        ...(opts?.batch !== undefined ? { batch: opts.batch } : {}),
+      });
+      return text;
+    };
   }
 
-  async dream(): Promise<DreamStats | null> {
+  /**
+   * Run a full dream cycle. `scheduled: true` (timers) applies the triple
+   * gate — new user turns since the last full cycle, user idle, and hours
+   * since the last full cycle (memory.dream.minNewSessions / minIdleMinutes /
+   * minHoursBetween). Explicit triggers (`dream.trigger` RPC, CLI, tests)
+   * omit it and always run.
+   */
+  async dream(opts?: { scheduled?: boolean }): Promise<DreamStats | null> {
     if (!this.dreamEngine) {
       return null;
     }
-    const stats = await withSpan("memory.dream", () => this.dreamEngine!.run(), {
-      "dream.engine": "default",
-    });
+    const gateState = this.getDreamGateState();
+    if (opts?.scheduled) {
+      const dreamCfg = this.cfg.memory?.dream;
+      const decision = evaluateDreamGate(
+        {
+          minNewSessions: dreamCfg?.minNewSessions ?? DEFAULT_DREAM_CONFIG.minNewSessions,
+          minIdleMinutes: dreamCfg?.minIdleMinutes ?? DEFAULT_DREAM_CONFIG.minIdleMinutes,
+          minHoursBetween: dreamCfg?.minHoursBetween ?? DEFAULT_DREAM_CONFIG.minHoursBetween,
+        },
+        gateState.snapshot(),
+      );
+      if (!decision.pass) {
+        log.debug(`scheduled dream cycle skipped: ${decision.reason}`);
+        return null;
+      }
+      log.info(`scheduled dream cycle: ${decision.reason}`);
+    }
+    const stats = await this.maintenanceMutex.run(
+      "dream",
+      () => withSpan("memory.dream", () => this.dreamEngine!.run(), { "dream.engine": "default" }),
+      120_000,
+    );
+    // Only a cycle that actually ran resets the gate counters; an engine-side
+    // readiness skip leaves the new-turn count intact for the next attempt.
+    if (stats) {
+      gateState.recordFullCycle();
+    }
 
     if (stats && stats.newInsights.length > 0) {
       // Post-dream curiosity assessment
@@ -3311,36 +4065,28 @@ export class MemoryIndexManager implements MemorySearchManager {
 
       // Persist GCCRF state after each dream cycle (dream cycles drive maturity)
       this.curiosityEngine?.saveGCCRFState();
-
-      // Skill refinement evaluation (for mutation and research mode insights)
-      if (this.skillRefiner) {
-        const refinableInsights = stats.newInsights.filter(
-          (i) => i.mode === "mutation" || i.mode === "research",
-        );
-        if (refinableInsights.length > 0) {
-          for (const insight of refinableInsights) {
-            const sourceId = insight.sourceChunkIds[0];
-            if (!sourceId) {
-              continue;
-            }
-            try {
-              const sourceChunk = this.db
-                .prepare(`SELECT id, text FROM chunks WHERE id = ?`)
-                .get(sourceId) as { id: string; text: string } | undefined;
-              if (sourceChunk) {
-                this.skillRefiner.evaluateMutations(sourceChunk, [insight]);
-              }
-            } catch {}
-          }
-        }
-      }
     }
 
-    // Post-dream: run discovery agent to find skill relationships
-    if (stats && stats.newInsights.length > 0) {
+    // Post-dream: run discovery agent to find skill relationships.
+    // Token-efficiency pass (2026-09-19): pair selection is deterministic
+    // (first 3 unconnected pairs), so a run without new skill chunks since
+    // the previous run repeats the same LLM calls for the same answer.
+    const newSkillChunks = stats ? gateState.newSkillChunksSinceDiscovery() : 0;
+    if (stats && stats.newInsights.length > 0 && newSkillChunks === 0) {
+      log.debug("discovery skipped: no new skill chunks since last run");
+    }
+    if (stats && stats.newInsights.length > 0 && newSkillChunks > 0) {
       try {
+        gateState.recordDiscoveryRun();
         if (!this.discoveryAgent) {
-          const llmCall = this.dreamLlmCall ?? this.buildLlmCallFn(this.resolveCheapLlmSpec());
+          // An injected memory.dream.llmCall (tests, programmatic) wins; otherwise a dedicated
+          // discovery lane so its spend is attributed separately from dreaming.
+          const llmCall =
+            this.cfg.memory?.dream?.llmCall ??
+            this.buildLlmCallFn(this.cfg.memory?.dream?.model ?? this.resolveCheapLlmSpec(), {
+              feature: USAGE_FEATURES.memoryDiscovery,
+            }) ??
+            this.dreamLlmCall;
           this.discoveryAgent = new DiscoveryAgent(this.db, llmCall);
         }
         const discovery = await this.discoveryAgent.runCycle();
@@ -3395,36 +4141,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
     }
 
-    // Create curiosity targets from emerging skill patterns to deepen weak skills
-    if (this.curiosityEngine) {
-      try {
-        const emergingSkills = this.getEmergingSkillsForSynthesis();
-        for (const skill of emergingSkills) {
-          if (skill.confidence > 0.6 && skill.occurrences < 5) {
-            const now = Date.now();
-            this.db
-              .prepare(
-                `INSERT OR IGNORE INTO curiosity_targets
-                 (id, type, description, priority, region_id, metadata, created_at, resolved_at, expires_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              )
-              .run(
-                crypto.randomUUID(),
-                "frontier",
-                `Deepen emerging skill: ${skill.pattern}`,
-                Math.min(1, skill.confidence * 0.8),
-                null,
-                JSON.stringify({ source: "emerging_skill", occurrences: skill.occurrences }),
-                now,
-                null,
-                now + 48 * 60 * 60 * 1000,
-              );
-          }
-        }
-      } catch (err) {
-        log.debug(`emerging skill curiosity targets failed: ${String(err)}`);
-      }
-    }
+    // PLAN-54: the "deepen emerging skill" frontier generator was deleted.
+    // It mistook handover briefs and READMEs for skills and produced 16 of
+    // the 18 open targets on the reference node, none researchable.
 
     // Experience signal collection: package dream cycle data into training signals
     if (stats && this.experienceCollector) {
@@ -3552,8 +4271,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (extractionCfg?.enabled === false) {
       return;
     }
+    // PLAN-55 Phase 1: incognito. Nothing is learned from transcripts.
+    if (this.cfg.session?.memory === "off") {
+      log.debug("session extraction skipped: session.memory is off");
+      return;
+    }
 
-    const llmCall = this.dreamLlmCall;
+    const llmCall = this.extractionLlmCall ?? this.dreamLlmCall;
     if (!llmCall) {
       log.debug("session extraction skipped: no LLM call available");
       return;
@@ -3626,7 +4350,14 @@ export class MemoryIndexManager implements MemorySearchManager {
         // Read session content
         const { buildSessionEntry } = await import("./session-files.js");
         const entry = await buildSessionEntry(absPath);
-        if (!entry || entry.content.length < minDelta) {
+        if (!entry) {
+          continue;
+        }
+        // Token-efficiency pass (2026-09-19): heartbeat prompt/ack pairs are
+        // protocol scaffolding. The size floor applies to what is left; a
+        // heartbeat-only transcript makes no extraction call at all.
+        const prepared = stripHeartbeatTurns(entry.content);
+        if (prepared.content.trim().length === 0 || prepared.content.length < minDelta) {
           continue;
         }
 
@@ -3637,6 +4368,20 @@ export class MemoryIndexManager implements MemorySearchManager {
           .get(absPath) as { last_extracted_hash: string } | undefined;
 
         if (existing?.last_extracted_hash === contentHash) {
+          continue;
+        }
+        // Failure ledger: a transcript that failed maxAttempts times at this
+        // content hash is parked instead of retried every cycle.
+        if (
+          shouldSkipExtraction(this.db, absPath, contentHash, {
+            maxAttempts: extractionCfg?.maxAttempts,
+            retryAfterMs:
+              extractionCfg?.retryAfterDays !== undefined
+                ? extractionCfg.retryAfterDays * 24 * 60 * 60 * 1000
+                : undefined,
+          })
+        ) {
+          log.debug(`session extraction parked (attempts exhausted): ${path.basename(absPath)}`);
           continue;
         }
 
@@ -3660,10 +4405,21 @@ export class MemoryIndexManager implements MemorySearchManager {
           hormonalBias,
           learnedRules,
           openQuestionsForFile.length > 0 ? openQuestionsForFile : undefined,
+          { maxTranscriptChars: extractionCfg?.maxTranscriptChars },
         );
         if (!result) {
+          const failure = recordExtractionFailure(
+            this.db,
+            absPath,
+            contentHash,
+            "llm call failed or response unparseable",
+          );
+          log.warn(
+            `session extraction failed for ${path.basename(absPath)} (attempt ${failure.attempts})`,
+          );
           continue;
         }
+        clearExtractionFailure(this.db, absPath);
 
         const now = Date.now();
 
@@ -3672,11 +4428,33 @@ export class MemoryIndexManager implements MemorySearchManager {
         // transcript, so this is a cheap in-process token-overlap check — no
         // re-read. Weak citations are flagged to memory_audit_log for review.
         const provenanceLines = provenanceEnabled ? entry.content.split("\n") : null;
+        // B7 (2026-09-05 harness review W6): session trust is per session
+        // key, but a fetched web page, email or circle message inside the
+        // owner's own session is wrapped in the external-content envelope.
+        // A fact whose evidence sits inside such a span keeps the taint
+        // through the paraphrase; otherwise the canonical-pin and directive
+        // gates would launder third-party text into first-party memory.
+        const untrustedRanges = findExternalUntrustedLineRanges(entry.content);
 
         // Store extracted facts as crystals with epistemic layers
         for (const fact of result.facts) {
           try {
+            // PLAN-55 Phase 0: the owner forgot this memory; do not grow it
+            // back under a new id (nor route it to preferences or the ledger).
+            const suppressed = isSuppressed(this.db, "chunk_hash", chunkTextHash(fact.text));
+            if (suppressed) {
+              log.debug(
+                `session extraction skipped a forgotten memory (suppression ${suppressed.id})`,
+              );
+              continue;
+            }
             const id = `fact_${crypto.randomUUID()}`;
+            const evidenceLines = fact.evidence
+              .filter((e): e is Extract<typeof e, { kind: "session" }> => e.kind === "session")
+              .map((e) => e.line);
+            const factTrust = evidenceTouchesUntrusted(evidenceLines, untrustedRanges)
+              ? "untrusted"
+              : sessionTrust(absPath);
             const hash = crypto.createHash("sha256").update(fact.text).digest("hex");
             const evidenceJson =
               provenanceEnabled && fact.evidence.length > 0 ? JSON.stringify(fact.evidence) : null;
@@ -3708,7 +4486,7 @@ export class MemoryIndexManager implements MemorySearchManager {
                 fact.semanticType,
                 fact.epistemicLayer,
                 evidenceJson,
-                sessionTrust(absPath),
+                factTrust,
                 0,
                 null,
                 now,
@@ -4207,11 +4985,14 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     // Parse phenotype constraints from GENOME.md
     let phenotypeConstraints: string[] | undefined;
+    let temperament: WorkingMemoryContext["temperament"];
     try {
       const genomePath = path.join(this.workspaceDir, "GENOME.md");
       const genomeContent = await fs.readFile(genomePath, "utf-8");
-      const { parsePhenotypeConstraints } = await import("./genome-parser.js");
+      const { parsePhenotypeConstraints, parseGenomeTemperament } =
+        await import("./genome-parser.js");
       phenotypeConstraints = parsePhenotypeConstraints(genomeContent);
+      temperament = parseGenomeTemperament(genomeContent) ?? undefined;
     } catch {
       // No GENOME.md — no constraints
     }
@@ -4266,9 +5047,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       maturity: this.curiosityEngine?.getMaturity() ?? 0,
       alpha: this.curiosityEngine?.getCurrentAlpha() ?? -3.0,
       phenotypeConstraints,
+      temperament,
       networkIdentity,
+      compute: this.computeFactsForSynthesis(),
       emotionalAnchors,
       userPreferences,
+      ...loadCanonicalSynthesisContext(this.db, this.canonicalFactsStore),
     };
 
     let newState: string;
@@ -4280,9 +5064,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     const synthesisCall = this.dreamSynthesisLlmCall ?? this.dreamLlmCall;
     if (synthesisCall) {
       try {
-        const prompt = buildWorkingMemorySynthesisPrompt(ctx);
-        const raw = await synthesisCall(prompt);
-        const validation = validateWorkingMemory(raw, isFirstSynthesis ? undefined : oldState);
+        const { raw, validation, attempts } = await synthesizeValidatedWorkingMemory(
+          ctx,
+          synthesisCall,
+        );
+        if (attempts > 1) {
+          log.info("RLM synthesis required a validation repair attempt");
+        }
         validationSummary = {
           collapsed: validation.collapsed,
           valid: validation.valid,
@@ -4322,6 +5110,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       usedHeuristicFallback = true;
     }
 
+    // PLAN-55 Phase 2: owner-marked MEMORY.md blocks survive the rewrite
+    // verbatim, and the model can never add one: on the first synthesis the
+    // previous content (owner blocks included) is kept above the new state.
+    newState = isFirstSynthesis
+      ? stripOwnerSections(newState)
+      : preserveOwnerSections(oldState, newState);
+
     // Conservative first cycle: append below existing user content
     const finalContent = hasUserContent
       ? oldState.trimEnd() +
@@ -4343,6 +5138,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     });
 
     await fs.writeFile(memoryMdPath, finalContent, "utf-8");
+    // PLAN-54: the Curiosity Gaps the rewrite just wrote are the best
+    // questions the agent has; queue the new ones for research.
+    void this.ingestCuriosityGaps(finalContent).catch((err) =>
+      log.debug(`curiosity gap ingest failed: ${String(err)}`),
+    );
     if (hasUserContent) {
       log.info(
         "RLM: first synthesis — appended dream-generated section below existing MEMORY.md content",
@@ -4469,6 +5269,91 @@ export class MemoryIndexManager implements MemorySearchManager {
   /** Read working-memory rewrite provenance records, newest last. */
   async getWorkingMemoryProvenance(limit = 50): Promise<WorkingMemoryProvenance[]> {
     return readWorkingMemoryProvenance(this.workspaceDir, limit);
+  }
+
+  /**
+   * PLAN-57 §4.7: the week's compute facts for The Niche, from the local
+   * compute ledger. Undefined when no compute runtime is registered or
+   * nothing happened, so the prompt carries no compute block on such nodes.
+   */
+  private computeFactsForSynthesis(): WorkingMemoryContext["compute"] {
+    try {
+      const runtime = getComputeRuntime();
+      if (!runtime) {
+        return undefined;
+      }
+      const facts = computeNicheFacts({ store: runtime.store, snapshot: getComputeSnapshot() });
+      return hasComputeActivity(facts) ? facts : undefined;
+    } catch (err) {
+      log.debug(`Failed to gather compute facts: ${String(err)}`);
+      return undefined;
+    }
+  }
+
+  /**
+   * PLAN-57 §4.7: a finished compute job the agent or owner started, written
+   * as a searchable `episode` chunk. One per (job, status); re-delivery of
+   * the same transition is a no-op.
+   */
+  async writeComputeEpisodeChunk(episode: ComputeEpisode): Promise<string | null> {
+    if (this.closed) {
+      return null;
+    }
+    const text = formatComputeEpisode(episode);
+    const id = `compute_${episode.jobId.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 80)}_${episode.status}`;
+    const existing = this.db.prepare(`SELECT 1 FROM chunks WHERE id = ?`).get(id);
+    if (existing) {
+      return null;
+    }
+    const now = Date.now();
+    const hash = crypto.createHash("sha256").update(text).digest("hex");
+    const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
+    let embedding: number[] = [];
+    try {
+      embedding =
+        ((await this.embedQueryWithTimeout(text, USAGE_FEATURES.memoryIndex)) as number[]) ?? [];
+    } catch {
+      /* pending backfill */
+    }
+    const model = embedding.length > 0 ? this.provider.model : "pending";
+    const vectorReady =
+      embedding.length > 0 ? await this.ensureVectorReady(embedding.length) : false;
+    const chunkPath = `compute/episode/${episode.jobId}`;
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO chunks (id, path, source, start_line, end_line, text, hash, model, embedding,
+             importance_score, lifecycle, origin, semantic_type, access_count, created_at, updated_at)
+           VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, 0.5, 'activated', 'compute', 'episode', 0, ?, ?)`,
+        )
+        .run(id, chunkPath, source, text, hash, model, embeddingToBlob(embedding), now, now);
+    } catch (err) {
+      log.debug(`compute episode insert failed: ${String(err)}`);
+      return null;
+    }
+    if (vectorReady && embedding.length > 0) {
+      try {
+        this.db.prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id = ?`).run(id);
+        this.db
+          .prepare(`INSERT INTO ${VECTOR_TABLE} (id, embedding) VALUES (?, ?)`)
+          .run(id, Buffer.from(new Float32Array(embedding).buffer));
+      } catch {
+        /* vec absent */
+      }
+    }
+    if (this.fts.enabled && this.fts.available) {
+      try {
+        this.db
+          .prepare(
+            `INSERT INTO ${FTS_TABLE} (text, id, path, source, model, start_line, end_line)
+             VALUES (?, ?, ?, ?, ?, 0, 0)`,
+          )
+          .run(text, id, chunkPath, source, model);
+      } catch {
+        /* fts absent */
+      }
+    }
+    return id;
   }
 
   /**
@@ -4630,13 +5515,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
 
       let removed = 0;
-      const deleteStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle = 'expired', lifecycle_state = 'forgotten' WHERE id = ?`,
-      );
 
       for (const chunk of skillChunks) {
         if (!existsSync(chunk.path)) {
-          deleteStmt.run(chunk.id);
+          setChunkLifecycle(this.db, chunk.id, {
+            lifecycle: "expired",
+            lifecycleState: "forgotten",
+          });
           removed++;
         }
       }
@@ -4688,6 +5573,27 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.db;
   }
 
+  /**
+   * SQLite handle for the payments tables (spend grants, approvals, usage).
+   * Independent of `marketplaceEconomics` for the same reason as
+   * `getCirclesDb()`: `a2a.marketplace.enabled` defaults to false since
+   * PLAN-41 D-D, but spend grants (PLAN-48) gate `a2a.payment`, not the
+   * marketplace, and the agent-side client already writes them to this DB.
+   */
+  getPaymentsDb(): DatabaseSync {
+    return this.db;
+  }
+
+  /** PLAN-43 Phase 4: contributor standings (status, never cash). */
+  getContributorStatus(): ContributorStatusLedger | undefined {
+    return this.contributorStatus;
+  }
+
+  /** PLAN-43 Phase 4: lets the circles side subscribe to bans (R17: memory never touches circle tables). */
+  getPeerReputationManager(): PeerReputationManager | null {
+    return this.peerReputationManager;
+  }
+
   /** Guards against overlapping dispatch runs across consolidation ticks. */
   private revenueDispatchInFlight = false;
 
@@ -4710,7 +5616,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       (walletCfg?.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET) &&
       process.env.CDP_WALLET_SECRET,
     );
-    if (walletCfg?.enabled === false || !hasWalletCreds) {
+    // A wallet pays only when it was switched on. This used to pay whenever
+    // credentials were present and the wallet was not explicitly switched off.
+    if (walletCfg?.enabled !== true || !hasWalletCreds) {
       return;
     }
     const payments = this.marketplaceEconomics.getReleasedPayments();
@@ -4723,7 +5631,19 @@ export class MemoryIndexManager implements MemorySearchManager {
         import("../services/wallet-service.js"),
         import("../infra/wallet-discovery.js"),
       ]);
-      const wallet = createWalletService(walletCfg ?? {});
+      const [{ gatedWallet }, { notifyOwner }] = await Promise.all([
+        import("../review/spend.js"),
+        import("../infra/owner-notify.js"),
+      ]);
+      // PLAN-53 C0: payouts are money already owed, so they do not wait for
+      // approval. They do go through the gate: recorded, limited, and the
+      // owner is told what went out.
+      const wallet = gatedWallet(createWalletService(walletCfg), {
+        origin: "payout",
+        purpose: "revenue share / bounty payout",
+      });
+      const perTxCap = walletCfg.perTransactionCapUsd ?? 25;
+      const paid: Array<{ usd: number; role: string }> = [];
       const MAX_DISPATCH_PER_TICK = 10;
       for (const payment of payments.slice(0, MAX_DISPATCH_PER_TICK)) {
         const address =
@@ -4736,8 +5656,22 @@ export class MemoryIndexManager implements MemorySearchManager {
           );
           continue;
         }
+        if (payment.amountUsdc > perTxCap) {
+          // Sending it would be refused by the per-transaction limit, the
+          // payment marked failed, and the same thing would happen every tick
+          // for ever. Leave it queued and say so once a day.
+          void notifyOwner({
+            kind: "payout-held",
+            dedupeKey: `payout-over-cap:${payment.id}:${new Date().toISOString().slice(0, 10)}`,
+            text:
+              `A payout of $${payment.amountUsdc.toFixed(2)} USDC (${payment.role}) to ${payment.recipientPeerId} is above your per-transaction limit of $${perTxCap} and is waiting. ` +
+              "Raise tools.wallet.perTransactionCapUsd to let it go out.",
+          }).catch(() => {});
+          continue;
+        }
         try {
           const result = await wallet.sendUsdc(address, payment.amountUsdc);
+          paid.push({ usd: payment.amountUsdc, role: payment.role });
           this.marketplaceEconomics.markPaymentProcessed(payment.id, result.txHash);
           log.info(
             `revenue dispatch: paid ${payment.amountUsdc.toFixed(4)} USDC (${payment.role}) to ${address} tx=${result.txHash}`,
@@ -4749,6 +5683,16 @@ export class MemoryIndexManager implements MemorySearchManager {
           this.marketplaceEconomics.markPaymentFailed(payment.id, String(err));
           log.warn(`revenue dispatch failed for payment ${payment.id}: ${String(err)}`);
         }
+      }
+      if (paid.length > 0) {
+        const total = paid.reduce((sum, p) => sum + p.usd, 0);
+        const roles = [...new Set(paid.map((p) => p.role))].join(", ");
+        void notifyOwner({
+          kind: "payout-sent",
+          text:
+            `Paid out $${total.toFixed(2)} USDC in ${paid.length} payment${paid.length === 1 ? "" : "s"} owed to others (${roles}). ` +
+            "Each one is in the Activity record.",
+        }).catch(() => {});
       }
     } catch (err) {
       log.debug(`revenue dispatch skipped: ${String(err)}`);
@@ -4886,9 +5830,10 @@ export class MemoryIndexManager implements MemorySearchManager {
         .prepare(
           `SELECT c.text, c.importance_score, c.access_count,
                   COUNT(se.id) as exec_count,
-                  COALESCE(AVG(CASE WHEN se.success = 1 THEN 1.0 ELSE 0.0 END), 0) as success_rate
+                  COALESCE(AVG(CASE WHEN se.run_outcome_label = 'pass' THEN 1.0 ELSE 0.0 END), 0) as success_rate
            FROM chunks c
            LEFT JOIN skill_executions se ON se.skill_crystal_id = c.id AND se.completed_at IS NOT NULL
+             AND ${runEvidenceWhere("se")}
            WHERE c.semantic_type IN ('skill', 'task_pattern')
            GROUP BY c.id
            ORDER BY c.access_count DESC, c.importance_score DESC
@@ -5040,10 +5985,13 @@ export class MemoryIndexManager implements MemorySearchManager {
     const state = this.hormonalManager.getState();
     const scratchPath = path.join(this.workspaceDir, "memory", "scratch.md");
 
-    // Only trigger on significant hormonal events
-    const highDopamine = state.dopamine > 0.7;
-    const highCortisol = state.cortisol > 0.7;
-    const highOxytocin = state.oxytocin > 0.7;
+    // Token-efficiency pass (2026-09-19): trigger on a hormonal RISE since the
+    // previous tick, not an absolute level — a pinned hormone wrote an
+    // identical "[AUTO] Hormonal event" note every 30 minutes.
+    const spikes = this.autoScratchTrigger.check(state);
+    const highDopamine = spikes.includes("dopamine_spike");
+    const highCortisol = spikes.includes("cortisol_spike");
+    const highOxytocin = spikes.includes("oxytocin_spike");
 
     if (!highDopamine && !highCortisol && !highOxytocin) {
       return;
@@ -5061,7 +6009,20 @@ export class MemoryIndexManager implements MemorySearchManager {
     }
 
     const briefing = this.hormonalManager.emotionalBriefing?.() ?? "";
-    const note = `[AUTO] Hormonal event: ${parts.join(", ")}. ${briefing}`.trim();
+    const eventText = autoScratchEventText(parts);
+    const note = `${AUTO_SCRATCH_PREFIX}${eventText}. ${briefing}`.trim();
+
+    // Dedupe: never append a note whose event equals the previous auto note.
+    try {
+      if (
+        existsSync(scratchPath) &&
+        lastAutoScratchEvent(readFileSync(scratchPath, "utf-8")) === eventText
+      ) {
+        return;
+      }
+    } catch {
+      // Unreadable scratch — fall through and append.
+    }
 
     const timestamp = new Date().toISOString();
     const entry = `\n- [${timestamp}] (importance: 0.8) ${note}\n`;
@@ -5087,7 +6048,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     query: string,
     opts?: { maxResults?: number; minScore?: number },
   ): Promise<DreamSearchResult[]> {
-    const queryVec = (await this.embedQueryWithTimeout(query)) as number[];
+    const queryVec = (await this.embedQueryWithTimeout(
+      query,
+      USAGE_FEATURES.memoryDream,
+    )) as number[];
     return searchDreamInsights(this.db, queryVec, opts);
   }
 
@@ -5296,6 +6260,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         maxFacts: ledgerCfg?.maxFacts,
         budgetTokens: ledgerCfg?.budgetTokens,
       });
+      this.wireCanonicalPropagation(this.canonicalFactsStore);
       const prefs = this.userModelManager?.getUserProfile().preferences ?? [];
       this.canonicalFactsStore.seedFromIdentityPreferences(prefs);
     } catch (err) {
@@ -5306,6 +6271,309 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   canonicalFacts(): CanonicalFactsStore | null {
     return this.canonicalFactsStore;
+  }
+
+  /**
+   * PLAN-55 Phase 2: every ledger change is forwarded on the manager's event
+   * bus as `canonical:changed` and queued for the propagation consumers
+   * (search marks, preferences, graph, briefs/tasks, dream insights), which
+   * run after the write, never inside the chat turn.
+   */
+  private wireCanonicalPropagation(store: CanonicalFactsStore): void {
+    this.canonicalPropagation?.close();
+    const propagation = new CanonicalPropagation({
+      getDb: () => this.db,
+      getFtsTable: () => (this.fts.enabled && this.fts.available ? FTS_TABLE : null),
+      getKnowledgeGraph: () => this.knowledgeGraph,
+      getDirectives: () => this.epistemicDirectiveEngine,
+      getWorkspaceDir: () => this.workspaceDir,
+    });
+    this.canonicalPropagation = propagation;
+    // Replays changes a shutdown or queue overflow left unpropagated.
+    propagation.startReconcile();
+    store.onChanged((event) => {
+      this.emitEvent?.(CANONICAL_CHANGED_EVENT, { ...event });
+      propagation.enqueue(event);
+    });
+  }
+
+  /** PLAN-55 Phase 2: resolves when queued canonical:changed consumers have run. */
+  async canonicalPropagationIdle(): Promise<void> {
+    await this.canonicalPropagation?.idle();
+  }
+
+  // ── PLAN-53 G1: the owner's controls over what the agent remembers ──────
+
+  private ownerIndexTables(): IndexTables {
+    return {
+      ftsTable: this.fts.enabled && this.fts.available ? FTS_TABLE : null,
+      vectorTable: this.vector.available ? VECTOR_TABLE : null,
+    };
+  }
+
+  /**
+   * A change the owner asked for: after any running index sync (a reindex
+   * swaps the database mid-flight), and inside the maintenance lock so it does
+   * not interleave with consolidation or dreaming.
+   */
+  private async ownerChange<T>(label: string, fn: () => T | Promise<T>): Promise<T> {
+    if (this.syncing) {
+      await this.syncing.catch(() => {});
+    }
+    return await this.maintenanceMutex.run(`owner:${label}`, async () => await fn(), 30_000);
+  }
+
+  ownerListMemories(opts: OwnerListOptions = {}) {
+    return ownerListMemories(this.db, opts);
+  }
+
+  ownerGetMemory(id: string) {
+    return ownerGetMemory(this.db, id);
+  }
+
+  /**
+   * PLAN-55 Phase 3: forget with the cascade. `planHash` (from
+   * ownerForgetPreview) makes the forget refuse when the plan changed.
+   */
+  async ownerForgetMemory(id: string, opts: { planHash?: string } = {}) {
+    return await this.ownerChange("forget", () =>
+      ownerForgetMemory(this.db, id, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        planHash: opts.planHash,
+      }),
+    );
+  }
+
+  async ownerEditMemory(id: string, text: string, opts: { planHash?: string } = {}) {
+    const edited = await this.ownerChange("edit", () =>
+      ownerEditMemory(this.db, id, text, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        planHash: opts.planHash,
+      }),
+    );
+    // Re-embed now when possible so it is found by meaning again; the regular
+    // backfill catches it otherwise.
+    void this.backfillPendingEmbeddings({ limit: 5 }).catch(() => {});
+    return edited;
+  }
+
+  async ownerExportMemories(outFile: string) {
+    let workingMemory: string | null = null;
+    try {
+      workingMemory = await fs.readFile(path.join(this.workspaceDir, "MEMORY.md"), "utf8");
+    } catch {
+      workingMemory = null;
+    }
+    return await ownerExportMemories(this.db, outFile, {
+      agentId: this.agentId,
+      workingMemory,
+      genome: await this.readWorkspaceText("GENOME.md"),
+      assertCurrent: this.exportHandleGuard(),
+    });
+  }
+
+  ownerListPreferences() {
+    return ownerListPreferences(this.db);
+  }
+
+  ownerAuditLog(opts: { limit?: number; before?: number; event?: string } = {}) {
+    return ownerListAuditLog(this.db, opts);
+  }
+
+  async ownerDeletePreference(category: string, key: string): Promise<boolean> {
+    return await this.ownerChange("forget-preference", () =>
+      ownerDeletePreference(this.db, category, key),
+    );
+  }
+
+  /** PLAN-55 Phase 0: an owner retire is sticky (owner_retired + key/value suppression). */
+  async ownerRetireFact(key: string): Promise<boolean> {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("retire-fact", () => ownerRetireFact(this.db, store, key));
+  }
+
+  async ownerUnretireFact(key: string): Promise<boolean> {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("unretire-fact", () => ownerUnretireFact(this.db, store, key));
+  }
+
+  /** PLAN-55 Phase 0: the `owner` tier's writer (Phase 1: scope and evidence ride along). */
+  async ownerPinFact(input: OwnerPinInput) {
+    const store = this.canonicalFactsStore;
+    if (!store) {
+      throw new Error("the facts ledger is not available");
+    }
+    return await this.ownerChange("pin-fact", () => ownerPinFact(this.db, store, input));
+  }
+
+  // ── PLAN-55 Phase 3: cascade preview, session deletion, export v2, import ──
+
+  /** What forgetting this memory would also change (read-only), with the plan hash. */
+  async ownerForgetPreview(id: string) {
+    return await this.ownerPreview(() => ownerPreviewForget(this.db, id));
+  }
+
+  /** What replacing this memory's text would also change (read-only). */
+  async ownerEditPreview(id: string, text: string) {
+    return await this.ownerPreview(() => ownerPreviewEdit(this.db, id, text));
+  }
+
+  /**
+   * PLAN-55 §3.5b: a conversation was deleted (`sessions.delete`). Its
+   * indexed memories go with the cascade; facts resting only on it are
+   * retired below the owner tier, and the survivors are returned.
+   */
+  async ownerForgetSession(
+    sessionFiles: string[],
+    opts: {
+      /**
+       * Runs once the memories are collected (the caller archives the
+       * transcript here). When it returns a list, only those files (the
+       * ones confirmed archived) are forgotten; a transcript whose archive
+       * failed keeps its memories and the facts resting on them.
+       */
+      onCollected?: () => string[] | void;
+      /** `system` for automatic housekeeping (forgetSessionMemories has the difference). */
+      initiator?: "owner" | "system";
+    } = {},
+  ) {
+    // Collected first, outside the maintenance lock, so the caller can
+    // archive the transcript right away; the cascade then waits its turn.
+    const collected = await ownerCollectSessionChunks(this.db, sessionFiles);
+    const confirmed = opts.onCollected?.();
+    const files = Array.isArray(confirmed)
+      ? sessionFiles.filter((f) => confirmed.includes(f))
+      : sessionFiles;
+    const chunks = Array.isArray(confirmed)
+      ? ownerSessionChunksForFiles(collected, files)
+      : collected;
+    return await this.ownerChange("forget-session", () =>
+      ownerForgetSessionMemories(this.db, files, this.ownerIndexTables(), {
+        store: this.canonicalFactsStore,
+        chunks,
+        initiator: opts.initiator,
+      }),
+    );
+  }
+
+  private async readWorkspaceText(name: string): Promise<string | null> {
+    try {
+      return await fs.readFile(path.join(this.workspaceDir, name), "utf8");
+    } catch {
+      return null;
+    }
+  }
+
+  /** Export version 2 to any sink (the gateway's download streams it to the client). */
+  async ownerExportTo(sink: ExportSink) {
+    const assertCurrent = this.exportHandleGuard();
+    return await writeMemoryExport(this.db, sink, {
+      agentId: this.agentId,
+      workingMemory: await this.readWorkspaceText("MEMORY.md"),
+      genome: await this.readWorkspaceText("GENOME.md"),
+      assertCurrent,
+    });
+  }
+
+  /**
+   * PLAN-55 Phase 3 review: an export reads page by page across yields and a
+   * safe reindex can swap `this.db` in between; the guard throws
+   * MemoryExportInterrupted on the first page after a swap.
+   */
+  private exportHandleGuard(): () => void {
+    const db = this.db;
+    return () => {
+      if (this.db !== db) {
+        throw new MemoryExportInterrupted();
+      }
+    };
+  }
+
+  /** Previews running right now; they scan without the maintenance lock, so they are capped. */
+  private ownerPreviewsInFlight = 0;
+
+  private async ownerPreview<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.ownerPreviewsInFlight >= MAX_OWNER_PREVIEWS_IN_FLIGHT) {
+      throw new OwnerEditRefused(
+        "Another preview of what a forget or edit would change is still running; try again in a moment.",
+      );
+    }
+    this.ownerPreviewsInFlight += 1;
+    try {
+      return await fn();
+    } finally {
+      this.ownerPreviewsInFlight -= 1;
+    }
+  }
+
+  /** The memory database file, for the owner to copy (shown next to the download). */
+  ownerDatabasePath(): string {
+    return this.settings.store.path;
+  }
+
+  /**
+   * Restore a memory export (v1 or v2; memory-import.ts has the rules).
+   * Imported memories are re-embedded in the background afterwards.
+   */
+  async ownerImportMemories(
+    input: unknown,
+    opts: {
+      dryRun?: boolean;
+      actor?: ImportActor;
+      keepOwnerTier?: boolean;
+      confirmOwnerTierGrantsHash?: string;
+    } = {},
+  ) {
+    const result = await this.ownerChange("import", () =>
+      importMemories(this.db, input, {
+        actor: opts.actor ?? "owner",
+        dryRun: opts.dryRun,
+        keepOwnerTier: opts.keepOwnerTier,
+        confirmOwnerTierGrantsHash: opts.confirmOwnerTierGrantsHash,
+        store: this.canonicalFactsStore,
+        tables: this.ownerIndexTables(),
+      }),
+    );
+    if (!result.dryRun && result.importedChunkIds.length > 0) {
+      void (async () => {
+        for (;;) {
+          const { embedded } = await this.backfillPendingEmbeddings({ limit: 50 });
+          if (embedded === 0) {
+            return;
+          }
+          await yieldToEventLoop();
+        }
+      })().catch((err) => log.debug(`import re-embed stopped: ${String(err)}`));
+    }
+    return result;
+  }
+
+  /**
+   * PLAN-55 Phase 1: the cheap-model lane for the per-turn correction
+   * capture, or null when the pass is disabled or no model is configured.
+   */
+  correctionLlmCall():
+    | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
+    | null {
+    if (this.cfg.memory?.correction?.enabled === false) {
+      return null;
+    }
+    // Built with the dream engine when that is on (an injected dream llmCall
+    // is reused); otherwise lazily here, so the pass does not depend on
+    // dreaming being enabled.
+    this.correctionLlmCallFn ??= this.buildLlmCallFn(
+      this.cfg.memory?.extraction?.model ??
+        this.cfg.memory?.dream?.model ??
+        this.resolveCheapLlmSpec(),
+      CORRECTION_LLM_LANE,
+    );
+    return this.correctionLlmCallFn;
   }
 
   /**
@@ -5394,6 +6662,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     importanceScore: number;
     evidenceRefs: string;
   }): boolean {
+    // PLAN-55 Phase 0: the owner forgot this exact insight; do not promote it again.
+    const suppressed = isSuppressed(this.db, "chunk_hash", chunkTextHash(row.text));
+    if (suppressed) {
+      log.debug(`promoted-insight skipped a forgotten memory (suppression ${suppressed.id})`);
+      return false;
+    }
     const id = `dream_insight_${crypto.randomUUID()}`;
     const now = Date.now();
     const hash = crypto.createHash("sha256").update(row.text).digest("hex");
@@ -5480,7 +6754,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     const source = this.sources.has("memory") ? "memory" : ([...this.sources][0] ?? "memory");
     let embedding: number[] = [];
     try {
-      embedding = ((await this.embedQueryWithTimeout(params.text)) as number[]) ?? [];
+      embedding =
+        ((await this.embedQueryWithTimeout(params.text, USAGE_FEATURES.memoryIndex)) as number[]) ??
+        [];
     } catch {
       /* pending backfill */
     }
@@ -5500,7 +6776,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           params.text,
           hash,
           model,
-          JSON.stringify(embedding),
+          embeddingToBlob(embedding),
           JSON.stringify(
             params.evidenceExecutionIds.map((eid) => ({ kind: "execution", id: eid })),
           ),
@@ -5584,10 +6860,15 @@ export class MemoryIndexManager implements MemorySearchManager {
     try {
       const rows = this.db
         .prepare(
-          `SELECT id, finding, source_url FROM research_findings
+          `SELECT id, target_id, finding, source_url FROM research_findings
            WHERE surfaced_at IS NULL ORDER BY created_at DESC LIMIT ?`,
         )
-        .all(limit) as Array<{ id: string; finding: string; source_url: string | null }>;
+        .all(limit) as Array<{
+        id: string;
+        target_id: string;
+        finding: string;
+        source_url: string | null;
+      }>;
       if (rows.length === 0) {
         return [];
       }
@@ -5596,6 +6877,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       for (const row of rows) {
         mark.run(now, row.id);
       }
+      // PLAN-54: voicing a self-learned finding to the owner is a use of it.
+      recordCuriosityUseByTarget(
+        this.db,
+        rows.map((r) => r.target_id),
+        now,
+      );
       return rows.map((r) => ({ finding: r.finding, sourceUrl: r.source_url }));
     } catch {
       return [];
@@ -5765,23 +7052,18 @@ export class MemoryIndexManager implements MemorySearchManager {
     };
   }
 
-  // --- Skill Refiner ---
+  // --- Skill execution tracker ---
 
-  private ensureSkillRefiner(): void {
-    const verifier = new SkillVerifier(this.db);
+  /**
+   * Eagerly construct the SkillExecutionTracker at boot. Before PLAN-45
+   * Phase 1 this happened inside `ensureSkillRefiner()`; the refiner is
+   * gone, but several later `if (this.executionTracker)` wiring paths
+   * (crystallizer, network bridge, marketplace) still rely on it existing.
+   */
+  private ensureExecutionTracker(): void {
     if (!this.executionTracker) {
       this.executionTracker = new SkillExecutionTracker(this.db);
     }
-    this.skillRefiner = new SkillRefiner(
-      this.db,
-      undefined,
-      (crystalId) => {
-        log.debug("skill mutation crystallized via dream", { crystalId });
-      },
-      this.executionTracker,
-      undefined,
-      verifier,
-    );
   }
 
   // --- Governance ---
@@ -6046,23 +7328,53 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.skillNetworkBridge.setPeerReputation(this.peerReputationManager);
     }
 
-    // Also wire bridge into SkillRefiner if it exists
-    if (this.skillRefiner) {
-      this.skillRefiner.setNetworkBridge(this.skillNetworkBridge);
-    }
-
     // Initialize marketplace economics
     const a2aCfg = this.cfg.a2a;
     if (a2aCfg?.marketplace?.enabled !== false) {
-      this.marketplaceEconomics = new MarketplaceEconomics(this.db, a2aCfg?.marketplace?.pricing);
+      this.marketplaceEconomics = new MarketplaceEconomics(this.db, a2aCfg?.marketplace?.pricing, {
+        // PLAN-43 Phase 0: listings rank by PLAN-42 validation verdicts,
+        // read off the live skill dirs at refresh time.
+        validationLookup: () => readValidationSummaries(),
+        // PLAN-43 Phase 3 (§3.7): kill switch read from the live config file.
+        freezeListings: () => loadConfig().a2a?.marketplace?.freezeListings === true,
+        // PLAN-43 Phase 3 (I4): registry royalty on sales of imported skills.
+        registryRoyalty: {
+          royaltyBps: this.cfg.skills?.agentskills?.royaltyBps ?? 0,
+          lookup: () => readRegistryProvenances(),
+          registryId: "agentskills.io",
+          ...(this.cfg.skills?.agentskills?.royaltyWallet
+            ? { royaltyWallet: this.cfg.skills.agentskills.royaltyWallet }
+            : {}),
+        },
+      });
     }
 
     // Plan 8, Phase 2: Initialize SkillMarketplace for search/browse/recommendations
     if (!this.skillMarketplace && this.executionTracker && this.peerReputationManager) {
+      const ownAttesterPubkey = resolveOwnAttesterPubkey();
+      // PLAN-43 Phase 4: status-based contribution rewards (verified signals only).
+      this.contributorStatus = new ContributorStatusLedger(this.db);
       this.skillMarketplace = new SkillMarketplace(
         this.db,
         this.executionTracker,
         this.peerReputationManager,
+        {
+          // PLAN-43 Phase 3: verified-outcome aggregates on browse entries.
+          contributorStatus: (pk) => {
+            const s = this.contributorStatus?.get(pk);
+            return s ? { tier: s.tier, rank: s.rank } : null;
+          },
+          attesterWeight: makeAttesterWeight({
+            // Our own verdicts are trusted evidence (3c adversarial: without
+            // this the node's own -1 weighed 0.05 and strangers outvoted it).
+            ...(ownAttesterPubkey ? { ownAttesterPubkey } : {}),
+            trustedAttesters: this.cfg.a2a?.attestation?.trustedAttesters ?? [],
+            blockedAttesters: this.cfg.a2a?.attestation?.blockedAttesters ?? [],
+            ...(typeof this.cfg.a2a?.attestation?.unknownAttesterWeight === "number"
+              ? { unknownWeight: this.cfg.a2a.attestation.unknownAttesterWeight }
+              : {}),
+          }),
+        },
       );
     }
 
@@ -6109,6 +7421,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     // skill CROSSES the gate (an execution being recorded) must re-attempt.
     // publishCrystalSkill re-runs the full gate chain and no-ops when the
     // orchestrator bridge is absent, so this is safe to over-call.
+    // B4: verified task completion is the one grounded reward signal (an
+    // independent judge over executed checks), so it drives the hormonal
+    // system directly instead of "a tool returned ≥200 chars".
+    registerTaskRewardHook((event) => {
+      this.hormonalManager?.stimulate(event);
+    });
     if (this.executionTracker) {
       this.executionTrackingHook = createExecutionTrackingHook(
         this.executionTracker,
@@ -6180,7 +7498,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (!this.discoveryAgent) {
       const dreamCfg = this.cfg.memory?.dream;
       const llmCall =
-        dreamCfg?.llmCall ?? this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec());
+        dreamCfg?.llmCall ??
+        this.buildLlmCallFn(dreamCfg?.model ?? this.resolveCheapLlmSpec(), {
+          feature: USAGE_FEATURES.memoryDiscovery,
+        });
       this.discoveryAgent = new DiscoveryAgent(this.db, llmCall);
     }
     return this.discoveryAgent.suggestSkills(config);
@@ -6249,9 +7570,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (assessment?.gccrfReward != null && assessment.gccrfComponents && this.hormonalManager) {
       let semanticType: string | null = null;
       try {
-        const row = this.db.prepare(`SELECT semantic_type FROM chunks WHERE id = ?`).get(chunkId) as
-          | { semantic_type: string | null }
-          | undefined;
+        const row = this.db
+          .prepare(`SELECT semantic_type FROM chunks WHERE id = ?`)
+          .get(chunkId) as { semantic_type: string | null } | undefined;
         semanticType = row?.semantic_type ?? null;
       } catch {
         /* column may not exist */
@@ -6327,6 +7648,16 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     this.closed = true;
+    // PLAN-57 §4.7: let the next default manager take over compute episodes.
+    if (this.episodeSink && getComputeEpisodeSink() === this.episodeSink) {
+      registerComputeEpisodeSink(null);
+    }
+    this.episodeSink = null;
+    if (this.nudgeSink && getComputeNudgeSink() === this.nudgeSink) {
+      registerComputeNudgeSink(null);
+    }
+    this.nudgeSink = null;
+    this.canonicalPropagation?.close();
     if (this.watchTimer) {
       clearTimeout(this.watchTimer);
       this.watchTimer = null;

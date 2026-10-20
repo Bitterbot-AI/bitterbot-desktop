@@ -153,23 +153,20 @@ flowchart TB
         RDY -->|ready| FSHO[FSHO Mode Selector]
         RDY -->|skip| SKIP[Save LLM tokens]
         MI[Marketplace Intelligence] --> FSHO
-        FSHO --> R[7 Dream Modes - ripple-enhanced replay]
+        FSHO --> R[Dream Modes - ripple-enhanced replay]
         R --> S[New Insights]
         S --> T[CuriosityEngine.assessDreamInsight]
-        S --> U[SkillRefiner.evaluateMutations]
-        U --> V[SkillVerifier.verify]
-        V --> W[SkillNetworkBridge.publish]
         S --> RLM[RLM Working Memory Rewrite]
         RLM --> WMMD[MEMORY.md state update]
         Q --> SE[Session Extraction - per changed session]
         SE --> UPR[(user_preferences table)]
         SE --> HB[Handover Briefs]
         HB --> NEXT[Next session system prompt]
-        EMT[Emotional Spike] -->|dopamine > 0.7 or cortisol > 0.8| MINI[Mini-Dream - immediate]
+        EMT[Emotional Spike] -->|hormone rises 0.15+ since last check, 90 min cooldown| MINI[Mini-Dream - immediate]
     end
 
     subgraph "P2P Network (Two-Tiered)"
-        W --> X[Rust Orchestrator / libp2p]
+        W[SkillNetworkBridge.publish] --> X[Rust Orchestrator / libp2p]
         X --> Y[Peer Swarm]
         Y --> Z[SkillNetworkBridge.ingest]
         Z --> ZA{Cortisol gate}
@@ -200,7 +197,7 @@ flowchart TB
 | `src/memory/manager.ts`               | Central orchestrator. Creates all subsystems, runs search, exposes public API |
 | `src/memory/manager-sync-ops.ts`      | File-watching sync logic (mixin)                                              |
 | `src/memory/manager-embedding-ops.ts` | Embedding batch operations (mixin)                                            |
-| `src/memory/migrations.ts`            | Schema versioning: 9 migration versions                                       |
+| `src/memory/migrations.ts`            | Schema versioning: 70 migration versions                                      |
 | `src/memory/memory-schema.ts`         | Base table creation, `ensureColumn()` helper                                  |
 | `src/memory/crystal-types.ts`         | All type definitions: `KnowledgeCrystal`, lifecycle, governance, etc.         |
 | `src/memory/crystal.ts`               | `CrystalStore` — CRUD operations on knowledge crystals                        |
@@ -210,32 +207,26 @@ flowchart TB
 
 ### Dream System
 
-| File                                      | Purpose                                                                                 |
-| ----------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/memory/dream-engine.ts`              | `DreamEngine` — state machine, 7 mode runners, FSHO integration, emotional triggering   |
-| `src/memory/dream-oscillator.ts`          | FSHO oscillator — Kuramoto coupling, order parameter for mode selection                 |
-| `src/memory/dream-types.ts`               | Dream types: modes, tiers, configs, `DreamInsight`                                      |
-| `src/memory/dream-schema.ts`              | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
-| `src/memory/dream-evaluator.ts`           | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback             |
-| `src/memory/dream-synthesis-prompt.ts`    | LLM prompt building, heuristic synthesis, response parsing                              |
-| `src/memory/dream-search.ts`              | Vector search over dream insights                                                       |
-| `src/memory/dream-mutation-strategies.ts` | 5 mutation strategies + LLM prompt builders + rejected-edit context block (PLAN-21)     |
+| File                                   | Purpose                                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/memory/dream-engine.ts`           | `DreamEngine` — state machine, 13 mode runners, FSHO integration, emotional triggering  |
+| `src/memory/dream-oscillator.ts`       | FSHO oscillator — Kuramoto coupling, order parameter for mode selection                 |
+| `src/memory/dream-types.ts`            | Dream types: modes, tiers, configs, `DreamInsight`                                      |
+| `src/memory/dream-schema.ts`           | `dream_insights` + `dream_cycles` + `dream_telemetry` + `dream_outcomes` table creation |
+| `src/memory/dream-evaluator.ts`        | Dream outcome evaluation — DQS scoring, FSHO correlation, adaptive feedback             |
+| `src/memory/dream-synthesis-prompt.ts` | LLM prompt building, heuristic synthesis, response parsing                              |
+| `src/memory/dream-search.ts`           | Vector search over dream insights                                                       |
 
 ### Skill Mutation Validation Gate (PLAN-21)
 
-| File                                      | Purpose                                                                                                       |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `src/memory/experiment-sandbox.ts`        | Two-gate validation: faithfulness gate + paired-bootstrap performance gate over a fixed held-out set          |
-| `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 partition of `skill_executions` into a 20% held-out selection set                         |
-| `src/memory/skill-mutation-pareto.ts`     | Pareto-front ranking over (delta, faithfulness margin, token delta) + cosine-decay edit budget                |
-| `src/memory/dream-slow-update.ts`         | Epoch-wise longitudinal regression across `skill_text_history`; hormonal k-means++ clustering; queue priority |
-| `src/memory/prompt-optimization.ts`       | `optimize()` threads rejected-edit rationale through to `buildStrategyPrompt`                                 |
+**Retired in PLAN-45 Phase 1 (2026-09-05).** `skill-mutation-pareto.ts`, `dream-slow-update.ts`, and `prompt-optimization.ts` were deleted with the `mutation` / `research` dream modes. Two files survive with narrower jobs:
 
-Schema additions (PLAN-21):
+| File                                      | Purpose                                                                                      |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `src/memory/experiment-sandbox.ts`        | Paired LLM judge + `bootstrapPairedCI` used only by harness-evolve (PLAN-25); gates no skill |
+| `src/memory/skill-execution-selection.ts` | Deterministic SHA-1 held-out partition (`isHeldOut`, `hashBucket`) shared by harness-evolve  |
 
-- `skill_text_history` — preserves prior `chunks.text` on every `promoteSkillMutation`, so the slow update has real archived versions to score against.
-- `mutation_queue.context_annotation` — JSON-encoded hormonal-cluster centroid attached to each `regression-priority` row.
-- `memory_audit_log` events: `plan21_slow_update_fired` (per-epoch checkpoint), `skill_mutation_promoted` and `skill_mutation_archived` (now consumed by `buildStrategyPrompt` as a "do not re-propose" block).
+`skill_text_history` was orphaned (no reader, no writer) and is dropped in v67 (PLAN-46 dead-code pass). `mutation_queue` was dropped in v58.
 
 ### Working Memory (RLM)
 
@@ -285,7 +276,7 @@ Schema additions (PLAN-21):
 | File                                        | Purpose                                           |
 | ------------------------------------------- | ------------------------------------------------- |
 | `src/agents/tool-cache.ts`                  | In-memory LRU cache for tool results              |
-| `src/agents/pi-tools.cache.ts`              | Cache integration layer for Pi coding tools       |
+| `src/agents/agent-tools.cache.ts`           | Cache integration layer for Pi coding tools       |
 | `src/agents/progressive-compression.ts`     | Deterministic truncation before LLM summarization |
 | `src/agents/tools/expand-message-tool.ts`   | Retrieve full content of truncated messages       |
 | `src/agents/tools/emotional-anchor-tool.ts` | Create/recall persistent emotional bookmarks      |
@@ -335,7 +326,6 @@ See [Working Memory](./working-memory.md) for full documentation.
 
 | File                                    | Purpose                                                                                |
 | --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `src/memory/skill-refiner.ts`           | `SkillRefiner` — mutation scoring, crystallization pipeline                            |
 | `src/memory/skill-verifier.ts`          | `SkillVerifier` — 3-check safety gate (dangerous patterns, structural, semantic drift) |
 | `src/memory/skill-execution-tracker.ts` | `SkillExecutionTracker` — outcome recording, empirical metrics                         |
 | `src/memory/skill-network-bridge.ts`    | Skill publish/ingest, version conflict resolution, governance, P2P ingest safety gate  |
@@ -346,13 +336,11 @@ See [Working Memory](./working-memory.md) for full documentation.
 
 ### Search & Embeddings
 
-| File                                     | Purpose                                                |
-| ---------------------------------------- | ------------------------------------------------------ |
-| `src/memory/manager-search.ts`           | `searchVector()`, `searchKeyword()` implementations    |
-| `src/memory/mem-store.ts`                | `MemStore` — publish/subscribe, version history        |
-| `src/memory/multi-perspective-search.ts` | Reciprocal Rank Fusion across 4 embedding perspectives |
-| `src/memory/embedding-perspectives.ts`   | Prefix-tuned multi-perspective embedding generation    |
-| `src/memory/embeddings.ts`               | Provider abstraction: OpenAI, Gemini, Voyage, local    |
+| File                           | Purpose                                             |
+| ------------------------------ | --------------------------------------------------- |
+| `src/memory/manager-search.ts` | `searchVector()`, `searchKeyword()` implementations |
+| `src/memory/mem-store.ts`      | `MemStore` — publish/subscribe, version history     |
+| `src/memory/embeddings.ts`     | Provider abstraction: OpenAI, Gemini, Voyage, local |
 
 ### Infrastructure
 
@@ -382,7 +370,7 @@ The private constructor runs this initialization sequence:
 9.  ensureCuriosityEngine()     — CuriosityEngine
 10. ensureHormonalManager()     — HormonalStateManager
 11. ensureUserModelManager()    — UserModelManager
-12. ensureSkillRefiner()        — SkillRefiner + SkillVerifier
+12. ensureExecutionTracker()    — SkillExecutionTracker (SkillRefiner retired, PLAN-45 Phase 1)
 13. ensureGovernance()          — MemoryGovernance
 14. ensureTaskMemory()          — TaskMemoryManager
 15. ensureScheduler()           — MemoryScheduler
@@ -415,6 +403,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | v11     | Skill curator follow-ups (PLAN-15 staging gate columns)                                                                                                                                                                 |
 | v12     | PLAN-15 procedural-memory curator — `skill_lifecycle` table backfilled from `skill_executions`                                                                                                                          |
 | v13     | **PLAN-18 SAGE graph memory** — `gate_value` + `gate_features` BLOB columns on `relationships`, `graph_gate_training_pairs` table, `graph_reward_delta` column on `dream_cycles`                                        |
+| v14–v70 | Later migrations (lifecycle columns, canonical facts, skill evolution, review and usage tables, and more); see `src/memory/migrations.ts`                                                                               |
 
 **Key tables:**
 
@@ -432,7 +421,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | `peer_skill_ratings`        | Individual skill ratings by peer                                                   |
 | `peer_trust_edges`          | EigenTrust web-of-trust edges                                                      |
 | `peer_activity_log`         | Peer activity timestamps for anomaly detection                                     |
-| `mutation_queue`            | Pending dream mutation retries                                                     |
+| `mutation_queue`            | Dropped in v58 (PLAN-40); the mutation flow itself was retired in PLAN-45 Phase 1  |
 | `skill_edges`               | Discovered skill relationships (prerequisite, enables, etc.)                       |
 | `embedding_cache`           | Cached embedding vectors                                                           |
 | `memory_audit_log`          | Governance audit trail                                                             |
@@ -483,23 +472,35 @@ accumulating:
   consolidation cycle (bounded per pass) and is also exposed as
   `bitterbot memory backfill-embeddings` to clear a backlog manually. It vectorizes
   `model='pending'` chunks and indexes them into `chunks_vec` + `chunks_fts`.
-- **Cooperative yielding on recall (`multi-perspective-search.ts`).** The
-  per-recall RRF sweep parses + cosine-scores up to 1000 chunks across 4
-  perspectives in pure JS. It yields to the event loop every `SEARCH_YIELD_EVERY`
-  chunks so a large recall can't freeze the gateway keepalive (and bounce the
-  Control UI). Yielding is behavior-preserving — identical scores and ranking.
+- **Recall stays off the hot path.** Hybrid recall fuses vector + keyword
+  results by Reciprocal Rank Fusion (`mergeHybridResultsRRF`); vector search is a
+  `chunks_vec` (sqlite-vec) KNN over float32 BLOB vectors, not a JS scan of the
+  row store. Embeddings are stored as compact float32 BLOBs (~6 KB), never dragged
+  through a sort — the 2026-09-07 audit's freeze came from scan queries that
+  selected the old ~29 KB JSON embedding column, now fixed (id-first fetch).
+- **Serialized maintenance (`MaintenanceMutex`).** Consolidation, dream,
+  health-sweep, trending and digest run one at a time under a mutex so they cannot
+  interleave chunk writes or pile onto the event loop together (PLAN-46 Phase 4).
 - **Tombstone GC (`ConsolidationEngine.purgeExpired`).** Forgotten/expired chunks
   are physically deleted (row + vector + FTS) once older than
   `consolidation.forgottenRetentionDays` (default **14**; `0` purges immediately,
   negative disables). This runs right after the forget pass each consolidation
   cycle and logs `memory GC: purged N forgotten/expired chunk(s)`. Note that row
   deletion frees pages but does not shrink the file — run `VACUUM` for that.
+- **Two lifecycle columns.** `lifecycle` (generated, activated, frozen,
+  consolidated, archived, expired) is the fine-grained state machine;
+  `lifecycle_state` (active, archived, consolidated, forgotten) is the coarse
+  retrieval gate. They are not one-to-one (a merge loser is `archived` +
+  `forgotten`), so "is this chunk live?" checks both, each with its own values:
+  `liveChunkPredicate()` in `chunk-writer.ts`. `expired` derives to `forgotten`,
+  and `lifecycle-vocabulary.test.ts` fails on SQL that compares a column with the
+  other column's values.
 
 Health check from the DB directly:
 
 ```bash
 # Should be ~0 in steady state — a growing count means embeddings are failing
-SELECT COUNT(*) FROM chunks WHERE model='pending' OR json_array_length(embedding)=0;
+SELECT COUNT(*) FROM chunks WHERE model='pending' OR embedding IS NULL OR length(embedding) < 8;
 
 # Tombstones awaiting GC (drained on the consolidation cycle)
 SELECT COUNT(*) FROM chunks WHERE lifecycle_state='forgotten' OR lifecycle='expired';
@@ -634,7 +635,7 @@ npx vitest run src/memory/
 
 - [How the Memory Works](./how-the-memory-works.md) — plain-language guide to the complete memory system
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model, lifecycle, epistemic layers
-- [Dream Engine](./dream-engine.md) — 7 modes, FSHO selector, ripple replay, emotional triggering
+- [Dream Engine](./dream-engine.md) — 13 modes (some off by default), FSHO selector, ripple replay, emotional triggering
 - [Emotional System](./emotional-system.md) — hormones, anchors, limbic bridge
 - [Deep Recall](./deep-recall.md) — RLM infinite memory via sub-LLM REPL
 - [User Knowledge](./user-knowledge.md) — session extraction, Bond drift guard, handover briefs

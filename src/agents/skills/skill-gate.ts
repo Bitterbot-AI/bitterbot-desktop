@@ -20,9 +20,11 @@
  * well? If yes, raise the bar for replacement.
  */
 
-import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
+import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { scanSkillForInjection } from "../../security/skill-injection-scanner.js";
+import { checkDescriptionContract, describeContractIssues } from "./description-contract.js";
+import { findDescriptionOverlap, type LiveSkillIndexEntry } from "./description-overlap.js";
 
 export type GateOutcome = "pass" | "warn" | "fail";
 
@@ -32,6 +34,8 @@ export interface GateIssue {
     | "missing-field"
     | "injection-critical"
     | "injection-suspect"
+    | "description-contract"
+    | "description-overlap"
     | "regression-risk"
     | "empty-body";
   detail: string;
@@ -56,6 +60,26 @@ export interface GateInput {
   lifecycleStore?: SkillLifecycleStore;
   /** When true, accept staged content even on regression-risk warnings. */
   acceptHighRiskDiff?: boolean;
+  /**
+   * PLAN-44 Phase 3: for content the evolution pipeline authored from
+   * untrusted traces, a `medium` injection hit BLOCKS instead of warning
+   * (`warn` maps to gateStatus "passed", which the validation gate takes
+   * as a green light). Human-edited skills keep the warn behaviour.
+   */
+  strictInjection?: boolean;
+  /**
+   * PLAN-44 Phase 4a: hold SYNTHESIZED content (evolution proposals,
+   * crystallized sequences) to the description contract — the description
+   * is the runtime's routing key. Human-edited skills are not checked.
+   */
+  descriptionContract?: boolean;
+  /**
+   * PLAN-44 Phase 4b: the live index (name + description). With the
+   * contract on, a description that overlaps another live skill's is a
+   * BLOCK — the runtime opens a skill only when exactly one description
+   * applies, so a near-duplicate cancels coverage instead of adding it.
+   */
+  liveIndex?: LiveSkillIndexEntry[];
 }
 
 const REQUIRED_FRONTMATTER_FIELDS = ["name", "description"] as const;
@@ -130,6 +154,45 @@ export function runSkillGate(input: GateInput): GateResult {
       outcome = "fail";
     }
   }
+  if (input.descriptionContract) {
+    const fm = parsed.frontmatter as Record<string, unknown>;
+    const liveFm = input.liveContent
+      ? ((parseSkillMarkdown(input.liveContent)?.frontmatter ?? {}) as Record<string, unknown>)
+      : null;
+    const contract = checkDescriptionContract({
+      skillName: input.skillName,
+      frontmatterName: typeof fm.name === "string" ? fm.name : undefined,
+      description: typeof fm.description === "string" ? fm.description : undefined,
+      liveFrontmatterName: typeof liveFm?.name === "string" ? liveFm.name : null,
+    });
+    if (contract.length > 0) {
+      issues.push({
+        kind: "description-contract",
+        detail: `description contract: ${describeContractIssues(contract)}`,
+        severity: "block",
+      });
+      outcome = "fail";
+    }
+    if (input.liveIndex && typeof fm.description === "string") {
+      const hit = findDescriptionOverlap(fm.description, input.liveIndex, {
+        excludeName: input.skillName,
+      });
+      if (hit) {
+        const entry = input.liveIndex.find((e) => e.name === hit.name);
+        const compliant = entry?.contractCompliant !== false;
+        issues.push({
+          kind: "description-overlap",
+          detail: `description overlaps live skill "${hit.name}" (token jaccard ${hit.tokens.toFixed(2)}, containment ${hit.containment.toFixed(2)}, bigram ${hit.bigrams.toFixed(2)}); the runtime opens a skill only when exactly one description applies — ${compliant ? `patch "${hit.name}" or describe a distinct situation` : `"${hit.name}" itself cannot route (fails the contract), so this is a warning only`}`,
+          severity: compliant ? "block" : "warn",
+        });
+        if (compliant) {
+          outcome = "fail";
+        } else if (outcome === "pass") {
+          outcome = "warn";
+        }
+      }
+    }
+  }
   if (!parsed.body || parsed.body.trim().length === 0) {
     issues.push({
       kind: "empty-body",
@@ -163,6 +226,19 @@ export function runSkillGate(input: GateInput): GateResult {
     };
   }
   if (scan.severity !== "ok") {
+    if (input.strictInjection && scan.severity === "medium") {
+      issues.push({
+        kind: "injection-suspect",
+        detail: `injection scan severity=${scan.severity} (strict: evolution-authored content): ${scan.reason}`,
+        severity: "block",
+      });
+      return {
+        outcome: "fail",
+        issues,
+        baselineSuccessRate: 0,
+        baselineRuns: 0,
+      };
+    }
     issues.push({
       kind: "injection-suspect",
       detail: `injection scan severity=${scan.severity}: ${scan.reason}`,

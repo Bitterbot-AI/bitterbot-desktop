@@ -3,26 +3,31 @@ import {
   confirm,
   intro,
   isCancel,
+  log,
   multiselect,
   type Option,
   outro,
+  password,
   select,
   spinner,
   text,
 } from "@clack/prompts";
-import type { WizardProgress, WizardPrompter } from "./prompts.js";
 import { createCliProgress } from "../cli/progress.js";
 import { note as emitNote } from "../terminal/note.js";
 import { stylePromptHint, stylePromptMessage, stylePromptTitle } from "../terminal/prompt-style.js";
 import { theme } from "../terminal/theme.js";
+import type { WizardProgress, WizardPrompter } from "./prompts.js";
 import { WizardCancelledError } from "./prompts.js";
 
-function guardCancel<T>(value: T | symbol): T {
-  if (isCancel(value)) {
+// @clack/prompts >= 1.8 types isCancel() as narrowing to its own unique
+// CANCEL_SYMBOL, and prompt results infer T with that symbol inside it. Strip
+// any symbol so callers get the plain answer type.
+function guardCancel<T>(value: T | symbol): Exclude<T, symbol> {
+  if (isCancel(value) || typeof value === "symbol") {
     cancel(stylePromptTitle("Setup cancelled.") ?? "Setup cancelled.");
     throw new WizardCancelledError();
   }
-  return value;
+  return value as Exclude<T, symbol>;
 }
 
 export function createClackPrompter(): WizardPrompter {
@@ -60,6 +65,15 @@ export function createClackPrompter(): WizardPrompter {
       ),
     text: async (params) => {
       const validate = params.validate;
+      if (params.sensitive) {
+        // Secrets (API keys) are masked as typed and never echoed.
+        return guardCancel(
+          await password({
+            message: stylePromptMessage(params.message),
+            validate: validate ? (value) => validate(value ?? "") : undefined,
+          }),
+        );
+      }
       return guardCancel(
         await text({
           message: stylePromptMessage(params.message),
@@ -76,6 +90,14 @@ export function createClackPrompter(): WizardPrompter {
           initialValue: params.initialValue,
         }),
       ),
+    section: (info) => {
+      if (!info) {
+        return;
+      }
+      log.step(
+        stylePromptTitle(`Step ${info.index} of ${info.total}: ${info.title}`) ?? info.title,
+      );
+    },
     progress: (label: string): WizardProgress => {
       const spin = spinner();
       spin.start(theme.accent(label));

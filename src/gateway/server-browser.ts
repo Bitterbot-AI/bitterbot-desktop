@@ -27,5 +27,13 @@ export async function startBrowserControlServerIfEnabled(): Promise<BrowserContr
     return null;
   }
   await start();
-  return { stop: stop ?? (async () => {}) };
+  return {
+    stop: async () => {
+      // The live view holds a CDP session on the page; release it before the
+      // browser it is attached to goes away.
+      const { shutdownBrowserLiveView } = await import("./server-methods/browser-live.js");
+      await shutdownBrowserLiveView();
+      await stop?.();
+    },
+  };
 }

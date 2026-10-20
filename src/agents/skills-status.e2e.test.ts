@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { SkillEntry } from "./skills/types.js";
 import { buildWorkspaceSkillStatus } from "./skills-status.js";
+import type { SkillEntry } from "./skills/types.js";
 
 describe("buildWorkspaceSkillStatus", () => {
   it("does not surface install options for OS-scoped skills on unsupported platforms", () => {
@@ -15,7 +15,12 @@ describe("buildWorkspaceSkillStatus", () => {
       skill: {
         name: "os-scoped",
         description: "test",
-        source: "test",
+        sourceInfo: {
+          path: "/tmp/os-scoped",
+          source: "test",
+          scope: "temporary",
+          origin: "top-level",
+        },
         filePath: "/tmp/os-scoped",
         baseDir: "/tmp",
       },

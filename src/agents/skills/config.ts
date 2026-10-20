@@ -1,5 +1,4 @@
 import type { BitterbotConfig, SkillConfig } from "../../config/config.js";
-import type { SkillEligibilityContext, SkillEntry } from "./types.js";
 import {
   hasBinary,
   isConfigPathTruthyWithDefaults,
@@ -7,6 +6,7 @@ import {
   resolveRuntimePlatform,
 } from "../../shared/config-eval.js";
 import { resolveSkillKey } from "./frontmatter.js";
+import type { SkillEligibilityContext, SkillEntry } from "./types.js";
 
 const DEFAULT_CONFIG_VALUES: Record<string, boolean> = {
   "browser.enabled": true,
@@ -48,7 +48,7 @@ function normalizeAllowlist(input: unknown): string[] | undefined {
 const BUNDLED_SOURCES = new Set(["bitterbot-bundled"]);
 
 function isBundledSkill(entry: SkillEntry): boolean {
-  return BUNDLED_SOURCES.has(entry.skill.source);
+  return BUNDLED_SOURCES.has(entry.skill.sourceInfo.source);
 }
 
 export function resolveBundledAllowlist(config?: BitterbotConfig): string[] | undefined {

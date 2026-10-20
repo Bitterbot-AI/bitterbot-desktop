@@ -2,10 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BitterbotConfig } from "../config/config.js";
 import { HEARTBEAT_PROMPT } from "../auto-reply/heartbeat.js";
 import * as replyModule from "../auto-reply/reply.js";
 import { whatsappOutbound } from "../channels/plugins/outbound/whatsapp.js";
+import type { BitterbotConfig } from "../config/config.js";
 import {
   resolveAgentIdFromSessionKey,
   resolveAgentMainSessionKey,
@@ -15,6 +15,7 @@ import {
 import { getActivePluginRegistry, setActivePluginRegistry } from "../plugins/runtime.js";
 import { buildAgentPeerSessionKey } from "../routing/session-key.js";
 import { createOutboundTestPlugin, createTestRegistry } from "../test-utils/channel-plugins.js";
+import { __resetHeartbeatHashStateForTest } from "./heartbeat-gate.js";
 import {
   isHeartbeatEnabledForAgent,
   resolveHeartbeatIntervalMs,
@@ -101,6 +102,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  __resetHeartbeatHashStateForTest();
   if (testRegistry) {
     setActivePluginRegistry(testRegistry);
   }
@@ -574,7 +576,8 @@ describe("runHeartbeatOnce", () => {
       expect(replySpy).toHaveBeenCalledWith(
         expect.objectContaining({
           Body: expect.stringMatching(/Ops check[\s\S]*Current time: /),
-          SessionKey: sessionKey,
+          // Interval ticks run in the isolated `<main>:heartbeat` session by default.
+          SessionKey: `${sessionKey}:heartbeat`,
         }),
         { isHeartbeat: true },
         cfg,
@@ -652,7 +655,8 @@ describe("runHeartbeatOnce", () => {
       expect(sendWhatsApp).toHaveBeenCalledTimes(1);
       expect(sendWhatsApp).toHaveBeenCalledWith("+1555", "Final alert", expect.any(Object));
       expect(replySpy).toHaveBeenCalledWith(
-        expect.objectContaining({ SessionKey: sessionKey }),
+        // Interval ticks run in the isolated `<main>:heartbeat` session by default.
+        expect.objectContaining({ SessionKey: `${sessionKey}:heartbeat` }),
         { isHeartbeat: true },
         cfg,
       );

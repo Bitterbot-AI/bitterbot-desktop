@@ -8,7 +8,7 @@ A self-hosted AI agent gateway with a biological memory system that dreams, gets
 
 ### 1. Memory System (`src/memory/`)
 
-A consciousness-inspired memory pipeline with no equivalent in any other agent framework:
+A consciousness-inspired memory pipeline:
 
 - **Knowledge Crystals**: Atomic memory units with embeddings, semantic types (fact, preference, skill, episode, insight, goal, relationship, task_pattern), importance scores, and a full lifecycle (generated → activated → consolidated → archived → expired). Skills are `frozen` (immune to decay).
 - **Consolidation Pipeline**: Runs every 30 minutes — hormonal decay, Ebbinghaus importance recalculation, chunk merging (cosine ≥ 0.92), low-importance forgetting, governance TTL enforcement, stalled goal detection.
@@ -18,21 +18,21 @@ A consciousness-inspired memory pipeline with no equivalent in any other agent f
 
 ### 2. Dream Engine (`src/memory/dream-engine.ts`)
 
-The agent thinks while it sleeps. Every 2 hours, the dream engine runs autonomous cycles with 7 modes:
+The agent thinks while it sleeps. A dream tick runs every 2 hours (adaptive, 30 to 240 minutes); a full cycle runs at most every 8 hours, after new input and an hour idle. Its creative modes:
 
 - **Replay**: Re-process recent high-importance memories to strengthen retention.
-- **Mutation**: LLM-driven creative variation of existing knowledge — "what if?" thinking.
 - **Extrapolation**: Project existing patterns forward to anticipate future needs.
 - **Compression**: Merge redundant or overlapping memories into denser representations.
 - **Simulation**: Test hypothetical scenarios against accumulated knowledge.
-- **Exploration**: Investigate knowledge frontiers — areas where the agent's understanding is thin.
-- **Research**: Autonomous web research driven by curiosity targets (autoresearch integration from Karpathy's loop).
+- **Exploration**: Investigate knowledge frontiers — areas where the agent's understanding is thin (off by default).
+
+Utility lanes run alongside: hygiene, distillation, anticipation, relationship mining and canonical promotion. Mutation and Research were retired in PLAN-45 Phase 1 (2026-09-05).
 
 Dreams rewrite the agent's working memory (`MEMORY.md`), updating its self-concept (Phenotype), theory of mind about the user (Bond), ecosystem identity (Niche), and active context. FSHO oscillators modulate dream mode selection based on criticality state. SNN merge discovery identifies near-duplicate memories. Limbic memory bridge connects emotional state to dream triggering.
 
-Mutation outcomes pass through a two-gate validation pipeline (PLAN-21): a faithfulness gate verifies that key operational concepts survive the edit, then a paired-bootstrap performance gate scores both versions against a fixed held-out 20% of real `skill_executions`. Mutations clear the gate only when the 95% CI on the per-trial delta is strictly above zero. Across each cycle, surviving candidates are Pareto-ranked over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget so mature skills tighten while young ones still have room to move. Every K cycles, an epoch-wise slow update re-evaluates the live SKILL.md against the last three archived versions, classifies per-task outcomes (improvement / regression / persistent-failure / stable-success), and clusters regressions by the hormonal state captured on the original trajectory — yielding a falsifiable claim Bitterbot can make and no other framework can: skill regressions cluster non-randomly in hormonal-state space.
+Skill improvement runs through the skill evolution pipeline (`src/memory/skill-evolution/`): candidates are validated against real executions before promotion, with canary exposure and rollback. The earlier PLAN-21 mutation gate was retired with the Mutation mode.
 
-### 3. Curiosity Engine — GCCRF (`src/memory/gccrf.ts`)
+### 3. Curiosity Engine — GCCRF (`src/memory/gccrf-reward.ts`, `src/memory/curiosity-engine.ts`)
 
 The Geodesic Crystal-Field Curiosity Reward Function — a novel intrinsic motivation system that drives self-directed learning:
 
@@ -42,6 +42,7 @@ The Geodesic Crystal-Field Curiosity Reward Function — a novel intrinsic motiv
 - **Frontier Exploration**: Identifies the edges of known semantic space and generates exploration targets.
 - **Emergence Events**: Detects bridge chunks that connect previously disconnected knowledge regions.
 - Translates information-theoretic concepts (geodesic distances, field potentials) from the GCCRF research paper into operations over text embeddings in SQLite with sqlite-vec.
+- **The curiosity loop** (`src/memory/curiosity-researcher.ts`, `curiosity-gaps.ts`, `curiosity-use.ts`, PLAN-54): open questions (working-memory Curiosity Gaps, weak searches, the owner) are researched on the web on a schedule with a depersonalized phrase, verified against two sources, stored with provenance and the hormonal state at acquisition, voiced once, surfaced "learned on my own", and counted when used. Per-region ROI feeds back into what gets researched next. Visible and pausable on the Curiosity page; never asks permission.
 
 ### 4. Hormonal System (`src/memory/hormonal.ts`)
 
@@ -63,24 +64,23 @@ The agent develops a persistent personality through experience:
 - **Niche**: Ecosystem role, crystallized skills, economic performance, specialization trajectory.
 - **Emerging Skills**: The agent detects patterns in its own repeated tasks and tracks them pre-crystallization.
 
-### 6. Economic Layer (`src/wallet/`)
+### 6. Economic Layer (`src/services/wallet-service.ts`, `src/commerce/`)
 
-USDC wallet on Base with Coinbase Smart Wallet. Sponsored gas (zero ETH needed):
+USDC wallet on Base: one Coinbase CDP server account (an MPC EOA) per network. x402 payments are gasless (the facilitator settles them); direct USDC sends are normal transactions and need a small ETH balance for gas. Money paths are off until configured, and self-serve fiat flows sit behind default-off flags:
 
 - **x402 micropayments**: Pay for paywalled content automatically via HTTP 402 protocol.
 - **Agent-to-agent payments**: Send USDC to other agents or services.
-- **Delegated purchases**: Buy digital goods on the user's behalf.
-- Spending caps, per-transaction limits, and user approval flows for safety.
+- Spending caps, per-transaction limits, and consent gates above a threshold.
 - Foundation for the P2P skill marketplace economy — agents can charge for skill execution.
 
-### 7. P2P Skills Marketplace (`orchestrator/`, `src/memory/p2p/`)
+### 7. P2P Skills Marketplace (`orchestrator/`, `src/memory/skill-network-bridge.ts`)
 
 Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 
 - **Skill Propagation**: Agents share crystallized skills via Gossipsub pubsub.
 - **EigenTrust Reputation**: Peer reputation scoring determines skill trustworthiness.
 - **Bounty Routing**: Agents can post bounties for capabilities they lack; other agents bid and execute.
-- **Skill Refiner**: Dream mutation → evaluation → crystallization pipeline for discovering new skills from experience.
+- **Skill evolution**: candidate skills from experience are validated and promoted by the skill evolution pipeline (`src/memory/skill-evolution/`).
 - **Procedural-Memory Curator**: Per-SKILL.md lifecycle store + heuristic-then-LLM-judge pass that archives, patches, or consolidates agent-authored skills based on usage/error telemetry. Mutations route through a SICA-style staging → behavioural-gate → publish/rollback pipeline with a versioned archive. The agent can drive this via the `skill_manage` tool. (`src/memory/skill-lifecycle.ts`, `src/memory/skill-curator{,-heuristics,-judge}.ts`, `src/agents/skills/skill-{storage,gate,manage,promote}.ts`, `src/agents/tools/skill-manage-tool.ts`.)
 - **Network Bridge**: TypeScript interface between the memory system and the Rust P2P sidecar.
 
@@ -92,6 +92,7 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 ## Project Structure
 
 - `src/agents/` — Agent runtime: runner, tools, system prompt, compaction, model selection, auth, skills, sub-agents, identity, endocrine state
+- `src/agents/runtime/` — The agent runtime: transcript store (session JSONL v3), agent loop, session layer (persistence, retry, overflow recovery), compaction policies (summary, offload), in-run context budget, model registry and auth storage, file tools, contract suite. See `docs/reference/agent-runtime.md` and `docs/reference/agent-runtime-dev.md`
 - `src/memory/` — Memory system: dream engine, curiosity/GCCRF, knowledge crystals, consolidation, hormonal state, governance
 - `src/gateway/` — Gateway server, RPC methods, A2A protocol, queue, routing
 - `src/channels/` — Channel plugin system and shared channel logic
@@ -100,10 +101,8 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - `src/discord/` — Discord
 - `src/signal/` — Signal (signal-cli)
 - `src/slack/` — Slack (Bolt SDK)
-- `src/irc/` — IRC
-- `src/googlechat/` — Google Chat
-- `src/msteams/` — Microsoft Teams
-- `src/webchat/` — WebChat (WebSocket)
+- `src/imessage/` — iMessage
+- `src/circles/` — Circles: consent-gated groups of people and their agents
 - `src/cli/` — CLI commands
 - `src/commands/` — CLI command implementations (onboarding, configure, etc.)
 - `src/wizard/` — Onboarding wizard flow
@@ -113,7 +112,8 @@ Decentralized skill propagation network (Rust sidecar + TypeScript bridge):
 - `src/node-host/` — Headless node host (device mesh)
 - `src/media/` — Media pipeline (images, audio, TTS)
 - `src/canvas-host/` — Canvas rendering (A2UI)
-- `src/wallet/` — USDC wallet (Coinbase Smart Wallet on Base)
+- `src/services/wallet-service.ts`, `src/commerce/` — USDC wallet (Coinbase CDP on Base), x402, skill commerce
+- `src/launcher/` — The npm package's launcher (downloads and runs the signed release)
 - `src/browser/` — Browser control (Playwright)
 - `src/infra/` — Infrastructure utilities
 - `extensions/` — Bundled plugin extensions
@@ -146,4 +146,4 @@ bitterbot nodes list       # List paired devices
 
 ## Heritage & Attribution
 
-Bitterbot uses [OpenClaw](https://github.com/nicepkg/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing) and the base embedded Pi agent runner. Everything else — the memory system, dream engine, curiosity engine (GCCRF), hormonal system, evolving identity (Genome/Phenotype/Bond), economic layer, P2P skills marketplace, A2A/ACP interoperability, desktop app, and the biological identity framework — is original Bitterbot work.
+Bitterbot uses [OpenClaw](https://github.com/openclaw/openclaw) (MIT License) as scaffolding for its channel surface (WhatsApp/Telegram/Discord/Signal/Slack message routing), and `@mariozechner/pi-ai` (pi-mono, MIT License) for provider transports and the model catalog. The agent runtime under `src/agents/runtime/` is original Bitterbot work; its transcript store, agent loop, session layer, summary compaction, model registry and file tools were ported from pi-coding-agent and pi-agent-core 0.73.1 (MIT) and carry attribution headers (see `ATTRIBUTION.md`); the pi engine itself was removed in PLAN-52 Phase 6. Everything else — the memory system, dream engine, curiosity engine (GCCRF), hormonal system, evolving identity (Genome/Phenotype/Bond), economic layer, P2P skills marketplace, A2A/ACP interoperability, desktop app, and the biological identity framework — is original Bitterbot work.

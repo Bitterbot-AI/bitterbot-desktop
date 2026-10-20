@@ -2,6 +2,7 @@ mod computer;
 mod crypto;
 mod ipc;
 mod security;
+mod skill_receipts;
 mod swarm;
 
 use base64::Engine as _;

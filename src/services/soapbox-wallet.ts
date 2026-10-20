@@ -6,6 +6,7 @@ import { baseSepolia } from "viem/chains";
 import type { WalletConfig } from "../config/types.wallet.js";
 import type { SoapboxWalletStatus } from "../infra/soapbox-client.js";
 import type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
+import { gatedWallet } from "../review/spend.js";
 import { assertApprovedSoapboxQuote } from "./soapbox-payment.js";
 import { createWalletService } from "./wallet-service.js";
 
@@ -48,18 +49,21 @@ export async function createSoapboxWallet(
   if (identity) await assertWalletSeparation(identity, mainWallet);
   const auth = await soapboxWalletAuthentication(mainWallet);
   const approved = approvedQuote ? structuredClone(approvedQuote) : undefined;
-  const wallet = createWalletService(
-    {
-      ...soapboxWalletConfig(mainWallet),
-      cdpApiKeyId: auth.apiKeyId,
-      cdpApiKeySecret: auth.apiKeySecret,
-    },
-    {
-      walletSecret: auth.walletSecret,
-      rpcUrl: process.env.BITTERBOT_SOAPBOX_RPC_URL ?? "https://sepolia.base.org",
-      accountName: identity?.name ?? SOAPBOX_ACCOUNT_NAME,
-      expectedAddress: identity?.address,
-    },
+  const wallet = gatedWallet(
+    createWalletService(
+      {
+        ...soapboxWalletConfig(mainWallet),
+        cdpApiKeyId: auth.apiKeyId,
+        cdpApiKeySecret: auth.apiKeySecret,
+      },
+      {
+        walletSecret: auth.walletSecret,
+        rpcUrl: process.env.BITTERBOT_SOAPBOX_RPC_URL ?? "https://sepolia.base.org",
+        accountName: identity?.name ?? SOAPBOX_ACCOUNT_NAME,
+        expectedAddress: identity?.address,
+      },
+    ),
+    { origin: "rpc", purpose: "Owner-approved Compute job on Base Sepolia" },
   );
   return {
     ...wallet,

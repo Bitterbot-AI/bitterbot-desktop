@@ -1,8 +1,11 @@
 import type { ChatType } from "../channels/chat-type.js";
-import { parseAgentSessionKey, type ParsedAgentSessionKey } from "../sessions/session-key-utils.js";
+import { parseAgentSessionKey } from "../sessions/session-key-utils.js";
 
 export {
   getSubagentDepth,
+  isA2aTaskSessionKey,
+  isSkillEvolvePeerValidationSessionKey,
+  isSkillEvolveValidationSessionKey,
   isCronSessionKey,
   isAcpSessionKey,
   isSubagentSessionKey,

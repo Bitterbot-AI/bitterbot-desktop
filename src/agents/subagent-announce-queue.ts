@@ -23,6 +23,8 @@ export type AnnounceQueueItem = {
   sessionKey: string;
   origin?: DeliveryContext;
   originKey?: string;
+  /** `false`: the announce turn runs without owner-only tools. */
+  senderIsOwner?: false;
 };
 
 export type AnnounceQueueSettings = {
@@ -163,7 +165,13 @@ function scheduleAnnounceDrain(key: string) {
           if (!last) {
             break;
           }
-          await queue.send({ ...last, prompt });
+          // One announce turn for several children: non-owner if any was.
+          const anyNonOwner = items.some((item) => item.senderIsOwner === false);
+          await queue.send({
+            ...last,
+            prompt,
+            ...(anyNonOwner ? { senderIsOwner: false as const } : {}),
+          });
           queue.items.splice(0, items.length);
           if (summary) {
             clearQueueSummaryState(queue);
@@ -177,7 +185,8 @@ function scheduleAnnounceDrain(key: string) {
           if (!next) {
             break;
           }
-          await queue.send({ ...next, prompt: summaryPrompt });
+          // The summary stands for dropped announcements of unknown origin.
+          await queue.send({ ...next, prompt: summaryPrompt, senderIsOwner: false });
           queue.items.shift();
           clearQueueSummaryState(queue);
           continue;

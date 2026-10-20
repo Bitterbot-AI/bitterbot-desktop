@@ -50,6 +50,11 @@ async function withOnboardEnv(
     "BITTERBOT_GATEWAY_PASSWORD",
     "CUSTOM_API_KEY",
     "BITTERBOT_DISABLE_CONFIG_CACHE",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "BITTERBOT_AGENT_DIR",
+    "PI_CODING_AGENT_DIR",
   ]);
 
   process.env.BITTERBOT_SKIP_CHANNELS = "1";
@@ -60,12 +65,17 @@ async function withOnboardEnv(
   delete process.env.BITTERBOT_GATEWAY_TOKEN;
   delete process.env.BITTERBOT_GATEWAY_PASSWORD;
   delete process.env.CUSTOM_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
 
   const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
   const configPath = path.join(tempHome, "bitterbot.json");
   process.env.HOME = tempHome;
   process.env.BITTERBOT_STATE_DIR = tempHome;
   process.env.BITTERBOT_CONFIG_PATH = configPath;
+  process.env.BITTERBOT_AGENT_DIR = path.join(tempHome, "agent");
+  process.env.PI_CODING_AGENT_DIR = process.env.BITTERBOT_AGENT_DIR;
 
   const runtime: RuntimeMock = {
     log: () => {},
@@ -115,6 +125,42 @@ async function expectApiKeyProfile(params: {
     }
   }
 }
+
+describe("onboard (non-interactive): the shared setup step model (PLAN-56 Phase 4)", () => {
+  it("uses an environment key in place and keeps the configured primary model", async () => {
+    await withOnboardEnv("bitterbot-onboard-env-key-", async ({ configPath, runtime }) => {
+      await fs.writeFile(
+        configPath,
+        JSON.stringify({
+          agents: { defaults: { model: { primary: "anthropic/claude-haiku-4-5" } } },
+        }),
+      );
+      process.env.ANTHROPIC_API_KEY = "sk-ant-api03-from-the-shell-0000";
+      await runNonInteractive(
+        {
+          nonInteractive: true,
+          acceptRisk: true,
+          skipHealth: true,
+          skipChannels: true,
+          skipSkills: true,
+          json: true,
+        },
+        runtime,
+      );
+      const cfg = await readJsonFile<{
+        auth?: { profiles?: Record<string, unknown> };
+        agents?: { defaults?: { model?: { primary?: string } } };
+      }>(configPath);
+      // Not replaced by the provider's first model.
+      expect(cfg.agents?.defaults?.model?.primary).toBe("anthropic/claude-haiku-4-5");
+      // Not copied out of the environment into a file.
+      expect(cfg.auth?.profiles?.["anthropic:default"]).toBeUndefined();
+      const storePath = path.join(process.env.BITTERBOT_AGENT_DIR!, "auth-profiles.json");
+      const store = await fs.readFile(storePath, "utf8").catch(() => "");
+      expect(store).not.toContain("from-the-shell");
+    });
+  }, 60_000);
+});
 
 describe("onboard (non-interactive): provider auth", () => {
   it("stores MiniMax API key and uses global baseUrl by default", async () => {

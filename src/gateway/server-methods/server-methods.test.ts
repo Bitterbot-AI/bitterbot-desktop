@@ -234,7 +234,8 @@ describe("gateway chat transcript writes (guardrail)", () => {
 
     expect(src.includes("fs.appendFileSync(transcriptPath")).toBe(false);
 
-    expect(src).toContain("SessionManager.open(transcriptPath)");
+    // The store attaches the entry to the current leaf (parentId); see chat.ts.
+    expect(src).toContain("openTranscriptForAgent(transcriptPath");
     expect(src).toContain("appendMessage(");
   });
 });
@@ -471,7 +472,11 @@ describe("gateway healthHandlers.status scope handling", () => {
     } as HealthStatusHandlerParams);
 
     expect(vi.mocked(status.getStatusSummary)).toHaveBeenCalledWith({ includeSensitive: false });
-    expect(respond).toHaveBeenCalledWith(true, { ok: true }, undefined);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      { ok: true, runtime: expect.objectContaining({ platform: process.platform }) },
+      undefined,
+    );
   });
 
   it("requests full status for admin clients", async () => {
@@ -485,7 +490,11 @@ describe("gateway healthHandlers.status scope handling", () => {
     } as HealthStatusHandlerParams);
 
     expect(vi.mocked(status.getStatusSummary)).toHaveBeenCalledWith({ includeSensitive: true });
-    expect(respond).toHaveBeenCalledWith(true, { ok: true }, undefined);
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      { ok: true, runtime: expect.objectContaining({ platform: process.platform }) },
+      undefined,
+    );
   });
 });
 

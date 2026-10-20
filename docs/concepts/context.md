@@ -141,7 +141,7 @@ Notable tools that affect context behavior:
 - **`deep_recall`** — Spawns a sandboxed sub-LLM that writes and executes search code against the full memory database and session history. Allows the agent to reason over arbitrarily long context without loading it all into the main window. See [Deep Recall](../memory/deep-recall.md).
 - **`expand_message`** — Retrieves the original full content of messages that were truncated by progressive compression. Uses SHA-256 fingerprints to reference stored originals.
 - **`create_emotional_anchor` / `recall_emotional_anchor`** — Bookmark and retrieve significant emotional moments. Recalled anchors blend their hormonal state into the current endocrine state.
-- **`working_memory_note`** — Write urgent notes to MEMORY.md scratch buffer between dream cycles. Accepts an optional `type` parameter (`experience`, `directive`, `world_fact`, `mental_model`) for epistemic layer classification.
+- **`working_memory_note`** — Write urgent notes to the scratch log (`memory/scratch.md`) between dream cycles; they are folded into MEMORY.md at the next rewrite. Accepts an optional `type` parameter (`experience`, `directive`, `world_fact`, `mental_model`) for epistemic layer classification.
 
 `/context detail` breaks down the biggest tool schemas so you can see what dominates.
 

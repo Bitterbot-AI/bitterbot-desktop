@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BitterbotConfig } from "./types.js";
 import { expandHomePrefix, resolveRequiredHomeDir } from "../infra/home-dir.js";
+import type { BitterbotConfig } from "./types.js";
 
 /**
  * Nix mode detection: When BITTERBOT_NIX_MODE=1, the gateway is running under Nix.

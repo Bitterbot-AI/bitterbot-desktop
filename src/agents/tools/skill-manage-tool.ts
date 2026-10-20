@@ -11,8 +11,9 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
+import { appendImpactEntry } from "../skills/impact-trail.js";
+import { bumpSkillsSnapshotVersion } from "../skills/refresh.js";
 import { withSkillLifecycleStore } from "../skills/skill-lifecycle-from-config.js";
 import {
   skillManage,
@@ -20,7 +21,8 @@ import {
   type SkillManageParams,
 } from "../skills/skill-manage.js";
 import { promoteStaged, rollbackStaged } from "../skills/skill-promote.js";
-import { resolveStorageRoots } from "../skills/skill-storage.js";
+import { liveSkillPath, resolveStorageRoots } from "../skills/skill-storage.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const ManageSchema = Type.Object({
@@ -134,7 +136,9 @@ const ManageSchema = Type.Object({
   description: Type.Optional(
     Type.String({
       description:
-        "For crystallize only. One-line description of what the crystallized skill does.",
+        "For crystallize only. One-line description that ROUTES the skill: a 'when' clause naming " +
+        "the triggering situation and a 'not/never/unless/except/only' clause scoping it out, " +
+        "40-240 characters, no URLs or emoji. The gate refuses descriptions that miss this.",
       maxLength: 500,
     }),
   ),
@@ -186,14 +190,17 @@ export function createSkillManageTool(options: {
       "you to add / change / remove a skill or when telemetry suggests an existing skill is " +
       "broken. Workflow: action=create|edit|patch|delete|consolidate stages a change behind " +
       "the behavioural gate; if the response includes ok:true and gateOutcome ∈ {pass, warn} " +
-      "you can then call action=promote with the same name to lift staged → live. Use " +
+      "you can then call action=promote with the same name to lift staged → live. Skills staged " +
+      "by the skill-evolution pipeline are refused there (error evolution-staged); their " +
+      "validation gate promotes them. Use " +
       "action=rollback + version=N to restore an archived version. Never promote a 'fail' " +
       "outcome without forceGate=true and a documented reason. Use action=crystallize after " +
       "you solve a non-trivial multi-step task that is likely to recur: pass the steps and " +
       "commands that worked plus an honest rewardScore, and the sequence becomes a reusable " +
       "skill (threshold 0.85).",
     parameters: ManageSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action") as
         | SkillManageAction
         | "promote"
@@ -242,6 +249,21 @@ export function createSkillManageTool(options: {
               { name, version, reason, author },
             ),
           );
+          if (result.ok) {
+            // PLAN-45 Phase 3 (audit gap): the tool's rollback left no trail
+            // entry and no snapshot bump, unlike the RPC.
+            await appendImpactEntry({
+              source: "skill-manage",
+              action: "rollback",
+              skillName: name,
+              verdict: "rolled-back",
+              detail: `rolled back to v${version} by ${author}${reason ? `: ${reason}` : ""}`,
+            });
+            bumpSkillsSnapshotVersion({
+              reason: "manual",
+              changedPath: liveSkillPath(roots, name),
+            });
+          }
           return jsonResult({
             ok: result.ok,
             action: "rollback",

@@ -1,5 +1,5 @@
 /**
- * Test: after_tool_call hook wiring (pi-embedded-subscribe.handlers.tools.ts)
+ * Test: after_tool_call hook wiring (embedded-subscribe.handlers.tools.ts)
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -70,7 +70,7 @@ describe("after_tool_call hook wiring", () => {
     hookMocks.runner.hasHooks.mockReturnValue(true);
 
     const { handleToolExecutionEnd, handleToolExecutionStart } =
-      await import("../agents/pi-embedded-subscribe.handlers.tools.js");
+      await import("../agents/embedded-subscribe.handlers.tools.js");
 
     const ctx = createToolHandlerCtx({
       runId: "test-run-1",
@@ -108,13 +108,18 @@ describe("after_tool_call hook wiring", () => {
     expect(event.error).toBeUndefined();
     expect(typeof event.durationMs).toBe("number");
     expect(context.toolName).toBe("read");
+    // PLAN-43 R2: hooks gate on the session key (the execution-tracking
+    // hook refuses a2a-task sessions). A regression back to
+    // sessionKey: undefined makes every key-based hook guard dead in
+    // production — this pin is what catches it.
+    expect(context.sessionKey).toBe("test-session");
   });
 
   it("includes error in after_tool_call event on tool failure", async () => {
     hookMocks.runner.hasHooks.mockReturnValue(true);
 
     const { handleToolExecutionEnd, handleToolExecutionStart } =
-      await import("../agents/pi-embedded-subscribe.handlers.tools.js");
+      await import("../agents/embedded-subscribe.handlers.tools.js");
 
     const ctx = createToolHandlerCtx({ runId: "test-run-2" });
 
@@ -149,7 +154,7 @@ describe("after_tool_call hook wiring", () => {
     hookMocks.runner.hasHooks.mockReturnValue(false);
 
     const { handleToolExecutionEnd } =
-      await import("../agents/pi-embedded-subscribe.handlers.tools.js");
+      await import("../agents/embedded-subscribe.handlers.tools.js");
 
     const ctx = createToolHandlerCtx({ runId: "r" });
 

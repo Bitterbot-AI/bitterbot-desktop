@@ -1,10 +1,11 @@
 import { useEffect } from "react";
 import { useIsManagementNode } from "../../hooks/useIsManagementNode";
-import { useP2pStore } from "../../stores/p2p-store";
+import { type P2pIngestStats, useP2pStore } from "../../stores/p2p-store";
 import { MeshPanel } from "../compute/MeshPanel";
 import { CensusBreakdown } from "./CensusBreakdown";
 import { ContributionCard } from "./ContributionCard";
 import { NetworkGrowthSparkline } from "./NetworkGrowthSparkline";
+import { P2pEnabledSwitch } from "./P2pEnabledSwitch";
 import { PeerMap } from "./PeerMap";
 
 export function P2pDashboard() {
@@ -16,6 +17,7 @@ export function P2pDashboard() {
     error,
     bootstrapCensus,
     networkCensus,
+    ingest,
     censusHistory,
     fetchStats,
     fetchContributions,
@@ -76,6 +78,7 @@ export function P2pDashboard() {
         >
           {connected ? "Connected" : "Disconnected"}
         </span>
+        <P2pEnabledSwitch />
       </div>
 
       {error && (
@@ -89,7 +92,8 @@ export function P2pDashboard() {
         <div className="rounded-xl border border-border/20 bg-card/60 backdrop-blur-sm p-6 text-center space-y-2">
           <p className="text-sm text-muted-foreground">The P2P orchestrator is not running.</p>
           <p className="text-xs text-muted-foreground/60">
-            Enable P2P in your config and restart the gateway to connect to the network.
+            Turn on the P2P mesh switch above (p2p.enabled) and restart the gateway to connect to
+            the network.
           </p>
         </div>
       )}
@@ -113,8 +117,13 @@ export function P2pDashboard() {
         />
         <ContributionCard
           title="Skills Received"
-          value={stats?.skills_received ?? 0}
+          value={
+            // After a gateway-only restart the gateway has seen nothing yet
+            // while the orchestrator (a separate process) still has its count.
+            ingest && ingest.messages > 0 ? ingest.distinctSkills : (stats?.skills_received ?? 0)
+          }
           icon="download"
+          detail={describeIngest(ingest)}
         />
         <ContributionCard
           title="Contribution Score"
@@ -204,4 +213,26 @@ function formatUptime(secs: number): string {
   const hours = Math.floor(secs / 3600);
   const mins = Math.floor((secs % 3600) / 60);
   return `${hours}h ${mins}m`;
+}
+
+/**
+ * One line under "Skills Received": what this node decided about the skills
+ * it got, so a re-broadcasting peer can't pass as a busy network.
+ */
+export function describeIngest(ingest: P2pIngestStats | null): string | undefined {
+  if (!ingest || ingest.messages === 0) {
+    return undefined;
+  }
+  const parts = [
+    `${ingest.accepted} accepted`,
+    `${ingest.heldForReview} in review`,
+    `${ingest.rejected} rejected`,
+  ];
+  if (ingest.repeatsIgnored > 0) {
+    parts.push(`${ingest.repeatsIgnored} repeats ignored`);
+  }
+  if ((ingest.ownEchoesIgnored ?? 0) > 0) {
+    parts.push(`${ingest.ownEchoesIgnored} own echoes ignored`);
+  }
+  return parts.join(" · ");
 }

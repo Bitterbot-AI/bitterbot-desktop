@@ -10,6 +10,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
+import {
+  bindingMismatch,
+  type EvolutionProvenanceRecord,
+  type EvolutionRetractionRecord,
+  parseProvenanceTrailer,
+  parseRetractionTrailer,
+} from "../../memory/skill-evolution/provenance-trailer.js";
 import {
   type InjectionScanResult,
   type InjectionSeverity,
@@ -17,9 +25,94 @@ import {
   shouldForceQuarantine,
 } from "../../security/skill-injection-scanner.js";
 import { CONFIG_DIR } from "../../utils.js";
-import { bumpSkillsSnapshotVersion } from "./refresh.js";
+import {
+  checkDescriptionContract,
+  type DescriptionContractIssue,
+  describeContractIssues,
+} from "./description-contract.js";
+import {
+  findDescriptionOverlap,
+  type LiveSkillIndexEntry,
+  listLiveSkillIndex,
+} from "./description-overlap.js";
+import { appendImpactEntry, resolveWikiDir } from "./impact-trail.js";
+import { SELF_LOOPBACK_REASON } from "./ingest-stats.js";
+import { peerStageCollision, stagePeerSkill } from "./peer-staging.js";
+import { bumpSkillsSnapshotVersion, getSkillsSnapshotVersion } from "./refresh.js";
+import { archiveVersion, resolveStorageRoots } from "./skill-storage.js";
 
 const log = createSubsystemLogger("skills/ingest");
+
+/**
+ * Atomic write for quarantine artifacts. Gossip re-broadcasts the same skill
+ * repeatedly and two deliveries can ingest the same name concurrently; plain
+ * writeFile interleaves the two writers and the loser's tail survives past
+ * the winner's EOF ("...false\n}se\n}") — 28 of 31 quarantine envelopes on
+ * the pilot node were corrupted this way and rendered as "Incomplete
+ * download". rename() is atomic, so concurrent writers now leave exactly one
+ * intact winner.
+ */
+async function atomicWriteFile(filePath: string, content: string): Promise<void> {
+  const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    await fs.writeFile(tmp, content, "utf-8");
+    await fs.rename(tmp, filePath);
+  } catch (err) {
+    try {
+      await fs.unlink(tmp);
+    } catch {
+      // ignore
+    }
+    throw err;
+  }
+}
+
+/**
+ * Parse an envelope JSON, salvaging legacy files corrupted by the concurrent
+ * write bug above: their content is one valid JSON object with garbage
+ * appended, so cutting at the first balanced close brace recovers it.
+ */
+export function parseEnvelopeJson(raw: string): SkillEnvelope | undefined {
+  try {
+    return JSON.parse(raw) as SkillEnvelope;
+  } catch {
+    // Salvage: cut at the first top-level balanced brace.
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escaped = inString;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) {
+        continue;
+      }
+      if (ch === "{") {
+        depth += 1;
+      } else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(raw.slice(0, i + 1)) as SkillEnvelope;
+          } catch {
+            return undefined;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+}
 
 export type SkillEnvelope = {
   version: number;
@@ -47,7 +140,11 @@ export type SkillEnvelope = {
 
 export type IngestResult = {
   ok: boolean;
-  action: "accepted" | "quarantined" | "rejected";
+  /**
+   * `retracted`: PLAN-45 Phase 3.4, a signed retraction stub was applied (never stored as a skill).
+   * `staged`: PLAN-45 4.2, admitted to the local validation gate (not live until it passes).
+   */
+  action: "accepted" | "quarantined" | "rejected" | "retracted" | "staged";
   skillName?: string;
   skillPath?: string;
   reason?: string;
@@ -61,6 +158,39 @@ type RateState = {
 const peerRates = new Map<string, RateState>();
 const seenHashes = new Set<string>();
 const MAX_SEEN_HASHES = 10_000;
+
+/**
+ * Rejections that are final for these bytes FROM THIS AUTHOR, keyed by
+ * author pubkey + content hash, so an exact re-broadcast short-circuits instead
+ * of re-running the pipeline and re-penalizing the sender. Keyed by author on
+ * purpose: a hash-only memory would let bytes rejected for one sender (say, a
+ * signed trailer lifted onto another node's envelope) block the genuine author.
+ * Only recorded AFTER the signature and content hash verified.
+ */
+const rejectedEnvelopes = new Set<string>();
+const MAX_REJECTED_ENVELOPES = 10_000;
+
+function rejectionKey(envelope: SkillEnvelope): string {
+  return `${envelope.author_pubkey}\u0000${envelope.content_hash}`;
+}
+
+function rememberRejection(envelope: SkillEnvelope): void {
+  if (rejectedEnvelopes.size >= MAX_REJECTED_ENVELOPES) {
+    rejectedEnvelopes.clear();
+  }
+  rejectedEnvelopes.add(rejectionKey(envelope));
+}
+
+/**
+ * Legacy dream crystals already rejected, keyed by author + skill name. The
+ * legacy publisher re-sends the SAME crystal with different bytes (its current
+ * text) every broadcast, so the content-hash dedupe never matches: one peer's
+ * 5 crystals arrived 314 times, each counted as a fresh rejection. The first
+ * copy is recorded (one receipt, one rejection); later copies are dropped
+ * without touching reputation.
+ */
+const rejectedLegacyCrystals = new Set<string>();
+const MAX_REJECTED_LEGACY = 10_000;
 
 export async function ingestSkill(params: {
   envelope: SkillEnvelope;
@@ -92,26 +222,24 @@ export async function ingestSkill(params: {
 }): Promise<IngestResult> {
   const { envelope, config, workspaceDir } = params;
   const origin = params.origin ?? "peer";
-  const isLocalOrigin = origin === "external-scrape";
+  // PLAN-45 Phase 0: "external-scrape" (Skill Seekers harvest) used to count
+  // as local origin and accept straight into skills/, bypassing the review
+  // policy, the routing hold and the synthetic peer's trust level, while the
+  // adapter's docs promised quarantine. Scraped content is untrusted input
+  // like any peer skill: the origin is kept as a provenance label only.
   const p2pConfig = config.skills?.p2p;
   const policy = p2pConfig?.ingestPolicy ?? "review";
 
   // Self-loopback guard: a crystal this node published can be delivered back to
   // it over gossip. Dropping it here stops the node from quarantining its own
   // output as an anonymous inbound peer skill (a source of the "received from
-  // unknown peer" clutter). Local-origin ingests are exempt (they are ours by
-  // definition and take the accept path below).
-  if (
-    !isLocalOrigin &&
-    params.ownPublishPubkey &&
-    envelope.author_pubkey === params.ownPublishPubkey
-  ) {
-    return { ok: false, action: "rejected", reason: "self-loopback (own published skill)" };
+  // unknown peer" clutter).
+  if (params.ownPublishPubkey && envelope.author_pubkey === params.ownPublishPubkey) {
+    return { ok: false, action: "rejected", reason: SELF_LOOPBACK_REASON };
   }
 
-  // Policy: deny all. Local-origin research output is not subject to the peer
-  // ingest policy (it never touched the network) — only genuine peer skills are.
-  if (policy === "deny" && !isLocalOrigin) {
+  // Policy: deny all (peer skills and scraped harvests alike).
+  if (policy === "deny") {
     return { ok: false, action: "rejected", reason: "ingestion policy is deny" };
   }
 
@@ -129,9 +257,90 @@ export async function ingestSkill(params: {
     return { ok: false, action: "rejected", reason: "content hash mismatch" };
   }
 
+  // 2a. An exact repeat of bytes this author already had rejected: drop it
+  // quietly, without another reputation hit.
+  if (rejectedEnvelopes.has(rejectionKey(envelope))) {
+    return { ok: false, action: "rejected", reason: "repeat of a rejected skill" };
+  }
+
+  // 2b. PLAN-45 Phase 3.4: bytes the author retracted stay retracted (a
+  // fresh envelope has a fresh timestamp/signature, the same hash).
+  if (await isRetracted(envelope.author_pubkey, envelope.content_hash)) {
+    rememberRejection(envelope);
+    return { ok: false, action: "rejected", reason: "retracted by its author" };
+  }
+
   // 3. Content-hash dedup
   if (seenHashes.has(envelope.content_hash)) {
     return { ok: false, action: "rejected", reason: "duplicate content hash" };
+  }
+
+  // 3b. PLAN-42 quality doctrine: unvalidated machine-generated crystals from
+  // the legacy auto-publish pipeline (UUID-named "Dream-generated skill
+  // crystal" envelopes) are rejected at the door instead of cluttering the
+  // review queue — 28 of them sat in this node's quarantine as junk. A
+  // wiki-evolution provenance trailer marks a skill that passed a validation
+  // gate somewhere; those still quarantine for local review. Kill switch:
+  // skills.p2p.rejectLegacyCrystals=false restores the old behavior.
+  if (p2pConfig?.rejectLegacyCrystals !== false) {
+    const md = Buffer.from(envelope.skill_md, "base64").toString("utf-8");
+    const looksLikeLegacyCrystal =
+      /^description:\s*Dream-generated skill crystal\s*$/m.test(md) || /\bcrystal_id:/.test(md);
+    // PLAN-45 Phase 0: evidence means a PARSED trailer with an accepted
+    // verdict, not the marker text (a bare substring exempted anything).
+    const hasValidationEvidence = parseProvenanceTrailer(md) !== null;
+    if (looksLikeLegacyCrystal && !hasValidationEvidence) {
+      // Keyed by author + name (not bytes): the legacy publisher changes the
+      // bytes every broadcast. No byte memory here, so flipping the kill
+      // switch takes effect for the next copy.
+      const legacyKey = `${envelope.author_pubkey}\u0000${normalizeSkillName(envelope.name)}`;
+      if (rejectedLegacyCrystals.has(legacyKey)) {
+        return { ok: false, action: "rejected", reason: "legacy dream crystal (repeat)" };
+      }
+      // Rate-limit before writing reputation rows: keys are free, so first
+      // copies from throwaway keys must not grow the DB at mesh speed.
+      if (!checkRateLimit(envelope.author_peer_id, p2pConfig?.maxIngestedPerHour ?? 20)) {
+        return { ok: false, action: "rejected", reason: "rate limit exceeded" };
+      }
+      if (rejectedLegacyCrystals.size >= MAX_REJECTED_LEGACY) {
+        rejectedLegacyCrystals.clear();
+      }
+      rejectedLegacyCrystals.add(legacyKey);
+      log.info(
+        `Rejected legacy unvalidated dream crystal "${envelope.name}" from ${envelope.author_peer_id} (later copies are ignored)`,
+      );
+      // Record the receipt with the rejection so rejections never outnumber receipts.
+      params.reputationManager?.recordSkillReceived(
+        envelope.author_pubkey,
+        envelope.author_peer_id,
+      );
+      params.reputationManager?.recordIngestionResult(envelope.author_pubkey, false);
+      return { ok: false, action: "rejected", reason: "legacy unvalidated dream crystal" };
+    }
+  }
+
+  // 3c. PLAN-45 Phase 3.4: a signed RETRACTION rides the same verb. It is
+  // bound to the original by author pubkey + content hash (the signature
+  // covers the stub, and only the original key's copies match), never
+  // stored as a skill, and remembered so a republish of the same bytes by
+  // the same key is refused. It runs BEFORE the rate limit (adversarial
+  // 3-9): the one message that must land after a publish burst.
+  const skillContent = skillBytes.toString("utf-8");
+  const retraction = parseRetractionTrailer(skillContent);
+  if (retraction) {
+    if (seenHashes.size >= MAX_SEEN_HASHES) {
+      seenHashes.clear();
+    }
+    seenHashes.add(envelope.content_hash);
+    if (await isRetracted(envelope.author_pubkey, retraction.contentSha256)) {
+      return {
+        ok: true,
+        action: "retracted",
+        skillName: normalizeSkillName(retraction.name),
+        reason: "already applied",
+      };
+    }
+    return applyPeerRetraction({ envelope, retraction, config });
   }
 
   // 4. Rate limiting
@@ -141,9 +350,26 @@ export async function ingestSkill(params: {
   }
 
   // 5. Parse and validate SKILL.md
-  const skillContent = skillBytes.toString("utf-8");
   if (!validateSkillContent(skillContent)) {
+    rememberRejection(envelope);
     return { ok: false, action: "rejected", reason: "invalid SKILL.md structure" };
+  }
+  // Sender's validation claim, parsed once and carried on the envelope for
+  // the review list and the receiver re-gate (PLAN-45 Phase 4). Null when
+  // absent or malformed; never a reason to skip local review.
+  const evolutionProvenance = parseProvenanceTrailer(skillContent);
+  // PLAN-45 4.4: a SIGNED trailer must belong to this envelope: the device
+  // key named this node key and described this body. A lifted trailer is a
+  // reject, not a review item.
+  if (evolutionProvenance) {
+    const mismatch = bindingMismatch(evolutionProvenance, envelope, skillContent);
+    if (mismatch) {
+      log.warn(`Rejected skill from ${envelope.author_peer_id}: ${mismatch}`);
+      params.reputationManager?.recordIngestionResult(envelope.author_pubkey, false);
+      // Not remembered: the mismatch can come from the unsigned envelope name,
+      // so a relay could rename a genuine author's bytes and get them blocked.
+      return { ok: false, action: "rejected", reason: mismatch };
+    }
   }
 
   // 5b. Injection scan (PLAN-13 Phase A).
@@ -165,7 +391,24 @@ export async function ingestSkill(params: {
   // 6. Check existing skills for content-hash dedup
   const existingSkillsDir = path.join(CONFIG_DIR, "skills");
   if (await skillExistsWithHash(existingSkillsDir, envelope.content_hash)) {
+    // Not remembered: it depends on local state (the user may delete the skill).
     return { ok: false, action: "rejected", reason: "skill already exists" };
+  }
+  // 6b. PLAN-45 4.4: version-bound trust. A name already bound to another
+  // author's key is not up for grabs (name squat); a new version from the
+  // SAME author is a fresh review + re-gate, never a silent overwrite; an
+  // envelope older than the version we hold is a downgrade replay.
+  const quarantineRoot = p2pConfig?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
+  const collision = await nameCollision({
+    name: normalizeSkillName(envelope.name),
+    envelope,
+    liveRoot: existingSkillsDir,
+    quarantineDir: quarantineRoot,
+    stagingRoot: resolveStorageRoots().stagingRoot,
+  });
+  if (collision) {
+    log.warn(`Rejected skill "${envelope.name}" from ${envelope.author_peer_id}: ${collision}`);
+    return { ok: false, action: "rejected", reason: collision };
   }
 
   // Record this hash (cap at MAX_SEEN_HASHES to prevent unbounded growth)
@@ -191,55 +434,50 @@ export async function ingestSkill(params: {
   // Record in reputation system if available
   params.reputationManager?.recordSkillReceived(envelope.author_pubkey, envelope.author_peer_id);
 
+  // 7b. PLAN-44 Phase 5b: the description contract and the overlap check
+  // at ingest, AFTER dedupe and existence (a rejected skill pays nothing).
+  // The receiving agent finds a skill ONLY through its description in the
+  // runtime index, and opens one only when exactly one description
+  // applies. A peer skill whose description cannot route, or collides with
+  // a local skill's, is held for review with the reason on the envelope.
+  const routing = await assessRouting(envelope.name, skillContent);
+  const routingHold = routing.contractIssues.length > 0 || routing.overlap !== null;
+  if (routing.contractIssues.length > 0 || routing.overlap) {
+    log.warn(
+      `Skill ${normalizeSkillName(envelope.name)} (${envelope.author_peer_id}): ${describeRouting(routing)}${routingHold ? "; held for review" : ""}`,
+    );
+  }
+
   // 8. Determine destination based on origin, policy, trust level, and scan.
   // `forceQuarantine` overrides accept when the scanner returns critical — the
   // injection scan still guards even our own scraped content. A skill is
   // accepted directly when it is local-origin (our own research) OR a trusted
   // peer under `auto` policy; everything else is held for review.
-  const acceptDirectly =
-    !forceQuarantine && (isLocalOrigin || (policy === "auto" && isAutoAccepted));
+  const acceptDirectly = !forceQuarantine && !routingHold && policy === "auto" && isAutoAccepted;
   if (acceptDirectly) {
-    // Accept directly into skills directory
+    // PLAN-45 4.2 (D-8): "auto" skips quarantine REVIEW, never the gate. A
+    // trusted peer's skill lands in staging for the local validation gate;
+    // it serves only after it passes (canary -> stable).
     const skillName = normalizeSkillName(envelope.name);
-    const skillDir = path.join(CONFIG_DIR, "skills", skillName);
-    await fs.mkdir(skillDir, { recursive: true });
-    const skillPath = path.join(skillDir, "SKILL.md");
-    await fs.writeFile(skillPath, skillContent, "utf-8");
-
-    // Write provenance metadata
-    const metaPath = path.join(skillDir, ".provenance.json");
-    await fs.writeFile(
-      metaPath,
-      JSON.stringify(
-        {
-          origin,
-          author_peer_id: envelope.author_peer_id,
-          author_pubkey: envelope.author_pubkey,
-          signature: envelope.signature,
-          content_hash: envelope.content_hash,
-          timestamp: envelope.timestamp,
-          ingested_at: Date.now(),
-          expires_at: envelope.expires_at,
-          provenance: envelope.provenance,
-          injection_scan: scanResult ?? undefined,
-        },
-        null,
-        2,
-      ),
-      "utf-8",
-    );
-
-    bumpSkillsSnapshotVersion({
-      workspaceDir,
-      reason: "manual",
-      changedPath: skillPath,
+    const staged = await stagePeerSkill({
+      name: skillName,
+      content: skillContent,
+      provenance: {
+        ...envelope,
+        origin,
+        ingested_at: Date.now(),
+        injection_scan: scanResult ?? undefined,
+        routing,
+        evolution_provenance: evolutionProvenance ?? undefined,
+      },
+      trailer: evolutionProvenance,
+      reason: `auto-accepted from trusted peer ${envelope.author_peer_id}`,
     });
-
     log.info(
-      `Accepted skill (${origin}): ${skillName}${isLocalOrigin ? "" : ` from ${envelope.author_peer_id}`}`,
+      `Staged skill (${origin}) for the local gate: ${skillName} from ${envelope.author_peer_id}`,
     );
     params.reputationManager?.recordIngestionResult(envelope.author_pubkey, true);
-    return { ok: true, action: "accepted", skillName, skillPath };
+    return { ok: true, action: "staged", skillName, skillPath: staged.stagingPath };
   }
 
   // Quarantine: write to skills-incoming directory.
@@ -256,7 +494,7 @@ export async function ingestSkill(params: {
   // UI would render as "received from unknown peer"). An envelope with no
   // SKILL.md yet is a recognizably-incomplete entry, not a phantom peer.
   const envelopePath = path.join(incomingDir, ".envelope.json");
-  await fs.writeFile(
+  await atomicWriteFile(
     envelopePath,
     JSON.stringify(
       {
@@ -264,14 +502,16 @@ export async function ingestSkill(params: {
         origin,
         injection_scan: scanResult ?? undefined,
         force_quarantined: forceQuarantine,
+        routing,
+        routing_hold: routingHold,
+        evolution_provenance: evolutionProvenance ?? undefined,
       },
       null,
       2,
     ),
-    "utf-8",
   );
   const skillPath = path.join(incomingDir, "SKILL.md");
-  await fs.writeFile(skillPath, skillContent, "utf-8");
+  await atomicWriteFile(skillPath, skillContent);
 
   // Reputation: a force-quarantine on a previously-trusted peer is the loud
   // signal we want to feed back into trust. Counts as a rejected ingestion.
@@ -327,11 +567,45 @@ async function emitQuarantineSystemEvent(message: string): Promise<void> {
  * accept/reject can feed graduated trust. Best-effort; returns null on any
  * read/parse failure.
  */
+async function readQuarantineContentHash(incomingDir: string): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
+    const parsed = parseEnvelopeJson(raw) as { content_hash?: unknown } | undefined;
+    return typeof parsed?.content_hash === "string" ? parsed.content_hash : null;
+  } catch {
+    return null;
+  }
+}
+
 async function readQuarantineAuthorPubkey(incomingDir: string): Promise<string | null> {
   try {
     const raw = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
-    const parsed = JSON.parse(raw) as { author_pubkey?: unknown };
-    return typeof parsed.author_pubkey === "string" ? parsed.author_pubkey : null;
+    const parsed = parseEnvelopeJson(raw) as { author_pubkey?: unknown } | undefined;
+    return typeof parsed?.author_pubkey === "string" ? parsed.author_pubkey : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * PLAN-44 Phase 3: only an ACCEPTED envelope becomes a memory chunk in the
+ * skill-network bridge. Quarantined ones wait for the operator's accept
+ * (skills.incoming.accept re-routes them through `readAcceptedEnvelope`).
+ */
+export function shouldBridgeIngest(
+  result: Pick<IngestResult, "action"> | null | undefined,
+): boolean {
+  return result?.action === "accepted";
+}
+
+/** The envelope an accept carried into the live dir as `.provenance.json`, if any. */
+export async function readAcceptedEnvelope(skillPath: string): Promise<SkillEnvelope | null> {
+  try {
+    const raw = await fs.readFile(path.join(path.dirname(skillPath), ".provenance.json"), "utf-8");
+    const parsed = JSON.parse(raw) as SkillEnvelope;
+    return parsed && typeof parsed.content_hash === "string" && typeof parsed.skill_md === "string"
+      ? parsed
+      : null;
   } catch {
     return null;
   }
@@ -354,15 +628,75 @@ export async function acceptIncomingSkill(params: {
     const content = await fs.readFile(skillPath, "utf-8");
     // Read the author pubkey BEFORE we delete the quarantine dir.
     const authorPubkey = await readQuarantineAuthorPubkey(incomingDir);
-    const targetDir = path.join(CONFIG_DIR, "skills", skillName);
-    await fs.mkdir(targetDir, { recursive: true });
-    await fs.writeFile(path.join(targetDir, "SKILL.md"), content, "utf-8");
-
-    // Copy provenance if exists
+    // PLAN-44 Phase 3 (adversarial L7): the file sat in a writable review
+    // dir; what gets accepted (and becomes a memory chunk under the
+    // envelope's hash) must still be what the peer signed.
+    const envelopeHash = await readQuarantineContentHash(incomingDir);
+    if (envelopeHash) {
+      const onDisk = createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+      if (onDisk !== envelopeHash) {
+        return {
+          ok: false,
+          action: "rejected",
+          reason:
+            "quarantined SKILL.md no longer matches its envelope content hash; reject it and ask the peer to republish",
+        };
+      }
+    }
+    // PLAN-45 4.2 (D-8): an operator accept admits the skill to the LOCAL
+    // validation gate; it is not live until it passes. A routing hold the
+    // operator overrides is recorded on the provenance (adversarial L10).
+    let provenance: Record<string, unknown> = {};
     try {
-      const envelope = await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8");
-      await fs.writeFile(path.join(targetDir, ".provenance.json"), envelope, "utf-8");
-    } catch {}
+      provenance = JSON.parse(
+        await fs.readFile(path.join(incomingDir, ".envelope.json"), "utf-8"),
+      ) as Record<string, unknown>;
+    } catch {
+      provenance = {};
+    }
+    if (provenance.routing_hold === true) {
+      provenance = {
+        ...provenance,
+        routing_hold: false,
+        routing_hold_overridden_by: "operator",
+        accepted_at: Date.now(),
+      };
+    }
+    if (typeof provenance.author_pubkey !== "string" || !provenance.author_pubkey) {
+      return {
+        ok: false,
+        action: "rejected",
+        reason: "quarantined entry has no usable envelope (author key missing)",
+      };
+    }
+    // An entry without a recorded hash (not a gossip envelope) binds to the
+    // bytes reviewed here.
+    const boundHash =
+      typeof provenance.content_hash === "string"
+        ? provenance.content_hash
+        : createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
+    const trailer = parseProvenanceTrailer(content);
+    const stageCollision = await peerStageCollision(undefined, skillName, provenance.author_pubkey);
+    if (stageCollision) {
+      return { ok: false, action: "rejected", reason: stageCollision };
+    }
+    const staged = await stagePeerSkill({
+      name: skillName,
+      content,
+      provenance: {
+        ...provenance,
+        author_pubkey: provenance.author_pubkey,
+        author_peer_id:
+          typeof provenance.author_peer_id === "string" ? provenance.author_peer_id : "unknown",
+        content_hash: boundHash,
+        timestamp: typeof provenance.timestamp === "number" ? provenance.timestamp : 0,
+        accepted_by: "operator",
+        accepted_at: Date.now(),
+      },
+      trailer,
+      reason: "operator accept from quarantine",
+    });
+    const targetDir = path.dirname(staged.stagingPath);
 
     // Remove from quarantine
     await fs.rm(incomingDir, { recursive: true, force: true });
@@ -381,8 +715,8 @@ export async function acceptIncomingSkill(params: {
       reputationManager.recordIngestionResult(authorPubkey, true);
     }
 
-    log.info(`Accepted incoming skill: ${skillName}`);
-    return { ok: true, action: "accepted", skillName, skillPath: path.join(targetDir, "SKILL.md") };
+    log.info(`Accepted incoming skill into the local gate: ${skillName}`);
+    return { ok: true, action: "staged", skillName, skillPath: path.join(targetDir, "SKILL.md") };
   } catch (err) {
     return { ok: false, action: "rejected", reason: String(err) };
   }
@@ -472,6 +806,68 @@ export async function rejectIncomingSkillsByPeer(params: {
  */
 export type IncomingSkillOrigin = "peer" | "external-scrape" | "local-dream" | "incomplete";
 
+/** PLAN-44 Phase 5b: why a skill would or would not route on this node. */
+export interface RoutingAssessment {
+  contractIssues: DescriptionContractIssue[];
+  overlap: { name: string; tokens: number; containment: number; bigrams: number } | null;
+}
+
+export function describeRouting(r: RoutingAssessment): string {
+  const parts: string[] = [];
+  if (r.contractIssues.length > 0) {
+    parts.push(`description contract: ${describeContractIssues(r.contractIssues)}`);
+  }
+  if (r.overlap) {
+    parts.push(
+      `description overlaps local skill "${r.overlap.name}" (containment ${r.overlap.containment.toFixed(2)})`,
+    );
+  }
+  return parts.join("; ");
+}
+
+/**
+ * The local live index, memoized on the skills snapshot version so a gossip
+ * burst does not re-read every SKILL.md per envelope (adversarial M5).
+ */
+let liveIndexCache: { version: number; index: LiveSkillIndexEntry[] } | null = null;
+async function cachedLiveSkillIndex(): Promise<LiveSkillIndexEntry[]> {
+  const version = getSkillsSnapshotVersion();
+  if (liveIndexCache && liveIndexCache.version === version) {
+    return liveIndexCache.index;
+  }
+  const index = await listLiveSkillIndex(resolveStorageRoots());
+  liveIndexCache = { version, index };
+  return index;
+}
+
+/** Description-only contract (the harvest path writes owner/repo names by design) plus overlap against local routable skills. */
+async function assessRouting(envelopeName: string, skillMd: string): Promise<RoutingAssessment> {
+  const skillName = normalizeSkillName(envelopeName);
+  const fm = (parseSkillMarkdown(skillMd)?.frontmatter ?? {}) as Record<string, unknown>;
+  const fmName = typeof fm.name === "string" ? fm.name : undefined;
+  const description = typeof fm.description === "string" ? fm.description : "";
+  const contractIssues = checkDescriptionContract({
+    skillName,
+    frontmatterName: fmName,
+    description,
+    liveFrontmatterName: fmName ?? skillName,
+  }).filter((i) => i !== "variant-suffix");
+  let overlap: RoutingAssessment["overlap"] = null;
+  if (contractIssues.length === 0 && description) {
+    const index = await cachedLiveSkillIndex();
+    const hit = findDescriptionOverlap(description, index, { excludeName: skillName });
+    if (hit && index.find((e) => e.name === hit.name)?.contractCompliant) {
+      overlap = {
+        name: hit.name,
+        tokens: hit.tokens,
+        containment: hit.containment,
+        bigrams: hit.bigrams,
+      };
+    }
+  }
+  return { contractIssues, overlap };
+}
+
 export type IncomingSkillSummary = {
   name: string;
   origin: IncomingSkillOrigin;
@@ -482,9 +878,25 @@ export type IncomingSkillSummary = {
   tags?: string[];
   signatureValid?: boolean;
   injectionScan?: { severity?: InjectionSeverity; matches?: number };
+  /** PLAN-44 Phase 5b: contract / overlap assessment recorded at ingest; `hold` when it kept the skill out of the live set. */
+  routing?: RoutingAssessment & { hold: boolean; summary: string };
   provenance?: Record<string, unknown>;
   contentHash?: string;
   expiresAt?: number;
+  /**
+   * PLAN-45 4.6/5.4: the sender's validation claim, parsed and verified at
+   * ingest (display only; the local gate measures). `signed` means the
+   * device-key binding verified and matched this envelope.
+   */
+  evolutionProvenance?: {
+    verdict: string;
+    validatedAt: string;
+    model: string | null;
+    evolverModel: string | null;
+    validatedOn: string[];
+    singleModel: boolean;
+    signed: boolean;
+  };
 };
 
 /** The synthetic peer id the skill-seekers harvester stamps on local scrapes. */
@@ -546,7 +958,7 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
       let envelopeMeta: Record<string, unknown> | undefined;
       try {
         const raw = await fs.readFile(envelopePath, "utf-8");
-        envelope = JSON.parse(raw);
+        envelope = parseEnvelopeJson(raw);
         envelopeMeta = envelope as unknown as Record<string, unknown>;
       } catch {}
       let description: string | undefined;
@@ -587,9 +999,31 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
         injectionScan: injectionScan
           ? { severity: injectionScan.severity, matches: matchesLen }
           : undefined,
+        routing: (() => {
+          const r = envelopeMeta?.routing as RoutingAssessment | undefined;
+          return r
+            ? { ...r, hold: envelopeMeta?.routing_hold === true, summary: describeRouting(r) }
+            : undefined;
+        })(),
         provenance: envelope?.provenance,
         contentHash: envelope?.content_hash,
         expiresAt: envelope?.expires_at,
+        evolutionProvenance: (() => {
+          const ep = envelopeMeta?.evolution_provenance as EvolutionProvenanceRecord | undefined;
+          if (!ep || typeof ep !== "object" || !ep.verdict) {
+            return undefined;
+          }
+          const validatedOn = ep.validatedOn ?? (ep.model ? [ep.model] : []);
+          return {
+            verdict: ep.verdict,
+            validatedAt: ep.validatedAt,
+            model: ep.model ?? null,
+            evolverModel: ep.evolverModel ?? null,
+            validatedOn,
+            singleModel: ep.singleModel ?? validatedOn.length < 2,
+            signed: !!ep.binding,
+          };
+        })(),
       });
     }
     return skills;
@@ -665,4 +1099,320 @@ async function skillExistsWithHash(skillsDir: string, contentHash: string): Prom
     }
   } catch {}
   return false;
+}
+
+// ── PLAN-45 Phase 3.4: peer retractions ──────────────────────────────────
+
+const RETRACTIONS_FILENAME = "retractions.jsonl";
+/** PLAN-45 4.4: envelopes stamped further ahead than this are rejected. */
+export const ENVELOPE_MAX_FUTURE_MS = 5 * 60 * 1000;
+
+interface RetractionRow {
+  direction: "peer" | "own";
+  author_pubkey?: string;
+  contentSha256?: string;
+}
+
+let retractionsCache: { mtimeMs: number; size: number; keys: Set<string> } | null = null;
+
+function retractionsFile(): string {
+  return path.join(resolveWikiDir(), RETRACTIONS_FILENAME);
+}
+
+/** Whether (author pubkey, content hash) was retracted by a peer stub we applied. Memoized on the ledger's mtime. */
+export async function isRetracted(authorPubkey: string, contentHash: string): Promise<boolean> {
+  const file = retractionsFile();
+  let st: { mtimeMs: number; size: number };
+  try {
+    st = await fs.stat(file);
+  } catch {
+    retractionsCache = null;
+    return false;
+  }
+  if (
+    !retractionsCache ||
+    retractionsCache.mtimeMs !== st.mtimeMs ||
+    retractionsCache.size !== st.size
+  ) {
+    const keys = new Set<string>();
+    try {
+      for (const line of (await fs.readFile(file, "utf-8")).split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const row = JSON.parse(line) as RetractionRow;
+          if (row.direction === "peer" && row.author_pubkey && row.contentSha256) {
+            keys.add(`${row.author_pubkey} ${row.contentSha256}`);
+          }
+        } catch {
+          // malformed line
+        }
+      }
+    } catch {
+      // unreadable: treat as empty
+    }
+    retractionsCache = { mtimeMs: st.mtimeMs, size: st.size, keys };
+  }
+  return retractionsCache.keys.has(`${authorPubkey} ${contentHash}`);
+}
+
+async function readJsonField(file: string, field: string): Promise<string | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, "utf-8")) as Record<string, unknown>;
+    const v = parsed[field];
+    return typeof v === "string" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Apply a retraction stub: drop the quarantined copy, archive and remove
+ * the live copy, remember the pair. Matching is by the ORIGINAL envelope's
+ * author pubkey and content hash as recorded on the copy; the stub's own
+ * name is informational.
+ */
+async function applyPeerRetraction(params: {
+  envelope: SkillEnvelope;
+  retraction: EvolutionRetractionRecord;
+  config: BitterbotConfig;
+}): Promise<IngestResult> {
+  const { envelope, retraction, config } = params;
+  const pubkey = envelope.author_pubkey;
+  const hash = retraction.contentSha256;
+  const quarantineDir =
+    config.skills?.p2p?.quarantineDir ?? path.join(CONFIG_DIR, "skills-incoming");
+  const liveRoot = path.join(CONFIG_DIR, "skills");
+  const removed: string[] = [];
+  let changed = false;
+
+  // Quarantine copies.
+  try {
+    for (const entry of await fs.readdir(quarantineDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(quarantineDir, entry.name);
+      const envFile = path.join(dir, ".envelope.json");
+      if (
+        (await readJsonField(envFile, "author_pubkey")) === pubkey &&
+        (await readJsonField(envFile, "content_hash")) === hash
+      ) {
+        await fs.rm(dir, { recursive: true, force: true });
+        removed.push(`quarantine:${entry.name}`);
+        changed = true;
+      }
+    }
+  } catch {
+    // no quarantine dir
+  }
+
+  // Staging (adversarial 4-6): a version accepted but not yet gated.
+  try {
+    const stagingRoot = resolveStorageRoots().stagingRoot;
+    for (const entry of await fs.readdir(stagingRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(stagingRoot, entry.name);
+      const provFile = path.join(dir, ".provenance.json");
+      if (
+        (await readJsonField(provFile, "author_pubkey")) === pubkey &&
+        (await readJsonField(provFile, "content_hash")) === hash
+      ) {
+        await fs.rm(dir, { recursive: true, force: true });
+        removed.push(`staging:${entry.name}`);
+        changed = true;
+      }
+    }
+  } catch {
+    // no staging root
+  }
+
+  // Live copies: archive first (with the provenance stamped), then remove.
+  try {
+    for (const entry of await fs.readdir(liveRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = path.join(liveRoot, entry.name);
+      const provFile = path.join(dir, ".provenance.json");
+      if (
+        (await readJsonField(provFile, "author_pubkey")) !== pubkey ||
+        (await readJsonField(provFile, "content_hash")) !== hash
+      ) {
+        continue;
+      }
+      let content: string | null = null;
+      try {
+        content = await fs.readFile(path.join(dir, "SKILL.md"), "utf-8");
+      } catch {
+        content = null;
+      }
+      if (content) {
+        try {
+          let provenance = "";
+          try {
+            const parsed = JSON.parse(await fs.readFile(provFile, "utf-8")) as Record<
+              string,
+              unknown
+            >;
+            provenance = JSON.stringify(
+              { ...parsed, retracted: { at: Date.now(), reason: retraction.reason } },
+              null,
+              2,
+            );
+          } catch {
+            provenance = "";
+          }
+          await archiveVersion(resolveStorageRoots(), {
+            name: entry.name,
+            content,
+            reason: `peer retraction (${retraction.reason || "no reason given"})`,
+            author: envelope.author_peer_id,
+            sidecars: provenance ? { ".provenance.json": provenance } : {},
+          });
+        } catch (err) {
+          log.debug(`archive of retracted ${entry.name} skipped: ${String(err)}`);
+        }
+      }
+      for (const file of ["SKILL.md", ".provenance.json", ".evidence.json"]) {
+        await fs.rm(path.join(dir, file), { force: true });
+      }
+      try {
+        await fs.rmdir(dir);
+      } catch {
+        // attachments keep the dir; the index is SKILL.md-driven
+      }
+      removed.push(`live:${entry.name}`);
+      changed = true;
+      await appendImpactEntry({
+        source: "evolution",
+        action: "peer-retraction",
+        skillName: entry.name,
+        verdict: "rolled-back",
+        detail: `retracted by its author ${envelope.author_peer_id}: ${retraction.reason || "no reason given"}`,
+        contentHash: hash,
+      });
+    }
+  } catch {
+    // no live root
+  }
+
+  const file = retractionsFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.appendFile(
+    file,
+    `${JSON.stringify({
+      direction: "peer",
+      author_pubkey: pubkey,
+      author_peer_id: envelope.author_peer_id,
+      contentSha256: hash,
+      name: retraction.name,
+      reason: retraction.reason,
+      retractedAt: retraction.retractedAt,
+      receivedAt: Date.now(),
+      removed,
+    })}\n`,
+    "utf-8",
+  );
+  retractionsCache = null;
+  if (changed) {
+    bumpSkillsSnapshotVersion({ reason: "manual", changedPath: liveRoot });
+  }
+  log.info(
+    `Applied retraction of ${retraction.name} (${hash.slice(0, 12)}) from ${envelope.author_peer_id}: ${removed.length > 0 ? removed.join(", ") : "no local copy"}`,
+  );
+  return {
+    ok: true,
+    action: "retracted",
+    skillName: normalizeSkillName(retraction.name),
+    reason: removed.length > 0 ? `removed ${removed.join(", ")}` : "no local copy",
+  };
+}
+
+// ── PLAN-45 4.4: name binding ────────────────────────────────────────────────
+
+async function readBinding(
+  file: string,
+): Promise<{ author_pubkey: string; content_hash: string; timestamp: number | null } | null> {
+  try {
+    const parsed = JSON.parse(await fs.readFile(file, "utf-8")) as Record<string, unknown>;
+    if (typeof parsed.author_pubkey !== "string" || typeof parsed.content_hash !== "string") {
+      return null;
+    }
+    return {
+      author_pubkey: parsed.author_pubkey,
+      content_hash: parsed.content_hash,
+      timestamp: typeof parsed.timestamp === "number" ? parsed.timestamp : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Why an envelope may not take the name it asks for, or null when it may.
+ * Live copies bind by `.provenance.json`, pending ones by `.envelope.json`.
+ * Local (non-peer) skills carry no author key and are never overwritten by
+ * a peer envelope.
+ */
+export async function nameCollision(params: {
+  name: string;
+  envelope: Pick<SkillEnvelope, "author_pubkey" | "content_hash" | "timestamp">;
+  liveRoot: string;
+  quarantineDir: string;
+  stagingRoot?: string;
+  now?: number;
+}): Promise<string | null> {
+  const { name, envelope } = params;
+  // Peer-controlled timestamps are bounded (adversarial 4-8): a far-future
+  // stamp would turn every later version into a "downgrade".
+  const now = params.now ?? Date.now();
+  if (envelope.timestamp > now + ENVELOPE_MAX_FUTURE_MS) {
+    return "envelope timestamp is in the future";
+  }
+  const liveDir = path.join(params.liveRoot, name);
+  let liveExists = false;
+  try {
+    await fs.access(path.join(liveDir, "SKILL.md"));
+    liveExists = true;
+  } catch {
+    liveExists = false;
+  }
+  if (liveExists) {
+    const live = await readBinding(path.join(liveDir, ".provenance.json"));
+    if (!live) {
+      return `name "${name}" belongs to a local skill`;
+    }
+    if (live.author_pubkey !== envelope.author_pubkey) {
+      return `name "${name}" is bound to another author's key`;
+    }
+    if (live.timestamp !== null && envelope.timestamp < live.timestamp) {
+      return `older than the ${name} version already held (downgrade)`;
+    }
+  }
+  // Staging (adversarial 4-2): a pending proposal of this node's own, or
+  // another author's peer stage, holds the name.
+  if (params.stagingRoot) {
+    const stagedMeta = await fs
+      .readFile(path.join(params.stagingRoot, name, ".evolution-meta.json"), "utf-8")
+      .then((raw) => JSON.parse(raw) as { origin?: unknown; peer?: { authorPubkey?: unknown } })
+      .catch(() => null);
+    const stagedBody = await fs
+      .access(path.join(params.stagingRoot, name, "SKILL.md"))
+      .then(() => true)
+      .catch(() => false);
+    if (stagedBody) {
+      if (!stagedMeta || stagedMeta.origin !== "peer") {
+        return `name "${name}" has a pending local proposal in staging`;
+      }
+      if (stagedMeta.peer?.authorPubkey !== envelope.author_pubkey) {
+        return `name "${name}" is already staged from another author's key`;
+      }
+    }
+  }
+  const pending = await readBinding(path.join(params.quarantineDir, name, ".envelope.json"));
+  if (pending && pending.content_hash !== envelope.content_hash) {
+    if (pending.author_pubkey !== envelope.author_pubkey) {
+      return `name "${name}" is already under review from another author`;
+    }
+    if (pending.timestamp !== null && envelope.timestamp < pending.timestamp) {
+      return `older than the ${name} version already under review`;
+    }
+  }
+  return null;
 }

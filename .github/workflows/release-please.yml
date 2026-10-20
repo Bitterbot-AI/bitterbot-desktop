@@ -31,7 +31,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
     steps:
       - id: release
-        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
@@ -44,9 +44,48 @@ jobs:
     if: ${{ needs.release-please.outputs.release_created == 'true' }}
     uses: ./.github/workflows/docker-publish.yml
     permissions:
-      contents: read
+      # write: the final job attaches docker-compose.yml to the release.
+      contents: write
       packages: write
       id-token: write
       attestations: write
     with:
       version: ${{ needs.release-please.outputs.version }}
+
+  # PLAN-56 Phase 3a: signed per-platform tarballs + install.sh, attached to
+  # the same release. Independent of the image publish; secrets: inherit
+  # passes MINISIGN_SECRET_KEY to the approval-gated publish job.
+  release-tarball:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
+    uses: ./.github/workflows/release-tarball.yml
+    secrets: inherit
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      version: ${{ needs.release-please.outputs.version }}
+
+  # npm package: npm-publish.yml publishes with npm trusted publishing, which
+  # trusts THAT workflow file, so it runs on its own rather than as a
+  # workflow_call here. A workflow_dispatch is the one event the default
+  # GITHUB_TOKEN may raise that starts another workflow; the publish itself
+  # still waits for a maintainer's approval in the `npm` environment.
+  #
+  # The npm package is a launcher that downloads this release's signed
+  # tarballs on first run, so it is dispatched only AFTER release-tarball
+  # has uploaded them and published the release (npm-publish.yml also waits
+  # for them on the public URLs before it can publish).
+  npm-publish:
+    needs: [release-please, release-tarball]
+    if: ${{ needs.release-please.outputs.release_created == 'true' && needs.release-tarball.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch npm-publish.yml for the new release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        run: gh workflow run npm-publish.yml --repo "${{ github.repository }}" --ref main -f tag="v$VERSION"

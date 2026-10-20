@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TaskStore } from "./store.js";
 import {
   deriveOracle,
   maybeInitiateGoal,
   summarizeGoal,
   type GoalInitiationDeps,
 } from "./auto-initiate.js";
+import type { TaskStore } from "./store.js";
 
 const TRIVIAL = "what time is it?";
 const LARGE =

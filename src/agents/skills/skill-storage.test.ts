@@ -15,6 +15,8 @@ import {
   readLive,
   readStaged,
   resolveStorageRoots,
+  readArchivedSidecars,
+  retireLive,
   rollbackToVersion,
   SkillStorageError,
   stageSkill,
@@ -321,5 +323,79 @@ describe("rollbackToVersion", () => {
         author: "a",
       }),
     ).rejects.toMatchObject({ code: "not-found" });
+  });
+});
+
+describe("PLAN-45 Phase 3.1: sidecar manifests and retireLive", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "skill-storage-sidecars-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it("publishStaged archives the previous live's sidecars; rollback restores that exact set (including none)", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    const dir = path.dirname(liveSkillPath(roots, "alpha"));
+    await fs.mkdir(dir, { recursive: true });
+    // v1: a human-authored live skill, no evolution identity.
+    await fs.writeFile(liveSkillPath(roots, "alpha"), SAMPLE, "utf-8");
+    await stageSkill(roots, { name: "alpha", content: SAMPLE_2, reason: "x", author: "a" });
+    const published = await publishStaged(roots, { name: "alpha", reason: "p", author: "u" });
+    expect(published.previousArchived?.version).toBe(1);
+    expect(await readArchivedSidecars(roots, "alpha", 1)).toEqual({});
+    // The evolved version gets its sidecars written by the gate.
+    await fs.writeFile(path.join(dir, ".evolution-meta.json"), '{"origin":"wiki-evolution"}');
+    await fs.writeFile(path.join(dir, "PURPOSE.md"), "why");
+    // A regression rolls back to v1: SKILL.md AND the sidecar set (none).
+    const rolled = await rollbackToVersion(roots, {
+      name: "alpha",
+      version: 1,
+      reason: "regression",
+      author: "evolution",
+    });
+    expect(rolled.restoredContent).toBe(SAMPLE);
+    expect(await readLive(roots, "alpha")).toBe(SAMPLE);
+    await expect(fs.access(path.join(dir, ".evolution-meta.json"))).rejects.toThrow();
+    await expect(fs.access(path.join(dir, "PURPOSE.md"))).rejects.toThrow();
+    // The pre-rollback snapshot (v2) carried the evolved sidecars.
+    expect(await readArchivedSidecars(roots, "alpha", 2)).toEqual({
+      ".evolution-meta.json": '{"origin":"wiki-evolution"}',
+      "PURPOSE.md": "why",
+    });
+    // Rolling forward to v2 brings them back.
+    await rollbackToVersion(roots, { name: "alpha", version: 2, reason: "re", author: "u" });
+    expect(await fs.readFile(path.join(dir, "PURPOSE.md"), "utf-8")).toBe("why");
+  });
+
+  it("an archive without a manifest (pre-Phase-3) leaves live sidecars untouched", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    const dir = path.dirname(liveSkillPath(roots, "alpha"));
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(liveSkillPath(roots, "alpha"), SAMPLE_2, "utf-8");
+    await fs.writeFile(path.join(dir, "PURPOSE.md"), "keep");
+    await archiveVersion(roots, { name: "alpha", content: SAMPLE, reason: "x", author: "a" });
+    expect(await readArchivedSidecars(roots, "alpha", 1)).toBeNull();
+    await rollbackToVersion(roots, { name: "alpha", version: 1, reason: "r", author: "u" });
+    expect(await fs.readFile(path.join(dir, "PURPOSE.md"), "utf-8")).toBe("keep");
+  });
+
+  it("retireLive archives content + sidecars and removes the live copy", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    const dir = path.dirname(liveSkillPath(roots, "alpha"));
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(liveSkillPath(roots, "alpha"), SAMPLE, "utf-8");
+    await fs.writeFile(path.join(dir, ".evolution-meta.json"), '{"origin":"wiki-evolution"}');
+    await fs.writeFile(path.join(dir, ".evidence.json"), "{}");
+    const retired = await retireLive(roots, { name: "alpha", reason: "never read", author: "e" });
+    expect(retired?.archived.version).toBe(1);
+    expect(retired?.archived.meta.reason).toContain("never read");
+    expect(await readLive(roots, "alpha")).toBeNull();
+    await expect(fs.access(dir)).rejects.toThrow();
+    expect(await readArchivedSidecars(roots, "alpha", 1)).toEqual({
+      ".evolution-meta.json": '{"origin":"wiki-evolution"}',
+    });
+    expect(await retireLive(roots, { name: "alpha", reason: "again", author: "e" })).toBeNull();
   });
 });

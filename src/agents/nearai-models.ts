@@ -348,13 +348,14 @@ function shouldIncludeNearAiModel(params: {
   return params.inputModalities.includes("text") && params.outputModalities.includes("text");
 }
 
-export function mergeNearAiCompat(
-  compat?: ModelDefinitionConfig["compat"],
-): NonNullable<ModelDefinitionConfig["compat"]> {
+// Generic so it serves both our config compat and pi-ai's (wider) model compat.
+export function mergeNearAiCompat<T extends object = NonNullable<ModelDefinitionConfig["compat"]>>(
+  compat?: T,
+): T & typeof NEARAI_MODEL_COMPAT {
   return {
     ...compat,
     ...NEARAI_MODEL_COMPAT,
-  };
+  } as T & typeof NEARAI_MODEL_COMPAT;
 }
 
 export function buildNearAiModelDefinition(entry: ModelDefinitionConfig): ModelDefinitionConfig {

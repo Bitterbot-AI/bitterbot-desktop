@@ -13,11 +13,11 @@
  * Pure functions. Caller owns the DB handle.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { KnowledgeGraphManager, EntityType } from "./knowledge-graph.js";
 import type { QueryPlan } from "./query-planner.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/graph-reader");
 

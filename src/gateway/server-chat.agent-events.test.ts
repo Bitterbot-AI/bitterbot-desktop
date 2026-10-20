@@ -5,6 +5,7 @@ import {
   createChatRunState,
   createToolEventRecipientRegistry,
 } from "./server-chat.js";
+import { createToolOutputLeases, TOOL_OUTPUT_LEASE_MS } from "./tool-output-leases.js";
 
 describe("agent event handler", () => {
   function createHarness(params?: {
@@ -251,5 +252,118 @@ describe("agent event handler", () => {
     const payload = broadcastToConnIds.mock.calls[0]?.[1] as { data?: Record<string, unknown> };
     expect(payload.data?.result).toEqual(result);
     resetAgentRunContextForTest();
+  });
+
+  describe("tool output leases", () => {
+    function harness(verboseLevel: "off" | "on" | "full") {
+      let now = 1_000_000;
+      const leases = createToolOutputLeases(() => now);
+      const broadcastToConnIds = vi.fn();
+      const toolEventRecipients = createToolEventRecipientRegistry();
+      const handler = createAgentEventHandler({
+        broadcast: vi.fn(),
+        broadcastToConnIds,
+        nodeSendToSession: vi.fn(),
+        agentRunSeq: new Map<string, number>(),
+        chatRunState: createChatRunState(),
+        resolveSessionKeyForRun: () => "session-1",
+        clearAgentRunContext: vi.fn(),
+        toolEventRecipients,
+        toolOutputLeases: leases,
+      });
+      const runId = `run-lease-${verboseLevel}`;
+      registerAgentRunContext(runId, { sessionKey: "session-1", verboseLevel });
+      toolEventRecipients.add(runId, "conn-pane");
+      toolEventRecipients.add(runId, "conn-other");
+      const emit = (seq: number) =>
+        handler({
+          runId,
+          seq,
+          stream: "tool",
+          ts: now,
+          data: {
+            phase: "result",
+            name: "exec",
+            toolCallId: "t1",
+            result: { text: "SECRET-OUTPUT" },
+          },
+        });
+      /** connId -> whether the event it received carried the output. */
+      const delivered = () => {
+        const out: Record<string, boolean> = {};
+        for (const [event, payload, connIds] of broadcastToConnIds.mock.calls) {
+          if (event !== "agent") continue;
+          const hasOutput = (payload as { data?: { result?: unknown } }).data?.result !== undefined;
+          for (const connId of connIds as Set<string>) out[connId] = hasOutput;
+        }
+        return out;
+      };
+      return { leases, emit, delivered, broadcastToConnIds, advance: (ms: number) => (now += ms) };
+    }
+
+    it("gives output only to the connection that holds a lease", () => {
+      const h = harness("off");
+      h.leases.grant("conn-pane");
+
+      h.emit(1);
+
+      expect(h.delivered()).toEqual({ "conn-pane": true, "conn-other": false });
+      resetAgentRunContextForTest();
+    });
+
+    it("strips output for everyone when nobody holds a lease", () => {
+      // The 866c6891 guarantee: no lease, no output, at any verbosity below full.
+      const h = harness("on");
+
+      h.emit(1);
+
+      expect(h.delivered()).toEqual({ "conn-pane": false, "conn-other": false });
+      resetAgentRunContextForTest();
+    });
+
+    it("stops sending output once the lease lapses", () => {
+      const h = harness("off");
+      h.leases.grant("conn-pane");
+      h.emit(1);
+      expect(h.delivered()["conn-pane"]).toBe(true);
+
+      h.broadcastToConnIds.mockClear();
+      h.advance(TOOL_OUTPUT_LEASE_MS);
+      h.emit(2);
+
+      expect(h.delivered()).toEqual({ "conn-pane": false, "conn-other": false });
+      resetAgentRunContextForTest();
+    });
+
+    it("stops sending output on unsubscribe", () => {
+      const h = harness("off");
+      h.leases.grant("conn-pane");
+      h.leases.revoke("conn-pane");
+
+      h.emit(1);
+
+      expect(h.delivered()["conn-pane"]).toBe(false);
+      resetAgentRunContextForTest();
+    });
+
+    it("does not send output to a lease holder who is not a recipient of the run", () => {
+      // A lease is not a subscription to other people's runs.
+      const h = harness("off");
+      h.leases.grant("conn-stranger");
+
+      h.emit(1);
+
+      expect(h.delivered()).toEqual({ "conn-pane": false, "conn-other": false });
+      resetAgentRunContextForTest();
+    });
+
+    it("leaves verbose=full sessions as they were: everyone gets output", () => {
+      const h = harness("full");
+
+      h.emit(1);
+
+      expect(h.delivered()).toEqual({ "conn-pane": true, "conn-other": true });
+      resetAgentRunContextForTest();
+    });
   });
 });

@@ -39,3 +39,31 @@ export async function createOnrampSession(
     sessionId: session.id,
   };
 }
+
+export interface OnrampSessionStatus {
+  status: string;
+  /** What was delivered, in USD terms (USDC is 1:1); null when Stripe does not say. */
+  amountUsd: number | null;
+}
+
+/** Read a session back from Stripe, so a completed top-up is recorded at what Stripe says. */
+export async function readOnrampSession(
+  stripeSecretKey: string,
+  sessionId: string,
+): Promise<OnrampSessionStatus> {
+  const stripe = new Stripe(stripeSecretKey);
+  const session = (await stripe.rawRequest(
+    "GET",
+    `/v1/crypto/onramp_sessions/${encodeURIComponent(sessionId)}`,
+    {},
+  )) as unknown as {
+    status?: string;
+    transaction_details?: { destination_amount?: string | number | null };
+  };
+  const raw = session.transaction_details?.destination_amount;
+  const amount = raw === null || raw === undefined ? NaN : Number(raw);
+  return {
+    status: session.status ?? "unknown",
+    amountUsd: Number.isFinite(amount) && amount > 0 ? amount : null,
+  };
+}

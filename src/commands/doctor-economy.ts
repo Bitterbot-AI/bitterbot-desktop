@@ -19,8 +19,8 @@
 
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { isEarningCapable } from "../config/defaults.js";
 import { renderSectionQuietIfAllInfo, type CheckResult, ok, warn, info } from "./doctor-check.js";
 import { resolveDoctorMemoryDbPath } from "./doctor-subsystems.js";

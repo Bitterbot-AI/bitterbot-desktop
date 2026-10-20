@@ -1,5 +1,4 @@
 import type { WalletConfig } from "../../config/types.wallet.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import {
   soapboxClientFromEnv,
   type SoapboxJob,
@@ -8,6 +7,7 @@ import {
 import { assertApprovedSoapboxQuote } from "../../services/soapbox-payment.js";
 import { createSoapboxWallet, getSoapboxWalletStatus } from "../../services/soapbox-wallet.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 function id(value: unknown): string {
   if (typeof value !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(value))
@@ -72,7 +72,9 @@ export function createSoapboxHandlers(
       try {
         if (
           gatewayClient?.connect.role !== "operator" ||
-          !gatewayClient.connect.scopes?.includes("operator.admin")
+          !gatewayClient.connect.scopes?.includes("operator.admin") ||
+          gatewayClient.connect.client?.mode?.trim().toLowerCase() === "backend" ||
+          (typeof params.via === "string" && params.via.trim().toLowerCase() === "chat")
         )
           throw new Error("Compute funding requires operator.admin");
         requireBuyer();

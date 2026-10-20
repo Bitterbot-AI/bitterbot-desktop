@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
+import process from "node:process";
 /**
  * Bundle src/entry.ts into a single dist/entry.js via esbuild.
  *
@@ -22,10 +26,6 @@
  * grammy/twitter-api-v2 dead-weight.
  */
 import { build } from "esbuild";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
-import process from "node:process";
 
 // Strip the source shebang from src/entry.ts so esbuild doesn't emit it
 // in the middle of the bundled output (shebangs are only valid on line 1).
@@ -110,6 +110,13 @@ const NATIVE_EXTERNALS = [
   // external so the import resolves to the real node_modules location at runtime.
   "sqlite-vec",
   "sqlite-vec-*",
+  // sharp loads its native binary from a sibling package
+  // (@img/sharp-<os>-<arch>/lib/sharp-*.node) by a path built at runtime.
+  // Inlined into dist/entry.js it cannot find it and throws 'Could not load the
+  // "sharp" module using the linux-x64 runtime', and every screenshot and image
+  // the agent should see is replaced by an "omitted image payload" note.
+  "sharp",
+  "@img/*",
 ];
 
 const LAZY_EXTERNALS = [
@@ -166,43 +173,46 @@ const result = await build({
 writeFileSync("dist/entry.meta.json", JSON.stringify(result.metafile, null, 2));
 console.log(`[build-gateway-entry] wrote ${outfile}`);
 
-// Regression guard: sqlite-vec MUST stay external (see NATIVE_EXTERNALS above).
-// If it is ever inlined again, getLoadablePath() resolves the platform binary
-// against dist/ and vector search silently degrades to the FTS fallback. Fail
-// the build loudly here rather than discovering it from a runtime warning.
-const inlinedSqliteVec = Object.keys(result.metafile.inputs).filter((p) =>
-  /(^|[\\/])node_modules[\\/]\.pnpm[\\/][^\\/]*[\\/]node_modules[\\/]sqlite-vec[\\/]|(^|[\\/])node_modules[\\/]sqlite-vec[\\/]/.test(
-    p,
-  ),
-);
-if (inlinedSqliteVec.length > 0) {
-  console.error(
-    `[build-gateway-entry] sqlite-vec was bundled into ${outfile} (${inlinedSqliteVec.join(
-      ", ",
-    )}). It must be external — add it to NATIVE_EXTERNALS.`,
-  );
-  process.exit(1);
+// Regression guard: packages that find a native binary relative to their own
+// files MUST stay external (see NATIVE_EXTERNALS above). Inlined, sqlite-vec
+// resolves its extension against dist/ and vector search silently degrades to
+// the FTS fallback; sharp cannot load at all and images are silently dropped.
+// Fail the build loudly here rather than discovering it from a runtime warning.
+for (const pkg of ["sqlite-vec", "sharp"]) {
+  const inNodeModules = new RegExp(`(^|[\\\\/])node_modules[\\\\/]${pkg}[\\\\/]`);
+  const inlined = Object.keys(result.metafile.inputs).filter((p) => inNodeModules.test(p));
+  if (inlined.length > 0) {
+    console.error(
+      `[build-gateway-entry] ${pkg} was bundled into ${outfile} (${inlined
+        .slice(0, 5)
+        .join(", ")}). It must be external — add it to NATIVE_EXTERNALS.`,
+    );
+    process.exit(1);
+  }
 }
 
 // jiti's lazyTransform does `createRequire(import.meta.url)("../dist/babel.cjs")` at
-// runtime — an opaque string require that esbuild can't statically rewrite. esbuild
-// does inline babel.cjs into entry.js, but the runtime call still goes to disk
-// looking for `dist/babel.cjs` next to entry.js. Drop a copy alongside so any TS
-// plugin loaded by the gateway can transpile.
-// jiti is a transitive dep nested under pnpm's hashed .pnpm/ tree, so a top-
-// level require.resolve("@mariozechner/jiti") doesn't find it. esbuild already
-// resolved the path via its own walker — pull it back out of the metafile so
-// we don't duplicate resolution logic or hard-code the pnpm hash.
-let babelInput = Object.keys(result.metafile.inputs).find((p) => p.endsWith("jiti/dist/babel.cjs"));
-// Some supported release versions load jiti dynamically, so its transformer is
-// absent from esbuild's input graph. Resolve the installed package in that case.
+// runtime — an opaque string require that esbuild can't statically rewrite, so
+// the runtime call goes to disk looking for `dist/babel.cjs` next to entry.js.
+// Drop a copy alongside so any TS plugin loaded by the gateway can transpile.
+// Our own import (src/plugins/loader.ts) is jiti's ESM build, which never
+// references babel.cjs statically; the file only appeared in the metafile
+// while the pi engine bundled jiti's CJS build. Prefer the metafile when it
+// has it, otherwise resolve the file from the jiti package itself
+// (`jiti/dist/babel.cjs` is not in its exports map, `jiti/package.json` is).
+const babelFromMetafile = Object.keys(result.metafile.inputs).find((p) =>
+  p.endsWith("jiti/dist/babel.cjs"),
+);
+const babelFromPackage = resolve(
+  dirname(createRequire(import.meta.url).resolve("jiti/package.json")),
+  "dist/babel.cjs",
+);
+const babelInput =
+  babelFromMetafile ?? (existsSync(babelFromPackage) ? babelFromPackage : undefined);
 if (!babelInput) {
-  const require = createRequire(resolve("package.json"));
-  const candidate = resolve(dirname(require.resolve("jiti")), "../dist/babel.cjs");
-  if (existsSync(candidate)) babelInput = candidate;
-}
-if (!babelInput) {
-  console.error("[build-gateway-entry] could not locate jiti/dist/babel.cjs in metafile");
+  console.error(
+    `[build-gateway-entry] could not locate jiti/dist/babel.cjs (metafile or ${babelFromPackage})`,
+  );
   process.exit(1);
 }
 copyFileSync(babelInput, "dist/babel.cjs");

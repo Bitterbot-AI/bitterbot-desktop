@@ -12,10 +12,10 @@
  * benchmarks/longmemeval).
  */
 
-import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { ArcClient } from "./arc-client.js";
 import { getCurrentSession, readGameMeta, readConfig } from "./state.js";
 

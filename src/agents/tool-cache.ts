@@ -35,13 +35,33 @@ export interface ToolCacheConfig {
 
 const DEFAULT_MAX_ENTRIES = 500;
 const DEFAULT_TTL_MS = 5 * 60_000;
-const DEFAULT_CACHEABLE_TOOLS: ReadonlySet<string> = new Set([
-  "read",
-  "web_search",
-  "web_fetch",
-  "image",
-  "memory_search",
-]);
+// Only tools whose answer does not depend on local state. Nothing invalidates
+// an entry, so anything that reads the disk or the memory store would serve
+// the old answer for five minutes after a change: `read` after an edit (seen
+// 2026-10-02 in the runtime soak), `image` after a screenshot was overwritten,
+// `memory_search` right after a memory was written. Operators can still name
+// them in `agents.defaults.toolCache.cacheableTools`.
+const DEFAULT_CACHEABLE_TOOLS: ReadonlySet<string> = new Set(["web_search", "web_fetch"]);
+
+/**
+ * JSON with object keys sorted at every depth. (A replacer array, the old
+ * approach, is an allowlist for nested objects too: two calls that differed
+ * only inside a nested argument got the same key.)
+ */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .toSorted()
+      .filter((key) => record[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
 
 export class ToolCache {
   private cache = new Map<string, CacheEntry>();
@@ -67,7 +87,7 @@ export class ToolCache {
 
   /** Generate a deterministic cache key from tool name + sorted args. */
   generateKey(toolName: string, args: Record<string, unknown>): string {
-    const sorted = JSON.stringify(args, Object.keys(args).toSorted());
+    const sorted = stableStringify(args);
     const hash = createHash("sha256").update(`${toolName}:${sorted}`).digest("hex").slice(0, 16);
     return `${toolName}:${hash}`;
   }

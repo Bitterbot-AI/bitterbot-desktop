@@ -41,8 +41,8 @@ describe("SkillVersionResolver.fitness", () => {
       peerTrust: 0.5,
       ageMs: 0,
     });
-    // 0.45*0.5 + 0.35*0.5 + 0.20*1.0 = 0.225 + 0.175 + 0.2 = 0.6
-    expect(score).toBeCloseTo(0.6, 1);
+    // PLAN-45 4.1: 0.7*0.5 + 0*trust + 0.3*1.0 = 0.65
+    expect(score).toBeCloseTo(0.65, 2);
   });
 
   it("high-performing trusted skill scores near 1.0", () => {
@@ -55,14 +55,26 @@ describe("SkillVersionResolver.fitness", () => {
     expect(score).toBeGreaterThan(0.85);
   });
 
-  it("old skill from untrusted peer with no executions scores low", () => {
-    const score = SkillVersionResolver.fitness({
+  it("old skill with no executions scores low, and trust cannot lift it (I5)", () => {
+    const untrusted = SkillVersionResolver.fitness({
       executionSuccessRate: null,
       executionCount: 0,
       peerTrust: 0.1,
       ageMs: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
-    expect(score).toBeLessThan(0.35);
+    expect(untrusted).toBeLessThan(0.4);
+    const trusted = SkillVersionResolver.fitness({
+      executionSuccessRate: null,
+      executionCount: 0,
+      peerTrust: 1.0,
+      ageMs: 30 * 24 * 60 * 60 * 1000,
+    });
+    // Trust is not evidence: the activation score is identical.
+    expect(trusted).toBe(untrusted);
+    // Reputation only orders evaluation.
+    expect(SkillVersionResolver.evaluationPriority({ peerTrust: 1.0 })).toBeGreaterThan(
+      SkillVersionResolver.evaluationPriority({ peerTrust: 0.1 }),
+    );
   });
 
   it("Bayesian smoothing blends prior with observed rate for few executions", () => {
@@ -96,8 +108,8 @@ describe("SkillVersionResolver.fitness", () => {
       ageMs: 7 * 24 * 60 * 60 * 1000,
     });
     expect(fresh).toBeGreaterThan(weekOld);
-    // Recency component halves — difference should be ~0.10
-    expect(fresh - weekOld).toBeCloseTo(0.1, 1);
+    // Recency component halves — difference should be ~0.15 (weight 0.3)
+    expect(fresh - weekOld).toBeCloseTo(0.15, 1);
   });
 });
 
@@ -201,5 +213,34 @@ describe("SkillVersionResolver.resolveConflict", () => {
     expect(result.action).toBe("keep_both");
     expect(result.reason).toContain("divergent branches");
     expect(result.reason).toContain("2 variants");
+  });
+});
+
+// ── lifecycle filtering (Agent Memory Atlas review, 2026-09-19) ─────────────
+
+describe("SkillVersionResolver lifecycle filtering", () => {
+  it("selectBestVariant never returns an expired or forgotten variant", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(":memory:");
+    db.exec(`CREATE TABLE chunks (id TEXT, stable_skill_id TEXT, skill_version INTEGER,
+      hash TEXT, peer_origin TEXT, lineage_hash TEXT, importance_score REAL, created_at INTEGER,
+      deprecated INTEGER DEFAULT 0, lifecycle TEXT, lifecycle_state TEXT)`);
+    const ins = db.prepare(
+      `INSERT INTO chunks (id, stable_skill_id, skill_version, hash, created_at, lifecycle, lifecycle_state)
+       VALUES (?, 's1', ?, ?, 0, ?, ?)`,
+    );
+    // The expired variant is the fittest on purpose: before the fix the
+    // `lifecycle_state != 'expired'` filter matched nothing and it won.
+    ins.run("expired-v3", 3, "h3", "expired", "archived");
+    ins.run("forgotten-v2", 2, "h2", "archived", "forgotten");
+    ins.run("live-v1", 1, "h1", "frozen", "active");
+    const resolver = new SkillVersionResolver(db);
+    const fit = (id: string): FitnessInput => ({
+      executionSuccessRate: id === "live-v1" ? 0.5 : 1,
+      executionCount: 10,
+      peerTrust: 1,
+      ageMs: 0,
+    });
+    expect(resolver.selectBestVariant("s1", fit)?.crystalId).toBe("live-v1");
   });
 });

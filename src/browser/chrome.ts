@@ -1,9 +1,13 @@
-import { type ChildProcessWithoutNullStreams, execFileSync, spawn } from "node:child_process";
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  execFileSync,
+  spawn,
+} from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
-import type { ResolvedBrowserConfig, ResolvedBrowserProfile } from "./config.js";
 import { ensurePortAvailable } from "../infra/ports.js";
 import { isWSLSync } from "../infra/wsl.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -19,10 +23,13 @@ import {
   ensureProfileCleanExit,
   isProfileDecorated,
 } from "./chrome.profile-decoration.js";
+import type { ResolvedBrowserConfig, ResolvedBrowserProfile } from "./config.js";
 import {
   DEFAULT_BITTERBOT_BROWSER_COLOR,
   DEFAULT_BITTERBOT_BROWSER_PROFILE_NAME,
 } from "./constants.js";
+import { trackBrowserLaunch } from "./launch-activity.js";
+import { resolvePlaywrightInstallCommand } from "./playwright-browsers.js";
 
 const log = createSubsystemLogger("browser").child("chrome");
 
@@ -225,6 +232,13 @@ export async function launchBitterbotChrome(
   resolved: ResolvedBrowserConfig,
   profile: ResolvedBrowserProfile,
 ): Promise<RunningChrome> {
+  return await trackBrowserLaunch(() => launchChrome(resolved, profile));
+}
+
+async function launchChrome(
+  resolved: ResolvedBrowserConfig,
+  profile: ResolvedBrowserProfile,
+): Promise<RunningChrome> {
   if (!profile.cdpIsLoopback) {
     throw new Error(`Profile "${profile.name}" is remote; cannot launch local Chrome.`);
   }
@@ -235,7 +249,7 @@ export async function launchBitterbotChrome(
     throw new Error(
       "No supported browser found (Chrome/Brave/Edge/Chromium on macOS, Linux, or Windows).\n\n" +
         "Quick fixes:\n" +
-        "  1. Install Playwright Chromium:  npx playwright install chromium\n" +
+        `  1. Download Playwright's Chromium:  ${resolvePlaywrightInstallCommand()}\n` +
         "  2. Or install a system browser:  sudo apt install chromium-browser  (Linux)\n" +
         "  3. Or set a custom path:         browser.executablePath in your config\n\n" +
         "Docs: https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/docs/tools/browser.md",
@@ -366,23 +380,39 @@ export async function launchBitterbotChrome(
   }
 
   const proc = spawnOnce();
-  // Wait for CDP to come up.
-  const readyDeadline = Date.now() + 15_000;
+  const launch = watchBrowserLaunch(proc);
+  // Wait for CDP to come up. Kept under the browser client's launching-call
+  // timeout (BROWSER_LAUNCHING_CALL_TIMEOUT_MS), so a failed start is reported
+  // as what it is and not as a timeout.
+  let readyDeadline = Date.now() + CDP_READY_WAIT_MS;
   while (Date.now() < readyDeadline) {
-    if (await isChromeReachable(cdpReachableUrl, 500)) {
+    if (await isChromeReachable(cdpReachableUrl, CDP_PROBE_TIMEOUT_MS)) {
       break;
+    }
+    const ended = launch.ended();
+    if (ended) {
+      // A launcher can exit after handing off to the real browser, so an exit
+      // is not proof of failure. It is a reason to stop waiting soon.
+      readyDeadline = Math.min(readyDeadline, ended.at + EXITED_LAUNCHER_GRACE_MS);
     }
     await new Promise((r) => setTimeout(r, 200));
   }
 
-  if (!(await isChromeReachable(cdpReachableUrl, 500))) {
+  if (!(await isChromeReachable(cdpReachableUrl, CDP_PROBE_TIMEOUT_MS))) {
     try {
       proc.kill("SIGKILL");
     } catch {
       // ignore
     }
     throw new Error(
-      `Failed to start Chrome CDP on port ${profile.cdpPort} for profile "${profile.name}".`,
+      describeBrowserLaunchFailure({
+        port: profile.cdpPort,
+        profile: profile.name,
+        executable: exe.path,
+        ended: launch.ended(),
+        output: launch.outputTail(),
+        waitedMs: CDP_READY_WAIT_MS,
+      }),
     );
   }
 
@@ -401,6 +431,79 @@ export async function launchBitterbotChrome(
     startedAt,
     proc,
   };
+}
+
+/**
+ * How long to wait for a started browser to open its debugging port. The
+ * first start after a reboot reads a cold ~400 MB browser from disk; on WSL
+ * that took longer than the old 12 s (2026-10-16), while a warm start takes
+ * under 2 s.
+ */
+export const CDP_READY_WAIT_MS = 25_000;
+/** One readiness probe. A cold browser can take over 500 ms to answer /json/version. */
+const CDP_PROBE_TIMEOUT_MS = 1_500;
+/** After the launched process exits, how much longer a handed-off browser gets. */
+const EXITED_LAUNCHER_GRACE_MS = 3_000;
+const OUTPUT_TAIL_CHARS = 1_500;
+
+type LaunchEnd = { at: number; code: number | null; signal: string | null; error?: string };
+
+/**
+ * Follow a just-spawned browser: when it exits, and the last thing it said.
+ * It also drains both pipes. Chrome writes to stderr for as long as it runs
+ * (D-Bus and GPU complaints), and a pipe nobody reads fills up and blocks it.
+ */
+export function watchBrowserLaunch(proc: Pick<ChildProcess, "stdout" | "stderr" | "once">) {
+  let ended: LaunchEnd | null = null;
+  let tail = "";
+  const keep = (chunk: unknown) => {
+    tail = (tail + String(chunk)).slice(-OUTPUT_TAIL_CHARS);
+  };
+  proc.stdout?.on("data", keep);
+  proc.stderr?.on("data", keep);
+  proc.once("exit", (code, signal) => {
+    ended ??= { at: Date.now(), code, signal };
+  });
+  proc.once("error", (err) => {
+    ended ??= { at: Date.now(), code: null, signal: null, error: err.message };
+  });
+  return {
+    ended: (): LaunchEnd | null => ended,
+    outputTail: (): string => tail.trim(),
+  };
+}
+
+export function describeBrowserLaunchFailure(params: {
+  port: number;
+  profile: string;
+  executable: string;
+  ended: LaunchEnd | null;
+  output: string;
+  waitedMs: number;
+}): string {
+  const { ended } = params;
+  const what = ended?.error
+    ? `The browser could not be started: ${ended.error}.`
+    : ended
+      ? `The browser process exited (${
+          ended.signal ? `signal ${ended.signal}` : `code ${ended.code ?? "unknown"}`
+        }) before opening its debugging port.`
+      : `The browser did not open its debugging port within ${Math.round(params.waitedMs / 1000)}s.`;
+  // D-Bus noise (bus.cc, object_proxy.cc, ...) is on every Linux and WSL
+  // launch and explains nothing; an agent reading it blames D-Bus.
+  const lines = params.output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(
+      (line) => line && !/dbus\/|org\.freedesktop\.DBus|Failed to connect to the bus/.test(line),
+    );
+  const said = lines.length > 0 ? ` It said: ${lines.slice(-4).join(" | ").slice(0, 600)}` : "";
+  return (
+    `Failed to start Chrome CDP on port ${params.port} for profile "${params.profile}". ` +
+    `${what} Executable: ${params.executable}.${said} ` +
+    `If the executable is wrong, set browser.executablePath; if the profile is damaged, ` +
+    `run "bitterbot browser reset-profile".`
+  );
 }
 
 export async function stopBitterbotChrome(running: RunningChrome, timeoutMs = 2500) {

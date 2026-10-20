@@ -1,12 +1,14 @@
 import type { Server as HttpServer } from "node:http";
 import type { WebSocketServer } from "ws";
 import type { CanvasHostHandler, CanvasHostServer } from "../canvas-host/server.js";
+import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
 import type { CirclesSchedulerHandle } from "../circles/scheduler.js";
+import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
 import type { HeartbeatRunner } from "../infra/heartbeat-runner.js";
+import { flushSystemEventPersistence } from "../infra/system-events.js";
+import { flushUsageLedger, stopUsageLedger } from "../infra/usage-ledger.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
-import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
-import { stopGmailWatcher } from "../hooks/gmail-watcher.js";
 
 export function createGatewayCloseHandler(params: {
   tailscaleCleanup: (() => Promise<void>) | null;
@@ -25,6 +27,10 @@ export function createGatewayCloseHandler(params: {
   stopUpdateCheck: (() => void) | null;
   agentUnsub: (() => void) | null;
   heartbeatUnsub: (() => void) | null;
+  /** PLAN-50 */
+  usageUnsub?: (() => void) | null;
+  usageBudgetUnsub?: (() => void) | null;
+  usageMetricsUnsub?: (() => void) | null;
   chatRunState: { clear: () => void };
   clients: Set<{ socket: { close: (code: number, reason: string) => void } }>;
   configReloader: { stop: () => Promise<void> };
@@ -97,6 +103,25 @@ export function createGatewayCloseHandler(params: {
       } catch {
         /* ignore */
       }
+    }
+    // PLAN-50: stop streaming usage rows and close the ledger.
+    for (const unsub of [params.usageUnsub, params.usageBudgetUnsub, params.usageMetricsUnsub]) {
+      if (unsub) {
+        try {
+          unsub();
+        } catch {
+          // ignore
+        }
+      }
+    }
+    try {
+      // Drain queued rows (embeddings/hidden lanes have no reconcile safety net) before closing.
+      await Promise.race([flushUsageLedger(), new Promise((r) => setTimeout(r, 2_000))]);
+      stopUsageLedger();
+      // PLAN-53 E7: whatever is still queued for a session is on disk before exit.
+      flushSystemEventPersistence();
+    } catch {
+      // ignore
     }
     params.chatRunState.clear();
     for (const c of params.clients) {

@@ -25,8 +25,8 @@
  * measured top-5 redundancy ~0.65) — not cosine neighbors at large.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/dream-hygiene");

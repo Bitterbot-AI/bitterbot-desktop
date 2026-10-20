@@ -8,11 +8,11 @@ read_when:
 
 # Release Procedure
 
-Three release surfaces, one order of operations. release-please owns the
-version and the changelog; humans own the judgment points. There is no
-`npm publish` step in the normal flow (npm is name-claim only until
-distribution is a supported surface) and no curl installer — installing
-from source is the documented path.
+The release surfaces (the image, the installer tarballs, the npm package,
+and the orchestrator when it changed) share one order of operations.
+release-please owns the version and the changelog; humans own the judgment
+points, including one approval each for the tarball signing (`release`
+environment) and the npm publish (`npm` environment).
 
 ## 1. CI green
 
@@ -25,8 +25,16 @@ docker job means the image release surface is broken — stop here.
 release-please maintains a `chore(main): release X.Y.Z` PR. **Read the
 diff before merging**: the version fan-out (root, desktop, extensions,
 tauri.conf) and the CHANGELOG section are the release's public claims.
-Merging creates the git tag and the GitHub Release, and that event —
-not a tag push — triggers the GHCR publish.
+Merging creates the git tag and the GitHub Release as a **draft**, and
+release-please's `release_created` output (not a tag push) starts the GHCR
+publish, the installer tarballs and the npm publish.
+
+The draft stays hidden, and `releases/latest` keeps pointing at the previous
+release, until you approve the `release` environment for the tarball publish.
+That job uploads the signed tarballs and `install.sh`, then publishes the
+release and marks it latest, so the installer one-liner never resolves to a
+release that is still missing its files. If the publish job fails after the
+upload, publish the draft by hand on the Releases page.
 
 ## 3. Verify the image
 
@@ -38,6 +46,19 @@ gh attestation verify oci://ghcr.io/bitterbot-ai/bitterbot-desktop:X.Y.Z \
 
 Expect the semver tag set (`X.Y.Z`, `X.Y`, `X`, `latest`, `sha-…`) on the
 package page and a passing provenance attestation.
+
+## 3b. Approve and verify the npm publish
+
+release-please dispatches `npm-publish.yml` for the new tag. Approve the run
+in the `npm` environment, then check the package and its provenance:
+
+```bash
+npm view bitterbot@X.Y.Z version dist.attestations.url
+npm install -g bitterbot@X.Y.Z && bitterbot --version
+```
+
+Setup, the publish steps and the manual dispatch are in
+[npm Publishing](/reference/npm-publishing).
 
 ## 4. Orchestrator (only when it changed)
 
@@ -52,12 +73,23 @@ gh attestation verify bitterbot-orchestrator-linux-x64 \
 minisign -Vm checksums.txt -P <fleet pubkey> && sha256sum -c checksums.txt
 ```
 
+The fleet public key (the base64 line of the minisign `.pub` file, the same
+value as the `MINISIGN_PUBLIC_KEY` repo secret) is pinned as
+`ORCHESTRATOR_MINISIGN_PUBKEY` in `scripts/orchestrator-signature.mjs`
+(pinned 2026-10-11). A missing, bad or replayed `checksums.txt.minisig` makes
+the fetch refuse the binary; there is no SHA-256-only fallback while a key is
+pinned, and the environment override `BITTERBOT_ORCHESTRATOR_MINISIGN_PUBKEY`
+is ignored once the repo pins one. Rotating the key means changing the
+constant in the same PR that changes the repo secrets.
+
 ## 5. Clean-machine smoke
 
-On a machine (or container) that has never seen Bitterbot: follow the
-README Quick Start **verbatim** — clone, `setup-deps.sh`, `pnpm install`,
-`pnpm bitterbot onboard`. The wizard must finish and the gateway must
-serve the Control UI at `http://127.0.0.1:19001/`. Any deviation from the
+On a machine (or container) that has never seen Bitterbot, run each install
+path from [Getting Started](/start/getting-started) **verbatim**: the Docker
+compose download and `docker compose up -d`, the `install.sh` one-liner,
+`npm install -g bitterbot` then `bitterbot onboard`, and the source path (clone, `setup-deps.sh`, `pnpm install`,
+`pnpm bitterbot onboard`). Each must end with the gateway serving the Control
+UI at `http://127.0.0.1:19001/`. Any deviation from the
 documented text is a release blocker, not a doc bug to fix later.
 
 ## 6. Live-agent drive

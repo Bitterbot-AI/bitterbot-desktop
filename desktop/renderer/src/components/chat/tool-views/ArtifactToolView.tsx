@@ -1,8 +1,8 @@
 import { Code, ExternalLink } from "lucide-react";
 import { useCallback } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { useArtifactStore } from "../../../stores/artifact-store";
 import { useUIStore } from "../../../stores/ui-store";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 /**
  * Tool view for the create_artifact tool call.

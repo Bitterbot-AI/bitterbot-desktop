@@ -1,7 +1,5 @@
-import { intro as clackIntro, outro as clackOutro } from "@clack/prompts";
 import fs from "node:fs";
-import type { BitterbotConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
+import { intro as clackIntro, outro as clackOutro } from "@clack/prompts";
 import {
   resolveAgentDir,
   resolveAgentWorkspaceDir,
@@ -16,12 +14,15 @@ import {
   resolveHooksGmailModel,
 } from "../agents/model-selection.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { CONFIG_PATH, readConfigFileSnapshot, writeConfigFile } from "../config/config.js";
 import { logConfigUpdated } from "../config/logging.js";
 import { resolveGatewayService } from "../daemon/service.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails } from "../gateway/call.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import { detectInstallKind } from "../infra/install-kind.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { note } from "../terminal/note.js";
 import { stylePromptTitle } from "../terminal/prompt-style.js";
@@ -33,27 +34,31 @@ import {
   maybeRemoveDeprecatedCliAuthProfiles,
   maybeRepairAnthropicOAuthProfileId,
   noteAuthProfileHealth,
+  noteRetiredOAuthProviders,
 } from "./doctor-auth.js";
 import { noteBootHealth } from "./doctor-boot-health.js";
 import { runCanvasChecks } from "./doctor-canvas.js";
 import { runChannelsChecks } from "./doctor-channels.js";
 import { error, info, renderSection, setDoctorJsonMode, warn } from "./doctor-check.js";
 import { doctorShellCompletion } from "./doctor-completion.js";
+import { runComputeEmbeddingChecks, runComputePaymentChecks } from "./doctor-compute.js";
 import { loadAndMaybeMigrateDoctorConfig } from "./doctor-config-flow.js";
 import { runControlUiChecks } from "./doctor-control-ui.js";
 import { runEconomyChecks } from "./doctor-economy.js";
 import { maybeRepairGatewayDaemon } from "./doctor-gateway-daemon-flow.js";
 import { checkGatewayHealth } from "./doctor-gateway-health.js";
+import { gatewayModeUnsetFinding } from "./doctor-gateway-mode.js";
 import {
   maybeRepairGatewayServiceConfig,
   maybeScanExtraGatewayServices,
 } from "./doctor-gateway-services.js";
 import { runIdentityChecks } from "./doctor-identity.js";
+import { runInstallHealthChecks } from "./doctor-install-health.js";
 import { noteSourceInstallIssues } from "./doctor-install.js";
 import { runLivenessChecks } from "./doctor-liveness.js";
 import { runMemorySearchChecks } from "./doctor-memory-search.js";
 import { runMemorySystemChecks } from "./doctor-memory-system.js";
-import { runModelCheck } from "./doctor-model.js";
+import { runModelAliasCheck, runModelCheck } from "./doctor-model.js";
 import {
   doctorErrorMessages,
   doctorFindings,
@@ -71,11 +76,14 @@ import { runRetrievalChecks } from "./doctor-retrieval.js";
 import { runRuntimeChecks } from "./doctor-runtime.js";
 import { maybeRepairSandboxImages, noteSandboxScopeWarnings } from "./doctor-sandbox.js";
 import { runSecurityChecks } from "./doctor-security.js";
+import { runSkillEvolutionChecks } from "./doctor-skill-evolution.js";
 import { runSkillsChecks } from "./doctor-skills.js";
 import { noteStateIntegrity, noteWorkspaceBackupTip } from "./doctor-state-integrity.js";
 import { runSubsystemChecks } from "./doctor-subsystems.js";
+import { runTarballInstallChecks } from "./doctor-tarball.js";
 import { runTaskSpineChecks } from "./doctor-tasks.js";
 import { maybeOfferUpdateBeforeDoctor } from "./doctor-update.js";
+import { runUsageChecks } from "./doctor-usage.js";
 import { runWalletChecks } from "./doctor-wallet.js";
 import { runWebSearchChecks } from "./doctor-web-search.js";
 import { noteWorkspaceStatus } from "./doctor-workspace-status.js";
@@ -129,6 +137,7 @@ async function runDoctor(
     argv1: process.argv[1],
     cwd: process.cwd(),
   });
+  const installKind = detectInstallKind(root);
 
   const updateResult = await maybeOfferUpdateBeforeDoctor({
     runtime,
@@ -147,6 +156,14 @@ async function runDoctor(
   // signal — surface it before anything else.
   noteBootHealth();
 
+  // Release-tarball installs: links, manifest, snapshots (PLAN-56 Phase 3b).
+  await runTarballInstallChecks({
+    installKind,
+    root,
+    repair: prompter.shouldRepair,
+    deep: options.deep === true,
+  });
+
   const configResult = await loadAndMaybeMigrateDoctorConfig({
     options,
     confirm: (p) => prompter.confirm(p),
@@ -155,23 +172,22 @@ async function runDoctor(
 
   // Runtime (Node version, pnpm, platform posture) first — every check
   // below assumes the runtime itself is viable. Runs config-only / fast.
-  runRuntimeChecks({ config: cfg });
+  runRuntimeChecks({ config: cfg, installKind });
+
+  // Install kind + update channel, version drift, orchestrator signature,
+  // Playwright, local GGUF (PLAN-56 Phase 4). Offline and read-only.
+  await runInstallHealthChecks({ cfg, installKind, packageRoot: root, runningVersion: VERSION });
 
   const configPath = configResult.path ?? CONFIG_PATH;
   if (!cfg.gateway?.mode) {
-    const lines = [
-      "gateway.mode is unset; gateway start will be blocked.",
-      `Fix: run ${formatCliCommand("bitterbot configure")} and set Gateway mode (local/remote).`,
-      `Or set directly: ${formatCliCommand("bitterbot config set gateway.mode local")}`,
-    ];
-    if (!fs.existsSync(configPath)) {
-      lines.push(`Missing config: run ${formatCliCommand("bitterbot setup")} first.`);
-    }
-    renderSection("Gateway", [warn(lines.join("\n"))]);
+    renderSection("Gateway", [
+      gatewayModeUnsetFinding({ installKind, configFileExists: fs.existsSync(configPath) }),
+    ]);
   }
 
   cfg = await maybeRepairAnthropicOAuthProfileId(cfg, prompter);
   cfg = await maybeRemoveDeprecatedCliAuthProfiles(cfg, prompter);
+  noteRetiredOAuthProviders(cfg);
   await noteAuthProfileHealth({
     cfg,
     prompter,
@@ -234,7 +250,7 @@ async function runDoctor(
   await noteMacLaunchctlGatewayEnvOverrides(cfg);
 
   await runSecurityChecks(cfg);
-  await runControlUiChecks(cfg);
+  await runControlUiChecks(cfg, installKind);
 
   if (cfg.hooks?.gmail?.model?.trim()) {
     const hooksModelRef = resolveHooksGmailModel({
@@ -313,6 +329,8 @@ async function runDoctor(
 
   noteWorkspaceStatus(cfg);
   await runMemorySearchChecks(cfg);
+  await runComputeEmbeddingChecks(cfg);
+  await runComputePaymentChecks(cfg);
 
   // Check and fix shell completion
   await doctorShellCompletion(runtime, prompter, {
@@ -334,7 +352,7 @@ async function runDoctor(
   });
 
   // ── P2P Network (core infra; promoted from the memory architecture block) ──
-  await runP2pNetworkChecks({ config: cfg, isGatewayRunning: healthOk });
+  await runP2pNetworkChecks({ config: cfg, isGatewayRunning: healthOk, installKind });
 
   // ── P2P Identity (node tier, keypair, genesis trust list for management) ──
   runIdentityChecks({ config: cfg, packageRoot: root });
@@ -343,7 +361,7 @@ async function runDoctor(
   runSkillsChecks({ config: cfg });
 
   // ── Agent runtime observability (today's considerations log, in-memory state hints) ──
-  await runAgentRuntimeChecks();
+  await runAgentRuntimeChecks(cfg);
 
   // ── Biological Memory Architecture ──
   {
@@ -359,6 +377,9 @@ async function runDoctor(
       dbPath,
       isGatewayRunning: healthOk,
     });
+    // ── Skill evolution (PLAN-45 Phase 6): tasks-mode reachability, loop
+    //    heartbeat, canary monitor backlog, evidence freshness, crystallizer ──
+    await runSkillEvolutionChecks({ config: cfg, dbPath });
   }
 
   // ── Post-Q1 subsystems (embeddings backlog, knowledge graph, canonical
@@ -371,6 +392,9 @@ async function runDoctor(
   // ── Economy (forage settlements, revenue queue, x402 payment gate) ──
   runEconomyChecks({ config: cfg, isGatewayRunning: healthOk });
 
+  // ── Usage & cost (PLAN-50 ledger coverage, unpriced models, budgets) ──
+  runUsageChecks({ config: cfg });
+
   // ── Artifact liveness (loops that run but whose output never appears —
   //    the wired-but-dead defect class from the 2026-08-09 audit) ──
   await runLivenessChecks({ config: cfg });
@@ -380,6 +404,7 @@ async function runDoctor(
 
   // ── One real model round-trip — "configured" is not "works" ──
   await runModelCheck({ config: cfg });
+  await runModelAliasCheck({ config: cfg });
 
   // ── One real agent turn through the gateway — the model check proves the
   //    provider, this proves the pipeline (warn-only during burn-in) ──

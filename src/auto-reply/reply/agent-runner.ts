@@ -1,14 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import type { TypingMode } from "../../config/types.js";
-import type { OriginatingChannelType, TemplateContext } from "../templating.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
-import type { TypingController } from "./typing.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
+import { queueEmbeddedPiMessage } from "../../agents/embedded.js";
 import { resolveModelAuthMode } from "../../agents/model-auth.js";
 import { isCliProvider } from "../../agents/model-selection.js";
-import { queueEmbeddedPiMessage } from "../../agents/pi-embedded.js";
 import { hasNonzeroUsage } from "../../agents/usage.js";
 import {
   resolveAgentIdFromSessionKey,
@@ -18,10 +14,13 @@ import {
   updateSessionStore,
   updateSessionStoreEntry,
 } from "../../config/sessions.js";
+import type { TypingMode } from "../../config/types.js";
 import { emitDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
+import type { OriginatingChannelType, TemplateContext } from "../templating.js";
 import { resolveResponseUsageMode, type VerboseLevel } from "../thinking.js";
+import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { runAgentTurnWithFallback } from "./agent-runner-execution.js";
 import {
   createShouldEmitToolOutput,
@@ -30,7 +29,11 @@ import {
   isAudioPayload,
   signalTypingIfNeeded,
 } from "./agent-runner-helpers.js";
-import { runMemoryFlushIfNeeded } from "./agent-runner-memory.js";
+import {
+  rememberSteeredUserTurn,
+  runCorrectionCaptureAfterTurn,
+  runMemoryFlushIfNeeded,
+} from "./agent-runner-memory.js";
 import { buildReplyPayloads } from "./agent-runner-payloads.js";
 import { appendUsageLine, formatResponseUsageLine } from "./agent-runner-utils.js";
 import { createAudioAsVoiceBuffer, createBlockReplyPipeline } from "./block-reply-pipeline.js";
@@ -40,6 +43,7 @@ import { enqueueFollowupRun, type FollowupRun, type QueueSettings } from "./queu
 import { createReplyToModeFilterForChannel, resolveReplyToMode } from "./reply-threading.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { createTypingSignaler } from "./typing-mode.js";
+import type { TypingController } from "./typing.js";
 
 const BLOCK_REPLY_SEND_TIMEOUT_MS = 15_000;
 
@@ -174,8 +178,15 @@ export async function runReplyAgent(params: {
   };
 
   if (shouldSteer && isStreaming) {
-    const steered = queueEmbeddedPiMessage(followupRun.run.sessionId, followupRun.prompt);
+    const steered = queueEmbeddedPiMessage(followupRun.run.sessionId, followupRun.prompt, {
+      senderIsOwner: followupRun.run.senderIsOwner === true,
+    });
     if (steered && !shouldFollowup) {
+      // PLAN-55 Phase 1 review (item 9): the steered message joins the
+      // running turn; its correction is captured when that turn completes.
+      if (followupRun.run.senderIsOwner === true) {
+        rememberSteeredUserTurn(followupRun.run.sessionId, followupRun.userBody ?? commandBody);
+      }
       await touchActiveSessionEntry();
       typing.cleanup();
       return undefined;
@@ -390,11 +401,32 @@ export async function runReplyAgent(params: {
       cliSessionId,
     });
 
+    // PLAN-55 Phase 1: capture what the owner corrected this turn and tell
+    // them. Runs BEFORE the "nothing to send" early returns (review item 9:
+    // a block-streamed turn delivers its text directly and reaches them with
+    // no payload), so the line goes out on its own when there is nothing to
+    // append it to. Skipped inside for heartbeats, guests, non-owner and
+    // non-first-party sessions.
+    const memoryUpdatedLine = await runCorrectionCaptureAfterTurn({
+      cfg,
+      followupRun,
+      sessionKey,
+      commandBody,
+      replyText: payloadArray
+        .map((p) => p.text ?? "")
+        .filter(Boolean)
+        .join("\n"),
+      isHeartbeat,
+      chatType: sessionCtx.ChatType,
+      runStartedAt,
+    });
+    const lineOnly = memoryUpdatedLine ? { text: memoryUpdatedLine } : undefined;
+
     // Drain any late tool/block deliveries before deciding there's "nothing to send".
     // Otherwise, a late typing trigger (e.g. from a tool callback) can outlive the run and
     // keep the typing indicator stuck.
     if (payloadArray.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeWithFollowup(lineOnly, queueKey, runFollowupTurn);
     }
 
     const payloadResult = buildReplyPayloads({
@@ -417,7 +449,7 @@ export async function runReplyAgent(params: {
     didLogHeartbeatStrip = payloadResult.didLogHeartbeatStrip;
 
     if (replyPayloads.length === 0) {
-      return finalizeWithFollowup(undefined, queueKey, runFollowupTurn);
+      return finalizeWithFollowup(lineOnly, queueKey, runFollowupTurn);
     }
 
     await signalTypingIfNeeded(replyPayloads, typingSignals);
@@ -506,6 +538,11 @@ export async function runReplyAgent(params: {
     }
     if (verboseEnabled && activeIsNewSession) {
       finalPayloads = [{ text: `🧭 New session: ${followupRun.run.sessionId}` }, ...finalPayloads];
+    }
+    // The confirmation line rides the same footer path as the usage line
+    // (system-generated, never the model's words).
+    if (memoryUpdatedLine) {
+      finalPayloads = appendUsageLine(finalPayloads, memoryUpdatedLine);
     }
     if (responseUsageLine) {
       finalPayloads = appendUsageLine(finalPayloads, responseUsageLine);

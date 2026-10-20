@@ -24,6 +24,14 @@ Bitterbot features that can generate provider usage or paid API calls.
 - `/usage full` appends a usage footer to every reply, including **estimated cost** (API-key only).
 - `/usage tokens` shows tokens only; OAuth flows hide dollar cost.
 
+**Usage ledger (every call, priced)**
+
+- Control UI → Usage and `bitterbot gateway usage` show the local usage ledger: every model
+  call including memory embeddings, dream and extraction lanes, the task judge, speech and
+  search, per model, feature, session and day, with cache health, budgets and cost per outcome.
+- `/usage why` in chat explains a window against the one before it.
+- See [Usage tracking](/concepts/usage-tracking).
+
 **CLI usage windows (provider quotas)**
 
 - `bitterbot status --usage` and `bitterbot channels list` show provider **usage windows**
@@ -108,10 +116,11 @@ These are typically low-volume calls but still hit provider APIs:
 
 See [Models CLI](/cli/models).
 
-### 7) Compaction safeguard summarization
+### 7) Compaction summarization
 
-The compaction safeguard can summarize session history using the **current model**, which
-invokes provider APIs when it runs.
+Compaction (`agents.defaults.compaction.policy: "summary"`, the default) summarizes session
+history with a model, which invokes provider APIs when it runs. The old `safeguard` mode has
+no effect any more.
 
 See [Session management + compaction](/reference/session-management-compaction).
 

@@ -6,10 +6,16 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { MarketplaceEntry, MarketplaceFilters } from "./crystal-types.js";
 import type { PeerReputationManager } from "./peer-reputation.js";
+import {
+  aggregateAttestations,
+  currentAttestationCorpusPrefix,
+  listAttestations,
+  skillContentSha256,
+} from "./skill-evolution/attestation.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/skill-marketplace");
 
@@ -33,18 +39,56 @@ export class SkillMarketplace {
   private readonly executionTracker: SkillExecutionTracker;
   private readonly reputationManager: PeerReputationManager;
 
+  private readonly attesterWeight?: (attesterPubkey: string) => number;
+  private readonly contributorStatus?: (
+    peerPubkey: string,
+  ) => { tier: string; rank: number | null } | null;
+
   constructor(
     db: DatabaseSync,
     executionTracker: SkillExecutionTracker,
     reputationManager: PeerReputationManager,
+    deps: {
+      attesterWeight?: (attesterPubkey: string) => number;
+      /** PLAN-43 Phase 4: author standing lookup (contributor-status.ts). */
+      contributorStatus?: (peerPubkey: string) => { tier: string; rank: number | null } | null;
+    } = {},
   ) {
+    this.contributorStatus = deps.contributorStatus;
     this.db = db;
     this.executionTracker = executionTracker;
     this.reputationManager = reputationManager;
+    this.attesterWeight = deps.attesterWeight;
+  }
+
+  /** PLAN-43 Phase 3: verified-outcome aggregate for a crystal's content, from local + peer attestations. */
+  private attestationFor(text: string): MarketplaceEntry["attestation"] {
+    if (!this.attesterWeight) {
+      return undefined;
+    }
+    try {
+      const agg = aggregateAttestations(
+        listAttestations(this.db, skillContentSha256(text)),
+        this.attesterWeight,
+        Date.now(),
+        { corpusVersionPrefix: currentAttestationCorpusPrefix() },
+      );
+      return {
+        score: agg.score,
+        attesters: agg.counted,
+        regressions: agg.regressions,
+        unverified: agg.unverified,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   /**
-   * List a skill on the marketplace.
+   * List a skill in the FREE browse layer (search/trending). This is NOT
+   * the selling opt-in — that is `MarketplaceEconomics.setForSale`, and
+   * the two are deliberately decoupled (PLAN-43 invariant I2): making a
+   * skill browsable must never auto-enroll it into the paid pool.
    */
   listSkill(crystalId: string, description?: string): boolean {
     const row = this.db
@@ -63,7 +107,7 @@ export class SkillMarketplace {
   }
 
   /**
-   * Delist a skill from the marketplace.
+   * Remove a skill from the free browse layer (does not touch `for_sale`).
    */
   delistSkill(crystalId: string): boolean {
     const result = this.db
@@ -117,6 +161,11 @@ export class SkillMarketplace {
       case "top_rated":
         sql += ` ORDER BY COALESCE(steering_reward, 0) DESC, importance_score DESC`;
         break;
+      case "attested":
+        // Verified outcomes are computed post-SQL (content-hash join); pull
+        // the candidate set by verification/importance and re-rank in JS.
+        sql += ` ORDER BY COALESCE(is_verified, 0) DESC, importance_score DESC`;
+        break;
       default:
         sql += ` ORDER BY COALESCE(is_verified, 0) DESC, importance_score DESC`;
     }
@@ -124,7 +173,22 @@ export class SkillMarketplace {
     sql += ` LIMIT 50`;
 
     const rows = this.db.prepare(sql).all(...params) as Array<Record<string, unknown>>;
-    return this.rowsToEntries(rows, filters);
+    const entries = this.rowsToEntries(rows, filters);
+    if (sortBy === "attested") {
+      // Higher verified outcome first. No evidence ranks as 0 (unknown),
+      // below any positive measurement and ABOVE any negative one: a
+      // confirmed regression must sink beneath "not yet measured".
+      // Measured beats unmeasured on ties.
+      return entries.toSorted((a, b) => {
+        const sa = a.attestation?.score ?? 0;
+        const sb = b.attestation?.score ?? 0;
+        if (sb !== sa) {
+          return sb - sa;
+        }
+        return (b.attestation?.score === null ? 0 : 1) - (a.attestation?.score === null ? 0 : 1);
+      });
+    }
+    return entries;
   }
 
   /**
@@ -194,6 +258,9 @@ export class SkillMarketplace {
     }
 
     const entry = this.rowToEntry(row);
+    if (entry.authorPeerId && this.reputationManager.isBanned(entry.authorPeerId)) {
+      return null;
+    }
 
     // Version history
     const versions = this.db
@@ -255,7 +322,11 @@ export class SkillMarketplace {
       }
     }
 
-    let entries = rows.map((r) => this.rowToEntry(r, reputationCache));
+    let entries = rows
+      .map((r) => this.rowToEntry(r, reputationCache))
+      // PLAN-43 Phase 3 (§3.7): a banned publisher's skills leave the
+      // browse layer with the ban (PeerReputationManager.banPeer / auto-ban).
+      .filter((e) => !(e.authorPeerId && this.reputationManager.isBanned(e.authorPeerId)));
 
     if (filters?.minSuccessRate != null) {
       entries = entries.filter((e) => e.successRate >= (filters.minSuccessRate ?? 0));
@@ -307,6 +378,12 @@ export class SkillMarketplace {
       version: Number(row.skill_version ?? 1),
       authorPeerId: peerPubkey,
       authorReputation: rep?.reputationScore ?? 0.5,
+      ...(peerPubkey && this.contributorStatus
+        ? (() => {
+            const c = this.contributorStatus(peerPubkey);
+            return c ? { contributor: c } : {};
+          })()
+        : {}),
       successRate: metrics.successRate,
       downloadCount: Number(row.download_count ?? 0),
       tags,
@@ -314,6 +391,10 @@ export class SkillMarketplace {
       createdAt: Number(row.created_at ?? 0),
       isVerified: row.is_verified === 1,
       verifiedBy: row.verified_by ? String(row.verified_by as string) : null,
+      ...(() => {
+        const attestation = this.attestationFor(String((row.text as string) ?? ""));
+        return attestation ? { attestation } : {};
+      })(),
     };
   }
 }

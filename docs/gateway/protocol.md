@@ -77,6 +77,25 @@ Gateway → Client:
 }
 ```
 
+`hello-ok.server.version` is the gateway's package version, and
+`hello-ok.snapshot.runtime` (also returned by the `status` method as `runtime`)
+describes the gateway process:
+
+```json
+{
+  "runtime": {
+    "version": "1.5.0",
+    "uptimeMs": 3725000,
+    "platform": "linux",
+    "arch": "x64",
+    "nodeVersion": "22.12.0",
+    "installKind": "tarball"
+  }
+}
+```
+
+`installKind` is one of `git`, `package`, `container`, `tarball`, or `unknown`.
+
 When a device token is issued, `hello-ok` also includes:
 
 ```json
@@ -186,8 +205,9 @@ The Gateway treats these as **claims** and enforces server-side allowlists.
 
 ## Auth
 
-- If `BITTERBOT_GATEWAY_TOKEN` (or `--token`) is set, `connect.params.auth.token`
-  must match or the socket is closed.
+- If a gateway token is set (`gateway.auth.token` in the config, else
+  `BITTERBOT_GATEWAY_TOKEN`, or `--token`), `connect.params.auth.token` must
+  match or the socket is closed. The config value wins over the environment.
 - After pairing, the Gateway issues a **device token** scoped to the connection
   role + scopes. It is returned in `hello-ok.auth.deviceToken` and should be
   persisted by the client for future connects.

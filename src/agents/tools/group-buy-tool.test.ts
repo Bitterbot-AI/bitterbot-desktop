@@ -1,11 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AnyAgentTool } from "./common.js";
 import { ClearinghouseService } from "../../commerce/clearinghouse.js";
 import { generateKeyPair, type KeyPair, makeEnvelope } from "../../commerce/envelope.js";
 import { canonicalizeSku } from "../../commerce/sku.js";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { runMigrations } from "../../memory/migrations.js";
+import type { AnyAgentTool } from "./common.js";
 import { createGroupBuyTool } from "./group-buy-tool.js";
 
 const SKU = canonicalizeSku({ category: "keycap-set", colorway: "nautilus", version: 1 });

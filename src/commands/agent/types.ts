@@ -1,4 +1,4 @@
-import type { ClientToolDefinition } from "../../agents/pi-embedded-runner/run/params.js";
+import type { ClientToolDefinition } from "../../agents/embedded-runner/run/params.js";
 import type { ChannelOutboundTargetMode } from "../../channels/plugins/types.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
 
@@ -67,12 +67,20 @@ export type AgentCommandOpts = {
   groupSpace?: string | null;
   /** Parent session key for subagent policy inheritance. */
   spawnedBy?: string | null;
+  /**
+   * `false` when the run was started on behalf of a sender who is not an
+   * owner (a sub-agent or wakeup of a non-owner run): owner-only tools are
+   * withheld. Absent means owner, as for every CLI and gateway caller.
+   */
+  senderIsOwner?: boolean;
   deliveryTargetMode?: ChannelOutboundTargetMode;
   bestEffortDeliver?: boolean;
   abortSignal?: AbortSignal;
   lane?: string;
   runId?: string;
   extraSystemPrompt?: string;
+  /** PLAN-44 Phase 2: scratch workspace; honoured for skill-evolve validation sessions only. */
+  workspaceDir?: string;
   inputProvenance?: InputProvenance;
   /** Per-call stream param overrides (best-effort). */
   streamParams?: AgentStreamParams;

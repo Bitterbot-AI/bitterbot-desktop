@@ -94,6 +94,11 @@ export const SessionsDeleteParamsSchema = Type.Object(
   {
     key: NonEmptyString,
     deleteTranscript: Type.Optional(Type.Boolean()),
+    /**
+     * PLAN-55 Phase 3: who asked. `system` (automatic housekeeping) gets the
+     * weaker memory cascade; omitted means the owner.
+     */
+    initiator: Type.Optional(Type.Union([Type.Literal("owner"), Type.Literal("system")])),
   },
   { additionalProperties: false },
 );
@@ -114,10 +119,83 @@ export const SessionsUsageParamsSchema = Type.Object(
     startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
     /** End date for range filter (YYYY-MM-DD). */
     endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    /**
+     * Trailing window in days (1-365), used when startDate/endDate are omitted.
+     * The Control UI day chips send this; it must be accepted here because the
+     * validator runs with additionalProperties:false and removeAdditional:false.
+     */
+    days: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
     /** Maximum sessions to return (default 50). */
     limit: Type.Optional(Type.Integer({ minimum: 1 })),
     /** Include context weight breakdown (systemPromptReport). */
     includeContextWeight: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+// PLAN-50: usage ledger RPCs.
+const UsageKindSchema = Type.Union([
+  Type.Literal("chat"),
+  Type.Literal("embedding"),
+  Type.Literal("vision"),
+  Type.Literal("audio"),
+  Type.Literal("tts"),
+  Type.Literal("search"),
+]);
+
+export const UsageLedgerSummaryParamsSchema = Type.Object(
+  {
+    /** Trailing window in days (1-365); default 30. Ignored when startDate/endDate are set. */
+    days: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
+    startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    agentId: Type.Optional(NonEmptyString),
+    feature: Type.Optional(NonEmptyString),
+    kind: Type.Optional(UsageKindSchema),
+    /** Restrict to one session (the chat status strip uses this). */
+    sessionKey: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+/** PLAN-50 Phase 6: re-price a window under another model. */
+export const UsageLedgerWhatIfParamsSchema = Type.Object(
+  {
+    days: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
+    startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    agentId: Type.Optional(NonEmptyString),
+    feature: Type.Optional(NonEmptyString),
+    provider: NonEmptyString,
+    model: NonEmptyString,
+  },
+  { additionalProperties: false },
+);
+
+/** PLAN-50 Phase 6: explain a window against the one before it. */
+export const UsageLedgerExplainParamsSchema = Type.Object(
+  {
+    days: Type.Optional(Type.Integer({ minimum: 1, maximum: 365 })),
+    startDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    endDate: Type.Optional(Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" })),
+    agentId: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+export const UsageLedgerEventsParamsSchema = Type.Object(
+  {
+    /** Page size (default 50, max 500). */
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+    /** Return rows with id < beforeId (cursor from a previous page). */
+    beforeId: Type.Optional(Type.Integer({ minimum: 1 })),
+    agentId: Type.Optional(NonEmptyString),
+    feature: Type.Optional(NonEmptyString),
+    kind: Type.Optional(UsageKindSchema),
+    provider: Type.Optional(NonEmptyString),
+    model: Type.Optional(NonEmptyString),
+    sessionKey: Type.Optional(NonEmptyString),
+    runId: Type.Optional(NonEmptyString),
   },
   { additionalProperties: false },
 );

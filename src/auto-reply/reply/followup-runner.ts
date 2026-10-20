@@ -1,20 +1,20 @@
 import crypto from "node:crypto";
-import type { TypingMode } from "../../config/types.js";
-import type { OriginatingChannelType } from "../templating.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
-import type { FollowupRun } from "./queue.js";
-import type { TypingController } from "./typing.js";
 import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js";
 import { lookupContextTokens } from "../../agents/context.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
+import { runEmbeddedPiAgent } from "../../agents/embedded.js";
 import { runWithModelFallback } from "../../agents/model-fallback.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
 import { resolveAgentIdFromSessionKey, type SessionEntry } from "../../config/sessions.js";
+import type { TypingMode } from "../../config/types.js";
 import { logVerbose } from "../../globals.js";
 import { registerAgentRunContext } from "../../infra/agent-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
+import type { OriginatingChannelType } from "../templating.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
+import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import { runCorrectionCaptureAfterTurn } from "./agent-runner-memory.js";
+import type { FollowupRun } from "./queue.js";
 import {
   applyReplyThreading,
   filterMessagingToolDuplicates,
@@ -24,6 +24,7 @@ import { resolveReplyToMode } from "./reply-threading.js";
 import { isRoutableChannel, routeReply } from "./route-reply.js";
 import { incrementRunCompactionCount, persistRunSessionUsage } from "./session-run-accounting.js";
 import { createTypingSignaler } from "./typing-mode.js";
+import type { TypingController } from "./typing.js";
 
 export function createFollowupRunner(params: {
   opts?: GetReplyOptions;
@@ -120,6 +121,7 @@ export function createFollowupRunner(params: {
         });
       }
       let autoCompactionCompleted = false;
+      const runStartedAt = Date.now();
       let runResult: Awaited<ReturnType<typeof runEmbeddedPiAgent>>;
       let fallbackProvider = queued.run.provider;
       let fallbackModel = queued.run.model;
@@ -147,6 +149,7 @@ export function createFollowupRunner(params: {
               groupId: queued.run.groupId,
               groupChannel: queued.run.groupChannel,
               groupSpace: queued.run.groupSpace,
+              senderIsOwner: queued.run.senderIsOwner,
               senderId: queued.run.senderId,
               senderName: queued.run.senderName,
               senderUsername: queued.run.senderUsername,
@@ -216,7 +219,26 @@ export function createFollowupRunner(params: {
       }
 
       const payloadArray = runResult.payloads ?? [];
+      // PLAN-55 Phase 1 review (item 9): a queued owner message is a turn
+      // like any other; its correction is captured here, and the line goes
+      // out on its own when the turn produced nothing to append it to.
+      const memoryUpdatedLine = await runCorrectionCaptureAfterTurn({
+        cfg: queued.run.config,
+        followupRun: queued,
+        sessionKey: queued.run.sessionKey,
+        commandBody: queued.prompt,
+        replyText: payloadArray
+          .map((p) => p.text ?? "")
+          .filter(Boolean)
+          .join("\n"),
+        isHeartbeat: false,
+        chatType: queued.originatingChatType,
+        runStartedAt,
+      });
       if (payloadArray.length === 0) {
+        if (memoryUpdatedLine) {
+          await sendFollowupPayloads([{ text: memoryUpdatedLine }], queued);
+        }
         return;
       }
       const sanitizedPayloads = payloadArray.flatMap((payload) => {
@@ -260,7 +282,13 @@ export function createFollowupRunner(params: {
       const finalPayloads = suppressMessagingToolReplies ? [] : dedupedPayloads;
 
       if (finalPayloads.length === 0) {
+        if (memoryUpdatedLine) {
+          await sendFollowupPayloads([{ text: memoryUpdatedLine }], queued);
+        }
         return;
+      }
+      if (memoryUpdatedLine) {
+        finalPayloads.push({ text: memoryUpdatedLine });
       }
 
       if (autoCompactionCompleted) {

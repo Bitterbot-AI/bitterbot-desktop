@@ -1,36 +1,47 @@
-import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
 import { withSpan } from "../observability/otel.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { agentRuntimeHandlers } from "./server-methods/agent-runtime.js";
 import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
+import { browserLiveHandlers } from "./server-methods/browser-live.js";
+import { browserReplayHandlers } from "./server-methods/browser-replay.js";
 import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
 import { circlesHandlers } from "./server-methods/circles.js";
 import { computeMeshHandlers } from "./server-methods/compute-mesh.js";
+import { computeHandlers } from "./server-methods/compute.js";
 import { configHandlers } from "./server-methods/config.js";
 import { connectHandlers } from "./server-methods/connect.js";
 import { cronHandlers } from "./server-methods/cron.js";
+import { curiosityHandlers } from "./server-methods/curiosity.js";
 import { deviceHandlers } from "./server-methods/devices.js";
 import { doctorHandlers } from "./server-methods/doctor.js";
 import { dreamHandlers } from "./server-methods/dream.js";
 import { execApprovalsHandlers } from "./server-methods/exec-approvals.js";
 import { forageHandlers } from "./server-methods/forage.js";
+import { genomeHandlers } from "./server-methods/genome.js";
 import { guardsHandlers } from "./server-methods/guards.js";
 import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
 import { managementHandlers } from "./server-methods/management.js";
+import { memoryHandlers } from "./server-methods/memory.js";
 import { modelsAuthHandlers } from "./server-methods/models-auth.js";
 import { modelsHandlers } from "./server-methods/models.js";
+import { monitorHandlers } from "./server-methods/monitors.js";
 import { nodeHandlers } from "./server-methods/nodes.js";
 import { projectsHandlers } from "./server-methods/projects.js";
+import { reviewHandlers } from "./server-methods/review.js";
 import { sendHandlers } from "./server-methods/send.js";
 import { sessionsHandlers } from "./server-methods/sessions.js";
 import { skillsHandlers } from "./server-methods/skills.js";
+import { spendGrantHandlers } from "./server-methods/spend-grants.js";
 import { systemHandlers } from "./server-methods/system.js";
 import { talkHandlers } from "./server-methods/talk.js";
+import { taskHandlers } from "./server-methods/tasks.js";
+import { toolOutputHandlers } from "./server-methods/tool-output.js";
 import { ttsHandlers } from "./server-methods/tts.js";
+import type { GatewayRequestHandlers, GatewayRequestOptions } from "./server-methods/types.js";
 import { updateHandlers } from "./server-methods/update.js";
 import { usageHandlers } from "./server-methods/usage.js";
 import { voicewakeHandlers } from "./server-methods/voicewake.js";
@@ -38,6 +49,7 @@ import { walletHandlers } from "./server-methods/wallet.js";
 import { webHandlers } from "./server-methods/web.js";
 import { wizardHandlers } from "./server-methods/wizard.js";
 import { workspaceHandlers } from "./server-methods/workspace.js";
+import { isSetupOnlyScopes, SETUP_METHODS } from "./setup-token.js";
 
 const ADMIN_SCOPE = "operator.admin";
 const READ_SCOPE = "operator.read";
@@ -49,6 +61,11 @@ const APPROVAL_METHODS = new Set([
   "exec.approval.request",
   "exec.approval.waitDecision",
   "exec.approval.resolve",
+  // PLAN-53 Track B: held spend / publish actions.
+  "review.list",
+  "review.get",
+  "review.resolve",
+  "review.spends",
 ]);
 const NODE_ROLE_METHODS = new Set(["node.invoke.result", "node.event", "skills.bins"]);
 const PAIRING_METHODS = new Set([
@@ -72,12 +89,27 @@ const READ_METHODS = new Set([
   "soapbox.job",
   "soapbox.artifact.get",
   "health",
+  // PLAN-57: reading compute state; compute.approve, compute.pause and
+  // compute.trust stay admin-only.
+  "compute.status",
+  "compute.jobs",
+  "compute.quote",
+  "curiosity.status",
+  "genome.temperament.status",
+  "curiosity.list",
   "doctor.findings",
   "logs.tail",
   "channels.status",
   "status",
   "usage.status",
   "usage.cost",
+  "sessions.usage",
+  "sessions.usage.timeseries",
+  "sessions.usage.logs",
+  "usage.ledger.summary",
+  "usage.ledger.events",
+  "usage.ledger.whatif",
+  "usage.ledger.explain",
   "tts.status",
   "tts.providers",
   "models.list",
@@ -109,6 +141,7 @@ const READ_METHODS = new Set([
   "wallet.getBalance",
   "wallet.getHistory",
   "wallet.getConfig",
+  "wallet.listTopUps",
   "wallet.fund",
   "dream.status",
   "dream.history",
@@ -123,10 +156,20 @@ const READ_METHODS = new Set([
   "marketplace.trending",
   "marketplace.recommendations",
   "marketplace.detail",
+  "marketplace.commerce",
+  "marketplace.bonds",
+  "marketplace.contributors",
   "dream.curiosityReward",
   "dream.suggestSkills",
   "dream.trigger",
   "memory.retrievalHealth",
+  "memory.list",
+  "memory.get",
+  "memory.preferences",
+  "memory.audit",
+  "memory.facts",
+  // PLAN-55 Phase 3: the cascade preview changes nothing.
+  "memory.forgetPreview",
   "forage.tape",
   "forage.stats",
   "forage.post",
@@ -150,6 +193,8 @@ const READ_METHODS = new Set([
   "cron.list",
   "cron.status",
   "cron.runs",
+  "monitors.list",
+  "tasks.list",
   "guards.status",
 ]);
 const WRITE_METHODS = new Set([
@@ -157,10 +202,18 @@ const WRITE_METHODS = new Set([
   "soapbox.cancel",
   "soapbox.artifact.put",
   "send",
+  "curiosity.pause",
+  "curiosity.resume",
+  "curiosity.dismiss",
+  "curiosity.ask",
+  "curiosity.runNow",
   "agent",
   "agent.wait",
   "wake",
   "talk.mode",
+  // Each call spends speech provider credit.
+  "talk.transcribe",
+  "talk.speak",
   "tts.enable",
   "tts.disable",
   "tts.convert",
@@ -170,6 +223,16 @@ const WRITE_METHODS = new Set([
   "chat.send",
   "chat.abort",
   "browser.request",
+  // The live view shows whatever the agent's browser shows, logged-in pages
+  // included, so it sits with browser.request, not with the read methods.
+  "browser.live.start",
+  "browser.live.stop",
+  "browser.live.control",
+  "browser.live.input",
+  "browser.replay.list",
+  "browser.replay.frames",
+  "browser.replay.frame",
+  "browser.replay.delete",
   "projects.create",
   "projects.update",
   "projects.delete",
@@ -178,6 +241,10 @@ const WRITE_METHODS = new Set([
   "workspace.write",
   "dream.trigger",
   "dream.utility.rate",
+  "marketplace.listForSale",
+  "marketplace.delist",
+  "marketplace.postBond",
+  "marketplace.contributorClearFlag",
   "management.propagateBan",
   "circles.create",
   "circles.invite",
@@ -221,6 +288,11 @@ const WRITE_METHODS = new Set([
   "cron.update",
   "cron.remove",
   "cron.run",
+  "monitors.add",
+  "monitors.update",
+  "monitors.remove",
+  "monitors.check",
+  "tasks.stop",
 ]);
 
 /** Exported for tests: the scope gate every gateway RPC passes through. */
@@ -241,6 +313,13 @@ export function authorizeGatewayMethod(method: string, client: GatewayRequestOpt
   }
   if (role !== "operator") {
     return errorShape(ErrorCodes.INVALID_REQUEST, `unauthorized role: ${role}`);
+  }
+  // PLAN-56 Phase 4: a setup-token connection may drive the wizard and
+  // nothing else (src/gateway/setup-token.ts).
+  if (isSetupOnlyScopes(scopes)) {
+    return SETUP_METHODS.has(method)
+      ? null
+      : errorShape(ErrorCodes.INVALID_REQUEST, "setup token grants wizard access only");
   }
   if (scopes.includes(ADMIN_SCOPE)) {
     return null;
@@ -326,14 +405,25 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...agentRuntimeHandlers,
   ...agentsHandlers,
   ...browserHandlers,
+  ...browserLiveHandlers,
+  ...browserReplayHandlers,
+  ...toolOutputHandlers,
+  ...reviewHandlers,
+  ...computeHandlers,
   ...projectsHandlers,
   ...walletHandlers,
   ...workspaceHandlers,
   ...dreamHandlers,
+  ...memoryHandlers,
+  ...curiosityHandlers,
+  ...genomeHandlers,
   ...circlesHandlers,
   ...forageHandlers,
+  ...spendGrantHandlers,
   ...managementHandlers,
   ...cronHandlers,
+  ...monitorHandlers,
+  ...taskHandlers,
 };
 
 export async function handleGatewayRequest(

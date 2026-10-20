@@ -5,10 +5,10 @@
  * Operates on the skill_edges table to build a skill relationship graph.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { SkillEdge, SkillEdgeType } from "./crystal-types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { SkillEdge, SkillEdgeType } from "./crystal-types.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
 const log = createSubsystemLogger("memory/discovery-agent");

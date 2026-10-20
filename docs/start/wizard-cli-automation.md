@@ -19,6 +19,7 @@ Use `--non-interactive` to automate `bitterbot onboard`.
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --mode local \
   --auth-choice apiKey \
   --anthropic-api-key "$ANTHROPIC_API_KEY" \
@@ -37,6 +38,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="Gemini example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice gemini-api-key \
       --gemini-api-key "$GEMINI_API_KEY" \
@@ -47,6 +49,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="Z.AI example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice zai-api-key \
       --zai-api-key "$ZAI_API_KEY" \
@@ -57,6 +60,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="Vercel AI Gateway example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice ai-gateway-api-key \
       --ai-gateway-api-key "$AI_GATEWAY_API_KEY" \
@@ -67,6 +71,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="Cloudflare AI Gateway example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice cloudflare-ai-gateway-api-key \
       --cloudflare-ai-gateway-account-id "your-account-id" \
@@ -79,6 +84,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="Moonshot example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice moonshot-api-key \
       --moonshot-api-key "$MOONSHOT_API_KEY" \
@@ -89,6 +95,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="Synthetic example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice synthetic-api-key \
       --synthetic-api-key "$SYNTHETIC_API_KEY" \
@@ -99,6 +106,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="NEAR AI Cloud example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice nearai-api-key \
       --nearai-api-key "$NEARAI_API_KEY" \
@@ -109,6 +117,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="OpenCode Zen example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice opencode-zen \
       --opencode-zen-api-key "$OPENCODE_API_KEY" \
@@ -119,6 +128,7 @@ Add `--json` for a machine-readable summary.
   <Accordion title="Custom provider example">
     ```bash
     bitterbot onboard --non-interactive \
+      --accept-risk \
       --mode local \
       --auth-choice custom-api-key \
       --custom-base-url "https://llm.example.com/v1" \

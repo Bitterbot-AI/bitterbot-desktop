@@ -178,6 +178,14 @@ import {
   SessionsResolveParamsSchema,
   type SessionsUsageParams,
   SessionsUsageParamsSchema,
+  type UsageLedgerEventsParams,
+  UsageLedgerEventsParamsSchema,
+  type UsageLedgerExplainParams,
+  UsageLedgerExplainParamsSchema,
+  type UsageLedgerSummaryParams,
+  UsageLedgerSummaryParamsSchema,
+  type UsageLedgerWhatIfParams,
+  UsageLedgerWhatIfParamsSchema,
   type ShutdownEvent,
   ShutdownEventSchema,
   type SkillsBinsParams,
@@ -194,6 +202,14 @@ import {
   type SkillsMetricsParams,
   SkillsMetricsParamsSchema,
   type SkillsMetricsResult,
+  type SkillsEvolutionCorpusReviewParams,
+  SkillsEvolutionCorpusReviewParamsSchema,
+  type SkillsEvolutionFeedbackParams,
+  SkillsEvolutionFeedbackParamsSchema,
+  type SkillsEvolutionCalibrationExportParams,
+  SkillsEvolutionCalibrationExportParamsSchema,
+  type SkillsEvolutionCalibrationScoreParams,
+  SkillsEvolutionCalibrationScoreParamsSchema,
   type SkillsPromoteParams,
   SkillsPromoteParamsSchema,
   type SkillsPromoteResult,
@@ -223,6 +239,8 @@ import {
   type SkillsValidateResult,
   type Snapshot,
   SnapshotSchema,
+  type GatewayRuntime,
+  GatewayRuntimeSchema,
   type StateVersion,
   StateVersionSchema,
   type TalkModeParams,
@@ -327,6 +345,18 @@ export const validateSessionsCompactParams = ajv.compile<SessionsCompactParams>(
 );
 export const validateSessionsUsageParams =
   ajv.compile<SessionsUsageParams>(SessionsUsageParamsSchema);
+export const validateUsageLedgerSummaryParams = ajv.compile<UsageLedgerSummaryParams>(
+  UsageLedgerSummaryParamsSchema,
+);
+export const validateUsageLedgerEventsParams = ajv.compile<UsageLedgerEventsParams>(
+  UsageLedgerEventsParamsSchema,
+);
+export const validateUsageLedgerWhatIfParams = ajv.compile<UsageLedgerWhatIfParams>(
+  UsageLedgerWhatIfParamsSchema,
+);
+export const validateUsageLedgerExplainParams = ajv.compile<UsageLedgerExplainParams>(
+  UsageLedgerExplainParamsSchema,
+);
 export const validateConfigGetParams = ajv.compile<ConfigGetParams>(ConfigGetParamsSchema);
 export const validateConfigSetParams = ajv.compile<ConfigSetParams>(ConfigSetParamsSchema);
 export const validateConfigApplyParams = ajv.compile<ConfigApplyParams>(ConfigApplyParamsSchema);
@@ -390,6 +420,15 @@ export const validateSkillsPublishParams =
 export const validateSkillsManageParams = ajv.compile<SkillsManageParams>(SkillsManageParamsSchema);
 export const validateSkillsPromoteParams =
   ajv.compile<SkillsPromoteParams>(SkillsPromoteParamsSchema);
+export const validateSkillsEvolutionCorpusReviewParams =
+  ajv.compile<SkillsEvolutionCorpusReviewParams>(SkillsEvolutionCorpusReviewParamsSchema);
+export const validateSkillsEvolutionFeedbackParams = ajv.compile<SkillsEvolutionFeedbackParams>(
+  SkillsEvolutionFeedbackParamsSchema,
+);
+export const validateSkillsEvolutionCalibrationExportParams =
+  ajv.compile<SkillsEvolutionCalibrationExportParams>(SkillsEvolutionCalibrationExportParamsSchema);
+export const validateSkillsEvolutionCalibrationScoreParams =
+  ajv.compile<SkillsEvolutionCalibrationScoreParams>(SkillsEvolutionCalibrationScoreParamsSchema);
 export const validateSkillsRollbackParams = ajv.compile<SkillsRollbackParams>(
   SkillsRollbackParamsSchema,
 );
@@ -486,6 +525,7 @@ export {
   GatewayFrameSchema,
   PresenceEntrySchema,
   SnapshotSchema,
+  GatewayRuntimeSchema,
   ErrorShapeSchema,
   StateVersionSchema,
   AgentEventSchema,
@@ -510,6 +550,10 @@ export {
   SessionsDeleteParamsSchema,
   SessionsCompactParamsSchema,
   SessionsUsageParamsSchema,
+  UsageLedgerSummaryParamsSchema,
+  UsageLedgerEventsParamsSchema,
+  UsageLedgerWhatIfParamsSchema,
+  UsageLedgerExplainParamsSchema,
   ConfigGetParamsSchema,
   ConfigSetParamsSchema,
   ConfigApplyParamsSchema,
@@ -563,6 +607,8 @@ export {
   SkillsManageParamsSchema,
   SkillsManageResultSchema,
   SkillsMetricsParamsSchema,
+  SkillsEvolutionCorpusReviewParamsSchema,
+  SkillsEvolutionFeedbackParamsSchema,
   SkillsPromoteParamsSchema,
   SkillsPromoteResultSchema,
   SkillsPublishParamsSchema,
@@ -596,6 +642,7 @@ export type {
   EventFrame,
   PresenceEntry,
   Snapshot,
+  GatewayRuntime,
   ErrorShape,
   StateVersion,
   AgentEvent,
@@ -663,6 +710,10 @@ export type {
   SkillsManageResult,
   SkillsMetricsParams,
   SkillsMetricsResult,
+  SkillsEvolutionCorpusReviewParams,
+  SkillsEvolutionFeedbackParams,
+  SkillsEvolutionCalibrationExportParams,
+  SkillsEvolutionCalibrationScoreParams,
   SkillsPromoteParams,
   SkillsPromoteResult,
   SkillsPublishParams,
@@ -692,6 +743,10 @@ export type {
   SessionsDeleteParams,
   SessionsCompactParams,
   SessionsUsageParams,
+  UsageLedgerSummaryParams,
+  UsageLedgerEventsParams,
+  UsageLedgerWhatIfParams,
+  UsageLedgerExplainParams,
   ExecApprovalsGetParams,
   ExecApprovalsSetParams,
   ExecApprovalsSnapshot,

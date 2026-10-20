@@ -105,6 +105,12 @@ export class SkillLifecycleStore {
     success: boolean;
     timestamp?: number;
     origin?: SkillOrigin;
+    /**
+     * B3: the skill was opened but the run's outcome is not evidence either
+     * way (environment failure, unknown label). Counts as usage only —
+     * neither a success nor an error is charged to the skill.
+     */
+    indeterminate?: boolean;
   }): void {
     const skillName = params.skillName.trim();
     if (!skillName) {
@@ -112,8 +118,8 @@ export class SkillLifecycleStore {
     }
     const ts = params.timestamp ?? Date.now();
     const origin = params.origin ?? "unknown";
-    const successDelta = params.success ? 1 : 0;
-    const errorDelta = params.success ? 0 : 1;
+    const successDelta = params.indeterminate ? 0 : params.success ? 1 : 0;
+    const errorDelta = params.indeterminate ? 0 : params.success ? 0 : 1;
 
     this.db
       .prepare(

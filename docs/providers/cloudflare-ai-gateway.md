@@ -41,6 +41,7 @@ bitterbot onboard --auth-choice cloudflare-ai-gateway-api-key
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --mode local \
   --auth-choice cloudflare-ai-gateway-api-key \
   --cloudflare-ai-gateway-account-id "your-account-id" \

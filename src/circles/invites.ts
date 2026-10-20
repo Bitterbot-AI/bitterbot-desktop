@@ -20,8 +20,8 @@
  * cannot be upgraded in transit. Redemption is default single-use.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { KeyPair } from "../commerce/envelope.js";
 import type { JsonValue } from "../commerce/sku.js";
 import type { CircleScope } from "../memory/circles-store.js";
@@ -375,6 +375,19 @@ export function redeemInvite(
 }
 
 /** Revoke an open invite (inviter changed their mind). */
+/**
+ * PLAN-43 Phase 4: a banned peer loses every open invite minted for it.
+ * Returns the number revoked.
+ */
+export function revokeInvitesForTarget(db: DatabaseSync, targetPubkey: string): number {
+  const r = db
+    .prepare(
+      `UPDATE circle_invites SET status = 'revoked' WHERE target_pubkey = ? AND status = 'open'`,
+    )
+    .run(targetPubkey) as { changes: number };
+  return r.changes;
+}
+
 export function revokeInvite(db: DatabaseSync, inviteId: string): void {
   db.prepare(
     `UPDATE circle_invites SET status = 'revoked' WHERE invite_id = ? AND status = 'open'`,

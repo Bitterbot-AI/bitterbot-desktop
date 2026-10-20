@@ -1,10 +1,7 @@
-import type { BitterbotConfig } from "../config/config.js";
-import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
-import type { OrchestratorBridgeLike } from "../memory/skill-network-bridge.js";
-import type { SkillNetworkBridge } from "../memory/skill-network-bridge.js";
-import type { PluginHookHandlerMap } from "../plugins/types.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { loadConfig } from "../config/config.js";
+import type { OrchestratorBridge } from "../infra/orchestrator-bridge.js";
 import { getMemorySearchManager } from "../memory/index.js";
 import {
   ManagementKeyAuth,
@@ -12,7 +9,10 @@ import {
   loadGenesisTrustList,
 } from "../memory/management-key-auth.js";
 import { ManagementNodeService } from "../memory/management-node-service.js";
+import type { OrchestratorBridgeLike } from "../memory/skill-network-bridge.js";
+import type { SkillNetworkBridge } from "../memory/skill-network-bridge.js";
 import { getGlobalPluginRegistry } from "../plugins/hook-runner-global.js";
+import type { PluginHookHandlerMap } from "../plugins/types.js";
 
 export type MemoryBackendResult = {
   skillNetworkBridge: SkillNetworkBridge | null;

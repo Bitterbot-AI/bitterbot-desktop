@@ -1,4 +1,3 @@
-import type { Snapshot } from "../protocol/index.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { getHealthSnapshot, type HealthSummary } from "../../commands/health.js";
 import { CONFIG_PATH, STATE_DIR, loadConfig } from "../../config/config.js";
@@ -6,6 +5,8 @@ import { resolveMainSessionKey } from "../../config/sessions.js";
 import { listSystemPresence } from "../../infra/system-presence.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { resolveGatewayAuth } from "../auth.js";
+import type { Snapshot } from "../protocol/index.js";
+import { buildGatewayRuntimeInfo } from "../runtime-info.js";
 
 let presenceVersion = 1;
 let healthVersion = 1;
@@ -29,6 +30,7 @@ export function buildGatewaySnapshot(): Snapshot {
     health: emptyHealth,
     stateVersion: { presence: presenceVersion, health: healthVersion },
     uptimeMs,
+    runtime: buildGatewayRuntimeInfo(),
     // Surface resolved paths so UIs can display the true config location.
     configPath: CONFIG_PATH,
     stateDir: STATE_DIR,

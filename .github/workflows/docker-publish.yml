@@ -47,7 +47,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
@@ -59,13 +59,23 @@ jobs:
 
       - name: Build and push by digest
         id: build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          # OCI labels in the Dockerfile (version, revision, source).
+          build-args: |
+            BITTERBOT_VERSION=${{ inputs.version }}
+            BITTERBOT_REVISION=${{ github.sha }}
           outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=docker-${{ matrix.slug }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.slug }}
+          # ignore-error: the layer-cache export to the Actions cache service is an
+          # optimisation, not a deliverable. buildx treats a cache-exporter error as
+          # fatal, and on 2026-09-23 a transient `error writing layer blob: not_found`
+          # from that service failed the amd64 job AFTER the image had already been
+          # pushed by digest, which skipped the merge and left v1.1.0 untagged on GHCR
+          # while a critical-severity advisory pointed users at it.
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.slug }},ignore-error=true
 
       - name: Export digest
         run: |
@@ -133,3 +143,26 @@ jobs:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.digest.outputs.digest }}
           push-to-registry: true
+
+  # PLAN-56 Phase 2: the zero-edit docker-compose.yml is served from the
+  # release (releases/latest/download/docker-compose.yml), never from main,
+  # and it is attached LAST, only after the multi-arch image is pushed and
+  # tagged. Containers count a release as "available" only when it carries
+  # this asset, so the update prompt can never point at an image that is not
+  # on GHCR yet.
+  compose-asset:
+    needs: merge
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: v${{ inputs.version }}
+      - name: Attach docker-compose.yml to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ inputs.version }}" docker-compose.yml \
+            --repo "${{ github.repository }}" --clobber

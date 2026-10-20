@@ -1,10 +1,3 @@
-import type {
-  BitterbotHookMetadata,
-  HookEntry,
-  HookInstallSpec,
-  HookInvocationPolicy,
-  ParsedHookFrontmatter,
-} from "./types.js";
 import { parseFrontmatterBlock } from "../markdown/frontmatter.js";
 import {
   getFrontmatterString,
@@ -15,6 +8,13 @@ import {
   resolveBitterbotManifestOs,
   resolveBitterbotManifestRequires,
 } from "../shared/frontmatter.js";
+import type {
+  BitterbotHookMetadata,
+  HookEntry,
+  HookInstallSpec,
+  HookInvocationPolicy,
+  ParsedHookFrontmatter,
+} from "./types.js";
 
 export function parseFrontmatter(content: string): ParsedHookFrontmatter {
   return parseFrontmatterBlock(content);

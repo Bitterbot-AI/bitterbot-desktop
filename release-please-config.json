@@ -4,6 +4,8 @@
     ".": {
       "release-type": "node",
       "include-component-in-tag": false,
+      "draft": true,
+      "force-tag-creation": true,
       "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
@@ -17,18 +19,28 @@
           "jsonpath": "$.version"
         },
         {
+          "type": "toml",
+          "path": "desktop/src-tauri/Cargo.toml",
+          "jsonpath": "$.package.version"
+        },
+        {
+          "type": "toml",
+          "path": "desktop/src-tauri/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='bitterbot-desktop')].version"
+        },
+        {
           "type": "json",
           "path": "extensions/discord/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "extensions/google-antigravity-auth/package.json",
+          "path": "extensions/email/package.json",
           "jsonpath": "$.version"
         },
         {
           "type": "json",
-          "path": "extensions/google-gemini-cli-auth/package.json",
+          "path": "extensions/mcp/package.json",
           "jsonpath": "$.version"
         },
         {
@@ -54,6 +66,11 @@
         {
           "type": "json",
           "path": "extensions/whatsapp/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "extensions/x/package.json",
           "jsonpath": "$.version"
         }
       ]

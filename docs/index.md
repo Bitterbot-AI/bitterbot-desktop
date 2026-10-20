@@ -49,14 +49,15 @@ its memory on their disk, its network behavior documented and switchable.
   whether its outputs actually get used ([dream engine](/memory/dream-engine))
 - **Hormonal modulation** — dopamine/cortisol/oxytocin dynamics shape mood,
   risk appetite, and recall ([emotional system](/memory/emotional-system))
-- **An economy** — publish skills, earn USDC, pay for paywalled APIs via
-  x402 micropayments ([skills marketplace](/marketplace/skill-marketplace))
+- **An experimental economy** (opt-in, off by default, testnet first):
+  publish skills, earn USDC, pay for paywalled APIs via x402 micropayments
+  ([skills marketplace](/marketplace/skill-marketplace))
 - **Self-hosted and inspectable** — MIT licensed; every outbound connection
   is documented with its off switch ([what this node connects to](/network/egress))
 
-**What do you need?** Node 22+, pnpm, and an API key (Anthropic
-recommended). Long-term memory works even with no embedding key — a bundled
-local model handles it.
+**What do you need?** Docker (or Node 22.12+ and pnpm for a source install)
+and an API key (Anthropic recommended). Long-term memory works even with no
+embedding key: a bundled local model handles it.
 
 ## How it works
 
@@ -74,35 +75,60 @@ and supervises the P2P orchestrator.
 ## Quick start
 
 <Steps>
-  <Step title="Install (from source)">
+  <Step title="Start it with Docker (recommended)">
     ```bash
-    git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
-    cd bitterbot-desktop
-    bash scripts/setup-deps.sh   # system deps: ffmpeg, ripgrep, ...
-    pnpm install
+    mkdir bitterbot && cd bitterbot
+    curl -fsSLO https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/docker-compose.yml
+    docker compose up -d
+    docker compose logs bitterbot-gateway   # shows the generated token
     ```
 
-    <Note>
-    There is no npm package or hosted installer yet — installing from source
-    is the supported path today. Requires Node 22+ and pnpm. On Windows, use
-    WSL2 and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
-    </Note>
-
-  </Step>
-  <Step title="Onboard">
-    ```bash
-    pnpm bitterbot onboard
-    ```
-
-    The wizard configures your provider, asks for network consent, starts
-    the gateway, and opens the Control UI.
+    Nothing to edit: data lives in `./bitterbot-data`, the Control UI on
+    `127.0.0.1` only. Update with `docker compose pull && docker compose up -d`.
+    Details and backups: [Docker (recommended install)](/platforms/docker).
 
   </Step>
   <Step title="Chat">
-    Open [http://127.0.0.1:19001/](http://127.0.0.1:19001/) and have a real
-    conversation — the dream engine learns from session content.
+    Open [http://127.0.0.1:19001/](http://127.0.0.1:19001/), paste the token,
+    add a model key under **Models & Keys**, and have a real conversation (the
+    dream engine learns from session content).
   </Step>
 </Steps>
+
+**On a laptop** (Linux x64/arm64, Apple-silicon macOS), the
+[installer](/start/install-script) downloads a signed, prebuilt release with
+its own Node runtime:
+
+```bash
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
+```
+
+`bitterbot update` keeps it current (signature checked, data snapshotted,
+rolled back automatically if the new version does not start). Running the
+installer over an older Bitterbot (a git clone or an older release) switches
+the running gateway to the new version. On Windows,
+[`install.ps1`](/start/install-script#windows-wsl2) runs the same installer
+inside WSL2.
+
+**From source instead** (to develop Bitterbot, or to use the browser tool,
+which the image does not include):
+
+```bash
+git clone https://github.com/Bitterbot-AI/bitterbot-desktop.git
+cd bitterbot-desktop
+bash scripts/setup-deps.sh   # system deps: ffmpeg, ripgrep, ...
+pnpm install
+pnpm bitterbot onboard
+```
+
+The wizard configures your provider, asks for network consent, starts the
+gateway, and opens the Control UI. On Windows without Docker Desktop, use WSL2
+and keep the checkout on the Linux filesystem (`~`), not `/mnt/c`.
+
+**With npm**, only if you already manage Node with nvm, fnm, Volta or Homebrew
+(Node 18 or newer; a small launcher that downloads the same signed release):
+`npm install -g bitterbot && bitterbot onboard`, never with `sudo`. See
+[npm package](/start/npm).
 
 ## Start here
 

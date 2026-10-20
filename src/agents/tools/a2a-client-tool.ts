@@ -9,9 +9,9 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { A2aClient } from "../../services/a2a-client.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const _log = createSubsystemLogger("tool/a2a-client");
@@ -26,13 +26,19 @@ const A2aClientSchema = Type.Object({
   agentUrl: Type.Optional(Type.String()),
   /** libp2p peer ID — alternative to agentUrl; resolved via wallet_capability gossip */
   peerId: Type.Optional(Type.String()),
+  /** Seller/author pubkey (a marketplace entry's authorPeerId) so commerce standing joins fraud verdicts */
+  peerPubkey: Type.Optional(Type.String()),
   /** Message to send for execute action */
   message: Type.Optional(Type.String()),
   /** Maximum USDC to spend on this task (optional override) */
   maxCost: Type.Optional(Type.Number()),
 });
 
-export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyAgentTool | null {
+export function createA2aClientTool(options: {
+  config?: BitterbotConfig;
+  /** The session the tool runs for; spends are attributed and capped by it. */
+  agentSessionKey?: string;
+}): AnyAgentTool | null {
   const cfg = options.config;
   if (!cfg?.a2a?.enabled) {
     return null;
@@ -65,7 +71,14 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
       } catch {
         // No marketplace db — client still works, spend tracking degrades
       }
-      client = new A2aClient(clientConfig, db);
+      client = new A2aClient(
+        {
+          ...clientConfig,
+          ap2Enabled: cfg.a2a?.payment?.ap2?.enabled ?? true,
+          grantsRequired: cfg.a2a?.payment?.consent?.grantsRequired ?? false,
+        },
+        db,
+      );
     }
     return client;
   };
@@ -79,7 +92,8 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
       "x402 USDC payment). Use 'spend_status' to check daily spending limits. Target a peer by " +
       "agentUrl, or by peerId if the peer advertised its A2A endpoint over the mesh.",
     parameters: A2aClientSchema,
-    execute: async (_toolCallId, rawParams) => {
+    execute: async (_toolCallId, args) => {
+      const rawParams = args as Record<string, unknown>;
       const action = readStringParam(rawParams, "action");
 
       if (action === "spend_status") {
@@ -142,18 +156,37 @@ export function createA2aClientTool(options: { config?: BitterbotConfig }): AnyA
         let walletService: import("../../services/wallet-service.js").WalletService | undefined;
         try {
           const { createWalletService } = await import("../../services/wallet-service.js");
-          if (cfg.tools?.wallet) {
-            walletService = createWalletService(cfg.tools.wallet);
+          // A wallet that is not switched on does not pay, for another agent's
+          // task or anything else. (This used to build one whenever a wallet
+          // block existed in config, enabled or not.)
+          if (cfg.tools?.wallet?.enabled === true) {
+            const { gatedWallet } = await import("../../review/spend.js");
+            walletService = gatedWallet(createWalletService(cfg.tools.wallet), {
+              origin: "a2a",
+              sessionKey: options.agentSessionKey,
+              sessionCapUsd: cfg.tools.wallet.sessionSpendCapUsd ?? 50,
+              purpose: `A2A task at ${agentUrl}`,
+              // The price is only known once the seller answers, so approval
+              // is asked for at that point; approving runs this call again.
+              hold: {
+                toolName: "a2a_client",
+                params: rawParams,
+                describe: (spend) =>
+                  `Pay ${spend.amountUsd} USDC to ${spend.payee} for a task from the agent at ${agentUrl}: "${message.slice(0, 120)}"`,
+              },
+            });
           }
         } catch {
           // No wallet — execute without payment capability
         }
 
         const a2aClient = await getClient();
+        const peerPubkey = readStringParam(rawParams, "peerPubkey");
         const result = await a2aClient.executeTask({
           agentUrl,
           message,
           walletService,
+          ...(peerPubkey ? { peerPubkey } : {}),
         });
 
         if (result.success) {

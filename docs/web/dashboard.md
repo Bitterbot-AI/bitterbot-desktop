@@ -41,6 +41,13 @@ Prefer localhost, Tailscale Serve, or an SSH tunnel.
 
 ## If you see “unauthorized” / 1008
 
+- `gateway token mismatch` on this machine (after a reinstall, a reset, or a
+  different Bitterbot on the same port): the Control UI fixes it by itself. It
+  asks the gateway that served the page for its current token, stores it and
+  reconnects; there is no need to clear site data or use a private window. This
+  works only for a page opened from the gateway on `127.0.0.1`/`localhost`; a
+  remote gateway never hands out its token, so paste the new one.
+
 - Ensure the gateway is reachable (local: `bitterbot status`; remote: SSH tunnel `ssh -N -L 19001:127.0.0.1:19001 user@host` then open `http://localhost:19001`).
-- Retrieve the token from the gateway host: `bitterbot config get gateway.auth.token` (or generate one: `bitterbot doctor --generate-gateway-token`).
+- Retrieve the token from the gateway host: `bitterbot config get gateway.auth.token`, or the value of `BITTERBOT_GATEWAY_TOKEN` if you set one (or generate one: `bitterbot doctor --generate-gateway-token`).
 - In the dashboard settings, paste the token into the auth field, then connect.

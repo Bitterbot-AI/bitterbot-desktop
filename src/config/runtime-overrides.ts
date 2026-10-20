@@ -1,6 +1,6 @@
-import type { BitterbotConfig } from "./types.js";
 import { isPlainObject } from "../utils.js";
 import { parseConfigPath, setConfigValueAtPath, unsetConfigValueAtPath } from "./config-paths.js";
+import type { BitterbotConfig } from "./types.js";
 
 type OverrideTree = Record<string, unknown>;
 

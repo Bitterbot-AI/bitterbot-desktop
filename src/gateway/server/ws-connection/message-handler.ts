@@ -1,10 +1,6 @@
 import type { IncomingMessage } from "node:http";
-import type { WebSocket } from "ws";
 import os from "node:os";
-import type { createSubsystemLogger } from "../../../logging/subsystem.js";
-import type { GatewayAuthResult, ResolvedGatewayAuth } from "../../auth.js";
-import type { GatewayRequestContext, GatewayRequestHandlers } from "../../server-methods/types.js";
-import type { GatewayWsClient } from "../ws-types.js";
+import type { WebSocket } from "ws";
 import { loadConfig } from "../../../config/config.js";
 import {
   deriveDeviceIdFromPublicKey,
@@ -15,6 +11,7 @@ import {
   approveDevicePairing,
   ensureDeviceToken,
   getPairedDevice,
+  listDevicePairing,
   requestDevicePairing,
   updatePairedDeviceMetadata,
   verifyDeviceToken,
@@ -24,13 +21,21 @@ import { recordRemoteNodeInfo, refreshRemoteNodeBins } from "../../../infra/skil
 import { upsertPresence } from "../../../infra/system-presence.js";
 import { loadVoiceWakeConfig } from "../../../infra/voicewake.js";
 import { rawDataToString } from "../../../infra/ws.js";
+import type { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { isGatewayCliClient, isWebchatClient } from "../../../utils/message-channel.js";
 import {
   AUTH_RATE_LIMIT_SCOPE_DEVICE_TOKEN,
   AUTH_RATE_LIMIT_SCOPE_SHARED_SECRET,
   type AuthRateLimiter,
 } from "../../auth-rate-limit.js";
+import type { GatewayAuthResult, ResolvedGatewayAuth } from "../../auth.js";
 import { authorizeGatewayConnect, isLocalDirectRequest } from "../../auth.js";
+import {
+  bootstrapPairingAllowed,
+  bootstrapPairingEnabled,
+  bootstrapPairingUsed,
+  markBootstrapPairingUsed,
+} from "../../bootstrap-pairing.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
 import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from "../../net.js";
 import { resolveHostName } from "../../net.js";
@@ -47,8 +52,10 @@ import {
   validateConnectParams,
   validateRequestFrame,
 } from "../../protocol/index.js";
+import { resolveGatewayVersion } from "../../runtime-info.js";
 import { MAX_BUFFERED_BYTES, MAX_PAYLOAD_BYTES, TICK_INTERVAL_MS } from "../../server-constants.js";
 import { handleGatewayRequest } from "../../server-methods.js";
+import type { GatewayRequestContext, GatewayRequestHandlers } from "../../server-methods/types.js";
 import { formatError } from "../../server-utils.js";
 import { formatForLog, logWs } from "../../ws-log.js";
 import { truncateCloseReason } from "../close-reason.js";
@@ -59,7 +66,9 @@ import {
   incrementPresenceVersion,
   refreshGatewayHealthSnapshot,
 } from "../health-state.js";
+import type { GatewayWsClient } from "../ws-types.js";
 import { formatGatewayAuthFailureMessage, type AuthProvidedKind } from "./auth-messages.js";
+import { buildSetupHello, decideSetupConnect, SETUP_SCOPE } from "./setup-connect.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
 
@@ -338,6 +347,55 @@ export function attachGatewayWsMessageHandler(params: {
             close(1008, truncateCloseReason(errorMessage));
             return;
           }
+        }
+
+        // PLAN-56 Phase 4: a setup-token connection (the browser setup page).
+        // It gets the wizard RPCs only: no admin scope, no device pairing, no
+        // broadcast events, a hello that carries no gateway snapshot.
+        const presentedSetupToken = connectParams.auth?.setupToken?.trim();
+        if (presentedSetupToken) {
+          const decision = await decideSetupConnect({
+            token: presentedSetupToken,
+            hostHeader: requestHost,
+            origin: requestOrigin,
+            remoteIsLoopback: isLoopbackAddress(remoteAddr),
+            hasProxyHeaders,
+            role,
+          });
+          if (!decision.ok) {
+            setHandshakeState("failed");
+            setCloseCause("setup-token-rejected", { reason: decision.reason });
+            logWsControl.warn(
+              `setup token rejected conn=${connId} remote=${remoteAddr ?? "?"} reason=${decision.reason}`,
+            );
+            send({
+              type: "res",
+              id: frame.id,
+              ok: false,
+              error: errorShape(ErrorCodes.INVALID_REQUEST, decision.message),
+            });
+            close(1008, truncateCloseReason(decision.message));
+            return;
+          }
+          connectParams.role = "operator";
+          connectParams.scopes = [SETUP_SCOPE];
+          clearHandshakeTimer();
+          setClient({
+            socket,
+            connect: connectParams,
+            connId,
+            clientIp: reportedClientIp,
+            setupToken: presentedSetupToken,
+          });
+          setHandshakeState("connected");
+          logWs("in", "connect", { connId, client: connectParams.client.id, auth: "setup-token" });
+          send({
+            type: "res",
+            id: frame.id,
+            ok: true,
+            payload: buildSetupHello({ connId, protocol: PROTOCOL_VERSION }),
+          });
+          return;
         }
 
         const deviceRaw = connectParams.device;
@@ -670,6 +728,22 @@ export function attachGatewayWsMessageHandler(params: {
         const skipPairing = allowControlUiBypass && sharedAuthOk;
         if (device && devicePublicKey && !skipPairing) {
           const requirePairing = async (reason: string, _paired?: { deviceId: string }) => {
+            const bootstrap =
+              !isLocalClient &&
+              bootstrapPairingAllowed({
+                isControlUi,
+                sharedAuthOk,
+                enabled: bootstrapPairingEnabled(
+                  configSnapshot.gateway?.controlUi?.bootstrapPairing,
+                ),
+                reason,
+                pairedCount: isControlUi
+                  ? (await listDevicePairing()).paired.length
+                  : Number.POSITIVE_INFINITY,
+                role,
+                scopes,
+                alreadyUsed: bootstrapPairingUsed(),
+              });
             const pairing = await requestDevicePairing({
               deviceId: device.id,
               publicKey: devicePublicKey,
@@ -680,14 +754,17 @@ export function attachGatewayWsMessageHandler(params: {
               role,
               scopes,
               remoteIp: reportedClientIp,
-              silent: isLocalClient,
+              silent: isLocalClient || bootstrap,
             });
             const context = buildRequestContext();
             if (pairing.request.silent === true) {
               const approved = await approveDevicePairing(pairing.request.requestId);
               if (approved) {
+                if (bootstrap) {
+                  markBootstrapPairingUsed();
+                }
                 logGateway.info(
-                  `device pairing auto-approved device=${approved.device.deviceId} role=${approved.device.role ?? "unknown"}`,
+                  `device pairing auto-approved device=${approved.device.deviceId} role=${approved.device.role ?? "unknown"}${bootstrap ? " (first device, gateway token)" : ""}`,
                 );
                 context.broadcast(
                   "device.pair.resolved",
@@ -845,7 +922,7 @@ export function attachGatewayWsMessageHandler(params: {
           type: "hello-ok",
           protocol: PROTOCOL_VERSION,
           server: {
-            version: process.env.BITTERBOT_VERSION ?? process.env.npm_package_version ?? "dev",
+            version: resolveGatewayVersion(),
             commit: process.env.GIT_COMMIT,
             host: os.hostname(),
             connId,

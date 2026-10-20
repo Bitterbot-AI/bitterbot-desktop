@@ -1,8 +1,8 @@
 # Curiosity & Search — Curiosity Engine and Retrieval System
 
-The curiosity engine identifies knowledge gaps by tracking what the system knows (knowledge regions), what surprises it (novelty assessment), and what the user searches for but can't find (gap detection). It feeds exploration targets into the dream engine's exploration mode and receives dream insights back, forming a continuous curiosity-dream feedback loop. Since PLAN-34 Phase 2, exploration attempts real external research on `knowledge_gap`, `market_demand`, and `frontier` targets (via Skill-Seekers) and stamps each target with an outcome code (`no_url` | `domain_blocked` | `irrelevant` | `resolved`); targets resolve only when the research product is embedding-relevant to them, so "explored" can never silently masquerade as "answered". The search system combines BM25 keyword matching with multi-perspective vector search for robust retrieval.
+The curiosity engine identifies knowledge gaps by tracking what the system knows (knowledge regions), what surprises it (novelty assessment), and what the user searches for but can't find (gap detection). Since PLAN-54 (2026-10-07) the loop is closed: open questions are researched on the web on a schedule, verified against at least two sources, stored with provenance, surfaced in conversation marked "learned on my own", and counted when a conversation uses them, so the agent learns where learning pays off. The search system combines BM25 keyword matching with multi-perspective vector search for robust retrieval.
 
-**Key source files:** `curiosity-engine.ts`, `curiosity-types.ts`, `gccrf-reward.ts`, `mem-store.ts`, `multi-perspective-search.ts`, `embedding-perspectives.ts`, `user-model.ts`, `task-memory.ts`
+**Key source files:** `curiosity-engine.ts`, `curiosity-types.ts`, `gccrf-reward.ts`, `mem-store.ts`, `user-model.ts`, `task-memory.ts`
 
 ---
 
@@ -66,13 +66,17 @@ The GCCRF reward is written directly to `chunks.curiosity_reward`. The system al
 
 The engine detects knowledge gaps from two signals:
 
-1. **Low-score searches** — When a search query returns results below `gapScoreThreshold` (default 0.4), a `knowledge_gap` exploration target is generated
-2. **Search prediction error** — `recordSearchSurprise()` tracks the gap between expected and actual search scores. Large surprises (> 0.4) trigger new `knowledge_gap` targets
+1. **Low-score searches** — A query that returns results below `gapScoreThreshold` (default 0.5) becomes its own `knowledge_gap` target (one per query, embedding-deduped against everything open or answered in the last 30 days).
+2. **Working-memory questions** — The `## Curiosity Gaps` bullets the dream rewrite writes into `MEMORY.md` become `question` targets after every rewrite. These are the best questions the agent has: grounded in the owner's actual life and work.
+3. **Owner questions** — `curiosity.ask` (the Curiosity page) queues a question at top priority.
+
+The former "emerging skill" frontier generator was deleted: it mistook handover briefs and READMEs for skills.
 
 ### Exploration Targets
 
 ```typescript
 type ExplorationTargetType =
+  | "question" // A question the agent wants answered (working memory, owner)
   | "knowledge_gap" // Missing knowledge detected from search
   | "contradiction" // Conflicting information found
   | "stale_region" // Region with declining learning progress
@@ -87,11 +91,30 @@ type ExplorationTarget = {
   metadata: Record<string, unknown>;
   createdAt: number;
   resolvedAt: number | null;
-  expiresAt: number; // Default TTL: 7 days
+  expiresAt: number; // 48h for engine targets, 14 days for questions
+  attempts: number; // research attempts (closed as unanswered after 2)
+  embeddingJson: string | null; // for dedupe
 };
 ```
 
 Maximum active targets: 10 (configurable). Expired targets are cleaned up during `run()`.
+
+### The research loop (PLAN-54)
+
+`src/memory/curiosity-researcher.ts`, on the maintenance tick, every `intervalMinutes` (240):
+
+1. Pick up to 4 researchable targets (`question`, or `metadata.researchable = 1`), ranked by priority plus 0.25 × the region's curiosity ROI, minus 0.1 per prior attempt.
+2. Skip sensitive topics on the node (`isSensitiveTopic`), and questions the web cannot answer: the model marks `web_answerable` false for questions about the author's own life, schedule, people, projects or files, and any first-person question ("my", "our", "I") is closed as `not_web_answerable` without a search. Rewrite the question as a search phrase with the agent's own model (a genuinely local model when configured), which also declares the public subject terms it kept (at most 4, each copied from the question). Reject the phrase if it contains an email, a URL, the owner's name or any knowledge-graph person/organization/project (checked on the raw phrase, so a "public term" can never launder a private name), a 3-token fragment or three copied bigrams of the question outside the declared public terms, or a copied non-ASCII token. `research.strictEgress: true` ignores declared public terms (then named technologies cannot be searched). A rejected phrase is never sent; the page shows the question as held back.
+3. Search (`runConfiguredWebSearch`, one retry with "explained"), fetch up to `maxPagesPerTarget` (3) pages from distinct hosts through the SSRF guard, log every egress to `research_egress_log`.
+4. Distill a ≤120-word answer with `confidence` and `supporting_sources`. Verified when confidence ≥ `minConfidence` (0.45) and two sources support it, or one does at confidence ≥ floor + 0.15.
+5. Store: a `world_fact` chunk (`origin = curiosity`, `path = curiosity/<target>`, evidence URLs, `valid_time_start`), a `curiosity_findings` row (question, phrase, answer, confidence, sources, hormonal state, cost, chunk), and a `research_findings` line the system prompt voices once. An earlier answer to the same target gets `valid_time_end` and is archived, never deleted. The target resolves with `researchOutcome = learned`; a dopamine `curiosity_progress` event fires.
+6. Otherwise the outcome is `inconclusive` (retry later) or, on the last attempt, `unanswered`. The answer it did find is kept as an unverified finding (`curiosity_findings.verified = 0`, no chunk, never voiced, excluded from utility and the brief) and shown dimmed on the Curiosity page as "found, but not confident enough to remember", so a miss is never silent.
+
+Budget: `maxPerDay` (10) questions per UTC day, +2 when dopamine > 0.65, −2 when cortisol > 0.65 (cortisol also raises the confidence floor by 0.1). Pause state lives in `memory_meta`.
+
+Use ledger (`src/memory/curiosity-use.ts`): memory search and proactive recall call `recordCuriosityUse` for any self-learned chunk they return; `curiosityRoiByRegion` feeds step 1. RPCs: `curiosity.status`, `curiosity.list`, `curiosity.pause`, `curiosity.resume`, `curiosity.dismiss`, `curiosity.ask`, `curiosity.runNow`; the same from the terminal as [`bitterbot curiosity`](/cli/curiosity).
+
+Private names come from the knowledge graph's `person`, `organization` and `project` entities. A "person" that is not a name ("here", "commands", a peer id) is filed as a `concept` at write time (`looksLikePersonName`) and migration v75 reclassified existing rows, so the filter blocks people, not ordinary words.
 
 ### Bounty System (Phase 3)
 
@@ -169,11 +192,11 @@ flowchart LR
 
 ### Curiosity -> Dream
 
-1. **Target feeding** — The dream engine's exploration mode loads unresolved `knowledge_gap` targets and generates content to fill them
+1. **Target feeding** — The dream engine's exploration mode (off by default, no web) reflects on unresolved targets; the research loop above is what actually answers them
 2. **Weight adjustment** — `getDreamModeWeightAdjustments()` shifts dream mode selection based on curiosity state:
    - Many knowledge gaps -> boost `exploration` mode weight
    - Many contradictions -> boost `simulation` mode weight
-   - Many frontiers -> boost `mutation` mode weight
+   - Many frontiers -> boost `distillation` mode weight
 
 ### Dream -> Curiosity
 
@@ -209,67 +232,13 @@ flowchart TB
     H --> K[Return results]
 ```
 
-**Hybrid merging** uses configurable weights (default: 0.7 vector + 0.3 text). BM25 ranks are converted to [0,1] scores via `bm25RankToScore()`.
+**Hybrid merging** uses reciprocal rank fusion by default (`mergeStrategy: "rrf"`); the configurable weights (0.7 vector + 0.3 text) apply only with `mergeStrategy: "weighted"`. BM25 ranks are converted to [0,1] scores via `bm25RankToScore()`.
 
 **Importance boost** applies a multiplicative factor:
 
 ```
 boostedScore = score * (1 - importanceWeight + importanceWeight * importanceScore)
 ```
-
-### Multi-Perspective Search
-
-The `multi-perspective-search.ts` module enables searching across all 4 embedding perspectives simultaneously using **Reciprocal Rank Fusion (RRF)**:
-
-```typescript
-type PerspectiveWeights = {
-  semantic: number;
-  procedural: number;
-  causal: number;
-  entity: number;
-};
-```
-
-**Weight profiles** for different query intents:
-
-| Profile           | Semantic | Procedural | Causal | Entity |
-| ----------------- | -------- | ---------- | ------ | ------ |
-| `general`         | 0.7      | 0.1        | 0.1    | 0.1    |
-| `skill_discovery` | 0.3      | 0.3        | 0.1    | 0.3    |
-| `debugging`       | 0.2      | 0.1        | 0.5    | 0.2    |
-| `learning_path`   | 0.1      | 0.5        | 0.3    | 0.1    |
-
-**RRF formula** (K=60): For each perspective, rank all chunks by cosine similarity. The fused score is:
-
-```
-score = sum(weight_p * 1/(K + rank_p)) for each perspective p
-```
-
-Steering reward and importance scores provide additional boosts to the fused score.
-
----
-
-## Embedding Perspectives
-
-The `embedding-perspectives.ts` module generates 4 different embedding views of the same text using **prefix-tuning**:
-
-| Perspective  | Prefix                                          | What it captures                    |
-| ------------ | ----------------------------------------------- | ----------------------------------- |
-| `semantic`   | _(none)_                                        | General meaning and concepts        |
-| `procedural` | `"Steps, prerequisites, and execution order: "` | How-to knowledge, workflows         |
-| `causal`     | `"Causes, effects, and consequences: "`         | Why things happen, debugging chains |
-| `entity`     | `"Tools, APIs, technologies, and entities: "`   | Named tools, frameworks, APIs       |
-
-```typescript
-// Generate all 4 perspectives for a text
-const perspectives = await embedWithPerspectives(text, provider);
-// perspectives.semantic, .procedural, .causal, .entity
-
-// Batch embed multiple texts
-const allPerspectives = await batchEmbedWithPerspectives(texts, provider);
-```
-
-Entity extraction (`extractEntities()`) uses regex patterns plus capitalized multi-word detection to identify tools, APIs, frameworks, and languages mentioned in text.
 
 ---
 
@@ -362,9 +331,19 @@ type CuriosityConfig = {
   boostMultiplier?: number; // Default: 1.3
   maxRegions?: number; // Default: 50
   maxTargets?: number; // Default: 10
-  targetTtlHours?: number; // Default: 168 (7 days)
+  targetTtlHours?: number; // Default: 48
   maxQueryHistory?: number; // Default: 200
-  gapScoreThreshold?: number; // Default: 0.4
+  gapScoreThreshold?: number; // Default: 0.5
+  research?: {
+    enabled?: boolean; // Default: true (autoResearch.enabled=false also disables)
+    intervalMinutes?: number; // Default: 240
+    maxPerDay?: number; // Default: 10
+    maxSearchesPerTarget?: number; // Default: 2
+    maxPagesPerTarget?: number; // Default: 3
+    minConfidence?: number; // Default: 0.45
+    blockedDomains?: string[]; // Default: []
+    maxAttempts?: number; // Default: 3
+  };
 };
 
 // Default weights

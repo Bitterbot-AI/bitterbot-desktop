@@ -1,7 +1,5 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import type { RuntimeEnv } from "../runtime.js";
-import type { DoctorPrompter } from "./doctor-prompter.js";
 import { resolveCliName } from "../cli/cli-name.js";
 import {
   completionCacheExists,
@@ -12,7 +10,9 @@ import {
   usesSlowDynamicCompletion,
 } from "../cli/completion-cli.js";
 import { resolveBitterbotPackageRoot } from "../infra/bitterbot-root.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { note } from "../terminal/note.js";
+import type { DoctorPrompter } from "./doctor-prompter.js";
 
 type CompletionShell = "zsh" | "bash" | "fish" | "powershell";
 
@@ -114,7 +114,7 @@ export async function doctorShellCompletion(
   // Profile has completion but no cache - auto-fix
   if (status.profileInstalled && !status.cacheExists) {
     note(
-      `Shell completion is configured in your ${status.shell} profile but the cache is missing.\nRegenerating cache...`,
+      `Shell completion is configured in your ${status.shell} profile but the cache is missing or outdated.\nRegenerating cache...`,
       "Shell completion",
     );
     const generated = await generateCompletionCache();

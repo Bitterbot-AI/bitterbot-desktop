@@ -83,6 +83,7 @@ function ensureExperimentalWarningSuppressed(): boolean {
 process.argv = normalizeWindowsArgv(process.argv);
 
 if (!ensureExperimentalWarningSuppressed()) {
+  const typedArgv = [...process.argv];
   const parsed = parseCliProfileArgs(process.argv);
   if (!parsed.ok) {
     // Keep it simple; Commander will handle rich help/errors after we strip flags.
@@ -97,7 +98,7 @@ if (!ensureExperimentalWarningSuppressed()) {
   }
 
   import("./cli/run-main.js")
-    .then(({ runCli }) => runCli(process.argv))
+    .then(({ runCli }) => runCli(process.argv, { rawArgv: typedArgv }))
     .catch((error) => {
       console.error(
         "[bitterbot] Failed to start CLI:",

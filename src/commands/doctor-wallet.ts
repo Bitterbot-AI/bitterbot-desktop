@@ -27,6 +27,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
+import {
+  assertAddressContinuity,
+  type SmartAccountRecord,
+} from "../payments/wallet/smart-account.js";
 import { renderSectionQuietIfAllInfo, type CheckResult, ok, warn, info } from "./doctor-check.js";
 
 const KNOWN_NETWORKS = new Set(["base", "base-sepolia"]);
@@ -137,6 +141,61 @@ export async function runWalletChecks(params: { config: BitterbotConfig }): Prom
           "and CDP_WALLET_SECRET (portal.cdp.coinbase.com → Wallets → Wallet Secret).",
       ),
     );
+  }
+
+  // ── Smart Account (PLAN-48 Phase 4) ──
+  // The live upgrade (creating the ERC-4337 CDP Smart Account + routing sends
+  // through it) is an operator step; here we only sanity-check the allowance
+  // config and, if the upgrade has been run and its record persisted, assert
+  // the I5 address/balance continuity invariant from disk (no on-chain call).
+  const sa = wallet.smartAccount;
+  if (sa?.enabled) {
+    if (sa.allowanceUsd !== undefined && !(sa.allowanceUsd > 0)) {
+      results.push(warn(`Smart Account allowanceUsd must be positive (got ${sa.allowanceUsd})`));
+    } else if (sa.periodSeconds !== undefined && !(sa.periodSeconds > 0)) {
+      results.push(warn(`Smart Account periodSeconds must be positive (got ${sa.periodSeconds})`));
+    } else {
+      results.push(
+        ok(
+          `Smart Account routing enabled ($${sa.allowanceUsd ?? "?"}/` +
+            `${sa.periodSeconds ?? 86_400}s allowance)`,
+        ),
+      );
+    }
+    // I5 continuity, if the upgrade record exists (written by the operator step).
+    const recordPath = path.join(storePath, "smart-account.json");
+    if (fs.existsSync(recordPath)) {
+      try {
+        const record = JSON.parse(fs.readFileSync(recordPath, "utf-8")) as SmartAccountRecord;
+        const walletData = JSON.parse(
+          fs.readFileSync(path.join(storePath, "wallet-data.json"), "utf-8"),
+        ) as { address?: string; ownerAddress?: string };
+        const eoa = walletData.ownerAddress ?? walletData.address ?? "";
+        const cont = assertAddressContinuity({
+          eoaAddress: eoa,
+          smartAccountAddress: record.smartAccountAddress,
+          smartAccountOwner: record.ownerAddress,
+        });
+        if (cont.ok) {
+          results.push(ok(`Smart Account I5 continuity holds (${record.smartAccountAddress})`));
+        } else {
+          results.push(warn(`Smart Account I5 continuity failed: ${cont.issues.join("; ")}`));
+        }
+      } catch (err) {
+        results.push(
+          warn(
+            `Smart Account record present but unreadable: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+      }
+    } else {
+      results.push(
+        info(
+          "Smart Account enabled but not yet upgraded — the on-chain create + routing is an " +
+            "operator step (run on testnet first). Sends still use the plain EOA until then.",
+        ),
+      );
+    }
   }
 
   // ── x402 sub-config ──

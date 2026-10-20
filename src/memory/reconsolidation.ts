@@ -13,8 +13,8 @@
  * PLAN-9: GAP-5 (Memory Reconsolidation)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/reconsolidation");
@@ -208,8 +208,14 @@ export class ReconsolidationEngine {
     try {
       const result = this.db
         .prepare(
+          // A memory that came through its labile window intact counts as one
+          // more rehearsal. Consolidation recomputes importance from
+          // access_count each tick, so this is what makes the strengthening
+          // last; the direct importance bump alone was overwritten within 30
+          // minutes.
           `UPDATE chunks SET
              importance_score = MIN(1.0, importance_score + ?),
+             access_count = COALESCE(access_count, 0) + 1,
              reconsolidation_count = COALESCE(reconsolidation_count, 0) + 1,
              labile_until = NULL
            WHERE labile_until IS NOT NULL AND labile_until <= ?`,

@@ -48,6 +48,14 @@
   },
   "redirects": [
     {
+      "source": "/reference/pi",
+      "destination": "/reference/agent-runtime"
+    },
+    {
+      "source": "/reference/pi-dev",
+      "destination": "/reference/agent-runtime-dev"
+    },
+    {
       "source": "/concepts/sessions",
       "destination": "/concepts/session"
     },
@@ -580,6 +588,8 @@
                 "group": "First steps",
                 "pages": [
                   "start/getting-started",
+                  "start/install-script",
+                  "start/npm",
                   "start/onboarding-overview",
                   "start/wizard",
                   "start/onboarding"
@@ -610,7 +620,10 @@
                   "channels/telegram",
                   "channels/discord",
                   "channels/slack",
-                  "channels/signal"
+                  "channels/signal",
+                  "channels/email",
+                  "channels/x",
+                  "channels/twitch"
                 ]
               },
               {
@@ -657,6 +670,10 @@
                 ]
               },
               {
+                "group": "Benchmarks",
+                "pages": ["benchmarks/index"]
+              },
+              {
                 "group": "Multi-agent",
                 "pages": ["concepts/multi-agent", "concepts/presence"]
               },
@@ -691,6 +708,7 @@
                 "group": "Architecture",
                 "pages": [
                   "memory/architecture-overview",
+                  "memory/controls",
                   "memory/how-the-memory-works",
                   "memory/working-memory",
                   "memory/sage-graph-memory",
@@ -733,6 +751,7 @@
                   "network/core-systems",
                   "network/management-nodes",
                   "network/mailbox-host",
+                  "network/compute",
                   "network/egress",
                   "gateway/network"
                 ]
@@ -744,12 +763,13 @@
             "groups": [
               {
                 "group": "Overview",
-                "pages": ["tools/index"]
+                "pages": ["tools/index", "tools/hot-set"]
               },
               {
                 "group": "Built-in tools",
                 "pages": [
                   "tools/exec",
+                  "tools/compute",
                   "tools/web",
                   "tools/web-search",
                   "tools/brave-search",
@@ -760,7 +780,8 @@
                   "tools/thinking",
                   "tools/reactions",
                   "tools/computer-use",
-                  "tools/checkpoints"
+                  "tools/checkpoints",
+                  "tools/recall-range"
                 ]
               },
               {
@@ -790,6 +811,7 @@
                 "pages": [
                   "automation/hooks",
                   "automation/cron-jobs",
+                  "automation/monitors",
                   "automation/cron-vs-heartbeat",
                   "automation/long-horizon-tasks",
                   "automation/troubleshooting",
@@ -803,6 +825,8 @@
                 "group": "More tools",
                 "pages": [
                   "tools/creating-skills",
+                  "tools/action-review",
+                  "tools/connectors",
                   "tools/exec-approvals",
                   "tools/bash-command-sanitizer",
                   "tools/firecrawl",
@@ -832,6 +856,7 @@
                 "pages": [
                   "providers/anthropic",
                   "providers/openai",
+                  "providers/google",
                   "providers/openrouter",
                   "providers/nearai",
                   "providers/bedrock",
@@ -868,7 +893,13 @@
             "groups": [
               {
                 "group": "Wallet",
-                "pages": ["wallet/index", "wallet/wallet-funding"]
+                "pages": [
+                  "wallet/index",
+                  "wallet/wallet-funding",
+                  "wallet/link-purchases",
+                  "wallet/privacy-purchases",
+                  "wallet/shopping"
+                ]
               },
               {
                 "group": "Marketplace",
@@ -889,7 +920,12 @@
             "groups": [
               {
                 "group": "Platforms overview",
-                "pages": ["platforms/index", "platforms/linux", "platforms/windows"]
+                "pages": [
+                  "platforms/index",
+                  "platforms/linux",
+                  "platforms/windows",
+                  "platforms/docker"
+                ]
               }
             ]
           },
@@ -975,14 +1011,17 @@
                   "cli/approvals",
                   "cli/browser",
                   "cli/channels",
+                  "cli/compute",
                   "cli/configure",
                   "cli/cron",
+                  "cli/curiosity",
                   "cli/dashboard",
                   "cli/directory",
                   "cli/dns",
                   "cli/docs",
                   "cli/doctor",
                   "cli/gateway",
+                  "cli/genome",
                   "cli/health",
                   "cli/hooks",
                   "cli/logs",
@@ -1034,7 +1073,11 @@
               },
               {
                 "group": "Release notes",
-                "pages": ["reference/RELEASE-PROCEDURE", "reference/test"]
+                "pages": [
+                  "reference/RELEASE-PROCEDURE",
+                  "reference/npm-publishing",
+                  "reference/test"
+                ]
               },
               {
                 "group": "More reference",
@@ -1049,8 +1092,8 @@
                   "reference/api-usage-costs",
                   "reference/date-time",
                   "reference/transcript-hygiene",
-                  "reference/pi",
-                  "reference/pi-dev",
+                  "reference/agent-runtime",
+                  "reference/agent-runtime-dev",
                   "web/mobile"
                 ]
               }

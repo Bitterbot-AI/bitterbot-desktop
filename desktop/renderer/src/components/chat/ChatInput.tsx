@@ -1,8 +1,9 @@
 import { useCallback, useRef, useState, type KeyboardEvent } from "react";
+import { sendChatText } from "../../lib/chat-send";
 import { cn } from "../../lib/utils";
-import { useChatStore, nextMsgId } from "../../stores/chat-store";
+import { useChatStore } from "../../stores/chat-store";
 import { useGatewayStore } from "../../stores/gateway-store";
-import { useProjectsStore } from "../../stores/projects-store";
+import { VoiceButton } from "./VoiceButton";
 
 export function ChatInput() {
   const [text, setText] = useState("");
@@ -10,11 +11,8 @@ export function ChatInput() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const sessionKey = useChatStore((s) => s.sessionKey);
   const activeRun = useChatStore((s) => s.activeRun);
-  const addMessage = useChatStore((s) => s.addMessage);
-  const startRun = useChatStore((s) => s.startRun);
   const request = useGatewayStore((s) => s.request);
   const status = useGatewayStore((s) => s.status);
-  const activeProjectId = useProjectsStore((s) => s.activeProjectId);
 
   const isConnected = status === "connected";
   const isStreaming = activeRun !== null;
@@ -22,39 +20,20 @@ export function ChatInput() {
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || sending || !isConnected) return;
-
-    // Add user message immediately
-    addMessage({
-      id: nextMsgId(),
-      role: "user",
-      content: trimmed,
-      timestamp: Date.now(),
-    });
-
     setText("");
     setSending(true);
-
     // Auto-resize textarea back to initial
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
-
-    const idempotencyKey = `run-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    startRun(idempotencyKey);
-
     try {
-      await request("chat.send", {
-        sessionKey,
-        message: trimmed,
-        idempotencyKey,
-        ...(activeProjectId ? { projectId: activeProjectId } : {}),
-      });
+      await sendChatText(trimmed);
     } catch (err) {
       console.error("[chat] send failed:", err);
     } finally {
       setSending(false);
     }
-  }, [text, sending, isConnected, sessionKey, addMessage, startRun, request, activeProjectId]);
+  }, [text, sending, isConnected]);
 
   const handleAbort = useCallback(async () => {
     if (!activeRun) return;
@@ -119,8 +98,9 @@ export function ChatInput() {
           )}
         />
 
-        {/* Send / Stop button */}
-        <div className="flex-shrink-0 p-2">
+        {/* Voice, then Send / Stop */}
+        <div className="flex-shrink-0 p-2 flex items-center gap-1">
+          <VoiceButton disabled={!isConnected} />
           {isStreaming ? (
             <button
               onClick={handleAbort}

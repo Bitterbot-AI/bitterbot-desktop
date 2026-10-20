@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ensureMemoryIndexSchema } from "../../memory/memory-schema.js";
 import { runMigrations } from "../../memory/migrations.js";
 import { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
+import { skillBodyWithSeverity } from "./skill-gate.test.js";
 import { skillManage } from "./skill-manage.js";
 import { promoteStaged, rollbackStaged } from "./skill-promote.js";
 import {
@@ -13,8 +14,11 @@ import {
   liveSkillPath,
   listArchivedVersions,
   readArchivedVersion,
+  liveSkillDir,
   readLive,
+  readStaged,
   resolveStorageRoots,
+  stagingSkillDir,
   updateStagingGateStatus,
 } from "./skill-storage.js";
 
@@ -277,5 +281,162 @@ describe("rollbackStaged", () => {
     const result = await rollbackStaged({ storageRoots: roots }, { name: "alpha", version: 99 });
     expect(result.ok).toBe(false);
     expect(result.error).toBe("storage-error");
+  });
+});
+
+describe("PLAN-44 Phase 3 (I7): evolution-staged content", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "skill-promote-evo-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  async function stageEvolved(roots: ReturnType<typeof resolveStorageRoots>) {
+    await skillManage(
+      { storageRoots: roots },
+      { action: "create", name: "alpha", content: SAMPLE, reason: "x", author: "evolution" },
+    );
+    const dir = stagingSkillDir(roots, "alpha");
+    await fs.writeFile(
+      path.join(dir, ".evolution-meta.json"),
+      JSON.stringify({ origin: "wiki-evolution", stagedAt: 1 }),
+      "utf-8",
+    );
+    await fs.writeFile(path.join(dir, "PURPOSE.md"), "# why\nbecause\n", "utf-8");
+  }
+
+  it("refuses promote (even with forceGate) unless allowEvolutionStaged is set", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    await stageEvolved(roots);
+    const plain = await promoteStaged(
+      { storageRoots: roots },
+      { name: "alpha", author: "agent:main" },
+    );
+    expect(plain.ok).toBe(false);
+    expect(plain.error).toBe("evolution-staged");
+    const forced = await promoteStaged({ storageRoots: roots }, { name: "alpha", forceGate: true });
+    expect(forced.error).toBe("evolution-staged");
+    expect(await readLive(roots, "alpha")).toBeNull();
+    expect(await readStaged(roots, "alpha")).not.toBeNull();
+  });
+
+  it("carries .evolution-meta.json and PURPOSE.md to the live dir when the gate promotes", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    await stageEvolved(roots);
+    const result = await promoteStaged(
+      { storageRoots: roots },
+      { name: "alpha", author: "evolution", allowEvolutionStaged: true },
+    );
+    expect(result.ok).toBe(true);
+    const live = liveSkillDir(roots, "alpha");
+    expect(
+      JSON.parse(await fs.readFile(path.join(live, ".evolution-meta.json"), "utf-8")),
+    ).toMatchObject({
+      origin: "wiki-evolution",
+    });
+    expect(await fs.readFile(path.join(live, "PURPOSE.md"), "utf-8")).toContain("because");
+    expect(await readStaged(roots, "alpha")).toBeNull();
+  });
+
+  it("skillManage strictInjection: a medium hit fails the staging gate for evolution content", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    const suspect = skillBodyWithSeverity("medium");
+    const lenient = await skillManage(
+      { storageRoots: roots },
+      { action: "create", name: "beta", content: suspect, reason: "x", author: "user" },
+    );
+    expect(lenient.ok).toBe(true);
+    const strict = await skillManage(
+      { storageRoots: roots },
+      {
+        action: "create",
+        name: "gamma",
+        content: suspect,
+        reason: "x",
+        author: "evolution",
+        strictInjection: true,
+      },
+    );
+    expect(strict.ok).toBe(false);
+    expect(strict.error).toBe("gate-failed");
+    expect((await readStaged(roots, "gamma"))?.meta.gateStatus).toBe("failed");
+  });
+});
+
+describe("PLAN-44 Phase 3 adversarial fixes: provenance cannot be hijacked or linger", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await fs.mkdtemp(path.join(os.tmpdir(), "skill-promote-adv-"));
+  });
+  afterEach(async () => {
+    await fs.rm(tmp, { recursive: true, force: true });
+  });
+
+  it("H1: an agent edit over an evolution-staged name strips the sidecars, so it is a plain staged edit", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    await skillManage(
+      { storageRoots: roots },
+      { action: "create", name: "alpha", content: SAMPLE, reason: "x", author: "evolution" },
+    );
+    const dir = stagingSkillDir(roots, "alpha");
+    await fs.writeFile(
+      path.join(dir, ".evolution-meta.json"),
+      JSON.stringify({ origin: "wiki-evolution" }),
+    );
+    await fs.writeFile(path.join(dir, "PURPOSE.md"), "# why\n");
+    const edit = await skillManage(
+      { storageRoots: roots },
+      {
+        action: "create",
+        name: "alpha",
+        content: SAMPLE_2,
+        reason: "hijack",
+        author: "agent:main",
+      },
+    );
+    expect(edit.ok).toBe(true);
+    await expect(fs.access(path.join(dir, ".evolution-meta.json"))).rejects.toThrow();
+    await expect(fs.access(path.join(dir, "PURPOSE.md"))).rejects.toThrow();
+    // ...and therefore promotes as ordinary agent content, with no evolution identity.
+    const promoted = await promoteStaged(
+      { storageRoots: roots },
+      { name: "alpha", author: "agent:main" },
+    );
+    expect(promoted.ok).toBe(true);
+    await expect(
+      fs.access(path.join(liveSkillDir(roots, "alpha"), ".evolution-meta.json")),
+    ).rejects.toThrow();
+  });
+
+  it("L10: a later non-evolution promote over an evolved live skill removes the live sidecars", async () => {
+    const roots = resolveStorageRoots({ configDir: tmp });
+    await skillManage(
+      { storageRoots: roots },
+      { action: "create", name: "alpha", content: SAMPLE, reason: "x", author: "evolution" },
+    );
+    const dir = stagingSkillDir(roots, "alpha");
+    await fs.writeFile(
+      path.join(dir, ".evolution-meta.json"),
+      JSON.stringify({ origin: "wiki-evolution" }),
+    );
+    await promoteStaged(
+      { storageRoots: roots },
+      { name: "alpha", author: "evolution", allowEvolutionStaged: true },
+    );
+    const live = liveSkillDir(roots, "alpha");
+    await fs.access(path.join(live, ".evolution-meta.json"));
+    await skillManage(
+      { storageRoots: roots },
+      { action: "edit", name: "alpha", content: SAMPLE_2, reason: "human rewrite", author: "user" },
+    );
+    const promoted = await promoteStaged(
+      { storageRoots: roots },
+      { name: "alpha", author: "user" },
+    );
+    expect(promoted.ok).toBe(true);
+    await expect(fs.access(path.join(live, ".evolution-meta.json"))).rejects.toThrow();
+    expect(await readLive(roots, "alpha")).toBe(SAMPLE_2);
   });
 });

@@ -23,8 +23,9 @@
  * `pass`.
  */
 
-import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
+import { listLiveSkillIndex } from "./description-overlap.js";
 import { formatGateSummary, type GateResult, runSkillGate } from "./skill-gate.js";
 import {
   type StorageRoots,
@@ -42,6 +43,10 @@ export type SkillManageAction = "create" | "edit" | "patch" | "delete" | "consol
 export interface SkillManageBaseParams {
   /** The skill being mutated. */
   name: string;
+  /** PLAN-44 Phase 3: block (not warn) on a medium injection hit; set by the evolution pipeline. */
+  strictInjection?: boolean;
+  /** PLAN-44 Phase 4a: enforce the description contract (synthesized content only). */
+  descriptionContract?: boolean;
   /** Free-form reason recorded into staging meta. */
   reason: string;
   /** Author identifier ("agent", "user", "curator"). */
@@ -198,6 +203,8 @@ async function stageAndGate(
     timestamp?: number;
     overwriteStaging?: boolean;
     acceptHighRiskDiff?: boolean;
+    strictInjection?: boolean;
+    descriptionContract?: boolean;
   },
 ): Promise<{ stagedFilePath: string; gate: GateResult }> {
   const staged = await stageSkill(ctx.storageRoots, {
@@ -215,6 +222,13 @@ async function stageAndGate(
     liveContent,
     ...(ctx.lifecycleStore ? { lifecycleStore: ctx.lifecycleStore } : {}),
     ...(params.acceptHighRiskDiff ? { acceptHighRiskDiff: true } : {}),
+    ...(params.strictInjection ? { strictInjection: true } : {}),
+    ...(params.descriptionContract ? { descriptionContract: true } : {}),
+    // PLAN-44 Phase 4b: synthesized content is also checked for overlap
+    // against every other live description.
+    ...(params.descriptionContract
+      ? { liveIndex: await listLiveSkillIndex(ctx.storageRoots) }
+      : {}),
   });
   await updateStagingGateStatus(
     ctx.storageRoots,
@@ -248,6 +262,8 @@ export async function skillManage(
           reason: params.reason,
           author: params.author,
           ...(params.timestamp ? { timestamp: params.timestamp } : {}),
+          ...(params.strictInjection ? { strictInjection: true } : {}),
+          ...(params.descriptionContract ? { descriptionContract: true } : {}),
         });
         return {
           ok: gate.outcome !== "fail",
@@ -286,6 +302,8 @@ export async function skillManage(
           author: params.author,
           ...(params.timestamp ? { timestamp: params.timestamp } : {}),
           ...(params.acceptHighRiskDiff ? { acceptHighRiskDiff: true } : {}),
+          ...(params.strictInjection ? { strictInjection: true } : {}),
+          ...(params.descriptionContract ? { descriptionContract: true } : {}),
         });
         return {
           ok: gate.outcome !== "fail",
@@ -339,6 +357,8 @@ export async function skillManage(
           author: params.author,
           ...(params.timestamp ? { timestamp: params.timestamp } : {}),
           ...(params.acceptHighRiskDiff ? { acceptHighRiskDiff: true } : {}),
+          ...(params.strictInjection ? { strictInjection: true } : {}),
+          ...(params.descriptionContract ? { descriptionContract: true } : {}),
         });
         return {
           ok: gate.outcome !== "fail",

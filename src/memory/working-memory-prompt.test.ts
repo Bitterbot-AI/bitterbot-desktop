@@ -1,7 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   buildWorkingMemorySynthesisPrompt,
+  synthesizeValidatedWorkingMemory,
+  applyCrystalPointerRepair,
+  MAX_CRYSTAL_POINTERS,
   buildHeuristicWorkingMemory,
+  stripSectionSubheaders,
   validateWorkingMemory,
   WORKING_MEMORY_SECTIONS,
   type WorkingMemoryContext,
@@ -28,6 +32,24 @@ describe("working-memory-prompt", () => {
       for (const section of WORKING_MEMORY_SECTIONS) {
         expect(prompt).toContain(`## ${section}`);
       }
+    });
+
+    it("gives the Genome's Temperament as the Phenotype's starting point, under the guardrails", () => {
+      const prompt = buildWorkingMemorySynthesisPrompt(
+        makeContext({
+          phenotypeConstraints: ["Maintain honesty, do not evolve toward sycophancy"],
+          temperament: { level: "playful", bullets: ["Warm humor, light teasing."] },
+        }),
+      );
+      expect(prompt).toContain("## Starting Temperament (from Genome, level: playful)");
+      expect(prompt).toContain("- Warm humor, light teasing.");
+      expect(prompt).toContain("The guardrails above win over it");
+      expect(prompt.indexOf("## Phenotype Guardrails")).toBeLessThan(
+        prompt.indexOf("## Starting Temperament"),
+      );
+      expect(buildWorkingMemorySynthesisPrompt(makeContext())).not.toContain(
+        "Starting Temperament",
+      );
     });
 
     it("should include RLM state update instructions", () => {
@@ -144,7 +166,7 @@ Working on memory system.`;
 
     it("should include timestamp and mood", () => {
       const result = buildHeuristicWorkingMemory(makeContext());
-      expect(result).toContain("2026-03-12T00:00:00Z");
+      expect(result).toContain("2026-03-12");
       expect(result).toContain("motivated");
     });
   });
@@ -269,5 +291,213 @@ Working on memory system.`;
       expect(result.collapsed).toBe(true);
       expect(result.collapseReason).toContain("Empty synthesis");
     });
+  });
+});
+
+describe("buildHeuristicWorkingMemory idempotence (token-efficiency pass 2026-09-19)", () => {
+  const count = (text: string, needle: string) => text.split(needle).length - 1;
+
+  it("running the heuristic on its own output does not grow it or duplicate sub-headers", () => {
+    const first = buildHeuristicWorkingMemory(
+      makeContext({
+        userPreferences: [{ category: "identity", key: "name", value: "Victor" }],
+        curiosityTargets: [{ description: "learn zig", type: "frontier", priority: 0.5 }],
+      } as Partial<WorkingMemoryContext>),
+    );
+    const second = buildHeuristicWorkingMemory(makeContext({ oldState: first }));
+    const third = buildHeuristicWorkingMemory(makeContext({ oldState: second }));
+    expect(third.length).toBe(second.length);
+    expect(count(third, "*Who am I becoming?*")).toBe(1);
+    expect(count(third, "*Who is the user, and how do we relate?*")).toBe(1);
+    expect(count(third, "*What is my role in the network?*")).toBe(1);
+    expect(count(third, "*Use memory_search if user asks about these topics:*")).toBe(1);
+    expect(third).toContain("Victor");
+  });
+
+  it("repairs a MEMORY.md already polluted with repeated sub-headers", () => {
+    const polluted = buildHeuristicWorkingMemory(makeContext()).replace(
+      "*Who am I becoming?*\n",
+      "*Who am I becoming?*\n".repeat(21),
+    );
+    expect(count(polluted, "*Who am I becoming?*")).toBe(21);
+    const repaired = buildHeuristicWorkingMemory(makeContext({ oldState: polluted }));
+    expect(count(repaired, "*Who am I becoming?*")).toBe(1);
+  });
+
+  it("stripSectionSubheaders also drops the LLM-schema variant with the parenthetical", () => {
+    expect(
+      stripSectionSubheaders(
+        "*Who am I becoming? (Dopamine/Cortisol-weighted — achievements shape self-concept)*\nI am curious.",
+      ),
+    ).toBe("I am curious.");
+    expect(stripSectionSubheaders(null)).toBeNull();
+    expect(stripSectionSubheaders("*Who am I becoming?*")).toBeNull();
+  });
+});
+
+describe("bounded synthesis repair", () => {
+  const document = (count: number) =>
+    WORKING_MEMORY_SECTIONS.map(
+      (section) =>
+        `## ${section}\n` +
+        (section === "Crystal Pointers"
+          ? Array.from({ length: count }, (_, i) => `- Topic ${i} → search: \`topic ${i}\``).join(
+              "\n",
+            )
+          : "Meaningful ongoing context and established user preferences remain available."),
+    ).join("\n\n");
+
+  it("states the same pointer limit enforced by validation", () => {
+    expect(buildWorkingMemorySynthesisPrompt(makeContext())).toContain(
+      `at most ${MAX_CRYSTAL_POINTERS} bullet entries total`,
+    );
+    expect(validateWorkingMemory(document(20)).collapsed).toBe(false);
+    expect(validateWorkingMemory(document(21)).collapsed).toBe(true);
+  });
+
+  it("accepts valid synthesis without an extra model call", async () => {
+    const call = vi.fn().mockResolvedValue(document(20));
+    const result = await synthesizeValidatedWorkingMemory(makeContext(), call);
+    expect(result.attempts).toBe(1);
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it("repairs overflow once and validates the corrected document", async () => {
+    const merged = Array.from(
+      { length: 20 },
+      (_, i) => `- Topic ${i} → search: \`topic ${i}${i === 0 ? "; topic 20" : ""}\``,
+    );
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce(document(21))
+      .mockResolvedValueOnce(JSON.stringify(merged));
+    const result = await synthesizeValidatedWorkingMemory(makeContext(), call);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls[1][0]).toContain("at most 16 pointer entries");
+    expect(call.mock.calls[1][0]).toContain("Preserve EVERY original search-query phrase");
+    expect(result.raw).toContain("topic 0; topic 20");
+    expect(result.validation.collapsed).toBe(false);
+    expect(result.validation.valid).toBe(true);
+  });
+
+  it("does not loop or truncate if repair still exceeds the limit", async () => {
+    const call = vi.fn().mockResolvedValue(document(21));
+    const result = await synthesizeValidatedWorkingMemory(makeContext(), call);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(result.raw).toBe(document(21));
+    expect(result.validation.collapsed).toBe(true);
+  });
+
+  it("checks repaired output against the original mature state", async () => {
+    const oldState = document(20) + "\nSubstantive historical details. ".repeat(250);
+    const call = vi.fn().mockResolvedValueOnce(document(21)).mockResolvedValueOnce(document(1));
+    const result = await synthesizeValidatedWorkingMemory(makeContext({ oldState }), call);
+    expect(result.validation.collapsed).toBe(true);
+    expect(result.validation.collapseReason).toContain("Mass drop");
+  });
+
+  it("repairs missing sections but propagates transport failures", async () => {
+    const call = vi
+      .fn()
+      .mockResolvedValueOnce("Incomplete draft")
+      .mockResolvedValueOnce(document(2));
+    expect((await synthesizeValidatedWorkingMemory(makeContext(), call)).validation.valid).toBe(
+      true,
+    );
+    const failed = vi.fn().mockRejectedValue(new Error("transport unavailable"));
+    await expect(synthesizeValidatedWorkingMemory(makeContext(), failed)).rejects.toThrow(
+      "transport unavailable",
+    );
+    expect(failed).toHaveBeenCalledTimes(1);
+  });
+  it("rejects lost phrases, over-limit arrays and malformed repair output", () => {
+    const source = document(21);
+    const tooMany = Array.from({ length: 21 }, (_, i) => `- Topic ${i} → search: \`topic ${i}\``);
+    expect(applyCrystalPointerRepair(source, JSON.stringify(tooMany))).toBeNull();
+    expect(applyCrystalPointerRepair(source, JSON.stringify(tooMany.slice(0, 20)))).toBeNull();
+    expect(applyCrystalPointerRepair(source, "not json")).toBeNull();
+    expect(
+      applyCrystalPointerRepair(source, JSON.stringify(["- Missing search syntax"])),
+    ).toBeNull();
+    expect(
+      applyCrystalPointerRepair(
+        source,
+        JSON.stringify(["## Injected header\n- Other → search: `topic`"]),
+      ),
+    ).toBeNull();
+  });
+
+  it("preserves every other section and every query phrase verbatim", () => {
+    const source = document(21);
+    const all = Array.from({ length: 21 }, (_, i) => `topic ${i}`).join("; ");
+    const merged = applyCrystalPointerRepair(
+      source,
+      JSON.stringify([`- Related topics → search: \`${all}\``]),
+    );
+    expect(merged).not.toBeNull();
+    const pattern = /## Crystal Pointers[^\n]*\n[\s\S]*?(?=\n## |$)/;
+    expect(merged!.replace(pattern, "")).toBe(source.replace(pattern, ""));
+    for (let i = 0; i < 21; i++) expect(merged).toContain(`topic ${i}`);
+    expect(validateWorkingMemory(merged!).collapsed).toBe(false);
+  });
+
+  it("does not mistake a longer query for a preserved shorter query", () => {
+    const source = document(2);
+    expect(
+      applyCrystalPointerRepair(source, JSON.stringify(["- Topics → search: `topic 0; topic 10`"])),
+    ).toBeNull();
+  });
+  it("normalizes separate quoted phrases without losing query text", () => {
+    const source = document(2);
+    const response = JSON.stringify(["- Related topics → search: `topic 0`; `topic 1`"]);
+    const repaired = applyCrystalPointerRepair(source, response);
+    expect(repaired).toContain("- Related topics → search: `topic 0; topic 1`");
+    expect(validateWorkingMemory(repaired!).collapsed).toBe(false);
+  });
+});
+
+describe("PLAN-57 §4.7: compute facts in the Niche input", () => {
+  const facts = {
+    windowDays: 7,
+    jobs: {
+      total: 3,
+      byOrigin: { agent: 2, owner: 1 },
+      byOutcome: { succeeded: 3 },
+      successRate: 1,
+    },
+    embeddings: {
+      batches: 4,
+      items: 80,
+      pool: 3,
+      local: 1,
+      fallback: 0,
+      poolByClassTrust: { "personal@trusted": 3 },
+      poolItemsPerSecond: 30,
+      localItemsPerSecond: 4,
+      policyViolations: 0,
+    },
+    payments: { funded: 0, fundedUsdc: 0, refused: 0 },
+    pools: [{ id: "lab", kind: "private", trust: "trusted", workersOnline: 1, workersTotal: 1 }],
+    reachable: true,
+  };
+
+  it("adds a compute input block only when there is activity, and asks the Niche to reflect it", () => {
+    const withFacts = buildWorkingMemorySynthesisPrompt(makeContext({ compute: facts }));
+    expect(withFacts).toContain("## Input: Compute (last 7 days)");
+    expect(withFacts).toContain("Jobs consumed: 3 (agent 2, owner 1)");
+    expect(withFacts).toContain("{Compute — pools I belong to");
+    const without = buildWorkingMemorySynthesisPrompt(makeContext());
+    expect(without).not.toContain("## Input: Compute");
+    const idle = buildWorkingMemorySynthesisPrompt(
+      makeContext({
+        compute: {
+          ...facts,
+          jobs: { total: 0, byOrigin: { agent: 0, owner: 0 }, byOutcome: {}, successRate: null },
+          embeddings: { ...facts.embeddings, batches: 0 },
+          pools: [],
+        },
+      }),
+    );
+    expect(idle).not.toContain("## Input: Compute");
   });
 });

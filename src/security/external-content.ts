@@ -61,6 +61,53 @@ export function containsExternalUntrustedContent(text: unknown): boolean {
 }
 
 /**
+ * 1-based inclusive line ranges covered by external-content envelopes in a
+ * transcript. An unterminated envelope runs to the end of the text (fail
+ * closed). Used by session extraction to keep the taint on facts whose
+ * evidence lies inside a fetched page, email, or third-party message.
+ */
+export function findExternalUntrustedLineRanges(
+  text: string,
+): Array<{ start: number; end: number }> {
+  const lines = text.split("\n");
+  const ranges: Array<{ start: number; end: number }> = [];
+  let open: number | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (open === null && line.includes(EXTERNAL_CONTENT_START)) {
+      open = i + 1;
+    }
+    if (open !== null && line.includes(EXTERNAL_CONTENT_END)) {
+      ranges.push({ start: open, end: i + 1 });
+      open = null;
+    }
+  }
+  if (open !== null) {
+    ranges.push({ start: open, end: lines.length });
+  }
+  return ranges;
+}
+
+/**
+ * Does a fact drawn from `evidenceLines` rest on untrusted spans? With no
+ * envelope in the transcript the answer is no. With an envelope present, a
+ * fact whose evidence touches a range — or that cites no transcript line at
+ * all, so nothing proves it came from outside the envelope — is untrusted.
+ */
+export function evidenceTouchesUntrusted(
+  evidenceLines: readonly number[],
+  ranges: ReadonlyArray<{ start: number; end: number }>,
+): boolean {
+  if (ranges.length === 0) {
+    return false;
+  }
+  if (evidenceLines.length === 0) {
+    return true;
+  }
+  return evidenceLines.some((line) => ranges.some((r) => line >= r.start && line <= r.end));
+}
+
+/**
  * Security warning prepended to external content.
  */
 const EXTERNAL_CONTENT_WARNING = `

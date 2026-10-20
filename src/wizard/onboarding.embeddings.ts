@@ -18,9 +18,9 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { probeSqliteVec } from "../memory/sqlite-vec.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
-import { probeSqliteVec } from "../memory/sqlite-vec.js";
 
 type EmbeddingProvider = "openai" | "gemini" | "voyage";
 

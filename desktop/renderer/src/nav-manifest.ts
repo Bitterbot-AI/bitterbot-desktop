@@ -13,9 +13,13 @@
 import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
+  Brain,
+  Lightbulb,
+  Plug,
   Bot,
   BrainCircuit,
   Clock,
+  Coins,
   FolderOpen,
   Gauge,
   Globe,
@@ -45,10 +49,15 @@ export interface NavItem {
 const NAV_MANIFEST_LITERAL = [
   // ── SHIP set ──
   { id: "overview", label: "Overview", icon: Gauge, group: "main" },
+  // PLAN-50: cost is a daily-glance surface, second only to health.
+  { id: "usage", label: "Usage", icon: BarChart3, group: "main" },
   { id: "channels", label: "Channels", icon: Radio, group: "main" },
   { id: "agents", label: "Agents", icon: Bot, group: "main" },
   { id: "skills", label: "Skills", icon: Puzzle, group: "main" },
-  { id: "cron", label: "Cron", icon: Clock, group: "main" },
+  { id: "connectors", label: "Connectors", icon: Plug, group: "main" },
+  { id: "memory", label: "Memory", icon: Brain, group: "main" },
+  { id: "curiosity", label: "Curiosity", icon: Lightbulb, group: "main" },
+  { id: "cron", label: "Automations", icon: Clock, group: "main" },
   { id: "models", label: "Models & Keys", icon: KeyRound, group: "main" },
   { id: "config", label: "Settings", icon: Settings, group: "main" },
   { id: "compute", label: "Compute", icon: Server, group: "main" },
@@ -58,9 +67,9 @@ const NAV_MANIFEST_LITERAL = [
   { id: "guards", label: "Active Guards", icon: ShieldCheck, group: "advanced" },
   { id: "dreams", label: "Dreams", icon: BrainCircuit, group: "advanced" },
   { id: "wallet", label: "Wallet", icon: Wallet, group: "advanced" },
+  { id: "spendGrants", label: "Spend Grants", icon: Coins, group: "advanced" },
   { id: "workspace", label: "Workspace", icon: FolderOpen, group: "advanced" },
   { id: "nodes", label: "Nodes", icon: Server, group: "advanced" },
-  { id: "usage", label: "Usage", icon: BarChart3, group: "advanced" },
   { id: "logs", label: "Logs", icon: ScrollText, group: "advanced" },
   {
     id: "management",

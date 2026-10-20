@@ -2,8 +2,8 @@
  * BioMemEval test helpers: deterministic embeddings and chunk insertion.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 
 /** Seeded PRNG for deterministic embeddings. */
 function xorshift32(seed: number): () => number {

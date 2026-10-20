@@ -1,5 +1,359 @@
 # Changelog
 
+## [1.9.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.8.0...v1.9.0) (2026-10-19)
+
+
+### Features
+
+* **compute:** PLAN-57 Phase 0, the read-only `compute` tool and its prompt section ([#268](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/268)) ([d989031](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d9890310e5a14c6467c33dd4724b2ed1aabb89e0))
+* **compute:** PLAN-57 Phase 1, the compute state block, the watcher and durable completion delivery ([#270](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/270)) ([26fbefd](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/26fbefd04922d37664e902e0877e3b455fa22e49))
+* **compute:** PLAN-57 Phase 2, agent-initiated submit and cancel with PLAN-16 task linkage ([#272](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/272)) ([a5cbbdd](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a5cbbdd226b97f41d6520be5293adf12d4a74820))
+* **compute:** PLAN-57 Phase 3, embedding profiles, pool-routed embeddings under an egress policy, and the migration command ([#273](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/273)) ([a0ad537](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a0ad537969ca566f44edc74cda5ac8e5ce2c8859))
+* **compute:** PLAN-57 Phase 4, payment authority enforced at the signer for paid compute ([#274](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/274)) ([a46af5d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a46af5dd7b151bc5b692d0964516c3390220b2a2))
+* **compute:** PLAN-57 Phase 5, compute facts in the Niche, job episodes, and the owner's compute CLI ([#275](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/275)) ([02ebdf2](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/02ebdf27a78526c763582bdb0dcc1dedb9ecb57d))
+* **compute:** PLAN-57 Phase 6, bounded hormonal nudges, the Compute settings group, and the upgrade story ([#276](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/276)) ([3ddb21a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3ddb21abba9f07d45479510c9eb32837dba56308))
+
+## [1.8.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.7.0...v1.8.0) (2026-10-17)
+
+
+### Features
+
+* **installer:** put ~/.local/bin on PATH, show download progress, no fresh-install prompt, refuse sudo not root ([#265](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/265)) ([7a9e254](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7a9e254c9ab25fda81e69ef76658ede58e36f727))
+
+
+### Bug Fixes
+
+* **browser:** a cold first start after a reboot no longer fails, and D-Bus noise stays out of the error ([#263](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/263)) ([bf59c3e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bf59c3e5d1f80f6e55b8262bceff38531907cd28))
+* **update:** the update card says why the latest release is unknown, and describes a tarball update ([#261](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/261)) ([ba3143d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ba3143d724868124b7421b4b68ddcd207d39324c))
+
+## [1.7.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.6.1...v1.7.0) (2026-10-16)
+
+
+### Features
+
+* **cli:** plain `bitterbot` starts setup on a machine that isn't set up ([#253](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/253)) ([4774759](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4774759d9e0da53711772a6380a09987bc490906))
+* **npm:** npm package is a thin launcher over the signed release tarball (+ Intel Mac tarball, zsh compdef guard) ([#254](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/254)) ([3d13220](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3d132202b7f09c0977354910111ac5d8302b9721))
+* **persona:** base personality (GENOME Temperament), Bitterbot identity opening, source rules ([#257](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/257)) ([2aedf1c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2aedf1c08519824db8608fa261ed25890f0485cf))
+
+
+### Bug Fixes
+
+* **installer:** an older gh skips the attestation check instead of refusing ([#252](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/252)) ([bbfd3f4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bbfd3f476d9c5f4ad9e72fde9ae911ccf8f24025))
+* **whatsapp:** baileys 7.0.0-rc14 (GHSA-qvv5-jq5g-4cgg message spoofing) ([#259](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/259)) ([660953f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/660953fca121bbae1903b465948d298bc37b6dbb))
+
+## [1.6.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.6.0...v1.6.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* Sonnet 5.5 fallback, GPT-5.5 OpenAI default, release-asset installer with draft releases ([#244](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/244)) ([958af3f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/958af3f89aadee40fd27cb8fbd52906fc96daaf8))
+
+## [1.6.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.5.0...v1.6.0) (2026-10-15)
+
+
+### Features
+
+* **installer:** switch a running older Bitterbot to the new version ([#239](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/239)) ([a10e170](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a10e1708d1a33918c933ac26d0ce57ae9499fc10))
+* **release:** publish the bitterbot package to npm ([#240](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/240)) ([a980204](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a9802043bd1675aa2f29e1671cfb8ee451f4c4e0))
+
+
+### Bug Fixes
+
+* **release:** make release-please actually bump the desktop Cargo.lock ([#237](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/237)) ([b495b71](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b495b71b40845c18cd0308705e3f9e56da1e2c2b))
+
+## [1.5.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.4.0...v1.5.0) (2026-10-13)
+
+
+### Features
+
+* **cli:** `bitterbot curiosity`; knowledge-graph person hygiene for the egress filter ([#210](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/210)) ([9098ae8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9098ae8946338912e55a90635734112c39d4cebc))
+* **install:** PLAN-56 Phase 2, zero-edit compose, config defaults without a file, container updates ([#224](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/224)) ([a849eee](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a849eee12e3386bac0323e6a659b641ee520f2f1))
+* **install:** PLAN-56 Phase 3a, signed release tarballs and install.sh ([#227](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/227)) ([deb4d7c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/deb4d7c9be73f10868d5d37ea1e29d786bd147e4))
+* **install:** PLAN-56 Phase 3b, verified in-place updates with snapshot and rollback ([#229](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/229)) ([aacf98e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/aacf98e234735f991cb9234eab7aff4a0d9881b8))
+* **memory:** bounded working-memory repair pass + LongMemEval-V2 Medium harness ([#231](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/231)) ([53dc19f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/53dc19fbe23e720fad7d1c6b83454b669c28f97c))
+* **memory:** keep what curiosity saw but could not verify, visibly and out of memory ([#206](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/206)) ([bd07786](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bd077866d31e21b9c6692f47fa3ac81f7ebfaa3a))
+* **memory:** PLAN-55 Phase 0, owner tier and sticky forget/retire ([#222](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/222)) ([8f85e5f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8f85e5f497eaf78677edc4ffa70719f392dc6b5a))
+* **memory:** PLAN-55 Phase 1, immediate correction capture ([#223](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/223)) ([ebc3851](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ebc38512328ce971d3838799bf24db8020671f6d))
+* **memory:** PLAN-55 Phase 2, canonical:changed propagation ([#226](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/226)) ([5133f6f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5133f6f1046e582984e263491248ff4c81638af3))
+* **memory:** PLAN-55 Phase 3, cascade on forget and edit, export v2, import ([#230](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/230)) ([ebf42cf](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ebf42cf6ddd4003990a159e4e64afe3c75329819))
+* **memory:** the curiosity loop (PLAN-54) ([#204](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/204)) ([fdc5ab9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fdc5ab93e7b3fbd999c0927f1f58edae53f26d73))
+* **onboard:** PLAN-56 Phase 4, browser-first onboarding ([#232](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/232)) ([aee5fbb](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/aee5fbbbd78cdf58dac96c0c42d4ba9af4564944))
+* **settings:** PLAN-56 Phase 1, settings that tell the truth ([#221](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/221)) ([491359f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/491359f468d47ea54f70d7c0093bd9fd72d86ad1))
+* **ui:** offer a reload when the page is older than the gateway ([#203](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/203)) ([d51d19b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d51d19b5dfc303d33b96dedce0d6c2d967b8728b))
+
+
+### Bug Fixes
+
+* **agents:** Wave 3 follow-ups: edit legacy args via use_tool, temperature 400s, exec env coercion, stale e2e, nightly e2e job ([c75cae8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c75cae8fbccb63750764276e4571ee73466fb5bd))
+* **agents:** Wave 3 follow-ups: edit legacy args via use_tool, temperature 400s, exec env coercion, stale e2e, nightly e2e job ([786c5b7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/786c5b713a7cbcb9eb3dcbf52a7b952b3e456e10))
+* Circles messages via webchat, and make the memory biology work as designed ([#193](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/193)) ([522b816](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/522b816166792f99ed391b22dc47df1287624c95))
+* **circles:** close the remaining mesh security findings (M2-M7, MED-7, HIGH-5, LOW-11, L2) ([#197](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/197)) ([2345af6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2345af6cb70c076b2ca7c80f82ce84f28be5d352))
+* close gaps found in the docs-vs-code audit (x402 unsigned proofs, Link site check, compose start) ([#194](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/194)) ([f09d6ca](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f09d6ca1a23934fcbd0ef4fcde63b7c725a437d4))
+* **gate:** hold the session spend cap while a payment is in flight ([#186](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/186)) ([290644d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/290644db47e3e718cb444796dc6ac9745deacd56))
+* **memory:** a search phrase about a public subject may share its plain words ([#208](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/208)) ([24d44bf](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/24d44bf76374acad295b2cba54ba1d62c7d0ce02))
+* **memory:** curiosity egress can keep a public subject without ever passing a private name ([#207](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/207)) ([91fe5b6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/91fe5b68b1c02abde5ea814fa8d48aef13bd5c75))
+* **memory:** curiosity loop, first live pass ([#205](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/205)) ([605b21f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/605b21f857135eca4843757836db09f1726c8045))
+* **memory:** curiosity never asks the web about the owner's own life; voicing counts as use; embed at once ([#209](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/209)) ([bcb8fb9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bcb8fb940fe47a457441e2af1ce133fb62ffcad4))
+* **memory:** lifecycle column mismatch from the Agent Memory Atlas review ([#200](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/200)) ([5e5a9e4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5e5a9e4f913f4b30ad013e6a3a984f19ab19ba5e))
+* **memory:** v75 folds a misfiled person into an existing concept instead of colliding ([#211](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/211)) ([4e2e5ee](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4e2e5eedcd23cf1da932558f4d5cc9ec9ccdad30))
+* **relay-fleet:** updater canary reverted every healthy update (pipefail + grep -q) ([#199](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/199)) ([32b6494](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/32b649451de8876598655e2ff8c9af4542cb7ae9))
+* **release:** PLAN-56 Phase 0, one version, Docker carries the orchestrator, signature-ready fetch ([#220](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/220)) ([a2bc220](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a2bc220def023ec42ade64e89bf9e3c25912da9f))
+* **runtime:** review round for the pi-engine removal ([1585d01](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/1585d01b3deb0e481adc2bc079853f3c27ffcea2))
+
+## [1.4.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.3.0...v1.4.0) (2026-10-06)
+
+
+### Features
+
+* **agents:** a guest gets the agent's character, not its owner's private life ([#190](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/190)) ([7401db8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7401db810d5353b0441360993814471bb32d1953))
+
+
+### Bug Fixes
+
+* **agents:** detect guest turns on runs that set only messageChannel ([#192](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/192)) ([f77d28a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f77d28a89b9da297a6429297bab029cdf8572b9b))
+
+## [1.3.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.2.0...v1.3.0) (2026-10-06)
+
+
+### Features
+
+* **agents:** the cron tool the agent was told it had (PLAN-53 E6) ([87093cc](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/87093cc6189c3df87f8356ec423040d145ccd18c))
+* **agents:** the cron tool the agent was told it had (PLAN-53 E6) ([a81d817](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a81d817240144aeb9463b139aea73caff2d3fcd6))
+* **automations:** one Automations page for jobs, monitors and tasks; in-gateway stuck-task sweep (PLAN-53 E4, E8) ([c0cb6c4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c0cb6c4465a035fea3e64457d9150ddde444b63e))
+* **automations:** one Automations page for jobs, monitors and tasks; the gateway finds stuck tasks itself (PLAN-53 E4, E8) ([27b78c3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/27b78c35adf98d47ff1967390acb8481cbffd76e))
+* **automations:** scheduled jobs never fail silently; owner notices; interval anchors; one-shot retries ([eb117a3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/eb117a309e26c3a8ed54c2bf1fc0479b0d3025e3))
+* **automations:** scheduled jobs never fail silently; owner notices; interval anchors; one-shot retries (PLAN-53 E1-E4, E7, E9) ([7904c98](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7904c98191e566f15b9cc3465a36cee2cbf29ae5))
+* **bench:** compaction eval round 2 (verified negatives, memory_search for all arms, automatic-recall arm, session cost model) ([b2cd07b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b2cd07b789b212276ccb99691564ed2f0a183638))
+* **bench:** compaction-policy evaluation harness (PLAN-52A Phase E) ([447213b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/447213bbe2a49efd19198d0aa54c1dc005ac6aad))
+* **browser:** live view of the agent's browser with take-over in the Control UI (PLAN-53 A1-A3) ([1959440](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/19594402eea523e5f9545b2a6c4d693658426367))
+* **browser:** session replay of the agent's browser (PLAN-53 A6) ([#178](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/178)) ([0541e67](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0541e67bd9deef237de0b0a193c5ba6395d6b2ec))
+* **browser:** the agent can ask the owner to take over the browser (PLAN-53 A3 handoff) ([2838930](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2838930fe2bf04d1c29a111e7725143ac7c623b8))
+* **browser:** the agent can ask the owner to take over the browser (PLAN-53 A3 handoff) ([f002481](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f0024811fc4bb95fc5e4fefbc492f0c488a254c2))
+* **channels:** email as a chat channel over IMAP and SMTP (PLAN-53 F4) ([#185](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/185)) ([c069da3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c069da3e44f3c4b05ce644a400a8b16937528bd2))
+* **compaction:** per-agent policy, heartbeat-pair elision, daily deep_recall budget (PLAN-52A) ([1f9c556](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/1f9c556f28ae769da37ee3325c253ee306c52e9f))
+* **connectors:** MCP client with a Connectors page; connector writes wait for approval (PLAN-53 D2, D4, D5) ([e116d9c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/e116d9c3d6736a7fb5d60e9906b74b8c97a6f040))
+* **connectors:** MCP client, Connectors page, connector writes wait for approval (PLAN-53 D2, D4, D5) ([ccd8cc1](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ccd8cc13827648f080bdb09b83fab85055ec96a2))
+* **connectors:** sign in to MCP servers that use OAuth (PLAN-53 D3) ([05655e6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/05655e66dc378870df3e3eeb4690a9250a947a84))
+* **connectors:** sign in to MCP servers that use OAuth (PLAN-53 D3) ([a39608b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a39608bfee5f0eb4aa9da2cdf3739fa3b6c6435f))
+* **deploy:** always-on hosting on Fly.io or a VPS, browser-only first run (PLAN-53 F1) ([#182](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/182)) ([b3a8edf](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b3a8edf2babcd877bceb2eebc18df4e4b7caa779))
+* **events:** queued system events survive a gateway restart (PLAN-53 E7) ([c25baa5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c25baa586aa06b5e8b983c9fb9b84904ace0d930))
+* **events:** queued system events survive a gateway restart (PLAN-53 E7) ([4c75bd7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4c75bd730ff05519f13c64f2f05c474717ba16ad))
+* **funding:** record completed top-ups and enforce the monthly funding ceiling (PLAN-53 C5) ([7741a31](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7741a313bc5618e3240b0c630427432abdf463fe))
+* **funding:** record completed top-ups and enforce the monthly funding ceiling (PLAN-53 C5) ([0d1a12f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0d1a12f42cc76414de57441df6c76a7dc8980653))
+* **memory:** audit log reader on the Memory page (PLAN-53 G2) ([#183](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/183)) ([20ce9f1](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/20ce9f1fc77b44c055259e877107fc1228bf964d))
+* **memory:** daily dream brief to the owner (PLAN-53 G4) ([#175](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/175)) ([83d1dd3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/83d1dd3f15b2ac5ed36e89f397e2c3af53f5686b))
+* **memory:** guests cannot recall the owner's private memory (PLAN-53 G2) ([#176](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/176)) ([8c7cd0e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8c7cd0ebeb9e69b9a40878e76f99cd403a85a390))
+* **memory:** see, correct, forget and export what the agent remembers (PLAN-53 G1) ([#174](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/174)) ([2e93892](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2e93892231e66691c4bfa26ff1ee1e4c7769a8d5))
+* **monitors:** watch a page or API and wake the agent only on change (PLAN-53 E5) ([0b0d296](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0b0d296b7088c66e7a7701a508b9e384af67fb7c))
+* **monitors:** watch a page or API and wake the agent only on change (PLAN-53 E5) ([5ce1108](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5ce1108799e5378920a47ed9066ba2c1b73e1753))
+* **payments:** card purchases through Stripe Link, card never shown to the agent (PLAN-53 C1) ([7978892](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7978892590ee3e65ca5935e72b19aa5d74d8933e))
+* **payments:** card purchases through Stripe Link, with the card never shown to the agent (PLAN-53 C1) ([3ef27b9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3ef27b9e6fa90d604712311ec640432b24c71c7a))
+* **payments:** one spend gate for every way money leaves the node (PLAN-53 C0) ([afa1395](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/afa1395ab2d413745844570f86a1975f541faa6d))
+* **payments:** one spend gate for every way money leaves the node (PLAN-53 C0) ([931cf18](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/931cf1817d5b6f4e31d599ad6d7cee52e5fd330e))
+* **payments:** Privacy.com single-use card rail for purchases (PLAN-53 C4) ([#180](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/180)) ([1263322](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/12633224d676b826b737906a6ff2efc0877532e1))
+* **recall:** recall-first wording from the compaction eval; harness judge fix, arm 5, negative audit ([cefca1a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cefca1ad5bb6d7ff6039af81b7b49c47c8af55ef))
+* **review:** action review — hold spends and X posts for the owner's approval (PLAN-53 Track B v1) ([d4c544a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d4c544a721045ea456c5a5470c98bb622c53d071))
+* **review:** action review — hold spends and X posts for the owner's approval (PLAN-53 Track B v1) ([7cc201b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7cc201baa2e610b60dbb270971a7aee2ba2b8e84))
+* **review:** hold the first message to someone new; give back a grant's allowance when a send fails ([8cab4f7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8cab4f7ae272fb528d3423cb7d6c2288159cc08f))
+* **review:** hold the first message to someone new; release grant allowance on a failed send ([4c87421](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4c87421a497056b3706dff9dacad1d93cb908e7b))
+* **review:** shell-command approvals in the review queue (PLAN-53 B6) ([dd23e14](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/dd23e14df3756406096348fd3a565613a65d6cbb))
+* **review:** shell-command approvals in the review queue (PLAN-53 B6) ([77eee7d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/77eee7d3dec60608c6cfd45064bd4434f47b6410))
+* **runtime:** offload compaction policy, pure planning layer (PLAN-52A A3) ([c25e380](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c25e380f0697367dfe45de035abdd2d79a6553eb))
+* **runtime:** owned agent loop (PLAN-52 Phase 2) ([fd8880c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fd8880ca732815786d707ceeb4f4e7ba3d02f0ba))
+* **runtime:** owned session layer and compaction policies (PLAN-52 Phase 3, PLAN-52A 3b) ([7214d5c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7214d5cd1f2e558db8fd06d3a3a767b946ba3274))
+* **runtime:** owned transcript store behind an engine flag, runtime contract suite (PLAN-52 Phases 0-1) ([ede3dba](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ede3dbafbd74544aff1da844e3eefd08ebf16706))
+* **runtime:** persistent tool-output stubs, on by default (PLAN-52A Track B) ([4d13790](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4d13790d86339b378cdee90c2ffefe867b047398))
+* **runtime:** proactive transcript recall over the offloaded range (PLAN-52A L1a) ([266d074](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/266d074da61d18192196de8015d8e87e3af18dde))
+* **runtime:** the embedded runner runs on either engine (PLAN-52 Phase 4) ([fed068d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fed068d03ab1b48bd51e80ded1d314436744a179))
+* **runtime:** usage ledger engine column and doctor lines for the engine soak (PLAN-52 Phase 4) ([3096fc4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3096fc498ce8655c60b16dba5776bf5a7518f78f))
+* **sandbox:** isolated computer and per-agent browser profiles (PLAN-53 A5) ([#181](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/181)) ([da84f09](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/da84f09cf321430aed88be3d7a173d68db39dadc))
+* **security:** payment card data is scrubbed from everything the agent keeps (PLAN-53 C2) ([df422b1](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/df422b14d27e416d57e7dba670f34295204f5571))
+* **security:** payment card data is scrubbed from everything the agent keeps (PLAN-53 C2) ([8c59513](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8c5951311b96f10397ea86a8716a40dcffd4ecfe))
+* **shop:** search stores and build carts over Shopify UCP (PLAN-53 C3) ([#177](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/177)) ([ee6acd3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ee6acd366ed7c5dd98ee6ecc76919b7500512904))
+* **skills:** enter a skill's API key from the Skills page (PLAN-53 D1) ([413347d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/413347d34c7a876036c54d6f6608daba881af035))
+* **skills:** enter a skill's API key from the Skills page (PLAN-53 D1) ([a08191a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a08191aab17e0c765d1e45eec5cca34e0633d80d))
+* **tools:** recall_range, the deterministic transcript reader (PLAN-52A A2) ([bcbeab4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bcbeab4e2119bc40170b11629b65bb4a7a6e03e1))
+* **voice:** talk to the agent in the Control UI (PLAN-53 F3, step one) ([#184](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/184)) ([732f4ce](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/732f4ce53bf6a981cfd66daaa7d62c8338f0819f))
+* **web-search:** add opt-in keyed Serply provider ([ad8cbfe](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ad8cbfebfe2a400d7647cd317ead49ad7ed3b7ec)), closes [#151](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/151)
+* **web-search:** add opt-in keyless Parallel Search MCP ([cc8acb8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cc8acb886a1d138368b270b4c1d7add657428e3c))
+* **web-search:** add opt-in keyless Parallel Search MCP ([d580164](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d580164d14dbcfaf50c3cb942f5e3ed9d607ea42))
+* **web-search:** Serply provider ([#152](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/152)) plus onboarding env-detection fix ([9e68af4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9e68af4900d756fd7ea3b5d613fdc85959d1763c))
+
+
+### Bug Fixes
+
+* **a2a:** count a hire against its spend grant before paying ([#179](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/179)) ([21bdc52](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/21bdc52656e5a90e60834662796baa775f3edd34))
+* **agents:** GENOME.md write guard at the tool boundary ([8dc8aad](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8dc8aad89a483753350f7d0cf5fd4ae2a4124101))
+* **agents:** late tool progress updates no longer crash the gateway; file reads are not cached ([f986b15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f986b1518e77febed7e251cbfcf98aa6144b718f))
+* **bench:** cache breakpoint on the last history block; hedged answers go to the judge ([bfb15a9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bfb15a951df93a93bb382147761e6aed87791d60))
+* **browser:** a snap is only a browser when it is mounted ([d2c19e2](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d2c19e28d55993070d1d84c894f3c5619b7cc384))
+* **browser:** launch on a box with no real system browser, honest errors, terminal output, owner-only wallet (PLAN-53) ([a08702a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a08702a16baf71ebdf23c0aad3f8d89d008ec313))
+* bugs found in live testing; artifact tool loaded in chat; resizable computer pane ([7b82acc](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7b82acce80d4fbdbe617af5d853004a812bccbf3))
+* close four gaps instead of documenting them; LIMITATIONS.md brought up to date ([99628d7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/99628d7200e089cf88507ed98ef9ec996bc93cb8))
+* **connectors:** connector writes were not held; share the registry across bundles ([2ab36c6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2ab36c687944d1e5c4f4d7429ea800b8c1f05c9c))
+* **connectors:** connector writes were not held; share the registry across bundles ([081ce6c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/081ce6c81a28834d71a5be5adcf961f63b74716d))
+* **connectors:** type the error responder from the plugin API ([e1fa18e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/e1fa18e4a25d291df4c25bfdfee05938ddfce152))
+* **cron:** resolve delivery before the turn; run one-shot jobs that were missed ([73509a8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/73509a80662185438fed9256e8b01f2c44922d34))
+* **gateway:** find dist/control-ui next to the bundle regardless of cwd ([6bd8ff7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/6bd8ff7d0832ef8bd6614252eee8d6159c3f02a1))
+* **gateway:** find dist/control-ui next to the bundle regardless of cwd ([2082f60](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2082f6069075f082e7800c5b1fdce485031a83ab))
+* **lint:** compare function for the numeric sort in the wallet test ([5ecaa83](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5ecaa83b1712f1d3cb28875676a7b59dc7fd8ab6))
+* **lint:** use a Set for the no-screen tool list ([e1e1c6b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/e1e1c6bdb3adec91771d5cd3985f5b8ac81e45c1))
+* live-test bugs, artifact tool loaded in chat, resizable computer pane ([4309e7c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4309e7cd15d329bcd6d623ef3de5ecf29562f75c))
+* **memory:** a full reindex keeps every table it does not rebuild ([829356f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/829356fb46be6e31f2f3aafd66cb1a2f4e7fee71))
+* **memory:** dream, anchor and curiosity tools refuse guest turns (PLAN-53 G2) ([#187](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/187)) ([76cfa5f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/76cfa5fe771b4310d5106d61219d17df7497aeb1))
+* **memory:** full reindex keeps non-index tables; tests cannot open real state ([cfe5c4c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cfe5c4c2e4b88803f87c2db218a6be5de32b088c))
+* **memory:** stop the maintenance tick's cold full scans of chunks ([a8b97d4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a8b97d4bf30e50052c0c9ca54ad8c79a1e82da51))
+* **memory:** stop the maintenance tick's cold full scans of chunks ([83a7231](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/83a72317c3efe9f0139a8b59ffc349d53db52a6e))
+* **prompt:** hormonal tone hints yield to an explicit output request ([e4ae31f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/e4ae31fafaaea3338dfc8b4e8761d623e476beea))
+* **prompt:** hormonal tone hints yield to an explicit output request ([0f469cf](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0f469cf8b2650da0c00fd35bc82027055284b7b7))
+* **review:** drop redundant default type argument in the renderer review store ([ae378f8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ae378f87338f455ffc08ae681e165beb8903e469))
+* **review:** pass always only when set; cover it in the gateway test ([c522d2a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c522d2a75b81bb2e37aa12ded33a93dec4ff121b))
+* **review:** send a malformed spend call back to the agent instead of queuing it ([3b7df74](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3b7df7441a7787efd7a1ed6605edfee69210cbfa))
+* **review:** send a malformed spend call back to the agent instead of queuing it ([b9f04b9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b9f04b963f81419c751498363738dba98a0ab493))
+* **rlm:** deep_recall targets its own session, sees tool results, gates cross-session scopes (PLAN-52A A1) ([223911e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/223911e8f29cffd7d1a6b9c003a1080c6c19bdfb))
+* **runtime:** compaction, stub and recall defects from the adversarial review ([f73c711](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f73c71159d783ce0d178f95ac9ee5cc9d007101b))
+* **runtime:** mid-turn context budget now reaches the run in flight (PLAN-52A) ([2c23021](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2c230211ac9905339a99d60af3721fa9f012e7b9))
+* **runtime:** session and runner defects from the adversarial review (loop, session, wiring) ([bce65bd](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bce65bd57f603c7419d5e86a264b29aab9481e77))
+* **runtime:** transcript store hardening from the adversarial review ([dee3f20](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/dee3f20050af3aea08207e702c03095dbff9a57e))
+* **runtime:** type the parentId cursor in the transcript view (TS7022), record actual prompt usage on assistant entries ([8ceff66](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8ceff66a05c105525851661811ba4a2714ecbe49))
+* **security:** artifacts render without same-origin access ([c4ca547](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c4ca5471d955e4f17f7f0f9b242a8e85c5e43fe4))
+* **security:** do not load pi extensions, settings, or resources from the agent workspace ([fc41df1](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fc41df1a8d8ff4cd8814433cba4a0eade9295e62))
+* **security:** owner status on merged, queued, steered and command-started runs ([19af58f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/19af58fd940e2f195d93dffc83ba2bbad97dbf8e))
+* **security:** owner status reaches chat runs and follows the runs they start; money and gateway tools are owner-only ([3cc60e5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3cc60e52546542d69c6bafe64003a756a0b2df85))
+* **security:** workspace resource guard for the pi engine, workspace-only path guard ([a00c3a3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a00c3a31ed25230b964075e055e51021e9593d75))
+* **security:** workspace-only path guard resolves the path the file tools open ([22e3285](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/22e3285c68c4ba87fbbfdaf6ce317694e0e09643))
+* **sessions:** materialize the stored skills snapshot for /compact too ([a392954](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a392954d3db627ba40c4eab256f8e720a4317d06))
+* **sessions:** stop deep-copying the whole session store on read-only lookups ([2b5fcc2](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2b5fcc2dc43e47569b32dbbfb1d80d7c1cfe5e11))
+* **sessions:** stop deep-copying the whole session store on read-only lookups ([89a72a4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/89a72a4a0161dcc3eed90f40762a46447ff21984))
+* **sessions:** store each skills snapshot body once, keep a ref per session ([5ee2bb9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5ee2bb9ca7937f041f758be27893c55f553197ae))
+* **sessions:** store each skills snapshot body once, keep a ref per session ([c18a56d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c18a56d54b07a48354ffeb6613ac7a8dcda9117a))
+* **test:** tests can no longer open the real state directory ([439410b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/439410b0af64b916aad602ca9c6250e0b02fcdbe))
+* third review of the soak fixes (heartbeat elision, tool cache, recall budget) ([80f4fda](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/80f4fda4b299dcb4ff41ea6ad2fb017ddd7608c6))
+* **tools:** Phase 5 review findings; gateway guardrail test follows the transcript factory ([1121759](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/11217594aef0dc7911c22d7235b42bffc5264150))
+* two crashes-and-staleness bugs the soak found; PLAN-52A per-agent policy, heartbeat elision, recall budget; soak driver ([5c59996](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5c5999621e0e22b9e9e32f54feba59e339677a5a))
+* **types:** two typecheck errors in the stub wiring (CI) ([2fd1805](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2fd180533f823526b0e9a5330195cbe71eeb40e4))
+* **types:** two typecheck errors in the stub wiring (CI) ([37f2861](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/37f2861d0bc481536c60125d670007746a244da3))
+* **wallet:** hold the daily spend limit while sends are in flight ([24e6454](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/24e6454647d9a865fd9141328f4a96136b58eafb))
+* **wallet:** hold the daily spend limit while sends are in flight ([df89c93](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/df89c93c301dbeced117d8e6ca465465749d6522))
+* **wallet:** share the daily-limit hold across wallet services; never report a completed send as failed ([dfd864d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/dfd864d9d57a7398cf4ef8473dbc2d670903bf12))
+* **wallet:** share the daily-limit hold across wallet services; never report a completed send as failed ([9f84146](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9f84146047d83562a658c051e72a66b3ed3d7023))
+* **web-search:** onboarding stores the provider it detects from the environment ([8811010](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8811010d001f7aed26ec0e5f9d33b1d6749f4dfc))
+
+## [1.2.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.1.0...v1.2.0) (2026-09-29)
+
+
+### Features
+
+* **channels:** X (Twitter) outbound posting channel, policy-gated ([873e5d5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/873e5d58ce95eccd7908d1d0bf0f28112db4bbe7))
+* **providers:** full OpenRouter app attribution on every OpenRouter request ([0fb9dbb](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0fb9dbb5036680296425134c7daa385983155409))
+
+
+### Bug Fixes
+
+* **p2p:** adversarial-pass fixes for skill-receive accounting ([cf2472a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cf2472a1e7dcc5000f2bb630f8a7f68b287fd558))
+* **p2p:** count received skills, not gossip messages; stop per-copy penalties ([2e5e79b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2e5e79bd64ac138b82710631e1e2a0efb6e0cde3))
+* **p2p:** drop our own skills echoed back; incoming-skills cleanup ([922bd68](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/922bd689455556f62ee06052941c7880593449c8))
+* **p2p:** review fixes for the self-echo / incoming change ([458de02](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/458de02ddd70052cd1d982ec2562af590c2c2c56))
+
+## [1.1.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.0.0...v1.1.0) (2026-09-22)
+
+
+### Features
+
+* **a2a:** hermetic remote execution — tool floor, prompt isolation, real bounds (plan43 phase 1) ([394d5a0](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/394d5a04b9c9622835336014e2b7bee3f59dc2bd))
+* **a2a:** per-task access tokens + exact-ID metered skill invocation (plan43 phase 1) ([745f2ff](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/745f2ffdb75f0695ee39c2c0bb5a6b533449d45a))
+* **benchmarks:** PLAN-45 Phase 5.1/5.2 skill ablation harness with an in-context control arm ([05e2d8c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/05e2d8c794e96a20e8e591f027862381e740654e))
+* **efficiency:** in-tree Anthropic provider with native tool search, 9k-class prefix, tool telemetry, batch lanes ([a205fe6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a205fe6bfc6258aa75a58ebc5016b66b8d07741c))
+* **efficiency:** stop idle token burn, stable cached prefix, hot tool set, honest ledger ([6550a7f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/6550a7f1f7a9f0ddb77a8dc3d868a96de85fdd60))
+* **harness:** grounded outcomes for the autonomous worker — body-level tool errors, model identity, L0-L4 evidence, verified task completion, records-mode hold, repeat guard, taint, run feedback ([1d2023c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/1d2023c9ddfe41f5eb88f566909c94c56840a994))
+* **identity:** activate ERC-8004 registration + reputation bridge (PLAN-47 P3) ([cffdcc1](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cffdcc1582f9fdb98f86bc008d67cfbe3c7384e3))
+* **launch:** Control-UI-first channel docs, sidebar Help link, launch runbook, demo tape (p1-7, Phase 4) ([6fbdc8f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/6fbdc8fea719bb184e9f2e4b63544940c1fff3a9))
+* **launch:** MIT-clean LICENSE, egress disclosure, LIMITATIONS.md, npm not-published state, plan39-r2 labels ([89d902a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/89d902aad5bfed445284566925229a00ce26692f))
+* **marketplace:** flywheel-protecting separation + canonical corpus (plan43 phase 0) ([68bc997](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/68bc997ea50222fc5d2d6dc51154e238bc5a4817))
+* **memory:** remote A2A task turns never become node state (plan43 phase 1, R2) ([4acb029](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4acb029cb36e44432be831e58ffbcfc60117d508))
+* **payments:** AP2 mandate layer over x402 + payment-path freeze (PLAN-47 P0-P1) ([e9e69a2](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/e9e69a2ca7954fa764e42c649607dd5640219830))
+* **payments:** AP2 runtime enforcement — consume-once, context binding, PDR (PLAN-47 P4) ([f2652a6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f2652a6fb1553336e095895479fa57e9ef0bab69))
+* **payments:** AP2 SD-JWT/P-256 wire format + CDP smart-account scaffold ([30161be](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/30161be37d438b03dbb7a983664e82ff98a59602))
+* **payments:** bind mandate into x402 sig + consent gating (PLAN-48 P5) ([4db65c0](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4db65c0c3affe4d11cbb63ff1beb6a6b18acc112))
+* **payments:** Circles consent lineage for AP2 payments (PLAN-47 P4.x) ([0a609a4](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0a609a48466fc114866e319e2a0cad9f68d398b3))
+* **payments:** deliver spend escalations to the operator (PLAN-48 P2) ([0a502e9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0a502e9693e49214471d31bf4470f9fce5a71937))
+* **payments:** passkey step-up on high-value approvals (PLAN-48 P2, D-2) ([b927e15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b927e1577284819115873f5d3b232f001cf2dd66))
+* **payments:** PLAN-48 Phase 6 adversarial pass + D-4 first-run defaults ([f7f4a35](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f7f4a35f40347e8410553d543aae72dc8fbd03ca))
+* **payments:** PLAN-49 Phase 1 — dollar money view (no money moved) ([0ae85e0](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/0ae85e0ec415ebd7962117c91cb20785345281d7))
+* **payments:** PLAN-49 Phase 2 core — in-app funding on the consent rail ([d919d92](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d919d927e956515426e1136a0a62975473e7cb18))
+* **payments:** spend grants + escalation, end to end (PLAN-48 P0-P1) ([fedc2cb](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fedc2cbaa8549818cf5f4d481dd50b1887cdccb9))
+* **plan43:** Phase 3 chunk 3d — commerce standing from real outcomes, listings kill switch, banned-seller exclusion, slash-only bond ledger ([2e98143](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/2e98143a8f22501a59c9f351a673755b9e07d2d6))
+* **plan43:** Phase 3 skill commerce trust layer — lineage gate, registry royalty, signed receiver-side attestations, A2A attest exchange (3a-3c) ([b73226b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b73226b701620b20324a6168920394dcc0ec2132))
+* **plan43:** Phase 4 — status-based contribution rewards (D-D, invariant I5), adversarially passed ([baa95d5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/baa95d5183b750eabf6447e52f6beb3feb784d87))
+* **plan44:** Phase 0 — the loop sees and records (user stream, cursor safety, telemetry, proposer default) ([8b09e4c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/8b09e4c61251dc742199ebde516588746db1b5cf))
+* **plan44:** Phase 1 — labels, signals, sampler diversity; Phase 0 adversarial fixes ([f76f64d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f76f64d809ccbaf419fdcd4e6d492da1b22d20df))
+* **plan44:** Phase 2 — a gate that measures the runtime ([bb91e3b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bb91e3bde73e8e90718bfb54adce6c0ec1fa2fa3))
+* **plan44:** skills.evolution.probe — in-process runtime-pathway trial for operators ([7474aa7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7474aa7378837f93a5d5fb332b44eead5d2d27e1))
+* **plugins:** add HOL Guard before-tool-call plugin ([#84](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/84)) ([89c221d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/89c221d3a4dbbf6761233a07ca420dc6881a6595))
+* **skill-evolution:** description contract + never-triggered repair loop (PLAN-44 Phase 4a) ([1a1bae8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/1a1bae842d286a9e905ac51d3d1304b828fcc09b))
+* **skill-evolution:** PLAN-44 Phase 3 security closures ([1f63507](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/1f635071ff1af2dfe708eebfe4436eec136a9983))
+* **skill-evolution:** proposer sees live descriptions; overlap check refuses near-duplicate descriptions (PLAN-44 Phase 4b) ([332cce9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/332cce996312cff6287b3ea6676e42a8d19609b4))
+* **skill-evolution:** routing repair — rewrite non-routable harvested/received descriptions to the contract (PLAN-44 5c) ([3085baa](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3085baa25936a153cf9d2b97f062ad3eceef6389))
+* **skill-evolution:** usage signal from the journal + description contract at P2P ingest (PLAN-44 5a/5b) ([3d487bd](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3d487bd0a5cf003ccc265f3495f935062cbdbedb))
+* **skills:** 5 fidelity upgrades — tasks runner, semantic lint, schema layer, drift discipline, proposer model (plan42) ([cdb7682](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cdb76827bc8efb85af3fdaa728767ee0c44dab68))
+* **skills:** curriculum admission gate — grown tasks must be skill-dependent (SkillLearnBench) ([3006b86](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3006b86d51b3567b193119cf21eed898ce0b1b7f))
+* **skills:** impact trail + gate-bypass closure + evolution config surface (plan42, Phase 0) ([23c0f30](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/23c0f30ffe1e83b2cfd2cb3aa801925957fca623))
+* **skills:** PLAN-45 5.4 cross-model tag on the provenance trailer and the review list ([98b55ec](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/98b55ecc8431c139702162cfa5565ef0a093421b))
+* **skills:** PLAN-45 5.5 external benchmark corpus + validation shell pinned to the confined host ([d167ff6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d167ff6a55e0e7bd3191923d9af055718820f623))
+* **skills:** PLAN-45 Phase 0 — retire the crystallizer, purge its output, stop tool-level "reward", quarantine scrapes, parse the provenance trailer ([ed83a3b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ed83a3b32238854a7339444f5db71c5ad51d0260))
+* **skills:** PLAN-45 Phase 1 (1.1-1.3, 1.5) — one outcome substrate: run-grounded execution rows, evidence-only consumers, per-skill evidence record, de-anchored judge, labeler calibration ([ff86cdb](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ff86cdb4c2693100f3a634456b7905575afd6182))
+* **skills:** PLAN-45 Phase 1.4 — retire the legacy skill producers (refiner, mutation/research modes, PLAN-21 slow update, pareto, prompt optimization) ([f1a172b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f1a172b74cc2f9f594af208841ea9524e5bbefed))
+* **skills:** PLAN-45 Phase 2 — reachable, honest gate: canonical capability families, temporal split, context parity, sequential testing with alpha spending, cost gate, rejected-edit memory, credited wins, records demoted ([c524131](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c5241317539b61d152634080a3b0bc79e4403628))
+* **skills:** PLAN-45 Phase 3 close the loop: canary ladder, monitor, rollback, retraction ([d1ffc60](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d1ffc601062027f0139b47c3a8b1ed5dcf8ee89d))
+* **skills:** PLAN-45 Phase 4 trust is not evidence at every boundary ([24d4638](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/24d4638540c0273eadea038892e61f584e3e1734))
+* **skills:** PLAN-45 Phase 6 surfaces: Evolution tab, skills evidence CLI, doctor section ([f2d68dd](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f2d68dd81d707e06b93df367eefde58130f6cf24))
+* **skills:** research-backed corpus + gate upgrade — sign test, K trials, seeded canonical corpus, suite split, corpus miner (plan42) ([00ee111](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/00ee111214d5c4a8ed6ca033348478e24b8cc4a3))
+* **skills:** Skill Proposer ReAct agent + gated proposal staging (plan42, Phase 3) ([4b58b17](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4b58b17c80b96d2b3dd81949b60dfbf2606be357))
+* **skills:** trace reconstruction, labeling, stratified sampling (plan42, Phase 1) ([7511ed8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7511ed8d118cdddc64e4d224fcdb39ba779706ef))
+* **skills:** validation gate — the benchmark that decides promotion (plan42, Phase 4) ([b2ef07a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b2ef07a8ad6c0dc48d3c071afbb922390356ed80))
+* **skills:** wiki layer + Wiki Maintainer evolution pass (plan42, Phase 2) ([7ff7b55](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7ff7b5595953a3cb04d4a45c417b1df54e4e9047))
+* **skills:** wiki lint, P2P propagation with evidence, evolution status RPC (plan42, Phase 5) ([9f0c38d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9f0c38d5d4b1f0ced248e57c8e753fe7172a2bfb))
+* **ui:** Spend Grants & Approvals panel (PLAN-48) ([4fd315c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4fd315cc464349ede899de4a56f5a617c2b49063))
+* **ui:** Usage moves to the main navigation under Overview; Overview gets a spend card ([cf9332b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cf9332b1d025d5963480e57655f68986c737aae3))
+* **usage:** PLAN-50 Phase 5 — cache coaching, burn rate, OTel counters, live pricing, cost modes ([5882fb9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5882fb977fc865a1a5ed965aa9dd60f019b7805d))
+* **usage:** PLAN-50 Phase 6 — audit fixes, cost per outcome, what-if replay, explain, cache-aware heartbeats ([e4ca140](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/e4ca14024f67700e1d69afbff7ac997457d268fa))
+* **usage:** PLAN-50 usage ledger — every token, every model, every feature (incl. embeddings) ([bc31e5e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bc31e5e0f0ea17761b30a18514b1892d32f18775))
+* **wallet:** PLAN-49 Phase 0.5 foundation — embedded-wallet provisioning mode (Path B) ([6dfedd7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/6dfedd7122fc1a82a2203f999fd0afda712cdc20))
+* **wallet:** spend-permission policy core + smart-account config (PLAN-47 P2) ([9384895](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9384895015a79e8b2a97671a60c1daacbf30d599))
+
+
+### Bug Fixes
+
+* **a2a:** guard cfg.a2a optional access in client-tool (CI tsc red) ([61b9bdb](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/61b9bdbedd1d925b5918172259d14881db529824))
+* **ci:** pin corpus jsonl to LF so the Windows checkout matches the embedded byte pin (plan43 phase 0) ([35a1e7b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/35a1e7bc3732e6d669ad5ffc0ca009a054a12054))
+* **exec:** honor an explicit security=deny on the sandbox host when no sandbox is configured ([5f6259d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5f6259db886e9b2822cc9bacd54464afd0f857a6))
+* **gateway:** Spend Grants page no longer depends on the marketplace being enabled ([9fddaf9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9fddaf93c61365db0422b931ea8c6c31435defb1))
+* **memory:** end the gateway freeze, cut the DB ~460 MB, fix two decay/lifecycle bugs (audit 2026-09-07) ([b5072e3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b5072e3475ae3e0114471c9609196d08150007f2))
+* **orchestrator:** event-loop stats arm could never run ([6cc6701](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/6cc67014aa7de146c23c398c26935b1e70c4b1f4))
+* **plan43:** route ban-to-invite revocation through the circles side (R17) ([6bc468a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/6bc468adc691da1a272179b2f9fece00ee130bab))
+* **plan44:** Phase 1 adversarial pass — tool-aware error classes, judge leak, terminal-env precedence ([70715fc](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/70715fce1e264b58800fbc3e73aeb8412b8778c0))
+* **plan44:** Phase 2 adversarial pass — confined validation shell, workspace registry, gate convergence ([bb8e0ae](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/bb8e0ae3ab52f6d249aac678587a3813181f4700))
+* **security:** close code_interpreter vm sandbox escape and owner-gate host tools ([d0d394a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d0d394ab914c8e4e00cbe9fa16b4aa8f09e49701))
+* **skill-evolution:** 5a/5b adversarial pass — cursor never skips deferred runs, first-party-only credits, async memoized ingest index ([4c06aab](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/4c06aab8104dcd550bad25ec1f2ee7531ad00b14))
+* **skill-evolution:** contract trigger accepts gerund and 'if the user' phrasings; routing-repair failure reason carries the refused text ([135f901](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/135f901589b007479fd6bccf25d5c165d2396050))
+* **skill-evolution:** Phase 3 adversarial pass — provenance hijack, admin-gated override, fence gaps, D-7 livelock ([b18fbd2](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b18fbd2a8e019bc05d13aa0e0de6a075cbb89720))
+* **skill-evolution:** Phase 4a adversarial pass — re-gate repaired descriptions, clause-level contract, harvested skills patchable ([78748b7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/78748b776a373e875917f58d1bb4b052969f04cb))
+* **skill-evolution:** Phase 4b adversarial pass — positive-clause overlap, squat demotion, fenced proposer index, repair-time overlap ([a57ce77](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a57ce77b63d42e309491c09a3b9b8c4509c4b52a))
+* **skill-evolution:** routing-repair adversarial pass — bounded spend, no clobbering, evolved skills untouched, laundering closed ([cf325c8](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/cf325c88f95f6c022daba6edbf19bd9e21224787))
+* **skill-evolution:** validation sessions load no bootstrap context (PLAN-44 Phase 3 polish) ([7c1d126](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7c1d126effed841bda4635c5a5957e83c98ec0ac))
+* **skills:** atomic quarantine writes + envelope salvage; zero-inflation journal scans ([ae01526](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ae015263fec6fe12bba1185fba5cc992b8325c34))
+* **skills:** dedicated 8k-token evolution LLM lane — live truncation fix (plan42) ([c8b3179](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c8b31796314916314814e8f04cd8286e0539fdf5))
+* **skills:** fast-forward the sampler cursor past stale history (plan42) ([869eb59](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/869eb59d0b835d177f712a5d4ed09419c610be18))
+* **skills:** first-balanced-object JSON extraction, proposer protocol-error logging, FINAL-prefix tolerant checker values (plan42) ([6173473](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/61734733e23423c3a8e9e2685ef140182f6bfaa8))
+* **skills:** lenient JSON extraction for maintainer/proposer output; surface parse issues (plan42) ([f4cee2e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f4cee2e5220aaed509c56bc66392d599ac4cbf41))
+* **skills:** paged journal reads + marathon-run guard — live stall fix (plan42) ([3d737a6](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3d737a6937170cb5a0a72b8b967d9fc667d4a752))
+* **skills:** PLAN-45 Phase 1 adversarial pass — back-fill on every consolidation, blind headers, feedback re-stamp, distillation cursor, gate history ([f9b2613](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f9b2613e569aea52419875a209601fb6ede379bb))
+* **skills:** re-bind pre-4.4 routing-repaired peer skills instead of flagging them as tamper ([dccbf95](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/dccbf955c83cbb6bc36a5ed93def7fc7068d9226))
+* **skills:** selective blob inflation + metadata pre-filters for evolution scans (plan42) ([744b0e5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/744b0e572b79df2190595e30e6396237e7582463))
+* **skills:** status RPC echoes the real default validation mode (tasks) after PLAN-45 2.8 ([160e14a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/160e14a825c2caeab493e30bd3edbbcc9a77218e))
+* **skills:** stop legacy unvalidated crystal churn at both ends (plan42) ([a9a6e5a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a9a6e5a0aa8d5d1d4cdd9a8a494ca41eda87730f))
+* **tasks:** command checks use the platform shell; POSIX-only check tests skip on Windows ([63b17e5](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/63b17e55dd56c213ab96f4e9cdf3ca71067f2acb))
+
 ## [1.0.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v2026.2.15...v1.0.0) (2026-08-28)
 
 

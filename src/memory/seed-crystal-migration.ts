@@ -6,10 +6,11 @@
  * Runs once per database, guarded by a `seed_migration_done` flag in the
  * `meta` table.
  */
-import type { DatabaseSync } from "node:sqlite";
+
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CONFIG_DIR } from "../utils.js";
 

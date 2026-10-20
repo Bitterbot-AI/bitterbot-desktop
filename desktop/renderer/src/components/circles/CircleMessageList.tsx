@@ -54,6 +54,12 @@ interface Props {
   onToggleReaction?: (m: CircleMessage, emoji: string) => void;
   /** One-tap join for an invite code detected in an inbound message. */
   onJoinInvite?: (code: string) => void;
+  /**
+   * M2: a friend's removal notice offers "remove on my node too", which
+   * revokes their writes here AND rotates this node's sender key so the
+   * removed member stops reading our future mesh frames.
+   */
+  onRemoveMember?: (memberPubkey: string) => Promise<boolean> | void;
   onTogglePin?: (m: CircleMessage, pinned: boolean) => void;
   /**
    * Delete: own messages retract everywhere (honest peers tombstone too);
@@ -96,11 +102,13 @@ export function CircleMessageList({
   annotations,
   onToggleReaction,
   onJoinInvite,
+  onRemoveMember,
   onTogglePin,
   onDelete,
   onAddToCanvas,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   const [pickerFor, setPickerFor] = useState<string | null>(null);
   const [pendingNew, setPendingNew] = useState(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -572,6 +580,48 @@ export function CircleMessageList({
                     <CircleMarkdown text={display.text} />
                   </div>
                 )}
+                {(() => {
+                  // M2: only while the named member is still on OUR roster
+                  // (the roster is active-only) and isn't us.
+                  const target = m.kind === "system" ? m.systemTarget : null;
+                  if (!onRemoveMember || !target || target === selfPubkey) return null;
+                  if (!members.some((mm) => mm.memberPubkey === target)) return null;
+                  const confirming = confirmRemove === m.messageId;
+                  return (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!confirming) {
+                            setConfirmRemove(m.messageId);
+                            return;
+                          }
+                          setConfirmRemove(null);
+                          void onRemoveMember(target);
+                        }}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded border",
+                          confirming
+                            ? "border-destructive text-destructive"
+                            : "border-border text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        {confirming
+                          ? `Remove ${nameOf(target)} on my node`
+                          : "Remove on my node too"}
+                      </button>
+                      {confirming && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemove(null)}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
                 {(() => {
                   if (!onJoinInvite || isSelf) return null;
                   const code = display.text.match(INVITE_CODE_RE)?.[0];

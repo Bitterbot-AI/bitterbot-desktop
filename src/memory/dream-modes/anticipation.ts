@@ -13,8 +13,8 @@
  * and exit ONLY through the owner-gated surfacing drain (limit 1/session).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { recordDreamArtifact } from "../dream-utility.js";
 

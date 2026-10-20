@@ -16,11 +16,13 @@ vi.mock("../../memory/manager.js", () => ({
   MemoryIndexManager: {
     get: async () => ({
       getMarketplaceEconomics: () => mockedMarketplace,
+      getCirclesDb: () => mockedMemoryDb,
     }),
   },
 }));
 
 let mockedMarketplace: { getDb: () => unknown } | null = null;
+let mockedMemoryDb: unknown = null;
 
 // Mock viem so we don't hit the chain in `peers` scope tests.
 vi.mock("viem", () => ({
@@ -47,6 +49,7 @@ beforeEach(() => {
   tmpDir = mkdtempSync(path.join(os.tmpdir(), "a2a-status-test-"));
   process.env.BITTERBOT_STATE_DIR = tmpDir;
   mockedMarketplace = null;
+  mockedMemoryDb = null;
   currentConfig = { a2a: { enabled: true } };
 });
 
@@ -202,6 +205,59 @@ describe("a2a_status — outbound scope (spend caps + recent purchases)", () => 
     const r = await callTool({ scope: "outbound" });
     const hints = r.hints as string[];
     expect(hints.some((h) => /Daily outbound spend cap reached/i.test(h))).toBe(true);
+  });
+});
+
+describe("a2a_status — peers scope (PLAN-43 Phase 3 commerce standing)", () => {
+  it("reports answer rate / uptime / quarantine per called peer, the bond summary, and hints", async () => {
+    const db = makeMarketplaceDb();
+    const { CommerceReputationLedger } = await import("../../memory/commerce-reputation.js");
+    const { SellerBondLedger } = await import("../../memory/seller-bond-ledger.js");
+    const ledger = new CommerceReputationLedger(db);
+    for (let i = 0; i < 5; i += 1) {
+      ledger.recordOutcome({ agentUrl: "https://flaky.example", outcome: "dial_failure" });
+    }
+    ledger.recordOutcome({ agentUrl: "https://good.example", outcome: "answered", latencyMs: 50 });
+    new SellerBondLedger(db).postBond("pk-seller", 1.5);
+    mockedMarketplace = { getDb: () => db };
+    currentConfig = { a2a: { enabled: true, marketplace: { freezeListings: true } } };
+
+    const r = await callTool({ scope: "peers" });
+    const commerce = r.commerce as {
+      peers: Array<{
+        peer: string;
+        quarantined: boolean;
+        answerRate: number | null;
+        uptime: number | null;
+      }>;
+      bonds: { posted: number; atRiskUsdc: number };
+    };
+    const flaky = commerce.peers.find((p) => p.peer === "https://flaky.example")!;
+    expect(flaky.quarantined).toBe(true);
+    expect(flaky.uptime).toBe(0);
+    const good = commerce.peers.find((p) => p.peer === "https://good.example")!;
+    expect(good.answerRate).toBe(1);
+    expect(commerce.bonds).toMatchObject({ posted: 1, atRiskUsdc: 1.5 });
+    const hints = r.hints as string[];
+    expect(hints.some((h) => /commerce-quarantined/.test(h))).toBe(true);
+    expect(hints.some((h) => /FROZEN/.test(h))).toBe(true);
+  });
+});
+
+describe("a2a_status — marketplace disabled (memory db only)", () => {
+  it("summary/all still answer and the commerce snapshot comes from the memory db", async () => {
+    const memoryDb = new DatabaseSync(":memory:");
+    const { CommerceReputationLedger } = await import("../../memory/commerce-reputation.js");
+    new CommerceReputationLedger(memoryDb).recordOutcome({
+      agentUrl: "https://only.example",
+      outcome: "answered",
+    });
+    mockedMarketplace = null;
+    mockedMemoryDb = memoryDb;
+    const all = await callTool({ scope: "all" });
+    expect(all.ok).toBe(true);
+    const commerce = all.commerce as { peers: Array<{ peer: string }> };
+    expect(commerce.peers.map((p) => p.peer)).toEqual(["https://only.example"]);
   });
 });
 

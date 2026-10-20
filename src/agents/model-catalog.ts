@@ -1,6 +1,7 @@
 import { type BitterbotConfig, loadConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveBitterbotAgentDir } from "./agent-paths.js";
+import { recordServedModels } from "./model-family-latest.js";
 import { applyLiveDiscovery, type ProviderMeta } from "./model-live-discovery.js";
 import { ensureBitterbotModelsJson } from "./models-config.js";
 
@@ -26,12 +27,12 @@ type DiscoveredModel = {
   api?: string;
 };
 
-type PiSdkModule = typeof import("./pi-model-discovery.js");
+type ModelsModule = typeof import("./runtime/models/index.js");
 
 let modelCatalogPromise: Promise<ModelCatalogEntry[]> | null = null;
 let hasLoggedModelCatalogError = false;
-const defaultImportPiSdk = () => import("./pi-model-discovery.js");
-let importPiSdk = defaultImportPiSdk;
+const defaultImportModels = () => import("./runtime/models/index.js");
+let importModels = defaultImportModels;
 
 const CODEX_PROVIDER = "openai-codex";
 const OPENAI_CODEX_GPT53_MODEL_ID = "gpt-5.3-codex";
@@ -65,12 +66,12 @@ function applyOpenAICodexSparkFallback(models: ModelCatalogEntry[]): void {
 export function resetModelCatalogCacheForTest() {
   modelCatalogPromise = null;
   hasLoggedModelCatalogError = false;
-  importPiSdk = defaultImportPiSdk;
+  importModels = defaultImportModels;
 }
 
 // Test-only escape hatch: allow mocking the dynamic import to simulate transient failures.
-export function __setModelCatalogImportForTest(loader?: () => Promise<PiSdkModule>) {
-  importPiSdk = loader ?? defaultImportPiSdk;
+export function __setModelCatalogImportForTest(loader?: () => Promise<ModelsModule>) {
+  importModels = loader ?? defaultImportModels;
 }
 
 export async function loadModelCatalog(params?: {
@@ -87,7 +88,7 @@ export async function loadModelCatalog(params?: {
   modelCatalogPromise = (async () => {
     const models: ModelCatalogEntry[] = [];
     const sortModels = (entries: ModelCatalogEntry[]) =>
-      entries.sort((a, b) => {
+      entries.toSorted((a, b) => {
         const p = a.provider.localeCompare(b.provider);
         if (p !== 0) {
           return p;
@@ -98,17 +99,20 @@ export async function loadModelCatalog(params?: {
       const cfg = params?.config ?? loadConfig();
       await ensureBitterbotModelsJson(cfg);
       await (
-        await import("./pi-auth-json.js")
-      ).ensurePiAuthJsonFromAuthProfiles(resolveBitterbotAgentDir());
+        await import("./runtime/models/auth-json.js")
+      ).ensureAuthJsonFromAuthProfiles(resolveBitterbotAgentDir());
       // IMPORTANT: keep the dynamic import *inside* the try/catch.
       // If this fails once (e.g. during a pnpm install that temporarily swaps node_modules),
       // we must not poison the cache with a rejected promise (otherwise all channel handlers
       // will keep failing until restart).
-      const piSdk = await importPiSdk();
+      const modelsModule = await importModels();
       const agentDir = resolveBitterbotAgentDir();
       const { join } = await import("node:path");
-      const authStorage = new piSdk.AuthStorage(join(agentDir, "auth.json"));
-      const registry = new piSdk.ModelRegistry(authStorage, join(agentDir, "models.json")) as
+      const authStorage = modelsModule.AuthStorage.create(join(agentDir, "auth.json"));
+      const registry = modelsModule.ModelRegistry.create(
+        authStorage,
+        join(agentDir, "models.json"),
+      ) as
         | {
             getAll: () => Array<DiscoveredModel>;
           }
@@ -149,6 +153,7 @@ export async function loadModelCatalog(params?: {
       }
 
       const discovered = await maybeApplyLiveDiscovery(models, providerMeta, cfg);
+      recordServedModels(discovered);
       return sortModels(discovered);
     } catch (error) {
       if (!hasLoggedModelCatalogError) {

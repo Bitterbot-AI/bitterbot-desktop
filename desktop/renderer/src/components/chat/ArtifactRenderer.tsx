@@ -71,7 +71,11 @@ export function ArtifactRenderer({ artifactId, canvasBaseUrl, className }: Artif
       <iframe
         ref={iframeRef}
         src={src}
-        sandbox="allow-scripts allow-forms allow-same-origin"
+        // No allow-same-origin: artifacts are agent-written HTML served from the
+        // gateway's own origin. With it they could read the Control UI's token
+        // storage and, in the desktop app, reach the shell's IPC bridge.
+        // postMessage (artifact-error) works without it.
+        sandbox="allow-scripts allow-forms"
         onLoad={handleLoad}
         onError={handleError}
         className="w-full h-full border-0"

@@ -1,20 +1,28 @@
-import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { AgentMessage, StreamFn } from "@mariozechner/pi-agent-core";
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
 import { resolveUserPath } from "../utils.js";
 import { parseBooleanValue } from "../utils/boolean.js";
 import { safeJsonStringify } from "../utils/safe-json.js";
+import {
+  digestSystemPromptHalves,
+  digestToolDefinitions,
+  sha256Hex,
+  splitSystemPromptAtBoundary,
+} from "./system-prompt-cache-boundary.js";
 
 export type CacheTraceStage =
   | "session:loaded"
   | "session:sanitized"
   | "session:limited"
+  | "session:pruned"
   | "prompt:before"
   | "prompt:images"
   | "stream:context"
+  | "stream:usage"
   | "session:after";
 
 export type CacheTraceEvent = {
@@ -38,16 +46,94 @@ export type CacheTraceEvent = {
   messageFingerprints?: string[];
   messagesDigest?: string;
   systemDigest?: string;
+  /**
+   * Token-efficiency W4: separate digests of the two system-prompt halves and
+   * of the sorted tool definitions. A stable prefix shows as an unchanged
+   * stableDigest + toolsDigest across turns while volatileDigest moves.
+   */
+  stableDigest?: string;
+  volatileDigest?: string;
+  boundaryFound?: boolean;
+  toolsDigest?: string;
+  /** Response usage (stream:usage): cache_read / cache_write straight from the provider. */
+  usage?: {
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+  };
   note?: string;
   error?: string;
 };
 
 export type CacheTrace = {
-  enabled: true;
+  /**
+   * True when the JSONL trace is being written (`BITTERBOT_CACHE_TRACE=1` or
+   * `diagnostics.cacheTrace.enabled`). When false the trace is digest-only: `recordStage`
+   * is a no-op and `wrapStreamFn` computes just the two cheap prefix digests per request
+   * for the usage ledger (`prefix_digest`, `tools_digest`). It never returns null so the
+   * ledger telemetry does not depend on the diagnostics flag.
+   */
+  enabled: boolean;
   filePath: string;
   recordStage: (stage: CacheTraceStage, payload?: Partial<CacheTraceEvent>) => void;
   wrapStreamFn: (streamFn: StreamFn) => StreamFn;
 };
+
+/** Prefix digests of the most recent request of a run, read by the usage-ledger hook. */
+export type RunPrefixDigests = {
+  /** SHA-256 of the stable system block (text above the cache boundary marker). */
+  prefixDigest?: string;
+  /** SHA-256 of the sorted tool names sent with the request. */
+  toolsDigest?: string;
+  at: number;
+};
+
+const RUN_PREFIX_DIGESTS_MAX = 512;
+const runPrefixDigests = new Map<string, RunPrefixDigests>();
+
+/** The two cheap digests: stable system block and sorted tool names. Pure; exported for tests. */
+export function computePrefixDigests(
+  system: unknown,
+  tools: ReadonlyArray<{ name?: unknown }> | undefined,
+): Omit<RunPrefixDigests, "at"> {
+  const out: Omit<RunPrefixDigests, "at"> = {};
+  if (typeof system === "string" && system.length > 0) {
+    out.prefixDigest = sha256Hex(splitSystemPromptAtBoundary(system).stable);
+  }
+  if (Array.isArray(tools) && tools.length > 0) {
+    const names = tools
+      .map((tool) => (typeof tool?.name === "string" ? tool.name : ""))
+      .filter((name) => name.length > 0)
+      .toSorted((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    if (names.length > 0) {
+      out.toolsDigest = sha256Hex(JSON.stringify(names));
+    }
+  }
+  return out;
+}
+
+function publishRunPrefixDigests(key: string | undefined, digests: Omit<RunPrefixDigests, "at">) {
+  if (!key) {
+    return;
+  }
+  if (runPrefixDigests.size >= RUN_PREFIX_DIGESTS_MAX && !runPrefixDigests.has(key)) {
+    const oldest = runPrefixDigests.keys().next().value;
+    if (oldest !== undefined) {
+      runPrefixDigests.delete(oldest);
+    }
+  }
+  runPrefixDigests.set(key, { ...digests, at: Date.now() });
+}
+
+/** Digests of the latest request sent under `runId` (or session key), if any. */
+export function getRunPrefixDigests(runId: string | undefined): RunPrefixDigests | undefined {
+  return runId ? runPrefixDigests.get(runId) : undefined;
+}
+
+export function resetRunPrefixDigestsForTest(): void {
+  runPrefixDigests.clear();
+}
 
 type CacheTraceInit = {
   cfg?: BitterbotConfig;
@@ -182,10 +268,33 @@ function summarizeMessages(messages: AgentMessage[]): {
   };
 }
 
-export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
+export function createCacheTrace(params: CacheTraceInit): CacheTrace {
   const cfg = resolveCacheTraceConfig(params);
+  const digestKey = params.runId ?? params.sessionKey;
   if (!cfg.enabled) {
-    return null;
+    // Digest-only mode: no file, no per-message fingerprints; just the two prefix digests the
+    // usage ledger stores on every chat row.
+    return {
+      enabled: false,
+      filePath: cfg.filePath,
+      recordStage: () => undefined,
+      wrapStreamFn: (streamFn) => (model, context, options) => {
+        try {
+          const ctx = context as {
+            system?: unknown;
+            systemPrompt?: string;
+            tools?: Array<{ name: string }>;
+          };
+          publishRunPrefixDigests(
+            digestKey,
+            computePrefixDigests(ctx.systemPrompt ?? ctx.system, ctx.tools),
+          );
+        } catch {
+          // Telemetry only.
+        }
+        return streamFn(model, context, options);
+      },
+    };
   }
 
   const writer = params.writer ?? getWriter(cfg.filePath);
@@ -215,6 +324,18 @@ export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
     if (payload.system !== undefined && cfg.includeSystem) {
       event.system = payload.system;
       event.systemDigest = digest(payload.system);
+    }
+    if (typeof payload.system === "string") {
+      const halves = digestSystemPromptHalves(payload.system);
+      event.stableDigest = halves.stableDigest;
+      event.volatileDigest = halves.volatileDigest;
+      event.boundaryFound = halves.boundaryFound;
+    }
+    if (payload.toolsDigest) {
+      event.toolsDigest = payload.toolsDigest;
+    }
+    if (payload.usage) {
+      event.usage = payload.usage;
     }
     if (payload.options) {
       event.options = payload.options;
@@ -249,19 +370,58 @@ export function createCacheTrace(params: CacheTraceInit): CacheTrace | null {
     writer.write(`${line}\n`);
   };
 
+  const recordUsage = (result: unknown) => {
+    const usage = (result as { usage?: Record<string, unknown> } | undefined)?.usage;
+    if (!usage || typeof usage !== "object") {
+      return;
+    }
+    const num = (value: unknown) => (typeof value === "number" ? value : undefined);
+    recordStage("stream:usage", {
+      usage: {
+        input: num(usage.input),
+        output: num(usage.output),
+        cacheRead: num(usage.cacheRead),
+        cacheWrite: num(usage.cacheWrite),
+      },
+    });
+  };
+
   const wrapStreamFn: CacheTrace["wrapStreamFn"] = (streamFn) => {
     const wrapped: StreamFn = (model, context, options) => {
+      const ctx = context as {
+        system?: unknown;
+        systemPrompt?: string;
+        messages?: AgentMessage[];
+        tools?: Array<{ name: string; description?: unknown; parameters?: unknown }>;
+      };
       recordStage("stream:context", {
         model: {
           id: model?.id,
           provider: model?.provider,
           api: model?.api,
         },
-        system: (context as { system?: unknown }).system,
-        messages: (context as { messages?: AgentMessage[] }).messages ?? [],
+        system: ctx.systemPrompt ?? ctx.system,
+        toolsDigest: digestToolDefinitions(ctx.tools),
+        messages: ctx.messages ?? [],
         options: (options ?? {}) as Record<string, unknown>,
       });
-      return streamFn(model, context, options);
+      try {
+        publishRunPrefixDigests(
+          digestKey,
+          computePrefixDigests(ctx.systemPrompt ?? ctx.system, ctx.tools),
+        );
+      } catch {
+        // Telemetry only.
+      }
+      const out = streamFn(model, context, options);
+      // Hook the final assistant message for cache_read / cache_write. The
+      // stream is consumed by the agent loop as usual; result() only awaits
+      // the terminal event and never drains the queue.
+      Promise.resolve(out)
+        .then((stream) => (stream as { result?: () => Promise<unknown> }).result?.())
+        .then((result) => recordUsage(result))
+        .catch(() => undefined);
+      return out;
     };
     return wrapped;
   };

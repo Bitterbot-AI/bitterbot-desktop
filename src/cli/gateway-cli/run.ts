@@ -1,8 +1,7 @@
-import type { Command } from "commander";
 import fs from "node:fs";
 import path from "node:path";
+import type { Command } from "commander";
 import type { GatewayAuthMode } from "../../config/config.js";
-import type { GatewayWsLogStyle } from "../../gateway/ws-logging.js";
 import {
   CONFIG_PATH,
   loadConfig,
@@ -12,6 +11,7 @@ import {
 } from "../../config/config.js";
 import { resolveGatewayAuth } from "../../gateway/auth.js";
 import { startGatewayServer } from "../../gateway/server.js";
+import type { GatewayWsLogStyle } from "../../gateway/ws-logging.js";
 import { setGatewayWsLogStyle } from "../../gateway/ws-logging.js";
 import { setVerbose } from "../../globals.js";
 import { GatewayLockError } from "../../infra/gateway-lock.js";
@@ -22,6 +22,12 @@ import { defaultRuntime } from "../../runtime.js";
 import { formatCliCommand } from "../command-format.js";
 import { forceFreePortAndWait } from "../ports.js";
 import { ensureDevGatewayConfig } from "./dev.js";
+import {
+  announceContainerSetupLink,
+  describeTokenSourceConflict,
+  generateFirstBootToken,
+  shouldGenerateFirstBootToken,
+} from "./first-boot-token.js";
 import { runGatewayLoop } from "./run-loop.js";
 import {
   describeUnknownError,
@@ -92,6 +98,18 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
 
   if (devMode) {
     await ensureDevGatewayConfig({ reset: Boolean(opts.reset) });
+  }
+
+  // The state dir holds config, keys and memory: private to its owner.
+  if (!process.env.VITEST) {
+    const { securePrivateStateDir, stateDirPermsNotice } =
+      await import("../../infra/state-dir-perms.js");
+    const notice = stateDirPermsNotice(
+      securePrivateStateDir({ stateDir: resolveStateDir(process.env) }),
+    );
+    if (notice) {
+      gatewayLog.info(notice);
+    }
   }
 
   const cfg = loadConfig();
@@ -210,8 +228,46 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
   const passwordValue = resolvedAuth.password;
   const hasToken = typeof tokenValue === "string" && tokenValue.trim().length > 0;
   const hasPassword = typeof passwordValue === "string" && passwordValue.trim().length > 0;
+  const tokenConflict = describeTokenSourceConflict(
+    cfg.gateway?.auth?.token,
+    process.env.BITTERBOT_GATEWAY_TOKEN,
+  );
+  if (tokenConflict && !tokenRaw) {
+    gatewayLog.warn(tokenConflict);
+  }
+  // PLAN-56 Phase 2: a fresh install started beyond loopback with no auth at
+  // all (zero-edit `docker compose up`) gets a generated token, persisted to
+  // gateway.auth.token, instead of the refusal below.
+  let generatedToken: string | null = null;
+  if (
+    shouldGenerateFirstBootToken({
+      allowUnconfigured: Boolean(opts.allowUnconfigured),
+      bind,
+      authMode: resolvedAuthMode,
+    })
+  ) {
+    try {
+      generatedToken = await generateFirstBootToken({
+        port,
+        basePath: cfg.gateway?.controlUi?.basePath,
+      });
+    } catch (err) {
+      defaultRuntime.error(String(err instanceof Error ? err.message : err));
+      defaultRuntime.exit(1);
+      return;
+    }
+  } else if (opts.allowUnconfigured) {
+    // PLAN-56 Phase 4: a container not set up yet prints a setup link even
+    // when no token was generated (BITTERBOT_GATEWAY_TOKEN pinned one).
+    await announceContainerSetupLink({
+      port,
+      basePath: cfg.gateway?.controlUi?.basePath,
+    }).catch(() => null);
+  }
   const hasSharedSecret =
-    (resolvedAuthMode === "token" && hasToken) || (resolvedAuthMode === "password" && hasPassword);
+    generatedToken !== null ||
+    (resolvedAuthMode === "token" && hasToken) ||
+    (resolvedAuthMode === "password" && hasPassword);
   const authHints: string[] = [];
   if (miskeys.hasGatewayToken) {
     authHints.push('Found "gateway.token" in config. Use "gateway.auth.token" instead.');
@@ -267,8 +323,9 @@ async function runGatewayCommand(opts: GatewayRunOpts) {
       start: async () =>
         await startGatewayServer(port, {
           bind,
-          auth:
-            authMode || passwordRaw || tokenRaw || authModeRaw
+          auth: generatedToken
+            ? { mode: "token", token: generatedToken }
+            : authMode || passwordRaw || tokenRaw || authModeRaw
               ? {
                   mode: authMode ?? undefined,
                   token: tokenRaw,

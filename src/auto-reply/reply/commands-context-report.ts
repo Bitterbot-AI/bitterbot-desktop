@@ -1,11 +1,8 @@
-import type { SessionSystemPromptReport } from "../../config/sessions/types.js";
-import type { ReplyPayload } from "../types.js";
-import type { HandleCommandsParams } from "./commands-types.js";
 import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
+import { createBitterbotCodingTools } from "../../agents/agent-tools.js";
 import { resolveBootstrapContextForRun } from "../../agents/bootstrap-files.js";
+import { resolveBootstrapMaxChars } from "../../agents/embedded-helpers.js";
 import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
-import { resolveBootstrapMaxChars } from "../../agents/pi-embedded-helpers.js";
-import { createBitterbotCodingTools } from "../../agents/pi-tools.js";
 import { resolveSandboxRuntimeStatus } from "../../agents/sandbox.js";
 import { buildWorkspaceSkillSnapshot } from "../../agents/skills.js";
 import { getSkillsSnapshotVersion } from "../../agents/skills/refresh.js";
@@ -13,8 +10,11 @@ import { buildSystemPromptParams } from "../../agents/system-prompt-params.js";
 import { buildSystemPromptReport } from "../../agents/system-prompt-report.js";
 import { buildAgentSystemPrompt } from "../../agents/system-prompt.js";
 import { buildToolSummaryMap } from "../../agents/tool-summaries.js";
+import type { SessionSystemPromptReport } from "../../config/sessions/types.js";
 import { getRemoteSkillEligibility } from "../../infra/skills-remote.js";
 import { buildTtsSystemPromptHint } from "../../tts/tts.js";
+import type { ReplyPayload } from "../types.js";
+import type { HandleCommandsParams } from "./commands-types.js";
 
 function estimateTokensFromChars(chars: number): number {
   return Math.ceil(Math.max(0, chars) / 4);
@@ -111,20 +111,21 @@ async function resolveContextReport(
     agentId: sessionAgentId,
   });
   const defaultModelLabel = `${defaultModelRef.provider}/${defaultModelRef.model}`;
-  const { runtimeInfo, userTimezone, userTime, userTimeFormat } = buildSystemPromptParams({
-    config: params.cfg,
-    agentId: sessionAgentId,
-    workspaceDir,
-    cwd: process.cwd(),
-    runtime: {
-      host: "unknown",
-      os: "unknown",
-      arch: "unknown",
-      node: process.version,
-      model: `${params.provider}/${params.model}`,
-      defaultModel: defaultModelLabel,
-    },
-  });
+  const { runtimeInfo, userTimezone, userTime, userTimeFormat, agentName } =
+    buildSystemPromptParams({
+      config: params.cfg,
+      agentId: sessionAgentId,
+      workspaceDir,
+      cwd: process.cwd(),
+      runtime: {
+        host: "unknown",
+        os: "unknown",
+        arch: "unknown",
+        node: process.version,
+        model: `${params.provider}/${params.model}`,
+        defaultModel: defaultModelLabel,
+      },
+    });
   const sandboxInfo = sandboxRuntime.sandboxed
     ? {
         enabled: true,
@@ -158,6 +159,7 @@ async function resolveContextReport(
     runtimeInfo,
     sandboxInfo,
     memoryCitationsMode: params.cfg?.memory?.citations,
+    agentName,
   });
 
   return buildSystemPromptReport({

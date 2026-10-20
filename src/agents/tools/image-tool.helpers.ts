@@ -1,6 +1,6 @@
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { BitterbotConfig } from "../../config/config.js";
-import { extractAssistantText } from "../pi-embedded-utils.js";
+import { extractAssistantText } from "../embedded-utils.js";
 
 export type ImageModelConfig = { primary?: string; fallbacks?: string[] };
 

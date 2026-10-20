@@ -10,7 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ensureMemoryIndexSchema, ensureColumn } from "./memory-schema.js";
-import { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import { SkillExecutionTracker, stampExecutionRunOutcome } from "./skill-execution-tracker.js";
 
 const NOW = 1_750_000_000_000;
 
@@ -42,11 +42,21 @@ function setup(): {
   const tracker = new SkillExecutionTracker(db);
   const published: string[] = [];
   const hook = createExecutionTrackingHook(tracker, db, null, (id) => published.push(id));
-  const fire = (toolName: string, error?: string) =>
+  // PLAN-45 Phase 1.1: each fire is its own journal run, and the maturity
+  // gate counts only rows whose run outcome has been stamped (the back-fill
+  // does this in production; here the test stamps the PREVIOUS run before
+  // the next call, the way a later pass would).
+  let runNo = 0;
+  const fire = (toolName: string, error?: string) => {
+    if (runNo > 0) {
+      stampExecutionRunOutcome(db, `run-${runNo}`, { label: error ? "fail" : "pass", level: 1 });
+    }
+    runNo += 1;
     hook(
       { toolName, params: {}, result: "ok", error, durationMs: 5 },
-      { toolName, sessionKey: "s1" },
+      { toolName, sessionKey: "s1", runId: `run-${runNo}`, toolCallId: `tc-${runNo}` },
     );
+  };
   return { db, tracker, published, fire };
 }
 
@@ -55,11 +65,17 @@ describe("createExecutionTrackingHook maturity re-publish (audit F5)", () => {
     const { db, published, fire } = setup();
     fire("web_search");
     fire("web_search");
-    expect(published).toEqual([]); // below the gate
     fire("web_search");
-    expect(published).toEqual(["sk1"]); // crossed at 3
+    expect(published).toEqual([]); // 2 stamped runs + 1 fresh tool row: below the gate
+    fire("web_search");
+    expect(published).toEqual(["sk1"]); // 3 stamped runs: crossed
     fire("web_search");
     expect(published).toEqual(["sk1", "sk1"]); // keeps retrying while unpublished (gates decide)
+    const rows = db
+      .prepare(`SELECT run_id, tool_call_id, evidence FROM skill_executions ORDER BY started_at`)
+      .all() as Array<{ run_id: string; tool_call_id: string; evidence: string }>;
+    expect(rows[0]).toMatchObject({ run_id: "run-1", tool_call_id: "tc-1", evidence: "run" });
+    expect(rows[4]).toMatchObject({ run_id: "run-5", evidence: "tool" }); // newest: not stamped yet
     db.close();
   });
 
@@ -75,6 +91,7 @@ describe("createExecutionTrackingHook maturity re-publish (audit F5)", () => {
 
   it("does not fire on a failed execution", () => {
     const { db, published, fire } = setup();
+    fire("web_search");
     fire("web_search");
     fire("web_search");
     fire("web_search", "boom");
@@ -102,5 +119,59 @@ describe("createExecutionTrackingHook maturity re-publish (audit F5)", () => {
     const execs = db.prepare(`SELECT COUNT(*) AS c FROM skill_executions`).get() as { c: number };
     expect(execs.c).toBe(1);
     db.close();
+  });
+});
+
+// PLAN-43 Phase 1 (R2): a remote A2A caller's turn must not move node
+// state — no execution records, no steering, no publish re-attempts.
+describe("createExecutionTrackingHook remote-task exclusion", () => {
+  it("records nothing for a2a-task sessions", () => {
+    const { db, published } = setup();
+    const hook = createExecutionTrackingHook(new SkillExecutionTracker(db), db, null, (id) =>
+      published.push(id),
+    );
+    hook(
+      { toolName: "web_search", params: {}, result: "ok", durationMs: 5 },
+      { toolName: "web_search", sessionKey: "agent:main:a2a-task:beef" },
+    );
+    const rows = db.prepare("SELECT COUNT(*) c FROM skill_executions").get() as { c: number };
+    expect(rows.c).toBe(0);
+    expect(published).toEqual([]);
+  });
+});
+
+describe("createExecutionTrackingHook evidence semantics (PLAN-45 Phase 0)", () => {
+  it("records reward_score NULL and never stimulates reward on a non-error call", () => {
+    const { db } = setup();
+    const stimulated: string[] = [];
+    const hormonal = {
+      stimulate: (kind: string) => stimulated.push(kind),
+    } as unknown as Parameters<typeof createExecutionTrackingHook>[2];
+    const tracker = new SkillExecutionTracker(db);
+    const hook = createExecutionTrackingHook(tracker, db, hormonal);
+    hook(
+      {
+        toolName: "web_search",
+        params: {},
+        result: "x".repeat(5000),
+        error: undefined,
+        durationMs: 5,
+      },
+      { toolName: "web_search", sessionKey: "s1" },
+    );
+    hook(
+      { toolName: "web_search", params: {}, result: null, error: "boom", durationMs: 5 },
+      { toolName: "web_search", sessionKey: "s1" },
+    );
+    expect(stimulated).toEqual(["error"]);
+    const rows = db
+      .prepare(
+        `SELECT success, reward_score, recorded_by FROM skill_executions ORDER BY started_at`,
+      )
+      .all() as Array<{ success: number; reward_score: number | null; recorded_by: string }>;
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.reward_score === null)).toBe(true);
+    expect(rows.every((r) => r.recorded_by === "after_tool_call")).toBe(true);
+    expect(rows.map((r) => r.success)).toEqual([1, 0]);
   });
 });

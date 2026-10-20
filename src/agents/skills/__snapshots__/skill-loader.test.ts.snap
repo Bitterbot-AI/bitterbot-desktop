@@ -1,0 +1,34 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`formatSkillsForPrompt > matches the golden prompt for a small tree loaded from disk 1`] = `
+"
+
+The following skills provide specialized instructions for specific tasks.
+Use the read tool to load a skill's file when the task matches its description.
+When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+
+<available_skills>
+  <skill>
+    <name>calendar</name>
+    <description>Read and create calendar events.</description>
+    <location>/skills/calendar/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>pdf-extract</name>
+    <description>Extract text &amp; tables from PDFs (&quot;scanned&quot; too).</description>
+    <location>/skills/tools/pdf-extract/SKILL.md</location>
+  </skill>
+  <skill>
+    <name>quick-note</name>
+    <description>A root markdown skill.</description>
+    <location>/skills/quick-note.md</location>
+  </skill>
+  <skill>
+    <name>weather</name>
+    <description>Current weather.
+Forecasts for &lt;city&gt;.
+</description>
+    <location>/skills/tools/weather/SKILL.md</location>
+  </skill>
+</available_skills>"
+`;

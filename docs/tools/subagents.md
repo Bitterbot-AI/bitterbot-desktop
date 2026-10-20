@@ -97,6 +97,7 @@ Auto-archive:
 - Sub-agent sessions are automatically archived after `agents.defaults.subagents.archiveAfterMinutes` (default: 60).
 - Archive uses `sessions.delete` and renames the transcript to `*.deleted.<timestamp>` (same folder).
 - `cleanup: "delete"` archives immediately after announce (still keeps the transcript via rename).
+- Archiving through `sessions.delete` also runs the memory cascade for the subagent's conversation: its indexed memories are removed, and facts learned only from it are retired (never facts at the owner's tier). This is automatic housekeeping (`initiator: "system"`), so the retire has the agent's strength: it does not remove learned preferences or mark older memories the way a delete you make does, and writes no suppression. See [Deleting a conversation](/memory/controls#deleting-a-conversation).
 - Auto-archive is best-effort; pending timers are lost if the gateway restarts.
 - `runTimeoutSeconds` does **not** auto-archive; it only stops the run. The session remains until auto-archive.
 - Auto-archive applies equally to depth-1 and depth-2 sessions.
@@ -174,7 +175,7 @@ Sub-agents report back via an announce step:
 - The announce step runs inside the sub-agent session (not the requester session).
 - If the sub-agent replies exactly `ANNOUNCE_SKIP`, nothing is posted.
 - Otherwise the announce reply is posted to the requester chat channel via a follow-up `agent` call (`deliver=true`).
-- Announce replies preserve thread/topic routing when available (Slack threads, Telegram topics, Matrix threads).
+- Announce replies preserve thread/topic routing when available (Slack threads, Telegram topics).
 - Announce messages are normalized to a stable template:
   - `Status:` derived from the run outcome (`success`, `error`, `timeout`, or `unknown`).
   - `Result:` the summary content from the announce step (or `(not available)` if missing).

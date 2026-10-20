@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import type { PreActionInterceptor } from "./interceptor.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
+import type { PreActionInterceptor } from "./interceptor.js";
 
 function mk(
   id: string,

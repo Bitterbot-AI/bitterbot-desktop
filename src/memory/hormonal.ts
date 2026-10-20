@@ -24,7 +24,10 @@ export type HormonalEvent =
   // Limbic memory bridge: retrieved memories influence emotional state (Plan 6, Phase 5)
   | "recall_positive" // Retrieved positive memories → mild dopamine
   | "recall_negative" // Retrieved negative memories → mild cortisol
-  | "recall_relational"; // Retrieved personal/relational memories → mild oxytocin
+  | "recall_relational" // Retrieved personal/relational memories → mild oxytocin
+  // PLAN-57 Phase 6: compute pools (bounded by src/compute/awareness/nudges.ts)
+  | "compute_success" // A job the owner can see succeeded on the pool → small dopamine
+  | "compute_setback"; // A worker dropped out, the coordinator went away, or embeddings keep falling back → small cortisol
 
 export type HormonalState = {
   dopamine: number; // 0-1
@@ -89,6 +92,10 @@ const EVENT_SPIKES: Record<
   recall_positive: { dopamine: 0.05, cortisol: 0, oxytocin: 0 }, // Recalling happy memories
   recall_negative: { dopamine: 0, cortisol: 0.05, oxytocin: 0 }, // Recalling stressful memories
   recall_relational: { dopamine: 0, cortisol: 0, oxytocin: 0.05 }, // Recalling personal memories
+  // Compute nudges: recall-class magnitude, rate-limited at the caller
+  // (src/compute/awareness/nudges.ts) so they stay under the dream trigger
+  compute_success: { dopamine: 0.05, cortisol: 0, oxytocin: 0 },
+  compute_setback: { dopamine: 0, cortisol: 0.05, oxytocin: 0 },
 };
 
 // Homeostasis: resting emotional baseline the agent decays toward.
@@ -508,7 +515,7 @@ export class HormonalStateManager {
       curiosityExpression,
       assertiveness,
       empathyExpression,
-      briefing: hints.length > 0 ? hints.join("; ") : "neutral tone — be natural",
+      briefing: hints.length > 0 ? hints.join("; ") : "your usual voice, be natural",
     };
   }
 

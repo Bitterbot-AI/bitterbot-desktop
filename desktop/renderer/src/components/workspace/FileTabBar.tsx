@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
-import type { TabEntry } from "../../stores/workspace-store";
 import { cn } from "../../lib/utils";
+import type { TabEntry } from "../../stores/workspace-store";
 import { getFileIcon } from "./workspace-utils";
 
 export function FileTabBar({

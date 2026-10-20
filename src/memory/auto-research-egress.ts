@@ -12,8 +12,8 @@
  * lives in the dream engine; these are the guards around it.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/auto-research-egress");
@@ -186,9 +186,9 @@ export class AutoResearchBudget {
 
   usedToday(now = Date.now()): number {
     try {
-      const row = this.db.prepare(`SELECT value FROM memory_meta WHERE key = ?`).get(dayKey(now)) as
-        | { value: string }
-        | undefined;
+      const row = this.db
+        .prepare(`SELECT value FROM memory_meta WHERE key = ?`)
+        .get(dayKey(now)) as { value: string } | undefined;
       if (!row) {
         return 0;
       }

@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
 import { resolveAgentWorkspaceDir } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { makeYieldEvery } from "../../memory/event-loop.js";
 import { DEFAULT_AGENT_ID } from "../../routing/session-key.js";
+import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
 
 /** Resolve workspace root and validate that a requested path stays inside it. */
 function resolveAndGuard(workspaceRoot: string, relativePath: string): string | null {

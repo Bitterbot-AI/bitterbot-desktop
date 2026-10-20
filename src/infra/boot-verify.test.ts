@@ -34,6 +34,26 @@ describe("boot-verify beacon", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("a beacon that expects a version is cleared only by that version (tarball updates)", () => {
+    armBootVerify({ prevSha: null, expectedVersion: "1.5.0", reason: "cli-update" });
+    confirmBootHealthy("1.4.0");
+    expect(readBootVerify()?.expectedVersion).toBe("1.5.0");
+    confirmBootHealthy("1.5.0");
+    expect(readBootVerify()).toBeNull();
+  });
+
+  it("a beacon without an expected version clears for any version (git updates)", () => {
+    armBootVerify({ prevSha: "abc" });
+    confirmBootHealthy("1.4.0");
+    expect(readBootVerify()).toBeNull();
+  });
+
+  it("disarm always clears, whatever version is expected", () => {
+    armBootVerify({ prevSha: null, expectedVersion: "1.5.0" });
+    disarmBootVerify();
+    expect(readBootVerify()).toBeNull();
+  });
+
   it("arms with a prevSha and a future deadline", () => {
     const now = 1_000_000;
     armBootVerify({ prevSha: "abc123", now, reason: "update.run" });

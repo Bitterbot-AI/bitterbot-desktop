@@ -80,10 +80,15 @@ export async function resolveResearchFindingsBlock(params: {
   if (params.liveUserTurn === false) {
     return undefined;
   }
-  const autoResearch = (
-    params.config?.memory?.curiosity as { autoResearch?: { enabled?: boolean } } | undefined
-  )?.autoResearch;
-  if (autoResearch?.enabled === false) {
+  // PLAN-54: the loop's own switch decides; the legacy flag still disables
+  // unless `research.enabled: true` overrides it (same rule as the researcher).
+  const curiosity = params.config?.memory?.curiosity as
+    | { autoResearch?: { enabled?: boolean }; research?: { enabled?: boolean } }
+    | undefined;
+  const { resolveCuriosityResearchConfig } = await import("../memory/curiosity-researcher.js");
+  if (
+    !resolveCuriosityResearchConfig(curiosity?.research, curiosity?.autoResearch?.enabled).enabled
+  ) {
     return undefined;
   }
   try {

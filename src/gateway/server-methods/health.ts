@@ -1,9 +1,10 @@
-import type { GatewayRequestHandlers } from "./types.js";
 import { getStatusSummary } from "../../commands/status.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import { buildGatewayRuntimeInfo } from "../runtime-info.js";
 import { HEALTH_REFRESH_INTERVAL_MS } from "../server-constants.js";
 import { formatError } from "../server-utils.js";
 import { formatForLog } from "../ws-log.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 const ADMIN_SCOPE = "operator.admin";
 
@@ -32,6 +33,8 @@ export const healthHandlers: GatewayRequestHandlers = {
     const status = await getStatusSummary({
       includeSensitive: scopes.includes(ADMIN_SCOPE),
     });
-    respond(true, status, undefined);
+    // The CLI summary plus what the gateway process itself is (version,
+    // uptime, platform), which the Control UI Overview cards display.
+    respond(true, { ...status, runtime: buildGatewayRuntimeInfo() }, undefined);
   },
 };

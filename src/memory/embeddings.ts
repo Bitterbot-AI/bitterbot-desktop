@@ -1,9 +1,10 @@
-import type { Llama, LlamaEmbeddingContext, LlamaModel } from "node-llama-cpp";
 import fsSync from "node:fs";
+import type { Llama, LlamaEmbeddingContext, LlamaModel } from "node-llama-cpp";
 import type { BitterbotConfig } from "../config/config.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { resolveUserPath } from "../utils.js";
+import { type DigestResolver, digestOfFile } from "./embedding-profile.js";
 import { createGeminiEmbeddingProvider, type GeminiEmbeddingClient } from "./embeddings-gemini.js";
 import { createOpenAiEmbeddingProvider, type OpenAiEmbeddingClient } from "./embeddings-openai.js";
 import { createVoyageEmbeddingProvider, type VoyageEmbeddingClient } from "./embeddings-voyage.js";
@@ -11,7 +12,7 @@ import { importNodeLlamaCpp } from "./node-llama.js";
 
 const log = createSubsystemLogger("memory/embeddings");
 
-function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
+export function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
   const sanitized = vec.map((value) => (Number.isFinite(value) ? value : 0));
   const magnitude = Math.sqrt(sanitized.reduce((sum, value) => sum + value * value, 0));
   if (magnitude < 1e-10) {
@@ -23,14 +24,25 @@ function sanitizeAndNormalizeEmbedding(vec: number[]): number[] {
 export type { GeminiEmbeddingClient } from "./embeddings-gemini.js";
 export type { OpenAiEmbeddingClient } from "./embeddings-openai.js";
 export type { VoyageEmbeddingClient } from "./embeddings-voyage.js";
+import { recordEmbeddingUsage } from "./embeddings-usage.js";
+
+export type { EmbedCallOptions } from "./embeddings-usage.js";
 
 export type EmbeddingProvider = {
   id: string;
   model: string;
   maxInputTokens?: number;
-  embedQuery: (text: string) => Promise<number[]>;
-  embedBatch: (texts: string[]) => Promise<number[][]>;
+  /**
+   * PLAN-57 §4.6: name the weights. Local GGUF providers hash the file; an
+   * OpenAI-compatible endpoint on localhost asks Ollama for its manifest
+   * digest. Remote APIs leave this out and never take part in pool parity.
+   */
+  resolveDigest?: DigestResolver;
+  /** PLAN-50: `opts.feature` attributes the call in the usage ledger. */
+  embedQuery: (text: string, opts?: EmbedCallOptionsLocal) => Promise<number[]>;
+  embedBatch: (texts: string[], opts?: EmbedCallOptionsLocal) => Promise<number[][]>;
 };
+type EmbedCallOptionsLocal = import("./embeddings-usage.js").EmbedCallOptions;
 
 export type EmbeddingProviderId = "openai" | "local" | "gemini" | "voyage";
 export type EmbeddingProviderRequest = EmbeddingProviderId | "auto";
@@ -51,6 +63,8 @@ export type EmbeddingProviderResult = {
 export type EmbeddingProviderOptions = {
   config: BitterbotConfig;
   agentDir?: string;
+  /** PLAN-50: owning agent for usage attribution. */
+  agentId?: string;
   provider: EmbeddingProviderRequest;
   remote?: {
     baseUrl?: string;
@@ -148,19 +162,44 @@ async function createLocalEmbeddingProvider(
   return {
     id: "local",
     model: modelPath,
-    embedQuery: async (text) => {
+    resolveDigest: async (hint) => {
+      const resolved = await resolveModelFile(modelPath, {
+        directory: modelCacheDir || undefined,
+        cli: false,
+      });
+      return digestOfFile(resolved, hint);
+    },
+    embedQuery: async (text, opts) => {
       const ctx = await ensureContext();
+      const started = Date.now();
       const embedding = await ctx.getEmbeddingFor(text);
+      recordEmbeddingUsage({
+        providerId: "local",
+        model: modelPath,
+        texts: [text],
+        feature: opts?.feature,
+        agentId: options.agentId,
+        durationMs: Date.now() - started,
+      });
       return sanitizeAndNormalizeEmbedding(Array.from(embedding.vector));
     },
-    embedBatch: async (texts) => {
+    embedBatch: async (texts, opts) => {
       const ctx = await ensureContext();
+      const started = Date.now();
       const embeddings = await Promise.all(
         texts.map(async (text) => {
           const embedding = await ctx.getEmbeddingFor(text);
           return sanitizeAndNormalizeEmbedding(Array.from(embedding.vector));
         }),
       );
+      recordEmbeddingUsage({
+        providerId: "local",
+        model: modelPath,
+        texts,
+        feature: opts?.feature,
+        agentId: options.agentId,
+        durationMs: Date.now() - started,
+      });
       return embeddings;
     },
   };
@@ -321,7 +360,7 @@ function formatLocalSetupError(err: unknown): string {
     "To enable local embeddings:",
     "1) Use Node 22 LTS (recommended for installs/updates)",
     missing
-      ? "2) Reinstall Bitterbot (this should install node-llama-cpp): npm i -g bitterbot@latest"
+      ? "2) Reinstall the dependencies (this should install node-llama-cpp): run `pnpm install` in your Bitterbot checkout, or pull a fresh Docker image. A full-package npm install (bitterbot 1.6.1 or older) leaves it out (about 700 MB); update to the npm launcher with `npm install -g bitterbot@latest`, or add it with `npm install -g node-llama-cpp@3.15.1`"
       : null,
     "3) If you use pnpm: pnpm approve-builds (select node-llama-cpp), then pnpm rebuild node-llama-cpp",
     ...REMOTE_EMBEDDING_PROVIDER_IDS.map(

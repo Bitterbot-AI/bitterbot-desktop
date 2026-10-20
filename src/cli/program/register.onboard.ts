@@ -1,5 +1,7 @@
-import type { Command } from "commander";
+import { Option, type Command } from "commander";
+import { formatAuthChoiceChoicesForCli } from "../../commands/auth-choice-options.js";
 import type { GatewayDaemonRuntime } from "../../commands/daemon-runtime.js";
+import { ONBOARD_PROVIDER_AUTH_FLAGS } from "../../commands/onboard-provider-auth-flags.js";
 import type {
   AuthChoice,
   GatewayAuthChoice,
@@ -7,9 +9,8 @@ import type {
   NodeManagerChoice,
   TailscaleMode,
 } from "../../commands/onboard-types.js";
-import { formatAuthChoiceChoicesForCli } from "../../commands/auth-choice-options.js";
-import { ONBOARD_PROVIDER_AUTH_FLAGS } from "../../commands/onboard-provider-auth-flags.js";
 import { onboardCommand } from "../../commands/onboard.js";
+import { isTemperamentLevel, TEMPERAMENT_LEVELS } from "../../memory/genome-parser.js";
 import { defaultRuntime } from "../../runtime.js";
 import { formatDocsLink } from "../../terminal/links.js";
 import { theme } from "../../terminal/theme.js";
@@ -47,7 +48,9 @@ const AUTH_CHOICE_HELP = formatAuthChoiceChoicesForCli({
 export function registerOnboardCommand(program: Command) {
   const command = program
     .command("onboard")
-    .description("Interactive wizard to set up the gateway, workspace, and skills")
+    .description(
+      "Set up Bitterbot: a setup page in your browser, or the terminal wizard (--no-browser)",
+    )
     .addHelpText(
       "after",
       () =>
@@ -56,6 +59,8 @@ export function registerOnboardCommand(program: Command) {
     .option("--workspace <dir>", "Agent workspace directory (default: ~/.bitterbot/workspace)")
     .option("--reset", "Reset config + credentials + sessions + workspace before running wizard")
     .option("--non-interactive", "Run without prompts", false)
+    .option("--browser", "Set up in the browser: print and open a setup link (the default)")
+    .option("--no-browser", "Use the terminal wizard instead of the browser setup page")
     .option(
       "--accept-risk",
       "Acknowledge that agents are powerful and full system access is risky (required for --non-interactive)",
@@ -108,10 +113,22 @@ export function registerOnboardCommand(program: Command) {
     .option("--skip-health", "Skip health check")
     .option("--skip-ui", "Skip Control UI/TUI prompts")
     .option("--node-manager <name>", "Node manager for skills: npm|pnpm|bun")
-    .option("--json", "Output JSON summary", false);
+    .option(
+      "--vibe <level>",
+      "Your agent's starting voice, written to GENOME.md: calm|playful|irreverent (default: irreverent)",
+    )
+    .option("--json", "Output JSON summary", false)
+    // install.sh runs `onboard --from-installer` right after installing.
+    .addOption(new Option("--from-installer").hideHelp());
 
   command.action(async (opts, commandRuntime) => {
     await runCommandWithRuntime(defaultRuntime, async () => {
+      const vibe = typeof opts.vibe === "string" ? opts.vibe.trim().toLowerCase() : undefined;
+      if (vibe !== undefined && !isTemperamentLevel(vibe)) {
+        defaultRuntime.error(`--vibe must be one of ${TEMPERAMENT_LEVELS.join(", ")}`);
+        defaultRuntime.exit(1);
+        return;
+      }
       const installDaemon = resolveInstallDaemonFlag(commandRuntime, {
         installDaemon: Boolean(opts.installDaemon),
       });
@@ -121,6 +138,8 @@ export function registerOnboardCommand(program: Command) {
         {
           workspace: opts.workspace as string | undefined,
           nonInteractive: Boolean(opts.nonInteractive),
+          browser: typeof opts.browser === "boolean" ? opts.browser : undefined,
+          fromInstaller: Boolean(opts.fromInstaller),
           acceptRisk: Boolean(opts.acceptRisk),
           flow: opts.flow as "quickstart" | "advanced" | "manual" | undefined,
           mode: opts.mode as "local" | "remote" | undefined,
@@ -176,6 +195,7 @@ export function registerOnboardCommand(program: Command) {
           skipHealth: Boolean(opts.skipHealth),
           skipUi: Boolean(opts.skipUi),
           nodeManager: opts.nodeManager as NodeManagerChoice | undefined,
+          vibe,
           json: Boolean(opts.json),
         },
         defaultRuntime,

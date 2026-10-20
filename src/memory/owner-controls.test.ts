@@ -1,0 +1,215 @@
+import fs from "node:fs";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { beforeEach, describe, expect, it } from "vitest";
+import { ensureMemoryIndexSchema } from "./memory-schema.js";
+import {
+  deletePreference,
+  editMemory,
+  exportMemories,
+  forgetMemory,
+  getMemory,
+  listAuditLog,
+  listMemories,
+  listPreferences,
+  OwnerEditRefused,
+} from "./owner-controls.js";
+import { UserModelManager } from "./user-model.js";
+
+const TABLES = { ftsTable: "chunks_fts", vectorTable: null };
+let db: DatabaseSync;
+
+function insert(id: string, text: string, extra: Record<string, unknown> = {}) {
+  const row = {
+    id,
+    path: extra.path ?? `memory/${id}`,
+    source: extra.source ?? "memory",
+    start_line: 0,
+    end_line: 0,
+    hash: id,
+    model: "m",
+    text,
+    embedding: "[]",
+    updated_at: 1,
+    lifecycle: extra.lifecycle ?? "generated",
+    lifecycle_state: extra.lifecycle_state ?? "active",
+    semantic_type: extra.semantic_type ?? "fact",
+    created_at: extra.created_at ?? 1,
+  };
+  const cols = Object.keys(row);
+  db.prepare(
+    `INSERT INTO chunks (${cols.join(",")}) VALUES (${cols.map(() => "?").join(",")})`,
+  ).run(...(Object.values(row) as Array<string | number>));
+  db.prepare(
+    "INSERT INTO chunks_fts (text, id, path, source, model, start_line, end_line) VALUES (?, ?, ?, ?, 'm', 0, 0)",
+  ).run(text, id, row.path as string, row.source as string);
+}
+
+const ftsIds = (term: string) =>
+  (
+    db.prepare("SELECT id FROM chunks_fts WHERE chunks_fts MATCH ?").all(term) as Array<{
+      id: string;
+    }>
+  ).map((r) => r.id);
+
+beforeEach(() => {
+  db = new DatabaseSync(":memory:");
+  ensureMemoryIndexSchema({
+    db,
+    embeddingCacheTable: "embedding_cache",
+    ftsTable: "chunks_fts",
+    ftsEnabled: true,
+  });
+  // Created by UserModelManager in the real gateway.
+  new UserModelManager(db);
+  insert("fact_1", "Victor prefers dark roast coffee");
+  insert("note_2", "The trip to Lisbon is in May");
+  insert("abc123", "session transcript about coffee", {
+    source: "sessions",
+    path: "sessions/s1.jsonl",
+  });
+  insert("seed_frozen", "core value", { lifecycle: "frozen" });
+  insert("fact_gone", "old fact", { lifecycle: "expired", lifecycle_state: "forgotten" });
+});
+
+describe("listing", () => {
+  it("lists the agent's own memories, newest first, without forgotten ones", () => {
+    const { memories } = listMemories(db);
+    expect(memories.map((m) => m.id)).toEqual(["seed_frozen", "note_2", "fact_1"]);
+    expect(memories.find((m) => m.id === "seed_frozen")?.editable).toBe(false);
+    expect(memories.find((m) => m.id === "fact_1")).toMatchObject({ kind: "own", editable: true });
+  });
+
+  it("filters by kind and text, and pages", () => {
+    expect(listMemories(db, { kind: "file" }).memories.map((m) => m.id)).toEqual(["abc123"]);
+    expect(listMemories(db, { kind: "all", q: "COFFEE" }).memories.map((m) => m.id)).toEqual([
+      "abc123",
+      "fact_1",
+    ]);
+    expect(listMemories(db, { q: "100%" }).memories).toEqual([]);
+    const first = listMemories(db, { limit: 2 });
+    expect(first.memories).toHaveLength(2);
+    const second = listMemories(db, { limit: 2, cursor: first.nextCursor ?? undefined });
+    expect(second.memories.map((m) => m.id)).toEqual(["fact_1"]);
+    expect(second.nextCursor).toBeNull();
+  });
+});
+
+describe("forgetting", () => {
+  it("removes the memory from the table and the keyword index, and records it without the text", async () => {
+    await forgetMemory(db, "fact_1", TABLES);
+
+    expect(getMemory(db, "fact_1")).toBeNull();
+    expect(ftsIds("roast")).toEqual([]);
+    const audit = db
+      .prepare("SELECT event, actor, metadata FROM memory_audit_log WHERE chunk_id = 'fact_1'")
+      .get() as {
+      event: string;
+      actor: string;
+      metadata: string;
+    };
+    expect(audit).toMatchObject({ event: "owner_forget", actor: "owner" });
+    expect(audit.metadata).not.toContain("roast");
+  });
+
+  it("refuses memories rebuilt from files, frozen ones and unknown ids", async () => {
+    insert("file456", "a line of MEMORY.md", { source: "memory", path: "MEMORY.md" });
+    await expect(forgetMemory(db, "file456", TABLES)).rejects.toThrow(/change the file instead/);
+    await expect(forgetMemory(db, "seed_frozen", TABLES)).rejects.toThrow(OwnerEditRefused);
+    await expect(forgetMemory(db, "fact_nope", TABLES)).rejects.toThrow(/no memory/);
+    expect(getMemory(db, "file456")).not.toBeNull();
+  });
+
+  it("forgets a memory indexed from a conversation, suppressing its text (PLAN-55 Phase 3)", async () => {
+    await forgetMemory(db, "abc123", TABLES);
+    expect(getMemory(db, "abc123")).toBeNull();
+    // A short passage (under 40 characters) is suppressed in its own transcript only.
+    expect(db.prepare("SELECT kind, reason FROM memory_suppressions").all() as unknown[]).toEqual([
+      { kind: "session_chunk", reason: "owner_forget" },
+    ]);
+  });
+});
+
+describe("editing", () => {
+  it("replaces the text with a new memory, re-indexes it for keyword search and marks it for re-embedding", async () => {
+    const edited = await editMemory(db, "fact_1", "Victor prefers light roast now", TABLES);
+
+    expect(edited).toMatchObject({
+      text: "Victor prefers light roast now",
+      version: 2,
+      previousId: "fact_1",
+    });
+    expect(edited.id).toMatch(/^fact_/);
+    expect(edited.id).not.toBe("fact_1");
+    expect(getMemory(db, "fact_1")).toBeNull();
+    expect(ftsIds("light")).toEqual([edited.id]);
+    expect(ftsIds("dark")).toEqual([]);
+    const row = db
+      .prepare("SELECT model, length(embedding) AS n FROM chunks WHERE id = ?")
+      .get(edited.id) as {
+      model: string;
+      n: number;
+    };
+    expect(row).toEqual({ model: "pending", n: 0 });
+  });
+
+  it("refuses empty text and file memories", async () => {
+    await expect(editMemory(db, "fact_1", "   ", TABLES)).rejects.toThrow(/empty/);
+    await expect(editMemory(db, "abc123", "x", TABLES)).rejects.toThrow(OwnerEditRefused);
+  });
+});
+
+describe("export", () => {
+  it("writes every memory with metadata and no embeddings, plus preferences", async () => {
+    db.prepare(
+      "INSERT INTO user_preferences (id, category, key, value, confidence, evidence_ids, created_at, updated_at) VALUES ('p1','style','tone','brief',0.8,'[]',1,1)",
+    ).run();
+    const out = path.join(await mkdtemp(path.join(tmpdir(), "mem-export-")), "export.json");
+
+    const result = await exportMemories(db, out, { agentId: "main", workingMemory: "# MEMORY" });
+
+    expect(result).toMatchObject({ memories: 5, preferences: 1 });
+    expect(JSON.parse(fs.readFileSync(out, "utf8")).version).toBe(2);
+    const parsed = JSON.parse(fs.readFileSync(out, "utf8"));
+    expect(parsed.memories.find((m: { id: string }) => m.id === "fact_gone").lifecycle).toBe(
+      "forgotten",
+    );
+    expect(JSON.stringify(parsed)).not.toContain("embedding");
+    expect(parsed.workingMemory).toBe("# MEMORY");
+    // Windows has no POSIX modes.
+    if (process.platform !== "win32") {
+      expect(fs.statSync(out).mode & 0o777).toBe(0o600);
+    }
+  });
+});
+
+describe("preferences", () => {
+  it("lists and removes a learned preference", () => {
+    db.prepare(
+      "INSERT INTO user_preferences (id, category, key, value, confidence, evidence_ids, created_at, updated_at) VALUES ('p1','style','tone','brief',0.8,'[]',1,1)",
+    ).run();
+    expect(listPreferences(db)).toEqual([
+      { category: "style", key: "tone", value: "brief", confidence: 0.8 },
+    ]);
+    expect(deletePreference(db, "style", "tone")).toBe(true);
+    expect(listPreferences(db)).toEqual([]);
+  });
+});
+
+describe("audit log reader", () => {
+  it("lists what happened newest first, without memory text", async () => {
+    await forgetMemory(db, "fact_1", TABLES);
+    db.prepare(
+      "INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata) VALUES ('old', 'x', 'forgotten', 1, 'consolidation', '{\"text\":\"secret\"}')",
+    ).run();
+
+    const entries = listAuditLog(db);
+
+    expect(entries.map((e) => e.event)).toEqual(["owner_forget", "forgotten"]);
+    expect(JSON.stringify(entries)).not.toContain("secret");
+    expect(listAuditLog(db, { event: "forgotten" }).map((e) => e.id)).toEqual(["old"]);
+    expect(listAuditLog(db, { before: 2 }).map((e) => e.id)).toEqual(["old"]);
+  });
+});

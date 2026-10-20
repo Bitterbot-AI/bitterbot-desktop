@@ -14,8 +14,8 @@ import { acceptIncomingSkill, rejectIncomingSkill } from "./ingest.js";
 
 // Unique per-run names so the accept path's write into CONFIG_DIR/skills is
 // cleaned up and never collides with real skills.
-const ACCEPT_NAME = "__f6-accept-credit-test__";
-const REJECT_NAME = "__f6-reject-credit-test__";
+const ACCEPT_NAME = "f6-accept-credit-test";
+const REJECT_NAME = "f6-reject-credit-test";
 
 async function stageQuarantined(
   quarantineDir: string,
@@ -46,6 +46,10 @@ describe("accept/reject credit the peer (F6)", () => {
     await fs.rm(tmp, { recursive: true, force: true }).catch(() => {});
     await fs
       .rm(path.join(CONFIG_DIR, "skills", ACCEPT_NAME), { recursive: true, force: true })
+      .catch(() => {});
+    // PLAN-45 4.2: an accept lands in staging for the local gate.
+    await fs
+      .rm(path.join(CONFIG_DIR, "skills-staging", ACCEPT_NAME), { recursive: true, force: true })
       .catch(() => {});
   });
 

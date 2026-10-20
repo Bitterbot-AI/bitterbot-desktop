@@ -7,10 +7,10 @@
 
 import type { ReplyPayload, BitterbotConfig } from "bitterbot/plugin-sdk";
 import { createReplyPrefixOptions } from "bitterbot/plugin-sdk";
-import type { TwitchAccountConfig, TwitchChatMessage } from "./types.js";
 import { checkTwitchAccessControl } from "./access-control.js";
 import { getOrCreateClientManager } from "./client-manager-registry.js";
 import { getTwitchRuntime } from "./runtime.js";
+import type { TwitchAccountConfig, TwitchChatMessage } from "./types.js";
 import { stripMarkdownForTwitch } from "./utils/markdown.js";
 
 export type TwitchRuntimeEnv = {

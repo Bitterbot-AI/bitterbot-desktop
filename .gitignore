@@ -132,6 +132,9 @@ celerybeat.pid
 !.env.example
 !.env.*.example
 .venv
+# docker-compose.yml's default data folder: config, SQLite memory, P2P keys
+# and the generated gateway token (PLAN-56 Phase 2). Never commit it.
+bitterbot-data/
 env/
 venv/
 ENV/

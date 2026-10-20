@@ -17,8 +17,8 @@
  * (status='pending'), so racing approvals execute exactly once.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 
 /** How long a queued write waits for the human before expiring unexecuted. */
 export const PENDING_OUTBOUND_TTL_MS = 60 * 60_000;

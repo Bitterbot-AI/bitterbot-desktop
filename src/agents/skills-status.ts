@@ -1,7 +1,7 @@
 import path from "node:path";
 import type { BitterbotConfig } from "../config/config.js";
-import type { RequirementConfigCheck, Requirements } from "../shared/requirements.js";
 import { evaluateEntryMetadataRequirements } from "../shared/entry-status.js";
+import type { RequirementConfigCheck, Requirements } from "../shared/requirements.js";
 import { CONFIG_DIR } from "../utils.js";
 import {
   hasBinary,
@@ -269,7 +269,7 @@ function buildSkillStatus(
   const bundled =
     bundledNames && bundledNames.size > 0
       ? bundledNames.has(entry.skill.name)
-      : entry.skill.source === "bitterbot-bundled";
+      : entry.skill.sourceInfo.source === "bitterbot-bundled";
 
   const primaryEnv = entry.metadata?.primaryEnv;
   const hasApiKey = Boolean(
@@ -301,7 +301,7 @@ function buildSkillStatus(
   return {
     name: entry.skill.name,
     description: entry.skill.description,
-    source: entry.skill.source,
+    source: entry.skill.sourceInfo.source,
     bundled,
     filePath: entry.skill.filePath,
     baseDir: entry.skill.baseDir,

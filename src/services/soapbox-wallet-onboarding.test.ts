@@ -15,7 +15,11 @@ afterEach(async () => {
 
 it("stores GUI credentials only in the Compute test wallet and passes them explicitly to signing", async () => {
   directory = await mkdtemp(path.join(tmpdir(), "soapbox-wallet-onboarding-"));
-  vi.doMock("node:os", () => ({ homedir: () => directory }));
+  vi.doMock("node:os", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:os")>();
+    const mocked = { ...actual, homedir: () => directory };
+    return { ...mocked, default: mocked };
+  });
   const address = `0x${"1".repeat(40)}`;
   const account = vi.fn(async () => ({ address }));
   const construct = vi.fn();

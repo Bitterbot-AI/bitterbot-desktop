@@ -6,11 +6,11 @@
  * peer-to-peer crystal import with governance-enforced access control.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { KnowledgeCrystal, CrystalSemanticType, CrystalLifecycle } from "./crystal-types.js";
 import { rowToCrystal } from "./crystal.js";
 import { ensureColumn } from "./memory-schema.js";
 import { skillCategoryFromContent } from "./skill-category.js";
@@ -56,6 +56,10 @@ export class MemStore {
   private ensureSchema(): void {
     ensureColumn(this.db, "chunks", "publish_visibility", "TEXT");
     ensureColumn(this.db, "chunks", "published_at", "INTEGER");
+    // PLAN-43 Phase 0 (invariant I2): selling is an explicit per-skill
+    // opt-in, distinct from — and never inherited from — the free
+    // propagation pool (publish_visibility='shared').
+    ensureColumn(this.db, "chunks", "for_sale", "INTEGER DEFAULT 0");
   }
 
   /**

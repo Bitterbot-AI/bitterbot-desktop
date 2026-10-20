@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import type { StepContext } from "../interceptor.js";
 import { __testing as ctxTesting } from "../interceptor-context.js";
+import type { StepContext } from "../interceptor.js";
 import { calibrateClaimConfidence } from "./calibrate-claim-confidence.js";
 import { MESSAGE_TOOL_NAMES } from "./message-tools.js";
 import { protocolQuietInGroups } from "./protocol-quiet-in-groups.js";

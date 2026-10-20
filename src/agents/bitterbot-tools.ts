@@ -1,9 +1,8 @@
 import type { BitterbotConfig } from "../config/config.js";
-import type { GatewayMessageChannel } from "../utils/message-channel.js";
-import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
-import type { AnyAgentTool } from "./tools/common.js";
 import { resolvePluginTools } from "../plugins/tools.js";
+import type { GatewayMessageChannel } from "../utils/message-channel.js";
 import { resolveSessionAgentId } from "./agent-scope.js";
+import type { SandboxFsBridge } from "./sandbox/fs-bridge.js";
 import { createA2aClientTool } from "./tools/a2a-client-tool.js";
 import { createA2aStatusTool } from "./tools/a2a-status-tool.js";
 import { createAgentsListTool } from "./tools/agents-list-tool.js";
@@ -12,7 +11,10 @@ import { createBrowserTool } from "./tools/browser-tool.js";
 import { createCanvasTool } from "./tools/canvas-tool.js";
 import { createCirclesTool } from "./tools/circles-tool.js";
 import { createCodeInterpreterTool } from "./tools/code-interpreter-tool.js";
+import { type AnyAgentTool, jsonResult } from "./tools/common.js";
+import { createComputeTool } from "./tools/compute-tool.js";
 import { createComputerUseTool } from "./tools/computer-use-tool.js";
+import { createCronTool } from "./tools/cron-tool.js";
 import { createCuriosityResolveTool, createCuriosityStateTool } from "./tools/curiosity-tool.js";
 import { createDeepRecallTool } from "./tools/deep-recall-tool.js";
 import { createDreamSearchTool, createDreamStatusTool } from "./tools/dream-tool.js";
@@ -31,14 +33,19 @@ import {
   createMemoryPinTool,
   createMemorySearchTool,
 } from "./tools/memory-tool.js";
+import { createMessageOwnerTool } from "./tools/message-owner-tool.js";
 import { createMessageTool } from "./tools/message-tool.js";
+import { createMonitorTool } from "./tools/monitor-tool.js";
 import { createNetworkStatusTool } from "./tools/network-status-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
+import { createPurchaseTool } from "./tools/purchase-tool.js";
+import { createRecallRangeTool } from "./tools/recall-range-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
 import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
+import { createShopTool } from "./tools/shop-tool.js";
 import { createSkillManageTool } from "./tools/skill-manage-tool.js";
 import { createSkillPipelineDigestTool } from "./tools/skill-pipeline-digest-tool.js";
 import { createSkillSeekersIngestTool } from "./tools/skill-seekers-tool.js";
@@ -65,10 +72,54 @@ import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
 import { createCompleteTool, createPlanTool } from "./tools/workflow-tools.js";
 import { resolveWorkspaceRoot } from "./workspace-dir.js";
 
+/**
+ * Tools that read or change what the agent has made of the owner's life:
+ * dream insights, emotional anchors, curiosity about their knowledge. A
+ * guest turn (PLAN-53 G2) gets a refusal instead. The memory_* tools filter
+ * rather than refuse, and deep_recall / recall_range scope by sender.
+ */
+const GUEST_REFUSED_TOOLS = new Set([
+  "dream_search",
+  "create_emotional_anchor",
+  "recall_emotional_anchor",
+  "curiosity_state",
+  "curiosity_resolve",
+]);
+
+export function refuseForGuest(tool: AnyAgentTool): AnyAgentTool {
+  if (!GUEST_REFUSED_TOOLS.has(tool.name)) {
+    return tool;
+  }
+  return {
+    ...tool,
+    execute: async () =>
+      jsonResult({
+        ok: false,
+        error:
+          "Not available in this conversation: the person messaging is not the owner, and this would show or change the owner's private memory.",
+      }),
+  };
+}
+
 export function createBitterbotTools(options?: {
   sandboxBrowserBridgeUrl?: string;
+  /** The run's sandbox container: code_interpreter's Python runs there (PLAN-53 A5). */
+  codeSandbox?: { containerName: string; containerWorkdir: string };
   allowHostBrowserControl?: boolean;
   agentSessionKey?: string;
+  /** Transcript session id (file stem); lets transcript readers target the exact file. */
+  agentSessionId?: string;
+  /** Transcript file of this run; wins over a lookup by id for the current session. */
+  agentSessionFile?: string;
+  /** Same semantics as applyOwnerOnlyToolPolicy: only `true` is an owner. */
+  senderIsOwner?: boolean;
+  /**
+   * PLAN-53 G2: a non-owner person is driving this turn (not a heartbeat or
+   * cron run). Memory recall is limited to what a guest may see.
+   */
+  memoryGuest?: boolean;
+  /** On a guest turn: who is talking, for message_owner. */
+  guestSender?: { name?: string | null; id?: string | null; channel?: string | null };
   agentChannel?: GatewayMessageChannel;
   agentAccountId?: string;
   /** Delivery target (e.g. telegram:group:123:topic:456) for topic/thread routing. */
@@ -144,13 +195,14 @@ export function createBitterbotTools(options?: {
     createBrowserTool({
       sandboxBridgeUrl: options?.sandboxBrowserBridgeUrl,
       allowHostControl: options?.allowHostBrowserControl,
+      agentSessionKey: options?.agentSessionKey,
     }),
     createComputerUseTool(),
     createNetworkStatusTool(),
     createA2aStatusTool(),
     createCanvasTool(),
     createArtifactTool(),
-    createCodeInterpreterTool(),
+    createCodeInterpreterTool({ sandbox: options?.codeSandbox }),
     createNodesTool({
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
@@ -164,6 +216,8 @@ export function createBitterbotTools(options?: {
       agentSessionKey: options?.agentSessionKey,
       config: options?.config,
     }),
+    createCronTool({ agentSessionKey: options?.agentSessionKey }),
+    createMonitorTool(),
     createAgentsListTool({
       agentSessionKey: options?.agentSessionKey,
       requesterAgentIdOverride: options?.requesterAgentIdOverride,
@@ -223,12 +277,16 @@ export function createBitterbotTools(options?: {
   ];
 
   // Memory tools — hardwired (no plugin indirection)
-  const memoryOpts = { config: options?.config, agentSessionKey: options?.agentSessionKey };
+  const memoryOpts = {
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+    memoryGuest: options?.memoryGuest === true,
+  };
   for (const tool of [
     createMemorySearchTool(memoryOpts),
     createMemoryGetTool(memoryOpts),
     createMemoryExpandTool(memoryOpts),
-    createMemoryPinTool(memoryOpts),
+    createMemoryPinTool({ ...memoryOpts, workspaceDir: options?.workspaceDir }),
     createMemoryStatusTool(memoryOpts),
     createDreamSearchTool(memoryOpts),
     createDreamStatusTool(memoryOpts),
@@ -236,7 +294,17 @@ export function createBitterbotTools(options?: {
     createCuriosityResolveTool(memoryOpts),
     createEmotionalAnchorTool(memoryOpts),
     createRecallEmotionalAnchorTool(memoryOpts),
-    createDeepRecallTool(memoryOpts),
+    createDeepRecallTool({
+      ...memoryOpts,
+      agentSessionId: options?.agentSessionId,
+      senderIsOwner: options?.senderIsOwner === true,
+    }),
+    createRecallRangeTool({
+      ...memoryOpts,
+      agentSessionId: options?.agentSessionId,
+      agentSessionFile: options?.agentSessionFile,
+      senderIsOwner: options?.senderIsOwner === true,
+    }),
     createSkillSeekersIngestTool(memoryOpts),
     createSkillPipelineDigestTool(memoryOpts),
     createSkillManageTool(memoryOpts),
@@ -244,8 +312,19 @@ export function createBitterbotTools(options?: {
     createCirclesTool(memoryOpts),
   ]) {
     if (tool) {
-      tools.push(tool);
+      tools.push(memoryOpts.memoryGuest ? refuseForGuest(tool) : tool);
     }
+  }
+
+  // A guest can ask the agent to pass something on to its owner.
+  if (options?.memoryGuest === true) {
+    tools.push(
+      createMessageOwnerTool({
+        senderName: options.guestSender?.name,
+        senderId: options.guestSender?.id,
+        channel: options.guestSender?.channel ?? options.agentChannel,
+      }),
+    );
   }
 
   const walletTool = createWalletTool({
@@ -256,7 +335,31 @@ export function createBitterbotTools(options?: {
     tools.push(walletTool);
   }
 
-  const a2aClientTool = createA2aClientTool({ config: options?.config });
+  const purchaseTool = createPurchaseTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
+  if (purchaseTool) {
+    tools.push(purchaseTool);
+  }
+  // PLAN-57: present only when a compute backend (the Soapbox plugin) is loaded.
+  const computeTool = createComputeTool({
+    config: options?.config,
+    senderIsOwner: options?.senderIsOwner === true,
+    agentSessionKey: options?.agentSessionKey,
+    workspaceDir,
+  });
+  if (computeTool) {
+    tools.push(computeTool);
+  }
+  const shopTool = createShopTool({ config: options?.config });
+  if (shopTool) {
+    tools.push(shopTool);
+  }
+  const a2aClientTool = createA2aClientTool({
+    config: options?.config,
+    agentSessionKey: options?.agentSessionKey,
+  });
   if (a2aClientTool) {
     tools.push(a2aClientTool);
   }

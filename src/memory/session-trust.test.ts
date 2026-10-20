@@ -40,6 +40,14 @@ describe("classifySessionKeyTrust", () => {
     expect(classifySessionKeyTrust("agent:main:sandbox:card-1:round-2")).toBe("untrusted");
   });
 
+  it("PLAN-44 Phase 3: delegates to the run-origin classifier (one trust decision for pins and evolution)", () => {
+    // Previously first_party here while run-origin already said guest.
+    expect(classifySessionKeyTrust("agent:main:hook:abc")).toBe("untrusted");
+    expect(classifySessionKeyTrust("agent:main:skill-evolve-val-x")).toBe("untrusted");
+    expect(classifySessionKeyTrust("agent:main:skill-evolve-val-peer-x")).toBe("untrusted");
+    expect(classifySessionKeyTrust("agent:main:guest:zz")).toBe("untrusted");
+  });
+
   it("fails closed on malformed keys", () => {
     expect(classifySessionKeyTrust("not-a-session-key")).toBe("unknown");
     expect(classifySessionKeyTrust("")).toBe("unknown");

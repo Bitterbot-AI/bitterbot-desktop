@@ -1,8 +1,8 @@
 import { MessageCircleQuestion, FileText, Clock, CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { safeJsonParse } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 /**
  * Dedicated view for the `ask` tool — shows the agent's question

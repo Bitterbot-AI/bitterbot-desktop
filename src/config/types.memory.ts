@@ -59,6 +59,24 @@ export type MemoryConfig = {
     /** Approximate token budget for the rendered prompt block (default: 1500). */
     budgetTokens?: number;
   };
+  /**
+   * Token-efficiency item 3: route latency-tolerant hidden lanes through the Anthropic
+   * Message Batches API (50% of the standard price). A lane call submits one batch, polls
+   * with backoff, and falls back to the live call on timeout or any error, so no lane
+   * stalls. Only anthropic API-key models qualify; other providers take the live path.
+   */
+  batch?: {
+    /** Kill switch (default: true). */
+    enabled?: boolean;
+    /**
+     * Ledger feature ids routed through batches. Default: memory/dream, memory/extraction,
+     * memory/discovery, skills/evolution (judge + maintainer; the proposer ReAct loop and
+     * on-demand RPC lanes always run live).
+     */
+    lanes?: string[];
+    /** Wall-clock cap per call before the batch is canceled and the live call runs (default: 20). */
+    maxWaitMinutes?: number;
+  };
   /** Session fact extraction pipeline (Mem0/Hindsight-inspired). */
   extraction?: {
     /** Enable LLM-powered fact extraction from session transcripts (default: true). */
@@ -69,6 +87,38 @@ export type MemoryConfig = {
     minSessionDelta?: number;
     /** Maximum facts to extract per session (default: 20). */
     maxFactsPerSession?: number;
+    /**
+     * Output cap for the extraction call. The prompt asks for up to
+     * maxFactsPerSession cited facts plus a handover brief; the old 2048
+     * lane cap truncated long transcripts into unparseable JSON. Default: 6144.
+     */
+    maxTokens?: number;
+    /**
+     * A transcript whose extraction fails (LLM error or unparseable output)
+     * is retried at most this many times per content hash, then skipped
+     * until its content changes or `retryAfterDays` elapses. Default: 2.
+     */
+    maxAttempts?: number;
+    /** Days after which a skipped transcript gets one more attempt. Default: 7. */
+    retryAfterDays?: number;
+    /**
+     * Transcripts longer than this (chars, after heartbeat turns are
+     * stripped) are extracted in line-aligned windows and merged. Default: 48000.
+     */
+    maxTranscriptChars?: number;
+  };
+  /**
+   * PLAN-55 Phase 1: immediate correction capture. After each owner turn in a
+   * first-party chat whose message has a corrective shape, one cheap-model
+   * call pins what the owner corrected or asked to remember (usage feature
+   * `memory/correction`). The model is `memory.extraction.model` (then the
+   * dream model, then the cheap default).
+   */
+  correction?: {
+    /** Run the per-turn pass (default: true). */
+    enabled?: boolean;
+    /** Append the one-line "Memory updated" confirmation to the reply (default: true). */
+    confirm?: boolean;
   };
   /** PLAN-24 HORMA Phase 0: provenance pointers from synthesized memories to raw sources. */
   provenance?: {
@@ -117,6 +167,14 @@ export type MemoryConfig = {
     time?: string;
   };
   /** PLAN-11 Gap 6: daily digest of autonomous skill-pipeline activity. */
+  /**
+   * The daily "what I dreamed" brief sent to the owner at the digest time
+   * (PLAN-53 G4): insights, changes in what the agent holds true about them,
+   * open loops. Sent only when there is something to say; delivered like other
+   * owner notices (main session, Control UI, chat channel subject to quiet
+   * hours). Default: enabled.
+   */
+  dreamBrief?: { enabled?: boolean };
   digest?: {
     /** Enable the daily digest (default: true). */
     enabled?: boolean;

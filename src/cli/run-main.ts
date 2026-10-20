@@ -61,7 +61,13 @@ export function shouldEnsureCliPath(argv: string[]): boolean {
   return true;
 }
 
-export async function runCli(argv: string[] = process.argv) {
+export async function runCli(
+  argv: string[] = process.argv,
+  options: {
+    /** argv as typed, before the entry stripped --profile/--dev. */
+    rawArgv?: string[];
+  } = {},
+) {
   const normalizedArgv = normalizeWindowsArgv(argv);
   loadDotEnv({ quiet: true });
   normalizeEnv();
@@ -91,7 +97,15 @@ export async function runCli(argv: string[] = process.argv) {
     process.exit(1);
   });
 
-  const parseArgv = rewriteUpdateFlagArgv(normalizedArgv);
+  // Bare `bitterbot` on a machine that is not set up yet runs `onboard`.
+  const { resolveBareCommandArgv } = await import("./bare-command-setup.js");
+  const updateArgv = rewriteUpdateFlagArgv(normalizedArgv);
+  const parseArgv = await resolveBareCommandArgv(updateArgv, { rawArgv: options.rawArgv });
+  if (parseArgv !== updateArgv) {
+    // The preAction hooks (banner, config guard) read process.argv: let them
+    // see `bitterbot onboard` too, so setup runs exactly as if typed.
+    process.argv = parseArgv;
+  }
   // Register the primary command (builtin or subcli) so help and command parsing
   // are correct even with lazy command registration.
   const primary = getPrimaryCommand(parseArgv);

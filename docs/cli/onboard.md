@@ -1,5 +1,5 @@
 ---
-summary: "CLI reference for `bitterbot onboard` (interactive onboarding wizard)"
+summary: "CLI reference for `bitterbot onboard` (browser setup page, terminal wizard, non-interactive)"
 read_when:
   - You want guided setup for gateway, workspace, auth, channels, and skills
 title: "onboard"
@@ -7,7 +7,155 @@ title: "onboard"
 
 # `bitterbot onboard`
 
-Interactive onboarding wizard (local or remote Gateway setup).
+Sets Bitterbot up. By default it finishes setup in your browser: it starts the
+gateway (or reuses the one already running, when it is this install), then
+prints and opens a setup link:
+
+```text
+http://127.0.0.1:19001/setup?token=...
+```
+
+The setup page first asks for the same explicit risk acknowledgement as the
+terminal wizard, then asks the same questions as the terminal QuickStart, in
+the same order, because both run one shared list of steps:
+
+1. **Model provider key.** Keys already on this machine
+   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`,
+   `GEMINI_API_KEY` in the gateway environment or `~/.bitterbot/.env`, or a
+   key an earlier setup saved) are
+   offered by name and last four characters only; the value never reaches the
+   browser. Saved sign-ins that are not API keys (OAuth, setup tokens) are
+   offered as "Already signed in" and kept as they are. You can also paste a
+   new Anthropic, OpenAI, OpenRouter or Google Gemini API key. The key you pick
+   is saved once where Bitterbot keeps that provider's key (the auth profile
+   store for Anthropic, OpenRouter and Google Gemini, `~/.bitterbot/.env` with
+   mode 0600 for OpenAI), so setup will not ask again. A different key already stored there
+   is never lost: the file is copied to `<file>.bak-<time>` (mode 0600) first.
+   "Other sign-in methods" points to
+   `bitterbot onboard --no-browser --flow manual` for Codex OAuth, Anthropic
+   setup tokens, Bedrock, local and custom endpoints.
+2. **Model.** A model already configured is kept unless you pick another.
+   Each provider's recommended model comes first: Claude Sonnet 5.5
+   (`anthropic/claude-sonnet-5-5`; Claude Opus 5.5, Claude Fable 5.1 and
+   Claude Haiku 4.5 are also offered), GPT-5.5 (`openai/gpt-5.5`; GPT-5 mini
+   also offered), OpenRouter Auto (`openrouter/auto`), and Gemini 3.1 Pro
+   preview (`google/gemini-3.1-pro-preview`; Gemini 3 Flash preview also
+   offered). Every model offered here is a featured model of the Control UI
+   model picker.
+3. **Vibe.** "Pick a vibe": the agent's starting voice, written to the
+   Temperament section of the new workspace's `GENOME.md`. Calm is dry with
+   no swearing, playful has warm humor and swears only if you do, irreverent
+   (preselected) is witty and swears where it fits. The agent's Phenotype
+   evolves from it; change the level later with
+   [`bitterbot genome temperament --level`](/cli/genome). A `GENOME.md` from
+   before the Temperament section is left as it is.
+4. **Memory embeddings.** The local model is the default (about 330 MB,
+   downloaded the first time memory needs it). With an OpenAI or Google
+   Gemini key, that provider's embeddings are offered too.
+5. **Web search** (optional). Curiosity research needs it. Options: a search
+   key already in the environment, Parallel Search (free, no key), or paste a
+   Brave Search (free tier), Tavily, or Perplexity key. Perplexity is paid per
+   search. A pasted key is saved in the config where the `web_search` tool
+   reads it (see [Web search](/tools/web-search)).
+6. **Channels.** "Later" is the default; you can chat in the Control UI
+   right away.
+7. **P2P network.** An explicit choice, with one sentence on what joining
+   sends (quoted in [What this node connects to](/network/egress)). Your
+   current setting is preselected.
+8. **Keep running.** Install the gateway as a background service (systemd
+   user service, macOS LaunchAgent) so it keeps running and starts on login.
+   Offered, and recommended, where the terminal QuickStart installs one; not in
+   a container, on Linux without systemd user services, or when a service is
+   already installed for this install. When the installed service still runs
+   another install (a git clone, an older release), the step offers **Use this
+   version for the background service** instead. The Done screen says whether
+   Bitterbot now runs as a service; on Finish, the gateway `onboard` started
+   for setup stops and the service takes over its port.
+9. **Privacy.** Bitterbot sends no telemetry to the project, and there is no
+   account to create.
+
+"Use recommended defaults" accepts all of them in one click. It still asks for
+a key when none was found, it always asks for the vibe (one click keeps
+irreverent), and it still asks about web search when no search
+key was found, since leaving it for later keeps curiosity research off. After the config is written, setup runs a first
+reply on the chosen model ("Say hello and tell me one thing you can do.") and
+shows it with its latency; a failure shows the provider's error with Retry,
+Back and Skip. The reply runs in its own session (`agent:<id>:setup`), so
+retries never land in your main chat, and a reply that takes too long is
+stopped before Retry is offered. Provider errors are shown with secrets
+masked. A read-only doctor summary closes the setup (`bitterbot doctor` has
+the full report).
+
+When the gateway already running on the port is a different install (a git
+clone, an older release), `onboard` does not link to it: in a terminal it
+offers to switch it to this version (`bitterbot gateway switch`), otherwise it
+prints that command. A program on the port that is not a Bitterbot gateway is
+an error.
+
+## Plain `bitterbot` on a new machine
+
+You do not need to remember the word "onboard": running `bitterbot` with no
+arguments on a machine that is not set up yet prints "Bitterbot isn't set up
+yet. Starting setup..." and runs `bitterbot onboard` with its defaults. This
+happens only in an interactive terminal (stdin and stdout), when `CI` is not
+set, and when no argument or flag is given (`--help`, `--version`,
+`--profile` and `--dev` included). "Set up" means a config file holding more
+than a first gateway start writes, with no browser setup left half done: the
+same test the setup page uses. Once set up, plain `bitterbot` prints the
+command list as before.
+
+## The setup link
+
+- Works until setup finishes, for at most 30 minutes, and only for the setup
+  steps: it cannot read your config, chat, or use any other gateway function.
+  Finishing setup deletes it; running `bitterbot onboard` again replaces it
+  and cancels a setup the old link had started (a closed tab never blocks a
+  new link).
+- Works only at `127.0.0.1` on the gateway's own machine, from the page the
+  gateway served (a page from another origin cannot use it). In a container,
+  Docker's port mapping is the boundary: keep the published port on
+  `127.0.0.1` (the `docker-compose.yml` default). Publishing it on all
+  interfaces lets anyone on your network who holds the link reach the setup
+  page.
+- Setup is complete only after Finish. If the tab closes halfway, run
+  `bitterbot onboard` again: the new link picks setup up. Once setup is
+  complete, a setup link no longer starts setup; open
+  `http://127.0.0.1:19001/setup` in the signed-in Control UI to run it again
+  (a tab whose link was refused falls back to that sign-in).
+- If the gateway restarts during setup, the page reconnects and starts setup
+  again by itself ("Bitterbot restarted, so setup started again"); anything
+  already saved, such as a key, is kept and offered again.
+- The page lives under the Control UI base path (`gateway.controlUi.basePath`).
+
+## Choosing the surface
+
+| Situation                                                                  | What `bitterbot onboard` does                    |
+| -------------------------------------------------------------------------- | ------------------------------------------------ |
+| Desktop, terminal session                                                  | Prints the link and opens your browser           |
+| SSH, headless, or inside a container                                       | Prints the link (and an `ssh -L` hint over SSH)  |
+| `--browser`                                                                | Setup page, even with terminal flags             |
+| `--no-browser`                                                             | The terminal wizard                              |
+| `--flow`, `--mode`, `--auth-choice`, provider key, gateway or daemon flags | The terminal wizard                              |
+| `--json`, `--skip-channels`, `--skip-health`, `--skip-skills`, `--skip-ui` | The terminal wizard                              |
+| `--vibe`                                                                   | The terminal wizard                              |
+| `--non-interactive`                                                        | No prompts: every recommended answer (see below) |
+| No terminal (a script), without `--browser` or `--non-interactive`         | Exits with an error explaining both              |
+
+When no gateway is running, `onboard` starts one in the background
+(`gateway --allow-unconfigured --bind loopback`, log in
+`~/.bitterbot/logs/gateway-setup.log`). The setup page's "Keep running" step
+installs the service; without it, run `bitterbot gateway install` later.
+
+## Non-interactive
+
+`bitterbot onboard --non-interactive --accept-risk` runs the same steps with
+their recommended answers: a credential already found (a saved sign-in or key
+for the configured model's provider first, else the first key, as above)
+unless a provider flag picks one, the configured model kept (or the provider's
+recommended model when none is set), the irreverent vibe (`--vibe
+calm|playful|irreverent` picks another), local embeddings, web search and
+channels later, and P2P left as it is. A key found only in the process
+environment is used from there and not copied into any file.
 
 ## Related guides
 
@@ -19,7 +167,8 @@ Interactive onboarding wizard (local or remote Gateway setup).
 ## Examples
 
 ```bash
-bitterbot onboard
+bitterbot onboard                 # setup page in the browser
+bitterbot onboard --no-browser    # terminal wizard
 bitterbot onboard --flow quickstart
 bitterbot onboard --flow manual
 bitterbot onboard --mode remote --remote-url ws://gateway-host:19001
@@ -29,6 +178,7 @@ Non-interactive custom provider:
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --auth-choice custom-api-key \
   --custom-base-url "https://llm.example.com/v1" \
   --custom-model-id "foo-large" \
@@ -46,6 +196,7 @@ If you specifically want the GLM Coding Plan endpoints, pick `zai-coding-global`
 ```bash
 # Promptless endpoint selection
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --auth-choice zai-coding-global \
   --zai-api-key "$ZAI_API_KEY"
 

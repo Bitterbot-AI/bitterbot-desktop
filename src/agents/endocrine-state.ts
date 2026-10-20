@@ -29,6 +29,12 @@ export type EndocrineStateForPrompt = {
   proactiveMemories?: string;
   /** Intra-session coherence context (Plan 7, Phase 2+9) */
   sessionCoherence?: string;
+  /**
+   * PLAN-50 Phase 6: spend pressure from the usage budgets (0 = none, 1 = at the limit). Feeds
+   * the prompt so the agent paces itself, the way cortisol shapes urgency.
+   */
+  budgetPressure?: number;
+  budgetLabel?: string;
 };
 
 export async function resolveEndocrineState(params: {
@@ -56,6 +62,13 @@ export async function resolveEndocrineState(params: {
    * so neither ever stamps (adversarial F3: no stamps for discarded facts).
    */
   promptMode?: "full" | "minimal";
+  /**
+   * Token-efficiency pass (2026-09-19): true for heartbeat prompt builds.
+   * Skips every paid call — proactive recall (an embed), the continuity gate
+   * (an embed), live hormonal stimulation and the turn counter — and renders
+   * the free parts (hormone lines, phenotype summary, brief, coherence) only.
+   */
+  isHeartbeat?: boolean;
 }): Promise<EndocrineStateForPrompt | undefined> {
   try {
     const { MemoryIndexManager } = await import("../memory/manager.js");
@@ -101,69 +114,13 @@ export async function resolveEndocrineState(params: {
       // No MEMORY.md or no Phenotype section yet — that's fine
     }
 
-    // Load latest session handover brief for cross-session continuity
-    // Session Continuity Gate: only inject if the brief is relevant to the current context.
-    // Below the entropy threshold → fresh start, skip the brief entirely.
-    let lastSessionBrief: string | undefined;
-    try {
-      const { loadLatestHandoverBrief, formatCompactSummary } =
-        await import("../memory/session-handover.js");
-      const brief = await loadLatestHandoverBrief(params.workspaceDir);
-      if (brief) {
-        let gatePass = true;
-
-        // Entropy gate: cosine similarity between brief purpose and user's first message.
-        // If the user is doing something completely unrelated, skip the handover.
-        try {
-          const memManager = manager as Record<string, unknown>;
-          const provider = memManager.provider as
-            | { embedQuery?: (text: string) => Promise<number[]> }
-            | undefined;
-          if (provider?.embedQuery) {
-            const { cosineSimilarity } = await import("../memory/internal.js");
-            const briefEmb = await provider.embedQuery(brief.purpose);
-            // Use the most recent user message or session context for comparison.
-            // If no user message available yet (cold start), let the brief through.
-            const recentQuery = brief.nextSteps?.[0] ?? brief.purpose;
-            const contextEmb = await provider.embedQuery(recentQuery);
-            // Only gate if embeddings are valid
-            if (briefEmb.length > 0 && contextEmb.length > 0) {
-              const similarity = cosineSimilarity(briefEmb, contextEmb);
-              // Threshold 0.25: low enough that related topics pass, high enough to catch
-              // "database migration" vs "birthday message" (typically ~0.05-0.10)
-              if (similarity < 0.25) {
-                gatePass = false;
-                log.debug("session continuity gate: brief skipped (fresh start)", {
-                  similarity: similarity.toFixed(3),
-                  briefPurpose: brief.purpose.slice(0, 60),
-                });
-              }
-            }
-          }
-        } catch {
-          // Gate check failed — let the brief through (fail-open)
-        }
-
-        if (gatePass) {
-          lastSessionBrief = formatCompactSummary(brief);
-
-          // Staleness annotation for old briefs
-          const ageHours = (Date.now() - brief.timestamp) / (60 * 60 * 1000);
-          if (ageHours > 48) {
-            lastSessionBrief = `(${Math.floor(ageHours / 24)}d ago) ${lastSessionBrief}`;
-          }
-        }
-      }
-    } catch {
-      // No handover briefs yet — that's fine
-    }
-
     // Plan 7, Phase 1: Proactive memory surfacing — involuntary recall of
     // identity facts plus, when we have the live user message, semantically
     // matched directive/world_fact/mental_model crystals. This is what lets the
     // agent answer already knowing what it has stored about a topic.
     let proactiveMemories: string | undefined;
     let userMessageEmbedding: number[] | null = null;
+    const liveTurn = Boolean(params.userMessage) && !params.isHeartbeat;
     try {
       const recallManager = manager as unknown as {
         recallForUserTurn(
@@ -176,8 +133,8 @@ export async function resolveEndocrineState(params: {
         }>;
         markDreamArtifactsConsumed?(ids: readonly string[], kind: "retrieved"): void;
       };
-      if (params.userMessage && typeof recallManager.recallForUserTurn === "function") {
-        const recall = await recallManager.recallForUserTurn(params.userMessage, {
+      if (liveTurn && typeof recallManager.recallForUserTurn === "function") {
+        const recall = await recallManager.recallForUserTurn(params.userMessage!, {
           scopeKey: params.sessionKey,
         });
         proactiveMemories = recall.facts;
@@ -195,7 +152,8 @@ export async function resolveEndocrineState(params: {
           recallManager.markDreamArtifactsConsumed(recall.renderedDreamChunkIds, "retrieved");
         }
       } else {
-        // No live message (status/compaction) — identity-only recall.
+        // No live message (status/compaction) or a heartbeat — identity-only
+        // recall (SQL only, no embedding).
         const { proactiveRecall, formatProactiveFacts } =
           await import("../memory/proactive-recall.js");
         const result = proactiveRecall({
@@ -223,6 +181,61 @@ export async function resolveEndocrineState(params: {
       }
     } catch {
       // Proactive recall not available — non-critical
+    }
+
+    // Load latest session handover brief for cross-session continuity.
+    // Session Continuity Gate (token-efficiency pass 2026-09-19): the brief
+    // embedding is cached by content hash (memory + disk) and compared with
+    // the live USER MESSAGE — the previous code compared the brief with its
+    // own nextSteps, always passed, and paid two embeds per prompt build.
+    // The user-message embedding from proactive recall is reused, so a turn
+    // costs at most one embed here and usually none. Heartbeats and no-message
+    // callers skip the gate (fail-open, zero cost).
+    let lastSessionBrief: string | undefined;
+    try {
+      const { loadLatestHandoverBrief, formatCompactSummary } =
+        await import("../memory/session-handover.js");
+      const brief = await loadLatestHandoverBrief(params.workspaceDir);
+      if (brief) {
+        let gatePass = true;
+        if (liveTurn) {
+          const memManager = manager as Record<string, unknown>;
+          const provider = memManager.provider as
+            | { embedQuery?: (text: string, opts?: { feature?: string }) => Promise<number[]> }
+            | undefined;
+          if (provider?.embedQuery) {
+            const { evaluateContinuityGate } = await import("../memory/continuity-gate.js");
+            const embedQuery = provider.embedQuery.bind(provider);
+            const gate = await evaluateContinuityGate({
+              workspaceDir: params.workspaceDir,
+              brief,
+              userMessage: params.userMessage,
+              userMessageEmbedding,
+              // PLAN-50: attributed to the continuity gate.
+              embed: (text) => embedQuery(text, { feature: "agent/continuity-gate" }),
+            });
+            gatePass = gate.pass;
+            if (!gate.pass) {
+              log.debug("session continuity gate: brief skipped (fresh start)", {
+                similarity: gate.similarity?.toFixed(3),
+                briefPurpose: brief.purpose.slice(0, 60),
+              });
+            }
+          }
+        }
+
+        if (gatePass) {
+          lastSessionBrief = formatCompactSummary(brief);
+
+          // Staleness annotation for old briefs
+          const ageHours = (Date.now() - brief.timestamp) / (60 * 60 * 1000);
+          if (ageHours > 48) {
+            lastSessionBrief = `(${Math.floor(ageHours / 24)}d ago) ${lastSessionBrief}`;
+          }
+        }
+      }
+    } catch {
+      // No handover briefs yet — that's fine
     }
 
     // PLAN-9: Prospective Memory — check triggers against current context
@@ -279,7 +292,7 @@ export async function resolveEndocrineState(params: {
       }
       if (epistemicEngine && firstParty) {
         const directives = epistemicEngine.getDirectivesForSession(
-          params.userMessage && params.sessionKey ? { sessionKey: params.sessionKey } : undefined,
+          liveTurn && params.sessionKey ? { sessionKey: params.sessionKey } : undefined,
         );
         if (directives.length > 0) {
           const directiveLines = directives.map((d) => `- [question] ${d.question}`);
@@ -315,6 +328,23 @@ export async function resolveEndocrineState(params: {
       return undefined;
     }
 
+    let budgetPressure: number | undefined;
+    let budgetLabel: string | undefined;
+    try {
+      const { getUsageLedger } = await import("../infra/usage-ledger.js");
+      const { getUsageBudgetPressure } = await import("../infra/usage-budgets.js");
+      const pressure = getUsageBudgetPressure({
+        ledger: getUsageLedger(),
+        cfg: params.config ?? undefined,
+      });
+      if (pressure.pressure > 0) {
+        budgetPressure = pressure.pressure;
+        budgetLabel = pressure.label ?? undefined;
+      }
+    } catch {
+      // budgets unavailable — non-critical
+    }
+
     return {
       dopamine: hormones?.dopamine ?? 0,
       cortisol: hormones?.cortisol ?? 0,
@@ -326,6 +356,8 @@ export async function resolveEndocrineState(params: {
       lastSessionBrief,
       proactiveMemories,
       sessionCoherence,
+      budgetPressure,
+      budgetLabel,
     };
   } catch (err) {
     log.debug(`Failed to resolve endocrine state: ${String(err)}`);

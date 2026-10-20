@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { FirstRun } from "./components/first-run/FirstRun";
 import { AppShell } from "./components/layout/AppShell";
+import { SetupWizard } from "./components/setup/SetupWizard";
 import { Toaster } from "./components/ui/sonner";
 import { initDeepLinkJoin } from "./lib/deep-link";
 import { fetchSessionToken, persistGatewayCredentials } from "./lib/gateway-origin";
+import { isSetupPath } from "./lib/setup-route";
 import {
   readStoredGatewayToken,
   readStoredGatewayUrl,
@@ -11,6 +13,20 @@ import {
 } from "./stores/gateway-store";
 
 export function App() {
+  // PLAN-56 Phase 4: `<basePath>/setup` is browser-first onboarding, with its
+  // own connection (a one-time setup token, wizard scope only).
+  if (typeof window !== "undefined" && isSetupPath(window.location.pathname)) {
+    return (
+      <>
+        <SetupWizard />
+        <Toaster richColors position="top-right" />
+      </>
+    );
+  }
+  return <ControlApp />;
+}
+
+function ControlApp() {
   const connect = useGatewayStore((s) => s.connect);
 
   // Decide at boot whether we already have a token. A stored one (from a prior

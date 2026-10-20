@@ -1,15 +1,15 @@
-import type { AgentTool } from "@mariozechner/pi-agent-core";
-import type { ImageContent } from "@mariozechner/pi-ai";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { ImageContent } from "@mariozechner/pi-ai";
 import type { ThinkLevel } from "../../auto-reply/thinking.js";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { CliBackendConfig } from "../../config/types.js";
-import type { EmbeddedContextFile } from "../pi-embedded-helpers.js";
 import { buildTtsSystemPromptHint } from "../../tts/tts.js";
 import { isRecord } from "../../utils.js";
+import type { EmbeddedContextFile } from "../embedded-helpers.js";
 import { buildModelAliasLines } from "../model-alias-lines.js";
 import { resolveDefaultModelForAgent } from "../model-selection.js";
 import { detectRuntimeShell } from "../shell-utils.js";
@@ -71,27 +71,30 @@ export function buildSystemPrompt(params: {
   canonicalFacts?: string;
   /** PLAN-34 Phase 2b: pre-rendered Research Findings block. */
   researchFindings?: string;
+  /** PLAN-57: pre-rendered `<compute-state>` block (volatile tail). */
+  computeState?: string;
 }) {
   const defaultModelRef = resolveDefaultModelForAgent({
     cfg: params.config ?? {},
     agentId: params.agentId,
   });
   const defaultModelLabel = `${defaultModelRef.provider}/${defaultModelRef.model}`;
-  const { runtimeInfo, userTimezone, userTime, userTimeFormat } = buildSystemPromptParams({
-    config: params.config,
-    agentId: params.agentId,
-    workspaceDir: params.workspaceDir,
-    cwd: process.cwd(),
-    runtime: {
-      host: "bitterbot",
-      os: `${os.type()} ${os.release()}`,
-      arch: os.arch(),
-      node: process.version,
-      model: params.modelDisplay,
-      defaultModel: defaultModelLabel,
-      shell: detectRuntimeShell(),
-    },
-  });
+  const { runtimeInfo, userTimezone, userTime, userTimeFormat, agentName } =
+    buildSystemPromptParams({
+      config: params.config,
+      agentId: params.agentId,
+      workspaceDir: params.workspaceDir,
+      cwd: process.cwd(),
+      runtime: {
+        host: "bitterbot",
+        os: `${os.type()} ${os.release()}`,
+        arch: os.arch(),
+        node: process.version,
+        model: params.modelDisplay,
+        defaultModel: defaultModelLabel,
+        shell: detectRuntimeShell(),
+      },
+    });
   const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
   return buildAgentSystemPrompt({
     workspaceDir: params.workspaceDir,
@@ -113,6 +116,8 @@ export function buildSystemPrompt(params: {
     endocrineState: params.endocrineState,
     canonicalFacts: params.canonicalFacts,
     researchFindings: params.researchFindings,
+    computeState: params.computeState,
+    agentName,
   });
 }
 

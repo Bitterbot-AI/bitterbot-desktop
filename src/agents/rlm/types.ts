@@ -32,9 +32,35 @@ export type RLMConfig = {
   maxContextTokens?: number;
   /** Default scope for context building. Default: "recent_sessions". */
   defaultScope?: RLMScope;
+  /**
+   * PLAN-52A continuity profile: tighter limits applied when the scope is
+   * `current_session` (the agent reaching back into its own offloaded
+   * context on the user's critical path). Depth is always 1 for this scope.
+   */
+  continuity?: RLMContinuityConfig;
 };
 
-export const DEFAULT_RLM_CONFIG: Required<RLMConfig> = {
+export type RLMContinuityConfig = {
+  /** Max REPL iterations. Default: 8. */
+  maxIterations?: number;
+  /** Max recursive sub-LLM calls. Default: 8. */
+  maxSubCalls?: number;
+  /** Max cost in USD per invocation. Default: 0.15. */
+  maxBudget?: number;
+  /** Wall-clock cap for the whole invocation (ms). Default: 45000. */
+  wallClockMs?: number;
+};
+
+export const DEFAULT_RLM_CONTINUITY: Required<RLMContinuityConfig> = {
+  maxIterations: 8,
+  maxSubCalls: 8,
+  maxBudget: 0.15,
+  wallClockMs: 45_000,
+};
+
+export const DEFAULT_RLM_CONFIG: Required<Omit<RLMConfig, "continuity">> & {
+  continuity: Required<RLMContinuityConfig>;
+} = {
   enabled: true,
   subModel: "auto",
   maxIterations: 15,
@@ -44,6 +70,20 @@ export const DEFAULT_RLM_CONFIG: Required<RLMConfig> = {
   sandboxTimeout: 30_000,
   maxContextTokens: 500_000,
   defaultScope: "recent_sessions",
+  continuity: DEFAULT_RLM_CONTINUITY,
+};
+
+/**
+ * Restrict a transcript snapshot to a slice of one session. Entry ids are the
+ * pi v3 `message` entry ids; lines are 1-based JSONL line numbers (the same
+ * addressing the memory index uses in `chunks.start_line`). Either bound may
+ * be omitted. Shared with the compaction ledger and `recall_range`.
+ */
+export type TranscriptRange = {
+  fromEntryId?: string;
+  toEntryId?: string;
+  fromLine?: number;
+  toLine?: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -92,6 +132,12 @@ export type RLMExecutorOptions = {
   maxSubCalls: number;
   /** Per code-block timeout ms. */
   timeout: number;
+  /**
+   * Wall-clock cap for the whole run (ms). Checked between steps and raced
+   * against every root call, so a slow provider cannot hold the user's turn
+   * open indefinitely (the paper's p95 tail). Unset = no cap.
+   */
+  wallClockMs?: number;
   /** Live data-access APIs to inject into the sandbox. */
   liveApis?: RLMLiveApis;
 };
@@ -137,10 +183,16 @@ export type SandboxExecutionResult = {
 export type ContextBuildParams = {
   /** Specific session key to search. */
   sessionKey?: string;
+  /** Exact session id (transcript file stem) for `current_session`. */
+  sessionId?: string;
   /** Search all indexed sessions. */
   allSessions?: boolean;
   /** Include knowledge crystals. */
   includeMemory?: boolean;
+  /** Include tool results (truncated) in the transcript section. */
+  includeToolResults?: boolean;
+  /** Restrict the snapshot to a slice of the session (entry ids or JSONL lines). */
+  range?: TranscriptRange;
   /** Time range filter (epoch ms). */
   timeRange?: { from: number; to: number };
   /** Budget for context size in tokens (~4 chars/token). */

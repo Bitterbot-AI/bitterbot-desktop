@@ -31,10 +31,10 @@
  *     secret (still unbuilt).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { CircleEnvelope } from "./envelope.js";
+import type { DatabaseSync } from "node:sqlite";
 import { handleCircleMethod } from "../gateway/a2a/circles.js";
+import type { CircleEnvelope } from "./envelope.js";
 
 /**
  * Blinded gossip topic for a circle. Hashing `circleId:keyEpoch` keeps the raw
@@ -84,6 +84,13 @@ export function resolveTopicCircle(db: DatabaseSync, topic: string): string | nu
     .all() as unknown as Array<{ circle_id: string; key_epoch: number }>;
   for (const r of rows) {
     if (circleTopicId(r.circle_id, r.key_epoch) === topic) {
+      return r.circle_id;
+    }
+  }
+  // L2: a sender that has not yet seen the newest member add publishes one
+  // epoch behind. Exact matches win above; this only rescues lagging frames.
+  for (const r of rows) {
+    if (r.key_epoch > 0 && circleTopicId(r.circle_id, r.key_epoch - 1) === topic) {
       return r.circle_id;
     }
   }

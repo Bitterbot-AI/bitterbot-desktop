@@ -10,8 +10,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { SkillHierarchy, DomainProfile, MultiPerspectiveEmbedding } from "./crystal-types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { SkillHierarchy, DomainProfile, MultiPerspectiveEmbedding } from "./crystal-types.js";
 import { cosineSimilarity } from "./internal.js";
 
 const _log = createSubsystemLogger("memory/skill-hierarchy");

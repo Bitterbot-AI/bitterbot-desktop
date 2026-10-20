@@ -1,16 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
-import type { CrystallizationCandidate } from "../../agents/skills/types.js";
-import type { BitterbotConfig } from "../../config/config.js";
-import type { GatewayRequestHandlers } from "./types.js";
 import {
   listAgentIds,
   resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
 } from "../../agents/agent-scope.js";
+import { resolveDefaultModelForAgent } from "../../agents/model-selection.js";
 import { installSkill } from "../../agents/skills-install.js";
+import type { CrystallizationCandidate } from "../../agents/skills/types.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import { withTimeout } from "../../utils/with-timeout.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 // Cap the orchestrator IPC (getStats/getBootstrapCensus) in skills.network so a
 // slow/churning orchestrator can't make the polled RPC hang for 20s+ (observed
@@ -21,6 +22,7 @@ import { buildWorkspaceSkillStatus } from "../../agents/skills-status.js";
 import { loadWorkspaceSkillEntries, type SkillEntry } from "../../agents/skills.js";
 import { importAgentskillsSkill } from "../../agents/skills/agentskills-ingest.js";
 import { crystallizeSkill } from "../../agents/skills/crystallize.js";
+import { appendImpactEntry } from "../../agents/skills/impact-trail.js";
 import {
   acceptIncomingSkill,
   listIncomingSkills,
@@ -48,6 +50,10 @@ import {
   validateSkillsInstallParams,
   validateSkillsManageParams,
   validateSkillsMetricsParams,
+  validateSkillsEvolutionCorpusReviewParams,
+  validateSkillsEvolutionFeedbackParams,
+  validateSkillsEvolutionCalibrationExportParams,
+  validateSkillsEvolutionCalibrationScoreParams,
   validateSkillsPromoteParams,
   validateSkillsPublishParams,
   validateSkillsRollbackParams,
@@ -289,8 +295,14 @@ export const skillsHandlers: GatewayRequestHandlers = {
       // unlike the old "latest single source wins" read that flapped between
       // bootnodes' divergent local counts.
       const networkCensus = context.skillNetworkBridge?.getAggregatedNetworkCensus?.() ?? null;
+      // What the gateway decided about received skills since boot (distinct
+      // skills vs raw gossip messages, accepted / held / rejected).
+      const { getIngestOutcomeStats } = await import("../../agents/skills/ingest-stats.js");
+      const ingest = getIngestOutcomeStats();
       return {
-        enabled: p2p?.enabled ?? false,
+        ingest,
+        // Unset means ON, same rule as applyP2pDefaults / doctor-p2p (PLAN-56 Phase 1).
+        enabled: p2p?.enabled !== false,
         topics: p2p?.topics ?? {},
         security: p2p?.security ?? {},
         stats,
@@ -457,6 +469,16 @@ export const skillsHandlers: GatewayRequestHandlers = {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, `write failed: ${String(err)}`));
       return;
     }
+    // PLAN-42 Phase 0 (D-C): the editor stays direct-write by design — human
+    // edits are the operator's prerogative — but every ungated write is
+    // recorded in the impact trail so the skill set's history stays complete.
+    await appendImpactEntry({
+      source: "editor",
+      action: p.overwrite ? "overwrite" : "create",
+      skillName: sanitizedName,
+      verdict: "ungated-human-edit",
+      detail: `target=${target} via skills.create`,
+    });
     bumpSkillsSnapshotVersion({ reason: "manual", changedPath: skillPath });
     respond(true, { ok: true, skillName: sanitizedName, skillPath, target }, undefined);
   },
@@ -480,9 +502,13 @@ export const skillsHandlers: GatewayRequestHandlers = {
       workspaceDir,
       reputationManager,
     });
+    // PLAN-45 4.2 (D-8): an accept admits the skill to the LOCAL validation
+    // gate. Neither the live dir nor the memory chunk is written here; both
+    // land when the gate promotes it (canary -> stable). The bridge is
+    // reached by the gate through the active-bridge accessor.
     respond(
       result.ok,
-      result,
+      { ...result, ...(result.ok ? { gate: "pending" } : {}) },
       result.ok ? undefined : errorShape(ErrorCodes.UNAVAILABLE, result.reason ?? "accept failed"),
     );
   },
@@ -845,7 +871,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       return;
     }
     const cfg = loadConfig();
-    if (!cfg.p2p?.enabled) {
+    if (cfg.p2p?.enabled === false) {
       respond(
         false,
         undefined,
@@ -1140,7 +1166,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
     }
   },
 
-  "skills.promote": async ({ params, respond }) => {
+  "skills.promote": async ({ params, respond, client }) => {
     if (!validateSkillsPromoteParams(params)) {
       respond(
         false,
@@ -1160,6 +1186,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
     };
     const roots = resolveStorageRoots();
     const cfg = loadConfig();
+    // PLAN-44 Phase 3: an evolution-staged skill is promotable here only as
+    // an explicit override from an operator.admin connection (adversarial
+    // H2: `author` is a caller-asserted param, scopes are not).
+    const operatorOverride =
+      p.forceGate === true && (client?.connect?.scopes ?? []).includes("operator.admin");
     try {
       const result = await withSkillLifecycleStore({ config: cfg }, (store) =>
         promoteStaged(
@@ -1169,6 +1200,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
             ...(p.reason ? { reason: p.reason } : {}),
             ...(p.author ? { author: p.author } : {}),
             ...(p.forceGate ? { forceGate: true } : {}),
+            ...(operatorOverride ? { allowEvolutionStaged: true } : {}),
           },
         ),
       );
@@ -1184,6 +1216,15 @@ export const skillsHandlers: GatewayRequestHandlers = {
       if (result.ok) {
         bumpSkillsSnapshotVersion({ reason: "manual" });
       }
+      await appendImpactEntry({
+        source: "skill-manage",
+        action: "promote",
+        skillName: p.name,
+        verdict: result.ok ? "accepted" : "rejected",
+        detail: result.ok
+          ? `kind=${result.kind}; archived previous v${result.previousArchived?.version ?? "none"}${p.forceGate ? "; forceGate=true" : ""}`
+          : (result.detail ?? result.error ?? "promote failed"),
+      });
       respond(
         result.ok,
         payload,
@@ -1243,6 +1284,15 @@ export const skillsHandlers: GatewayRequestHandlers = {
       if (result.ok) {
         bumpSkillsSnapshotVersion({ reason: "manual" });
       }
+      if (result.ok) {
+        await appendImpactEntry({
+          source: "skill-manage",
+          action: "rollback",
+          skillName: p.name,
+          verdict: "rolled-back",
+          detail: `restored v${p.version}; pre-rollback snapshot v${result.previousArchived?.version ?? "none"}`,
+        });
+      }
       respond(
         result.ok,
         payload,
@@ -1255,6 +1305,431 @@ export const skillsHandlers: GatewayRequestHandlers = {
         false,
         undefined,
         errorShape(ErrorCodes.UNAVAILABLE, `skills.rollback threw: ${String(err)}`),
+      );
+    }
+  },
+
+  // PLAN-42 Phase 5: one read-only snapshot of the evolution flywheel —
+  // wiki size, sampler cursor, staged/held proposals, validated evolved
+  // skills, P2P eligibility, corpus presence — plus the effective config.
+  // PLAN-44 Phase 2: the corpus review surface. Drafts the miner wrote to
+  // task-corpus-pending.jsonl become live capability tasks only here.
+  "skills.evolution.corpus.list": async ({ respond }) => {
+    try {
+      const { listPendingDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const { loadEffectiveCorpus } =
+        await import("../../memory/skill-evolution/canonical-corpus.js");
+      const { countCapabilityTasks, TASKS_MODE_MIN_CAPABILITY_TASKS } =
+        await import("../../memory/skill-evolution/validation-mode.js");
+      const drafts = await listPendingDrafts();
+      const corpus = await loadEffectiveCorpus();
+      respond(true, {
+        drafts,
+        liveCapabilityTasks: countCapabilityTasks(corpus),
+        tasksModeThreshold: TASKS_MODE_MIN_CAPABILITY_TASKS,
+      });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.corpus.list threw: ${String(err)}`),
+      );
+    }
+  },
+  "skills.evolution.corpus.accept": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCorpusReviewParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.corpus.accept params: ${formatValidationErrors(validateSkillsEvolutionCorpusReviewParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const { acceptDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const p = params as { ids: string[]; reviewedBy?: string };
+      const result = await acceptDrafts(p.ids, { reviewedBy: p.reviewedBy ?? "operator" });
+      respond(true, result);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.corpus.accept threw: ${String(err)}`),
+      );
+    }
+  },
+  "skills.evolution.corpus.reject": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCorpusReviewParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.corpus.reject params: ${formatValidationErrors(validateSkillsEvolutionCorpusReviewParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const { rejectDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const p = params as { ids: string[]; reviewedBy?: string; reason?: string };
+      const result = await rejectDrafts(p.ids, {
+        reviewedBy: p.reviewedBy ?? "operator",
+        ...(p.reason ? { reason: p.reason } : {}),
+      });
+      respond(true, result);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.corpus.reject threw: ${String(err)}`),
+      );
+    }
+  },
+
+  // PLAN-44 Phase 2: in-process probe of the runtime-pathway validation arm
+  // (one candidate skill, one task, both arms). The workspace registry only
+  // honours scratch dirs registered by THIS process, so an operator cannot
+  // exercise the arm from outside; this RPC is the supported way.
+  /**
+   * PLAN-44 Phase 5c: rewrite non-routable live descriptions now (the
+   * housekeeping pass does the same on cadence). `dryRun` lists candidates.
+   */
+  "skills.evolution.routing.repair": async ({ params, respond }) => {
+    try {
+      const p = (params ?? {}) as { dryRun?: boolean; max?: number; name?: string };
+      const { listNonRoutableSkills, repairNonRoutableSkills, repairSkillRouting } =
+        await import("../../memory/skill-evolution/routing-repair.js");
+      if (p.dryRun) {
+        respond(true, { candidates: await listNonRoutableSkills() });
+        return;
+      }
+      const { getActiveEvolutionLlm } = await import("../../memory/skill-evolution/active-llm.js");
+      const llmCall = getActiveEvolutionLlm();
+      if (!llmCall) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.UNAVAILABLE,
+            "no evolution model lane available (memory not ready or no LLM configured)",
+          ),
+        );
+        return;
+      }
+      if (typeof p.name === "string" && p.name.trim()) {
+        const r = await repairSkillRouting({ llmCall, name: p.name.trim() });
+        respond(true, { outcomes: [r.outcome], llmCalls: r.llmCalls });
+        return;
+      }
+      const r = await repairNonRoutableSkills({
+        llmCall,
+        ...(typeof p.max === "number" ? { max: p.max } : {}),
+      });
+      respond(true, r);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.routing.repair threw: ${String(err)}`),
+      );
+    }
+  },
+  "skills.evolution.feedback": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionFeedbackParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.feedback params: ${formatValidationErrors(validateSkillsEvolutionFeedbackParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const { appendRunFeedback } = await import("../../memory/skill-evolution/run-feedback.js");
+      const p = params as {
+        runId: string;
+        verdict: "confirmed" | "rejected";
+        note?: string;
+        by?: string;
+      };
+      const entry = await appendRunFeedback({
+        runId: p.runId,
+        verdict: p.verdict,
+        ...(p.note ? { note: p.note } : {}),
+        ...(p.by ? { by: p.by } : {}),
+      });
+      respond(true, entry);
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.feedback threw: ${String(err)}`),
+      );
+    }
+  },
+  // PLAN-45 Phase 1.5: blind labeler calibration on real traces.
+  "skills.evolution.calibration.export": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCalibrationExportParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.calibration.export params: ${formatValidationErrors(validateSkillsEvolutionCalibrationExportParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const [
+        { buildCalibrationSet, writeCalibrationSet },
+        { getActiveEventJournal },
+        { getActiveEvolutionLlm },
+      ] = await Promise.all([
+        import("../../memory/skill-evolution/calibration.js"),
+        import("../../infra/event-journal.js"),
+        import("../../memory/skill-evolution/active-llm.js"),
+      ]);
+      const journal = getActiveEventJournal();
+      if (!journal) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, "event journal is not active"),
+        );
+        return;
+      }
+      const p = params as { count?: number; seed?: string; withJudge?: boolean };
+      let judgeCall: ((prompt: string) => Promise<string>) | undefined;
+      if (p.withJudge) {
+        const llm = getActiveEvolutionLlm();
+        if (!llm) {
+          respond(
+            false,
+            undefined,
+            errorShape(ErrorCodes.UNAVAILABLE, "no evolution LLM lane is active for the judge"),
+          );
+          return;
+        }
+        judgeCall = (prompt) => llm(prompt);
+      }
+      const set = await buildCalibrationSet({
+        journal,
+        ...(p.count ? { count: p.count } : {}),
+        ...(p.seed ? { seed: p.seed } : {}),
+        ...(judgeCall ? { judgeCall } : {}),
+      });
+      const written = await writeCalibrationSet(set);
+      respond(true, { ...written, stats: set.stats });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          `skills.evolution.calibration.export threw: ${String(err)}`,
+        ),
+      );
+    }
+  },
+  "skills.evolution.calibration.score": async ({ params, respond }) => {
+    if (!validateSkillsEvolutionCalibrationScoreParams(params)) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.INVALID_REQUEST,
+          `invalid skills.evolution.calibration.score params: ${formatValidationErrors(validateSkillsEvolutionCalibrationScoreParams.errors)}`,
+        ),
+      );
+      return;
+    }
+    try {
+      const [{ parseLabelFile, readKeyFile, scoreCalibration, formatCalibrationReport }, fs] =
+        await Promise.all([
+          import("../../memory/skill-evolution/calibration.js"),
+          import("node:fs/promises"),
+        ]);
+      const p = params as { dir: string; labels: string[] };
+      const key = await readKeyFile(p.dir);
+      const { resolve: resolvePath } = await import("node:path");
+      const raters = await Promise.all(
+        p.labels.map(async (file) =>
+          parseLabelFile(await fs.readFile(resolvePath(p.dir, file), "utf-8")),
+        ),
+      );
+      const report = scoreCalibration(key, raters[0] as never, raters[1]);
+      respond(true, { report, text: formatCalibrationReport(report) });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(
+          ErrorCodes.UNAVAILABLE,
+          `skills.evolution.calibration.score threw: ${String(err)}`,
+        ),
+      );
+    }
+  },
+  "skills.evolution.probe": async ({ params, respond }) => {
+    try {
+      const p = (params ?? {}) as { skillMd?: string; taskPrompt?: string; expected?: string };
+      const [
+        { makeGatewayAgentTurn, makeRuntimePathwayRunner },
+        { callGateway },
+        { INTERNAL_MESSAGE_CHANNEL },
+        { resolveDefaultAgentId },
+        { makeSkillEvolveValidationSessionKey },
+        { getActiveEventJournal },
+        { scoreTaskAnswer },
+      ] = await Promise.all([
+        import("../../memory/skill-evolution/task-runner.js"),
+        import("../call.js"),
+        import("../../utils/message-channel.js"),
+        import("../../agents/agent-scope.js"),
+        import("../../sessions/session-key-utils.js"),
+        import("../../infra/event-journal.js"),
+        import("../../memory/skill-evolution/task-corpus.js"),
+      ]);
+      const cfg = loadConfig();
+      const agentId = resolveDefaultAgentId(cfg);
+      const skillMd =
+        p.skillMd ??
+        `---
+name: probe-token-guard
+description: Apply whenever a task mentions the violet-owl protocol; it defines how to report the protocol token.
+---
+## When to Apply
+Any task that mentions the violet-owl protocol.
+## Instructions
+The violet-owl protocol token is VIOLET-OWL-77. Report it on the FINAL line exactly as VIOLET-OWL-77.
+`;
+      const name = skillMd.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? "probe-skill";
+      const task = {
+        id: "probe-task",
+        prompt:
+          p.taskPrompt ??
+          'Using the violet-owl protocol, report the protocol token. Reply with exactly one line of the form "FINAL: <answer>".',
+        checker: { kind: "final" as const, value: p.expected ?? "VIOLET-OWL-77" },
+        suite: "capability" as const,
+      };
+      const agentTurn = makeGatewayAgentTurn({
+        callGateway: (a) =>
+          callGateway({
+            method: a.method,
+            params: a.params,
+            ...(a.expectFinal !== undefined ? { expectFinal: a.expectFinal } : {}),
+            ...(a.timeoutMs !== undefined ? { timeoutMs: a.timeoutMs } : {}),
+          }),
+        agentId,
+        channel: INTERNAL_MESSAGE_CHANNEL,
+        makeSessionKey: () =>
+          makeSkillEvolveValidationSessionKey(agentId, globalThis.crypto.randomUUID().slice(0, 8)),
+        makeIdempotencyKey: () => globalThis.crypto.randomUUID(),
+      });
+      const runner = makeRuntimePathwayRunner({
+        agentTurn,
+        journal: getActiveEventJournal(),
+        candidate: { name, content: skillMd },
+        incumbent: null,
+        proposalId: `probe-${Date.now()}`,
+      });
+      const out: Record<string, unknown> = {};
+      for (const variant of ["candidate", "incumbent"] as const) {
+        const t0 = Date.now();
+        const r = await runner(task, variant, { trialIndex: 0 });
+        const rr = typeof r === "string" ? { answer: r } : r;
+        out[variant] = {
+          ms: Date.now() - t0,
+          score: scoreTaskAnswer(task, rr.answer),
+          skillRead: rr.skillRead ?? null,
+          usage: rr.usage ?? null,
+          answer: rr.answer.slice(0, 300),
+        };
+      }
+      respond(true, { task: task.id, skill: name, ...out });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.probe threw: ${String(err)}`),
+      );
+    }
+  },
+
+  "skills.evolution.status": async ({ respond }) => {
+    try {
+      const { collectEvolutionStatus } = await import("../../memory/skill-evolution/status.js");
+      const { loadEffectiveCorpus } =
+        await import("../../memory/skill-evolution/canonical-corpus.js");
+      const { countCapabilityTasks, resolveEffectiveValidationMode } =
+        await import("../../memory/skill-evolution/validation-mode.js");
+      const { listPendingDrafts } = await import("../../memory/skill-evolution/corpus-review.js");
+      const { summarizeSkillReads } = await import("../../memory/skill-evolution/skill-reads.js");
+      const { listLiveSkillIndex } = await import("../../agents/skills/description-overlap.js");
+      const status = await collectEvolutionStatus();
+      // PLAN-44 Phase 5a: the usage signal per live skill (14-day window).
+      const liveIndex = await listLiveSkillIndex(resolveStorageRoots());
+      const skillReads = await summarizeSkillReads({ liveNames: liveIndex.map((e) => e.name) });
+      const cfg = loadConfig();
+      const evo = cfg.skills?.evolution ?? {};
+      const capabilityTasks = countCapabilityTasks(await loadEffectiveCorpus());
+      const effectiveMode = resolveEffectiveValidationMode(evo.validationMode, capabilityTasks);
+      const pendingDrafts = (await listPendingDrafts()).length;
+      // PLAN-44 Phase 0: echo the FULL effective config (the audit found the
+      // RPC reported 6 of 12 fields). Defaults mirror src/config/zod-schema.ts.
+      respond(true, {
+        config: {
+          enabled: evo.enabled !== false,
+          cadenceHours: evo.cadenceHours ?? 24,
+          maxProposerTurns: evo.maxProposerTurns ?? 24,
+          maxActiveEvolved: evo.maxActiveEvolved ?? 5,
+          validationMode: evo.validationMode ?? "tasks",
+          validationModeEffective: effectiveMode.mode,
+          validationModeSource: effectiveMode.source,
+          validationBudgetMinutes: evo.validationBudgetMinutes ?? 45,
+          descriptionRepair: evo.descriptionRepair !== false,
+          routingRepair: evo.routingRepair !== false,
+          capabilityTasks,
+          pendingDrafts,
+          trialsPerTask: evo.trialsPerTask ?? 3,
+          judgeModel: evo.judgeModel ?? null,
+          proposerModel: evo.proposerModel ?? null,
+          proposerModelSource: evo.proposerModel
+            ? "config"
+            : evo.judgeModel
+              ? "judgeModel"
+              : "agent-primary",
+          proposerModelConfigured:
+            evo.proposerModel ??
+            evo.judgeModel ??
+            (() => {
+              try {
+                const ref = resolveDefaultModelForAgent({ cfg });
+                return `${ref.provider}/${ref.model}`;
+              } catch {
+                return null;
+              }
+            })(),
+          wikiMaxPatterns: evo.wikiMaxPatterns ?? 100,
+          semanticLintCadenceDays: evo.semanticLintCadenceDays ?? 7,
+          propagate: evo.propagate !== false,
+          maturityDays: evo.maturityDays ?? 3,
+        },
+        ...status,
+        skillReads,
+      });
+    } catch (err) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, `skills.evolution.status threw: ${String(err)}`),
       );
     }
   },

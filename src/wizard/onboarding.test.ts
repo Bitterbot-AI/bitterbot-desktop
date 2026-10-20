@@ -2,10 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { RuntimeEnv } from "../runtime.js";
-import type { WizardPrompter } from "./prompts.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../agents/workspace.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { runOnboardingWizard } from "./onboarding.js";
+import type { WizardPrompter } from "./prompts.js";
 
 const ensureAuthProfileStore = vi.hoisted(() => vi.fn(() => ({ profiles: {} })));
 const promptAuthChoiceGrouped = vi.hoisted(() => vi.fn(async () => "skip"));
@@ -183,6 +183,14 @@ vi.mock("./onboarding.finalize.js", () => ({
   finalizeOnboardingWizard,
 }));
 
+// The "Keep running" step is offered where a service can be installed.
+vi.mock("./setup-service.js", () => ({
+  detectSetupServiceSupport: vi.fn(async () => ({
+    kind: "available",
+    label: "systemd user service",
+  })),
+}));
+
 vi.mock("./onboarding.completion.js", () => ({
   setupOnboardingShellCompletion,
 }));
@@ -324,6 +332,38 @@ describe("runOnboardingWizard", () => {
     expect(runTui).not.toHaveBeenCalled();
   });
 
+  it("with --auth-choice on a terminal, still shows the recommended-defaults fork (P2P consent)", async () => {
+    const messages: string[] = [];
+    const select: WizardPrompter["select"] = vi.fn(async (params) => {
+      messages.push(params.message);
+      return params.initialValue ?? params.options[0]?.value;
+    }) as WizardPrompter["select"];
+    const prompter = createWizardPrompter({ select });
+    const tty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+    try {
+      await runOnboardingWizard(
+        {
+          acceptRisk: true,
+          flow: "quickstart",
+          authChoice: "skip",
+          installDaemon: false,
+          skipHealth: true,
+          skipUi: true,
+        },
+        createRuntime({ throwsOnExit: true }),
+        prompter,
+      );
+    } finally {
+      if (tty) {
+        Object.defineProperty(process.stdin, "isTTY", tty);
+      } else {
+        delete (process.stdin as { isTTY?: boolean }).isTTY;
+      }
+    }
+    expect(messages.some((m) => m.startsWith("Recommended defaults:"))).toBe(true);
+  });
+
   async function runTuiHatchTest(params: {
     writeBootstrapFile: boolean;
     expectedMessage: string | undefined;
@@ -375,6 +415,65 @@ describe("runOnboardingWizard", () => {
 
   it("offers TUI hatch even without BOOTSTRAP.md", async () => {
     await runTuiHatchTest({ writeBootstrapFile: false, expectedMessage: undefined });
+  });
+
+  it("terminal QuickStart runs exactly the shared setup step model (PLAN-56 Phase 4)", async () => {
+    // The browser renderer is pinned to the same list in setup-wizard.test.ts:
+    // a prompt added to QuickStart outside the model, or a step the terminal
+    // skips, fails here.
+    const { SETUP_STEP_IDS } = await import("./setup-steps.js");
+    let current: string | null = null;
+    const sections: string[] = [];
+    const prompts: Array<{ kind: string; section: string | null; message: string }> = [];
+    const record = (kind: string, message: string) =>
+      prompts.push({ kind, section: current, message });
+    const select = vi.fn(async (params: Parameters<WizardPrompter["select"]>[0]) => {
+      record("select", params.message);
+      const values = new Set(params.options.map((o) => o.value as unknown));
+      if (values.has("quickstart")) {
+        return "quickstart";
+      }
+      if (values.has("custom")) {
+        return "custom";
+      }
+      return params.initialValue ?? params.options[0]?.value;
+    }) as WizardPrompter["select"];
+    const confirm = vi.fn(async (params: { message: string }) => {
+      record("confirm", params.message);
+      return true;
+    }) as WizardPrompter["confirm"];
+    const text = vi.fn(async (params: { message: string }) => {
+      record("text", params.message);
+      return "";
+    }) as WizardPrompter["text"];
+    const prompter = createWizardPrompter({
+      select,
+      confirm,
+      text,
+      section: (info) => {
+        current = info?.id ?? null;
+        if (info) {
+          sections.push(info.id);
+        }
+      },
+    });
+    finalizeOnboardingWizard.mockClear();
+    await runOnboardingWizard(
+      { skipHealth: true, skipUi: true },
+      createRuntime({ throwsOnExit: true }),
+      prompter,
+    );
+    expect(sections).toEqual([...SETUP_STEP_IDS]);
+    // The step's answer (recommended: install) is what finalize acts on.
+    expect(finalizeOnboardingWizard).toHaveBeenCalledWith(
+      expect.objectContaining({ opts: expect.objectContaining({ installDaemon: true }) }),
+    );
+    const forkIndex = prompts.findIndex((p) => p.message.startsWith("Recommended defaults:"));
+    expect(forkIndex).toBeGreaterThan(-1);
+    // Before the model: the risk acknowledgement and the QuickStart/Manual
+    // choice. After the fork: only prompts that belong to a model step.
+    expect(prompts.slice(0, forkIndex).map((p) => p.kind)).toEqual(["confirm", "select"]);
+    expect(prompts.slice(forkIndex + 1).filter((p) => p.section === null)).toEqual([]);
   });
 
   it("quickstart defers skills, hooks, channels, and the model pick (PLAN-41 D-M)", async () => {

@@ -3,7 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { TransitionProposal } from "./skill-curator-heuristics.js";
-import type { SkillLifecycleRow } from "./skill-lifecycle.js";
 import {
   applyPatchDecision,
   buildJudgePrompt,
@@ -14,6 +13,7 @@ import {
   readSkillMarkdownFromRoots,
   stringifySkillMarkdown,
 } from "./skill-curator-judge.js";
+import type { SkillLifecycleRow } from "./skill-lifecycle.js";
 
 const borderline: TransitionProposal = {
   skillName: "flaky-skill",

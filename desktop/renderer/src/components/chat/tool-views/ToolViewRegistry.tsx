@@ -22,7 +22,11 @@ type ToolViewComponent = React.ComponentType<ToolViewProps>;
  * Falls back to GenericToolView for unrecognized tools.
  */
 const TOOL_VIEW_MAP: Record<string, ToolViewComponent> = {
-  // Command / terminal tools
+  // Command / terminal tools. `exec` and `process` are the agent's real shell
+  // tools; without them here they fell through to the generic view.
+  exec: CommandToolView,
+  process: CommandToolView,
+  bash: CommandToolView,
   "execute-command": CommandToolView,
   execute_command: CommandToolView,
   "run-command": CommandToolView,

@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { WebSocket } from "ws";
-import type { ChannelOutboundAdapter } from "../channels/plugins/types.js";
 import { getChannelPlugin } from "../channels/plugins/index.js";
+import type { ChannelOutboundAdapter } from "../channels/plugins/types.js";
 import { resolveCanvasHostUrl } from "../infra/canvas-host-url.js";
 import { GatewayLockError } from "../infra/gateway-lock.js";
 import { getActivePluginRegistry, setActivePluginRegistry } from "../plugins/runtime.js";
@@ -261,29 +261,39 @@ describe("gateway server models + voicewake", () => {
     expect(res2.ok).toBe(true);
 
     const models = res1.payload?.models ?? [];
+    // `allowed`/`featured` come from the model allowlist (none configured here,
+    // so everything is allowed and nothing featured).
     expect(models).toEqual([
       {
         id: "claude-test-a",
         name: "A-Model",
         provider: "anthropic",
         contextWindow: 200_000,
+        allowed: true,
+        featured: false,
       },
       {
         id: "claude-test-b",
         name: "B-Model",
         provider: "anthropic",
         contextWindow: 1000,
+        allowed: true,
+        featured: false,
       },
       {
         id: "gpt-test-a",
         name: "A-Model",
         provider: "openai",
         contextWindow: 8000,
+        allowed: true,
+        featured: false,
       },
       {
         id: "gpt-test-z",
         name: "gpt-test-z",
         provider: "openai",
+        allowed: true,
+        featured: false,
       },
     ]);
 

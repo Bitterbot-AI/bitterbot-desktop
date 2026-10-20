@@ -1,8 +1,9 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { TextContent } from "@mariozechner/pi-ai";
-import type { SessionManager } from "@mariozechner/pi-coding-agent";
+import { scrubCardDataDeep } from "../security/card-data.js";
 import { emitSessionTranscriptUpdate } from "../sessions/transcript-events.js";
-import { HARD_MAX_TOOL_RESULT_CHARS } from "./pi-embedded-runner/tool-result-truncation.js";
+import { HARD_MAX_TOOL_RESULT_CHARS } from "./embedded-runner/tool-result-truncation.js";
+import type { TranscriptStore as SessionManager } from "./runtime/transcript/store.js";
 import { makeMissingToolResult, sanitizeToolCallInputs } from "./session-transcript-repair.js";
 import { extractToolCallsFromAssistant, extractToolResultId } from "./tool-call-id.js";
 
@@ -101,7 +102,9 @@ export function installSessionToolResultGuard(
   const pending = new Map<string, string | undefined>();
   const persistMessage = (message: AgentMessage) => {
     const transformer = opts?.transformMessageForPersistence;
-    return transformer ? transformer(message) : message;
+    // PLAN-53 C2: nothing with card data is written to a transcript.
+    const scrubbed = scrubCardDataDeep(message);
+    return transformer ? transformer(scrubbed) : scrubbed;
   };
 
   const persistToolResult = (
@@ -201,7 +204,7 @@ export function installSessionToolResultGuard(
   };
 
   // Monkey-patch appendMessage with our guarded version.
-  sessionManager.appendMessage = guardedAppend as SessionManager["appendMessage"];
+  sessionManager.appendMessage = guardedAppend as unknown as SessionManager["appendMessage"];
 
   return {
     flushPendingToolResults,

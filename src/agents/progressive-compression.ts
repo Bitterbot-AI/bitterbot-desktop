@@ -9,9 +9,9 @@
  * - Long conversations: cheap truncation first, then LLM summarization on the reduced set
  */
 
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import { estimateTokens } from "@mariozechner/pi-coding-agent";
 import { createHash } from "node:crypto";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import { estimateTokens } from "./runtime/tokens.js";
 
 export interface ProgressiveCompressionConfig {
   /** Enable progressive compression (default: true). */
@@ -192,7 +192,8 @@ function compressToolResults(
   }
 
   // Identify indices to spare (most recent N)
-  const sparedIndices = new Set(toolResultIndices.slice(-spareRecent));
+  // slice(-0) is the whole array, so a spare count of 0 needs its own branch.
+  const sparedIndices = new Set(spareRecent > 0 ? toolResultIndices.slice(-spareRecent) : []);
   let compressed = 0;
   const out = messages.map((msg, i) => {
     if (!toolResultIndices.includes(i) || sparedIndices.has(i)) {
@@ -229,7 +230,7 @@ function compressMessagesByRole(
     }
   }
 
-  const sparedIndices = new Set(roleIndices.slice(-spareRecent));
+  const sparedIndices = new Set(spareRecent > 0 ? roleIndices.slice(-spareRecent) : []);
   let compressed = 0;
   const out = messages.map((msg, i) => {
     if (!roleIndices.includes(i) || sparedIndices.has(i)) {

@@ -1,3 +1,5 @@
+import { USAGE_FEATURES } from "../../../infra/usage-features.js";
+import { recordUsage } from "../../../infra/usage-ledger.js";
 import type { AudioTranscriptionRequest, AudioTranscriptionResult } from "../../types.js";
 import { assertOkOrThrowHttpError, fetchWithTimeoutGuarded, normalizeBaseUrl } from "../shared.js";
 
@@ -26,6 +28,7 @@ export async function transcribeDeepgramAudio(
   const baseUrl = normalizeBaseUrl(params.baseUrl, DEFAULT_DEEPGRAM_AUDIO_BASE_URL);
   const allowPrivate = Boolean(params.baseUrl?.trim());
   const model = resolveModel(params.model);
+  const transcribeStartedAt = Date.now();
 
   const url = new URL(`${baseUrl}/listen`);
   url.searchParams.set("model", model);
@@ -70,6 +73,16 @@ export async function transcribeDeepgramAudio(
     if (!transcript) {
       throw new Error("Audio transcription response missing transcript");
     }
+    // PLAN-50 Phase 5: Deepgram bills per audio minute and reports no token usage; one item, unpriced.
+    recordUsage({
+      kind: "audio",
+      feature: USAGE_FEATURES.mediaAudio,
+      provider: "deepgram",
+      model,
+      usage: { total: 0 },
+      items: 1,
+      durationMs: Date.now() - transcribeStartedAt,
+    });
     return { text: transcript, model };
   } finally {
     await release();

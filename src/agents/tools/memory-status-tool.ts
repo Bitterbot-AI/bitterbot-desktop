@@ -9,10 +9,10 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult } from "./common.js";
 
 const MemoryStatusSchema = Type.Object({
@@ -59,7 +59,8 @@ export function createMemoryStatusTool(options: {
     description:
       "Introspect the full memory pipeline or force a re-sync. Actions: 'status' (default) returns crystal lifecycle counts, hormonal levels, dream engine state, curiosity targets, active goals, scheduler budgets, governance stats, and user profile. 'sync' forces re-indexing of all memory files.",
     parameters: MemoryStatusSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = params?.action ?? "status";
 
       const { manager, error } = await getMemorySearchManager({ cfg, agentId });

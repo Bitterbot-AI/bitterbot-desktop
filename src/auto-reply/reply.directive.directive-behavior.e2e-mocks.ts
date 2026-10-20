@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-vi.mock("../agents/pi-embedded.js", () => ({
+vi.mock("../agents/embedded.js", () => ({
   abortEmbeddedPiRun: vi.fn().mockReturnValue(false),
   runEmbeddedPiAgent: vi.fn(),
   queueEmbeddedPiMessage: vi.fn().mockReturnValue(false),

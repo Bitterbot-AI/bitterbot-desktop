@@ -1,10 +1,15 @@
-import type { RuntimeEnv } from "../runtime.js";
-import type { DoctorOptions } from "./doctor-prompter.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import {
+  externalUpdateCommand,
+  resolveInstallKind,
+  TARBALL_UPDATE_COMMAND,
+} from "../infra/install-kind.js";
 import { runGatewayUpdate } from "../infra/update-runner.js";
 import { runCommandWithTimeout } from "../process/exec.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { note } from "../terminal/note.js";
+import type { DoctorOptions } from "./doctor-prompter.js";
 
 async function detectBitterbotGitCheckout(root: string): Promise<"git" | "not-git" | "unknown"> {
   const res = await runCommandWithTimeout(["git", "-C", root, "rev-parse", "--show-toplevel"], {
@@ -75,6 +80,35 @@ export async function maybeOfferUpdateBeforeDoctor(params: {
   }
 
   if (git === "not-git") {
+    // Containers and release-tarball installs cannot update through a package
+    // manager: name the command that actually updates them (PLAN-56).
+    const kind = resolveInstallKind({ isGit: false, hasRoot: true, root: params.root });
+    const external = externalUpdateCommand(kind);
+    if (external) {
+      note(
+        [
+          "This Bitterbot runs in a container image. On the Docker host, update with:",
+          `  ${external}`,
+          "Then rerun doctor.",
+        ].join("\n"),
+        "Update",
+      );
+      return { updated: false };
+    }
+    if (kind === "tarball") {
+      // PLAN-56 Phase 3b: in place, verified, snapshotted, auto-rollback.
+      note(
+        [
+          "This Bitterbot was installed from a release tarball. Update it in place with:",
+          `  ${formatCliCommand(TARBALL_UPDATE_COMMAND)}`,
+          "It verifies the signed release, snapshots ~/.bitterbot data, keeps the current version",
+          `for rollback (${formatCliCommand("bitterbot update --rollback")}) and switches back automatically`,
+          "if the new version does not boot.",
+        ].join("\n"),
+        "Update",
+      );
+      return { updated: false };
+    }
     note(
       [
         "This install is not a git checkout.",

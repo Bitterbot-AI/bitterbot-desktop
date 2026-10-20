@@ -1,21 +1,21 @@
-import { completeSimple, type TextContent } from "@mariozechner/pi-ai";
-import { EdgeTTS } from "node-edge-tts";
 import { rmSync } from "node:fs";
-import type { BitterbotConfig } from "../config/config.js";
-import type {
-  ResolvedTtsConfig,
-  ResolvedTtsModelOverrides,
-  TtsDirectiveOverrides,
-  TtsDirectiveParseResult,
-} from "./tts.js";
-import { getApiKeyForModel, requireApiKey } from "../agents/model-auth.js";
+import type { TextContent } from "@mariozechner/pi-ai";
+import { EdgeTTS } from "node-edge-tts";
 import {
   buildModelAliasIndex,
   resolveDefaultModelForAgent,
   resolveModelRefFromString,
   type ModelRef,
 } from "../agents/model-selection.js";
-import { resolveModel } from "../agents/pi-embedded-runner/model.js";
+import type { BitterbotConfig } from "../config/config.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
+import { recordUsage } from "../infra/usage-ledger.js";
+import type {
+  ResolvedTtsConfig,
+  ResolvedTtsModelOverrides,
+  TtsDirectiveOverrides,
+  TtsDirectiveParseResult,
+} from "./tts.js";
 
 const DEFAULT_ELEVENLABS_BASE_URL = "https://api.elevenlabs.io";
 const TEMP_FILE_CLEANUP_DELAY_MS = 5 * 60 * 1000; // 5 minutes
@@ -431,49 +431,40 @@ export async function summarizeText(params: {
 
   const startTime = Date.now();
   const { ref } = resolveSummaryModelRef(cfg, config);
-  const resolved = resolveModel(ref.provider, ref.model, undefined, cfg);
-  if (!resolved.model) {
-    throw new Error(resolved.error ?? `Unknown summary model: ${ref.provider}/${ref.model}`);
-  }
-  const apiKey = requireApiKey(
-    await getApiKeyForModel({ model: resolved.model, cfg }),
-    ref.provider,
-  );
 
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await completeSimple(
-        resolved.model,
-        {
-          messages: [
-            {
-              role: "user",
-              content:
-                `You are an assistant that summarizes texts concisely while keeping the most important information. ` +
-                `Summarize the text to approximately ${targetLength} characters. Maintain the original tone and style. ` +
-                `Reply only with the summary, without additional explanations.\n\n` +
-                `<text_to_summarize>\n${text}\n</text_to_summarize>`,
-              timestamp: Date.now(),
-            },
-          ],
-        },
-        {
-          apiKey,
-          maxTokens: Math.ceil(targetLength / 2),
-          // No sampling params: current Anthropic models 400 on temperature,
-          // and completeSimple embeds that error instead of throwing.
-          signal: controller.signal,
-        },
-      );
-      const failure = res as { stopReason?: string; errorMessage?: string };
-      if (failure.stopReason === "error") {
-        throw new Error(`summary llm error: ${failure.errorMessage ?? "unknown"}`);
-      }
+      // PLAN-50: attributed completion records usage under tts/summary and surfaces the real
+      // provider error instead of masking it.
+      const { completeAttributed } = await import("../agents/complete-attributed.js");
+      const { message } = await completeAttributed({
+        provider: ref.provider,
+        modelId: ref.model,
+        cfg,
+        messages: [
+          {
+            role: "user",
+            content:
+              `You are an assistant that summarizes texts concisely while keeping the most important information. ` +
+              `Summarize the text to approximately ${targetLength} characters. Maintain the original tone and style. ` +
+              `Reply only with the summary, without additional explanations.\n\n` +
+              `<text_to_summarize>\n${text}\n</text_to_summarize>`,
+            timestamp: Date.now(),
+          },
+        ],
+        maxTokens: Math.ceil(targetLength / 2),
+        signal: controller.signal,
+        feature: "tts/summary",
+        errorPrefix: "summary",
+        ignoreBudget: true,
+        // A missing key fails fast with the provider name, as before.
+        requireApiKey: true,
+      });
 
-      const summary = res.content
+      const summary = message.content
         .filter(isTextContentBlock)
         .map((block) => block.text.trim())
         .filter(Boolean)
@@ -550,6 +541,7 @@ export async function elevenLabsTTS(params: {
   const normalizedNormalization = normalizeApplyTextNormalization(applyTextNormalization);
   const normalizedSeed = normalizeSeed(seed);
 
+  const synthStartedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -587,6 +579,16 @@ export async function elevenLabsTTS(params: {
       throw new Error(`ElevenLabs API error (${response.status})`);
     }
 
+    // PLAN-50 Phase 5: ElevenLabs bills per character on a subscription; recorded, unpriced.
+    recordUsage({
+      kind: "tts",
+      feature: USAGE_FEATURES.ttsSynthesis,
+      provider: "elevenlabs",
+      model: modelId,
+      usage: { input: text.length, total: text.length },
+      items: text.length,
+      durationMs: Date.now() - synthStartedAt,
+    });
     return Buffer.from(await response.arrayBuffer());
   } finally {
     clearTimeout(timeout);
@@ -610,6 +612,7 @@ export async function openaiTTS(params: {
     throw new Error(`Invalid voice: ${voice}`);
   }
 
+  const synthStartedAt = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -633,6 +636,16 @@ export async function openaiTTS(params: {
       throw new Error(`OpenAI TTS API error (${response.status})`);
     }
 
+    // PLAN-50 Phase 5: speech is billed per character; `input` holds characters for tts rows.
+    recordUsage({
+      kind: "tts",
+      feature: USAGE_FEATURES.ttsSynthesis,
+      provider: "openai",
+      model,
+      usage: { input: text.length, total: text.length },
+      items: text.length,
+      durationMs: Date.now() - synthStartedAt,
+    });
     return Buffer.from(await response.arrayBuffer());
   } finally {
     clearTimeout(timeout);

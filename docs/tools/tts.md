@@ -232,6 +232,10 @@ Then run:
 - `edge.proxy`: proxy URL for Edge TTS requests.
 - `edge.timeoutMs`: request timeout override (ms).
 
+## Voice mode in the Control UI
+
+The microphone in the Control UI chat box uses these same TTS settings to read replies aloud, sentence by sentence as they stream. It talks to the gateway through two methods, both needing `operator.write`: `talk.transcribe` (a spoken turn to text, using the same speech-to-text providers as voice notes from chat apps) and `talk.speak` (text to audio). `talk.mode` no longer requires a connected phone node. See [Talking to the agent](/web/control-ui#talking-to-the-agent).
+
 ## Model-driven overrides (default on)
 
 By default, the model **can** emit TTS directives for a single reply.

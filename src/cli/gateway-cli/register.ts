@@ -1,7 +1,18 @@
 import type { Command } from "commander";
-import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
 import { gatewayStatusCommand } from "../../commands/gateway-status.js";
 import { formatHealthChannelLines, type HealthSummary } from "../../commands/health.js";
+import type { CostUsageSummary } from "../../infra/session-cost-usage.js";
+import type {
+  UsageExplanation,
+  UsageLedgerSummary,
+  UsageWhatIf,
+} from "../../infra/usage-ledger.types.js";
+import {
+  renderUsageExplanation,
+  renderUsageLedgerSummary,
+  renderUsageWhatIf,
+  type UsageRenderDimension,
+} from "../../infra/usage-render.js";
 import { defaultRuntime } from "../../runtime.js";
 import { styleHealthChannelLine } from "../../terminal/health-style.js";
 import { formatDocsLink } from "../../terminal/links.js";
@@ -121,6 +132,95 @@ export function registerGatewayCli(program: Command) {
             defaultRuntime.log(line);
           }
         }, "Gateway usage cost failed");
+      }),
+  );
+
+  gatewayCallOpts(
+    gateway
+      .command("usage")
+      .description(
+        "Usage ledger: tokens and cost per model, feature (chat, embeddings, dream, …), provider or day",
+      )
+      .option("--days <days>", "Number of days to include", "30")
+      .option("--by <dimension>", "model | feature | provider | kind | agent | day", "model")
+      .option(
+        "--why",
+        "Explain the window against the one before it (drivers by feature, model, session)",
+      )
+      .option(
+        "--whatif <provider/model>",
+        "Re-price the window as if this model had handled every chat call",
+      )
+      .option(
+        "--tools",
+        "Tool-call telemetry: hot-set proof (direct / use_tool / native search), spilled results, prefix stability (reads the ledger directly)",
+      )
+      .action(async (opts) => {
+        await runGatewayCommand(async () => {
+          const days = parseDaysOption(opts.days);
+          if (opts.tools) {
+            const [{ getUsageLedger }, telemetry] = await Promise.all([
+              import("../../infra/usage-ledger.js"),
+              import("../../infra/usage-tool-telemetry.js"),
+            ]);
+            const ledger = getUsageLedger();
+            if (!ledger) {
+              throw new Error("usage ledger is disabled or could not be opened");
+            }
+            const endMs = Date.now();
+            const window = { startMs: endMs - days * 24 * 60 * 60_000, endMs };
+            const tools = telemetry.buildToolTelemetry(ledger, window);
+            const prefix = telemetry.buildPrefixStability(ledger, window);
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify({ tools, prefix }, null, 2));
+              return;
+            }
+            for (const line of telemetry.renderToolTelemetry({ tools, prefix, days })) {
+              defaultRuntime.log(line);
+            }
+            return;
+          }
+          if (opts.why) {
+            const explanation = (await callGatewayCli("usage.ledger.explain", opts, {
+              days,
+            })) as UsageExplanation;
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify(explanation, null, 2));
+              return;
+            }
+            for (const line of renderUsageExplanation(explanation)) {
+              defaultRuntime.log(line);
+            }
+            return;
+          }
+          if (typeof opts.whatif === "string" && opts.whatif.includes("/")) {
+            const slash = opts.whatif.indexOf("/");
+            const whatIf = (await callGatewayCli("usage.ledger.whatif", opts, {
+              days,
+              provider: opts.whatif.slice(0, slash),
+              model: opts.whatif.slice(slash + 1),
+            })) as UsageWhatIf;
+            if (opts.json) {
+              defaultRuntime.log(JSON.stringify(whatIf, null, 2));
+              return;
+            }
+            for (const line of renderUsageWhatIf(whatIf)) {
+              defaultRuntime.log(line);
+            }
+            return;
+          }
+          const result = (await callGatewayCli("usage.ledger.summary", opts, {
+            days,
+          })) as UsageLedgerSummary;
+          if (opts.json) {
+            defaultRuntime.log(JSON.stringify(result, null, 2));
+            return;
+          }
+          const by = String(opts.by ?? "model") as UsageRenderDimension;
+          for (const line of renderUsageLedgerSummary(result, by)) {
+            defaultRuntime.log(line);
+          }
+        }, "Gateway usage failed");
       }),
   );
 

@@ -235,6 +235,29 @@ describe("gateway update.run", () => {
   });
 });
 
+describe("gateway update.run in a container (PLAN-53 F1)", () => {
+  test("refuses and says to pull a newer image", async () => {
+    const updateMock = vi.mocked(runGatewayUpdate);
+    updateMock.mockClear();
+    process.env.BITTERBOT_INSTALL_KIND = "container";
+    try {
+      const id = "req-update-container";
+      ws.send(
+        JSON.stringify({ type: "req", id, method: "update.run", params: { restartDelayMs: 0 } }),
+      );
+      const res = await onceMessage<{ ok: boolean; error?: { message?: string } }>(
+        ws,
+        (o) => o.type === "res" && o.id === id,
+      );
+      expect(res.ok).toBe(false);
+      expect(res.error?.message).toMatch(/runs in a container/);
+      expect(updateMock).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.BITTERBOT_INSTALL_KIND;
+    }
+  });
+});
+
 describe("gateway node command allowlist", () => {
   test("enforces command allowlists across node clients", async () => {
     const waitForConnectedCount = async (count: number) => {

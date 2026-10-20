@@ -69,55 +69,45 @@ describe("buildAgentSystemPrompt — workflow section", () => {
   });
 });
 
-describe("buildAgentSystemPrompt — complete/plan tool summaries", () => {
-  it("includes complete tool summary when complete is in toolNames", () => {
+describe("buildAgentSystemPrompt — complete/plan in the Tooling line", () => {
+  // Token-efficiency W4: the Tooling section lists tool NAMES only, on one
+  // sorted line. Summaries live in the tool definitions themselves.
+  it("lists complete when complete is in toolNames", () => {
     const prompt = buildAgentSystemPrompt({
       ...MINIMAL_PARAMS,
       toolNames: ["complete"],
     });
 
-    expect(prompt).toContain("- complete: Signal that all tasks are finished");
+    expect(prompt).toContain("Tools: complete");
+    expect(prompt).not.toContain("Signal that all tasks are finished");
   });
 
-  it("includes plan tool summary when plan is in toolNames", () => {
+  it("lists plan when plan is in toolNames", () => {
     const prompt = buildAgentSystemPrompt({
       ...MINIMAL_PARAMS,
       toolNames: ["plan"],
     });
 
-    expect(prompt).toContain("- plan: Emit a structured task plan");
+    expect(prompt).toContain("Tools: plan");
   });
 
-  it("includes both when both are in toolNames", () => {
+  it("lists both, sorted in byte order regardless of discovery order", () => {
     const prompt = buildAgentSystemPrompt({
       ...MINIMAL_PARAMS,
       toolNames: ["plan", "complete"],
     });
 
-    expect(prompt).toContain("- plan:");
-    expect(prompt).toContain("- complete:");
+    expect(prompt).toContain("Tools: complete, plan");
   });
 
-  it("plan appears before complete in tool listing (follows toolOrder)", () => {
-    const prompt = buildAgentSystemPrompt({
-      ...MINIMAL_PARAMS,
-      toolNames: ["plan", "complete"],
-    });
-
-    const planIdx = prompt.indexOf("- plan:");
-    const completeIdx = prompt.indexOf("- complete:");
-    expect(planIdx).toBeGreaterThan(-1);
-    expect(completeIdx).toBeGreaterThan(-1);
-    expect(planIdx).toBeLessThan(completeIdx);
-  });
-
-  it("omits complete/plan from tool listing when not in toolNames", () => {
+  it("omits complete/plan from the Tooling line when not in toolNames", () => {
     const prompt = buildAgentSystemPrompt({
       ...MINIMAL_PARAMS,
       toolNames: ["exec", "read"],
     });
 
-    expect(prompt).not.toContain("- complete:");
-    expect(prompt).not.toContain("- plan:");
+    expect(prompt).toContain("Tools: exec, read");
+    expect(prompt).not.toMatch(/Tools: .*\bcomplete\b/);
+    expect(prompt).not.toMatch(/Tools: .*\bplan\b/);
   });
 });

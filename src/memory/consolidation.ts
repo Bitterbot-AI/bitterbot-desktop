@@ -8,15 +8,15 @@
  * All state transitions are logged to memory_audit_log.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { setChunkLifecycle } from "./chunk-writer.js";
 import { recordDreamTelemetry } from "./dream-schema.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import { calculateImportance, shouldForget } from "./importance.js";
 import { cosineSimilarity, computeCentroid, parseEmbedding } from "./internal.js";
 import { spacingImportanceMultiplier } from "./spacing-effect.js";
-
 const log = createSubsystemLogger("memory/consolidation");
 
 // Near-merge / merge-candidate discovery compare chunks pairwise (O(n^2)
@@ -29,6 +29,8 @@ const PAIRWISE_MERGE_CHUNK_CAP = 500;
 // Yield to the event loop every N outer iterations of the O(n^2) similarity
 // sweeps so a single consolidation pass cannot stall the gateway keepalive.
 const SIMILARITY_YIELD_EVERY = 32;
+// Rows per batch when loading the live set; see loadLiveChunks.
+const LIVE_CHUNK_LOAD_BATCH = 50;
 
 export type ConsolidationConfig = {
   decayRate: number;
@@ -128,18 +130,7 @@ export class ConsolidationEngine {
       durationMs: 0,
     };
 
-    const chunks = this.db
-      .prepare(
-        `SELECT id, path, source, start_line, end_line, hash, model, text, embedding,
-                updated_at, importance_score, access_count, last_accessed_at,
-                memory_type, emotional_valence, semantic_type, lifecycle_state, lifecycle,
-                spacing_score, open_loop
-         FROM chunks
-         WHERE (COALESCE(lifecycle, 'generated') IN ('generated', 'activated')
-                OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
-           AND COALESCE(lifecycle, '') != 'frozen'`,
-      )
-      .all() as ChunkRow[];
+    const chunks = await this.loadLiveChunks();
 
     stats.totalChunks = chunks.length;
     if (chunks.length === 0) {
@@ -198,6 +189,16 @@ export class ConsolidationEngine {
               discoveredAt,
             );
           }
+          // Memory audit 2026-09-07 P2: drop consumed hints and unconsumed
+          // hints older than 14 days (production outran consumption ~22:1).
+          try {
+            this.db
+              .prepare(
+                `DELETE FROM near_merge_hints
+                   WHERE consumed_at IS NOT NULL OR discovered_at < ?`,
+              )
+              .run(discoveredAt - 14 * 24 * 60 * 60 * 1000);
+          } catch {}
           log.debug("SNN near-merge candidates discovered", { count: nearMerges.length });
           recordDreamTelemetry(
             this.db,
@@ -223,30 +224,33 @@ export class ConsolidationEngine {
         updateStmt.run(entry.newScore, entry.chunk.id);
       }
 
-      // Soft-delete: set lifecycle='expired' (and legacy lifecycle_state='forgotten')
-      const forgetStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle_state = 'forgotten', lifecycle = 'expired', version = COALESCE(version, 1) + 1 WHERE id = ?`,
-      );
+      // Soft-delete: expired + forgotten (PLAN-46: via the chunk-writer facade)
       const auditStmt = this.db.prepare(
         `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
       );
 
       for (const id of toForget) {
-        forgetStmt.run(id);
+        setChunkLifecycle(this.db, id, {
+          lifecycle: "expired",
+          lifecycleState: "forgotten",
+          bumpVersion: true,
+        });
         auditStmt.run(crypto.randomUUID(), id, "forgotten", now, "consolidation", "{}");
       }
       stats.forgottenChunks = toForget.length;
 
       // Merge: winner gets 'consolidated', loser gets 'archived' with parent_id
-      const mergeStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle_state = 'forgotten', lifecycle = 'archived', parent_id = ?, version = COALESCE(version, 1) + 1 WHERE id = ?`,
-      );
-      const promoteWinnerStmt = this.db.prepare(
-        `UPDATE chunks SET lifecycle = 'consolidated', last_consolidated_at = ? WHERE id = ?`,
-      );
       for (const { loserId, winnerId } of mergePairs) {
-        mergeStmt.run(winnerId, loserId);
-        promoteWinnerStmt.run(now, winnerId);
+        setChunkLifecycle(this.db, loserId, {
+          lifecycle: "archived",
+          lifecycleState: "forgotten",
+          parentId: winnerId,
+          bumpVersion: true,
+        });
+        setChunkLifecycle(this.db, winnerId, {
+          lifecycle: "consolidated",
+          lastConsolidatedAt: now,
+        });
         auditStmt.run(
           crypto.randomUUID(),
           loserId,
@@ -286,6 +290,49 @@ export class ConsolidationEngine {
     stats.durationMs = Date.now() - start;
     log.debug("consolidation complete", stats);
     return stats;
+  }
+
+  /**
+   * Load every live (non-frozen, not forgotten) chunk with its embedding.
+   *
+   * Read in rowid-ordered batches with a yield between them: on a cold page
+   * cache one pass over the table costs seconds of synchronous I/O (about 5 s
+   * for 6k rows on the 2026-10-03 reference node, 16 ms warm), and this runs
+   * on the gateway loop every 30 minutes. A batch bounds each block to a
+   * fraction of that (50 rows: about 0.3 s cold on that node, the whole pass
+   * still about 5 s) while the set loaded is the same.
+   */
+  private async loadLiveChunks(): Promise<ChunkRow[]> {
+    const stmt = this.db.prepare(
+      `SELECT rowid AS rid, id, path, source, start_line, end_line, hash, model, text, embedding,
+              updated_at, importance_score, access_count, last_accessed_at,
+              memory_type, emotional_valence, semantic_type, lifecycle_state, lifecycle,
+              spacing_score, open_loop
+       FROM chunks
+       WHERE rowid > ?
+         AND (COALESCE(lifecycle, 'generated') IN ('generated', 'activated')
+              OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
+         AND COALESCE(lifecycle, '') != 'frozen'
+       ORDER BY rowid
+       LIMIT ?`,
+    );
+    const chunks: ChunkRow[] = [];
+    let after = 0;
+    for (;;) {
+      const batch = stmt.all(after, LIVE_CHUNK_LOAD_BATCH) as Array<ChunkRow & { rid: number }>;
+      if (batch.length === 0) {
+        break;
+      }
+      for (const { rid, ...row } of batch) {
+        chunks.push(row as ChunkRow);
+        after = rid;
+      }
+      if (batch.length < LIVE_CHUNK_LOAD_BATCH) {
+        break;
+      }
+      await yieldToEventLoop();
+    }
+    return chunks;
   }
 
   /**

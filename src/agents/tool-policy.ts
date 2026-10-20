@@ -68,7 +68,27 @@ export const TOOL_GROUPS: Record<string, string[]> = {
   ],
 };
 
-const OWNER_ONLY_TOOL_NAMES = new Set<string>(["whatsapp_login"]);
+const OWNER_ONLY_TOOL_NAMES = new Set<string>([
+  "whatsapp_login",
+  // High-privilege tools that must never be reachable by non-owner senders
+  // (remote channel messages / group members). Each is effectively host RCE or
+  // host control: code_interpreter runs code on the host (JS vm + python3),
+  // computer_use drives the desktop, browser drives a real browser session.
+  "code_interpreter",
+  "computer_use",
+  "browser",
+  // Card purchases from the owner's Link account (PLAN-53 C1).
+  "purchase",
+  // Money. The wallet sends USDC and pays x402 resources with numeric caps as
+  // its only limit, so a group member or any other non-owner sender could ask
+  // the agent to pay them. Only the owner's own turns get the tool
+  // (PLAN-53 B6, decided 2026-10-02). a2a_client buys tasks from other agents.
+  "wallet",
+  "a2a_client",
+  // Config and lifecycle of the gateway itself: config.patch can raise spend
+  // caps or rewrite the owner list, so it is an owner action by definition.
+  "gateway",
+]);
 
 const TOOL_PROFILES: Record<ToolProfileId, ToolProfilePolicy> = {
   minimal: {
@@ -94,8 +114,12 @@ export function normalizeToolName(name: string) {
   return TOOL_NAME_ALIASES[normalized] ?? normalized;
 }
 
+/** Connector (MCP) tools reach the owner's own accounts: owner-only (PLAN-53 D2). */
+export const CONNECTOR_TOOL_PREFIX = "mcp__";
+
 export function isOwnerOnlyToolName(name: string) {
-  return OWNER_ONLY_TOOL_NAMES.has(normalizeToolName(name));
+  const normalized = normalizeToolName(name);
+  return OWNER_ONLY_TOOL_NAMES.has(normalized) || normalized.startsWith(CONNECTOR_TOOL_PREFIX);
 }
 
 export function applyOwnerOnlyToolPolicy(tools: AnyAgentTool[], senderIsOwner: boolean) {
@@ -273,7 +297,7 @@ export function stripPluginOnlyAllowlist(
   // When an allowlist contains only plugin tools, we strip it to avoid accidentally
   // disabling core tools. Users who want additive behavior should prefer `tools.alsoAllow`.
   if (strippedAllowlist) {
-    // Note: logging happens in the caller (pi-tools/tools-invoke) after this function returns.
+    // Note: logging happens in the caller (agent-tools/tools-invoke) after this function returns.
     // We keep this note here for future maintainers.
   }
   return {

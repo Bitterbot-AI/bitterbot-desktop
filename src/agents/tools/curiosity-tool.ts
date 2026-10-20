@@ -4,10 +4,10 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam } from "./common.js";
 
 const CuriosityStateSchema = Type.Object({});
@@ -89,7 +89,8 @@ export function createCuriosityResolveTool(options: {
     description:
       "Mark an exploration target as resolved/addressed. Use after investigating a knowledge gap, contradiction, or frontier identified by the Curiosity Engine.",
     parameters: CuriosityResolveSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const targetId = readStringParam(params, "targetId", { required: true });
 
       const { manager, error } = await getMemorySearchManager({ cfg, agentId });

@@ -6,7 +6,7 @@ import {
   resetModelCatalogCacheForTest,
 } from "./model-catalog.js";
 
-type PiSdkModule = typeof import("./pi-model-discovery.js");
+type ModelsModule = typeof import("./runtime/models/index.js");
 
 const { warnMock } = vi.hoisted(() => ({ warnMock: vi.fn() }));
 
@@ -50,13 +50,15 @@ describe("loadModelCatalog", () => {
         throw new Error("boom");
       }
       return {
-        AuthStorage: class {},
-        ModelRegistry: class {
-          getAll() {
-            return [{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }];
-          }
+        AuthStorage: { create: () => ({}) },
+        ModelRegistry: {
+          create: () => ({
+            getAll() {
+              return [{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }];
+            },
+          }),
         },
-      } as unknown as PiSdkModule;
+      } as unknown as ModelsModule;
     });
 
     const cfg = {} as BitterbotConfig;
@@ -73,22 +75,24 @@ describe("loadModelCatalog", () => {
     __setModelCatalogImportForTest(
       async () =>
         ({
-          AuthStorage: class {},
-          ModelRegistry: class {
-            getAll() {
-              return [
-                { id: "gpt-4.1", name: "GPT-4.1", provider: "openai" },
-                {
-                  get id() {
-                    throw new Error("boom");
+          AuthStorage: { create: () => ({}) },
+          ModelRegistry: {
+            create: () => ({
+              getAll() {
+                return [
+                  { id: "gpt-4.1", name: "GPT-4.1", provider: "openai" },
+                  {
+                    get id() {
+                      throw new Error("boom");
+                    },
+                    provider: "openai",
+                    name: "bad",
                   },
-                  provider: "openai",
-                  name: "bad",
-                },
-              ];
-            }
+                ];
+              },
+            }),
           },
-        }) as unknown as PiSdkModule,
+        }) as unknown as ModelsModule,
     );
 
     const result = await loadModelCatalog({ config: {} as BitterbotConfig });
@@ -100,27 +104,29 @@ describe("loadModelCatalog", () => {
     __setModelCatalogImportForTest(
       async () =>
         ({
-          AuthStorage: class {},
-          ModelRegistry: class {
-            getAll() {
-              return [
-                {
-                  id: "gpt-5.3-codex",
-                  provider: "openai-codex",
-                  name: "GPT-5.3 Codex",
-                  reasoning: true,
-                  contextWindow: 200000,
-                  input: ["text"],
-                },
-                {
-                  id: "gpt-5.2-codex",
-                  provider: "openai-codex",
-                  name: "GPT-5.2 Codex",
-                },
-              ];
-            }
+          AuthStorage: { create: () => ({}) },
+          ModelRegistry: {
+            create: () => ({
+              getAll() {
+                return [
+                  {
+                    id: "gpt-5.3-codex",
+                    provider: "openai-codex",
+                    name: "GPT-5.3 Codex",
+                    reasoning: true,
+                    contextWindow: 200000,
+                    input: ["text"],
+                  },
+                  {
+                    id: "gpt-5.2-codex",
+                    provider: "openai-codex",
+                    name: "GPT-5.2 Codex",
+                  },
+                ];
+              },
+            }),
           },
-        }) as unknown as PiSdkModule,
+        }) as unknown as ModelsModule,
     );
 
     const result = await loadModelCatalog({ config: {} as BitterbotConfig });

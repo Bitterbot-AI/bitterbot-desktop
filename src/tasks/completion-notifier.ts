@@ -13,6 +13,7 @@
  * Disable with `BITTERBOT_TASKS_COMPLETION_NOTIFY=0`.
  */
 
+import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getActiveTaskStore, type TaskStoreEvent } from "./store.js";
@@ -62,7 +63,11 @@ export function stopCompletionNotifier(): void {
   state = null;
 }
 
-function handleEvent(evt: TaskStoreEvent, enqueue: typeof enqueueSystemEvent): void {
+function handleEvent(
+  evt: TaskStoreEvent,
+  enqueue: typeof enqueueSystemEvent,
+  wake: typeof requestHeartbeatNow = requestHeartbeatNow,
+): void {
   if (evt.type !== "updated") return;
   const task = evt.task;
   if (!isTerminal(task.status)) return;
@@ -71,13 +76,18 @@ function handleEvent(evt: TaskStoreEvent, enqueue: typeof enqueueSystemEvent): v
     sessionKey: task.agentSessionKey,
     contextKey: `task-complete:${task.id}`,
   });
+  // Without a wake the notice sat until the next scheduled heartbeat or the
+  // next thing the user said. The `cron:` reason is one the heartbeat does not
+  // skip when HEARTBEAT.md is empty.
+  wake({ reason: `cron:task-complete:${task.id}` });
   log.info(`task notification enqueued task=${task.id} status=${task.status}`);
 }
 
 function formatNotificationText(task: Task): string {
   const outputClause = task.output ? ` Output: ${task.output}.` : "";
-  const reasoning =
-    task.metadata && typeof task.metadata.lastJudgeReasoning === "string"
+  const reasoning = task.verification?.reasoning
+    ? ` Judge (L${task.verification.level}): ${task.verification.reasoning}`
+    : task.metadata && typeof task.metadata.lastJudgeReasoning === "string"
       ? ` Judge: ${task.metadata.lastJudgeReasoning}`
       : "";
   return `[task ${task.status}] Task ${task.id} (${truncate(task.goal, 80)}).${outputClause}${reasoning}`;

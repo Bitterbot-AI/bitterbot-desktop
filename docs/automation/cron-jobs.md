@@ -61,7 +61,16 @@ bitterbot cron add \
   --to "channel:C1234567890"
 ```
 
-## Tool-call equivalents (Gateway cron tool)
+## The agent's cron tool
+
+The agent has a `cron` tool, so you can ask for a reminder or recurring work in plain words ("remind me to call the dentist in 20 minutes", "every Friday at 4 PM summarize this project's open tasks"). Its actions are `status`, `list`, `add`, `update`, `remove`, `run`, `runs` and `wake`.
+
+In `add`, the job says what kind of thing it is:
+
+- `text`: a note delivered into the main session at that time. Use it for reminders.
+- `message`: a prompt run as its own agent turn at that time. Use it for work to carry out.
+
+The rest of the job has the same shape as the gateway API below. A job the agent creates while working for someone who is not the owner runs later without the owner-only tools.
 
 For the canonical JSON shapes and examples, see [JSON schema for tool calls](/automation/cron-jobs#json-schema-for-tool-calls).
 
@@ -105,8 +114,12 @@ A cron job is a stored record with:
   missing or unknown, the gateway falls back to the default agent.
 
 Jobs are identified by a stable `jobId` (used by CLI/Gateway APIs).
-In agent tool calls, `jobId` is canonical; legacy `id` is accepted for compatibility.
+The agent's `cron` tool takes `id`; the `cron.*` gateway methods accept `jobId` (or `id`).
 One-shot jobs auto-delete after success by default; set `deleteAfterRun: false` to keep them.
+
+A one-shot job whose time passed while the gateway was not running is not dropped: it runs shortly after the gateway starts, provided it is at most 7 days late and was never started. A job that had already started when the gateway stopped is not started again. When a one-shot job runs more than five minutes late, its text gets a note with the scheduled time and the delay, so a reminder is not delivered as if it were on time.
+
+A new one-shot job must name a time that has not passed; `cron.add` rejects an `at` more than a minute in the past. A timestamp without an offset is read as UTC.
 
 ### Schedules
 
@@ -118,6 +131,17 @@ Cron supports three schedule kinds:
 
 Cron expressions use `croner`. If a timezone is omitted, the Gateway host’s
 local timezone is used.
+
+An `every` job counts from a fixed anchor saved with the job, so its runs fall on anchor + k × interval and a gateway restart does not push the next run a whole interval into the future. If a run's time passed while the gateway was down, the job runs once at the next tick and then returns to its grid.
+
+### When a job fails
+
+A failed job is never silent.
+
+- **Recurring jobs** retry on a backoff (30 s, 1 min, 5 min, 15 min, then hourly). After `cron.autoDisableAfterErrors` failures in a row (default 8) the job is turned off.
+- **One-shot jobs** run once. Set `retryUntilMs` (unix ms, or an ISO time) on the job to keep retrying on the same backoff until that deadline.
+- **You are told** when a failure streak starts, when a job is turned off, and when a one-shot will not run again: in the main session, as a notice in the Control UI, and on your chat channel subject to [`notifications`](/gateway/configuration-reference#notifications) quiet hours and rate limit.
+- The Automations page shows each job's state ("Last run OK", "Failing (3 in a row)", "Turned off after 8 failures in a row"), where its result is sent, and its recent run history. It updates as runs finish.
 
 ### Main vs isolated execution
 
@@ -140,7 +164,7 @@ Key behaviors:
 
 - Prompt is prefixed with `[cron:<jobId> <job name>]` for traceability.
 - Each run starts a **fresh session id** (no prior conversation carry-over).
-- Default behavior: if `delivery` is omitted, isolated jobs announce a summary (`delivery.mode = "announce"`).
+- Default behavior: if `delivery` is omitted, isolated jobs announce a summary (`delivery.mode = "announce"`) to the main session's last route. If there is no last route (for example you only use the Control UI), the run still succeeds and its result is posted to the main session.
 - `delivery.mode` (isolated-only) chooses what happens:
   - `announce`: deliver a summary to the target channel and post a brief summary to the main session.
   - `none`: internal only (no delivery, no main-session summary).
@@ -188,7 +212,8 @@ Behavior details:
 - Heartbeat-only responses (`HEARTBEAT_OK` with no real content) are not delivered.
 - If the isolated run already sent a message to the same target via the message tool, delivery is
   skipped to avoid duplicates.
-- Missing or invalid delivery targets fail the job unless `delivery.bestEffort = true`.
+- The target is resolved and checked with the channel before the agent turn runs. A job that sets `delivery.mode = "announce"` and has no usable target (none given and no last route, or a route the channel will not deliver to) fails without running the turn, unless `delivery.bestEffort = true`.
+- A job that sets `delivery.to` must set `delivery.channel` too, and is sent exactly there. The last-route fallback applies only when `delivery.to` is omitted; it then uses that route's account and thread.
 - A short summary is posted to the main session only when `delivery.mode = "announce"`.
 - The main-session summary respects `wakeMode`: `now` triggers an immediate heartbeat and
   `next-heartbeat` waits for the next scheduled heartbeat.
@@ -199,10 +224,6 @@ Isolated jobs (`agentTurn`) can override the model and thinking level:
 
 - `model`: Provider/model string (e.g., `anthropic/claude-sonnet-4-20250514`) or alias (e.g., `opus`)
 - `thinking`: Thinking level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`; GPT-5.2 + Codex models only)
-
-Note: You can set `model` on main-session jobs too, but it changes the shared main
-session model. We recommend model overrides only for isolated jobs to avoid
-unexpected context shifts.
 
 Resolution priority:
 
@@ -215,7 +236,7 @@ Resolution priority:
 Isolated jobs can deliver output to a channel via the top-level `delivery` config:
 
 - `delivery.mode`: `announce` (deliver a summary) or `none`.
-- `delivery.channel`: `whatsapp` / `telegram` / `discord` / `slack` / `signal` / `last`.
+- `delivery.channel`: any configured channel id (for example `whatsapp`, `telegram`, `discord`, `slack`, `signal`, `email`), or `last`.
 - `delivery.to`: channel-specific recipient target.
 
 Delivery config is only valid for isolated jobs (`sessionTarget: "isolated"`).
@@ -243,7 +264,7 @@ Prefixed targets like `telegram:...` / `telegram:group:...` are also accepted:
 
 ## JSON schema for tool calls
 
-Use these shapes when calling Gateway `cron.*` tools directly (agent tool calls or RPC).
+Use these shapes when calling the `cron.*` gateway methods directly (RPC). The agent's `cron` tool is simpler: `{ action: "add", job: { name, schedule, text | message, delivery?, retryUntilMs? } }`, and `{ action: "update", id, patch }`. `retryUntilMs` has no CLI flag; set it through the tool or RPC.
 CLI flags accept human durations like `20m`, but tool calls should use an ISO 8601 string
 for `schedule.at` and milliseconds for `schedule.everyMs`.
 
@@ -336,6 +357,7 @@ Notes:
     maxConcurrentRuns: 1, // default 1
     webhook: "https://example.invalid/cron-finished", // optional finished-run webhook endpoint
     webhookToken: "replace-with-dedicated-webhook-token", // optional, do not reuse gateway auth token
+    autoDisableAfterErrors: 8, // default 8; 0 never turns a failing job off
   },
 }
 ```
@@ -479,7 +501,7 @@ bitterbot system event --mode now --text "Next heartbeat: check battery."
 - Bitterbot applies exponential retry backoff for recurring jobs after consecutive errors:
   30s, 1m, 5m, 15m, then 60m between retries.
 - Backoff resets automatically after the next successful run.
-- One-shot (`at`) jobs disable after a terminal run (`ok`, `error`, or `skipped`) and do not retry.
+- One-shot (`at`) jobs disable after a terminal run (`ok`, `error`, or `skipped`) and do not retry, unless `retryUntilMs` is set.
 
 ### Telegram delivers to the wrong place
 

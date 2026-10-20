@@ -3,8 +3,10 @@
  * by Yusuf Karaaslan. MIT License.
  *
  * Converts external documentation sources into Bitterbot SkillEnvelopes via the
- * existing trust/quality pipeline. Skills enter as untrusted (synthetic peer)
- * and are promoted through execution feedback.
+ * existing trust/quality pipeline. Skills are signed by a synthetic peer and
+ * land in quarantine (skills-incoming/) for operator review like any peer
+ * skill (PLAN-45 Phase 0). No automatic trust promotion exists yet; the
+ * receiver re-gate (PLAN-45 Phase 4) is the planned empirical path.
  *
  * Transports (priority order):
  *   1. Native TypeScript scraper (docs + GitHub) — zero-install, always available
@@ -25,17 +27,17 @@
  *   - TTL: auto-generated skills expire; the memory lifecycle can prune stale ones
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import { execFile, execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import type { SkillEnvelope, IngestResult } from "../agents/skills/ingest.js";
+import { ingestSkill } from "../agents/skills/ingest.js";
 import type { BitterbotConfig } from "../config/config.js";
 import type { SkillSeekersConfig } from "../config/types.skill-seekers.js";
-import { ingestSkill } from "../agents/skills/ingest.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { CONFIG_DIR } from "../utils.js";
 import { logResearchEgress } from "./auto-research-egress.js";
@@ -538,18 +540,22 @@ export class SkillSeekersAdapter {
         const result = await ingestSkill({
           envelope,
           config: this.bitterbotConfig,
-          // This is the node's OWN harvest of a public repo, not a peer skill.
-          // Marking the origin routes it directly into skills/ instead of the
-          // zero-trust peer quarantine, and stops it rendering as "received
-          // from unknown peer" (the author_peer_id here is a synthetic label,
-          // not a real sender).
+          // The node's own harvest of a public repo. The origin label keeps
+          // it from rendering as "received from unknown peer" in the review
+          // list; it does NOT skip quarantine (PLAN-45 Phase 0): scraped
+          // content is untrusted input and lands in skills-incoming/ under
+          // the review policy like any peer skill.
           origin: "external-scrape",
         });
         ingested.push(result);
-        this.skillsGeneratedThisCycle++;
+        // PLAN-45 Phase 0: harvests land in quarantine, so "generated" means
+        // "written somewhere for review", never a rejected envelope.
+        if (result.ok) {
+          this.skillsGeneratedThisCycle++;
+        }
         const reconcileNote =
           decision.action === "replace"
-            ? ` (replaced "${decision.existingName}")`
+            ? ` (would replace "${decision.existingName}" on accept)`
             : decision.action === "write-as-variant"
               ? ` (variant of existing)`
               : "";

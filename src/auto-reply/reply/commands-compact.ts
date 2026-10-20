@@ -1,12 +1,12 @@
-import type { BitterbotConfig } from "../../config/config.js";
-import type { CommandHandler } from "./commands-types.js";
 import {
   abortEmbeddedPiRun,
   compactEmbeddedPiSession,
   isEmbeddedPiRunActive,
   waitForEmbeddedPiRunEnd,
-} from "../../agents/pi-embedded.js";
+} from "../../agents/embedded.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import {
+  materializeSessionSkillsSnapshot,
   resolveFreshSessionTotalTokens,
   resolveSessionFilePath,
   resolveSessionFilePathOptions,
@@ -14,6 +14,7 @@ import {
 import { logVerbose } from "../../globals.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import { formatContextUsageShort, formatTokenCount } from "../status.js";
+import type { CommandHandler } from "./commands-types.js";
 import { stripMentions, stripStructuralPrefixes } from "./mentions.js";
 import { incrementCompactionCount } from "./session-updates.js";
 
@@ -93,7 +94,10 @@ export const handleCompactCommand: CommandHandler = async (params) => {
     ),
     workspaceDir: params.workspaceDir,
     config: params.cfg,
-    skillsSnapshot: params.sessionEntry.skillsSnapshot,
+    skillsSnapshot: materializeSessionSkillsSnapshot(
+      params.storePath,
+      params.sessionEntry.skillsSnapshot,
+    ),
     provider: params.provider,
     model: params.model,
     thinkLevel: params.resolvedThinkLevel ?? (await params.resolveDefaultThinkingLevel()),

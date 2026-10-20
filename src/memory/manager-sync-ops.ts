@@ -1,18 +1,25 @@
 // @ts-nocheck
 // oxlint-disable eslint/no-unused-vars, typescript/no-explicit-any
-import type { DatabaseSync } from "node:sqlite";
-import chokidar, { type FSWatcher } from "chokidar";
+
 import { randomUUID } from "node:crypto";
 import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { MemorySource, MemorySyncProgressUpdate } from "./types.js";
+import type { DatabaseSync } from "node:sqlite";
+import chokidar, { type FSWatcher } from "chokidar";
+import { isExcludedMemoryPath } from "../agents/memory-search.js";
 import { resolveWatchPaths } from "../agents/skills/refresh.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
+import { assertNotRealStateUnderTest } from "../infra/test-state-guard.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import { resolveUserPath } from "../utils.js";
+import {
+  type EmbeddingProfile,
+  buildEmbeddingProfile,
+  compareEmbeddingProfiles,
+} from "./embedding-profile.js";
 import {
   buildFileEntry,
   ensureDir,
@@ -33,6 +40,7 @@ import {
 } from "./session-files.js";
 import { loadSqliteVecExtension } from "./sqlite-vec.js";
 import { requireNodeSqlite } from "./sqlite.js";
+import type { MemorySource, MemorySyncProgressUpdate } from "./types.js";
 
 type MemoryIndexMeta = {
   model: string;
@@ -41,7 +49,11 @@ type MemoryIndexMeta = {
   chunkTokens: number;
   chunkOverlap: number;
   vectorDims?: number;
+  /** PLAN-57 §4.6: the exact profile this index is written under. */
+  profile?: EmbeddingProfile;
 };
+
+const PROFILE_DIGEST_TIMEOUT_MS = 30_000;
 
 type MemorySyncProgressState = {
   completed: number;
@@ -52,6 +64,8 @@ type MemorySyncProgressState = {
 
 const META_KEY = "memory_index_meta_v1";
 const VECTOR_TABLE = "chunks_vec";
+/** meta key stamped once the post-v63 vector orphan sweep has run. */
+const VECTOR_ORPHAN_SWEEP_META_KEY = "vector_orphan_sweep_v63";
 const FTS_TABLE = "chunks_fts";
 const EMBEDDING_CACHE_TABLE = "embedding_cache";
 const SESSION_DIRTY_DEBOUNCE_MS = 5000;
@@ -95,6 +109,7 @@ function shouldIgnoreMemoryWatchPath(watchPath: string): boolean {
 class MemoryManagerSyncOps {
   [key: string]: any;
   private sessionInitialSyncDone = false;
+  private vectorOrphanSweepDone = false;
   private lastSyncedAt: number | null = null;
   private async ensureVectorReady(dimensions?: number): Promise<boolean> {
     if (!this.vector.enabled) {
@@ -120,8 +135,49 @@ class MemoryManagerSyncOps {
     }
     if (ready && typeof dimensions === "number" && dimensions > 0) {
       this.ensureVectorTable(dimensions);
+      this.sweepVectorOrphansOnce();
     }
     return ready;
+  }
+
+  /**
+   * PLAN-45 Phase 0: delete vector rows whose chunk no longer exists. Runs
+   * once per database (meta key) after sqlite-vec is loaded, because chunk
+   * deletions that happen inside migrations (v63 purged 572 crystallizer
+   * chunks) cannot touch chunks_vec: the vec0 module is not on the
+   * connection at migration time. Orphan vector rows are not harmless; they
+   * occupy KNN `k` slots on every search and are never returned as chunks.
+   */
+  private sweepVectorOrphansOnce(): void {
+    if (this.vectorOrphanSweepDone) {
+      return;
+    }
+    this.vectorOrphanSweepDone = true;
+    try {
+      const done = this.db
+        .prepare(`SELECT value FROM meta WHERE key = ?`)
+        .get(VECTOR_ORPHAN_SWEEP_META_KEY) as { value: string } | undefined;
+      if (done?.value === "1") {
+        return;
+      }
+      const result = this.db
+        .prepare(`DELETE FROM ${VECTOR_TABLE} WHERE id NOT IN (SELECT id FROM chunks)`)
+        .run();
+      this.db
+        .prepare(
+          `INSERT INTO meta (key, value) VALUES (?, '1') ON CONFLICT(key) DO UPDATE SET value = '1'`,
+        )
+        .run(VECTOR_ORPHAN_SWEEP_META_KEY);
+      if (Number(result.changes) > 0) {
+        log.info(
+          `vector orphan sweep removed ${result.changes} ${VECTOR_TABLE} rows with no chunk`,
+        );
+      }
+    } catch (err) {
+      // Not stamped: retried on the next boot.
+      this.vectorOrphanSweepDone = false;
+      log.warn(`vector orphan sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private async loadVectorExtension(): Promise<boolean> {
@@ -216,12 +272,14 @@ class MemoryManagerSyncOps {
   }
 
   private openDatabaseAtPath(dbPath: string): DatabaseSync {
+    assertNotRealStateUnderTest(dbPath);
     const dir = path.dirname(dbPath);
     ensureDir(dir);
     const { DatabaseSync } = requireNodeSqlite();
     const db = new DatabaseSync(dbPath, {
       allowExtension: this.settings.store.vector.enabled,
     });
+    restrictDbFilePermissions(dbPath);
     // Tune for concurrent writer workload. Without WAL, the default
     // rollback journal + synchronous=FULL + busy_timeout=0 serialized
     // every writer and failed reads on contention — dream cycles,
@@ -723,9 +781,12 @@ class MemoryManagerSyncOps {
     progress?: MemorySyncProgressState;
   }) {
     const files = await listMemoryFiles(this.workspaceDir, this.settings.extraPaths);
-    const fileEntries = await Promise.all(
-      files.map(async (file) => buildFileEntry(file, this.workspaceDir)),
-    );
+    // Token-efficiency pass (2026-09-19): memorySearch.excludePaths (default:
+    // dream journal + working-memory snapshots) never reach the index.
+    const excludePaths = this.settings.excludePaths ?? [];
+    const fileEntries = (
+      await Promise.all(files.map(async (file) => buildFileEntry(file, this.workspaceDir)))
+    ).filter((entry) => !isExcludedMemoryPath(entry.path, excludePaths));
     log.debug("memory sync: indexing memory files", {
       files: fileEntries.length,
       needsFullReindex: params.needsFullReindex,
@@ -797,6 +858,12 @@ class MemoryManagerSyncOps {
     needsFullReindex: boolean;
     progress?: MemorySyncProgressState;
   }) {
+    // PLAN-55 Phase 1: incognito. Transcripts stay on disk but are not
+    // indexed into memory while session.memory is "off".
+    if (this.cfg.session?.memory === "off") {
+      log.debug("memory sync: session indexing skipped (session.memory is off)");
+      return;
+    }
     const files = await listSessionFilesForAgent(this.agentId);
     const activePaths = new Set(files.map((file) => sessionPathForFile(file)));
     const indexAll = params.needsFullReindex || this.sessionsDirtyFiles.size === 0;
@@ -1040,6 +1107,17 @@ class MemoryManagerSyncOps {
     }
     const vectorReady = await this.ensureVectorReady();
     const meta = this.readMeta();
+    await this.ensureEmbeddingProfile(meta, { force: Boolean(params?.force) });
+    if (this.embeddingProfileHold) {
+      if (!this.embeddingHoldLogged) {
+        this.embeddingHoldLogged = true;
+        log.error(
+          `memory index on hold: the embedding profile changed under the same model (${this.embeddingProfileHold.conflicts.join("; ")}). ` +
+            `No new vectors are written and vector search is paused until you run \`bitterbot memory migrate-embeddings\`.`,
+        );
+      }
+      return;
+    }
     const needsFullReindex =
       params?.force ||
       !meta ||
@@ -1171,6 +1249,7 @@ class MemoryManagerSyncOps {
     const fallbackResult = await createEmbeddingProvider({
       config: this.cfg,
       agentDir: resolveAgentDir(this.cfg, this.agentId),
+      agentId: this.agentId,
       provider: fallback,
       remote: this.settings.remote,
       model: fallbackModel,
@@ -1280,6 +1359,22 @@ class MemoryManagerSyncOps {
         log.warn(`reindex carry-over unavailable: ${String(err)}`);
       }
 
+      // Everything else in this database is not index data at all: canonical
+      // facts, the knowledge graph, dream history, user preferences, Circles
+      // keys, payment consume-once ledgers. The rebuild starts from an empty
+      // database, so without this the swap below silently drops all of it
+      // (2026-09-30: a provider change left a 113-table database with 9
+      // populated tables). Deliberately NOT best-effort: if the copy fails
+      // the swap must not happen, and the catch below restores the original.
+      const { carryOverAuxiliaryTables } = await import("./reindex-carryover.js");
+      carryOverAuxiliaryTables({
+        to: this.db,
+        fromPath: dbPath,
+        rebuiltTables: ["files", "chunks", EMBEDDING_CACHE_TABLE],
+        rebuiltVirtualTables: [FTS_TABLE, VECTOR_TABLE],
+        indexMetaKey: META_KEY,
+      });
+
       this.lastSyncedAt = Date.now();
 
       nextMeta = {
@@ -1291,6 +1386,10 @@ class MemoryManagerSyncOps {
       };
       if (this.vector.available && this.vector.dims) {
         nextMeta.vectorDims = this.vector.dims;
+      }
+      const rebuiltProfile = this.currentEmbeddingProfile();
+      if (rebuiltProfile) {
+        nextMeta.profile = rebuiltProfile;
       }
 
       this.writeMeta(nextMeta);
@@ -1385,6 +1484,10 @@ class MemoryManagerSyncOps {
     if (this.vector.available && this.vector.dims) {
       nextMeta.vectorDims = this.vector.dims;
     }
+    const syncedProfile = this.currentEmbeddingProfile();
+    if (syncedProfile) {
+      nextMeta.profile = syncedProfile;
+    }
 
     this.writeMeta(nextMeta);
     this.pruneEmbeddingCacheIfNeeded();
@@ -1401,6 +1504,98 @@ class MemoryManagerSyncOps {
     this.dropVectorTable();
     this.vector.dims = undefined;
     this.sessionsDirtyFiles.clear();
+  }
+
+  /**
+   * PLAN-57 §4.6. Resolve the live embedding profile once (the digest may
+   * hash a GGUF or ask Ollama) and compare it with the one on the index.
+   * A provider or model change keeps its existing automatic safe reindex;
+   * a change under the same model (digest, dimensions, processing, chunker)
+   * puts the index on hold until an explicit migration.
+   */
+  private async ensureEmbeddingProfile(
+    meta: MemoryIndexMeta | null,
+    opts?: { force?: boolean },
+  ): Promise<void> {
+    if (!this.embeddingProfile) {
+      const override = this.cfg.compute?.embeddings?.modelDigest?.trim();
+      let resolved: { digest: string; fingerprint?: string } | undefined = override
+        ? { digest: override }
+        : undefined;
+      if (!resolved && typeof this.provider.resolveDigest === "function") {
+        try {
+          resolved = await this.withTimeout(
+            this.provider.resolveDigest({
+              fingerprint: meta?.profile?.digestFingerprint,
+              digest: meta?.profile?.modelDigest,
+            }),
+            PROFILE_DIGEST_TIMEOUT_MS,
+            "embedding model digest resolution timed out",
+          );
+        } catch (err) {
+          log.warn(`embedding model digest unavailable: ${String(err)}`);
+        }
+      }
+      this.embeddingProfile = buildEmbeddingProfile({
+        provider: this.provider.id,
+        model: this.provider.model,
+        chunking: this.settings.chunking,
+        modelDigest: resolved?.digest,
+        digestFingerprint: resolved?.fingerprint,
+      });
+    }
+    if (opts?.force) {
+      // A forced sync (migration, or `memory index --force`) is the owner
+      // choosing to rebuild under the live profile; it is not a silent switch.
+      this.embeddingProfileHold = null;
+      return;
+    }
+    const current = this.currentEmbeddingProfile();
+    const cmp = compareEmbeddingProfiles(meta?.profile, current!);
+    if (!cmp.same && cmp.kind === "parity" && meta?.profile) {
+      if (!this.embeddingProfileHold) {
+        this.embeddingHoldLogged = false;
+      }
+      this.embeddingProfileHold = { conflicts: cmp.conflicts, stored: meta.profile };
+    } else {
+      this.embeddingProfileHold = null;
+    }
+  }
+
+  /** The live profile with the dimensions the vector table knows, or null before the first sync. */
+  currentEmbeddingProfile(): EmbeddingProfile | null {
+    if (!this.embeddingProfile) {
+      return null;
+    }
+    const dims = this.vector?.dims;
+    return dims && dims > 0
+      ? { ...this.embeddingProfile, dimensions: dims }
+      : this.embeddingProfile;
+  }
+
+  /** What `memory migrate-embeddings` shows before it rebuilds. */
+  embeddingMigrationPlan(): {
+    hold: { conflicts: string[]; stored: EmbeddingProfile } | null;
+    current: EmbeddingProfile | null;
+  } {
+    return { hold: this.embeddingProfileHold, current: this.currentEmbeddingProfile() };
+  }
+
+  /**
+   * Rebuild the index under the live profile: a new database, re-embedding
+   * on the normal path, carry-over of everything that is not a vector, then
+   * the swap. The old index serves until the swap. Clears the hold.
+   */
+  async migrateEmbeddingProfile(params?: {
+    progress?: (update: MemorySyncProgressUpdate) => void;
+  }): Promise<void> {
+    this.embeddingProfileHold = null;
+    this.embeddingHoldLogged = false;
+    await this.sync({
+      reason: "embedding-profile-migration",
+      force: true,
+      progress: params?.progress,
+    });
   }
 
   private readMeta(): MemoryIndexMeta | null {
@@ -1428,3 +1623,24 @@ class MemoryManagerSyncOps {
 }
 
 export const memoryManagerSyncOps = MemoryManagerSyncOps.prototype;
+
+/**
+ * Owner-only perms on the memory database (security pass M6). It holds every
+ * memory chunk plus the circles sender keys and roster, yet landed at the
+ * process umask (typically 0644) while `identity/box.json` was 0600. Chmod
+ * the main file BEFORE journal_mode=WAL creates -wal/-shm (SQLite gives those
+ * the main file's mode) and fix any that already exist. Best-effort; POSIX
+ * modes mean nothing on Windows, where the per-user profile ACL applies.
+ */
+export function restrictDbFilePermissions(dbPath: string): void {
+  if (process.platform === "win32" || dbPath === ":memory:") {
+    return;
+  }
+  for (const file of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    try {
+      fsSync.chmodSync(file, 0o600);
+    } catch {
+      // absent sidecar or a read-only mount: nothing to tighten
+    }
+  }
+}

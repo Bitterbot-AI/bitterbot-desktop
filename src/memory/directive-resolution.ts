@@ -20,13 +20,14 @@
  * the identical gates for directive-preferences and canonical pins).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { CanonicalFactsStore } from "./canonical-facts.js";
 import type { EpistemicDirective, EpistemicDirectiveEngine } from "./epistemic-directives.js";
-import type { DirectiveResolutionCandidate } from "./session-extractor.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 import { USER_ANSWERABLE_TYPES } from "./epistemic-directives.js";
+import { pinFact as ownerPinFact } from "./owner-controls.js";
+import type { DirectiveResolutionCandidate } from "./session-extractor.js";
 
 const log = createSubsystemLogger("memory/directive-resolution");
 
@@ -154,31 +155,39 @@ export function applyDirectiveResolutions(params: {
       log.debug(`answer crystal insert failed: ${String(err)}`);
     }
 
-    // Canonical-shaped answers route through the reconciler at extraction
-    // tier with the raised floor — as normal proposals subject to trust
-    // tiers, never a special path. Additionally CANDIDATE-CONSTRAINED
-    // (Phase 1 adversarial pass): the pinned value must exactly equal one
-    // of the two values the question adjudicated, so a mention, negation,
-    // deictic reply, or hallucinated string can never move the ledger. A
-    // tier rejection here remains correct behavior (deliberate pins outrank
-    // conversational answers).
+    // Canonical-shaped answers are CANDIDATE-CONSTRAINED (Phase 1
+    // adversarial pass): the pinned value must exactly equal one of the two
+    // values the question adjudicated, so a mention, negation, deictic
+    // reply, or hallucinated string can never move the ledger.
+    //
+    // PLAN-55 Phase 1 review (item 2): the owner picking one of the offered
+    // values IS the owner's decision, so it lands at the owner tier
+    // (owner-controls.pinFact, actor `directive_answer`), which also settles
+    // the held conflict and the directive itself. Pinning at extraction tier
+    // was rejected by the very tier that caused the question, leaving it
+    // unsettleable. Questions are only ever offered to first-party sessions
+    // (manager.runSessionExtraction), and the quoted answer must sit in a
+    // user-authored line (session-extractor.parseResolutions).
     if (
       key &&
       pinValue !== null &&
       params.canonicalStore &&
       res.confidence >= CANONICAL_ANSWER_FLOOR
     ) {
-      const pinResult = params.canonicalStore.pin({
+      const pinResult = ownerPinFact(params.db, params.canonicalStore, {
         key,
         value: pinValue,
         category: key.split(".")[0],
-        confidence: Math.min(res.confidence, 0.85),
-        source: "extraction",
-        evidenceChunkIds: [crystalId],
+        evidenceRef: res.evidence
+          .filter((e): e is Extract<typeof e, { kind: "session" }> => e.kind === "session")
+          .map((e) => `session:${e.path}#L${e.line}`)[0],
+        actor: "directive_answer",
       });
-      if (pinResult.op !== "rejected") {
+      if (pinResult.ok) {
         pinned++;
         log.debug(`open-question answer pinned (${pinResult.op}): [${key}]`);
+      } else {
+        log.debug(`open-question answer not pinned [${key}]: ${pinResult.reason}`);
       }
     }
   }

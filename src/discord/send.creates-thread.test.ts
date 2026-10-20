@@ -306,11 +306,19 @@ function createMockRateLimitError(retryAfter = 0.001): RateLimitError {
       "X-RateLimit-Bucket": "test-bucket",
     },
   });
-  return new RateLimitError(response, {
-    message: "You are being rate limited.",
-    retry_after: retryAfter,
-    global: false,
+  // @buape/carbon >= 0.16 records the rate-limited request on the error.
+  const request = new Request("https://discord.com/api/v10/channels/789/messages", {
+    method: "POST",
   });
+  return new RateLimitError(
+    response,
+    {
+      message: "You are being rate limited.",
+      retry_after: retryAfter,
+      global: false,
+    },
+    request,
+  );
 }
 
 describe("retry rate limits", () => {

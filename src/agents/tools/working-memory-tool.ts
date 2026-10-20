@@ -9,15 +9,15 @@
  * Credit: Scratch Buffer WAL concept — BitterBot
  */
 
-import { Type } from "@sinclair/typebox";
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { AnyAgentTool } from "./common.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveAgentWorkspaceDir } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readStringParam, readNumberParam } from "./common.js";
 
 const WorkingMemoryNoteSchema = Type.Object({
@@ -78,7 +78,8 @@ export function createWorkingMemoryNoteTool(options: {
       "Use this for things you must not forget between sessions: user preferences, " +
       "key decisions, names, deadlines, emotional context.",
     parameters: WorkingMemoryNoteSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const note = readStringParam(params, "note", { required: true });
       const importance = readNumberParam(params, "importance") ?? 0.7;
       const clampedImportance = Math.max(0, Math.min(1, importance));

@@ -24,9 +24,9 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import type { LlmCall } from "./judge.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import { registerJudgeLlmCall } from "./judge.js";
+import type { LlmCall } from "./judge.js";
+import { registerJudgeLlmCall, registerJudgeModel } from "./judge.js";
 
 const log = createSubsystemLogger("tasks/judge-provider");
 
@@ -61,42 +61,24 @@ export function createJudgeLlmCall(
     const modelRef = resolveModelRef(cfg, opts.modelRef);
     const { provider, modelId } = splitModelRef(modelRef);
 
-    const [{ completeSimple }, { resolveModel }, { getApiKeyForModel }] = await Promise.all([
-      import("@mariozechner/pi-ai"),
-      import("../agents/pi-embedded-runner/model.js"),
-      import("../agents/model-auth.js"),
-    ]);
-
-    const resolved = resolveModel(provider, modelId, undefined, cfg);
-    if (!resolved.model) {
-      throw new Error(
-        `judge-provider: cannot resolve model ${modelRef} (${resolved.error ?? "unknown error"})`,
-      );
-    }
-
-    const auth = await getApiKeyForModel({ model: resolved.model, cfg });
+    const { completeAttributed } = await import("../agents/complete-attributed.js");
 
     let lastError: unknown;
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        const res = await completeSimple(
-          resolved.model,
-          {
-            messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-          },
-          {
-            apiKey: auth?.apiKey,
-            maxTokens,
-          },
-        );
-        // completeSimple embeds provider errors in the response instead of
-        // throwing — surface the REAL error (e.g. a 400 param rejection)
-        // rather than masking it as "no text content".
-        const failure = res as { stopReason?: string; errorMessage?: string };
-        if (failure.stopReason === "error") {
-          throw new Error("judge-provider: provider error: " + (failure.errorMessage ?? "unknown"));
-        }
-        const text = extractText(res);
+        // PLAN-50: completeAttributed records usage (including failed attempts) in the ledger
+        // and surfaces the REAL provider error rather than masking it as "no text content".
+        const { text } = await completeAttributed({
+          provider,
+          modelId,
+          cfg,
+          prompt,
+          maxTokens,
+          feature: "tasks/judge",
+          errorPrefix: "judge-provider",
+          // The judge is user-facing task verification, never paused by a budget.
+          ignoreBudget: true,
+        });
         if (!text) {
           throw new Error("judge-provider: model returned no text content");
         }
@@ -131,6 +113,7 @@ export function registerJudgeFromConfig(
   try {
     const llm = createJudgeLlmCall(cfg, opts);
     registerJudgeLlmCall(llm);
+    registerJudgeModel(resolveModelRef(cfg, opts.modelRef));
     log.info(`judge LLM registered (model=${resolveModelRef(cfg, opts.modelRef)})`);
     return true;
   } catch (err) {
@@ -158,20 +141,6 @@ function splitModelRef(ref: string): { provider: string; modelId: string } {
     return { provider: "anthropic", modelId: ref };
   }
   return { provider: ref.slice(0, idx), modelId: ref.slice(idx + 1) };
-}
-
-type CompletionLike = {
-  content?: Array<{ type: string; text?: string }>;
-};
-
-function extractText(res: unknown): string {
-  const c = (res as CompletionLike).content;
-  if (!Array.isArray(c)) return "";
-  return c
-    .filter((b) => b && b.type === "text")
-    .map((b) => b.text ?? "")
-    .join("\n")
-    .trim();
 }
 
 function isRetryable(err: unknown): boolean {

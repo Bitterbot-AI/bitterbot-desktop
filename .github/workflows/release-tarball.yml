@@ -1,0 +1,309 @@
+# Signed per-platform release tarballs + install.sh (PLAN-56 Phase 3a).
+#
+# Invoked from release-please.yml when a release is created (workflow_call:
+# API events raised with the default GITHUB_TOKEN never trigger standalone
+# workflows), on a release published by hand, and manually for an existing
+# tag via workflow_dispatch.
+#
+# Per platform (native runners, no cross-compiling): pnpm install + build,
+# then scripts/build-release-tarball.mjs stages the npm package files, the
+# production node_modules, the official Node 22 LTS runtime (SHASUMS256
+# verified), the signed orchestrator binary (minisign verified against the
+# pinned key) and the bin/bitterbot launcher, loads every native package with
+# the bundled Node, and writes the tarball + manifest.json.
+#
+# Every release therefore needs ONE approval click in the "release"
+# environment before its tarballs exist. release-please creates the release as
+# a DRAFT (release-please-config.json: draft + force-tag-creation, so the tag
+# exists for npm and Docker), and the publish job below un-drafts it and marks
+# it latest only after every asset is uploaded. The one-liner URL
+# (releases/latest/download/install.sh) therefore keeps serving the previous
+# complete release until this one is, and never 404s mid-release.
+#
+# Publish (one job, approval-gated like orchestrator-release.yml): checksums
+# over every asset, minisign signature with the trusted comment
+# "v<version> checksums", a self-verify against the key PINNED in the repo
+# (the same check install.sh makes), build-provenance attestations, and only
+# then the upload. Any failure before the upload step uploads nothing.
+#
+# darwin-x64 is built natively on the Intel `macos-15-intel` runner, so its
+# native prebuilds (sharp, sqlite-vec, @lydell/node-pty, node-llama-cpp's
+# mac-x64 build) and the bundled darwin-x64 Node are installed and
+# load-tested on x64 by build-release-tarball.mjs like every other platform.
+# Windows installs inside WSL2 (scripts/install.ps1) or uses Docker Desktop.
+#
+# The npm package (`npm install -g bitterbot`) is a launcher that downloads
+# these assets on first run, so npm-publish.yml runs only AFTER this
+# workflow's publish job has uploaded them (release-please.yml chains it).
+
+name: release-tarball
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version (e.g. 1.5.0)"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing release version to build tarballs for, e.g. 1.5.0"
+        required: true
+        type: string
+      force:
+        description: "Rebuild even though the release already has checksums.txt (replaces assets in place; installs running during the upload may fail closed)"
+        required: false
+        default: false
+        type: boolean
+  release:
+    types: [published]
+
+concurrency:
+  # One key per version whatever the trigger: inputs may be "1.5.0" or "v1.5.0",
+  # the release event always carries "v1.5.0".
+  group: release-tarball-${{ inputs.version && (startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version)) || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      run: ${{ steps.v.outputs.run }}
+      epoch: ${{ steps.epoch.outputs.epoch }}
+    steps:
+      - id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          FORCE: ${{ inputs.force }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          version="${INPUT_VERSION:-}"
+          if [ -z "$version" ]; then
+            # Release events also fire for orchestrator-v* and desktop-v*
+            # releases published by hand: only app tags vX.Y.Z build here.
+            case "$RELEASE_TAG" in
+              v[0-9]*) version="${RELEASE_TAG#v}" ;;
+              *) echo "run=false" >> "$GITHUB_OUTPUT"; echo "not an app release: $RELEASE_TAG"; exit 0 ;;
+            esac
+          fi
+          version="${version#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version must be X.Y.Z, got '$version'"; exit 1
+          fi
+          # A manual rebuild of a release that already has signed tarballs
+          # would swap assets under running installs: refuse unless forced.
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$FORCE" != "true" ]; then
+            if gh release view "v$version" --repo "${{ github.repository }}" --json assets \
+              -q '.assets[].name' | grep -qx 'checksums.txt'; then
+              echo "::error::v$version already has checksums.txt; re-run with force: true to rebuild it"
+              exit 1
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.v.outputs.run == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ steps.v.outputs.version }}
+
+      # Reproducible builds: every platform stamps builtAt and file mtimes
+      # with the tag commit's time.
+      - id: epoch
+        if: steps.v.outputs.run == 'true'
+        run: echo "epoch=$(git log -1 --format=%ct)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    if: needs.meta.outputs.run == 'true'
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    # An optional platform (RELEASE_PLATFORMS[...].optional, darwin-x64 for
+    # now) may fail without blocking the release: the publish job then ships
+    # the core platforms and notes the missing one in the job summary.
+    continue-on-error: ${{ matrix.optional == true }}
+    strategy:
+      # Not fail-fast: one platform failing must not cancel the others
+      # (an optional one is allowed to fail; a core one still fails the run).
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04 runners: the oldest glibc we can build on keeps the native
+          # prebuild selection compatible with older distros.
+          - platform: linux-x64
+            runner: ubuntu-22.04
+          - platform: linux-arm64
+            runner: ubuntu-22.04-arm
+          - platform: darwin-arm64
+            runner: macos-14
+          - platform: darwin-x64
+            runner: macos-15-intel
+            optional: true
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.meta.outputs.epoch }}
+    steps:
+      # SHA-pinned like orchestrator-release.yml; no dependency cache in a
+      # release build (a poisoned cache must not reach a signed artifact).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ needs.meta.outputs.version }}
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        env:
+          # The tarball carries its own verified orchestrator (fetched by the
+          # build script); the postinstall copy would only be discarded.
+          BITTERBOT_SKIP_ORCHESTRATOR_DOWNLOAD: "1"
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Version matches the tag
+        run: |
+          test "$(node -p 'require("./package.json").version')" = "${{ needs.meta.outputs.version }}"
+
+      - name: Build and verify the tarball
+        run: node scripts/build-release-tarball.mjs --version "${{ needs.meta.outputs.version }}" --out "$RUNNER_TEMP/release-out"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tarball-${{ matrix.platform }}
+          path: |
+            ${{ runner.temp }}/release-out/bitterbot-*.tar.gz
+            ${{ runner.temp }}/release-out/bitterbot-*.manifest.json
+          if-no-files-found: error
+          retention-days: 3
+
+  publish:
+    needs: [meta, build]
+    if: needs.meta.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Same approval gate as orchestrator-release.yml: the signing key is only
+    # reachable after the maintainer approves the "release" environment.
+    environment: release
+    permissions:
+      contents: write # upload release assets
+      id-token: write # build-provenance attestation (Sigstore)
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ needs.meta.outputs.version }}
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: tarball-*
+          path: release
+          merge-multiple: true
+
+      - name: Assemble, checksum, SIGN and self-verify
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "::error::MINISIGN_SECRET_KEY secret is not set: refusing to publish unsigned tarballs" >&2
+            exit 1
+          fi
+          sudo apt-get update && sudo apt-get install -y minisign
+          cp scripts/install.sh release/install.sh
+          cd release
+          # Every core platform must be present (a missing one fails the
+          # release); an optional one (darwin-x64 for now) that did not build
+          # is left out and reported in the job summary.
+          lib="$GITHUB_WORKSPACE/scripts/release-tarball-lib.mjs"
+          required=$(node --input-type=module -e "const m = await import('file://$lib'); console.log(Object.entries(m.RELEASE_PLATFORMS).filter(([, p]) => !p.optional).map(([id]) => id).join(' '))")
+          optional=$(node --input-type=module -e "const m = await import('file://$lib'); console.log(Object.entries(m.RELEASE_PLATFORMS).filter(([, p]) => p.optional).map(([id]) => id).join(' '))")
+          for p in $required; do
+            test -f "bitterbot-$VERSION-$p.tar.gz"
+            test -f "bitterbot-$VERSION-$p.manifest.json"
+          done
+          for p in $optional; do
+            if [ ! -f "bitterbot-$VERSION-$p.tar.gz" ] || [ ! -f "bitterbot-$VERSION-$p.manifest.json" ]; then
+              rm -f "bitterbot-$VERSION-$p".*
+              echo "::warning::optional platform $p did not build; v$VERSION ships without it"
+              echo "- Optional platform **$p** did not build: v$VERSION ships without it (install.sh and the npm launcher report it as unavailable there)." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh > checksums.txt
+          cat checksums.txt
+          printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/release.key"
+          minisign -S -s "$RUNNER_TEMP/release.key" -m checksums.txt \
+            -t "v$VERSION checksums" -c "bitterbot release tarballs"
+          rm -f "$RUNNER_TEMP/release.key"
+          # Self-verify against the key PINNED in the repo, with both the
+          # minisign binary and the installer's own policy (trusted comment
+          # must name this release). A key mismatch stops here, before upload.
+          PINNED=$(node --input-type=module -e "const m = await import('file://$GITHUB_WORKSPACE/scripts/orchestrator-signature.mjs'); process.stdout.write(m.ORCHESTRATOR_MINISIGN_PUBKEY)")
+          grep -q "local PINNED_PUBKEY=\"$PINNED\"" install.sh
+          minisign -V -P "$PINNED" -m checksums.txt -x checksums.txt.minisig
+          test "$(sed -n 's/^trusted comment: //p' checksums.txt.minisig)" = "v$VERSION checksums"
+          sha256sum -c checksums.txt
+          ls -lh
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release/bitterbot-*.tar.gz
+            release/install.sh
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release
+          # Tarballs and manifests first, then checksums.txt + its signature,
+          # then install.sh. install.sh and the update check only consider a
+          # release once it has the tarball AND checksums.txt AND .minisig,
+          # so a half-finished upload is never picked, and new checksums are
+          # never published before the tarballs they describe.
+          gh release upload "v$VERSION" bitterbot-*.tar.gz bitterbot-*.manifest.json \
+            --repo "${{ github.repository }}" --clobber
+          gh release upload "v$VERSION" checksums.txt checksums.txt.minisig \
+            --repo "${{ github.repository }}" --clobber
+          gh release upload "v$VERSION" install.sh --repo "${{ github.repository }}" --clobber
+
+      # release-please creates the release as a draft, so it is invisible and
+      # never "latest" while its assets are missing. Publish it now that every
+      # asset is up. A release that is already public (a forced rebuild, or one
+      # published by hand) is left as it is.
+      - name: Publish the release and mark it latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$(gh release view "v$VERSION" --repo "$REPO" --json isDraft -q .isDraft)" = "true" ]; then
+            gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
+            echo "published v$VERSION"
+          else
+            echo "v$VERSION is already published; not changing it"
+          fi
+          latest=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
+          if [ "$latest" != "v$VERSION" ]; then
+            echo "::warning::releases/latest is $latest, not v$VERSION (fine if a newer release exists)"
+          fi
+          # The one-liner must resolve now.
+          curl -fsSIL -o /dev/null "https://github.com/$REPO/releases/download/v$VERSION/install.sh"

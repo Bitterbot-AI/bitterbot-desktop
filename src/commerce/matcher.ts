@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 /**
  * Demand Matcher — PLAN-26 Primitive 2.
  *
@@ -17,6 +16,7 @@ import type { DatabaseSync } from "node:sqlite";
  * Timestamps are UNIX SECONDS (protocol-aligned).
  */
 import { createHash } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { GroupBuyDirectory } from "./directory.js";
 
 const ACTIVE_SYNDICATE_STATES = ["forming", "quoting", "committing", "striking"];

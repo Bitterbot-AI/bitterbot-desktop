@@ -41,6 +41,14 @@ export function ensureA2aSchema(db: DatabaseSync): void {
     );
   `);
 
+  // PLAN-43 Phase 1 (R1): per-task access token. Task reads are scoped to
+  // the creator under authentication "none" — without this, buyer A can
+  // read buyer B's paid result. Guarded ALTER for pre-existing stores.
+  const cols = db.prepare(`PRAGMA table_info(a2a_tasks)`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "access_token")) {
+    db.exec(`ALTER TABLE a2a_tasks ADD COLUMN access_token TEXT`);
+  }
+
   db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_tasks_status ON a2a_tasks(status);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_tasks_context ON a2a_tasks(context_id);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_a2a_messages_task ON a2a_messages(task_id);`);
@@ -59,6 +67,7 @@ type TaskRow = {
   created_at: number;
   updated_at: number;
   metadata: string | null;
+  access_token: string | null;
 };
 
 type MessageRow = {
@@ -92,12 +101,13 @@ export class A2aTaskStore {
     contextId?: string;
     sessionKey?: string;
     metadata?: Record<string, unknown>;
+    accessToken?: string;
   }): void {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO a2a_tasks (id, context_id, status, session_key, created_at, updated_at, metadata)
-         VALUES (?, ?, 'submitted', ?, ?, ?, ?)`,
+        `INSERT INTO a2a_tasks (id, context_id, status, session_key, created_at, updated_at, metadata, access_token)
+         VALUES (?, ?, 'submitted', ?, ?, ?, ?, ?)`,
       )
       .run(
         params.id,
@@ -106,6 +116,7 @@ export class A2aTaskStore {
         now,
         now,
         params.metadata ? JSON.stringify(params.metadata) : null,
+        params.accessToken ?? null,
       );
   }
 

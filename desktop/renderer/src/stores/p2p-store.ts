@@ -11,7 +11,10 @@ export type P2pStats = {
   peer_id: string;
   connected_peers: number;
   skills_published: number;
+  /** Distinct skills received (author + name), not raw gossip messages. */
   skills_received: number;
+  /** Raw skill messages incl. re-broadcasts (orchestrator >= this change). */
+  skill_messages_received?: number;
   uptime_secs: number;
   // Tier 1 + Tier 3 metrics surfaced from the orchestrator's /api/stats.
   peak_concurrent_peers?: number;
@@ -75,31 +78,43 @@ export type P2pCensusHistoryRow = {
 
 export type P2pContributions = {
   skills_published: number;
+  /** Distinct skills received (author + name). */
+  skills_received?: number;
+  /** Raw skill messages received, re-broadcasts included. */
+  skill_messages_received?: number;
   skills_verified: number;
   uptime_hours: number;
   score: number;
 };
 
-export type P2pIncomingSkill = {
-  name: string;
-  author_peer_id?: string;
-  timestamp?: number;
+/** Gateway-side decisions about received skills since boot (skills.network `ingest`). */
+export type P2pIngestStats = {
+  sinceMs: number;
+  messages: number;
+  distinctSkills: number;
+  accepted: number;
+  heldForReview: number;
+  retracted: number;
+  rejected: number;
+  repeatsIgnored: number;
+  /** Our own skills echoed back by a peer; never counted as received. */
+  ownEchoesIgnored?: number;
+  rejectReasons: Record<string, number>;
 };
 
 interface P2pState {
   connected: boolean;
   stats: P2pStats | null;
   contributions: P2pContributions | null;
-  incomingSkills: P2pIncomingSkill[];
   bootstrapCensus: P2pBootstrapCensus | null;
   networkCensus: P2pNetworkCensus | null;
+  ingest: P2pIngestStats | null;
   censusHistory: P2pCensusHistoryRow[];
   error: string | null;
   loading: boolean;
 
   fetchStats: (httpAddr?: string) => Promise<void>;
   fetchContributions: (httpAddr?: string) => Promise<void>;
-  fetchIncomingSkills: () => Promise<void>;
   fetchBootstrapCensus: (httpAddr?: string) => Promise<void>;
   fetchNetworkCensus: () => Promise<void>;
   fetchCensusHistory: (opts?: {
@@ -116,9 +131,9 @@ export const useP2pStore = create<P2pState>((set) => ({
   connected: false,
   stats: null,
   contributions: null,
-  incomingSkills: [],
   bootstrapCensus: null,
   networkCensus: null,
+  ingest: null,
   censusHistory: [],
   error: null,
   loading: false,
@@ -152,12 +167,6 @@ export const useP2pStore = create<P2pState>((set) => ({
     }
   },
 
-  fetchIncomingSkills: async () => {
-    // This uses the gateway RPC, not the orchestrator HTTP API
-    // In a real implementation, this would call the gateway client
-    set({ incomingSkills: [] });
-  },
-
   fetchBootstrapCensus: async (httpAddr) => {
     // Older released orchestrator binaries (edge fleet) predate this endpoint
     // and 404 — that means "not a census node", not an error. Never let this
@@ -181,8 +190,11 @@ export const useP2pStore = create<P2pState>((set) => ({
     // because the data is gossipsub-pushed and lives in the TS bridge cache.
     try {
       const request = useGatewayStore.getState().request;
-      const res = await request<{ networkCensus: P2pNetworkCensus | null }>("skills.network");
-      set({ networkCensus: res?.networkCensus ?? null });
+      const res = await request<{
+        networkCensus: P2pNetworkCensus | null;
+        ingest?: P2pIngestStats | null;
+      }>("skills.network");
+      set({ networkCensus: res?.networkCensus ?? null, ingest: res?.ingest ?? null });
     } catch {
       // Silent — first-load races and disconnect noise shouldn't toast.
     }

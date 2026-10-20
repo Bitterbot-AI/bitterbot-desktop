@@ -191,7 +191,7 @@ echo "  - Gateway token: $BITTERBOT_GATEWAY_TOKEN"
 echo "  - Tailscale exposure: Off"
 echo "  - Install Gateway daemon: No"
 echo ""
-docker compose "${COMPOSE_ARGS[@]}" run --rm bitterbot-cli onboard --no-install-daemon
+docker compose "${COMPOSE_ARGS[@]}" run --rm bitterbot-cli onboard --no-browser --no-install-daemon
 
 echo ""
 echo "==> Provider setup (optional)"
@@ -216,4 +216,4 @@ echo "Token: $BITTERBOT_GATEWAY_TOKEN"
 echo ""
 echo "Commands:"
 echo "  ${COMPOSE_HINT} logs -f bitterbot-gateway"
-echo "  ${COMPOSE_HINT} exec bitterbot-gateway node dist/index.js health --token \"$BITTERBOT_GATEWAY_TOKEN\""
+echo "  ${COMPOSE_HINT} exec -u node bitterbot-gateway node bitterbot.mjs health --token \"$BITTERBOT_GATEWAY_TOKEN\""

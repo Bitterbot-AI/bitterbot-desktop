@@ -1,6 +1,6 @@
 import { afterEach, beforeEach } from "vitest";
-import type { BitterbotConfig } from "../config/config.js";
 import { withTempHome as withTempHomeBase } from "../../test/helpers/temp-home.js";
+import type { BitterbotConfig } from "../config/config.js";
 
 export async function withModelsTempHome<T>(fn: (home: string) => Promise<T>): Promise<T> {
   return withTempHomeBase(fn, { prefix: "bitterbot-models-" });

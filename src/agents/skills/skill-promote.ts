@@ -13,8 +13,10 @@
  */
 
 import fs from "node:fs/promises";
-import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
+import path from "node:path";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import type { SkillLifecycleStore } from "../../memory/skill-lifecycle.js";
+import { unregisterCanary } from "./canary-registry.js";
 import {
   readConsolidateTarget,
   stagedIsConsolidateManifest,
@@ -29,6 +31,7 @@ import {
   readLive,
   readStaged,
   rollbackToVersion,
+  stagingSkillDir,
   type StorageRoots,
 } from "./skill-storage.js";
 import { publishStaged as storagePublishStaged } from "./skill-storage.js";
@@ -46,8 +49,33 @@ export interface PromoteParams {
   author?: string;
   /** When true, promote even if the staging gate did not pass. */
   forceGate?: boolean;
+  /**
+   * PLAN-44 Phase 3: content staged by the evolution pipeline (carrying
+   * `.evolution-meta.json`) is promoted ONLY by the validation gate, or by
+   * an operator override. The agent's `skill_manage` tool never sets this.
+   */
+  allowEvolutionStaged?: boolean;
   /** Override timestamp for tests. */
   timestamp?: number;
+}
+
+/** Sidecars the evolution pipeline writes beside a staged SKILL.md. */
+export const EVOLUTION_SIDECARS = [
+  ".evolution-meta.json",
+  "PURPOSE.md",
+  ".provenance.json",
+] as const;
+
+async function readStagedSidecars(roots: StorageRoots, name: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const file of EVOLUTION_SIDECARS) {
+    try {
+      out.set(file, await fs.readFile(path.join(stagingSkillDir(roots, name), file), "utf-8"));
+    } catch {
+      // absent
+    }
+  }
+  return out;
 }
 
 export type PromoteKind = "edit" | "tombstone" | "consolidate";
@@ -65,6 +93,7 @@ export interface PromoteResult {
     | "tombstone-no-live"
     | "consolidate-target-missing"
     | "consolidate-missing-target-field"
+    | "evolution-staged"
     | "storage-error";
   detail?: string;
 }
@@ -103,6 +132,21 @@ export async function promoteStaged(
       previousArchived: null,
       error: "gate-not-passed",
       detail: `gate status is "${staged.meta.gateStatus ?? "pending"}"; pass forceGate=true to override`,
+    };
+  }
+
+  // PLAN-44 Phase 3 (audit security finding 2): evolution-staged content
+  // used to be promotable by the agent's own skill_manage tool, and the
+  // promoted copy lost its .evolution-meta.json — escaping the evolved-skill
+  // cap, the P2P doctrine and the validation summaries. Read the sidecars
+  // BEFORE publish (publish discards staging) and carry them to live.
+  const sidecars = await readStagedSidecars(ctx.storageRoots, params.name);
+  if (sidecars.has(".evolution-meta.json") && !params.allowEvolutionStaged) {
+    return {
+      ok: false,
+      previousArchived: null,
+      error: "evolution-staged",
+      detail: `"${params.name}" was staged by the skill-evolution pipeline; only its validation gate (or an operator override) promotes it`,
     };
   }
 
@@ -195,6 +239,17 @@ export async function promoteStaged(
       author,
       ...(params.timestamp ? { timestamp: params.timestamp } : {}),
     });
+    for (const file of EVOLUTION_SIDECARS) {
+      const content = sidecars.get(file);
+      const target = path.join(liveSkillDir(ctx.storageRoots, params.name), file);
+      if (content !== undefined) {
+        await fs.writeFile(target, content, "utf-8");
+      } else {
+        // Adversarial L10: a human/agent edit replacing an evolved skill
+        // ends its evolution identity (cap, P2P doctrine, summaries).
+        await fs.rm(target, { force: true });
+      }
+    }
     return {
       ok: true,
       kind: "edit",
@@ -244,6 +299,26 @@ export async function rollbackStaged(
     if (ctx.lifecycleStore) {
       // Restoring to an archived version implicitly reactivates the skill.
       ctx.lifecycleStore.setState(params.name, "active");
+    }
+    // PLAN-45 Phase 3 (adversarial 3-10): an operator rollback closes the
+    // canary window unless the restored version is itself a canary.
+    try {
+      const metaRaw = await fs
+        .readFile(
+          path.join(liveSkillDir(ctx.storageRoots, params.name), ".evolution-meta.json"),
+          "utf-8",
+        )
+        .catch(() => null);
+      const ladder = metaRaw
+        ? (JSON.parse(metaRaw) as { ladder?: { state?: string } }).ladder?.state
+        : undefined;
+      if (ladder !== "canary") {
+        await unregisterCanary(params.name, {
+          configDir: path.dirname(ctx.storageRoots.liveRoot),
+        });
+      }
+    } catch {
+      // registry is best-effort here; the monitor removes stale entries
     }
     return {
       ok: true,

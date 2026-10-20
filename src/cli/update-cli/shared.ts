@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { UpdateStepProgress, UpdateStepResult } from "../../infra/update-runner.js";
 import { resolveStateDir } from "../../config/paths.js";
 import { resolveBitterbotPackageRoot } from "../../infra/bitterbot-root.js";
 import { readPackageName, readPackageVersion } from "../../infra/package-json.js";
@@ -14,6 +13,7 @@ import {
   detectGlobalInstallManagerForRoot,
   type GlobalInstallManager,
 } from "../../infra/update-global.js";
+import type { UpdateStepProgress, UpdateStepResult } from "../../infra/update-runner.js";
 import { runCommandWithTimeout } from "../../process/exec.js";
 import { defaultRuntime } from "../../runtime.js";
 import { theme } from "../../terminal/theme.js";
@@ -26,6 +26,16 @@ export type UpdateCommandOptions = {
   tag?: string;
   timeout?: string;
   yes?: boolean;
+  /** Only report whether an update is available. */
+  check?: boolean;
+  /** Release-tarball installs: switch back to the previous version. */
+  rollback?: boolean;
+  /** Release-tarball installs: re-download and replace the current version. */
+  reinstall?: boolean;
+  /** With --rollback: also restore the memory databases from the snapshot. */
+  restoreData?: boolean;
+  /** With --rollback: also restore the config file from the snapshot. */
+  restoreConfig?: boolean;
 };
 
 export type UpdateStatusOptions = {

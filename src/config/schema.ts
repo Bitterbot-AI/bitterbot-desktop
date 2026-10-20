@@ -1,6 +1,6 @@
-import type { ConfigUiHint, ConfigUiHints } from "./schema.hints.js";
 import { CHANNEL_IDS } from "../channels/registry.js";
 import { VERSION } from "../version.js";
+import type { ConfigUiHint, ConfigUiHints } from "./schema.hints.js";
 import { applySensitiveHints, buildBaseHints, mapSensitivePaths } from "./schema.hints.js";
 import { BitterbotSchema } from "./zod-schema.js";
 
@@ -327,7 +327,7 @@ function buildBaseConfigSchema(): ConfigSchemaResponse {
     unrepresentable: "any",
   });
   schema.title = "BitterbotConfig";
-  const hints = mapSensitivePaths(BitterbotSchema, "", buildBaseHints());
+  const hints = mapSensitivePaths(BitterbotSchema, "", buildBaseHints({ jsonSchema: schema }));
   const next = {
     schema: stripChannelSchema(schema),
     uiHints: hints,

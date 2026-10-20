@@ -12,9 +12,17 @@
  * search, discovery, trending, and recommendations.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { setChunkProvenance } from "./chunk-writer.js";
+import { checkListingLineage, contentSha256 } from "./lineage-gate.js";
+import {
+  normalizeSkillName,
+  type SkillValidationSummary,
+} from "./skill-evolution/validation-summaries.js";
+import { RUN_EVIDENCE_WHERE } from "./skill-execution-tracker.js";
+import { skillNameFromText } from "./skill-name.js";
 import { computeSkillPrice, type SkillPricingConfig } from "./skill-pricing.js";
 
 const log = createSubsystemLogger("memory/marketplace-economics");
@@ -32,6 +40,42 @@ export interface MarketplaceListing {
   };
   downloadCount: number;
   listedAt: number | null;
+  /** SHA-256 of the skill text — the content address attestations key on (PLAN-43 Phase 3). */
+  contentSha256?: string;
+  /** PLAN-42 validation verdict for this skill, when one exists (PLAN-43 Phase 0). */
+  validation?: {
+    verdict: string;
+    score?: number;
+    corpusVersion?: string;
+    canonical: boolean;
+  };
+}
+
+export interface MarketplaceEconomicsDeps {
+  /**
+   * Returns PLAN-42 validation summaries keyed by normalized skill name
+   * (skill-evolution/validation-summaries.ts). Listings rank by these
+   * verified outcomes, never by farmable counts (invariant I6/I10).
+   */
+  validationLookup?: () => Map<string, SkillValidationSummary>;
+  /**
+   * PLAN-43 Phase 3 (I4): registry royalty for imported skills. `lookup`
+   * maps a normalized skill name to its registry provenance
+   * (registry-provenance.ts); `royaltyBps` is skills.agentskills.royaltyBps.
+   */
+  /**
+   * PLAN-43 Phase 3 (§3.7) kill switch, read live: true = no paid listing
+   * is advertised or sellable (a2a.marketplace.freezeListings).
+   */
+  freezeListings?: () => boolean;
+  registryRoyalty?: {
+    royaltyBps: number;
+    lookup: () => Map<string, { registry: string }>;
+    /** Recipient id the royalty share is queued under (e.g. "agentskills.io"). */
+    registryId?: string;
+    /** Wallet the registry share pays to (skills.agentskills.royaltyWallet); unset = accrue only. */
+    royaltyWallet?: string;
+  };
 }
 
 export interface PurchaseRecord {
@@ -73,6 +117,7 @@ export class MarketplaceEconomics {
   constructor(
     private readonly db: DatabaseSync,
     private readonly pricingConfig?: Partial<SkillPricingConfig>,
+    private readonly deps: MarketplaceEconomicsDeps = {},
   ) {
     this.ensureSchema();
   }
@@ -152,24 +197,78 @@ export class MarketplaceEconomics {
       );
       CREATE INDEX IF NOT EXISTS idx_x402_consumed_at ON x402_consumed_tx(consumed_at);
     `);
+
+    // PLAN-43 Phase 0: validation columns on pre-existing listing tables
+    // (the CREATE above only covers fresh databases).
+    this.addColumnIfMissing("marketplace_listings", "validation_verdict", "TEXT");
+    this.addColumnIfMissing("marketplace_listings", "validation_score", "REAL");
+    this.addColumnIfMissing("marketplace_listings", "validation_corpus_version", "TEXT");
+    this.addColumnIfMissing("marketplace_listings", "validation_canonical", "INTEGER DEFAULT 0");
+    // PLAN-43 Phase 3 (§3.3): content-addressed listings + lineage evidence.
+    this.addColumnIfMissing("marketplace_listings", "content_sha256", "TEXT");
+    this.addColumnIfMissing("marketplace_listings", "lineage_nearest_id", "TEXT");
+    this.addColumnIfMissing("marketplace_listings", "lineage_similarity", "REAL");
+    this.addColumnIfMissing("marketplace_listings", "lineage_author_pubkey", "TEXT");
+    this.addColumnIfMissing("marketplace_listings", "lineage_flagged", "INTEGER DEFAULT 0");
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS listing_refusals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        skill_crystal_id TEXT NOT NULL,
+        content_sha256 TEXT,
+        reason TEXT NOT NULL,
+        nearest_id TEXT,
+        similarity REAL,
+        refused_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_listing_refusals_crystal ON listing_refusals(skill_crystal_id);
+    `);
+    // The opt-in flag normally lands via MemStore.ensureSchema; ensure it
+    // here too so this module is self-sufficient against any chunks table.
+    if (this.tableExists("chunks")) {
+      this.addColumnIfMissing("chunks", "for_sale", "INTEGER DEFAULT 0");
+    }
+  }
+
+  private tableExists(table: string): boolean {
+    const row = this.db
+      .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+      .get(table);
+    return row !== undefined;
+  }
+
+  private addColumnIfMissing(table: string, column: string, ddl: string): void {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+    }
   }
 
   /**
-   * Refresh marketplace listings by scanning all published skill crystals.
-   * Called during consolidation (every 30 min) — not on every request.
+   * Refresh marketplace state during consolidation (every 30 min) — not on
+   * every request. Two decoupled outputs (PLAN-43 Phase 0, invariants
+   * I1/I2):
+   *
+   *  - PAID listings (`marketplace_listings`) come ONLY from crystals with
+   *    the explicit `for_sale = 1` opt-in — never from the free 'shared'
+   *    propagation pool.
+   *  - The FREE browse flag (`chunks.marketplace_listed`, feeding
+   *    SkillMarketplace search/trending/recommendations and the discovery
+   *    agent) keeps its pre-Phase-0 semantics: any shared OR for-sale
+   *    skill that passes the quality gates is browsable. Free
+   *    discoverability is never conditioned on the paid opt-in.
    *
    * All writes are wrapped in a single transaction to avoid blocking the
    * Node.js event loop during consolidation. (Gemini peer review: SQLite I/O choke fix)
    */
   refreshListings(reputationScore: number): number {
-    // Get all published skill/task_pattern crystals
     const skills = this.db
       .prepare(`
       SELECT c.id, c.text, c.semantic_type,
              COALESCE(c.download_count, 0) as download_count,
-             c.skill_category
+             c.skill_category,
+             COALESCE(c.for_sale, 0) as for_sale
       FROM chunks c
-      WHERE c.publish_visibility = 'shared'
+      WHERE (COALESCE(c.for_sale, 0) = 1 OR c.publish_visibility = 'shared')
         AND c.semantic_type IN ('skill', 'task_pattern')
         AND COALESCE(c.lifecycle_state, 'active') != 'archived'
     `)
@@ -179,7 +278,17 @@ export class MarketplaceEconomics {
       semantic_type: string;
       download_count: number;
       skill_category: string | null;
+      for_sale: number;
     }>;
+
+    let validations: Map<string, SkillValidationSummary> | null = null;
+    if (skills.some((s) => s.for_sale === 1) && this.deps.validationLookup) {
+      try {
+        validations = this.deps.validationLookup();
+      } catch (err) {
+        log.warn(`validation lookup failed; listings rank unvalidated: ${String(err)}`);
+      }
+    }
 
     let listedCount = 0;
     const now = Date.now();
@@ -209,14 +318,45 @@ export class MarketplaceEconomics {
           this.pricingConfig,
         );
 
-        const name = skill.text.split("\n")[0]?.slice(0, 100).trim() || skill.id.slice(0, 8);
+        const name = skillNameFromText(skill.text) || skill.id.slice(0, 8);
+        const sha = contentSha256(skill.text);
+
+        // Browse flag first: same pre-Phase-0 gate (pricing.listable), for
+        // shared and for-sale skills alike — free discovery is independent
+        // of the paid opt-in.
+        try {
+          this.db
+            .prepare(`UPDATE chunks SET marketplace_listed = ? WHERE id = ?`)
+            .run(pricing.listable ? 1 : 0, skill.id);
+        } catch {
+          /* marketplace_listed column may not exist on older schemas */
+        }
+
+        // Paid listing only for the explicit opt-in.
+        if (skill.for_sale !== 1) {
+          continue;
+        }
+        // Re-run the lineage gate on every refresh: a listing that slipped
+        // in before its embedding existed, or whose commons grew a matching
+        // source since, is pulled (listable=0) rather than left standing.
+        let gateBlock: string | null = null;
+        try {
+          const lineage = checkListingLineage(this.db, skill.id);
+          if (!lineage.ok) {
+            gateBlock = `lineage: ${lineage.reason ?? "refused"}`;
+          }
+        } catch (err) {
+          gateBlock = `lineage check unavailable: ${String(err)}`;
+        }
+        const validation = validations?.get(normalizeSkillName(name)) ?? null;
         this.db
           .prepare(`
           INSERT INTO marketplace_listings
             (skill_crystal_id, name, description, price_usdc, listable, listing_block_reason,
              total_executions, success_rate, avg_reward_score, download_count, bounty_matches,
-             listed_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             validation_verdict, validation_score, validation_corpus_version, validation_canonical,
+             content_sha256, listed_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(skill_crystal_id) DO UPDATE SET
             price_usdc = excluded.price_usdc,
             listable = excluded.listable,
@@ -226,6 +366,11 @@ export class MarketplaceEconomics {
             avg_reward_score = excluded.avg_reward_score,
             download_count = excluded.download_count,
             bounty_matches = excluded.bounty_matches,
+            validation_verdict = excluded.validation_verdict,
+            validation_score = excluded.validation_score,
+            validation_corpus_version = excluded.validation_corpus_version,
+            validation_canonical = excluded.validation_canonical,
+            content_sha256 = excluded.content_sha256,
             listed_at = CASE WHEN excluded.listable = 1 AND marketplace_listings.listed_at IS NULL
                         THEN excluded.updated_at ELSE marketplace_listings.listed_at END,
             updated_at = excluded.updated_at
@@ -235,32 +380,58 @@ export class MarketplaceEconomics {
             name,
             skill.text.slice(0, 500),
             pricing.priceUsdc,
-            pricing.listable ? 1 : 0,
-            pricing.listingBlockReason ?? null,
+            pricing.listable && !gateBlock ? 1 : 0,
+            gateBlock ?? pricing.listingBlockReason ?? null,
             metrics.totalExecutions,
             metrics.successRate,
             metrics.avgRewardScore,
             skill.download_count,
             0,
-            pricing.listable ? now : null,
+            validation?.verdict ?? null,
+            validation?.meanDelta ?? null,
+            validation?.corpusVersion ?? null,
+            validation?.canonical ? 1 : 0,
+            sha,
+            pricing.listable && !gateBlock ? now : null,
             now,
           );
 
-        // Mirror listability onto the chunk so the browse layer
-        // (SkillMarketplace search/trending/recommendations and the
-        // discovery agent) sees the same skills this engine prices.
-        try {
-          this.db
-            .prepare(`UPDATE chunks SET marketplace_listed = ? WHERE id = ?`)
-            .run(pricing.listable ? 1 : 0, skill.id);
-        } catch {
-          /* marketplace_listed column may not exist on older schemas */
-        }
-
-        if (pricing.listable) {
+        if (pricing.listable && !gateBlock) {
           listedCount++;
         }
       }
+
+      // Sweep: any listing whose crystal is no longer opted in (for_sale
+      // cleared, crystal archived/deleted, or a row left over from the
+      // pre-Phase-0 era when the free 'shared' pool auto-fed this table)
+      // stops being listable NOW. Without this, a skill leaving the pool
+      // would keep its stale listable=1 row forever.
+      this.db
+        .prepare(`
+        UPDATE marketplace_listings
+           SET listable = 0, listing_block_reason = 'not-for-sale', updated_at = ?
+         WHERE listable = 1
+           AND skill_crystal_id NOT IN (
+             SELECT id FROM chunks
+              WHERE COALESCE(for_sale, 0) = 1
+                AND semantic_type IN ('skill', 'task_pattern')
+                AND COALESCE(lifecycle_state, 'active') != 'archived'
+           )
+      `)
+        .run(now);
+      // PLAN-45 Phase 0: a listing whose crystal no longer exists is not a
+      // listing. The reference node carried 76 such rows (last refreshed
+      // 2026-08-25) advertising six tool-level "successes" at rate 1.0 for
+      // crystals deleted weeks earlier.
+      this.db
+        .prepare(
+          `DELETE FROM marketplace_listings WHERE skill_crystal_id NOT IN (SELECT id FROM chunks)`,
+        )
+        .run();
+      // Deliberately NO sweep of chunks.marketplace_listed here: that flag
+      // is the FREE browse layer and must never be cleared for not paying
+      // in (invariant I1).
+
       this.db.exec("COMMIT");
     } catch (err) {
       try {
@@ -272,6 +443,164 @@ export class MarketplaceEconomics {
     }
 
     return listedCount;
+  }
+
+  /**
+   * PLAN-43 Phase 0: the explicit per-skill selling opt-in. Setting
+   * for_sale makes the crystal a listing CANDIDATE — it is priced and
+   * gated (execution count, success rate) at the next consolidation
+   * refresh. Clearing it delists immediately. Free propagation
+   * (publish_visibility) is untouched in both directions.
+   */
+  setForSale(
+    skillCrystalId: string,
+    forSale: boolean,
+    opts: {
+      /**
+       * Author pubkeys the seller cites as lineage (written to the crystal's
+       * provenance_chain before the gate runs). The product path for an
+       * honest derivative author — the gate itself must be satisfied by the
+       * SOURCE AUTHOR's pubkey, never by a crystal id.
+       */
+      lineage?: string[];
+    } = {},
+  ): { ok: boolean; forSale?: boolean; reason?: string; flagged?: boolean } {
+    const row = this.db
+      .prepare(`SELECT id, semantic_type, governance_json, text FROM chunks WHERE id = ?`)
+      .get(skillCrystalId) as
+      | {
+          id: string;
+          semantic_type: string | null;
+          governance_json: string | null;
+          text: string | null;
+        }
+      | undefined;
+    if (!row) {
+      return { ok: false, reason: "crystal not found" };
+    }
+    if (forSale && row.semantic_type !== "skill" && row.semantic_type !== "task_pattern") {
+      return { ok: false, reason: `not a skill crystal (semantic_type=${row.semantic_type})` };
+    }
+    // Peer-imported crystals cannot be listed in Phase 0: the provenance
+    // split / royalty wiring that would pay their upstream authors is
+    // Phase 1, and without it a sale would silently keep 100% (invariant
+    // I4) — and a peer crystal's author-controlled title could wear a
+    // local skill's validation verdict (§3.4 exact-ID rule).
+    if (forSale && row.governance_json?.includes('"peerOrigin"')) {
+      return {
+        ok: false,
+        reason: "peer-origin crystals cannot be listed until provenance-split wiring (Phase 1)",
+      };
+    }
+    let lineageAuthorPubkey: string | null = null;
+    let flagged = false;
+    // Original chain, restored if the gate refuses (a refused listing must
+    // not leave a rewritten chain behind).
+    let originalChain: string | null = null;
+    if (forSale) {
+      if (opts.lineage?.length) {
+        const existingRow = this.db
+          .prepare(`SELECT provenance_chain FROM chunks WHERE id = ?`)
+          .get(skillCrystalId) as { provenance_chain: string | null } | undefined;
+        originalChain = existingRow?.provenance_chain ?? null;
+        let existing: string[] = [];
+        try {
+          const parsed = JSON.parse(originalChain ?? "[]") as unknown;
+          existing = Array.isArray(parsed)
+            ? parsed.filter((x): x is string => typeof x === "string")
+            : [];
+        } catch {
+          existing = [];
+        }
+        // UNION with the existing chain: citing lineage can add an author,
+        // never erase the contributors already recorded (their 10% share).
+        const cited = opts.lineage.filter(
+          (x) => typeof x === "string" && x.length > 0 && x.length <= 128 && /^[\w:.-]+$/.test(x),
+        );
+        const merged = [...new Set([...cited, ...existing])].slice(0, 32);
+        setChunkProvenance(this.db, skillCrystalId, { provenanceChain: JSON.stringify(merged) });
+      }
+      // PLAN-43 Phase 3 (§3.3): lineage-laundering gate. A copy or
+      // near-duplicate of a commons skill without cited lineage is refused
+      // and recorded — stripping provenance is detectable, not free.
+      let lineage: ReturnType<typeof checkListingLineage>;
+      try {
+        lineage = checkListingLineage(this.db, skillCrystalId);
+      } catch (err) {
+        if (opts.lineage?.length) {
+          setChunkProvenance(this.db, skillCrystalId, { provenanceChain: originalChain });
+        }
+        return { ok: false, reason: `lineage check unavailable: ${String(err)}` };
+      }
+      lineageAuthorPubkey = lineage.lineageAuthorPubkey ?? null;
+      flagged = lineage.flagged === true;
+      if (!lineage.ok) {
+        this.db
+          .prepare(`
+          INSERT INTO listing_refusals
+            (skill_crystal_id, content_sha256, reason, nearest_id, similarity, refused_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `)
+          .run(
+            skillCrystalId,
+            lineage.contentSha256 || null,
+            lineage.reason ?? "lineage check failed",
+            lineage.nearest?.crystalId ?? null,
+            lineage.nearest?.similarity ?? null,
+            Date.now(),
+          );
+        // Keep the refusal log bounded per crystal.
+        this.db
+          .prepare(`
+          DELETE FROM listing_refusals WHERE skill_crystal_id = ? AND id NOT IN (
+            SELECT id FROM listing_refusals WHERE skill_crystal_id = ? ORDER BY id DESC LIMIT 20
+          )`)
+          .run(skillCrystalId, skillCrystalId);
+        log.warn(`listing refused for ${skillCrystalId}: ${lineage.reason}`);
+        if (opts.lineage?.length) {
+          setChunkProvenance(this.db, skillCrystalId, { provenanceChain: originalChain });
+        }
+        return { ok: false, reason: lineage.reason ?? "lineage check failed" };
+      }
+    }
+    this.db
+      .prepare(`UPDATE chunks SET for_sale = ? WHERE id = ?`)
+      .run(forSale ? 1 : 0, skillCrystalId);
+    if (forSale) {
+      // Evidence-derived lineage on the listing row: the revenue split pays
+      // the SOURCE AUTHOR the gate identified, not whatever the seller wrote.
+      this.db
+        .prepare(`
+        INSERT INTO marketplace_listings (skill_crystal_id, name, description, price_usdc, listable,
+                                          lineage_author_pubkey, lineage_flagged, updated_at)
+        VALUES (?, ?, '', 0, 0, ?, ?, ?)
+        ON CONFLICT(skill_crystal_id) DO UPDATE SET
+          lineage_author_pubkey = excluded.lineage_author_pubkey,
+          lineage_flagged = excluded.lineage_flagged,
+          updated_at = excluded.updated_at
+      `)
+        .run(
+          skillCrystalId,
+          skillNameFromText(row.text ?? "") || skillCrystalId.slice(0, 8),
+          lineageAuthorPubkey,
+          flagged ? 1 : 0,
+          Date.now(),
+        );
+    }
+    if (!forSale) {
+      // Delist the PAID listing now rather than waiting up to 30 min for
+      // the next refresh. The free browse flag (marketplace_listed) is
+      // deliberately untouched — free discoverability never depends on the
+      // paid opt-in (invariant I1).
+      this.db
+        .prepare(`
+        UPDATE marketplace_listings
+           SET listable = 0, listing_block_reason = 'not-for-sale', updated_at = ?
+         WHERE skill_crystal_id = ?
+      `)
+        .run(Date.now(), skillCrystalId);
+    }
+    return { ok: true, forSale, ...(flagged ? { flagged: true } : {}) };
   }
 
   /**
@@ -326,55 +655,135 @@ export class MarketplaceEconomics {
     skillCrystalId: string,
     totalUsdc: number,
   ): Array<{
-    role: "publisher" | "original_author" | "contributor";
+    role: "publisher" | "original_author" | "contributor" | "registry_royalty";
     peerId: string;
     amountUsdc: number;
   }> {
     try {
       const chunk = this.db
-        .prepare(`SELECT provenance_chain, origin FROM chunks WHERE id = ?`)
+        .prepare(`SELECT provenance_chain, origin, text FROM chunks WHERE id = ?`)
         .get(skillCrystalId) as
-        | { provenance_chain: string | null; origin: string | null }
+        | { provenance_chain: string | null; origin: string | null; text: string | null }
         | undefined;
 
+      // PLAN-43 Phase 3 (I4): a registry-imported skill owes its registry
+      // the configured royalty BEFORE the publisher/author split — a sale
+      // can never silently keep 100%.
+      const registryShare = this.registryRoyaltyShare(chunk?.text ?? "", totalUsdc);
+
+      // Evidence-derived lineage (the gate's identified source author)
+      // overrides the seller-supplied chain head: the seller cannot route
+      // the author share to a second identity of their own.
+      let evidenceAuthor: string | null = null;
+      try {
+        const listing = this.db
+          .prepare(
+            `SELECT lineage_author_pubkey FROM marketplace_listings WHERE skill_crystal_id = ?`,
+          )
+          .get(skillCrystalId) as { lineage_author_pubkey: string | null } | undefined;
+        evidenceAuthor = listing?.lineage_author_pubkey ?? null;
+      } catch {
+        /* column may not exist on older stores */
+      }
+      if (evidenceAuthor && chunk) {
+        chunk.provenance_chain = JSON.stringify([
+          evidenceAuthor,
+          ...((): string[] => {
+            try {
+              const c = JSON.parse(chunk?.provenance_chain ?? "[]") as unknown;
+              return Array.isArray(c)
+                ? c.filter((x): x is string => typeof x === "string" && x !== evidenceAuthor)
+                : [];
+            } catch {
+              return [];
+            }
+          })(),
+        ]);
+      }
+      const remaining = totalUsdc - (registryShare?.amountUsdc ?? 0);
+      const withRoyalty = (
+        base: Array<{
+          role: "publisher" | "original_author" | "contributor" | "registry_royalty";
+          peerId: string;
+          amountUsdc: number;
+        }>,
+      ) => (registryShare ? [...base, registryShare] : base);
+
       if (!chunk?.provenance_chain) {
-        return [{ role: "publisher", peerId: "local", amountUsdc: totalUsdc }];
+        return withRoyalty([{ role: "publisher", peerId: "local", amountUsdc: remaining }]);
       }
 
       const chain: string[] = JSON.parse(chunk.provenance_chain);
       if (chain.length === 0) {
-        return [{ role: "publisher", peerId: "local", amountUsdc: totalUsdc }];
+        return withRoyalty([{ role: "publisher", peerId: "local", amountUsdc: remaining }]);
       }
 
       const shares: Array<{
-        role: "publisher" | "original_author" | "contributor";
+        role: "publisher" | "original_author" | "contributor" | "registry_royalty";
         peerId: string;
         amountUsdc: number;
       }> = [];
+      const totalUsdcAfterRoyalty = remaining;
 
       // 70% to current publisher (local node)
-      shares.push({ role: "publisher", peerId: "local", amountUsdc: totalUsdc * 0.7 });
+      shares.push({ role: "publisher", peerId: "local", amountUsdc: totalUsdcAfterRoyalty * 0.7 });
 
       // 20% to original author (first in chain)
       const originalAuthor = chain[0] ?? "unknown";
-      shares.push({ role: "original_author", peerId: originalAuthor, amountUsdc: totalUsdc * 0.2 });
+      shares.push({
+        role: "original_author",
+        peerId: originalAuthor,
+        amountUsdc: totalUsdcAfterRoyalty * 0.2,
+      });
 
       // 10% split among mutation contributors (rest of chain)
       const contributors = chain.slice(1);
       if (contributors.length > 0) {
-        const perContributor = (totalUsdc * 0.1) / contributors.length;
+        const perContributor = (totalUsdcAfterRoyalty * 0.1) / contributors.length;
         for (const c of contributors) {
           shares.push({ role: "contributor", peerId: c, amountUsdc: perContributor });
         }
       } else {
         // No contributors — publisher gets the 10% too
-        shares[0]!.amountUsdc += totalUsdc * 0.1;
+        shares[0]!.amountUsdc += totalUsdcAfterRoyalty * 0.1;
       }
 
-      return shares;
+      return withRoyalty(shares);
     } catch {
       return [{ role: "publisher", peerId: "local", amountUsdc: totalUsdc }];
     }
+  }
+
+  /** Registry royalty owed on a sale of `skillText`'s skill, if it is a registry import. */
+  private registryRoyaltyShare(
+    skillText: string,
+    totalUsdc: number,
+  ): { role: "registry_royalty"; peerId: string; amountUsdc: number } | null {
+    const policy = this.deps.registryRoyalty;
+    if (!policy || !(policy.royaltyBps > 0)) {
+      return null;
+    }
+    let provenance: { registry: string } | undefined;
+    try {
+      const map = policy.lookup();
+      // Exact content hash first (the import records it); frontmatter name second.
+      provenance = map.get(`sha256:${contentSha256(skillText)}`);
+      if (!provenance) {
+        const name = skillNameFromText(skillText);
+        provenance = name ? map.get(normalizeSkillName(name)) : undefined;
+      }
+    } catch {
+      return null;
+    }
+    if (!provenance) {
+      return null;
+    }
+    const bps = Math.min(10_000, Math.floor(policy.royaltyBps));
+    return {
+      role: "registry_royalty",
+      peerId: provenance.registry,
+      amountUsdc: (totalUsdc * bps) / 10_000,
+    };
   }
 
   /**
@@ -486,14 +895,61 @@ export class MarketplaceEconomics {
   }
 
   /**
+   * PLAN-43 Phase 1: fetch a sellable skill's content for exact-ID metered
+   * invocation. Returns null unless the crystal is BOTH explicitly for
+   * sale AND currently listable — a caller-supplied id must never become a
+   * read-any-crystal-by-id primitive.
+   */
+  /** True while the operator kill switch holds every paid listing off the wire. */
+  isFrozen(): boolean {
+    try {
+      return this.deps.freezeListings?.() === true;
+    } catch {
+      return false;
+    }
+  }
+
+  getSellableSkill(skillCrystalId: string): { skillId: string; name: string; text: string } | null {
+    if (this.isFrozen()) {
+      return null;
+    }
+    try {
+      const row = this.db
+        .prepare(`
+        SELECT c.id, ml.name, c.text
+        FROM chunks c
+        JOIN marketplace_listings ml ON ml.skill_crystal_id = c.id
+        WHERE c.id = ? AND COALESCE(c.for_sale, 0) = 1 AND ml.listable = 1
+      `)
+        .get(skillCrystalId) as { id: string; name: string; text: string } | undefined;
+      return row ? { skillId: row.id, name: row.name, text: row.text } : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get all listable skills for Agent Card generation.
+   *
+   * Rank order (PLAN-43 invariant I6/I10): validated skills first,
+   * canonical-corpus verdicts ahead of grown-corpus ones, then by measured
+   * improvement — never by price, downloads, or any farmable count.
    */
   getListableSkills(): MarketplaceListing[] {
+    if (this.isFrozen()) {
+      return [];
+    }
     const rows = this.db
       .prepare(`
       SELECT skill_crystal_id, name, description, price_usdc, listable,
-             total_executions, success_rate, avg_reward_score, download_count, listed_at
-      FROM marketplace_listings WHERE listable = 1 ORDER BY price_usdc DESC
+             total_executions, success_rate, avg_reward_score, download_count, listed_at,
+             validation_verdict, validation_score, validation_corpus_version, validation_canonical,
+             content_sha256
+      FROM marketplace_listings WHERE listable = 1
+      ORDER BY (validation_verdict IS NOT NULL) DESC,
+               COALESCE(validation_canonical, 0) DESC,
+               COALESCE(validation_score, -1e9) DESC,
+               success_rate DESC
     `)
       .all() as Array<Record<string, unknown>>;
 
@@ -510,6 +966,19 @@ export class MarketplaceEconomics {
       },
       downloadCount: Number(r.download_count),
       listedAt: r.listed_at ? Number(r.listed_at) : null,
+      ...(r.content_sha256 ? { contentSha256: String(r.content_sha256 as string) } : {}),
+      ...(r.validation_verdict
+        ? {
+            validation: {
+              verdict: String(r.validation_verdict as string),
+              ...(r.validation_score !== null ? { score: Number(r.validation_score) } : {}),
+              ...(r.validation_corpus_version
+                ? { corpusVersion: String(r.validation_corpus_version as string) }
+                : {}),
+              canonical: Number(r.validation_canonical) === 1,
+            },
+          }
+        : {}),
     }));
   }
 
@@ -576,10 +1045,11 @@ export class MarketplaceEconomics {
       const row = this.db
         .prepare(`
         SELECT COUNT(*) as total,
-               COALESCE(AVG(CASE WHEN success = 1 THEN 1.0 ELSE 0.0 END), 0) as success_rate,
+               COALESCE(AVG(CASE WHEN run_outcome_label = 'pass' THEN 1.0 ELSE 0.0 END), 0) as success_rate,
                COALESCE(AVG(reward_score), 0) as avg_reward
         FROM skill_executions
         WHERE completed_at IS NOT NULL
+          AND ${RUN_EVIDENCE_WHERE}
           AND (
             skill_crystal_id = ?
             OR skill_crystal_id IN (
@@ -762,6 +1232,17 @@ export class MarketplaceEconomics {
    * so match on either column.
    */
   resolvePeerWalletAddress(peerPubkey: string): string | null {
+    // PLAN-43 Phase 3 (I4): a registry recipient resolves to the operator-
+    // configured royalty wallet; without one the share stays queued
+    // (accrued, unpaid) — never silently kept, never silently dropped.
+    const registryWallet = this.deps.registryRoyalty?.royaltyWallet;
+    if (
+      registryWallet &&
+      this.deps.registryRoyalty &&
+      peerPubkey === this.deps.registryRoyalty.registryId
+    ) {
+      return registryWallet;
+    }
     try {
       const row = this.db
         .prepare(`SELECT wallet_address FROM peer_reputation WHERE peer_pubkey = ? OR peer_id = ?`)

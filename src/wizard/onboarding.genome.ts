@@ -18,14 +18,56 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { DEFAULT_GENOME_FILENAME } from "../agents/workspace.js";
+import { parseGenomeTemperament, type TemperamentLevel } from "../memory/genome-parser.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
-import { DEFAULT_GENOME_FILENAME } from "../agents/workspace.js";
+
+/**
+ * The vibe pick of the advanced flow (QuickStart asks it as a setup step):
+ * the Genome's Temperament level. A Genome without the section is left as
+ * it is; the owner is pointed at the offer.
+ */
+async function pickVibe(params: {
+  workspaceDir: string;
+  genomePath: string;
+  prompter: WizardPrompter;
+  vibe?: TemperamentLevel;
+}): Promise<void> {
+  const { prompter } = params;
+  const content = await fs.readFile(params.genomePath, "utf-8").catch(() => "");
+  const current = parseGenomeTemperament(content);
+  if (!current) {
+    await prompter.note(
+      [
+        "Your GENOME.md predates the Temperament section (a base personality).",
+        "See it and add it with `bitterbot genome temperament`, or from the card in the Control UI.",
+      ].join("\n"),
+      "Vibe",
+    );
+    return;
+  }
+  const { VIBE_OPTIONS } = await import("./setup-steps.js");
+  const level =
+    params.vibe ??
+    (await prompter.select<TemperamentLevel>({
+      message:
+        "Pick a vibe: your agent's starting voice. It evolves as the agent gets to know you; change it any time with `bitterbot genome temperament --level`.",
+      options: VIBE_OPTIONS,
+      initialValue: current.level,
+    }));
+  if (level !== current.level) {
+    const { setTemperamentLevel } = await import("../agents/genome-temperament.js");
+    await setTemperamentLevel(params.workspaceDir, level);
+  }
+}
 
 export async function setupGenomeForOnboarding(params: {
   workspaceDir: string;
   flow: WizardFlow;
   prompter: WizardPrompter;
+  /** --vibe: the level to write without asking. */
+  vibe?: TemperamentLevel;
 }): Promise<void> {
   const { workspaceDir, flow, prompter } = params;
 
@@ -53,6 +95,8 @@ export async function setupGenomeForOnboarding(params: {
     return;
   }
 
+  await pickVibe({ workspaceDir, genomePath, prompter, vibe: params.vibe });
+
   await prompter.note(
     [
       "GENOME.md is your agent's DNA — the immutable core that dreams,",
@@ -62,6 +106,7 @@ export async function setupGenomeForOnboarding(params: {
       "  - Hormonal homeostasis (resting dopamine / cortisol / oxytocin)",
       "  - Phenotype constraints (how the personality can evolve)",
       "  - Core values (what the agent treats as sacred)",
+      "  - Temperament (its starting voice: calm, playful or irreverent)",
       "",
       "Defaults are sane: motivated, calm, warm. But they're tuned for a",
       "general-purpose assistant, not your specific use case. An agent",

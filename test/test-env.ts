@@ -5,6 +5,19 @@ import path from "node:path";
 
 type RestoreEntry = { key: string; value: string | undefined };
 
+/** Env vars that decide WHERE config and state live. See `cleanup` below. */
+const STATE_LOCATION_KEYS = new Set([
+  "HOME",
+  "USERPROFILE",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_STATE_HOME",
+  "XDG_CACHE_HOME",
+  "BITTERBOT_STATE_DIR",
+  "BITTERBOT_CONFIG_PATH",
+  "BITTERBOT_TEST_HOME",
+]);
+
 function restoreEnv(entries: RestoreEntry[]): void {
   for (const { key, value } of entries) {
     if (value === undefined) {
@@ -131,7 +144,14 @@ export function installTestEnv(): { cleanup: () => void; tempHome: string } {
   process.env.XDG_CACHE_HOME = path.join(tempHome, ".cache");
 
   const cleanup = () => {
-    restoreEnv(restore);
+    // The variables that LOCATE state are deliberately not restored. Under
+    // `pool: "vmForks"` the worker process and its `process.env` outlive this
+    // file, so putting the developer's real HOME back hands it to whatever the
+    // suite left running (a memory manager's sync interval, a start-up dream
+    // cycle, a fire-and-forget recall). On 2026-09-30 that reindexed the live
+    // memory database from an e2e run. The next file's setup installs its own
+    // temp home; until then leaked work resolves paths under this one.
+    restoreEnv(restore.filter((entry) => !STATE_LOCATION_KEYS.has(entry.key)));
     try {
       fs.rmSync(tempHome, { recursive: true, force: true });
     } catch {

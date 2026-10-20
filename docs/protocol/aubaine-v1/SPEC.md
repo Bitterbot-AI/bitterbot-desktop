@@ -47,9 +47,7 @@ All messages share this wrapper:
   "id": "b1c1...", // UUIDv4, unique per message
   "author_pubkey": "ed25519:9f8a...", // signer identity (see §3.2)
   "ts": 1718900000, // unix SECONDS, integer
-  "body": {
-    /* type-specific, §4 */
-  },
+  "body": {/* type-specific, §4 */},
   "signature": "ed25519-hex-128chars", // §3.1
 }
 ```
@@ -143,12 +141,8 @@ Buyer→coordinator (after re-verification passes, §7.2):
 ```jsonc
 {
   "syndicate_id": "...",
-  "deposit_auth": {
-    /* EIP-3009 transferWithAuthorization, §7.3 */
-  },
-  "balance_auth": {
-    /* EIP-3009 transferWithAuthorization, §7.3 */
-  },
+  "deposit_auth": {/* EIP-3009 transferWithAuthorization, §7.3 */},
+  "balance_auth": {/* EIP-3009 transferWithAuthorization, §7.3 */},
   "reverified": true, // MUST be true; coordinator rejects otherwise
 }
 ```

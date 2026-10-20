@@ -35,6 +35,7 @@ Non-interactive setup:
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --auth-choice nearai-api-key \
   --nearai-api-key "$NEARAI_API_KEY"
 ```

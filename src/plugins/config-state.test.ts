@@ -46,6 +46,6 @@ describe("resolveEnableState (bundled channel preload)", () => {
 
   it("keeps other bundled plugins disabled by default", () => {
     const normalized = normalizePluginsConfig({});
-    expect(resolveEnableState("google-gemini-cli-auth", "bundled", normalized).enabled).toBe(false);
+    expect(resolveEnableState("qwen-portal-auth", "bundled", normalized).enabled).toBe(false);
   });
 });

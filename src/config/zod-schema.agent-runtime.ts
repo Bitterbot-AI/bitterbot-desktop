@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { parseDurationMs } from "../cli/parse-duration.js";
 import { AgentModelSchema } from "./zod-schema.agent-model.js";
+import { CompactionOffloadSchema, CompactionPolicySchema } from "./zod-schema.compaction.js";
 import {
   GroupChatSchema,
   HumanDelaySchema,
@@ -29,6 +30,9 @@ export const HeartbeatSchema = z
     accountId: z.string().optional(),
     prompt: z.string().optional(),
     ackMaxChars: z.number().int().nonnegative().optional(),
+    skipWhenUnchanged: z.boolean().optional(),
+    isolatedSession: z.boolean().optional(),
+    lightContext: z.boolean().optional(),
   })
   .strict()
   .superRefine((val, ctx) => {
@@ -227,7 +231,14 @@ export const ToolsWebSearchSchema = z
   .object({
     enabled: z.boolean().optional(),
     provider: z
-      .union([z.literal("brave"), z.literal("perplexity"), z.literal("grok"), z.literal("tavily")])
+      .union([
+        z.literal("brave"),
+        z.literal("perplexity"),
+        z.literal("grok"),
+        z.literal("tavily"),
+        z.literal("parallel"),
+        z.literal("serply"),
+      ])
       .optional(),
     apiKey: z.string().optional().register(sensitive),
     maxResults: z.number().int().positive().optional(),
@@ -256,6 +267,12 @@ export const ToolsWebSearchSchema = z
       })
       .strict()
       .optional(),
+    serply: z
+      .object({
+        apiKey: z.string().optional().register(sensitive),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .optional();
@@ -269,6 +286,21 @@ export const ToolsWebFetchSchema = z
     cacheTtlMinutes: z.number().nonnegative().optional(),
     maxRedirects: z.number().int().nonnegative().optional(),
     userAgent: z.string().optional(),
+    // Read by src/agents/tools/web-fetch.ts (readability :98, firecrawl :151)
+    // and documented in schema.help.ts, but the strict schema rejected them
+    // until PLAN-56 Phase 1.
+    readability: z.boolean().optional(),
+    firecrawl: z
+      .object({
+        enabled: z.boolean().optional(),
+        apiKey: z.string().optional().register(sensitive),
+        baseUrl: z.string().optional(),
+        onlyMainContent: z.boolean().optional(),
+        maxAgeMs: z.number().int().nonnegative().optional(),
+        timeoutSeconds: z.number().int().positive().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .optional();
@@ -329,13 +361,15 @@ const ToolExecBaseShape = {
   cleanupMs: z.number().int().positive().optional(),
   notifyOnExit: z.boolean().optional(),
   notifyOnExitEmptySuccess: z.boolean().optional(),
+  // Read at the global level too (src/agents/agent-tools.ts:141); the root
+  // schema used to reject it while the Settings form labelled it (PLAN-56).
+  approvalRunningNoticeMs: z.number().int().nonnegative().optional(),
   applyPatch: ToolExecApplyPatchSchema,
 } as const;
 
 const AgentToolExecSchema = z
   .object({
     ...ToolExecBaseShape,
-    approvalRunningNoticeMs: z.number().int().nonnegative().optional(),
   })
   .strict()
   .optional();
@@ -364,6 +398,18 @@ export const AgentSandboxSchema = z
   .strict()
   .optional();
 
+const ToolHotSetLaneSchema = z.enum(["chat", "heartbeat", "cron", "subagent"]);
+
+export const ToolHotSetSchema = z
+  .object({
+    enabled: z.boolean().optional().describe("Default: true"),
+    max: z.number().int().min(1).max(60).optional().describe("Default: 10"),
+    always: z.array(z.string()).optional().describe('Default: ["read", "memory_search"]'),
+    perLane: z.partialRecord(ToolHotSetLaneSchema, z.array(z.string())).optional(),
+  })
+  .strict()
+  .optional();
+
 export const AgentToolsSchema = z
   .object({
     profile: ToolProfileSchema,
@@ -380,6 +426,7 @@ export const AgentToolsSchema = z
       .optional(),
     exec: AgentToolExecSchema,
     fs: ToolFsSchema,
+    hotSet: ToolHotSetSchema,
     sandbox: z
       .object({
         tools: ToolPolicySchema,
@@ -404,6 +451,7 @@ export const MemorySearchSchema = z
     enabled: z.boolean().optional(),
     sources: z.array(z.union([z.literal("memory"), z.literal("sessions")])).optional(),
     extraPaths: z.array(z.string()).optional(),
+    excludePaths: z.array(z.string()).optional(),
     experimental: z
       .object({
         sessionMemory: z.boolean().optional(),
@@ -566,6 +614,19 @@ export const AgentEntrySchema = z
       .optional(),
     sandbox: AgentSandboxSchema,
     tools: AgentToolsSchema,
+    runtime: z
+      .object({
+        engine: z.union([z.literal("pi"), z.literal("bitterbot")]).optional(),
+      })
+      .strict()
+      .optional(),
+    compaction: z
+      .object({
+        policy: CompactionPolicySchema.optional(),
+        offload: CompactionOffloadSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -628,6 +689,8 @@ export const ToolsSchema = z
       .optional(),
     exec: ToolExecSchema,
     fs: ToolFsSchema,
+    hotSet: ToolHotSetSchema,
+    resultMaxChars: z.number().int().min(1000).optional().describe("Default: 8000"),
     subagents: z
       .object({
         tools: ToolPolicySchema,
@@ -646,6 +709,13 @@ export const ToolsSchema = z
         network: z.union([z.literal("base"), z.literal("base-sepolia")]).optional(),
         cdpApiKeyId: z.string().optional().register(sensitive),
         cdpApiKeySecret: z.string().optional().register(sensitive),
+        provisioning: z.union([z.literal("selfHostServer"), z.literal("embedded")]).optional(),
+        embedded: z
+          .object({
+            projectId: z.string().optional(),
+          })
+          .strict()
+          .optional(),
         sessionSpendCapUsd: z.number().positive().optional(),
         perTransactionCapUsd: z.number().positive().optional(),
         walletStorePath: z.string().optional(),
@@ -668,6 +738,15 @@ export const ToolsSchema = z
           .strict()
           .optional(),
         allowlistedContracts: z.array(z.string()).optional(),
+        smartAccount: z
+          .object({
+            enabled: z.boolean().optional(),
+            allowanceUsd: z.number().nonnegative().optional(),
+            periodSeconds: z.number().int().positive().optional(),
+            sponsorGas: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

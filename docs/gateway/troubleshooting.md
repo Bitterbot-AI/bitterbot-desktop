@@ -83,6 +83,10 @@ Common signatures:
 - `device token mismatch` → stale device pairing token. Fix: delete
   `~/.bitterbot/identity/device-auth.json` and `~/.bitterbot/devices/paired.json`,
   then restart the gateway to trigger re-pairing.
+- `gateway token mismatch` → the browser kept an older token. A Control UI
+  opened from the local gateway (`127.0.0.1`) fetches the current token and
+  reconnects by itself; through a remote URL or tunnel, paste the token from
+  `bitterbot config get gateway.auth.token`.
 - `unauthorized` / reconnect loop → token/password mismatch.
 - `gateway connect failed:` → wrong host/port/url target.
 
@@ -110,7 +114,9 @@ long synchronous burst. Two sources have caused this:
    (2026-06-24). Fixed by batching all seed writes into ONE explicit transaction
    and yielding between dream modes (`src/memory/dream-engine.ts`). If recall
    stalls return, check DB/WAL bloat first (`~/.bitterbot/memory/main.sqlite*`) —
-   a `pnpm build` restart or a WAL checkpoint shrinks an oversized WAL.
+   a gateway restart (`bitterbot gateway restart`, `docker compose restart` in a
+   container, or `pnpm build` and a restart in a checkout) or a WAL checkpoint
+   shrinks an oversized WAL.
 3. **Interactive RPC handlers.** Some Control-UI-polled RPCs did heavy work on
    the loop with no yielding or caching, and would block it for tens of seconds:
    - `workspace.tree` did a per-file `fs.stat` for sizes. On slow filesystems
@@ -153,7 +159,7 @@ A healthy build should not exhibit this. If it reappears:
   tens of seconds when it normally takes <200ms) — that is either a regressed
   handler or queueing delay behind a blocked loop.
 - Confirm the gateway process is not pinned in `D` (uninterruptible I/O) state
-  from SQLite WAL pressure; a `pnpm build` restart checkpoints oversized WAL
+  from SQLite WAL pressure; a gateway restart checkpoints oversized WAL
   files (`~/.bitterbot/*.sqlite-wal`).
 - A new heavy synchronous loop (memory engine **or** RPC handler) is the usual
   regression; it must `await yieldToEventLoop()` (or `makeYieldEvery`)

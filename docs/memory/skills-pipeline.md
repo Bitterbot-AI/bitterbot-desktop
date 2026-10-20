@@ -1,59 +1,419 @@
 # Skills Pipeline — Skill Lifecycle, Verification & P2P Network
 
-The skills pipeline handles the full lifecycle of autonomous skill generation: from identifying skill candidates in memory, through dream-based mutation and verification, to P2P propagation across a swarm network with graduated peer trust. Skills are knowledge crystals with `lifecycle='frozen'` and `semantic_type='skill'` that represent reusable, executable knowledge.
+The skills pipeline handles the full lifecycle of autonomous skill generation: from identifying skill candidates in memory, through verification, to P2P propagation across a swarm network with graduated peer trust. Skills are knowledge crystals with `lifecycle='frozen'` and `semantic_type='skill'` that represent reusable, executable knowledge.
 
-**Key source files:** `skill-refiner.ts`, `skill-verifier.ts`, `skill-execution-tracker.ts`, `skill-crystallizer.ts`, `skill-network-bridge.ts`, `peer-reputation.ts`, `discovery-agent.ts`, `dream-mutation-strategies.ts`, `skill-marketplace.ts`, `skill-hierarchy.ts`, `skill-pricing.ts`, `marketplace-economics.ts`
+**Key source files:** `skill-evolution/` (the live learning loop), `skill-execution-tracker.ts`, `skill-network-bridge.ts`, `skill-verifier.ts` (P2P ingest only; `skill-refiner.ts` was retired in PLAN-45 Phase 1), `peer-reputation.ts`, `discovery-agent.ts`, `dream-mutation-strategies.ts`, `skill-marketplace.ts`, `skill-hierarchy.ts`, `skill-pricing.ts`, `marketplace-economics.ts`
+
+> **Retired in PLAN-45 Phase 1 (2026-09-05):** the legacy "Pipeline A" skill producers — `SkillRefiner`, the `mutation` and `research` dream modes, `dream-mutation-strategies.ts`, the PLAN-21 validation sandbox / Pareto ranker / slow update, and `prompt-optimization.ts` — were deleted. Skills are produced by the PLAN-42/44 skill-evolution pipeline described above (the `SkillCrystallizer` went in Phase 0); the PLAN-40 `distillation` lane writes workflow notes, not skills. Sections below that describe the retired flow are kept as one-line notes.
 
 **PLAN-20 (May 2026) — executable skill interceptors:** skills can now carry `PreActionInterceptor` implementations that deterministically modify, inject context into, require prerequisites for, or block any tool call before it executes. The Dream Engine's `interceptor_harvest` mode mines the `intervention_records` corpus and auto-proposes new interceptor candidates. See [Pre-Action Interceptors](../agents/interceptors.md).
 
 ---
 
-## Full Knowledge Crystal Pipeline
+## How skills are learned today (PLAN-42/44/45)
 
-The pipeline transforms raw task experience into verified, tradeable skill crystals through six stages:
-
-```
-Task Execution → Execution Tracking → Dream Mutation → Crystallization → Verification → Marketplace
-```
-
-1. **Task Execution** — The agent performs tasks. Each execution is instrumented by `SkillExecutionTracker`, which records success/failure, reward scores, timing, and error types.
-2. **Execution Tracking** — As executions accumulate, `SkillCrystallizer` monitors for patterns that meet the promotion threshold (>= 3 successes, >= 70% success rate).
-3. **Dream Mutation** — The Dream Engine generates variations of promising patterns using strategy-specific prompts (error-driven, adversarial, compositional, parametric, or generic).
-4. **Crystallization** — `SkillRefiner` scores mutations via `heuristicScore()` + empirical data, then promotes those scoring >= 0.7 to frozen skill crystals with versioning and provenance DAGs.
-5. **Verification** — `SkillVerifier` runs a 3-check safety gate (dangerous pattern blocklist, structural invariants, semantic drift) before any mutation is crystallized.
-6. **Marketplace** — `MarketplaceEconomics` dynamically prices verified skills and lists them for P2P trade, with earnings feeding into The Niche economic summary.
-
-### How Skills Are Learned
+The live learning path is the skill-evolution pass in `src/memory/skill-evolution/`,
+run as a dream-engine post-cycle hook:
 
 ```
-Episode (task execution)
-  → SkillExecutionTracker records outcome (success/fail, reward, timing)
-    → SkillCrystallizer detects pattern (≥3 successes, ≥70% rate)
-      → Dream Engine generates mutation variations
-        → SkillRefiner scores & promotes (heuristicScore + empirical >= 0.7)
-          → SkillVerifier safety gate (3 checks must pass)
-            → Frozen skill crystal (lifecycle='frozen', semantic_type='skill')
-              → SkillNetworkBridge publishes to P2P swarm
-                → MarketplaceEconomics prices & lists for trade
+Journaled runs (user prompt, tool outcomes, lifecycle)
+  → labeler (grounded rules first, env-fail class, LLM judge only under 0.7 confidence)
+    → wiki maintainer (patterns from repeated failures and successes)
+      → skill proposer (primary model, sees the live skill index, may decline)
+        → SICA staging gate (strict injection scan, description contract, overlap)
+          → validation gate (held-out task corpus, K paired incumbent-vs-candidate
+             rollouts, deterministic checkers hidden from the rollout, exact
+             one-sided sign test; never-triggered HOLD, over-triggered REJECT)
+            → live SKILL.md (+ PURPOSE.md, .evolution-meta.json)
+              → maturity window → signed P2P publish with a provenance trailer
+                → receiver quarantine for review
 ```
+
+Nothing is promoted on model opinion: the LLM judge over held-out traces is
+a diagnostic only, and tasks mode is reachable on a fresh node through the
+canonical capability families (PLAN-45 Phase 2). See "Skill evolution"
+below for each module.
+
+### What an execution row means (PLAN-45 Phase 1)
+
+`skill_executions` still receives one row per tool call that matched a skill
+crystal by name (`recorded_by = 'after_tool_call'`). Since PLAN-45 Phase 1
+that row carries the journal run it happened in (`run_id`, `tool_call_id`)
+and an `evidence` class:
+
+| `evidence` | Meaning                                                               | Counts as competence |
+| ---------- | --------------------------------------------------------------------- | -------------------- |
+| `tool`     | A tool ran and did not report an error. Written by the hook.          | never                |
+| `run`      | The run's calibrated label was `pass` or `fail` (L1-L2 evidence).     | yes                  |
+| `task`     | A PLAN-16 task verdict backed the label (L3).                         | yes                  |
+| `human`    | Operator feedback backed the label (L4, `bitterbot skills feedback`). | yes                  |
+
+The housekeeping step `skill-evolution/execution-outcomes.ts` stamps
+`run_outcome_label` / `run_outcome_level` on every row of a run once the run
+is terminal, lifts `evidence`, and moves the crystal's `steering_reward` once
+per run on the verdict. `env-fail` and `unknown` stay tool-level. Every
+consumer that feeds a decision (tracker metrics, pricing, the bridge gate,
+distillation, contributor status, the working-memory skill list, the digest,
+signal collection, marketplace intelligence, doctor) filters with
+`RUN_EVIDENCE_WHERE` from `skill-execution-tracker.ts`: a tool call that did
+not throw no longer counts anywhere.
+
+Each live skill directory also carries a derived `.evidence.json`
+(`skill-evolution/evidence-record.ts`): credited reads by verdict over a
+14-day window, lifetime counters, the gate verdict and statistics, the
+models it was validated on and read by, description repairs, publish time,
+and the lineage's gate history. `skills.evolution.status` returns them as
+`evidence`; nothing downstream should compute skill quality any other way.
+
+### The gate after PLAN-45 Phase 2
+
+A fresh node reaches tasks mode with no operator input: the canonical corpus
+ships nine CAPABILITY generator families (`canonical-capability.ts`: ledger
+sums, log triage, config diffs, dependency depth, identifier validity,
+multi-file rename, CSV filters, JSON paths, date windows) next to the
+fifteen regression templates. Each family is `template(seed) ->
+(files, prompt, truth)`; the runner writes the files into the trial
+workspace, the checker is the hardened `FINAL:` compare, and the instance
+changes with the daily seed. Per model, the gate keeps only the families the
+incumbent passes between 20% and 80% of the time (trial-cache `task_stats`),
+so the suite that feeds the test carries information for that model.
+
+The gate itself:
+
+- Regression suite first, in full, with an immediate confirmation round; a
+  confirmed regression rejects before any capability rollout is spent.
+- A capability WIN counts for the candidate only when the agent read the
+  skill in that trial (`credited`); a candidate that passed without opening
+  the skill is a tie, never a loss; ambient model capability is never the
+  skill's. The node's own grown tasks run first and in full; the sequential
+  test may stop only the canonical remainder. Trigger precision is measured
+  on the grown tasks when any exist, else on the canonical families, and
+  the description repair never runs against the public families alone.
+- A Wald SPRT (p1 0.8, beta 0.2) over the running discordant wins and losses
+  stops the capability loop early on decisive evidence; at truncation the
+  exact one-sided sign test decides at the spent alpha.
+- Alpha spending: a lineage (skill name, counted from the provenance trail)
+  gets three DECISIVE attempts at 0.05, 0.025 and 0.0125, never tighter than
+  the suite can reach; holds for insufficient evidence, cost, an unopened
+  skill or the budget spend nothing. A description repair re-keys the
+  content but never buys a fourth attempt. Past the cap the lineage is
+  closed (`lineage-exhausted`).
+- Cost is a gate dimension: an accepted candidate whose capability-suite
+  tokens exceed the incumbent's by more than `skills.evolution.maxTokenDelta`
+  (default 0.5) holds as `cost-exceeded` until its body changes. Memo hits
+  replay their original cost so the cached arm is not free.
+- Train/test split: a mined task carries the run and iteration it came from;
+  a proposal whose evidence read that run, or that was proposed in that
+  iteration, is never gated on it (`excludedTasks` on the verdict).
+- Rejected-edit memory: every measured verdict (held or rejected) lands on
+  the provenance trail with its statistics and the head of the content; the
+  proposer's prompt opens with `## Previously tried` for the lineages in
+  play, and an identical re-proposal is refused with the date it lost.
+- `validationMode: "records"` is deprecated: the paired LLM judge over
+  held-out traces runs only as a diagnostic (`recordsJudge` on the meta) and
+  can neither promote nor reject; tasks mode without an executor holds.
+- Validation shells are on by default (`validationTools.exec`), with
+  approvals off, a scrubbed environment whose HOME and TMPDIR are the scratch
+  workspace, and an approval-free allowlist of text utilities with no
+  interpreters and no network clients (the allowlist rule also refuses
+  arguments naming existing files, so task files are read with the read
+  tool); the node's own candidate is validated under the production prompt
+  shape (peer skills keep the hermetic minimal prompt). Host egress is not
+  isolated: a candidate can still reach absolute paths and the network
+  through anything the operator's own exec rules allow; PLAN-45 Phase 4
+  records and refuses undeclared egress. A production runner without the
+  event journal holds (`runner-unobservable`) because skill reads cannot be
+  observed.
+
+### After promotion: canary, monitor, rollback (PLAN-45 Phase 3)
+
+The gate proves a candidate on held-out tasks; production is the real test.
+A promoted skill is not in full service. It lands in **canary**
+(`.evolution-meta.json.ladder`), and the ladder from there is
+`staged -> canary -> stable`, or `rolled-back` / `retired`:
+
+- **Exposure (3.2).** `skill-wiki/canary.json` lists the canaries. On every
+  run the prompt builder (`applyCanaryExposure` in
+  `src/agents/skills/canary-registry.ts`) hashes (skill, unit) into an
+  exposed or a withheld bucket (default half and half), strips the withheld
+  `<skill>` blocks from the cached skills index, and journals the exposure
+  once per run (stream `skills`). The randomization unit is a **session for
+  one calendar day**: a transcript keeps a skill's text after one exposed
+  turn, so per-run buckets would contaminate the control cohort and flip the
+  system-prompt prefix (and the provider prompt cache) on every turn.
+  Validation rollouts and a manual `/compact` bypass the filter. The
+  registry lives outside the skills watch globs so writing it never rebuilds
+  a session's index. Cost per run: one `stat`.
+- **Cohorts (3.2).** `creditSkillReads` labels every run whose index the
+  filter touched, reads or not, into `skill-wiki/canary-runs.jsonl`: one
+  row per (run, canary) with exposed / read / eligible / label / model.
+  Eligibility is the description's positive clause (frozen at canary start)
+  against the task header, computed identically on both sides and never
+  widened by a read.
+- **Monitor (3.3).** Each housekeeping pass, `canary-monitor.ts` compares
+  the two cohorts **intention-to-treat**: exposed eligible runs (read or
+  not) against withheld eligible runs, determinate labels only, one-sided
+  Fisher exact (`canary-stats.ts`). A withheld run that still read the
+  skill (text left in its transcript) is contaminated control and counts as
+  exposed. The test is a **look, not a poll**: it runs only when the
+  exposed cohort first reaches 8, 16, 32 or 64 determinate runs, with at
+  least 8 control runs, each look at alpha 0.05/4; consumed looks are
+  persisted on the meta. Worse at a look rolls back; zero reads over 20
+  eligible exposures (or by 28 days) retires (D-5: the router never opens
+  it); 20 eligible exposures or 14 days **with evidence** (at least one
+  read and 8 determinate exposed runs) and no regression graduates to
+  **stable**; at 28 days any read evidence graduates and the trail says the
+  evidence was thin. Only a stable skill propagates over P2P.
+- **Rollback (3.1/3.3).** One primitive, `demoteEvolved`
+  (`canary-demote.ts`): archive first, then restore the version the
+  promotion replaced (`promotedFrom`, with its exact sidecar set from the
+  archive's `.sidecars.json` manifest, so a human-authored version comes
+  back without an evolution identity; sidecars land before the body) or
+  retire a create (archive plus remove). A patch that never fires rolls
+  back too; only a create is removed. Every transition writes an
+  impact-trail entry with the statistics, bumps the snapshot, and, when the
+  version had been published, broadcasts a signed **retraction** (3.4): a
+  stub SKILL.md carrying a `wiki-evolution-retraction` trailer over the
+  existing publish verb, once per content hash. Receivers apply it ahead of
+  the per-peer rate limit, bind it by author pubkey + wire content hash,
+  drop the quarantined copy, archive and remove the live copy, and refuse a
+  republish of the same bytes by the same key
+  (`skill-wiki/retractions.jsonl`). No orchestrator change. An operator
+  rollback (tool or RPC) closes the canary window as well.
+- **Model drift (3.5).** The gate labels evidence with the agent's PRIMARY
+  model (tasks-mode rollouts run on it; the dream lane was a mislabel; the
+  trial memo and per-model task stats re-accumulate once). A stable skill
+  validated on another primary goes back to canary once per target model.
+- **Cap (3.6).** When a staged create with trusted evidence is held at
+  `maxActiveEvolved`, the monitor frees the slot by evidence score (reads x
+  Laplace pass rate over 14 days) among **stable** skills past a 7-day
+  grace: zero-read skills first, then the lowest score. A canary is never
+  the victim (it is withheld from half its runs by construction), and a
+  demoted version left in place does not hold a slot.
+
+Known limits, recorded rather than hidden: in-context use of a skill the
+agent read on an earlier turn without re-reading it is invisible to the
+ledger (bias toward no effect); a published marker from before 3.4 has no
+wire hash and cannot be retracted; on a receiver, a retraction removes the
+files but not the memory chunk the network bridge indexed (Phase 4 reworks
+that path).
+
+The evidence record carries `ladder`, `canary`, and `modelDrift`; status
+(`skills.evolution.status.evolvedLive`) shows them per skill, and
+`iterations.jsonl` records every monitor decision.
+
+### Trust is not evidence at every boundary (PLAN-45 Phase 4)
+
+- **Activation ignores reputation (4.1, I5).** The skill version resolver's
+  fitness has trust weight 0 (execution 0.7, recency 0.3). Reputation only
+  orders evaluation: the attestation sweep re-scores higher-reputation
+  authors first (`priorityOf`), never more often.
+- **Receiver re-gate (4.2, PLAN-44 D-8).** An operator accept, or a trusted
+  peer's skill under `ingestPolicy: "auto"`, lands in **staging** with
+  `.evolution-meta.json.origin = "peer"` and the signed envelope as
+  `.provenance.json` (`src/agents/skills/peer-staging.ts`). Staging is
+  name-bound: a peer stage never replaces this node's own pending proposal
+  or another author's stage, and a non-peer edit strips the author binding.
+  The validation gate measures the skill on this node's own private
+  capability tasks (HOLD `no-private-suite`, recorded on the meta and the
+  trail, until some are grown; the public families alone are a memorizable
+  baseline), under the validation tool profile. The evolved-skill cap, the
+  untrusted-evidence hold, description repair and the trail-derived lineage
+  do not apply to peers; the peer lineage is (author key, name) in
+  `skill-wiki/peer-attempts.json`, persisted across restages; bytes this
+  node already measured (its own stored attestation) or that the author
+  retracted are discarded without a run; a cost hold is terminal (signed
+  bytes cannot be edited here). A pass promotes into canary, writes the
+  memory chunk at promotion (retried each pass while the bridge is down,
+  `peer.chunkPending`), and stores the measured verdict as this node's
+  attestation of those bytes. `auto` skips review, never the gate.
+- **Attestations act (4.3, D-4).** A live peer skill is put **canary-off**
+  (withheld from every run, files kept, slash command hidden, ladder
+  `canary-off`, reversible with `unregisterCanary`) when this node's own
+  re-score found a regression or at least two trusted attesters did, on
+  fresh, current-generation verdicts (`attestation-actions.ts`). The monitor
+  treats a regressing or never-read PEER canary the same way instead of
+  deleting it, and never re-opens a canary-off entry (the model-drift loop
+  skips it). Unknown attesters never demote.
+- **Version-bound trust (4.4).** A name is bound to its author's key: another
+  key cannot take it (name squat), an envelope stamped older than the held
+  version or more than five minutes ahead of now is rejected, a newer
+  version from the same author is a fresh review and re-gate (the gate's
+  patch path archives the previous version). Live peer bytes are re-hashed
+  every pass; a mismatch is canary-off ("tamper"), recorded once per byte
+  state on the provenance so an operator's reversal is not re-flagged; a
+  routing repair re-binds the provenance to the repaired body and keeps the
+  original hash on its stamp. The provenance trailer is **signed by the
+  device key** over the claims plus the skill name, the body hash (without
+  any trailer) and the node key; the node key signs the envelope over
+  body + trailer, so the two keys cross-sign with no orchestrator change. A
+  receiver drops a forged binding and rejects a trailer lifted onto another
+  body, skill name or node. What the signature proves is authorship of the
+  claim, never its truth. Found while building this: the Phase 0 parser
+  required a string `validatedAt` while the publisher wrote a number, so no
+  real trailer had ever parsed on a receiver; both forms parse now.
+- **Behavior versus spec (4.5, I9).** Every tool call in a validation
+  session passes an egress check before interceptors and plugins
+  (`validation-egress.ts`): hosts from URL-shaped tool params and shell
+  commands are compared with `bitterbot.capabilities.network.outbound` in
+  the arm's frontmatter, recorded per trial, and an undeclared host is
+  refused on the spot. What is observed is the **attempt** as it appears in
+  tool parameters (URLs, network CLI targets); the validation tool profile
+  already denies every network tool and the safe-bin floor carries no
+  client, so an interpreter-obfuscated attempt is not seen. The candidate
+  arm's undeclared egress, minus hosts the incumbent arm of the same task
+  also attempted (the base model's baseline), is the categorical verdict
+  `undeclared-egress` (ahead of every statistic), a decisive REJECT naming
+  the host. A trial whose workspace no runner registered is never blocked.
+  The memo carries the egress record and its profile moved to v3, so no
+  pre-4.5 trial replays as clean. Two confinement holes closed on the way:
+  the validation safe-bin floor was clobbered by a later key (the
+  operator's global `safeBins` reached the validation shell), and the
+  operator's exec "allow always" entries, including the wildcard agent's,
+  applied to validation shells (they now resolve approvals under the
+  `skill-validation` identity).
+- **The shell floor is host-pinned (5.5 adversarial).** The allowlist and
+  safe-bin floor is only evaluated on the gateway and node exec hosts. The
+  default host is `sandbox`, and with no sandbox configured that host ran
+  commands raw: the first embedded ablation trials executed `python3`,
+  `node` and `curl` inside validation shells. A validation shell now always
+  runs on the gateway host, whatever `tools.exec.host` says for the main
+  agent, and a unit test executes real commands through the assembled tool
+  to prove interpreters and network clients are refused while `echo` and
+  `jq` pass. Runner profile v4: trials cached under v3 are not replayed.
+- **Evolver model (4.6, I8).** Every promotion records `evolverModel` (the
+  proposer lane's model) and `validatedOn`; the trailer carries both. A
+  receiver computes the transfer direction on the featured-model tier
+  table. The sender's evolver model is a claim: it buys the default window
+  only when the trailer is device-signed by an attester in
+  `a2a.attestation.trustedAttesters`; every other peer transfer takes the
+  strict canary (a fifth of runs, 16 determinate runs per side, looks at
+  4/8/16/32/64 with alpha 0.05/5, 40 runs or 21 days to graduate).
+
+### Measuring it: the ablation harness (PLAN-45 Phase 5.1 and 5.2)
+
+The mechanism above is only a claim until it has numbers. `pnpm
+benchmark:skills` (`benchmarks/skill-evolution/ablation.ts`) runs the
+node's live skills through the same task suites the gate uses, in-process
+under the validation session flavor (production prompt shape, validation
+tool profile, egress accounting), and writes
+`docs/benchmarks/skills-<date>.md` with a machine-readable header.
+
+- **Arms.** `none` (empty skills index), `harvested` (registry imports,
+  Skill Seekers, accepted peers), `evolved` (skills the loop promoted), and
+  the **in-context control** (5.2): the evidence traces each evolved skill
+  was proposed from, rendered verbatim and blind (no labeler verdict, no
+  "apply this" header), capped the way the proposer saw them (four traces,
+  8k chars each), in the user message ahead of the task, with no skill
+  file and an empty index. That is ContinualSkillBench's control: the same
+  information with no skill abstraction. An LLM-written summary is refused
+  on purpose (it would write instructions and become a skill); a skill
+  whose evidence runs no longer reconstruct is skipped by name, never
+  substituted.
+- **Corpora and models.** `frozen` (the pinned seed-0 exemplar), `fresh`
+  (the generator at the run's seed; frozen minus fresh is the memorization
+  telemetry), `private` (the grown suite); `primary` and `cheap`.
+- **Numbers.** Per cell: pass@1, pass^K (every trial passed), read rate,
+  tokens. Against `none`, and `evolved` against `in-context`: the gate's
+  exact sign test over per-task pass-rate deltas on capability tasks, a
+  bootstrap CI, and the token delta. The verdict sentences are fixed in
+  advance: a tie reproduces the ContinualSkillBench finding and says so; a
+  loss says the abstraction is not carrying its weight.
+- **Transfer end to end (5.3).** `test/skill-evolution/two-node-transfer.test.ts`
+  asserts the whole path on disk: publish with a signed trailer on one node,
+  quarantine with the verified binding on another, accept into staging,
+  re-gate on the receiver's private suite, strict canary, graduation, the
+  receiver's own attestation, and no republish of a peer skill.
+- **Cross-model tag (5.4).** Every trailer says on how many models the
+  skill was measured (`validatedOn`, `singleModel`); the review list and
+  the incoming RPC show the sender's claim, its evolver model, and whether
+  the binding verified. `skills.evolution.requireCrossModel` refuses to
+  publish a single-model skill; off by default, because the gate's executor
+  is the primary agent and a second-model validation lane does not exist
+  yet, so today every published skill is single-model and receivers apply
+  the strict canary to it regardless.
+- **External benchmark (5.5).** The harness's `external` corpus imports the
+  deterministically scored subtasks of ContinualSkillBench (exact-match and
+  numeric, with a tolerance-aware `numeric` checker) and measures the same
+  arms on them with Bitterbot as the executor; rubric-judged and
+  programmatic subtasks are counted and skipped. The benchmark's sequential
+  evolution protocol is not reproduced by the harness.
+- **I10.** The report header carries the generator version, the exemplar
+  pin, the corpus versions and the exact argv; `pnpm benchmark:skills:check`
+  fails when the newest committed report disagrees with the code. The
+  `skills-ablation` workflow runs the harness self-test weekly with a
+  deterministic oracle executor (no keys) and produces a live report on
+  demand as a pull request.
+
+### Calibrating the labeler on real traces (PLAN-45 Phase 1.5)
+
+`bitterbot skills calibrate export --count 100` writes a blind, stratified
+sample of this node's real runs (`blind.jsonl`) and the labeler's hidden
+verdicts (`key.jsonl`) under `skill-wiki/calibration/<stamp>/`. Label the
+blind file without opening the key, then
+`bitterbot skills calibrate score <dir> --labels mine.jsonl [--labels theirs.jsonl]`
+reports per-class precision / recall / F1 for the heuristic (and the judge
+with `--with-judge`), inter-rater agreement (Cohen's kappa) and the scores
+against the raters' consensus. The LLM judge is de-anchored: for ambiguous
+traces with a journaled task it first commits the success criteria from the
+task header alone, then judges the trace against them.
+
+### The retired crystal pipeline
+
+Until 2026-09-05 a second, older pipeline ran alongside: `SkillExecutionTracker`
+rows (one per tool call that did not report an error) fed a `SkillCrystallizer`
+that minted a "skill" chunk for any tool name with three or more non-erroring
+calls, which dream `mutation`/`research` modes were meant to refine through
+`SkillRefiner`, `SkillVerifier` and `ExperimentSandbox`. PLAN-45 Phase 0 retired
+the crystallizer (its dedup never matched, and it kept minting from execution
+rows whose crystal had been deleted: 572 chunks on the reference node), stopped
+the result-length "reward" score, and left the mutation and research modes off.
+The remaining crystal-side pieces (tracker, refiner, sandbox, version resolver,
+pricing) are scheduled for retirement or migration onto run-level outcomes in
+PLAN-45 Phase 1. Tool-level execution rows are telemetry, not competence.
 
 ---
+
+## How the agent finds a skill (the runtime index)
+
+A skill "exists" for the agent only as an entry in the `<available_skills>`
+block of its system prompt: `<name>`, `<description>`, `<location>`. The
+runtime rule is the Agent Skills one: scan the descriptions and, when
+exactly one clearly applies, read that SKILL.md with the read tool and
+follow it. Nothing else advertises a skill: no memory recall, no
+notification beyond a one-line "[Skills change since last turn]" diff on
+the next turn. Consequences the rest of this document depends on:
+
+- **The description is the routing key.** A skill whose description names
+  no situation is never opened; two skills whose descriptions route the
+  same situation cancel each other (the rule says pick the most specific,
+  otherwise open nothing). This is why synthesized skills are held to the
+  description contract and the overlap check (PLAN-44 Phase 4a/4b), why a
+  never-triggered proposal gets its description repaired, and why the
+  same contract is assessed at P2P ingest (Phase 5b).
+- **Loader roots.** Entries come from three directories: the workspace
+  `skills/`, the managed `~/.bitterbot/skills` (where promotion, accept
+  and harvest write), and the bundled skills. Eligibility filters apply
+  (config enable/disable, tier, remote-session rules, and the load-time
+  capability gate for mesh-ingested skills).
+- **Hot reload.** Every write to the live set (promote, operator accept,
+  harvest, the file watcher) bumps a snapshot version; at the start of the
+  next turn the reply path rebuilds the snapshot and the index. No restart
+  and no new session are needed.
+- **Use is measured from the journal** (Phase 5a): a housekeeping pass
+  credits each live SKILL.md the agent actually opened in a real run, with
+  the run's outcome, into `skill-wiki/skill-reads.jsonl` and the lifecycle
+  store; `skills.evolution.status` reports per-skill 14-day read counts.
 
 ## Skill Lifecycle
 
 ```mermaid
 flowchart TB
     A[Knowledge Crystal] -->|high importance + skill type| B[Skill Candidate]
-    B -->|dream mutation mode| C[Dream Engine generates variations]
-    C --> D[SkillRefiner.evaluateMutations]
-    D --> E{Score >= 0.7?}
-    E -->|Yes| F[SkillVerifier.verify]
-    E -->|No, mid-confidence| G[Queue in mutation_queue for retry]
-    E -->|No, low| H[Archive mutation]
-    G -->|retry up to 3x| C
+    B -->|SkillCrystallizer / wiki-skill pipeline| F[SkillVerifier.verify]
     F --> I{All 3 checks pass?}
     I -->|Yes| J[Crystallize: lifecycle=frozen]
-    I -->|No| H
+    I -->|No| H[Archive candidate]
     J --> K[SkillNetworkBridge.publish]
     K --> L[P2P Swarm via Rust Orchestrator]
     L --> M[Peer receives envelope]
@@ -62,16 +422,28 @@ flowchart TB
     O -->|OK| P[Store as local crystal]
     O -->|Banned/duplicate| Q[Reject]
     J --> R[SkillExecutionTracker records outcomes]
-    R -->|feedback| D
+    R -->|feedback| B
 ```
 
-> **PLAN-21 update (2026-05-26):** the `Score ≥ 0.7?` branch labelled `D → E` is now the two-gate validation pipeline implemented in `src/memory/experiment-sandbox.ts`. A mutation must (a) pass an LLM-judged **faithfulness gate** that verifies each key operational concept survives the edit, and (b) clear a **paired-bootstrap performance gate** against a deterministic 20% held-out partition of `skill_executions` (the 95% CI on the per-trial delta must be strictly above zero). Across each cycle, gate-passing candidates are Pareto-ranked in `src/memory/skill-mutation-pareto.ts` over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget, so over-mutation is bounded even when many candidates pass. Every ten cycles an epoch-wise **slow update** in `src/memory/dream-slow-update.ts` re-evaluates the live version against `skill_text_history` and enqueues hormonal-cluster regressions into `mutation_queue` with a `regression-priority` strategy. The 0.7 numeric threshold in the diagram is preserved here as a coarse summary; the actual acceptance rule is statistical.
+> **PLAN-42/44 update (2026-09-05):** the publish leg in the diagram
+> (`J → K → L`) no longer runs from the crystal store. Direct crystal
+> publish was retired in PLAN-42; the outbound leg is
+> `src/memory/skill-evolution/p2p-publish.ts`, which publishes only
+> evolution-promoted SKILL.md files whose validation verdict is accepted
+> and which have survived `maturityDays`. The receive leg (`M → N`) is
+> preceded by the FILE half, `src/agents/skills/ingest.ts`, described
+> under "P2P Skill Network → Receiving" below; `SkillNetworkBridge.ingest`
+> (the memory-chunk half) runs only after an envelope is accepted.
+>
+> **PLAN-45 note (2026-09-05):** the PLAN-21 description below is historical. The `ExperimentSandbox` "trials" are LLM-predicted pass/fail over past execution contexts, not re-executions, and its only consumer (`research` mode) is off by default; PLAN-45 Phase 1 retires it. The measured gate is the skill-evolution validation gate above.
+>
+> **PLAN-21 update (2026-05-26, historical; mutation retired 2026-09-05):** the `Score ≥ 0.7?` branch labelled `D → E` was the two-gate validation pipeline implemented in `src/memory/experiment-sandbox.ts`. A mutation must (a) pass an LLM-judged **faithfulness gate** that verifies each key operational concept survives the edit, and (b) clear a **paired-bootstrap performance gate** against a deterministic 20% held-out partition of `skill_executions` (the 95% CI on the per-trial delta must be strictly above zero). Across each cycle, gate-passing candidates are Pareto-ranked in `src/memory/skill-mutation-pareto.ts` over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget, so over-mutation is bounded even when many candidates pass. Every ten cycles an epoch-wise **slow update** in `src/memory/dream-slow-update.ts` re-evaluates the live version against `skill_text_history` and enqueues hormonal-cluster regressions into `mutation_queue` with a `regression-priority` strategy. The 0.7 numeric threshold in the diagram is preserved here as a coarse summary; the actual acceptance rule is statistical.
 
 ---
 
-## Pattern Crystallization (SkillCrystallizer)
+## Pattern Crystallization (SkillCrystallizer, retired 2026-09-05)
 
-The `SkillCrystallizer` (`skill-crystallizer.ts`) is the entry point for automatic skill creation. It scans execution history for patterns that meet strict quality thresholds, then promotes them to skill crystals.
+The `SkillCrystallizer` was deleted in PLAN-45 Phase 0 (migration v63 purges its output). It scanned tool-level execution rows for a tool name with three or more non-erroring calls and minted a "skill" chunk from it; that is not a skill, and its dedup never matched. This section is kept as history of the thresholds the retiring bridge gate still reuses.
 
 ### Promotion Criteria
 
@@ -96,51 +468,13 @@ When a pattern qualifies:
 
 ## Skill Refinement (SkillRefiner)
 
-The `SkillRefiner` (`skill-refiner.ts`) orchestrates the dream mutation evaluation pipeline. It takes mutations generated by the Dream Engine and decides which ones are good enough to become frozen skill crystals.
-
-### Scoring
-
-Each mutation is scored by combining heuristic and empirical signals:
-
-**Heuristic score** (`heuristicScore()`):
-
-- **Length ratio** (+0.2) — mutations should be similar length to originals (penalty for >2x or <0.5x)
-- **Keyword coverage** (+0.3 max) — what fraction of original keywords (words >3 chars) appear in the mutation
-- **Novelty** (+0.3 max) — new words not in the original (rewarded via `min(0.3, novelty * 0.5)`)
-- **Structural indicators** (+0.1 each) — presence of edge case handling, generality/robustness language
-
-**Empirical score** (from `SkillExecutionTracker`):
-
-- If the original skill has >= 3 executions, the tracker's `successRate` boosts the score by `successRate * 0.15`
-- If the original already has >90% success rate, an additional `-0.1` penalty raises the bar for mutations (the original is already strong)
-- Combined score is capped at 1.0
-
-### Promotion Threshold and Verification Gate
-
-Mutations must clear two gates to be promoted:
-
-1. **Score gate**: `score >= promotionThreshold` (default **0.7**) AND `mutation.confidence >= 0.5`
-2. **Verification gate**: `SkillVerifier.verify()` must pass all 3 safety checks (dangerous patterns, structural invariants, semantic drift)
-
-Mutations failing the score gate are archived with a learning note via the audit log. Mutations passing the score gate but failing verification are also archived with the verification failure reason.
-
-### Crystallization
-
-When a mutation is promoted:
-
-1. A new chunk is created with `lifecycle='frozen'`, `memory_type='skill'`, `semantic_type='skill'`
-2. If the original had a `stable_skill_id`, the new crystal inherits it with `skill_version + 1` and a `previous_version_id` link
-3. If no `stable_skill_id` exists, a new one is generated (UUID)
-4. A provenance DAG node is recorded: `operation='mutated'`, `actor='dream_engine'`
-5. An audit log entry records `skill_mutation_promoted` with the original ID, mutation ID, confidence, stable skill ID, and version
-6. The `onSkillCrystallized` callback fires (if registered)
-7. If a `SkillNetworkBridge` is wired, `onSkillCrystallized()` auto-publishes to the P2P network
+**Retired in PLAN-45 Phase 1 (2026-09-05).** `skill-refiner.ts` (heuristic + empirical mutation scoring, the 0.7 promotion threshold, semantic-dedup gate, and the crystallize-with-version-bump path) was deleted with the `mutation` dream mode that fed it. `SkillVerifier` and the versioning columns (`stable_skill_id`, `skill_version`, `previous_version_id`) remain and are used by the P2P ingest path.
 
 ---
 
 ## Verification Safety Gate
 
-The `SkillVerifier` (`skill-verifier.ts`) runs 3 checks before any mutation is promoted. All 3 must pass.
+The `SkillVerifier` (`skill-verifier.ts`) runs 3 checks before any skill candidate is promoted or ingested. All 3 must pass.
 
 ### Check 1: Dangerous Pattern Blocklist
 
@@ -178,31 +512,7 @@ type VerificationResult = {
 
 ## Dream Mutation Strategies
 
-The `dream-mutation-strategies.ts` module provides 5 specialized mutation strategies:
-
-| Strategy        | Trigger condition                   | What it does                             |
-| --------------- | ----------------------------------- | ---------------------------------------- |
-| `generic`       | Default fallback                    | General-purpose skill improvement prompt |
-| `error_driven`  | >= 3 executions, high error count   | Analyzes failure logs, suggests fixes    |
-| `adversarial`   | Success rate > 0.9                  | Finds edge cases, hardens the skill      |
-| `compositional` | >= 2 related skills                 | Combines best aspects of multiple skills |
-| `parametric`    | Numeric parameters detected in text | Varies thresholds, timeouts, strategies  |
-
-### Strategy Selection (`selectStrategy()`)
-
-```typescript
-function selectStrategy(
-  skill: { text: string; skillCategory?: string | null },
-  metrics: SkillMetrics | null,
-  relatedSkillCount?: number,
-): MutationStrategy;
-```
-
-Priority order: error_driven > adversarial > compositional > parametric > generic
-
-### Numeric Parameter Detection
-
-`hasNumericParameters()` uses regex to detect patterns like `timeout=30`, `max_retries: 3`, `threshold 0.8` — triggering the `parametric` strategy.
+**Retired in PLAN-45 Phase 1 (2026-09-05).** `dream-mutation-strategies.ts` (the `generic` / `error_driven` / `adversarial` / `compositional` / `parametric` strategy prompts and `selectStrategy()`) was deleted with the `mutation` dream mode.
 
 ---
 
@@ -236,6 +546,22 @@ On completion, the skill crystal's `steering_reward` is adjusted:
 - **Failure:** -0.05
 
 Steering rewards decay multiplicatively each consolidation cycle (default factor: 0.95).
+
+### SKILL.md read crediting (PLAN-44 Phase 5a)
+
+The tracker above matches tool names against memory crystals; it never
+saw a file-based skill. `src/memory/skill-evolution/skill-reads.ts` closes
+that: on every housekeeping pass it scans journal runs since a cursor,
+finds `read` (or exec) tool calls whose path is a live skill's SKILL.md,
+and records one event per (run, skill) with the run's outcome (ended
+without a lifecycle error) in `skill-wiki/skill-reads.jsonl`. Each event
+also calls `SkillLifecycleStore.recordUsage`, so `usage_count`,
+`success_count` and `last_used_at` — the numbers the staging gate's
+regression check reads — are finally fed. Validation rollouts and probe sessions are excluded; incomplete runs are retried until they end (a retry's second `start` is not an end) or expire; the ledger is append-only and idempotent, and it is written before the lifecycle credits so a crash can lose a credit but never double one. Every read is logged with its origin, but only first-party (human / system), non-heartbeat runs credit the lifecycle counters and the default summary, so a circle or A2A party cannot inflate the numbers the regression gate reads. Known limits: a sandboxed session reads a copy under the sandbox and is not credited; workspace and bundled skills are not tracked (managed `~/.bitterbot/skills` only).
+
+- Routing repair for harvested and received skills (PLAN-44 Phase 5c). The harvest path has no model at write time, so repository taglines land as descriptions and never route (this node: one skill read in 4,410 runs). `src/memory/skill-evolution/routing-repair.ts` runs in housekeeping (and on demand via `skills.evolution.routing.repair` / `bitterbot skills routing repair [--dry-run|--name|--max]`): for each live skill whose description fails the contract it asks the model for a contract-compliant "use when … not for …" description grounded in the skill's own body and source, holds it to the contract and the overlap check (two attempts, the refusal reason fed back), and applies it as an ordinary edit through the staging gate + promote, so the previous version is archived and the snapshot bumps. The frontmatter name, body and source metadata are untouched; `.provenance.json` gains `routing_rewrite` (from, to, body hash) and a rewrite is never repeated for the same body. Five attempts per pass; a skill that fails is stamped (`routing_rewrite_failed`), retried after a day and left alone after three failed passes for the same body. Left alone by design: evolved skills (their sidecars would be stripped by a non-evolution promote; the evolution pipeline repairs their descriptions), skills with a pending staged edit, `-alt` twins of a live base, and unparseable frontmatter. The body goes into the rewrite prompt fenced as untrusted, and the rewritten description is refused on its own if the injection scanner or the contract's hazard check (shell commands, substitution, backticks, paths) flags it, since a description is rendered raw into every turn's prompt. Kill switch `skills.evolution.routingRepair: false`. The read signal above is the acceptance test. `summarizeSkillReads`
+  gives per-skill windowed rates (default 14 days) for
+  `skills.evolution.status` and for retirement scoring (D-5).
 
 ### Aggregated Metrics
 
@@ -283,6 +609,334 @@ The `SkillNetworkBridge.publishCrystalSkill()` generates this format automatical
 
 ---
 
+## Skill Impact Trail (PLAN-42 Phase 0)
+
+Every skill mutation attempt — successful or not — is recorded in an
+append-only trail under `~/.bitterbot/skill-wiki/`:
+
+- `skill-impact.md` — human-readable markdown entries (timestamp, source,
+  action, skill, verdict, detail, optional diff)
+- `.provenance.jsonl` — machine-readable mirror, one JSON object per line
+
+The trail is written **programmatically by the harness** after each gate
+decision, never by an LLM, so its verdicts are trustworthy. Files roll aside
+(never truncate) at a size cap. Module: `src/agents/skills/impact-trail.ts`.
+
+Recording paths as of Phase 0:
+
+| Path                                                  | Gate                                                                   | Trail verdicts                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------- |
+| `skill_manage` tool / `skills.manage` RPC             | SICA staging gate                                                      | via `skills.promote` (accepted/rejected) |
+| `skills.promote` / `skills.rollback` RPCs             | promote enforces `gateStatus=passed`                                   | accepted / rejected / rolled-back        |
+| Crystallize (`crystallizeSkill`)                      | **now staged + gated + promoted** (previously wrote straight to live)  | accepted / gate-failed / rejected        |
+| `guards.promote_candidate` (dream-harvest candidates) | **now runs the gate before promote** (previously raw staged→live copy) | accepted / gate-failed / rejected        |
+| `skills.create` (in-app editor)                       | deliberately ungated (human edits are the operator's prerogative)      | ungated-human-edit                       |
+
+### Trace pipeline (PLAN-42 Phase 1)
+
+`src/memory/skill-evolution/` reads the event journal (read-only) and turns
+runs into evolution fuel:
+
+- `traces.ts` — `reconstructTrace(journal, runId)` rebuilds the ordered
+  trajectory (assistant streaks, paired tool calls/results, terminal
+  lifecycle outcome); `formatTraceLog` caps each log at 15k chars
+  (head+tail preserved, middle elided). **Redaction happens here** — the
+  journal is unredacted, so every text block passes
+  `redactSensitiveText(mode: "tools")` before it can reach a prompt.
+  **PLAN-44 Phase 0:** the journal now carries a `user` stream (the task
+  the run was asked to do; emitted once per run by the embedded runner and
+  the CLI-provider path, capped at 4k chars). The reconstructor reads it
+  into `trace.task` and prints it as the FIRST header lines of every log
+  (`task-origin: human via whatsapp` / `task: ...`); runs journaled before
+  the stream existed render `task: (not journaled ...)`. The task's trust
+  class (`run-origin.ts`: human / system / circle / a2a / subagent / guest /
+  unknown) is derived from the session key at read time, never trusted
+  from the row.
+- `signals.ts` (PLAN-44 Phase 1) — programmatic trace signals computed
+  BEFORE any model reads a trace: tool sequence, repeated loops, the class
+  of every tool error (environment: provider / dns / connection / timeout /
+  rate-limit / 5xx / service-unavailable / aborted; agent: policy-block /
+  file-not-found / edit-mismatch / 4xx / exit-nonzero / exception /
+  timeout), first-error position and recovery. Printed as a `## Signals`
+  block under the task header of every trace log; the maintainer and judge
+  are told to cite them and never invent mechanisms (arXiv 2605.29463).
+  Signatures come from the live journal's 136 tool errors. Classification
+  is tool-aware (adversarial pass): shell commands are the agent's choice,
+  so `exec`/`process` errors classify on the harness reason line
+  ("Command exited with code N") and scan the command's output only for
+  finer agent classes and for network errors (remote → `network` env,
+  loopback → `local-service` agent); `web_fetch` classifies on the HTTP
+  status or the first line, never the body; lifecycle errors are provider
+  failures unless the text names context overflow or an unknown tool.
+- `labeler.ts` — pass / fail / **env-fail** / unknown cascade (PLAN-44
+  Phase 1): lifecycle error → env-fail (every live instance was a provider
+  error); terminal tool error → env-fail or fail by error class; AGENT
+  error density; all-env-errors → env-fail; `complete()` with no agent
+  errors → pass; clean end → pass; recovered from env errors → weak pass.
+  `env-fail` never takes a failure slot (5 of 8 live wiki pages were
+  outage narratives before this); a judge "fail" on a run whose only
+  errors were environmental is env-fail; ≥4 identical env errors without
+  recovery is a retry-storm fail; human-origin env-fail traces still seed
+  the corpus miner (one reserved slot). The judge verdict parse is line-anchored (an echoed
+  "verdict: pass|fail|unknown" is rejected). Calibrated against
+  `benchmarks/skill-evolution/labeled-traces.jsonl` (58 rows built from
+  live run SHAPES with synthetic content; precision ≥ 0.85 / recall ≥ 0.75
+  per class, and no env-fail row may ever label as fail —
+  `labeler.fixture.test.ts`). Length-based reward heuristics are banned
+  (PLAN-40).
+- `sampler.ts` — one iteration's stratified budget (≤8 traces: ≤5 fail +
+  ≤3 pass, per the paper), monotonic seq cursor persisted at
+  `skill-wiki/.sampler-state.json`, deterministic 20% run-id held-out
+  partition reserved for the validation gate, exclusion of evolution/probe
+  sessions (anti self-distillation). **PLAN-44 Phase 0:** heartbeat runs
+  and third-party-origin runs (circle, A2A, subagent, guest) are excluded
+  from the journaled task header (D-6); origin FAILS CLOSED (`unknown`,
+  raw `hook:`/`acp:` keys and keyless runs are not learnable; `hook` is
+  `guest`). A task text the injection scanner flags medium/critical is
+  excluded at this boundary (`runsInjected`), and every trace log carries
+  a `task-trust: UNTRUSTED TEXT` line; the maintainer, proposer and judge
+  prompts state the trust boundary. Cursor safety: the cursor never passes
+  the scan horizon nor the first event of a run the scan saw but did not
+  examine — including runs whose slot was full (interleaved runs were
+  being skipped forever); in-flight runs go to a bounded `pending` list
+  (≤50, 3-day TTL) and are re-examined next iteration; a ring of ≤200
+  examined run ids (reconstructed runs only) prevents double sampling;
+  already-examined runs do not consume the per-scan cap. "Complete" is
+  decided from the lifecycle phases (`runHasTerminal`), not from counting
+  lifecycle rows, so retried attempts and subagent runs are not mistaken
+  for finished runs. Diversity (Phase 1): a trace with the same task text
+  AND tool-sequence shape as an already-selected trace is skipped; runs
+  are examined oldest-first within the 14-day window (recency comes from
+  the fast-forward floor; reordering would pin the cursor); selected
+  traces that ran the same task with opposite outcomes are marked as a
+  contrastive pair for the maintainer. State writes are atomic
+  (`fs-atomic.ts`).
+
+Go/no-go recurrence analysis (2026-08-31, live journal): 822 tool-bearing
+complete runs; recurring failure clusters exist (55-run exec cluster,
+38-run web_fetch cluster, 5-run wallet cluster) — the maintainer has fuel.
+
+### Wiki layer + Maintainer (PLAN-42 Phase 2)
+
+- `wiki-store.ts` — `skill-wiki/{index.md, logs.md, patterns/*.md}` beside
+  the impact trail. Maintainer output is **whitelist-parsed** into a closed
+  shape (`create_patterns` / `update_patterns` patch-ops / required
+  `update_index` + `append_log`); invalid names, traversal attempts,
+  malformed ops, oversized pages, duplicate creates, and
+  injection-critical content are dropped and reported, never written. The
+  wiki never rolls back and nothing deletes; a pattern cap
+  (`skills.evolution.wikiMaxPatterns`, default 100) bounds growth until
+  the lint pass lands.
+- `maintainer.ts` — the paper's Appendix E.2 prompt (deep trace analysis,
+  10-30-line pattern pages documenting root cause + exact commands + fix,
+  both failure AND success patterns, PROBLEM+ROOT CAUSE+FIX index
+  entries); ONE cheap-model call per iteration.
+- `evolution-pass.ts` — orchestrates one iteration (sample → maintain;
+  the Phase 3 proposer slots in after). Degradation contract: no LLM or
+  no journal → clean no-op; no new traces → zero LLM spend; unparseable
+  maintainer output → nothing written and the cursor holds so the window
+  retries, up to `MAX_PARSE_FAILURES` (3) consecutive failures at one
+  cursor, after which the window is skipped (one prose-inducing trace must
+  not pin the loop); housekeeping (gate, lint, publish) runs on the
+  parse-failed path too; anything that throws → caught, logged at `warn`,
+  reported as reason `error`. If the dedicated proposer lane cannot
+  resolve its model, the proposer re-runs on the evolution lane rather
+  than losing the iteration. **PLAN-44 Phase 0:** every attempt (no-op, parse-failed,
+  crashed) appends one JSON record to `skill-wiki/iterations.jsonl`
+  (`iteration-log.ts`: sampler stats, cursor range, maintainer
+  created/updated/dropped + parse issues, proposer turns/reads/protocol
+  errors, gate outcomes, lint, publishes; trimmed to the newest 500).
+- `proposer.ts` + `proposal-apply.ts` (PLAN-42 Phase 3) — the Skill
+  Proposer: a ReAct loop with exactly the paper's two tools. `read_file`
+  resolves ONLY through an allowlisted resolver (wiki files, this
+  iteration's traces, live SKILL.md/PURPOSE.md — traversal and absolute
+  paths structurally impossible); `finish` submits ONE atomic proposal
+  (create XOR patch XOR no_action). Initial context = wiki index +
+  skill-impact history + iteration outcome summary; pattern pages and
+  traces are fetched on demand, and each pattern read stamps its
+  `dream_utility` consumption. Proposals are STAGED through the SICA gate
+  with PURPOSE.md + `.evolution-meta.json` provenance but are NEVER
+  auto-promoted — promotion belongs to the validation gate (accept only on
+  measured improvement). Repeated protocol garbage or the turn cap force
+  `no_action`, which is a valid outcome, not a failure.
+- Validation gate (PLAN-42 Phase 4, rebuilt in PLAN-44 Phase 2) — the ONLY
+  path from staged proposal to live skill, and the answer to "how do we
+  know a generated skill is good": always comparative, always strict.
+  **Mode (D-2):** `validation-mode.ts` resolves the EFFECTIVE mode — an
+  `tasks` whenever the effective corpus carries ≥ 5 capability tasks, which
+  the canonical capability families guarantee on every node (PLAN-45
+  Phase 2); an explicit `records` only adds the diagnostic judge. **Tasks
+  mode** (`validate-tasks.ts`, `task-runner.ts`, `task-corpus.ts`,
+  `canonical-corpus.ts`, `canonical-capability.ts`): real agent turns over
+  the fresh-seeded canonical REGRESSION suite (15 templates, three of them
+  `safety`-tagged: embedded-instruction resistance, a phishing refusal, a
+  plain echo — one observed failure there rejects with no re-check), the
+  canonical CAPABILITY families (9, calibrated per model), and the node's
+  reviewed grown CAPABILITY suite; see "The gate after PLAN-45 Phase 2"
+  above for the sequential test, alpha spending, credited wins, cost gate
+  and provenance split. The candidate arm is the RUNTIME
+  PATHWAY (D-3): the prompt carries only an `<available_skills>` index
+  entry plus the runtime's "read at most one SKILL.md" rule; the body sits
+  in a per-trial scratch workspace and the journal records whether the
+  agent actually read it. Trigger precision is gated: candidate read rate
+  < 0.5 on the grown capability tasks (or the canonical families when no
+  grown task exists) HOLDs (`never-triggered`), > 0.5 on regression tasks
+  REJECTs (`over-triggered`). Validation sessions
+  (`agent:<id>:skill-evolve-val-*`) run under a dedicated workspace-scoped
+  tool allow-list (D-4, `skill-validation-policy.ts`: read/write/edit/
+  apply_patch, `tools.fs.workspaceOnly` forced; `exec`/`process` only with
+  `skills.evolution.validationTools.exec: true`, then approvals off, a
+  scrubbed environment and a workdir confined to the scratch workspace)
+  in that scratch workspace (gateway `agent` RPC `workspaceDir`, honoured
+  only for a trial dir the runner registered in-process). The session's
+  system prompt keeps the skills index in minimal mode, and the candidate
+  enters that index through the scratch workspace's `skills/` root, so the
+  gate measures the runtime's real selection problem. Validation sessions
+  load NO bootstrap context (`bootstrap-files.ts`): the scratch workspace
+  has no GENOME/PROTOCOLS/MEMORY by design, so the prompt would otherwise
+  carry `[MISSING]` markers the model narrates instead of doing the task,
+  and on the peer flavor those files are the node's private state.
+- Security closures (PLAN-44 Phase 3, 2026-09-04). Every trace span the
+  maintainer / proposer / judge read (assistant text, tool args, tool
+  results) is fenced `<untrusted>…</untrusted>` by `formatTraceLog`, with
+  a smuggled closing tag defanged, and both prompts name the fence as
+  authoritative. The wiki store drops `medium` injection hits like
+  `critical` (D-7; `low` is written and logged). Evolution-authored content
+  goes through the staging gate with `strictInjection`, where a `medium`
+  hit BLOCKS instead of warning (a warn used to map to gateStatus
+  "passed"). `promoteStaged` refuses any staging dir carrying
+  `.evolution-meta.json` (error `evolution-staged`) unless the caller sets
+  `allowEvolutionStaged`: the validation gate does; the `skills.promote`
+  RPC does only for `forceGate` on an `operator.admin` connection (the
+  `author` param is caller-asserted, scopes are not); the admin-scoped
+  `guards.promote_candidate` does; the agent's `skill_manage` tool never
+  does. `stageSkill` strips both sidecars whenever the author is not
+  `evolution`, and the gate re-checks `meta.contentHash` against the staged
+  file, so an agent cannot overwrite an evolution-staged name and ride its
+  provenance (the overwrite becomes an ordinary staged edit; a direct file
+  write is rejected `staged content tampered` and discarded). A successful promote now carries
+  `.evolution-meta.json` and `PURPOSE.md` into the live dir, so a
+  promoted skill keeps its cap / doctrine / summary identity. The proposer's
+  evidence is origin-bound: `collectProposalEvidence` records which sampled
+  traces it read and their run-origin classes into `.evolution-meta.json`
+  (`evidence`) and a `## Evidence` section of PURPOSE.md; a proposal whose
+  cited traces are all third-party (circle / a2a / subagent / guest /
+  unknown) is HELD `untrusted-evidence-only` before any LLM spend, and a
+  proposal that read no traces at all is refused at apply time (`proposal
+  cites no traces`); a pre-user-stream trace is classified by its session
+  key, as the sampler admitted it. P2P
+  ingestion routes an envelope into the skill-network bridge (memory
+  chunk) only when `ingestSkill` ACCEPTED it (`shouldBridgeIngest`); a
+  quarantined envelope is no longer an `active`, recall-visible chunk while
+  its file sits in review — the operator's `skills.incoming.accept` re-routes
+  it from the `.provenance.json` the accept writes (the CLI accept prefers
+  that RPC and falls back to disk-only with a note), and the accept first
+  re-hashes the quarantined SKILL.md against the envelope's content hash.
+  The wiki index scan covers only the lines an update ADDS (an old suspect
+  line cannot freeze the catalogue) and a withheld log entry still leaves a
+  redacted record; the `## Signals` block reduces tool names to an
+  identifier charset and the lifecycle error text is fenced.
+- Description contract + repair loop (PLAN-44 Phase 4a, 2026-09-05). The
+  runtime index shows the agent only `<name>` + `<description>` and opens a
+  skill when exactly one description clearly applies, so the description is
+  the whole routing key. `description-contract.ts` defines the contract
+  (40-240 chars; a `when` clause naming the triggering situation; a
+  `not for / never for / unless / except when / only when` clause scoping it out, both as clauses rather than bare keywords; vacuous phrasings such as "when needed" or "not otherwise" refused; no URLs, emoji or copied maintainer notes; frontmatter name equal to the skill name; no `-alt` variants). A patch over a harvested skill keeps that skill's own `owner/repo` frontmatter name and `-alt` directory. The staging gate enforces it as a BLOCK for synthesized
+  content only (`descriptionContract` set by `applyProposal` and
+  `crystallize`; a body patch over a legacy skill is grandfathered unless
+  the proposer rewrote the description). The proposer prompt and the
+  `skill_manage` crystallize parameter carry the contract verbatim. Repair:
+  when the tasks-mode gate HOLDs a proposal `never-triggered`,
+  `description-repair.ts` asks the LLM for contract-compliant rewordings,
+  ranks the current description and each variant with a routing proxy (the
+  LLM answers, per capability and regression task, whether the index entry
+  would make it open the skill; score = capability hit rate minus
+  regression hit rate), rewrites only the `description:` entry of the staged SKILL.md when the winner routes at least half the capability tasks (including at least half of a held-out third the rewriter never saw), beats the current description, copies no run of more than five words from any task prompt, and passes the full staging gate again (schema, strict injection, contract) on the rewritten file, re-keys `meta.contentHash` (so the tamper
+  check passes and the 24h backoff does not apply), increments
+  `meta.descriptionRepairs` (cap 2) and records `descriptionRepairLog` and
+  an impact entry. The proxy only SELECTS; the real gate re-measures the
+  repaired candidate on the next pass (incumbent trials memoized). Kill switch `skills.evolution.descriptionRepair: false`.
+- Live index for the proposer + overlap check (PLAN-44 Phase 4b, 2026-09-05). The proposer's prompt now lists every live skill as `name: description` (what the runtime router sees) with the rule that a new description must route a situation none of them already do. `description-overlap.ts` scores two descriptions lexically on their POSITIVE clause only (the text before the scope-out clause, so two skills about the same tool do not collide through the tool name plus the mandated "not for" clause): content-word Jaccard ≥ 0.5, containment ≥ 0.6, or word-bigram Jaccard ≥ 0.4, only when both carry ≥ 4 content words; flag tokens with and without dashes are one token. The staging gate refuses a synthesized create whose description overlaps a live skill whose own description meets the contract (`description-overlap`, block, naming the skill to patch instead); a hit against a live description that cannot route (a harvested tagline, a peer's few-word squat) is a warning only. A patch of a skill is never compared against itself; human edits are not checked. The proposer's index entries are fenced `<untrusted>…</untrusted>`, injection-scanned (suspect ones withheld) and capped at 60 entries; the repair loop filters rewordings against the live index and re-gates with it. Known limit: the check is lexical, so a synonym rewrite passes it; the validation gate's measured routing on tasks is the backstop. One trust classifier
+  remains: `classifySessionKeyTrust` delegates to `classifyRunOrigin`, so
+  hook / group / channel / circle / a2a / subagent / guest / skill-evolve
+  sessions are untrusted for canonical pins exactly as they are for
+  evolution learning. Peer skills
+  (attestation sweep) run on the `skill-evolve-val-peer-` flavor, which
+  keeps the A2A no-tools floor. Both arms' trials are memoized in
+  `skill-wiki/.trial-cache.sqlite` (`trial-cache.ts`, keyed by task prompt
+  / arm content hash / model / generator version / trial index, non-empty
+  answers only; the canonical seed rotates daily per model so same-day
+  proposals share instances), so a budget retry resumes rather than
+  restarts; held proposals whose content, corpus and model are unchanged
+  are not re-validated for 24h. A wall-clock budget
+  (`skills.evolution.validationBudgetMinutes`, default 45) HOLDs with
+  `budget-exhausted`. **Corpus review** (`corpus-review.ts`; RPCs
+  `skills.evolution.corpus.list|accept|reject`; CLI `bitterbot skills
+  corpus list|accept|reject`) is the only writer of `task-corpus.jsonl`:
+  drafts are re-flagged at accept time (absolute paths, network verbs,
+  injection hits, error-string checkers) and rejected ids are never
+  redrafted. **Records mode** (`validate-records.ts`) is the opt-in
+  fallback: held-out traces scored in BOTH presentation orders with skill
+  bodies framed as untrusted data, exact sign test with a 0.1 discordance
+  floor. `validation-gate.ts` settles every staged evolution proposal:
+  measured improvement -> promote (PURPOSE.md + `.evolution-meta.json`
+  enriched with mode/scores/read rates/tokens/corpus version/model);
+  measured non-improvement or over-triggering -> discard + record verdict;
+  insufficient data, never-triggered, budget -> HOLD and retry; net-new
+  creates respect `maxActiveEvolved` (default 5). Rejected content is
+  dedup-hashed: an identical (name, content) proposal can never be
+  re-staged.
+- Phase 5 ops: `wiki-lint.ts` (deterministic hygiene each iteration —
+  exact-duplicate and over-cap pages archived to `patterns/archive/`
+  (never deleted), orphans flagged into logs.md for the next maintainer
+  call; the growth-bounding pass the paper admits it lacks).
+  `p2p-publish.ts` — the flywheel's outbound leg: only VALIDATED evolved
+  skills that survived `maturityDays` (default 3) locally publish to the
+  P2P network, carrying a machine-readable provenance trailer (validation
+  verdict, scores, corpus version, model) so receivers can re-gate
+  locally; publish-once per validated version; kill switch
+  `skills.evolution.propagate`. `status.ts` + the `skills.evolution.status`
+  gateway RPC — one read-only snapshot (wiki size, sampler cursor +
+  pending/processed counts, the last 10 iteration records, staged/held
+  proposals, evolved live skills with verdicts, P2P eligibility, corpus
+  presence) plus the FULL effective `skills.evolution.*` config (every
+  field has help text + a label; defaults are declared on the zod schema).
+  **PLAN-44 Phase 0 (D-1), revised by the token-efficiency pass
+  (2026-09-19):** when neither `proposerModel` nor `judgeModel` is set the
+  Skill Proposer now runs on the cheap lane (dream model, else cheap model)
+  — the primary-model default cost ~$0.40 of Opus per iteration even when
+  the only sampled trace was a clean PASS. Set `skills.evolution.proposerModel`
+  explicitly for a stronger model (D-1 noted the cheap lane failed its own
+  JSON protocol in 3 of 5 early iterations). The proposer is also skipped
+  entirely when the iteration sampled fewer failing traces than
+  `skills.evolution.minFailsForProposer` (default 1); maintenance and
+  housekeeping still run. `cadenceHours` default remains 24. The RPC
+  reports `proposerModelSource` and `proposerModelConfigured`; each iteration record carries the proposer `lane`. The `user`
+  journal stream is emitted once per run (retries dedupe) by the embedded
+  runner, the CLI-provider path, and the gateway `agent` command's CLI
+  branch, and is never broadcast to WebSocket clients.
+- Dream-engine hook `maybeRunSkillEvolutionPass` (curator pattern):
+  cadence-gated at `skills.evolution.cadenceHours` (default 24h) via the
+  persisted sampler-state timestamp + an in-memory attempt throttle; runs
+  OUTSIDE the per-cycle LLM budget (own lane); records created/updated
+  patterns in `dream_utility` (lane `evolution`). Runtime agents never see
+  the wiki (fidelity F2): `skill-wiki/` is not a skill root and pattern
+  pages are not `SKILL.md`-shaped.
+
+Phase 0 also unified all staging paths on
+`resolveStorageRoots()` (`skill-storage.ts`) — `guards.promote_candidate`,
+`guards.status`, and `interceptor_harvest` previously built
+`resolveStateDir()/skills-staging` in parallel — and schematized the
+curator kill switch (`memory.dream.skillCurator.enabled`, previously an
+untyped cast). The `skills.manage/promote/rollback` RPCs are now advertised
+in `server-methods-list.ts`. The `skills.evolution.*` config namespace
+(master switch `skills.evolution.enabled`, default **true**) is in place for
+the evolution loop phases. Plans: `docs/plans/PLAN-42-WIKISKILL-SKILL-EVOLUTION.md`
+(mechanism) and `docs/plans/PLAN-44-WIKISKILL-PIPELINE-REPAIR.md` (repair, from
+the 2026-09-03 code-first audit in `docs/reviews/`).
+
+---
+
 ## P2P Skill Network
 
 ### SkillNetworkBridge
@@ -297,7 +951,27 @@ The `SkillNetworkBridge` (`skill-network-bridge.ts`) mediates between the local 
 4. Generates a SKILL.md format with frontmatter
 5. Sends to the Rust orchestrator via `orchestratorBridge.publishSkill()`
 
-**Ingesting** (`ingestNetworkSkill()`):
+**Receiving — the file half first** (`src/agents/skills/ingest.ts`,
+PLAN-13/PLAN-44): the gateway hands every `skill_received` envelope to
+`ingestSkill` before the bridge sees it. Checks in order: self-loopback,
+policy `deny`, Ed25519 signature, content hash, duplicate hash, legacy
+unvalidated crystal, rate limit, SKILL.md structure, the injection scanner
+(a critical hit force-quarantines regardless of trust), and since PLAN-44
+Phase 5b a **routing assessment**: the description contract (description
+checks only; the harvest path writes `owner/repo` names by design) and the
+overlap check against this node's routable live descriptions. A peer skill
+whose description cannot route, or collides with a local one, is held for
+review even from a trusted publisher under `auto` policy, with the reason
+on `.envelope.json` (`routing`, `routing_hold`) and in `skills incoming
+list`; a local-origin harvest is stamped, not held. Accepted skills land in
+`~/.bitterbot/skills/<name>/` with `.provenance.json`, bump the skills
+snapshot, and only THEN reach `ingestNetworkSkill` below (the operator's
+`skills.incoming.accept` re-routes a quarantined envelope the same way,
+after re-hashing the file). The receiving agent finds the skill exactly as
+it finds a local one: through the description in its runtime index, under
+the mesh-content trust notice, subject to the load-time capability gate.
+
+**Ingesting — the memory-chunk half** (`ingestNetworkSkill()`):
 
 1. Checks if the sender peer is banned via `PeerReputationManager`
 2. **Cortisol gate** — if a network cortisol spike is active (`haltUntrustedIngestion`), rejects skills from peers with trust level below `"trusted"` (i.e., `untrusted` and `provisional` peers are blocked)
@@ -722,9 +1396,9 @@ The original pipeline above is **write-side**: it turns experience into crystall
 curator is the **read/maintenance-side**: it walks the SKILL.md files already on disk and decides
 which to keep, mark stale, archive, or consolidate.
 
-It complements the dream-mutation flow rather than replacing it. The mutation flow is creative
-("here are some variations of this skill"); the curator is custodial ("this skill is unused, that
-one fails 80% of the time, this other one is subsumed by its neighbour").
+It is custodial ("this skill is unused, that one fails 80% of the time, this other one is
+subsumed by its neighbour"). It used to complement the creative dream-mutation flow, which was
+retired in PLAN-45 Phase 1 (2026-09-05).
 
 ### Lifecycle table
 
@@ -811,9 +1485,100 @@ preview what the curator would do before flipping it on.
 
 ---
 
+## Outcome evidence and verification (2026-09-05 harness review)
+
+The review in `docs/reviews/autonomous-worker-harness-review-2026-09-05.md` found that
+"success" collapsed several different situations into one label. These changes make the
+outcome behind every learning signal explicit and grounded.
+
+### Tool outcomes are read from the result body
+
+`classifyToolResultOutcome` (`src/agents/embedded-subscribe.tools.ts`) returns `ok`,
+`error`, or `pending`. A `jsonResult({ ok: false, error })` body is an error; an
+`approval-pending` placeholder is pending (the action never ran). The journal's tool
+`result` events carry both `isError` and `outcome`, so the trace reconstructor, the
+labeler, and skill-read crediting all see body-level failures. The model still receives
+the result text unchanged.
+
+### Model identity on every run
+
+The lifecycle `start` event records `provider`, `model`, and `thinkLevel`;
+`ReconstructedTrace.model` and every `skill-reads.jsonl` event carry the
+`provider/model` string, and the trace log header prints it. Skill credit and labels
+can now be conditioned on the substrate that earned them.
+
+### The evidence hierarchy (L0–L4)
+
+`src/memory/skill-evolution/outcome.ts` derives, from the journal only:
+
+| Level | Meaning                                                                       |
+| ----- | ----------------------------------------------------------------------------- |
+| L0    | run reached a terminal event                                                  |
+| L1    | every tool call returned without a thrown or body-level error, none pending   |
+| L2    | the agent called `complete()` on top of L1 (self-report)                      |
+| L3    | the run's long-horizon task passed an independent judge round                 |
+| L4    | a human confirmed the outcome (`bitterbot skills feedback <runId> confirmed`) |
+
+Negatives (a failed verification, a rejected feedback entry, a pending approval) are
+recorded separately and block a `pass` label regardless of level. The sampler attaches
+the outcome before labeling; the labeler puts grounded evidence above every structural
+rule, and a run with a pending approval is `unknown`, never `pass`.
+
+### Task verification is executable
+
+Long-horizon tasks carry `checks[]` (`file_exists`, `file_contains`, `file_regex`,
+`output_regex`, and `command` when `BITTERBOT_TASKS_CHECK_COMMANDS=1`). `task_judge`
+executes them first; a failed check fails the round with no model call. The typed
+`verification` record (verdict, evidence level, check results, judge model, round) is
+the only path to `completed`: `task_update` and the store refuse a direct transition.
+Orphaned `running` tasks are reconciled to `waiting_external` with a handoff at store
+start. A verified completion is the one grounded reward signal into the hormonal system.
+
+### Records mode cannot promote
+
+When the validation mode falls back to `records` automatically (fewer than five reviewed
+capability tasks), an accepted LLM-counterfactual verdict HOLDS the proposal as
+`records-only-evidence`; only tasks-mode rollouts or an explicit
+`skills.evolution.validationMode: "records"` opt-in promote.
+
+### Failure signatures and the repeat-call guard
+
+`src/agents/agent-tools.repeat-guard.ts` refuses the fourth identical failing call in a
+session with a message naming the failure. Offline, `signatures.ts` clusters every
+fail-labeled run by ⟨terminal cause, agent-causal, mechanism⟩; the iteration log stores
+the counts and `skills.evolution.status` ranks them across iterations.
+
+### Provenance
+
+Facts extracted from transcript spans inside an external-content envelope keep
+`session_trust = "untrusted"` even in the owner's own session, so paraphrased web,
+email, or circle text cannot become a canonical pin or a standing directive. P2P
+publish refuses a SKILL.md whose body the secret redactor would change or that carries
+a home path, user profile path, email address, or IP address.
+
+### Surfaces
+
+Three views read the same evidence record and recompute nothing, so they
+cannot disagree with each other or with what a skill publishes:
+
+- **Control UI, Skills, Evolution tab.** The loop's state from
+  `skills.evolution.status` (enabled and cadence, effective validation mode
+  with the capability-task count, last iteration and whether it was skipped,
+  managed skills against the active cap, peer skills pending the gate, corpus
+  drafts awaiting review, the top recurring failure signatures) and one card
+  per managed skill: ladder badge, gate verdict with p-value and trials,
+  canary window, production reads with success rate, models validated on and
+  read by, model drift when present.
+- **`bitterbot skills evidence [name]`.** The same record on the command
+  line, listing managed skills by default and printing one record in full
+  with its gate history; `--json` for scripts.
+- **`bitterbot doctor`, Skill evolution section.** Whether the loop can
+  produce anything at all: tasks-mode reachability, loop heartbeat, canary
+  monitor backlog, evidence freshness, crystallizer regrowth.
+
 ## Related Documentation
 
 - [Architecture Overview](./architecture-overview.md) — system entry point and file map
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model and lifecycle
-- [Dream Engine](./dream-engine.md) — how dream mutations are generated
+- [Dream Engine](./dream-engine.md) — dream modes and the distillation lane
 - [Curiosity & Search](./curiosity-and-search.md) — curiosity-driven skill gap detection

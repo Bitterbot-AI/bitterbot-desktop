@@ -6,19 +6,19 @@
  * Inbound: P2P skill envelopes → Knowledge Crystal in memory
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
 import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { ExplorationTargetType } from "./curiosity-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import type { PublishResult, ImportResult } from "./mem-store.js";
 import type { PeerReputationManager } from "./peer-reputation.js";
+import { skillCategoryFromContent } from "./skill-category.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillVerifier } from "./skill-verifier.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
-import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
-import { skillCategoryFromContent } from "./skill-category.js";
 import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");
@@ -61,6 +61,17 @@ export type OrchestratorBridgeLike = {
 export type SkillNetworkBridgeConfig = {
   autoPublishOnCrystallize?: boolean;
 };
+
+let activeSkillNetworkBridge: SkillNetworkBridge | null = null;
+
+/** PLAN-45 4.2: the gate writes a peer skill's memory chunk at PROMOTION; this is how it reaches the bridge. */
+export function setActiveSkillNetworkBridge(bridge: SkillNetworkBridge | null): void {
+  activeSkillNetworkBridge = bridge;
+}
+
+export function getActiveSkillNetworkBridge(): SkillNetworkBridge | null {
+  return activeSkillNetworkBridge;
+}
 
 export class SkillNetworkBridge {
   private readonly db: DatabaseSync;
@@ -751,7 +762,9 @@ export class SkillNetworkBridge {
 
   /**
    * Plan 8, Phase 4: Quality gate for bounty claims.
-   * Reuses SkillCrystallizer's thresholds: SkillVerifier passes + 3 executions + >70% success.
+   * Legacy floor (same numbers the retired SkillCrystallizer used): SkillVerifier passes +
+   * 3 executions + >70% success. Execution rows are tool-level evidence; PLAN-45 Phase 1
+   * replaces this with run-level outcomes.
    */
   private checkBountyClaimQuality(crystalId: string, text: string): boolean {
     // 1. SkillVerifier must pass

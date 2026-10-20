@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronUp, Info } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { parseExitCode, isNonBlockingOutput, safeJsonParse } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 const MAX_COLLAPSED_LINES = 15;
 

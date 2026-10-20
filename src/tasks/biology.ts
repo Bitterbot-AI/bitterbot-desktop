@@ -32,8 +32,8 @@
 
 import type { DreamMode } from "../memory/dream-types.js";
 import type { HormonalState } from "../memory/hormonal.js";
-import type { Task, TaskStatus } from "./types.js";
 import { getActiveTaskStore } from "./store.js";
+import type { Task, TaskStatus } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // E.3 — Hormonal concurrency policy.

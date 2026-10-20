@@ -6,7 +6,7 @@ import {
   resetModelCatalogCacheForTest,
 } from "./model-catalog.js";
 
-type PiSdkModule = typeof import("./pi-model-discovery.js");
+type ModelsModule = typeof import("./runtime/models/index.js");
 
 vi.mock("./models-config.js", () => ({
   ensureBitterbotModelsJson: vi.fn().mockResolvedValue({ agentDir: "/tmp", wrote: false }),
@@ -35,13 +35,15 @@ describe("loadModelCatalog e2e smoke", () => {
         throw new Error("boom");
       }
       return {
-        AuthStorage: class {},
-        ModelRegistry: class {
-          getAll() {
-            return [{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }];
-          }
+        AuthStorage: { create: () => ({}) },
+        ModelRegistry: {
+          create: () => ({
+            getAll() {
+              return [{ id: "gpt-4.1", name: "GPT-4.1", provider: "openai" }];
+            },
+          }),
         },
-      } as unknown as PiSdkModule;
+      } as unknown as ModelsModule;
     });
 
     const cfg = {} as BitterbotConfig;

@@ -59,10 +59,11 @@ Browser settings live in `~/.bitterbot/bitterbot.json`.
 {
   browser: {
     enabled: true, // default: true
-    // cdpUrl: "http://127.0.0.1:18792", // legacy single-profile override
+    // cdpUrl: "http://127.0.0.1:19004", // legacy single-profile override
     remoteCdpTimeoutMs: 1500, // remote CDP HTTP timeout (ms)
     remoteCdpHandshakeTimeoutMs: 3000, // remote CDP WebSocket handshake timeout (ms)
     defaultProfile: "chrome",
+    perAgentProfiles: true, // default: true
     color: "#FF4500",
     headless: false,
     noSandbox: false,
@@ -80,7 +81,7 @@ Browser settings live in `~/.bitterbot/bitterbot.json`.
 Notes:
 
 - The browser control service binds to loopback on a port derived from `gateway.port`
-  (default: `18791`, which is gateway + 2). The relay uses the next port (`18792`).
+  (gateway + 2: `19003` with the default gateway port `19001`). The relay uses the next port (`19004`).
 - If you override the Gateway port (`gateway.port` or `BITTERBOT_GATEWAY_PORT`),
   the derived browser ports shift to stay in the same “family”.
 - `cdpUrl` defaults to the relay port when unset.
@@ -91,6 +92,7 @@ Notes:
 - Default profile is `chrome` (extension relay). Use `defaultProfile: "bitterbot"` for the managed browser.
 - Auto-detect order: system default browser if Chromium-based; otherwise Chrome → Brave → Edge → Chromium → Chrome Canary.
 - Local `bitterbot` profiles auto-assign `cdpPort`/`cdpUrl` — set those only for remote CDP.
+- `perAgentProfiles` (default `true`): an agent other than the default one that does not name a profile gets its own host profile, `agent-<id>`, created on first use, so agents never share cookies or logins. The default agent keeps `defaultProfile`. Set `false` to share one profile.
 
 ## Use Brave (or another Chromium-based browser)
 
@@ -187,6 +189,74 @@ Notes:
 - Replace `<BROWSERLESS_API_KEY>` with your real Browserless token.
 - Choose the region endpoint that matches your Browserless account (see their docs).
 
+## Live view and take over
+
+The Control UI's side panel ("BitterBot's Computer") has a **Browser** tab that shows the agent's real page as it works. While a browser tool call is running, the same picture appears in the Tools tab in place of a placeholder.
+
+How it behaves:
+
+- **It only watches until you take over.** Opening the tab never launches a browser. If none is running it says so and picks the page up as soon as the agent opens one. It follows the tab the agent is working in.
+- **Take over** gives you the mouse and keyboard: click, type, paste and scroll on the picture and the input goes to the page. Use it for logins, CAPTCHAs and payment challenges, so the agent never needs your credentials.
+- **While you have control the agent is held.** Its actions that drive the page (navigate, click, type, open or close tabs) are refused with a message telling it you have control. It can still read the page (snapshot, screenshot).
+- **Hand back** returns the browser to the agent. Control also returns by itself if you close the panel, lose the connection, or do nothing for five minutes, so the agent is never left locked out.
+- The stream stops when nobody is looking: a viewer that stops renewing its lease is dropped after 30 seconds.
+
+### When the agent asks you to take over
+
+The agent can ask for the browser to be taken over when a page needs you: a login, a CAPTCHA, a verification code, a payment confirmation. It calls the `browser` tool with `action: "handoff"` and a short reason.
+
+1. A card appears above the chat: "Your agent needs you in the browser", with the reason.
+2. **Take over** opens the Browser tab and gives you the controls in one step. **Not now** declines, and the agent is told to stop and explain what is blocking it.
+3. The agent waits while you work. When you press **Hand back**, its tool call returns and it carries on in the same turn, starting with a fresh look at the page.
+
+The waits are bounded. If nobody takes over within 3 minutes the agent is told so and asks you in chat. If you are still working after 8 minutes the agent stops waiting, leaves the browser with you, and asks you to message it when you are done. Each handoff is recorded in the Activity tab (see [Action review](/tools/action-review)).
+
+A handoff needs the Control UI open on this gateway. It is not available for a browser on a paired node or in the sandbox, or when the live view is turned off.
+
+Limits today:
+
+- It streams one page at a time, the one the agent is using, and it shows the page, not the browser's own toolbar or dialogs.
+- It is not available when browser calls are routed to a paired node, or for the sandboxed browser.
+- It has been verified with the managed `bitterbot` profile. With the `chrome` extension relay the browser may refuse the session the stream needs; the tab then says the live view is not available and gives the reason.
+- The gateway needs Playwright (see [Playwright requirement](#playwright-requirement)).
+
+Configuration:
+
+```json5
+{
+  browser: {
+    liveView: {
+      enabled: true, // default: true. Set false to turn the stream off.
+      maxFps: 8, // 1-30. Lower it for remote or metered connections.
+      quality: 60, // JPEG quality, 10-95.
+    },
+  },
+}
+```
+
+The live view shows whatever the browser shows, logged-in pages included. It needs the same `operator.write` scope as `browser.request`, frames go only to the connection that asked for them, and keystrokes sent during a take over are not logged.
+
+## Session replay
+
+The live view only streams while you watch. Session replay keeps a record for later: after each page action the agent takes (open, navigate, act, upload, dialog, focus), the gateway saves one screenshot, at most one every 1.5 seconds per conversation. Reads such as snapshots and screenshots are not recorded, and neither is a browser on another node.
+
+Recordings appear under **Browser recordings** in the Activity panel. Step through one frame by frame, or open it from an activity item with **Replay** to land on the moment of that action. Delete a recording from the same list.
+
+While the agent types a card into a checkout page (the `purchase` tool), nothing captures the page: the live view stops sending frames and replay records none, for 10 minutes from the first keystroke. That covers submitting the order and the confirmation page.
+
+Frames stay on this machine under `~/.bitterbot/replays/`, readable only by your user. Each conversation keeps its newest 300 frames, and a recording is removed 7 days after its last frame. Reading or deleting recordings needs the same `operator.write` scope as the live view.
+
+```json5
+{
+  browser: {
+    replay: {
+      enabled: true, // default: true. Set false to stop recording.
+      retentionDays: 7, // 1-90
+    },
+  },
+}
+```
+
 ## Security
 
 Key ideas:
@@ -212,7 +282,7 @@ Bitterbot supports multiple named profiles (routing configs). Profiles can be:
 Defaults:
 
 - The `bitterbot` profile is auto-created if missing.
-- The `chrome` profile is built-in for the Chrome extension relay (points at `http://127.0.0.1:18792` by default).
+- The `chrome` profile is built-in for the Chrome extension relay (points at `http://127.0.0.1:19004` by default).
 - Local CDP ports allocate from **18800–18899** by default.
 - Deleting a profile moves its local data directory to Trash.
 
@@ -227,7 +297,7 @@ Full guide: [Chrome extension](/tools/chrome-extension)
 Flow:
 
 - The Gateway runs locally (same machine) or a node host runs on the browser machine.
-- A local **relay server** listens at a loopback `cdpUrl` (default: `http://127.0.0.1:18792`).
+- A local **relay server** listens at a loopback `cdpUrl` (default: `http://127.0.0.1:19004`).
 - You click the **Bitterbot Browser Relay** extension icon on a tab to attach (it does not auto-attach).
 - The agent controls that tab via the normal `browser` tool, by selecting the right profile.
 
@@ -264,7 +334,7 @@ Optional: if you want a different name or relay port, create your own profile:
 bitterbot browser create-profile \
   --name my-chrome \
   --driver extension \
-  --cdp-url http://127.0.0.1:18792 \
+  --cdp-url http://127.0.0.1:19004 \
   --color "#00AA00"
 ```
 
@@ -332,19 +402,47 @@ If you see `Playwright is not available in this gateway build`, install the full
 Playwright package (not `playwright-core`) and restart the gateway, or reinstall
 Bitterbot with browser support.
 
+#### Playwright's own Chromium build
+
+The browser tool runs a system Chrome, Brave, Edge or Chromium (or a Chromium that
+Playwright downloaded, of any revision) and attaches to it, so it does not need a
+specific Playwright browser build. Code that calls `chromium.launch()` itself does:
+each Playwright version pins one Chromium revision (for example, Playwright 1.63.0
+pins revision 1243), and after a Playwright upgrade an older download fails with
+`Executable doesn't exist at .../chromium_headless_shell-<rev>/...`.
+
+`bitterbot doctor` (Install section) reports the revision the installed
+`playwright-core` expects, whether it is downloaded, and the exact command that
+downloads it for your install. The browser tool prints the same command when a
+launch fails this way. Typical forms:
+
+```bash
+# Source checkout
+pnpm exec playwright-core install chromium
+
+# Release tarball (install.sh); --with-browser does this at install time
+PLAYWRIGHT_BROWSERS_PATH=~/.bitterbot/browsers \
+  ~/.bitterbot/app/current/runtime/node/bin/node \
+  ~/.bitterbot/app/current/node_modules/playwright-core/cli.js install chromium
+```
+
+`install chromium` also downloads the matching headless shell. The installers do
+not download a browser by default (about 170 MB); use `install.sh --with-browser`
+on Linux, or install Chrome.
+
 #### Docker Playwright install
 
 If your Gateway runs in Docker, avoid `npx playwright` (npm override conflicts).
 Use the bundled CLI instead:
 
 ```bash
-docker compose run --rm.bitterbot-cli \
+docker compose run --rm --entrypoint /app/scripts/docker-entrypoint.sh bitterbot-cli \
   node /app/node_modules/playwright-core/cli.js install chromium
 ```
 
 To persist browser downloads, set `PLAYWRIGHT_BROWSERS_PATH` (for example,
 `/home/node/.cache/ms-playwright`) and make sure `/home/node` is persisted via
-`BITTERBOT_HOME_VOLUME` or a bind mount. See [Docker](/install/docker).
+`BITTERBOT_HOME_VOLUME` or a bind mount. See [Docker](/platforms/docker).
 
 ## How it works (internal)
 

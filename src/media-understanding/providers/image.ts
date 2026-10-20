@@ -1,11 +1,14 @@
 import type { Api, Context, Model } from "@mariozechner/pi-ai";
 import { complete } from "@mariozechner/pi-ai";
-import type { ImageDescriptionRequest, ImageDescriptionResult } from "../types.js";
 import { minimaxUnderstandImage } from "../../agents/minimax-vlm.js";
 import { getApiKeyForModel, requireApiKey } from "../../agents/model-auth.js";
 import { ensureBitterbotModelsJson } from "../../agents/models-config.js";
-import { discoverAuthStorage, discoverModels } from "../../agents/pi-model-discovery.js";
+import { withOpenRouterAttribution } from "../../agents/openrouter-attribution.js";
+import { discoverAuthStorage, discoverModels } from "../../agents/runtime/models/index.js";
 import { coerceImageAssistantText } from "../../agents/tools/image-tool.helpers.js";
+import { USAGE_FEATURES } from "../../infra/usage-features.js";
+import { recordUsage } from "../../infra/usage-ledger.js";
+import type { ImageDescriptionRequest, ImageDescriptionResult } from "../types.js";
 
 export async function describeImageWithModel(
   params: ImageDescriptionRequest,
@@ -53,9 +56,25 @@ export async function describeImageWithModel(
       },
     ],
   };
+  const startedAt = Date.now();
   const message = await complete(model, context, {
     apiKey,
+    headers: withOpenRouterAttribution(model),
     maxTokens: params.maxTokens ?? 512,
+  });
+  // PLAN-50: vision calls land in the usage ledger under media/image.
+  recordUsage({
+    kind: "vision",
+    feature: USAGE_FEATURES.mediaImage,
+    provider: message.provider ?? model.provider,
+    model: message.model ?? model.id,
+    api: message.api,
+    usage: message.usage,
+    cost: message.usage?.cost,
+    durationMs: Date.now() - startedAt,
+    status: message.stopReason === "error" ? "error" : "ok",
+    stopReason: message.stopReason,
+    config: params.cfg,
   });
   const text = coerceImageAssistantText({
     message,

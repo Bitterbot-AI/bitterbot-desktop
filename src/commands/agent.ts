@@ -1,5 +1,3 @@
-import type { CapabilityGateContext } from "../agents/skills/capability-gate.js";
-import type { AgentCommandOpts } from "./agent/types.js";
 import {
   listAgentIds,
   resolveAgentDir,
@@ -13,6 +11,7 @@ import { clearSessionAuthProfileOverride } from "../agents/auth-profiles/session
 import { runCliAgent } from "../agents/cli-runner.js";
 import { getCliSessionId } from "../agents/cli-session.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
+import { runEmbeddedPiAgent } from "../agents/embedded.js";
 import { AGENT_LANE_SUBAGENT } from "../agents/lanes.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import { runWithModelFallback } from "../agents/model-fallback.js";
@@ -24,8 +23,8 @@ import {
   resolveConfiguredModelRef,
   resolveThinkingDefault,
 } from "../agents/model-selection.js";
-import { runEmbeddedPiAgent } from "../agents/pi-embedded.js";
 import { buildWorkspaceSkillSnapshot } from "../agents/skills.js";
+import type { CapabilityGateContext } from "../agents/skills/capability-gate.js";
 import { createCapabilityRuntimeFromMemory } from "../agents/skills/capability-runtime.js";
 import { getSkillsSnapshotVersion } from "../agents/skills/refresh.js";
 import { resolveAgentTimeoutMs } from "../agents/timeout.js";
@@ -43,6 +42,7 @@ import { formatCliCommand } from "../cli/command-format.js";
 import { type CliDeps, createDefaultDeps } from "../cli/deps.js";
 import { loadConfig } from "../config/config.js";
 import {
+  materializeSessionSkillsSnapshot,
   resolveAgentIdFromSessionKey,
   resolveSessionFilePath,
   type SessionEntry,
@@ -51,6 +51,7 @@ import {
 import {
   clearAgentRunContext,
   emitAgentEvent,
+  emitUserTurnEvent,
   registerAgentRunContext,
 } from "../infra/agent-events.js";
 import { getRemoteSkillEligibility } from "../infra/skills-remote.js";
@@ -59,11 +60,14 @@ import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { applyVerboseOverride } from "../sessions/level-overrides.js";
 import { applyModelOverrideToSessionEntry } from "../sessions/model-overrides.js";
 import { resolveSendPolicy } from "../sessions/send-policy.js";
+import { isSkillEvolveValidationSessionKey } from "../sessions/session-key-utils.js";
 import { resolveMessageChannel } from "../utils/message-channel.js";
 import { deliverAgentCommandResult } from "./agent/delivery.js";
+import { withQueuedSystemEvents } from "./agent/queued-events.js";
 import { resolveAgentRunContext } from "./agent/run-context.js";
 import { updateSessionStoreAfterAgentRun } from "./agent/session-store.js";
 import { resolveSession } from "./agent/session.js";
+import type { AgentCommandOpts } from "./agent/types.js";
 
 type PersistSessionEntryParams = {
   sessionStore: Record<string, SessionEntry>;
@@ -138,6 +142,15 @@ function runAgentAttempt(params: {
   });
   if (isCliProvider(params.providerOverride, params.cfg)) {
     const cliSessionId = getCliSessionId(params.sessionEntry, params.providerOverride);
+    // PLAN-44 Phase 0 (adversarial M3): CLI providers bypass the embedded
+    // runner, so the task is journaled here (once per run; the helper
+    // dedupes retries).
+    emitUserTurnEvent({
+      runId: params.runId,
+      text: effectivePrompt,
+      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+      ...(params.sessionEntry?.channel ? { channel: params.sessionEntry.channel } : {}),
+    });
     return runCliAgent({
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,
@@ -180,7 +193,7 @@ function runAgentAttempt(params: {
     currentThreadTs: params.runContext.currentThreadTs,
     replyToMode: params.runContext.replyToMode,
     hasRepliedRef: params.runContext.hasRepliedRef,
-    senderIsOwner: true,
+    senderIsOwner: params.opts.senderIsOwner !== false,
     sessionFile: params.sessionFile,
     workspaceDir: params.workspaceDir,
     config: params.cfg,
@@ -240,11 +253,18 @@ export async function agentCommand(
   }
   const agentCfg = cfg.agents?.defaults;
   const sessionAgentId = agentIdOverride ?? resolveAgentIdFromSessionKey(opts.sessionKey?.trim());
-  const workspaceDirRaw = resolveAgentWorkspaceDir(cfg, sessionAgentId);
+  // PLAN-44 Phase 2 (D-4): a validation session runs in a per-trial
+  // scratch workspace. Any other session ignores the override — a gateway
+  // client must not be able to point an ordinary run at an arbitrary dir.
+  const workspaceOverride =
+    opts.workspaceDir && isSkillEvolveValidationSessionKey(opts.sessionKey)
+      ? opts.workspaceDir
+      : undefined;
+  const workspaceDirRaw = workspaceOverride ?? resolveAgentWorkspaceDir(cfg, sessionAgentId);
   const agentDir = resolveAgentDir(cfg, sessionAgentId);
   const workspace = await ensureAgentWorkspace({
     dir: workspaceDirRaw,
-    ensureBootstrapFiles: !agentCfg?.skipBootstrap,
+    ensureBootstrapFiles: !agentCfg?.skipBootstrap && !workspaceOverride,
   });
   const workspaceDir = workspace.dir;
   const configuredModel = resolveConfiguredModelRef({
@@ -338,11 +358,17 @@ export async function agentCommand(
     }
 
     const skillsSnapshotVersion = getSkillsSnapshotVersion(workspaceDir);
-    const cachedSnapshotVersion = sessionEntry?.skillsSnapshot?.version ?? -1;
+    // The stored entry holds a ref to the snapshot body; join it here. A ref
+    // whose body is gone counts as no snapshot and is rebuilt.
+    const storedSnapshot = materializeSessionSkillsSnapshot(
+      storePath,
+      sessionEntry?.skillsSnapshot,
+    );
+    const cachedSnapshotVersion = storedSnapshot?.version ?? -1;
     const snapshotIsStale = cachedSnapshotVersion < skillsSnapshotVersion;
-    const needsSkillsSnapshot = isNewSession || !sessionEntry?.skillsSnapshot || snapshotIsStale;
+    const needsSkillsSnapshot = isNewSession || !storedSnapshot || snapshotIsStale;
     const skillFilter = resolveAgentSkillsFilter(cfg, sessionAgentId);
-    const previousSnapshot = sessionEntry?.skillsSnapshot;
+    const previousSnapshot = storedSnapshot;
     // PLAN-29 Phase 0.3: same load-time capability gate as the reply runner
     // (session-updates.ts) so the CLI agent path can't load P2P skills the
     // chat path would have blocked. Null runtime degrades to ungated.
@@ -362,7 +388,7 @@ export async function agentCommand(
           skillFilter,
           capabilityGate: cliCapabilityGate,
         })
-      : sessionEntry?.skillsSnapshot;
+      : storedSnapshot;
 
     // Hot-toggle awareness: if we rebuilt mid-session because the user (or
     // marketplace) changed skills, surface the diff to the agent so its next
@@ -581,6 +607,12 @@ export async function agentCommand(
         hasSessionModelOverride: Boolean(storedModelOverride),
       });
 
+      // Notices queued for this session (an approval's outcome, a finished
+      // background task) ride in with the next prompt. Chat turns got them
+      // through the reply pipeline; turns started here never did. Drained once,
+      // before the fallback loop, so a retry does not lose them.
+      const promptBody = await withQueuedSystemEvents({ cfg, sessionKey, body });
+
       // Track model fallback attempts so retries on an existing session don't
       // re-inject the original prompt as a duplicate user message.
       let fallbackAttemptIndex = 0;
@@ -603,7 +635,7 @@ export async function agentCommand(
             sessionAgentId,
             sessionFile,
             workspaceDir,
-            body,
+            body: promptBody,
             isFallbackRetry,
             resolvedThinkLevel,
             timeoutMs,

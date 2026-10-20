@@ -1,12 +1,11 @@
-import type { ChannelAccountSnapshot } from "../channels/plugins/types.js";
-import type { BitterbotConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveChannelDefaultAccountId } from "../channels/plugins/helpers.js";
 import { getChannelPlugin, listChannelPlugins } from "../channels/plugins/index.js";
+import type { ChannelAccountSnapshot } from "../channels/plugins/types.js";
 import { withProgress } from "../cli/progress.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { loadConfig } from "../config/config.js";
-import { loadSessionStore, resolveStorePath } from "../config/sessions.js";
+import { peekSessionStore, resolveStorePath } from "../config/sessions.js";
 import { buildGatewayConnectionDetails, callGateway } from "../gateway/call.js";
 import { info } from "../globals.js";
 import { isTruthyEnvValue } from "../infra/env.js";
@@ -17,6 +16,7 @@ import {
 } from "../infra/heartbeat-runner.js";
 import { buildChannelAccountBindings, resolvePreferredAccountId } from "../routing/bindings.js";
 import { normalizeAgentId } from "../routing/session-key.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { styleHealthChannelLine } from "../terminal/health-style.js";
 import { isRich } from "../terminal/theme.js";
 
@@ -144,7 +144,10 @@ const resolveAgentOrder = (cfg: ReturnType<typeof loadConfig>) => {
 };
 
 const buildSessionSummary = (storePath: string) => {
-  const store = loadSessionStore(storePath);
+  // Read-only: counts and the five newest keys. The health snapshot refreshes
+  // often enough that a deep copy of a large store here showed up as the top
+  // synchronous cost in the gateway profile.
+  const store = peekSessionStore(storePath);
   const sessions = Object.entries(store)
     .filter(([key]) => key !== "global" && key !== "unknown")
     .map(([key, entry]) => ({ key, updatedAt: entry?.updatedAt ?? 0 }))

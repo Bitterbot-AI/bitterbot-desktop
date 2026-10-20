@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { BitterbotConfig } from "./types.bitterbot.js";
 import { applyCirclesDefaults, DEFAULT_CIRCLES_MAILBOX_URL } from "./defaults.js";
+import type { BitterbotConfig } from "./types.bitterbot.js";
 
 // PLAN-31 red-team phase (2026-07-09): circles are ON BY DEFAULT fleet-wide
 // so the connection surface can be tested/attacked at scale. A wrong default

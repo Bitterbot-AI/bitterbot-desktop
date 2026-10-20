@@ -33,6 +33,8 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`system`](/cli/system)
 - [`models`](/cli/models)
 - [`memory`](/cli/memory)
+- [`curiosity`](/cli/curiosity)
+- [`genome`](/cli/genome)
 - [`nodes`](/cli/nodes)
 - [`devices`](/cli/devices)
 - [`node`](/cli/node)
@@ -40,6 +42,10 @@ This page describes the current CLI behavior. If commands change, update this do
 - [`sandbox`](/cli/sandbox)
 - [`browser`](/cli/browser)
 - [`cron`](/cli/cron)
+- [`directory`](/cli/directory)
+- `checkpoints` (inspect, fork and replay session checkpoint graphs)
+- `daemon` (legacy alias of the gateway service commands)
+- `completion` (shell completion script)
 - [`dns`](/cli/dns)
 - [`docs`](/cli/docs)
 - [`heartbeat`](/cli/heartbeat) (inspect heartbeat considerations)
@@ -122,6 +128,16 @@ bitterbot [--dev] [--profile <name>] <command>
     status
     index
     search
+  curiosity
+    status
+    list
+    ask
+    dismiss
+    pause
+    resume
+    run
+  genome
+    temperament
   message
   agent
   agents
@@ -443,6 +459,7 @@ Subcommands:
 - `skills incoming list`: list quarantined skills (P2P gossip + agentskills.io imports).
 - `skills incoming accept <name>`: move a quarantined skill into the active set.
 - `skills incoming reject <name>`: delete a quarantined skill.
+- `skills incoming reject-peer <peerId>`: delete every quarantined skill from one peer.
 
 Options:
 
@@ -592,12 +609,16 @@ Surfaces:
 
 - `/status` (adds a short provider usage line when available)
 - `bitterbot status --usage` (prints full provider breakdown)
-- Control UI (Usage section under Context)
+- Control UI → Usage (the usage ledger: every model call priced, per model,
+  feature, session and day; see [Usage tracking](/concepts/usage-tracking))
+- `bitterbot gateway usage [--by ...] [--why] [--whatif provider/model] [--json]`
+  (the same ledger from the CLI)
 
 Notes:
 
-- Data comes directly from provider usage endpoints (no estimates).
-- Providers: Anthropic, GitHub Copilot, OpenAI Codex OAuth, plus Gemini CLI/Antigravity when those provider plugins are enabled.
+- Provider quota data comes directly from provider usage endpoints (no estimates); the
+  ledger's costs are computed from provider-reported token counts and a price table.
+- Providers: Anthropic, GitHub Copilot, OpenAI Codex OAuth.
 - If no matching credentials exist, usage is hidden.
 - Details: see [Usage tracking](/concepts/usage-tracking).
 

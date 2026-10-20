@@ -16,8 +16,8 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
-import type { HormonalState } from "../memory/hormonal.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { HormonalState } from "../memory/hormonal.js";
 import { registerHormonalStateGetter } from "./active-task-tracker.js";
 
 const log = createSubsystemLogger("tasks/hormonal-accessor");

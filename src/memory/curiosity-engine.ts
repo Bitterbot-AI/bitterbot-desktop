@@ -14,18 +14,17 @@
  * - computeReward(), scorePendingChunks()
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+// Re-export for consumers that previously imported from gccrf-reward directly via manager
+import { setChunkCuriosityReward } from "./chunk-writer.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import { GCCRFRewardFunction, type GCCRFConfig, type GCCRFRewardResult } from "./gccrf-reward.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
-
-// Re-export for consumers that previously imported from gccrf-reward directly via manager
 export type { GCCRFRewardResult, GCCRFConfig };
-import type { EmbeddingPerspective } from "./crystal-types.js";
-import type { DreamInsight, DreamMode } from "./dream-types.js";
 import { maybeSpawnTaskFromCuriosity } from "../tasks/biology.js";
+import type { EmbeddingPerspective } from "./crystal-types.js";
 import { ensureCuriositySchema } from "./curiosity-schema.js";
 import {
   type CuriosityConfig,
@@ -37,6 +36,7 @@ import {
   DEFAULT_CURIOSITY_CONFIG,
   DEFAULT_CURIOSITY_WEIGHTS,
 } from "./curiosity-types.js";
+import type { DreamInsight, DreamMode } from "./dream-types.js";
 
 const log = createSubsystemLogger("memory/curiosity");
 
@@ -71,17 +71,6 @@ type RegionRow = {
   learning_progress: number;
   created_at: number;
   last_updated_at: number;
-};
-
-type QueryRow = {
-  id: string;
-  query: string;
-  query_embedding: string;
-  result_count: number;
-  top_score: number;
-  mean_score: number;
-  region_id: string | null;
-  timestamp: number;
 };
 
 /**
@@ -243,9 +232,7 @@ export class CuriosityEngine {
       );
 
     // Write curiosity_reward directly (replaces old dual curiosity_boost path)
-    this.db
-      .prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`)
-      .run(gccrfResult.reward, chunkId);
+    setChunkCuriosityReward(this.db, chunkId, gccrfResult.reward);
 
     return assessment;
   }
@@ -877,9 +864,10 @@ export class CuriosityEngine {
       adjustments.simulation = 0.1;
     }
 
-    // High frontier activity → increase mutation weight
+    // High frontier activity → increase distillation weight (PLAN-45
+    // Phase 1: `mutation` retired; distillation is the skill-improvement lane)
     if ((counts.get("frontier") ?? 0) >= 2) {
-      adjustments.mutation = 0.1;
+      adjustments.distillation = 0.1;
     }
 
     return adjustments;
@@ -1016,6 +1004,16 @@ export class CuriosityEngine {
         JSON.stringify(event.metadata),
       );
     }
+    // Memory audit 2026-09-07 P2: only the newest handful is ever surfaced;
+    // cap to the most recent 2,000 by detection time (~39K rows -> ~2K).
+    try {
+      this.db
+        .prepare(
+          `DELETE FROM curiosity_emergence WHERE id NOT IN (
+             SELECT id FROM curiosity_emergence ORDER BY detected_at DESC LIMIT 2000)`,
+        )
+        .run();
+    } catch {}
   }
 
   private loadRegions(): RegionRow[] {
@@ -1380,26 +1378,10 @@ export class CuriosityEngine {
       metadata: Record<string, unknown>;
     }> = [];
 
-    // 1. Knowledge gaps: low-score queries
-    if (!existingTypes.has("knowledge_gap")) {
-      const lowScoreQueries = this.db
-        .prepare(
-          `SELECT query, top_score, mean_score, region_id FROM curiosity_queries
-           WHERE top_score < ? ORDER BY timestamp DESC LIMIT 20`,
-        )
-        .all(this.config.gapScoreThreshold) as QueryRow[];
-
-      if (lowScoreQueries.length >= 3) {
-        const queries = lowScoreQueries.slice(0, 5).map((q) => q.query);
-        targets.push({
-          type: "knowledge_gap",
-          description: `Knowledge gap detected: queries yielding poor results: ${queries.join("; ")}`,
-          priority: 0.7,
-          regionId: lowScoreQueries[0]?.region_id ?? null,
-          metadata: { queryCount: lowScoreQueries.length, sampleQueries: queries },
-        });
-      }
-    }
+    // 1. Knowledge gaps: PLAN-54 moved these to the manager, which makes ONE
+    //    target per weak query (embedding-deduped) instead of a lumped
+    //    "queries yielding poor results: a; b; c" row that re-created itself
+    //    daily and could never be researched.
 
     // 2. Stale regions: low learning progress
     if (!existingTypes.has("stale_region")) {
@@ -1509,6 +1491,19 @@ export class CuriosityEngine {
            VALUES (?, ?, ?, ?)`,
         )
         .run(crypto.randomUUID(), region.id, region.prediction_error, now);
+
+      // Memory audit 2026-09-07 P2: keep only the most recent 500 samples per
+      // region (~39K rows -> a few K) — the learning-progress read never needs
+      // deeper history.
+      try {
+        this.db
+          .prepare(
+            `DELETE FROM curiosity_progress WHERE region_id = ? AND id NOT IN (
+               SELECT id FROM curiosity_progress WHERE region_id = ?
+               ORDER BY timestamp DESC LIMIT 500)`,
+          )
+          .run(region.id, region.id);
+      } catch {}
 
       // Compute learning progress from history
       const history = this.db
@@ -1639,9 +1634,9 @@ export class CuriosityEngine {
     // Try reading GCCRF region ETA state
     let regionEta: Record<string, { emaLong: number; emaShort: number; sampleCount: number }> = {};
     try {
-      const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
-        | { value: string }
-        | undefined;
+      const row = this.db
+        .prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`)
+        .get() as { value: string } | undefined;
       if (row) {
         regionEta = JSON.parse(row.value);
       }
@@ -1731,9 +1726,9 @@ export class CuriosityEngine {
 
     let regionEta: Record<string, { emaLong: number; emaShort: number; sampleCount: number }> = {};
     try {
-      const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
-        | { value: string }
-        | undefined;
+      const row = this.db
+        .prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`)
+        .get() as { value: string } | undefined;
       if (row) {
         regionEta = JSON.parse(row.value);
       }
@@ -1806,9 +1801,9 @@ export class CuriosityEngine {
 
     // Read per-region learning progress from GCCRF state
     try {
-      const row = this.db.prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`).get() as
-        | { value: string }
-        | undefined;
+      const row = this.db
+        .prepare(`SELECT value FROM gccrf_state WHERE key = 'region_eta'`)
+        .get() as { value: string } | undefined;
       if (row) {
         const regionEta = JSON.parse(row.value) as Record<
           string,
@@ -1942,9 +1937,7 @@ export class CuriosityEngine {
 
       const result = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets);
 
-      this.db
-        .prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`)
-        .run(result.reward, chunkId);
+      setChunkCuriosityReward(this.db, chunkId, result.reward);
 
       return result;
     } catch (err) {
@@ -2009,17 +2002,16 @@ export class CuriosityEngine {
       }
 
       let scored = 0;
-      const updateStmt = this.db.prepare(`UPDATE chunks SET curiosity_reward = ? WHERE id = ?`);
 
       for (let i = 0; i < pendingRows.length; i += 1) {
         const row = pendingRows[i]!;
         try {
-          const emb = JSON.parse(row.embedding) as number[];
+          const emb = parseEmbedding(row.embedding);
           if (emb.length === 0) {
             continue;
           }
           const result = this.gccrfReward.compute(emb, regionCentroids, strategicTargets);
-          updateStmt.run(result.reward, row.id);
+          setChunkCuriosityReward(this.db, row.id, result.reward);
           scored++;
         } catch {
           /* skip individual failures */

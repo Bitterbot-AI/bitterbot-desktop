@@ -1,22 +1,24 @@
-import type { SkillCommandSpec } from "../../agents/skills.js";
-import type { BitterbotConfig } from "../../config/config.js";
-import type { SessionEntry } from "../../config/sessions.js";
-import type { MsgContext, TemplateContext } from "../templating.js";
-import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "../thinking.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
-import type { InlineDirectives } from "./directive-handling.js";
-import type { createModelSelectionState } from "./model-selection.js";
-import type { TypingController } from "./typing.js";
 import { createBitterbotTools } from "../../agents/bitterbot-tools.js";
+import { runInOwnerContext } from "../../agents/run-owner-context.js";
+import type { SkillCommandSpec } from "../../agents/skills.js";
+import { applyOwnerOnlyToolPolicy } from "../../agents/tool-policy.js";
 import { getChannelDock } from "../../channels/dock.js";
+import { type BitterbotConfig, configFileExists } from "../../config/config.js";
+import type { SessionEntry } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { resolveGatewayMessageChannel } from "../../utils/message-channel.js";
 import { listChatCommands } from "../commands-registry.js";
 import { listSkillCommandsForWorkspace, resolveSkillCommandInvocation } from "../skill-commands.js";
+import type { MsgContext, TemplateContext } from "../templating.js";
+import type { ElevatedLevel, ReasoningLevel, ThinkLevel, VerboseLevel } from "../thinking.js";
+import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { getAbortMemory } from "./abort.js";
 import { buildStatusReply, handleCommands } from "./commands.js";
+import type { InlineDirectives } from "./directive-handling.js";
 import { isDirectiveOnly } from "./directive-handling.js";
+import type { createModelSelectionState } from "./model-selection.js";
 import { extractInlineSimpleCommand } from "./reply-inline.js";
+import type { TypingController } from "./typing.js";
 
 const builtinSlashCommands = (() => {
   const reserved = new Set<string>();
@@ -227,7 +229,11 @@ export async function handleInlineActions(params: {
         config: cfg,
       });
 
-      const tool = tools.find((candidate) => candidate.name === dispatch.toolName);
+      // Same gate as a model-driven turn: no owner-only tool for a sender who
+      // is not an owner, and anything the tool starts inherits that.
+      const tool = applyOwnerOnlyToolPolicy(tools, command.senderIsOwner).find(
+        (candidate) => candidate.name === dispatch.toolName,
+      );
       if (!tool) {
         typing.cleanup();
         return { kind: "reply", reply: { text: `❌ Tool not available: ${dispatch.toolName}` } };
@@ -235,12 +241,14 @@ export async function handleInlineActions(params: {
 
       const toolCallId = `cmd_${Date.now()}_${Math.random().toString(16).slice(2)}`;
       try {
-        const result = await tool.execute(toolCallId, {
-          command: rawArgs,
-          commandName: skillInvocation.command.name,
-          skillName: skillInvocation.command.skillName,
-          // oxlint-disable-next-line typescript/no-explicit-any
-        } as any);
+        const result = await runInOwnerContext(command.senderIsOwner, () =>
+          tool.execute(toolCallId, {
+            command: rawArgs,
+            commandName: skillInvocation.command.name,
+            skillName: skillInvocation.command.skillName,
+            // oxlint-disable-next-line typescript/no-explicit-any
+          } as any),
+        );
         const text = extractTextFromToolResult(result) ?? "✅ Done.";
         typing.cleanup();
         return { kind: "reply", reply: { text } };
@@ -369,13 +377,17 @@ export async function handleInlineActions(params: {
     await sendInlineReply(directiveAck);
   }
 
-  const isEmptyConfig = Object.keys(cfg).length === 0;
   const skipWhenConfigEmpty = command.channelId
     ? Boolean(getChannelDock(command.channelId)?.commands?.skipWhenConfigEmpty)
     : false;
+  // "Unconfigured" (PLAN-56 Phase 2): loadConfig() applies load-time
+  // defaults even without a config file, so the object is never empty in
+  // production. No load-time default sets `channels`, so a cfg with no
+  // channel settings AND no config file on disk is the unconfigured node; an
+  // explicitly empty cfg (tests, embedders) still counts too.
   if (
     skipWhenConfigEmpty &&
-    isEmptyConfig &&
+    (Object.keys(cfg).length === 0 || (cfg.channels === undefined && !configFileExists())) &&
     command.from &&
     command.to &&
     command.from !== command.to

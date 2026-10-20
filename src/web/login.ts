@@ -5,6 +5,7 @@ import { danger, info, success } from "../globals.js";
 import { logInfo } from "../logger.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { resolveWhatsAppAccount } from "./accounts.js";
+import { closeWaSocketTransport } from "./close-socket.js";
 import { createWaSocket, formatError, logoutWeb, waitForWaConnection } from "./session.js";
 
 export async function loginWeb(
@@ -33,11 +34,7 @@ export async function loginWeb(
           "WhatsApp asked for a restart after pairing (code 515); creds are saved. Restarting connection once…",
         ),
       );
-      try {
-        sock.ws?.close();
-      } catch {
-        // ignore
-      }
+      closeWaSocketTransport(sock);
       const retry = await createWaSocket(false, verbose, {
         authDir: account.authDir,
       });
@@ -46,7 +43,7 @@ export async function loginWeb(
         console.log(success("✅ Linked after restart; web session ready."));
         return;
       } finally {
-        setTimeout(() => retry.ws?.close(), 500);
+        setTimeout(() => closeWaSocketTransport(retry), 500);
       }
     }
     if (code === DisconnectReason.loggedOut) {
@@ -67,12 +64,6 @@ export async function loginWeb(
     throw new Error(formatted, { cause: err });
   } finally {
     // Let Baileys flush any final events before closing the socket.
-    setTimeout(() => {
-      try {
-        sock.ws?.close();
-      } catch {
-        // ignore
-      }
-    }, 500);
+    setTimeout(() => closeWaSocketTransport(sock), 500);
   }
 }

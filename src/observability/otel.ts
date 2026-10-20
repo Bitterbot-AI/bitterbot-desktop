@@ -84,6 +84,9 @@ export async function initOtel(opts?: { serviceName?: string }): Promise<boolean
       ]);
 
     const exporter = new OTLPTraceExporter();
+
+    // PLAN-50 Phase 5: metrics (usage-ledger token counters, see usage-metrics.ts) ride the
+    // metric reader sdk-node builds from OTEL_METRICS_EXPORTER (default otlp; console/none honored).
     const sdk = new NodeSDK({
       serviceName,
       traceExporter: exporter,

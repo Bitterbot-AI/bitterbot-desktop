@@ -9,7 +9,6 @@ import type { GatewayPresenceUpdate } from "discord-api-types/v10";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { DiscordAccountConfig } from "../../config/types.discord.js";
-import type { DiscordChannelConfigResolved } from "./allow-list.js";
 import { buildAgentSessionKey } from "../../routing/resolve-route.js";
 import {
   clearDiscordComponentEntries,
@@ -23,6 +22,7 @@ import {
   createDiscordComponentButton,
   createDiscordComponentModal,
 } from "./agent-components.js";
+import type { DiscordChannelConfigResolved } from "./allow-list.js";
 import {
   resolveDiscordMemberAllowed,
   resolveDiscordOwnerAllowFrom,

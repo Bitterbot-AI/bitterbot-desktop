@@ -1,12 +1,10 @@
-import { cancel, isCancel } from "@clack/prompts";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { inspect } from "node:util";
-import type { BitterbotConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
-import type { NodeManagerChoice, OnboardMode, ResetScope } from "./onboard-types.js";
+import { cancel, isCancel } from "@clack/prompts";
 import { DEFAULT_AGENT_WORKSPACE_DIR, ensureAgentWorkspace } from "../agents/workspace.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { CONFIG_PATH } from "../config/config.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions.js";
 import { callGateway } from "../gateway/call.js";
@@ -15,7 +13,9 @@ import { pickPrimaryLanIPv4, isValidIPv4 } from "../gateway/net.js";
 import { isSafeExecutableValue } from "../infra/exec-safety.js";
 import { pickPrimaryTailnetIPv4 } from "../infra/tailnet.js";
 import { isWSL } from "../infra/wsl.js";
+import type { TemperamentLevel } from "../memory/genome-parser.js";
 import { runCommandWithTimeout } from "../process/exec.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { stylePromptTitle } from "../terminal/prompt-style.js";
 import {
   CONFIG_DIR,
@@ -26,13 +26,16 @@ import {
 } from "../utils.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
 import { VERSION } from "../version.js";
+import type { NodeManagerChoice, OnboardMode, ResetScope } from "./onboard-types.js";
 
-export function guardCancel<T>(value: T | symbol, runtime: RuntimeEnv): T {
-  if (isCancel(value)) {
+// See src/wizard/clack-prompter.ts: clack >= 1.8 narrows isCancel() to its
+// unique CANCEL_SYMBOL, so strip any symbol from the answer type.
+export function guardCancel<T>(value: T | symbol, runtime: RuntimeEnv): Exclude<T, symbol> {
+  if (isCancel(value) || typeof value === "symbol") {
     cancel(stylePromptTitle("Setup cancelled.") ?? "Setup cancelled.");
     runtime.exit(0);
   }
-  return value;
+  return value as Exclude<T, symbol>;
 }
 
 export function summarizeExistingConfig(config: BitterbotConfig): string {
@@ -74,7 +77,7 @@ export function normalizeGatewayTokenInput(value: unknown): string {
     return "";
   }
   const trimmed = value.trim();
-  // Reject the literal string "undefined" — a common bug when JS undefined
+  // Reject the literal string "undefined": a common bug when JS undefined
   // gets coerced to a string via template literals or String(undefined).
   if (trimmed === "undefined" || trimmed === "null") {
     return "";
@@ -285,16 +288,49 @@ export async function openUrlInBackground(url: string): Promise<boolean> {
 export async function ensureWorkspaceAndSessions(
   workspaceDir: string,
   runtime: RuntimeEnv,
-  options?: { skipBootstrap?: boolean; agentId?: string },
+  options?: {
+    skipBootstrap?: boolean;
+    agentId?: string;
+    /** The vibe picked in setup: written to GENOME.md's Temperament level. */
+    vibe?: TemperamentLevel;
+  },
 ) {
   const ws = await ensureAgentWorkspace({
     dir: workspaceDir,
     ensureBootstrapFiles: !options?.skipBootstrap,
   });
   runtime.log(`Workspace OK: ${shortenHomePath(ws.dir)}`);
+  if (options?.vibe) {
+    await applyVibe(ws.dir, options.vibe, runtime);
+  }
   const sessionsDir = resolveSessionTranscriptsDirForAgent(options?.agentId);
   await fs.mkdir(sessionsDir, { recursive: true });
   runtime.log(`Sessions OK: ${shortenHomePath(sessionsDir)}`);
+}
+
+/**
+ * Write setup's vibe pick into GENOME.md. A Genome from before the
+ * Temperament section is never rewritten here: the owner is pointed at the
+ * offer instead (the Control UI card, `bitterbot genome temperament`).
+ */
+async function applyVibe(
+  workspaceDir: string,
+  vibe: TemperamentLevel,
+  runtime: RuntimeEnv,
+): Promise<void> {
+  try {
+    const { applySetupVibe } = await import("../agents/genome-temperament.js");
+    const outcome = await applySetupVibe(workspaceDir, vibe);
+    if (outcome === "missing") {
+      runtime.log(
+        "Vibe: your GENOME.md has no Temperament section yet; add one with `bitterbot genome temperament --add`.",
+      );
+      return;
+    }
+    runtime.log(`Vibe: ${vibe} (GENOME.md Temperament)`);
+  } catch (err) {
+    runtime.log(`Vibe: could not write it to GENOME.md (${String(err)})`);
+  }
 }
 
 export function resolveNodeManagerOptions(): Array<{

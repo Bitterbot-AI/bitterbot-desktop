@@ -24,6 +24,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { looksLikePersonName } from "./knowledge-graph.js";
 import { ensureColumn } from "./memory-schema.js";
 import { backfillSkillCategories } from "./skill-category.js";
 
@@ -37,7 +38,7 @@ export type Migration = {
   up: (db: DatabaseSync) => void;
 };
 
-const MIGRATIONS: Migration[] = [
+export const MIGRATIONS: Migration[] = [
   {
     version: 1,
     description: "Knowledge Crystal columns + indexes",
@@ -2215,6 +2216,538 @@ const MIGRATIONS: Migration[] = [
       "falling back to HTTP dial and mailbox.",
     up: (db: DatabaseSync) => {
       addColumnIfMissing(db, "circle_members", "peer_id", "TEXT");
+    },
+  },
+  {
+    version: 63,
+    description:
+      "PLAN-45 Phase 0 (2026-09-05): retire the SkillCrystallizer and purge its " +
+      "output. Its dedup looked for lifecycle='frozen' while it inserted " +
+      "'generated', and its pattern query LEFT-JOINed chunks, so 13 " +
+      "skill_executions rows whose source crystals were deleted in August kept " +
+      "minting a new crystallizer/auto chunk on every consolidation pass (572 " +
+      "on the reference node, 44 per day). Deletes every crystallizer/auto " +
+      "chunk (all were tool-name-keyed restatements of the same execution " +
+      "rows, never skills), the skill_executions rows whose crystal no longer " +
+      "exists (the poison source), and marketplace_listings rows whose crystal " +
+      "no longer exists (76 stale rows advertising tool-level successes at 1.0). " +
+      "chunks_vec is NOT touched here: sqlite-vec is not loaded on the connection " +
+      "when migrations run, so the vector rows are swept by the manager's " +
+      "one-time orphan sweep after the extension is ready (sweepVectorOrphansOnce).",
+    up: (db: DatabaseSync) => {
+      const hasTable = (name: string): boolean =>
+        db
+          .prepare(`SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name = ?`)
+          .get(name) !== undefined;
+      // The crystallizer wrote path='crystallizer/auto', source='skills',
+      // origin='inferred'; `model` is not usable because the embedding
+      // backfill rewrites it (482 of the reference node's 572 rows carried
+      // the embedding model name).
+      const CRYSTALLIZER_ROWS =
+        `SELECT id FROM chunks WHERE path = 'crystallizer/auto' AND source = 'skills' ` +
+        `AND COALESCE(origin, '') = 'inferred'`;
+      if (hasTable("chunks_fts")) {
+        try {
+          db.exec(`DELETE FROM chunks_fts WHERE id IN (${CRYSTALLIZER_ROWS})`);
+        } catch {
+          /* FTS disabled or a contentless variant: nothing to purge */
+        }
+      }
+      db.exec(`DELETE FROM chunks WHERE id IN (${CRYSTALLIZER_ROWS})`);
+      if (hasTable("skill_executions")) {
+        db.exec(
+          `DELETE FROM skill_executions WHERE skill_crystal_id NOT IN (SELECT id FROM chunks)`,
+        );
+      }
+      if (hasTable("marketplace_listings")) {
+        db.exec(
+          `DELETE FROM marketplace_listings WHERE skill_crystal_id NOT IN (SELECT id FROM chunks)`,
+        );
+      }
+    },
+  },
+  {
+    version: 64,
+    description:
+      "PLAN-45 Phase 1.1 (2026-09-05): one outcome substrate. skill_executions rows " +
+      "written by the after_tool_call hook are TOOL-level evidence (a tool did not " +
+      "report an error) and carry the run they happened in (run_id, tool_call_id). " +
+      "A housekeeping back-fill (skill-evolution/execution-outcomes.ts) stamps each " +
+      "run's grounded outcome (labeler + L0-L4 hierarchy) into run_outcome_label / " +
+      "run_outcome_level and lifts `evidence` from 'tool' to 'run' | 'task' | 'human'. " +
+      "Competence consumers read only run-or-better rows (RUN_EVIDENCE_WHERE).",
+    up: (db: DatabaseSync) => {
+      addColumnIfMissing(db, "skill_executions", "run_id", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "tool_call_id", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "evidence", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "run_outcome_level", "INTEGER");
+      addColumnIfMissing(db, "skill_executions", "run_outcome_label", "TEXT");
+      addColumnIfMissing(db, "skill_executions", "run_outcome_at", "INTEGER");
+      db.exec(
+        `UPDATE skill_executions SET evidence = 'tool' WHERE evidence IS NULL AND recorded_by = 'after_tool_call'`,
+      );
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_executions_run ON skill_executions (run_id)`);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_skill_executions_outcome_pending
+           ON skill_executions (started_at) WHERE run_outcome_level IS NULL`,
+      );
+    },
+  },
+  {
+    version: 65,
+    description:
+      "Memory audit 2026-09-07 (P0.1/C1): index chunks(updated_at) so the dream " +
+      "extrapolation seed no longer full-scans, and reconcile the two lifecycle " +
+      "columns (chunks.lifecycle vs chunks.lifecycle_state). consolidation.ts wrote " +
+      "only `lifecycle` on merge-winner promotion, so rows drifted to " +
+      "lifecycle='consolidated' + lifecycle_state='active'. Derive lifecycle_state " +
+      "from lifecycle for the diverged rows; the writer now sets both.",
+    up: (db: DatabaseSync) => {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_chunks_updated_at ON chunks(updated_at)`);
+      // consolidated in `lifecycle` but still active in `lifecycle_state`
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = 'consolidated'
+           WHERE lifecycle = 'consolidated' AND COALESCE(lifecycle_state, 'active') = 'active'`,
+      );
+      // archived/expired in `lifecycle` but not reflected in `lifecycle_state`
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = 'archived'
+           WHERE lifecycle IN ('archived', 'expired')
+             AND COALESCE(lifecycle_state, 'active') = 'active'`,
+      );
+    },
+  },
+  {
+    version: 66,
+    description:
+      "Memory audit 2026-09-07 (P1.5): store embeddings as compact float32 BLOBs " +
+      "instead of JSON text (~29 KB -> ~6 KB per 1536-dim vector, ~4.8x). Converts " +
+      "existing chunks.embedding and embedding_cache.embedding rows in place. Readers " +
+      "use parseEmbedding(), which decodes both forms, so the conversion is safe even " +
+      "if interrupted. A follow-up VACUUM returns the freed pages to disk.",
+    up: (db: DatabaseSync) => {
+      const convert = (table: string): number => {
+        const sel = db.prepare(
+          `SELECT rowid AS rid, embedding FROM ${table} WHERE typeof(embedding) = 'text' LIMIT 500`,
+        );
+        const upd = db.prepare(`UPDATE ${table} SET embedding = ? WHERE rowid = ?`);
+        let converted = 0;
+        for (;;) {
+          const rows = sel.all() as Array<{ rid: number | bigint; embedding: string }>;
+          if (rows.length === 0) {
+            break;
+          }
+          for (const r of rows) {
+            let blob: Buffer;
+            try {
+              const arr = JSON.parse(r.embedding) as unknown;
+              blob =
+                Array.isArray(arr) && arr.length > 0
+                  ? Buffer.from(new Float32Array(arr as number[]).buffer)
+                  : Buffer.alloc(0);
+            } catch {
+              // Malformed JSON: write an empty blob so it stops matching
+              // typeof='text' and parseEmbedding returns [] for it.
+              blob = Buffer.alloc(0);
+            }
+            upd.run(blob, r.rid);
+            converted += 1;
+          }
+        }
+        return converted;
+      };
+      const tables = ["chunks", "embedding_cache"];
+      for (const t of tables) {
+        try {
+          convert(t);
+        } catch {
+          // Table may not exist on a minimal DB; skip.
+        }
+      }
+    },
+  },
+  {
+    version: 67,
+    description:
+      "PLAN-46 Phase 1 (D-4): drop the orphaned skill_text_history table. It has " +
+      "zero references anywhere in src (no writer, no reader, no CREATE) — it is " +
+      "residue of a removed migration. Verified dead by grep, not just empty on one " +
+      "node, so no load-stress gate is needed. skill_executions and skill_lifecycle " +
+      "were also audit 'dead' candidates but are load-bearing (execution-evidence and " +
+      "the skills lifecycle store) and are KEPT.",
+    up: (db: DatabaseSync) => {
+      db.exec(`DROP TABLE IF EXISTS skill_text_history`);
+    },
+  },
+  {
+    version: 68,
+    description:
+      "PLAN-46 dead-code pass: drop the empty multi-perspective embedding columns " +
+      "(embedding_procedural/causal/entity). They were NULL on every row — written " +
+      "only by a perspective backfill and read only by a multi-perspective search, " +
+      "both removed as dead code (no runtime callers). SQLite 3.35+ DROP COLUMN.",
+    up: (db: DatabaseSync) => {
+      for (const col of ["embedding_procedural", "embedding_causal", "embedding_entity"]) {
+        try {
+          db.exec(`ALTER TABLE chunks DROP COLUMN ${col}`);
+        } catch {
+          // Column already absent (fresh DB / re-run): no-op.
+        }
+      }
+    },
+  },
+  {
+    version: 69,
+    description:
+      "Skill-receive accounting repair (2026-09-28): a peer re-broadcasting legacy dream " +
+      "crystals with new bytes each time was penalized once per COPY (965 rejections " +
+      "against 154 receipts on the reference node). Every decided skill is also a " +
+      "received one, so rejections are capped at receipts minus acceptances. Anomaly flags are cleared: " +
+      "the detector never un-flagged a peer that went quiet, and re-flags any peer that " +
+      "is genuinely spiking on its next hourly pass.",
+    up: (db: DatabaseSync) => {
+      const hasTable = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'peer_reputation'`)
+        .get();
+      if (!hasTable) {
+        return;
+      }
+      db.exec(
+        `UPDATE peer_reputation SET skills_rejected = MAX(0, skills_received - skills_accepted)
+           WHERE skills_accepted + skills_rejected > skills_received`,
+      );
+      db.exec(`UPDATE peer_reputation SET anomaly_flag = 0 WHERE anomaly_flag = 1`);
+    },
+  },
+  {
+    version: 70,
+    description:
+      "Maintenance-tick cold scans (2026-10-03 soak): every 30-minute tick ran two full " +
+      "scans of chunks that matched nothing. scorePendingChunks filters on " +
+      "curiosity_reward IS NULL, which the v35 partial index (IS NOT NULL) cannot serve; " +
+      "governance.enforceLifespan filters on governance_json LIKE '%ttl%' and this install " +
+      "has no TTL crystal. On a cold page cache each scan of the 6k-row table cost about " +
+      "5 s of synchronous I/O on the gateway loop (16 ms warm). Partial indexes on exactly " +
+      "those predicates make both queries touch only the matching rows.",
+    up: (db: DatabaseSync) => {
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_curiosity_pending ` +
+          `ON chunks(id) WHERE curiosity_reward IS NULL`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunks_governance_ttl ` +
+          `ON chunks(id) WHERE governance_json LIKE '%ttl%'`,
+      );
+    },
+  },
+  {
+    version: 71,
+    description:
+      "Circles security pass (2026-10-06). M3: circle_members.last_presence_ts is the " +
+      "per-(circle, member) high-water mark of signed presence beats, so a replayed older " +
+      "beat can no longer roll a member's endpoints back. M2: circle_messages.system_target " +
+      "holds the pubkey a removal notice names, so the UI can offer the one-tap 'remove on " +
+      "my node too' that completes a removal (and rotates this node's sender key).",
+    up: (db: DatabaseSync) => {
+      const has = (name: string) =>
+        db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name);
+      if (has("circle_members")) {
+        addColumnIfMissing(db, "circle_members", "last_presence_ts", "INTEGER");
+      }
+      if (has("circle_messages")) {
+        addColumnIfMissing(db, "circle_messages", "system_target", "TEXT");
+      }
+    },
+  },
+  {
+    version: 72,
+    description:
+      "Lifecycle column repair (Agent Memory Atlas review, 2026-09-19). The coarse " +
+      "lifecycle_state used to be derived from lifecycle 'expired' as 'archived', so a " +
+      "forgotten chunk that round-tripped came back merely archived. Expired rows get " +
+      "lifecycle_state 'forgotten', and a NULL in either column is filled from the other " +
+      "so single-column reads no longer drop rows under three-valued logic.",
+    up: (db: DatabaseSync) => {
+      const cols = new Set(
+        (db.prepare(`PRAGMA table_info(chunks)`).all() as Array<{ name: string }>).map(
+          (r) => r.name,
+        ),
+      );
+      if (!cols.has("lifecycle") || !cols.has("lifecycle_state")) {
+        return;
+      }
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = 'forgotten'
+          WHERE lifecycle = 'expired' AND COALESCE(lifecycle_state, '') <> 'forgotten'`,
+      );
+      db.exec(
+        `UPDATE chunks SET lifecycle_state = CASE lifecycle
+            WHEN 'consolidated' THEN 'consolidated'
+            WHEN 'archived' THEN 'archived'
+            ELSE 'active' END
+          WHERE lifecycle_state IS NULL AND lifecycle IS NOT NULL`,
+      );
+      db.exec(
+        `UPDATE chunks SET lifecycle = CASE lifecycle_state
+            WHEN 'forgotten' THEN 'expired'
+            WHEN 'archived' THEN 'archived'
+            WHEN 'consolidated' THEN 'consolidated'
+            ELSE 'generated' END
+          WHERE lifecycle IS NULL`,
+      );
+    },
+  },
+  {
+    version: 73,
+    description:
+      "PLAN-54 curiosity loop (2026-10-07). curiosity_findings holds what the agent went and " +
+      "learned on its own: the question, the depersonalized query that left the node, the " +
+      "cited answer, confidence, hormonal state at acquisition, cost, the chunk it became, and " +
+      "whether a conversation ever used it. curiosity_targets gains an attempt counter and an " +
+      "embedding for dedupe, so the same question is never asked twice.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS curiosity_findings (
+          id            TEXT PRIMARY KEY,
+          target_id     TEXT NOT NULL,
+          question      TEXT NOT NULL,
+          query_phrase  TEXT NOT NULL,
+          answer        TEXT NOT NULL,
+          confidence    REAL NOT NULL,
+          sources_json  TEXT NOT NULL DEFAULT '[]',
+          hormonal_json TEXT,
+          cost_usd      REAL NOT NULL DEFAULT 0,
+          chunk_id      TEXT,
+          region_id     TEXT,
+          created_at    INTEGER NOT NULL,
+          first_used_at INTEGER,
+          used_count    INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_curiosity_findings_chunk ON curiosity_findings (chunk_id);
+        CREATE INDEX IF NOT EXISTS idx_curiosity_findings_created ON curiosity_findings (created_at);
+      `);
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'curiosity_targets'`)
+        .get();
+      if (has) {
+        addColumnIfMissing(db, "curiosity_targets", "attempts", "INTEGER NOT NULL DEFAULT 0");
+        addColumnIfMissing(db, "curiosity_targets", "embedding_json", "TEXT");
+        // The emerging-skill "frontier" generator is deleted in this release;
+        // its open rows were never researchable (handover briefs, READMEs).
+        db.exec(
+          `DELETE FROM curiosity_targets WHERE resolved_at IS NULL
+             AND json_extract(metadata, '$.source') = 'emerging_skill'`,
+        );
+      }
+    },
+  },
+  {
+    version: 74,
+    description:
+      "PLAN-54 follow-up (2026-10-07): curiosity_findings.verified marks findings that cleared " +
+      "the two-source / confidence gate and became memory. An answer the agent found but was " +
+      "not confident enough to remember is kept (verified = 0, no chunk) so the Curiosity page " +
+      "can show what it saw instead of a bare 'unanswered'.",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'curiosity_findings'`)
+        .get();
+      if (has) {
+        addColumnIfMissing(db, "curiosity_findings", "verified", "INTEGER NOT NULL DEFAULT 1");
+      }
+    },
+  },
+  {
+    version: 75,
+    description:
+      "Knowledge-graph person hygiene (2026-10-07): entities filed as 'person' that are not " +
+      "names ('here', 'commands', a peer id) are reclassified as 'concept'. The curiosity " +
+      "egress filter blocks every known person's name from outgoing search phrases, so noise " +
+      "there blocked ordinary words; identity recall read the same rows.",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'entities'`)
+        .get();
+      if (!has) {
+        return;
+      }
+      const rows = db
+        .prepare(`SELECT id, name, mention_count FROM entities WHERE entity_type = 'person'`)
+        .all() as Array<{ id: string; name: string; mention_count: number }>;
+      const findConcept = db.prepare(
+        `SELECT id FROM entities WHERE name = ? AND entity_type = 'concept'`,
+      );
+      const demote = db.prepare(`UPDATE entities SET entity_type = 'concept' WHERE id = ?`);
+      // (name, entity_type) is unique: when a concept of that name already
+      // exists, fold the person row into it and keep every edge.
+      const repointSource = db.prepare(
+        `UPDATE OR IGNORE relationships SET source_entity_id = ? WHERE source_entity_id = ?`,
+      );
+      const repointTarget = db.prepare(
+        `UPDATE OR IGNORE relationships SET target_entity_id = ? WHERE target_entity_id = ?`,
+      );
+      const dropOrphanEdges = db.prepare(
+        `DELETE FROM relationships WHERE source_entity_id = ? OR target_entity_id = ?`,
+      );
+      const repointParent = db.prepare(
+        `UPDATE entities SET parent_entity_id = ? WHERE parent_entity_id = ?`,
+      );
+      const bump = db.prepare(`UPDATE entities SET mention_count = mention_count + ? WHERE id = ?`);
+      const remove = db.prepare(`DELETE FROM entities WHERE id = ?`);
+      for (const r of rows) {
+        if (looksLikePersonName(r.name)) {
+          continue;
+        }
+        const concept = findConcept.get(r.name) as { id: string } | undefined;
+        if (!concept) {
+          demote.run(r.id);
+          continue;
+        }
+        repointSource.run(concept.id, r.id);
+        repointTarget.run(concept.id, r.id);
+        dropOrphanEdges.run(r.id, r.id);
+        try {
+          repointParent.run(concept.id, r.id);
+        } catch {
+          // parent_entity_id arrived in a later migration on some nodes
+        }
+        bump.run(r.mention_count ?? 1, concept.id);
+        remove.run(r.id);
+      }
+    },
+  },
+  {
+    version: 76,
+    description:
+      "PLAN-55 Phase 0 (2026-10-10): memory_suppressions, the owner's standing 'no'. " +
+      "Owner forget records the memory text hash, owner retire records the fact " +
+      "key/value hash, preference removal records the preference key; session " +
+      "extraction, preference extraction, curiosity findings, dream insight promotion " +
+      "and the ledger's pin() consult it before writing, so what the owner removed " +
+      "stays removed when the same input is re-processed. Also in this release but " +
+      "code-only (SQLite has no enum): canonical_facts.source gains 'owner' (trust " +
+      "tier 3; 'user_directive' is its alias) and canonical_facts.status gains " +
+      "'owner_retired', which only an owner-tier pin or unretire reactivates.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_suppressions (
+          id         TEXT PRIMARY KEY,
+          kind       TEXT NOT NULL,
+          hash       TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          reason     TEXT,
+          actor      TEXT NOT NULL DEFAULT 'owner',
+          text       TEXT
+        )
+      `);
+      // The unreleased first cut of v76 had no `text` column; a node that ran
+      // it gets the column here rather than through a v77.
+      addColumnIfMissing(db, "memory_suppressions", "text", "TEXT");
+      db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_suppressions_kind_hash ` +
+          `ON memory_suppressions(kind, hash)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_memory_suppressions_kind ON memory_suppressions(kind)`,
+      );
+    },
+  },
+  {
+    version: 77,
+    description:
+      "PLAN-55 Phase 1 (2026-10-10): canonical_facts.scope ('global' | 'project:<name>' | " +
+      "'person:<name>', default 'global') decides where a fact is injected: project-scoped " +
+      "facts render only when the active workspace matches. canonical_facts.evidence_ref " +
+      "(nullable) is the session line ref or quote the correction capture, the owner's pin " +
+      "or the agent's memory_pin cited. Code-only in the same release: canonical_conflicts " +
+      "gains the 'pending_supersede' kind (an agent pin that would replace a tier >= 2 " +
+      "belief is held for the owner instead of written).",
+    up: (db: DatabaseSync) => {
+      const has = db
+        .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'canonical_facts'`)
+        .get();
+      if (!has) {
+        return;
+      }
+      addColumnIfMissing(db, "canonical_facts", "scope", "TEXT NOT NULL DEFAULT 'global'");
+      addColumnIfMissing(db, "canonical_facts", "evidence_ref", "TEXT");
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_facts_scope ON canonical_facts(scope) ` +
+          `WHERE valid_until IS NULL`,
+      );
+    },
+  },
+  {
+    version: 78,
+    description:
+      "PLAN-55 Phase 2 (2026-10-11): canonical:changed propagation. chunk_supersessions " +
+      "(chunk_id, fact_key, stale_value) marks a memory chunk that states a value the " +
+      "ledger no longer holds for that key; search ranks it below current results and " +
+      "tags it [superseded], and a pin back to that value deletes the mark. " +
+      "dream_briefs.stale_fact and dream_insights.stale_fact (JSON, nullable) flag an " +
+      "anticipation brief or a dream insight that cites a superseded value or rests on " +
+      "forgotten evidence: a flagged brief is not surfaced and a flagged insight is not " +
+      "promoted. canonical_change_outbox records every ledger change in the writer's " +
+      "transaction; propagated_at is set once the consumers ran, and a reconcile pass " +
+      "replays rows left unset. It starts empty: changes made before this migration are " +
+      "not propagated retroactively. canonical_propagation_undo records what an owner " +
+      "retire or a supersede removed (a preference row, graph edges) so bringing the " +
+      "value back restores it.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS chunk_supersessions (
+          chunk_id      TEXT NOT NULL,
+          fact_key      TEXT NOT NULL,
+          stale_value   TEXT NOT NULL,
+          fact_id       TEXT,
+          current_value TEXT,
+          created_at    INTEGER NOT NULL,
+          PRIMARY KEY (chunk_id, fact_key, stale_value)
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_chunk_supersessions_key ` +
+          `ON chunk_supersessions(fact_key, stale_value)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_change_outbox (
+          id             INTEGER PRIMARY KEY AUTOINCREMENT,
+          fact_id        TEXT NOT NULL,
+          key            TEXT NOT NULL,
+          event_json     TEXT NOT NULL,
+          created_at     INTEGER NOT NULL,
+          propagated_at  INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_change_outbox_pending ` +
+          `ON canonical_change_outbox(propagated_at, id)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS canonical_propagation_undo (
+          id          INTEGER PRIMARY KEY AUTOINCREMENT,
+          fact_key    TEXT NOT NULL,
+          value       TEXT NOT NULL,
+          kind        TEXT NOT NULL,
+          payload     TEXT NOT NULL,
+          created_at  INTEGER NOT NULL,
+          undone_at   INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_canonical_propagation_undo_key ` +
+          `ON canonical_propagation_undo(fact_key, value, undone_at)`,
+      );
+      const hasTable = (name: string): boolean =>
+        Boolean(
+          db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(name),
+        );
+      if (hasTable("dream_briefs")) {
+        addColumnIfMissing(db, "dream_briefs", "stale_fact", "TEXT");
+      }
+      if (hasTable("dream_insights")) {
+        addColumnIfMissing(db, "dream_insights", "stale_fact", "TEXT");
+      }
     },
   },
 ];

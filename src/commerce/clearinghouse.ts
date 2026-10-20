@@ -6,8 +6,8 @@
  * transports adapt onto this.
  */
 import type { DatabaseSync } from "node:sqlite";
-import type { Envelope } from "./envelope.js";
 import { GroupBuyDirectory, type OfferRow } from "./directory.js";
+import type { Envelope } from "./envelope.js";
 import { DemandMatcher, type SyndicateRow } from "./matcher.js";
 
 const ACTIVE_STATES = ["forming", "quoting", "committing", "striking"];

@@ -2,12 +2,12 @@
  * Tests for RLM Deep Recall: sandbox, executor, cost tracker, and context builder.
  */
 import { describe, it, expect, beforeEach } from "vitest";
-import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
 import { resolveStorePath, toPiMessages } from "../tools/deep-recall-tool.js";
 import { isTranscriptFile, transcriptSessionId } from "./context-builder.js";
 import { CostTracker } from "./cost-tracker.js";
 import { capOutputForFeedback, RLMExecutor } from "./executor.js";
 import { RLMSandbox } from "./sandbox.js";
+import type { RLMLLMCallFn, RLMExecutorOptions } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Transcript file naming (context-builder)

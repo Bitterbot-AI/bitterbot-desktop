@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BitterbotConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { resolveOAuthDir, resolveStateDir } from "../config/paths.js";
 import {
   loadSessionStore,
@@ -205,7 +205,7 @@ export async function noteStateIntegrity(
       const stat = fs.statSync(stateDir);
       if ((stat.mode & 0o077) !== 0) {
         warnings.push(
-          `- State directory permissions are too open (${displayStateDir}). Recommend chmod 700.`,
+          `- State directory permissions are too open (${displayStateDir}): other users on this machine can list your config, keys and memory files. Fix: bitterbot doctor --fix (or chmod 700 ${displayStateDir}).`,
         );
         const tighten = await prompter.confirmSkipInNonInteractive({
           message: `Tighten permissions on ${displayStateDir} to 700?`,

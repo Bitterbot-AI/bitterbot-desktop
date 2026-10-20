@@ -8,6 +8,7 @@ export type EmbeddingBatchOutputLine = {
           data?: Array<{
             embedding?: number[];
           }>;
+          usage?: { prompt_tokens?: number; total_tokens?: number };
           error?: { message?: string };
         }
       | string;
@@ -19,6 +20,8 @@ export function applyEmbeddingBatchOutputLine(params: {
   remaining: Set<string>;
   errors: string[];
   byCustomId: Map<string, number[]>;
+  /** PLAN-50: accumulates provider-reported tokens across the batch output. */
+  tokens?: { total: number };
 }) {
   const customId = params.line.custom_id;
   if (!customId) {
@@ -44,6 +47,13 @@ export function applyEmbeddingBatchOutputLine(params: {
     return;
   }
 
+  if (params.tokens && response?.body && typeof response.body === "object") {
+    const usage = response.body.usage;
+    const reported = usage?.total_tokens ?? usage?.prompt_tokens;
+    if (typeof reported === "number" && Number.isFinite(reported) && reported > 0) {
+      params.tokens.total += reported;
+    }
+  }
   const data =
     response?.body && typeof response.body === "object" ? (response.body.data ?? []) : [];
   const embedding = data[0]?.embedding ?? [];
@@ -52,4 +62,43 @@ export function applyEmbeddingBatchOutputLine(params: {
     return;
   }
   params.byCustomId.set(customId, embedding);
+}
+
+/**
+ * PLAN-50: best-effort text of a batch request for token estimation when the provider's
+ * output carries no usage. Collects every string under an `input`, `text` or `content` key.
+ */
+export function extractBatchRequestText(request: unknown): string {
+  const parts: string[] = [];
+  const visit = (value: unknown, depth: number) => {
+    if (depth > 6 || value === null || value === undefined) {
+      return;
+    }
+    if (typeof value === "string") {
+      parts.push(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item, depth + 1);
+      }
+      return;
+    }
+    if (typeof value === "object") {
+      for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+        if (
+          key === "input" ||
+          key === "text" ||
+          key === "content" ||
+          key === "parts" ||
+          key === "body" ||
+          key === "request"
+        ) {
+          visit(item, depth + 1);
+        }
+      }
+    }
+  };
+  visit(request, 0);
+  return parts.join(" ");
 }

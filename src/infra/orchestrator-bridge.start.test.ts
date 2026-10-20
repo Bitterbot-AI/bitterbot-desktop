@@ -14,6 +14,11 @@ vi.mock("./p2p-key-dir.js", () => ({
   migrateLegacyP2pKeys: () => null,
   assertManagementKeyPresent: () => {},
 }));
+// Same reason: the token module writes next to the (mocked) key dir.
+vi.mock("./orchestrator-ipc-token.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./orchestrator-ipc-token.js")>()),
+  loadOrCreateIpcToken: () => "a".repeat(64),
+}));
 
 import { OrchestratorBridge } from "./orchestrator-bridge.js";
 
@@ -96,6 +101,40 @@ describe.runIf(process.platform !== "win32")("orchestrator bridge boot resilienc
       await bridge.start();
       expect(bridge.getHealth().ipcConnected).toBe(true);
       expect(bridge.getHealth().everConnected).toBe(true);
+    } finally {
+      await bridge.stop();
+    }
+  }, 30_000);
+
+  it("hands the daemon the IPC token and authenticates first (HIGH-5)", async () => {
+    const seenPath = path.join(path.dirname(ipcPath), "seen.txt");
+    const bridge = withFakeDaemon(
+      new OrchestratorBridge(cfg()),
+      `
+      const fs = require("node:fs");
+      const net = require("node:net");
+      const srv = net.createServer((sock) => {
+        let buf = "";
+        sock.on("data", (d) => {
+          buf += d;
+          const nl = buf.indexOf("\\n");
+          if (nl >= 0) {
+            fs.writeFileSync(${JSON.stringify(seenPath)},
+              JSON.stringify({ env: process.env.BITTERBOT_IPC_TOKEN, first: buf.slice(0, nl) }));
+          }
+        });
+      });
+      srv.listen(${JSON.stringify(ipcPath)});
+      setInterval(() => {}, 1000);
+      `,
+    );
+    try {
+      await bridge.start();
+      await vi.waitFor(() => expect(fs.existsSync(seenPath)).toBe(true), { timeout: 5_000 });
+      const seen = JSON.parse(fs.readFileSync(seenPath, "utf8")) as { env: string; first: string };
+      expect(seen.env).toBe("a".repeat(64));
+      const first = JSON.parse(seen.first) as { type: string; payload: { token: string } };
+      expect(first).toMatchObject({ type: "auth", payload: { token: "a".repeat(64) } });
     } finally {
       await bridge.stop();
     }

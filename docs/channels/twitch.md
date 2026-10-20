@@ -12,17 +12,15 @@ title: "Twitch"
 
 Twitch chat support via IRC connection. Bitterbot connects as a Twitch user (bot account) to receive and send messages in channels.
 
-## Plugin required
+## Enable the plugin
 
-Twitch ships as a plugin and is not bundled with the core install.
+Twitch is bundled with Bitterbot but off by default. Turn it on with:
 
-Install via CLI (npm registry):
-
-```bash
-bitterbot plugins install @bitterbot/twitch
+```json5
+{ plugins: { entries: { twitch: { enabled: true } } } }
 ```
 
-Local checkout (when running from a git repo):
+or, from a git checkout:
 
 ```bash
 bitterbot plugins install ./extensions/twitch

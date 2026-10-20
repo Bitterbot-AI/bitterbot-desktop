@@ -15,13 +15,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { SkillCapabilitiesDeclaration, SkillEntry } from "./types.js";
 import { type CapabilityAxis, type CapabilityGrant } from "./capability-grants.js";
 import {
   type EffectiveCapabilityProfile,
   type SkillTrustTier,
   resolveCapabilityProfile,
 } from "./capability-profile.js";
+import type { SkillCapabilitiesDeclaration, SkillEntry } from "./types.js";
 
 export type SkillProvenance = {
   authorPubkey: string;

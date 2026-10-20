@@ -15,8 +15,8 @@
  * - MAGMA multi-graph (arxiv:2601.03236)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isAdmissibleEntity, isAdmissibleRelation } from "./kg-entity-admission.js";
 import { buildRelationshipTemporalWhereClause } from "./temporal-filter.js";
@@ -42,6 +42,85 @@ const MUTUALLY_EXCLUSIVE_RELATIONS: ReadonlySet<RelationType> = new Set<Relation
 export type BeliefAction = "strengthen" | "flag_contradiction" | "update" | "supersede";
 
 // ── Types ──
+
+/** Words an extractor has filed as "person" that are not people. */
+const NOT_A_PERSON = new Set([
+  "here",
+  "there",
+  "commands",
+  "command",
+  "cloud",
+  "directive",
+  "dots",
+  "incoming",
+  "limited",
+  "peers",
+  "peer",
+  "person",
+  "people",
+  "prime",
+  "provider",
+  "quarantine",
+  "read",
+  "run",
+  "users",
+  "user",
+  "workspace",
+  "human",
+  "friend",
+  "assistant",
+  "agent",
+  "bot",
+  "system",
+  "admin",
+  "owner",
+  "me",
+  "you",
+  "someone",
+  "anyone",
+  "everyone",
+  "nobody",
+  "team",
+  "it",
+  "them",
+  "they",
+  "we",
+  "knowledge",
+  "crystals",
+  "memory",
+  "skills",
+  "skill",
+  "dream",
+  "the",
+  "a",
+  "an",
+  // The product and its parts are not people, however the extractor files them.
+  "bitterbot",
+  "gateway",
+  "orchestrator",
+  "circles",
+  "openclaw",
+]);
+
+/**
+ * Is this (lowercased) entity name plausibly a person's name? Letters and
+ * name punctuation only, 2 to 4 words, no word a common noun from the
+ * extractor's own vocabulary, no digits, no peer ids, no leading article.
+ */
+export function looksLikePersonName(name: string): boolean {
+  const n = name.trim();
+  if (n.length < 2 || n.length > 60 || /\d/.test(n)) {
+    return false;
+  }
+  const words = n.split(/\s+/);
+  if (words.length > 4 || /^(the|a|an|my|our)$/.test(words[0]!)) {
+    return false;
+  }
+  if (!/^[\p{L}][\p{L}'’.-]*$/u.test(words.join(""))) {
+    return false;
+  }
+  return !words.some((w) => NOT_A_PERSON.has(w.replace(/[.'’-]/g, "")));
+}
 
 export type EntityType =
   | "person"
@@ -177,6 +256,12 @@ export class KnowledgeGraphManager {
   upsertEntity(entity: ExtractedEntity): Entity {
     const now = Date.now();
     const normalizedName = entity.name.trim().toLowerCase();
+    // A "person" that is not a name is noise the curiosity egress filter and
+    // the identity recall would both act on ("here", "commands", a peer id).
+    // Keep the mention, as a concept.
+    const type: EntityType =
+      entity.type === "person" && !looksLikePersonName(normalizedName) ? "concept" : entity.type;
+    entity = { ...entity, type };
 
     const existing = this.findEntityByNameType(normalizedName, entity.type);
     if (existing) {

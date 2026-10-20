@@ -253,7 +253,13 @@ pub struct SwarmStats {
     pub peer_id: String,
     pub connected_peers: usize,
     pub skills_published: u64,
+    /// Distinct skills received this session: one per (author, skill name),
+    /// however many times it is re-broadcast. See skill_receipts.rs.
     pub skills_received: u64,
+    /// Raw skill gossip messages that passed envelope validation, repeats of
+    /// an already-counted skill included.
+    #[serde(default)]
+    pub skill_messages_received: u64,
     pub uptime_secs: u64,
     pub peer_details: HashMap<String, PeerDetail>,
     pub listen_addrs: Vec<String>,
@@ -695,6 +701,8 @@ pub struct BitterbotBehaviour {
 
 pub struct SwarmHandle {
     signing_key: SigningKey,
+    /// crypto::author_pubkey_b64(&signing_key), computed once.
+    own_author_pubkey: String,
     local_peer_id: PeerId,
     stats: SharedStats,
     security: SecurityValidator,
@@ -731,6 +739,8 @@ pub struct SwarmHandle {
     current_minute_leaves: u32,
     /// Rolling buffer of skill receive latencies (ms), capped at LATENCY_WINDOW.
     latency_window_ms: std::collections::VecDeque<u64>,
+    /// Which (author, skill name) pairs have already been counted.
+    skill_receipts: crate::skill_receipts::SkillReceiptTracker,
     /// Bootnode registry — only flushes to disk if enabled.
     bootnode_registry: SharedBootnodeRegistry,
     /// Stage 3: circle topics this RELAY carries purely to forward. Only
@@ -1123,6 +1133,23 @@ impl SwarmHandle {
         let mut bootnode_broadcast_interval = tokio::time::interval(Duration::from_secs(60));
         bootnode_broadcast_interval.tick().await;
 
+        // Stats refresh + bootnode registry flush.
+        //
+        // This MUST stay a hoisted `interval` and must never become an inline
+        // `tokio::time::sleep(..)` inside the `select!` below. A future built
+        // inside `select!` is reconstructed on every loop iteration, so its
+        // timer restarts whenever any other branch completes first. The
+        // 5-second `circle_rpc_sweep` alone guarantees an iteration at least
+        // every 5 seconds, so an inline 10-second sleep could never elapse and
+        // this arm was unreachable in practice. That was a live bug: every
+        // derived stat (mesh peer count, per-topic fanout, routing table size,
+        // uptime, latency percentiles, churn buckets) stayed frozen at its
+        // construction default forever, and the bootnode registry — whose only
+        // caller of `flush_if_dirty` is this arm — was never persisted, so a
+        // relay lost its entire lifetime peer registry on every restart.
+        let mut stats_interval = tokio::time::interval(Duration::from_secs(10));
+        stats_interval.tick().await; // skip immediate first tick
+
         loop {
             tokio::select! {
                 Some(cmd) = ipc_rx.recv() => {
@@ -1179,7 +1206,7 @@ impl SwarmHandle {
                         _ => {}
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                _ = stats_interval.tick() => {
                     // Snapshot per-minute churn buckets before locking stats, so we
                     // never hold the swarm/stats locks at the same time.
                     let now_secs = std::time::SystemTime::now()
@@ -1445,6 +1472,7 @@ impl SwarmHandle {
             BitterbotBehaviourEvent::CircleRpc(request_response::Event::Message {
                 peer,
                 message,
+                ..
             }) => match message {
                 request_response::Message::Request { request, channel, .. } => {
                     // Per-peer rate limit + a hard cap on outstanding held
@@ -1794,7 +1822,7 @@ impl SwarmHandle {
                     relay::Event::ReservationTimedOut { src_peer_id } => {
                         debug!("Relay server: reservation timed out for {}", src_peer_id);
                     }
-                    relay::Event::CircuitReqDenied { src_peer_id, dst_peer_id } => {
+                    relay::Event::CircuitReqDenied { src_peer_id, dst_peer_id, .. } => {
                         debug!("Relay server: circuit denied from {} to {}", src_peer_id, dst_peer_id);
                     }
                     _ => {}
@@ -1952,7 +1980,9 @@ impl SwarmHandle {
                         "peer_id": stats.peer_id,
                         "peers": stats.connected_peers,
                         "published": stats.skills_published,
+                        // Distinct skills (author + name); raw count below.
                         "received": stats.skills_received,
+                        "messages_received": stats.skill_messages_received,
                         "uptime_secs": stats.uptime_secs,
                         "mesh_peers_count": stats.mesh_peers_count,
                         "subscribed_topics": stats.subscribed_topics,
@@ -2341,7 +2371,7 @@ impl SwarmHandle {
                     }));
                 } else {
                     let t = gossipsub::IdentTopic::new(topic.clone());
-                    let ok = self.swarm.behaviour_mut().gossipsub.unsubscribe(&t).unwrap_or(false);
+                    let ok = self.swarm.behaviour_mut().gossipsub.unsubscribe(&t);
                     let _ = respond.send(serde_json::json!({
                         "type": "response", "id": id,
                         "payload": { "ok": ok, "topic": topic }
@@ -2590,6 +2620,15 @@ impl SwarmHandle {
                     return;
                 }
 
+                // Our own skill echoed back (a peer re-published it, or another
+                // machine shares this node key). Gossipsub already suppresses our
+                // own messages, but not a re-publish. Same rule as telemetry
+                // below: never count, reward, or forward our own output.
+                if envelope.author_pubkey == self.own_author_pubkey {
+                    debug!("Dropping our own skill echoed back: {}", envelope.name);
+                    return;
+                }
+
                 // Validate management signature (strips invalid claims but never rejects)
                 self.security.validate_management_signature(&mut envelope);
 
@@ -2616,14 +2655,24 @@ impl SwarmHandle {
                     .map(|v| v.len() as u64)
                     .unwrap_or(0);
 
-                // Update per-peer skills_received_from counter
+                // Count skills, not messages: a re-broadcast of a skill this
+                // author already sent (same name, new bytes) is still forwarded
+                // to Node below, but neither counts as a new skill nor earns the
+                // sender reputation again.
+                let first_receipt = self
+                    .skill_receipts
+                    .record(&envelope.author_pubkey, &envelope.name);
                 {
                     let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
-                    stats.skills_received += 1;
+                    stats.skill_messages_received += 1;
                     *stats
                         .bytes_received_per_topic
                         .entry(SKILLS_TOPIC.to_string())
                         .or_insert(0) += approx_bytes;
+                }
+                if first_receipt {
+                    let mut stats = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                    stats.skills_received += 1;
                     if let Some(detail) = stats.peer_details.get_mut(&envelope.author_peer_id) {
                         detail.skills_received_from += 1;
                         // Diminishing reputation gain: logarithmic scaling, capped at 100
@@ -3194,11 +3243,11 @@ pub async fn build_swarm(
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
                         autonat: autonat::v2::client::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                             autonat::v2::client::Config::default(),
                         ),
                         autonat_server: autonat::v2::server::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                         ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(Some(relay_client_behaviour)),
@@ -3228,11 +3277,11 @@ pub async fn build_swarm(
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
                         autonat: autonat::v2::client::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                             autonat::v2::client::Config::default(),
                         ),
                         autonat_server: autonat::v2::server::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                         ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),
@@ -3264,11 +3313,11 @@ pub async fn build_swarm(
                         gossipsub: gossipsub_behaviour,
                         kademlia: kademlia_behaviour,
                         autonat: autonat::v2::client::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                             autonat::v2::client::Config::default(),
                         ),
                         autonat_server: autonat::v2::server::Behaviour::new(
-                            rand::rngs::OsRng,
+                            rand_core::OsRng,
                         ),
                         identify: identify_behaviour,
                         relay_client: Toggle::from(None),
@@ -3302,6 +3351,7 @@ pub async fn build_swarm(
         connected_peers: 0,
         skills_published: 0,
         skills_received: 0,
+        skill_messages_received: 0,
         uptime_secs: 0,
         peer_details: HashMap::new(),
         listen_addrs: vec![listen_addr.to_string()],
@@ -3363,6 +3413,7 @@ pub async fn build_swarm(
         .as_secs();
 
     let handle = SwarmHandle {
+        own_author_pubkey: crate::crypto::author_pubkey_b64(&keypair),
         signing_key: keypair.clone(),
         local_peer_id,
         stats,
@@ -3388,6 +3439,7 @@ pub async fn build_swarm(
         current_minute_joins: 0,
         current_minute_leaves: 0,
         latency_window_ms: std::collections::VecDeque::with_capacity(LATENCY_WINDOW),
+        skill_receipts: crate::skill_receipts::SkillReceiptTracker::default(),
         bootnode_registry,
         carried_circle_topics: std::collections::HashMap::new(),
         inbound_circle_rpc: std::collections::HashMap::new(),
@@ -3483,5 +3535,74 @@ mod tests {
         reg.flush_if_dirty();
         assert!(!reg.enabled());
         assert_eq!(reg.lifetime_unique(), 0);
+    }
+
+    /// Demonstrates the starvation bug the event loop shipped with, so the
+    /// reasoning behind the `stats_interval` comment is executable rather than
+    /// folklore.
+    ///
+    /// A `sleep` future constructed *inside* `select!` is rebuilt on every loop
+    /// iteration, restarting its timer whenever another branch completes first.
+    /// Against a faster sibling timer it therefore never elapses. In the
+    /// orchestrator the 5-second circle-RPC sweep starved a 10-second stats
+    /// refresh, leaving every derived stat frozen at its construction default
+    /// and the bootnode registry never flushed to disk.
+    #[tokio::test(start_paused = true)]
+    async fn inline_select_sleep_is_starved_by_a_faster_interval() {
+        // The broken shape: 10s sleep rebuilt each iteration vs a 5s interval.
+        let mut fast = tokio::time::interval(Duration::from_secs(5));
+        fast.tick().await; // skip immediate first tick
+        let mut slow_fired = 0u32;
+        for _ in 0..24 {
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(10)) => { slow_fired += 1; }
+                _ = fast.tick() => {}
+            }
+        }
+        assert_eq!(
+            slow_fired, 0,
+            "an inline select! sleep must never elapse against a faster interval"
+        );
+
+        // The fix: hoist the timer so it keeps its deadline across iterations.
+        let mut fast = tokio::time::interval(Duration::from_secs(5));
+        fast.tick().await;
+        let mut slow = tokio::time::interval(Duration::from_secs(10));
+        slow.tick().await;
+        let mut slow_fired = 0u32;
+        for _ in 0..24 {
+            tokio::select! {
+                _ = slow.tick() => { slow_fired += 1; }
+                _ = fast.tick() => {}
+            }
+        }
+        assert!(
+            slow_fired >= 4,
+            "a hoisted interval must keep firing; got {slow_fired}"
+        );
+    }
+
+    /// Structural guard against reintroducing the bug above. The stats-refresh
+    /// arm is not reachable from any unit test (it needs a live swarm), so the
+    /// shape is asserted against the source instead. The needle is built at
+    /// runtime so this test's own text cannot satisfy it.
+    #[test]
+    fn stats_refresh_arm_stays_a_hoisted_interval() {
+        let src = include_str!("mod.rs");
+        let inline_sleep = format!("tokio::time::{}(Duration::from_secs(10))", "sleep");
+        let occurrences = src.matches(inline_sleep.as_str()).count();
+        assert_eq!(
+            occurrences, 1,
+            "the only 10s inline sleep may be the one in the starvation test; \
+             the event loop's stats arm must tick a hoisted interval"
+        );
+        assert!(
+            src.contains("stats_interval.tick()"),
+            "the stats-refresh arm must drive a hoisted stats_interval"
+        );
+        assert!(
+            src.contains("let mut stats_interval = tokio::time::interval("),
+            "stats_interval must be constructed outside the event loop"
+        );
     }
 }

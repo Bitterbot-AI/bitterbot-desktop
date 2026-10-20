@@ -1,6 +1,6 @@
-import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import crypto from "node:crypto";
-import type { BashSandboxConfig } from "./bash-tools.shared.js";
+import path from "node:path";
+import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
 import {
   type ExecAsk,
   type ExecHost,
@@ -47,10 +47,13 @@ import {
   renderExecHostLabel,
   resolveApprovalRunningNoticeMs,
   runExecProcess,
+  coerceExecEnvOverrides,
   execSchema,
+  type ExecEnvOverrideValue,
   type ExecProcessHandle,
   validateHostEnv,
 } from "./bash-tools.exec-runtime.js";
+import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import {
   buildSandboxEnv,
   clampWithDefault,
@@ -86,6 +89,12 @@ export type ExecToolDefaults = {
   cwd?: string;
   /** Sanitizer rule IDs to skip globally for this agent's exec calls. */
   commandRulesAllow?: string[];
+  /** PLAN-44: run with a minimal environment (PATH/HOME/LANG/TERM only), never the gateway's secrets. */
+  scrubEnv?: boolean;
+  /** PLAN-45 2.3: values that replace the scrubbed HOME/TMPDIR (a validation trial's scratch workspace). */
+  scrubEnvOverrides?: Record<string, string>;
+  /** PLAN-44: ignore a `workdir` outside `cwd`; the command runs inside `cwd`. */
+  confineWorkdir?: boolean;
 };
 
 export type { BashSandboxConfig } from "./bash-tools.shared.js";
@@ -160,7 +169,7 @@ export function createExecTool(
       const params = args as {
         command: string;
         workdir?: string;
-        env?: Record<string, string>;
+        env?: Record<string, ExecEnvOverrideValue>;
         yieldMs?: number;
         background?: boolean;
         timeout?: number;
@@ -171,6 +180,7 @@ export function createExecTool(
         ask?: string;
         node?: string;
       };
+      const envOverrides = coerceExecEnvOverrides(params.env);
 
       if (!params.command) {
         throw new Error("Provide a command to start.");
@@ -290,7 +300,28 @@ export function createExecTool(
       }
 
       const sandbox = host === "sandbox" ? defaults?.sandbox : undefined;
-      const rawWorkdir = params.workdir?.trim() || defaults?.cwd || process.cwd();
+      // Sandboxing is opt-in: on the sandbox host with no sandbox configured
+      // the command runs on the gateway machine and no allowlist is
+      // evaluated (documented). An operator who wrote security=deny, or a
+      // session that requested it, still gets deny on that path instead of
+      // a silently ignored setting.
+      if (
+        host === "sandbox" &&
+        !sandbox &&
+        security === "deny" &&
+        (defaults?.security === "deny" || requestedSecurity === "deny")
+      ) {
+        throw new Error("exec denied: security=deny (sandbox host, no sandbox configured)");
+      }
+      let rawWorkdir = params.workdir?.trim() || defaults?.cwd || process.cwd();
+      if (defaults?.confineWorkdir && defaults.cwd) {
+        const root = path.resolve(defaults.cwd);
+        const requested = path.resolve(root, rawWorkdir);
+        if (requested !== root && !requested.startsWith(`${root}${path.sep}`)) {
+          warnings.push(`workdir ${rawWorkdir} is outside the confined workspace; using ${root}`);
+          rawWorkdir = root;
+        }
+      }
       let workdir = rawWorkdir;
       let containerWorkdir = sandbox?.containerWorkdir;
       if (sandbox) {
@@ -305,26 +336,35 @@ export function createExecTool(
         workdir = resolveWorkdir(rawWorkdir, warnings);
       }
 
-      const baseEnv = coerceEnv(process.env);
+      const baseEnv = defaults?.scrubEnv
+        ? coerceEnv({
+            PATH: process.env.PATH,
+            HOME: process.env.HOME,
+            LANG: process.env.LANG,
+            TERM: process.env.TERM,
+            TMPDIR: process.env.TMPDIR,
+            ...defaults.scrubEnvOverrides,
+          })
+        : coerceEnv(process.env);
 
       // Logic: Sandbox gets raw env. Host (gateway/node) must pass validation.
       // We validate BEFORE merging to prevent any dangerous vars from entering the stream.
-      if (host !== "sandbox" && params.env) {
-        validateHostEnv(params.env);
+      if (host !== "sandbox" && envOverrides) {
+        validateHostEnv(envOverrides);
       }
 
-      const mergedEnv = params.env ? { ...baseEnv, ...params.env } : baseEnv;
+      const mergedEnv = envOverrides ? { ...baseEnv, ...envOverrides } : baseEnv;
 
       const env = sandbox
         ? buildSandboxEnv({
             defaultPath: DEFAULT_PATH,
-            paramsEnv: params.env,
+            paramsEnv: envOverrides,
             sandboxEnv: sandbox.env,
             containerWorkdir: containerWorkdir ?? sandbox.containerWorkdir,
           })
         : mergedEnv;
 
-      if (!sandbox && host === "gateway" && !params.env?.PATH) {
+      if (!sandbox && host === "gateway" && !envOverrides?.PATH) {
         const shellPath = getShellPathFromLoginShell({
           env: process.env,
           timeoutMs: resolveShellEnvFallbackTimeoutMs(process.env),
@@ -385,7 +425,7 @@ export function createExecTool(
         }
         const argv = buildNodeShellCommand(params.command, nodeInfo?.platform);
 
-        const nodeEnv = params.env ? { ...params.env } : undefined;
+        const nodeEnv = envOverrides ? { ...envOverrides } : undefined;
         const baseAllowlistEval = evaluateShellAllowlist({
           command: params.command,
           allowlist: [],

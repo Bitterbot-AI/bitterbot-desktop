@@ -6,7 +6,7 @@
  * This adapter wraps its output into Bitterbot's SkillEnvelope format.
  */
 export type SkillSeekersConfig = {
-  /** Enable the Skill Seekers adapter. Default: true (if CLI is available). */
+  /** Enable the Skill Seekers adapter. Default: false (opt-in since PLAN-41). */
   enabled?: boolean;
   /** Max skills to generate per dream cycle. Default: 3. */
   maxSkillsPerCycle?: number;

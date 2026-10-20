@@ -1,9 +1,8 @@
-import { Type } from "@sinclair/typebox";
 import crypto from "node:crypto";
-import type { SessionEntry } from "../../config/sessions.js";
-import type { AnyAgentTool } from "./common.js";
+import { Type } from "@sinclair/typebox";
 import { clearSessionQueues } from "../../auto-reply/reply/queue.js";
 import { loadConfig } from "../../config/config.js";
+import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionStore, resolveStorePath, updateSessionStore } from "../../config/sessions.js";
 import { callGateway } from "../../gateway/call.js";
 import { logVerbose } from "../../globals.js";
@@ -19,8 +18,9 @@ import {
   truncateLine,
 } from "../../shared/subagents-format.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
+import { abortEmbeddedPiRun } from "../embedded.js";
 import { AGENT_LANE_SUBAGENT } from "../lanes.js";
-import { abortEmbeddedPiRun } from "../pi-embedded.js";
+import { currentRunIsNonOwner, inheritRunOwner } from "../run-owner-context.js";
 import { optionalStringEnum } from "../schema/typebox.js";
 import { getSubagentDepthFromSessionStore } from "../subagent-depth.js";
 import {
@@ -31,6 +31,7 @@ import {
   replaceSubagentRunAfterSteer,
   type SubagentRunRecord,
 } from "../subagent-registry.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 import { resolveInternalSessionKey, resolveMainSessionAlias } from "./sessions-helpers.js";
 
@@ -668,7 +669,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
         try {
           const response = await callGateway<{ runId: string }>({
             method: "agent",
-            params: {
+            params: inheritRunOwner({
               message,
               sessionKey: resolved.entry.childSessionKey,
               sessionId,
@@ -677,7 +678,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
               channel: INTERNAL_MESSAGE_CHANNEL,
               lane: AGENT_LANE_SUBAGENT,
               timeout: 0,
-            },
+            }),
             timeoutMs: 10_000,
           });
           if (typeof response?.runId === "string" && response.runId) {
@@ -704,6 +705,7 @@ export function createSubagentsTool(opts?: { agentSessionKey?: string }): AnyAge
           nextRunId: runId,
           fallback: resolved.entry,
           runTimeoutSeconds: resolved.entry.runTimeoutSeconds ?? 0,
+          ...(currentRunIsNonOwner() ? { requesterIsOwner: false as const } : {}),
         });
 
         return jsonResult({

@@ -1,6 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import type { QueryPlan } from "./query-planner.js";
 import {
   buildGraphAbstractions,
   detectCommunities,
@@ -11,6 +10,7 @@ import { graphRead } from "./graph-reader.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { ensureMemoryIndexSchema } from "./memory-schema.js";
 import { runMigrations } from "./migrations.js";
+import type { QueryPlan } from "./query-planner.js";
 
 function openTestDb(): DatabaseSync {
   const db = new DatabaseSync(":memory:");

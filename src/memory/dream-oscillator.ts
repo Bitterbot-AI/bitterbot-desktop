@@ -180,15 +180,19 @@ export function fshoModeAdjustments(
     // High coherence: consolidate and strengthen
     adj.compression = 0.15;
     adj.replay = 0.1;
-    adj.research = 0.05;
+    // PLAN-45 Phase 1: `research` retired; distillation is the
+    // consolidate-what-worked lane now.
+    adj.distillation = 0.05;
   } else if (R > 0.3) {
-    // Edge of synchronization: creative zone (criticality)
-    adj.mutation = 0.15;
-    adj.simulation = 0.1;
+    // Edge of synchronization: creative zone (criticality). PLAN-45
+    // Phase 1: `mutation` retired; the creative slot goes to the two
+    // remaining generative modes.
+    adj.simulation = 0.15;
+    adj.extrapolation = 0.1;
     // Hormonal modulation at criticality
     if (hormones) {
       if (hormones.dopamine > 0.5) {
-        adj.mutation = (adj.mutation ?? 0) + 0.05;
+        adj.extrapolation = (adj.extrapolation ?? 0) + 0.05;
       }
       if (hormones.oxytocin > 0.5) {
         adj.simulation = (adj.simulation ?? 0) + 0.05;

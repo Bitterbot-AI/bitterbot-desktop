@@ -1,23 +1,18 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import type { TemplateContext } from "../templating.js";
-import type { VerboseLevel } from "../thinking.js";
-import type { GetReplyOptions, ReplyPayload } from "../types.js";
-import type { FollowupRun } from "./queue.js";
-import type { TypingSignaler } from "./typing-mode.js";
 import { resolveAgentModelFallbacksOverride } from "../../agents/agent-scope.js";
 import { runCliAgent } from "../../agents/cli-runner.js";
 import { getCliSessionId } from "../../agents/cli-session.js";
-import { runWithModelFallback } from "../../agents/model-fallback.js";
-import { isCliProvider } from "../../agents/model-selection.js";
 import {
   isCompactionFailureError,
   isContextOverflowError,
   isLikelyContextOverflowError,
   isTransientHttpError,
   sanitizeUserFacingText,
-} from "../../agents/pi-embedded-helpers.js";
-import { runEmbeddedPiAgent } from "../../agents/pi-embedded.js";
+} from "../../agents/embedded-helpers.js";
+import { runEmbeddedPiAgent } from "../../agents/embedded.js";
+import { runWithModelFallback } from "../../agents/model-fallback.js";
+import { isCliProvider } from "../../agents/model-selection.js";
 import {
   resolveAgentIdFromSessionKey,
   resolveGroupSessionKey,
@@ -26,17 +21,26 @@ import {
   updateSessionStore,
 } from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
-import { emitAgentEvent, registerAgentRunContext } from "../../infra/agent-events.js";
+import {
+  emitAgentEvent,
+  emitUserTurnEvent,
+  registerAgentRunContext,
+} from "../../infra/agent-events.js";
 import { defaultRuntime } from "../../runtime.js";
 import {
   isMarkdownCapableMessageChannel,
   resolveMessageChannel,
 } from "../../utils/message-channel.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
+import type { TemplateContext } from "../templating.js";
+import type { VerboseLevel } from "../thinking.js";
 import { isSilentReplyText, SILENT_REPLY_TOKEN } from "../tokens.js";
+import type { GetReplyOptions, ReplyPayload } from "../types.js";
 import { buildThreadingToolContext, resolveEnforceFinalTag } from "./agent-runner-utils.js";
 import { type BlockReplyPipeline } from "./block-reply-pipeline.js";
+import type { FollowupRun } from "./queue.js";
 import { createBlockReplyDeliveryHandler } from "./reply-delivery.js";
+import type { TypingSignaler } from "./typing-mode.js";
 
 export type AgentRunLoopResult =
   | {
@@ -179,6 +183,16 @@ export async function runAgentTurnWithFallback(params: {
                 startedAt,
               },
             });
+            // PLAN-44 Phase 0: CLI backends never pass through the embedded
+            // runner, so the task is journaled here (the embedded path emits
+            // it in embedded-runner/run.ts).
+            emitUserTurnEvent({
+              runId,
+              text: params.commandBody,
+              sessionKey: params.sessionKey,
+              isHeartbeat: params.isHeartbeat,
+              channel: params.sessionCtx.Provider?.trim().toLowerCase() || undefined,
+            });
             const cliSessionId = getCliSessionId(params.getActiveSessionEntry(), provider);
             return (async () => {
               let lifecycleTerminalEmitted = false;
@@ -278,6 +292,9 @@ export async function runAgentTurnWithFallback(params: {
             senderName: params.sessionCtx.SenderName?.trim() || undefined,
             senderUsername: params.sessionCtx.SenderUsername?.trim() || undefined,
             senderE164: params.sessionCtx.SenderE164?.trim() || undefined,
+            // Owner-only tools are for a turn an owner sent. A heartbeat is
+            // nobody's turn: it digests system events (cron output, hooks).
+            senderIsOwner: params.isHeartbeat ? false : params.followupRun.run.senderIsOwner,
             // Provider threading context for tool auto-injection
             ...buildThreadingToolContext({
               sessionCtx: params.sessionCtx,

@@ -161,6 +161,52 @@ commands are effectively open for that channel.
 `/exec` is a session-only convenience for authorized operators. It does **not** write config or
 change other sessions.
 
+### Owner-only tools
+
+Some tools are removed entirely from a turn whose sender is not an owner:
+
+- `code_interpreter`, `computer_use`, `browser`: each is host control.
+- `wallet`, `a2a_client`: each can move money.
+- `gateway`: it can rewrite config, including spend caps and the owner list.
+
+Who is an owner:
+
+- On a channel, the entries of `commands.ownerAllowFrom`; when that is not set, the channel's
+  `allowFrom` list. With an open channel (`allowFrom` empty or `"*"`) and no
+  `commands.ownerAllowFrom`, nobody on that channel is an owner.
+- The Control UI and the CLI: both reach the gateway with its own credentials.
+- Isolated scheduled jobs the operator added (CLI, Control UI, RPC).
+
+Not owner turns: heartbeats (which is also where main-session scheduled jobs run),
+webhook-triggered runs (`hooks`), and A2A remote callers.
+
+A sender admitted by DM pairing alone is allowed, not an owner. To use the owner-only tools from
+your own chat account, list it in `commands.ownerAllowFrom` or the channel's `allowFrom`.
+
+When several queued messages are merged into one turn, that turn is an owner turn only if every
+message in it came from an owner.
+
+A run started on behalf of a non-owner turn stays a non-owner run: a sub-agent it spawns, a message
+it sends to another session, and a task wakeup it schedules all run without the owner-only tools.
+
+This is a tool filter, not a sandbox. A sender you allow who can make the agent run shell commands
+on the host (`exec` is not owner-only) can reach whatever your user account can, including the
+gateway's own CLI. Put senders you do not fully trust in a [sandbox](#sandboxing-recommended) or
+deny them `exec`.
+
+### GENOME.md is read-only for the agent
+
+The file tools refuse to write a workspace `GENOME.md`, and any other tool call that leaves it
+created, changed, deleted or unreadable is rolled back, with the rejected version kept under
+`~/.bitterbot/genome-guard/`. The same bracket runs around CLI-backend sessions, which bring their
+own file tools, and it covers the Genome of every configured agent, not only the run's own.
+
+Two limits. A background process the agent started that writes the file after its tool call
+returned is not caught. And an edit you save in an external editor while a tool call is in flight is
+indistinguishable from a change the tool made, so it is rolled back too (your version is in the
+rejected folder); a save through the Control UI is recognised and kept. See
+[Biological identity](/memory/biological-identity).
+
 ## Plugins/extensions
 
 Plugins run **in-process** with the Gateway. Treat them as trusted code:
@@ -175,6 +221,8 @@ Plugins run **in-process** with the Gateway. Treat them as trusted code:
   - Prefer pinned, exact versions (`@scope/pkg@1.2.3`), and inspect the unpacked code on disk before enabling.
 
 Details: [Plugins](/tools/plugin)
+
+The agent workspace is not a plugin location. The embedded agent runtime does not load code, settings, skills, prompt templates, or context files from `<workspace>/.pi/` or from `<agentDir>/extensions/`; a file an agent writes into its workspace is never imported by the Gateway. Gateway plugins are the only in-process extension mechanism.
 
 ## DM access model (pairing / allowlist / open / disabled)
 
@@ -223,8 +271,8 @@ Bitterbot has two separate “who can trigger me?” layers:
   - When `dmPolicy="pairing"`, approvals are written to `~/.bitterbot/credentials/<channel>-allowFrom.json` (merged with config allowlists).
 - **Group allowlist** (channel-specific): which groups/channels/guilds the bot will accept messages from at all.
   - Common patterns:
-    - `channels.whatsapp.groups`, `channels.telegram.groups`, `channels.imessage.groups`: per-group defaults like `requireMention`; when set, it also acts as a group allowlist (include `"*"` to keep allow-all behavior).
-    - `groupPolicy="allowlist"` + `groupAllowFrom`: restrict who can trigger the bot _inside_ a group session (WhatsApp/Telegram/Signal/iMessage/Microsoft Teams).
+    - `channels.whatsapp.groups`, `channels.telegram.groups`: per-group defaults like `requireMention`; when set, it also acts as a group allowlist (include `"*"` to keep allow-all behavior).
+    - `groupPolicy="allowlist"` + `groupAllowFrom`: restrict who can trigger the bot _inside_ a group session (WhatsApp/Telegram/Signal).
     - `channels.discord.guilds` / `channels.slack.channels`: per-surface allowlists + mention defaults.
   - **Security note:** treat `dmPolicy="open"` and `groupPolicy="open"` as last-resort settings. They should be barely used; prefer pairing + allowlists unless you fully trust every member of the room.
 
@@ -240,7 +288,7 @@ Even with strong system prompts, **prompt injection is not solved**. System prom
 - Prefer mention gating in groups; avoid “always-on” bots in public rooms.
 - Treat links, attachments, and pasted instructions as hostile by default.
 - Run sensitive tool execution in a sandbox; keep secrets out of the agent’s reachable filesystem.
-- Note: sandboxing is opt-in. If sandbox mode is off, exec runs on the gateway host even though tools.exec.host defaults to sandbox, and host exec does not require approvals unless you set host=gateway and configure exec approvals.
+- Note: sandboxing is opt-in. If sandbox mode is off, exec runs on the gateway host even though tools.exec.host defaults to sandbox, and host exec does not require approvals unless you set host=gateway and configure exec approvals. An explicit `tools.exec.security: "deny"` is enforced on that path.
 - Limit high-risk tools (`exec`, `browser`, `web_fetch`, `web_search`) to trusted agents or explicit allowlists.
 - **Model choice matters:** older/legacy models can be less robust against prompt injection and tool misuse. Prefer modern, instruction-hardened models for any bot with tools. We recommend Anthropic Opus 4.6 (or the latest Opus) because it’s strong at recognizing prompt injections (see [“A step forward on safety”](https://www.anthropic.com/news/claude-opus-4-5)).
 
@@ -563,7 +611,7 @@ Dedicated doc: [Sandboxing](/gateway/sandboxing)
 
 Two complementary approaches:
 
-- **Run the full Gateway in Docker** (container boundary): [Docker](/install/docker)
+- **Run the full Gateway in Docker** (container boundary): [Docker](/platforms/docker)
 - **Tool sandbox** (`agents.defaults.sandbox`, host gateway + Docker-isolated tools): [Sandboxing](/gateway/sandboxing)
 
 Note: to prevent cross-agent access, keep `agents.defaults.sandbox.scope` at `"agent"` (default)

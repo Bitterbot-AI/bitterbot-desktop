@@ -5,7 +5,7 @@ edition = "2021"
 description = "P2P orchestrator daemon for Bitterbot skill propagation network"
 
 [dependencies]
-libp2p = { version = "0.54", features = [
+libp2p = { version = "0.56", features = [
   "gossipsub",
   "kad",
   "autonat",
@@ -28,23 +28,25 @@ serde_json = "1"
 ed25519-dalek = { version = "2", features = ["rand_core", "pem"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-sha2 = "0.10"
-base64 = "0.22"
-rand = "0.8"
+sha2 = "0.11"
+base64 = "0.23"
+rand = "0.10"
+# ed25519-dalek 2 and libp2p autonat take rand_core 0.6 generators; rand 0.10 cannot supply them.
+rand_core = { version = "0.6", features = ["getrandom"] }
 clap = { version = "4", features = ["derive", "env"] }
 axum = "0.8"
-tower-http = { version = "0.6", features = ["cors"] }
+tower-http = { version = "0.7", features = ["cors"] }
 http = "1"
 tokio-stream = "0.1"
 hex = "0.4"
-lru = "0.12"
+lru = "0.18"
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 
 # PLAN-14 Pillar 4: optional OS-control deps. Build with
 # `cargo build --features=computer-use` to enable. Off by default so
 # the relay fleet's headless Linux build doesn't pull in libxdo / X11.
-xcap = { version = "0.0.14", optional = true }
-enigo = { version = "0.2", optional = true }
+xcap = { version = "0.9.8", optional = true }
+enigo = { version = "0.6", optional = true }
 image = { version = "0.25", default-features = false, features = ["png"], optional = true }
 
 [features]
@@ -56,3 +58,7 @@ computer-use = ["xcap", "enigo", "image"]
 
 [dev-dependencies]
 tempfile = "3"
+# `test-util` (not part of tokio's "full") provides the paused-clock test
+# runtime, so the timer-starvation regression test is deterministic rather
+# than wall-clock dependent.
+tokio = { version = "1", features = ["full", "test-util"] }

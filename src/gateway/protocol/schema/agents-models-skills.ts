@@ -542,6 +542,47 @@ export const SkillsManageResultSchema = Type.Object(
   { additionalProperties: false },
 );
 
+/** PLAN-44 Phase 2: corpus review — accept/reject mined capability-task drafts. */
+export const SkillsEvolutionCorpusReviewParamsSchema = Type.Object(
+  {
+    ids: Type.Array(NonEmptyString, { minItems: 1, maxItems: 50 }),
+    reviewedBy: Type.Optional(NonEmptyString),
+    reason: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+/** B8: explicit human verdict on one run (level-4 outcome evidence). */
+export const SkillsEvolutionFeedbackParamsSchema = Type.Object(
+  {
+    runId: NonEmptyString,
+    verdict: Type.Union([Type.Literal("confirmed"), Type.Literal("rejected")]),
+    note: Type.Optional(Type.String({ maxLength: 500 })),
+    by: Type.Optional(NonEmptyString),
+  },
+  { additionalProperties: false },
+);
+
+/** PLAN-45 Phase 1.5: build a blind labeler-calibration set from real runs. */
+export const SkillsEvolutionCalibrationExportParamsSchema = Type.Object(
+  {
+    count: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
+    seed: Type.Optional(Type.String({ maxLength: 64 })),
+    /** Also record the judge's label for every selected trace (two LLM calls each). */
+    withJudge: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
+
+/** PLAN-45 Phase 1.5: score human label files against the labeler's key. */
+export const SkillsEvolutionCalibrationScoreParamsSchema = Type.Object(
+  {
+    dir: NonEmptyString,
+    labels: Type.Array(NonEmptyString, { minItems: 1, maxItems: 2 }),
+  },
+  { additionalProperties: false },
+);
+
 /** Promote staged content to live. */
 export const SkillsPromoteParamsSchema = Type.Object(
   {

@@ -5,11 +5,11 @@ import os from "node:os";
 import path from "node:path";
 import { Mock, vi } from "vitest";
 import type { ChannelPlugin, ChannelOutboundAdapter } from "../channels/plugins/types.js";
+import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import type { AgentBinding } from "../config/types.agents.js";
 import type { HooksConfig } from "../config/types.hooks.js";
 import type { TailscaleWhoisIdentity } from "../infra/tailscale.js";
 import type { PluginRegistry } from "../plugins/registry.js";
-import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { DEFAULT_ACCOUNT_ID } from "../routing/session-key.js";
 
@@ -229,21 +229,32 @@ export const testIsNixMode = hoisted.testIsNixMode;
 export const sessionStoreSaveDelayMs = hoisted.sessionStoreSaveDelayMs;
 export const embeddedRunMock = hoisted.embeddedRunMock;
 
-vi.mock("../agents/pi-model-discovery.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-model-discovery.js")>(
-    "../agents/pi-model-discovery.js",
+vi.mock("../agents/runtime/models/index.js", async () => {
+  const actual = await vi.importActual<typeof import("../agents/runtime/models/index.js")>(
+    "../agents/runtime/models/index.js",
   );
 
-  class MockModelRegistry extends actual.ModelRegistry {
-    override getAll(): ReturnType<typeof actual.ModelRegistry.prototype.getAll> {
+  type Registry = ReturnType<typeof actual.ModelRegistry.create>;
+  // The ModelRegistry constructor is private, so wrap
+  // the factories and override getAll on each instance instead of subclassing.
+  const withMockGetAll = (registry: Registry): Registry => {
+    const realGetAll = registry.getAll.bind(registry);
+    registry.getAll = () => {
       if (!piSdkMock.enabled) {
-        return super.getAll();
+        return realGetAll();
       }
       piSdkMock.discoverCalls += 1;
       // Cast to expected type for testing purposes
-      return piSdkMock.models as ReturnType<typeof actual.ModelRegistry.prototype.getAll>;
-    }
-  }
+      return piSdkMock.models as ReturnType<Registry["getAll"]>;
+    };
+    return registry;
+  };
+  const MockModelRegistry = Object.assign(Object.create(actual.ModelRegistry) as object, {
+    create: (...args: Parameters<typeof actual.ModelRegistry.create>) =>
+      withMockGetAll(actual.ModelRegistry.create(...args)),
+    inMemory: (...args: Parameters<typeof actual.ModelRegistry.inMemory>) =>
+      withMockGetAll(actual.ModelRegistry.inMemory(...args)),
+  }) as typeof actual.ModelRegistry;
 
   return {
     ...actual,
@@ -533,10 +544,9 @@ vi.mock("../config/config.js", async () => {
   };
 });
 
-vi.mock("../agents/pi-embedded.js", async () => {
-  const actual = await vi.importActual<typeof import("../agents/pi-embedded.js")>(
-    "../agents/pi-embedded.js",
-  );
+vi.mock("../agents/embedded.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../agents/embedded.js")>("../agents/embedded.js");
   return {
     ...actual,
     isEmbeddedPiRunActive: (sessionId: string) => embeddedRunMock.activeIds.has(sessionId),

@@ -23,6 +23,12 @@ export type MemorySearchResult = {
    * synthesized from. Present on extracted facts; resolve with memory_expand.
    */
   evidenceRefs?: import("./session-extractor.js").EvidenceRef[];
+  /**
+   * PLAN-55 Phase 2: the chunk states a value the canonical ledger has since
+   * replaced (or the owner retired). Ranked after current results; the
+   * snippet carries a `[superseded]` tag. `currentValue` null = retired.
+   */
+  superseded?: Array<{ key: string; currentValue: string | null }>;
 };
 
 export type MemoryEmbeddingProbeResult = {
@@ -72,13 +78,30 @@ export type MemoryProviderStatus = {
     lastProvider?: string;
   };
   custom?: Record<string, unknown>;
+  /** PLAN-57 §4.6: the exact key this index is written under. */
+  embeddingProfile?: {
+    key: string;
+    modelDigest?: string;
+    dimensions?: number;
+    normalise: string;
+  };
+  /** Set when the live profile conflicts with the index and writes are held until `memory migrate-embeddings`. */
+  embeddingHold?: { conflicts: string[] };
+  /** `pool` when memory batches may be routed to compute pools (PLAN-57), else `local`. */
+  computeRouting?: "pool" | "local";
   crystals?: Record<string, unknown>;
 };
 
 export interface MemorySearchManager {
   search(
     query: string,
-    opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
+    opts?: {
+      maxResults?: number;
+      minScore?: number;
+      sessionKey?: string;
+      /** PLAN-55 Phase 2: tag superseded results with ledger values (owner only; default true). */
+      tagSuperseded?: boolean;
+    },
   ): Promise<MemorySearchResult[]>;
   readFile(params: {
     relPath: string;
@@ -90,12 +113,28 @@ export interface MemorySearchManager {
     ref: import("./session-extractor.js").EvidenceRef,
     window?: number,
   ): Promise<import("./evidence-expand.js").ExpandedEvidence>;
+  /** PLAN-53 G2: search as a non-owner; only memories safe to show a guest. */
+  guestSearch?(
+    query: string,
+    opts?: { maxResults?: number; minScore?: number; sessionKey?: string },
+  ): Promise<MemorySearchResult[]>;
+  /** PLAN-53 G2: whether a non-owner may read this memory file. */
+  guestMayRead?(relPath: string): boolean;
   /** PLAN-33: the canonical facts ledger (null when disabled). */
   canonicalFacts?(): import("./canonical-facts.js").CanonicalFactsStore | null;
   status(): MemoryProviderStatus;
   sync?(params?: {
     reason?: string;
     force?: boolean;
+    progress?: (update: MemorySyncProgressUpdate) => void;
+  }): Promise<void>;
+  /** PLAN-57 §4.6: what `memory migrate-embeddings` would do. */
+  embeddingMigrationPlan?(): {
+    hold: { conflicts: string[]; stored: import("./embedding-profile.js").EmbeddingProfile } | null;
+    current: import("./embedding-profile.js").EmbeddingProfile | null;
+  };
+  /** PLAN-57 §4.6: rebuild the index under the live embedding profile and clear the hold. */
+  migrateEmbeddingProfile?(params?: {
     progress?: (update: MemorySyncProgressUpdate) => void;
   }): Promise<void>;
   probeEmbeddingAvailability(): Promise<MemoryEmbeddingProbeResult>;
@@ -147,7 +186,10 @@ export interface MemorySearchManager {
       error?: string;
       transport?: "native" | "mcp" | "cli" | "python";
       elapsedMs: number;
-      ingested: Array<{ action: "accepted" | "quarantined" | "rejected"; skillName?: string }>;
+      ingested: Array<{
+        action: "accepted" | "quarantined" | "rejected" | "retracted" | "staged";
+        skillName?: string;
+      }>;
       conflicts: Array<{ severity: "low" | "medium" | "high" }>;
     }>;
   } | null;

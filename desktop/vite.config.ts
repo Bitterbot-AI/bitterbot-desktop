@@ -1,9 +1,11 @@
-import react from "@vitejs/plugin-react";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
-import { createGatewayStartHandler } from "./gateway-launcher";
+import { createGatewayStartHandler } from "./gateway-launcher.ts";
+
+const configDir = import.meta.dirname;
 
 function resolveGatewayUrl(): string {
   return process.env.VITE_GATEWAY_URL?.trim() || "ws://localhost:19001";
@@ -29,7 +31,7 @@ function gatewayLauncherPlugin(gatewayUrl: string): Plugin {
       const handler = createGatewayStartHandler({
         resolveToken: resolveGatewayToken,
         gatewayUrl,
-        repoRoot: path.resolve(__dirname, ".."),
+        repoRoot: path.resolve(configDir, ".."),
         logPath: path.join(os.homedir(), ".bitterbot", "logs", "gateway-ui-launch.log"),
       });
       server.middlewares.use("/__gateway/start", (req, res) => {
@@ -45,7 +47,7 @@ export default defineConfig(() => {
   // Single version source (PLAN-41 D-A): the sidebar footer shows the ROOT
   // package version; release-please bumps it and this define carries it in.
   const appVersion = (
-    JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "package.json"), "utf8")) as {
+    JSON.parse(fs.readFileSync(path.resolve(configDir, "..", "package.json"), "utf8")) as {
       version: string;
     }
   ).version;
@@ -60,11 +62,11 @@ export default defineConfig(() => {
   return {
     plugins: [react(), gatewayLauncherPlugin(url)],
     root: "renderer",
-    envDir: __dirname,
+    envDir: configDir,
     base: "./",
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "renderer/src"),
+        "@": path.resolve(configDir, "renderer/src"),
       },
     },
     server: {
@@ -76,12 +78,12 @@ export default defineConfig(() => {
       // reload"). Chokidar polling is the only reliable signal there; on
       // native filesystems this stays off (polling a big tree costs CPU).
       watch:
-        process.platform === "linux" && __dirname.startsWith("/mnt/")
+        process.platform === "linux" && configDir.startsWith("/mnt/")
           ? { usePolling: true, interval: 400 }
           : undefined,
     },
     build: {
-      outDir: path.resolve(__dirname, "dist-renderer"),
+      outDir: path.resolve(configDir, "dist-renderer"),
       emptyOutDir: true,
     },
     // Expose resolved values as import.meta.env.VITE_* in the renderer.

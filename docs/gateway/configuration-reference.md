@@ -236,18 +236,6 @@ WhatsApp runs through the gateway's web channel (Baileys Web). It starts automat
 
 **Reaction notification modes:** `off` (none), `own` (bot's messages, default), `all` (all messages), `allowlist` (from `guilds.<id>.users` on all messages).
 
-### Google Chat
-
-```json5
-{
-  channels: {},
-}
-```
-
-- Service account JSON: inline (`serviceAccount`) or file-based (`serviceAccountFile`).
-- Env fallbacks: `GOOGLE_CHAT_SERVICE_ACCOUNT` or `GOOGLE_CHAT_SERVICE_ACCOUNT_FILE`.
-- Use `spaces/<spaceId>` or `users/<userId|email>` for delivery targets.
-
 ### Slack
 
 ```json5
@@ -401,7 +389,7 @@ Run multiple accounts per channel (each with its own `accountId`):
 
 ### Group chat mention gating
 
-Group messages default to **require mention** (metadata mention or regex patterns). Applies to WhatsApp, Telegram, Discord, Google Chat, and iMessage group chats.
+Group messages default to **require mention** (metadata mention or regex patterns). Applies to WhatsApp, Telegram, Discord, and iMessage group chats.
 
 **Mention types:**
 
@@ -604,7 +592,8 @@ Time format in system prompt. Default: `auto` (OS preference).
 ```
 
 - `model.primary`: format `provider/model` (e.g. `anthropic/claude-opus-4-6`). If you omit the provider, Bitterbot assumes `anthropic` (deprecated).
-- `models`: the configured model catalog and allowlist for `/model`. Each entry can include `alias` (shortcut) and `params` (provider-specific: `temperature`, `maxTokens`).
+- `models`: the configured model catalog. Each entry can include `alias` (shortcut) and `params` (provider-specific: `temperature`, `maxTokens`). It is not a restriction: setting a default registers it here without forbidding other models.
+- `restrictModels` (default `false`): `true` enforces `models` as the allowlist for `/model` and session overrides (the current default is always allowed).
 - `imageModel`: only used if the primary model lacks image input.
 - `maxConcurrent`: max parallel agent runs across sessions (each session still serialized). Default: 1.
 
@@ -691,7 +680,27 @@ Periodic heartbeat runs.
   agents: {
     defaults: {
       compaction: {
-        mode: "safeguard", // default | safeguard
+        mode: "default", // "safeguard" is accepted, has no effect, and warns at load
+        policy: "summary", // summary | offload (PLAN-52A; offload is flagged until its evaluation passes)
+        offload: {
+          toolOutputStubs: true, // stub old tool outputs mid-turn; full text stays reachable via recall_range
+          recallCrossSession: "off", // off | owner: may recall_range read other sessions of this agent?
+          triggerTurnEndFraction: 0.55, // between turns: horizon cut when the prompt exceeds this share of the window
+          triggerTurnStartFraction: 0.7, // safety net before the first model call
+          triggerMidTurnFraction: 0.8, // before each model call: stub older tool outputs
+          targetFraction: 0.35, // window share after a horizon cut
+          midTurnTargetFraction: 0.5, // window share after mid-turn stubs
+          minKeepUserTurns: 2, // complete real turns always kept
+          toolOutputStubMinTokens: 1000, // smaller tool outputs are never stubbed
+          spareRecentToolResults: 2, // newest tool outputs are never stubbed
+          elideHeartbeats: true, // drop bare HEARTBEAT_OK pairs
+          ledgerBudgetTokens: 1200,
+          minElidedTokens: 2000, // a horizon cut that frees less than this is skipped (overflow/manual excepted)
+          summary: "always", // off | idle | always: cheap-model summary appended to the ledger
+          summaryModel: "anthropic/claude-haiku-4-5",
+          proactiveRecall: true,
+          recallBudgetUsdPerDay: 1.0,
+        },
         reserveTokensFloor: 24000,
         memoryFlush: {
           enabled: true,
@@ -705,52 +714,33 @@ Periodic heartbeat runs.
 }
 ```
 
-- `mode`: `default` or `safeguard` (chunked summarization for long histories). See [Compaction](/concepts/compaction).
+- `mode`: `default` is the only live mode. `safeguard` is still accepted so old configs parse, has no effect, warns at load and will be removed next release (`bitterbot doctor --fix` removes it). See [Compaction](/concepts/compaction).
+- `policy`: `summary` (LLM summary, the default) or `offload` (deterministic context offload with a transcript ledger and the recall tools; under `offload` the `recall_range` tool is always hot). Under `offload` the horizon cut replaces the LLM summary as the main compaction mechanism (see [Compaction](/concepts/compaction)).
+- `offload.toolOutputStubs` (default `true`, independent of `policy`): when a turn passes the mid-turn trigger, the oldest tool outputs are replaced by a stub naming the tool call id; the transcript keeps the text and [recall_range](/tools/recall-range) returns it. Stubs persist across turns and restarts.
+- `offload.recallCrossSession`: `off` (default) keeps [recall_range](/tools/recall-range) on the current conversation; `owner` lets owner senders read other sessions of this agent.
+- `offload.*` trigger and target fractions, `minKeepUserTurns`, stub thresholds, `elideHeartbeats`, `ledgerBudgetTokens`: parameters of the offload planner (`src/agents/runtime/compaction/`). Targets must sit below their triggers; the planner clamps them otherwise. `summary` (`always` by default: a short cheap-model summary of the elided range is appended to the ledger; `idle` skips it during overflow recovery; `off` writes the ledger alone) and `summaryModel` select that summary. `proactiveRecall` (default `true`): once part of a conversation has been offloaded, each new user message is searched against the offloaded dialogue and up to three matching excerpts are placed in front of it (no model call; skipped for heartbeats). `elideHeartbeats` (default `true`): at the offload trigger, bare heartbeat prompt-and-acknowledgement pairs are dropped from the window (they stay in the transcript). A heartbeat prompt that carried queued system events, a heartbeat turn that ran tools, and the turn that just ran are never dropped. `recallBudgetUsdPerDay` (default `1.0`): once the node's `deep_recall` spend for the UTC day reaches the agent's limit, `deep_recall` answers with a notice pointing at `recall_range`, which is free. It applies to every scope and is not enforced when the usage ledger is off.
 - `memoryFlush`: silent agentic turn before auto-compaction to store durable memories. Skipped when workspace is read-only.
+- Per-agent override: `agents.list[].compaction` accepts `policy` and `offload`, layered field by field over these defaults, so one agent can run `offload` while the others stay on `summary`. The other compaction keys are global.
 
-### `agents.defaults.contextPruning`
+### `agents.defaults.runtime`
 
-Prunes **old tool results** from in-memory context before sending to the LLM. Does **not** modify session history on disk.
+Accepted and ignored. Every agent runs the owned runtime under `src/agents/runtime/` (transcript store, agent loop, session layer, compaction policies, model registry); see [Agent runtime](/reference/agent-runtime). The key, and its per-agent form `agents.list[].runtime.engine`, remain in the schema so configs written while the pi engine existed still parse:
 
 ```json5
 {
   agents: {
     defaults: {
-      contextPruning: {
-        mode: "cache-ttl", // off | cache-ttl
-        ttl: "1h", // duration (ms/s/m/h), default unit: minutes
-        keepLastAssistants: 3,
-        softTrimRatio: 0.3,
-        hardClearRatio: 0.5,
-        minPrunableToolChars: 50000,
-        softTrim: { maxChars: 4000, headChars: 1500, tailChars: 1500 },
-        hardClear: { enabled: true, placeholder: "[Old tool result content cleared]" },
-        tools: { deny: ["browser", "canvas"] },
-      },
+      runtime: { engine: "bitterbot" }, // "bitterbot" | "pi" (removed; ignored with a warning)
     },
   },
 }
 ```
 
-<Accordion title="cache-ttl mode behavior">
+A value of `"pi"` logs one warning per process (`the pi engine was removed; <agent or agents.defaults> runs the owned runtime`) and has no other effect. The session file format did not change with the engine, so transcripts written by either engine are read the same way.
 
-- `mode: "cache-ttl"` enables pruning passes.
-- `ttl` controls how often pruning can run again (after the last cache touch).
-- Pruning soft-trims oversized tool results first, then hard-clears older tool results if needed.
+### `agents.defaults.contextPruning`
 
-**Soft-trim** keeps beginning + end and inserts `...` in the middle.
-
-**Hard-clear** replaces the entire tool result with the placeholder.
-
-Notes:
-
-- Image blocks are never trimmed/cleared.
-- Ratios are character-based (approximate), not exact token counts.
-- If fewer than `keepLastAssistants` assistant messages exist, pruning is skipped.
-
-</Accordion>
-
-See [Session Pruning](/concepts/session-pruning) for behavior details.
+Accepted and has no effect. With `mode: "cache-ttl"` the runtime still appends a cache-TTL timestamp entry to the session, but nothing acts on that entry, so nothing is pruned: old tool outputs are handled by compaction (`compaction.offload.toolOutputStubs`, above). The key stays in the schema this release so existing configs parse, warns at load, and will be removed next release; `bitterbot doctor --fix` removes it. See [Session pruning](/concepts/session-pruning).
 
 ### Block streaming
 
@@ -769,7 +759,7 @@ See [Session Pruning](/concepts/session-pruning) for behavior details.
 ```
 
 - Non-Telegram channels require explicit `*.blockStreaming: true` to enable block replies.
-- Channel overrides: `channels.<channel>.blockStreamingCoalesce` (and per-account variants). Signal/Slack/Discord/Google Chat default `minChars: 1500`.
+- Channel overrides: `channels.<channel>.blockStreamingCoalesce` (and per-account variants). Signal/Slack/Discord default `minChars: 1500`.
 - `humanDelay`: randomized pause between block replies. `natural` = 800–2500ms. Per-agent override: `agents.list[].humanDelay`.
 
 See [Streaming](/concepts/streaming) for behavior + chunking details.
@@ -1116,6 +1106,7 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
       rotateBytes: "10mb",
     },
     mainKey: "main", // legacy (runtime always uses "main")
+    memory: "on", // "off" = incognito: nothing from conversations is learned
     agentToAgent: { maxPingPongTurns: 5 },
     sendPolicy: {
       rules: [{ action: "deny", match: { channel: "discord", chatType: "group" } }],
@@ -1138,6 +1129,7 @@ See [Multi-Agent Sandbox & Tools](/tools/multi-agent-sandbox-tools) for preceden
 - **`mainKey`**: legacy field. Runtime now always uses `"main"` for the main direct-chat bucket.
 - **`sendPolicy`**: match by `channel`, `chatType` (`direct|group|channel`, with legacy `dm` alias), `keyPrefix`, or `rawKeyPrefix`. First deny wins.
 - **`maintenance`**: `warn` warns the active session on eviction; `enforce` applies pruning and rotation.
+- **`memory`**: `"off"` keeps conversations out of memory: transcripts are not indexed, the session extractor does not read them, and corrections you state in chat are not captured (see [Your memory controls](/memory/controls)). Default `"on"`.
 
 </Accordion>
 
@@ -1197,7 +1189,7 @@ Variables are case-insensitive. `{think}` is an alias for `{thinkingLevel}`.
 - Per-channel overrides: `channels.<channel>.ackReaction`, `channels.<channel>.accounts.<id>.ackReaction`.
 - Resolution order: account → channel → `messages.ackReaction` → identity fallback.
 - Scope: `group-mentions` (default), `group-all`, `direct`, `all`.
-- `removeAckAfterReply`: removes ack after reply (Slack/Discord/Telegram/Google Chat only).
+- `removeAckAfterReply`: removes ack after reply (Slack/Discord/Telegram only).
 
 ### Inbound debounce
 
@@ -1322,7 +1314,7 @@ Further restrict tools for specific providers or models. Order: base profile →
   tools: {
     profile: "coding",
     byProvider: {
-      "google-antigravity": { profile: "minimal" },
+      google: { profile: "minimal" },
       "openai/gpt-5.2": { allow: ["group:fs", "sessions_list"] },
     },
   },
@@ -1589,7 +1581,7 @@ See also: [Agent wallet](/wallet), [Wallet funding](/wallet/wallet-funding).
 
 ## Custom providers and base URLs
 
-Bitterbot uses the pi-coding-agent model catalog. Add custom providers via `models.providers` in config or `~/.bitterbot/agents/<agentId>/agent/models.json`.
+Bitterbot uses the `@mariozechner/pi-ai` model catalog. Add custom providers via `models.providers` in config or `~/.bitterbot/agents/<agentId>/agent/models.json`.
 
 ```json5
 {
@@ -1902,6 +1894,55 @@ See [Plugins](/tools/plugin).
 
 ---
 
+## Monitors
+
+```json5
+{
+  monitors: { enabled: true }, // default true
+}
+```
+
+[Monitors](/automation/monitors) watch a page or an API with a plain fetch and wake the agent only on change. `enabled: false` (or `BITTERBOT_SKIP_MONITORS=1`) stops the engine; saved monitors are kept.
+
+## Notifications
+
+Notices the gateway sends you on its own account: a scheduled job that failed or was turned off, a task interrupted by a restart. Every notice is kept in the main session and shown in the Control UI whatever these settings say; they govern the extra push to a chat channel.
+
+```json5
+{
+  notifications: {
+    owner: { channel: "telegram", to: "123456789" }, // default: where the heartbeat delivers
+    quietHours: { start: "22:00", end: "07:00", timezone: "America/New_York" },
+    maxPerHour: 6, // default 6; 0 pushes nothing
+  },
+}
+```
+
+- `owner`: where to push. Without it, notices go to the heartbeat's target, or the main session's most recent conversation.
+- `quietHours`: no pushes in this window (24-hour `HH:MM`; may run past midnight). Notices raised in it wait in the main session.
+- `maxPerHour`: most pushes in any hour. The rest wait in the main session.
+
+The same notice is not repeated within 30 minutes.
+
+## Review
+
+```json5
+{
+  review: {
+    spend: "ask", // "ask" (default) | "allow"
+    publish: "ask", // "ask" (default) | "allow"
+    contact: "first", // "first" (default) | "ask" | "allow"
+    ttlHours: 24,
+  },
+}
+```
+
+- `spend: "ask"` holds wallet sends and x402 payments until you approve them; a standing spend grant that covers the payee and amount passes without asking. `"allow"` keeps only the wallet caps.
+- `publish: "ask"` holds posts to the X channel.
+- `contact: "first"` holds the first message the agent addresses to a recipient it has never dealt with; `"ask"` holds every message to a named recipient; `"allow"` holds none. Replies in the current conversation are never held. See [Action review](/tools/action-review).
+
+---
+
 ## Browser
 
 ```json5
@@ -1920,14 +1961,18 @@ See [Plugins](/tools/plugin).
     // noSandbox: false,
     // executablePath: "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
     // attachOnly: false,
+    // liveView: { enabled: true, maxFps: 8, quality: 60 },
+    // replay: { enabled: true, retentionDays: 7 },
   },
 }
 ```
 
 - `evaluateEnabled: false` disables `act:evaluate` and `wait --fn`.
+- `liveView` controls the stream of the agent's page in the Control UI's side panel. `enabled: false` turns it off; `maxFps` (1-30) and `quality` (10-95) trade smoothness for bandwidth. See [Live view and take over](/tools/browser#live-view-and-take-over).
+- `replay` keeps a screenshot after each page action the agent takes, for playback in the Activity panel. `enabled: false` stops recording; `retentionDays` (1-90, default 7) sets how long a recording is kept after its last frame. See [Session replay](/tools/browser#session-replay).
 - Remote profiles are attach-only (start/stop/reset disabled).
 - Auto-detect order: default browser if Chromium-based → Chrome → Brave → Edge → Chromium → Chrome Canary.
-- Control service: loopback only (port derived from `gateway.port`, default `18791`).
+- Control service: loopback only, on `gateway.port + 2` (19003 by default).
 
 ---
 
@@ -2025,7 +2070,7 @@ The Control UI is served by the gateway itself at `http://127.0.0.1:19001/` and 
 **Shared token auth (normal path):**
 The Control UI authenticates using `gateway.auth.token` — the same shared token the CLI uses. The UI obtains it automatically from the gateway's same-origin loopback handoff endpoint (`/auth/session-token`); for a remote gateway, the first-run screen accepts the token manually. The onboarding wizard generates the token automatically; nothing is baked into the UI build.
 
-**Device auth is NOT required for the Control UI.** Device identity (Ed25519 keypair pairing) is only used by non-browser clients: the CLI, iOS/Android apps, and remote gateways. The Control UI authenticates purely with the shared token.
+**Device pairing.** A Control UI connecting over loopback skips device pairing. A remote Control UI (LAN, tailnet, a hosted server) also proves a device identity and needs a one-time approval, or bootstrap pairing (below) for the very first device.
 
 **`controlUi` fields:**
 
@@ -2033,6 +2078,7 @@ The Control UI authenticates using `gateway.auth.token` — the same shared toke
 - `basePath`: optional prefix path for the gateway's built-in dashboard endpoint.
 - `allowedOrigins`: browser origins allowed to open WebSocket connections. When unset, the gateway allows loopback origins and origins matching the request Host header (including `http://localhost:5173`) automatically.
 - `allowedHosts`: extra hostnames the token handoff endpoint answers for (for example a Tailscale Serve name). Loopback names are always allowed; anything else is refused to block DNS-rebinding.
+- `bootstrapPairing` (default `false`, or on when `BITTERBOT_BOOTSTRAP_PAIRING=1`): pair the first Control UI device that proves the gateway token, once, while no device is paired. The Fly, VPS and Compose setups turn it on.
 - `allowInsecureAuth` (default `false`): allow shared-token auth over plain HTTP from non-loopback origins. Not recommended.
 - `dangerouslyDisableDeviceAuth` (default `false`): break-glass flag that strips device identity checks. Not needed for normal browser access — only use for emergency recovery.
 
@@ -2390,7 +2436,7 @@ Metadata written by CLI wizards (`onboard`, `configure`, `doctor`):
 {
   wizard: {
     lastRunAt: "2026-01-01T00:00:00.000Z",
-    lastRunVersion: "2026.1.4",
+    lastRunVersion: "1.4.0",
     lastRunCommit: "abc1234",
     lastRunCommand: "configure",
     lastRunMode: "local",

@@ -11,21 +11,22 @@ title: "Platforms"
 Bitterbot core is written in TypeScript. **Node is the recommended runtime**.
 Bun is not recommended for the Gateway (WhatsApp/Telegram bugs).
 
-Native companion apps for Windows are planned; the Gateway is recommended via WSL2.
-Linux and Windows are fully supported today.
+Native companion apps for Windows are planned; on Windows the Gateway is recommended via WSL2.
+Linux, macOS and Windows (WSL2) are supported today.
 
 ## Choose your OS
 
 - Windows: [Windows](/platforms/windows)
 - Linux: [Linux](/platforms/linux)
+- macOS (Apple silicon and Intel): the [installer](/start/install-script)
+  (recommended), [`npm install -g bitterbot`](/start/npm) or a source
+  install.
+  The service runs under launchd (`ai.bitterbot.gateway`).
 
 ## VPS & hosting
 
+- Docker, Fly.io and any VPS: [Docker and always-on hosting](/platforms/docker)
 - VPS hub: [VPS hosting](/gateway/vps)
-- Fly.io
-- Hetzner (Docker)
-- GCP (Compute Engine)
-- exe.dev (VM + HTTPS proxy)
 
 ## Common links
 

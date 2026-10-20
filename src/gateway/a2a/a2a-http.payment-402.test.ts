@@ -144,3 +144,64 @@ describe("A2A 402 payment requirements", () => {
     expect(errorData.chain).toBe("base-sepolia");
   });
 });
+
+// PLAN-43 §3.2b: message/stream spawns the same task executor as
+// message/send and previously bypassed the payment gate entirely — a free
+// execution path on a paid node. Both verbs must hit the gate; oversize
+// messages must be refused BEFORE the gate so nothing is charged for a
+// request the executor would reject.
+
+function streamBody() {
+  return {
+    jsonrpc: "2.0",
+    method: "message/stream",
+    params: { message: { role: "user", parts: [{ type: "text", text: "hi" }] } },
+    id: "pay-stream-1",
+  };
+}
+
+describe("A2A payment gate coverage (PLAN-43 §3.2b)", () => {
+  it("message/stream is 402-gated exactly like message/send", async () => {
+    setLocalWalletCapability({
+      address: WALLET_ADDR,
+      network: "base",
+      acceptsPayments: true,
+      updatedAt: Date.now(),
+    });
+    const h = makeHandler({
+      a2a: { enabled: true, authentication: { type: "none" }, payment: { enabled: true } },
+      tools: { wallet: { network: "base" } },
+    });
+    const req = mockReq({ body: streamBody() });
+    const res = mockRes();
+    await h.handle(req, res, { auth: {} as never, trustedProxies: [], rateLimiter: undefined });
+    h.close();
+    expect(res.statusCode).toBe(402);
+    expect(res._headers["payment-required"]).toBeTruthy();
+  });
+
+  it("oversize message text is refused with 400 before the payment gate", async () => {
+    const h = makeHandler({
+      a2a: {
+        enabled: true,
+        authentication: { type: "none" },
+        payment: { enabled: true },
+        remoteExecution: { maxInputChars: 100 },
+      },
+    });
+    const body = {
+      jsonrpc: "2.0",
+      method: "message/send",
+      params: { message: { role: "user", parts: [{ type: "text", text: "x".repeat(101) }] } },
+      id: "cap-1",
+    };
+    const req = mockReq({ body });
+    const res = mockRes();
+    await h.handle(req, res, { auth: {} as never, trustedProxies: [], rateLimiter: undefined });
+    h.close();
+    expect(res.statusCode).toBe(400);
+    expect(res._body).toContain("exceeds 100 characters");
+    // Crucially NOT a 402: the caller was never asked to pay for this.
+    expect(res._headers["payment-required"]).toBeUndefined();
+  });
+});

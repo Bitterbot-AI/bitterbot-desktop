@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
-import { abortEmbeddedPiRun, waitForEmbeddedPiRunEnd } from "../../agents/pi-embedded.js";
+import { abortEmbeddedPiRun, waitForEmbeddedPiRunEnd } from "../../agents/embedded.js";
 import { stopSubagentsForRequester } from "../../auto-reply/reply/abort.js";
 import { clearSessionQueues } from "../../auto-reply/reply/queue.js";
 import { loadConfig } from "../../config/config.js";
@@ -26,6 +25,7 @@ import {
   validateSessionsResetParams,
   validateSessionsResolveParams,
 } from "../protocol/index.js";
+import { deleteSessionWithMemoryCascade } from "../session-memory-cascade.js";
 import {
   archiveFileOnDisk,
   archiveSessionTranscripts,
@@ -43,6 +43,7 @@ import {
 } from "../session-utils.js";
 import { applySessionsPatchToStore } from "../sessions-patch.js";
 import { resolveSessionKeyFromResolveParams } from "../sessions-resolve.js";
+import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 import { assertValidParams } from "./validation.js";
 
 function requireSessionKey(key: unknown, respond: RespondFn): string | null {
@@ -401,17 +402,40 @@ export const sessionsHandlers: GatewayRequestHandlers = {
       }
     });
 
-    const archived = deleteTranscript
-      ? archiveSessionTranscriptsForSession({
-          sessionId,
-          storePath,
-          sessionFile: entry?.sessionFile,
-          agentId: target.agentId,
-          reason: "deleted",
-        })
-      : [];
+    // PLAN-55 §3.5b: what was learned only from this conversation goes with
+    // it (owner-tier facts stay and are listed in `memory.survivors`).
+    const archive = () =>
+      deleteTranscript
+        ? archiveSessionTranscriptsForSession({
+            sessionId,
+            storePath,
+            sessionFile: entry?.sessionFile,
+            agentId: target.agentId,
+            reason: "deleted",
+          })
+        : [];
+    const { archived, memory } =
+      deleteTranscript && sessionId
+        ? await deleteSessionWithMemoryCascade({
+            agentId: target.agentId,
+            files: resolveSessionTranscriptCandidates(
+              sessionId,
+              storePath,
+              entry?.sessionFile,
+              target.agentId,
+            ).filter((file) => fs.existsSync(file)),
+            archive,
+            // PLAN-55 Phase 3 review M4: automatic housekeeping says so and
+            // gets the weaker, agent-strength cascade; everyone else is the owner.
+            initiator: p.initiator === "system" ? "system" : "owner",
+          })
+        : { archived: archive(), memory: null };
 
-    respond(true, { ok: true, key: target.canonicalKey, deleted: existed, archived }, undefined);
+    respond(
+      true,
+      { ok: true, key: target.canonicalKey, deleted: existed, archived, memory },
+      undefined,
+    );
   },
   "sessions.compact": async ({ params, respond }) => {
     if (!assertValidParams(params, validateSessionsCompactParams, "sessions.compact", respond)) {

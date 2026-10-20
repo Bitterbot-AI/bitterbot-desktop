@@ -1,23 +1,12 @@
-import {
-  formatSkillsForPrompt,
-  loadSkillsFromDir,
-  type Skill,
-} from "@mariozechner/pi-coding-agent";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
-import type {
-  ParsedSkillFrontmatter,
-  SkillEligibilityContext,
-  SkillCommandSpec,
-  SkillEntry,
-  SkillSnapshot,
-} from "./types.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR, resolveUserPath } from "../../utils.js";
 import { resolveSandboxPath } from "../sandbox-paths.js";
 import { resolveBundledSkillsDir } from "./bundled-dir.js";
+import { canaryOffNamesSync } from "./canary-registry.js";
 import { applyCapabilityGate, type CapabilityGateContext } from "./capability-gate.js";
 import { shouldIncludeSkill } from "./config.js";
 import { normalizeSkillFilter } from "./filter.js";
@@ -28,6 +17,14 @@ import {
 } from "./frontmatter.js";
 import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
+import { formatSkillsForPrompt, loadSkillsFromDir, type Skill } from "./skill-loader.js";
+import type {
+  ParsedSkillFrontmatter,
+  SkillEligibilityContext,
+  SkillCommandSpec,
+  SkillEntry,
+  SkillSnapshot,
+} from "./types.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -248,8 +245,8 @@ function loadSkillEntries(
  * itself it does not stop a determined attacker, but combined with the
  * scanner it noticeably reduces ASR per AgentDojo evaluations.
  *
- * Per-skill marker injection (which would require forking pi-coding-agent's
- * `formatSkillsForPrompt`) is deferred to PLAN-13 Phase B when capability
+ * Per-skill marker injection (which would require changing
+ * `formatSkillsForPrompt` in skill-loader.ts) is deferred to PLAN-13 Phase B when capability
  * declarations land alongside the runtime gate.
  */
 function hasP2PProvenance(skill: { baseDir?: string | null }): boolean {
@@ -567,7 +564,13 @@ export function buildWorkspaceSkillCommandSpecs(
     opts?.eligibility,
     opts?.capabilityGate,
   );
-  const userInvocable = eligible.filter((entry) => entry.invocation?.userInvocable !== false);
+  // PLAN-45 4.3: a canary-off skill is out of service everywhere, including
+  // the slash-command surface (the prompt filter runs per run; this runs
+  // per snapshot).
+  const withheld = canaryOffNamesSync();
+  const userInvocable = eligible.filter(
+    (entry) => entry.invocation?.userInvocable !== false && !withheld.has(entry.skill.name),
+  );
   const used = new Set<string>();
   for (const reserved of opts?.reservedNames ?? []) {
     used.add(reserved.toLowerCase());

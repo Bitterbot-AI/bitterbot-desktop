@@ -10,12 +10,13 @@
  * - Anomaly detection for publication rate spikes
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { contributorTierOf, TIER_PRIVILEGES } from "./contributor-status.js";
 import type { PeerReputation, TrustLevel } from "./crystal-types.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { OrchestratorBridgeLike } from "./skill-network-bridge.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/peer-reputation");
 
@@ -23,6 +24,7 @@ export class PeerReputationManager {
   private readonly db: DatabaseSync;
   private readonly executionTracker: SkillExecutionTracker;
   private readonly trustList: string[];
+  private readonly banListeners: Array<(pubkey: string) => void> = [];
 
   constructor(db: DatabaseSync, executionTracker: SkillExecutionTracker, trustList: string[] = []) {
     this.db = db;
@@ -49,7 +51,11 @@ export class PeerReputationManager {
       .get(pubkey) as { peer_pubkey: string } | undefined;
 
     if (existing) {
-      this.db.prepare(`UPDATE peer_reputation SET is_banned = 1 WHERE peer_pubkey = ?`).run(pubkey);
+      this.db
+        .prepare(
+          `UPDATE peer_reputation SET is_banned = 1, contributor_tier = 'flagged' WHERE peer_pubkey = ?`,
+        )
+        .run(pubkey);
     } else {
       this.db
         .prepare(
@@ -59,7 +65,22 @@ export class PeerReputationManager {
         )
         .run(pubkey, now, now);
     }
+    // PLAN-43 Phase 4: a ban reaches privileges held elsewhere (circle
+    // invites). R17: the memory engine never touches circle tables; the
+    // circles side registers a listener instead.
+    for (const listener of this.banListeners) {
+      try {
+        listener(pubkey);
+      } catch (err) {
+        log.debug(`ban listener failed: ${String(err)}`);
+      }
+    }
     log.debug(`peer banned: ${pubkey}`);
+  }
+
+  /** Register a side effect for bans (e.g. the circles service revoking open invites). */
+  onBan(listener: (pubkey: string) => void): void {
+    this.banListeners.push(listener);
   }
 
   /**
@@ -231,7 +252,15 @@ export class PeerReputationManager {
       return "untrusted";
     }
 
-    // Cap anomalous peers at "provisional"
+    // PLAN-43 Phase 4 (D-D): a contributor whose skills verifiably worked
+    // here gets an ingestion floor of "trusted" — never "verified", which
+    // stays earned through reputation or the operator's trust list.
+    const floor = TIER_PRIVILEGES[contributorTierOf(this.db, peerPubkey)].ingestTrustFloor;
+    const lift = (level: TrustLevel): TrustLevel =>
+      floor === "trusted" && (level === "untrusted" || level === "provisional") ? "trusted" : level;
+
+    // Cap anomalous peers at "provisional" (the anomaly cap beats the floor:
+    // a publication spike is exactly when a lifted peer must be re-checked).
     if (row.anomaly_flag === 1) {
       const score = Number(row.reputation_score ?? 0.5);
       const isTrusted = row.is_trusted === 1;
@@ -244,7 +273,12 @@ export class PeerReputationManager {
 
     const isTrusted = row.is_trusted === 1;
     const score = Number(row.reputation_score ?? 0.5);
-    return this.computeTrustLevelFromScore(score, isTrusted);
+    return lift(this.computeTrustLevelFromScore(score, isTrusted));
+  }
+
+  /** PLAN-43 Phase 4: publication-rate lift on the anomaly detector for proven contributors. */
+  publicationRateMultiplier(peerPubkey: string): number {
+    return TIER_PRIVILEGES[contributorTierOf(this.db, peerPubkey)].publicationRateMultiplier;
   }
 
   /**
@@ -883,6 +917,18 @@ export class PeerReputationManager {
       )
       .all(cutoff) as Array<{ peer_pubkey: string; c: number }>;
 
+    // A peer flagged earlier that has since gone quiet is no longer spiking.
+    // Without this the flag outlived the burst forever, because the loop
+    // below only revisits peers active in this window.
+    this.db
+      .prepare(
+        `UPDATE peer_reputation SET anomaly_flag = 0
+          WHERE anomaly_flag = 1 AND peer_pubkey NOT IN (
+            SELECT peer_pubkey FROM peer_activity_log
+             WHERE event_type = 'skill_received' AND timestamp > ?)`,
+      )
+      .run(cutoff);
+
     for (const { peer_pubkey, c: recentCount } of recentCounts) {
       // Get total historical count and age
       const rep = this.db
@@ -897,8 +943,9 @@ export class PeerReputationManager {
       const windowCount = Math.ceil(ageMs / windowMs);
       const avgPerWindow = rep.skills_received / Math.max(1, windowCount);
 
-      // Flag if >3x average
-      const isAnomaly = recentCount > 3 * Math.max(1, avgPerWindow);
+      // Flag if >3x average (x the contributor-tier lift, PLAN-43 Phase 4)
+      const isAnomaly =
+        recentCount > 3 * this.publicationRateMultiplier(peer_pubkey) * Math.max(1, avgPerWindow);
       this.db
         .prepare(`UPDATE peer_reputation SET anomaly_flag = ? WHERE peer_pubkey = ?`)
         .run(isAnomaly ? 1 : 0, peer_pubkey);

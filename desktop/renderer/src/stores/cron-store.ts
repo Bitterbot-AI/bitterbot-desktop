@@ -11,8 +11,35 @@ export type CronJob = {
   nextRunAt?: number;
   createdAt?: number;
   updatedAt?: number;
+  /** How the most recent run ended. */
+  lastRunStatus?: "ok" | "error" | "skipped";
+  /** Failed runs in a row; a recurring job is turned off when this gets high. */
+  consecutiveErrors?: number;
+  /** Where the result goes. Absent means the agent's most recent conversation. */
+  delivery?: { mode?: "announce" | "none"; channel?: string; to?: string };
   [key: string]: unknown;
 };
+
+/** What the Cron page shows for how a job is doing. */
+export function cronJobHealth(job: CronJob): {
+  tone: "ok" | "warn" | "bad" | "idle";
+  text: string;
+} {
+  const errors = job.consecutiveErrors ?? 0;
+  if (!job.enabled && errors > 1) {
+    return { tone: "bad", text: `Turned off after ${errors} failures in a row` };
+  }
+  if (!job.enabled && job.lastRunStatus === "error") {
+    return { tone: "bad", text: "Failed and will not run again" };
+  }
+  if (job.lastRunStatus === "error") {
+    return { tone: "warn", text: errors > 1 ? `Failing (${errors} in a row)` : "Last run failed" };
+  }
+  if (job.lastRunStatus === "ok") {
+    return { tone: "ok", text: "Last run OK" };
+  }
+  return { tone: "idle", text: job.enabled ? "Has not run yet" : "Off" };
+}
 
 export type CronRunEntry = {
   ts: number;

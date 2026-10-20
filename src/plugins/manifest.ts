@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { PluginConfigUiHint, PluginKind } from "./types.js";
 import { MANIFEST_KEY, LEGACY_MANIFEST_KEYS } from "../compat/legacy-names.js";
 import { isRecord } from "../utils.js";
+import type { PluginConfigUiHint, PluginKind } from "./types.js";
 
 export const PLUGIN_MANIFEST_FILENAME = "bitterbot.plugin.json";
 /** Also check legacy bitterbot.plugin.json for backwards compat. */

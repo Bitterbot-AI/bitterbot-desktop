@@ -415,8 +415,12 @@ export function resolveExecApprovalsFromFile(params: {
       agent.autoAllowSkills ?? wildcard.autoAllowSkills ?? resolvedDefaults.autoAllowSkills,
     ),
   };
+  // PLAN-45 4.5 (adversarial 4-11): the validation shell resolves under its
+  // own identity and the operator's wildcard entries are not its to use.
   const allowlist = [
-    ...(Array.isArray(wildcard.allowlist) ? wildcard.allowlist : []),
+    ...(Array.isArray(wildcard.allowlist) && agentKey !== "skill-validation"
+      ? wildcard.allowlist
+      : []),
     ...(Array.isArray(agent.allowlist) ? agent.allowlist : []),
   ];
   return {

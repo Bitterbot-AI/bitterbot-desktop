@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
-import type { SubagentRunRecord } from "../../agents/subagent-registry.js";
-import type { CommandHandler } from "./commands-types.js";
+import { abortEmbeddedPiRun } from "../../agents/embedded.js";
 import { AGENT_LANE_SUBAGENT } from "../../agents/lanes.js";
-import { abortEmbeddedPiRun } from "../../agents/pi-embedded.js";
+import type { SubagentRunRecord } from "../../agents/subagent-registry.js";
 import {
   clearSubagentRunSteerRestart,
   listSubagentRunsForRequester,
@@ -35,6 +34,7 @@ import {
 } from "../../shared/subagents-format.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
 import { stopSubagentsForRequester } from "./abort.js";
+import type { CommandHandler } from "./commands-types.js";
 import { clearSessionQueues } from "./queue.js";
 import { formatRunLabel, formatRunStatus, sortSubagentRuns } from "./subagents-utils.js";
 
@@ -573,6 +573,8 @@ export const handleSubagentsCommand: CommandHandler = async (params, allowTextCo
           channel: INTERNAL_MESSAGE_CHANNEL,
           lane: AGENT_LANE_SUBAGENT,
           timeout: 0,
+          // A sender who may use commands is not necessarily an owner.
+          ...(params.command.senderIsOwner ? {} : { senderIsOwner: false }),
         },
         timeoutMs: 10_000,
       });
@@ -597,6 +599,7 @@ export const handleSubagentsCommand: CommandHandler = async (params, allowTextCo
         nextRunId: runId,
         fallback: resolved.entry,
         runTimeoutSeconds: resolved.entry.runTimeoutSeconds ?? 0,
+        ...(params.command.senderIsOwner ? {} : { requesterIsOwner: false as const }),
       });
       return {
         shouldContinue: false,

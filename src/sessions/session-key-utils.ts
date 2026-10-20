@@ -53,6 +53,50 @@ export function isSubagentSessionKey(sessionKey: string | undefined | null): boo
   return Boolean((parsed?.rest ?? "").toLowerCase().startsWith("subagent:"));
 }
 
+/**
+ * PLAN-43 §3.2b: sessions spawned to execute an inbound A2A task (a REMOTE
+ * caller's request) carry an `a2a-task:` remainder (task-executor.ts). Tool
+ * assembly uses this to apply the remote-caller floor.
+ */
+/**
+ * PLAN-43 Phase 3 (3b adversarial): skill-evolution validation rollouts
+ * inject PEER-authored skill text into real agent turns. One marker so the
+ * trust classifier, transcript ingestion filter, and tool-policy floor all
+ * agree on which sessions those are.
+ */
+export const SKILL_EVOLVE_VALIDATION_MARKER = "skill-evolve-val-";
+
+export function makeSkillEvolveValidationSessionKey(
+  agentId: string,
+  nonce: string,
+  opts: { peer?: boolean } = {},
+): string {
+  // PLAN-44 Phase 2 (adversarial C1): the PEER flavor runs P2P peer skill
+  // text for the attestation sweep and keeps the A2A no-tools floor; the
+  // plain flavor runs the node's own candidates under the validation
+  // allow-list.
+  return `agent:${agentId}:${SKILL_EVOLVE_VALIDATION_MARKER}${opts.peer ? "peer-" : ""}${nonce}`;
+}
+
+export function isSkillEvolvePeerValidationSessionKey(
+  sessionKey: string | undefined | null,
+): boolean {
+  return (
+    typeof sessionKey === "string" && sessionKey.includes(`:${SKILL_EVOLVE_VALIDATION_MARKER}peer-`)
+  );
+}
+
+export function isSkillEvolveValidationSessionKey(sessionKey: string | undefined | null): boolean {
+  return (
+    typeof sessionKey === "string" && sessionKey.includes(`:${SKILL_EVOLVE_VALIDATION_MARKER}`)
+  );
+}
+
+export function isA2aTaskSessionKey(sessionKey: string | undefined | null): boolean {
+  const parsed = parseAgentSessionKey(sessionKey);
+  return Boolean((parsed?.rest ?? "").toLowerCase().startsWith("a2a-task:"));
+}
+
 export function getSubagentDepth(sessionKey: string | undefined | null): number {
   const raw = (sessionKey ?? "").trim().toLowerCase();
   if (!raw) {

@@ -37,7 +37,7 @@ It does not install or modify anything on the remote host.
 
 <Steps>
   <Step title="Existing config detection">
-    - If `~/.bitterbot/bitterbot.json` exists, choose Keep, Modify, or Reset.
+    - If `~/.bitterbot/bitterbot.json` exists, choose Keep, Modify, or Reset. A file that holds only the gateway token a first gateway start generated (the Docker image does this) does not count: the wizard keeps the token and sets up the rest.
     - Re-running the wizard does not wipe anything unless you explicitly choose Reset (or pass `--reset`).
     - If config is invalid or contains legacy keys, the wizard stops and asks you to run `bitterbot doctor` before continuing.
     - Reset uses `trash` and offers scopes:
@@ -143,7 +143,7 @@ What you set:
     Uses `OPENAI_API_KEY` if present or prompts for a key, then saves it to
     `~/.bitterbot/.env` so launchd can read it.
 
-    Sets `agents.defaults.model` to `openai/gpt-5.1-codex` when model is unset, `openai/*`, or `openai-codex/*`.
+    Sets `agents.defaults.model` to `openai/gpt-5.5` when model is unset, `openai/*`, or `openai-codex/*`.
 
   </Accordion>
   <Accordion title="xAI (Grok) API key">
@@ -221,7 +221,7 @@ Typical fields in `~/.bitterbot/bitterbot.json`:
 - `agents.defaults.model` / `models.providers` (if Minimax chosen)
 - `gateway.*` (mode, bind, auth, tailscale)
 - `channels.telegram.botToken`, `channels.discord.token`, `channels.signal.*`
-- Channel allowlists (Slack, Discord, Matrix, Microsoft Teams) when you opt in during prompts (names resolve to IDs when possible)
+- Channel allowlists (Slack, Discord) when you opt in during prompts (names resolve to IDs when possible)
 - `skills.install.nodeManager`
 - `wizard.lastRunAt`
 - `wizard.lastRunVersion`

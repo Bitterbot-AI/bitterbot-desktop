@@ -220,7 +220,7 @@ The filtering order is:
 Each level can further restrict tools, but cannot grant back denied tools from earlier levels.
 If `agents.list[].tools.sandbox.tools` is set, it replaces `tools.sandbox.tools` for that agent.
 If `agents.list[].tools.profile` is set, it overrides `tools.profile` for that agent.
-Provider tool keys accept either `provider` (e.g. `google-antigravity`) or `provider/model` (e.g. `openai/gpt-5.2`).
+Provider tool keys accept either `provider` (e.g. `google`) or `provider/model` (e.g. `openai/gpt-5.2`).
 
 ### Tool groups (shorthands)
 
@@ -355,7 +355,7 @@ After configuring multi-agent sandbox and tools:
 2. **Verify sandbox containers:**
 
    ```exec
-   docker ps --filter "name.bitterbot-sbx-"
+   docker ps --filter "name=bitterbot-sbx-"
    ```
 
 3. **Test tool restrictions:**

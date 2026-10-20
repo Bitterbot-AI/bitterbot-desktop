@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   resolvePreferredNodePath: vi.fn(),
   resolveGatewayProgramArguments: vi.fn(),
+  resolveTarballLauncherForService: vi.fn(),
   resolveSystemNodeInfo: vi.fn(),
   renderSystemNodeWarning: vi.fn(),
   buildServiceEnvironment: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("../daemon/runtime-paths.js", () => ({
 
 vi.mock("../daemon/program-args.js", () => ({
   resolveGatewayProgramArguments: mocks.resolveGatewayProgramArguments,
+  resolveTarballLauncherForService: mocks.resolveTarballLauncherForService,
 }));
 
 vi.mock("../daemon/service-env.js", () => ({
@@ -94,6 +96,29 @@ describe("buildGatewayInstallPlan", () => {
 
     expect(warn).toHaveBeenCalledWith("Node too old", "Gateway runtime");
     expect(mocks.resolvePreferredNodePath).toHaveBeenCalled();
+  });
+
+  it("keeps a release-tarball launcher even when a supported system Node exists", async () => {
+    mocks.resolveTarballLauncherForService.mockResolvedValue(
+      "/home/u/.bitterbot/app/current/bin/bitterbot",
+    );
+    mocks.resolvePreferredNodePath.mockResolvedValue("/usr/bin/node");
+    mocks.resolveGatewayProgramArguments.mockResolvedValue({
+      programArguments: ["/home/u/.bitterbot/app/current/bin/bitterbot", "gateway"],
+    });
+    mocks.resolveSystemNodeInfo.mockResolvedValue({
+      path: "/usr/bin/node",
+      version: "22.0.0",
+      supported: true,
+    });
+    mocks.buildServiceEnvironment.mockReturnValue({});
+
+    await buildGatewayInstallPlan({ env: {}, port: 19001, runtime: "node", devMode: false });
+
+    expect(mocks.resolvePreferredNodePath).not.toHaveBeenCalled();
+    expect(mocks.resolveGatewayProgramArguments).toHaveBeenCalledWith(
+      expect.objectContaining({ nodePath: undefined }),
+    );
   });
 
   it("merges config env vars into the environment", async () => {

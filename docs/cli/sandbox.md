@@ -70,12 +70,14 @@ bitterbot sandbox recreate --all --force        # Skip confirmation
 
 ### After updating Docker images
 
-```bash
-# Pull new image
-docker pull.bitterbot-sandbox:latest
-docker tag.bitterbot-sandbox:latest.bitterbot-sandbox:bookworm-slim
+The sandbox images are built locally, not pulled.
 
-# Update config to use new image
+```bash
+# Rebuild the images
+scripts/sandbox-setup.sh
+scripts/sandbox-browser-setup.sh   # if you use the sandboxed browser
+
+# Or point config at another image
 # Edit config: agents.defaults.sandbox.docker.image (or agents.list[].sandbox.docker.image)
 
 # Recreate containers
@@ -131,8 +133,8 @@ Sandbox settings live in `~/.bitterbot/bitterbot.json` under `agents.defaults.sa
         "mode": "all", // off, non-main, all
         "scope": "agent", // session, agent, shared
         "docker": {
-          "image": .bitterbot-sandbox:bookworm-slim",
-          "containerPrefix": .bitterbot-sbx-",
+          "image": "bitterbot-sandbox:bookworm-slim",
+          "containerPrefix": "bitterbot-sbx-",
           // ... more Docker options
         },
         "prune": {

@@ -18,8 +18,8 @@ const __dirname = dirname(__filename);
 
 // Bitterbot internal imports
 import type { BitterbotConfig } from "../../src/config/types.js";
-import type { MemorySearchResult } from "../../src/memory/types.js";
 import { MemoryIndexManager } from "../../src/memory/manager.js";
+import type { MemorySearchResult } from "../../src/memory/types.js";
 
 // ── Types ──
 

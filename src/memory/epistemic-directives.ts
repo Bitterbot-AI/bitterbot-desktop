@@ -16,8 +16,8 @@
  * PLAN-9: GAP-11 (Active Inference — Curiosity-Driven Live Directives)
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/epistemic-directives");
@@ -27,6 +27,7 @@ export type DirectiveType =
   | "knowledge_gap" // High GCCRF prediction error region
   | "low_confidence" // Entity with few evidence chunks
   | "stale_fact" // Relationship not reinforced recently
+  | "stale_reference" // PLAN-55: open tasks/briefs cite a value the owner corrected
   | "graph_bridge"; // PLAN-18: SAGE reader missed a chunk vector/FTS found
 
 /**
@@ -41,6 +42,7 @@ export const USER_ANSWERABLE_TYPES: ReadonlySet<DirectiveType> = new Set([
   "knowledge_gap",
   "low_confidence",
   "stale_fact",
+  "stale_reference",
 ]);
 
 /** A user-answerable question stops injecting after this many sessions. */
@@ -522,8 +524,29 @@ export class EpistemicDirectiveEngine {
          WHERE resolved_at IS NULL AND status IN ('open', 'answered')
            AND source_entity_ids LIKE ? ESCAPE '\\' LIMIT 1`,
       );
+      const currentStatusStmt = this.db.prepare(
+        `SELECT status FROM canonical_facts WHERE key = ? AND valid_until IS NULL`,
+      );
       const now = Date.now();
       for (const row of rows) {
+        // PLAN-55 Phase 0: a rejected re-pin of a fact the owner retired is
+        // recorded for the audit trail, never turned into a question: the
+        // owner already answered it. Belt and braces: the same holds for any
+        // conflict whose key no longer has an active belief (a retired value
+        // must never be offered back as "which is current?").
+        const currentStatus = (currentStatusStmt.get(row.key) as { status: string } | undefined)
+          ?.status;
+        // PLAN-55 Phase 1: a held agent retire is for the confirmation line
+        // and the owner's review, never a "which is current?" question (there
+        // is no second value to ask about).
+        if (
+          row.kind === "owner_retired" ||
+          row.kind === "pending_retire" ||
+          (currentStatus && currentStatus !== "active")
+        ) {
+          consumeStmt.run(now, null, row.id);
+          continue;
+        }
         const tag = `canonical:${row.key}`;
         const escapedTag = tag.replace(/[\\%_]/g, (c) => `\\${c}`);
         const existing = existingStmt.get(`%"${escapedTag}"%`) as { id: string } | undefined;

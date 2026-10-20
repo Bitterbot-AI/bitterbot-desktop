@@ -338,7 +338,7 @@ Notes:
 
 ## Per-Agent Sandbox and Tool Configuration
 
-Starting with v2026.1.6, each agent can have its own sandbox and tool restrictions:
+Each agent can have its own sandbox and tool restrictions:
 
 ```js
 {

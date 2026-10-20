@@ -1,10 +1,11 @@
 import type { ImageContent } from "@mariozechner/pi-ai";
+import { resolveHeartbeatPrompt } from "../auto-reply/heartbeat.js";
 import type { ThinkLevel } from "../auto-reply/thinking.js";
 import type { BitterbotConfig } from "../config/config.js";
-import type { EmbeddedPiRunResult } from "./pi-embedded-runner.js";
-import { resolveHeartbeatPrompt } from "../auto-reply/heartbeat.js";
 import { shouldLogVerbose } from "../globals.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
+import { recordUsage } from "../infra/usage-ledger.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getProcessSupervisor } from "../process/supervisor/index.js";
 import { resolveSessionAgentIds } from "./agent-scope.js";
@@ -27,9 +28,11 @@ import {
   writeCliImages,
 } from "./cli-runner/helpers.js";
 import { resolveBitterbotDocsPath } from "./docs-path.js";
+import { classifyFailoverReason, isFailoverErrorMessage } from "./embedded-helpers.js";
+import type { EmbeddedPiRunResult } from "./embedded-runner.js";
 import { resolveEndocrineState } from "./endocrine-state.js";
 import { FailoverError, resolveFailoverStatus } from "./failover-error.js";
-import { classifyFailoverReason, isFailoverErrorMessage } from "./pi-embedded-helpers.js";
+import { genomeFileOf, otherAgentGenomeFiles, withGenomeGuard } from "./genome-guard.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "./workspace-run.js";
 
 const log = createSubsystemLogger("agent/claude-cli");
@@ -135,6 +138,7 @@ export async function runCliAgent(params: {
     config: params.config,
     agentId: sessionAgentId,
     promptMode: "full",
+    workspaceDir,
   }).catch(() => undefined);
 
   // PLAN-34 Phase 2b: idle-research findings surface on the next live turn.
@@ -160,6 +164,11 @@ export async function runCliAgent(params: {
     }),
   }).catch(() => undefined);
 
+  // PLAN-57 §4.3: the compute state block, from the watcher's snapshot store.
+  // Undefined at steady state or when nothing has published a snapshot.
+  const { resolveComputeStateBlockFromConfig } = await import("../compute/awareness/state.js");
+  const computeState = resolveComputeStateBlockFromConfig(params.config);
+
   const systemPrompt = buildSystemPrompt({
     workspaceDir,
     config: params.config,
@@ -175,6 +184,7 @@ export async function runCliAgent(params: {
     endocrineState,
     canonicalFacts,
     researchFindings,
+    computeState,
   });
 
   const { sessionId: cliSessionIdToSend, isNew } = resolveSessionIdToSend({
@@ -294,20 +304,30 @@ export async function runCliAgent(params: {
         cliSessionId: useResume ? cliSessionIdToSend : undefined,
       });
 
-      const managedRun = await supervisor.spawn({
-        sessionId: params.sessionId,
-        backendId: backendResolved.id,
-        scopeKey,
-        replaceExistingScope: Boolean(useResume && scopeKey),
-        mode: "child",
-        argv: [backend.command, ...args],
-        timeoutMs: params.timeoutMs,
-        noOutputTimeoutMs,
-        cwd: workspaceDir,
-        env,
-        input: stdinPayload,
-      });
-      const result = await managedRun.wait();
+      // A CLI backend brings its own file tools, so none of ours is there to
+      // refuse a write to GENOME.md. The whole run is bracketed instead.
+      let cliPid: number | undefined;
+      const { result } = await withGenomeGuard(
+        [...new Set([genomeFileOf(workspaceDir), ...otherAgentGenomeFiles(params.config)])],
+        `cli backend "${backendResolved.id}"`,
+        async () => {
+          const managedRun = await supervisor.spawn({
+            sessionId: params.sessionId,
+            backendId: backendResolved.id,
+            scopeKey,
+            replaceExistingScope: Boolean(useResume && scopeKey),
+            mode: "child",
+            argv: [backend.command, ...args],
+            timeoutMs: params.timeoutMs,
+            noOutputTimeoutMs,
+            cwd: workspaceDir,
+            env,
+            input: stdinPayload,
+          });
+          cliPid = managedRun.pid;
+          return await managedRun.wait();
+        },
+      );
 
       const stdout = result.stdout.trim();
       const stderr = result.stderr.trim();
@@ -332,7 +352,7 @@ export async function runCliAgent(params: {
         if (result.reason === "no-output-timeout" || result.noOutputTimedOut) {
           const timeoutReason = `CLI produced no output for ${Math.round(noOutputTimeoutMs / 1000)}s and was terminated.`;
           log.warn(
-            `cli watchdog timeout: provider=${params.provider} model=${modelId} session=${cliSessionIdToSend ?? params.sessionId} noOutputTimeoutMs=${noOutputTimeoutMs} pid=${managedRun.pid ?? "unknown"}`,
+            `cli watchdog timeout: provider=${params.provider} model=${modelId} session=${cliSessionIdToSend ?? params.sessionId} noOutputTimeoutMs=${noOutputTimeoutMs} pid=${cliPid ?? "unknown"}`,
           );
           throw new FailoverError(timeoutReason, {
             reason: "timeout",
@@ -377,6 +397,22 @@ export async function runCliAgent(params: {
 
     const text = output.text?.trim();
     const payloads = text ? [{ text }] : undefined;
+
+    // PLAN-50: CLI-backed providers never write a pi transcript, so this is the only place
+    // their tokens can enter the ledger. Cost is resolved from the catalog (no library cost here).
+    recordUsage({
+      kind: "chat",
+      feature: USAGE_FEATURES.agentCliBackend,
+      provider: params.provider,
+      model: modelId,
+      agentId: params.agentId,
+      sessionKey: params.sessionKey,
+      sessionId: output.sessionId ?? sessionIdSent ?? params.sessionId,
+      runId: params.runId,
+      usage: output.usage,
+      durationMs: Date.now() - started,
+      config: params.config,
+    });
 
     return {
       payloads,

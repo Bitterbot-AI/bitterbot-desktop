@@ -1,11 +1,11 @@
-import type { BitterbotConfig } from "../../config/config.js";
-import type { ConfiguredEntry } from "./list.types.js";
 import {
   buildModelAliasIndex,
   parseModelRef,
   resolveConfiguredModelRef,
   resolveModelRefFromString,
 } from "../../agents/model-selection.js";
+import type { BitterbotConfig } from "../../config/config.js";
+import type { ConfiguredEntry } from "./list.types.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER, modelKey } from "./shared.js";
 
 export function resolveConfiguredEntries(cfg: BitterbotConfig) {

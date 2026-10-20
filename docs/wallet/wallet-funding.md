@@ -4,7 +4,7 @@ How Bitterbot agents get funded with USDC — from zero-friction user experience
 
 ## Overview
 
-Every Bitterbot agent has a smart wallet on Base loaded with USDC. The wallet enables autonomous micropayments: paying for paywalled content, API access, agent-to-agent transactions, and user-delegated purchases. Gas is sponsored by the Coinbase Paymaster, so only USDC is needed.
+A Bitterbot agent can have a USDC wallet on Base, held as a Coinbase Developer Platform (CDP) server account. It is off until you set `tools.wallet.enabled: true`, and starts on the Base Sepolia test network. The wallet pays for paywalled content (x402), API access and agent-to-agent tasks, each one waiting for your approval unless a standing grant covers it. Sending USDC needs a little ETH in the same wallet for network fees; only x402 payments are gasless, and smart-account gas sponsorship is not active.
 
 The funding pipeline converts fiat (credit card) to USDC via Stripe's Crypto Onramp. The architecture supports three tiers of operation so that end users never touch a config file while developers retain full control.
 
@@ -12,7 +12,7 @@ The funding pipeline converts fiat (credit card) to USDC via Stripe's Crypto Onr
 
 From the user's perspective, funding is a single interaction:
 
-1. The agent encounters a paywall or the user clicks **Fund Wallet** in the sidebar
+1. The agent encounters a paywall or the user clicks **Add Funds** in the Wallet tab
 2. A funding page opens with Stripe's embedded widget
 3. The user enters their card details and an amount
 4. Stripe handles KYC, payment processing, and crypto delivery
@@ -246,14 +246,13 @@ Add rate limiting, input validation, and logging as appropriate for your deploym
 
 ## How the Agent Uses the Wallet
 
-Once funded, the agent spends USDC autonomously within configurable limits:
+Once funded, each payment waits for your approval unless a standing spend grant covers it (`review.spend`, default `"ask"`); the caps apply underneath:
 
-- **Paywalled content (x402):** When `web_fetch` returns HTTP 402, the agent reads the price from response headers, informs the user, and pays via the x402 protocol.
-- **API upgrades:** If a service returns 429 but offers a paid tier, the agent can pay to upgrade.
-- **Agent-to-agent payments:** External agents or services that charge USDC.
-- **User-delegated purchases:** The user asks the agent to buy something or send USDC to an address.
+- **Paywalled content (x402):** when `web_fetch` returns HTTP 402, the agent reads the price from the response headers and tells you. Paying needs `tools.wallet.x402.enabled: true` and your approval.
+- **Agent-to-agent payments:** external agents or services that charge USDC.
+- **User-delegated sends:** you ask the agent to send USDC to an address.
 
-Spending is governed by per-transaction caps, per-request caps, and session spend limits — all configurable.
+Spending is also limited by per-transaction, per-request, session and daily caps, all configurable. See [Agent Wallet](/wallet#spending-controls).
 
 ## Related
 

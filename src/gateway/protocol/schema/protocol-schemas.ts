@@ -124,8 +124,17 @@ import {
   SessionsResetParamsSchema,
   SessionsResolveParamsSchema,
   SessionsUsageParamsSchema,
+  UsageLedgerEventsParamsSchema,
+  UsageLedgerExplainParamsSchema,
+  UsageLedgerSummaryParamsSchema,
+  UsageLedgerWhatIfParamsSchema,
 } from "./sessions.js";
-import { PresenceEntrySchema, SnapshotSchema, StateVersionSchema } from "./snapshot.js";
+import {
+  GatewayRuntimeSchema,
+  PresenceEntrySchema,
+  SnapshotSchema,
+  StateVersionSchema,
+} from "./snapshot.js";
 import {
   WizardCancelParamsSchema,
   WizardNextParamsSchema,
@@ -147,6 +156,7 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   PresenceEntry: PresenceEntrySchema,
   StateVersion: StateVersionSchema,
   Snapshot: SnapshotSchema,
+  GatewayRuntime: GatewayRuntimeSchema,
   ErrorShape: ErrorShapeSchema,
   AgentEvent: AgentEventSchema,
   SendParams: SendParamsSchema,
@@ -176,6 +186,10 @@ export const ProtocolSchemas: Record<string, TSchema> = {
   SessionsDeleteParams: SessionsDeleteParamsSchema,
   SessionsCompactParams: SessionsCompactParamsSchema,
   SessionsUsageParams: SessionsUsageParamsSchema,
+  UsageLedgerSummaryParams: UsageLedgerSummaryParamsSchema,
+  UsageLedgerEventsParams: UsageLedgerEventsParamsSchema,
+  UsageLedgerWhatIfParams: UsageLedgerWhatIfParamsSchema,
+  UsageLedgerExplainParams: UsageLedgerExplainParamsSchema,
   ConfigGetParams: ConfigGetParamsSchema,
   ConfigSetParams: ConfigSetParamsSchema,
   ConfigApplyParams: ConfigApplyParamsSchema,

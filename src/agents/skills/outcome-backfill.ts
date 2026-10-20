@@ -16,12 +16,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { OutcomeSignal } from "./intervention-record.js";
 import { loadConfig } from "../../config/io.js";
 import { resolveStateDir } from "../../config/paths.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveUserPath } from "../../utils.js";
 import { resolveAgentConfig, resolveDefaultAgentId } from "../agent-scope.js";
+import type { OutcomeSignal } from "./intervention-record.js";
 
 const log = createSubsystemLogger("agents/skills/outcome-backfill");
 

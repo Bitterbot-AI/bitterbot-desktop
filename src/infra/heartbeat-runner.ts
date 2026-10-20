@@ -1,10 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { ReplyPayload } from "../auto-reply/types.js";
-import type { ChannelHeartbeatDeps } from "../channels/plugins/types.js";
-import type { BitterbotConfig } from "../config/config.js";
-import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
-import type { OutboundSendDeps } from "./outbound/deliver.js";
 import {
   resolveAgentConfig,
   resolveAgentWorkspaceDir,
@@ -23,22 +18,18 @@ import {
 } from "../auto-reply/heartbeat.js";
 import { getReplyFromConfig } from "../auto-reply/reply.js";
 import { HEARTBEAT_TOKEN } from "../auto-reply/tokens.js";
+import type { ReplyPayload } from "../auto-reply/types.js";
 import { getChannelPlugin } from "../channels/plugins/index.js";
+import type { ChannelHeartbeatDeps } from "../channels/plugins/types.js";
 import { parseDurationMs } from "../cli/parse-duration.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { loadConfig } from "../config/config.js";
-import {
-  canonicalizeMainSessionAlias,
-  loadSessionStore,
-  resolveAgentIdFromSessionKey,
-  resolveAgentMainSessionKey,
-  resolveStorePath,
-  saveSessionStore,
-  updateSessionStore,
-} from "../config/sessions.js";
+import { loadSessionStore, saveSessionStore } from "../config/sessions.js";
+import type { AgentDefaultsConfig } from "../config/types.agent-defaults.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getQueueSize } from "../process/command-queue.js";
 import { CommandLane } from "../process/lanes.js";
-import { normalizeAgentId, toAgentStoreSessionKey } from "../routing/session-key.js";
+import { normalizeAgentId } from "../routing/session-key.js";
 import { defaultRuntime, type RuntimeEnv } from "../runtime.js";
 import { formatErrorMessage } from "./errors.js";
 import { isWithinActiveHours } from "./heartbeat-active-hours.js";
@@ -49,6 +40,14 @@ import {
   isExecCompletionEvent,
 } from "./heartbeat-events-filter.js";
 import { emitHeartbeatEvent, resolveIndicatorType } from "./heartbeat-events.js";
+import { commitHeartbeatHash, evaluateHeartbeatHashGate } from "./heartbeat-gate.js";
+import {
+  resetIsolatedHeartbeatSession,
+  resolveHeartbeatSession,
+  resolveIsolatedHeartbeatSessionKey,
+  restoreHeartbeatUpdatedAt,
+  shouldRunHeartbeatIsolated,
+} from "./heartbeat-session.js";
 import { resolveHeartbeatVisibility } from "./heartbeat-visibility.js";
 import {
   type HeartbeatRunResult,
@@ -56,6 +55,7 @@ import {
   requestHeartbeatNow,
   setHeartbeatWakeHandler,
 } from "./heartbeat-wake.js";
+import type { OutboundSendDeps } from "./outbound/deliver.js";
 import { deliverOutboundPayloads } from "./outbound/deliver.js";
 import {
   resolveHeartbeatDeliveryTarget,
@@ -72,6 +72,48 @@ type HeartbeatDeps = OutboundSendDeps &
 
 const log = createSubsystemLogger("gateway/heartbeat");
 let heartbeatsEnabled = true;
+
+/**
+ * PLAN-50 Phase 6: cache-aware heartbeats. A live turn just left the prompt cache warm; if a
+ * heartbeat is due within the cache TTL, fire it now so it reads the cached prefix instead of
+ * re-writing it a few minutes later (the dominant cache waste on spaced-heartbeat nodes).
+ */
+let activeAgents: Map<string, HeartbeatAgentState> | null = null;
+/** Per-agent early-fire window granted by the last nudge, and how long the cache stays warm. */
+const cacheWarmSlack = new Map<string, { slackMs: number; warmUntilMs: number; retries: number }>();
+const CACHE_WARM_RETRY_MS = 3_000;
+const CACHE_WARM_MAX_RETRIES = 20;
+
+export function nudgeHeartbeatIfDueSoon(withinMs: number, agentId?: string): boolean {
+  if (!activeAgents || activeAgents.size === 0 || !heartbeatsEnabled) {
+    return false;
+  }
+  const now = Date.now();
+  let dueSoon = false;
+  for (const agent of activeAgents.values()) {
+    if (agentId && agent.agentId !== agentId) {
+      continue;
+    }
+    if (agent.nextDueMs - now <= withinMs) {
+      cacheWarmSlack.set(agent.agentId, {
+        slackMs: withinMs,
+        warmUntilMs: now + withinMs,
+        retries: 0,
+      });
+      dueSoon = true;
+    }
+  }
+  if (!dueSoon) {
+    return false;
+  }
+  requestHeartbeatNow({ reason: "cache-warm", coalesceMs: 250 });
+  return true;
+}
+
+/** Test seam. */
+export function resetHeartbeatCacheWarmStateForTest(): void {
+  cacheWarmSlack.clear();
+}
 
 export function setHeartbeatsEnabled(enabled: boolean) {
   heartbeatsEnabled = enabled;
@@ -254,62 +296,6 @@ function resolveHeartbeatAckMaxChars(cfg: BitterbotConfig, heartbeat?: Heartbeat
   );
 }
 
-function resolveHeartbeatSession(
-  cfg: BitterbotConfig,
-  agentId?: string,
-  heartbeat?: HeartbeatConfig,
-) {
-  const sessionCfg = cfg.session;
-  const scope = sessionCfg?.scope ?? "per-sender";
-  const resolvedAgentId = normalizeAgentId(agentId ?? resolveDefaultAgentId(cfg));
-  const mainSessionKey =
-    scope === "global" ? "global" : resolveAgentMainSessionKey({ cfg, agentId: resolvedAgentId });
-  const storeAgentId = scope === "global" ? resolveDefaultAgentId(cfg) : resolvedAgentId;
-  const storePath = resolveStorePath(sessionCfg?.store, {
-    agentId: storeAgentId,
-  });
-  const store = loadSessionStore(storePath);
-  const mainEntry = store[mainSessionKey];
-
-  if (scope === "global") {
-    return { sessionKey: mainSessionKey, storePath, store, entry: mainEntry };
-  }
-
-  const trimmed = heartbeat?.session?.trim() ?? "";
-  if (!trimmed) {
-    return { sessionKey: mainSessionKey, storePath, store, entry: mainEntry };
-  }
-
-  const normalized = trimmed.toLowerCase();
-  if (normalized === "main" || normalized === "global") {
-    return { sessionKey: mainSessionKey, storePath, store, entry: mainEntry };
-  }
-
-  const candidate = toAgentStoreSessionKey({
-    agentId: resolvedAgentId,
-    requestKey: trimmed,
-    mainKey: cfg.session?.mainKey,
-  });
-  const canonical = canonicalizeMainSessionAlias({
-    cfg,
-    agentId: resolvedAgentId,
-    sessionKey: candidate,
-  });
-  if (canonical !== "global") {
-    const sessionAgentId = resolveAgentIdFromSessionKey(canonical);
-    if (sessionAgentId === normalizeAgentId(resolvedAgentId)) {
-      return {
-        sessionKey: canonical,
-        storePath,
-        store,
-        entry: store[canonical],
-      };
-    }
-  }
-
-  return { sessionKey: mainSessionKey, storePath, store, entry: mainEntry };
-}
-
 function resolveHeartbeatReasoningPayloads(
   replyResult: ReplyPayload | ReplyPayload[] | undefined,
 ): ReplyPayload[] {
@@ -317,37 +303,6 @@ function resolveHeartbeatReasoningPayloads(
   return payloads.filter((payload) => {
     const text = typeof payload.text === "string" ? payload.text : "";
     return text.trimStart().startsWith("Reasoning:");
-  });
-}
-
-async function restoreHeartbeatUpdatedAt(params: {
-  storePath: string;
-  sessionKey: string;
-  updatedAt?: number;
-}) {
-  const { storePath, sessionKey, updatedAt } = params;
-  if (typeof updatedAt !== "number") {
-    return;
-  }
-  const store = loadSessionStore(storePath);
-  const entry = store[sessionKey];
-  if (!entry) {
-    return;
-  }
-  const nextUpdatedAt = Math.max(entry.updatedAt ?? 0, updatedAt);
-  if (entry.updatedAt === nextUpdatedAt) {
-    return;
-  }
-  await updateSessionStore(storePath, (nextStore) => {
-    const nextEntry = nextStore[sessionKey] ?? entry;
-    if (!nextEntry) {
-      return;
-    }
-    const resolvedUpdatedAt = Math.max(nextEntry.updatedAt ?? 0, updatedAt);
-    if (nextEntry.updatedAt === resolvedUpdatedAt) {
-      return;
-    }
-    nextStore[sessionKey] = { ...nextEntry, updatedAt: resolvedUpdatedAt };
   });
 }
 
@@ -412,15 +367,20 @@ export async function runHeartbeatOnce(opts: {
   const isExecEventReason = opts.reason === "exec-event";
   const isCronEventReason = Boolean(opts.reason?.startsWith("cron:"));
   const isWakeReason = opts.reason === "wake" || Boolean(opts.reason?.startsWith("hook:"));
+  // PLAN-57 §4.4: a compute completion has a pending system event too.
+  const isComputeEventReason = opts.reason === "compute-event";
   const workspaceDir = resolveAgentWorkspaceDir(cfg, agentId);
   const heartbeatFilePath = path.join(workspaceDir, DEFAULT_HEARTBEAT_FILENAME);
+  // Kept for the content-hash gate below (undefined = file missing).
+  let heartbeatFileContent: string | undefined;
   try {
-    const heartbeatFileContent = await fs.readFile(heartbeatFilePath, "utf-8");
+    heartbeatFileContent = await fs.readFile(heartbeatFilePath, "utf-8");
     if (
       isHeartbeatContentEffectivelyEmpty(heartbeatFileContent) &&
       !isExecEventReason &&
       !isCronEventReason &&
-      !isWakeReason
+      !isWakeReason &&
+      !isComputeEventReason
     ) {
       emitHeartbeatEvent({
         status: "skipped",
@@ -440,8 +400,61 @@ export async function runHeartbeatOnce(opts: {
     // The LLM prompt says "if it exists" so this is expected behavior.
   }
 
-  const { entry, sessionKey, storePath } = resolveHeartbeatSession(cfg, agentId, heartbeat);
+  const { entry, sessionKey, storePath, explicitSession } = resolveHeartbeatSession(
+    cfg,
+    agentId,
+    heartbeat,
+  );
   const previousUpdatedAt = entry?.updatedAt;
+  // System events are queued against the base (main) session key; peek them
+  // here because both the hash gate and the isolation decision depend on them.
+  const pendingEventEntries = peekSystemEventEntries(sessionKey);
+
+  // Content-hash gate (token-efficiency build): a schedule-driven tick whose
+  // inputs match the last completed tick never reaches the model. Inputs are
+  // exactly: normalized HEARTBEAT.md, the resolved prompt body, and the pending
+  // system-event texts (see computeHeartbeatInputHash). Exec/cron/wake/hook/
+  // manual reasons carry new input by definition and bypass the gate.
+  const { inputHash, unchanged } = await evaluateHeartbeatHashGate({
+    agentId,
+    heartbeat,
+    reason: opts.reason,
+    input: {
+      heartbeatContent: heartbeatFileContent,
+      prompt: resolveHeartbeatPrompt(cfg, heartbeat),
+      pendingEvents: pendingEventEntries.map((event) => event.text),
+    },
+  });
+  if (inputHash && unchanged) {
+    emitHeartbeatEvent({
+      status: "skipped",
+      reason: "unchanged-hash",
+      durationMs: Date.now() - startedAt,
+    });
+    recordConsideration({
+      sessionKey,
+      category: "trigger",
+      subject: "heartbeat-tick",
+      decision: "skipped",
+      reason: "unchanged-hash",
+      payload: { hash: inputHash.slice(0, 12), lastRunAt: unchanged.at, reason: opts.reason },
+    });
+    return { status: "skipped", reason: "unchanged-hash" };
+  }
+
+  // Isolated light wake: schedule-driven ticks with nothing queued run in a
+  // dedicated `<base>:heartbeat` session with a fresh transcript. Delivery
+  // below still resolves from the base entry (`target: "last"` keeps working).
+  const runIsolated = shouldRunHeartbeatIsolated({
+    heartbeat,
+    baseSessionKey: sessionKey,
+    pendingEventCount: pendingEventEntries.length,
+    explicitSession,
+  });
+  const runSessionKey = runIsolated ? resolveIsolatedHeartbeatSessionKey(sessionKey) : sessionKey;
+  if (runIsolated) {
+    await resetIsolatedHeartbeatSession({ storePath, sessionKey: runSessionKey, agentId });
+  }
   const delivery = resolveHeartbeatDeliveryTarget({ cfg, entry, heartbeat });
   const heartbeatAccountId = heartbeat?.accountId?.trim();
   if (delivery.reason === "unknown-account") {
@@ -474,7 +487,6 @@ export async function runHeartbeatOnce(opts: {
   // If so, use a specialized prompt that instructs the model to relay the result
   // instead of the standard heartbeat prompt with "reply HEARTBEAT_OK".
   const isExecEvent = opts.reason === "exec-event";
-  const pendingEventEntries = peekSystemEventEntries(sessionKey);
   const hasTaggedCronEvents = pendingEventEntries.some((event) =>
     event.contextKey?.startsWith("cron:"),
   );
@@ -501,7 +513,7 @@ export async function runHeartbeatOnce(opts: {
     From: sender,
     To: sender,
     Provider: hasExecCompletion ? "exec-event" : hasCronEvents ? "cron-event" : "heartbeat",
-    SessionKey: sessionKey,
+    SessionKey: runSessionKey,
   };
   if (!visibility.showAlerts && !visibility.showOk && !visibility.useIndicator) {
     emitHeartbeatEvent({
@@ -562,6 +574,10 @@ export async function runHeartbeatOnce(opts: {
       ? { isHeartbeat: true, heartbeatModelOverride }
       : { isHeartbeat: true };
     const replyResult = await getReplyFromConfig(ctx, replyOpts, cfg);
+    if (inputHash) {
+      // The model call completed: this tick's inputs are now the baseline.
+      await commitHeartbeatHash(agentId, inputHash, startedAt);
+    }
     const replyPayload = resolveHeartbeatReplyPayload(replyResult);
     const includeReasoning = heartbeat?.includeReasoning === true;
     const reasoningPayloads = includeReasoning
@@ -934,6 +950,7 @@ export function startHeartbeatRunner(opts: {
 
     state.cfg = cfg;
     state.agents = nextAgents;
+    activeAgents = nextAgents;
     const nextEnabled = nextAgents.size > 0;
     if (!initialized) {
       if (!nextEnabled) {
@@ -975,12 +992,19 @@ export function startHeartbeatRunner(opts: {
 
     const reason = params?.reason;
     const isInterval = reason === "interval";
+    const isCacheWarm = reason === "cache-warm";
     const startedAt = Date.now();
     const now = startedAt;
     let ran = false;
 
     for (const agent of state.agents.values()) {
-      if (isInterval && now < agent.nextDueMs) {
+      const warm = isCacheWarm ? cacheWarmSlack.get(agent.agentId) : undefined;
+      const slack = warm && now <= warm.warmUntilMs ? warm.slackMs : 0;
+      if ((isInterval || isCacheWarm) && now < agent.nextDueMs - slack) {
+        continue;
+      }
+      if (isCacheWarm && !warm) {
+        // Only agents the nudge marked as due-soon fire early on a warm cache.
         continue;
       }
 
@@ -1002,9 +1026,32 @@ export function startHeartbeatRunner(opts: {
         continue;
       }
       if (res.status === "skipped" && res.reason === "requests-in-flight") {
+        if (isCacheWarm) {
+          // The turn that warmed the cache still holds the lane. Do not push the schedule out
+          // by a whole interval; retry shortly while the cache is still warm.
+          const warm = cacheWarmSlack.get(agent.agentId);
+          if (
+            warm &&
+            warm.retries < CACHE_WARM_MAX_RETRIES &&
+            now + CACHE_WARM_RETRY_MS < warm.warmUntilMs
+          ) {
+            warm.retries += 1;
+            const retry = setTimeout(() => {
+              requestHeartbeatNow({ reason: "cache-warm", coalesceMs: 0 });
+            }, CACHE_WARM_RETRY_MS);
+            retry.unref?.();
+          } else {
+            cacheWarmSlack.delete(agent.agentId);
+          }
+          scheduleNext();
+          return res;
+        }
         advanceAgentSchedule(agent, now);
         scheduleNext();
         return res;
+      }
+      if (isCacheWarm) {
+        cacheWarmSlack.delete(agent.agentId);
       }
       if (res.status !== "skipped" || res.reason !== "disabled") {
         advanceAgentSchedule(agent, now);

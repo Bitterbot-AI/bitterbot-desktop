@@ -28,14 +28,29 @@ const ROOT = "src";
 // do not match; only actual `x.sendUsdc(...)` / `x.payForResource(...)` calls do.
 const SPEND_CALL_RE = /\.(sendUsdc|payForResource|fundSoapbox)\s*!?\s*\(/g;
 const SPEND_ALLOW = new Set([
+  "src/gateway/server-methods/soapbox.ts", // authenticated owner and exact quote
+  "src/services/soapbox-wallet.ts", // exact quote plus the shared spend gate
   "src/agents/tools/wallet-tool.ts", // the gated wallet tool (opt-in + session caps)
   "src/services/a2a-client.ts", // A2A auto-pay for a 402-gated peer task
   "src/services/wallet-service.ts", // the service itself (definition + internal use)
   "src/gateway/server-methods/wallet.ts", // the wallet gateway RPC (pay_for_resource)
-  "src/gateway/server-methods/soapbox.ts", // authenticated admin and exact-quote review
-  "src/services/soapbox-wallet.ts", // Compute quote approval gate and decision record
   "src/memory/manager.ts", // PLAN-8 revenue/bounty payout dispatch (markPaymentProcessed)
-  // Future: "src/payments/ap2/gate.ts" — the mandate+enforcement wrapper (Phase 1/4).
+  "src/payments/ap2/gate.ts", // the spend gate: wraps the service's two paying methods
+  // PLAN-57 §4.8: the one path that funds a paid compute job. The call is on a
+  // wallet returned by gatedWallet(), so the gate records and limits it; the
+  // wallet underneath is the backend's fund() behind a verified approval token.
+  "src/compute/awareness/payment.ts",
+]);
+
+// Pattern C (PLAN-53 C0): a wallet that pays must be one the spend gate
+// wraps. Every file that builds a wallet service must also wrap it with
+// gatedWallet(), unless it is on this short list of files that only read
+// (an address, a balance) or is the service or the gate itself.
+const WALLET_BUILD_RE = /\bcreateWalletService\s*\(/g;
+const WALLET_BUILD_READ_ONLY = new Set([
+  "src/services/wallet-service.ts", // the definition
+  "src/gateway/server-methods/forage.ts", // getAddress only
+  "src/gateway/server-startup.ts", // getAddress only
 ]);
 
 // Pattern B: the onchain EIP-3009 capture. Matching the functionName string (not
@@ -76,6 +91,13 @@ for (const file of walk(ROOT)) {
     for (const m of src.matchAll(SPEND_CALL_RE)) {
       violations.push(
         `${norm}:${lineOf(src, m.index)}  value-moving call ${m[0]} — route spend through the PLAN-47 mandate/enforcement gate`,
+      );
+    }
+  }
+  if (!WALLET_BUILD_READ_ONLY.has(norm) && !src.includes("gatedWallet(")) {
+    for (const m of src.matchAll(WALLET_BUILD_RE)) {
+      violations.push(
+        `${norm}:${lineOf(src, m.index)}  builds a wallet service without gatedWallet() — a wallet that can pay must go through the spend gate (src/review/spend.ts)`,
       );
     }
   }

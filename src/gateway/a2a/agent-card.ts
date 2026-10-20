@@ -1,8 +1,8 @@
 import type { SkillEntry } from "../../agents/skills/types.js";
 import type { A2aConfig } from "../../config/types.a2a.js";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { A2aAgentCard, A2aSkill } from "./types.js";
 import { getLocalWalletCapability } from "../../infra/wallet-discovery.js";
+import type { A2aAgentCard, A2aSkill } from "./types.js";
 
 const A2A_PROTOCOL_VERSION = "a2a/1.0.0";
 const AGENT_CARD_VERSION = "1.0.0";
@@ -140,7 +140,9 @@ const CANONICAL_ERC8004_IDENTITY: Record<"base" | "base-sepolia", string> = {
 };
 
 function mapSkills(skills: SkillEntry[], a2a: A2aConfig): A2aSkill[] {
-  const expose = a2a.skills?.expose ?? "all";
+  // PLAN-43 Phase 0: default "none" — a node advertises no skills until
+  // the operator opts in (a2a.skills.expose = "all" or an allowlist).
+  const expose = a2a.skills?.expose ?? (a2a.skills?.allowlist ? "all" : "none");
   if (expose === "none") {
     return [];
   }

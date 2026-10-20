@@ -8,7 +8,7 @@
  *
  * What we check (config-only, no network):
  *   1. `tools.web.search` block is present and not disabled
- *   2. A provider is selected (brave / perplexity / grok / tavily)
+ *   2. A provider is selected (brave / perplexity / grok / tavily / serply)
  *   3. A key is reachable for that provider — either in config or via
  *      the provider's well-known env var
  *
@@ -18,8 +18,8 @@
  *   - Quota / rate-limit headers (we don't speak the wire to ask)
  */
 
-import type { BitterbotConfig } from "../config/config.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import {
   renderSection as renderDoctorSection,
   type CheckResult,
@@ -28,13 +28,15 @@ import {
   info,
 } from "./doctor-check.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily";
+type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
 
 const PROVIDER_ENV_VARS: Record<SearchProvider, readonly string[]> = {
+  parallel: [],
   brave: ["BRAVE_API_KEY"],
   perplexity: ["PERPLEXITY_API_KEY"],
   grok: ["XAI_API_KEY", "GROK_API_KEY"],
   tavily: ["TAVILY_API_KEY"],
+  serply: ["SERPLY_API_KEY"],
 };
 
 function envHasKey(provider: SearchProvider): string | null {
@@ -89,9 +91,10 @@ export function runWebSearchChecks(params: { config: BitterbotConfig }): void {
           "No web search provider configured.",
           "  Fix: " +
             formatCliCommand("bitterbot config set tools.web.search.provider brave") +
-            " (or perplexity / grok / tavily)",
+            " (or perplexity / grok / tavily / serply)",
           "  Then either paste a key via `bitterbot configure` or export the",
-          "  provider's env var (BRAVE_API_KEY / PERPLEXITY_API_KEY / XAI_API_KEY / TAVILY_API_KEY).",
+          "  provider's env var (BRAVE_API_KEY / PERPLEXITY_API_KEY / XAI_API_KEY / TAVILY_API_KEY /",
+          "  SERPLY_API_KEY).",
         ].join("\n"),
       ),
     );
@@ -100,6 +103,12 @@ export function runWebSearchChecks(params: { config: BitterbotConfig }): void {
   }
 
   results.push(ok(`Provider: ${provider}`));
+
+  if (provider === "parallel") {
+    results.push(ok("Parallel Search MCP is keyless; no API key needed."));
+    renderSection(results);
+    return;
+  }
 
   const configKey = configKeyForProvider(config, provider);
   const envVar = envHasKey(provider);

@@ -11,12 +11,12 @@
  * `BITTERBOT_KG_RELATIONSHIPS` flag (default on).
  */
 
-import type { EntityType, ExtractedRelationship, RelationType } from "./knowledge-graph.js";
 import {
   dropTruncatedFragments,
   isAdmissibleEntityName,
   maskNonEntitySpans,
 } from "./kg-entity-admission.js";
+import type { EntityType, ExtractedRelationship, RelationType } from "./knowledge-graph.js";
 
 /** Map fact text to a relation type. Falls back to `related_to`. */
 export function relationTypeForText(text: string): RelationType {

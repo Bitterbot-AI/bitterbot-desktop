@@ -4,7 +4,13 @@ import { loadConfig } from "../config/config.js";
 import { defaultRuntime } from "../runtime.js";
 import { formatDocsLink } from "../terminal/links.js";
 import { theme } from "../terminal/theme.js";
-import { formatSkillInfo, formatSkillsCheck, formatSkillsList } from "./skills-cli.format.js";
+import { addGatewayClientOptions, callGatewayFromCli } from "./gateway-rpc.js";
+import {
+  formatSkillEvidence,
+  formatSkillInfo,
+  formatSkillsCheck,
+  formatSkillsList,
+} from "./skills-cli.format.js";
 
 export type {
   SkillInfoOptions,
@@ -57,6 +63,29 @@ export function registerSkillsCli(program: Command) {
         const { buildWorkspaceSkillStatus } = await import("../agents/skills-status.js");
         const report = buildWorkspaceSkillStatus(workspaceDir, { config });
         defaultRuntime.log(formatSkillInfo(report, name, opts));
+      } catch (err) {
+        defaultRuntime.error(String(err));
+        defaultRuntime.exit(1);
+      }
+    });
+
+  // PLAN-45 Phase 6: the per-skill evidence record (ladder, gate, canary,
+  // production reads) as housekeeping last rebuilt it. Reads the live root
+  // directly; no gateway needed.
+  skills
+    .command("evidence")
+    .description(
+      "Show the evidence record behind a live skill (ladder, gate verdict, canary, production reads)",
+    )
+    .argument("[name]", "Skill name (omit to list evolved and received skills)")
+    .option("--json", "Output as JSON", false)
+    .option("--all", "When listing, include unmanaged (local, bundled) skills", false)
+    .action(async (name: string | undefined, opts: { json: boolean; all: boolean }) => {
+      try {
+        const { readEvidenceRecords } =
+          await import("../memory/skill-evolution/evidence-record.js");
+        const records = await readEvidenceRecords();
+        defaultRuntime.log(formatSkillEvidence(records, name, opts));
       } catch (err) {
         defaultRuntime.error(String(err));
         defaultRuntime.exit(1);
@@ -162,6 +191,12 @@ export function registerSkillsCli(program: Command) {
           defaultRuntime.log(
             `  ${item.name}  ${theme.muted(`(from ${from}${when ? ` at ${when}` : ""})`)}`,
           );
+          // PLAN-44 Phase 5b: why the skill would or would not route here.
+          if (item.routing?.summary) {
+            defaultRuntime.log(
+              `      ${item.routing.hold ? theme.warn("held for review: ") : theme.muted("note: ")}${theme.muted(item.routing.summary)}`,
+            );
+          }
         }
       } catch (err) {
         defaultRuntime.error(String(err));
@@ -169,30 +204,46 @@ export function registerSkillsCli(program: Command) {
       }
     });
 
-  incoming
-    .command("accept")
-    .description("Accept a quarantined skill into the active set")
-    .argument("<name>", "Skill name as shown by 'skills incoming list'")
-    .option("--json", "Output as JSON", false)
-    .action(async (name, opts) => {
+  addGatewayClientOptions(
+    incoming
+      .command("accept")
+      .description("Accept a quarantined skill into the active set")
+      .argument("<name>", "Skill name as shown by 'skills incoming list'")
+      .option("--json", "Output as JSON", false),
+  ).action(async (name, opts) => {
+    try {
+      // PLAN-44 Phase 3: prefer the gateway RPC — the running gateway is
+      // what routes an accepted envelope into the skill-network bridge.
+      // Fall back to the direct filesystem accept when no gateway is up.
+      let result: { ok: boolean; skillName?: string; reason?: string; bridge?: string };
       try {
+        result = (await callGatewayFromCli("skills.incoming.accept", opts, {
+          skillName: name,
+        })) as typeof result;
+      } catch {
         const { acceptIncomingSkill } = await import("../agents/skills/ingest.js");
         const config = loadConfig();
         const workspaceDir = resolveAgentWorkspaceDir(config, resolveDefaultAgentId(config));
-        const result = await acceptIncomingSkill({ skillName: name, config, workspaceDir });
-        if (opts.json) {
-          defaultRuntime.log(JSON.stringify(result, null, 2));
-        } else if (result.ok) {
-          defaultRuntime.log(`accepted: ${result.skillName}`);
-        } else {
-          defaultRuntime.error(`accept failed: ${result.reason ?? "unknown"}`);
-          defaultRuntime.exit(1);
+        result = await acceptIncomingSkill({ skillName: name, config, workspaceDir });
+        if (result.ok) {
+          defaultRuntime.error(
+            "note: gateway unreachable; accepted on disk only (no memory chunk until re-ingested)",
+          );
         }
-      } catch (err) {
-        defaultRuntime.error(String(err));
+      }
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+      } else if (result.ok) {
+        defaultRuntime.log(`accepted: ${result.skillName}`);
+      } else {
+        defaultRuntime.error(`accept failed: ${result.reason ?? "unknown"}`);
         defaultRuntime.exit(1);
       }
-    });
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
 
   incoming
     .command("reject")
@@ -217,6 +268,304 @@ export function registerSkillsCli(program: Command) {
         defaultRuntime.exit(1);
       }
     });
+
+  incoming
+    .command("reject-peer")
+    .description(
+      "Reject every quarantined skill from one peer (e.g. a compromised or spamming node)",
+    )
+    .argument("<peerId>", "Author peer id as shown by 'skills incoming list'")
+    .option("--json", "Output as JSON", false)
+    .action(async (peerId, opts) => {
+      try {
+        const authorPeerId = String(peerId).trim();
+        if (!authorPeerId) {
+          defaultRuntime.error("peer id required");
+          defaultRuntime.exit(1);
+          return;
+        }
+        const { rejectIncomingSkillsByPeer } = await import("../agents/skills/ingest.js");
+        const result = await rejectIncomingSkillsByPeer({
+          authorPeerId,
+          config: loadConfig(),
+        });
+        if (opts.json) {
+          defaultRuntime.log(JSON.stringify(result, null, 2));
+        } else if (result.rejected.length === 0 && result.errored.length === 0) {
+          defaultRuntime.log(`no quarantined skills from ${peerId}`);
+        } else {
+          defaultRuntime.log(`rejected ${result.rejected.length} skill(s) from ${peerId}`);
+        }
+        for (const e of result.errored) {
+          defaultRuntime.error(`  ${e.name}: ${e.reason}`);
+        }
+        if (!result.ok) {
+          defaultRuntime.exit(1);
+        }
+      } catch (err) {
+        defaultRuntime.error(String(err));
+        defaultRuntime.exit(1);
+      }
+    });
+
+  // PLAN-44 Phase 2: review the corpus miner's drafts (the only way a
+  // capability task enters the live corpus). Goes through the gateway so
+  // the running node's files are the ones edited.
+  // PLAN-44 Phase 5c: rewrite non-routable harvested / received descriptions now.
+  const routing = skills
+    .command("routing")
+    .description("Make live skills routable: rewrite descriptions the agent could never open");
+  addGatewayClientOptions(
+    routing
+      .command("repair")
+      .description("Rewrite non-routable live descriptions to the contract (dry-run lists them)")
+      .option("--dry-run", "List candidates without rewriting", false)
+      .option("--max <n>", "Max rewrites this run (default 5)")
+      .option("--name <skill>", "Rewrite one skill only")
+      .option("--json", "Output as JSON", false),
+  ).action(async (opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.routing.repair", opts, {
+        ...(opts.dryRun ? { dryRun: true } : {}),
+        ...(opts.max ? { max: Number(opts.max) } : {}),
+        ...(opts.name ? { name: String(opts.name) } : {}),
+      })) as {
+        candidates?: Array<{ name: string; description: string; issues: string[] }>;
+        outcomes?: Array<{
+          name: string;
+          outcome: string;
+          from: string;
+          to?: string;
+          reason: string;
+        }>;
+      };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      for (const c of result.candidates ?? []) {
+        defaultRuntime.log(
+          `  ${c.name}  ${theme.muted(`"${c.description.slice(0, 80)}"`)}\n      ${theme.warn(c.issues.join(", "))}`,
+        );
+      }
+      for (const o of result.outcomes ?? []) {
+        defaultRuntime.log(
+          `  ${o.name}  ${o.outcome === "rewritten" ? theme.success("rewritten") : theme.warn(o.outcome)}${o.to ? `\n      → ${o.to}` : ""}${o.outcome !== "rewritten" ? `\n      ${theme.muted(o.reason)}` : ""}`,
+        );
+      }
+      if (!result.candidates?.length && !result.outcomes?.length) {
+        defaultRuntime.log(theme.muted("Every live skill already routes."));
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  const corpus = skills
+    .command("corpus")
+    .description("Review mined capability-task drafts for skill-evolution validation");
+
+  addGatewayClientOptions(
+    corpus
+      .command("list")
+      .description("List pending drafts with review flags")
+      .option("--json", "Output as JSON", false),
+  ).action(async (opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.corpus.list", opts, {})) as {
+        drafts: Array<{
+          id: string;
+          prompt: string;
+          checker: { kind: string; value: string };
+          flags: string[];
+          acceptable: boolean;
+        }>;
+        liveCapabilityTasks: number;
+        tasksModeThreshold: number;
+      };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      defaultRuntime.log(
+        `live capability tasks: ${result.liveCapabilityTasks} (tasks mode at ${result.tasksModeThreshold})`,
+      );
+      if (result.drafts.length === 0) {
+        defaultRuntime.log(theme.muted("No pending drafts."));
+        return;
+      }
+      for (const d of result.drafts) {
+        const mark = d.acceptable ? "ok " : "!! ";
+        defaultRuntime.log(
+          `${mark}${d.id}${d.flags.length ? theme.muted(`  [${d.flags.join(", ")}]`) : ""}`,
+        );
+        defaultRuntime.log(`    ${d.prompt.replace(/\s+/g, " ").slice(0, 160)}`);
+        defaultRuntime.log(theme.muted(`    ${d.checker.kind}: ${d.checker.value.slice(0, 80)}`));
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  addGatewayClientOptions(
+    corpus
+      .command("accept")
+      .description("Promote reviewed drafts into the live capability suite")
+      .argument("<ids...>", "Draft ids as shown by 'skills corpus list'")
+      .option("--reviewed-by <name>", "Reviewer stamp", "operator")
+      .option("--json", "Output as JSON", false),
+  ).action(async (ids: string[], opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.corpus.accept", opts, {
+        ids,
+        reviewedBy: opts.reviewedBy,
+      })) as {
+        accepted: string[];
+        refused: Array<{ id: string; reason: string }>;
+        liveTaskCount: number;
+      };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      for (const id of result.accepted) {
+        defaultRuntime.log(`accepted: ${id}`);
+      }
+      for (const r of result.refused) {
+        defaultRuntime.error(`refused: ${r.id} (${r.reason})`);
+      }
+      defaultRuntime.log(`live corpus: ${result.liveTaskCount} task(s)`);
+      if (result.refused.length > 0 && result.accepted.length === 0) {
+        defaultRuntime.exit(1);
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  addGatewayClientOptions(
+    skills
+      .command("feedback")
+      .description(
+        "Record a human verdict on one run (level-4 outcome evidence for the learning loop)",
+      )
+      .argument("<runId>", "Run id (from the journal / task_monitor / session status)")
+      .argument("<verdict>", "confirmed | rejected")
+      .option("--note <text>", "Why (recorded, capped at 500 chars)")
+      .option("--by <name>", "Who is recording it", "operator")
+      .option("--json", "Output as JSON", false),
+  ).action(async (runId: string, verdict: string, opts) => {
+    if (verdict !== "confirmed" && verdict !== "rejected") {
+      defaultRuntime.error("verdict must be confirmed or rejected");
+      defaultRuntime.exit(1);
+      return;
+    }
+    try {
+      const result = await callGatewayFromCli("skills.evolution.feedback", opts, {
+        runId,
+        verdict,
+        ...(opts.note ? { note: opts.note } : {}),
+        by: opts.by,
+      });
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      defaultRuntime.log(`recorded: run ${runId} ${verdict}`);
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  // PLAN-45 Phase 1.5: blind labeler calibration on real traces.
+  const calibrate = skills
+    .command("calibrate")
+    .description("Calibrate the trace labeler against human labels on real runs");
+  addGatewayClientOptions(
+    calibrate
+      .command("export")
+      .description(
+        "Write a blind set of real traces (blind.jsonl) plus the labeler's hidden key (key.jsonl)",
+      )
+      .option("--count <n>", "Traces to export (1-500)", "100")
+      .option("--seed <seed>", "Deterministic selection seed")
+      .option("--with-judge", "Also record the LLM judge's label (two calls per trace)", false)
+      .option("--json", "Output as JSON", false),
+  ).action(async (opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.calibration.export", opts, {
+        count: Number.parseInt(String(opts.count), 10),
+        ...(opts.seed ? { seed: String(opts.seed) } : {}),
+        withJudge: Boolean(opts.withJudge),
+      })) as { dir: string; count: number; stats: Record<string, unknown> };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      defaultRuntime.log(`wrote ${result.count} traces to ${result.dir}`);
+      defaultRuntime.log(
+        theme.muted("label blind.jsonl without opening key.jsonl; see README.md in that directory"),
+      );
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+  addGatewayClientOptions(
+    calibrate
+      .command("score")
+      .description("Score one or two human label files against the labeler's key")
+      .argument("<dir>", "Calibration set directory (from 'skills calibrate export')")
+      .requiredOption("--labels <file...>", "Label file(s), one or two")
+      .option("--json", "Output as JSON", false),
+  ).action(async (dir: string, opts) => {
+    try {
+      const labels = (Array.isArray(opts.labels) ? opts.labels : [opts.labels]).map(String);
+      const result = (await callGatewayFromCli("skills.evolution.calibration.score", opts, {
+        dir,
+        labels: labels.slice(0, 2),
+      })) as { report: unknown; text: string };
+      defaultRuntime.log(opts.json ? JSON.stringify(result.report, null, 2) : result.text);
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
+
+  addGatewayClientOptions(
+    corpus
+      .command("reject")
+      .description("Drop drafts; the miner never redrafts a rejected id")
+      .argument("<ids...>", "Draft ids as shown by 'skills corpus list'")
+      .option("--reviewed-by <name>", "Reviewer stamp", "operator")
+      .option("--reason <text>", "Why (recorded)")
+      .option("--json", "Output as JSON", false),
+  ).action(async (ids: string[], opts) => {
+    try {
+      const result = (await callGatewayFromCli("skills.evolution.corpus.reject", opts, {
+        ids,
+        reviewedBy: opts.reviewedBy,
+        ...(opts.reason ? { reason: opts.reason } : {}),
+      })) as { rejected: string[]; missing: string[] };
+      if (opts.json) {
+        defaultRuntime.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      for (const id of result.rejected) {
+        defaultRuntime.log(`rejected: ${id}`);
+      }
+      for (const id of result.missing) {
+        defaultRuntime.error(`not pending: ${id}`);
+      }
+    } catch (err) {
+      defaultRuntime.error(String(err));
+      defaultRuntime.exit(1);
+    }
+  });
 
   // Default action (no subcommand) - show list
   skills.action(async () => {

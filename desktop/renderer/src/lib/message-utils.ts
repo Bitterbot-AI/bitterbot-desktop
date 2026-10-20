@@ -185,14 +185,24 @@ function extractImages(
 /**
  * Extract usage data from a gateway message.
  */
-function extractUsage(msg: unknown): { input: number; output: number; total: number } | undefined {
+export function extractUsage(
+  msg: unknown,
+): { input: number; output: number; total: number } | undefined {
   if (!msg || typeof msg !== "object") return undefined;
   const obj = msg as Record<string, unknown>;
   const usage = obj.usage as Record<string, unknown> | undefined;
   if (!usage || typeof usage !== "object") return undefined;
 
-  const input = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
-  const output = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  // The gateway relays pi-ai's camelCase usage; `input` there is the UNCACHED prompt slice
+  // (Anthropic semantics), so the badge's "prompt" is input + cache read + cache write.
+  // Snake-case fields are kept for older gateways / raw provider payloads.
+  const uncached = num(usage.input ?? usage.input_tokens);
+  const cacheRead = num(usage.cacheRead ?? usage.cache_read_input_tokens);
+  const cacheWrite = num(usage.cacheWrite ?? usage.cache_creation_input_tokens);
+  const output = num(usage.output ?? usage.output_tokens);
+  const input = uncached + cacheRead + cacheWrite;
+  if (input === 0 && output === 0) return undefined;
   return { input, output, total: input + output };
 }
 

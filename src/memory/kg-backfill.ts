@@ -14,9 +14,9 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { looksMachineGenerated } from "./kg-entity-admission.js";
 import { extractTypedRelationshipFromFact } from "./kg-relationship-extract.js";
+import type { KnowledgeGraphManager } from "./knowledge-graph.js";
 
 /**
  * Scan fact-like crystals and ingest a typed edge for each that yields one.

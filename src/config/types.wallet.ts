@@ -7,6 +7,27 @@ export type WalletConfig = {
   cdpApiKeyId?: string;
   /** Coinbase Developer Platform API key secret. */
   cdpApiKeySecret?: string;
+  /**
+   * How the wallet is provisioned (PLAN-49 Phase 0.5).
+   * - "selfHostServer" (default): the operator's single CDP Server Wallet, keyed by
+   *   the CDP secrets above — today's path, a developer step.
+   * - "embedded": a per-user CDP Embedded Wallet the user creates by signing in
+   *   (email OTP) in the Control UI; the gateway signs via a time-bound delegation.
+   *   Non-custodial (the user controls/exports the key). Requires `embedded.projectId`
+   *   and origins allow-listed in the CDP Portal (Path B: the gateway's
+   *   http://localhost:19001 origin). Falls back to selfHostServer when unset.
+   */
+  provisioning?: "selfHostServer" | "embedded";
+  /** CDP Embedded Wallet settings (PLAN-49 Phase 0.5; used when provisioning="embedded"). */
+  embedded?: {
+    /**
+     * CDP project id for the Embedded Wallet frontend SDK. PUBLIC (ships in the
+     * Control UI), gated by the project's domain allowlist. Get it from the CDP
+     * Portal; without it the embedded path stays inert and the wallet falls back
+     * to the self-host path.
+     */
+    projectId?: string;
+  };
   /** Cumulative spend cap per agent session in USD (default: 50). */
   sessionSpendCapUsd?: number;
   /** Maximum USD value for a single transaction (default: 25). */
@@ -48,4 +69,23 @@ export type WalletConfig = {
   // TODO: Phase 2 — contract allowlist validation
   /** Phase 2 prep: restrict interactions to audited contract addresses. */
   allowlistedContracts?: string[];
+  /**
+   * CDP Smart Account custody (PLAN-47 Phase 2). When enabled, spend is bound by
+   * an on-chain spend permission (per-period allowance) and gas can be sponsored
+   * via user operations, instead of the plain MPC EOA. OPT-IN (default false):
+   * creating/routing through a smart account is an operator-run on-chain step —
+   * enabling it without having run the upgrade would route sends at a
+   * non-existent account. The allowance here is the spend-permission spec,
+   * enforced app-side today (SpendPermissionPolicy) and on-chain once upgraded.
+   */
+  smartAccount?: {
+    /** Route sends through the CDP Smart Account instead of the plain EOA (default: false). */
+    enabled?: boolean;
+    /** Per-period spend allowance in USD. */
+    allowanceUsd?: number;
+    /** Allowance period in seconds (default: 86400 = daily). */
+    periodSeconds?: number;
+    /** Sponsor gas via user operations (paymaster) rather than requiring ETH (default: false). */
+    sponsorGas?: boolean;
+  };
 };

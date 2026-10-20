@@ -18,7 +18,7 @@ Attach/detach happens via a **single Chrome toolbar button**.
 There are three parts:
 
 - **Browser control service** (Gateway or node): the API the agent/tool calls (via the Gateway)
-- **Local relay server** (loopback CDP): bridges between the control server and the extension (`http://127.0.0.1:18792` by default)
+- **Local relay server** (loopback CDP): bridges between the control server and the extension (`http://127.0.0.1:19004` by default)
 - **Chrome MV3 extension**: attaches to the active tab using `chrome.debugger` and pipes CDP messages to the relay
 
 Bitterbot then controls the attached tab through the normal `browser` tool surface (selecting the right profile).
@@ -68,7 +68,7 @@ If you want a different name or a different relay port, create your own profile:
 bitterbot browser create-profile \
   --name my-chrome \
   --driver extension \
-  --cdp-url http://127.0.0.1:18792 \
+  --cdp-url http://127.0.0.1:19004 \
   --color "#00AA00"
 ```
 

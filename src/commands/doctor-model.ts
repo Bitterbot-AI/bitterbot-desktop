@@ -20,6 +20,7 @@
  *     returned a masked error — the call path is genuinely broken)
  */
 
+import { aliasFreshnessNotes, type AliasFreshnessNote } from "../agents/model-family-latest.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { renderSection } from "./doctor-check.js";
 
@@ -169,4 +170,39 @@ export async function runModelRoundTrip(cfg: BitterbotConfig): Promise<ModelChec
 export async function runModelCheck(params: { config: BitterbotConfig }): Promise<void> {
   const outcome = await runModelRoundTrip(params.config);
   renderSection("Model Round-Trip", [classifyModelCheck(outcome)]);
+}
+
+/** Pure: doctor lines for model aliases with a newer model of their family. */
+export function classifyAliasFreshness(
+  notes: AliasFreshnessNote[],
+): Array<{ level: Level; message: string }> {
+  return notes.map((n) =>
+    n.follows
+      ? {
+          level: "info",
+          message: `Shortcut "${n.alias}" now means ${n.newest} (configured as ${n.configured}; family shortcuts follow the newest model).`,
+        }
+      : {
+          level: "info",
+          message: `Shortcut "${n.alias}" is pinned to ${n.configured}; ${n.newest} is newer. Point it there with: bitterbot models aliases add ${n.alias} ${n.newest}`,
+        },
+  );
+}
+
+/** Doctor section: model shortcuts against the models the provider serves now. */
+export async function runModelAliasCheck(params: { config: BitterbotConfig }): Promise<void> {
+  const models = params.config.agents?.defaults?.models ?? {};
+  if (shouldSkipInTest() || Object.keys(models).length === 0) {
+    return;
+  }
+  try {
+    const { loadModelCatalog } = await import("../agents/model-catalog.js");
+    await loadModelCatalog({ config: params.config });
+  } catch {
+    return;
+  }
+  const notes = aliasFreshnessNotes(models as Record<string, { alias?: string }>, {
+    restricted: params.config.agents?.defaults?.restrictModels === true,
+  });
+  renderSection("Model Shortcuts", classifyAliasFreshness(notes));
 }

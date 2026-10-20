@@ -1,6 +1,3 @@
-import type { CliDeps } from "../cli/deps.js";
-import type { loadConfig } from "../config/config.js";
-import type { loadBitterbotPlugins } from "../plugins/loader.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { loadModelCatalog } from "../agents/model-catalog.js";
 import {
@@ -8,6 +5,8 @@ import {
   resolveConfiguredModelRef,
   resolveHooksGmailModel,
 } from "../agents/model-selection.js";
+import type { CliDeps } from "../cli/deps.js";
+import type { loadConfig } from "../config/config.js";
 import { startCronEngine } from "../cron/runtime.js";
 import { startGmailWatcher } from "../hooks/gmail-watcher.js";
 import {
@@ -19,7 +18,10 @@ import { loadInternalHooks } from "../hooks/loader.js";
 import { isTruthyEnvValue } from "../infra/env.js";
 import { getP2pStatus, patchP2pStatus } from "../infra/p2p-status.js";
 import { recordPeerWalletCapability, setLocalWalletCapability } from "../infra/wallet-discovery.js";
+import { startMonitorEngine } from "../monitors/runtime.js";
+import type { loadBitterbotPlugins } from "../plugins/loader.js";
 import { type PluginServicesHandle, startPluginServices } from "../plugins/services.js";
+import { createSkillReceivedHandler } from "./p2p-skill-receive.js";
 import { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import {
   scheduleRestartSentinelWake,
@@ -209,12 +211,18 @@ export async function startGatewaySidecars(params: {
         patchP2pStatus({ peerCount: next, connected: next > 0 });
       });
 
+      // The key this node publishes skills under. Passed to ingestSkill so our
+      // own skill echoed back by a re-publishing peer is dropped instead of
+      // landing in review as an anonymous peer skill (audit finding F15; the
+      // guard existed in ingest.ts but was never wired here).
+      let skillReceiveHandler: ReturnType<typeof createSkillReceivedHandler> | undefined;
       // Cache the orchestrator's identity once at startup. Stable until
       // restart, so a single fetch is enough — the system prompt then sees
       // peerId + tier on every turn without an IPC round-trip.
       void orchestratorBridge
         .getIdentity()
         .then((identity) => {
+          skillReceiveHandler?.setOwnPublishPubkey(identity.pubkey);
           patchP2pStatus({ peerId: identity.peerId, nodeTier: identity.nodeTier });
         })
         .catch((err) => {
@@ -286,35 +294,16 @@ export async function startGatewaySidecars(params: {
         pendingPeerSeen.clear();
         callerReady?.(bridge);
       };
-      // Wire skill_received → ingestion pipeline (with reputation manager support)
-      orchestratorBridge.onSkillReceived(async (event) => {
-        const { ingestSkill } = await import("../agents/skills/ingest.js");
-        const { loadConfig } = await import("../config/config.js");
-        const envelope = event as import("../agents/skills/ingest.js").SkillEnvelope;
-        const result = await ingestSkill({
-          envelope,
-          config: loadConfig(),
-          workspaceDir: params.defaultWorkspaceDir,
-          // Wire the live reputation manager so a genuine peer receipt is
-          // actually counted (peer_reputation.skills_received) and graduated
-          // trust can auto-accept verified peers. Without this the receive
-          // path was structurally silent — receipts never recorded, nothing
-          // ever auto-accepted, everything piled into review.
-          reputationManager: skillNetworkBridge?.getPeerReputation() ?? undefined,
-        }).catch((err) => {
-          params.log.warn(`P2P skill ingestion failed: ${String(err)}`);
-          return null;
-        });
-
-        // Also route to SkillNetworkBridge for crystal-level ingestion
-        if (skillNetworkBridge && result?.action !== "rejected") {
-          try {
-            skillNetworkBridge.ingestNetworkSkill(envelope);
-          } catch (err) {
-            params.log.warn(`Skill network bridge ingestion failed: ${String(err)}`);
-          }
-        }
+      // Wire skill_received → ingestion pipeline (src/gateway/p2p-skill-receive.ts).
+      const identityBridge = orchestratorBridge;
+      skillReceiveHandler = createSkillReceivedHandler({
+        getIdentity: () => identityBridge.getIdentity(),
+        workspaceDir: params.defaultWorkspaceDir,
+        getSkillNetworkBridge: () => skillNetworkBridge,
+        log: params.log,
       });
+      const receiver = skillReceiveHandler;
+      orchestratorBridge.onSkillReceived((event) => void receiver.handle(event));
       // Cache bootnode census snapshots received over gossipsub. Buffer if
       // the bridge isn't ready yet — same pattern as peer-identified above.
       const pendingCensus = new Map<string, { source: string; snapshot: unknown }>();
@@ -509,9 +498,12 @@ export async function startGatewaySidecars(params: {
     log: params.log,
     orchestratorBridge: orchestratorBridge ?? undefined,
   })
-    .then((result) => {
+    .then(async (result) => {
       if (result.skillNetworkBridge) {
         skillNetworkBridge = result.skillNetworkBridge;
+        // PLAN-45 4.2: the validation gate writes the peer chunk at promotion.
+        const { setActiveSkillNetworkBridge } = await import("../memory/skill-network-bridge.js");
+        setActiveSkillNetworkBridge(skillNetworkBridge);
         params.onSkillNetworkBridgeReady?.(result.skillNetworkBridge);
       }
     })
@@ -523,6 +515,11 @@ export async function startGatewaySidecars(params: {
   // gateway should boot even if cron jobs fail to load.
   void startCronEngine(params.cfg).catch((err) => {
     params.log.warn(`cron engine failed to start: ${String(err)}`);
+  });
+
+  // Monitors (PLAN-53 E5). Non-fatal, like cron.
+  void startMonitorEngine(params.cfg).catch((err) => {
+    params.log.warn(`monitor engine failed to start: ${String(err)}`);
   });
 
   return {

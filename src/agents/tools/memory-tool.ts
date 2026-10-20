@@ -1,12 +1,14 @@
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { MemoryCitationsMode } from "../../config/types.memory.js";
-import type { MemorySearchResult } from "../../memory/types.js";
-import type { AnyAgentTool } from "./common.js";
+import { normalizeCanonicalScope } from "../../memory/canonical-facts.js";
 import { getMemorySearchManager } from "../../memory/index.js";
+import type { MemorySearchResult } from "../../memory/types.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
+import { resolveActiveProjectName } from "../canonical-facts-block.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 
 const MemorySearchSchema = Type.Object({
@@ -33,6 +35,11 @@ const MemoryPinSchema = Type.Object({
   value: Type.Optional(Type.String()),
   statement: Type.Optional(Type.String()),
   category: Type.Optional(Type.String()),
+  // PLAN-55 Phase 1: where the fact came from (a short quote of the user's
+  // words or a session line ref) and where it applies. Stored on the fact
+  // for display and audit; never trusted for tier decisions.
+  evidence: Type.Optional(Type.String()),
+  scope: Type.Optional(Type.String()),
 });
 
 // PLAN-24 HORMA Phase 0: resolve an evidence_ref (surfaced on memory_search
@@ -61,9 +68,14 @@ function resolveMemoryToolContext(options: { config?: BitterbotConfig; agentSess
   return { cfg, agentId };
 }
 
+const GUEST_REFUSAL =
+  "Not available in this conversation: the person messaging is not the owner, and this would show the owner's private memory.";
+
 export function createMemorySearchTool(options: {
   config?: BitterbotConfig;
   agentSessionKey?: string;
+  /** PLAN-53 G2: a non-owner sent this turn; recall only what a guest may see. */
+  memoryGuest?: boolean;
 }): AnyAgentTool | null {
   const ctx = resolveMemoryToolContext(options);
   if (!ctx) {
@@ -76,7 +88,8 @@ export function createMemorySearchTool(options: {
     description:
       "Mandatory recall step: semantically search MEMORY.md + memory/*.md (and optional session transcripts) before answering questions about prior work, decisions, dates, people, preferences, or todos; returns top snippets with path + lines. Exact ground-truth hits from the canonical ledger (repo names, endpoints, identities, standing decisions) are surfaced first under `canonical` — trust those over the fuzzy `results` snippets.",
     parameters: MemorySearchSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const query = readStringParam(params, "query", { required: true });
       const maxResults = readNumberParam(params, "maxResults");
       const minScore = readNumberParam(params, "minScore");
@@ -93,11 +106,10 @@ export function createMemorySearchTool(options: {
           mode: citationsMode,
           sessionKey: options.agentSessionKey,
         });
-        const rawResults = await manager.search(query, {
-          maxResults,
-          minScore,
-          sessionKey: options.agentSessionKey,
-        });
+        const searchOpts = { maxResults, minScore, sessionKey: options.agentSessionKey };
+        const rawResults = options.memoryGuest
+          ? ((await manager.guestSearch?.(query, searchOpts)) ?? [])
+          : await manager.search(query, searchOpts);
         const status = manager.status();
         const decorated = decorateCitations(rawResults, includeCitations);
         const results = decorated;
@@ -120,7 +132,10 @@ export function createMemorySearchTool(options: {
         } catch {
           /* funnel unavailable — non-critical */
         }
-        const canonical = resolveCanonicalLookup(cfg, manager, query ?? "");
+        // The ledger holds facts about the owner; a guest never sees it.
+        const canonical = options.memoryGuest
+          ? []
+          : resolveCanonicalLookup(cfg, manager, query ?? "");
         return jsonResult({
           // PLAN-33 Phase 4: ledger-first — authoritative exact-key hits before
           // the fuzzy semantic results. Omitted entirely when there is no match.
@@ -142,6 +157,8 @@ export function createMemorySearchTool(options: {
 export function createMemoryGetTool(options: {
   config?: BitterbotConfig;
   agentSessionKey?: string;
+  /** PLAN-53 G2: a non-owner sent this turn; recall only what a guest may see. */
+  memoryGuest?: boolean;
 }): AnyAgentTool | null {
   const ctx = resolveMemoryToolContext(options);
   if (!ctx) {
@@ -154,7 +171,8 @@ export function createMemoryGetTool(options: {
     description:
       "Safe snippet read from MEMORY.md or memory/*.md with optional from/lines; use after memory_search to pull only the needed lines and keep context small.",
     parameters: MemoryGetSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const relPath = readStringParam(params, "path", { required: true });
       const from = readNumberParam(params, "from", { integer: true });
       const lines = readNumberParam(params, "lines", { integer: true });
@@ -164,6 +182,9 @@ export function createMemoryGetTool(options: {
       });
       if (!manager) {
         return jsonResult({ path: relPath, text: "", disabled: true, error });
+      }
+      if (options.memoryGuest && !manager.guestMayRead?.(relPath)) {
+        return jsonResult({ path: relPath, text: "", disabled: true, error: GUEST_REFUSAL });
       }
       try {
         const result = await manager.readFile({
@@ -183,6 +204,8 @@ export function createMemoryGetTool(options: {
 export function createMemoryExpandTool(options: {
   config?: BitterbotConfig;
   agentSessionKey?: string;
+  /** PLAN-53 G2: a non-owner sent this turn; recall only what a guest may see. */
+  memoryGuest?: boolean;
 }): AnyAgentTool | null {
   const ctx = resolveMemoryToolContext(options);
   if (!ctx) {
@@ -198,7 +221,11 @@ export function createMemoryExpandTool(options: {
     description:
       "Drill from a recalled fact back to its verbatim raw source. Pass an evidenceRefs entry from a memory_search result (kind+path+line for session refs, or kind+runId+seq for journal refs) to recover the exact original text — use when a paraphrased memory is load-bearing or you need to verify it.",
     parameters: MemoryExpandSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      if (options.memoryGuest) {
+        return jsonResult({ found: false, error: GUEST_REFUSAL });
+      }
+      const params = args as Record<string, unknown>;
       const kind = readStringParam(params, "kind", { required: true });
       const window = readNumberParam(params, "window", { integer: true });
       let ref: import("../../memory/session-extractor.js").EvidenceRef;
@@ -242,6 +269,10 @@ export function createMemoryExpandTool(options: {
 export function createMemoryPinTool(options: {
   config?: BitterbotConfig;
   agentSessionKey?: string;
+  /** PLAN-53 G2: a non-owner sent this turn; the ledger tool is not offered at all. */
+  memoryGuest?: boolean;
+  /** PLAN-55 Phase 1: the run's workspace; `project:<name>` scopes must name its project. */
+  workspaceDir?: string;
 }): AnyAgentTool | null {
   const ctx = resolveMemoryToolContext(options);
   if (!ctx) {
@@ -251,13 +282,21 @@ export function createMemoryPinTool(options: {
   if (cfg.memory?.canonicalLedger?.enabled === false) {
     return null;
   }
+  // A guest can neither read the owner's ledger nor write beliefs into it:
+  // the tool is absent from a guest turn rather than listed and refusing
+  // (PLAN-55 Phase 1 review, item 10).
+  if (options.memoryGuest) {
+    return null;
+  }
+  const activeProject = resolveActiveProjectName(options.workspaceDir);
   return {
     label: "Memory Pin",
     name: "memory_pin",
     description:
-      "Pin a canonical fact (exact key-value ground truth: repo names, endpoints, identities, standing decisions) into the always-injected ledger. Use when the user states a durable fact, corrects you on one, or says 'remember this'. Actions: pin {key, value, statement?, category?} (add/strengthen/supersede automatically), list (active facts), get {key} (current belief + history), retire {key} (stop injecting; kept for audit). Keys are dot-slugs like 'project.repo'; categories: identity|project|infra|preference|relationship.",
+      "Pin a canonical fact (exact key-value ground truth: repo names, endpoints, identities, standing decisions) into the always-injected ledger. THE tool for corrections and settled facts: use it when the user corrects you, states a durable fact, or says 'remember this'. Actions: pin {key, value, statement?, category?, evidence?, scope?} (add/strengthen/supersede automatically), list (active facts), get {key} (current belief + history), retire {key} (stop injecting; kept for audit). evidence = a short verbatim quote of the user's words. scope = 'global' (default), 'project:<name>' (only for that project) or 'person:<name>'. Replacing a fact you or the owner pinned earlier is held for the owner's confirmation (result.held). Keys are dot-slugs like 'project.repo'; categories: identity|project|infra|preference|relationship.",
     parameters: MemoryPinSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
       const { manager, error } = await getMemorySearchManager({ cfg, agentId });
       const store = manager?.canonicalFacts?.();
@@ -270,6 +309,27 @@ export function createMemoryPinTool(options: {
           const value = readStringParam(params, "value", { required: true });
           const statement = readStringParam(params, "statement");
           const category = readStringParam(params, "category");
+          const evidence = readStringParam(params, "evidence");
+          const scope = readStringParam(params, "scope");
+          // PLAN-55 Phase 1 review (item 6): a project scope must be the
+          // active project, or the fact would be invisible everywhere.
+          if (scope && /^\s*project\s*:/i.test(scope)) {
+            const wanted = normalizeCanonicalScope(scope);
+            if (!activeProject) {
+              return jsonResult({
+                ok: false,
+                op: "rejected",
+                reason: "no project is active in this workspace; pin it as global or person:<name>",
+              });
+            }
+            if (wanted !== `project:${activeProject}`) {
+              return jsonResult({
+                ok: false,
+                op: "rejected",
+                reason: `the active project is "${activeProject}"; a project scope must be project:${activeProject}`,
+              });
+            }
+          }
           const result = store.pin({
             key: key ?? "",
             value: value ?? "",
@@ -277,7 +337,24 @@ export function createMemoryPinTool(options: {
             category: category ?? undefined,
             confidence: 0.95, // explicit pins carry user/agent intent
             source: "agent_pin",
+            scope: scope ?? undefined,
+            evidenceRef: evidence ?? undefined,
           });
+          if (result.op === "held") {
+            // PLAN-55 Phase 1: nothing was written; the owner decides.
+            return jsonResult({
+              ok: false,
+              held: true,
+              op: "held",
+              reason: result.reason,
+              current: {
+                key: result.fact.key,
+                value: result.fact.value,
+                source: result.fact.source,
+              },
+              proposedValue: result.proposedValue,
+            });
+          }
           return jsonResult(
             result.op === "rejected" ? { ok: false, ...result } : { ok: true, ...result },
           );
@@ -296,6 +373,8 @@ export function createMemoryPinTool(options: {
               mentionCount: f.mentionCount,
               lastConfirmedAt: f.lastConfirmedAt,
               source: f.source,
+              scope: f.scope,
+              evidence: f.evidenceRef,
             })),
           });
         }
@@ -309,7 +388,26 @@ export function createMemoryPinTool(options: {
         }
         if (action === "retire") {
           const key = readStringParam(params, "key", { required: true });
-          return jsonResult({ ok: store.retire(key ?? ""), key });
+          // The agent's retire is soft (PLAN-55 Phase 0): a later same-value
+          // pin reactivates it. Only the owner's retire is sticky. Retiring a
+          // belief the owner or the agent pinned deliberately is held for
+          // the owner (Phase 1 review), like replacing one.
+          const result = store.retireAgent(key ?? "");
+          if (result.op === "held") {
+            return jsonResult({
+              ok: false,
+              held: true,
+              op: "held",
+              key,
+              reason: result.reason,
+              current: {
+                key: result.fact!.key,
+                value: result.fact!.value,
+                source: result.fact!.source,
+              },
+            });
+          }
+          return jsonResult({ ok: result.op === "retired", op: result.op, key });
         }
         return jsonResult({ ok: false, error: `unknown action "${action}"` });
       } catch (err) {

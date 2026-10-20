@@ -1,10 +1,8 @@
 // @ts-nocheck
 // oxlint-disable eslint/no-unused-vars, typescript/no-explicit-any
 import fs from "node:fs/promises";
-import type { CrystalOrigin } from "./crystal-types.js";
-import type { HormonalInfluence } from "./crystal-types.js";
-import type { SessionFileEntry } from "./session-files.js";
-import type { MemorySource } from "./types.js";
+import { type GovernanceClass, classifyForEgress } from "../compute/awareness/egress.js";
+import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { runGeminiEmbeddingBatches, type GeminiBatchRequest } from "./batch-gemini.js";
 import {
@@ -13,10 +11,14 @@ import {
   runOpenAiEmbeddingBatches,
 } from "./batch-openai.js";
 import { type VoyageBatchRequest, runVoyageEmbeddingBatches } from "./batch-voyage.js";
+import { type Lifecycle, type LifecycleState, setChunkLifecycle } from "./chunk-writer.js";
+import type { CrystalOrigin } from "./crystal-types.js";
+import type { HormonalInfluence } from "./crystal-types.js";
 import { inferSemanticType, defaultGovernance } from "./crystal.js";
 import { enforceEmbeddingMaxInputTokens } from "./embedding-chunk-limits.js";
 import { estimateUtf8Bytes } from "./embedding-input-limits.js";
 import { yieldToEventLoop } from "./event-loop.js";
+import { maxSensitivity, tagSensitivity } from "./guest-access.js";
 import {
   chunkMarkdown,
   hashText,
@@ -25,6 +27,9 @@ import {
   type MemoryChunk,
   type MemoryFileEntry,
 } from "./internal.js";
+import { isSessionPassageSuppressed } from "./memory-suppressions.js";
+import type { SessionFileEntry } from "./session-files.js";
+import type { MemorySource } from "./types.js";
 
 const VECTOR_TABLE = "chunks_vec";
 const FTS_TABLE = "chunks_fts";
@@ -159,7 +164,7 @@ class MemoryManagerEmbeddingOps {
         this.provider.model,
         this.providerKey,
         entry.hash,
-        JSON.stringify(embedding),
+        vectorToBlob(embedding),
         embedding.length,
         now,
       );
@@ -194,9 +199,17 @@ class MemoryManagerEmbeddingOps {
       .run(excess);
   }
 
-  private async embedChunksInBatches(chunks: MemoryChunk[]): Promise<number[][]> {
+  private async embedChunksInBatches(
+    chunks: MemoryChunk[],
+    egress?: { source?: MemorySource; classes?: GovernanceClass[] },
+  ): Promise<number[][]> {
     if (chunks.length === 0) {
       return [];
+    }
+    if (this.embeddingProfileHold) {
+      // PLAN-57 §4.6: never write a vector under a profile the index does not
+      // carry. Rows stay pending and the backfill picks them up after migration.
+      return chunks.map(() => []);
     }
     const { embeddings, missing } = this.collectCachedEmbeddings(chunks);
 
@@ -212,8 +225,21 @@ class MemoryManagerEmbeddingOps {
     let cursor = 0;
     let failed = 0;
     let splits = 0;
+    // PLAN-57 §4.6: each input's governance class travels with it so the pool
+    // provider can split the batch and route each class under its ceiling.
+    const classByHash = new Map<string, GovernanceClass>();
+    missing.forEach((m, i) => {
+      classByHash.set(
+        m.chunk.hash,
+        egress?.classes?.[m.index] ??
+          classifyForEgress({ text: m.chunk.text, source: egress?.source, config: this.cfg }),
+      );
+    });
     for (const batch of batches) {
-      const result = await this.embedBatchResilient(batch.map((chunk) => chunk.text));
+      const result = await this.embedBatchResilient(
+        batch.map((chunk) => chunk.text),
+        batch.map((chunk) => classByHash.get(chunk.hash) ?? "personal"),
+      );
       failed += result.failed;
       splits += result.splits;
       for (let i = 0; i < batch.length; i += 1) {
@@ -254,12 +280,13 @@ class MemoryManagerEmbeddingOps {
    */
   private async embedBatchResilient(
     texts: string[],
+    classes?: GovernanceClass[],
   ): Promise<{ embeddings: number[][]; failed: number; splits: number }> {
     if (texts.length === 0) {
       return { embeddings: [], failed: 0, splits: 0 };
     }
     try {
-      const embeddings = await this.embedBatchWithRetry(texts);
+      const embeddings = await this.embedBatchWithRetry(texts, undefined, classes);
       return { embeddings, failed: 0, splits: 0 };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -276,8 +303,8 @@ class MemoryManagerEmbeddingOps {
       log.warn(
         `memory embeddings: batch of ${texts.length} failed (${message}); bisecting into ${mid}+${texts.length - mid}`,
       );
-      const left = await this.embedBatchResilient(texts.slice(0, mid));
-      const right = await this.embedBatchResilient(texts.slice(mid));
+      const left = await this.embedBatchResilient(texts.slice(0, mid), classes?.slice(0, mid));
+      const right = await this.embedBatchResilient(texts.slice(mid), classes?.slice(mid));
       return {
         embeddings: [...left.embeddings, ...right.embeddings],
         failed: left.failed + right.failed,
@@ -347,7 +374,7 @@ class MemoryManagerEmbeddingOps {
     if (this.provider.id === "voyage" && this.voyage) {
       return this.embedChunksWithVoyageBatch(chunks, entry, source);
     }
-    return this.embedChunksInBatches(chunks);
+    return this.embedChunksInBatches(chunks, { source });
   }
 
   private collectCachedEmbeddings(chunks: MemoryChunk[]): {
@@ -582,7 +609,11 @@ class MemoryManagerEmbeddingOps {
     return embeddings;
   }
 
-  private async embedBatchWithRetry(texts: string[]): Promise<number[][]> {
+  private async embedBatchWithRetry(
+    texts: string[],
+    feature: string = USAGE_FEATURES.memoryIndex,
+    classes?: GovernanceClass[],
+  ): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
@@ -597,7 +628,7 @@ class MemoryManagerEmbeddingOps {
           timeoutMs,
         });
         return await this.withTimeout(
-          this.provider.embedBatch(texts),
+          this.provider.embedBatch(texts, { feature, classes }),
           timeoutMs,
           `memory embeddings batch timed out after ${Math.round(timeoutMs / 1000)}s`,
         );
@@ -632,11 +663,14 @@ class MemoryManagerEmbeddingOps {
     return isLocal ? EMBEDDING_BATCH_TIMEOUT_LOCAL_MS : EMBEDDING_BATCH_TIMEOUT_REMOTE_MS;
   }
 
-  private async embedQueryWithTimeout(text: string): Promise<number[]> {
+  private async embedQueryWithTimeout(
+    text: string,
+    feature: string = USAGE_FEATURES.memorySearch,
+  ): Promise<number[]> {
     const timeoutMs = this.resolveEmbeddingTimeout("query");
     log.debug("memory embeddings: query start", { provider: this.provider.id, timeoutMs });
     return await this.withTimeout(
-      this.provider.embedQuery(text),
+      this.provider.embedQuery(text, { feature }),
       timeoutMs,
       `memory embeddings query timed out after ${Math.round(timeoutMs / 1000)}s`,
     );
@@ -804,11 +838,35 @@ class MemoryManagerEmbeddingOps {
     return this.batch.enabled ? this.batch.concurrency : EMBEDDING_INDEX_CONCURRENCY;
   }
 
+  /** Session trust, re-read at most once a minute while indexing. */
+  private sessionTrustCache: {
+    at: number;
+    resolve: (absPath: string) => "first_party" | "untrusted" | "unknown";
+  } | null = null;
+
+  private async sessionIsFirstParty(absPath: string): Promise<boolean> {
+    if (!this.sessionTrustCache || Date.now() - this.sessionTrustCache.at > 60_000) {
+      const { buildSessionTrustResolver } = await import("./session-trust.js");
+      this.sessionTrustCache = {
+        at: Date.now(),
+        resolve: await buildSessionTrustResolver(this.agentId),
+      };
+    }
+    return this.sessionTrustCache.resolve(absPath) === "first_party";
+  }
+
   private async indexFile(
     entry: MemoryFileEntry | SessionFileEntry,
     options: { source: MemorySource; content?: string },
   ) {
     const content = options.content ?? (await fs.readFile(entry.absPath, "utf-8"));
+    // Only the owner's own conversations may teach preferences about the owner;
+    // group chats, guests, A2A and subagents may not (the LLM extractor already
+    // had this gate; this pattern-based one did not).
+    const learnPreferences =
+      options.source === "sessions" && this.userModelManager
+        ? await this.sessionIsFirstParty(entry.absPath).catch(() => false)
+        : false;
     const chunks = enforceEmbeddingMaxInputTokens(
       this.provider,
       chunkMarkdown(content, this.settings.chunking).filter(
@@ -823,7 +881,7 @@ class MemoryManagerEmbeddingOps {
     this.maybeReenableBatchAfterCooldown();
     const embeddings = this.batch.enabled
       ? await this.embedChunksWithBatch(chunks, entry, options.source)
-      : await this.embedChunksInBatches(chunks);
+      : await this.embedChunksInBatches(chunks, { source: options.source });
     const sample = embeddings.find((embedding) => embedding.length > 0);
     const vectorReady = sample ? await this.ensureVectorReady(sample.length) : false;
     const now = Date.now();
@@ -923,6 +981,14 @@ class MemoryManagerEmbeddingOps {
         await yieldToEventLoop();
       }
       const chunk = chunks[i];
+      // PLAN-55 Phase 3: the owner forgot this passage of the transcript; a
+      // reindex of the (unchanged) transcript must not bring it back.
+      if (
+        options.source === "sessions" &&
+        isSessionPassageSuppressed(this.db, entry.path, chunk.text)
+      ) {
+        continue;
+      }
       const embedding = embeddings[i] ?? [];
       // When embedding failed (graceful degradation left it empty), tag the row
       // 'pending' rather than the real model so the backfill drainer reclaims it
@@ -975,7 +1041,7 @@ class MemoryManagerEmbeddingOps {
           chunk.hash,
           modelForRow,
           chunk.text,
-          JSON.stringify(embedding),
+          vectorToBlob(embedding),
           now,
           valence,
           origin,
@@ -987,7 +1053,8 @@ class MemoryManagerEmbeddingOps {
             accessScope: governance.accessScope,
             lifespanPolicy: governance.lifespanPolicy,
             priority: governance.priority,
-            sensitivity: governance.sensitivity,
+            // PLAN-53 G2: the source default, raised by what the text says.
+            sensitivity: maxSensitivity(governance.sensitivity, tagSensitivity(chunk.text)),
           }),
           hormonal.dopamine,
           hormonal.cortisol,
@@ -1001,7 +1068,7 @@ class MemoryManagerEmbeddingOps {
           options.source === "skills" ? skillCategoryFromPath(entry.path) : null,
         );
       // Extract user preferences from session content
-      if (options.source === "sessions" && this.userModelManager) {
+      if (learnPreferences && this.userModelManager) {
         try {
           this.userModelManager.extractPreferences(chunk.text, id);
         } catch (err) {
@@ -1014,12 +1081,12 @@ class MemoryManagerEmbeddingOps {
       const demoted = demotedBefore.get(id);
       if (demoted) {
         try {
-          this.db
-            .prepare(
-              `UPDATE chunks SET lifecycle = ?, lifecycle_state = ?, parent_id = ?, hygiene_done = 1
-                WHERE id = ?`,
-            )
-            .run(demoted.lifecycle, demoted.lifecycle_state, demoted.parent_id, id);
+          setChunkLifecycle(this.db, id, {
+            lifecycle: demoted.lifecycle as Lifecycle,
+            lifecycleState: demoted.lifecycle_state as LifecycleState,
+            parentId: demoted.parent_id,
+            hygieneDone: true,
+          });
           continue;
         } catch (err) {
           // Fall through and index normally: a chunk that is searchable twice
@@ -1103,7 +1170,10 @@ class MemoryManagerEmbeddingOps {
   }): Promise<{ embedded: number; remaining: number }> {
     const limit = Math.max(1, options?.limit ?? PENDING_EMBED_DEFAULT_LIMIT);
     const pendingWhere =
-      `(model = 'pending' OR json_array_length(embedding) = 0)\n` +
+      // Memory audit 2026-09-07 P1.5: embedding is now a float32 BLOB, so
+      // json_array_length() throws 'malformed JSON' on it. Empty (needs
+      // embedding) means NULL, a zero-length blob, or the legacy '[]' text.
+      `(model = 'pending' OR embedding IS NULL OR length(embedding) = 0 OR embedding = '[]')\n` +
       `        AND text IS NOT NULL AND length(trim(text)) > 0\n` +
       `        AND (lifecycle_state IS NULL OR lifecycle_state <> 'forgotten')\n` +
       `        AND (lifecycle IS NULL OR lifecycle <> 'expired')`;
@@ -1144,7 +1214,11 @@ class MemoryManagerEmbeddingOps {
         hash: row.hash,
       })),
     );
-    const embeddings = await this.embedChunksInBatches(chunks);
+    const embeddings = await this.embedChunksInBatches(chunks, {
+      classes: rows.map((row) =>
+        classifyForEgress({ text: row.text, source: row.source, config: this.cfg }),
+      ),
+    });
     const sample = embeddings.find((embedding) => embedding.length > 0);
     const vectorReady = sample ? await this.ensureVectorReady(sample.length) : false;
     const now = Date.now();
@@ -1183,7 +1257,7 @@ class MemoryManagerEmbeddingOps {
         continue;
       }
       try {
-        updateChunk.run(JSON.stringify(embedding), this.provider.model, now, row.id);
+        updateChunk.run(vectorToBlob(embedding), this.provider.model, now, row.id);
         if (vec) {
           try {
             vec.del.run(row.id);

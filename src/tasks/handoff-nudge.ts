@@ -4,7 +4,7 @@
  * Fires a system-event hint into a task-correlated agent's session when
  * resource pressure suggests the model should suspend cleanly via
  * `task_write_handoff` + `task_schedule_wakeup`. This is **additive**
- * to the existing overflow-compaction loop (`pi-embedded-runner/run.ts`)
+ * to the existing overflow-compaction loop (`embedded-runner/run.ts`)
  * and the mid-turn-budget guard (`mid-turn-budget.ts`); it does not
  * replace them. The runner's 80% compaction stays as the safety net.
  *
@@ -22,11 +22,11 @@
  * Disable globally with `BITTERBOT_TASKS_NUDGE=0`.
  */
 
-import type { TaskHandoff } from "./types.js";
 import { getAgentRunContext } from "../infra/agent-events.js";
 import { enqueueSystemEvent } from "../infra/system-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getActiveTaskStore } from "./store.js";
+import type { TaskHandoff } from "./types.js";
 
 const log = createSubsystemLogger("tasks/handoff-nudge");
 

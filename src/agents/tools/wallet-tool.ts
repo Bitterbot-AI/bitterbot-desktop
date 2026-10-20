@@ -2,6 +2,8 @@ import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { WalletConfig } from "../../config/types.wallet.js";
 import { getPeerWalletCapability } from "../../infra/wallet-discovery.js";
+import { sessionSpentUsd } from "../../payments/ap2/gate.js";
+import { gatedWallet } from "../../review/spend.js";
 import { createWalletService, type WalletService } from "../../services/wallet-service.js";
 import { stringEnum } from "../schema/typebox.js";
 import {
@@ -20,6 +22,7 @@ const WALLET_ACTIONS = [
   "fund_wallet",
   "pay_for_resource",
   "send_to_peer",
+  "request_funding",
 ] as const;
 
 // NOTE: Using a flattened object schema instead of Type.Union([Type.Object(...), ...])
@@ -83,27 +86,23 @@ export function createWalletTool(opts?: WalletToolOptions): AnyAgentTool | undef
   let service: WalletService | null = null;
   function getService(): WalletService {
     if (!service) {
-      service = createWalletService(effectiveConfig);
+      // Every payment from this tool goes through the spend gate (PLAN-53 C0):
+      // the session cap, the decision record, and the limits underneath.
+      service = gatedWallet(createWalletService(effectiveConfig), {
+        origin: "wallet-tool",
+        sessionKey: spendSessionKey,
+        sessionCapUsd: sessionSpendCapUsd,
+      });
     }
     return service;
   }
 
-  // Session spend tracking
+  // The session cap is kept by the gate, per session over 24 hours. It used
+  // to live here, in a counter that started again with every run and every
+  // approved action.
   const sessionSpendCapUsd = effectiveConfig.sessionSpendCapUsd ?? 50;
-  let sessionSpentUsd = 0;
-
-  function checkSessionCap(amountUsd: number): void {
-    if (sessionSpentUsd + amountUsd > sessionSpendCapUsd) {
-      throw new ToolInputError(
-        `Session spend cap exceeded. Cap: $${sessionSpendCapUsd}, spent: $${sessionSpentUsd.toFixed(2)}, ` +
-          `requested: $${amountUsd.toFixed(2)}. Remaining: $${(sessionSpendCapUsd - sessionSpentUsd).toFixed(2)}.`,
-      );
-    }
-  }
-
-  function recordSpend(amountUsd: number): void {
-    sessionSpentUsd += amountUsd;
-  }
+  const spendSessionKey = opts?.agentSessionKey?.trim() || "wallet-tool";
+  const sessionSpent = () => sessionSpentUsd(spendSessionKey);
 
   const network = effectiveConfig.network ?? "base-sepolia";
 
@@ -118,6 +117,7 @@ export function createWalletTool(opts?: WalletToolOptions): AnyAgentTool | undef
 - get_transaction_history: View recent transactions. Optional: limit (default 10).
 - fund_wallet: Get a URL to fund the wallet via Coinbase Onramp or faucet.
 - pay_for_resource: Pay for a paywalled HTTP resource via x402 protocol (USDC on Base). Pass the exact price from the 402 response. This tool signs the payment AND fetches the resource — it RETURNS THE ACTUAL CONTENT. Do NOT call web_fetch again after using this action. Requires: resource_url, amount. Optional: reason.
+- request_funding: When the balance is too low to complete what the user asked, ask the human to add funds instead of giving up. Notifies the operator to top up (via the licensed onramp). Requires: amount (USD needed). Optional: reason. Does NOT move money — a human completes the top-up.
 
 Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTransactionCapUsd ?? 25}. x402 max per request: $${effectiveConfig.x402?.maxCostPerRequestUsd ?? 1}.`,
     parameters: WalletToolSchema,
@@ -149,17 +149,15 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
             label: "recipient address",
           });
           const amount = readNumberParam(params, "amount", { required: true });
-          checkSessionCap(amount);
 
           const result = await svc.sendUsdc(address, amount);
-          recordSpend(amount);
 
           return jsonResult({
             ...result,
             amount,
             to: address,
-            sessionSpent: sessionSpentUsd,
-            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
+            sessionSpent: sessionSpent(),
+            sessionRemaining: Math.max(0, sessionSpendCapUsd - sessionSpent()),
           });
         }
 
@@ -189,18 +187,15 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
                 `"${svc.getNetwork()}". Cross-network sends are not supported.`,
             );
           }
-
-          checkSessionCap(amount);
           const result = await svc.sendUsdc(capability.address, amount);
-          recordSpend(amount);
 
           return jsonResult({
             ...result,
             amount,
             peerId,
             to: capability.address,
-            sessionSpent: sessionSpentUsd,
-            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
+            sessionSpent: sessionSpent(),
+            sessionRemaining: Math.max(0, sessionSpendCapUsd - sessionSpent()),
           });
         }
 
@@ -219,6 +214,56 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
               network === "base-sepolia"
                 ? "Visit the faucet URL to get free testnet tokens."
                 : "Visit the Coinbase Onramp URL to fund with USDC.",
+          });
+        }
+
+        case "request_funding": {
+          // PLAN-49 Phase 2: ask the human to add funds instead of dead-ending.
+          // Notifies the operator (best-effort) and returns the onramp URL +
+          // monthly-ceiling headroom. Moves no money. Gated by
+          // payments.fiat.onramp.enabled; when off, falls back to fund guidance.
+          const amount = readNumberParam(params, "amount", { required: true });
+          const reason = readStringParam(params, "reason");
+          const onramp = opts?.config?.payments?.fiat?.onramp;
+
+          let balanceUsd: number | undefined;
+          try {
+            const bal = await svc.getBalance("USDC");
+            const n = Number.parseFloat(bal.balance);
+            balanceUsd = Number.isFinite(n) ? n : undefined;
+          } catch {
+            // best-effort context
+          }
+
+          if (onramp?.enabled !== true) {
+            const url = await svc.getFundingUrl();
+            return jsonResult({
+              requested: amount,
+              delivered: false,
+              note: "In-app funding is off (payments.fiat.onramp.enabled). Share this funding URL with the operator.",
+              fundingUrl: url,
+              balanceUsd,
+            });
+          }
+
+          const { checkFundingWithinCeiling } =
+            await import("../../payments/fiat/funding-policy.js");
+          const { defaultTopUpLedgerPath, listTopUps } =
+            await import("../../payments/fiat/topup-ledger.js");
+          const ceiling = checkFundingWithinCeiling({
+            requestUsd: amount,
+            ceilingUsd: onramp.monthlyCeilingUsd,
+            priorTopUps: await listTopUps(defaultTopUpLedgerPath(effectiveConfig.walletStorePath)),
+          });
+          const { notifyFundingNeeded } = await import("../../payments/fiat/funding-notifier.js");
+          await notifyFundingNeeded({ amountUsd: amount, reason, balanceUsd });
+
+          return jsonResult({
+            requested: amount,
+            delivered: true,
+            withinCeiling: ceiling.allowed,
+            note: "Asked the operator to add funds. Pause this spend until the balance is topped up.",
+            balanceUsd,
           });
         }
 
@@ -242,19 +287,14 @@ Session spend cap: $${sessionSpendCapUsd}. Per-tx cap: $${effectiveConfig.perTra
             );
           }
 
-          checkSessionCap(amount);
-
           const result = await svc.payForResource(resourceUrl, amount);
-          if (result.success) {
-            recordSpend(result.amountPaid ?? amount);
-          }
 
           return jsonResult({
             ...result,
             resource_url: resourceUrl,
             reason: readStringParam(params, "reason") ?? "",
-            sessionSpent: sessionSpentUsd,
-            sessionRemaining: sessionSpendCapUsd - sessionSpentUsd,
+            sessionSpent: sessionSpent(),
+            sessionRemaining: Math.max(0, sessionSpendCapUsd - sessionSpent()),
           });
         }
 

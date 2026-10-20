@@ -1,20 +1,28 @@
-import type { GatewayWsClient } from "./server/ws-types.js";
 import { MAX_BUFFERED_BYTES } from "./server-constants.js";
+import type { GatewayWsClient } from "./server/ws-types.js";
+import { isSetupOnlyScopes, SETUP_EVENTS } from "./setup-token.js";
 import { logWs, shouldLogWs, summarizeAgentEventForWsLog } from "./ws-log.js";
 
 const ADMIN_SCOPE = "operator.admin";
 const APPROVALS_SCOPE = "operator.approvals";
 const PAIRING_SCOPE = "operator.pairing";
+const WRITE_SCOPE = "operator.write";
 
 const EVENT_SCOPE_GUARDS: Record<string, string[]> = {
   "exec.approval.requested": [APPROVALS_SCOPE],
   "exec.approval.resolved": [APPROVALS_SCOPE],
+  "review.requested": [APPROVALS_SCOPE],
+  "review.resolved": [APPROVALS_SCOPE],
   "device.pair.requested": [PAIRING_SCOPE],
   "device.pair.resolved": [PAIRING_SCOPE],
   "node.pair.requested": [PAIRING_SCOPE],
   "node.pair.resolved": [PAIRING_SCOPE],
   // Node identity (branch/sha/version drift) is operator information.
   update: [ADMIN_SCOPE],
+  // The agent's browser, logged-in pages included. Already targeted at lease
+  // holders; the scope guard is the second lock, matching browser.request.
+  "browser.frame": [WRITE_SCOPE],
+  "browser.live": [WRITE_SCOPE],
 };
 
 export type GatewayBroadcastStateVersion = {
@@ -41,6 +49,10 @@ export type GatewayBroadcastToConnIdsFn = (
 ) => void;
 
 function hasEventScope(client: GatewayWsClient, event: string): boolean {
+  // Setup-token connections (PLAN-56 Phase 4) see no gateway activity.
+  if (isSetupOnlyScopes(client.connect.scopes)) {
+    return SETUP_EVENTS.has(event);
+  }
   const required = EVENT_SCOPE_GUARDS[event];
   if (!required) {
     return true;

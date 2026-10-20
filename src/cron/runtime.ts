@@ -1,8 +1,11 @@
 import type { BitterbotConfig } from "../config/types.js";
 import { isTruthyEnvValue } from "../infra/env.js";
+import { notifyOwner } from "../infra/owner-notify.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { getCronEngine, setActiveCronEngine } from "./active.js";
-import { CronEngine, type CronEngineOptions } from "./engine.js";
+import { CronEngine, type CronEngineEvent, type CronEngineOptions } from "./engine.js";
+import { jobToWire } from "./normalize.js";
+import { ownerNoticeForCronEvent } from "./notices.js";
 
 const log = createSubsystemLogger("gateway/cron");
 
@@ -11,6 +14,34 @@ export { getCronEngine };
 
 export function setCronEngineForTests(engine: CronEngine | null): void {
   setActiveCronEngine(engine);
+}
+
+let cronBroadcast: ((payload: unknown) => void) | null = null;
+
+/** The gateway installs its broadcaster so the Control UI hears about runs. */
+export function setCronBroadcast(fn: ((payload: unknown) => void) | null): void {
+  cronBroadcast = fn;
+}
+
+/**
+ * Every finished run goes to the UI. A failure the owner should know about
+ * (the start of a streak, a job turned off, a one-shot that gave up) also
+ * goes to them. Before this a job could fail for weeks with nobody told.
+ */
+function handleCronEvent(event: CronEngineEvent): void {
+  try {
+    cronBroadcast?.({
+      kind: event.kind,
+      run: event.run,
+      job: event.job ? jobToWire(event.job) : null,
+    });
+  } catch (err) {
+    log.debug(`cron broadcast failed: ${formatErr(err)}`);
+  }
+  const notice = ownerNoticeForCronEvent(event);
+  if (notice) {
+    void notifyOwner(notice).catch((err) => log.warn(`owner notice failed: ${formatErr(err)}`));
+  }
 }
 
 export function buildEngineOptions(cfg: BitterbotConfig): CronEngineOptions {
@@ -22,6 +53,8 @@ export function buildEngineOptions(cfg: BitterbotConfig): CronEngineOptions {
     maxConcurrentRuns: cron.maxConcurrentRuns,
     webhook: cron.webhook,
     webhookToken: cron.webhookToken,
+    autoDisableAfterErrors: cron.autoDisableAfterErrors,
+    onEvent: handleCronEvent,
   };
 }
 

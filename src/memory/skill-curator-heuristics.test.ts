@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { SkillLifecycleRow } from "./skill-lifecycle.js";
 import {
   classifyTransition,
   DEFAULT_THRESHOLDS,
   formatReportMarkdown,
   runHeuristicPass,
 } from "./skill-curator-heuristics.js";
+import type { SkillLifecycleRow } from "./skill-lifecycle.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = 1_800_000_000_000;

@@ -1,5 +1,5 @@
-import type { BitterbotConfig } from "../config/config.js";
 import { OPENCODE_ZEN_DEFAULT_MODEL_REF } from "../agents/opencode-zen-models.js";
+import type { BitterbotConfig } from "../config/config.js";
 
 export function applyOpencodeZenProviderConfig(cfg: BitterbotConfig): BitterbotConfig {
   // Use the built-in opencode provider from pi-ai; only seed the allowlist alias.

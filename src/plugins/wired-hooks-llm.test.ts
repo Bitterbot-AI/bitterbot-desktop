@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { PluginRegistry } from "./registry.js";
 import { createHookRunner } from "./hooks.js";
+import type { PluginRegistry } from "./registry.js";
 
 function createMockRegistry(
   hooks: Array<{ hookName: string; handler: (...args: unknown[]) => unknown }>,

@@ -1,17 +1,29 @@
-import type { RuntimeEnv } from "../runtime.js";
-import type { OnboardOptions } from "./onboard-types.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { readConfigFileSnapshot } from "../config/config.js";
 import { assertSupportedRuntime } from "../infra/runtime-guard.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { resolveUserPath } from "../utils.js";
 import { isDeprecatedAuthChoice, normalizeLegacyOnboardAuthChoice } from "./auth-choice-legacy.js";
 import { DEFAULT_WORKSPACE, handleReset } from "./onboard-helpers.js";
 import { runInteractiveOnboarding } from "./onboard-interactive.js";
 import { runNonInteractiveOnboarding } from "./onboard-non-interactive.js";
+import type { OnboardOptions } from "./onboard-types.js";
 
 export async function onboardCommand(opts: OnboardOptions, runtime: RuntimeEnv = defaultRuntime) {
   assertSupportedRuntime(runtime);
+  // The state dir holds config, keys and memory: private to its owner.
+  if (!process.env.VITEST) {
+    const { resolveStateDir } = await import("../config/paths.js");
+    const { securePrivateStateDir, stateDirPermsNotice } =
+      await import("../infra/state-dir-perms.js");
+    const notice = stateDirPermsNotice(
+      securePrivateStateDir({ stateDir: resolveStateDir(process.env) }),
+    );
+    if (notice) {
+      runtime.log(notice);
+    }
+  }
   const originalAuthChoice = opts.authChoice;
   const normalizedAuthChoice = normalizeLegacyOnboardAuthChoice(originalAuthChoice);
   if (opts.nonInteractive && isDeprecatedAuthChoice(originalAuthChoice)) {
@@ -59,7 +71,7 @@ export async function onboardCommand(opts: OnboardOptions, runtime: RuntimeEnv =
   if (process.platform === "win32") {
     runtime.log(
       [
-        "Windows detected — Bitterbot runs great on WSL2!",
+        "Windows detected. Bitterbot runs great on WSL2!",
         "Native Windows might be trickier.",
         "Quick setup: wsl --install (one command, one reboot)",
         "Guide: https://docs.bitterbot.ai/windows",
@@ -69,6 +81,21 @@ export async function onboardCommand(opts: OnboardOptions, runtime: RuntimeEnv =
 
   if (normalizedOpts.nonInteractive) {
     await runNonInteractiveOnboarding(normalizedOpts, runtime);
+    return;
+  }
+
+  // PLAN-56 Phase 4: the browser setup page is the default; --no-browser
+  // (or a terminal-only flag) keeps the terminal wizard.
+  const { detectOnboardEnvironment, resolveOnboardSurface, runBrowserOnboarding } =
+    await import("./onboard-browser.js");
+  const surface = resolveOnboardSurface({ opts: normalizedOpts, ...detectOnboardEnvironment() });
+  if (surface.kind === "no-terminal") {
+    runtime.error(surface.message);
+    runtime.exit(1);
+    return;
+  }
+  if (surface.kind === "browser") {
+    await runBrowserOnboarding(normalizedOpts, runtime, surface);
     return;
   }
 

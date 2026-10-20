@@ -1,6 +1,10 @@
-import type { RuntimeEnv } from "../../runtime.js";
-import { loadAndMaybeMigrateDoctorConfig } from "../../commands/doctor-config-flow.js";
+import {
+  loadAndMaybeMigrateDoctorConfig,
+  type DoctorConfigOutput,
+} from "../../commands/doctor-config-flow.js";
 import { readConfigFileSnapshot } from "../../config/config.js";
+import { installerOutputMode } from "../../infra/installer-env.js";
+import type { RuntimeEnv } from "../../runtime.js";
 import { colorize, isRich, theme } from "../../terminal/theme.js";
 import { shortenHomePath } from "../../utils.js";
 import { shouldMigrateStateFromPath } from "../argv.js";
@@ -36,6 +40,16 @@ async function getConfigSnapshot() {
   return configSnapshotPromise;
 }
 
+/**
+ * How loud the config check before a command is. install.sh runs its first
+ * command with BITTERBOT_INSTALLER=1 (one summary line) and the later ones
+ * with BITTERBOT_INSTALLER=quiet (nothing), so an install shows config
+ * advice at most once. Errors that stop a command always print.
+ */
+export function configGuardOutput(env: NodeJS.ProcessEnv): DoctorConfigOutput {
+  return installerOutputMode(env) ?? "guard";
+}
+
 export async function ensureConfigReady(params: {
   runtime: RuntimeEnv;
   commandPath?: string[];
@@ -46,6 +60,8 @@ export async function ensureConfigReady(params: {
     await loadAndMaybeMigrateDoctorConfig({
       options: { nonInteractive: true },
       confirm: async () => false,
+      output: configGuardOutput(process.env),
+      log: (line) => params.runtime.log(line),
     });
   }
 

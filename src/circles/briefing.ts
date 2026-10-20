@@ -16,8 +16,8 @@
  *    relationships, not message counts.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { CirclesStore } from "../memory/circles-store.js";
 import { replaceMarkers } from "../security/external-content.js";
 import { pendingAsks } from "./disclosure.js";

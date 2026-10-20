@@ -26,12 +26,12 @@ Bitterbot ships with the pi‑ai catalog. These providers require **no**
 
 - Provider: `openai`
 - Auth: `OPENAI_API_KEY`
-- Example model: `openai/gpt-5.1-codex`
+- Example model: `openai/gpt-5.5`
 - CLI: `bitterbot onboard --auth-choice openai-api-key`
 
 ```json5
 {
-  agents: { defaults: { model: { primary: "openai/gpt-5.1-codex" } } },
+  agents: { defaults: { model: { primary: "openai/gpt-5.5" } } },
 }
 ```
 
@@ -78,21 +78,18 @@ Bitterbot ships with the pi‑ai catalog. These providers require **no**
 
 - Provider: `google`
 - Auth: `GEMINI_API_KEY`
-- Example model: `google/gemini-3-pro-preview`
+- Example model: `google/gemini-3.1-pro-preview` (setup's recommended Gemini model)
 - CLI: `bitterbot onboard --auth-choice gemini-api-key`
+- Setup page: pick **Google Gemini** and paste the key. Details: [Google Gemini](/providers/google)
 
-### Google Vertex, Antigravity, and Gemini CLI
+### Google Vertex
 
-- Providers: `google-vertex`, `google-antigravity`, `google-gemini-cli`
-- Auth: Vertex uses gcloud ADC; Antigravity/Gemini CLI use their respective auth flows
-- Antigravity OAuth is shipped as a bundled plugin (`google-antigravity-auth`, disabled by default).
-  - Enable: `bitterbot plugins enable google-antigravity-auth`
-  - Login: `bitterbot models auth login --provider google-antigravity --set-default`
-- Gemini CLI OAuth is shipped as a bundled plugin (`google-gemini-cli-auth`, disabled by default).
-  - Enable: `bitterbot plugins enable google-gemini-cli-auth`
-  - Login: `bitterbot models auth login --provider google-gemini-cli --set-default`
-  - Note: you do **not** paste a client id or secret into `bitterbot.json`. The CLI login flow stores
-    tokens in auth profiles on the gateway host.
+- Provider: `google-vertex`
+- Auth: gcloud ADC
+
+Google Antigravity and Gemini CLI OAuth (`google-antigravity`, `google-gemini-cli`) are no longer
+supported: the upstream model runtime removed them. Existing profiles are left in place but their
+models fail with a clear error, and `bitterbot doctor` lists them. Use a Gemini API key instead.
 
 ### Z.AI (GLM)
 

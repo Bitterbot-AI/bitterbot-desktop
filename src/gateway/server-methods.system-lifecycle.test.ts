@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { GatewayRequestOptions } from "./server-methods/types.js";
 import { authorizeGatewayMethod } from "./server-methods.js";
 import { systemHandlers } from "./server-methods/system.js";
+import type { GatewayRequestOptions } from "./server-methods/types.js";
 
 // system.restart / system.shutdown stop or bounce the node, so they must sit
 // behind operator.admin (they hold no place in the read/write sets and fall

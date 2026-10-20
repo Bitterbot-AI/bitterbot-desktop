@@ -11,8 +11,18 @@ function normalizeUnicodeSpaces(str: string): string {
   return str.replace(UNICODE_SPACES, " ");
 }
 
+/**
+ * The file tools drop a leading "@" from a path before resolving it (a
+ * mention-style prefix models sometimes emit). The guard must resolve the
+ * same path the tool will open: without this, "@/etc/passwd" is checked as
+ * "<root>/@/etc/passwd", passes, and the tool then opens "/etc/passwd".
+ */
+function normalizeAtPrefix(filePath: string): string {
+  return filePath.startsWith("@") ? filePath.slice(1) : filePath;
+}
+
 function expandPath(filePath: string): string {
-  const normalized = normalizeUnicodeSpaces(filePath);
+  const normalized = normalizeUnicodeSpaces(normalizeAtPrefix(filePath));
   if (normalized === "~") {
     return os.homedir();
   }

@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { runExec } from "../process/exec.js";
 
-type Sharp = typeof import("sharp");
+// The callable sharp() function. sharp >= 0.35 ships ESM types with a `default`
+// export, so `typeof import("sharp")` is the module namespace; older releases
+// typed the module itself as the function (`export =`). Accept both.
+type SharpModule = typeof import("sharp");
+type Sharp = SharpModule extends { default: infer Fn } ? Fn : SharpModule;
 
 export type ImageMetadata = {
   width: number;
@@ -24,7 +28,9 @@ function prefersSips(): boolean {
 async function loadSharp(): Promise<(buffer: Buffer) => ReturnType<Sharp>> {
   const mod = (await import("sharp")) as unknown as { default?: Sharp };
   const sharp = mod.default ?? (mod as unknown as Sharp);
-  return (buffer) => sharp(buffer, { failOnError: false });
+  // failOn "none" = the old failOnError: false (removed in sharp 0.35):
+  // tolerate bad pixel data instead of throwing on imperfect user images.
+  return (buffer) => sharp(buffer, { failOn: "none" });
 }
 
 /**

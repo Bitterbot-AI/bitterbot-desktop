@@ -365,3 +365,241 @@ describe("memory cli", () => {
     expect(process.exitCode).toBe(1);
   });
 });
+
+describe("memory cli owner controls (PLAN-55 Phase 3)", () => {
+  const preview = {
+    planHash: "a".repeat(64),
+    counts: { chunks: 1, factsRetired: 1, ownerFactsKept: 0, edgesClosed: 0 },
+    factsRetired: [{ key: "infra.deploy_endpoint", value: "api.acme.com" }],
+    ownerFactsKept: [],
+    factsKeptWithOtherEvidence: [],
+    factsRelinked: [],
+  };
+
+  function ownerManager(extra: Record<string, unknown> = {}) {
+    return {
+      ownerForgetPreview: vi.fn(async () => preview),
+      ownerForgetMemory: vi.fn(async () => ({ counts: { chunks: 1 }, retiredFacts: [{}] })),
+      ownerEditPreview: vi.fn(async () => ({ ...preview, newId: "fact_new" })),
+      ownerEditMemory: vi.fn(async () => ({
+        id: "fact_new",
+        previousId: "fact_1",
+        cascade: { counts: {} },
+      })),
+      ownerExportMemories: vi.fn(async (file: string) => ({
+        file,
+        memories: 3,
+        facts: 2,
+        redactions: 0,
+      })),
+      ownerExportTo: vi.fn(async () => ({})),
+      ownerImportMemories: vi.fn(async (_input: unknown, opts?: { dryRun?: boolean }) => ({
+        dryRun: Boolean(opts?.dryRun),
+        memories: { imported: 2 },
+        facts: { imported: 1 },
+        preferences: { imported: 0 },
+      })),
+      ownerDatabasePath: () => "/tmp/main.sqlite",
+      close: vi.fn(async () => {}),
+      ...extra,
+    };
+  }
+
+  async function run(args: string[], manager: ReturnType<typeof ownerManager>) {
+    const { registerMemoryCli } = await import("./memory-cli.js");
+    const { defaultRuntime } = await import("../runtime.js");
+    getMemorySearchManager.mockResolvedValueOnce({ manager });
+    const log = vi.spyOn(defaultRuntime, "log").mockImplementation(() => {});
+    const error = vi.spyOn(defaultRuntime, "error").mockImplementation(() => {});
+    const program = new Command();
+    program.name("test");
+    registerMemoryCli(program);
+    await program.parseAsync(["memory", ...args], { from: "user" });
+    return {
+      out: log.mock.calls.map((c) => String(c[0])).join("\n"),
+      err: error.mock.calls.map((c) => String(c[0])).join("\n"),
+    };
+  }
+
+  it("forget without --yes only shows the cascade", async () => {
+    const m = ownerManager();
+    const { out } = await run(["forget", "fact_1"], m);
+    expect(out).toContain("retire  infra.deploy_endpoint = api.acme.com");
+    expect(out).toContain("Re-run with --yes");
+    expect(m.ownerForgetMemory).not.toHaveBeenCalled();
+    expect(m.close).toHaveBeenCalled();
+  });
+
+  it("forget --preview stops after the preview", async () => {
+    const m = ownerManager();
+    const { out } = await run(["forget", "fact_1", "--preview"], m);
+    expect(out).toContain(`Plan: ${"a".repeat(64)}`);
+    expect(out).not.toContain("Re-run");
+    expect(m.ownerForgetMemory).not.toHaveBeenCalled();
+  });
+
+  it("forget --yes applies exactly the previewed plan", async () => {
+    const m = ownerManager();
+    const { out } = await run(["forget", "fact_1", "--yes"], m);
+    expect(m.ownerForgetMemory).toHaveBeenCalledWith("fact_1", { planHash: "a".repeat(64) });
+    expect(out).toContain("Forgot fact_1");
+  });
+
+  it("edit --yes replaces the memory", async () => {
+    const m = ownerManager();
+    const { out } = await run(["edit", "fact_1", "new text", "--yes"], m);
+    expect(m.ownerEditMemory).toHaveBeenCalledWith("fact_1", "new text", {
+      planHash: "a".repeat(64),
+    });
+    expect(out).toContain("Replaced fact_1 with fact_new");
+  });
+
+  it("a refused forget sets the exit code", async () => {
+    const m = ownerManager({
+      ownerForgetPreview: vi.fn(async () => {
+        throw new Error("change the file instead");
+      }),
+    });
+    const { err } = await run(["forget", "abc", "--yes"], m);
+    expect(err).toContain("change the file instead");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("export writes v2 to --out and shows the database path; other formats are refused", async () => {
+    const m = ownerManager();
+    const { out } = await run(["export", "--out", "/tmp/x/export.json"], m);
+    const { resolve } = await import("node:path");
+    // Resolved against the platform (a drive letter on Windows).
+    expect(m.ownerExportMemories).toHaveBeenCalledWith(resolve("/tmp/x/export.json"));
+    expect(out).toContain("3 memories");
+    expect(out).toContain("main.sqlite");
+
+    const m2 = ownerManager();
+    const { err } = await run(["export", "--format", "v1"], m2);
+    expect(err).toContain("only v2");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("import --dry-run reads the file and writes nothing", async () => {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mem-import-cli-"));
+    const file = path.join(dir, "export.json");
+    await fs.writeFile(file, JSON.stringify({ version: 2, memories: [] }));
+    const m = ownerManager();
+    const { out } = await run(["import", file, "--dry-run"], m);
+    expect(m.ownerImportMemories).toHaveBeenCalledWith(
+      { version: 2, memories: [] },
+      { dryRun: true, actor: "owner", keepOwnerTier: false, confirmOwnerTierGrantsHash: undefined },
+    );
+    expect(out).toContain("Dry run, nothing written.");
+    expect(out).toContain("Memories: imported 2");
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  async function exportFile(): Promise<{ file: string; cleanup: () => Promise<void> }> {
+    const fs = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mem-import-cli-"));
+    const file = path.join(dir, "export.json");
+    await fs.writeFile(file, JSON.stringify({ version: 2, memories: [] }));
+    return { file, cleanup: () => fs.rm(dir, { recursive: true, force: true }) };
+  }
+
+  it("--keep-owner-tier without a terminal and without --yes refuses (rule C)", async () => {
+    const { file, cleanup } = await exportFile();
+    const m = ownerManager({
+      ownerImportMemories: vi.fn(async (_i: unknown, opts?: { dryRun?: boolean }) => ({
+        dryRun: Boolean(opts?.dryRun),
+        ownerTierGrants: 2,
+        memories: {},
+        facts: {},
+        preferences: {},
+      })),
+    });
+    const { out, err } = await run(["import", file, "--keep-owner-tier"], m);
+    expect(out).toContain(
+      "This will give 2 facts owner authority (they will override the agent and win every conflict); none of them replace your current owner values.",
+    );
+    expect(err).toContain("--yes");
+    expect(m.ownerImportMemories).toHaveBeenCalledTimes(1);
+    expect(m.ownerImportMemories).toHaveBeenCalledWith(expect.anything(), {
+      dryRun: true,
+      actor: "owner",
+      keepOwnerTier: true,
+    });
+    expect(process.exitCode).toBe(1);
+    await cleanup();
+  });
+
+  it("--keep-owner-tier --yes applies with the dry run's grants hash", async () => {
+    const { file, cleanup } = await exportFile();
+    const m = ownerManager({
+      ownerImportMemories: vi.fn(async (_i: unknown, opts?: { dryRun?: boolean }) => ({
+        dryRun: Boolean(opts?.dryRun),
+        ownerTierGrants: 2,
+        ownerTierGrantsHash: "abc123",
+        replacesOwnerValues: 1,
+        memories: {},
+        facts: {},
+        preferences: {},
+      })),
+    });
+    const { out } = await run(["import", file, "--keep-owner-tier", "--yes"], m);
+    expect(out).toContain("; 1 of them replace your current owner values.");
+    expect(m.ownerImportMemories).toHaveBeenLastCalledWith(expect.anything(), {
+      dryRun: false,
+      actor: "owner",
+      keepOwnerTier: true,
+      confirmOwnerTierGrantsHash: "abc123",
+    });
+    expect(out).toContain("Owner-tier grants: 2");
+    await cleanup();
+  });
+
+  it("import of a missing file fails cleanly", async () => {
+    const m = ownerManager();
+    const { err } = await run(["import", "/nonexistent/export.json"], m);
+    expect(err).toContain("Cannot read");
+    expect(m.ownerImportMemories).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+});
+
+describe("memory migrate-embeddings", () => {
+  it("shows the hold and changes nothing without --yes, then migrates with --yes", async () => {
+    const { registerMemoryCli } = await import("./memory-cli.js");
+    const { defaultRuntime } = await import("../runtime.js");
+    const migrate = vi.fn(async () => {});
+    let held = true;
+    const manager = {
+      sync: vi.fn(async () => {}),
+      status: () => ({ provider: "local", chunks: 12 }),
+      embeddingMigrationPlan: () => ({
+        hold: held ? { conflicts: ["model digest aaaa -> bbbb"], stored: {} } : null,
+        current: { provider: "local", model: "m", modelDigest: "sha256:bbbb", dimensions: 3 },
+      }),
+      migrateEmbeddingProfile: migrate.mockImplementation(async () => {
+        held = false;
+      }),
+      close: vi.fn(async () => {}),
+    };
+    getMemorySearchManager.mockResolvedValue({ manager });
+    const log = vi.spyOn(defaultRuntime, "log").mockImplementation(() => {});
+    const program = new Command();
+    program.name("test");
+    registerMemoryCli(program);
+    await program.parseAsync(["memory", "migrate-embeddings"], { from: "user" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("model digest aaaa -> bbbb"));
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Re-run with --yes"));
+    expect(migrate).not.toHaveBeenCalled();
+    await program.parseAsync(["memory", "migrate-embeddings", "--yes"], { from: "user" });
+    expect(migrate).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Embedding migration complete"));
+    log.mockClear();
+    await program.parseAsync(["memory", "migrate-embeddings"], { from: "user" });
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("Nothing to migrate"));
+  });
+});

@@ -27,15 +27,16 @@ The onboarding wizard (`bitterbot configure`) writes most of these for you. This
 
 ## Gateway
 
-| Var                              | Purpose                                                                                        |
-| -------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `BITTERBOT_GATEWAY_TOKEN`        | WS auth token. Recommended even for loopback binds. Generate with `openssl rand -hex 32`.      |
-| `BITTERBOT_GATEWAY_PASSWORD`     | Alternative auth mode (use token OR password).                                                 |
-| `BITTERBOT_HOME`                 | Override the home directory used for internal path resolution (default: `$HOME`).              |
-| `BITTERBOT_STATE_DIR`            | Override the state dir (default: `~/.bitterbot`). Picks up `.env`, config, sessions from here. |
-| `BITTERBOT_CONFIG_PATH`          | Override the config file (default: `~/.bitterbot/bitterbot.json`).                             |
-| `BITTERBOT_LOAD_SHELL_ENV`       | `1` to import missing keys from your login shell profile.                                      |
-| `BITTERBOT_SHELL_ENV_TIMEOUT_MS` | Timeout for the shell-env import (default 15 000 ms).                                          |
+| Var                              | Purpose                                                                                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BITTERBOT_GATEWAY_TOKEN`        | WS auth token. Recommended even for loopback binds. Generate with `openssl rand -hex 32`.                                                    |
+| `BITTERBOT_GATEWAY_PASSWORD`     | Alternative auth mode (use token OR password).                                                                                               |
+| `BITTERBOT_HOME`                 | Override the home directory used for internal path resolution (default: `$HOME`).                                                            |
+| `BITTERBOT_STATE_DIR`            | Override the state dir (default: `~/.bitterbot`). Picks up `.env`, config, sessions from here.                                               |
+| `BITTERBOT_CONFIG_PATH`          | Override the config file (default: `~/.bitterbot/bitterbot.json`).                                                                           |
+| `BITTERBOT_LOAD_SHELL_ENV`       | `1` to import missing keys from your login shell profile.                                                                                    |
+| `BITTERBOT_SHELL_ENV_TIMEOUT_MS` | Timeout for the shell-env import (default 15 000 ms).                                                                                        |
+| `BITTERBOT_INSTALL_KIND`         | `container` (set by the Docker image): update checks ask GitHub releases, in-place updates are refused. `package` skips container detection. |
 
 Startup skip flags (`BITTERBOT_SKIP_CHANNELS`, `BITTERBOT_SKIP_CRON`, …) live in [Config reference → Startup skip flags](/gateway/configuration-reference#startup-skip-flags-bitterbot_skip_).
 
@@ -96,7 +97,6 @@ Only set what you actually enable. The wizard prompts for these, but you can ski
 | `DISCORD_BOT_TOKEN`             | Discord bot token                |
 | `SLACK_BOT_TOKEN`               | Slack bot token (`xoxb-…`)       |
 | `SLACK_APP_TOKEN`               | Slack app-level token (`xapp-…`) |
-| `ZALO_BOT_TOKEN`                | Zalo                             |
 | `BITTERBOT_TWITCH_ACCESS_TOKEN` | Twitch (`oauth:…`)               |
 
 WhatsApp pairs via QR and stores credentials on disk at `~/.bitterbot/credentials/whatsapp/<accountId>/`, so it has no env var.
@@ -111,6 +111,7 @@ All optional.
 | `PERPLEXITY_API_KEY` | Perplexity                       |
 | `FIRECRAWL_API_KEY`  | Firecrawl                        |
 | `TAVILY_API_KEY`     | Tavily                           |
+| `SERPLY_API_KEY`     | Serply web search                |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS (or `XI_API_KEY`) |
 | `DEEPGRAM_API_KEY`   | Deepgram STT                     |
 

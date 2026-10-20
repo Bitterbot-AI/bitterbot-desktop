@@ -7,4 +7,6 @@ export type GatewayWsClient = {
   connId: string;
   presenceKey?: string;
   clientIp?: string;
+  /** The setup token a setup-only connection presented (PLAN-56 Phase 4). */
+  setupToken?: string;
 };

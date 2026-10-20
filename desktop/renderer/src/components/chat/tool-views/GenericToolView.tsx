@@ -1,9 +1,9 @@
 import { Wrench, ChevronDown, ChevronUp } from "lucide-react";
 import { useState, useCallback, useMemo } from "react";
-import type { ToolViewProps } from "./ToolViewRegistry";
 import { cn } from "../../../lib/utils";
 import { SyntaxViewer } from "../../workspace/SyntaxViewer";
 import { safeJsonParse } from "./tool-view-utils";
+import type { ToolViewProps } from "./ToolViewRegistry";
 
 const VALUE_TRUNCATE_LENGTH = 200;
 

@@ -10,10 +10,69 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 8
+    # Risk-tiered groups (2026-09-29): one "minor-patch" group of 78 packages
+    # (#89) could not merge because 0.x "minor" bumps are breaking in practice
+    # (@mariozechner/pi-* 0.52 -> 0.73 broke the agent runner's typecheck). A
+    # dependency joins the FIRST group whose pattern matches, so each risky
+    # family gets its own PR and the catch-all stays routine.
     groups:
+      # The agent runner and the in-tree Anthropic provider: API migrations.
+      agent-runtime:
+        patterns: ["@mariozechner/*", "@anthropic-ai/*"]
+      # A formatter bump reformats the whole tree: land it as its own commit.
+      # Minor/patch only for these two: a major (e.g. TypeScript 7, the native
+      # compiler rewrite) arrives as its own PR instead of hiding in a group.
+      lint-format:
+        patterns: ["oxfmt", "oxlint", "oxlint-*"]
+        update-types: ["minor", "patch"]
+      # tsdown + rolldown move together (tsdown pins a rolldown). 0.20 -> 0.23
+      # ran the build out of heap (>4 GB, 2026-09-29): its own tracked PR.
+      bundler:
+        patterns: ["tsdown", "rolldown"]
+      build-tooling:
+        patterns: ["esbuild", "tsx", "typescript", "vite", "@vitejs/*"]
+        update-types: ["minor", "patch"]
+      # Native binaries the desktop bundle ships; verify with the stage smoke.
+      native:
+        patterns:
+          - "sharp"
+          - "sqlite-vec"
+          - "sqlite-vec-*"
+          - "playwright"
+          - "playwright-core"
+          - "@lydell/node-pty"
+          - "node-llama-cpp"
+          - "@napi-rs/*"
       npm-minor-patch:
         update-types: ["minor", "patch"]
+        # Also kept out, as their own PRs: @clack/prompts (prompts now type the
+        # Ctrl-C cancel symbol, ~25 call sites to adapt) and grammy (new Bot API
+        # types across the Telegram channel), both found in #99.
+        exclude-patterns:
+          - "@clack/prompts"
+          - "grammy"
+          - "@grammyjs/*"
+          - "@mariozechner/*"
+          - "@anthropic-ai/*"
+          - "oxfmt"
+          - "oxlint"
+          - "oxlint-*"
+          - "tsdown"
+          - "rolldown"
+          - "esbuild"
+          - "tsx"
+          - "typescript"
+          - "vite"
+          - "@vitejs/*"
+          - "sharp"
+          - "sqlite-vec"
+          - "sqlite-vec-*"
+          - "playwright"
+          - "playwright-core"
+          - "@lydell/node-pty"
+          - "node-llama-cpp"
+          - "@napi-rs/*"
   - package-ecosystem: cargo
     directory: /orchestrator
     schedule:

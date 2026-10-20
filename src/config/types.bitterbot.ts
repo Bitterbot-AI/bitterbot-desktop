@@ -7,6 +7,7 @@ import type { BrowserConfig } from "./types.browser.js";
 import type { ChannelsConfig } from "./types.channels.js";
 import type { CirclesConfig } from "./types.circles.js";
 import type { CommerceConfig } from "./types.commerce.js";
+import type { ComputeConfig } from "./types.compute.js";
 import type { CronConfig } from "./types.cron.js";
 import type {
   CanvasHostConfig,
@@ -24,10 +25,14 @@ import type {
 } from "./types.messages.js";
 import type { ModelsConfig } from "./types.models.js";
 import type { NodeHostConfig } from "./types.node-host.js";
+import type { NotificationsConfig } from "./types.notifications.js";
 import type { P2pConfig } from "./types.p2p.js";
+import type { PaymentsConfig } from "./types.payments.js";
 import type { PluginsConfig } from "./types.plugins.js";
+import type { ReviewConfig } from "./types.review.js";
 import type { SkillsConfig } from "./types.skills.js";
 import type { ToolsConfig } from "./types.tools.js";
+import type { UsageConfig } from "./types.usage.js";
 
 export type BitterbotConfig = {
   meta?: {
@@ -61,6 +66,8 @@ export type BitterbotConfig = {
     lastRunMode?: "local" | "remote";
   };
   diagnostics?: DiagnosticsConfig;
+  /** PLAN-50: usage ledger + spend budgets. */
+  usage?: UsageConfig;
   logging?: LoggingConfig;
   update?: {
     /** Update channel for git + npm installs ("stable", "beta", or "dev"). */
@@ -74,11 +81,13 @@ export type BitterbotConfig = {
      */
     promptBehindCommits?: number;
     /**
-     * Automatic post-update rollback (git installs). When a freshly-updated
-     * gateway never confirms a healthy boot before the boot-verify deadline,
-     * a detached watchdog performs ONE guarded `git reset --hard` to the
-     * pre-update sha (clean worktree only, config/DB untouched, once-only
-     * latch), rebuilds, and best-effort restarts. Default: enabled.
+     * Automatic post-update rollback. When a freshly-updated gateway never
+     * confirms a healthy boot before the boot-verify deadline, a detached
+     * watchdog performs ONE guarded rollback (once-only latch): git installs
+     * `git reset --hard` to the pre-update sha (clean worktree only, config/DB
+     * untouched), rebuild and restart; release-tarball installs switch the
+     * `current` symlink back and apply the snapshot restore policy
+     * (src/infra/update-snapshot.ts). Default: enabled.
      */
     autoRollback?: {
       enabled?: boolean;
@@ -169,6 +178,21 @@ export type BitterbotConfig = {
   memory?: MemoryConfig;
   p2p?: P2pConfig;
   a2a?: A2aConfig;
+  /** PLAN-49: fiat bridge / bank connectors (Phase 1: dollar-denominated UI). */
+  payments?: PaymentsConfig;
+  /** PLAN-53 Track B: which agent actions wait for the owner's approval. */
+  review?: ReviewConfig;
+  /** Monitors: watch a page or API and wake the agent on change. Default: on. */
+  monitors?: { enabled?: boolean };
+  /** PLAN-57: the agent-facing compute surface (the `compute` tool). Default: on. */
+  compute?: ComputeConfig;
+  /**
+   * Shopping on stores that support agent shopping (Shopify UCP): search,
+   * carts, and a checkout link for the owner. Default: on.
+   */
+  shop?: { enabled?: boolean; ucpProfileUrl?: string };
+  /** Notices the gateway sends the owner: push target, quiet hours, rate limit. */
+  notifications?: NotificationsConfig;
   commerce?: CommerceConfig;
   /** PLAN-31: Circles, the agent social fabric. ON by default since the 2026-07-09 red-team phase (§8). */
   circles?: CirclesConfig;

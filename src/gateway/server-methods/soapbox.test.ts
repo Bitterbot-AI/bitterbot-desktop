@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { GatewayRequestHandlerOptions } from "./types.js";
 import { createSoapboxHandlers, soapboxHandlers } from "./soapbox.js";
+import type { GatewayRequestHandlerOptions } from "./types.js";
 
 const fake = vi.hoisted(() => ({
   request: vi.fn(),
@@ -84,6 +84,22 @@ describe("Soapbox gateway adapter", () => {
       id: "job-1",
       approval: { ...payment, amount_microusdc: 1 },
     });
+    expect(fake.wallet).not.toHaveBeenCalled();
+  });
+  it("rejects backend and chat approvals even with admin scope", async () => {
+    for (const [mode, via] of [
+      ["backend", "gateway"],
+      ["ui", "chat"],
+    ]) {
+      const respond = vi.fn();
+      await soapboxHandlers["soapbox.payment.fund"]({
+        params: { id: "job-1", approval: { amount_microusdc: 2000 }, via },
+        client: { connect: { role: "operator", scopes: ["operator.admin"], client: { mode } } },
+        respond,
+      } as unknown as GatewayRequestHandlerOptions);
+      expect(respond.mock.calls[0][0]).toBe(false);
+    }
+    expect(fake.request).not.toHaveBeenCalled();
     expect(fake.wallet).not.toHaveBeenCalled();
   });
   it("returns a disabled state without connecting", async () => {

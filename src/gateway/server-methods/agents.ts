@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 import {
   listAgentIds,
   resolveAgentDir,
   resolveAgentWorkspaceDir,
 } from "../../agents/agent-scope.js";
+import { noteGenomeWrittenByUser } from "../../agents/genome-guard.js";
+import { noteMemoryWrittenByUser } from "../../agents/memory-owner-guard.js";
 import {
   DEFAULT_GENOME_FILENAME,
   DEFAULT_HEARTBEAT_FILENAME,
@@ -40,6 +41,7 @@ import {
   validateAgentsUpdateParams,
 } from "../protocol/index.js";
 import { listAgentsForGateway } from "../session-utils.js";
+import type { GatewayRequestHandlers, RespondFn } from "./types.js";
 
 // Biological identity model: GENOME.md (immutable core) + MEMORY.md (emergent identity via dream engine).
 const BOOTSTRAP_FILE_NAMES = [
@@ -474,6 +476,16 @@ export const agentsHandlers: GatewayRequestHandlers = {
     await fs.mkdir(workspaceDir, { recursive: true });
     const filePath = path.join(workspaceDir, name);
     const content = String(params.content ?? "");
+    if (name === DEFAULT_GENOME_FILENAME) {
+      // Told to the Genome guard BEFORE the write: a tool call in flight
+      // right now must find content the user saved, not undo it.
+      noteGenomeWrittenByUser(filePath, content);
+    }
+    if (name === DEFAULT_MEMORY_FILENAME) {
+      // PLAN-55: the owner editing MEMORY.md (owner blocks included) is kept
+      // by the memory owner guard, even with a tool call in flight.
+      noteMemoryWrittenByUser(filePath, content);
+    }
     await fs.writeFile(filePath, content, "utf-8");
     const meta = await statFile(filePath);
     respond(

@@ -17,8 +17,8 @@
  * ("posterA2aUrl"), so hunting needs no out-of-band discovery.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { parseHeartbeatTerms } from "../gateway/a2a/forage.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { contentDigest, simhash64 } from "./bounty-audit.js";

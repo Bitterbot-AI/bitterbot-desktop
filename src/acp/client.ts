@@ -1,3 +1,9 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import * as readline from "node:readline";
+import { Readable, Writable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
@@ -6,14 +12,9 @@ import {
   type RequestPermissionResponse,
   type SessionNotification,
 } from "@agentclientprotocol/sdk";
-import { spawn, type ChildProcess } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-import * as readline from "node:readline";
-import { Readable, Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
 import { ensureBitterbotCliOnPath } from "../infra/path-env.js";
 import { DANGEROUS_ACP_TOOLS } from "../security/dangerous-tools.js";
+import { VERSION } from "../version.js";
 
 const SAFE_AUTO_APPROVE_KINDS = new Set(["read", "search"]);
 
@@ -363,7 +364,7 @@ export async function createAcpClient(opts: AcpClientOptions = {}): Promise<AcpC
       fs: { readTextFile: true, writeTextFile: true },
       terminal: true,
     },
-    clientInfo: { name: "bitterbot-acp-client", version: "1.0.0" },
+    clientInfo: { name: "bitterbot-acp-client", version: VERSION },
   });
 
   log("creating session");

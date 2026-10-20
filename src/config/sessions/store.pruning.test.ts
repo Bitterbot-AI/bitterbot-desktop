@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionEntry } from "./types.js";
 import {
   capEntryCount,
   clearSessionStoreCacheForTest,
@@ -12,6 +11,7 @@ import {
   rotateSessionFile,
   saveSessionStore,
 } from "./store.js";
+import type { SessionEntry } from "./types.js";
 
 // Mock loadConfig so resolveMaintenanceConfig() never reads a real bitterbot.json.
 // Unit tests always pass explicit overrides so this mock is inert for them.

@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 import { listAgentIds } from "../../agents/agent-scope.js";
 import { BARE_SESSION_RESET_PROMPT } from "../../auto-reply/reply/session-reset-prompt.js";
 import { agentCommand } from "../../commands/agent.js";
@@ -20,6 +19,10 @@ import { classifySessionKeyShape, normalizeAgentId } from "../../routing/session
 import { defaultRuntime } from "../../runtime.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
+import {
+  isA2aTaskSessionKey,
+  isSkillEvolveValidationSessionKey,
+} from "../../sessions/session-key-utils.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,
@@ -51,6 +54,7 @@ import { injectTimestamp, timestampOptsFromConfig } from "./agent-timestamp.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
 import { applyPreTurnDecision } from "./pre-turn-decision.js";
 import { sessionsHandlers } from "./sessions.js";
+import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 
 const RESET_COMMAND_RE = /^\/(new|reset)(?:\s+([\s\S]*))?$/i;
 
@@ -190,10 +194,12 @@ export const agentHandlers: GatewayRequestHandlers = {
       groupSpace?: string;
       lane?: string;
       extraSystemPrompt?: string;
+      workspaceDir?: string;
       idempotencyKey: string;
       timeout?: number;
       label?: string;
       spawnedBy?: string;
+      senderIsOwner?: boolean;
       inputProvenance?: InputProvenance;
     };
     const cfg = loadConfig();
@@ -458,7 +464,11 @@ export const agentHandlers: GatewayRequestHandlers = {
     // live drives are done, and it had neither call — so a CLI-driven turn
     // could fire interceptors but could never tag their outcome, leaving
     // interceptor_harvest (gated on >=10 tagged records) permanently asleep.
-    if (resolvedSessionKey) {
+    if (
+      resolvedSessionKey &&
+      !isA2aTaskSessionKey(resolvedSessionKey) &&
+      !isSkillEvolveValidationSessionKey(resolvedSessionKey)
+    ) {
       const interceptorSessionKey = resolvedSessionKey.toLowerCase();
       const turnText = request.message;
       void import("../../agents/skills/session-context-tracker.js")
@@ -556,6 +566,27 @@ export const agentHandlers: GatewayRequestHandlers = {
       { sessionKey: resolvedSessionKey ?? null, agentId, runId, channel: resolvedChannel ?? "" },
     );
 
+    // PLAN-44 Phase 2 (adversarial H1): a workspace override is honoured
+    // only for a validation session AND only for a scratch dir this
+    // process registered for a trial. Any other request is refused.
+    if (request.workspaceDir) {
+      const { consumeTrialWorkspace } = await import("../../memory/skill-evolution/task-runner.js");
+      if (
+        !isSkillEvolveValidationSessionKey(resolvedSessionKey) ||
+        !consumeTrialWorkspace(request.workspaceDir)
+      ) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "workspaceDir is only honoured for registered skill-validation trial workspaces",
+          ),
+        );
+        return;
+      }
+    }
+
     void agentCommand(
       {
         message: preTurn.message,
@@ -581,12 +612,14 @@ export const agentHandlers: GatewayRequestHandlers = {
         groupChannel: resolvedGroupChannel,
         groupSpace: resolvedGroupSpace,
         spawnedBy: spawnedByValue,
+        ...(request.senderIsOwner === false ? { senderIsOwner: false } : {}),
         timeout: request.timeout?.toString(),
         bestEffortDeliver,
         messageChannel: resolvedChannel,
         runId,
         lane: request.lane,
         extraSystemPrompt: preTurn.extraSystemPrompt,
+        ...(request.workspaceDir ? { workspaceDir: request.workspaceDir } : {}),
         inputProvenance,
       },
       defaultRuntime,

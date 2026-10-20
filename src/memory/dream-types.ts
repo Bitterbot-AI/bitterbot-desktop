@@ -1,22 +1,26 @@
 /**
- * Dream Engine types: state machine, 9 dream modes, clustering,
+ * Dream Engine types: state machine, dream modes, clustering,
  * synthesis, and configuration.
+ *
+ * PLAN-45 Phase 1 retired the `mutation` and `research` modes (the legacy
+ * skill producers). A user config that still names them is ignored with a
+ * one-line log, see the DreamEngine constructor.
  */
+
+import type { SkillsEvolutionConfig } from "../config/types.skills.js";
 
 export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAKENING";
 
 /** @deprecated Use DreamMode instead */
 export type DreamCreativityMode = "associative" | "convergent" | "cross_domain";
 
-// ── 9 Dream Modes ──
+// ── Dream Modes ──
 export type DreamMode =
   | "replay" // Strengthen important memory pathways
-  | "mutation" // Generate skill/knowledge variations
   | "extrapolation" // Predict future patterns
   | "compression" // Generalize into higher abstractions
   | "simulation" // Cross-domain creative recombination
   | "exploration" // Gap-filling from curiosity targets
-  | "research" // Empirical prompt optimization using execution data
   | "interceptor_harvest" // PLAN-20: mine intervention records → propose new interceptors
   | "relationship_reconsolidation" // PLAN-23 SABM: adjudicate flagged belief contradictions, close losers post-labile-window
   | "harness_evolve" // PLAN-25: mine harness-level failures → propose + validate + promote HarnessPolicy edits
@@ -36,23 +40,17 @@ export type DreamModeConfig = {
 export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   replay: { enabled: true, weight: 0.18, maxChunks: 20, requiresLlm: false },
   compression: { enabled: true, weight: 0.18, maxChunks: 30, requiresLlm: false },
-  // PLAN-40 Phase 0: mutation disabled — the 2026-08-10 utility evaluation
-  // found its lifetime output was 206 paraphrases of ONE skill (1 category,
-  // 3 lineages), zero reads, zero executions: exactly the no-success-signal
-  // distillation the literature warns against. Lane 1 (verified-success
-  // distillation) is the principled replacement. The mode body is deleted
-  // when Lane 1 lands; its auto-trigger is gated on this flag, so the flip
-  // alone silences it.
-  mutation: { enabled: false, weight: 0.14, maxChunks: 10, requiresLlm: true },
   simulation: { enabled: true, weight: 0.14, maxChunks: 10, requiresLlm: true },
   extrapolation: { enabled: true, weight: 0.09, maxChunks: 15, requiresLlm: true },
-  exploration: { enabled: true, weight: 0.09, maxChunks: 10, requiresLlm: true },
-  // PLAN-34 Phase 0: research mode disabled by default — it is unfueled
-  // (skill_executions bootstrap deadlock) and its promotion path writes
-  // directly to live chunk text with no staging gate (dream-engine value
-  // audit 2026-07-10). PLAN-40 retires it permanently: Lane 1 is the gated
-  // replacement for "improve skills from execution data".
-  research: { enabled: false, weight: 0.09, maxChunks: 5, requiresLlm: true },
+  // Token-efficiency pass (2026-09-19): exploration asked near-identical
+  // questions every cycle (28 of 30 frontier targets already explored) and
+  // the live config had already switched it off. Opt back in via
+  // memory.dream.modes.exploration.enabled.
+  exploration: { enabled: false, weight: 0.09, maxChunks: 10, requiresLlm: true },
+  // PLAN-45 Phase 1 (2026-09-05): `mutation` (PLAN-40 E2: 206 unread
+  // paraphrases of one skill) and `research` (PLAN-34: unfueled, ungated
+  // direct-write) were deleted outright; the verified-success distillation
+  // lane is the replacement for "improve skills from execution data".
   // PLAN-40 HOLDS: these three are well-built but structurally unfueled
   // (evaluation E5: 0/25 held-out executions, 0/10 outcome-tagged records,
   // 12/100 relationships). Leaving them enabled burned softmax slots on
@@ -116,10 +114,8 @@ export const DEFAULT_MODE_TIERS: Record<DreamMode, ComputeTier> = {
   replay: "none",
   compression: "none",
   exploration: "local",
-  mutation: "cloud",
   extrapolation: "cloud",
   simulation: "cloud",
-  research: "cloud",
   interceptor_harvest: "cloud",
   relationship_reconsolidation: "cloud",
   harness_evolve: "cloud",
@@ -173,7 +169,7 @@ export type DreamEngineConfig = {
   initialDelayMinutes?: number;
   /** PLAN-11 Gap 5: adaptive interval driven by smoothed marketplace activity. */
   adaptiveInterval?: {
-    /** Enable adaptive scheduling (default: false — falls back to fixed interval). */
+    /** Enable adaptive scheduling (default: true; false falls back to the fixed interval). */
     enabled?: boolean;
     /** Minimum interval in minutes (floor). Default: 30. */
     minMinutes?: number;
@@ -188,6 +184,34 @@ export type DreamEngineConfig = {
     /** Activity score below which the interval doubles. Default: 0.3. */
     lowThreshold?: number;
   };
+  /**
+   * Token-efficiency gate (2026-09-19). A SCHEDULED full cycle runs only when
+   * all three hold; explicit triggers (`dream.trigger` RPC, CLI) bypass it.
+   * Minimum new user turns since the last full cycle. Default: 1.
+   */
+  minNewSessions?: number;
+  /** Minimum minutes since the last live user turn (idle). Default: 60. */
+  minIdleMinutes?: number;
+  /** Minimum hours since the last completed full cycle. Default: 8. */
+  minHoursBetween?: number;
+  /**
+   * Cooldown between emotional mini-dreams in minutes. Must exceed the
+   * consolidation tick (30 min) or a pinned hormone re-fires every tick.
+   * Default: 90.
+   */
+  miniDreamCooldownMinutes?: number;
+  /**
+   * Mini-dreams and auto-scratch notes fire on a hormonal RISE of at least
+   * this much since the previous trigger check, never on an absolute level.
+   * Default: 0.15.
+   */
+  hormonalTriggerDelta?: number;
+  /**
+   * Output cap for the RLM working-memory synthesis call. The prompt asks for
+   * up to ~4.5k tokens across 7 sections; the old 2048 lane cap truncated
+   * every call. Default: 6144.
+   */
+  synthesisMaxTokens?: number;
   /** Max chunks to process per dream cycle. Default: 50. */
   maxChunksPerCycle?: number;
   /** Max LLM calls per dream cycle. Default: 5. */
@@ -212,6 +236,18 @@ export type DreamEngineConfig = {
   synthesisModel?: string;
   /** Optional local LLM call function for local-tier modes. */
   localLlmCall?: (prompt: string) => Promise<string>;
+  /**
+   * PLAN-42: dedicated call lane for the skill-evolution maintainer /
+   * validator (higher output budget than the dream lane's default; honors
+   * skills.evolution.judgeModel).
+   */
+  evolutionLlmCall?: (prompt: string) => Promise<string>;
+  /**
+   * PLAN-42: dedicated Skill Proposer lane (stronger model for the strict
+   * ReAct protocol; honors skills.evolution.proposerModel). Falls back to
+   * evolutionLlmCall when unset.
+   */
+  evolutionProposerLlmCall?: (prompt: string) => Promise<string>;
   /** Per-mode configuration overrides. */
   modes?: Partial<Record<DreamMode, Partial<DreamModeConfig>>>;
   /** Tiered compute routing configuration. */
@@ -241,6 +277,33 @@ export type DreamEngineConfig = {
    * memory.dream.insightPromotion.enabled.
    */
   insightPromotion?: { enabled?: boolean };
+  /**
+   * PLAN-15 Phase 1c A-MAC skill curator, run during dream cycles. Was
+   * previously read through an untyped cast (PLAN-42 Phase 0 schematized
+   * it). enabled default true; kill switch memory.dream.skillCurator.enabled.
+   * minIntervalMs default 24h.
+   */
+  skillCurator?: { enabled?: boolean; minIntervalMs?: number };
+  /**
+   * PLAN-42: WikiSkill evolution pass, cadence-gated after dream cycles
+   * (curator pattern; own LLM budget lane). The manager maps
+   * skills.evolution here. Default ON; kill switch skills.evolution.enabled.
+   */
+  skillEvolution?: SkillsEvolutionConfig;
+  /** PLAN-45 Phase 3.5: the agent's primary model spec (`provider/model`) the evolved skills run on. */
+  runtimeModelTag?: string;
+  /** PLAN-43 Phase 3: attestation exchange settings (a2a.attestation). */
+  a2aAttestation?: {
+    enabled?: boolean;
+    peers?: string[];
+    blockedAttesters?: string[];
+    trustedAttesters?: string[];
+    unknownAttesterWeight?: number;
+  };
+  /** PLAN-45 4.1: reputation lookup used ONLY to order peer-skill evaluation. */
+  attesterPriority?: (authorPubkey: string) => number;
+  /** PLAN-45 4.6 (I8): the proposer lane's model spec, recorded as the evolver model. */
+  evolutionProposerModelTag?: string;
 };
 
 export const DEFAULT_DREAM_CONFIG: Required<
@@ -249,11 +312,19 @@ export const DEFAULT_DREAM_CONFIG: Required<
     | "llmCall"
     | "synthesisLlmCall"
     | "localLlmCall"
+    | "evolutionLlmCall"
+    | "evolutionProposerLlmCall"
     | "modes"
     | "modelTiers"
     | "autoResearch"
     | "localModelIsLocal"
     | "insightPromotion"
+    | "skillCurator"
+    | "skillEvolution"
+    | "runtimeModelTag"
+    | "attesterPriority"
+    | "evolutionProposerModelTag"
+    | "a2aAttestation"
   >
 > & { modes: Record<DreamMode, DreamModeConfig> } = {
   enabled: true,
@@ -268,6 +339,12 @@ export const DEFAULT_DREAM_CONFIG: Required<
     highThreshold: 0.7,
     lowThreshold: 0.3,
   },
+  minNewSessions: 1,
+  minIdleMinutes: 60,
+  minHoursBetween: 8,
+  miniDreamCooldownMinutes: 90,
+  hormonalTriggerDelta: 0.15,
+  synthesisMaxTokens: 6144,
   maxChunksPerCycle: 50,
   // PLAN-34 Phase 4: 5 mode calls + up to 3 claim-decomposition
   // verification calls for insight promotion.

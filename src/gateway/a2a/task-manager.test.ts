@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import type { A2aStreamEvent } from "./types.js";
 import { A2aTaskManager } from "./task-manager.js";
+import type { A2aStreamEvent } from "./types.js";
 
 function makeManager() {
   return new A2aTaskManager(new DatabaseSync(":memory:"), {} as never);

@@ -1,8 +1,8 @@
 import type { Api, Model } from "@mariozechner/pi-ai";
-import type { ModelRegistry } from "./pi-model-discovery.js";
 import { DEFAULT_CONTEXT_TOKENS } from "./defaults.js";
 import { normalizeModelCompat } from "./model-compat.js";
 import { normalizeProviderId } from "./model-selection.js";
+import type { ModelRegistry } from "./runtime/models/index.js";
 
 const OPENAI_CODEX_GPT_53_MODEL_ID = "gpt-5.3-codex";
 const OPENAI_CODEX_TEMPLATE_MODEL_IDS = ["gpt-5.2-codex"] as const;
@@ -27,29 +27,26 @@ const ANTHROPIC_OPUS_NEXT_TEMPLATE_MODEL_IDS = ["claude-opus-4-6", "claude-opus-
 const ZAI_GLM5_MODEL_ID = "glm-5";
 const ZAI_GLM5_TEMPLATE_MODEL_IDS = ["glm-4.7"] as const;
 
-const ANTIGRAVITY_OPUS_46_MODEL_ID = "claude-opus-4-6";
-const ANTIGRAVITY_OPUS_46_DOT_MODEL_ID = "claude-opus-4.6";
-const ANTIGRAVITY_OPUS_TEMPLATE_MODEL_IDS = ["claude-opus-4-5", "claude-opus-4.5"] as const;
-const ANTIGRAVITY_OPUS_46_THINKING_MODEL_ID = "claude-opus-4-6-thinking";
-const ANTIGRAVITY_OPUS_46_DOT_THINKING_MODEL_ID = "claude-opus-4.6-thinking";
-const ANTIGRAVITY_OPUS_THINKING_TEMPLATE_MODEL_IDS = [
-  "claude-opus-4-5-thinking",
-  "claude-opus-4.5-thinking",
-] as const;
+/**
+ * A model cloned from a catalogued template carries the template's `cost`, which is a guess,
+ * not this model's price (claude-fable-5-1 cloned from Opus 4.7 was billed at $5/$25 per M while
+ * Anthropic charges $10/$50). The usage ledger reads this marker to prefer an exact live price
+ * and to label the borrowed one "estimated". The value is the template id the price came from.
+ */
+export type BorrowedPriceMarker = { pricingBorrowedFrom?: string };
 
-export const ANTIGRAVITY_OPUS_46_FORWARD_COMPAT_CANDIDATES = [
-  {
-    id: ANTIGRAVITY_OPUS_46_THINKING_MODEL_ID,
-    templatePrefixes: [
-      "google-antigravity/claude-opus-4-5-thinking",
-      "google-antigravity/claude-opus-4.5-thinking",
-    ],
-  },
-  {
-    id: ANTIGRAVITY_OPUS_46_MODEL_ID,
-    templatePrefixes: ["google-antigravity/claude-opus-4-5", "google-antigravity/claude-opus-4.5"],
-  },
-] as const;
+/** The template id whose price a forward-compat model borrowed, or undefined for a real entry. */
+export function borrowedPriceTemplate(model: unknown): string | undefined {
+  if (!model || typeof model !== "object") {
+    return undefined;
+  }
+  const from = (model as BorrowedPriceMarker).pricingBorrowedFrom;
+  return typeof from === "string" && from ? from : undefined;
+}
+
+function markBorrowedPrice(model: Model<Api>, templateId: string): Model<Api> {
+  return Object.assign(model, { pricingBorrowedFrom: templateId } satisfies BorrowedPriceMarker);
+}
 
 function cloneFirstTemplateModel(params: {
   normalizedProvider: string;
@@ -64,12 +61,15 @@ function cloneFirstTemplateModel(params: {
     if (!template) {
       continue;
     }
-    return normalizeModelCompat({
-      ...template,
-      id: trimmedModelId,
-      name: trimmedModelId,
-      ...params.patch,
-    } as Model<Api>);
+    return markBorrowedPrice(
+      normalizeModelCompat({
+        ...template,
+        id: trimmedModelId,
+        name: trimmedModelId,
+        ...params.patch,
+      } as Model<Api>),
+      templateId,
+    );
   }
   return undefined;
 }
@@ -93,11 +93,14 @@ function resolveOpenAICodexGpt53FallbackModel(
     if (!template) {
       continue;
     }
-    return normalizeModelCompat({
-      ...template,
-      id: trimmedModelId,
-      name: trimmedModelId,
-    } as Model<Api>);
+    return markBorrowedPrice(
+      normalizeModelCompat({
+        ...template,
+        id: trimmedModelId,
+        name: trimmedModelId,
+      } as Model<Api>),
+      templateId,
+    );
   }
 
   return normalizeModelCompat({
@@ -183,6 +186,69 @@ function resolveAnthropicOpusNextForwardCompatModel(
   });
 }
 
+/** `claude-<family>-<major>[-<minor>]`, e.g. claude-sonnet-5-5, claude-fable-5-1. */
+const CLAUDE_FAMILY_ID = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:$|-)/;
+
+function claudeVersion(id: string): { family: string; version: number } | undefined {
+  const m = CLAUDE_FAMILY_ID.exec(id.toLowerCase());
+  if (!m) {
+    return undefined;
+  }
+  return { family: m[1] ?? "", version: Number(m[2]) * 100 + Number(m[3] ?? 0) };
+}
+
+/**
+ * Any Claude model newer than pi-ai's built-in catalog (the Claude 5 family:
+ * claude-sonnet-5-5, claude-opus-5-5, claude-fable-5-1, ...). The model picker
+ * lists what Anthropic's /v1/models serves (model-live-discovery), so without
+ * this the picker offered models the runner then refused as "Unknown model".
+ * Clones the newest catalogued model of the same family (Fable, a newer
+ * family, from Opus) so the API, reasoning flag and limits are Anthropic's.
+ */
+function resolveAnthropicFamilyForwardCompatModel(
+  provider: string,
+  modelId: string,
+  modelRegistry: ModelRegistry,
+): Model<Api> | undefined {
+  const normalizedProvider = normalizeProviderId(provider);
+  if (normalizedProvider !== "anthropic") {
+    return undefined;
+  }
+  const trimmedModelId = modelId.trim();
+  const wanted = claudeVersion(trimmedModelId);
+  if (!wanted) {
+    return undefined;
+  }
+  const newestOf = (family: string) => {
+    let best: { id: string; version: number } | undefined;
+    // Test doubles may implement only find().
+    for (const model of modelRegistry.getAll?.() ?? []) {
+      if (model.provider !== normalizedProvider) {
+        continue;
+      }
+      const v = claudeVersion(model.id);
+      // Undated ids only (claude-sonnet-4-6, not claude-sonnet-4-20250514).
+      if (!v || v.family !== family || /-\d{8}$/.test(model.id)) {
+        continue;
+      }
+      if (!best || v.version > best.version) {
+        best = { id: model.id, version: v.version };
+      }
+    }
+    return best?.id;
+  };
+  const templateId = newestOf(wanted.family) ?? newestOf("opus") ?? newestOf("sonnet");
+  if (!templateId) {
+    return undefined;
+  }
+  return cloneFirstTemplateModel({
+    normalizedProvider,
+    trimmedModelId,
+    templateIds: [templateId],
+    modelRegistry,
+  });
+}
+
 // Z.ai's GLM-5 may not be present in pi-ai's built-in model catalog yet.
 // When a user configures zai/glm-5 without a models.json entry, clone glm-4.7 as a forward-compat fallback.
 function resolveZaiGlm5ForwardCompatModel(
@@ -204,12 +270,15 @@ function resolveZaiGlm5ForwardCompatModel(
     if (!template) {
       continue;
     }
-    return normalizeModelCompat({
-      ...template,
-      id: trimmed,
-      name: trimmed,
-      reasoning: true,
-    } as Model<Api>);
+    return markBorrowedPrice(
+      normalizeModelCompat({
+        ...template,
+        id: trimmed,
+        name: trimmed,
+        reasoning: true,
+      } as Model<Api>),
+      templateId,
+    );
   }
 
   return normalizeModelCompat({
@@ -225,60 +294,6 @@ function resolveZaiGlm5ForwardCompatModel(
   } as Model<Api>);
 }
 
-function resolveAntigravityOpus46ForwardCompatModel(
-  provider: string,
-  modelId: string,
-  modelRegistry: ModelRegistry,
-): Model<Api> | undefined {
-  const normalizedProvider = normalizeProviderId(provider);
-  if (normalizedProvider !== "google-antigravity") {
-    return undefined;
-  }
-
-  const trimmedModelId = modelId.trim();
-  const lower = trimmedModelId.toLowerCase();
-  const isOpus46 =
-    lower === ANTIGRAVITY_OPUS_46_MODEL_ID ||
-    lower === ANTIGRAVITY_OPUS_46_DOT_MODEL_ID ||
-    lower.startsWith(`${ANTIGRAVITY_OPUS_46_MODEL_ID}-`) ||
-    lower.startsWith(`${ANTIGRAVITY_OPUS_46_DOT_MODEL_ID}-`);
-  const isOpus46Thinking =
-    lower === ANTIGRAVITY_OPUS_46_THINKING_MODEL_ID ||
-    lower === ANTIGRAVITY_OPUS_46_DOT_THINKING_MODEL_ID ||
-    lower.startsWith(`${ANTIGRAVITY_OPUS_46_THINKING_MODEL_ID}-`) ||
-    lower.startsWith(`${ANTIGRAVITY_OPUS_46_DOT_THINKING_MODEL_ID}-`);
-  if (!isOpus46 && !isOpus46Thinking) {
-    return undefined;
-  }
-
-  const templateIds: string[] = [];
-  if (lower.startsWith(ANTIGRAVITY_OPUS_46_MODEL_ID)) {
-    templateIds.push(lower.replace(ANTIGRAVITY_OPUS_46_MODEL_ID, "claude-opus-4-5"));
-  }
-  if (lower.startsWith(ANTIGRAVITY_OPUS_46_DOT_MODEL_ID)) {
-    templateIds.push(lower.replace(ANTIGRAVITY_OPUS_46_DOT_MODEL_ID, "claude-opus-4.5"));
-  }
-  if (lower.startsWith(ANTIGRAVITY_OPUS_46_THINKING_MODEL_ID)) {
-    templateIds.push(
-      lower.replace(ANTIGRAVITY_OPUS_46_THINKING_MODEL_ID, "claude-opus-4-5-thinking"),
-    );
-  }
-  if (lower.startsWith(ANTIGRAVITY_OPUS_46_DOT_THINKING_MODEL_ID)) {
-    templateIds.push(
-      lower.replace(ANTIGRAVITY_OPUS_46_DOT_THINKING_MODEL_ID, "claude-opus-4.5-thinking"),
-    );
-  }
-  templateIds.push(...ANTIGRAVITY_OPUS_TEMPLATE_MODEL_IDS);
-  templateIds.push(...ANTIGRAVITY_OPUS_THINKING_TEMPLATE_MODEL_IDS);
-
-  return cloneFirstTemplateModel({
-    normalizedProvider,
-    trimmedModelId,
-    templateIds,
-    modelRegistry,
-  });
-}
-
 export function resolveForwardCompatModel(
   provider: string,
   modelId: string,
@@ -288,7 +303,7 @@ export function resolveForwardCompatModel(
     resolveOpenAICodexGpt53FallbackModel(provider, modelId, modelRegistry) ??
     resolveAnthropicOpus46ForwardCompatModel(provider, modelId, modelRegistry) ??
     resolveAnthropicOpusNextForwardCompatModel(provider, modelId, modelRegistry) ??
-    resolveZaiGlm5ForwardCompatModel(provider, modelId, modelRegistry) ??
-    resolveAntigravityOpus46ForwardCompatModel(provider, modelId, modelRegistry)
+    resolveAnthropicFamilyForwardCompatModel(provider, modelId, modelRegistry) ??
+    resolveZaiGlm5ForwardCompatModel(provider, modelId, modelRegistry)
   );
 }

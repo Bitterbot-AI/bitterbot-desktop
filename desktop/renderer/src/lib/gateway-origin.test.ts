@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchSessionToken,
+  isTokenMismatch,
   LS_TOKEN_KEY,
   LS_URL_KEY,
   readStoredGatewayToken,
+  recoverFromTokenMismatch,
   resolveGatewayHttpOrigin,
   resolveGatewayToken,
   resolveGatewayWsUrl,
@@ -132,5 +134,52 @@ describe("token resolution", () => {
     await expect(
       resolveGatewayToken({ origin: "http://127.0.0.1:19001", fetchImpl }),
     ).resolves.toBe("from-gateway");
+  });
+});
+
+describe("recovering from a token mismatch", () => {
+  const handoff = (token: string | null) =>
+    vi.fn(async () => ({
+      ok: token !== null,
+      json: async () => ({ token }),
+    })) as unknown as typeof fetch;
+
+  it("recognises the gateway's mismatch close reasons", () => {
+    expect(
+      isTokenMismatch(
+        "unauthorized: gateway token mismatch (open the dashboard URL and paste the token in Control UI settings)",
+      ),
+    ).toBe(true);
+    expect(isTokenMismatch("token_mismatch")).toBe(true);
+    expect(isTokenMismatch("connect failed")).toBe(false);
+    expect(isTokenMismatch(undefined)).toBe(false);
+  });
+
+  it("stores and returns the token the gateway that served the page hands out now", async () => {
+    localStorage.setItem(LS_TOKEN_KEY, "old-install-token");
+    await expect(
+      recoverFromTokenMismatch({
+        url: "ws://127.0.0.1:19001",
+        staleToken: "old-install-token",
+        origin: "http://127.0.0.1:19001",
+        fetchImpl: handoff("new-install-token"),
+      }),
+    ).resolves.toBe("new-install-token");
+    expect(readStoredGatewayToken()).toBe("new-install-token");
+  });
+
+  it("changes nothing when the handoff is refused or returns the same token", async () => {
+    localStorage.setItem(LS_TOKEN_KEY, "kept");
+    for (const fetchImpl of [handoff(null), handoff("kept")]) {
+      await expect(
+        recoverFromTokenMismatch({
+          url: "ws://127.0.0.1:19001",
+          staleToken: "kept",
+          origin: "http://127.0.0.1:19001",
+          fetchImpl,
+        }),
+      ).resolves.toBeNull();
+    }
+    expect(readStoredGatewayToken()).toBe("kept");
   });
 });

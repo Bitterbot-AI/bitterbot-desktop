@@ -188,6 +188,43 @@ describe("sessions.usage", () => {
     expect(error?.message).toContain("Invalid session reference");
   });
 
+  it("accepts the Control UI's { days, limit } params and applies the trailing window", async () => {
+    // Regression: the Usage tab sends `days` (not startDate/endDate). The
+    // schema is additionalProperties:false and Ajv runs with
+    // removeAdditional:false, so an unlisted `days` failed validation and the
+    // whole tab rendered empty. `days` must validate AND drive the window.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-05T12:00:00.000Z"));
+    try {
+      const respond = vi.fn();
+      await usageHandlers["sessions.usage"]({
+        respond,
+        params: { days: 7, limit: 50 },
+      } as unknown as Parameters<(typeof usageHandlers)["sessions.usage"]>[0]);
+
+      expect(respond).toHaveBeenCalledTimes(1);
+      expect(respond.mock.calls[0]?.[0]).toBe(true);
+      const result = respond.mock.calls[0]?.[1] as { startDate: string; endDate: string };
+      expect(result.startDate).toBe("2026-01-30");
+      expect(result.endDate).toBe("2026-02-05");
+      const firstCall = vi.mocked(discoverAllSessions).mock.calls[0]?.[0];
+      expect(firstCall?.startMs).toBe(Date.UTC(2026, 0, 30));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("rejects unknown params so the schema stays strict", async () => {
+    const respond = vi.fn();
+    await usageHandlers["sessions.usage"]({
+      respond,
+      params: { dayz: 7 },
+    } as unknown as Parameters<(typeof usageHandlers)["sessions.usage"]>[0]);
+    expect(respond.mock.calls[0]?.[0]).toBe(false);
+    const error = respond.mock.calls[0]?.[2] as { message?: string } | undefined;
+    expect(error?.message).toContain("unexpected property 'dayz'");
+  });
+
   it("passes parsed agentId into sessions.usage.timeseries", async () => {
     const respond = vi.fn();
 

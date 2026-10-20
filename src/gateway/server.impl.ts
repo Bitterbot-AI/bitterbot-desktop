@@ -1,20 +1,16 @@
-import type { CanvasHostServer } from "../canvas-host/server.js";
-import type { CirclesSchedulerHandle } from "../circles/scheduler.js";
-import type { PluginServicesHandle } from "../plugins/services.js";
-import type { RuntimeEnv } from "../runtime.js";
-import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
-import type { startBrowserControlServerIfEnabled } from "./server-browser.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
+import path from "node:path";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
-import { getActiveEmbeddedRunCount } from "../agents/pi-embedded-runner/runs.js";
+import { getActiveEmbeddedRunCount } from "../agents/embedded-runner/runs.js";
 import {
   getSkillsSnapshotVersion,
   registerSkillsChangeListener,
 } from "../agents/skills/refresh.js";
 import { initSubagentRegistry } from "../agents/subagent-registry.js";
 import { getTotalPendingReplies } from "../auto-reply/reply/dispatcher-registry.js";
+import type { CanvasHostServer } from "../canvas-host/server.js";
 import { type ChannelId, listChannelPlugins } from "../channels/plugins/index.js";
 import { startCheckpointWriter } from "../checkpoints/agent-event-writer.js";
+import type { CirclesSchedulerHandle } from "../circles/scheduler.js";
 import { formatCliCommand } from "../cli/command-format.js";
 import { createDefaultDeps } from "../cli/deps.js";
 import {
@@ -25,6 +21,7 @@ import {
   readConfigFileSnapshot,
   writeConfigFile,
 } from "../config/config.js";
+import { resolveStateDir } from "../config/paths.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
 import { recordBootDurationMs } from "../infra/boot-duration.js";
@@ -43,22 +40,33 @@ import {
   refreshRemoteBinsForConnectedNodes,
   setSkillsRemoteRegistry,
 } from "../infra/skills-remote.js";
+import { enableSystemEventPersistence } from "../infra/system-events.js";
 import { scheduleGatewayUpdateCheck } from "../infra/update-startup.js";
+import { checkUsageBudgetAlerts, onUsageBudgetAlert } from "../infra/usage-budgets.js";
+import { getUsageLedger, onUsageEvent, startUsageLedger } from "../infra/usage-ledger.js";
 import { startDiagnosticHeartbeat, stopDiagnosticHeartbeat } from "../logging/diagnostic.js";
 import { createSubsystemLogger, runtimeForLogger } from "../logging/subsystem.js";
 import { initOtel } from "../observability/otel.js";
+import { startUsageMetricsExport } from "../observability/usage-metrics.js";
 import { getGlobalHookRunner, runGlobalGatewayStopSafely } from "../plugins/hook-runner-global.js";
 import { createEmptyPluginRegistry } from "../plugins/registry.js";
+import type { PluginServicesHandle } from "../plugins/services.js";
 import { getTotalQueueSize } from "../process/command-queue.js";
+import { setCommandApprovalResolver } from "../review/runtime.js";
+import type { RuntimeEnv } from "../runtime.js";
+import { registerTaskCheckContext } from "../tasks/checks.js";
 import { startCompletionNotifier } from "../tasks/completion-notifier.js";
 import { startHormonalAccessor } from "../tasks/hormonal-accessor.js";
 import { registerJudgeFromConfig } from "../tasks/judge-provider.js";
+import { startTaskStallSweep } from "../tasks/stall-sweep.js";
 import { startTaskStore } from "../tasks/store.js";
-import { runOnboardingWizard } from "../wizard/onboarding.js";
+import { VERSION } from "../version.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
+import type { EventLoopMonitorHandle } from "./event-loop-monitor.js";
 import { ExecApprovalManager } from "./exec-approval-manager.js";
 import { NodeRegistry } from "./node-registry.js";
+import type { startBrowserControlServerIfEnabled } from "./server-browser.js";
 import { createChannelManager } from "./server-channels.js";
 import { createAgentEventHandler } from "./server-chat.js";
 import { createGatewayCloseHandler } from "./server-close.js";
@@ -71,6 +79,7 @@ import { coreGatewayHandlers } from "./server-methods.js";
 import { registerAutoInitiation } from "./server-methods/auto-initiate-decider.js";
 import { createExecApprovalHandlers } from "./server-methods/exec-approval.js";
 import { safeParseJson } from "./server-methods/nodes.helpers.js";
+import type { GatewayRequestContext } from "./server-methods/types.js";
 import { hasConnectedMobileNode } from "./server-mobile-nodes.js";
 import { loadGatewayModelCatalog } from "./server-model-catalog.js";
 import { createNodeSubscriptionManager } from "./server-node-subscriptions.js";
@@ -206,6 +215,19 @@ export async function startGatewayServer(
   // BITTERBOT_EVENT_JOURNAL=0.
   startEventJournal();
 
+  // PLAN-53 E7: notices queued for a session (a reminder, an approval's
+  // outcome, a finished task) survive a restart.
+  try {
+    const restored = enableSystemEventPersistence(
+      path.join(resolveStateDir(), "system-events.json"),
+    );
+    if (restored > 0) {
+      log.info(`restored ${restored} queued system event(s) from before the restart`);
+    }
+  } catch (err) {
+    log.warn(`system event persistence is off: ${String(err)}`);
+  }
+
   // PLAN-16 Phase B: long-horizon Task store. Hosts `task_*` agent tools'
   // backing rows. On by default; override path with BITTERBOT_TASKS_DB.
   startTaskStore();
@@ -214,6 +236,8 @@ export async function startGatewayServer(
   // terminal status. Channel monitor relays the next system-event reply.
   // Disable with BITTERBOT_TASKS_COMPLETION_NOTIFY=0.
   startCompletionNotifier();
+  // PLAN-53 E4: tell the owner about tasks nothing will resume.
+  startTaskStallSweep();
   bootStep("early-subsystems");
 
   let configSnapshot = await readConfigFileSnapshot();
@@ -275,6 +299,13 @@ export async function startGatewayServer(
   // reports "judge LLM call is not registered" and the agent can route around it.
   registerJudgeFromConfig(cfgAtStart);
 
+  // PLAN-50: open the usage ledger, prune to retention, and start the transcript reconciler
+  // (one-time backfill, then a 10-minute safety net). On by default; BITTERBOT_USAGE_LEDGER=0
+  // or usage.ledger.enabled=false disables.
+  if (!minimalTestGateway) {
+    startUsageLedger({ cfg: cfgAtStart });
+  }
+
   // PLAN-17 follow-up: feed live hormonal state into the long-horizon task
   // concurrency gate. Refresh interval 30s; disable with
   // BITTERBOT_TASKS_HORMONAL_GATE=0 to fall back to the baseline policy.
@@ -293,6 +324,9 @@ export async function startGatewayServer(
   initSubagentRegistry();
   const defaultAgentId = resolveDefaultAgentId(cfgAtStart);
   const defaultWorkspaceDir = resolveAgentWorkspaceDir(cfgAtStart, defaultAgentId);
+  // B4: task acceptance checks run against the default agent workspace;
+  // command checks stay off unless BITTERBOT_TASKS_CHECK_COMMANDS=1.
+  registerTaskCheckContext({ workspaceDir: defaultWorkspaceDir });
   const baseMethods = listGatewayMethods();
   const emptyPluginRegistry = createEmptyPluginRegistry();
   const { pluginRegistry, gatewayMethods: baseGatewayMethods } = minimalTestGateway
@@ -348,7 +382,8 @@ export async function startGatewayServer(
     ? createAuthRateLimiter(rateLimitConfig)
     : undefined;
 
-  const wizardRunner = opts.wizardRunner ?? runOnboardingWizard;
+  // Unset: wizard.* runs the setup step model (PLAN-56 Phase 4).
+  const wizardRunner = opts.wizardRunner;
   const { wizardSessions, findRunningWizard, purgeWizardSession } = createWizardSessionTracker();
 
   const deps = createDefaultDeps();
@@ -533,6 +568,41 @@ export async function startGatewayServer(
         broadcast("heartbeat", evt, { dropIfSlow: true });
       });
 
+  // PLAN-50: stream every recorded usage row to the Control UI, and evaluate budgets at most
+  // once every few seconds so the alert ladder (50/80/95/100%) fires promptly without a SQL
+  // sum per token.
+  let usageBudgetTimer: NodeJS.Timeout | null = null;
+  const scheduleUsageBudgetCheck = () => {
+    if (usageBudgetTimer) {
+      return;
+    }
+    usageBudgetTimer = setTimeout(() => {
+      usageBudgetTimer = null;
+      try {
+        const ledger = getUsageLedger();
+        if (ledger) {
+          checkUsageBudgetAlerts({ ledger, cfg: loadConfig() });
+        }
+      } catch {
+        // budget evaluation never affects the gateway
+      }
+    }, 5_000);
+    usageBudgetTimer.unref?.();
+  };
+  const usageUnsub = minimalTestGateway
+    ? null
+    : onUsageEvent((evt) => {
+        broadcast("usage", evt, { dropIfSlow: true });
+        scheduleUsageBudgetCheck();
+      });
+  const usageBudgetUnsub = minimalTestGateway
+    ? null
+    : onUsageBudgetAlert((alert) => {
+        broadcast("usage.budget", alert);
+      });
+  // PLAN-50 Phase 5: OTel token counters (no-op unless an OTLP endpoint is configured).
+  const usageMetricsUnsub = minimalTestGateway ? null : startUsageMetricsExport();
+
   let heartbeatRunner: HeartbeatRunner = minimalTestGateway
     ? {
         stop: () => {},
@@ -556,6 +626,11 @@ export async function startGatewayServer(
 
   const execApprovalManager = new ExecApprovalManager();
   const execApprovalForwarder = createExecApprovalForwarder();
+  // PLAN-53 B6: a command answered from the review queue resolves the same
+  // approval the exec tool is waiting on.
+  setCommandApprovalResolver((approvalId, decision, by) =>
+    execApprovalManager.resolve(approvalId, decision, by),
+  );
   const execApprovalHandlers = createExecApprovalHandlers(execApprovalManager, {
     forwarder: execApprovalForwarder,
   });
@@ -647,7 +722,9 @@ export async function startGatewayServer(
   // beacon. A healthy boot erases it so doctor never flags a phantom failure;
   // a boot that never reaches this point leaves it for doctor to surface.
   if (!minimalTestGateway) {
-    confirmBootHealthy();
+    // With our version: a tarball update's beacon only clears for the
+    // version it expects (PLAN-56 Phase 3b).
+    confirmBootHealthy(VERSION);
   }
   const stopUpdateCheck = minimalTestGateway
     ? null
@@ -730,7 +807,12 @@ export async function startGatewayServer(
         });
 
         return startGatewayConfigReloader({
-          initialConfig: cfgAtStart,
+          // Not cfgAtStart: startup itself can write the config (the browser
+          // control service saves a generated gateway.auth.token when none
+          // exists). Diffing later edits against the pre-write copy reported
+          // `gateway` as changed and restarted the gateway on the next
+          // unrelated save, which cut the browser setup off mid-wizard.
+          initialConfig: loadConfig(),
           readSnapshot: readConfigFileSnapshot,
           onHotReload: applyHotReload,
           onRestart: requestGatewayRestart,
@@ -760,6 +842,9 @@ export async function startGatewayServer(
     stopUpdateCheck,
     agentUnsub,
     heartbeatUnsub,
+    usageUnsub,
+    usageBudgetUnsub,
+    usageMetricsUnsub,
     chatRunState,
     clients,
     configReloader,

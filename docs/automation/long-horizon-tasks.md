@@ -74,6 +74,7 @@ agent gets these tools added to its loadout:
 | `task_workspace_get`   | Read the task's durable machine-readable workspace                                           |
 | `task_workspace_merge` | Merge structured state (variables, artifact paths, handles) into the workspace               |
 | `task_schedule_wakeup` | Schedule a future agent invocation that resumes this task                                    |
+| `task_resume_inline`   | Resume a suspended task in the current conversation instead of waiting for its wakeup        |
 | `task_judge`           | Run the independent Judge to verify `done_criteria`                                          |
 
 ## The handoff-and-wakeup protocol
@@ -174,12 +175,10 @@ handoff — never the worker's chain of thought. Three verdicts:
 - **`needs_more`** → same as fail but the judge wants more evidence
   rather than more work.
 
-To configure the round cap: pass `max_rounds` to `task_judge`, or set
-`BITTERBOT_TASKS_MAX_JUDGE_ROUNDS` at boot time.
+To configure the round cap, pass `max_rounds` to `task_judge` (default 5).
 
-The Judge requires an LLM provider to be registered at gateway boot.
-Call `registerJudgeLlmCall(fn)` from `src/tasks/judge.ts` during
-startup to wire it in. Until that's done, `task_judge` returns a
+The gateway registers the Judge from config at startup. It is unavailable
+only when no judge model can be resolved; `task_judge` then returns a
 structured "judge LLM not registered" error.
 
 ## Monitoring
@@ -331,3 +330,14 @@ Judge machinery described above.
 
 See `research/plans/PLAN-16-LONG-HORIZON-TASK-EXECUTION.md` in the
 repository for the design rationale.
+
+## Seeing and stopping tasks
+
+The **Automations** page in the Control UI lists the tasks in progress and those finished in the last week, with a **Stop** button. A task that has not moved for over a day and has nothing scheduled to resume it is marked as stuck.
+
+The gateway checks for stuck tasks itself (ten minutes after start, then every six hours) and tells you once per task: in the main session, as a notice in the Control UI, and on your chat channel subject to [`notifications`](/gateway/configuration-reference#notifications). A restart that interrupts running tasks is reported the same way.
+
+```bash
+bitterbot gateway call tasks.list
+bitterbot gateway call tasks.stop --params '{"id":"task-..."}'
+```

@@ -4,7 +4,9 @@
  *
  * We are pre-release: the whole fleet runs git checkouts of main, so the
  * drift metric that matters is commits behind upstream. Package (npm)
- * installs fall back to a semver comparison against the registry.
+ * installs fall back to a semver comparison against the registry, and
+ * container and release-tarball installs against the newest GitHub release
+ * (PLAN-56 Phases 2 and 3).
  */
 
 import { VERSION } from "../version.js";
@@ -21,7 +23,7 @@ export type UpdateStaleness = {
   /** True when the node should prompt its human to update. */
   stale: boolean;
   /** Why `stale` is what it is — for logs and the UI tooltip. */
-  reason: "git-behind" | "package-version" | "fresh" | "unknown";
+  reason: "git-behind" | "package-version" | "image-version" | "fresh" | "unknown";
 };
 
 export function computeUpdateStaleness(
@@ -54,17 +56,25 @@ export function computeUpdateStaleness(
     };
   }
 
-  if (check.installKind === "package") {
+  if (
+    check.installKind === "package" ||
+    check.installKind === "container" ||
+    check.installKind === "tarball"
+  ) {
+    // Containers: `channelVersion` is the newest GitHub release (the image
+    // published for it); release tarballs: the newest release carrying this
+    // platform's tarball. The same semver comparison applies.
     const latest = opts?.channelVersion ?? check.registry?.latestVersion ?? null;
     const cmp = compareSemverStrings(VERSION, latest);
     if (cmp == null) {
       return { behind: null, threshold, stale: false, reason: "unknown" };
     }
+    const behindReason = check.installKind === "container" ? "image-version" : "package-version";
     return {
       behind: null,
       threshold,
       stale: cmp < 0,
-      reason: cmp < 0 ? "package-version" : "fresh",
+      reason: cmp < 0 ? behindReason : "fresh",
     };
   }
 

@@ -122,9 +122,11 @@ The x402 v2 protocol defines three standard HTTP headers for the payment handsha
    bitterbot-x402:v1:<recipient-lower>:<txHash-lower>:<amount>:<sender-lower>:<timestamp-ms>
    ```
 
-   with EIP-191 `personal_sign`. The seller recovers the signer with `recoverMessageAddress` and confirms it matches the on-chain `Transfer.from`. This binds the proof to the specific (recipient, txHash, amount) tuple, so a leaked txHash cannot be replayed against a different recipient. Tokens without a signature are still accepted by the verifier (with a deprecation warning) for transition compatibility -- new clients should always sign.
+   with EIP-191 `personal_sign`. The seller recovers the signer with `recoverMessageAddress` and confirms it matches the on-chain `Transfer.from`. This binds the proof to the specific (recipient, txHash, amount) tuple, so a leaked txHash cannot be replayed against a different recipient.
 
-5. **Verification and execution.** The selling agent verifies the transaction on-chain (see "On-Chain Verification" below), confirms the amount and recipient match, and then creates and executes the task.
+Unsigned proofs are rejected by default. `a2a.payment.allowUnsignedProofs: true` accepts legacy unsigned proofs from older clients, but then anyone who sees a payment to your wallet on-chain can redeem it before the payer does: the consume-once check stops reuse, not that theft. Bitterbot's own client always signs.
+
+5. **Verification and execution.** The selling agent verifies the transaction on-chain (see "On-Chain Verification" below), confirms the recipient matches and the amount is at least the required price, and then creates and executes the task.
 
 6. **Result delivery.** The task result is returned in the JSON-RPC response. The `PAYMENT-RESPONSE` header is included on the 200 OK response, containing a Base64-encoded JSON object with `transactionHash`, `payer`, and `network`.
 
@@ -475,8 +477,8 @@ Send the initial request, handle the 402, pay, and retry:
 
 ```typescript
 import { createWalletClient, http, parseUnits } from "viem";
-import { base } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
+import { base } from "viem/chains";
 
 const USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"; // USDC on Base
 
@@ -645,7 +647,7 @@ The initial `message/send` response returns the task in `working` state. Poll wi
 
 ## Daily Spend Limits and Safety Guards
 
-The A2A client enforces configurable spending limits to prevent runaway costs when making outbound purchases:
+Before these caps apply, `review.spend` (default `"ask"`) holds each paid task for your approval when the price comes back, unless a standing spend grant covers it. The A2A client then enforces configurable spending limits to prevent runaway costs when making outbound purchases:
 
 ```jsonc
 {
@@ -754,6 +756,482 @@ If any check fails, the selling agent responds with 402 and a JSON-RPC error bod
 
 ---
 
+## Agent Payment Mandates, Enforcement, and Consent (AP2 / PLAN-47)
+
+On top of the x402 settlement above, Bitterbot adds an **authorization layer**: a
+signed mandate that proves _who authorized this spend and under what limits_, plus
+a runtime gate that enforces it. This follows the two-layer pattern the agentic-payments
+ecosystem converged on — signed mandates authorize (Google's [AP2](https://ap2-protocol.org/)),
+stablecoins settle (x402) — and it is on by default. It never changes the money math:
+x402 on-chain settlement remains the source of truth, and mandates only ever _constrain_
+a payment, never create one.
+
+### What rides along with a payment
+
+When a buying node pays a 402, it attaches an `ap2` object inside the base64 payment
+token (the same token that already carries the x402 proof), alongside the existing
+`txHash`/`amount`/`signature` fields:
+
+```jsonc
+{
+  "version": "v1", "txHash": "0x…", "amount": 0.05, "sender": "0x…",
+  "recipient": "0x…", "timestamp": 1735689600000, "signature": "0x…",
+  "ap2": {
+    "intent":  { "claims": { "vct": "mandate.payment.open.1", ... }, "signature": "0x…", "signer": "0x…" },
+    "payment": { "claims": { "vct": "mandate.payment.1", ... },      "signature": "0x…", "signer": "0x…" },
+    "consent": { "claims": { ... }, "signature": "<ed25519 hex>" },   // optional (consent lineage)
+    "binding": { "walletAddress": "0x…", "circlePubkey": "ed25519:…", "sigByWallet": "…", "sigByCircle": "…" }
+  }
+}
+```
+
+A peer that does not understand `ap2` ignores it, so this is fully backwards
+compatible with plain x402 clients.
+
+- **Intent mandate** (`mandate.payment.open.1`) — the delegated budget: per-task max
+  and daily ceiling, with conditions. Self-signed by the agent's wallet key.
+- **Payment mandate** (`mandate.payment.1`) — authorization of the one concrete charge
+  (payee, amount, instrument, `transaction_id`), bound to the intent by hash.
+
+Mandates use the verbatim AP2 claim vocabulary and are signed with the node's proven
+secp256k1 / EIP-191 wallet key over a domain-separated canonical form
+(`bitterbot-ap2-mandate:v1:…`), so a mandate signature can never be confused with an
+x402 token signature. This is the default production path: AP2-_modeled_ and
+verifiable between Bitterbot nodes.
+
+**AP2-native wire format (SD-JWT / P-256).** For cross-verifiability with third-party
+AP2 verifiers, `src/payments/ap2/sd-jwt.ts` emits a mandate as a standard compact JWS
+(`alg: ES256`) with the P-256 signing key expressed as a JWK in the payload's `cnf.jwk`
+— the AP2-native encoding. `emitPaymentMandateSdJwt` produces it and `verifyMandateSdJwt`
+checks the ES256 signature against `cnf.jwk` (plus `exp`); any conformant ES256 verifier
+can verify it holding only the JWK — no secp256k1 / eip155 knowledge. This is the
+cross-verifiable form the earlier "roadmap item" note referred to; it is implemented and
+tested, ready to swap in for third-party interop, with the secp256k1 path remaining the
+in-fleet default until that is turned on.
+
+### The enforcement gate
+
+After the inbound x402 payment verifies on-chain, if the token carries an `ap2`
+mandate the selling node runs it through the enforcement gate and emits a **Policy
+Decision Record** (an auditable allow/deny with reasons). The gate adds the two
+runtime guarantees a valid signature alone does not provide:
+
+- **Consume-once** — a Payment mandate settles at most once; a replay is denied even
+  though its signature is still valid. The nonce is keyed on the mandate's claims (so
+  a re-signed replay is caught too) and claimed atomically after all other checks pass.
+- **Context binding** — the mandate's declared `payee` must equal the party actually
+  being paid, so a mandate authorizing merchant A cannot be redirected to settle
+  against B. This is new over the x402 check, which only binds the token to our wallet.
+
+Plus authenticity + expiry, and that the charge is within the intent's budget. When
+`a2a.payment.enforcement.enabled` is on (default), a **present-but-invalid** mandate
+(forgery / replay / redirect) blocks the task; when off, the gate is advisory (logs
+the decision, never blocks). A **missing** mandate never blocks, and any internal
+error fails open to the on-chain decision — an enforcement bug can never reject a
+task the buyer already paid for.
+
+> **Mandate binding (v2 tokens).** As of PLAN-48 Phase 5, an outbound token that
+> carries an AP2 mandate is signed as **v2**: the payment mandate's hash is folded into
+> the signed canonical string (`bitterbot-x402:v2:…:<mandateHash>`). Stripping or
+> altering the mandate — or downgrading the token to v1 to shed the binding — changes
+> the signed bytes, so the recovered signer no longer matches the declared sender and
+> the payment is **rejected** (finding C, closed for v2). A v2 token that arrives with
+> no mandate is rejected outright. Residual: a peer can still send a legacy **v1** token
+> with no mandate at all; that path is unchanged and is not consent-gated. Acceptable
+> under the fleet posture (Bitterbot nodes emit v2, and a mandate never grants payment —
+> on-chain settlement is the source of truth); requiring a mandate from known peers is
+> the remaining follow-up.
+
+### Consent lineage (Circles)
+
+Optionally, the buyer also attaches a **spend consent** and an **identity binding** so
+the settling party can verify that the spend traces to a consent signed by the same
+principal that controls the paying wallet — provenance an AP2-only stack cannot
+produce. The spend consent is signed by the node's Ed25519 Circles identity (its
+device key); the identity binding is a statement signed by _both_ the wallet key and
+the circle key, which is what ties the wallet identity (mandate signer) to the Circles
+identity (consent signer). The gate verifies the whole chain and records a
+verified/unverified `consentRef` on the Policy Decision Record.
+
+Consent is **additive provenance** by default: an unverified consent is recorded but
+does not by itself flip the verdict. Setting `a2a.payment.consent.gateThresholdUsd` to a
+positive USD amount flips it to **gating** at/above that amount — a settlement whose
+mandate lacks a _verified_ consent lineage is then denied (the consent gate runs before
+the consume-once step, so a consent-blocked mandate is not burned and can settle once a
+verified consent is supplied). It takes effect only while `enforcement.enabled` is on,
+and default-off keeps the additive posture until on-chain grants exist (D-5). When a
+human-set spend grant covers the spend, the emitted consent back-references it
+(`grant_ref`), so the lineage is grant -> consent -> payment. See
+`docs/network/circles.md` for the Circles identity/consent substrate.
+
+### Spend grants & escalation (PLAN-48)
+
+The consent above answers "did the owner authorize this?"; **spend grants** are how
+the owner authorizes, following the model of ERC-7715 `wallet_grantPermissions` and
+AP2 Intent Mandates: **scope once, spend silently in-scope, escalate out-of-scope.**
+
+- **A spend grant** is a signed, revocable budget the owner sets once: an allowance
+  per period, to a set of payees, with an expiry (`{allowed_payees, allowance,
+  period_seconds, per_tx_max?, exp}`), signed by the node's owner/device Ed25519 key
+  so it is tamper-evident and non-repudiable. Managed via the `spendGrant.*` operator
+  RPCs (`set` / `list` / `revoke`).
+- **In-scope spends** proceed with zero prompts and carry the grant's id into their
+  consent. Per-period usage is tracked, so the allowance depletes and refills on the
+  period boundary.
+- **Out-of-scope spends** (no covering grant) **escalate**: the agent raises an
+  approval request and does not pay. A human resolves it with `spendGrant.approve`
+  (which mints a one-time grant scoped to exactly that spend) or `spendGrant.deny`
+  (which spends nothing). List pending requests with `spendGrant.approvals`. A
+  one-time grant is **single-use**: it is claimed atomically before the spend
+  settles (`claimSingleUse`), so a replay, a retry after a failed usage-record, or
+  a concurrent spend cannot reuse it — the second attempt re-escalates.
+- **First run — start safe (D-4).** With no policy set, the Spend Grants tab offers
+  one-click conservative defaults: require a grant for any spend (so out-of-scope
+  spends escalate) and step up on approvals at or above a small floor
+  ($5) — the "can't spend much alone" posture, loosened later by choice.
+- **Escalations are delivered**, not just polled: when a NEW approval is raised, a
+  human-readable line (`[spend approval needed] $X to <payee> …`) is enqueued onto the
+  main agent session's event queue, which the channel monitor relays to the operator's
+  primary channel (Telegram / WhatsApp / Discord / Slack) — the same best-effort path
+  the task-completion and skill-quarantine notifiers use. A retry loop escalating the
+  same spend reuses the pending approval and does not re-notify. Delivery is fail-open
+  (a missing channel never disturbs the already-refused spend) and can be disabled with
+  `BITTERBOT_SPEND_ESCALATION_NOTIFY=0`.
+- **Revocation is immediate** — a revoked or expired grant authorizes no further spend
+  on the next resolution, and never unwinds a spend that already settled.
+
+This is gated by `a2a.payment.consent.grantsRequired` (default **false**). With it
+off, `review.spend` still applies: under the default `"ask"`, each paid task is held for
+your approval unless a covering grant lets it through (the grant back-references the consent);
+with it on, a spend with no covering grant is refused and escalated rather than paid —
+the "can't spend unbidden" safe posture. Grant enforcement is app-side today; binding
+the same grant to an on-chain spend permission (CDP Smart Account / ERC-7710) is the
+Phase 4 upgrade. Its pure half is built and tested — `src/payments/wallet/smart-account.ts`
+turns the `wallet.smartAccount` allowance config into the on-chain spend-permission
+descriptor (`buildSpendPermission`) and provides the I5 address/balance continuity check
+(`assertAddressContinuity`, also run by `doctor-wallet`), and `WalletService.getSmartAccountConfig()`
+surfaces the parameters. The live cutover (creating the ERC-4337 CDP Smart Account and
+routing sends through it with sponsored-gas user operations) moves real value, so it is a
+Victor-run operator step (testnet first), deliberately not fired by the agent. The
+one-tap approval UI (the "Spend Grants" tab) is the human-facing surface that consumes
+the approval requests.
+
+**High-value step-up (passkey / biometric).** Set
+`a2a.payment.escalation.stepUpThresholdUsd` to require a local passkey/biometric
+confirmation before approving an escalation at or above that amount (undefined or
+`<= 0` disables it — the default). In the Control UI, approving such a spend runs a
+platform WebAuthn user-verification ceremony (Touch ID / Windows Hello); if no platform
+authenticator is available it degrades to a typed `APPROVE` confirmation, so an operator
+is never locked out of approving. The confirmation method (`passkey` / `typed`) is
+recorded on the approval for the audit trail. **Honest limitation:** the ceremony is
+verified only in the browser — the server records the method but does not yet verify a
+WebAuthn assertion against a registered credential (server-side verification is a tracked
+fast-follow), so the step-up guards against a casual mis-approval from an unattended,
+already-authenticated Control UI, not a modified client. WebAuthn needs a secure context
+(https or localhost).
+
+### Configuration
+
+These live under `a2a.payment` (see the full Configuration Reference below), all
+default-on and individually kill-switchable:
+
+```jsonc
+{
+  "a2a": {
+    "payment": {
+      "ap2": { "enabled": true }, // attach + verify AP2 mandates
+      "enforcement": { "enabled": true }, // block present-but-invalid mandates (off = advisory only)
+      "consent": { "grantsRequired": false, "gateThresholdUsd": 0 }, // grantsRequired: covering grant on outbound; gateThresholdUsd: >0 blocks inbound at/above w/o verified consent
+      "escalation": { "stepUpThresholdUsd": 0 }, // >0 = passkey step-up on approvals at/above this USD amount
+    },
+  },
+}
+```
+
+The outbound attachment is also gated by the A2A client's `ap2Enabled` (default true).
+
+---
+
+## Remote Execution Is Hermetic (PLAN-43 Phase 1)
+
+An inbound `message/send` or `message/stream` task executes an agent turn on
+this node driven by a REMOTE caller's input. That turn is hermetic:
+
+- It gets NO tools by default: it is a pure model turn over the prompt. The
+  operator can grant tools via `a2a.remoteExecution.tools.allow`, but a
+  hardcoded floor (wallet, shell/exec/process, session spawning and
+  steering, cron, node control, browser/computer use, outbound messaging,
+  web egress, memory/skill state) can never be granted back to a remote
+  caller, by config or otherwise. The Docker session sandbox
+  (`agents.defaults.sandbox`) remains available as a hard process boundary
+  on top.
+- It carries a real server-side wall clock (`timeoutSeconds`, default 600):
+  the run aborts at the deadline rather than surviving its reporting
+  window.
+- Inbound text is size-capped (`maxInputChars`) BEFORE the payment gate, so
+  an oversize request is refused rather than charged, then injection-scanned
+  and wrapped as untrusted external content.
+- The result is size-capped (`maxOutputChars`) and injection-scanned before
+  it returns to the caller; a critical payload is withheld.
+- `message/stream` passes the same x402 payment gate as `message/send`.
+
+## Metered Skill Invocation and Task Access (PLAN-43 Phase 1)
+
+- **Exact-ID invocation.** A `message/send` (or `message/stream`) request
+  may name a listed skill via `params.skillId` (or
+  `params.metadata.skillId`). The task then executes that skill's
+  definition against the caller's request, and the payment gate prices the
+  call at the skill's listed per-call price (never below
+  `payment.x402.minPayment`). An id that is not currently listed for sale
+  is refused with 404 before any payment is taken. There is no fuzzy
+  matching: a purchase is attributed to a skill only when the buyer named
+  its exact id.
+- **Per-task access tokens.** The `message/send` create response carries a
+  per-task `accessToken` (reusable across polls for that task's lifetime);
+  `message/stream` delivers the same fields in its first SSE event
+  (`event: task`), so a dropped stream never orphans a paid result. Under
+  `authentication.type: "none"`, `tasks/get` and `tasks/cancel` require
+  that token (`params.accessToken`) — without it, callers get
+  `TASK_NOT_FOUND`, so task ids cannot be probed and one buyer can never
+  read another buyer's paid result. `tasks/list` requires a real credential
+  (bearer token) or a local direct request. Task reads never include the
+  token; keep it from the create response.
+- The outbound client (`services/a2a-client.ts`) polls `tasks/get` with the
+  access token until the task reaches a final state, so buyers receive the
+  actual result rather than the initial "working" snapshot.
+- When `payment.enabled` is false the whole surface is free, including
+  named-skill invocation — enabling payments is what puts the meter on.
+  Known residual until Phase 2's quote flow: a listing price raised between
+  a 402 quote and the buyer's paid retry is rejected as underpayment after
+  the USDC settled; the client's price cap bounds the loss to the quoted
+  amount, and re-invoking after the price change works.
+
+## Listing Integrity: Lineage and Royalty (PLAN-43 Phase 3)
+
+- **Lineage-laundering gate (seller-side, good-faith).** Opting a skill
+  into sale content-addresses it (SHA-256, exposed as `contentSha256` on
+  listings) and compares it against the local commons (peer-origin and
+  free-shared skills, any lifecycle). Evidence order: an exact or
+  normalized content-hash match (frontmatter, provenance trailers, case
+  and whitespace stripped) is decisive on its own; otherwise embedding
+  cosine against commons rows embedded by the same model. A copy or
+  near-duplicate (cosine 0.92 or higher) that does not cite the source
+  author's pubkey as lineage is refused and recorded in
+  `listing_refusals` (bounded per crystal). Citing a crystal id does not
+  count: the refusal discloses it and no payout can reach it. A candidate
+  whose embedding is not indexed yet is refused (fail closed) whenever the
+  commons has embeddings to compare against; an empty or unembedded
+  commons needs no comparison. Similarity between 0.80 and 0.92 is flagged
+  on the listing (`lineage_flagged`) but allowed. A match against this
+  node's own free-shared skill (no peer author) owes nobody lineage. The
+  gate re-runs on every listing refresh, pulling a listing that no longer
+  passes.
+- **Honest scope.** The gate runs on the seller's own node against the
+  seller's own database. It binds unmodified nodes and catches verbatim
+  and near-verbatim copies; a full paraphrase lands below the threshold.
+  The receiver-side attestations below are the enforcement that does not
+  depend on the seller.
+- **Citing lineage.** `marketplace.listForSale` accepts
+  `{ "crystalId": "...", "lineage": ["<author pubkey>", ...] }`. The cited
+  authors are merged into the crystal's provenance chain (a union: citing
+  can add an author, never erase recorded contributors), the chain is
+  restored if the gate refuses, and the author the gate actually
+  identified is stored on the listing (`lineage_author_pubkey`). The
+  revenue split pays the author share from that evidence, not from
+  whatever chain the seller supplied.
+- **Registry royalty (accrued, unpaid by default).** A sale of a skill
+  imported from a registry (agentskills.io, matched by the content hash in
+  its `.provenance.json`, then by frontmatter name) reserves
+  `skills.agentskills.royaltyBps` for the registry as a `registry_royalty`
+  share before the 70/20/10 publisher/author/contributor split. The share
+  is queued under the recipient `agentskills.io` and pays out only when
+  `skills.agentskills.royaltyWallet` is configured; until then it stays
+  queued: never silently kept, never silently dropped.
+
+## Receiver-Side Attestations (PLAN-43 Phase 3)
+
+Trust in a skill never rests on the seller's reported scores. In tasks
+mode, the evolution loop's housekeeping sweep re-scores peer-origin skills
+on THIS node's corpus: the seeded canonical regression suite plus the
+node's private capability suite, skill injected (candidate) vs the agent
+as-is (incumbent), under the same sign-test gate skills face for
+promotion. The verdict is signed with the node's device identity as an
+attestation keyed by the skill's content SHA-256 (`attest/v1`;
+protocol-prefixed canonical JSON, Ed25519, closed schema with every
+numeric field range-checked) and stored in `skill_attestations`.
+
+- **Only measurements are evidence.** A hold (no capability suite yet,
+  runner failure, too few tasks) is never signed, stored, or aggregated;
+  the sweep short-circuits entirely when the node has no capability
+  tasks. A skill is re-attested when the private suite or the canonical
+  corpus generation changes, and only current-generation verdicts count in
+  the aggregate.
+- **Bounded, fair, safe.** One skill per author per pass (a peer pushing
+  fresh edits daily cannot own the rollout budget), oldest unattested
+  first, at most one per pass by default. Peer text the injection scanner
+  rates medium or worse is never executed. Validation rollouts run in
+  sessions the trust classifier marks untrusted (no canonical pins, no
+  standing directives), excluded from transcript ingestion, and under the
+  same tool floor as remote A2A callers (no wallet, shell, sessions,
+  messaging, or egress tools). The attester key is loaded read-only: a
+  transient read failure disables attestation for the pass instead of
+  rotating the identity.
+- **Aggregation.** Reputation-weighted, weight-trimmed mean (the lowest
+  and highest 20% of attester weight are discarded once five or more
+  TRUSTED attesters have measured). Weights: own node and
+  `a2a.attestation.trustedAttesters` count 1, `blockedAttesters` count 0,
+  everyone else `unknownAttesterWeight` (default 0.05), and all unknown
+  attesters together may weigh at most 25% of the trusted weight present.
+  Minting identities is free, so two things, not the per-key weight, are
+  the defense: that cap bounds how far strangers can move a trusted
+  verdict, and unknown-only evidence never produces a score at all (a
+  skill nobody trusted has measured shows `score: null` with an
+  `unverified` count). The corpus-generation filter is a freshness
+  filter, not proof: `corpus_version` and `private_suite_sha256` are
+  claims a signer makes about itself. Any new failure scores -1
+  regardless of wins. Verdicts are recorded and surfaced (marketplace
+  entries carry `attestation` with the counted attesters, and
+  `sortBy: "attested"` ranks by it with a confirmed regression below
+  "not yet measured"); deactivating a skill on a regression verdict is an
+  operator decision, not automatic.
+- **Exchange.** `skill/attest.list { contentSha256 }` and
+  `skill/attest.submit { attestation }` are A2A verbs served from the
+  memory store (independent of the marketplace flag) without bearer auth
+  (records carry their own signatures; verdicts about a content hash are
+  public evidence, and `list` therefore reveals which skills a node holds
+  and the attesting model name). Submits are verified before storage,
+  accepted only for skills this node holds, refused for blocked attesters,
+  rate-limited per client, and capped (64 attesters per skill, 50k rows;
+  evidence older than 90 days is pruned). Housekeeping pushes this node's
+  attestations for its most recent peer skills to `a2a.attestation.peers`
+  and pulls theirs, verifying every record, reading at most 256 KB per
+  response, with a per-peer deadline. The exchange runs in any validation
+  mode; only re-scoring needs tasks mode. A peer's copy of this node's
+  own record never overwrites it. Peers may not be loopback or link-local
+  addresses.
+
+## Commerce Standing, Freeze, and the Bond Ledger (PLAN-43 Phase 3)
+
+- **Commerce standing from real outcomes.** Every outbound A2A task this
+  node sends is recorded per peer endpoint (URL origin) in
+  `commerce_reputation`: answered, unreachable (network error or 5xx), or
+  failed, with latency. This node's own refusals (price cap, daily spend
+  cap, its own wallet) and HTTP 4xx answers (payment required, auth, rate
+  limit) are never scored against the peer. Answer rate and uptime are
+  therefore this node's own observations, never a peer's claim. A peer
+  under a 50% answer rate over five or more attempts since its last
+  quarantine is quarantined for 24 hours: the A2A client refuses to spend
+  on it until the window passes, and the counting window restarts so a
+  recovered peer earns its way back in a handful of calls. Honest scope:
+  this is an endpoint throttle protecting this node's spend, keyed by
+  origin, which a peer can evade with a new host or port at no cost; it
+  is not a network reputation. Quarantine is separate from the
+  skill-ingestion ban (a flaky seller keeps its free-skill standing; a
+  banned publisher keeps nothing: its skills leave browse, trending,
+  recommendations, and detail with the ban). The `a2a_status` tool
+  (`scope: "peers"` or `"all"`) and the `marketplace.commerce` RPC (read
+  scope) surface the standings and quarantine reasons.
+- **Listings kill switch.** `a2a.marketplace.freezeListings: true` empties
+  the sellable set immediately (invoke and listing RPCs read empty, and
+  prices leave the agent card at the next request; callers may hold a
+  cached card for up to five minutes). It is read from the live config
+  file; no restart is needed.
+- **Slashable seller bond, as a ledger.** `marketplace.postBond
+  { sellerPubkey, amountUsdc }` (operator write scope) records a stake at
+  risk; no funds move anywhere in this path (invariant I7). The trigger is
+  corroborated regression evidence, not a single failing task: this
+  node's own regression attestation on a peer-origin skill from that
+  seller, with either two or more failing tasks or a second attester's
+  regression verdict. The evolution housekeeping pass (any validation
+  mode) records the verdict once per (skill, seller), marks the seller's
+  posted bonds slashed with the evidence, and quarantines the seller by
+  pubkey for 30 days. That pubkey quarantine blocks the A2A client only
+  when it knows the seller's pubkey for an endpoint: pass `peerPubkey` (a
+  marketplace entry's `authorPeerId`) to the `a2a_client` tool, and the
+  endpoint remembers it; an endpoint dialed without a pubkey is not
+  joined to fraud verdicts. `marketplace.bonds` lists the ledger and the
+  verdict count (a verdict against a seller with no bond slashes nothing
+  but is still recorded and surfaced). Releasing a bond is a ledger
+  action too. Turning any of this into money movement is a separate,
+  flag-gated decision for payments counsel.
+
+## Contribution Status (PLAN-43 Phase 4)
+
+Free contribution is rewarded with standing, never with money (invariant
+I5; there is no tip, bounty, or payout on the commons). A contributor's
+standing on this node is recomputed at every consolidation pass from
+signals this node itself verified:
+
+- skills of theirs this node accepted and holds
+- real executions of those skills here, and how many succeeded
+- attestations with measured verdicts on those skills (accepted versus
+  regression) from this node and from `a2a.attestation.trustedAttesters`
+- lineage credits: paid listings here whose gate evidence names them as
+  the source author
+- penalties: corroborated regression verdicts and bans
+
+Downloads, stars, views, and any self-reported number never enter
+(invariant I6). Executions credited to a skill are capped at five per
+skill, and executions the tool hook attributed by tool-name match are
+not counted at all (a skill named after a built-in tool would otherwise
+inherit that tool's every call). Tiers are `newcomer`, `contributor`,
+`trusted_contributor`, `core`, and `flagged`. Every tier above
+`contributor` requires at least one measured accepted verdict; execution
+counts alone never climb past `contributor`. A contributor with more
+regression than accepted verdicts drops back to `newcomer`. A fraud
+verdict or ban flags them, and a flag is sticky: only the operator's
+`marketplace.contributorClearFlag` (write scope) removes it. Tiers unlock
+privileges, not cash:
+
+| Tier                | Ingestion trust floor | Publication-rate lift | Circle invite uses |
+| ------------------- | --------------------- | --------------------- | ------------------ |
+| newcomer / flagged  | none                  | 1x                    | 1                  |
+| contributor         | none                  | 2x                    | 3                  |
+| trusted_contributor | trusted               | 2x                    | 3                  |
+| core                | trusted               | 3x                    | 10                 |
+
+The trust floor lifts `untrusted` or `provisional` ingestion trust to
+`trusted`, never to `verified` (that stays earned through reputation or
+the operator's trust list), and an active publication-spike anomaly
+still caps a peer at `provisional`. Operators should know what
+`trusted` means downstream: the skill capability gate gives trusted
+authors a wider baseline (declared network hosts and filesystem access
+beyond the workspace) and, under `ingestPolicy: "auto"`, their skills
+skip the review quarantine. That is why the floor is reachable only
+through a measured verdict on this node's own corpus, never through
+counts. The rate lift multiplies the anomaly detector's threshold.
+Invite uses apply to target-bound circle invites created for that
+contributor; a ban drops them to one and revokes open invites already
+minted for that peer. Stale tiers are cleared at every recompute, so a
+peer whose skills are gone keeps nothing. Marketplace entries carry the
+author's `contributor` tier and rank; `marketplace.contributors` (read
+scope) lists standings and the privilege table, with `recompute: true`
+to refresh on demand (throttled to once a minute). A fraud verdict in
+the evolution pass re-derives standings immediately.
+
+## Selling Is Opt-In Per Skill (PLAN-43 Phase 0)
+
+The paid listing pool is fully decoupled from free skill propagation:
+
+- A skill becomes a paid-listing candidate only when its crystal carries the
+  explicit `for_sale` flag. Free propagation (`publish_visibility: "shared"`)
+  never implies a paid listing, and vice versa; a skill can be both
+  free-propagated and for sale, but nothing auto-enrolls.
+- Opt in or out via the gateway RPCs `marketplace.listForSale` and
+  `marketplace.delist` (both take `{ "crystalId": "…" }`, and both require
+  the `operator.write` scope). Opting in makes the skill a candidate; it is
+  priced and quality-gated (minimum executions and success rate) at the next
+  consolidation refresh, roughly every 30 minutes. Delisting removes the
+  paid listing immediately, though an already-served agent card may be
+  cached by callers for up to 5 minutes (`Cache-Control: max-age=300`).
+  Peer-imported crystals cannot be listed until the provenance-split wiring
+  ships (Phase 1): a sale must never silently keep 100%.
+- Listings rank by PLAN-42 validation verdicts: canonical-corpus verdicts
+  first, then grown-corpus verdicts, then unvalidated skills. Never by
+  price, downloads, or other farmable counts.
+- The agent card advertises no skills unless the operator sets
+  `a2a.skills.expose: "all"` or an explicit allowlist.
+
 ## Configuration Reference
 
 The `a2a` block in `~/.bitterbot/config.jsonc`:
@@ -770,8 +1248,23 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
       "bearerToken": "…", // optional; falls back to gateway auth token
     },
     "skills": {
-      "expose": "all", // "all" | "none"
-      "allowlist": ["summarize-webpage"], // narrows what's published in the agent card
+      "expose": "none", // "all" | "none"; DEFAULT "none" (PLAN-43 Phase 0: advertising skills is opt-in)
+      "allowlist": ["summarize-webpage"], // implies exposure of exactly these skills when "expose" is unset
+    },
+    "remoteExecution": {
+      // PLAN-43 Phase 1: hermetic execution of inbound task turns
+      "tools": { "allow": [], "deny": [] }, // default: a remote turn gets NO tools
+      "maxInputChars": 32000, // oversize requests are refused before the payment gate
+      "maxOutputChars": 64000, // results truncate beyond this
+      "timeoutSeconds": 600, // server-side wall clock on the spawned turn
+    },
+    "attestation": {
+      // PLAN-43 Phase 3: receiver-side attestation exchange
+      "enabled": true, // serve skill/attest.* and sync with peers
+      "peers": ["https://peer.example"], // A2A base URLs to push/pull attestations with; default []
+      "trustedAttesters": ["ed25519:<hex>"], // device attester pubkeys weighing 1.0
+      "blockedAttesters": [], // ignored entirely
+      "unknownAttesterWeight": 0.05, // everyone else; their total is capped at 25% of trusted weight
     },
     "payment": {
       "enabled": false, // default derives from wallet readiness: on when full CDP creds present, off otherwise; explicit value wins
@@ -779,9 +1272,29 @@ The `a2a` block in `~/.bitterbot/config.jsonc`:
         "address": "0x…", // optional; defaults to the node's own CDP wallet address
         "minPayment": 0.01, // floor in USDC
       },
+      "ap2": {
+        // PLAN-47: attach a signed AP2 mandate to outbound x402 payments and verify inbound ones
+        "enabled": true, // default true; advisory unless enforcement is also on
+      },
+      "enforcement": {
+        // PLAN-47: consume-once + context binding on inbound mandates, emitting Policy Decision Records
+        "enabled": true, // default true; block a present-but-invalid mandate. false = advisory-log-only
+      },
+      "consent": {
+        // PLAN-48: require a human-set spend grant to cover an outbound payment; escalate otherwise
+        "grantsRequired": false, // default false; true = uncovered spends raise an approval instead of paying
+        // PLAN-48 Phase 5 (D-5): inbound consent gating. >0 blocks an inbound settlement at/above this USD
+        // whose mandate lacks a VERIFIED consent lineage. 0/undefined = additive (recorded, never blocks).
+        "gateThresholdUsd": 0,
+      },
+      "escalation": {
+        // PLAN-48 Phase 2: step-up confirmation on high-value escalation approvals in the Control UI
+        "stepUpThresholdUsd": 0, // 0/undefined = disabled; >0 = passkey/biometric (typed fallback) required at/above this USD
+      },
     },
     "marketplace": {
       "enabled": true,
+      "freezeListings": false, // PLAN-43 Phase 3 kill switch: true = nothing advertised or sellable (live)
       "pricing": { "basePriceUsdc": 0.01 },
       "client": {
         // outbound spend caps
@@ -828,5 +1341,6 @@ The tool also returns short, paraphrasable `hints[]` strings for the agent to su
 
 - [A2A Protocol Specification](https://a2a-protocol.org/latest/specification/) -- canonical Google A2A reference.
 - [x402 Protocol Specification](https://github.com/coinbase/x402) -- canonical Coinbase x402 reference and v2 transport spec.
+- [AP2: Agent Payments Protocol](https://ap2-protocol.org/) -- the signed-mandate authorization layer Bitterbot models (see "Agent Payment Mandates, Enforcement, and Consent" above).
 - [ERC-8004: Trustless Agents](https://eips.ethereum.org/EIPS/eip-8004) -- identity, reputation, validation registries.
 - [Skill Marketplace Guide](./skill-marketplace.md) -- user-facing overview of marketplace features, pricing configuration, and security.

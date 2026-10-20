@@ -13,11 +13,11 @@
 import type { DatabaseSync } from "node:sqlite";
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
-import type { AnyAgentTool } from "./common.js";
 import { getForageStats } from "../../memory/bounty-tape.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
+import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
 
 const ForageSchema = Type.Object({
@@ -151,7 +151,8 @@ export function createForageTool(options: {
       "Read-only; always use this instead of guessing when asked about bounties, " +
       "agent earnings, or the agent economy.",
     parameters: ForageSchema,
-    execute: async (_toolCallId, params) => {
+    execute: async (_toolCallId, args) => {
+      const params = args as Record<string, unknown>;
       const action = readStringParam(params, "action", { required: true });
       const limit = Math.min(Math.max(readNumberParam(params, "limit") ?? 20, 1), 100);
       const db = await getBountyDb(cfg, agentId);

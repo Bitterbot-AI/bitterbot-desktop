@@ -18,7 +18,7 @@ Skills declare a `tier:` in their SKILL.md frontmatter:
 - **`advisory`** — markdown-only; the LLM may or may not follow the guidance. The legacy default.
 - **`data`** — assets, references, templates; no behavioral lift.
 
-In the marketplace, executable-tier listings carry signed activation/outcome statistics so a buyer can verify the skill's empirical effect before paying. Advisory and data skills are still useful but priced like prose.
+In the marketplace, executable-tier listings carry the seller's execution statistics and validation verdict. Today those statistics are tool-level (a tool call that did not report an error), so treat them as a claim to re-measure locally, not proof. Advisory and data skills are still useful but priced like prose.
 
 ## Locations and precedence
 
@@ -34,6 +34,20 @@ If a skill name conflicts, precedence is:
 
 Additionally, you can configure extra skill folders (lowest precedence) via
 `skills.load.extraDirs` in `~/.bitterbot/bitterbot.json`.
+
+### Bundled guidance skills (progressive disclosure)
+
+Some bundled skills exist so the system prompt can stay short: the prompt keeps a one-line index entry and the agent reads the SKILL.md only when the situation applies. They are plain advisory skills (name + description frontmatter, no binaries) and can be overridden like any other bundled skill:
+
+| Skill                     | Holds                                                                                      |
+| ------------------------- | ------------------------------------------------------------------------------------------ |
+| `memory-architecture`     | Crystal lifecycle, ingestion, background pipeline, hormonal modulation, memory tools       |
+| `working-memory-protocol` | MEMORY.md sections, when to call `working_memory_note`, epistemic `type`, Crystal Pointers |
+| `curiosity-loop`          | Curiosity engine, `curiosity_state` / `curiosity_resolve`, `dream_search` / `dream_status` |
+| `pre-action-interceptors` | `INTERCEPTOR:` directives, the built-in interceptors, the Active Guards panel              |
+| `forage-economy`          | Economic identity, marketplace crystallization, the `forage` tool and its actions          |
+| `circles-protocol`        | `circles` reads, queue-only writes, untrusted-content and no-money invariants              |
+| `wallet-payments`         | HTTP 402 / x402 workflow, paid API tiers, micro-tolls, delegated purchases, spending rules |
 
 ## Per-agent vs shared skills
 
@@ -59,7 +73,7 @@ tool surface those skills teach.
 
 ## Finding skills
 
-Browse community skills on [GitHub](https://github.com/Bitterbot-AI/bitterbot-desktop). Skills propagate automatically via the P2P network — nodes share proven skills with peers based on execution success and trust scores.
+Browse community skills on [GitHub](https://github.com/Bitterbot-AI/bitterbot-desktop). Over the P2P network, only skills promoted by the evolution pass (held-out task validation) publish, after a maturity window and with a signed provenance trailer; receiving nodes quarantine them for review. As of 2026-09-05 no node has published one yet.
 
 Install a skill into your workspace:
 
@@ -85,6 +99,7 @@ bitterbot skills import agentskills github-release --accept
 bitterbot skills incoming list
 bitterbot skills incoming accept <name>
 bitterbot skills incoming reject <name>
+bitterbot skills incoming reject-peer <peerId>   # everything held from one peer
 ```
 
 Gating:
@@ -93,6 +108,10 @@ Gating:
 - Default trust level is `review` (quarantine); set `skills.agentskills.defaultTrust = "auto"` to skip.
 - Every imported skill is sha256-deduped against existing installs.
 - Origin metadata is written to `<skill>/.provenance.json` and the SKILL.md frontmatter.
+- Every incoming skill is assessed for **routing** (PLAN-44): the agent finds a skill only
+  through its `description` in the prompt index, so a description with no "when" clause and
+  no scope-out, or one that overlaps a local skill's, is held for review with the reason
+  shown by `skills incoming list` (`held for review: description contract: …`). Accepting it anyway is your call; the routing-repair pass (`bitterbot skills routing repair`, also run automatically in housekeeping) rewrites such descriptions into routable form through the staging gate, archiving the previous version.
 
 ### Origin provenance (`bitterbot.origin`)
 
@@ -326,6 +345,8 @@ The system prompt now includes two tiers of skill information:
 
 OS-incompatible skills, missing-requirement skills, and allowlist-blocked skills stay invisible to the agent (hard-disabled). This keeps the model from proposing things the user physically cannot run.
 
+The `description` is the whole routing key: the agent opens a SKILL.md only when exactly one description clearly applies to the task. Skills the node synthesizes itself (evolution proposals, crystallized sequences) are therefore held to a description contract (a "when" clause naming the triggering situation, a "not for / never for / unless / except when / only when" clause, 40–240 characters, no URLs or emoji) and refused when their description overlaps another live skill's. Whether a skill is actually opened is measured from the run journal and reported per skill in `skills.evolution.status` (`skillReads`, 14-day window).
+
 ## Remote nodes (cross-platform skills)
 
 If the Gateway is running on one platform but a **remote node** on a different platform is connected **with `system.run` allowed** (Exec approvals security not set to `deny`), Bitterbot can treat platform-specific skills as eligible when the required binaries are present on that node. The agent should execute those skills via the `nodes` tool (typically `nodes.run`).
@@ -361,7 +382,7 @@ By default, Bitterbot watches skill folders and bumps the skills snapshot when `
 
 ## Token impact (skills list)
 
-When skills are eligible, Bitterbot injects a compact XML list of available skills into the system prompt (via `formatSkillsForPrompt` in `pi-coding-agent`). The cost is deterministic:
+When skills are eligible, Bitterbot injects a compact XML list of available skills into the system prompt (via `formatSkillsForPrompt` in `src/agents/skills/skill-loader.ts`). The cost is deterministic:
 
 - **Base overhead (only when ≥1 skill):** 195 characters.
 - **Per skill:** 97 characters + the length of the XML-escaped `<name>`, `<description>`, and `<location>` values.
@@ -376,6 +397,12 @@ Notes:
 
 - XML escaping expands `& < > " '` into entities (`&amp;`, `&lt;`, etc.), increasing length.
 - Token counts vary by model tokenizer. A rough OpenAI-style estimate is ~4 chars/token, so **97 chars ≈ 24 tokens** per skill plus your actual field lengths.
+
+That is the raw list. Before it reaches the system prompt, `src/agents/system-prompt-skills.ts` compacts it (the `<skill><name>...</name></skill>` shape is preserved for the canary registry and the evolution validators):
+
+- Every description becomes its first sentence, stepping down 160 -> 80 -> 40 chars, then names only, until the whole index fits `SKILLS_PROMPT_BUDGET_CHARS` (4,000 chars, ~1k tokens). Skills are never dropped.
+- Skills located at `<root>/<name>/SKILL.md` under the dominant root share one `Default location: <root>/<name>/SKILL.md` line instead of a per-skill `<location>`; any other location stays inline.
+- The P2P `## Skill content trust notice` (present when an active skill carries `.provenance.json`) is compacted to its operative rule (~110 tokens), and the two preamble sentences the `## Skills (mandatory)` rules already state are dropped.
 
 ## Managed skills lifecycle
 

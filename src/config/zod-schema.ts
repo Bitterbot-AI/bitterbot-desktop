@@ -32,8 +32,80 @@ const MemorySchema = z
   .object({
     backend: z.literal("builtin").optional(),
     citations: z.union([z.literal("auto"), z.literal("on"), z.literal("off")]).optional(),
+    // Token-efficiency item 3: Anthropic Message Batches for latency-tolerant lanes.
+    batch: z
+      .object({
+        enabled: z.boolean().optional(),
+        lanes: z.array(z.string()).optional(),
+        maxWaitMinutes: z.number().positive().optional(),
+      })
+      .strict()
+      .optional(),
+    // PLAN-56 Phase 1: the curiosity keys the Settings form labels, so the
+    // generated JSON schema carries typed leaves for them. ACCEPTANCE IS
+    // UNCHANGED: `memory` was fully passthrough before, so every shape falls
+    // back to the `z.unknown()` branch (null, false, "3" from ${ENV}, ...).
+    // The typed branch exists only for the form's control types; the code-read
+    // sites (curiosity-researcher.ts, manager.ts) keep doing their own coercion.
+    curiosity: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+            research: z
+              .union([
+                z
+                  .object({
+                    enabled: z.boolean().optional(),
+                    strictEgress: z.boolean().optional(),
+                    intervalMinutes: z.unknown().optional(),
+                    maxPerDay: z.unknown().optional(),
+                  })
+                  .passthrough(),
+                z.unknown(),
+              ])
+              .optional(),
+            autoResearch: z
+              .union([
+                z
+                  .object({
+                    enabled: z.boolean().optional(),
+                    maxPerDay: z.unknown().optional(),
+                  })
+                  .passthrough(),
+                z.unknown(),
+              ])
+              .optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
+    architectEvolution: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
+    // PLAN-55 Phase 1: the per-turn correction capture and its confirmation
+    // line. Same typed-branch-or-unknown shape as curiosity (acceptance unchanged).
+    correction: z
+      .union([
+        z
+          .object({
+            enabled: z.boolean().optional(),
+            confirm: z.boolean().optional(),
+          })
+          .passthrough(),
+        z.unknown(),
+      ])
+      .optional(),
   })
-  // Memory subsystems (dream, curiosity, consolidation, digest, requestFrequency, etc.)
+  // Memory subsystems (dream, consolidation, digest, requestFrequency, etc.)
   // are typed in src/config/types.memory.ts but haven't all been mirrored into zod.
   // Passthrough keeps user configs from being rejected for those fields until the
   // schema catches up; strong typing at the code-read sites still applies.
@@ -47,6 +119,8 @@ const _HttpUrlSchema = z
     const protocol = new URL(value).protocol;
     return protocol === "http:" || protocol === "https:";
   }, "Expected http:// or https:// URL");
+
+const UsageBudgetLimitSchema = z.object({ usd: z.number().positive() }).strict();
 
 export const BitterbotSchema = z
   .object({
@@ -78,6 +152,36 @@ export const BitterbotSchema = z
         lastRunCommit: z.string().optional(),
         lastRunCommand: z.string().optional(),
         lastRunMode: z.union([z.literal("local"), z.literal("remote")]).optional(),
+      })
+      .strict()
+      .optional(),
+    usage: z
+      .object({
+        ledger: z
+          .object({
+            enabled: z.boolean().optional(),
+            retentionDays: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
+        budgets: z
+          .object({
+            mode: z.union([z.literal("warn"), z.literal("enforce")]).optional(),
+            daily: UsageBudgetLimitSchema.optional(),
+            weekly: UsageBudgetLimitSchema.optional(),
+            monthly: UsageBudgetLimitSchema.optional(),
+            perModel: z.record(z.string(), UsageBudgetLimitSchema).optional(),
+            perFeature: z.record(z.string(), UsageBudgetLimitSchema).optional(),
+          })
+          .strict()
+          .optional(),
+        pricing: z
+          .object({
+            liveRefresh: z.boolean().optional(),
+            openRouterUrl: z.string().url().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
@@ -160,6 +264,7 @@ export const BitterbotSchema = z
         // DEPRECATED, accepted-but-ignored (PLAN-39 Phase 4): the restarter this
         // gated is deleted. Kept so configs that set it keep validating — the
         // strict schema rejecting a removed key would refuse to boot (024c7fa).
+        // Warned at load via DEPRECATED_PATHS (PLAN-56 Phase 2); removed next release.
         uiRestart: z
           .object({
             enabled: z.boolean().optional(),
@@ -182,7 +287,23 @@ export const BitterbotSchema = z
         noSandbox: z.boolean().optional(),
         attachOnly: z.boolean().optional(),
         defaultProfile: z.string().optional(),
+        perAgentProfiles: z.boolean().optional(),
         snapshotDefaults: BrowserSnapshotDefaultsSchema,
+        liveView: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxFps: z.number().int().min(1).max(30).optional(),
+            quality: z.number().int().min(10).max(95).optional(),
+          })
+          .strict()
+          .optional(),
+        replay: z
+          .object({
+            enabled: z.boolean().optional(),
+            retentionDays: z.number().int().min(1).max(90).optional(),
+          })
+          .strict()
+          .optional(),
         profiles: z
           .record(
             z
@@ -351,6 +472,7 @@ export const BitterbotSchema = z
             // (a Tailscale Serve name, say). Loopback names are always allowed.
             // This is a DNS-rebinding control: see control-ui-session-token.ts.
             allowedHosts: z.array(z.string()).optional(),
+            bootstrapPairing: z.boolean().optional(),
             allowInsecureAuth: z.boolean().optional(),
             dangerouslyDisableDeviceAuth: z.boolean().optional(),
           })
@@ -641,6 +763,49 @@ export const BitterbotSchema = z
               .strict(),
           )
           .optional(),
+        // PLAN-44 Phase 0: defaults are declared on the schema (describe) so
+        // every consumer (help, labels, status RPC, UI) reads one source.
+        evolution: z
+          .object({
+            enabled: z.boolean().optional().describe("Default: true"),
+            cadenceHours: z.number().positive().optional().describe("Default: 24"),
+            maxProposerTurns: z.number().int().positive().optional().describe("Default: 24"),
+            maxActiveEvolved: z.number().int().min(0).optional().describe("Default: 5"),
+            validationMode: z
+              .union([z.literal("records"), z.literal("tasks")])
+              .optional()
+              .describe(
+                "Default: tasks ('records' is deprecated: diagnostic only, never promotes)",
+              ),
+            trialsPerTask: z.number().int().min(2).max(10).optional().describe("Default: 3"),
+            maxTokenDelta: z.number().min(0).max(5).optional().describe("Default: 0.5"),
+            judgeModel: z.string().optional().describe("Default: dream model, else cheap model"),
+            proposerModel: z
+              .string()
+              .optional()
+              .describe("Default: judgeModel, else dream model, else cheap model"),
+            minFailsForProposer: z.number().int().min(0).optional().describe("Default: 1"),
+            wikiMaxPatterns: z.number().int().positive().optional().describe("Default: 100"),
+            semanticLintCadenceDays: z.number().positive().optional().describe("Default: 7"),
+            propagate: z.boolean().optional().describe("Default: true"),
+            maturityDays: z.number().positive().optional().describe("Default: 3"),
+            requireCrossModel: z.boolean().optional().describe("Default: false"),
+            validationBudgetMinutes: z.number().positive().optional().describe("Default: 45"),
+            descriptionRepair: z.boolean().optional().describe("Default: true"),
+            routingRepair: z.boolean().optional().describe("Default: true"),
+            validationTools: z
+              .object({
+                alsoAllow: z.array(z.string()).optional(),
+                exec: z.boolean().optional().describe("Default: true (PLAN-45 D-2)"),
+              })
+              .strict()
+              .optional()
+              .describe(
+                "Extra tools for validation rollouts (never network/messaging/memory/skills/wallet)",
+              ),
+          })
+          .strict()
+          .optional(),
         skillSeekers: z
           .object({
             enabled: z.boolean().optional(),
@@ -717,6 +882,8 @@ export const BitterbotSchema = z
             quarantineTtlDays: z.number().int().nonnegative().optional(),
             // PLAN-29 Phase 0.3: load-time capability gate kill switch.
             loadTimeCapabilityGate: z.boolean().optional(),
+            // PLAN-42: auto-reject legacy unvalidated dream crystals.
+            rejectLegacyCrystals: z.boolean().optional(),
           })
           .strict()
           .optional(),
@@ -727,6 +894,10 @@ export const BitterbotSchema = z
             defaultTrust: z.enum(["auto", "review"]).optional(),
             transformThreshold: z.number().min(0).max(1).optional(),
             royaltyBps: z.number().int().nonnegative().optional(),
+            royaltyWallet: z
+              .string()
+              .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 20-byte hex address")
+              .optional(),
             maxBytes: z.number().int().positive().optional(),
             apiKey: z.string().optional(),
           })
@@ -821,6 +992,7 @@ export const BitterbotSchema = z
         maxConcurrentRuns: z.number().int().positive().optional(),
         webhook: z.string().optional(),
         webhookToken: z.string().optional(),
+        autoDisableAfterErrors: z.number().int().min(0).max(1000).optional(),
       })
       .strict()
       .optional(),
@@ -845,9 +1017,60 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        // PLAN-43 Phase 3: attestation exchange
+        attestation: z
+          .object({
+            enabled: z.boolean().optional(),
+            peers: z
+              .array(
+                z
+                  .string()
+                  .url()
+                  .refine(
+                    (u) => {
+                      try {
+                        const h = new URL(u).hostname;
+                        return !(
+                          h === "localhost" ||
+                          h.startsWith("127.") ||
+                          h === "::1" ||
+                          h === "[::1]" ||
+                          h.startsWith("169.254.")
+                        );
+                      } catch {
+                        return false;
+                      }
+                    },
+                    { message: "attestation peers must not be loopback or link-local" },
+                  ),
+              )
+              .optional(),
+            trustedAttesters: z.array(z.string()).optional(),
+            blockedAttesters: z.array(z.string()).optional(),
+            unknownAttesterWeight: z.number().min(0).max(1).optional(),
+          })
+          .strict()
+          .optional(),
+        // PLAN-43 s3.2b: hermetic remote-caller execution bounds
+        remoteExecution: z
+          .object({
+            tools: z
+              .object({
+                allow: z.array(z.string()).optional(),
+                deny: z.array(z.string()).optional(),
+              })
+              .strict()
+              .optional(),
+            maxInputChars: z.number().int().positive().optional(),
+            maxOutputChars: z.number().int().positive().optional(),
+            timeoutSeconds: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
         payment: z
           .object({
             enabled: z.boolean().optional(),
+            allowUnsignedProofs: z.boolean().optional(),
             x402: z
               .object({
                 address: z
@@ -855,6 +1078,31 @@ export const BitterbotSchema = z
                   .regex(/^0x[a-fA-F0-9]{40}$/, "must be a 0x-prefixed 20-byte hex address")
                   .optional(),
                 minPayment: z.number().nonnegative().optional(),
+              })
+              .strict()
+              .optional(),
+            ap2: z
+              .object({
+                enabled: z.boolean().optional(),
+              })
+              .strict()
+              .optional(),
+            consent: z
+              .object({
+                grantsRequired: z.boolean().optional(),
+                gateThresholdUsd: z.number().nonnegative().optional(),
+              })
+              .strict()
+              .optional(),
+            enforcement: z
+              .object({
+                enabled: z.boolean().optional(),
+              })
+              .strict()
+              .optional(),
+            escalation: z
+              .object({
+                stepUpThresholdUsd: z.number().nonnegative().optional(),
               })
               .strict()
               .optional(),
@@ -871,6 +1119,7 @@ export const BitterbotSchema = z
         marketplace: z
           .object({
             enabled: z.boolean().optional(),
+            freezeListings: z.boolean().optional(),
             pricing: z
               .object({
                 basePriceUsdc: z.number().nonnegative().optional(),
@@ -918,6 +1167,129 @@ export const BitterbotSchema = z
             coordinatorFeeBps: z.number().int().min(0).max(10_000).optional(),
           })
           .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    payments: z
+      .object({
+        link: z
+          .object({
+            enabled: z.boolean().optional(),
+            perPurchaseCapUsd: z.number().positive().max(100_000).optional(),
+            command: z.array(z.string()).min(1).optional(),
+            authFile: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        privacy: z
+          .object({
+            enabled: z.boolean().optional(),
+            apiKey: z.string().optional().register(sensitive),
+            perPurchaseCapUsd: z.number().positive().max(100_000).optional(),
+            sandbox: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        fiat: z
+          .object({
+            uiDollars: z.boolean().optional(),
+            onramp: z
+              .object({
+                enabled: z.boolean().optional(),
+                monthlyCeilingUsd: z.number().nonnegative().optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    monitors: z.object({ enabled: z.boolean().optional() }).strict().optional(),
+    compute: z
+      .object({
+        enabled: z.boolean().optional(),
+        awareness: z
+          .object({
+            stateBlock: z.boolean().optional(),
+            maxTokens: z.number().int().min(40).max(400).optional(),
+            creditFloor: z.number().min(0).optional(),
+            wakeBudgetPerHour: z.number().int().min(0).max(1000).optional(),
+            nudges: z.boolean().optional(),
+          })
+          .strict()
+          .optional(),
+        pools: z
+          .record(
+            z.string().min(1).max(64),
+            z.object({ trust: z.enum(["trusted", "untrusted"]).optional() }).strict(),
+          )
+          .optional(),
+        embeddings: z
+          .object({
+            provider: z.enum(["pool", "local"]).optional(),
+            marginMs: z.number().int().min(0).max(600_000).optional(),
+            cooldownMs: z.number().int().min(1000).max(86_400_000).optional(),
+            timeoutMs: z.number().int().min(1000).max(600_000).optional(),
+            modelDigest: z.string().min(8).max(128).optional(),
+          })
+          .strict()
+          .optional(),
+        egress: z
+          .object({
+            transcriptsDefaultClass: z.enum(["normal", "personal", "confidential"]).optional(),
+          })
+          .strict()
+          .optional(),
+        paid: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxUsdcPerJob: z.number().min(0).max(10_000).optional(),
+            maxUsdcPerDay: z.number().min(0).max(100_000).optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    shop: z
+      .object({ enabled: z.boolean().optional(), ucpProfileUrl: z.string().url().optional() })
+      .strict()
+      .optional(),
+    notifications: z
+      .object({
+        owner: z
+          .object({
+            channel: z.string().optional(),
+            to: z.string().optional(),
+            accountId: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        quietHours: z
+          .object({
+            start: z.string().optional(),
+            end: z.string().optional(),
+            timezone: z.string().optional(),
+          })
+          .strict()
+          .optional(),
+        maxPerHour: z.number().int().min(0).max(1000).optional(),
+      })
+      .strict()
+      .optional(),
+    review: z
+      .object({
+        spend: z.union([z.literal("ask"), z.literal("allow")]).optional(),
+        publish: z.union([z.literal("ask"), z.literal("allow")]).optional(),
+        contact: z.union([z.literal("first"), z.literal("ask"), z.literal("allow")]).optional(),
+        connector: z.union([z.literal("ask"), z.literal("allow")]).optional(),
+        ttlHours: z
+          .number()
+          .positive()
+          .max(24 * 30)
           .optional(),
       })
       .strict()

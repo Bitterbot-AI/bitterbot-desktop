@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { FollowupRun } from "./queue.js";
 import { loadSessionStore, saveSessionStore, type SessionEntry } from "../../config/sessions.js";
+import type { FollowupRun } from "./queue.js";
 import { createMockTypingController } from "./test-helpers.js";
 
 const runEmbeddedPiAgentMock = vi.fn();
@@ -24,9 +24,23 @@ vi.mock("../../agents/model-fallback.js", () => ({
   }),
 }));
 
-vi.mock("../../agents/pi-embedded.js", () => ({
+vi.mock("../../agents/embedded.js", () => ({
   runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
 }));
+
+// PLAN-55 Phase 1 review (item 9): the correction capture hook; null = no line.
+const correctionLineMock = vi.hoisted(() =>
+  vi.fn(async (_params: unknown): Promise<string | null> => null),
+);
+vi.mock("./agent-runner-memory.js", async () => {
+  const actual = await vi.importActual<typeof import("./agent-runner-memory.js")>(
+    "./agent-runner-memory.js",
+  );
+  return {
+    ...actual,
+    runCorrectionCaptureAfterTurn: (params: unknown) => correctionLineMock(params),
+  };
+});
 
 import { createFollowupRunner } from "./followup-runner.js";
 
@@ -303,5 +317,79 @@ describe("createFollowupRunner messaging tool dedupe", () => {
     // Accumulated usage is still stored for usage/cost tracking.
     expect(store[sessionKey]?.inputTokens).toBe(1_000);
     expect(store[sessionKey]?.outputTokens).toBe(50);
+  });
+});
+
+describe("createFollowupRunner correction capture (PLAN-55 Phase 1 review, item 9)", () => {
+  function makeRunner(onBlockReply: ReturnType<typeof vi.fn>) {
+    const sessionEntry: SessionEntry = { sessionId: "session", updatedAt: Date.now() };
+    return createFollowupRunner({
+      opts: { onBlockReply },
+      typing: createMockTypingController(),
+      typingMode: "instant",
+      sessionEntry,
+      sessionStore: { main: sessionEntry },
+      sessionKey: "main",
+      defaultModel: "anthropic/claude-opus-4-5",
+    });
+  }
+  const queued = (userBody: string) =>
+    ({
+      prompt: "[Replying to Alice]\nx\n[/Replying]\n\n" + userBody,
+      userBody,
+      summaryLine: userBody,
+      enqueuedAt: Date.now(),
+      run: {
+        sessionId: "session",
+        sessionKey: "agent:main:main",
+        senderIsOwner: true,
+        messageProvider: "whatsapp",
+        sessionFile: "/tmp/session.jsonl",
+        workspaceDir: "/tmp",
+        config: {},
+        skillsSnapshot: {},
+        provider: "anthropic",
+        model: "claude",
+        verboseLevel: "off",
+        timeoutMs: 1_000,
+        blockReplyBreak: "message_end",
+      },
+    }) as unknown as FollowupRun;
+
+  it("runs the hook with the queued message's raw body and appends the line to the reply", async () => {
+    correctionLineMock.mockReset();
+    correctionLineMock.mockResolvedValue("Memory updated: deploy endpoint = api2.acme.com");
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({ payloads: [{ text: "Got it." }], meta: {} });
+    const onBlockReply = vi.fn(async () => {});
+    await makeRunner(onBlockReply)(queued("No, the deploy endpoint is api2.acme.com"));
+    const params = correctionLineMock.mock.calls[0]![0] as Record<string, unknown>;
+    expect((params.followupRun as FollowupRun).userBody).toBe(
+      "No, the deploy endpoint is api2.acme.com",
+    );
+    expect(params.replyText).toBe("Got it.");
+    expect(params.isHeartbeat).toBe(false);
+    expect(typeof params.runStartedAt).toBe("number");
+    const texts = onBlockReply.mock.calls.map((c) => (c[0] as { text?: string }).text);
+    expect(texts).toEqual(["Got it.", "Memory updated: deploy endpoint = api2.acme.com"]);
+  });
+
+  it("delivers the line on its own when the queued turn produced no payload", async () => {
+    correctionLineMock.mockReset();
+    correctionLineMock.mockResolvedValue("Memory updated: deploy endpoint = api2.acme.com");
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({ payloads: [], meta: {} });
+    const onBlockReply = vi.fn(async () => {});
+    await makeRunner(onBlockReply)(queued("No, the deploy endpoint is api2.acme.com"));
+    const texts = onBlockReply.mock.calls.map((c) => (c[0] as { text?: string }).text);
+    expect(texts).toEqual(["Memory updated: deploy endpoint = api2.acme.com"]);
+  });
+
+  it("sends nothing extra when the hook has nothing to say", async () => {
+    correctionLineMock.mockReset();
+    correctionLineMock.mockResolvedValue(null);
+    runEmbeddedPiAgentMock.mockResolvedValueOnce({ payloads: [{ text: "Got it." }], meta: {} });
+    const onBlockReply = vi.fn(async () => {});
+    await makeRunner(onBlockReply)(queued("thanks"));
+    const texts = onBlockReply.mock.calls.map((c) => (c[0] as { text?: string }).text);
+    expect(texts).toEqual(["Got it."]);
   });
 });

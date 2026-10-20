@@ -1,0 +1,356 @@
+/**
+ * PLAN-50 doctor lines that answer "what does this node spend when nobody is talking to it?"
+ *
+ * - unread prompt-cache writes (7d): dollars written to the prompt cache by lanes that never
+ *   read it back, per lane; warn at >= $1/day, fail at >= $5/day.
+ * - heartbeat cost and cost of pass (7d): what the heartbeat lane cost per delivered message.
+ * - idle-day floor (14d): the cheapest day with zero real turns, naming the lane that set it.
+ * - hot-set proof (7d): direct / use_tool / native-search tool calls and promotion candidates
+ *   (warn when a deferred tool is reached indirectly 5+ times a week).
+ * - tool results spilled (7d): count and average size of results that overflowed to disk.
+ * - prefix stability (7d): warn when any session's cached prefix changed between turns
+ *   less than 60 min apart, with the likely tier (tools | system).
+ * - estimated costs (30d): models whose cost is an estimate (a borrowed forward-compat price
+ *   with no exact live entry, or estimated token counts).
+ * - live pricing freshness: warn when the newest OpenRouter snapshot is older than 3 days
+ *   (the daily refresh is failing) or there is none.
+ *
+ * Pure over the ledger (plus the heartbeat considerations log for deliveries) so the checks
+ * are testable with an in-memory database.
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+import { CONFIG_DIR } from "../utils.js";
+import { __considerationsConsts } from "./heartbeat-considerations.js";
+import { describeUsageFeature, USAGE_FEATURES } from "./usage-features.js";
+import type { UsageLedger } from "./usage-ledger.js";
+import { formatUsageDay } from "./usage-ledger.types.js";
+import { buildCacheHealth, describeUnreadCacheTip } from "./usage-summary.js";
+import {
+  buildPrefixStability,
+  buildToolTelemetry,
+  describeHotSet,
+  describePrefixStability,
+  describePromoteTip,
+  describeSpilled,
+  PREFIX_STABILITY_TIP,
+} from "./usage-tool-telemetry.js";
+
+const DAY_MS = 24 * 60 * 60_000;
+const SEP = String.fromCharCode(1);
+
+export const UNREAD_CACHE_WARN_USD_PER_DAY = 1;
+export const UNREAD_CACHE_FAIL_USD_PER_DAY = 5;
+export const HEARTBEAT_NO_DELIVERY_WARN_USD_PER_DAY = 1;
+export const IDLE_FLOOR_WARN_USD_PER_DAY = 1;
+/** A chat turn is "real" when the model actually answered or read its cache. */
+export const REAL_TURN_MIN_OUTPUT = 20;
+
+export type UsageDoctorLine = {
+  level: "ok" | "info" | "warn" | "error";
+  message: string;
+};
+
+const usd = (v: number) => `$${v.toFixed(2)}`;
+
+export function unreadCacheWriteCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const health = buildCacheHealth(
+    params.ledger,
+    { startMs: params.nowMs - days * DAY_MS, endMs: params.nowMs },
+    params.nowMs,
+  );
+  const perDay = health.unreadWriteUsd / days;
+  const lanes = health.unreadByFeature
+    .map(
+      (l) =>
+        `${l.label} ${usd(l.usd)} (${l.requests} req${l.ttl && l.ttl !== "none" ? `, ${l.ttl} TTL` : ""})`,
+    )
+    .join(", ");
+  const head = `unread prompt-cache writes, last ${days}d: ${usd(health.unreadWriteUsd)} (${usd(perDay)}/day)`;
+  if (perDay >= UNREAD_CACHE_FAIL_USD_PER_DAY) {
+    return {
+      level: "error",
+      message: `${head}: ${lanes}. ${describeUnreadCacheTip(health.unreadByFeature[0]?.ttl ?? health.ttl)}`,
+    };
+  }
+  if (perDay >= UNREAD_CACHE_WARN_USD_PER_DAY) {
+    return {
+      level: "warn",
+      message: `${head}: ${lanes}. ${describeUnreadCacheTip(health.unreadByFeature[0]?.ttl ?? health.ttl)}`,
+    };
+  }
+  return {
+    level: health.unreadWriteUsd > 0 ? "info" : "ok",
+    message:
+      health.unreadWriteUsd > 0
+        ? `${head}, under the ${usd(UNREAD_CACHE_WARN_USD_PER_DAY)}/day watermark: ${lanes}`
+        : `${head}; every cached prompt was read back`,
+  };
+}
+
+/** Delivered heartbeat messages in the window, from the considerations log (sync; small files). */
+export function countHeartbeatDeliveries(params: {
+  nowMs: number;
+  days: number;
+  dir?: string;
+}): number {
+  const dir = params.dir ?? path.join(CONFIG_DIR, __considerationsConsts.DIR_NAME);
+  let delivered = 0;
+  for (let i = 0; i < params.days; i += 1) {
+    const day = formatUsageDay(params.nowMs - i * DAY_MS);
+    const file = path.join(
+      dir,
+      `${__considerationsConsts.FILE_PREFIX}${day}${__considerationsConsts.FILE_SUFFIX}`,
+    );
+    let raw: string;
+    try {
+      raw = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const line of raw.split("\n")) {
+      if (!line.includes("delivered heartbeat payload")) {
+        continue;
+      }
+      try {
+        const entry = JSON.parse(line) as { category?: string; decision?: string; reason?: string };
+        if (
+          entry.category === "channel-route" &&
+          entry.decision === "acted" &&
+          entry.reason === "delivered heartbeat payload"
+        ) {
+          delivered += 1;
+        }
+      } catch {
+        // not a consideration line
+      }
+    }
+  }
+  return delivered;
+}
+
+export function heartbeatCostCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+  /** Test hook; defaults to the considerations log. */
+  deliveries?: number;
+  considerationsDir?: string;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const row = params.ledger.aggregate({
+    feature: USAGE_FEATURES.agentHeartbeat,
+    startMs: params.nowMs - days * DAY_MS,
+    endMs: params.nowMs,
+  })[0];
+  const ticks = Number(row?.calls ?? 0);
+  const cost = Number(row?.cost_total ?? 0);
+  if (ticks === 0) {
+    return { level: "ok", message: `heartbeat: no model calls in the last ${days}d` };
+  }
+  const deliveries =
+    params.deliveries ??
+    countHeartbeatDeliveries({ nowMs: params.nowMs, days, dir: params.considerationsDir });
+  const perDay = cost / days;
+  const pass =
+    deliveries > 0
+      ? `cost of pass: ${usd(cost / deliveries)} per delivered message (${deliveries} delivered)`
+      : "cost of pass: no deliveries (every tick returned only the ack)";
+  const message = `heartbeat: ${ticks} ticks cost ${usd(cost)} in ${days}d (${usd(perDay)}/day); ${pass}`;
+  if (deliveries === 0 && perDay >= HEARTBEAT_NO_DELIVERY_WARN_USD_PER_DAY) {
+    return {
+      level: "warn",
+      message: `${message}. Make HEARTBEAT.md comments-only to skip idle ticks, or set agents.defaults.heartbeat.model to a cheap model / a longer every.`,
+    };
+  }
+  return { level: "info", message };
+}
+
+export function idleDayFloorCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 14;
+  // Whole UTC days only: today is partial and would always be the floor.
+  const todayStart = Date.parse(`${formatUsageDay(params.nowMs)}T00:00:00Z`);
+  const rows = params.ledger.aggregate(
+    { startMs: todayStart - days * DAY_MS, endMs: todayStart - 1 },
+    `day || '${SEP}' || feature`,
+    `, SUM(CASE WHEN feature = '${USAGE_FEATURES.agentTurn}' AND (output > ${REAL_TURN_MIN_OUTPUT} OR cache_read > 0) THEN 1 ELSE 0 END) AS real_turns`,
+  );
+  type DayAcc = { cost: number; realTurns: number; lanes: Map<string, number> };
+  const byDay = new Map<string, DayAcc>();
+  for (const r of rows) {
+    const [day, feature] = String(r.group_key ?? "").split(SEP);
+    if (!day) {
+      continue;
+    }
+    const acc = byDay.get(day) ?? { cost: 0, realTurns: 0, lanes: new Map() };
+    acc.cost += Number(r.cost_total ?? 0);
+    acc.realTurns += Number((r as { real_turns?: number }).real_turns ?? 0);
+    acc.lanes.set(
+      feature ?? "unknown",
+      (acc.lanes.get(feature ?? "unknown") ?? 0) + Number(r.cost_total ?? 0),
+    );
+    byDay.set(day, acc);
+  }
+  const idle = Array.from(byDay.entries()).filter(([, d]) => d.realTurns === 0);
+  if (idle.length === 0) {
+    return {
+      level: "info",
+      message: `idle-day floor: no idle days in the last ${days}d (every day had real chat turns)`,
+    };
+  }
+  const [floorDay, floor] = idle.toSorted((a, b) => a[1].cost - b[1].cost)[0]!;
+  const top = Array.from(floor.lanes.entries()).toSorted((a, b) => b[1] - a[1])[0];
+  const topText = top ? `${describeUsageFeature(top[0])} ${usd(top[1])}` : "nothing";
+  const message = `idle-day floor: ${usd(floor.cost)}/day (${floorDay}, lowest of ${idle.length} idle day(s) in ${days}d with zero real turns); top lane that day: ${topText}`;
+  if (floor.cost >= IDLE_FLOOR_WARN_USD_PER_DAY) {
+    return {
+      level: "warn",
+      message: `${message}. That is what the node burns with nobody talking to it; start with that lane.`,
+    };
+  }
+  return { level: "info", message };
+}
+
+/**
+ * Hot-set proof (7d): direct vs use_tool vs native-search counts and the deferred tools the
+ * agent keeps reaching indirectly. Info unless a tool crosses the promotion threshold.
+ */
+export function hotSetCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const t = buildToolTelemetry(params.ledger, {
+    startMs: params.nowMs - days * DAY_MS,
+    endMs: params.nowMs,
+  });
+  if (t.calls === 0) {
+    return { level: "info", message: `hot-set: no tool calls recorded in the last ${days}d` };
+  }
+  const tip = describePromoteTip(t);
+  return {
+    level: tip ? "warn" : "info",
+    message: tip ? `${describeHotSet(t, days)}. ${tip}` : describeHotSet(t, days),
+  };
+}
+
+export function spilledResultsCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const t = buildToolTelemetry(params.ledger, {
+    startMs: params.nowMs - days * DAY_MS,
+    endMs: params.nowMs,
+  });
+  return { level: t.spilled.calls > 0 ? "info" : "ok", message: describeSpilled(t, days) };
+}
+
+/** Warn when any session changed its cached prefix between turns less than an hour apart. */
+export function prefixStabilityCheck(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  days?: number;
+}): UsageDoctorLine {
+  const days = params.days ?? 7;
+  const p = buildPrefixStability(params.ledger, {
+    startMs: params.nowMs - days * DAY_MS,
+    endMs: params.nowMs,
+  });
+  if (p.changed.length > 0) {
+    return {
+      level: "warn",
+      message: `${describePrefixStability(p, days)}. Tip: ${PREFIX_STABILITY_TIP}`,
+    };
+  }
+  return { level: p.sessions > 0 ? "ok" : "info", message: describePrefixStability(p, days) };
+}
+
+export const PRICING_SNAPSHOT_STALE_DAYS = 3;
+
+/** Models used in the window whose cost is an estimate rather than a known price. */
+export function estimatedCostModelsCheck(params: {
+  models: ReadonlyArray<{
+    provider: string | null;
+    model: string | null;
+    pricingSources: readonly string[];
+    estimatedCalls: number;
+  }>;
+  days?: number;
+}): UsageDoctorLine | null {
+  const days = params.days ?? 30;
+  const estimated = params.models.filter(
+    (m) => m.pricingSources.includes("estimated") && m.estimatedCalls > 0,
+  );
+  if (estimated.length === 0) {
+    return null;
+  }
+  const names = estimated
+    .map((m) => `${m.provider ?? "?"}/${m.model ?? "?"} (${m.estimatedCalls} calls)`)
+    .join(", ");
+  return {
+    level: "info",
+    message: `${estimated.length} model(s) used in the last ${days}d have estimated costs (shown with ~ in the Control UI): ${names}. A model newer than the bundled price list borrows a similar model's price until the live price list has an exact entry for it; set models.providers.<provider>.models[].cost to pin a price.`,
+  };
+}
+
+/** Warn when the live price list has not refreshed in days (or never landed). */
+export function pricingSnapshotFreshnessCheck(params: {
+  newestAt: number | null;
+  nowMs: number;
+  enabled: boolean;
+  lastError?: string | null;
+}): UsageDoctorLine {
+  if (!params.enabled) {
+    return {
+      level: "info",
+      message:
+        "live pricing refresh is off (usage.pricing.liveRefresh=false); models newer than the bundled price list stay estimated or unpriced",
+    };
+  }
+  const why = params.lastError ? ` (last error: ${params.lastError})` : "";
+  if (params.newestAt === null) {
+    return {
+      level: "warn",
+      message: `no live pricing snapshot on disk; the gateway fetches one from OpenRouter at boot and daily${why}. Until it lands, newer models are estimated or unpriced.`,
+    };
+  }
+  const ageDays = (params.nowMs - params.newestAt) / DAY_MS;
+  if (ageDays > PRICING_SNAPSHOT_STALE_DAYS) {
+    return {
+      level: "warn",
+      message: `live pricing snapshot is ${Math.floor(ageDays)} days old; the daily refresh is failing${why}. Check that the gateway is running and can reach openrouter.ai.`,
+    };
+  }
+  return {
+    level: "ok",
+    message: `live pricing snapshot ${formatUsageDay(params.newestAt)} (refreshed daily)`,
+  };
+}
+
+export function collectUsageDoctorLines(params: {
+  ledger: UsageLedger;
+  nowMs: number;
+  considerationsDir?: string;
+}): UsageDoctorLine[] {
+  return [
+    unreadCacheWriteCheck(params),
+    heartbeatCostCheck(params),
+    idleDayFloorCheck(params),
+    hotSetCheck(params),
+    spilledResultsCheck(params),
+    prefixStabilityCheck(params),
+  ];
+}

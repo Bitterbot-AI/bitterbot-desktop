@@ -1,14 +1,13 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdirSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { SkillEntry } from "../../agents/skills/types.js";
 import type { BitterbotConfig } from "../../config/types.bitterbot.js";
+import { safeEqualSecret } from "../../security/secret-equal.js";
 import type { AuthRateLimiter } from "../auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "../auth.js";
-import type { JsonRpcRequest, MessageSendParams } from "./types.js";
-import { safeEqualSecret } from "../../security/secret-equal.js";
 import { authorizeGatewayConnect, isLocalDirectRequest } from "../auth.js";
 import { sendJson, sendGatewayAuthFailure, readJsonBodyOrError } from "../http-common.js";
 import { getBearerToken } from "../http-utils.js";
@@ -16,12 +15,13 @@ import { getHeader } from "../http-utils.js";
 import { resolveGatewayClientIp } from "../net.js";
 import { checkBrowserOrigin } from "../origin-check.js";
 import { buildAgentCard } from "./agent-card.js";
-import { verifyA2aPayment, isPaymentRateLimited } from "./payment.js";
+import { resolveRequestedSkillId, verifyA2aPayment, isPaymentRateLimited } from "./payment.js";
 import { handleA2aJsonRpc, isStreamingMethod } from "./server.js";
 import { streamTaskEvents } from "./streaming.js";
 import { executeA2aTask, extractTaskText } from "./task-executor.js";
 import { A2aTaskManager } from "./task-manager.js";
 import { isTaskCreationRateLimited } from "./task-rate-limit.js";
+import type { JsonRpcRequest, MessageSendParams } from "./types.js";
 import { A2aErrorCodes } from "./types.js";
 
 const MAX_A2A_BODY_BYTES = 1_048_576; // 1 MB
@@ -119,7 +119,7 @@ export function createA2aHttpHandler(opts: {
   const db = openA2aTaskDb(opts.taskDb);
   const ownsDb = opts.taskDb === undefined;
   let taskManager: A2aTaskManager | null = null;
-  let cachedAgentCard: { json: string; version: number } | null = null;
+  let cachedAgentCard: { json: string; version: string } | null = null;
   let closed = false;
 
   function getTaskManager(config: BitterbotConfig): A2aTaskManager {
@@ -142,15 +142,21 @@ export function createA2aHttpHandler(opts: {
       if (!config.a2a?.enabled) {
         return false;
       }
-      const version = getSkillsVersion();
+      // PLAN-43 Phase 3 (§3.7): the freeze flag is part of the cache key so
+      // flipping it drops prices from the card at the next request.
+      const frozen = config.a2a?.marketplace?.freezeListings === true;
+      const version = `${getSkillsVersion()}:${frozen ? "frozen" : "open"}`;
       if (!cachedAgentCard || cachedAgentCard.version !== version) {
         // Load marketplace prices for the Agent Card
         let skillPrices: Map<string, number> | undefined;
         try {
-          const { MemoryIndexManager } = await import("../../memory/manager.js");
+          const [{ MemoryIndexManager }, { resolveDefaultAgentId }] = await Promise.all([
+            import("../../memory/manager.js"),
+            import("../../agents/agent-scope.js"),
+          ]);
           const memManager = await MemoryIndexManager.get({
             cfg: config,
-            agentId: "default",
+            agentId: resolveDefaultAgentId(config),
             purpose: "status",
           });
           const marketplace = memManager?.getMarketplaceEconomics?.();
@@ -249,6 +255,10 @@ export function createA2aHttpHandler(opts: {
     const isForageVerb = rpcRequest.method.startsWith("forage/");
     const isCircleVerb = rpcRequest.method.startsWith("circle/");
     const isMailboxVerb = rpcRequest.method.startsWith("mailbox/");
+    // PLAN-43 Phase 3: attestation exchange verbs carry their own Ed25519
+    // signatures (verified on submit) and serve public evidence.
+    const isAttestVerb =
+      rpcRequest.method.startsWith("skill/attest") && config.a2a?.attestation?.enabled !== false;
 
     // With a2a off, only circles' transport verbs exist here. Everything
     // else answers METHOD_NOT_FOUND — the same invisible-surface shape as
@@ -279,7 +289,7 @@ export function createA2aHttpHandler(opts: {
     // (default-deny, the friend branch), or an invite secret for circle/join.
     // Mailbox verbs carry per-verb Ed25519 proofs (sender for post,
     // recipient for poll/ack) — a mailbox host serves strangers by design.
-    if (!isForageVerb && !isCircleVerb && !isMailboxVerb) {
+    if (!isForageVerb && !isCircleVerb && !isMailboxVerb && !isAttestVerb) {
       const authOk = await authorizeA2aRequest(req, config, authOpts);
       if (!authOk.ok) {
         sendGatewayAuthFailure(res, authOk.result);
@@ -296,6 +306,58 @@ export function createA2aHttpHandler(opts: {
     if (isNotification) {
       res.statusCode = 204;
       res.end();
+      return true;
+    }
+
+    // PLAN-43 Phase 3: attestation exchange, served against the memory db.
+    if (isAttestVerb) {
+      const { handleAttestMethod } = await import("./attest.js");
+      let attestDb: import("node:sqlite").DatabaseSync | undefined;
+      let isBlockedAttester: ((pk: string) => boolean) | undefined;
+      try {
+        const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const { resolveDefaultAgentId } = await import("../../agents/agent-scope.js");
+        const memManager = await MemoryIndexManager.get({
+          cfg: config,
+          agentId: resolveDefaultAgentId(config),
+          purpose: "status",
+        });
+        // Attestations live in the memory DB (the store the sweep and the
+        // marketplace aggregate use); independent of the marketplace flag.
+        attestDb = memManager?.getCirclesDb();
+        const blocked = new Set(config.a2a?.attestation?.blockedAttesters ?? []);
+        isBlockedAttester = (pk) => blocked.has(pk);
+      } catch {
+        /* memory manager unavailable */
+      }
+      if (!attestDb) {
+        sendJson(res, 503, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INTERNAL_ERROR,
+            message: "Attestation store unavailable on this node",
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const clientIp = resolveGatewayClientIp({
+        remoteAddr: req.socket?.remoteAddress ?? "",
+        forwardedFor: getHeader(req, "x-forwarded-for"),
+        realIp: getHeader(req, "x-real-ip"),
+        trustedProxies: authOpts.trustedProxies,
+      });
+      const outcome = handleAttestMethod(rpcRequest.method as string, rpcRequest.params, attestDb, {
+        clientKey: clientIp ?? "unknown",
+        ...(isBlockedAttester ? { isBlockedAttester } : {}),
+      });
+      sendJson(
+        res,
+        200,
+        outcome.ok
+          ? { jsonrpc: "2.0", result: outcome.result, id: rpcRequest.id }
+          : { jsonrpc: "2.0", error: outcome.error, id: rpcRequest.id },
+      );
       return true;
     }
 
@@ -541,8 +603,99 @@ export function createA2aHttpHandler(opts: {
       }
     }
 
-    // Payment gate: if marketplace payments are enabled, verify x402 payment
-    if (config.a2a?.payment?.enabled && rpcRequest.method === "message/send") {
+    // PLAN-43 s3.2b: validate message shape and cap inbound text BEFORE the
+    // payment gate, so a malformed or oversize request is refused rather
+    // than charged-then-refused (a paid request that later 400s would have
+    // consumed the tx and recorded a sale with no task).
+    if (rpcRequest.method === "message/send" || isStreamingMethod(rpcRequest)) {
+      const msg = (rpcRequest.params as MessageSendParams | undefined)?.message;
+      if (!msg || !msg.role || !Array.isArray(msg.parts)) {
+        sendJson(res, 400, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INVALID_PARAMS,
+            message: "Message must have role and parts",
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+      const maxInputChars = Math.min(
+        config.a2a?.remoteExecution?.maxInputChars ?? 32_000,
+        1_000_000,
+      );
+      // Measure the exact text the executor would spawn with (part joins
+      // included), so per-part accounting can't be gamed with many parts.
+      let textChars = 0;
+      try {
+        textChars = extractTaskText(rpcRequest.params as MessageSendParams).length;
+      } catch {
+        textChars = 0; // malformed params fail later in the branch's own validation
+      }
+      if (textChars > maxInputChars) {
+        sendJson(res, 400, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.INVALID_PARAMS,
+            message: `Message text exceeds ${maxInputChars} characters`,
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
+    }
+
+    // PLAN-43 Phase 1: exact-ID metered skill invocation. A request naming
+    // a skillId executes THAT listed skill or is refused up front — never
+    // fuzzy-matched, never charged for an unknown skill.
+    let marketplace: import("../../memory/marketplace-economics.js").MarketplaceEconomics | null =
+      null;
+    const fetchMarketplace = async () => {
+      if (marketplace) {
+        return marketplace;
+      }
+      try {
+        const { MemoryIndexManager } = await import("../../memory/manager.js");
+        const memManager = await MemoryIndexManager.get({
+          cfg: config,
+          agentId: "default",
+          purpose: "status",
+        });
+        marketplace = memManager?.getMarketplaceEconomics?.() ?? null;
+      } catch {
+        /* memory manager not available */
+      }
+      return marketplace;
+    };
+    let skillInvocation: { skillId: string; name: string; text: string } | undefined;
+    if (rpcRequest.method === "message/send" || isStreamingMethod(rpcRequest)) {
+      const requestedSkillId = resolveRequestedSkillId(
+        rpcRequest.params as { skillId?: string; metadata?: Record<string, unknown> },
+      );
+      if (requestedSkillId) {
+        skillInvocation =
+          (await fetchMarketplace())?.getSellableSkill(requestedSkillId) ?? undefined;
+        if (!skillInvocation) {
+          sendJson(res, 404, {
+            jsonrpc: "2.0",
+            error: {
+              code: A2aErrorCodes.TASK_NOT_FOUND,
+              message: `Skill ${requestedSkillId} is not listed for sale on this node`,
+            },
+            id: rpcRequest.id,
+          });
+          return true;
+        }
+      }
+    }
+
+    // Payment gate: if marketplace payments are enabled, verify x402 payment.
+    // PLAN-43 s3.2b fix: message/stream spawns the SAME task executor as
+    // message/send and previously bypassed this gate entirely.
+    if (
+      config.a2a?.payment?.enabled &&
+      (rpcRequest.method === "message/send" || isStreamingMethod(rpcRequest))
+    ) {
       // Rate-limit payment verification attempts to prevent DoS via fake tokens
       // triggering expensive on-chain calls.
       const clientIp = resolveGatewayClientIp({
@@ -559,28 +712,38 @@ export function createA2aHttpHandler(opts: {
         });
         return true;
       }
-      let marketplace: import("../../memory/marketplace-economics.js").MarketplaceEconomics | null =
-        null;
-      try {
-        const { MemoryIndexManager } = await import("../../memory/manager.js");
-        const memManager = await MemoryIndexManager.get({
-          cfg: config,
-          agentId: "default",
-          purpose: "status",
-        });
-        marketplace = memManager?.getMarketplaceEconomics?.() ?? null;
-      } catch {
-        /* memory manager not available */
-      }
+      const mp = await fetchMarketplace();
 
+      // A named skill is priced at its listed per-call price; the paid
+      // amount must cover it (verifying against minPayment alone would
+      // sell every skill at the floor).
+      const requiredAmountUsdc = skillInvocation
+        ? (mp?.getSkillPrice(skillInvocation.skillId) ?? undefined)
+        : undefined;
+      if (skillInvocation && requiredAmountUsdc === undefined) {
+        // Delist race between resolution and pricing: refuse rather than
+        // fail OPEN to the floor price (selling an expensive skill at
+        // $0.01 and still executing it).
+        sendJson(res, 409, {
+          jsonrpc: "2.0",
+          error: {
+            code: A2aErrorCodes.TASK_NOT_FOUND,
+            message: `Skill ${skillInvocation.skillId} is no longer listed for sale`,
+          },
+          id: rpcRequest.id,
+        });
+        return true;
+      }
       const paymentResult = await verifyA2aPayment(
         req,
         config,
-        marketplace,
+        mp,
         rpcRequest.params as {
           skillId?: string;
+          metadata?: Record<string, unknown>;
           message?: { parts?: Array<{ type: string; text?: string }> };
         },
+        { requiredAmountUsdc },
       );
       if (!paymentResult.paid) {
         // Plan 8, Phase 6: x402 native payment gate — spec-verified headers
@@ -649,9 +812,9 @@ export function createA2aHttpHandler(opts: {
       }
 
       // Payment verified — record the sale + compute revenue shares
-      if (paymentResult.txHash && marketplace) {
+      if (paymentResult.txHash && mp) {
         try {
-          const purchaseId = marketplace.recordPurchase({
+          const purchaseId = mp.recordPurchase({
             skillCrystalId: paymentResult.skillId ?? "unknown",
             buyerPeerId: paymentResult.buyerPeerId ?? "unknown",
             amountUsdc: paymentResult.amountUsdc ?? 0,
@@ -662,13 +825,13 @@ export function createA2aHttpHandler(opts: {
           // Plan 8, Phase 1: Queue revenue shares with 48h dispute hold
           if (paymentResult.amountUsdc && paymentResult.amountUsdc > 0) {
             try {
-              const shares = marketplace.computeRevenueShares(
+              const shares = mp.computeRevenueShares(
                 paymentResult.skillId ?? "unknown",
                 paymentResult.amountUsdc,
               );
               for (const share of shares) {
                 if (share.peerId !== "local" && share.amountUsdc >= 0.001) {
-                  marketplace.queueRevenuePayment({
+                  mp.queueRevenuePayment({
                     skillCrystalId: paymentResult.skillId ?? "unknown",
                     purchaseId,
                     recipientPeerId: share.peerId,
@@ -702,17 +865,39 @@ export function createA2aHttpHandler(opts: {
       const sendParams = params as MessageSendParams;
       const task = manager.createTask(sendParams);
       manager.updateStatus(task.id, "working");
-      streamTaskEvents({ res, taskId: task.id, taskManager: manager });
+      const accessToken = manager.getAccessToken(task.id);
+      streamTaskEvents({
+        res,
+        taskId: task.id,
+        taskManager: manager,
+        intro: { id: task.id, ...(accessToken ? { accessToken } : {}) },
+      });
 
       // Spawn sub-agent execution in the background — SSE events are emitted
       // as the task manager transitions through states.
       const taskText = extractTaskText(sendParams);
-      void executeA2aTask({ taskId: task.id, taskText, config, taskManager: manager });
+      void executeA2aTask({
+        taskId: task.id,
+        taskText,
+        config,
+        taskManager: manager,
+        skillInvocation,
+      });
       return true;
     }
 
-    // Standard JSON-RPC request/response.
-    const rpcResponse = handleA2aJsonRpc(rpcRequest, { taskManager: manager, config });
+    // Standard JSON-RPC request/response. Task reads by untrusted callers
+    // are token-gated (PLAN-43 Phase 1 R1); trust means a real credential
+    // or a local direct request, NOT merely passing an auth-"none" gate.
+    const callerTrusted = rpcRequest.method.startsWith("tasks/")
+      ? await isTrustedA2aCaller(req, config, authOpts)
+      : false;
+    const rpcResponse = handleA2aJsonRpc(rpcRequest, {
+      taskManager: manager,
+      config,
+      callerTrusted,
+      skillInvocation,
+    });
     const httpStatus = rpcResponse.error ? mapErrorToHttpStatus(rpcResponse.error.code) : 200;
     sendJson(res, httpStatus, rpcResponse);
     return true;
@@ -739,6 +924,49 @@ export function createA2aHttpHandler(opts: {
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
+
+/**
+ * PLAN-43 Phase 1 (R1): does this caller hold a REAL credential (or arrive
+ * as a local direct request)? Distinct from authorizeA2aRequest, which
+ * passes everyone under a2a.authentication "none".
+ */
+async function isTrustedA2aCaller(
+  req: IncomingMessage,
+  config: BitterbotConfig,
+  authOpts: {
+    auth: ResolvedGatewayAuth;
+    trustedProxies: string[];
+    rateLimiter?: AuthRateLimiter;
+  },
+): Promise<boolean> {
+  // NOTE: local-direct trust depends on isLocalDirectRequest's Host check
+  // holding — a fronting proxy that rewrites Host to localhost over
+  // loopback would make every remote caller trusted (full task-read
+  // scope). Keep tunnels on their real hostname (see auth.ts host gate).
+  if (isLocalDirectRequest(req, authOpts.trustedProxies)) {
+    return true;
+  }
+  const token = getBearerToken(req);
+  if (!token) {
+    return false;
+  }
+  const a2aToken = config.a2a?.authentication?.bearerToken;
+  if (a2aToken && safeEqualSecret(token, a2aToken)) {
+    return true;
+  }
+  try {
+    const result = await authorizeGatewayConnect({
+      auth: authOpts.auth,
+      connectAuth: { token, password: token },
+      req,
+      trustedProxies: authOpts.trustedProxies,
+      rateLimiter: authOpts.rateLimiter,
+    });
+    return result.ok;
+  } catch {
+    return false;
+  }
+}
 
 async function authorizeA2aRequest(
   req: IncomingMessage,

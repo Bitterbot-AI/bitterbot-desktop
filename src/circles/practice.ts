@@ -13,16 +13,16 @@
  *    the real flow, not a mock.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
-import type { JsonValue } from "../commerce/sku.js";
+import type { DatabaseSync } from "node:sqlite";
 import {
   generateKeyPair,
   keyPairFromPrivateKeyPem,
   pubkeyId,
   type KeyPair,
 } from "../commerce/envelope.js";
+import type { JsonValue } from "../commerce/sku.js";
 import { resolveStateDir } from "../config/paths.js";
 import { CirclesStore, DEFAULT_MEMBER_SCOPES } from "../memory/circles-store.js";
 import { makeCircleEnvelope } from "./envelope.js";

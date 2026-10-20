@@ -24,7 +24,7 @@ and decides during rest rather than on the hot path.
    a new edge of a mutually-exclusive relation type (currently `located_at`,
    `belongs_to`) conflicts with an existing active edge, the writer only records
    a `flag_contradiction` audit row. Both edges stay active (`valid_until IS
-NULL`). Nothing is ever closed or deleted on write.
+   NULL`). Nothing is ever closed or deleted on write.
 2. **Destructive revision happens only during a calm dream.** The 9th dream mode
    `relationship_reconsolidation` drains flagged contradictions. For each, it
    closes the losing edge via `supersedeRelationship` (sets `valid_until`) only
@@ -84,9 +84,10 @@ These make the LongMemEval SABM-on/off ablation interpretable.
 | ---------------------------- | ------- | ------------------------------------------------------------------------------- |
 | `BITTERBOT_KG_RELATIONSHIPS` | on      | Deterministic relationship extraction on the write path. Set to `0` to disable. |
 
-The reconsolidation dream mode is enabled by default in `DEFAULT_MODE_CONFIGS`;
-opt out with the standard per-mode dream config
-(`modes.relationship_reconsolidation.enabled = false`).
+The reconsolidation dream mode is held off by default (`enabled: false` in
+`DEFAULT_MODE_CONFIGS`) until there is enough to adjudicate (roughly 100 active
+relationships); opt in with
+`memory.dream.modes.relationship_reconsolidation.enabled: true`.
 
 ## How SABM relates to prior art
 

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import lockfile from "proper-lockfile";
 import type { WalletConfig } from "../config/types.wallet.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 
 export type BalanceResult = {
   token: string;
@@ -61,9 +62,61 @@ export interface WalletService {
    * leaked txHash cannot be replayed against a different recipient by another agent.
    */
   signMessage(message: string): Promise<string>;
+  /**
+   * PLAN-48 Phase 4 scaffold: the smart-account spend-permission parameters the
+   * operator's on-chain upgrade will register (the same allowance
+   * `SpendPermissionPolicy` enforces off-chain). Pure config echo — never touches
+   * the chain or creates an account. `enabled` gates whether the operator has
+   * opted into routing; the live create + routing cutover is a Victor-run step.
+   */
+  getSmartAccountConfig(): SmartAccountConfigView;
+}
+
+/** The intended CDP Smart Account spend-permission parameters (config echo). */
+export interface SmartAccountConfigView {
+  /** Whether smart-account routing is opted into (wallet.smartAccount.enabled). */
+  enabled: boolean;
+  /** Per-period allowance in USD the on-chain permission would enforce. */
+  allowanceUsd?: number;
+  /** Allowance period in seconds (default daily). */
+  periodSeconds: number;
+  /** Sponsor gas via user operations (paymaster) rather than requiring ETH. */
+  sponsorGas: boolean;
+  /** USDC contract the allowance is denominated in, for `network`. */
+  token?: string;
+  network: string;
 }
 
 const DEFAULT_WALLET_STORE = path.join(os.homedir(), ".bitterbot", "wallet");
+
+const log = createSubsystemLogger("wallet");
+
+/**
+ * Spend bookkeeping shared by every wallet service on the same store: what is
+ * held for sends in flight, the order the history is read and written in, and
+ * spends that went through but could not be written down yet.
+ */
+type StoreLedger = {
+  reservedUsd: number;
+  queue: Promise<void>;
+  unrecorded: TransactionRecord[];
+};
+const ledgers = new Map<string, StoreLedger>();
+
+function ledgerFor(storePath: string): StoreLedger {
+  const key = path.resolve(storePath);
+  let ledger = ledgers.get(key);
+  if (!ledger) {
+    ledger = { reservedUsd: 0, queue: Promise.resolve(), unrecorded: [] };
+    ledgers.set(key, ledger);
+  }
+  return ledger;
+}
+
+/** Test seam: forget holds and unwritten spends for every store. */
+export function resetWalletLedgersForTest(): void {
+  ledgers.clear();
+}
 
 // Persistence shape. v1 stored an encrypted blob; v2 only needs the
 // smart-account name and addresses — CDP holds the wallet state server-side,
@@ -208,28 +261,101 @@ export function createWalletService(
    * persisted tx history (send + x402_payment rows), so the cap survives
    * restarts — unlike per-session counters.
    */
-  async function assertDailyLimit(amount: number): Promise<void> {
-    const historyPath = path.join(storePath, "tx-history.json");
-    let history: TransactionRecord[] = [];
+  //
+  // The check also holds the amount until the spend is recorded (or abandoned).
+  // Concurrent spends otherwise all read the same history before any of them is
+  // written, and all pass the cap (#157).
+  //
+  // The hold, and the order history is read and written in, belong to the
+  // wallet store, not to this instance: the app builds a wallet service per
+  // agent run, per paid A2A task, per payout tick and for the gateway RPC, and
+  // they all spend from the same budget. Holds are in-process only; the
+  // history file is what survives restarts.
+  const ledger = ledgerFor(storePath);
+
+  /** One thing at a time per store: a cap check never reads around a write. */
+  function inOrder<T>(work: () => Promise<T>): Promise<T> {
+    const run = ledger.queue.then(work);
+    ledger.queue = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  function reserveDailyLimit(amount: number, strictHistory = false): Promise<() => void> {
+    return inOrder(async () => {
+      const historyPath = path.join(storePath, "tx-history.json");
+      let history: TransactionRecord[] = [];
+      try {
+        history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
+      } catch (error) {
+        if (strictHistory && (error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        // no history yet — nothing spent
+      }
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const isSpend = (r: TransactionRecord) =>
+        r.timestamp >= cutoff && (r.type === "send" || r.type === "x402_payment");
+      const sum = (rows: TransactionRecord[]) =>
+        rows.filter(isSpend).reduce((total, r) => total + (Number(r.amount) || 0), 0);
+      // Money that left but could not be written down still counts.
+      const spent = sum(history) + sum(ledger.unrecorded);
+      if (spent + ledger.reservedUsd + amount > dailyLimit) {
+        const inFlight =
+          ledger.reservedUsd > 0 ? ` plus $${ledger.reservedUsd.toFixed(2)} in flight` : "";
+        throw new Error(
+          `Daily spend limit would be exceeded: $${spent.toFixed(2)} spent in the last 24h${inFlight}, ` +
+            `$${amount.toFixed(2)} requested, cap is $${dailyLimit} ` +
+            `(tools.wallet.dailySpendLimitUsd)`,
+        );
+      }
+      ledger.reservedUsd += amount;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        ledger.reservedUsd -= amount;
+      };
+    });
+  }
+
+  // History writes run one at a time per store, so concurrent spends don't
+  // fail on our own lockfile after the money has already moved. The lockfile
+  // still guards against other processes.
+
+  /**
+   * Write down a spend that has ALREADY happened. This never throws: by the
+   * time it is called the money has moved, and a caller told "failed" will
+   * pay again (an agent retries; the payout queue re-sends next tick). If the
+   * history cannot be written the spend is kept in memory, still counted
+   * against the cap, and written with the next record that succeeds.
+   */
+  async function recordSpend(record: TransactionRecord): Promise<void> {
     try {
-      history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
-    } catch {
-      return; // no history yet — nothing spent
-    }
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    const spent = history
-      .filter((r) => r.timestamp >= cutoff && (r.type === "send" || r.type === "x402_payment"))
-      .reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-    if (spent + amount > dailyLimit) {
-      throw new Error(
-        `Daily spend limit would be exceeded: $${spent.toFixed(2)} spent in the last 24h, ` +
-          `$${amount.toFixed(2)} requested, cap is $${dailyLimit} ` +
-          `(tools.wallet.dailySpendLimitUsd)`,
+      await persistSpend(record);
+    } catch (err) {
+      ledger.unrecorded.push(record);
+      log.error(
+        `spend ${record.txHash} ($${record.amount} ${record.type}) went through but could not be written to the wallet history: ` +
+          `${err instanceof Error ? err.message : String(err)}. It still counts against the daily limit.`,
       );
     }
   }
 
-  async function recordTransaction(record: TransactionRecord): Promise<void> {
+  /** Persist this row and recover prior sends whose history writes failed. */
+  function persistSpend(record: TransactionRecord): Promise<void> {
+    return inOrder(async () => {
+      const pending = ledger.unrecorded.splice(0);
+      try {
+        await writeTransactions([...pending, record]);
+      } catch (err) {
+        ledger.unrecorded.push(...pending);
+        throw err;
+      }
+    });
+  }
+
+  async function writeTransactions(records: TransactionRecord[]): Promise<void> {
     await ensureStoreDir();
     const historyPath = path.join(storePath, "tx-history.json");
 
@@ -249,7 +375,7 @@ export function createWalletService(
       try {
         history = JSON.parse(await fs.readFile(historyPath, "utf-8"));
       } catch {}
-      history.push(record);
+      history.push(...records);
       // Keep every spend inside the daily-limit window, even for high-volume micropayments.
       const cutoff = Date.now() - 24 * 60 * 60 * 1000;
       history = history.filter(
@@ -326,14 +452,20 @@ export function createWalletService(
               if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
             }
             if (history.some((record) => record.txHash === reference)) return;
-            await assertDailyLimit(quote.amount_microusdc / 1e6);
-            await recordTransaction({
-              txHash: reference,
-              type: "send",
-              amount: String(quote.amount_microusdc / 1e6),
-              token: "USDC",
-              timestamp: Date.now(),
-            });
+            const releaseHold = await reserveDailyLimit(quote.amount_microusdc / 1e6, true);
+            try {
+              // Persist before signing. A failed or ambiguous send keeps this
+              // reservation; a retry of the same escrow cannot spend twice.
+              await persistSpend({
+                txHash: reference,
+                type: "send",
+                amount: String(quote.amount_microusdc / 1e6),
+                token: "USDC",
+                timestamp: Date.now(),
+              });
+            } finally {
+              releaseHold();
+            }
           },
         });
       } finally {
@@ -354,6 +486,29 @@ export function createWalletService(
     async signMessage(message: string): Promise<string> {
       const provider = await getProvider();
       return provider.signMessage(message);
+    },
+
+    // PLAN-48 Phase 4 scaffold. Surfaces the spend-permission parameters the
+    // operator's on-chain upgrade will register; pure config, no CDP call.
+    //
+    // LIVE CUTOVER (operator / Victor, testnet first — deliberately NOT built
+    // here to avoid shipping unverifiable money-movement code): create the CDP
+    // Smart Account owned by this EOA (`cdp.evm.getOrCreateSmartAccount`),
+    // register a spend permission from `buildSpendPermission(...)` in
+    // src/payments/wallet/smart-account.ts, persist a SmartAccountRecord to
+    // `<storePath>/smart-account.json`, verify I5 via `assertAddressContinuity`
+    // (also checked by doctor-wallet), then route sendUsdc / payForResource
+    // through the smart account with sponsored-gas user operations.
+    getSmartAccountConfig(): SmartAccountConfigView {
+      const sa = config.smartAccount;
+      return {
+        enabled: sa?.enabled === true,
+        allowanceUsd: sa?.allowanceUsd,
+        periodSeconds: sa?.periodSeconds ?? 86_400,
+        sponsorGas: sa?.sponsorGas === true,
+        token: USDC_CONTRACTS[network],
+        network,
+      };
     },
 
     async getBalance(token?: string): Promise<BalanceResult> {
@@ -399,40 +554,52 @@ export function createWalletService(
 
     async sendUsdc(to: string, amount: number, opts?: SendUsdcOptions): Promise<SendResult> {
       validateTransactionAmount(amount);
-      await assertDailyLimit(amount);
-      const provider = await getProvider();
+      const releaseHold = await reserveDailyLimit(amount);
+      let provider: Awaited<ReturnType<typeof getProvider>>;
+      try {
+        provider = await getProvider();
+      } catch (err) {
+        releaseHold();
+        throw err;
+      }
 
       const usdcContract = USDC_CONTRACTS[network];
       if (!usdcContract) {
+        releaseHold();
         throw new Error(`No USDC contract for network: ${network}`);
       }
 
+      let tx: string;
       try {
         const smallestUnit = opts?.rawSmallestUnit ?? BigInt(Math.round(amount * 1e6));
-        const tx = await provider.sendTransaction({
+        tx = await provider.sendTransaction({
           to: usdcContract as `0x${string}`,
           value: BigInt(0),
           data: encodeSendUsdcData(to, smallestUnit),
         });
-
-        await recordTransaction({
-          txHash: tx,
-          type: "send",
-          amount: amount.toString(),
-          token: "USDC",
-          timestamp: Date.now(),
-        });
-
-        return {
-          txHash: tx,
-          status: "pending",
-        };
       } catch (err) {
+        releaseHold();
         throw new Error(
           `Failed to send USDC: ${err instanceof Error ? err.message : String(err)}`,
           { cause: err },
         );
       }
+      // The money has moved. From here on this call reports success whatever
+      // happens to the bookkeeping: saying "failed" now is how a spend gets
+      // made twice.
+      await recordSpend({
+        txHash: tx,
+        type: "send",
+        amount: amount.toString(),
+        token: "USDC",
+        timestamp: Date.now(),
+      });
+      // Recorded (in the history, or held in memory): it counts there now.
+      releaseHold();
+      return {
+        txHash: tx,
+        status: "pending",
+      };
     },
 
     async getTransactionHistory(limit?: number): Promise<TransactionRecord[]> {
@@ -477,6 +644,7 @@ export function createWalletService(
       const { X402ActionProvider } = await import("@coinbase/agentkit");
       const x402 = new X402ActionProvider();
 
+      let releaseHold: (() => void) | undefined;
       try {
         // Pre-flight: discover the payment requirements WITHOUT paying. The
         // auto-pay wrapper would settle whatever the server demands; we must
@@ -547,7 +715,7 @@ export function createWalletService(
 
         // Within cap: enforce the daily budget against the ACTUAL price
         // (the probe above was free), then pay and settle on-chain.
-        await assertDailyLimit(requiredUsd);
+        releaseHold = await reserveDailyLimit(requiredUsd);
         const paidRaw = await x402.makeHttpRequestWithX402(payer, {
           url: resourceUrl,
           method: "GET",
@@ -576,7 +744,9 @@ export function createWalletService(
           paid.paymentProof?.transaction ??
           paid.paymentProof?.txHash ??
           `x402-${Date.now().toString(36)}`;
-        await recordTransaction({
+        // Paid: record it without letting a bookkeeping failure turn a
+        // payment that went through into a reported failure.
+        await recordSpend({
           txHash,
           type: "x402_payment",
           amount: requiredUsd.toString(),
@@ -597,6 +767,8 @@ export function createWalletService(
           success: false,
           error: `x402 payment failed: ${err instanceof Error ? err.message : String(err)}`,
         };
+      } finally {
+        releaseHold?.();
       }
     },
   };

@@ -1,9 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { MsgContext } from "../../auto-reply/templating.js";
-import type { SessionMaintenanceConfig, SessionMaintenanceMode } from "../types.base.js";
 import { acquireSessionWriteLock } from "../../agents/session-write-lock.js";
+import type { MsgContext } from "../../auto-reply/templating.js";
 import { parseByteSize } from "../../cli/parse-bytes.js";
 import { parseDurationMs } from "../../cli/parse-duration.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -16,7 +15,9 @@ import {
 } from "../../utils/delivery-context.js";
 import { getFileMtimeMs, isCacheEnabled, resolveCacheTtlMs } from "../cache-utils.js";
 import { loadConfig } from "../config.js";
+import type { SessionMaintenanceConfig, SessionMaintenanceMode } from "../types.base.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
+import { externalizeSkillsSnapshots, pruneSkillsSnapshotFiles } from "./skills-snapshot-store.js";
 import { mergeSessionEntry, type SessionEntry } from "./types.js";
 
 const log = createSubsystemLogger("sessions/store");
@@ -212,12 +213,39 @@ export function loadSessionStore(
   return structuredClone(store);
 }
 
+/**
+ * The cached store object itself, for read-only lookups.
+ *
+ * `loadSessionStore` returns a deep copy so callers may mutate freely; with
+ * hundreds of sessions that copy is tens of milliseconds of synchronous work,
+ * and the gateway asked for it on every agent event, every health snapshot and
+ * most RPCs (2026-10-03 profile: 35 s of structuredClone in a 7-minute window,
+ * 9.7 MB store). Callers that only read one entry or count keys use this and
+ * copy what they keep. The returned object MUST NOT be mutated.
+ */
+export function peekSessionStore(storePath: string): Readonly<Record<string, SessionEntry>> {
+  if (isSessionStoreCacheEnabled()) {
+    const cached = SESSION_STORE_CACHE.get(storePath);
+    if (
+      cached &&
+      isSessionStoreCacheValid(cached) &&
+      getFileMtimeMs(storePath) === cached.mtimeMs
+    ) {
+      return cached.store;
+    }
+  }
+  // Miss: load from disk (which fills the cache) and hand out the cached object
+  // so the next peek is the same reference; without a cache the copy is ours.
+  const loaded = loadSessionStore(storePath);
+  return SESSION_STORE_CACHE.get(storePath)?.store ?? loaded;
+}
+
 export function readSessionUpdatedAt(params: {
   storePath: string;
   sessionKey: string;
 }): number | undefined {
   try {
-    const store = loadSessionStore(params.storePath);
+    const store = peekSessionStore(params.storePath);
     return store[params.sessionKey]?.updatedAt;
   } catch {
     return undefined;
@@ -519,7 +547,13 @@ async function saveSessionStoreUnlocked(
   }
 
   await fs.promises.mkdir(path.dirname(storePath), { recursive: true });
-  const json = JSON.stringify(store, null, 2);
+  // Skills snapshot bodies go to side files, one per distinct content; the
+  // index keeps refs. See skills-snapshot-store.ts.
+  const toWrite = externalizeSkillsSnapshots(storePath, store);
+  if (toWrite !== store) {
+    pruneSkillsSnapshotFiles(storePath, toWrite);
+  }
+  const json = JSON.stringify(toWrite, null, 2);
 
   // Windows: avoid atomic rename swaps (can be flaky under concurrent access).
   // We serialize writers via the session-store lock instead.

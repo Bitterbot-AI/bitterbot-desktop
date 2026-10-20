@@ -34,6 +34,8 @@ These are **not** browser automation. For JS-heavy sites or logins, use the
 | **Brave** (default) | Fast, structured results, free tier          | Traditional search results               | `BRAVE_API_KEY`                              |
 | **Perplexity**      | AI-synthesized answers, citations, real-time | Requires Perplexity or OpenRouter access | `OPENROUTER_API_KEY` or `PERPLEXITY_API_KEY` |
 
+Grok, Tavily, Parallel and Serply are also supported (`provider: "grok" | "tavily" | "parallel" | "serply"`); see [Web search](/tools/web-search) for all six and their keys.
+
 See [Brave Search setup](/brave-search) and [Perplexity Sonar](/perplexity) for provider-specific details.
 
 Set the provider in config:
@@ -43,7 +45,7 @@ Set the provider in config:
   tools: {
     web: {
       search: {
-        provider: "brave", // or "perplexity"
+        provider: "brave", // or "perplexity", "grok", "tavily", "parallel", "serply"
       },
     },
   },

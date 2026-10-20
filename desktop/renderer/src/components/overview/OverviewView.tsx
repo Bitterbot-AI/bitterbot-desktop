@@ -6,7 +6,10 @@ import { useOverviewStore } from "../../stores/overview-store";
 import { useUIStore } from "../../stores/ui-store";
 import { GatewayControls } from "./GatewayControls";
 import { GetStartedCard } from "./GetStartedCard";
+import { resolveOverviewStats } from "./overview-stats";
 import { RepairsCard } from "./RepairsCard";
+import { SpendCard } from "./SpendCard";
+import { TemperamentCard } from "./TemperamentCard";
 import { UpdateCard } from "./UpdateCard";
 
 function StatCard({
@@ -106,9 +109,7 @@ export function OverviewView() {
     refresh();
   }, [refresh]);
 
-  const version = statusData?.version ?? hello?.version ?? "—";
-  const uptime = statusData?.uptime ?? health?.uptime;
-  const platform = statusData?.platform ?? "—";
+  const stats = resolveOverviewStats(statusData, hello);
   const channels = health?.channels ?? {};
   const configuredChannels = summarizeChannels(channels).filter((c) => c.configured);
 
@@ -136,17 +137,26 @@ export function OverviewView() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Version" value={String(version)} accent />
-        <StatCard label="Uptime" value={typeof uptime === "number" ? formatUptime(uptime) : "—"} />
-        <StatCard label="Platform" value={String(platform)} />
+        <StatCard label="Version" value={stats.version} accent />
+        <StatCard
+          label="Uptime"
+          value={stats.uptimeSeconds === null ? "—" : formatUptime(stats.uptimeSeconds)}
+        />
+        <StatCard label="Platform" value={stats.platform} sub={stats.platformSub} />
         <StatCard label="Channels" value={String(configuredChannels.length)} sub="configured" />
       </div>
+
+      {/* PLAN-50: today's spend, the current 5-hour block, cache state; links to Usage */}
+      <SpendCard />
 
       {/* Doctor-fed repairs (renders only when something needs attention) */}
       <RepairsCard />
 
       {/* First-run checklist (self-dismisses when complete) */}
       <GetStartedCard channelsConfigured={configuredChannels.length > 0} />
+
+      {/* One-time offer: GENOME.md Temperament for agents created before it */}
+      <TemperamentCard />
 
       {/* Version & updates */}
       <UpdateCard />
@@ -167,20 +177,16 @@ export function OverviewView() {
               <span className="text-foreground">{formatRelativeTime(hello.ts)}</span>
             </div>
           )}
-          {statusData?.configPath && (
+          {stats.configPath && (
             <div className="col-span-2">
               <span className="text-muted-foreground">Config: </span>
-              <span className="text-foreground font-mono text-xs">
-                {String(statusData.configPath)}
-              </span>
+              <span className="text-foreground font-mono text-xs">{stats.configPath}</span>
             </div>
           )}
-          {statusData?.stateDir && (
+          {stats.stateDir && (
             <div className="col-span-2">
               <span className="text-muted-foreground">State Dir: </span>
-              <span className="text-foreground font-mono text-xs">
-                {String(statusData.stateDir)}
-              </span>
+              <span className="text-foreground font-mono text-xs">{stats.stateDir}</span>
             </div>
           )}
         </div>

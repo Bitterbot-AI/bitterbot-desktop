@@ -14,6 +14,8 @@ export type NormalizedPluginsConfig = {
 };
 
 export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
+  // Connectors (PLAN-53 D2): registers nothing until the owner adds a server.
+  "mcp",
   // V1 default flip (PLAN-41 D-D): device-pair, phone-control, talk-voice and
   // twitch left this set — experimental surfaces are opt-in via
   // plugins.entries.<id>.enabled=true.
@@ -32,6 +34,14 @@ export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   "signal",
   // Registers local onboarding only until the owner activates an enrollment.
   "soapbox-compute",
+  // X (Twitter) is outbound-only; registering it exposes channels.x in the
+  // Control UI and the `bitterbot x` CLI. Nothing posts until an OAuth token
+  // exists AND the policy gate passes (extensions/x/src/policy.ts).
+  "x",
+  // Email (PLAN-53 F4): connects only once channels.email has a mailbox and
+  // password, and answers only senders in allowFrom whom the mail server
+  // verified.
+  "email",
 ]);
 
 const normalizeList = (value: unknown): string[] => {

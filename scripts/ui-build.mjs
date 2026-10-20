@@ -8,18 +8,19 @@
  *
  * The build is content-hash gated, because this runs inside `update.run` where
  * every second is time the node is not serving:
- * `vite build` is skipped when no renderer source file has changed since the last
- * successful build. Pass --force to rebuild regardless.
+ * `vite build` is skipped when no build input has changed since the last
+ * successful build: the renderer, the desktop build config and package files,
+ * the lockfile, the root package version and the VITE_* environment (see
+ * scripts/ui-build-lib.mjs). Pass --force to rebuild regardless.
  */
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { computeUiInputHash } from "./ui-build-lib.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const desktopDir = path.join(repoRoot, "desktop");
-const rendererDir = path.join(desktopDir, "renderer");
 const outDir = path.join(desktopDir, "dist-renderer");
 const stampDir = path.join(repoRoot, "node_modules", ".cache", "bitterbot");
 const force = process.argv.includes("--force");
@@ -32,33 +33,6 @@ function run(cmd, args, cwd) {
     console.error(`[ui:build] \`${cmd} ${args.join(" ")}\` failed with code ${res.status}`);
     process.exit(res.status ?? 1);
   }
-}
-
-/** Stable hash of every file under `dir`, ignoring build output and deps. */
-function hashTree(dir) {
-  const hash = createHash("sha256");
-  const walk = (d) => {
-    let entries;
-    try {
-      entries = fs.readdirSync(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
-      if (e.name === "node_modules" || e.name === "dist-renderer" || e.name.startsWith(".")) {
-        continue;
-      }
-      const full = path.join(d, e.name);
-      if (e.isDirectory()) {
-        walk(full);
-      } else if (e.isFile()) {
-        hash.update(path.relative(dir, full));
-        hash.update(fs.readFileSync(full));
-      }
-    }
-  };
-  walk(dir);
-  return hash.digest("hex");
 }
 
 function readStamp(name) {
@@ -93,12 +67,12 @@ if (!fs.existsSync(path.join(desktopDir, "node_modules"))) {
 }
 
 // 2. Renderer build.
-const srcHash = hashTree(rendererDir);
+const srcHash = computeUiInputHash(repoRoot);
 const builtIndex = path.join(outDir, "index.html");
 const buildFresh = !force && fs.existsSync(builtIndex) && readStamp("ui-src.hash") === srcHash;
 
 if (buildFresh) {
-  log("renderer sources unchanged, skipping vite build");
+  log("control UI build inputs unchanged, skipping vite build");
 } else {
   log("building renderer");
   run("pnpm", ["--filter", "bitterbot-control-ui", "build"], repoRoot);

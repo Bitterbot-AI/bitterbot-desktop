@@ -13,21 +13,29 @@
  * deterministic replay/fork (LangGraph-parity); the journal powers
  * live observation (Claude-Code-parity `Monitor`).
  *
+ * Streams: `lifecycle` (start/end/error), `tool` (start/update/result),
+ * `assistant` (cumulative text), and — PLAN-44 Phase 0 — `user` (the task
+ * the run was asked to do, emitted once per run by the embedded runner and
+ * the CLI-provider path). The skill-evolution trace reconstructor reads
+ * `user` back as the trace's task header; rows written before the stream
+ * existed are rendered as "task: (not journaled)".
+ *
  * Default DB path: `~/.bitterbot/event-journal.sqlite`. Override with
  * `BITTERBOT_EVENT_JOURNAL_DB`. The journal is on by default so that
  * the Task primitive (Phase B) works out of the box; set
  * `BITTERBOT_EVENT_JOURNAL=0` to disable.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import zlib from "node:zlib";
-import type { AgentEventPayload, AgentEventStream } from "./agent-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
+import { scrubCardDataDeep } from "../security/card-data.js";
 import { resolveUserPath } from "../utils.js";
+import type { AgentEventPayload, AgentEventStream } from "./agent-events.js";
 import { onAgentEvent } from "./agent-events.js";
 
 const log = createSubsystemLogger("event-journal");
@@ -100,7 +108,9 @@ export class EventJournal {
   }
 
   append(evt: AgentEventPayload): void {
-    const dataBlob = zlib.gzipSync(JSON.stringify(evt.data ?? {}));
+    // PLAN-53 C2: the journal is replayed into traces and skill evolution;
+    // card data must not be in it.
+    const dataBlob = zlib.gzipSync(JSON.stringify(scrubCardDataDeep(evt.data ?? {})));
     this.db
       .prepare(
         `INSERT INTO event_log
@@ -180,6 +190,107 @@ export class EventJournal {
       | { s: number | null }
       | undefined;
     return row?.s ?? 0;
+  }
+
+  /**
+   * PLAN-42: first seq at or after a wall-clock timestamp (idx_event_log_ts).
+   * Lets the skill-evolution sampler fast-forward past stale history instead
+   * of replaying months of old runs from seq 0. Returns 0 when no event is
+   * that recent.
+   */
+  firstSeqSince(ts: number): number {
+    const row = this.db.prepare(`SELECT MIN(seq) AS s FROM event_log WHERE ts >= ?`).get(ts) as
+      | { s: number | null }
+      | undefined;
+    return row?.s ?? 0;
+  }
+
+  /**
+   * PLAN-42: event count for one run via the run index — the cheap marathon
+   * check that avoids inflating a single blob for runs that will be skipped.
+   */
+  countForRun(runId: string): number {
+    const row = this.db
+      .prepare(`SELECT COUNT(*) AS c FROM event_log WHERE run_id = ?`)
+      .get(runId) as { c: number };
+    return row.c;
+  }
+
+  /**
+   * PLAN-42: metadata-only variant of query() — same filters, but the
+   * data_blob is neither selected nor gunzipped. query() inflates every
+   * row's blob synchronously (assistant events carry cumulative text, so a
+   * few hundred rows can decompress to 100MB+); run enumeration must never
+   * pay that.
+   */
+  queryMeta(opts: QueryOptions): Array<Omit<JournalEvent, "data">> {
+    const filters: string[] = [];
+    const args: Array<string | number> = [];
+    if (opts.runId) {
+      filters.push("run_id = ?");
+      args.push(opts.runId);
+    }
+    if (opts.taskId) {
+      filters.push("task_id = ?");
+      args.push(opts.taskId);
+    }
+    if (typeof opts.sinceSeq === "number") {
+      filters.push("seq > ?");
+      args.push(opts.sinceSeq);
+    }
+    if (opts.streams && opts.streams.length > 0) {
+      const placeholders = opts.streams.map(() => "?").join(",");
+      filters.push(`stream IN (${placeholders})`);
+      for (const s of opts.streams) args.push(s);
+    }
+    const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+    const limit = Math.max(1, Math.min(opts.limit ?? 1000, 10_000));
+    const rows = this.db
+      .prepare(
+        `SELECT seq, run_id, task_id, ts, stream, run_seq, session_key
+         FROM event_log ${where}
+         ORDER BY seq ASC
+         LIMIT ?`,
+      )
+      .all(...args, limit) as unknown as Array<Omit<RawEventRow, "data_blob">>;
+    return rows.map((row) => ({
+      seq: row.seq,
+      runId: row.run_id,
+      taskId: row.task_id,
+      ts: row.ts,
+      stream: row.stream as AgentEventStream,
+      runSeq: row.run_seq,
+      sessionKey: row.session_key,
+    }));
+  }
+
+  /**
+   * PLAN-42: fetch specific rows by journal seq, inflating only those blobs.
+   * The reconstructor picks the rows it needs from a queryMeta pass (tool +
+   * lifecycle events + the last assistant event of each streak) so a
+   * marathon run's cumulative assistant text is never decompressed.
+   */
+  getBySeqs(seqs: readonly number[]): JournalEvent[] {
+    const out: JournalEvent[] = [];
+    for (let i = 0; i < seqs.length; i += 100) {
+      const chunk = seqs.slice(i, i + 100);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = this.db
+        .prepare(
+          `SELECT seq, run_id, task_id, ts, stream, run_seq, session_key, data_blob
+           FROM event_log WHERE seq IN (${placeholders})
+           ORDER BY seq ASC`,
+        )
+        .all(...chunk) as unknown as RawEventRow[];
+      for (const row of rows) {
+        try {
+          out.push(rowToEvent(row));
+        } catch {
+          // torn row — skip
+        }
+      }
+    }
+    return out;
   }
 
   /** Count events for a given task. */

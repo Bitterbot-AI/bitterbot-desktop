@@ -16,6 +16,11 @@
 import fs from "node:fs";
 import type { BitterbotConfig } from "../config/config.js";
 import { resolveBootstrapDns } from "../infra/dns-bootstrap.js";
+import type { InstallKind } from "../infra/install-kind.js";
+import {
+  orchestratorMissingAdvice,
+  orchestratorSignatureStatus,
+} from "../infra/orchestrator-advice.js";
 import {
   parseMultiaddr,
   probeOrchestratorBinary,
@@ -32,6 +37,8 @@ function describeSource(source: BinarySource): string {
   switch (source) {
     case "config":
       return "explicit config override";
+    case "bundled":
+      return "bundled with the release tarball";
     case "release":
       return "local cargo release build";
     case "debug":
@@ -101,8 +108,11 @@ async function queryLiveStats(
 export async function runP2pNetworkChecks(params: {
   config: BitterbotConfig;
   isGatewayRunning: boolean;
+  /** How this Bitterbot is installed; picks the remediation text. */
+  installKind?: InstallKind;
 }): Promise<void> {
   const { config, isGatewayRunning } = params;
+  const installKind = params.installKind ?? "unknown";
   const results: CheckResult[] = [];
 
   // ── Enabled check ──
@@ -143,16 +153,19 @@ export async function runP2pNetworkChecks(params: {
     } else {
       results.push(ok(`Orchestrator: ${describeSource(probe.source)}`));
     }
+    results.push(
+      info(`Orchestrator signature: ${orchestratorSignatureStatus(probe.source, installKind)}`),
+    );
   } else {
     // warn, not error: a p2p-less node still functions locally, and the
     // update gate re-running pnpm install may be exactly what restores the
     // binary — blocking the update would prevent the fix.
     results.push(
       warn(
-        "Orchestrator binary NOT FOUND — node cannot join the P2P network.\n" +
-          `  Build locally:   cargo build --release --manifest-path orchestrator/Cargo.toml\n` +
-          "  Or download:     `pnpm install` fetches a prebuilt ONLY when a release exists\n" +
-          "                   for the version in orchestrator/Cargo.toml (none may be published yet)",
+        [
+          "Orchestrator binary NOT FOUND: the node cannot join the P2P network.",
+          ...orchestratorMissingAdvice(installKind),
+        ].join("\n"),
       ),
     );
     // Still run the rest of the checks so the operator gets the full picture.

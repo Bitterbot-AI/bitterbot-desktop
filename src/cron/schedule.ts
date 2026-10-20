@@ -117,3 +117,43 @@ export function describeSchedule(schedule: CronSchedule): string {
       return `at ${schedule.at}`;
   }
 }
+
+/** Below this a late start is ordinary scheduling jitter, not worth telling the agent. */
+const LATE_NOTE_THRESHOLD_MS = 5 * 60_000;
+
+function formatLateness(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 60) {
+    return `${minutes} minutes`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) {
+    return `${hours} hours`;
+  }
+  return `${Math.round(hours / 24)} days`;
+}
+
+/** The time a one-shot schedule names, or null for other kinds and bad input. */
+export function oneShotTime(schedule: CronSchedule): number | null {
+  if (schedule.kind !== "at") {
+    return null;
+  }
+  try {
+    return parseSchedule(schedule).nextRunAt(0);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A one-shot job that runs well after its time says so in its own text, so a
+ * reminder for 09:00 that fires at 14:00 is not delivered as if it were on
+ * time. Returns the sentence to append, or undefined.
+ */
+export function lateNoteFor(job: { schedule: CronSchedule }, nowMs: number): string | undefined {
+  const scheduledAt = oneShotTime(job.schedule);
+  if (scheduledAt === null || nowMs - scheduledAt < LATE_NOTE_THRESHOLD_MS) {
+    return undefined;
+  }
+  return `(Scheduled for ${new Date(scheduledAt).toISOString()}; running ${formatLateness(nowMs - scheduledAt)} late.)`;
+}

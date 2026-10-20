@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ResolvedBrowserConfig } from "./config.js";
 import { isWSLSync } from "../infra/wsl.js";
+import type { ResolvedBrowserConfig } from "./config.js";
 
 export type BrowserExecutable = {
   kind: "brave" | "canary" | "chromium" | "chrome" | "custom" | "edge";
@@ -282,6 +282,11 @@ function detectDefaultChromiumExecutableLinux(): BrowserExecutable | null {
   if (!CHROMIUM_EXE_NAMES.has(exeName)) {
     return null;
   }
+  // The desktop entry can outlive the browser it pointed at (a snap shim with
+  // no snap). Fall through to the candidate search in that case.
+  if (!isLaunchableLinuxBrowser(resolved)) {
+    return null;
+  }
   return { kind: inferKindFromExecutableName(exeName), path: resolved };
 }
 
@@ -454,6 +459,99 @@ function findFirstExecutable(candidates: Array<BrowserExecutable>): BrowserExecu
   return null;
 }
 
+/**
+ * On Ubuntu, `/usr/bin/chromium-browser` is a shell script that forwards to the
+ * chromium snap, and `/snap/bin/<name>` is a link to the `snap` launcher. Both
+ * exist whether or not the snap can run. Under WSL it usually cannot: snapd is
+ * not running, so the snap is "installed" (`/snap/chromium/current` is there)
+ * but its image is not mounted and the revision directory is empty. Launching
+ * the script then hangs: the gateway waited 15 s for a debugging port that
+ * never opened and reported the browser as unreachable.
+ *
+ * A path is only a browser if there is a browser behind it. A mounted snap
+ * always has `meta/snap.yaml`; an unmounted one has nothing.
+ */
+export function isLaunchableLinuxBrowser(
+  candidatePath: string,
+  io: {
+    exists: (p: string) => boolean;
+    readHead: (p: string) => string | null;
+  } = { exists, readHead: readFileHead },
+): boolean {
+  if (!io.exists(candidatePath)) {
+    return false;
+  }
+  const snapMounted = (name: string) =>
+    io.exists(path.posix.join("/snap", name, "current", "meta", "snap.yaml"));
+  if (candidatePath.startsWith("/snap/bin/")) {
+    return snapMounted(path.posix.basename(candidatePath));
+  }
+  const head = io.readHead(candidatePath);
+  if (head?.startsWith("#!")) {
+    const forwarded = /\/snap\/bin\/([A-Za-z0-9._-]+)/.exec(head);
+    if (forwarded?.[1]) {
+      return snapMounted(forwarded[1]);
+    }
+  }
+  return true;
+}
+
+function readFileHead(filePath: string): string | null {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const buf = Buffer.alloc(2048);
+      const read = fs.readSync(fd, buf, 0, buf.length, 0);
+      return buf.subarray(0, read).toString("latin1");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The Chromium that `playwright install chromium` downloads. Setup already asks
+ * for it (the browser tool needs Playwright), so on a machine with no system
+ * browser it is the one that is certain to be there. Newest revision wins.
+ */
+export function findPlaywrightChromiumLinux(
+  io: {
+    exists: (p: string) => boolean;
+    listDir: (p: string) => string[];
+  } = { exists, listDir: listDirSafe },
+  env: NodeJS.ProcessEnv = process.env,
+  homedir: () => string = os.homedir,
+): BrowserExecutable | null {
+  const override = env.PLAYWRIGHT_BROWSERS_PATH?.trim();
+  const root =
+    override && override !== "0" ? override : path.posix.join(homedir(), ".cache", "ms-playwright");
+  const revisions = io
+    .listDir(root)
+    .map((name) => /^chromium-(\d+)$/.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => ({ dir: match[0], revision: Number(match[1]) }))
+    .toSorted((x, y) => y.revision - x.revision);
+  for (const { dir } of revisions) {
+    for (const layout of ["chrome-linux64", "chrome-linux"]) {
+      const candidate = path.posix.join(root, dir, layout, "chrome");
+      if (io.exists(candidate)) {
+        return { kind: "chromium", path: candidate };
+      }
+    }
+  }
+  return null;
+}
+
+function listDirSafe(dirPath: string): string[] {
+  try {
+    return fs.readdirSync(dirPath);
+  } catch {
+    return [];
+  }
+}
+
 export function findChromeExecutableMac(): BrowserExecutable | null {
   const candidates: Array<BrowserExecutable> = [
     {
@@ -523,9 +621,16 @@ export function findChromeExecutableLinux(): BrowserExecutable | null {
     { kind: "chromium", path: "/snap/bin/chromium" },
   ];
 
-  const native = findFirstExecutable(candidates);
+  const native = candidates.find((candidate) => isLaunchableLinuxBrowser(candidate.path));
   if (native) {
     return native;
+  }
+
+  // Before reaching across to Windows: a Linux Chromium that Playwright
+  // installed runs in this environment directly, with a local debugging port.
+  const playwright = findPlaywrightChromiumLinux();
+  if (playwright) {
+    return playwright;
   }
 
   // WSL: fall back to Windows-side browsers accessible via /mnt/c/

@@ -53,9 +53,9 @@ describe("assessGrounding", () => {
     expect(g!.groundedSources).toHaveLength(2);
   });
 
-  it("rejects ineligible modes (compression/exploration/mutation)", () => {
+  it("rejects ineligible modes (compression/exploration/hygiene/replay)", () => {
     const rej = emptyRejections();
-    for (const mode of ["compression", "exploration", "mutation", "replay"]) {
+    for (const mode of ["compression", "exploration", "hygiene", "replay"]) {
       expect(assessGrounding(insight({ mode }), [src({ id: "a" })], rej)).toBeNull();
     }
     expect(rej.ineligibleMode).toBe(4);

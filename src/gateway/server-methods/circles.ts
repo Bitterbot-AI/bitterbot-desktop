@@ -62,12 +62,16 @@
  * only when a node explicitly sets circles.enabled=false.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { GatewayRequestHandlers } from "./types.js";
+import type { DatabaseSync } from "node:sqlite";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { listDisclosureGrants, setDisclosureGrant } from "../../circles/disclosure.js";
-import { inviteLink, parseInviteCode, revokeInvite } from "../../circles/invites.js";
+import {
+  inviteLink,
+  parseInviteCode,
+  revokeInvite,
+  revokeInvitesForTarget,
+} from "../../circles/invites.js";
 import { computeNameFlags } from "../../circles/petnames.js";
 import { CirclesService } from "../../circles/service.js";
 import {
@@ -79,6 +83,7 @@ import { applyMergePatch } from "../../config/merge-patch.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { renderQrPngBase64 } from "../../web/qr-image.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 async function getCirclesDb(): Promise<DatabaseSync | null> {
   const cfg = loadConfig();
@@ -89,8 +94,25 @@ async function getCirclesDb(): Promise<DatabaseSync | null> {
   // memory DB, so this must not go through getMarketplaceEconomics().getDb()
   // (null when a2a.marketplace is off) — that was the B2 coupling, still live
   // on this RPC path.
-  return (manager as unknown as { getCirclesDb?: () => DatabaseSync }).getCirclesDb?.() ?? null;
+  // PLAN-43 Phase 4: a ban must revoke open circle invites minted for the
+  // peer. The memory engine cannot touch circle tables (R17), so the
+  // circles side subscribes here, once per manager instance.
+  const rep = (
+    manager as unknown as {
+      getPeerReputationManager?: () => { onBan(l: (pk: string) => void): void } | null;
+    }
+  ).getPeerReputationManager?.();
+  const db = (manager as unknown as { getCirclesDb?: () => DatabaseSync }).getCirclesDb?.() ?? null;
+  if (rep && db && !banHooked.has(manager as object)) {
+    banHooked.add(manager as object);
+    rep.onBan((pk) => {
+      revokeInvitesForTarget(db, pk);
+    });
+  }
+  return db;
 }
+
+const banHooked = new WeakSet<object>();
 
 async function getService(): Promise<
   { ok: true; service: CirclesService } | { ok: false; error: string }
@@ -441,10 +463,20 @@ export const circlesHandlers: GatewayRequestHandlers = {
           );
           return;
         }
+        // PLAN-43 Phase 4 (D-D): proven contributors receive multi-use
+        // invites (they may bring others); everyone else gets one use.
+        let maxUses = 1;
+        try {
+          const { inviteMaxUsesFor } = await import("../../memory/contributor-status.js");
+          maxUses = inviteMaxUsesFor(svc.service.dbHandle, sendToPubkey);
+        } catch {
+          maxUses = 1;
+        }
         const invite = svc.service.createInviteCode({
           circleId: typeof params.circleId === "string" ? params.circleId : undefined,
           name: typeof params.name === "string" ? params.name : undefined,
           targetPubkey: sendToPubkey,
+          maxUses,
         });
         try {
           const circleName = svc.service.store.getCircle(invite.circleId)?.name ?? "a circle";

@@ -78,6 +78,8 @@ export interface CircleMessage {
   deleted?: boolean;
   /** The tombstone was a local hide by you (vs the author retracting). */
   deletedByMe?: boolean;
+  /** A member-removal notice: the member a friend removed on their node. */
+  systemTarget?: string | null;
 }
 
 export interface MessageReaction {

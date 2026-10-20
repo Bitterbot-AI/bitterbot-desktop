@@ -72,6 +72,7 @@ This will:
 
 ```bash
 bitterbot onboard --non-interactive \
+  --accept-risk \
   --auth-choice venice-api-key \
   --venice-api-key "vapi_xxxxxxxxxxxx"
 ```

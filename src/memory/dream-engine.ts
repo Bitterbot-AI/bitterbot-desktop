@@ -1,22 +1,22 @@
 /**
  * DreamEngine: offline discovery of cross-domain patterns across accumulated
  * memories. Implements a state machine (DORMANT → INCUBATING → DREAMING →
- * SYNTHESIZING → AWAKENING → DORMANT) with 7 distinct dream modes:
+ * SYNTHESIZING → AWAKENING → DORMANT) with these core dream modes:
  *
  *  1. Replay — Strengthen important memory pathways (no LLM)
- *  2. Mutation — Generate skill/knowledge variations (LLM)
- *  3. Extrapolation — Predict future patterns (LLM)
- *  4. Compression — Generalize into higher abstractions (heuristic/LLM)
- *  5. Simulation — Cross-domain creative recombination (LLM)
- *  6. Exploration — Gap-filling from curiosity targets (LLM)
- *  7. Research — Empirical prompt optimization using execution data (LLM)
+ *  2. Extrapolation — Predict future patterns (LLM)
+ *  3. Compression — Generalize into higher abstractions (heuristic/LLM)
+ *  4. Simulation — Cross-domain creative recombination (LLM)
+ *  5. Exploration — Gap-filling from curiosity targets (LLM)
+ *
+ * plus the plan-specific modes listed in `dream-types.ts`. The legacy
+ * `mutation` and `research` skill-producer modes were retired in PLAN-45
+ * Phase 1 (2026-09-05).
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import type { HarnessPolicy } from "../agents/pi-embedded-runner/harness-policy.js";
-import type { HormonalStateManager } from "./hormonal.js";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import type { DatabaseSync } from "node:sqlite";
+import type { HarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { computeDreamTaskAdjustments, scanPendingTasksForDream } from "../tasks/biology.js";
 import {
@@ -25,6 +25,8 @@ import {
   containsSourceLeak,
   isSensitiveTopic,
 } from "./auto-research-egress.js";
+import { insightPromotionBlock } from "./canonical-supersede-insights.js";
+import { bumpChunkDreamCount, setChunkLifecycle } from "./chunk-writer.js";
 import { computeFshoWeightAdjustment } from "./dream-evaluator.js";
 import {
   assessGrounding,
@@ -36,20 +38,8 @@ import {
   type PromotionCandidateInsight,
   type VerifyInsightFn,
 } from "./dream-insight-promotion.js";
-import { selectStrategy, buildStrategyPrompt } from "./dream-mutation-strategies.js";
 import { simulateFSHO, fshoModeAdjustments } from "./dream-oscillator.js";
 import { ensureDreamSchema, recordDreamTelemetry } from "./dream-schema.js";
-import {
-  bindBiologicalContext,
-  DEFAULT_SLOW_UPDATE_CONFIG,
-  enqueueRegressionPriority,
-  ensureSlowUpdateSchema,
-  readSkillTextHistory,
-  runLongitudinalRegression,
-  shouldRunSlowUpdate,
-  snapshotSkillText,
-  summarize,
-} from "./dream-slow-update.js";
 import {
   buildDreamSynthesisPrompt,
   heuristicSynthesize,
@@ -73,20 +63,9 @@ import {
   DEFAULT_MODE_TIERS,
 } from "./dream-types.js";
 import { yieldToEventLoop } from "./event-loop.js";
-import { ExperimentSandbox, type MutationVerdict } from "./experiment-sandbox.js";
+import type { HormonalStateManager } from "./hormonal.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 import { ensureColumn } from "./memory-schema.js";
-import { PromptOptimizationExperiment } from "./prompt-optimization.js";
-import { listHeldOutExecutions, MIN_PAIRED_FOR_BOOTSTRAP } from "./skill-execution-selection.js";
-import {
-  cosineDecayBudget,
-  defaultPlan21Axes,
-  defaultPlan21TieBreak,
-  type MutationPoolCandidate,
-  paretoFront,
-  selectTopL,
-} from "./skill-mutation-pareto.js";
-
 const log = createSubsystemLogger("memory/dream");
 
 type ChunkRow = {
@@ -130,11 +109,29 @@ export type GCCRFModeInfluence = {
 export class DreamEngine {
   private db: DatabaseSync;
   private readonly config: Required<
-    Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">
-  > & { modes: Record<DreamMode, DreamModeConfig> };
+    Omit<
+      DreamEngineConfig,
+      | "llmCall"
+      | "localLlmCall"
+      | "evolutionLlmCall"
+      | "modes"
+      | "modelTiers"
+      | "skillCurator"
+      | "skillEvolution"
+    >
+  > & {
+    modes: Record<DreamMode, DreamModeConfig>;
+    skillCurator?: DreamEngineConfig["skillCurator"];
+    skillEvolution?: DreamEngineConfig["skillEvolution"];
+    a2aAttestation?: DreamEngineConfig["a2aAttestation"];
+  };
   private readonly synthesize: SynthesizeFn;
   private readonly embedBatch: EmbedBatchFn;
   private readonly llmCallCloud: ((prompt: string) => Promise<string>) | null;
+  /** PLAN-42: dedicated evolution lane (8k output budget). */
+  private readonly llmCallEvolution: ((prompt: string) => Promise<string>) | null;
+  /** PLAN-42: dedicated proposer lane (stronger model, optional). */
+  private readonly llmCallEvolutionProposer: ((prompt: string) => Promise<string>) | null;
   private readonly llmCallLocal: ((prompt: string) => Promise<string>) | null;
   /** PLAN-34 Phase 4: distinct model for the insight verifier (not the generating call). */
   private readonly llmCallSynthesis: ((prompt: string) => Promise<string>) | null;
@@ -144,7 +141,6 @@ export class DreamEngine {
   private hormonalStateGetter:
     | (() => { dopamine: number; cortisol: number; oxytocin: number } | null)
     | null = null;
-  private executionTracker: SkillExecutionTracker | null = null;
   private hormonalManager: HormonalStateManager | null = null;
   private gccrfRewardFunction: {
     updateFshoR(r: number): void;
@@ -216,7 +212,13 @@ export class DreamEngine {
    * overshoot).
    */
   private cycleLlmRemaining = 0;
-  /** PLAN-40: round-robin cursor for the reserved utility-lane slot. */
+  /**
+   * PLAN-40: round-robin cursor for the reserved utility-lane slot.
+   * Memory audit 2026-09-07 P3: seeded from the persisted dream-cycle count in
+   * the constructor so it ADVANCES across gateway restarts — an in-memory 0
+   * reset each boot always picked lane 0 (hygiene) and starved distillation /
+   * anticipation (unselected since ~Aug 12).
+   */
   private laneRotationCounter = 0;
 
   constructor(
@@ -226,12 +228,30 @@ export class DreamEngine {
     embedBatch: EmbedBatchFn,
   ) {
     this.db = db;
+    // Memory audit 2026-09-07 P3: advance the utility-lane rotation across
+    // restarts (see laneRotationCounter) by seeding from the persisted cycle
+    // count instead of always starting at 0 (which starved distillation /
+    // anticipation).
+    try {
+      const row = this.db.prepare("SELECT COUNT(*) AS c FROM dream_cycles").get() as
+        | { c: number }
+        | undefined;
+      this.laneRotationCounter = row?.c ?? 0;
+    } catch {
+      this.laneRotationCounter = 0;
+    }
 
-    // Merge mode configs
+    // Merge mode configs. PLAN-45 Phase 1: keys that are no longer a
+    // DreamMode (`mutation`, `research`) are dropped with one log line each
+    // so a bitterbot.json written before the retirement keeps working.
     const resolvedModes = { ...DEFAULT_MODE_CONFIGS };
     if (config?.modes) {
       for (const [mode, overrides] of Object.entries(config.modes)) {
         const key = mode as DreamMode;
+        if (!(key in DEFAULT_MODE_CONFIGS)) {
+          log.info(`dream mode ${mode} was retired in PLAN-45 Phase 1; ignoring`);
+          continue;
+        }
         if (resolvedModes[key] && overrides) {
           resolvedModes[key] = { ...resolvedModes[key], ...overrides };
         }
@@ -241,12 +261,28 @@ export class DreamEngine {
       ...DEFAULT_DREAM_CONFIG,
       ...config,
       modes: resolvedModes,
-    } as Required<Omit<DreamEngineConfig, "llmCall" | "localLlmCall" | "modes" | "modelTiers">> & {
+    } as Required<
+      Omit<
+        DreamEngineConfig,
+        | "llmCall"
+        | "localLlmCall"
+        | "evolutionLlmCall"
+        | "modes"
+        | "modelTiers"
+        | "skillCurator"
+        | "skillEvolution"
+      >
+    > & {
       modes: Record<DreamMode, DreamModeConfig>;
+      skillCurator?: DreamEngineConfig["skillCurator"];
+      skillEvolution?: DreamEngineConfig["skillEvolution"];
+      a2aAttestation?: DreamEngineConfig["a2aAttestation"];
     };
     this.synthesize = synthesize;
     this.embedBatch = embedBatch;
     this.llmCallCloud = config?.llmCall ?? null;
+    this.llmCallEvolution = config?.evolutionLlmCall ?? null;
+    this.llmCallEvolutionProposer = config?.evolutionProposerLlmCall ?? null;
     this.llmCallLocal = config?.localLlmCall ?? null;
     this.llmCallSynthesis = config?.synthesisLlmCall ?? null;
     // V1 default flip (PLAN-41 D-D): research egress is opt-in.
@@ -259,15 +295,21 @@ export class DreamEngine {
     // directly are treated as local (no cloud spec to inspect).
     this.localModelIsLocal = config?.localModelIsLocal ?? Boolean(config?.localLlmCall);
     // Tiered compute routing
-    this.modeTiers = { ...DEFAULT_MODE_TIERS, ...config?.modelTiers?.modeTiers };
+    const tierOverrides: Partial<Record<DreamMode, ComputeTier>> = {};
+    for (const [mode, tier] of Object.entries(config?.modelTiers?.modeTiers ?? {})) {
+      if (!(mode in DEFAULT_MODE_CONFIGS)) {
+        log.info(`dream mode ${mode} was retired in PLAN-45 Phase 1; ignoring its tier`);
+        continue;
+      }
+      if (tier) {
+        tierOverrides[mode as DreamMode] = tier;
+      }
+    }
+    this.modeTiers = { ...DEFAULT_MODE_TIERS, ...tierOverrides };
     this.fallbackToCloud = config?.modelTiers?.fallbackToCloud ?? true;
     ensureDreamSchema(db);
     // Ensure modes_used column exists on dream_cycles
     ensureColumn(db, "dream_cycles", "modes_used", "TEXT DEFAULT '[]'");
-    // PLAN-21 Phase D: idempotent schema for skill text history + the
-    // context_annotation column on mutation_queue. Safe to call on every
-    // construction — internal CREATE / ALTER are guarded by IF NOT EXISTS.
-    ensureSlowUpdateSchema(db);
   }
 
   /**
@@ -327,15 +369,7 @@ export class DreamEngine {
   }
 
   /**
-   * Wire a skill execution tracker for research mode.
-   * Research mode requires execution data to ground its experiments.
-   */
-  setExecutionTracker(tracker: SkillExecutionTracker): void {
-    this.executionTracker = tracker;
-  }
-
-  /**
-   * Wire the hormonal manager for dopamine spikes on mutation promotion.
+   * Wire the hormonal manager (hormonal-state snapshots on dream outcomes).
    */
   setHormonalManager(manager: HormonalStateManager): void {
     this.hormonalManager = manager;
@@ -869,8 +903,8 @@ export class DreamEngine {
         // searchable chunks, the rest are ephemeral. When promotion is
         // disabled (kill switch) OR no searchable-write path is wired, they
         // fall back to the ORIGINAL dream_insights write so insights are
-        // never silently lost. The mutation lane and every other mode keep
-        // their dream_insights write unchanged regardless.
+        // never silently lost. Every other mode keeps its dream_insights
+        // write unchanged regardless.
         const promotionActive = this.insightPromotionEnabled && this.insightChunkWriter !== null;
         const promotable = promotionActive
           ? allInsights.filter((i) => PROMOTABLE_MODES.has(String(i.mode)))
@@ -934,14 +968,6 @@ export class DreamEngine {
         // Dream evaluator not available — non-critical
       }
 
-      // PLAN-21 Phase D — longitudinal slow update. Best-effort: a failure
-      // here logs and is swallowed so it never breaks the main cycle.
-      try {
-        await this.maybeRunPlan21SlowUpdate(cycleId);
-      } catch (err) {
-        log.debug(`plan21 slow update failed: ${String(err)}`);
-      }
-
       // PLAN-18 Phase 3 — gradient-free gate optimization on the SAGE
       // graph reader. Silently no-ops when disabled, when training pairs
       // are below the floor, when the cooldown hasn't elapsed, or when
@@ -982,6 +1008,20 @@ export class DreamEngine {
         await this.maybeRunCuratorPass();
       } catch (err) {
         log.debug(`skill curator pass failed: ${String(err)}`);
+      }
+
+      // PLAN-42 — WikiSkill evolution pass. Cadence-gated (default 24h),
+      // its own LLM budget lane (does not draw down cycleLlmRemaining),
+      // degrades to a clean no-op without a journal or LLM. Kill switch:
+      // skills.evolution.enabled.
+      try {
+        await this.maybeRunSkillEvolutionPass(cycleId);
+      } catch (err) {
+        // PLAN-44 Phase 0: a subsystem crash must be visible at the default
+        // log level; the audit found five live iterations undiagnosable.
+        log.warn(
+          `skill evolution pass failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+        );
       }
 
       log.debug("dream cycle complete", {
@@ -1181,7 +1221,6 @@ export class DreamEngine {
 
     // Check for auto-triggers
     const hasCuriosityTargets = this.countCuriosityTargets() > 0;
-    const hasSkillCrystals = this.countSkillCrystals() > 0;
 
     if (
       hasCuriosityTargets &&
@@ -1189,9 +1228,6 @@ export class DreamEngine {
       selected.length < numModes
     ) {
       selected.push("exploration");
-    }
-    if (hasSkillCrystals && this.config.modes.mutation.enabled && selected.length < numModes) {
-      selected.push("mutation");
     }
 
     // Hormonal temperature modulation (hormones already fetched for FSHO above)
@@ -1290,8 +1326,6 @@ export class DreamEngine {
         const etaMean = normalizers.eta?.mean ?? 0.5;
         const deltaEtaMean = normalizers.deltaEta?.mean ?? 0.5;
         const iAlphaMean = normalizers.iAlpha?.mean ?? 0.5;
-        const empMean = normalizers.empowerment?.mean ?? 0.5;
-        const stratMean = normalizers.strategic?.mean ?? 0.5;
 
         // Scale adjustments: ±0.15 range based on component dominance
         const SCALE = 0.15;
@@ -1311,15 +1345,8 @@ export class DreamEngine {
           adj.simulation = (adj.simulation ?? 0) + (iAlphaMean - 0.5) * SCALE;
         }
 
-        // High E → mutation mode (optimize high-agency skills)
-        if (empMean > 0.6) {
-          adj.mutation = (adj.mutation ?? 0) + (empMean - 0.5) * SCALE;
-        }
-
-        // High S → research mode (goal-directed investigation)
-        if (stratMean > 0.6) {
-          adj.research = (adj.research ?? 0) + (stratMean - 0.5) * SCALE;
-        }
+        // (E → mutation and S → research adjustments were retired with
+        // those modes in PLAN-45 Phase 1.)
       }
     } catch {
       // gccrf_state table may not exist yet
@@ -1337,8 +1364,6 @@ export class DreamEngine {
     switch (mode) {
       case "replay":
         return this.runReplayMode(cycleId);
-      case "mutation":
-        return this.runMutationMode(cycleId);
       case "extrapolation":
         return this.runExtrapolationMode(cycleId);
       case "compression":
@@ -1347,8 +1372,6 @@ export class DreamEngine {
         return this.runSimulationMode(cycleId);
       case "exploration":
         return this.runExplorationMode(cycleId);
-      case "research":
-        return this.runResearchMode(cycleId);
       case "interceptor_harvest":
         return this.runInterceptorHarvestMode(cycleId);
       case "relationship_reconsolidation":
@@ -1735,7 +1758,7 @@ export class DreamEngine {
       remainingSlots > 0
         ? (this.db
             .prepare(
-              `SELECT id, text, embedding, importance_score, access_count,
+              `SELECT id, text, importance_score, access_count,
               COALESCE(curiosity_boost, 0.0) as curiosity_boost,
               COALESCE(dream_count, 0) as dream_count,
               last_dreamed_at, emotional_valence
@@ -1754,7 +1777,9 @@ export class DreamEngine {
             .all(this.config.minImportanceForDream, remainingSlots) as ChunkRow[])
         : [];
 
-    const seeds = [...orphanSeeds, ...normalSeeds];
+    // Memory audit 2026-09-07 P0.1: normalSeeds is selected without the 29 KB
+    // embedding column (kept off the sort); hydrate by id for downstream use.
+    const seeds = this.hydrateEmbeddings([...orphanSeeds, ...normalSeeds]);
     if (seeds.length === 0) {
       return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
@@ -1832,106 +1857,6 @@ export class DreamEngine {
     return Math.max(1, Math.min(7, k - 1));
   }
 
-  // ── Mode 2: Mutation ──
-
-  private async runMutationMode(
-    cycleId: string,
-  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
-    const llmCall = this.getLlmCallForMode("mutation");
-    if (!llmCall) {
-      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
-    }
-
-    const maxChunks = this.config.modes.mutation.maxChunks;
-    // Select skill crystals and high-importance task patterns
-    const seeds = this.db
-      .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
-                COALESCE(curiosity_boost, 0.0) as curiosity_boost,
-                COALESCE(dream_count, 0) as dream_count,
-                last_dreamed_at, emotional_valence, semantic_type, memory_type
-         FROM chunks
-         WHERE (COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
-                OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
-           AND (COALESCE(memory_type, 'plaintext') = 'skill'
-                OR COALESCE(semantic_type, 'general') IN ('skill', 'task_pattern'))
-         ORDER BY importance_score DESC
-         LIMIT ?`,
-      )
-      .all(maxChunks) as ChunkRow[];
-
-    if (seeds.length === 0) {
-      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
-    }
-
-    const insights: DreamInsight[] = [];
-    let llmCalls = 0;
-
-    // Phase 7: Process up to 5 skills per cycle with strategy-based mutation
-    const maxPerCycle = Math.min(seeds.length, 5);
-    for (const seed of seeds.slice(0, maxPerCycle)) {
-      // PLAN-40: compare against the REMAINING cycle budget, not the full
-      // per-cycle max (adversarial F9 — the old comparison let a late-slot
-      // mode overshoot the cycle by its own internal cap).
-      if (llmCalls >= this.cycleLlmRemaining) {
-        break;
-      }
-
-      // Select strategy based on execution metrics (if available)
-      const relatedCount = this.countRelatedSkills(seed.id, seed.semantic_type);
-      const strategy = selectStrategy(
-        { text: seed.text, skillCategory: seed.semantic_type },
-        null, // execution metrics would come from tracker integration
-        relatedCount,
-      );
-
-      // Build context for strategy-specific prompt. PLAN-21 Phase C: include
-      // recent rejection rationale so the LLM doesn't re-propose the same
-      // family of failed mutation.
-      const relatedSkills =
-        relatedCount > 0 ? this.getRelatedSkills(seed.id, seed.semantic_type, 2) : [];
-      const recentRejections = this.readRecentRejections(seed.id);
-      const prompt = buildStrategyPrompt(strategy, seed.text, { relatedSkills }, recentRejections);
-
-      try {
-        const raw = await llmCall(prompt);
-        llmCalls++;
-        const results = parseDreamSynthesisResponse(raw);
-        const now = Date.now();
-
-        for (const result of results) {
-          insights.push({
-            id: crypto.randomUUID(),
-            content: result.content,
-            embedding: [],
-            confidence: result.confidence,
-            mode: "mutation",
-            sourceChunkIds: [seed.id],
-            sourceClusterIds: [],
-            dreamCycleId: cycleId,
-            importanceScore: Math.min(1, result.confidence * seed.importance_score),
-            accessCount: 0,
-            lastAccessedAt: null,
-            createdAt: now,
-            updatedAt: now,
-          });
-        }
-
-        // Phase 7: Queue promising-but-not-promoted mutations for retry
-        for (const result of results) {
-          if (result.confidence >= 0.4 && result.confidence < 0.7) {
-            this.queueForRetry(seed.id, strategy);
-          }
-        }
-      } catch (err) {
-        log.warn(`mutation LLM call failed: ${String(err)}`);
-      }
-    }
-
-    this.markChunksDreamed(seeds.map((s) => s.id));
-    return { insights, llmCalls, chunksAnalyzed: seeds.length };
-  }
-
   // ── Mode 3: Extrapolation ──
 
   private async runExtrapolationMode(
@@ -1946,7 +1871,7 @@ export class DreamEngine {
     // Select user preferences, task patterns, and recent episodes
     const seeds = this.db
       .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
+        `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence, semantic_type
@@ -2103,22 +2028,20 @@ export class DreamEngine {
         log.debug(`compression: skipped ${skipped} hygiene-consolidated chunk(s)`);
       }
       if (result.confidence >= 0.7) {
-        const archiveStmt = this.db.prepare(
-          `UPDATE chunks SET lifecycle = 'archived', lifecycle_state = 'archived',
-                  parent_id = ?, version = COALESCE(version, 1) + 1
-           WHERE id = ?`,
-        );
         for (const chunkId of targetIds) {
-          archiveStmt.run(insightId, chunkId);
+          setChunkLifecycle(this.db, chunkId, {
+            lifecycle: "archived",
+            parentId: insightId,
+            bumpVersion: true,
+          });
         }
       } else {
-        const consolidateStmt = this.db.prepare(
-          `UPDATE chunks SET lifecycle = 'consolidated', lifecycle_state = 'consolidated',
-                  parent_id = ?, version = COALESCE(version, 1) + 1
-           WHERE id = ?`,
-        );
         for (const chunkId of targetIds) {
-          consolidateStmt.run(insightId, chunkId);
+          setChunkLifecycle(this.db, chunkId, {
+            lifecycle: "consolidated",
+            parentId: insightId,
+            bumpVersion: true,
+          });
         }
       }
     }
@@ -2158,7 +2081,7 @@ export class DreamEngine {
     // Pick 2-3 crystals from different knowledge regions (cross-domain)
     const seeds = this.db
       .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
+        `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence, semantic_type
@@ -2180,7 +2103,7 @@ export class DreamEngine {
     }
 
     // Pick 3 chunks that are maximally different from each other
-    const crossDomain = this.pickDiverseChunks(seeds, 3);
+    const crossDomain = this.pickDiverseChunks(this.hydrateEmbeddings(seeds), 3);
     if (crossDomain.length < 2) {
       return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
     }
@@ -2291,7 +2214,7 @@ export class DreamEngine {
     const maxChunks = this.config.modes.exploration.maxChunks;
     const nearbyChunks = this.db
       .prepare(
-        `SELECT id, text, embedding, importance_score, access_count,
+        `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence
@@ -2717,233 +2640,6 @@ export class DreamEngine {
     }
   }
 
-  // ── Mode 7: Research ──
-
-  private async runResearchMode(
-    cycleId: string,
-  ): Promise<{ insights: DreamInsight[]; llmCalls: number; chunksAnalyzed: number }> {
-    // Research mode requires both LLM and execution tracker
-    const llmCall = this.getLlmCallForMode("research");
-    if (!llmCall) {
-      log.debug("research mode skipped: no LLM available");
-      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
-    }
-    if (!this.executionTracker) {
-      log.debug("research mode skipped: no execution tracker wired");
-      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
-    }
-
-    const maxChunks = this.config.modes.research.maxChunks;
-    const experiment = new PromptOptimizationExperiment(this.db, this.executionTracker);
-    const candidates = experiment.findCandidates(maxChunks);
-
-    if (candidates.length === 0) {
-      log.debug("research mode: no candidates with sufficient execution data");
-      return { insights: [], llmCalls: 0, chunksAnalyzed: 0 };
-    }
-
-    const sandbox = new ExperimentSandbox(this.db, llmCall);
-    const insights: DreamInsight[] = [];
-    let llmCalls = 0;
-
-    for (const candidate of candidates) {
-      // PLAN-40: remaining cycle budget, not the full per-cycle max (F9).
-      if (llmCalls >= this.cycleLlmRemaining) {
-        break;
-      }
-
-      // PLAN-21 Phase C: feed prior rejection rationale into the optimizer
-      // so failed-family mutations don't get re-proposed.
-      const rejections = this.readRecentRejections(candidate.skill.id);
-
-      try {
-        const results = await experiment.optimize(candidate, llmCall, rejections);
-        llmCalls++;
-        const now = Date.now();
-
-        // PLAN-21 Phase B: accumulate the cycle's mutation pool for this
-        // candidate, evaluate each via the validation gate, then Pareto-rank
-        // and clip to a cosine-decayed edit budget before promoting. Without
-        // this, every gate-passing mutation gets committed — over-mutating
-        // the skill and ignoring SkillReducer's less-is-more finding.
-        interface PoolEntry extends MutationPoolCandidate {
-          readonly resultContent: string;
-          readonly verdict: MutationVerdict;
-          readonly strategy: string | null;
-        }
-        const pool: PoolEntry[] = [];
-
-        for (const result of results) {
-          // Confidence incorporates both LLM confidence and opportunity score
-          const adjustedConfidence = result.confidence * (0.7 + 0.3 * result.opportunityScore);
-
-          const insight: DreamInsight = {
-            id: crypto.randomUUID(),
-            content: result.content,
-            embedding: [],
-            confidence: Math.min(1, adjustedConfidence),
-            mode: "research",
-            sourceChunkIds: [candidate.skill.id],
-            sourceClusterIds: [],
-            dreamCycleId: cycleId,
-            importanceScore: Math.min(1, adjustedConfidence * candidate.skill.importance_score),
-            accessCount: 0,
-            lastAccessedAt: null,
-            createdAt: now,
-            updatedAt: now,
-          };
-
-          try {
-            const verdict = await sandbox.evaluate(
-              {
-                id: candidate.skill.id,
-                text: candidate.skill.text,
-                skill_category: candidate.skill.skill_category,
-                importance_score: candidate.skill.importance_score,
-              },
-              result.content,
-            );
-            llmCalls += verdict.testCasesRun;
-
-            // Only enrol gate-passing candidates in the pool. Failures are
-            // archived immediately so the rejection log captures every miss.
-            if (verdict.accepted && verdict.confidence >= 0.6) {
-              const examined = verdict.faithfulness?.examined.length ?? 0;
-              const missing = verdict.faithfulness?.missing.length ?? 0;
-              const faithfulnessMargin = examined === 0 ? 1.0 : Math.max(0, 1 - missing / examined);
-              pool.push({
-                resultContent: result.content,
-                verdict,
-                strategy: result.strategy ?? null,
-                delta: verdict.statistical?.delta ?? verdict.delta,
-                faithfulnessMargin,
-                tokenDelta: result.content.length - candidate.skill.text.length,
-              });
-            } else {
-              this.archiveMutationResult(candidate.skill.id, result.content, verdict);
-            }
-          } catch (sandboxErr) {
-            log.debug(`sandbox evaluation failed: ${String(sandboxErr)}`);
-          }
-
-          insights.push(insight);
-        }
-
-        // ── Pareto + cosine-decay budget over the candidate's pool ───────
-        if (pool.length > 0) {
-          const dreamCount = this.readSkillDreamCount(candidate.skill.id);
-          const budget = cosineDecayBudget(dreamCount);
-          const front = paretoFront(pool, defaultPlan21Axes<PoolEntry>());
-          const selected = selectTopL(front, budget, defaultPlan21TieBreak<PoolEntry>());
-          const selectedSet = new Set(selected);
-
-          for (const entry of pool) {
-            if (selectedSet.has(entry)) {
-              this.promoteSkillMutation(
-                candidate.skill.id,
-                entry.resultContent,
-                entry.verdict,
-                entry.strategy ?? undefined,
-              );
-              log.debug("mutation promoted (top-L_t)", {
-                skillId: candidate.skill.id,
-                delta: entry.delta.toFixed(3),
-                budget,
-                poolSize: pool.length,
-                frontSize: front.length,
-              });
-            } else {
-              const clippedVerdict: MutationVerdict = {
-                ...entry.verdict,
-                accepted: false,
-                reason: `${entry.verdict.reason}; clipped_by_budget (L_t=${budget})`,
-              };
-              this.archiveMutationResult(candidate.skill.id, entry.resultContent, clippedVerdict);
-            }
-          }
-        }
-
-        log.debug("research experiment completed", {
-          skillId: candidate.skill.id,
-          strategy: results[0]?.strategy ?? "unknown",
-          baselineSuccessRate: candidate.metrics.successRate,
-          mutationsGenerated: results.length,
-          poolEnrolled: pool.length,
-        });
-      } catch (err) {
-        log.warn(`research LLM call failed: ${String(err)}`);
-      }
-    }
-
-    this.markChunksDreamed(candidates.map((c) => c.skill.id));
-    return { insights, llmCalls, chunksAnalyzed: candidates.length };
-  }
-
-  /**
-   * Read recent rejection rationale for a skill (PLAN-21 Phase C). Pulled
-   * from `memory_audit_log` `skill_mutation_archived` events and rendered
-   * into the mutation prompt as a "do not re-propose" block. Returns the
-   * `MAX_REJECTIONS_TO_FETCH` most recent rejections, newest first.
-   */
-  private readRecentRejections(
-    skillId: string,
-    limit = 5,
-  ): Array<{ preview: string; reason: string; deltaDrop?: number }> {
-    try {
-      const rows = this.db
-        .prepare(
-          `SELECT metadata FROM memory_audit_log
-           WHERE chunk_id = ? AND event = 'skill_mutation_archived'
-           ORDER BY timestamp DESC
-           LIMIT ?`,
-        )
-        .all(skillId, limit) as Array<{ metadata: string | null }>;
-      const out: Array<{ preview: string; reason: string; deltaDrop?: number }> = [];
-      for (const row of rows) {
-        if (!row.metadata) {
-          continue;
-        }
-        let parsed: Record<string, unknown>;
-        try {
-          parsed = JSON.parse(row.metadata) as Record<string, unknown>;
-        } catch {
-          continue;
-        }
-        const preview = typeof parsed.mutationPreview === "string" ? parsed.mutationPreview : "";
-        const reason = typeof parsed.reason === "string" ? parsed.reason : "rejected";
-        if (!preview) {
-          continue;
-        }
-        const entry: { preview: string; reason: string; deltaDrop?: number } = {
-          preview,
-          reason,
-        };
-        if (typeof parsed.delta === "number") {
-          entry.deltaDrop = parsed.delta;
-        }
-        out.push(entry);
-      }
-      return out;
-    } catch {
-      return [];
-    }
-  }
-
-  /**
-   * PLAN-21 Phase D epoch driver. Called once per cycle after the dream
-   * evaluator runs. When `shouldRunSlowUpdate` says it's time, picks the
-   * top-K most-dreamed skills and for each:
-   *
-   *   1. Loads its held-out selection set from `skill_executions`
-   *   2. Loads up to N prior versions from `skill_text_history`
-   *   3. Runs `runLongitudinalRegression` to classify per-task outcomes
-   *   4. Clusters regressions by hormonal state via `bindBiologicalContext`
-   *   5. Enqueues each cluster into `mutation_queue` with elevated priority
-   *
-   * Records cycle telemetry (improvement/regression/persistent/stable counts)
-   * via `dream_telemetry` so the slow-update signal is auditable. Best-effort:
-   * any failure here logs and is swallowed so it never breaks the main cycle.
-   */
   /** ms epoch of the last curator pass. In-memory: see call-site comment. */
   private lastCuratorPassAt = 0;
 
@@ -2954,9 +2650,7 @@ export class DreamEngine {
    * would buy nothing here.
    */
   private async maybeRunCuratorPass(): Promise<void> {
-    const curatorCfg = (
-      this.config as { skillCurator?: { enabled?: boolean; minIntervalMs?: number } }
-    ).skillCurator;
+    const curatorCfg = this.config.skillCurator;
     if (curatorCfg?.enabled === false) {
       return;
     }
@@ -2973,9 +2667,9 @@ export class DreamEngine {
     ]);
     const store = new SkillLifecycleStore(this.db);
     // The judge is cheap-but-not-free (≤10 borderline calls); use the same
-    // LLM the research mode would get, and degrade to heuristic-only when
+    // LLM the distillation lane gets, and degrade to heuristic-only when
     // no LLM is wired.
-    const llmCall = this.getLlmCallForMode("research");
+    const llmCall = this.getLlmCallForMode("distillation");
     const result = await runFullCuratorPass(store, llmCall ? { llmCall } : {});
     const transitions = result.heuristicReport.transitions.length;
     const judged = result.judgeOutcomes.length;
@@ -2987,315 +2681,238 @@ export class DreamEngine {
     }
   }
 
-  private async maybeRunPlan21SlowUpdate(cycleId: string): Promise<void> {
-    const llmCall = this.getLlmCallForMode("research");
-    if (!llmCall) {
-      return;
-    }
-    const currentCycle = this.readCompletedCycleCount();
-    const lastSlow = this.readLastSlowUpdateCycle();
-    if (!shouldRunSlowUpdate(currentCycle, lastSlow)) {
-      return;
-    }
-
-    const topSkills = this.db
-      .prepare(
-        `SELECT id, text, COALESCE(skill_version, 1) AS skill_version
-         FROM chunks
-         WHERE (COALESCE(memory_type, 'plaintext') = 'skill'
-                OR COALESCE(semantic_type, 'general') = 'skill')
-           AND (COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
-                OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
-         ORDER BY COALESCE(dream_count, 0) DESC, importance_score DESC
-         LIMIT 8`,
-      )
-      .all() as Array<{ id: string; text: string; skill_version: number }>;
-
-    if (topSkills.length === 0) {
-      this.writeLastSlowUpdateCycle(currentCycle);
-      return;
-    }
-
-    const sandbox = new ExperimentSandbox(this.db, llmCall);
-    let totalRegressions = 0;
-    let totalClusters = 0;
-
-    for (const skill of topSkills) {
-      const selectionSet = listHeldOutExecutions(this.db, skill.id, { limit: 12 });
-      if (selectionSet.length < MIN_PAIRED_FOR_BOOTSTRAP) {
-        continue;
-      }
-      const archive = readSkillTextHistory(
-        this.db,
-        skill.id,
-        DEFAULT_SLOW_UPDATE_CONFIG.archiveDepth,
-      );
-      if (archive.length === 0) {
-        continue;
-      }
-
-      let trajectories;
-      try {
-        trajectories = await runLongitudinalRegression({
-          db: this.db,
-          skillId: skill.id,
-          currentVersion: skill.skill_version,
-          currentSkillText: skill.text,
-          archiveVersions: archive,
-          selectionSet,
-          scorePair: async (a, b, set) => sandbox.scoreVersionPair(a, b, set),
-        });
-      } catch (err) {
-        log.debug(`runLongitudinalRegression failed for ${skill.id}: ${String(err)}`);
-        continue;
-      }
-
-      const summary = summarize(trajectories);
-      this.recordTelemetry(cycleId, "plan21_slow_update", "regression", summary.regression);
-      this.recordTelemetry(cycleId, "plan21_slow_update", "improvement", summary.improvement);
-      this.recordTelemetry(
-        cycleId,
-        "plan21_slow_update",
-        "persistent_failure",
-        summary.persistentFailure,
-      );
-      this.recordTelemetry(cycleId, "plan21_slow_update", "stable_success", summary.stableSuccess);
-
-      const regressions = trajectories.filter((t) => t.classification === "regression");
-      if (regressions.length === 0) {
-        continue;
-      }
-      totalRegressions += regressions.length;
-
-      const clusters = bindBiologicalContext(regressions);
-      for (const cluster of clusters) {
-        const enqueued = enqueueRegressionPriority(this.db, {
-          skillId: skill.id,
-          cluster,
-        });
-        if (enqueued) {
-          totalClusters++;
-        }
-      }
-    }
-
-    this.writeLastSlowUpdateCycle(currentCycle);
-    log.debug("plan21 slow update complete", {
-      cycle: currentCycle,
-      skillsExamined: topSkills.length,
-      regressions: totalRegressions,
-      clustersEnqueued: totalClusters,
-    });
-  }
-
-  /** Count of completed dream cycles. Used as the slow-update epoch counter. */
-  private readCompletedCycleCount(): number {
-    try {
-      const r = this.db
-        .prepare(`SELECT COUNT(*) AS c FROM dream_cycles WHERE completed_at IS NOT NULL`)
-        .get() as { c: number } | undefined;
-      return r?.c ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  private readLastSlowUpdateCycle(): number {
-    try {
-      const row = this.db
-        .prepare(
-          `SELECT metadata FROM memory_audit_log
-           WHERE event = 'plan21_slow_update_fired'
-           ORDER BY timestamp DESC LIMIT 1`,
-        )
-        .get() as { metadata: string } | undefined;
-      if (!row?.metadata) {
-        return 0;
-      }
-      const parsed = JSON.parse(row.metadata) as { cycle?: number };
-      return typeof parsed.cycle === "number" ? parsed.cycle : 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  private writeLastSlowUpdateCycle(cycle: number): void {
-    try {
-      this.db
-        .prepare(
-          `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
-           VALUES (?, NULL, 'plan21_slow_update_fired', ?, 'dream_engine/plan21', ?)`,
-        )
-        .run(crypto.randomUUID(), Date.now(), JSON.stringify({ cycle }));
-    } catch {
-      // best-effort
-    }
-  }
+  /** In-memory attempt throttle for the evolution pass (see below). */
+  private lastEvolutionAttemptAt = 0;
 
   /**
-   * Read the `dream_count` for a skill crystal. Used by PLAN-21 Phase B to
-   * decide the cosine-decay edit budget — young skills (dream_count near 0)
-   * receive a larger budget, mature skills tighten to the floor. Failures
-   * fall back to 0 so the budget defaults to its initial value.
+   * PLAN-42 — WikiSkill evolution pass (Phase 2: Wiki Maintainer).
+   * Cadence-gated at skills.evolution.cadenceHours (default 24h) using the
+   * persisted sampler-state timestamp (survives restarts) plus an in-memory
+   * attempt throttle (bounds retries when the maintainer output keeps
+   * failing to parse). Runs OUTSIDE the per-cycle LLM budget: this is its
+   * own lane, mirroring the curator. Degrades to a no-op with no journal or
+   * no LLM (keyless installs) — D-A requires on-by-default to be harmless.
    */
-  private readSkillDreamCount(skillId: string): number {
-    try {
-      const row = this.db
-        .prepare(`SELECT COALESCE(dream_count, 0) AS dream_count FROM chunks WHERE id = ?`)
-        .get(skillId) as { dream_count: number } | undefined;
-      return row?.dream_count ?? 0;
-    } catch {
-      return 0;
+  private async maybeRunSkillEvolutionPass(cycleId: string): Promise<void> {
+    const cfg = this.config.skillEvolution;
+    if (cfg?.enabled === false) {
+      return;
     }
-  }
-
-  /**
-   * Promote a skill mutation: update the skill crystal with mutated text,
-   * bump version, record provenance, and trigger dopamine spike.
-   * This is the `git advance` equivalent in the Karpathy pattern.
-   */
-  private promoteSkillMutation(
-    skillId: string,
-    mutatedText: string,
-    verdict: MutationVerdict,
-    strategy?: string,
-  ): void {
+    const cadenceMs = Math.max(1, cfg?.cadenceHours ?? 24) * 60 * 60 * 1000;
     const now = Date.now();
-    try {
-      // Get current version info (we also need the prior `text` for the
-      // PLAN-21 Phase D history snapshot).
-      const row = this.db
-        .prepare(
-          `SELECT skill_version, governance_json, importance_score, text FROM chunks WHERE id = ?`,
-        )
-        .get(skillId) as
-        | {
-            skill_version: number | null;
-            governance_json: string | null;
-            importance_score: number;
-            text: string;
-          }
-        | undefined;
-
-      if (!row) {
-        return;
-      }
-
-      const priorVersion = row.skill_version ?? 1;
-      const newVersion = priorVersion + 1;
-
-      // PLAN-21 Phase D: snapshot prior text into skill_text_history BEFORE
-      // overwriting chunks.text. Best-effort — failure here never blocks the
-      // promotion.
-      snapshotSkillText(this.db, {
-        skillId,
-        version: priorVersion,
-        text: row.text,
-        promotedAt: now,
-        delta: verdict.delta,
-        strategy,
-      });
-
-      // Update governance with promotion provenance
-      let governance: Record<string, unknown> = {};
+    if (now - this.lastEvolutionAttemptAt < cadenceMs) {
+      return;
+    }
+    const [
+      { readSamplerState },
+      { runEvolutionIteration },
+      { getActiveEventJournal },
+      { getActiveOrchestratorBridge },
+    ] = await Promise.all([
+      import("./skill-evolution/sampler.js"),
+      import("./skill-evolution/evolution-pass.js"),
+      import("../infra/event-journal.js"),
+      import("../infra/orchestrator-bridge.js"),
+    ]);
+    const state = await readSamplerState();
+    if (now - state.updatedAt < cadenceMs) {
+      return;
+    }
+    this.lastEvolutionAttemptAt = now;
+    const journal = getActiveEventJournal();
+    const llmCall = this.llmCallEvolution ?? this.getLlmCallForMode("distillation");
+    // Tasks-mode real rollouts execute one agent turn per corpus task via
+    // the gateway's own `agent` RPC (self-loopback). PLAN-44 D-2: the mode
+    // is EFFECTIVE — explicit config, else tasks once the corpus carries
+    // enough reviewed capability tasks — so the executor is built exactly
+    // when the gate will use it.
+    const { loadEffectiveCorpus } = await import("./skill-evolution/canonical-corpus.js");
+    const { countCapabilityTasks, resolveEffectiveValidationMode } =
+      await import("./skill-evolution/validation-mode.js");
+    const effectiveMode = resolveEffectiveValidationMode(
+      cfg?.validationMode,
+      countCapabilityTasks(await loadEffectiveCorpus().catch(() => null)),
+    );
+    const agentTurn =
+      effectiveMode.mode === "tasks" ? await this.buildEvolutionAgentTurn() : undefined;
+    const peerAgentTurn =
+      effectiveMode.mode === "tasks"
+        ? await this.buildEvolutionAgentTurn({ peer: true })
+        : undefined;
+    // PLAN-43 Phase 3: receiver-side attestations sign with the device
+    // identity; the P2P node pubkey rides along as a claim (no raw-sign
+    // bridge to the orchestrator yet).
+    let attestKeyPair: import("../commerce/envelope.js").KeyPair | undefined;
+    let nodePubkey: string | undefined;
+    // The exchange (push/pull) needs only the key; only the SWEEP needs
+    // tasks-mode rollouts. Loading the identity unconditionally keeps the
+    // exchange alive on records-mode nodes (3c adversarial F4).
+    if (this.config.a2aAttestation?.enabled !== false) {
       try {
-        governance = row.governance_json ? JSON.parse(row.governance_json) : {};
-      } catch {
-        /* empty */
+        const [{ keyPairFromPrivateKeyPem }, { loadDeviceIdentity }] = await Promise.all([
+          import("../commerce/envelope.js"),
+          import("../infra/device-identity.js"),
+        ]);
+        // Load-only: a read failure must never rotate the attester identity.
+        const identity = loadDeviceIdentity();
+        if (identity) {
+          attestKeyPair = keyPairFromPrivateKeyPem(identity.privateKeyPem);
+        } else {
+          log.warn("attestation disabled this pass: device identity unreadable");
+        }
+        nodePubkey = (await getActiveOrchestratorBridge()?.getIdentity())?.pubkey;
+      } catch (err) {
+        log.debug(`attestation identity unavailable: ${String(err)}`);
       }
-      governance.lastMutationPromotion = {
-        strategy: strategy ?? "unknown",
-        delta: verdict.delta,
-        testCases: verdict.testCasesRun,
-        timestamp: now,
-        originalScore: verdict.originalScore,
-        mutatedScore: verdict.mutatedScore,
-      };
-
-      // Boost importance proportional to delta
-      const boostedImportance = Math.min(1, row.importance_score + verdict.delta * 0.2);
-
-      // Update the skill crystal
-      this.db
-        .prepare(
-          `UPDATE chunks SET
-             text = ?,
-             skill_version = ?,
-             importance_score = ?,
-             governance_json = ?,
-             updated_at = ?,
-             version = COALESCE(version, 1) + 1
-           WHERE id = ?`,
-        )
-        .run(mutatedText, newVersion, boostedImportance, JSON.stringify(governance), now, skillId);
-
-      // Audit log
-      this.db
-        .prepare(
-          `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          crypto.randomUUID(),
-          skillId,
-          "skill_mutation_promoted",
-          now,
-          "dream_engine/research",
-          JSON.stringify({
-            strategy,
-            delta: verdict.delta,
-            confidence: verdict.confidence,
-            testCasesRun: verdict.testCasesRun,
-            originalScore: verdict.originalScore,
-            mutatedScore: verdict.mutatedScore,
-            newVersion,
-          }),
-        );
-
-      // Dopamine spike for successful mutation
-      this.hormonalManager?.stimulate("achievement");
-    } catch (err) {
-      log.debug(`promoteSkillMutation failed: ${String(err)}`);
+    }
+    const result = await runEvolutionIteration({
+      journal,
+      llmCall,
+      db: this.db,
+      cycleId,
+      ...(this.llmCallEvolutionProposer ? { proposerLlmCall: this.llmCallEvolutionProposer } : {}),
+      // Token-efficiency pass (2026-09-19): no failing trace, no proposer run.
+      minFailsForProposer: cfg?.minFailsForProposer ?? 1,
+      ...(agentTurn ? { agentTurn } : {}),
+      ...(peerAgentTurn ? { peerAgentTurn } : {}),
+      ...(cfg?.wikiMaxPatterns ? { maxPatterns: cfg.wikiMaxPatterns } : {}),
+      ...(cfg?.maxProposerTurns ? { maxProposerTurns: cfg.maxProposerTurns } : {}),
+      ...(cfg?.validationMode ? { validationMode: cfg.validationMode } : {}),
+      ...(typeof cfg?.trialsPerTask === "number" ? { trialsPerTask: cfg.trialsPerTask } : {}),
+      ...(typeof cfg?.maxTokenDelta === "number" ? { maxTokenDelta: cfg.maxTokenDelta } : {}),
+      ...(typeof cfg?.validationBudgetMinutes === "number"
+        ? { validationBudgetMinutes: cfg.validationBudgetMinutes }
+        : {}),
+      ...(cfg?.descriptionRepair === false ? { descriptionRepair: false } : {}),
+      ...(cfg?.routingRepair === false ? { routingRepair: false } : {}),
+      ...(cfg?.maxActiveEvolved ? { maxActiveEvolved: cfg.maxActiveEvolved } : {}),
+      ...(cfg?.semanticLintCadenceDays !== undefined
+        ? { semanticLintCadenceDays: cfg.semanticLintCadenceDays }
+        : {}),
+      ...(cfg?.propagate !== undefined ? { propagate: cfg.propagate } : {}),
+      ...(cfg?.maturityDays !== undefined ? { maturityDays: cfg.maturityDays } : {}),
+      ...(cfg?.requireCrossModel ? { requireCrossModel: true } : {}),
+      publisher: getActiveOrchestratorBridge(),
+      // PLAN-45 Phase 3.5: tasks-mode rollouts run on the agent's PRIMARY
+      // model (the gateway agent RPC), so that is the model the evidence
+      // belongs to; the dream lane model was a mislabel. Drift on the
+      // primary re-canaries stable skills.
+      modelTag: this.config.runtimeModelTag ?? this.config.model,
+      runtimeModelTag: this.config.runtimeModelTag ?? null,
+      ...(this.config.evolutionProposerModelTag
+        ? { evolverModelTag: this.config.evolutionProposerModelTag }
+        : {}),
+      ...(attestKeyPair ? { attestKeyPair } : {}),
+      ...(nodePubkey ? { nodePubkey } : {}),
+      ...(this.config.a2aAttestation?.enabled !== false && this.config.a2aAttestation?.peers?.length
+        ? { attestationPeers: this.config.a2aAttestation.peers }
+        : {}),
+      ...(this.config.a2aAttestation?.blockedAttesters?.length
+        ? { blockedAttesters: this.config.a2aAttestation.blockedAttesters }
+        : {}),
+      ...(this.config.a2aAttestation?.trustedAttesters?.length
+        ? { trustedAttesters: this.config.a2aAttestation.trustedAttesters }
+        : {}),
+      ...(typeof this.config.a2aAttestation?.unknownAttesterWeight === "number"
+        ? { unknownAttesterWeight: this.config.a2aAttestation.unknownAttesterWeight }
+        : {}),
+      ...(this.config.attesterPriority ? { attesterPriority: this.config.attesterPriority } : {}),
+    });
+    if (result.ran) {
+      const apply = result.maintenance?.apply;
+      log.info(
+        `skill evolution pass: ${result.samplerStats?.failsSelected ?? 0}f/${result.samplerStats?.passesSelected ?? 0}p traces -> ` +
+          `${apply?.created.length ?? 0} pattern(s) created, ${apply?.updated.length ?? 0} updated` +
+          (result.reason ? ` (${result.reason})` : ""),
+      );
+    } else if (result.reason === "no-new-traces") {
+      log.info(
+        `skill evolution pass: no new traces (cursor ${result.cursorBefore ?? "?"} -> ${result.cursorAfter ?? "?"}; examined ${result.samplerStats?.runsExamined ?? 0})`,
+      );
+    } else if (result.reason === "error") {
+      log.warn(`skill evolution pass crashed: ${result.error ?? "(no detail)"}`);
+    } else if (result.reason) {
+      log.debug(`skill evolution pass skipped: ${result.reason}`);
     }
   }
 
   /**
-   * Archive a rejected mutation with its verdict.
-   * This is the `git reset` equivalent in the Karpathy pattern.
+   * PLAN-42 tasks mode: build the real-rollout executor. Runs one agent turn
+   * per corpus task via the gateway's own `agent` RPC (self-loopback on the
+   * running node). The session key carries "skill-evolve" so the sampler
+   * excludes these validation rollouts from future learning. Returns
+   * undefined if the gateway client cannot be assembled.
    */
-  private archiveMutationResult(
-    skillId: string,
-    mutatedText: string,
-    verdict: MutationVerdict,
-  ): void {
+  private async buildEvolutionAgentTurn(
+    opts: { peer?: boolean } = {},
+  ): Promise<import("./skill-evolution/task-runner.js").AgentTurnFn | undefined> {
     try {
-      this.db
-        .prepare(
-          `INSERT INTO memory_audit_log (id, chunk_id, event, timestamp, actor, metadata)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          crypto.randomUUID(),
-          skillId,
-          "skill_mutation_archived",
-          Date.now(),
-          "dream_engine/research",
-          JSON.stringify({
-            delta: verdict.delta,
-            confidence: verdict.confidence,
-            testCasesRun: verdict.testCasesRun,
-            originalScore: verdict.originalScore,
-            mutatedScore: verdict.mutatedScore,
-            reason: verdict.accepted ? "low_confidence" : "negative_delta",
-            mutationPreview: mutatedText.slice(0, 200),
+      const [
+        { callGateway },
+        { INTERNAL_MESSAGE_CHANNEL },
+        { resolveDefaultAgentId },
+        { loadConfig },
+        { makeGatewayAgentTurn },
+      ] = await Promise.all([
+        import("../gateway/call.js"),
+        import("../utils/message-channel.js"),
+        import("../agents/agent-scope.js"),
+        import("../config/io.js"),
+        import("./skill-evolution/task-runner.js"),
+      ]);
+      const { makeSkillEvolveValidationSessionKey } =
+        await import("../sessions/session-key-utils.js");
+      const agentId = resolveDefaultAgentId(loadConfig());
+      return makeGatewayAgentTurn({
+        callGateway: (a) =>
+          callGateway({
+            method: a.method,
+            params: a.params,
+            ...(a.expectFinal !== undefined ? { expectFinal: a.expectFinal } : {}),
+            ...(a.timeoutMs !== undefined ? { timeoutMs: a.timeoutMs } : {}),
           }),
-        );
+        agentId,
+        channel: INTERNAL_MESSAGE_CHANNEL,
+        makeSessionKey: () =>
+          makeSkillEvolveValidationSessionKey(
+            agentId,
+            globalThis.crypto.randomUUID().slice(0, 8),
+            opts.peer ? { peer: true } : {},
+          ),
+        makeIdempotencyKey: () => globalThis.crypto.randomUUID(),
+      });
     } catch (err) {
-      log.debug(`archiveMutationResult failed: ${String(err)}`);
+      log.debug(`could not build evolution agent-turn executor: ${String(err)}`);
+      return undefined;
     }
   }
 
   // ── Shared helpers ──
+
+  /**
+   * Memory audit 2026-09-07 P0.1: fetch the embedding column for a set of
+   * already-selected rows by id. Keeps the 29 KB embedding off any scan/sort
+   * query; the IN-list read is index-bounded (measured ~2 ms for 50 ids vs
+   * ~100 s for a full-table sort that carries the column).
+   */
+  private hydrateEmbeddings(rows: ChunkRow[]): ChunkRow[] {
+    if (rows.length === 0) {
+      return rows;
+    }
+    try {
+      const placeholders = rows.map(() => "?").join(",");
+      const embRows = this.db
+        .prepare(`SELECT id, embedding FROM chunks WHERE id IN (${placeholders})`)
+        .all(...rows.map((r) => r.id)) as Array<{ id: string; embedding: ChunkRow["embedding"] }>;
+      const byId = new Map(embRows.map((e) => [e.id, e.embedding]));
+      for (const r of rows) {
+        r.embedding = byId.get(r.id) ?? r.embedding;
+      }
+    } catch (err) {
+      log.debug(`hydrateEmbeddings failed: ${String(err)}`);
+    }
+    return rows;
+  }
 
   private selectSeeds(limit?: number, priorityIds?: string[]): ChunkRow[] {
     const maxChunks = limit ?? this.config.maxChunksPerCycle;
@@ -3323,11 +2940,16 @@ export class DreamEngine {
     // GCCRF-informed seed selection: use curiosity_reward (from GCCRF) when available,
     // fall back to curiosity_boost (from old heuristic engine) for backwards compatibility.
     // Dream count penalty: / (dream_count + 1) deprioritizes previously-dreamed chunks.
+    // Memory audit 2026-09-07 P0.1: order/filter WITHOUT the 29 KB embedding
+    // column (SQLite buffers every selected column through the sorter before
+    // LIMIT, which froze the event loop for ~100s on the full table), then
+    // hydrate embeddings for only the LIMIT-n winners by id.
     const normalSeeds =
       remaining > 0
-        ? (this.db
-            .prepare(
-              `SELECT id, text, embedding, importance_score, access_count,
+        ? this.hydrateEmbeddings(
+            this.db
+              .prepare(
+                `SELECT id, text, importance_score, access_count,
                 COALESCE(curiosity_boost, 0.0) as curiosity_boost,
                 COALESCE(dream_count, 0) as dream_count,
                 last_dreamed_at, emotional_valence
@@ -3343,8 +2965,9 @@ export class DreamEngine {
          ORDER BY (importance_score + COALESCE(curiosity_reward, curiosity_boost, 0.0))
                   / (COALESCE(dream_count, 0) + 1) DESC
          LIMIT ?`,
-            )
-            .all(this.config.minImportanceForDream, remaining) as ChunkRow[])
+              )
+              .all(this.config.minImportanceForDream, remaining) as ChunkRow[],
+          )
         : [];
 
     // Merge, deduplicate
@@ -3524,23 +3147,6 @@ export class DreamEngine {
     }
   }
 
-  private countSkillCrystals(): number {
-    try {
-      const row = this.db
-        .prepare(
-          `SELECT COUNT(*) as c FROM chunks
-           WHERE (COALESCE(memory_type, 'plaintext') = 'skill'
-                  OR COALESCE(semantic_type, 'general') = 'skill')
-             AND (COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
-                  OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))`,
-        )
-        .get() as { c: number };
-      return row?.c ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-
   /**
    * PLAN-34 Phase 4: run the promotion gate over the eligible insights and
    * write qualifiers as searchable chunks. Mechanical legs first (no model
@@ -3554,7 +3160,14 @@ export class DreamEngine {
     }
     const rej = emptyRejections();
     const grounded: GroundedInsight[] = [];
+    let staleBlocked = 0;
     for (const insight of insights) {
+      // PLAN-55 Phase 2: an insight that states a superseded fact value or
+      // rests on superseded or forgotten evidence is never promoted.
+      if (insightPromotionBlock(this.db, insight)) {
+        staleBlocked++;
+        continue;
+      }
       const candidate: PromotionCandidateInsight = {
         id: insight.id,
         content: insight.content,
@@ -3568,6 +3181,9 @@ export class DreamEngine {
       if (g) {
         grounded.push(g);
       }
+    }
+    if (staleBlocked > 0) {
+      log.debug(`insight promotion: ${staleBlocked} candidate(s) blocked by stale evidence`);
     }
     // Relevance-rank so the most-grounded are verified first within budget.
     grounded.sort((a, b) => b.topSimilarity - a.topSimilarity);
@@ -4011,13 +3627,7 @@ export class DreamEngine {
   }
 
   private markChunksDreamed(ids: string[]): void {
-    const now = Date.now();
-    const stmt = this.db.prepare(
-      `UPDATE chunks SET dream_count = COALESCE(dream_count, 0) + 1, last_dreamed_at = ? WHERE id = ?`,
-    );
-    for (const id of ids) {
-      stmt.run(now, id);
-    }
+    bumpChunkDreamCount(this.db, ids);
   }
 
   private pruneInsights(): void {
@@ -4152,76 +3762,6 @@ export class DreamEngine {
     }
 
     return [...otherInsights, ...gated];
-  }
-
-  // ── Phase 7: Strategy helpers ──
-
-  private countRelatedSkills(skillId: string, semanticType?: string | null): number {
-    if (!semanticType) {
-      return 0;
-    }
-    try {
-      const row = this.db
-        .prepare(
-          `SELECT COUNT(*) as c FROM chunks
-           WHERE id != ? AND COALESCE(semantic_type, 'general') = ?
-             AND (COALESCE(memory_type, 'plaintext') = 'skill'
-                  OR COALESCE(semantic_type, 'general') = 'skill')
-             AND COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')`,
-        )
-        .get(skillId, semanticType) as { c: number };
-      return row?.c ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  private getRelatedSkills(
-    skillId: string,
-    semanticType: string | null | undefined,
-    limit: number,
-  ): Array<{ text: string; id: string }> {
-    if (!semanticType) {
-      return [];
-    }
-    try {
-      return this.db
-        .prepare(
-          `SELECT id, text FROM chunks
-           WHERE id != ? AND COALESCE(semantic_type, 'general') = ?
-             AND (COALESCE(memory_type, 'plaintext') = 'skill'
-                  OR COALESCE(semantic_type, 'general') = 'skill')
-             AND COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
-           ORDER BY importance_score DESC
-           LIMIT ?`,
-        )
-        .all(skillId, semanticType, limit) as Array<{ text: string; id: string }>;
-    } catch {
-      return [];
-    }
-  }
-
-  private queueForRetry(skillCrystalId: string, strategy: string): void {
-    try {
-      // Check if already queued
-      const existing = this.db
-        .prepare(
-          `SELECT id FROM mutation_queue WHERE skill_crystal_id = ? AND attempts < max_attempts`,
-        )
-        .get(skillCrystalId);
-      if (existing) {
-        return;
-      }
-
-      this.db
-        .prepare(
-          `INSERT INTO mutation_queue (id, skill_crystal_id, strategy, priority, created_at)
-           VALUES (?, ?, ?, 0.5, ?)`,
-        )
-        .run(crypto.randomUUID(), skillCrystalId, strategy, Date.now());
-    } catch {
-      // mutation_queue table may not exist yet
-    }
   }
 
   private recordCycle(meta: DreamCycleMetadata): void {

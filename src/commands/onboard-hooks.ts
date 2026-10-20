@@ -1,20 +1,20 @@
-import type { BitterbotConfig } from "../config/config.js";
-import type { RuntimeEnv } from "../runtime.js";
-import type { WizardPrompter } from "../wizard/prompts.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { formatCliCommand } from "../cli/command-format.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { buildWorkspaceHookStatus } from "../hooks/hooks-status.js";
+import type { RuntimeEnv } from "../runtime.js";
+import type { WizardPrompter } from "../wizard/prompts.js";
 
 /**
- * QuickStart hook defaults (PLAN-41 D-M): no multiselect — silently enable
+ * QuickStart hook defaults (PLAN-41 D-M): no multiselect; silently enable
  * the zero-config local built-ins so the core memory loop works out of the
  * box. session-memory is what the dream engine feeds on; boot-md primes
  * working memory at startup; command-logger keeps a local audit trail.
  * All three are local-only (no network egress). bootstrap-extra-files is
- * left off — it does nothing without operator-provided glob patterns.
+ * left off: it does nothing without operator-provided glob patterns.
  *
  * A config that already has hooks.internal.enabled set (either way) is a
- * re-run of the wizard over an operator's explicit choice — leave it alone.
+ * re-run of the wizard over an operator's explicit choice; leave it alone.
  */
 export const QUICKSTART_DEFAULT_HOOKS = ["session-memory", "boot-md", "command-logger"] as const;
 
@@ -46,16 +46,16 @@ export async function setupInternalHooks(
 ): Promise<BitterbotConfig> {
   await prompter.note(
     [
-      "Hooks are autonomous background triggers — they run when something",
+      "Hooks are autonomous background triggers: they run when something",
       "happens, not because you asked. They are how the agent learns,",
       "remembers, and acts while you're not looking.",
       "",
       "A few of the built-ins:",
-      "  - session-memory — crystallize session context into memory on /new",
+      "  - session-memory: crystallize session context into memory on /new",
       "    (the dream engine works on what this captures)",
-      "  - command-logger — record every /command for replay + audit",
-      "  - boot-md       — prime working memory from MEMORY.md at start",
-      "  - bootstrap-extra-files — pull referenced files on workspace init",
+      "  - command-logger: record every /command for replay + audit",
+      "  - boot-md: prime working memory from MEMORY.md at start",
+      "  - bootstrap-extra-files: pull referenced files on workspace init",
       "",
       "Plugins register their own hooks too (gmail-watcher for inbox",
       "processing, wake-up for scheduled triggers, heartbeat for liveness).",
@@ -84,7 +84,7 @@ export async function setupInternalHooks(
   const toEnable = await prompter.multiselect({
     message: "Which hooks should fire autonomously?",
     options: [
-      { value: "__skip__", label: "None for now — I'll enable them later" },
+      { value: "__skip__", label: "None for now (I'll enable them later)" },
       ...eligibleHooks.map((hook) => ({
         value: hook.name,
         label: `${hook.emoji ?? "🔗"} ${hook.name}`,

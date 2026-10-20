@@ -1,0 +1,300 @@
+/**
+ * PLAN-42 Phase 4: the replayable task corpus — the node's local benchmark.
+ *
+ * "How do we know a generated skill is good?" is answered comparatively:
+ * candidate skill set vs incumbent, same frozen corpus, paired scoring,
+ * strict improvement only. The corpus is the benchmark artifact:
+ *
+ *   skill-wiki/task-corpus.jsonl — one task per line:
+ *     {"id": "...", "prompt": "...", "checker": {"kind": "contains"|"regex"|"exact", "value": "..."}, "timeoutMs"?: n, "tags"?: [...]}
+ *
+ * Deterministic checkers only — a task belongs in the corpus precisely
+ * because its outcome is checkable without a judge. The corpus version is
+ * the SHA-1 of the file, recorded with every verdict so scores are only
+ * ever compared within one corpus version. A seed corpus ships in
+ * benchmarks/skill-evolution/ for Victor's review (D-D); nodes grow their
+ * own from real traces with verifiable outcomes.
+ */
+
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { resolveWikiDir, type ImpactTrailOptions } from "../../agents/skills/impact-trail.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+
+const log = createSubsystemLogger("skill-evolution/task-corpus");
+
+export const CORPUS_FILENAME = "task-corpus.jsonl";
+/** PLAN-45 Phase 2.1: 15 regression + 10 canonical capability + up to 15 grown. */
+export const MAX_CORPUS_TASKS = 40;
+/** Per-task workspace files: count and total bytes (PLAN-45 Phase 2.1). */
+export const MAX_TASK_FILES = 20;
+export const MAX_TASK_FILE_BYTES = 64 * 1024;
+export const DEFAULT_TASK_TIMEOUT_MS = 120_000;
+
+export interface TaskChecker {
+  /**
+   * "final" (preferred for new tasks): the answer must carry a line
+   * `FINAL: <value>`; the captured value (length-capped) is compared
+   * EXACTLY. Closes the documented `contains` false-pass modes — verbose
+   * output that happens to include the gold string, or an answer that
+   * enumerates every candidate value (xFinder arXiv:2405.11874,
+   * WebChoreArena arXiv:2506.01952).
+   */
+  kind: "contains" | "regex" | "exact" | "final" | "numeric";
+  value: string;
+  /** PLAN-45 5.5: absolute tolerance for `numeric` (a FINAL line parsed as a number). */
+  tolerance?: number;
+}
+
+/** Parse a numeric answer: strips currency, thousands separators and a trailing percent sign. */
+export function parseNumericAnswer(raw: string): number | null {
+  const cleaned = raw
+    .trim()
+    .replace(/^[$€£]/, "")
+    .replace(/,/g, "")
+    .replace(/%$/, "")
+    .trim();
+  if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(cleaned)) {
+    return null;
+  }
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
+export interface CorpusTask {
+  id: string;
+  prompt: string;
+  checker: TaskChecker;
+  timeoutMs?: number;
+  tags?: string[];
+  /**
+   * Which gate the task feeds (corpus/gate upgrade 2026-09-02):
+   * - "regression": near-ceiling tasks; the gate requires NO new failures
+   *   here, and they never count toward improvement (a task most models
+   *   pass carries ~no information — item response theory, metabench).
+   * - "capability" (default for grown tasks): tasks the incumbent
+   *   sometimes fails; the sign-test promotion signal lives here.
+   */
+  suite?: "regression" | "capability";
+  /**
+   * PLAN-45 Phase 2.1: files the runner writes into the trial workspace
+   * before the turn (relative path -> content). Only generated canonical
+   * tasks and operator-reviewed tasks carry them; the miner never emits
+   * them.
+   */
+  files?: Record<string, string>;
+  /**
+   * PLAN-45 Phase 2.2: the journal run a mined task was drafted from and
+   * the evolution iteration that mined it. A proposal whose evidence
+   * includes that run, or that was proposed in that iteration, is never
+   * gated on this task (train/test split).
+   */
+  sourceRunId?: string;
+  sourceIteration?: string;
+}
+
+export interface TaskCorpus {
+  tasks: CorpusTask[];
+  /** SHA-1 of the corpus file; verdicts are comparable only within one version. */
+  version: string;
+}
+
+export function corpusPath(opts: ImpactTrailOptions = {}): string {
+  return path.join(resolveWikiDir(opts), CORPUS_FILENAME);
+}
+
+/** Relative, normalized, no traversal, bounded count and size. */
+export function parseTaskFiles(value: unknown): Record<string, string> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const out: Record<string, string> = {};
+  let bytes = 0;
+  for (const [rawPath, content] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof content !== "string") {
+      return null;
+    }
+    const p = path.posix.normalize(rawPath.replace(/\\/g, "/"));
+    if (
+      p.startsWith("/") ||
+      p.startsWith("../") ||
+      p === ".." ||
+      p === "." ||
+      p.includes("\0") ||
+      /^[A-Za-z]:/.test(p)
+    ) {
+      return null;
+    }
+    bytes += Buffer.byteLength(content, "utf-8");
+    if (bytes > MAX_TASK_FILE_BYTES || Object.keys(out).length >= MAX_TASK_FILES) {
+      return null;
+    }
+    out[p] = content;
+  }
+  return out;
+}
+
+function parseChecker(value: unknown): TaskChecker | null {
+  const c = value as Record<string, unknown>;
+  if (
+    (c?.kind === "contains" ||
+      c?.kind === "regex" ||
+      c?.kind === "exact" ||
+      c?.kind === "final" ||
+      c?.kind === "numeric") &&
+    typeof c.value === "string" &&
+    c.value.length > 0
+  ) {
+    if (c.kind === "numeric") {
+      if (parseNumericAnswer(c.value) === null) {
+        return null;
+      }
+      const tolerance =
+        typeof c.tolerance === "number" && Number.isFinite(c.tolerance) && c.tolerance >= 0
+          ? c.tolerance
+          : 0;
+      return { kind: "numeric", value: c.value.trim(), tolerance };
+    }
+    if (c.kind === "regex") {
+      try {
+        // Validate the pattern up front so a bad corpus line cannot throw
+        // at scoring time.
+        new RegExp(c.value, "i");
+      } catch {
+        return null;
+      }
+    }
+    if (c.kind === "final") {
+      // Drafting models sometimes put the line label inside the expected
+      // value ("FINAL: 42"); the checker compares the captured value only.
+      const stripped = c.value.replace(/^\s*FINAL:\s*/i, "").trim();
+      return stripped ? { kind: "final", value: stripped } : null;
+    }
+    return { kind: c.kind, value: c.value };
+  }
+  return null;
+}
+
+/**
+ * Parse corpus JSONL into tasks. Malformed/duplicate lines are skipped with
+ * a log, never fatal. Shared by the node's grown corpus and the embedded
+ * canonical corpus (canonical-corpus.ts).
+ */
+export function parseCorpusTasks(raw: string, opts: { maxTasks?: number } = {}): CorpusTask[] {
+  const maxTasks = opts.maxTasks ?? MAX_CORPUS_TASKS;
+  const tasks: CorpusTask[] = [];
+  const seen = new Set<string>();
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) {
+      continue;
+    }
+    try {
+      const entry = JSON.parse(trimmed) as Record<string, unknown>;
+      const id = typeof entry.id === "string" ? entry.id.trim() : "";
+      const prompt = typeof entry.prompt === "string" ? entry.prompt : "";
+      const checker = parseChecker(entry.checker);
+      const files = entry.files !== undefined ? parseTaskFiles(entry.files) : undefined;
+      if (!id || !prompt || !checker || seen.has(id) || files === null) {
+        // An unparseable `files` block makes the task unanswerable in both
+        // arms (a tie that pollutes calibration): drop the line, never the field.
+        log.debug(`skipping malformed/duplicate corpus line: ${trimmed.slice(0, 80)}`);
+        continue;
+      }
+      seen.add(id);
+      tasks.push({
+        id,
+        prompt,
+        checker,
+        ...(typeof entry.timeoutMs === "number" && entry.timeoutMs > 0
+          ? { timeoutMs: entry.timeoutMs }
+          : {}),
+        ...(Array.isArray(entry.tags)
+          ? { tags: entry.tags.filter((t) => typeof t === "string") }
+          : {}),
+        ...(entry.suite === "regression" || entry.suite === "capability"
+          ? { suite: entry.suite }
+          : {}),
+        ...(files ? { files } : {}),
+        ...(typeof entry.sourceRunId === "string" && entry.sourceRunId.length <= 128
+          ? { sourceRunId: entry.sourceRunId }
+          : {}),
+        ...(typeof entry.sourceIteration === "string" && entry.sourceIteration.length <= 64
+          ? { sourceIteration: entry.sourceIteration }
+          : {}),
+      });
+      if (tasks.length >= maxTasks) {
+        break;
+      }
+    } catch {
+      log.debug(`skipping unparseable corpus line: ${trimmed.slice(0, 80)}`);
+    }
+  }
+  return tasks;
+}
+
+/** Load the node's grown corpus. Absent or empty corpus returns null. */
+export async function loadTaskCorpus(opts: ImpactTrailOptions = {}): Promise<TaskCorpus | null> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(corpusPath(opts), "utf-8");
+  } catch {
+    return null;
+  }
+  const tasks = parseCorpusTasks(raw);
+  if (tasks.length === 0) {
+    return null;
+  }
+  return { tasks, version: createHash("sha1").update(raw).digest("hex").slice(0, 12) };
+}
+
+/** Longest FINAL-line value accepted before the checker refuses (anti-enumeration cap). */
+export const MAX_FINAL_ANSWER_CHARS = 400;
+
+/** Deterministic binary scoring of an answer against a task's checker. */
+export function scoreTaskAnswer(task: CorpusTask, answer: string): 0 | 1 {
+  const a = answer ?? "";
+  switch (task.checker.kind) {
+    case "exact":
+      return a.trim() === task.checker.value.trim() ? 1 : 0;
+    case "contains":
+      return a.toLowerCase().includes(task.checker.value.toLowerCase()) ? 1 : 0;
+    case "regex":
+      try {
+        return new RegExp(task.checker.value, "i").test(a) ? 1 : 0;
+      } catch {
+        return 0;
+      }
+    case "final": {
+      // Last `FINAL: <value>` line wins; missing line = fail; over-long
+      // captured value = fail (an enumeration cannot smuggle the gold
+      // string past an exact compare, and cannot pad the line either).
+      const matches = [...a.matchAll(/^[ 	]*FINAL:[ 	]*(.*)$/gim)];
+      const last = matches.at(-1)?.[1];
+      if (typeof last !== "string") {
+        return 0;
+      }
+      const value = last.trim();
+      if (value.length === 0 || value.length > MAX_FINAL_ANSWER_CHARS) {
+        return 0;
+      }
+      return value === task.checker.value.trim() ? 1 : 0;
+    }
+    case "numeric": {
+      // Same FINAL-line discipline as `final`, then a tolerance compare.
+      const matches = [...a.matchAll(/^[ \t]*FINAL:[ \t]*(.*)$/gim)];
+      const last = matches.at(-1)?.[1];
+      if (typeof last !== "string" || last.trim().length > MAX_FINAL_ANSWER_CHARS) {
+        return 0;
+      }
+      const got = parseNumericAnswer(last);
+      const want = parseNumericAnswer(task.checker.value);
+      if (got === null || want === null) {
+        return 0;
+      }
+      const tol = task.checker.tolerance ?? 0;
+      return Math.abs(got - want) <= tol + Math.abs(want) * 1e-9 ? 1 : 0;
+    }
+  }
+}

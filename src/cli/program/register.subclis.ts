@@ -115,6 +115,14 @@ const entries: SubCliEntry[] = [
     },
   },
   {
+    name: "compute",
+    description: "Compute pools: quotes and approvals for paid jobs",
+    register: async (program) => {
+      const mod = await import("../compute-cli.js");
+      mod.registerComputeCli(program);
+    },
+  },
+  {
     name: "node",
     description: "Node control",
     hidden: true,
@@ -253,6 +261,22 @@ const entries: SubCliEntry[] = [
     register: async (program) => {
       const mod = await import("../cron-cli.js");
       mod.registerCronCli(program);
+    },
+  },
+  {
+    name: "curiosity",
+    description: "What the agent wonders about and learns on its own; pause, ask, or run a pass",
+    register: async (program) => {
+      const mod = await import("../curiosity-cli.js");
+      mod.registerCuriosityCli(program);
+    },
+  },
+  {
+    name: "genome",
+    description: "Your agent's GENOME.md: show, add or change its base personality (temperament)",
+    register: async (program) => {
+      const mod = await import("../genome-cli.js");
+      mod.registerGenomeCli(program);
     },
   },
   {

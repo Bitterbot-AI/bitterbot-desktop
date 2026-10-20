@@ -1,9 +1,9 @@
-import type { BitterbotConfig } from "./types.js";
-import type { ModelDefinitionConfig } from "./types.models.js";
 import { DEFAULT_CONTEXT_TOKENS } from "../agents/defaults.js";
 import { parseModelRef } from "../agents/model-selection.js";
 import { DEFAULT_AGENT_MAX_CONCURRENT, DEFAULT_SUBAGENT_MAX_CONCURRENT } from "./agent-limits.js";
 import { resolveTalkApiKey } from "./talk.js";
+import type { BitterbotConfig } from "./types.js";
+import type { ModelDefinitionConfig } from "./types.models.js";
 
 type WarnState = { warned: boolean };
 
@@ -475,7 +475,7 @@ export function applyCompactionDefaults(cfg: BitterbotConfig): BitterbotConfig {
  * Add new bootnodes here as they come online; remove only when a node
  * is permanently retired.
  */
-const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
+export const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
   // DigitalOcean relay fleet (deployed 2026-04-28) — fixed-IP nodes that are
   // both the relay fleet and 3 of the 5 genesis-trust quorum members. These are
   // the true DNS-independent backstop: raw /ip4 multiaddrs that resolve even if
@@ -493,10 +493,28 @@ const FALLBACK_BOOTSTRAP_PEERS: readonly string[] = [
   "/dns4/metro.proxy.rlwy.net/tcp/12838/p2p/12D3KooWCwCCFMHCVv8eXZnAGMTUjTDPPePfYRTJ1fZvRpqcQXKt",
 ];
 
+/**
+ * True when a configured peer list is exactly the built-in fallback list (in
+ * any order): an older config write froze the load-time default into the
+ * file (drift-pass review HIGH-2). Such a list is treated as unset, so it
+ * follows the built-in list instead of pinning it forever.
+ */
+export function isFrozenFallbackPeerList(peers: unknown): boolean {
+  if (!Array.isArray(peers) || peers.length !== FALLBACK_BOOTSTRAP_PEERS.length) {
+    return false;
+  }
+  const set = new Set(peers);
+  return (
+    set.size === FALLBACK_BOOTSTRAP_PEERS.length &&
+    FALLBACK_BOOTSTRAP_PEERS.every((p) => set.has(p))
+  );
+}
+
 export function applyP2pDefaults(cfg: BitterbotConfig): BitterbotConfig {
   const p2p = cfg.p2p ?? {};
-  // Merge fallback peers with any user-supplied ones, dedupe.
-  const userPeers = p2p.bootstrapPeers ?? [];
+  // Merge fallback peers with any user-supplied ones, dedupe. A list that is
+  // only the fallback peers (frozen by an old write) counts as unset.
+  const userPeers = isFrozenFallbackPeerList(p2p.bootstrapPeers) ? [] : (p2p.bootstrapPeers ?? []);
   const mergedPeers = Array.from(new Set([...FALLBACK_BOOTSTRAP_PEERS, ...userPeers]));
   return {
     ...cfg,
@@ -554,8 +572,25 @@ export function applyA2aDefaults(cfg: BitterbotConfig): BitterbotConfig {
         ...a2a.authentication,
       },
       skills: {
-        expose: "all",
+        // PLAN-43 Phase 0: advertising skills on the public agent card is
+        // opt-in (closes the auto-list-everything disclosure footgun). An
+        // explicit allowlist without `expose` implies exposure of exactly
+        // the allowlisted skills.
+        expose: a2a.skills?.allowlist ? "all" : "none",
         ...a2a.skills,
+      },
+      // PLAN-43 s3.2b: remote-caller execution bounds. The tool floor
+      // itself is hardcoded in agents/a2a-remote-policy.ts; these are the
+      // resource caps and the operator's (floor-limited) tool grants.
+      attestation: {
+        enabled: true,
+        ...a2a.attestation,
+      },
+      remoteExecution: {
+        maxInputChars: 32_000,
+        maxOutputChars: 64_000,
+        timeoutSeconds: 600,
+        ...a2a.remoteExecution,
       },
       payment: {
         enabled: isEarningCapable(cfg),

@@ -1,0 +1,352 @@
+/**
+ * PLAN-42 Phase 4+5 housekeeping for one evolution iteration: validation
+ * gate, PLAN-43 attestation sweep/exchange, wiki lint, semantic lint, P2P
+ * publish. Split out of evolution-pass.ts (500-line cap).
+ */
+
+import { verifyPeerBindings } from "../../agents/skills/peer-binding.js";
+import { pubkeyId } from "../../commerce/envelope.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { syncAttestations } from "../../services/attestation-client.js";
+import { CommerceReputationLedger } from "../commerce-reputation.js";
+import { ContributorStatusLedger } from "../contributor-status.js";
+import { SellerBondLedger } from "../seller-bond-ledger.js";
+import { SkillLifecycleStore } from "../skill-lifecycle.js";
+import { applyAttestationDemotions } from "./attestation-actions.js";
+import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
+import { makeAttesterWeight } from "./attester-weight.js";
+import {
+  type CanaryMonitorAction,
+  type CanaryMonitorResult,
+  retireEvolvedAtCap,
+  runCanaryMonitor,
+} from "./canary-monitor.js";
+import { refreshEvidenceRecords } from "./evidence-record.js";
+import type { EvolutionPassDeps } from "./evolution-pass.js";
+import {
+  type BackfillExecutionOutcomesResult,
+  backfillExecutionOutcomes,
+} from "./execution-outcomes.js";
+import { publishEligibleEvolvedSkills, type PublishSweepResult } from "./p2p-publish.js";
+import { retryPendingPeerChunks } from "./peer-chunks.js";
+import { repairNonRoutableSkills, type RoutingRepairResult } from "./routing-repair.js";
+import { creditSkillReads } from "./skill-reads.js";
+import { runValidationGate, type ValidationGateOutcome } from "./validation-gate.js";
+import { runWikiLint, type WikiLintResult } from "./wiki-lint.js";
+import {
+  readSemanticLintState,
+  runSemanticLint,
+  type SemanticLintResult,
+} from "./wiki-semantic-lint.js";
+import type { WikiStoreOptions } from "./wiki-store.js";
+
+const log = createSubsystemLogger("skill-evolution/housekeeping");
+
+/**
+ * Validation gate (settles held + new proposals), wiki lint, and the P2P
+ * publish sweep. Runs on every iteration attempt — held proposals and
+ * publish eligibility ripen with time even when no new traces arrive.
+ */
+export async function runHousekeeping(
+  deps: EvolutionPassDeps,
+  storeOpts: WikiStoreOptions,
+): Promise<{
+  validation?: ValidationGateOutcome[];
+  lint?: WikiLintResult;
+  semanticLint?: SemanticLintResult;
+  publish?: PublishSweepResult;
+  attestation?: { attested: number; skipped: number; held: number };
+  /** PLAN-44 Phase 5a: live-skill reads credited from the journal this pass. */
+  skillReads?: { scannedRuns: number; credited: number };
+  /** PLAN-45 Phase 1.1: tool-level execution rows stamped with their run's grounded outcome. */
+  executionOutcomes?: BackfillExecutionOutcomesResult;
+  /** PLAN-45 Phase 1.3: `.evidence.json` rebuilt for every live skill. */
+  evidenceRecords?: number;
+  /** PLAN-44 Phase 5c: harvested / received descriptions rewritten to the contract. */
+  routingRepair?: { examined: number; rewritten: number; failed: number };
+  /** PLAN-45 Phase 3.3/3.5: canary decisions and model-drift re-canaries this pass. */
+  monitor?: CanaryMonitorResult;
+  /** PLAN-45 Phase 3.6: slots freed at the evolved-skill cap this pass. */
+  capRetirement?: CanaryMonitorAction[];
+  /** PLAN-45 4.3: peer skills withheld from every run on regression attestations this pass. */
+  attestationDemotions?: string[];
+}> {
+  // PLAN-44 Phase 5a: the usage signal. Runs first so the lifecycle
+  // counters the validation gate's regression check reads are current.
+  let skillReads: { scannedRuns: number; credited: number } | undefined;
+  if (deps.journal) {
+    try {
+      const r = await creditSkillReads({
+        journal: deps.journal,
+        db: deps.db ?? null,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+        ...(deps.workspaceDir ? { workspaceDir: deps.workspaceDir } : {}),
+      });
+      skillReads = { scannedRuns: r.scannedRuns, credited: r.credited };
+    } catch (err) {
+      log.warn(`skill-read crediting failed: ${String(err)}`);
+    }
+  }
+  // PLAN-45 Phase 1.1: ground the tool-level execution rows in their run's
+  // outcome before any consumer (pricing, bridge gate, distillation) reads
+  // them this pass.
+  let executionOutcomes: BackfillExecutionOutcomesResult | undefined;
+  if (deps.db) {
+    try {
+      executionOutcomes = await backfillExecutionOutcomes({
+        journal: deps.journal ?? null,
+        db: deps.db,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+      });
+    } catch (err) {
+      log.warn(`execution outcome back-fill failed: ${String(err)}`);
+    }
+  }
+  // PLAN-45 Phase 1.3: one evidence record per live skill, rebuilt from the
+  // ledgers above so every reader downstream sees the same numbers.
+  let evidenceRecords: number | undefined;
+  try {
+    const records = await refreshEvidenceRecords({
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      lifecycleStore: deps.db ? new SkillLifecycleStore(deps.db) : null,
+    });
+    evidenceRecords = records.length;
+  } catch (err) {
+    log.warn(`evidence record refresh failed: ${String(err)}`);
+  }
+  // PLAN-45 Phase 3: the post-promotion monitor runs on fresh evidence and
+  // BEFORE the routing repair / gate spend anything on a skill about to be
+  // rolled back; the cap retirement runs before the gate so a freed slot is
+  // usable in the same pass.
+  const lifecycleStore = deps.db ? new SkillLifecycleStore(deps.db) : null;
+  // PLAN-45 4.2 (adversarial 4-9b): a promoted peer skill whose memory chunk
+  // did not land (bridge not up yet) gets it now.
+  try {
+    await retryPendingPeerChunks(storeOpts.configDir ? { configDir: storeOpts.configDir } : {});
+  } catch (err) {
+    log.debug(`pending peer chunk retry failed: ${String(err)}`);
+  }
+  // PLAN-45 4.4: a peer skill whose live bytes drifted from the signed hash
+  // is withheld before anything measures or serves it.
+  try {
+    const binding = await verifyPeerBindings(
+      storeOpts.configDir ? { configDir: storeOpts.configDir } : {},
+    );
+    if (binding.tampered.length > 0) {
+      log.warn(
+        `peer binding check: canary-off ${binding.tampered.join(", ")} (content hash mismatch)`,
+      );
+    }
+  } catch (err) {
+    log.warn(`peer binding check failed: ${String(err)}`);
+  }
+  let monitor: CanaryMonitorResult | undefined;
+  let capRetirement: CanaryMonitorAction[] | undefined;
+  try {
+    monitor = await runCanaryMonitor({
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      lifecycleStore,
+      publisher: deps.propagate !== false ? (deps.publisher ?? null) : null,
+      runtimeModelTag: deps.runtimeModelTag ?? null,
+      ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
+      ...(deps.cycleId ? { iteration: deps.cycleId } : {}),
+    });
+    capRetirement = await retireEvolvedAtCap({
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      lifecycleStore,
+      publisher: deps.propagate !== false ? (deps.publisher ?? null) : null,
+      ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
+      ...(deps.cycleId ? { iteration: deps.cycleId } : {}),
+    });
+    const changed =
+      (monitor?.actions ?? []).some((a) => a.action !== "continue" && a.action !== "error") ||
+      (capRetirement ?? []).some((a) => a.action !== "error");
+    if (changed) {
+      // Ladders moved: rebuild the records so status and the gate see them.
+      const records = await refreshEvidenceRecords({
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+        lifecycleStore,
+      });
+      evidenceRecords = records.length;
+    }
+  } catch (err) {
+    log.warn(`canary monitor failed: ${String(err)}`);
+  }
+  // PLAN-44 Phase 5c: a live skill the router can never open is dead
+  // weight; rewrite its description before anything else is measured.
+  let routingRepair: { examined: number; rewritten: number; failed: number } | undefined;
+  if (deps.llmCall && deps.routingRepair !== false) {
+    try {
+      const r: RoutingRepairResult = await repairNonRoutableSkills({
+        llmCall: deps.llmCall,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+      });
+      routingRepair = {
+        examined: r.examined,
+        rewritten: r.outcomes.filter((o) => o.outcome === "rewritten").length,
+        failed: r.outcomes.filter((o) => o.outcome === "failed").length,
+      };
+    } catch (err) {
+      log.warn(`routing repair failed: ${String(err)}`);
+    }
+  }
+  const validation = await runValidationGate({
+    journal: deps.journal,
+    llmCall: deps.llmCall,
+    ...(storeOpts.configDir ? { storeOpts } : {}),
+    ...(deps.validationMode ? { mode: deps.validationMode } : {}),
+    ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
+    ...(typeof deps.maxTokenDelta === "number" ? { maxTokenDelta: deps.maxTokenDelta } : {}),
+    ...(deps.agentTurn ? { agentTurn: deps.agentTurn } : {}),
+    ...(deps.maxActiveEvolved ? { maxActiveEvolved: deps.maxActiveEvolved } : {}),
+    ...(deps.modelTag ? { modelTag: deps.modelTag } : {}),
+    ...(deps.evolverModelTag ? { evolverModelTag: deps.evolverModelTag } : {}),
+    // PLAN-45 4.2: a measured peer verdict is stored as this node's attestation.
+    ...(deps.attestKeyPair ? { attestKeyPair: deps.attestKeyPair } : {}),
+    ...(deps.db ? { db: deps.db } : {}),
+    ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
+    ...(deps.trustedAttesters ? { trustedAttesters: deps.trustedAttesters } : {}),
+    ...(typeof deps.validationBudgetMinutes === "number"
+      ? { validationBudgetMinutes: deps.validationBudgetMinutes }
+      : {}),
+    ...(deps.descriptionRepair === false ? { descriptionRepair: false } : {}),
+    iteration: deps.cycleId ?? new Date().toISOString().slice(0, 10),
+  });
+  // PLAN-43 Phase 3: attest peer skills on our own corpus (tasks mode only:
+  // it needs the real-rollout executor). Best-effort, bounded per pass.
+  let attestation: { attested: number; skipped: number; held: number } | undefined;
+  let attestationDemotions: string[] | undefined;
+  // The SWEEP needs tasks-mode rollouts; the fraud pass and the exchange
+  // need only the db and the key, and run in every validation mode.
+  if (deps.db && deps.attestKeyPair) {
+    if (deps.peerAgentTurn) {
+      try {
+        attestation = await runAttestationSweep({
+          db: deps.db,
+          agentTurn: deps.peerAgentTurn,
+          keyPair: deps.attestKeyPair,
+          ...(storeOpts.configDir ? { storeOpts } : {}),
+          ...(typeof deps.trialsPerTask === "number" ? { trialsPerTask: deps.trialsPerTask } : {}),
+          ...(typeof deps.maxTokenDelta === "number" ? { maxTokenDelta: deps.maxTokenDelta } : {}),
+          ...(deps.modelTag ? { model: deps.modelTag } : {}),
+          ...(deps.nodePubkey ? { nodePubkey: deps.nodePubkey } : {}),
+          ...(deps.attesterPriority ? { priorityOf: deps.attesterPriority } : {}),
+        });
+      } catch (err) {
+        log.warn(`attestation sweep skipped: ${String(err)}`);
+      }
+    }
+    // §3.7: our own regression verdicts are validated fraud for the seller:
+    // slash posted bonds (ledger only) and commerce-quarantine the seller.
+    try {
+      const fraud = new SellerBondLedger(deps.db).applyRegressionVerdicts({
+        ownAttesterPubkey: pubkeyId(deps.attestKeyPair),
+        commerce: new CommerceReputationLedger(deps.db),
+      });
+      if (fraud.verdicts > 0) {
+        log.warn(
+          `fraud verdicts recorded: ${fraud.verdicts} (sellers slashed/quarantined: ${fraud.sellersSlashed.join(", ")})`,
+        );
+        // A convicted seller must not keep contributor privileges until the
+        // next consolidation: re-derive standings now.
+        new ContributorStatusLedger(deps.db).recompute();
+      }
+    } catch (err) {
+      log.warn(`fraud verdict pass skipped: ${String(err)}`);
+    }
+    // Exchange: push ours, pull peers' for the peer skills we hold.
+    if (deps.attestationPeers?.length) {
+      try {
+        const shas = (
+          deps.db
+            .prepare(
+              `SELECT text FROM chunks
+                WHERE semantic_type IN ('skill', 'task_pattern')
+                  AND COALESCE(lifecycle_state, 'active') = 'active'
+                  AND governance_json LIKE '%"peerOrigin"%'
+                ORDER BY updated_at DESC LIMIT 20`,
+            )
+            .all() as Array<{ text: string }>
+        ).map((r) => skillContentSha256(r.text));
+        const blocked = new Set(deps.blockedAttesters ?? []);
+        const sync = await syncAttestations({
+          db: deps.db,
+          peers: deps.attestationPeers,
+          contentSha256s: shas,
+          ownAttesterPubkey: pubkeyId(deps.attestKeyPair),
+          isBlockedAttester: (pk) => blocked.has(pk),
+        });
+        log.info(
+          `attestation sync: pushed ${sync.pushed}, pulled ${sync.pulled}, peers failed ${sync.peersFailed}`,
+        );
+      } catch (err) {
+        log.warn(`attestation sync skipped: ${String(err)}`);
+      }
+    }
+    // PLAN-45 4.3 (D-4): verdicts pulled this pass (and our own) act now.
+    try {
+      const own = pubkeyId(deps.attestKeyPair);
+      const demotions = await applyAttestationDemotions({
+        db: deps.db,
+        weightOf: makeAttesterWeight({
+          ownAttesterPubkey: own,
+          ...(deps.trustedAttesters ? { trustedAttesters: deps.trustedAttesters } : {}),
+          ...(deps.blockedAttesters ? { blockedAttesters: deps.blockedAttesters } : {}),
+          ...(typeof deps.unknownAttesterWeight === "number"
+            ? { unknownWeight: deps.unknownAttesterWeight }
+            : {}),
+        }),
+        ownAttesterPubkey: own,
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+      });
+      if (demotions.demoted.length > 0) {
+        attestationDemotions = demotions.demoted;
+        log.info(`attestation demotions: canary-off ${demotions.demoted.join(", ")}`);
+      }
+    } catch (err) {
+      log.warn(`attestation demotions skipped: ${String(err)}`);
+    }
+  }
+  const lint = await runWikiLint({
+    ...storeOpts,
+    ...(deps.maxPatterns ? { maxPatterns: deps.maxPatterns } : {}),
+  });
+  // Semantic lint (Karpathy's real lint) is slow and LLM-backed — cadence
+  // gated far below the per-iteration mechanical lint.
+  let semanticLint: SemanticLintResult | undefined;
+  const cadenceDays = deps.semanticLintCadenceDays ?? 7;
+  if (cadenceDays > 0 && deps.llmCall) {
+    const now = Date.now();
+    const state = await readSemanticLintState(storeOpts);
+    if (now - state.lastRunAt >= cadenceDays * 24 * 60 * 60 * 1000) {
+      semanticLint = await runSemanticLint({ llmCall: deps.llmCall, storeOpts, now });
+    }
+  }
+  let publish: PublishSweepResult | undefined;
+  if (deps.propagate !== false) {
+    publish = await publishEligibleEvolvedSkills({
+      publisher: deps.publisher ?? null,
+      ...(storeOpts.configDir ? { storeOpts } : {}),
+      ...(deps.maturityDays !== undefined ? { maturityDays: deps.maturityDays } : {}),
+      ...(deps.requireCrossModel ? { requireCrossModel: true } : {}),
+      // PLAN-45 4.4: sign the trailer with the device key, naming the node key.
+      ...(deps.attestKeyPair && deps.nodePubkey
+        ? { signing: { key: deps.attestKeyPair, nodePubkey: deps.nodePubkey } }
+        : {}),
+    });
+  }
+  return {
+    ...(skillReads ? { skillReads } : {}),
+    ...(executionOutcomes ? { executionOutcomes } : {}),
+    ...(evidenceRecords !== undefined ? { evidenceRecords } : {}),
+    ...(routingRepair ? { routingRepair } : {}),
+    validation,
+    ...(lint ? { lint } : {}),
+    ...(attestation ? { attestation } : {}),
+    ...(semanticLint ? { semanticLint } : {}),
+    ...(publish ? { publish } : {}),
+    ...(monitor ? { monitor } : {}),
+    ...(capRetirement ? { capRetirement } : {}),
+    ...(attestationDemotions ? { attestationDemotions } : {}),
+  };
+}

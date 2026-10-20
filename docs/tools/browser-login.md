@@ -14,6 +14,8 @@ When a site requires login, **sign in manually** in the **host** browser profile
 
 Do **not** give the model your credentials. Automated logins often trigger anti‑bot defenses and can lock the account.
 
+If the gateway runs on another machine, or headless, you do not need to reach its screen: open the **Browser** tab in the Control UI's side panel and use **Take over** to sign in from there. See [Live view and take over](/tools/browser#live-view-and-take-over).
+
 Back to the main browser docs: [Browser](/tools/browser).
 
 ## Which Chrome profile is used?

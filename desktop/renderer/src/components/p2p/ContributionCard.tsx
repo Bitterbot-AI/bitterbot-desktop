@@ -2,6 +2,8 @@ type ContributionCardProps = {
   title: string;
   value: number | string;
   icon: "users" | "upload" | "download" | "trophy";
+  /** Optional one-line breakdown under the title. */
+  detail?: string;
 };
 
 const ICONS: Record<string, string> = {
@@ -13,7 +15,7 @@ const ICONS: Record<string, string> = {
     "M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22m7-7.34V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22M18 2H6v7a6 6 0 0 0 12 0V2Z",
 };
 
-export function ContributionCard({ title, value, icon }: ContributionCardProps) {
+export function ContributionCard({ title, value, icon, detail }: ContributionCardProps) {
   const maxForRing = typeof value === "number" ? Math.min(value, 100) : 0;
   const ringPct = (maxForRing / 100) * 100;
   const circumference = 2 * Math.PI * 20;
@@ -64,6 +66,7 @@ export function ContributionCard({ title, value, icon }: ContributionCardProps) 
       <div>
         <div className="text-2xl font-bold">{value}</div>
         <div className="text-xs text-muted-foreground">{title}</div>
+        {detail ? <div className="text-xs text-muted-foreground/70 mt-0.5">{detail}</div> : null}
       </div>
     </div>
   );

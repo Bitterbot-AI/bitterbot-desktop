@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { SkillStatus } from "../../stores/skills-store";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
+import type { SkillStatus } from "../../stores/skills-store";
 
 type Mode = "all" | "allowlist";
 

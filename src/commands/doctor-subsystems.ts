@@ -17,9 +17,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import type { BitterbotConfig } from "../config/config.js";
 import { resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
+import type { BitterbotConfig } from "../config/config.js";
 import { applyCirclesDefaults } from "../config/defaults.js";
 import { resolveStateDir } from "../config/paths.js";
 import { countMissingEmbeddings } from "../memory/embedding-backfill.js";
@@ -193,20 +193,17 @@ export function inspectSubsystems(
   // ── Embedding backlog ── (the ~7.3k unembedded-crystal blind spot)
   const embedding: CheckResult[] = [];
   if (tableExists(db, "chunks")) {
-    const missing = countMissingEmbeddings(db);
-    const worstMissing = Math.max(...Object.values(missing));
-    const semanticMissing = missing.semantic;
+    const semanticMissing = countMissingEmbeddings(db);
     if (totalChunks === 0) {
       embedding.push(info("No crystals yet — nothing to embed."));
-    } else if (semanticMissing === 0 && worstMissing === 0) {
-      embedding.push(ok(`All ${totalChunks} crystals embedded across every perspective.`));
+    } else if (semanticMissing === 0) {
+      embedding.push(ok(`All ${totalChunks} crystals have a semantic embedding.`));
     } else {
       const pct = Math.round((semanticMissing / totalChunks) * 100);
       embedding.push(
         warn(
-          `Embedding backlog: ${semanticMissing}/${totalChunks} crystals (${pct}%) lack a semantic embedding ` +
-            `(worst perspective: ${worstMissing}). Semantic recall is degraded until backfill runs. ` +
-            `Details per perspective: ${JSON.stringify(missing)}.`,
+          `Embedding backlog: ${semanticMissing}/${totalChunks} crystals (${pct}%) lack a semantic embedding. ` +
+            `Semantic recall is degraded until backfill runs.`,
         ),
       );
     }
@@ -223,7 +220,7 @@ export function inspectSubsystems(
       db,
       `SELECT COUNT(*) AS c FROM chunks
         WHERE model IS NOT NULL AND model <> 'pending'
-          AND json_valid(embedding) AND json_array_length(embedding) > 0
+          AND embedding IS NOT NULL AND length(embedding) > 0 AND embedding != '[]'
           AND (lifecycle_state IS NULL OR lifecycle_state <> 'forgotten')
           AND (lifecycle IS NULL OR lifecycle <> 'expired')`,
     );

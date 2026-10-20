@@ -41,7 +41,7 @@ You get zero-install coverage of the common case and can opt into the full 17+ s
            ingestSkill() → quarantine by default                  │
                            │                                      │
                            ▼                                      │
-   Execution feedback → trust builds → marketplace listing ───────┘
+   Operator review (skills.incoming.accept) → local gate → canary ──┘
 ```
 
 ## Source type coverage
@@ -80,7 +80,7 @@ For every URL processed:
 Every generated skill:
 
 - Gets a valid Ed25519 signature from a per-installation synthetic keypair (persisted in the memory DB).
-- Enters the trust pipeline as untrusted (reputation 0.5) and earns promotion through execution success.
+- Enters quarantine as untrusted (synthetic peer, reputation 0.5). No automatic trust promotion exists today; the operator accepts or rejects it, and PLAN-45 Phase 4 adds a measured receiver re-gate.
 - Carries `expires_at` (defaults to 30 days) so memory governance can prune stale auto-generated skills.
 - Embeds provenance metadata — source URL, transport used (`native` / `mcp` / `cli` / `python`), marketplace opportunity — for later attribution.
 
@@ -183,14 +183,20 @@ Useful patterns:
 
 ## Trust model
 
-Auto-generated skills are **untrusted by default**, regardless of transport. They follow the same trust pipeline as P2P skills:
+Auto-generated skills are **untrusted by default**, regardless of transport, and take the same ingest path as P2P skills (PLAN-45 Phase 0; before that, the `external-scrape` origin was treated as local and skipped quarantine):
 
-| Stage            | Trust Level   | Behavior                                                                                                    |
-| ---------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
-| Ingestion        | 0.5 (neutral) | Quarantined for review (if `ingestPolicy: "review"`) or accepted with low trust (if `ingestPolicy: "auto"`) |
-| First executions | 0.5 - 0.7     | Trust builds with successful executions                                                                     |
-| Proven           | 0.7+          | Auto-accepted in future, eligible for marketplace                                                           |
-| Established      | 0.9+          | Treated like a trusted peer                                                                                 |
+| Stage     | What happens                                                                                                                                                                                                     |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ingestion | Signature, hash, structure and injection checks; routing assessment; then quarantine in `skills-incoming/` under the default `review` policy                                                                     |
+| Review    | The operator accepts (`skills.incoming.accept`) or rejects; unreviewed entries expire after `quarantineTtlDays`                                                                                                  |
+| Re-gate   | PLAN-45 4.2: an accept admits the skill to STAGING for the local validation gate (own private capability tasks); it is not live until it passes                                                                  |
+| Live      | A skill that passes serves as a canary (a strict one when its evolver model is weaker than, or unknown to, this node), then stable; its reads are credited by the evolution pass; trust never changes activation |
+
+Because harvests now take the peer path, `skills.p2p.maxIngestedPerHour` (default 20) applies to the synthetic peer too; keep `skillSeekers.maxSkillsPerCycle` (default 3) below it.
+
+Trust maturation through execution feedback is not implemented: the synthetic peer's reputation row is written once and never updated, because harvested skills produce no execution rows. The empirical path is the receiver re-gate and canary (PLAN-45 Phases 3-4, built): a harvested skill is measured on this node's own tasks before it serves, and reputation only orders which peer skills get measured first.
+
+Independently of trust, every ingested skill is assessed for **routing** (PLAN-44 Phase 5b): the receiving agent finds a skill only through its `description` in the prompt index, so a description that names no triggering situation, no scope-out, or overlaps a local skill's is recorded on the envelope (`routing`). For P2P peers that assessment holds the skill for review even under `auto` policy; for local harvests (this adapter) it is a stamp and a warning: harvested descriptions are repository taglines by construction, and the skill-evolution housekeeping pass rewrites them into routable "use when … not for …" form afterwards (`bitterbot skills routing repair` runs it on demand).
 
 The adapter registers a **synthetic peer** (`local-skill-seekers`) with a real Ed25519 keypair generated once per installation and persisted in the memory DB. All envelopes — native and upstream — are signed with the same keypair and pass the same cryptographic verification as P2P skills.
 

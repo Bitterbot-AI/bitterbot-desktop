@@ -2,12 +2,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PluginRuntime } from "../plugins/runtime/types.js";
-import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
 import plugin from "../../extensions/soapbox-compute/index.js";
 import { SoapboxClient, type SoapboxStatus } from "../infra/soapbox-client.js";
 import { createPluginRegistry, type PluginRecord } from "../plugins/registry.js";
+import type { PluginRuntime } from "../plugins/runtime/types.js";
 import { coreGatewayHandlers } from "./server-methods.js";
+import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
 
 // Isolate unrelated gateways: this suite tests the real core registry and Compute plugin.
 vi.mock("./server-methods/agent-runtime.js", () => ({ agentRuntimeHandlers: {} }));
@@ -121,8 +121,14 @@ describe("Compute plugin registration in the current gateway", () => {
           },
         }),
       );
+      // The P2P mesh belongs to core; enrollment and payment belong to
+      // the plugin. Both sets must coexist without handler collisions.
+      expect(coreGatewayHandlers["soapbox.mesh.status"]).toBeTypeOf("function");
+      expect(registry.registry.gatewayHandlers["soapbox.payment.fund"]).toBeTypeOf("function");
       expect(
-        Object.keys(coreGatewayHandlers).filter((name) => name.startsWith("soapbox.")),
+        Object.keys(registry.registry.gatewayHandlers).filter((name) =>
+          Object.hasOwn(coreGatewayHandlers, name),
+        ),
       ).toEqual([]);
       expect(registry.registry.diagnostics).toEqual([]);
       const respond = vi.fn();

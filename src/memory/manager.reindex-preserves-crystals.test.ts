@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 /**
  * A full reindex must not destroy chunks that no file produces.
  *
@@ -18,6 +17,7 @@ import type { DatabaseSync } from "node:sqlite";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getMemorySearchManager, type MemoryIndexManager } from "./index.js";
 

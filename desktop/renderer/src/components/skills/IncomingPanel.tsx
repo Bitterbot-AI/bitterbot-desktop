@@ -16,7 +16,16 @@ type IncomingSkill = {
   category?: string;
   tags?: string[];
   signatureValid?: boolean;
+  evolutionProvenance?: {
+    verdict: string;
+    model: string | null;
+    evolverModel: string | null;
+    singleModel: boolean;
+    signed: boolean;
+  };
   injectionScan?: { severity?: string; matches?: number };
+  /** PLAN-44 Phase 5b: whether the agent could route to this skill by its description. */
+  routing?: { hold: boolean; summary: string };
   provenance?: Record<string, unknown>;
   contentHash?: string;
   expiresAt?: number;
@@ -100,7 +109,9 @@ function ImportFromAgentskills() {
           text:
             res.action === "accepted"
               ? `Imported "${res.skillName}" — installed and ready to enable.`
-              : `Imported "${res.skillName}" — queued for review below.`,
+              : res.action === "staged"
+                ? `Imported "${res.skillName}" — admitted to local validation; live after it passes.`
+                : `Imported "${res.skillName}" — queued for review below.`,
         });
       } else {
         setMessage({ kind: "err", text: res.reason ?? "Import failed" });
@@ -210,9 +221,9 @@ export function IncomingPanel({
     async (name: string) => {
       if (
         !(await confirmDialog({
-          title: `Accept "${name}" into managed skills?`,
+          title: `Accept "${name}" for local validation?`,
           description:
-            "This copies it from quarantine. It will be installed but stay disabled until you toggle it on.",
+            "Bitterbot will re-test this skill on its own task suite before it goes live. It stays out of the agent's index until it passes, then serves as a canary.",
           actionLabel: "Accept",
         }))
       )
@@ -337,6 +348,17 @@ export function IncomingPanel({
                   signature failed
                 </span>
               )}
+              {item.evolutionProvenance && (
+                <span
+                  title={`Sender's claim, not local evidence: ${item.evolutionProvenance.verdict} on ${item.evolutionProvenance.model ?? "an unknown model"}${item.evolutionProvenance.evolverModel ? `, evolved by ${item.evolutionProvenance.evolverModel}` : ""}${item.evolutionProvenance.signed ? " (device-signed)" : " (unsigned)"}. The local gate re-tests it before it goes live.`}
+                  className="text-xs px-1.5 py-0.5 rounded border bg-muted/40 text-muted-foreground border-border/30"
+                >
+                  {item.evolutionProvenance.singleModel
+                    ? "single-model claim"
+                    : "cross-model claim"}
+                  {item.evolutionProvenance.signed ? "" : " (unsigned)"}
+                </span>
+              )}
               {scanSeverity && (
                 <span
                   title={`Injection scan: ${scanSeverity}${
@@ -348,6 +370,19 @@ export function IncomingPanel({
                   )}
                 >
                   scan: {scanSeverity}
+                </span>
+              )}
+              {item.routing?.summary && (
+                <span
+                  title={item.routing.summary}
+                  className={cn(
+                    "text-xs px-1.5 py-0.5 rounded border",
+                    item.routing.hold
+                      ? "bg-warning/15 text-warning border-warning/30"
+                      : "bg-muted/30 text-muted-foreground border-border/30",
+                  )}
+                >
+                  {item.routing.hold ? "held: won't route" : "routing note"}
                 </span>
               )}
             </div>

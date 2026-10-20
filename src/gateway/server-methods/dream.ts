@@ -1,10 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
-import type { GatewayRequestHandlers } from "./types.js";
 import { resolveDefaultAgentId } from "../../agents/agent-scope.js";
 import { loadConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import { TtlCache } from "./ttl-cache.js";
+import type { GatewayRequestHandlers } from "./types.js";
 
 // memory.retrievalHealth is polled by the dream dashboard (~10s) and computes
 // cognition/governance stats that GROUP BY / COUNT over the unbounded
@@ -62,6 +62,12 @@ interface SkillMarketplaceView {
 interface MarketplaceEconomicsView {
   getEconomicSummary(): unknown;
   getListableSkills(): unknown[];
+  setForSale(
+    skillCrystalId: string,
+    forSale: boolean,
+    opts?: { lineage?: string[] },
+  ): { ok: boolean; forSale?: boolean; reason?: string; flagged?: boolean };
+  isFrozen?(): boolean;
 }
 
 /** Properties of MemoryIndexManager that dream handlers access beyond MemorySearchManager. */
@@ -79,6 +85,10 @@ interface DreamManagerView {
   curiosityState?(): { targets?: CuriosityTarget[] } | null;
   getSkillMarketplace?(): SkillMarketplaceView | null;
   getMarketplaceEconomics?(): MarketplaceEconomicsView | null;
+  /** PLAN-43 Phase 4. */
+  getContributorStatus?():
+    | import("../../memory/contributor-status.js").ContributorStatusLedger
+    | undefined;
   /** PLAN-28 B4: retrieval-layer health (dead-wire counters + KG/SABM stats). */
   retrievalHealth?(): {
     layers: { total: number; sinceContribution: Record<string, number> };
@@ -663,6 +673,186 @@ export const dreamHandlers: GatewayRequestHandlers = {
         return;
       }
       respond(true, marketplace.getSkillDetail(String(params.stableSkillId)));
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // PLAN-43 Phase 0: the explicit per-skill selling opt-in (invariant I2).
+  // Selling is opt-in per crystal and never inherited from the free
+  // 'shared' propagation pool. No money moves here — listing eligibility
+  // still passes the pricing gates, and the whole paid surface stays
+  // behind a2a.marketplace.enabled (default off).
+  "marketplace.listForSale": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const economics = (manager as unknown as DreamManagerView).getMarketplaceEconomics?.();
+      if (!economics) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, "marketplace not initialized"),
+        );
+        return;
+      }
+      const crystalId = typeof params.crystalId === "string" ? params.crystalId : "";
+      const lineage = Array.isArray(params.lineage)
+        ? params.lineage.filter((x): x is string => typeof x === "string")
+        : undefined;
+      const result = economics.setForSale(crystalId, true, lineage ? { lineage } : {});
+      respond(true, {
+        ...result,
+        ...(result.ok
+          ? { note: "priced and gated at the next consolidation refresh (~30 min)" }
+          : {}),
+      });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+  // PLAN-43 Phase 3 (§3.7): commerce standing of peers this node has called
+  // (answer rate / uptime / quarantine) plus the seller-bond ledger summary.
+  "marketplace.commerce": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const [{ CommerceReputationLedger }, { SellerBondLedger }] = await Promise.all([
+        import("../../memory/commerce-reputation.js"),
+        import("../../memory/seller-bond-ledger.js"),
+      ]);
+      const limit =
+        typeof params.limit === "number" ? Math.min(200, Math.max(1, params.limit)) : 50;
+      respond(true, {
+        peers: new CommerceReputationLedger(db).listPeers(limit),
+        bonds: new SellerBondLedger(db).summary(),
+        frozen: loadConfig().a2a?.marketplace?.freezeListings === true,
+      });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // PLAN-43 Phase 4 (D-D): contributor standings — verified signals only,
+  // status privileges only, never cash.
+  "marketplace.contributors": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const { ContributorStatusLedger, TIER_PRIVILEGES } =
+        await import("../../memory/contributor-status.js");
+      const ledger =
+        (manager as unknown as DreamManagerView).getContributorStatus?.() ??
+        new ContributorStatusLedger(db);
+      const limit =
+        typeof params.limit === "number" ? Math.min(500, Math.max(1, params.limit)) : 50;
+      // Recompute on demand is throttled: it is a full scan, and read
+      // scope must not be able to spin the event loop with it.
+      if (
+        (params.recompute === true || ledger.list(1).length === 0) &&
+        !ledger.recomputedRecently(60_000)
+      ) {
+        ledger.recompute({
+          trustedAttesters: new Set(loadConfig().a2a?.attestation?.trustedAttesters ?? []),
+        });
+      }
+      const pubkey = typeof params.peerPubkey === "string" ? params.peerPubkey : undefined;
+      respond(true, {
+        contributors: pubkey ? [ledger.get(pubkey)].filter(Boolean) : ledger.list(limit),
+        privileges: TIER_PRIVILEGES,
+      });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // Operator action (write scope): clear a sticky contributor flag.
+  "marketplace.contributorClearFlag": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      const pubkey = typeof params.peerPubkey === "string" ? params.peerPubkey.trim() : "";
+      if (!db || !pubkey) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "peerPubkey required"));
+        return;
+      }
+      const { ContributorStatusLedger } = await import("../../memory/contributor-status.js");
+      const ledger =
+        (manager as unknown as DreamManagerView).getContributorStatus?.() ??
+        new ContributorStatusLedger(db);
+      respond(true, { cleared: ledger.clearFlag(pubkey) });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "marketplace.bonds": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const { SellerBondLedger } = await import("../../memory/seller-bond-ledger.js");
+      const ledger = new SellerBondLedger(db);
+      const seller = typeof params.sellerPubkey === "string" ? params.sellerPubkey : undefined;
+      respond(true, { bonds: ledger.list(seller), summary: ledger.summary() });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  // Ledger entry only: no funds move (invariant I7). Operator action.
+  "marketplace.postBond": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const db = (manager as unknown as DreamManagerView).db;
+      if (!db) {
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "memory db unavailable"));
+        return;
+      }
+      const seller = typeof params.sellerPubkey === "string" ? params.sellerPubkey.trim() : "";
+      const amount = typeof params.amountUsdc === "number" ? params.amountUsdc : NaN;
+      if (!seller || seller.length > 128 || !(amount > 0) || amount > 1_000_000) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "sellerPubkey and a positive amountUsdc are required",
+          ),
+        );
+        return;
+      }
+      const { SellerBondLedger } = await import("../../memory/seller-bond-ledger.js");
+      respond(true, { bond: new SellerBondLedger(db).postBond(seller, amount) });
+    } catch (err) {
+      respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
+    }
+  },
+
+  "marketplace.delist": async ({ params, respond }) => {
+    try {
+      const manager = await getManager();
+      const economics = (manager as unknown as DreamManagerView).getMarketplaceEconomics?.();
+      if (!economics) {
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.UNAVAILABLE, "marketplace not initialized"),
+        );
+        return;
+      }
+      const crystalId = typeof params.crystalId === "string" ? params.crystalId : "";
+      respond(true, economics.setForSale(crystalId, false));
     } catch (err) {
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(err)));
     }

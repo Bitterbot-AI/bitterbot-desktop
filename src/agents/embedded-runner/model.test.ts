@@ -1,0 +1,444 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../runtime/models/index.js", () => ({
+  discoverAuthStorage: vi.fn(() => ({ mocked: true })),
+  discoverModels: vi.fn(() => ({ find: vi.fn(() => null) })),
+}));
+
+import type { BitterbotConfig } from "../../config/config.js";
+import { borrowedPriceTemplate } from "../model-forward-compat.js";
+import { discoverModels } from "../runtime/models/index.js";
+import { buildInlineProviderModels, resolveModel } from "./model.js";
+import {
+  makeModel,
+  mockDiscoveredModel,
+  OPENAI_CODEX_TEMPLATE_MODEL,
+  resetMockDiscoverModels,
+} from "./model.test-harness.js";
+
+beforeEach(() => {
+  resetMockDiscoverModels();
+});
+
+describe("buildInlineProviderModels", () => {
+  it("attaches provider ids to inline models", () => {
+    const providers = {
+      " alpha ": { baseUrl: "http://alpha.local", models: [makeModel("alpha-model")] },
+      beta: { baseUrl: "http://beta.local", models: [makeModel("beta-model")] },
+    };
+
+    const result = buildInlineProviderModels(providers);
+
+    expect(result).toEqual([
+      {
+        ...makeModel("alpha-model"),
+        provider: "alpha",
+        baseUrl: "http://alpha.local",
+        api: undefined,
+      },
+      {
+        ...makeModel("beta-model"),
+        provider: "beta",
+        baseUrl: "http://beta.local",
+        api: undefined,
+      },
+    ]);
+  });
+
+  it("inherits baseUrl from provider when model does not specify it", () => {
+    const providers = {
+      custom: {
+        baseUrl: "http://localhost:8000",
+        models: [makeModel("custom-model")],
+      },
+    };
+
+    const result = buildInlineProviderModels(providers);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].baseUrl).toBe("http://localhost:8000");
+  });
+
+  it("inherits api from provider when model does not specify it", () => {
+    const providers = {
+      custom: {
+        baseUrl: "http://localhost:8000",
+        api: "anthropic-messages",
+        models: [makeModel("custom-model")],
+      },
+    };
+
+    const result = buildInlineProviderModels(providers);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].api).toBe("anthropic-messages");
+  });
+
+  it("model-level api takes precedence over provider-level api", () => {
+    const providers = {
+      custom: {
+        baseUrl: "http://localhost:8000",
+        api: "openai-responses",
+        models: [{ ...makeModel("custom-model"), api: "anthropic-messages" as const }],
+      },
+    };
+
+    const result = buildInlineProviderModels(providers);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].api).toBe("anthropic-messages");
+  });
+
+  it("inherits both baseUrl and api from provider config", () => {
+    const providers = {
+      custom: {
+        baseUrl: "http://localhost:10000",
+        api: "anthropic-messages",
+        models: [makeModel("claude-opus-4.5")],
+      },
+    };
+
+    const result = buildInlineProviderModels(providers);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      provider: "custom",
+      baseUrl: "http://localhost:10000",
+      api: "anthropic-messages",
+      name: "claude-opus-4.5",
+    });
+  });
+});
+
+describe("resolveModel", () => {
+  it("includes provider baseUrl in fallback model", () => {
+    const cfg = {
+      models: {
+        providers: {
+          custom: {
+            baseUrl: "http://localhost:9000",
+            models: [],
+          },
+        },
+      },
+    } as BitterbotConfig;
+
+    const result = resolveModel("custom", "missing-model", "/tmp/agent", cfg);
+
+    expect(result.model?.baseUrl).toBe("http://localhost:9000");
+    expect(result.model?.provider).toBe("custom");
+    expect(result.model?.id).toBe("missing-model");
+  });
+
+  it("builds an openai-codex fallback for gpt-5.3-codex", () => {
+    mockDiscoveredModel({
+      provider: "openai-codex",
+      modelId: "gpt-5.2-codex",
+      templateModel: OPENAI_CODEX_TEMPLATE_MODEL,
+    });
+
+    const result = resolveModel("openai-codex", "gpt-5.3-codex", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({
+      provider: "openai-codex",
+      id: "gpt-5.3-codex",
+      api: "openai-codex-responses",
+      baseUrl: "https://chatgpt.com/backend-api",
+      reasoning: true,
+      contextWindow: 272000,
+      maxTokens: 128000,
+    });
+  });
+
+  it("builds an anthropic forward-compat fallback for claude-opus-4-6", () => {
+    const templateModel = {
+      id: "claude-opus-4-5",
+      name: "Claude Opus 4.5",
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      contextWindow: 200000,
+      maxTokens: 64000,
+    };
+
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn((provider: string, modelId: string) => {
+        if (provider === "anthropic" && modelId === "claude-opus-4-5") {
+          return templateModel;
+        }
+        return null;
+      }),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const result = resolveModel("anthropic", "claude-opus-4-6", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({
+      provider: "anthropic",
+      id: "claude-opus-4-6",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+    });
+  });
+
+  it("builds an anthropic forward-compat fallback for claude-opus-4-8 (clones 4-6)", () => {
+    // Opus 4.8 postdates the pi-ai catalog (which tops out at 4-6); it must
+    // resolve to a real Anthropic model, not error as "Unknown model".
+    const templateModel = {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      contextWindow: 1000000,
+      maxTokens: 128000,
+    };
+
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn((provider: string, modelId: string) => {
+        if (provider === "anthropic" && modelId === "claude-opus-4-6") {
+          return templateModel;
+        }
+        return null;
+      }),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const result = resolveModel("anthropic", "claude-opus-4-8", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({
+      provider: "anthropic",
+      id: "claude-opus-4-8",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      contextWindow: 1000000,
+    });
+  });
+
+  it("builds an anthropic forward-compat fallback for claude-opus-4-7 (clones 4-6)", () => {
+    const templateModel = {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      contextWindow: 1000000,
+      maxTokens: 128000,
+    };
+
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn((provider: string, modelId: string) =>
+        provider === "anthropic" && modelId === "claude-opus-4-6" ? templateModel : null,
+      ),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const result = resolveModel("anthropic", "claude-opus-4-7", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({ provider: "anthropic", id: "claude-opus-4-7" });
+  });
+
+  it("resolves Claude 5 models the built-in catalog predates from the same family", () => {
+    // The picker lists what Anthropic serves (claude-fable-5-1, claude-opus-5-5,
+    // claude-sonnet-5-5); the runner must accept them, not fail "Unknown model".
+    const base = {
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      maxTokens: 64000,
+    };
+    const catalog = [
+      {
+        ...base,
+        id: "claude-opus-4-1",
+        name: "Claude Opus 4.1",
+        contextWindow: 200000,
+        cost: { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+      },
+      {
+        ...base,
+        id: "claude-opus-4-7",
+        name: "Claude Opus 4.7",
+        contextWindow: 1000000,
+        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      },
+      {
+        ...base,
+        id: "claude-sonnet-4-20250514",
+        name: "Claude Sonnet 4",
+        contextWindow: 200000,
+        cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+      },
+      {
+        ...base,
+        id: "claude-sonnet-4-6",
+        name: "Claude Sonnet 4.6",
+        contextWindow: 1000000,
+        cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+      },
+    ];
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn(
+        (provider: string, modelId: string) =>
+          catalog.find((m) => m.provider === provider && m.id === modelId) ?? null,
+      ),
+      getAll: vi.fn(() => catalog),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const sonnet = resolveModel("anthropic", "claude-sonnet-5-5", "/tmp/agent");
+    expect(sonnet.error).toBeUndefined();
+    expect(sonnet.model).toMatchObject({
+      id: "claude-sonnet-5-5",
+      api: "anthropic-messages",
+      contextWindow: 1000000,
+      cost: { input: 3, output: 15 },
+    });
+    // Newest Opus is the template, not an older or dated one.
+    expect(resolveModel("anthropic", "claude-opus-5-5", "/tmp/agent").model).toMatchObject({
+      id: "claude-opus-5-5",
+      cost: { input: 5, output: 25 },
+    });
+    // A family the catalog has never seen (Fable) takes the newest Opus.
+    expect(resolveModel("anthropic", "claude-fable-5-1", "/tmp/agent").model).toMatchObject({
+      id: "claude-fable-5-1",
+      api: "anthropic-messages",
+      contextWindow: 1000000,
+    });
+    // Only Claude ids: anything else stays unknown.
+    expect(resolveModel("anthropic", "not-a-claude", "/tmp/agent").error).toBe(
+      "Unknown model: anthropic/not-a-claude",
+    );
+  });
+
+  it("marks forward-compat clones as carrying a borrowed price; real entries are not", () => {
+    const base = {
+      provider: "anthropic",
+      api: "anthropic-messages",
+      baseUrl: "https://api.anthropic.com",
+      reasoning: true,
+      input: ["text", "image"] as const,
+      maxTokens: 64000,
+      contextWindow: 1000000,
+    };
+    const catalog = [
+      {
+        ...base,
+        id: "claude-opus-4-7",
+        name: "Claude Opus 4.7",
+        cost: { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+      },
+    ];
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn(
+        (provider: string, modelId: string) =>
+          catalog.find((m) => m.provider === provider && m.id === modelId) ?? null,
+      ),
+      getAll: vi.fn(() => catalog),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const fable = resolveModel("anthropic", "claude-fable-5-1", "/tmp/agent").model;
+    expect(borrowedPriceTemplate(fable)).toBe("claude-opus-4-7");
+    const real = resolveModel("anthropic", "claude-opus-4-7", "/tmp/agent").model;
+    expect(borrowedPriceTemplate(real)).toBeUndefined();
+    // The template entry itself is never mutated by the clone.
+    expect(borrowedPriceTemplate(catalog[0])).toBeUndefined();
+  });
+
+  it("refuses retired Google OAuth providers even when a stale models.json lists them", () => {
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn(() => ({
+        id: "claude-opus-4-5-thinking",
+        provider: "google-antigravity",
+        api: "google-gemini-cli",
+      })),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    for (const provider of ["google-antigravity", "google-gemini-cli"]) {
+      const result = resolveModel(provider, "claude-opus-4-5-thinking", "/tmp/agent");
+      expect(result.model).toBeUndefined();
+      expect(result.error).toContain("no longer supported");
+    }
+  });
+
+  it("builds a zai forward-compat fallback for glm-5", () => {
+    const templateModel = {
+      id: "glm-4.7",
+      name: "GLM-4.7",
+      provider: "zai",
+      api: "openai-completions",
+      baseUrl: "https://api.z.ai/api/paas/v4",
+      reasoning: true,
+      input: ["text"] as const,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 200000,
+      maxTokens: 131072,
+    };
+
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn((provider: string, modelId: string) => {
+        if (provider === "zai" && modelId === "glm-4.7") {
+          return templateModel;
+        }
+        return null;
+      }),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const result = resolveModel("zai", "glm-5", "/tmp/agent");
+
+    expect(result.error).toBeUndefined();
+    expect(result.model).toMatchObject({
+      provider: "zai",
+      id: "glm-5",
+      api: "openai-completions",
+      baseUrl: "https://api.z.ai/api/paas/v4",
+      reasoning: true,
+    });
+  });
+
+  it("keeps unknown-model errors for non-gpt-5 openai-codex ids", () => {
+    const result = resolveModel("openai-codex", "gpt-4.1-mini", "/tmp/agent");
+    expect(result.model).toBeUndefined();
+    expect(result.error).toBe("Unknown model: openai-codex/gpt-4.1-mini");
+  });
+
+  it("uses codex fallback even when openai-codex provider is configured", () => {
+    // This test verifies the ordering: codex fallback must fire BEFORE the generic providerCfg fallback.
+    // If ordering is wrong, the generic fallback would use api: "openai-responses" (the default)
+    // instead of "openai-codex-responses".
+    const cfg: BitterbotConfig = {
+      models: {
+        providers: {
+          "openai-codex": {
+            baseUrl: "https://custom.example.com",
+            // No models array, or models without gpt-5.3-codex
+          },
+        },
+      },
+    } as BitterbotConfig;
+
+    vi.mocked(discoverModels).mockReturnValue({
+      find: vi.fn(() => null),
+    } as unknown as ReturnType<typeof discoverModels>);
+
+    const result = resolveModel("openai-codex", "gpt-5.3-codex", "/tmp/agent", cfg);
+
+    expect(result.error).toBeUndefined();
+    expect(result.model?.api).toBe("openai-codex-responses");
+    expect(result.model?.id).toBe("gpt-5.3-codex");
+    expect(result.model?.provider).toBe("openai-codex");
+  });
+});

@@ -58,7 +58,10 @@ function createTestDb(): DatabaseSync {
       completed_at INTEGER,
       success INTEGER,
       reward_score REAL,
-      error_type TEXT
+      error_type TEXT,
+      evidence TEXT,
+      run_outcome_label TEXT,
+      run_outcome_level INTEGER
     );
     CREATE TABLE IF NOT EXISTS chunks (
       id TEXT PRIMARY KEY,
@@ -170,13 +173,13 @@ describe("skill-pipeline-digest", () => {
     it("computes success rate from skill executions", () => {
       const db = createTestDb();
       db.prepare(
-        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score, error_type) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score, error_type, evidence, run_outcome_label, run_outcome_level) VALUES (?, ?, ?, ?, ?, ?, ?, 'run', 'pass', 1)`,
       ).run("e1", "s1", now - 3 * HOUR, now - 3 * HOUR + 500, 1, 0.8, null);
       db.prepare(
-        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score, error_type) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score, error_type, evidence, run_outcome_label, run_outcome_level) VALUES (?, ?, ?, ?, ?, ?, ?, 'run', 'fail', 1)`,
       ).run("e2", "s1", now - 2 * HOUR, now - 2 * HOUR + 600, 0, 0.0, "timeout");
       db.prepare(
-        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score, error_type) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score, error_type, evidence, run_outcome_label, run_outcome_level) VALUES (?, ?, ?, ?, ?, ?, ?, 'run', 'pass', 1)`,
       ).run("e3", "s2", now - 1 * HOUR, now - 1 * HOUR + 400, 1, 0.9, null);
 
       const r = buildDigest(db, { sinceMs: now - 24 * HOUR, untilMs: now });
@@ -240,7 +243,7 @@ describe("skill-pipeline-digest", () => {
         `INSERT INTO dream_cycles (cycle_id, started_at, completed_at, state, insights_generated) VALUES (?, ?, ?, ?, ?)`,
       ).run("c1", now - 2 * HOUR, now - 2 * HOUR + 5000, "COMPLETE", 3);
       db.prepare(
-        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score) VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO skill_executions (id, skill_crystal_id, started_at, completed_at, success, reward_score, evidence, run_outcome_label, run_outcome_level) VALUES (?, ?, ?, ?, ?, ?, 'run', 'pass', 1)`,
       ).run("e1", "s1", now - 1 * HOUR, now - 1 * HOUR + 500, 1, 0.7);
 
       const report = buildDigest(db, { sinceMs: now - 24 * HOUR, untilMs: now });

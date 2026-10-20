@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { CircleTopicBridge } from "./circle-topic.js";
 import {
   getCircleTopicBus,
   setCircleTopicBusForTests,
   startCircleTopicTransport,
 } from "./circle-topic-transport.js";
+import type { CircleTopicBridge } from "./circle-topic.js";
 
 // Stage 1 of the P2P transport plan: a daemon that cannot serve the topic
 // verbs (pre-0.2.0 never answers; the bridge times out after 2s) must cost

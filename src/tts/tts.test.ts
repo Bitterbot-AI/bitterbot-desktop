@@ -1,18 +1,21 @@
 import { completeSimple } from "@mariozechner/pi-ai";
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { resolveModel } from "../agents/embedded-runner/model.js";
 import { getApiKeyForModel } from "../agents/model-auth.js";
-import { resolveModel } from "../agents/pi-embedded-runner/model.js";
 import { withEnv } from "../test-utils/env.js";
 import * as tts from "./tts.js";
 
 vi.mock("@mariozechner/pi-ai", () => ({
   completeSimple: vi.fn(),
+}));
+
+vi.mock("@mariozechner/pi-ai/oauth", () => ({
   // Some auth helpers import oauth provider metadata at module load time.
   getOAuthProviders: () => [],
   getOAuthApiKey: vi.fn(async () => null),
 }));
 
-vi.mock("../agents/pi-embedded-runner/model.js", () => ({
+vi.mock("../agents/embedded-runner/model.js", () => ({
   resolveModel: vi.fn((provider: string, modelId: string) => ({
     model: {
       provider,

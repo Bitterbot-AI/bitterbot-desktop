@@ -58,7 +58,12 @@ export function controlUiRootCandidates(params?: {
   if (envOverride) {
     return [path.resolve(envOverride)];
   }
-  // Running from dist/ (the normal case): dist/gateway/... -> dist/control-ui
+  // Running from the single-file bundle (the normal case): dist/entry.js ->
+  // dist/control-ui. The gateway's cwd is not reliable here: started from
+  // another directory (2026-10-02, cwd under /mnt/c) the cwd candidate below
+  // missed and the Control UI answered 404 while the WebSocket API kept working.
+  out.push(path.resolve(here, "control-ui"));
+  // Running unbundled from dist/gateway/...: dist/control-ui.
   out.push(path.resolve(here, "..", "control-ui"));
   // Running from a repo checkout or with a staged dist.
   out.push(path.resolve(cwd, "dist", "control-ui"));

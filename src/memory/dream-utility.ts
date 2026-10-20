@@ -18,13 +18,13 @@
  * funnel must not inherit that disease.
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
 const log = createSubsystemLogger("memory/dream-utility");
 
-export type DreamLane = "hygiene" | "distillation" | "anticipation" | "legacy";
+export type DreamLane = "hygiene" | "distillation" | "anticipation" | "legacy" | "evolution";
 export type ConsumedKind = "retrieved" | "executed" | "surfaced" | "referenced";
 
 function tableExists(db: DatabaseSync, table: string): boolean {

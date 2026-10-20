@@ -10,8 +10,11 @@ title: "Heartbeat"
 
 > **Heartbeat vs Cron?** See [Cron vs Heartbeat](/automation/cron-vs-heartbeat) for guidance on when to use each.
 
-Heartbeat runs **periodic agent turns** in the main session so the model can
-surface anything that needs attention without spamming you.
+Heartbeat runs **periodic agent turns** so the model can surface anything that
+needs attention without spamming you. Since the 2026-09-19 token-efficiency
+build an idle heartbeat costs nothing: an interval tick whose inputs have not
+changed never calls the model, and a tick that does run uses a small isolated
+session on a cheap model (see [Cost model](#cost-model)).
 
 Troubleshooting: [/automation/troubleshooting](/automation/troubleshooting)
 
@@ -44,11 +47,30 @@ Example config:
 
 - Interval: `30m` (or `1h` when Anthropic OAuth/setup-token is the detected auth mode). Set `agents.defaults.heartbeat.every` or per-agent `agents.list[].heartbeat.every`; use `0m` to disable.
 - Prompt body (configurable via `agents.defaults.heartbeat.prompt`):
-  `Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`
+  `Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.`
 - The heartbeat prompt is sent **verbatim** as the user message. The system
   prompt includes a “Heartbeat” section and the run is flagged internally.
+- The first four sentences of the default prompt are frozen (exported as
+  `HEARTBEAT_PROMPT_PREFIX`): the usage ledger and memory transcript prep
+  recognise heartbeat turns by that prefix, so only append to it.
 - Active hours (`heartbeat.activeHours`) are checked in the configured timezone.
   Outside the window, heartbeats are skipped until the next tick inside the window.
+- `skipWhenUnchanged: true`, `isolatedSession: true`, `lightContext: true` (all
+  default on; see [Cost model](#cost-model)).
+
+### Gate order
+
+Every tick passes these gates in order; the first one that fails ends the tick:
+
+1. **enabled**: heartbeats on, agent has a heartbeat, interval parses.
+2. **activeHours**: inside the configured window.
+3. **busy**: main command lane is idle (`requests-in-flight` otherwise; retried).
+4. **empty-file**: `HEARTBEAT.md` has actionable content (interval ticks only;
+   `exec-event`, `cron:*`, `wake`, `hook:*` and `compute-event` reasons carry a
+   pending system event and skip this gate).
+5. **hash gate** (`skipWhenUnchanged`): inputs differ from the last completed
+   tick (interval and cache-warm ticks only).
+6. **run**: the model is called, in the isolated session when eligible.
 
 ## What the heartbeat prompt is for
 
@@ -66,7 +88,12 @@ stats” or “verify gateway health”), set `agents.defaults.heartbeat.prompt`
 
 ## Response contract
 
-- If nothing needs attention, reply with **`HEARTBEAT_OK`**.
+- If nothing needs attention, reply with **`HEARTBEAT_OK`** and nothing else;
+  the default prompt now says so explicitly because a cheap model that narrates
+  what it checked before the ack wastes output tokens and, past `ackMaxChars`,
+  gets that narration delivered as an alert.
+- Markdown or HTML emphasis around the token (`**HEARTBEAT_OK**`,
+  `<b>HEARTBEAT_OK</b>`) is tolerated and leaves no residue.
 - During heartbeat runs, Bitterbot treats `HEARTBEAT_OK` as an ack when it appears
   at the **start or end** of the reply. The token is stripped and the reply is
   dropped if the remaining content is **≤ `ackMaxChars`** (default: 300).
@@ -90,8 +117,11 @@ and logged; a message that is only `HEARTBEAT_OK` is dropped.
         target: "last", // last | none | <channel id> (e.g. "telegram")
         to: "+15551234567", // optional channel-specific override
         accountId: "ops-bot", // optional multi-account channel id
-        prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+        prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.",
         ackMaxChars: 300, // max chars allowed after HEARTBEAT_OK
+        skipWhenUnchanged: true, // default: true; no model call when inputs are unchanged
+        isolatedSession: true, // default: true; run in <main>:heartbeat, fresh transcript
+        lightContext: true, // default: true; minimal prompt, HEARTBEAT.md only, cheap model
       },
     },
   },
@@ -131,7 +161,7 @@ Example: two agents, only the second agent runs heartbeats.
           every: "1h",
           target: "whatsapp",
           to: "+15551234567",
-          prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.",
+          prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK. In that case reply with exactly HEARTBEAT_OK and nothing else: no narration, no summary of what you checked.",
         },
       },
     ],
@@ -209,6 +239,40 @@ Use `accountId` to target a specific account on multi-account channels like Tele
 - `accountId`: optional account id for multi-account channels. When `target: "last"`, the account id applies to the resolved last channel if it supports accounts; otherwise it is ignored. If the account id does not match a configured account for the resolved channel, delivery is skipped.
 - `prompt`: overrides the default prompt body (not merged).
 - `ackMaxChars`: max chars allowed after `HEARTBEAT_OK` before delivery.
+- `skipWhenUnchanged` (default `true`): content-hash gate. Before an interval
+  tick calls the model, Bitterbot computes a SHA-256 over exactly three inputs:
+  the normalized `HEARTBEAT.md` content (CRLF, trailing spaces and blank-line
+  runs ignored; a missing file hashes differently from an empty one), the
+  resolved heartbeat prompt body, and the text of the system events queued for
+  the heartbeat session. If it matches the hash committed by the last tick whose
+  model call completed, the tick is skipped with reason `unchanged-hash` (no API
+  call, schedule advances). Nothing else is hashed: not the clock, not the
+  model, not the delivery target. `wake`, `exec-event`, `compute-event`,
+  `cron:*`, `hook:*`, `manual` and `retry` reasons bypass the gate because they
+  carry new input by definition. The compute state block (PLAN-57) is rendered
+  after the cache boundary from the watcher's own snapshot and is never part of
+  the hashed inputs, so a running compute job cannot re-arm interval ticks. The last hash is kept in memory and at
+  `~/.bitterbot/heartbeat/last-input-hash-<agentId>.json` so a restart does not
+  trigger a spurious tick.
+- `isolatedSession` (default `true`): interval ticks run in
+  `agent:<id>:<mainKey>:heartbeat`. The previous isolated entry and its
+  transcript are dropped before each run, so the model never sees the main chat
+  history or earlier heartbeat turns. Delivery still resolves from the main
+  session (`target: "last"` keeps working; the agent's `message` tool has no
+  implicit last route inside the isolated session, so prefer explicit targets
+  in `HEARTBEAT.md`). Ticks that must drain queued system events (exec
+  completions, cron payloads, wake/hook events) stay in the main session where
+  the events were enqueued, as do heartbeats pinned to an explicit `session`
+  and `session.scope: "global"` deployments.
+- `lightContext` (default `true`): the run uses the minimal system prompt
+  (same shape as cron/subagent turns), injects `HEARTBEAT.md` as the only
+  workspace file (no GENOME/PROTOCOLS/TOOLS/MEMORY; the bootstrap budget and
+  its "truncating in injected context" log line run only on that file, so a
+  light heartbeat no longer reports a MEMORY.md truncation), pins thinking to `low`,
+  skips proactive recall, and, when `model` is unset, uses the cheap tier
+  (`anthropic/claude-haiku-4-5` with an `ANTHROPIC_API_KEY`,
+  `openai/gpt-4o-mini` with an `OPENAI_API_KEY`, otherwise the agent's default
+  model). An explicit `model` always wins.
 - `activeHours`: restricts heartbeat runs to a time window. Object with `start` (HH:MM, inclusive), `end` (HH:MM exclusive; `24:00` allowed for end-of-day), and optional `timezone`.
   - Omitted or `"user"`: uses your `agents.defaults.userTimezone` if set, otherwise falls back to the host system timezone.
   - `"local"`: always uses the host system timezone.
@@ -217,8 +281,10 @@ Use `accountId` to target a specific account on multi-account channels like Tele
 
 ## Delivery behavior
 
-- Heartbeats run in the agent’s main session by default (`agent:<id>:<mainKey>`),
-  or `global` when `session.scope = "global"`. Set `session` to override to a
+- Interval heartbeats run in the isolated `agent:<id>:<mainKey>:heartbeat`
+  session by default (`isolatedSession: true`); event-driven ticks, explicit
+  `session` overrides and `global` scope run in the base session
+  (`agent:<id>:<mainKey>` or `global`). Set `session` to override to a
   specific channel session (Discord/WhatsApp/etc.).
 - `session` only affects the run context; delivery is controlled by `target` and `to`.
 - To deliver to a specific channel/recipient, set `target` + `to`. With
@@ -297,9 +363,18 @@ If a `HEARTBEAT.md` file exists in the workspace, the default prompt tells the
 agent to read it. Think of it as your “heartbeat checklist”: small, stable, and
 safe to include every 30 minutes.
 
-If `HEARTBEAT.md` exists but is effectively empty (only blank lines and markdown
-headers like `# Heading`), Bitterbot skips the heartbeat run to save API calls.
-If the file is missing, the heartbeat still runs and the model decides what to do.
+If `HEARTBEAT.md` exists but is effectively empty, Bitterbot skips the heartbeat
+run to save API calls. "Effectively empty" means the file contains only blank
+lines, markdown headers (`# Heading`), empty list items, HTML comments (single
+or multi-line), fenced code blocks, horizontal rules, the template sentences, or
+placeholder prose such as `_No active heartbeat tasks._`, `Nothing to do` or
+`If nothing needs attention, reply HEARTBEAT_OK.` (the italic placeholder line
+that shipped in an early workspace and defeated the old check). Any other line
+counts as a task. If the file is missing, the heartbeat still runs and the model
+decides what to do (and the hash gate then skips every following tick until
+something changes). Event-driven wakes (`exec-event`, `cron:*`, `wake`,
+`hook:*`, `compute-event`) run even when the file is empty: they exist to
+deliver a queued system event, such as a finished compute job.
 
 Keep it tiny (short checklist or reminders) to avoid prompt bloat.
 
@@ -357,11 +432,31 @@ is managing multiple sessions/codexes and you want to see why it decided to ping
 you — but it can also leak more internal detail than you want. Prefer keeping it
 off in group chats.
 
-## Cost awareness
+## Cost model
 
-Heartbeats run full agent turns. Shorter intervals burn more tokens. Keep
-`HEARTBEAT.md` small and consider a cheaper `model` or `target: "none"` if you
-only want internal state updates.
+Why the old defaults cost real money: a heartbeat used to be a full agent turn
+in the main session. On a typical node that is a ~~54k-token prompt (system
+prompt, 59 tool schemas, every workspace file) on the primary model. The prompt
+cache TTL is 5 minutes and the interval is 30 minutes, so every tick was a cold
+cache write at 1.25x input price (~~$0.33) that produced 13 output tokens
+(`HEARTBEAT_OK`). 48 ticks a day is ~$16 per idle day, with nothing delivered.
+The audited node ran 1,021 ticks, all ack-only, because its `HEARTBEAT.md`
+carried one italic placeholder line that the empty-file skip did not recognize.
+
+What the defaults do now:
+
+- `skipWhenUnchanged`: an idle node hashes to the same value every tick, so
+  after the first completed tick there are zero model calls until
+  `HEARTBEAT.md`, the prompt, or a queued event changes. Idle cost: $0.
+- `isolatedSession` + `lightContext`: when a tick does run, it is a minimal
+  prompt with one workspace file in a fresh session on Haiku (or gpt-4o-mini),
+  a few thousand tokens at cheap-tier rates instead of ~54k at primary rates.
+- Event-driven ticks (exec completions, cron, wake, hooks) are unchanged: they
+  run in the main session with the events they need to surface.
+
+If you turn the gates off, the old advice applies: shorter intervals burn more
+tokens; keep `HEARTBEAT.md` small, keep `every` under your cache TTL, and set a
+cheaper `model` or `target: "none"` if you only want internal state updates.
 
 ## Considerations log (`heartbeat why`)
 
@@ -379,5 +474,12 @@ bitterbot heartbeat why --session KEY   # filter by session
 bitterbot heartbeat why --decision blocked
 bitterbot heartbeat why --day 2026-04-25 --limit 100
 ```
+
+A hash-gated skip shows as `skipped trigger heartbeat-tick` with reason
+`unchanged-hash` and a payload carrying the hash prefix and the timestamp of the
+last completed tick. An idle node should show one `acted` entry followed by a
+run of `unchanged-hash` entries; if you see `acted` on every tick, something is
+changing the inputs (an agent that rewrites `HEARTBEAT.md`, or a cron job
+queuing events every interval).
 
 Full reference: [bitterbot heartbeat](/cli/heartbeat).

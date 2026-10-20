@@ -55,7 +55,7 @@ vi.mock("../config/sessions.js", () => ({
   recordSessionMetaFromInbound: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("./pi-embedded.js", () => embeddedRunMock);
+vi.mock("./embedded.js", () => embeddedRunMock);
 
 vi.mock("./subagent-registry.js", () => subagentRegistryMock);
 
@@ -246,6 +246,9 @@ describe("subagent announce formatting", () => {
     expect(embeddedRunMock.queueEmbeddedPiMessage).toHaveBeenCalledWith(
       "session-123",
       expect.stringContaining("[System Message]"),
+      // The requester's owner flag rides along so the steered turn keeps its
+      // authorization (requesterIsOwner unset counts as owner).
+      { senderIsOwner: true },
     );
     expect(agentSpy).not.toHaveBeenCalled();
   });

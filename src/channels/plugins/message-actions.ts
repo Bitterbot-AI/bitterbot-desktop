@@ -1,7 +1,7 @@
 import type { AgentToolResult } from "@mariozechner/pi-agent-core";
 import type { BitterbotConfig } from "../../config/config.js";
-import type { ChannelMessageActionContext, ChannelMessageActionName } from "./types.js";
 import { getChannelPlugin, listChannelPlugins } from "./index.js";
+import type { ChannelMessageActionContext, ChannelMessageActionName } from "./types.js";
 
 export function listChannelMessageActions(cfg: BitterbotConfig): ChannelMessageActionName[] {
   const actions = new Set<ChannelMessageActionName>(["send", "broadcast"]);

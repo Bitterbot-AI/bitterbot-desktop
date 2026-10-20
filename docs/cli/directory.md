@@ -35,8 +35,6 @@ bitterbot message send --channel slack --target user:U012ABCDEF --message "hello
 - Telegram: `@username` or numeric chat id; groups are numeric ids
 - Slack: `user:U…` and `channel:C…`
 - Discord: `user:<id>` and `channel:<id>`
-- Matrix (plugin): `user:@user:server`, `room:!roomId:server`, or `#alias:server`
-- Microsoft Teams (plugin): `user:<id>` and `conversation:<id>`
 - Zalo (plugin): user id (Bot API)
 - Zalo Personal / `zalouser` (plugin): thread id (DM/group) from `zca` (`me`, `friend list`, `group list`)
 

@@ -1,12 +1,10 @@
-import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { BitterbotConfig } from "../../config/config.js";
-import type { TtsAutoMode } from "../../config/types.tts.js";
-import type { MsgContext, TemplateContext } from "../templating.js";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
+import { openTranscriptForAgent } from "../../agents/runtime/open-transcript.js";
 import { normalizeChatType } from "../../channels/chat-type.js";
+import type { BitterbotConfig } from "../../config/config.js";
 import {
   DEFAULT_RESET_TRIGGERS,
   deriveSessionMetaPatch,
@@ -26,6 +24,7 @@ import {
   type SessionScope,
   updateSessionStore,
 } from "../../config/sessions.js";
+import type { TtsAutoMode } from "../../config/types.tts.js";
 import { archiveSessionTranscripts } from "../../gateway/session-utils.fs.js";
 import { deliverSessionMaintenanceWarning } from "../../infra/session-maintenance-warning.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -33,6 +32,7 @@ import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
 import { normalizeMainKey } from "../../routing/session-key.js";
 import { normalizeSessionDeliveryFields } from "../../utils/delivery-context.js";
 import { resolveCommandAuthorization } from "../command-auth.js";
+import type { MsgContext, TemplateContext } from "../templating.js";
 import { normalizeInboundTextNewlines } from "./inbound-text.js";
 import { stripMentions, stripStructuralPrefixes } from "./mentions.js";
 
@@ -61,6 +61,7 @@ function forkSessionFromParent(params: {
   parentEntry: SessionEntry;
   agentId: string;
   sessionsDir: string;
+  cfg?: BitterbotConfig;
 }): { sessionId: string; sessionFile: string } | null {
   const parentSessionFile = resolveSessionFilePath(
     params.parentEntry.sessionId,
@@ -71,28 +72,23 @@ function forkSessionFromParent(params: {
     return null;
   }
   try {
-    const manager = SessionManager.open(parentSessionFile);
+    const manager = openTranscriptForAgent(parentSessionFile, {
+      config: params.cfg,
+      agentId: params.agentId,
+    });
     const leafId = manager.getLeafId();
-    if (leafId) {
-      const sessionFile = manager.createBranchedSession(leafId) ?? manager.getSessionFile();
-      const sessionId = manager.getSessionId();
-      if (sessionFile && sessionId) {
-        return { sessionId, sessionFile };
-      }
+    if (!leafId) {
+      return null;
     }
-    const sessionId = crypto.randomUUID();
-    const timestamp = new Date().toISOString();
-    const fileTimestamp = timestamp.replace(/[:.]/g, "-");
-    const sessionFile = path.join(manager.getSessionDir(), `${fileTimestamp}_${sessionId}.jsonl`);
-    const header = {
-      type: "session",
-      version: CURRENT_SESSION_VERSION,
-      id: sessionId,
-      timestamp,
-      cwd: manager.getCwd(),
-      parentSession: parentSessionFile,
-    };
-    fs.writeFileSync(sessionFile, `${JSON.stringify(header)}\n`, "utf-8");
+    const sessionFile = manager.createBranchedSession(leafId);
+    const sessionId = manager.getSessionId();
+    // pi only writes a session file once it holds an assistant message; a file
+    // written earlier gets its header and entries appended a second time when
+    // the first reply lands. A parent branch with no reply yet has nothing
+    // worth inheriting, so the thread starts fresh instead.
+    if (!sessionFile || !sessionId || !fs.existsSync(sessionFile)) {
+      return null;
+    }
     return { sessionId, sessionFile };
   } catch {
     return null;
@@ -338,6 +334,7 @@ export async function initSessionState(params: {
       parentEntry: sessionStore[parentSessionKey],
       agentId,
       sessionsDir: path.dirname(storePath),
+      cfg,
     });
     if (forked) {
       sessionId = forked.sessionId;

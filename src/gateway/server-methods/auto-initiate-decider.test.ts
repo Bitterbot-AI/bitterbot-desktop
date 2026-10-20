@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { PreTurnContext, PreTurnPayload } from "./pre-turn-decision.js";
 import { wrapExternalContent } from "../../security/external-content.js";
 import {
   buildAutoInitiationDecider,
   isAutoInitiateEnabled,
   isComplexityGateEnabled,
 } from "./auto-initiate-decider.js";
+import type { PreTurnContext, PreTurnPayload } from "./pre-turn-decision.js";
 
 const CTX: PreTurnContext = { sessionKey: "s1", agentId: "a1", runId: "r1", channel: "web" };
 const BASE: PreTurnPayload = {
