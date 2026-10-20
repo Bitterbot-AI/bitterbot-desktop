@@ -195,7 +195,10 @@ not change the default.
 
 Web search (Brave/Tavily/Perplexity/xAI/Serply with your key; Parallel Search MCP at
 `search.parallel.ai` keyless and anonymous, so each query reaches Parallel with
-only a Bitterbot User-Agent), Skill Seekers ingestion
+only a Bitterbot User-Agent; Keenable at `api.keenable.ai`, keyless unless you add a
+key, so each query reaches Keenable with its result count, snippet length and
+optional date window, an `X-Keenable-Title: Bitterbot` header and the Bitterbot
+User-Agent), Skill Seekers ingestion
 (`skills.skillSeekers.enabled`, default off), channels (WhatsApp, Telegram,
 …), the wallet/x402 layer, and agent-to-agent HTTP (`a2a.enabled`, default
 off) all require you to configure or enable them explicitly, and each has
