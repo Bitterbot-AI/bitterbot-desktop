@@ -1,14 +1,14 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { closeSync, openSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
-import { createSoapboxHandlers } from "../../src/gateway/server-methods/soapbox.js";
-import { SoapboxClient } from "../../src/infra/soapbox-client.js";
+import { createSoapboxHandlers } from "../gateway/server-methods/soapbox.js";
+import { SoapboxClient } from "../infra/soapbox-client.js";
 import {
   parseSoapboxConnection,
   soapboxOperatorEnvironment,
   verifySoapboxConnection,
-} from "../../src/infra/soapbox-connection.js";
+} from "../infra/soapbox-connection.js";
+import type { BitterbotPluginApi } from "../plugins/types.js";
 
 export function registerParticipant(api: BitterbotPluginApi, directory: string) {
   const connection = parseSoapboxConnection(

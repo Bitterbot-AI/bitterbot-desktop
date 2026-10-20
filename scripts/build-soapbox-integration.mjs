@@ -15,7 +15,7 @@ await mkdir(plugin, { recursive: true });
 if (!process.argv.includes("--ui-only"))
   await build({
     entryPoints: {
-      index: path.join(root, "extensions/soapbox-compute/index.ts"),
+      index: path.join(root, "scripts/soapbox-plugin-legacy.ts"),
       "buyer-wallet": path.join(root, "scripts/soapbox-buyer-wallet.ts"),
     },
     outdir: plugin,

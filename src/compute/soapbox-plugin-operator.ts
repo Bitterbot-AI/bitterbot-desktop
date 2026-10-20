@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
-import { createSoapboxHandlers } from "../../src/gateway/server-methods/soapbox.js";
-import { SoapboxClient } from "../../src/infra/soapbox-client.js";
-import { LocalOperatorService } from "../../src/services/soapbox-local-operator.js";
+import { createSoapboxHandlers } from "../gateway/server-methods/soapbox.js";
+import { SoapboxClient } from "../infra/soapbox-client.js";
+import type { BitterbotPluginApi } from "../plugins/types.js";
+import { LocalOperatorService } from "../services/soapbox-local-operator.js";
 
 export function registerLocalOperator(api: BitterbotPluginApi, directory: string) {
   const binary = api.pluginConfig?.binary;

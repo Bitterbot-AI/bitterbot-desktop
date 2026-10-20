@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import plugin from "../../extensions/soapbox-compute/index.js";
+import { registerSoapboxPlugin } from "../compute/soapbox-plugin.js";
 import { SoapboxClient, type SoapboxStatus } from "../infra/soapbox-client.js";
 import { createPluginRegistry, type PluginRecord } from "../plugins/registry.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
@@ -89,7 +90,7 @@ describe("Compute plugin registration in the current gateway", () => {
       const request = vi.spyOn(SoapboxClient.prototype, "request");
       const registry = createPluginRegistry({
         coreGatewayHandlers,
-        runtime: {} as PluginRuntime,
+        runtime: { compute: { registerSoapbox: registerSoapboxPlugin } } as PluginRuntime,
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       });
       const record: PluginRecord = {

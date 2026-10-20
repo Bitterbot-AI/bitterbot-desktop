@@ -55,6 +55,11 @@
         },
         {
           "type": "json",
+          "path": "extensions/soapbox-compute/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
           "path": "extensions/telegram/package.json",
           "jsonpath": "$.version"
         },
