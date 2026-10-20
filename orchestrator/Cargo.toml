@@ -5,7 +5,7 @@ edition = "2021"
 description = "P2P orchestrator daemon for Bitterbot skill propagation network"
 
 [dependencies]
-libp2p = { version = "0.54", features = [
+libp2p = { version = "0.56", features = [
   "gossipsub",
   "kad",
   "autonat",
