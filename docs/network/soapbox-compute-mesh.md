@@ -103,10 +103,10 @@ Compute journal and on the selected operators, so only send data those operators
 
 Deploy matching desktop, orchestrator and Soapbox runtime builds. Runtime capability
 `mesh_admissions` prevents old coordinators from advertising unsupported sharing capacity.
-Existing private test installations with a local pilot coordinator can host immediately
-after updating the binaries. Buyer installations need no local coordinator to submit over
-P2P. A participant operator connected to someone else's HTTP coordinator does not yet
-automatically become its own independently hosted mesh pool; that packaging step remains.
+The integrated Linux x64 archive includes the pinned runtime for the one-click
+local pool wizard. Buyer installations need no local coordinator to submit over P2P.
+An operator enrolled with an external paid coordinator uses that coordinator; hosting
+an independent mesh pool is a separate choice in the wizard. See [setup](./soapbox.md).
 
 The existing single-job paid UI remains Base Sepolia (chain 84532), with its separate
 Compute wallet and explicit funding action. Mesh admissions cannot submit paid or
@@ -118,7 +118,7 @@ part of this subsystem.
 
 1. **Implemented foundation:** signed capacity discovery, explicit peer access, encrypted
    submission, private/collective batches, ordered results, restart recovery, local activity.
-2. **Wider pilot:** one-click independently hosted operator pools in the installer, two
+2. **Wider pilot:** validate the integrated one-click operator release on two
    physical machines, relay/NAT testing with updated relay binaries, bandwidth and workload
    benchmarks, scoped capacity indexes, disk retention controls, release/rollback packaging.
 3. **Paid mesh:** buyer-approved total budget, immutable per-shard quotes, separate Sepolia
@@ -172,7 +172,7 @@ real containers but does not replace their full filesystem/network/resource-limi
 The final malformed-descriptor check was rerun successfully after tightening model metadata
 validation. Physical-host/NAT testing and paid mesh settlement remain outstanding.
 
-### One-click operator release candidate
+### Earlier one-click operator release candidate (rc5)
 
 The rc5 candidate adds **Enable this GPU operator** to the existing setup wizard. It
 prepares the pinned runtime, starts a supervised loopback coordinator and worker, verifies
@@ -191,3 +191,13 @@ gateway/P2P settings and preserved the dummy wallet file byte for byte. Final ch
 staged-file type-aware lint. The final UI build was loaded and inspected after copy fixes.
 The package secret scan was reviewed without identifying local credentials.
 See [the public-release review](soapbox-public-release-audit.md) for secret-scan scope.
+
+## Integrated public beta
+
+The integrated beta uses the normal signed app archives, with an explicit beta
+version pin. Compute is on by default; only Linux x64 includes the pinned NVIDIA
+operator archive. It is verified during packaging and again before preparation.
+The packaged plugin finds that archive without an overlay or source checkout.
+Base Sepolia and mainnet wallets remain separate. Follow the
+[buyer and operator guide](./soapbox.md); the older overlay acceptance above is
+historical evidence, not a substitute for testing the new release artifacts.

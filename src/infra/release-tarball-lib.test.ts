@@ -40,6 +40,19 @@ describe("release-tarball naming", () => {
     expect(() => tarballBaseName("1.5.0", "win32-x64")).toThrow(/no release tarball/);
   });
 
+  it("accepts explicit beta versions but refuses unsafe or unsupported suffixes", () => {
+    expect(tarballBaseName("1.10.0-beta.1", "linux-x64")).toBe("bitterbot-1.10.0-beta.1-linux-x64");
+    for (const value of [
+      "1.10.0-beta.0",
+      "1.10.0-beta.01",
+      "1.10.0-beta.1/../x",
+      "1.10.0-rc.1",
+      "1.10.0-beta.1\n",
+    ]) {
+      expect(() => tarballBaseName(value, "linux-x64")).toThrow();
+    }
+  });
+
   it("builds exactly the platforms the gateway and install.sh know", () => {
     const ids = Object.keys(RELEASE_PLATFORMS).toSorted();
     expect(ids).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"]);

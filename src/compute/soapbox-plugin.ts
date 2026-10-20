@@ -1,19 +1,25 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, openSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { resolveStateDir, resolveConfigPath } from "../config/paths.js";
 import { createSoapboxSetupHandlers } from "../gateway/server-methods/soapbox-setup.js";
 import { createSoapboxHandlers } from "../gateway/server-methods/soapbox.js";
+import { resolveBitterbotPackageRootSync } from "../infra/bitterbot-root.js";
 import type { BitterbotPluginApi } from "../plugins/types.js";
 import { SoapboxSetup } from "../services/soapbox-setup.js";
 import { registerLocalOperator } from "./soapbox-plugin-operator.js";
 import { registerParticipant } from "./soapbox-plugin-participant.js";
+import SOAPBOX_SETUP_RELEASE from "./soapbox-runtime-release.json" with { type: "json" };
 
 export function registerSoapboxPlugin(api: BitterbotPluginApi) {
   const repository = api.pluginConfig?.repository;
   const directory = api.pluginConfig?.stateDirectory;
   const setupOnly = api.pluginConfig?.mode === "setup" || (!api.pluginConfig?.mode && !repository);
+  const packageRoot = resolveBitterbotPackageRootSync({ moduleUrl: import.meta.url });
+  const bundledArchive = packageRoot
+    ? path.join(packageRoot, "resources", "soapbox", SOAPBOX_SETUP_RELEASE.filename)
+    : undefined;
   const setup = new SoapboxSetup({
     root: path.join(resolveStateDir(), "compute/setup"),
     configPath: resolveConfigPath(),
@@ -21,7 +27,9 @@ export function registerSoapboxPlugin(api: BitterbotPluginApi) {
     bundledRuntimeArchive:
       typeof api.pluginConfig?.bundledRuntimeArchive === "string"
         ? api.pluginConfig.bundledRuntimeArchive
-        : undefined,
+        : bundledArchive && existsSync(bundledArchive)
+          ? bundledArchive
+          : undefined,
     configuredRole: setupOnly
       ? undefined
       : api.pluginConfig?.mode === "participant"

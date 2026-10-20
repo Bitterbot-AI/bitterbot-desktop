@@ -221,11 +221,14 @@ param(
       [bool]$NoSwitchFlag
     )
     $flags = @()
+    $url = $InstallShUrl
     if ($Pin) {
-      if ($Pin -notmatch '^v?\d+\.\d+\.\d+$') {
-        throw "-Version must look like 1.6.0 (got '$Pin')"
+      if ($Pin -notmatch '\Av?\d+\.\d+\.\d+(-beta\.[1-9]\d*)?\z') {
+        throw "-Version must look like 1.6.0 or 1.10.0-beta.1 (got '$Pin')"
       }
-      $flags += @('--version', ($Pin -replace '^v', ''))
+      $release = $Pin -replace '^v', ''
+      $flags += @('--version', $release)
+      $url = "https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/v$release/install.sh"
     }
     if ($NoOnboardFlag) { $flags += '--no-onboard' }
     if ($NoSwitchFlag) { $flags += '--no-switch' }
@@ -234,7 +237,7 @@ param(
     if ($flags.Count -gt 0) {
       $tail = ' -s -- ' + ($flags -join ' ')
     }
-    return "curl -fsSL $InstallShUrl | bash$tail"
+    return "curl -fsSL $url | bash$tail"
   }
 
   # Pick the WSL2 distribution and print the plan. Returns Code 0 with the

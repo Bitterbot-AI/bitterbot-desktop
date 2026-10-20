@@ -20,7 +20,7 @@ import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-export const VERSION_DIR_RE = /^\d+\.\d+\.\d+$/;
+export const VERSION_DIR_RE = /^\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?$(?![\s\S])/;
 export const CURRENT_LINK = "current";
 export const PREVIOUS_LINK = "previous";
 
