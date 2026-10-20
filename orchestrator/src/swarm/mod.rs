@@ -1463,6 +1463,7 @@ impl SwarmHandle {
             BitterbotBehaviourEvent::CircleRpc(request_response::Event::Message {
                 peer,
                 message,
+                ..
             }) => match message {
                 request_response::Message::Request { request, channel, .. } => {
                     // Per-peer rate limit + a hard cap on outstanding held
@@ -1812,7 +1813,7 @@ impl SwarmHandle {
                     relay::Event::ReservationTimedOut { src_peer_id } => {
                         debug!("Relay server: reservation timed out for {}", src_peer_id);
                     }
-                    relay::Event::CircuitReqDenied { src_peer_id, dst_peer_id } => {
+                    relay::Event::CircuitReqDenied { src_peer_id, dst_peer_id, .. } => {
                         debug!("Relay server: circuit denied from {} to {}", src_peer_id, dst_peer_id);
                     }
                     _ => {}
@@ -2354,7 +2355,7 @@ impl SwarmHandle {
                     }));
                 } else {
                     let t = gossipsub::IdentTopic::new(topic.clone());
-                    let ok = self.swarm.behaviour_mut().gossipsub.unsubscribe(&t).unwrap_or(false);
+                    let ok = self.swarm.behaviour_mut().gossipsub.unsubscribe(&t);
                     let _ = respond.send(serde_json::json!({
                         "type": "response", "id": id,
                         "payload": { "ok": ok, "topic": topic }
