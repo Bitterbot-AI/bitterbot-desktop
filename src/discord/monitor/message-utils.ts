@@ -1,5 +1,4 @@
 import type { ChannelType, Client, Message } from "@buape/carbon";
-import type { APIAttachment } from "discord-api-types/v10";
 import { logVerbose } from "../../globals.js";
 import { fetchRemoteMedia } from "../../media/fetch.js";
 import { saveMediaBuffer } from "../../media/store.js";
@@ -31,10 +30,21 @@ type DiscordSnapshotAuthor = {
   name?: string | null;
 };
 
+/**
+ * The attachment fields this module reads. Carbon 0.17 brands its attachment IDs and
+ * pins its own discord-api-types, so a structural type keeps us independent of both.
+ */
+type DiscordAttachmentLike = {
+  id?: string;
+  url: string;
+  filename?: string;
+  content_type?: string | null;
+};
+
 type DiscordSnapshotMessage = {
   content?: string | null;
   embeds?: Array<{ description?: string | null; title?: string | null }> | null;
-  attachments?: APIAttachment[] | null;
+  attachments?: DiscordAttachmentLike[] | null;
   author?: DiscordSnapshotAuthor | null;
 };
 
@@ -156,7 +166,7 @@ export async function resolveMediaList(
   return out;
 }
 
-function inferPlaceholder(attachment: APIAttachment): string {
+function inferPlaceholder(attachment: DiscordAttachmentLike): string {
   const mime = attachment.content_type ?? "";
   if (mime.startsWith("image/")) {
     return "<media:image>";
@@ -170,7 +180,7 @@ function inferPlaceholder(attachment: APIAttachment): string {
   return "<media:document>";
 }
 
-function isImageAttachment(attachment: APIAttachment): boolean {
+function isImageAttachment(attachment: DiscordAttachmentLike): boolean {
   const mime = attachment.content_type ?? "";
   if (mime.startsWith("image/")) {
     return true;
@@ -182,7 +192,7 @@ function isImageAttachment(attachment: APIAttachment): boolean {
   return /\.(avif|bmp|gif|heic|heif|jpe?g|png|tiff?|webp)$/.test(name);
 }
 
-function buildDiscordAttachmentPlaceholder(attachments?: APIAttachment[]): string {
+function buildDiscordAttachmentPlaceholder(attachments?: readonly DiscordAttachmentLike[]): string {
   if (!attachments || attachments.length === 0) {
     return "";
   }
