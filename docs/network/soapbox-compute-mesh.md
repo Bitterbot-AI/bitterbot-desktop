@@ -17,6 +17,20 @@ orchestrator rather than advertising capacity it cannot use.
 Source builds can compile `orchestrator/` from the same revision as the gateway.
 An explicitly configured older P2P binary must be updated as well.
 
+## Building the integrated app
+
+Compute ships in the gateway and Control UI. Use `pnpm build` and
+`pnpm --filter bitterbot-control-ui build`, then the normal release workflow or
+`node scripts/build-release-tarball.mjs --out release-out`. The bundled plugin
+registers through the core runtime, so installed packages do not need the source
+`src/` directory and use the gateway's shared payment gate.
+
+The earlier `build-soapbox-integration.mjs` and `build-soapbox-p2p-release.mjs`
+overlay builders now stop before producing an add-on. An overlay would duplicate
+payment and review state from the gateway. Reproduce older standalone previews
+from the source revision recorded in their release; use the integrated app for
+new builds. Base Sepolia payments still use the separate Compute wallet.
+
 ## Architecture
 
 ```mermaid
