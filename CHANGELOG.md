@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.0-beta.1 (2026-10-20)
+
+- Integrate default-on Soapbox Compute, buyer/operator setup and private/collective P2P batches.
+- Bundle the pinned Linux x64 GPU runtime so one-click setup works in clean installed apps.
+- Preserve separate Base Sepolia payment accounts, exact-quote approval and shared spending safeguards.
+- Support explicit signed beta installation and wallet-preserving rollback; stable updates remain unchanged.
+- Replace legacy overlay setup instructions with the integrated buyer/operator guide.
+
+This public beta supports paid jobs through an enrolled coordinator. Paid P2P settlement,
+physical two-machine/NAT acceptance and durable distributed storage remain follow-ups.
+
 ## [1.9.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.8.0...v1.9.0) (2026-10-19)
 
 
