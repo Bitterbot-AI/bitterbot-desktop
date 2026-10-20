@@ -209,7 +209,8 @@ async function handleDiscordReactionEvent(params: {
       channelType === ChannelType.PublicThread ||
       channelType === ChannelType.PrivateThread ||
       channelType === ChannelType.AnnouncementThread;
-    let parentId = "parentId" in channel ? (channel.parentId ?? undefined) : undefined;
+    let parentId: string | undefined =
+      "parentId" in channel ? (channel.parentId ?? undefined) : undefined;
     let parentName: string | undefined;
     let parentSlug = "";
     if (isThreadChannel) {
