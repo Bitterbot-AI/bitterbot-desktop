@@ -22,8 +22,12 @@ Two conditions, both required:
 
 - `compute.enabled` is not `false` (default: on).
 - A compute backend is loaded. The Soapbox compute plugin registers one when
-  it starts. Without a backend there is no tool and no prompt section, so a
-  node with no pool spends no tokens on compute awareness.
+  it starts in pilot, participant or local-operator mode (anything with a
+  coordinator client). Setup-only mode, the default on a fresh install before
+  a role is chosen, registers nothing. Without a backend there is no tool and
+  no prompt section, so a node with no pool spends no tokens on compute
+  awareness. Operator-role nodes get a read-only backend: the agent can see
+  jobs and workers but never submits paid work or funds a job from them.
 
 Turn the whole surface off with:
 
@@ -247,7 +251,10 @@ chunk, so on a large index expect the same time a first index took.
 Paid compute is off by default (`compute.paid.enabled: false`). When the
 owner turns it on, and the coordinator reports paid work as available to
 this node (the invite flag), an owner turn may submit `mode: paid_usdc` with
-`max_cost_usdc`. The coordinator accepts the job and parks it at
+`max_cost_usdc`. The Soapbox backend addresses the job to the online,
+unpaused operator with the lowest id that advertises `paid_usdc`, and refuses
+when there is none; the owner sees that operator as the payee on the quote
+before anything is funded. The coordinator accepts the job and parks it at
 `awaiting_payment` with a quote: an exact amount, a payee and a hash over
 both. The tool then does two things and stops:
 
