@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.10.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.9.0...v1.10.0) (2026-10-21)
+
+
+### Features
+
+* **compute:** Soapbox compute mesh, buyer setup, isolated GPU operators and P2P pools ([#271](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/271)) ([178480b](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/178480bbfaf9d0e8b2e8fbcbd0da2871572f5929))
+
+
+### Bug Fixes
+
+* **compute:** package the operator runtime and support public betas ([#283](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/283)) ([74a276e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/74a276ed519eb10e6117d9b332e2d13ae3423747))
+
 ## [1.9.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.8.0...v1.9.0) (2026-10-19)
 
 
