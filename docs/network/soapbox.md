@@ -1,7 +1,7 @@
 ---
-summary: "Set up Compute buyers and GPU operators in the integrated public beta"
+summary: "Set up Compute buyers and GPU operators in the integrated release"
 read_when:
-  - Installing the Compute beta or setting up a buyer or GPU operator
+  - Installing Compute or setting up a buyer or GPU operator
 title: "Soapbox Compute"
 ---
 
@@ -16,48 +16,48 @@ Mainnet settlement and paid P2P batches are not available in this beta.
 Opening Compute does not start a worker or fund a job. Operator activation,
 peer access and each payment require deliberate actions in the UI.
 
-## Install the integrated public beta
+## Install Compute
 
-Use [Bitterbot v1.10.0-beta.1](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.10.0-beta.1).
-This release includes the gateway, Control UI and signed orchestrator 0.2.4.
-Linux x64 also includes the checksum-pinned Soapbox runtime required by the
-operator wizard. Node is bundled; a separate source checkout is unnecessary.
-The older Soapbox rc4/rc5/rc6 overlays are for their recorded Bitterbot versions
-and must not be installed over this integrated release.
+Compute ships in [Bitterbot v1.10.0](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.10.0)
+and every later stable release. Each release includes the gateway, Control UI
+and signed orchestrator 0.2.4. Linux x64 also includes the checksum-pinned
+Soapbox runtime required by the operator wizard. Node is bundled; a separate
+source checkout is unnecessary. The older Soapbox rc4/rc5/rc6 overlays are for
+their recorded Bitterbot versions and must not be installed over an integrated
+release.
 
-The beta is an explicit installation. It does not replace the stable GitHub
-release or npm latest. The native Tauri installer is not part of this release.
+Existing installs upgrade with `bitterbot update` or the in-app update; the
+previous app version is retained for rollback. The native Tauri installer is
+not part of this release.
 
 ### Windows with WSL2
 
-Download **install.ps1** from the beta release. In PowerShell, from the download
-folder, run:
+In PowerShell, run:
 
 ```powershell
-.\install.ps1 -Version 1.10.0-beta.1
+irm https://raw.githubusercontent.com/Bitterbot-AI/bitterbot-desktop/main/scripts/install.ps1 | iex
 ```
 
 The installer uses your default WSL2 distribution; use `-Distro Ubuntu` to select
 one. It checks for WSL2 and explains missing prerequisites. It does not install
 WSL, GPU drivers or Docker for you. An existing native Windows gateway is
-reported separately; the installer does not stop its scheduled task.
+reported separately; the installer does not stop its scheduled task. To pin a
+release, download **install.ps1** from that release and pass `-Version 1.10.0`.
 
 ### Linux or macOS
 
-Download **install.sh** from the same beta release, then run:
-
 ```bash
-bash install.sh --version 1.10.0-beta.1 --require-signature
+curl -fsSL https://github.com/Bitterbot-AI/bitterbot-desktop/releases/latest/download/install.sh | bash
 ```
 
 The installer verifies the release signature and archive checksum, installs the
 bundled runtime and offers onboarding. Existing users are offered a gateway
 switch; the previous app version is retained. `--no-switch` (Windows:
-`-NoSwitch`) leaves an existing gateway running. Normal updates continue to
-select stable releases; install a subsequent beta by its explicit version.
-
-Once connected to the gateway's Control UI, all Compute buyer/operator setup
-below is available in the UI. There is no separate Compute testnet window.
+`-NoSwitch`) leaves an existing gateway running. To pin a release, download
+**install.sh** from that release and run
+`bash install.sh --version 1.10.0 --require-signature`. Normal updates select
+stable releases only; a beta build, when one is published, is installed by its
+explicit `X.Y.Z-beta.N` version and never replaces latest.
 
 ## Choose how to use Compute
 

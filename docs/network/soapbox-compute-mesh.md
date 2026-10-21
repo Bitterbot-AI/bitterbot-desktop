@@ -194,8 +194,8 @@ See [the public-release review](soapbox-public-release-audit.md) for secret-scan
 
 ## Integrated public beta
 
-The integrated beta uses the normal signed app archives, with an explicit beta
-version pin. Compute is on by default; only Linux x64 includes the pinned NVIDIA
+Compute ships in the normal signed app archives from v1.10.0 onward; a beta
+build, when published, uses an explicit version pin. Compute is on by default; only Linux x64 includes the pinned NVIDIA
 operator archive. It is verified during packaging and again before preparation.
 The packaged plugin finds that archive without an overlay or source checkout.
 Base Sepolia and mainnet wallets remain separate. Follow the
