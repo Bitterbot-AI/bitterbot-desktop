@@ -499,6 +499,26 @@ async function main() {
   pruneForRelease(stage);
   const nodeVersion = await stageNodeRuntime(stage, platform, args.nodeVersion);
   const orchestratorVersion = await stageOrchestrator(stage, platform);
+  // One-click operators need the approved archive even in a source-free install.
+  // Other platforms can buy work, but this runtime only executes on Linux x64.
+  if (platformId === "linux-x64") {
+    const pin = JSON.parse(
+      fs.readFileSync(path.join(ROOT, "src/compute/soapbox-runtime-release.json"), "utf8"),
+    );
+    const url = `${pin.url.replace("/tag/", "/download/")}/${pin.filename}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Compute runtime download failed: ${response.status}`);
+    const archive = Buffer.from(await response.arrayBuffer());
+    if (
+      archive.length !== pin.bytes ||
+      createHash("sha256").update(archive).digest("hex") !== pin.sha256
+    )
+      throw new Error("Compute runtime size or SHA-256 mismatch");
+    const destination = path.join(stage, "resources", "soapbox");
+    fs.mkdirSync(destination, { recursive: true });
+    fs.writeFileSync(path.join(destination, pin.filename), archive);
+    log(`bundled verified Compute runtime ${pin.filename}`);
+  }
 
   fs.writeFileSync(path.join(stage, "bin", "bitterbot"), LAUNCHER_SCRIPT, { mode: 0o755 });
   fs.chmodSync(path.join(stage, "bin", "bitterbot"), 0o755);

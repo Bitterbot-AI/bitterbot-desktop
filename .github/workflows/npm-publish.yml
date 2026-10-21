@@ -78,6 +78,11 @@ jobs:
             *) echo "run=false" >> "$GITHUB_OUTPUT"; echo "not an app release: $tag"; exit 0 ;;
           esac
           version="${tag#v}"
+          if [[ "$version" == *-beta.* ]]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Beta archives use explicit GitHub installation; npm latest is unchanged."
+            exit 0
+          fi
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::tag must be vX.Y.Z, got '$tag'"; exit 1
           fi

@@ -1,121 +1,183 @@
 ---
-summary: "Install and use the private Soapbox Compute pilot"
+summary: "Set up Compute buyers and GPU operators in the integrated public beta"
 read_when:
-  - Setting up a Compute buyer or GPU operator
+  - Installing the Compute beta or setting up a buyer or GPU operator
 title: "Soapbox Compute"
 ---
 
 # Soapbox Compute
 
-Compute is enabled by default and appears in the main sidebar. Setup, worker
-activation and payments require deliberate user actions. Soapbox runs approved CPU
-hashing and GPU embedding workloads on explicitly admitted operators. Payments use
-Base Sepolia test USDC. Mainnet settlement is disabled.
+Compute is enabled by default in Bitterbot's main sidebar. This public beta
+runs approved CPU hashing and GPU embedding workloads. Private and collective
+work uses the Bitterbot P2P mesh. Paid single jobs use a coordinator and
+**Base Sepolia test USDC only (chain 84532)**, with a separate Compute wallet.
+Mainnet settlement and paid P2P batches are not available in this beta.
 
-## Install the private test release
+Opening Compute does not start a worker or fund a job. Operator activation,
+peer access and each payment require deliberate actions in the UI.
 
-Download the Windows/WSL ZIP or Linux archive from the private
-[Soapbox release](https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.4).
-Extract the entire archive, then open **Soapbox-Setup.exe** on Windows or
-**Soapbox-Setup** on Ubuntu. Choose Buyer or GPU operator and run the prerequisite
-checks. Acknowledge the installation, install the wizard and follow the Open
-Bitterbot link. Restart Bitterbot normally if it does not reconnect automatically.
+## Install the integrated public beta
 
-The add-on supports Bitterbot 1.8.0 on Ubuntu 24.04 x64 or WSL2 Ubuntu 24.04.
-Windows uses the default WSL distribution. Bitterbot supplies Node 22 or newer.
-Buyers need 256 MiB free disk. Operators need at least 4 GiB, an NVIDIA GPU, working
-Docker/NVIDIA Container Toolkit, cgroup v2 and enforced swap limits. The installer
-checks these prerequisites; it does not install drivers or change Docker permissions.
-This unsigned private preview includes a version-specific Control UI overlay.
+Use [Bitterbot v1.10.0-beta.1](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.10.0-beta.1).
+This release includes the gateway, Control UI and signed orchestrator 0.2.4.
+Linux x64 also includes the checksum-pinned Soapbox runtime required by the
+operator wizard. Node is bundled; a separate source checkout is unnecessary.
+The older Soapbox rc4/rc5/rc6 overlays are for their recorded Bitterbot versions
+and must not be installed over this integrated release.
 
-## Buyer
+The beta is an explicit installation. It does not replace the stable GitHub
+release or npm latest. The native Tauri installer is not part of this release.
 
-Open **Compute → Set up buyer or operator**, choose Buyer and initialize a separate
-test wallet. Supply your own CDP authentication or use the gateway's configured CDP
-authentication. Give only the displayed public address to the coordinator owner.
-Import the scoped buyer enrollment they provide, review it and activate.
+### Windows with WSL2
 
-Obtain Base Sepolia test USDC and test ETH for gas. Submit an approved workload,
-review the returned quote and click Fund for that exact job. Limits remain 0.10
-USDC per job and 1 USDC over a rolling day. Changed quotes require another review.
-Funding and payment refresh require an admin connection. A timeout retains the
-spend reservation; refresh the payment state before retrying.
+Download **install.ps1** from the beta release. In PowerShell, from the download
+folder, run:
 
-New accounts use `bitterbot-compute-base-sepolia`. Main/Compute address collisions
-and unexpected CDP identity changes are rejected before activation or funding.
-Existing legacy test accounts retain their identities and funds while the main
-wallet remains on Base; legacy accounts are blocked if the main wallet uses Base
-Sepolia. Do not delete a wallet identity file to resolve a conflict. An intentional
-migration needs a new Compute account, a new enrollment and separate handling of
-remaining test funds. This installer does not migrate funds or identities.
+```powershell
+.\install.ps1 -Version 1.10.0-beta.1
+```
 
-The release pins the approved escrow address and deployed bytecode hash in
-`src/infra/soapbox-payment-policy.ts`. Enrollment cannot substitute another contract
-and may specify only the public Base Sepolia RPC endpoint. The explicit-click
-private pilot approval gate is separate from the newer desktop main's AP2 mandate
-integration, which remains required before general agent-initiated payments.
+The installer uses your default WSL2 distribution; use `-Distro Ubuntu` to select
+one. It checks for WSL2 and explains missing prerequisites. It does not install
+WSL, GPU drivers or Docker for you. An existing native Windows gateway is
+reported separately; the installer does not stop its scheduled task.
 
-## GPU operator
+### Linux or macOS
 
-Choose GPU operator and import the scoped operator enrollment from the coordinator.
-Review the Base Sepolia payout address. No buyer wallet or signing key is needed.
-Click **Prepare GPU runtime**. The bundled, checksum-pinned runtime builds its fixed
-container image, downloads the approved model and verifies isolated GPU execution.
-Acknowledge the resource allowance, then activate. Use **Pause new work** to stop
-new allocations. The GUI enables approved paid test jobs; private/collective pool
-membership still requires coordinator authorization.
+Download **install.sh** from the same beta release, then run:
 
-## What is stored
+```bash
+bash install.sh --version 1.10.0-beta.1 --require-signature
+```
 
-- Installer deployments, rollback journals and private config backups live under
-  the gateway state directory's `compute/` folder.
-- Participant enrollment, worker configuration and runtime/model data live under
-  `compute/setup/`. Enrollment contains a scoped API token, never a wallet key.
-- The Compute wallet uses `~/.bitterbot-soapbox/wallet/base-sepolia/` with its own
-  identity, transaction history and `funding-approvals.jsonl` review records.
-- Supplied CDP credentials are stored in a private 0600 file. OS-backed secret
-  storage is future work. Protect the local user account and disk accordingly.
+The installer verifies the release signature and archive checksum, installs the
+bundled runtime and offers onboarding. Existing users are offered a gateway
+switch; the previous app version is retained. `--no-switch` (Windows:
+`-NoSwitch`) leaves an existing gateway running. Normal updates continue to
+select stable releases; install a subsequent beta by its explicit version.
 
-## Rollback
+Once connected to the gateway's Control UI, all Compute buyer/operator setup
+below is available in the UI. There is no separate Compute testnet window.
 
-Reopen the installer, acknowledge **Restore the previous Compute setup and keep my
-wallet data**, then click **Roll back this installation**. Finish or cancel and
-settle visible pending jobs first. The coordinator must be reachable to check an
-activated participant. Conflicting Compute changes block automatic rollback.
+## Choose how to use Compute
 
-Rollback restores the configuration fields owned by that installation and keeps
-unrelated later edits. Wallet files, history, models and backups are retained. It
-does not uninstall Docker or delete user data. Restart Bitterbot if necessary.
+| Use                                     | Setup                                                                      | Wallet                                                   |
+| --------------------------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Buy private or collective work over P2P | Enable P2P; ask an operator to grant your peer access                      | None                                                     |
+| Host a private or collective GPU pool   | Enable the local GPU operator; grant selected peers access                 | None                                                     |
+| Buy a paid test job                     | Create a Compute test wallet and import a buyer enrollment                 | Separate Base Sepolia account                            |
+| Earn test USDC as an operator           | Connect to an existing paid coordinator and import its operator enrollment | Public Base Sepolia payout address; no buyer signing key |
 
-## Gateway permissions and lifecycle
+A release download does not provide a public paid coordinator or enrollment.
+The coordinator owner supplies the scoped enrollment for paid tests. Never
+share wallet secrets or use a mainnet deposit to fund this beta.
 
-The `soapbox-compute` plugin is the sole registrar for Compute gateway methods and
-owns participant clients and worker service lifetimes. The old core env-based
-Soapbox service is no longer started by the gateway.
+## Host a P2P GPU operator
 
-| Methods                                                                                   | Required scope                           |
-| ----------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `soapbox.status`, `soapbox.wallet`, `soapbox.jobs`, `soapbox.job`, `soapbox.artifact.get` | `operator.read` or stronger              |
-| `soapbox.submit`, `soapbox.cancel`, `soapbox.artifact.put`                                | `operator.write` or admin                |
-| `soapbox.worker.pause`, `soapbox.payment.fund`, `soapbox.payment.refresh`                 | `operator.admin`                         |
-| All `soapbox.setup.*` methods                                                             | `operator.admin`, including setup status |
+The current operator supports an **Ubuntu 24.04 x64 gateway**, including WSL2,
+with an NVIDIA GPU, working Docker/NVIDIA Container Toolkit, cgroup v2 and
+enforced swap limits. Allow at least 4 GiB free disk. macOS and Linux ARM can
+act as buyers; they cannot run this beta's NVIDIA operator runtime.
 
-Operator enrollments cannot access the buyer wallet or submit buyer workloads.
-Wallet funding requires the reviewed quote at both the gateway and Compute-wallet
-boundary, then applies the spending caps before signing.
+1. Open **Compute → Set up buyer or operator** and choose **GPU operator**.
+2. Under **Host a P2P compute pool**, click **Enable this GPU operator**.
+   Setup verifies the bundled runtime, checks Docker/NVIDIA, prepares the
+   pinned model and verifies isolated GPU execution. The first preparation
+   downloads the container/model and can take several minutes.
+3. Wait for successful activation. The gateway supervises a local coordinator
+   and worker. The initial allowance is one CPU thread and 2 GiB of host memory;
+   GPU VRAM is a separate resource. No wallet or enrollment file is needed.
+4. Enable Bitterbot P2P and grant the intended buyer's peer ID access in
+   **P2P Compute**. The default private pool is `private`; the collective
+   project is `community`. Circle membership alone does not grant execution.
+5. Use **Pause new work** when you want to stop accepting allocations.
 
-## Networking and release limits
+If setup fails, read its prerequisite/progress message, correct the underlying
+Docker, GPU or disk issue and retry. Setup does not change Docker permissions
+or install drivers. A damaged runtime requires reinstalling the release.
 
-The temporary installer binds only to loopback and uses an expiring session token.
-Other machines need a coordinator with valid HTTPS or an agreed private tunnel;
-the installer does not open public ports or change firewalls. Setup pulls its fixed
-container base image and approved Ollama model. Buyer wallets contact CDP and the
-public Base Sepolia RPC. See the Soapbox release guide for administrator preparation.
+## Submit private or collective work
 
-This release is a trusted private pilot. GPU evidence is worker-reported; embeddings
-are checked for shape. Storage is temporary and coordinator-local. Signed CI
-releases, public enrollment, stronger hostile-operator isolation, relayer recovery,
-full AP2 integration and physical two-machine acceptance remain separate milestones.
+1. Open **Compute → P2P Compute** on the buyer and ensure P2P is connected.
+2. Have the operator grant your Bitterbot peer ID the matching pool/project.
+3. Select an available operator, choose Private or Collective, and enter
+   `private` or `community` to match the grant.
+4. Start with CPU SHA-256 and one input. Then try GPU embeddings using a model
+   advertised by every selected operator. Follow batch progress and results
+   in Compute; the P2P dashboard shows the same local activity.
 
-See the [review disposition](https://github.com/Bitterbot-AI/soapbox/blob/main/docs/RC3-REVIEW-DISPOSITION.md)
-for the selected corrections and remaining work.
+Buyers need no local GPU or coordinator for P2P work. Capacity announcements
+expire when an operator goes offline. A cancellation stays pending while the
+peer is unreachable. Retrying an ambiguous submission uses its original job
+identity. Only send data that the selected operators are allowed to see.
+
+## Buy a paid Base Sepolia test job
+
+1. Open **Compute → Set up buyer or operator**, choose **Buyer**, and create
+   the Compute test wallet. Use configured CDP authentication or supply your
+   own in the wizard. Sharing CDP authentication does not merge wallet accounts.
+2. Confirm the displayed wallet is the Compute Base Sepolia address. Share
+   only that public address with the coordinator owner to obtain a buyer
+   enrollment. Import, review and activate the enrollment.
+3. Fund that address with **Base Sepolia test USDC and test ETH for gas**.
+4. Submit an approved workload. Review the job's exact quote and click Fund.
+   Limits are 0.10 test USDC per job and 1 test USDC over a rolling day.
+5. Follow execution and payment status, then verify settlement to the
+   operator's displayed payout address. After a timeout, refresh payment
+   state before retrying; the spending reservation is deliberately retained.
+
+Funding requires an owner/admin UI connection, a reviewed quote and the shared
+wallet spending gate. Changed quotes require another review. Chat/backend
+requests cannot approve funding. The release pins the allowed escrow contract
+and bytecode hash; an enrollment cannot substitute another contract or chain.
+
+The account name is `bitterbot-compute-base-sepolia`. Compute uses its own
+identity, ledger and review records under
+`~/.bitterbot-soapbox/wallet/base-sepolia/`. Main/Compute address collisions
+and unexpected CDP identity changes are rejected. Legacy test identities keep
+their existing funds; do not delete identity files to resolve a conflict.
+This release never migrates or transfers mainnet funds.
+
+## Earn test USDC through an existing coordinator
+
+In the GPU operator wizard, select **Connect to an existing coordinator for
+paid Base Sepolia jobs instead**. Import the scoped operator enrollment,
+review the payout address, click **Prepare GPU runtime**, then activate after
+verification. This enrollment cannot access the buyer wallet or submit jobs.
+No buyer signing key is required on the operator.
+
+The one-click local P2P pool does not automatically become a paid operator.
+Paid coordinator jobs and private/collective mesh batches are distinct paths.
+
+## Data, recovery and rollback
+
+Setup data, local coordinator state and verified runtime/model files live under
+the gateway state directory's `compute/setup/`. The buyer's durable mesh journal
+stores job inputs/results locally; selected operators also process and store
+their assigned inputs. Operator credentials and supplied CDP authentication
+are local private files. OS-backed secret storage is not implemented yet.
+
+For an app upgrade, retain the installer's previous version and use
+`bitterbot update --rollback` to return to it. Stop or settle outstanding work
+before deliberately switching versions. Rollback keeps wallet data; it is not
+a reversal of a transaction or completed job. Do not use the old overlay's
+**Soapbox-Setup** rollback against an integrated installation. Keep a backup of
+the gateway state and separate Compute wallet identity before moving machines.
+
+## Beta scope and validation
+
+The beta exposes signed capacity discovery, explicit admission, encrypted peer
+submission and durable private/collective batches. Announced capacity is
+self-reported. CPU results are recomputed; GPU results have shape and pinned
+runtime checks and require trusted operators. Current workloads pool batch
+throughput; they do not combine GPU memory into a single device.
+
+The release notes record the checks actually run on the packaged build.
+Multiple local P2P identities are not evidence of a physical two-machine/NAT
+test. Paid P2P settlement, durable distributed storage, independent GPU result
+verification and fleet-scale discovery remain follow-ups. A paid coordinator
+on another machine needs HTTPS or an agreed private tunnel; setup does not
+open firewall ports.
+
+See [Compute mesh architecture](./soapbox-compute-mesh.md) for protocol,
+resource limits and the rollout roadmap.

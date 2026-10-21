@@ -96,8 +96,8 @@ jobs:
             esac
           fi
           version="${version#v}"
-          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::version must be X.Y.Z, got '$version'"; exit 1
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?$ ]]; then
+            echo "::error::version must be X.Y.Z or X.Y.Z-beta.N, got '$version'"; exit 1
           fi
           # A manual rebuild of a release that already has signed tarballs
           # would swap assets under running installs: refuse unless forced.
@@ -225,6 +225,7 @@ jobs:
           fi
           sudo apt-get update && sudo apt-get install -y minisign
           cp scripts/install.sh release/install.sh
+          cp scripts/install.ps1 release/install.ps1
           cd release
           # Every core platform must be present (a missing one fails the
           # release); an optional one (darwin-x64 for now) that did not build
@@ -243,7 +244,7 @@ jobs:
               echo "- Optional platform **$p** did not build: v$VERSION ships without it (install.sh and the npm launcher report it as unavailable there)." >> "$GITHUB_STEP_SUMMARY"
             fi
           done
-          sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh > checksums.txt
+          sha256sum bitterbot-*.tar.gz bitterbot-*.manifest.json install.sh install.ps1 > checksums.txt
           cat checksums.txt
           printf '%s' "$MINISIGN_SECRET_KEY" > "$RUNNER_TEMP/release.key"
           minisign -S -s "$RUNNER_TEMP/release.key" -m checksums.txt \
@@ -282,13 +283,13 @@ jobs:
             --repo "${{ github.repository }}" --clobber
           gh release upload "v$VERSION" checksums.txt checksums.txt.minisig \
             --repo "${{ github.repository }}" --clobber
-          gh release upload "v$VERSION" install.sh --repo "${{ github.repository }}" --clobber
+          gh release upload "v$VERSION" install.sh install.ps1 --repo "${{ github.repository }}" --clobber
 
       # release-please creates the release as a draft, so it is invisible and
       # never "latest" while its assets are missing. Publish it now that every
       # asset is up. A release that is already public (a forced rebuild, or one
       # published by hand) is left as it is.
-      - name: Publish the release and mark it latest
+      - name: Publish the release (beta stays off latest)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.meta.outputs.version }}
@@ -296,13 +297,17 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$(gh release view "v$VERSION" --repo "$REPO" --json isDraft -q .isDraft)" = "true" ]; then
-            gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
+            if [[ "$VERSION" == *-beta.* ]]; then
+              gh release edit "v$VERSION" --repo "$REPO" --draft=false --prerelease --latest=false
+            else
+              gh release edit "v$VERSION" --repo "$REPO" --draft=false --latest
+            fi
             echo "published v$VERSION"
           else
             echo "v$VERSION is already published; not changing it"
           fi
           latest=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
-          if [ "$latest" != "v$VERSION" ]; then
+          if [[ "$VERSION" != *-beta.* ]] && [ "$latest" != "v$VERSION" ]; then
             echo "::warning::releases/latest is $latest, not v$VERSION (fine if a newer release exists)"
           fi
           # The one-liner must resolve now.

@@ -13,15 +13,11 @@ import {
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import SOAPBOX_SETUP_RELEASE from "../compute/soapbox-runtime-release.json" with { type: "json" };
 import { soapboxOperatorEnvironment } from "../infra/soapbox-connection.js";
 import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
 
-export const SOAPBOX_SETUP_RELEASE = {
-  url: "https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.5",
-  filename: "soapbox-runtime-0.3.0-rc.5-linux-x64.tar.gz",
-  bytes: 4319991,
-  sha256: "23da212a0b72ab497a3503c327d70009d986271a59cc1dbdc02d11c565589be2",
-};
+export { SOAPBOX_SETUP_RELEASE };
 
 /** Fresh operator profiles do not have the wallet-created shared runtime directory. */
 export async function prepareSoapboxGpuLock(home = homedir()): Promise<string> {

@@ -830,6 +830,10 @@ jobs:
           if ($wsl2.Code -ne 0 -or $wsl2.Out -notmatch 'install.sh \| bash -s -- --version 1.6.0 --no-onboard' -or $wsl2.Out -notmatch 'nothing was run') { throw 'WSL2 plan' }
           if ($wsl2.Out -notmatch 'not under /mnt/c') { throw 'ext4 advice missing' }
           if ($wsl2.Out -match 'installed natively on Windows') { throw 'no Windows task was faked' }
+          $beta = Invoke-Dry -Fake 'wsl2' -Extra @('-Version', '1.10.0-beta.1', '-NoOnboard')
+          if ($beta.Code -ne 0 -or $beta.Out -notmatch 'download/v1.10.0-beta.1/install.sh' -or $beta.Out -notmatch '--version 1.10.0-beta.1') { throw 'beta pin must use its own installer' }
+          $badBeta = Invoke-Dry -Fake 'wsl2' -Extra @('-Version', "1.10.0-beta.1`n")
+          if ($badBeta.Code -ne 1) { throw 'newline in beta version must fail' }
           # Upgrades: -NoSwitch reaches install.sh; a native Windows gateway
           # (scheduled task) is reported with the commands, never changed.
           $noSwitch = Invoke-Dry -Fake 'wsl2' -Extra @('-NoSwitch', '-Yes')

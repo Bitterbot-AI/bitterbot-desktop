@@ -345,6 +345,24 @@ describeInstaller("scripts/install.sh", () => {
     expect(fs.readlinkSync(path.join(res.home, ".bitterbot", "app", "current"))).toBe("1.5.0");
   });
 
+  it("installs a signed beta only when pinned and keeps stable discovery unchanged", () => {
+    freshReleases();
+    publish("1.5.0");
+    publish("1.10.0-beta.1", { api: { prerelease: true } });
+    const stable = runInstaller([], {}, freshHome());
+    expect(stable.status, stable.out).toBe(0);
+    expect(fs.readlinkSync(path.join(stable.home, ".bitterbot/app/current"))).toBe("1.5.0");
+    const beta = runInstaller(
+      ["--version", "1.10.0-beta.1", "--require-signature"],
+      {},
+      stable.home,
+    );
+    expect(beta.status, beta.out).toBe(0);
+    expect(beta.out).toContain("Verified:");
+    expect(fs.readlinkSync(path.join(beta.home, ".bitterbot/app/current"))).toBe("1.10.0-beta.1");
+    expect(fs.readlinkSync(path.join(beta.home, ".bitterbot/app/previous"))).toBe("1.5.0");
+  });
+
   it("says when no release has a tarball for this platform yet", () => {
     freshReleases();
     const res = runInstaller([], {}, freshHome());

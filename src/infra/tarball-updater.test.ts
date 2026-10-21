@@ -148,6 +148,26 @@ describeUpdater("runTarballUpdate", () => {
     expect(await resolveLatestTarballVersion(source, platformId!, 5000)).toBe("1.5.0");
   });
 
+  it("can roll back an explicitly installed beta while preserving wallet files", async () => {
+    publish("1.10.0-beta.1");
+    const wallet = path.join(stateDir, "wallet", "fixture.json");
+    fs.mkdirSync(path.dirname(wallet), { recursive: true });
+    fs.writeFileSync(wallet, "mainnet-wallet-fixture-not-a-key");
+    await update("1.10.0-beta.1");
+    expect(readVersionLink(appDir, "current")).toBe("1.10.0-beta.1");
+    await rollbackTarballInstall({
+      appDir,
+      stateDir,
+      fromVersion: "1.10.0-beta.1",
+      toVersion: "1.4.0",
+      mode: "manual",
+      targetMemorySchemaLatest: 70,
+    });
+    expect(readVersionLink(appDir, "current")).toBe("1.4.0");
+    expect(readVersionLink(appDir, "previous")).toBe("1.10.0-beta.1");
+    expect(fs.readFileSync(wallet, "utf8")).toBe("mainnet-wallet-fixture-not-a-key");
+  });
+
   it("verifies, snapshots, activates and keeps the old version as previous", async () => {
     publish("1.5.0");
     const res = await update("1.5.0");

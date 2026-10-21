@@ -68,8 +68,8 @@ export function platformIdFor(platform, arch) {
 
 /** `bitterbot-<version>-<platform>`: the top directory and the asset stem. */
 export function tarballBaseName(version, platformId) {
-  if (!/^\d+\.\d+\.\d+$/.test(version)) {
-    throw new Error(`release version must be X.Y.Z, got "${version}"`);
+  if (!/^\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?$(?![\s\S])/.test(version)) {
+    throw new Error(`release version must be X.Y.Z or X.Y.Z-beta.N, got "${version}"`);
   }
   if (!Object.hasOwn(RELEASE_PLATFORMS, platformId)) {
     throw new Error(`no release tarball is built for platform "${platformId}"`);

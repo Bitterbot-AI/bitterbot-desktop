@@ -528,7 +528,7 @@ bb_finish_versions() {
       continue
     fi
     entry=${entry##*/}
-    printf '%s' "$entry" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || continue
+    printf '%s' "$entry" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?$' || continue
     if [ "$entry" != "$version" ] && [ "$entry" != "$keep_prev" ]; then
       if busy=$(bb_version_in_use "$install_dir/$entry"); then
         bb_say "Keeping old version $entry: in use by pid $busy"
@@ -677,8 +677,8 @@ main() {
     esac
   done
   # Whole-string match (a grep would accept "1.5.0<newline>anything").
-  if [ -n "$version" ] && ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    bb_die "--version must look like 1.5.0 (got '$version')"
+  if [ -n "$version" ] && ! [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?$ ]]; then
+    bb_die "--version must look like 1.5.0 or 1.10.0-beta.1 (got '$version')"
   fi
   case $install_dir in
     /*) ;;
