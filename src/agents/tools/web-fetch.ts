@@ -587,6 +587,30 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
         } catch {
           // Not JSON — that's fine, include as snippet
         }
+        // x402 v2 servers send requirements as a base64 JSON `PAYMENT-REQUIRED`
+        // header (v1 servers put the same shape in the body). Decode it, and
+        // surface a human-readable USDC price from `accepts[]` (atomic units,
+        // 6 decimals) so the agent does not have to guess.
+        let paymentRequired: Record<string, unknown> | undefined;
+        const paymentRequiredHeader = res.headers.get("payment-required");
+        if (paymentRequiredHeader) {
+          try {
+            const decoded = JSON.parse(Buffer.from(paymentRequiredHeader, "base64").toString("utf8"));
+            if (decoded && typeof decoded === "object") {
+              paymentRequired = decoded as Record<string, unknown>;
+            }
+          } catch {
+            // Malformed header — ignore, body/snippet still available
+          }
+        }
+        const x402Requirements = paymentRequired ?? bodyPaymentDetails;
+        const accepts = Array.isArray(x402Requirements?.accepts)
+          ? (x402Requirements.accepts as Array<Record<string, unknown>>)
+          : [];
+        const firstAtomic = accepts
+          .map((a) => String(a.amount ?? a.maxAmountRequired ?? ""))
+          .find((v) => /^\d+$/.test(v));
+        const priceUsdc = firstAtomic ? (Number(firstAtomic) / 1e6).toString() : undefined;
 
         return {
           url: params.url,
@@ -603,6 +627,8 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
             "x-payment-address": paymentAddress,
           },
           payment_details: bodyPaymentDetails,
+          ...(paymentRequired ? { payment_required: paymentRequired } : {}),
+          ...(priceUsdc ? { price_usdc: priceUsdc } : {}),
           body_snippet: bodyText.substring(0, 1000),
           fetchedAt: new Date().toISOString(),
           tookMs: Date.now() - start,
