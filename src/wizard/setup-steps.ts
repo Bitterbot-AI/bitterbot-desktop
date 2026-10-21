@@ -633,7 +633,11 @@ const webSearchStep: SetupStepDef = {
         : []),
       { value: "later", label: "Later", hint: "Add a provider in Settings when you want it" },
       { value: "parallel", label: "Parallel Search", hint: "Free, no key needed" },
-      { value: "keenable", label: "Keenable", hint: "Free, no key needed" },
+      {
+        value: "keenable",
+        label: "Keenable",
+        hint: "Free, no key needed, publication-date filters",
+      },
       ...WEB_SEARCH_PASTE.map((entry) => ({
         value: `paste:${entry.provider}`,
         label: `Paste ${withArticle(entry.label)} key`,

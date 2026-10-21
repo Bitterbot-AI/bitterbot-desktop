@@ -278,6 +278,28 @@ describe("keyless Keenable web search", () => {
     ).rejects.toThrow('Keenable API error (400): {"error":"Bad request"}');
   });
 
+  it("forwards only the first line of an HTML error page", async () => {
+    response = () =>
+      new Response(
+        `\n  <!DOCTYPE   html>\n<html><body>${"Service Unavailable ".repeat(5_000)}</body></html>`,
+        { status: 503, headers: { "Content-Type": "text/html" } },
+      );
+    const error = await createWebSearchTool({ config })!
+      .execute("html", { query: "hello" })
+      .catch((err: unknown) => err);
+    expect((error as Error).message).toBe("Keenable API error (503): <!DOCTYPE html>");
+  });
+
+  it("caps a long rate-limit body at 300 characters", async () => {
+    response = () => new Response(`upstream   overloaded ${"x".repeat(100_000)}`, { status: 429 });
+    const error = await createWebSearchTool({ config })!
+      .execute("long", { query: "hello" })
+      .catch((err: unknown) => err);
+    const message = (error as Error).message;
+    expect(message).toMatch(/hourly limit\. upstream overloaded x+…$/);
+    expect(message.slice(message.indexOf("upstream"))).toHaveLength(301);
+  });
+
   it("rejects an invalid response body", async () => {
     response = () => Response.json({ items: [] });
     await expect(

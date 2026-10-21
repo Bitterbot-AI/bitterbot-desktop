@@ -5,6 +5,9 @@ const KEENABLE_PUBLIC_SEARCH_ENDPOINT = "https://api.keenable.ai/v1/search/publi
 const KEENABLE_SEARCH_ENDPOINT = "https://api.keenable.ai/v1/search";
 /** Keenable returns several thousand characters of page text per result unless capped. */
 const KEENABLE_SNIPPET_MAX_LENGTH = 1000;
+/** Error bodies reach the model; under load the keyless endpoint may answer with an HTML page. */
+const KEENABLE_ERROR_MAX_BYTES = 4_000;
+const KEENABLE_ERROR_MAX_CHARS = 300;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Relative windows as days back from now; Keenable filters on publication date. */
@@ -39,6 +42,18 @@ export function keenablePublishedWindow(
   }
   const range = freshness.match(KEENABLE_FRESHNESS_RANGE);
   return range ? { published_after: range[1], published_before: range[2] } : {};
+}
+
+/** First non-empty line of an error body, whitespace collapsed and capped. */
+function keenableErrorDetail(text: string): string {
+  const line =
+    text
+      .split(/\r?\n/)
+      .map((entry) => entry.replace(/\s+/g, " ").trim())
+      .find(Boolean) ?? "";
+  return line.length > KEENABLE_ERROR_MAX_CHARS
+    ? `${line.slice(0, KEENABLE_ERROR_MAX_CHARS)}…`
+    : line;
 }
 
 /**
@@ -99,8 +114,8 @@ async function requestKeenableSearch(
   );
 
   if (!res.ok) {
-    const detailResult = await readResponseText(res, { maxBytes: 64_000 });
-    const detail = detailResult.text || res.statusText;
+    const detailResult = await readResponseText(res, { maxBytes: KEENABLE_ERROR_MAX_BYTES });
+    const detail = keenableErrorDetail(detailResult.text) || res.statusText;
     if (res.status === 429) {
       const retryAfter = res.headers.get("retry-after");
       const hint = params.apiKey
