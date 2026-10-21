@@ -391,7 +391,20 @@ export function MeshPanel() {
                 {b.shards.filter((s) => s.status === "succeeded").length} / {b.shards.length} shards
                 completed across {new Set(b.shards.map((s) => s.peerId)).size} peers
               </p>
-              {b.shards.some((s) => s.error) && (
+              {b.status === "cancelling" && (
+                <p className="text-xs">
+                  Cancellation requested. Waiting for the operator to confirm; no new work will be
+                  submitted. An offline operator will be contacted again automatically. Both nodes
+                  need the current Compute release.
+                </p>
+              )}
+              {b.status === "cancelled" &&
+                b.shards.some(
+                  (s) => s.status === "succeeded" || s.cancelledRemoteStatus === "succeeded",
+                ) && (
+                  <p className="text-xs">Some work completed before cancellation was confirmed.</p>
+                )}
+              {b.status === "running" && b.shards.some((s) => s.error) && (
                 <p className="text-xs">
                   Waiting for a peer or its approval. Retrying the same shard safely.
                 </p>

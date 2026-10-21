@@ -37,6 +37,7 @@ export type MeshBatch = {
     result?: unknown;
     failures?: number;
     lastTriedAt?: number;
+    cancelledRemoteStatus?: "cancelled" | "succeeded" | "failed";
   }>;
 };
 export class ComputeMeshStore {

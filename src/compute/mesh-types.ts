@@ -26,7 +26,12 @@ export type ComputeMeshSnapshot = {
     kind: string;
     status: string;
     items: number;
-    shards: Array<{ status: string; peerId: string; error?: string }>;
+    shards: Array<{
+      status: string;
+      peerId: string;
+      error?: string;
+      cancelledRemoteStatus?: string;
+    }>;
   }>;
   activity: Array<{ at: number; peer: string; kind: string; items: number }>;
   permissions: Array<{ peerId: string; enabled: boolean; pools: string[]; projects: string[] }>;

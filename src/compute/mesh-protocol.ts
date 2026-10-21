@@ -4,6 +4,19 @@ import { canonicalJson, type JsonValue } from "../commerce/sku.js";
 export const COMPUTE_TOPIC = "bitterbot/compute/v1";
 export const DESCRIPTOR_TTL_MS = 120_000;
 export const MAX_MESH_FRAME = 768 * 1024;
+export const COMPUTE_METHODS = new Set([
+  "compute/v1/access",
+  "compute/v1/submit",
+  "compute/v1/job",
+  "compute/v1/cancel",
+  "compute/v1/cancel-intent",
+]);
+
+export type CancellationReceipt = {
+  idempotency_key: string;
+  job_id: string | null;
+  status: "cancelled" | "succeeded" | "failed";
+};
 export type ComputeDescriptor = {
   version: 1;
   peerId: string;

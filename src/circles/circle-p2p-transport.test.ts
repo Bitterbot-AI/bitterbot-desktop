@@ -113,7 +113,7 @@ function bobNodeWithAnaMember(anaKey: KeyPair): { db: DatabaseSync; circleId: st
 }
 
 describe("circle p2p rpc transport", () => {
-  it("dispatches only the four explicit Compute verbs with the authenticated peer identity", async () => {
+  it("dispatches only explicit Compute verbs, including post-revoke cancellation, with authenticated identity", async () => {
     const mesh = new FakeMesh();
     const calls: unknown[][] = [];
     const transport = startCircleP2pTransport({
@@ -127,7 +127,19 @@ describe("circle p2p rpc transport", () => {
       },
     });
     const bridge = mesh.bridgeFor(ANA_PEER);
-    for (const method of ["compute/v1/access", "wallet.send", "compute/v1/admin"]) {
+    const allowed = [
+      "compute/v1/access",
+      "compute/v1/submit",
+      "compute/v1/job",
+      "compute/v1/cancel",
+      "compute/v1/cancel-intent",
+    ];
+    for (const method of [
+      ...allowed,
+      "wallet.send",
+      "compute/v1/admin",
+      "compute/v1/cancel-intent/other",
+    ]) {
       const reply = JSON.parse(
         Buffer.from(
           await bridge.circleRequest(
@@ -137,9 +149,9 @@ describe("circle p2p rpc transport", () => {
           "base64",
         ).toString(),
       );
-      expect(reply.ok).toBe(method === "compute/v1/access");
+      expect(reply.ok).toBe(allowed.includes(method));
     }
-    expect(calls).toEqual([[ANA_PEER, "compute/v1/access", { scope: "team" }]]);
+    expect(calls).toEqual(allowed.map((method) => [ANA_PEER, method, { scope: "team" }]));
     transport.stop();
   });
   it("delivers a signed circle verb peer-to-peer through the real dispatcher", async () => {
