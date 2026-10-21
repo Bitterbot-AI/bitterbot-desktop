@@ -18,8 +18,8 @@ peer access and each payment require deliberate actions in the UI.
 
 ## Install the integrated public beta
 
-Use [Bitterbot v1.10.0-beta.1](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.10.0-beta.1).
-This release includes the gateway, Control UI and signed orchestrator 0.2.4.
+Use [Bitterbot v1.10.1-beta.1](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.10.1-beta.1).
+This release includes the gateway, Control UI, signed orchestrator 0.2.4 and Soapbox rc7.
 Linux x64 also includes the checksum-pinned Soapbox runtime required by the
 operator wizard. Node is bundled; a separate source checkout is unnecessary.
 The older Soapbox rc4/rc5/rc6 overlays are for their recorded Bitterbot versions
@@ -34,7 +34,7 @@ Download **install.ps1** from the beta release. In PowerShell, from the download
 folder, run:
 
 ```powershell
-.\install.ps1 -Version 1.10.0-beta.1
+.\install.ps1 -Version 1.10.1-beta.1
 ```
 
 The installer uses your default WSL2 distribution; use `-Distro Ubuntu` to select
@@ -47,7 +47,7 @@ reported separately; the installer does not stop its scheduled task.
 Download **install.sh** from the same beta release, then run:
 
 ```bash
-bash install.sh --version 1.10.0-beta.1 --require-signature
+bash install.sh --version 1.10.1-beta.1 --require-signature
 ```
 
 The installer verifies the release signature and archive checksum, installs the
@@ -171,7 +171,7 @@ cannot be undone, and physical GPU shutdown can lag.
 
 These changes do not enable paid mesh work, alter the default-on Compute setting,
 or change the dedicated Base Sepolia wallet. Upgrade both components together;
-the previously published beta's bundled runtime does not contain these fixes.
+1.10.1-beta.1 bundles Soapbox rc7 with both fixes. Earlier releases lack them.
 
 Setup data, local coordinator state and verified runtime/model files live under
 the gateway state directory's `compute/setup/`. The buyer's durable mesh journal
