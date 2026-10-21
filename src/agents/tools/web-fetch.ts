@@ -499,6 +499,55 @@ async function maybeFetchFirecrawlWebFetchPayload(
   return payload;
 }
 
+/** USDC contracts the wallet pays with; only these amounts are shown as a USDC price. */
+const X402_USDC_ASSETS = new Set([
+  "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", // USDC on Base
+  "0x036cbd53842c5426634e7929541ec2318f3dcf7e", // USDC on Base Sepolia
+]);
+
+/** Atomic USDC (6 decimals) to a decimal string without float rounding: 10000 -> "0.01". */
+function formatAtomicUsdc(atomic: string): string {
+  const value = BigInt(atomic);
+  const whole = value / 1_000_000n;
+  const fraction = (value % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+export type X402Offer = {
+  amount: string;
+  asset?: string;
+  network?: string;
+  scheme?: string;
+  payTo?: string;
+};
+
+/**
+ * Pick the first priced entry from an x402 `accepts[]` list (v2 `amount`, v1
+ * `maxAmountRequired`, both atomic units). `price_usdc` is derived only when
+ * the offer's asset is a USDC contract the wallet can pay with; any other asset
+ * is surfaced raw so the agent never labels a foreign token amount as dollars.
+ */
+export function summarizeX402Offer(
+  requirements: Record<string, unknown> | undefined,
+): { offer: X402Offer; priceUsdc?: string } | undefined {
+  const accepts = Array.isArray(requirements?.accepts)
+    ? (requirements.accepts as Array<Record<string, unknown>>)
+    : [];
+  for (const entry of accepts) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry.amount ?? entry.maxAmountRequired;
+    const amount = typeof raw === "string" ? raw : typeof raw === "number" ? String(raw) : "";
+    if (!/^\d+$/.test(amount)) continue;
+    const offer: X402Offer = { amount };
+    for (const key of ["asset", "network", "scheme", "payTo"] as const) {
+      if (typeof entry[key] === "string") offer[key] = entry[key] as string;
+    }
+    const isUsdc = offer.asset !== undefined && X402_USDC_ASSETS.has(offer.asset.toLowerCase());
+    return { offer, priceUsdc: isUsdc ? formatAtomicUsdc(amount) : undefined };
+  }
+  return undefined;
+}
+
 async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string, unknown>> {
   const cacheKey = normalizeCacheKey(
     `fetch:${params.url}:${params.extractMode}:${params.maxChars}`,
@@ -587,6 +636,25 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
         } catch {
           // Not JSON — that's fine, include as snippet
         }
+        // x402 v2 servers send requirements as a base64 JSON `PAYMENT-REQUIRED`
+        // header (v1 servers put the same shape in the body). Decode it, and
+        // surface the first priced offer. A USDC price is derived only for USDC
+        // assets (atomic units, 6 decimals) so the agent does not have to guess.
+        let paymentRequired: Record<string, unknown> | undefined;
+        const paymentRequiredHeader = res.headers.get("payment-required");
+        if (paymentRequiredHeader) {
+          try {
+            const decoded = JSON.parse(
+              Buffer.from(paymentRequiredHeader, "base64").toString("utf8"),
+            );
+            if (decoded && typeof decoded === "object") {
+              paymentRequired = decoded as Record<string, unknown>;
+            }
+          } catch {
+            // Malformed header — ignore, body/snippet still available
+          }
+        }
+        const x402Offer = summarizeX402Offer(paymentRequired ?? bodyPaymentDetails);
 
         return {
           url: params.url,
@@ -603,6 +671,9 @@ async function runWebFetch(params: WebFetchRuntimeParams): Promise<Record<string
             "x-payment-address": paymentAddress,
           },
           payment_details: bodyPaymentDetails,
+          ...(paymentRequired ? { payment_required: paymentRequired } : {}),
+          ...(x402Offer ? { x402_offer: x402Offer.offer } : {}),
+          ...(x402Offer?.priceUsdc ? { price_usdc: x402Offer.priceUsdc } : {}),
           body_snippet: bodyText.substring(0, 1000),
           fetchedAt: new Date().toISOString(),
           tookMs: Date.now() - start,
