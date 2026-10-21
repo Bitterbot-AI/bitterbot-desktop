@@ -535,7 +535,8 @@ export function summarizeX402Offer(
     : [];
   for (const entry of accepts) {
     if (!entry || typeof entry !== "object") continue;
-    const amount = String(entry.amount ?? entry.maxAmountRequired ?? "");
+    const raw = entry.amount ?? entry.maxAmountRequired;
+    const amount = typeof raw === "string" ? raw : typeof raw === "number" ? String(raw) : "";
     if (!/^\d+$/.test(amount)) continue;
     const offer: X402Offer = { amount };
     for (const key of ["asset", "network", "scheme", "payTo"] as const) {
