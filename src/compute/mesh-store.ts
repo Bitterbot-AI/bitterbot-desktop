@@ -92,6 +92,14 @@ export class ComputeMeshStore {
       .all()
       .map((r) => String(r.peer));
   }
+  pendingRevocations(): MeshGrant[] {
+    // Disabled grants journal a revoke or an interrupted grant update. Both
+    // must be removed from the runtime before they can be enabled again.
+    return this.db
+      .prepare("SELECT data FROM mesh_grants WHERE json_extract(data,'$.enabled')=0 ORDER BY peer")
+      .all()
+      .map((row) => JSON.parse(String(row.data)) as MeshGrant);
+  }
   permissions(): Array<{ peerId: string; enabled: boolean; pools: string[]; projects: string[] }> {
     return this.db
       .prepare("SELECT data FROM mesh_grants")
