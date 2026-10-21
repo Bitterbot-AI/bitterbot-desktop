@@ -26,7 +26,7 @@ import type {
 } from "../infra/soapbox-client.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { BitterbotPluginApi } from "../plugins/types.js";
-import { createSoapboxWallet } from "../services/soapbox-wallet.js";
+import { fundApprovedSoapboxQuote } from "../services/soapbox-wallet.js";
 import {
   COMPUTE_MAX_INPUTS,
   type ComputeBackend,
@@ -291,11 +291,7 @@ export function createSoapboxComputeBackend(opts: SoapboxComputeBackendOptions):
     if (toMicroUsdc(req.amountUsdc) !== job.payment.amount_microusdc)
       throw new Error("Approved amount does not match the quote");
     const funder: SoapboxFunder =
-      opts.funder ??
-      (async (payment) => {
-        const wallet = await createSoapboxWallet(opts.mainWallet, payment);
-        return wallet.fundSoapbox!(payment);
-      });
+      opts.funder ?? ((payment) => fundApprovedSoapboxQuote(opts.mainWallet, payment));
     const funding = await funder(job.payment);
     let status = funding.status;
     try {
