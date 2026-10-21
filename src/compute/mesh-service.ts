@@ -3,10 +3,13 @@ import type { SoapboxJob, SoapboxStatus } from "../infra/soapbox-client.js";
 import { SoapboxClient } from "../infra/soapbox-client.js";
 import {
   COMPUTE_TOPIC,
+  COMPUTE_METHODS,
   DESCRIPTOR_TTL_MS,
   decodeMesh,
   encodeMesh,
   parseDescriptor,
+  peerIdForPublicKey,
+  type CancellationReceipt,
   type MeshBridge,
   type ComputeDescriptor,
 } from "./mesh-protocol.js";
@@ -15,12 +18,6 @@ import type { ComputeMeshSnapshot } from "./mesh-types.js";
 import { advanceBatch, validateBatch, type BatchRequest } from "./mesh-work.js";
 
 export type MeshBackend = { admin: SoapboxClient; client(token: string): SoapboxClient };
-export const COMPUTE_METHODS = new Set([
-  "compute/v1/access",
-  "compute/v1/submit",
-  "compute/v1/job",
-  "compute/v1/cancel",
-]);
 type RpcReply = { ok: boolean; result?: unknown; error?: string };
 export class ComputeMeshService {
   private timer?: ReturnType<typeof setInterval>;
@@ -282,7 +279,8 @@ export class ComputeMeshService {
   private async handleRequest(peerId: string, method: string, params: unknown): Promise<RpcReply> {
     if (!COMPUTE_METHODS.has(method)) return { ok: false, error: "method not allowed" };
     const grant = this.store.grant(peerId);
-    if (!grant?.enabled) return { ok: false, error: "Operator approval required" };
+    const cancellation = method === "compute/v1/cancel-intent";
+    if (!cancellation && !grant?.enabled) return { ok: false, error: "Operator approval required" };
     const now = Date.now();
     for (const [key, r] of this.rates)
       if (now - r.at > 60_000 && r.active === 0) this.rates.delete(key);
@@ -299,6 +297,25 @@ export class ComputeMeshService {
       const p = params as Record<string, unknown>;
       const backend = this.backend();
       if (!backend) throw Error("Unavailable");
+      if (cancellation) {
+        // The transport authenticates peerId. Cancellation is confined to its
+        // own intent namespace and remains available after access is revoked.
+        if (
+          typeof p.publicKey !== "string" ||
+          peerIdForPublicKey(p.publicKey) !== peerId ||
+          typeof p.key !== "string" ||
+          !/^mesh-[a-f0-9-]{36}-\d{1,3}$/.test(p.key)
+        )
+          throw Error("Invalid cancellation identity or intent");
+        const result = await backend.admin.request<CancellationReceipt>(
+          "POST",
+          `/v1/admissions/${Buffer.from(p.publicKey, "base64").toString("hex")}/cancel`,
+          { idempotency_key: p.key },
+        );
+        this.store.activity(peerId, "cancellation_acknowledged");
+        return { ok: true, result };
+      }
+      if (!grant?.enabled) throw Error("Operator approval required");
       const client = backend.client(grant.token);
       if (method === "compute/v1/access")
         return { ok: true, result: { pools: grant.pools, projects: grant.projects } };
@@ -353,6 +370,25 @@ export class ComputeMeshService {
     ) as { ok?: unknown; result?: unknown };
     if (!reply || reply.ok !== true) throw Error("Peer refused request or is unavailable");
     return reply.result as T;
+  }
+  async cancelRemote(peer: string, key: string): Promise<CancellationReceipt> {
+    const identity = this.identity ?? (await this.bridge.getIdentity());
+    const receipt = await this.call<CancellationReceipt>(peer, "compute/v1/cancel-intent", {
+      publicKey: identity.pubkey,
+      key,
+    });
+    if (
+      !receipt ||
+      receipt.idempotency_key !== key ||
+      !(
+        receipt.job_id === null ||
+        (typeof receipt.job_id === "string" && /^[a-f0-9-]{36}$/.test(receipt.job_id))
+      ) ||
+      !["cancelled", "succeeded", "failed"].includes(receipt.status) ||
+      (receipt.job_id === null && receipt.status !== "cancelled")
+    )
+      throw Error("Invalid cancellation acknowledgement");
+    return receipt;
   }
   submit(request: BatchRequest): MeshBatch {
     validateBatch(request);
@@ -425,6 +461,16 @@ export class ComputeMeshService {
     if (!batch) throw Error("Unknown batch");
     if (batch.status === "running") {
       batch.status = "cancelling";
+      for (const shard of batch.shards) {
+        if (!shard.jobId && shard.attempts === 0) {
+          shard.status = "cancelled";
+          shard.error = undefined;
+        }
+      }
+      if (batch.shards.every((s) => ["succeeded", "failed", "cancelled"].includes(s.status))) {
+        batch.status = "cancelled";
+        this.store.activity("", "batch_cancelled", batch.inputs.length);
+      }
       this.store.saveBatch(batch);
     }
   }

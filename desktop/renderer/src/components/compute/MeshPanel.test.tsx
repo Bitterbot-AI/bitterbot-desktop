@@ -88,3 +88,49 @@ it("grants only the selected operator scope and shows incoming work", async () =
   fireEvent.click(screen.getByText("Recent mesh activity"));
   expect(screen.getByText(/incoming succeeded/)).toBeTruthy();
 });
+
+it("shows remote cancellation pending without promising resubmission or requesting approval", async () => {
+  fake.request.mockResolvedValue({
+    ...snapshot,
+    batches: [
+      {
+        id: "cancel",
+        kind: "sha256",
+        items: 1,
+        status: "cancelling",
+        shards: [{ status: "queued", peerId: peer, error: "offline" }],
+      },
+    ],
+  });
+  render(<MeshPanel />);
+  await screen.findByText(/Waiting for the operator to confirm/);
+  expect(screen.queryByText(/Retrying the same shard safely/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Cancel batch" })).toBeNull();
+  expect(fake.request.mock.calls.every(([method]) => method === "soapbox.mesh.status")).toBe(true);
+});
+
+it("does not display a stale retry hint on a cancelled batch and discloses completed work", async () => {
+  fake.request.mockResolvedValue({
+    ...snapshot,
+    batches: [
+      {
+        id: "cancel",
+        kind: "sha256",
+        items: 1,
+        status: "cancelled",
+        shards: [
+          {
+            status: "cancelled",
+            cancelledRemoteStatus: "succeeded",
+            peerId: peer,
+            error: "old error",
+          },
+        ],
+      },
+    ],
+  });
+  render(<MeshPanel />);
+  await screen.findByText(/Some work completed before cancellation/);
+  expect(screen.queryByText(/Retrying the same shard safely/)).toBeNull();
+  expect(screen.queryByText(/Waiting for the operator to confirm/)).toBeNull();
+});

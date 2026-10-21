@@ -18,8 +18,8 @@ peer access and each payment require deliberate actions in the UI.
 
 ## Install the integrated public beta
 
-Use [Bitterbot v1.10.1-beta.1](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.10.1-beta.1).
-This release includes the gateway, Control UI, signed orchestrator 0.2.4 and Soapbox rc7.
+Use [Bitterbot v1.10.1-beta.2](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.10.1-beta.2).
+This release includes the gateway, Control UI, signed orchestrator 0.2.4 and Soapbox rc8.
 Linux x64 also includes the checksum-pinned Soapbox runtime required by the
 operator wizard. Node is bundled; a separate source checkout is unnecessary.
 The older Soapbox rc4/rc5/rc6 overlays are for their recorded Bitterbot versions
@@ -34,7 +34,7 @@ Download **install.ps1** from the beta release. In PowerShell, from the download
 folder, run:
 
 ```powershell
-.\install.ps1 -Version 1.10.1-beta.1
+.\install.ps1 -Version 1.10.1-beta.2
 ```
 
 The installer uses your default WSL2 distribution; use `-Distro Ubuntu` to select
@@ -47,7 +47,7 @@ reported separately; the installer does not stop its scheduled task.
 Download **install.sh** from the same beta release, then run:
 
 ```bash
-bash install.sh --version 1.10.1-beta.1 --require-signature
+bash install.sh --version 1.10.1-beta.2 --require-signature
 ```
 
 The installer verifies the release signature and archive checksum, installs the
@@ -107,9 +107,11 @@ or install drivers. A damaged runtime requires reinstalling the release.
    in Compute; the P2P dashboard shows the same local activity.
 
 Buyers need no local GPU or coordinator for P2P work. Capacity announcements
-expire when an operator goes offline. A cancellation stays pending while the
-peer is unreachable. Retrying an ambiguous submission uses its original job
-identity. Only send data that the selected operators are allowed to see.
+expire when an operator goes offline. Cancel finishes immediately if no submission
+was sent. Otherwise it stays pending until the operator confirms, including after
+access is revoked. Pending cancellation retries automatically after reconnection
+or a gateway restart; it never submits new work or requests access again.
+Only send data that the selected operators are allowed to see.
 
 ## Buy a paid Base Sepolia test job
 
@@ -171,7 +173,21 @@ cannot be undone, and physical GPU shutdown can lag.
 
 These changes do not enable paid mesh work, alter the default-on Compute setting,
 or change the dedicated Base Sepolia wallet. Upgrade both components together;
-1.10.1-beta.1 bundles Soapbox rc7 with both fixes. Earlier releases lack them.
+1.10.1-beta.1 introduced both fixes. Beta.2 bundles rc8 and adds cancellation
+recovery without re-admission or submission replay.
+
+### Cancellation after lost replies, offline periods or revocation
+
+The operator authenticates the cancelling peer's P2P identity and accepts only
+its own batch/shard identifier. The runtime records a durable cancellation fence
+before acknowledging it. A delayed submission using that identifier is refused,
+even after restart or a later access grant. This narrow cancellation route grants
+no submission/read access and returns no inputs or results. If work already
+completed, the UI reports that fact; cancellation cannot undo its effects.
+
+Both gateways and the operator runtime must have this update. An older operator
+cannot acknowledge the new cancellation request, so it remains pending until
+the operator upgrades. Do not restore access simply to clear a cancelled job.
 
 Setup data, local coordinator state and verified runtime/model files live under
 the gateway state directory's `compute/setup/`. The buyer's durable mesh journal
@@ -181,7 +197,12 @@ are local private files. OS-backed secret storage is not implemented yet.
 
 For an app upgrade, retain the installer's previous version and use
 `bitterbot update --rollback` to return to it. Stop or settle outstanding work
-before deliberately switching versions. Rollback keeps wallet data; it is not
+before deliberately switching versions. Soapbox rc8 upgrades its coordinator
+database to schema 2. Older runtimes refuse that database to protect cancellation
+records; a desktop rollback to a release bundling rc7 cannot resume that operator.
+Reinstall the matching rc8-or-newer release to resume. Do not delete the database
+or restore an older snapshot to clear this check: that loses cancellation fences.
+Rollback keeps wallet data; it is not
 a reversal of a transaction or completed job. Do not use the old overlay's
 **Soapbox-Setup** rollback against an integrated installation. Keep a backup of
 the gateway state and separate Compute wallet identity before moving machines.

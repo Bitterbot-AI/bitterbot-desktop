@@ -22,6 +22,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { COMPUTE_METHODS } from "../compute/mesh-protocol.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { loadOrCreateBoxKeys, type BoxKeyPair } from "./box-crypto.js";
 
@@ -165,12 +166,7 @@ export function startCircleP2pTransport(deps: {
         await respond({ ok: false, error: "malformed request" });
         return;
       }
-      if (
-        ["compute/v1/access", "compute/v1/submit", "compute/v1/job", "compute/v1/cancel"].includes(
-          method,
-        ) &&
-        deps.compute
-      ) {
+      if (COMPUTE_METHODS.has(method) && deps.compute) {
         try {
           await respond(await deps.compute.handle(event.from_peer_id, method, params));
         } catch {
