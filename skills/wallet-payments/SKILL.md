@@ -25,7 +25,7 @@ Sends and payments are held for the owner's approval unless a standing spend gra
 
 When `web_fetch` returns a 402 Payment Required response, follow this workflow exactly:
 
-1. **Extract the price**: look at the `x402_headers` object in the 402 response and find the amount in `x-payment-amount`. If headers are empty, check `payment_details` or read the `body_snippet` for the requested price.
+1. **Extract the price**: if the 402 result has `price_usdc`, use it (it is derived from the standard x402 `accepts[].amount`, which is in USDC atomic units: `10000` = 0.01 USDC). Otherwise look at `x402_headers` for `x-payment-amount`, then `payment_required` / `payment_details` (`accepts[].amount` or `maxAmountRequired`, divide by 1,000,000), or read the `body_snippet`.
 2. **Handle unclear prices**: if you cannot confidently determine the price, DO NOT GUESS. Ask: "This resource requires payment, but the price isn't clear. Would you like me to proceed, and what is your maximum budget?"
 3. **Check balance and rules**: call `get_balance` (token="USDC"). If the cost exceeds your spending limits, ask the user for permission.
 4. **Inform the user**: state the cost and your intent briefly (for example "This endpoint requires a 0.15 USDC micropayment. I have the funds and am purchasing it now.").
