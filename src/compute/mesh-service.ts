@@ -37,6 +37,7 @@ export class ComputeMeshService {
   private mutations: Promise<unknown> = Promise.resolve();
   private requests = new Set<Promise<RpcReply>>();
   private batchCursor = 0;
+  private revocationCursor = 0;
   constructor(
     readonly bridge: MeshBridge,
     readonly store: ComputeMeshStore,
@@ -86,6 +87,8 @@ export class ComputeMeshService {
     return this.cycle;
   }
   private async runCycle(): Promise<void> {
+    // Retry the durable journal even without discovery or incoming requests.
+    await this.reconcileRevocations();
     if (Date.now() - this.lastAdvertised > 30_000) {
       try {
         const backend = this.backend();
@@ -159,7 +162,9 @@ export class ComputeMeshService {
     return {
       enabled: true,
       ready: this.ready,
-      error: this.lastError,
+      error: this.store.pendingRevocations().length
+        ? "Access disabled; coordinator revocation is pending and will retry automatically"
+        : this.lastError,
       peerId: this.identity?.peerId,
       hosting: Boolean(
         this.local?.capabilities?.mesh_admissions && this.local?.principal?.roles.includes("admin"),
@@ -196,16 +201,20 @@ export class ComputeMeshService {
       if (!valid(pools) || !valid(projects) || pools.length + projects.length === 0)
         throw Error("Choose at least one pool or project");
       const old = this.store.grant(peerId);
+      // Finish an earlier revoke before re-admission, so a stale retry cannot
+      // remove a new grant and old queued work cannot be revived by re-granting.
+      if (old && !old.enabled) await this.finishRevocation(old, backend);
       const grant: MeshGrant = {
         peerId,
         pubkey: peer.pubkey,
         principal: `mesh_${Buffer.from(peer.pubkey, "base64").toString("hex")}`,
-        token: old?.token ?? randomBytes(32).toString("hex"),
+        token: randomBytes(32).toString("hex"),
         pools,
         projects,
         enabled: false,
       };
-      // Journal intent before touching the runtime. A crash can only deny access.
+      // Journal local denial before touching the runtime. Interrupted updates
+      // are reconciled as revocations before this peer can be re-admitted.
       this.store.saveGrant(grant);
       await backend.admin.request("POST", "/v1/admissions", {
         public_key: Buffer.from(peer.pubkey, "base64").toString("hex"),
@@ -226,14 +235,36 @@ export class ComputeMeshService {
       this.store.saveGrant(grant);
       const backend = this.backend();
       if (!backend)
-        throw Error("Access disabled; reconnect coordinator to cancel outstanding jobs");
-      await backend.admin.request(
-        "POST",
-        `/v1/admissions/${Buffer.from(grant.pubkey, "base64").toString("hex")}/revoke`,
-        {},
-      );
-      this.store.revoke(peerId);
-      this.store.activity(peerId, "access_revoked");
+        throw Error("Access disabled; revocation will retry when the coordinator returns");
+      await this.finishRevocation(grant, backend);
+    });
+  }
+  private async finishRevocation(grant: MeshGrant, backend: MeshBackend): Promise<void> {
+    await backend.admin.request(
+      "POST",
+      `/v1/admissions/${Buffer.from(grant.pubkey, "base64").toString("hex")}/revoke`,
+      {},
+      3000,
+    );
+    this.store.revoke(grant.peerId);
+    this.store.activity(grant.peerId, "access_revoked");
+  }
+  private reconcileRevocations(): Promise<void> {
+    return this.mutate(async () => {
+      const pending = this.store.pendingRevocations();
+      const backend = this.backend();
+      if (!backend || pending.length === 0) return;
+      // Bound each cycle and rotate failures so one peer cannot starve others.
+      const start = this.revocationCursor % pending.length;
+      const count = Math.min(4, pending.length);
+      this.revocationCursor = start + count;
+      for (let i = 0; i < count; i++) {
+        try {
+          await this.finishRevocation(pending[(start + i) % pending.length]!, backend);
+        } catch {
+          // Keep the disabled journal entry for the next tick or process restart.
+        }
+      }
     });
   }
   private mutate<T>(fn: () => Promise<T>): Promise<T> {

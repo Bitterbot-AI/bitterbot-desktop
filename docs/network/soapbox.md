@@ -151,6 +151,28 @@ Paid coordinator jobs and private/collective mesh batches are distinct paths.
 
 ## Data, recovery and rollback
 
+### Permission changes and revocation
+
+With the authorization-recovery update installed in both the gateway and Soapbox
+runtime, narrowing a peer grant cancels its queued or running jobs in the removed
+pools/projects. Work in scopes that remain granted is preserved. The runtime
+rechecks the current admission at submission, claim, lease renewal and result
+commit; an HTTP request authenticated before a change cannot enqueue using a
+revoked credential. Grant updates rotate the local runtime credential.
+
+Revocation immediately persists local denial in the gateway. If the coordinator
+is unavailable, Compute reports revocation as pending and retries automatically
+on its service cycle and after restart. No manual revoke retry is required once
+the coordinator is reachable. Re-admission waits for pending cleanup to finish.
+The runtime commits credential removal and cancellation together. Until that
+commit succeeds, gateway denial alone does not establish that a remote worker
+has stopped. Cancellation rejects further results; already executed effects
+cannot be undone, and physical GPU shutdown can lag.
+
+These changes do not enable paid mesh work, alter the default-on Compute setting,
+or change the dedicated Base Sepolia wallet. Upgrade both components together;
+the previously published beta's bundled runtime does not contain these fixes.
+
 Setup data, local coordinator state and verified runtime/model files live under
 the gateway state directory's `compute/setup/`. The buyer's durable mesh journal
 stores job inputs/results locally; selected operators also process and store
