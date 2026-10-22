@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.10.0...v1.10.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **compute:** register the Soapbox backend so the agent's compute surface is live ([#291](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/291)) ([3a7276f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3a7276ff9cc8048f4dca6a6009e4504b840a7e0b))
+* **web-fetch:** decode x402 v2 PAYMENT-REQUIRED and price USDC offers safely ([#286](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/286)) ([#289](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/289)) ([56c68a0](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/56c68a0f8367d322fea1c48948b9739ac62de3fe))
+
 ## [1.10.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.9.0...v1.10.0) (2026-10-21)
 
 
