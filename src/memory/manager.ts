@@ -562,6 +562,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     const key = `${agentId}:${workspaceDir}:${JSON.stringify(settings)}`;
     const existing = INDEX_CACHE.get(key);
     if (existing) {
+      // The cached instance is shared across purposes; a status probe may have
+      // built it, so the sinks are attached on every get, not only on build.
+      existing.ensureComputeSinks(cfg);
       return existing;
     }
     // De-dupe concurrent first-time builds for the same key (see INDEX_INFLIGHT).
@@ -609,29 +612,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         purpose: params.purpose,
       });
       built = manager;
-      // PLAN-57 §4.7: the first default-purpose manager receives compute
-      // episodes (terminal jobs the agent or owner started) as memory.
-      if (
-        params.purpose === undefined &&
-        cfg.compute?.enabled !== false &&
-        !getComputeEpisodeSink()
-      ) {
-        manager.episodeSink = (episode) => manager.writeComputeEpisodeChunk(episode);
-        registerComputeEpisodeSink(manager.episodeSink);
-      }
-      // Phase 6: the same manager's hormones take the compute nudges.
-      if (
-        params.purpose === undefined &&
-        cfg.compute?.enabled !== false &&
-        cfg.compute?.awareness?.nudges !== false &&
-        !getComputeNudgeSink()
-      ) {
-        manager.nudgeSink = (nudge) =>
-          manager.hormonalManager?.stimulate(
-            nudge.kind === "success" ? "compute_success" : "compute_setback",
-          );
-        registerComputeNudgeSink(manager.nudgeSink);
-      }
+      // PLAN-57 §4.7 / Phase 6: this manager takes compute episodes and nudges.
+      manager.ensureComputeSinks(cfg);
       log.info("memory manager build timing", {
         agentId,
         purpose: params.purpose ?? "default",
@@ -5295,6 +5277,32 @@ export class MemoryIndexManager implements MemorySearchManager {
    * as a searchable `episode` chunk. One per (job, status); re-delivery of
    * the same transition is a no-op.
    */
+  /**
+   * PLAN-57 §4.7 / Phase 6: register this manager as the compute episode and
+   * nudge sink unless a live manager already holds them. Runs on every
+   * `get()`, whatever the caller's purpose: the cached instance is shared
+   * across purposes and the first build on a gateway is usually a status
+   * probe (health refresh, hormonal accessor). Gating on the builder's
+   * purpose left the sinks unregistered for the whole process, so finished
+   * jobs never became memory on a live node.
+   */
+  ensureComputeSinks(cfg: Pick<BitterbotConfig, "compute">): void {
+    if (this.closed || cfg.compute?.enabled === false) {
+      return;
+    }
+    if (!getComputeEpisodeSink()) {
+      this.episodeSink = (episode) => this.writeComputeEpisodeChunk(episode);
+      registerComputeEpisodeSink(this.episodeSink);
+    }
+    if (cfg.compute?.awareness?.nudges !== false && !getComputeNudgeSink()) {
+      this.nudgeSink = (nudge) =>
+        this.hormonalManager?.stimulate(
+          nudge.kind === "success" ? "compute_success" : "compute_setback",
+        );
+      registerComputeNudgeSink(this.nudgeSink);
+    }
+  }
+
   async writeComputeEpisodeChunk(episode: ComputeEpisode): Promise<string | null> {
     if (this.closed) {
       return null;
