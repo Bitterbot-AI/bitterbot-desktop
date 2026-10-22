@@ -9,6 +9,7 @@ import {
   verifySoapboxConnection,
 } from "../infra/soapbox-connection.js";
 import type { BitterbotPluginApi } from "../plugins/types.js";
+import { attachComputeAwareness } from "./soapbox-backend.js";
 
 export function registerParticipant(api: BitterbotPluginApi, directory: string) {
   const connection = parseSoapboxConnection(
@@ -24,6 +25,8 @@ export function registerParticipant(api: BitterbotPluginApi, directory: string) 
     createSoapboxHandlers(api.config.tools?.wallet, { client, role: connection.role }),
   ))
     api.registerGatewayMethod(name, handler);
+  // PLAN-57: buyers get the full agent surface; operators a read-only view.
+  attachComputeAwareness(api, { client, role: connection.role });
   if (connection.role === "buyer") return;
   const binary = api.pluginConfig?.binary;
   if (typeof binary !== "string" || !path.isAbsolute(binary))

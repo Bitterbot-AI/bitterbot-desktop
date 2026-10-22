@@ -89,6 +89,21 @@ export async function createSoapboxWallet(
   };
 }
 
+/**
+ * The one funding entry point for an owner-approved Compute quote outside the
+ * Control UI RPC. Callers hand over the exact quote the owner reviewed; the
+ * wallet re-asserts it, runs the shared spend gate and records the approval.
+ * PLAN-47 I4 keeps every value-moving call inside this file, so the compute
+ * backend's signer calls this instead of touching the wallet directly.
+ */
+export async function fundApprovedSoapboxQuote(
+  mainWallet: WalletConfig | undefined,
+  quote: SoapboxPaymentQuote,
+): Promise<{ status: string; txHash: string | null }> {
+  const wallet = await createSoapboxWallet(mainWallet, quote);
+  return wallet.fundSoapbox!(quote);
+}
+
 export type SoapboxWalletAuthentication = {
   apiKeyId: string;
   apiKeySecret: string;

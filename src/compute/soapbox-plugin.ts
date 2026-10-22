@@ -6,8 +6,10 @@ import { resolveStateDir, resolveConfigPath } from "../config/paths.js";
 import { createSoapboxSetupHandlers } from "../gateway/server-methods/soapbox-setup.js";
 import { createSoapboxHandlers } from "../gateway/server-methods/soapbox.js";
 import { resolveBitterbotPackageRootSync } from "../infra/bitterbot-root.js";
+import { soapboxClientFromEnv } from "../infra/soapbox-client.js";
 import type { BitterbotPluginApi } from "../plugins/types.js";
 import { SoapboxSetup } from "../services/soapbox-setup.js";
+import { attachComputeAwareness } from "./soapbox-backend.js";
 import { registerLocalOperator } from "./soapbox-plugin-operator.js";
 import { registerParticipant } from "./soapbox-plugin-participant.js";
 import SOAPBOX_SETUP_RELEASE from "./soapbox-runtime-release.json" with { type: "json" };
@@ -79,6 +81,9 @@ export function registerSoapboxPlugin(api: BitterbotPluginApi) {
   for (const [name, handler] of Object.entries(createSoapboxHandlers(api.config.tools?.wallet)))
     api.registerGatewayMethod(name, handler);
 
+  // PLAN-57: the agent's compute surface exists only once a backend is registered.
+  const client = soapboxClientFromEnv();
+  if (client) attachComputeAwareness(api, { client, role: "buyer" });
   let child: ChildProcess | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopping = false;

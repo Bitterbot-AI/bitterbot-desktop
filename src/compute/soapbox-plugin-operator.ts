@@ -4,6 +4,7 @@ import { createSoapboxHandlers } from "../gateway/server-methods/soapbox.js";
 import { SoapboxClient } from "../infra/soapbox-client.js";
 import type { BitterbotPluginApi } from "../plugins/types.js";
 import { LocalOperatorService } from "../services/soapbox-local-operator.js";
+import { attachComputeAwareness } from "./soapbox-backend.js";
 
 export function registerLocalOperator(api: BitterbotPluginApi, directory: string) {
   const binary = api.pluginConfig?.binary;
@@ -29,6 +30,8 @@ export function registerLocalOperator(api: BitterbotPluginApi, directory: string
       respond(true, { enabled: true, local_operator: true, nodes: [], jobs: [] });
     }
   });
+  // PLAN-57: a read-only compute view for the agent; operators never fund.
+  attachComputeAwareness(api, { client, role: "operator" });
   const service = new LocalOperatorService(directory, binary, (message) =>
     api.logger.warn(message),
   );
