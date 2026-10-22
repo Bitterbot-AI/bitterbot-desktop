@@ -164,4 +164,31 @@ describe("compute episodes in memory", () => {
     expect(getComputeNudgeSink()).toBeNull();
     expect(await mgr.writeComputeEpisodeChunk({ ...episode, status: "expired" })).toBeNull();
   }, 60_000);
+
+  it("attaches the sinks even when the first build is a status probe, and on later cache hits", async () => {
+    resetComputeEpisodesForTest();
+    resetComputeNudgesForTest();
+    fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-compute-episodes-status-"));
+    const workspaceDir = path.join(fixtureRoot, "workspace");
+    await fs.mkdir(path.join(workspaceDir, "memory"), { recursive: true });
+    await fs.writeFile(path.join(workspaceDir, "memory", "notes.md"), "# notes\n\nhello\n");
+    const cfg = createCfg(workspaceDir, path.join(fixtureRoot, "index.sqlite"));
+    // A gateway's first manager build is usually a status probe (health
+    // refresh, hormonal accessor). The sinks must not depend on who built it.
+    const probe = await getMemorySearchManager({ cfg, agentId: "main", purpose: "status" });
+    expect(probe.manager).not.toBeNull();
+    expect(getComputeEpisodeSink()).not.toBeNull();
+    expect(getComputeNudgeSink()).not.toBeNull();
+    // If something cleared the sinks (a previous manager closed), the next
+    // get re-attaches them to the live cached instance.
+    resetComputeEpisodesForTest();
+    resetComputeNudgesForTest();
+    const again = await getMemorySearchManager({ cfg, agentId: "main" });
+    expect(again.manager).toBe(probe.manager);
+    expect(getComputeEpisodeSink()).not.toBeNull();
+    expect(getComputeNudgeSink()).not.toBeNull();
+    await (probe.manager as unknown as { close: () => Promise<void> }).close();
+    expect(getComputeEpisodeSink()).toBeNull();
+    expect(getComputeNudgeSink()).toBeNull();
+  });
 });
