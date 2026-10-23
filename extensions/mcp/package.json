@@ -1,6 +1,6 @@
 {
   "name": "@bitterbot/mcp",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "private": true,
   "description": "Bitterbot connectors: an MCP client that brings any MCP server's tools to the agent",
   "type": "module",

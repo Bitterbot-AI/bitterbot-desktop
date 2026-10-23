@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.2](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.10.1...v1.10.2) (2026-10-23)
+
+
+### Bug Fixes
+
+* **compute:** local operator pools are local trust, startup reconcile waits for the coordinator, beta installs update to stable ([#308](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/308)) ([733b741](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/733b741952b627b1ca34aa892a8d1b4a9333e7b6))
+* **memory:** attach compute episode and nudge sinks on every manager get ([#292](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/292)) ([3e824c9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3e824c99b55bacec34ba2e882ef72c436ca0e4cf))
+
 ## [1.10.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.10.0...v1.10.1) (2026-10-22)
 
 
