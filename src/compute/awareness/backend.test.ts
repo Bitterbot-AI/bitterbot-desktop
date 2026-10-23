@@ -108,9 +108,10 @@ describe("snapshotFromSoapboxStatus", () => {
     expect(s.settlement).toBe("test_credits");
     expect(s.credits).toEqual({ available: 140, reserved: 6, currency: "TEST_CREDIT" });
     const byId = Object.fromEntries(s.pools.map((p) => [p.id, p]));
+    // Called "local", but nobody said who serves it: untrusted like any other pool.
     expect(byId.local).toMatchObject({
       kind: "private",
-      trust: "local",
+      trust: "untrusted",
       workersOnline: 1,
       workersTotal: 1,
       gpuWorkersOnline: 1,
@@ -131,6 +132,68 @@ describe("snapshotFromSoapboxStatus", () => {
       poolTrust: (id) => (id === "lab" ? "trusted" : "untrusted"),
     });
     expect(s.pools.find((p) => p.id === "lab")?.trust).toBe("trusted");
+  });
+
+  it("marks a pool local only while every member is one of this machine's own workers", () => {
+    const own: SoapboxStatusLike = {
+      enabled: true,
+      principal: { id: "op", roles: ["admin"], pools: ["private"], projects: ["community"] },
+      nodes: [
+        {
+          id: "local-worker",
+          online: true,
+          offer: {
+            cpu_threads: 1,
+            memory_mib: 2048,
+            gpu_observed: true,
+            modes: ["private", "collective"],
+            paused: false,
+            pools: ["private"],
+            projects: ["community"],
+          },
+        },
+      ],
+    };
+    const s = snapshotFromSoapboxStatus(own, { localWorkerIds: ["local-worker"] });
+    expect(s.pools.map((p) => [p.id, p.trust])).toEqual([
+      ["private", "local"],
+      ["community", "local"],
+    ]);
+    // Without the operator's say-so the same pools are plain untrusted.
+    expect(snapshotFromSoapboxStatus(own).pools.map((p) => p.trust)).toEqual([
+      "untrusted",
+      "untrusted",
+    ]);
+    // A peer granted access to the pool, even offline: its inputs could leave the box.
+    const shared: SoapboxStatusLike = {
+      ...own,
+      nodes: [
+        ...(own.nodes ?? []),
+        {
+          id: "peer-7",
+          online: false,
+          offer: {
+            cpu_threads: 1,
+            memory_mib: 512,
+            gpu_observed: false,
+            modes: ["private"],
+            paused: false,
+            pools: ["private"],
+          },
+        },
+      ],
+    };
+    const s2 = snapshotFromSoapboxStatus(shared, {
+      localWorkerIds: ["local-worker"],
+      poolTrust: (id) => (id === "private" ? "trusted" : "untrusted"),
+    });
+    expect(s2.pools.find((p) => p.id === "private")?.trust).toBe("trusted");
+    expect(s2.pools.find((p) => p.id === "community")?.trust).toBe("local");
+    // No members at all says nothing about where inputs would go.
+    const empty: SoapboxStatusLike = { ...own, nodes: [] };
+    expect(
+      snapshotFromSoapboxStatus(empty, { localWorkerIds: ["local-worker"] }).pools[0].trust,
+    ).toBe("untrusted");
   });
 
   it("copies named worker fields only and clips free text", () => {

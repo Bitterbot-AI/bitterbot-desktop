@@ -141,6 +141,19 @@ describeCli("runTarballUpdateCommand", () => {
     expect(jsonOutput()).toMatchObject({ status: "skipped", reason: "up-to-date" });
   });
 
+  it("moves a beta install forward to the stable release of the same number", async () => {
+    writeVersionDir(path.join(appDir, "1.5.0-beta.2"), "1.5.0-beta.2", platformId!);
+    swapVersionLink(appDir, "current", "1.5.0-beta.2");
+    process.env.BITTERBOT_INSTALL_ROOT = path.join(appDir, "1.5.0-beta.2");
+    await runTarballUpdateCommand({
+      root: path.join(appDir, "1.5.0-beta.2"),
+      opts: { json: true, yes: true },
+    });
+    expect(jsonOutput()).toMatchObject({ status: "ok", current: "1.5.0-beta.2", target: "1.5.0" });
+    expect(readVersionLink(appDir, "current")).toBe("1.5.0");
+    expect(readVersionLink(appDir, "previous")).toBe("1.5.0-beta.2");
+  });
+
   it("follows stable only", async () => {
     await runTarballUpdateCommand({ root: path.join(appDir, "1.4.0"), opts: { channel: "beta" } });
     expect(runtime.error.mock.calls.join("\n")).toContain("stable channel");

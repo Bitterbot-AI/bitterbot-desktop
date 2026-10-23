@@ -253,19 +253,46 @@ let versionCounter = 0;
 /** Pool trust levels come from config; unknown pools default to `untrusted`. */
 export type PoolTrustResolver = (poolId: string) => ComputePool["trust"];
 
-const LOCAL_POOL_IDS = new Set(["local"]);
+/**
+ * The trust a pool has before the owner says otherwise: `untrusted`, whatever
+ * it is called. `local` is never a default or a config value; the snapshot
+ * establishes it from who serves the pool (see {@link poolServedLocally}).
+ */
+export function defaultPoolTrust(_poolId: string): ComputePool["trust"] {
+  return "untrusted";
+}
 
-export function defaultPoolTrust(poolId: string): ComputePool["trust"] {
-  return LOCAL_POOL_IDS.has(poolId) ? "local" : "untrusted";
+/**
+ * A pool is `local` while every worker serving it is one this machine runs
+ * itself (the local operator's worker): the inputs never leave the box,
+ * whatever the pool is called. One foreign member, or no members at all, and
+ * the pool is only as trusted as the owner's config says.
+ */
+export function poolServedLocally(
+  members: readonly Pick<ComputeWorker, "id">[],
+  localWorkerIds: ReadonlySet<string> | null,
+): boolean {
+  return (
+    localWorkerIds !== null && members.length > 0 && members.every((w) => localWorkerIds.has(w.id))
+  );
 }
 
 /** Narrow the Soapbox status into the secret-free snapshot the agent sees. */
 export function snapshotFromSoapboxStatus(
   status: SoapboxStatusLike,
-  opts: { now?: number; reachable?: boolean; poolTrust?: PoolTrustResolver } = {},
+  opts: {
+    now?: number;
+    reachable?: boolean;
+    poolTrust?: PoolTrustResolver;
+    /** Workers this machine runs itself; see {@link poolServedLocally}. */
+    localWorkerIds?: Iterable<string>;
+  } = {},
 ): ComputeSnapshot {
   const now = opts.now ?? Date.now();
   const trustOf = opts.poolTrust ?? defaultPoolTrust;
+  const localIds = opts.localWorkerIds ? new Set(opts.localWorkerIds) : null;
+  const trustFor = (id: string, members: ComputeWorker[]): ComputePool["trust"] =>
+    poolServedLocally(members, localIds) ? "local" : trustOf(id);
   versionCounter += 1;
 
   const workers: ComputeWorker[] = (status.nodes ?? []).map((n) => {
@@ -299,10 +326,10 @@ export function snapshotFromSoapboxStatus(
   // from the offers that accept them.
   const pools: ComputePool[] = [];
   for (const id of status.principal?.pools ?? []) {
-    pools.push(poolEntry(id, "private", trustOf(id), workers, (w) => w.pools.includes(id)));
+    pools.push(poolEntry(id, "private", trustFor, workers, (w) => w.pools.includes(id)));
   }
   for (const id of status.principal?.projects ?? []) {
-    pools.push(poolEntry(id, "collective", trustOf(id), workers, (w) => w.projects.includes(id)));
+    pools.push(poolEntry(id, "collective", trustFor, workers, (w) => w.projects.includes(id)));
   }
 
   const jobs: ComputeJobSummary[] = (status.jobs ?? []).map(summariseSoapboxJob);
@@ -362,7 +389,7 @@ export function summariseSoapboxJob(j: SoapboxJobLike): ComputeJobSummary {
 function poolEntry(
   id: string,
   kind: ComputePool["kind"],
-  trust: ComputePool["trust"],
+  trustFor: (id: string, members: ComputeWorker[]) => ComputePool["trust"],
   workers: ComputeWorker[],
   accepts: (w: ComputeWorker) => boolean,
 ): ComputePool {
@@ -371,7 +398,7 @@ function poolEntry(
   return {
     id,
     kind,
-    trust,
+    trust: trustFor(id, members),
     workersTotal: members.length,
     workersOnline: online.length,
     gpuWorkersOnline: online.filter((w) => w.gpu).length,

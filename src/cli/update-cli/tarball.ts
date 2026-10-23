@@ -309,6 +309,32 @@ export type TarballCliOptions = UpdateCommandOptions & {
   restoreConfig?: boolean;
 };
 
+const PRERELEASE_RE = /^v?\d+\.\d+\.\d+-/;
+
+/**
+ * Order two release versions. `compareSemverStrings` ignores pre-release
+ * labels, so `1.10.1-beta.2` and `1.10.1` compare equal; here the beta is
+ * behind the stable release of the same number (and ahead of nothing), so an
+ * install left on a beta still moves forward to the release it preceded.
+ */
+export function releaseOrder(from: string, target: string): number | null {
+  const cmp = compareSemverStrings(from, target);
+  if (cmp !== 0) {
+    return cmp;
+  }
+  const fromPre = PRERELEASE_RE.test(from);
+  const targetPre = PRERELEASE_RE.test(target);
+  if (fromPre !== targetPre) {
+    return fromPre ? -1 : 1;
+  }
+  if (!fromPre) {
+    return 0;
+  }
+  const a = from.replace(/^v/, "");
+  const b = target.replace(/^v/, "");
+  return a === b ? 0 : a.localeCompare(b, "en", { numeric: true }) < 0 ? -1 : 1;
+}
+
 export async function runTarballUpdateCommand(params: {
   root: string;
   opts: TarballCliOptions;
@@ -401,7 +427,7 @@ export async function runTarballUpdateCommand(params: {
     target = latest;
   }
   emit.out.target = target;
-  const cmp = compareSemverStrings(ctx.fromVersion, target);
+  const cmp = releaseOrder(ctx.fromVersion, target);
 
   if (opts.check) {
     const available = cmp != null && cmp < 0;

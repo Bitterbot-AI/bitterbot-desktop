@@ -68,6 +68,11 @@ export type SoapboxComputeBackendOptions = {
   now?: () => number;
   /** How long a status read serves `snapshot()` before the next read. */
   snapshotTtlMs?: number;
+  /**
+   * Workers this machine runs itself (the local operator). A pool served by
+   * them alone is `local` trust: its inputs never leave the box.
+   */
+  localWorkerIds?: readonly string[];
 };
 
 export const SOAPBOX_SNAPSHOT_TTL_MS = 5_000;
@@ -107,6 +112,7 @@ export function createSoapboxComputeBackend(opts: SoapboxComputeBackendOptions):
       const snapshot = snapshotFromSoapboxStatus(status, {
         now: now(),
         poolTrust,
+        localWorkerIds: opts.localWorkerIds,
         reachable: true,
       });
       cached = { at: now(), snapshot, status };
@@ -116,7 +122,10 @@ export function createSoapboxComputeBackend(opts: SoapboxComputeBackendOptions):
       // snapshot when there was never a good one.
       const base =
         cached?.snapshot ??
-        snapshotFromSoapboxStatus({ enabled: true }, { now: now(), poolTrust, reachable: false });
+        snapshotFromSoapboxStatus(
+          { enabled: true },
+          { now: now(), poolTrust, localWorkerIds: opts.localWorkerIds, reachable: false },
+        );
       const snapshot: ComputeSnapshot = { ...base, asOf: now(), reachable: false };
       cached = { at: now(), snapshot, status: cached?.status ?? null };
       log.debug(`coordinator unreachable: ${err instanceof Error ? err.message : String(err)}`);
@@ -320,13 +329,19 @@ export function createSoapboxComputeBackend(opts: SoapboxComputeBackendOptions):
  */
 export function attachComputeAwareness(
   api: Pick<BitterbotPluginApi, "config" | "logger" | "registerService">,
-  params: { client: SoapboxBackendClient; role?: "buyer" | "operator" },
+  params: {
+    client: SoapboxBackendClient;
+    role?: "buyer" | "operator";
+    /** Workers this machine runs itself; pools they serve alone are `local`. */
+    localWorkerIds?: readonly string[];
+  },
 ): ComputeBackend {
   const backend = createSoapboxComputeBackend({
     client: params.client,
     config: api.config,
     role: params.role,
     mainWallet: api.config.tools?.wallet,
+    localWorkerIds: params.localWorkerIds,
   });
   registerComputeBackend(backend);
   const enabled = api.config.compute?.enabled !== false;

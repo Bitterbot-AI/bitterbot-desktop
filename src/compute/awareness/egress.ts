@@ -9,7 +9,9 @@
  *
  * The policy is enforced in the embedding provider before anything is
  * batched, recorded on the ledger row, and cannot be changed by the agent.
- * Only the owner raises a pool's trust (`compute.pools.<id>.trust`).
+ * Only the owner raises a pool's trust (`compute.pools.<id>.trust`), and no
+ * one configures `local`: a pool is local while every worker serving it is
+ * one this machine runs itself, which the compute snapshot establishes.
  */
 
 import type { BitterbotConfig } from "../../config/config.js";
@@ -34,17 +36,13 @@ export function egressPermitted(cls: GovernanceClass, trust: PoolTrust): boolean
   return TRUST_RANK[trust] <= TRUST_RANK[CLASS_CEILING[cls]];
 }
 
-/** The owner's trust for a pool: config, else `local` for the local pool, else `untrusted`. */
+/** The owner's configured trust for a pool: `trusted` when config says so, else `untrusted`. Never `local`. */
 export function resolvePoolTrust(
   config: Pick<BitterbotConfig, "compute"> | undefined,
   poolId: string,
 ): PoolTrust {
-  const fallback = defaultPoolTrust(poolId);
-  if (fallback === "local") {
-    return "local";
-  }
   const configured = config?.compute?.pools?.[poolId]?.trust;
-  return configured === "trusted" ? "trusted" : "untrusted";
+  return configured === "trusted" ? "trusted" : defaultPoolTrust(poolId);
 }
 
 /**

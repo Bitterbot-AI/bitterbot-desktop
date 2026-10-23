@@ -77,7 +77,7 @@ boundary, so it never disturbs the cached prefix) carries a short block:
 
 ```text
 <compute-state v=418 as_of=12s_ago>
-pools: local(1/1 online, 1 gpu), lab(2/3 online, 1 gpu, trusted)
+pools: private(1/1 online, 1 gpu), lab(2/3 online, 1 gpu, trusted)
 credits: 140 TEST_CREDIT
 jobs: 2 running (embeddings x96 on gpu-2, sha256 x12 on w1)
 needs owner: pay1 awaiting_payment 0.4 USDC
@@ -126,7 +126,9 @@ has zero ticks. When a job the agent or the owner started reaches
 4. The row is marked delivered when a heartbeat turn completes for that
    session. On gateway start the watcher reconciles rows against the
    coordinator, so a job that finished while the gateway was down is still
-   reported, once.
+   reported, once. The local operator's coordinator starts alongside the
+   gateway, so that first reconcile retries with backoff for about a minute
+   before an unreachable coordinator is logged as a warning.
 
 What never wakes the agent: worker or GPU count changes, credit changes,
 progress, queue depth, and anything started by the memory system for its own
@@ -196,10 +198,14 @@ Ollama worker matches, so its batches stay local by construction. Remote APIs
 report no digest and never route.
 
 **Egress by governance class.** Each pool carries the owner's trust level:
-`local` (this machine), `trusted` (set with `compute.pools.<id>.trust:
-trusted`), or `untrusted` (the default for every other pool, including
-collectives). Each input carries the same governance class the memory row
-gets, raised by what the text says:
+`local` (a pool served only by workers this machine runs itself, such as the
+local GPU operator's `private` pool; the moment a peer you granted access
+joins it, the pool drops to its configured trust), `trusted` (set with
+`compute.pools.<id>.trust: trusted`), or `untrusted` (the default for every
+other pool, including collectives). No pool is local because of its name, and
+`local` cannot be set in config: it is a fact the snapshot establishes from
+who serves the pool. Each input carries the same governance class the memory
+row gets, raised by what the text says:
 
 | class          | may run on                    |
 | -------------- | ----------------------------- |

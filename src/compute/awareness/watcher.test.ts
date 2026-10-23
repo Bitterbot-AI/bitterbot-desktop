@@ -240,6 +240,38 @@ describe("compute watcher", () => {
     expect(h.enqueue).not.toHaveBeenCalled();
   });
 
+  it("retries the startup reconcile with backoff while the coordinator is still booting", async () => {
+    h.store.recordOrigin("old", "owner", null);
+    h.jobs = [job({ id: "old", status: "succeeded" })];
+    let failures = 2;
+    h.backend.jobs = async () => {
+      if (failures-- > 0) {
+        throw new Error("fetch failed");
+      }
+      return h.jobs.slice();
+    };
+    // start(): attempt 1 fails and arms a 2 s retry, which start() then runs:
+    // attempt 2 fails and arms a 4 s retry. Nothing is reported yet.
+    w = await h.start();
+    expect(h.enqueue).not.toHaveBeenCalled();
+    expect(h.timers.map((t) => t.ms)).toEqual([4000]);
+    // Attempt 3 reaches the coordinator: the old job is reported once and polling starts.
+    await h.runTimers();
+    expect(h.enqueue).toHaveBeenCalledTimes(1);
+    expect(h.timers.map((t) => t.ms)).toEqual([0]);
+  });
+
+  it("stop() during the startup backoff ends the retries", async () => {
+    h.backend.jobs = async () => {
+      throw new Error("fetch failed");
+    };
+    w = await h.start();
+    expect(h.timers.map((t) => t.ms)).toEqual([4000]);
+    w.stop();
+    await h.runTimers();
+    expect(h.timers).toHaveLength(0);
+  });
+
   it("kick() restarts polling immediately after a submit", async () => {
     w = await h.start();
     expect(w.isPolling()).toBe(false);
