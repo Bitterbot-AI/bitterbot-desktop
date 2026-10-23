@@ -16,6 +16,7 @@ const ENV_KEYS = [
   "PERPLEXITY_API_KEY",
   "XAI_API_KEY",
   "SERPLY_API_KEY",
+  "KEENABLE_API_KEY",
 ];
 
 describe("setupWebSearchForOnboarding (PLAN-41 D-M)", () => {
@@ -111,6 +112,39 @@ describe("setupWebSearchForOnboarding (PLAN-41 D-M)", () => {
     const config = {
       tools: { web: { search: { provider: "parallel" as const, enabled: false } } },
     };
+    const p = prompter();
+    expect(await setupWebSearchForOnboarding({ config, flow: "quickstart", prompter: p })).toEqual(
+      config,
+    );
+    expect((p as { select: ReturnType<typeof vi.fn> }).select).not.toHaveBeenCalled();
+  });
+  it("never selects Keenable from KEENABLE_API_KEY alone", async () => {
+    clearEnv();
+    process.env.KEENABLE_API_KEY = "keenable-test";
+    const p = prompter();
+    const out = await setupWebSearchForOnboarding({ config: {}, flow: "quickstart", prompter: p });
+    expect(out).toEqual({});
+  });
+  it("advanced Keenable selection with a blank key enables keyless search", async () => {
+    clearEnv();
+    const p = prompter("keenable", "");
+    const out = await setupWebSearchForOnboarding({ config: {}, flow: "advanced", prompter: p });
+    expect(out.tools?.web?.search).toEqual({ provider: "keenable", enabled: true });
+  });
+  it("advanced Keenable selection stores an optional key in its own block", async () => {
+    clearEnv();
+    const p = prompter("keenable", "keenable-abc");
+    const out = await setupWebSearchForOnboarding({ config: {}, flow: "advanced", prompter: p });
+    expect(out.tools?.web?.search).toEqual({
+      provider: "keenable",
+      enabled: true,
+      keenable: { apiKey: "keenable-abc" },
+    });
+  });
+  it("keeps a saved keyless Keenable selection without prompting", async () => {
+    clearEnv();
+    process.env.BRAVE_API_KEY = "test-existing";
+    const config = { tools: { web: { search: { provider: "keenable" as const } } } };
     const p = prompter();
     expect(await setupWebSearchForOnboarding({ config, flow: "quickstart", prompter: p })).toEqual(
       config,

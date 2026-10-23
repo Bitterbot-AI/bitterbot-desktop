@@ -193,13 +193,17 @@ not change the default.
 
 ## Everything else is opt-in
 
-Web search (Brave/Tavily/Perplexity/xAI/Serply with your key; Parallel Search MCP at
-`search.parallel.ai` keyless and anonymous, so each query reaches Parallel with
-only a Bitterbot User-Agent), Skill Seekers ingestion
+Web search (Brave/Tavily/Perplexity/xAI/Serply with your key, or one of the two
+keyless providers below), Skill Seekers ingestion
 (`skills.skillSeekers.enabled`, default off), channels (WhatsApp, Telegram,
 …), the wallet/x402 layer, and agent-to-agent HTTP (`a2a.enabled`, default
 off) all require you to configure or enable them explicitly, and each has
 a matching flag in Settings.
+
+| host                                                              | what reaches it                                                                                                                                 |
+| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search.parallel.ai` (Parallel Search MCP, keyless and anonymous) | each query, with only a Bitterbot User-Agent                                                                                                    |
+| `api.keenable.ai` (Keenable, keyless unless you add a key)        | each query with its result count, snippet length and optional date window, an `X-Keenable-Title: Bitterbot` header and the Bitterbot User-Agent |
 
 To verify this page against the code, grep the repo for the hostnames
 above — every dial is in source, none are obfuscated.

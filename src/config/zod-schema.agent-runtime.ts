@@ -238,6 +238,7 @@ export const ToolsWebSearchSchema = z
         z.literal("tavily"),
         z.literal("parallel"),
         z.literal("serply"),
+        z.literal("keenable"),
       ])
       .optional(),
     apiKey: z.string().optional().register(sensitive),
@@ -268,6 +269,12 @@ export const ToolsWebSearchSchema = z
       .strict()
       .optional(),
     serply: z
+      .object({
+        apiKey: z.string().optional().register(sensitive),
+      })
+      .strict()
+      .optional(),
+    keenable: z
       .object({
         apiKey: z.string().optional().register(sensitive),
       })

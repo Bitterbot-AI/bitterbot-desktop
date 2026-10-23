@@ -112,6 +112,7 @@ All optional.
 | `FIRECRAWL_API_KEY`  | Firecrawl                        |
 | `TAVILY_API_KEY`     | Tavily                           |
 | `SERPLY_API_KEY`     | Serply web search                |
+| `KEENABLE_API_KEY`   | Keenable web search (optional)   |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS (or `XI_API_KEY`) |
 | `DEEPGRAM_API_KEY`   | Deepgram STT                     |
 

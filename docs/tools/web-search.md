@@ -1,5 +1,5 @@
 ---
-summary: "Web search provider setup: Tavily, Brave, Perplexity, Grok, Serply, Parallel"
+summary: "Web search provider setup: Tavily, Brave, Perplexity, Grok, Serply, Parallel, Keenable"
 read_when:
   - You want to configure a web search provider
   - You need API keys for Tavily, Brave, Perplexity, Grok, or Serply
@@ -8,7 +8,7 @@ title: "Web Search Providers"
 
 # Web Search Providers
 
-Bitterbot supports 6 web search providers for the `web_search` tool. Pick one and configure its API key, or explicitly select Parallel for free, keyless search.
+Bitterbot supports 7 web search providers for the `web_search` tool. Pick one and configure its API key, or explicitly select Parallel or Keenable for free, keyless search.
 
 | Provider       | Env Variable         | Free Tier       | Best For                              |
 | -------------- | -------------------- | --------------- | ------------------------------------- |
@@ -18,6 +18,7 @@ Bitterbot supports 6 web search providers for the `web_search` tool. Pick one an
 | **Parallel**   | None                 | Free, keyless   | Web search with source excerpts       |
 | **Grok**       | `XAI_API_KEY`        | Varies          | X/Twitter integration                 |
 | **Serply**     | `SERPLY_API_KEY`     | Trial credits   | Google results, country and freshness |
+| **Keenable**   | None (optional key)  | Free, keyless   | Page snippets, publication-date range |
 
 ## Quick Setup
 
@@ -75,6 +76,40 @@ and `cacheTtlMinutes` apply. Region, language and `freshness` filters are reject
 include preferences in the query instead. The provider uses anonymous free-tier
 limits and reports service errors without switching providers. Parallel is never
 selected automatically; existing defaults and saved settings continue to apply.
+
+### Keenable (keyless, opt-in)
+
+Select **Keenable** during setup, advanced onboarding or
+`bitterbot configure --section web`, or add:
+
+```json5
+{
+  tools: {
+    web: {
+      search: {
+        enabled: true,
+        provider: "keenable",
+        maxResults: 5,
+        // keenable: { apiKey: "..." }, // optional, or set KEENABLE_API_KEY
+      },
+    },
+  },
+}
+```
+
+The native `web_search` tool and configured non-tool search callers send
+`POST https://api.keenable.ai/v1/search/public` with an `X-Keenable-Title: Bitterbot`
+header. No API key, signup or MCP configuration is needed. An optional key
+(`tools.web.search.keenable.apiKey` or `KEENABLE_API_KEY`, read only when Keenable is
+selected) switches to `https://api.keenable.ai/v1/search` and lifts the keyless rate
+limits; see [Keenable rate limits](https://docs.keenable.ai/rate-limits).
+Results include titles, URLs and page snippets of up to about 1,000 characters.
+`freshness` accepts `pd`, `pw`, `pm`, `py` and `YYYY-MM-DDtoYYYY-MM-DD`, matched
+against publication dates (both range dates are inclusive). Region and language
+filters are rejected; include preferences in the query instead. `maxResults`,
+`timeoutSeconds` and `cacheTtlMinutes` apply; a rate-limited request fails with its
+`Retry-After` value instead of switching providers. Keenable is never selected
+automatically; existing defaults and saved settings continue to apply.
 
 ### Tavily
 
@@ -191,7 +226,7 @@ as `tools.web.search.provider`:
 4. `XAI_API_KEY` → Grok
 5. `SERPLY_API_KEY` → Serply
 
-Parallel is never selected automatically.
+Parallel and Keenable are never selected automatically.
 
 ## See Also
 

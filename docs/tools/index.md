@@ -273,7 +273,7 @@ Notes:
 
 ### `web_search`
 
-Search the web with the configured provider (`tools.web.search.provider`: `brave` by default, or `perplexity`, `grok`, `tavily`, `parallel`, `serply`).
+Search the web with the configured provider (`tools.web.search.provider`: `brave` by default, or `perplexity`, `grok`, `tavily`, `parallel`, `serply`, `keenable`).
 
 Core parameters:
 

@@ -435,8 +435,8 @@ export type ToolsConfig = {
     search?: {
       /** Enable web search tool (default: true when API key is present). */
       enabled?: boolean;
-      /** Search provider ("brave", "perplexity", "grok", "tavily", "parallel", or "serply"). */
-      provider?: "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
+      /** Search provider ("brave", "perplexity", "grok", "tavily", "parallel", "serply", or "keenable"). */
+      provider?: "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply" | "keenable";
       /** Brave Search API key (optional; defaults to BRAVE_API_KEY env var). */
       apiKey?: string;
       /** Default search results count (1-10). */
@@ -473,6 +473,11 @@ export type ToolsConfig = {
       /** Serply-specific configuration (used when provider="serply"). */
       serply?: {
         /** API key for Serply (defaults to SERPLY_API_KEY env var). */
+        apiKey?: string;
+      };
+      /** Keenable-specific configuration (used when provider="keenable"). */
+      keenable?: {
+        /** Optional API key that lifts keyless rate limits (defaults to KEENABLE_API_KEY env var). */
         apiKey?: string;
       };
     };
