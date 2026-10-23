@@ -244,12 +244,11 @@ describe("compute watcher", () => {
     h.store.recordOrigin("old", "owner", null);
     h.jobs = [job({ id: "old", status: "succeeded" })];
     let failures = 2;
-    const jobs = h.backend.jobs;
-    h.backend.jobs = async (q) => {
+    h.backend.jobs = async () => {
       if (failures-- > 0) {
         throw new Error("fetch failed");
       }
-      return jobs(q);
+      return h.jobs.slice();
     };
     // start(): attempt 1 fails and arms a 2 s retry, which start() then runs:
     // attempt 2 fails and arms a 4 s retry. Nothing is reported yet.
