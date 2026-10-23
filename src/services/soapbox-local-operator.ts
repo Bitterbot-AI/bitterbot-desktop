@@ -8,6 +8,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import { SoapboxClient } from "../infra/soapbox-client.js";
 import { soapboxOperatorEnvironment } from "../infra/soapbox-connection.js";
 
+/** The worker principal the local operator runs on this machine; its pools are `local` trust (PLAN-57). */
+export const LOCAL_OPERATOR_WORKER_ID = "local-worker";
+
 export type LocalOperator = {
   version: 1;
   chain_id: 84532;
@@ -76,7 +79,7 @@ export async function prepareLocalOperator(
         projects: ["community"],
       },
       {
-        id: "local-worker",
+        id: LOCAL_OPERATOR_WORKER_ID,
         token_env: "SOAPBOX_WORKER_TOKEN",
         roles: ["worker"],
         pools: ["private"],

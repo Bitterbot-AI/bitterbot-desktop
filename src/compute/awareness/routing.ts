@@ -98,9 +98,6 @@ export function chooseEmbeddingRoute(params: {
     return { kind: "local", reason: "local dimensions not yet known" };
   }
   const ceiling = CLASS_CEILING[params.cls];
-  if (ceiling === "local") {
-    return { kind: "local", reason: `${params.cls} content stays local` };
-  }
   const localPerItem = learnedMsPerItem(LOCAL_WORKER_ID, "embeddings");
   if (localPerItem === null) {
     return { kind: "local", reason: "no local timing yet" };
@@ -135,13 +132,19 @@ export function chooseEmbeddingRoute(params: {
       continue;
     }
     // The most restrictive pool this worker serves that the class may reach.
+    // `local` (open to every class: the inputs never leave the box) is a
+    // fact only the snapshot can establish, from who serves the pool; the
+    // owner's resolver decides between trusted and untrusted for the rest.
     let best: { poolId: string; poolKind: "private" | "collective"; trust: PoolTrust } | null =
       null;
     for (const poolId of [...w.pools, ...w.projects]) {
-      const trust = params.poolTrust(poolId);
-      if (trust === "local") {
-        continue; // this machine: the in-process provider already is local
-      }
+      const configured = params.poolTrust(poolId);
+      const trust: PoolTrust =
+        poolsById.get(poolId)?.trust === "local"
+          ? "local"
+          : configured === "local"
+            ? "untrusted"
+            : configured;
       if (TRUST_RANK[trust] > TRUST_RANK[ceiling]) {
         continue;
       }
@@ -163,6 +166,10 @@ export function chooseEmbeddingRoute(params: {
   candidates.sort((a, b) => a.estMs - b.estMs || a.w.id.localeCompare(b.w.id));
   const pick = candidates[0];
   if (!pick) {
+    if (ceiling === "local") {
+      // Only a pool this machine serves alone could have taken it.
+      return { kind: "local", reason: `${params.cls} content stays local` };
+    }
     return {
       kind: "local",
       reason: rejected.length ? rejected.slice(0, 3).join("; ") : "no pool workers",

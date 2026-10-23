@@ -12,7 +12,10 @@
  *   and the row is deferred; nothing is dropped.
  * - Marks rows delivered when a heartbeat turn completes for that session.
  * - On start, reconciles against the coordinator so jobs that finished while
- *   the gateway was down are still reported, once.
+ *   the gateway was down are still reported, once. The local operator's
+ *   coordinator boots alongside the gateway, so that first reconcile retries
+ *   with backoff for about a minute before an unreachable coordinator is
+ *   worth a warning.
  * - Never wakes on worker, GPU, credit or progress changes, and never for
  *   internal-origin jobs.
  */
@@ -49,6 +52,9 @@ export const DELIVERABLE_STATUSES = new Set([
 ]);
 
 const IN_FLIGHT = new Set(["queued", "running", "settlement_pending"]);
+
+/** Backoff for the startup reconcile while the coordinator comes up (about a minute in all). */
+const STARTUP_RETRY_MS = [2_000, 4_000, 8_000, 16_000, 30_000];
 
 export type ComputeWatcherOptions = {
   backend: ComputeBackend;
@@ -332,34 +338,66 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
   }
 
   async function reconcile(): Promise<number> {
-    let delivered = 0;
     try {
-      const jobs = await opts.backend.jobs({ limit: opts.reconcileLimit ?? 200 });
-      for (const job of jobs) {
-        if (!DELIVERABLE_STATUSES.has(job.status)) {
-          continue;
-        }
-        const route = routeFor(job);
-        if (!route) {
-          continue;
-        }
-        const created = opts.store.createDelivery(job.id, job.status, route.sessionKey, now());
-        if (created || isUndelivered(job)) {
-          deliver(job, route.sessionKey, created);
-          delivered += 1;
-          if (created) {
-            // A job that finished while the gateway was down still resumes
-            // its task and still becomes an episode.
-            linkTask(route, job);
-            emitComputeEpisode(episodeFromJob(job, route, now()));
-          }
-        }
-      }
-      lastStatuses = new Map(jobs.map((j) => [j.id, j.status]));
+      return await reconcileOnce();
     } catch (err) {
       log.warn(`compute reconcile failed: ${err instanceof Error ? err.message : String(err)}`);
+      return 0;
     }
+  }
+
+  /** Reconcile, or throw when the coordinator cannot be read. */
+  async function reconcileOnce(): Promise<number> {
+    let delivered = 0;
+    const jobs = await opts.backend.jobs({ limit: opts.reconcileLimit ?? 200 });
+    for (const job of jobs) {
+      if (!DELIVERABLE_STATUSES.has(job.status)) {
+        continue;
+      }
+      const route = routeFor(job);
+      if (!route) {
+        continue;
+      }
+      const created = opts.store.createDelivery(job.id, job.status, route.sessionKey, now());
+      if (created || isUndelivered(job)) {
+        deliver(job, route.sessionKey, created);
+        delivered += 1;
+        if (created) {
+          // A job that finished while the gateway was down still resumes
+          // its task and still becomes an episode.
+          linkTask(route, job);
+          emitComputeEpisode(episodeFromJob(job, route, now()));
+        }
+      }
+    }
+    lastStatuses = new Map(jobs.map((j) => [j.id, j.status]));
     return delivered;
+  }
+
+  function startupReconcile(attempt: number): void {
+    void reconcileOnce().then(
+      () => watcher.kick(),
+      (err: unknown) => {
+        if (stopped) {
+          return;
+        }
+        const wait = STARTUP_RETRY_MS[attempt];
+        const msg = err instanceof Error ? err.message : String(err);
+        if (wait === undefined) {
+          log.warn(
+            `compute reconcile failed after ${attempt + 1} attempts: ${msg}; polling continues`,
+          );
+          watcher.kick();
+          return;
+        }
+        log.debug(`compute reconcile not ready (${msg}); retrying in ${wait} ms`);
+        setTimer(() => {
+          if (!stopped) {
+            startupReconcile(attempt + 1);
+          }
+        }, wait);
+      },
+    );
   }
 
   const watcher: ComputeWatcher = {
@@ -385,7 +423,7 @@ export function startComputeWatcher(opts: ComputeWatcherOptions): ComputeWatcher
     },
   };
 
-  void reconcile().then(() => watcher.kick());
+  startupReconcile(0);
   return watcher;
 }
 

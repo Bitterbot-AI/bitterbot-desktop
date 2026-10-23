@@ -337,12 +337,13 @@ describe("compute.quote / compute.approve", () => {
       "operator.admin",
     ]);
     expect(underscore.ok).toBe(true);
+    // No pool is local by name: trust for a pool this box serves alone may be
+    // set too, and applies once a peer is granted access to it.
     const local = await call("compute.trust", { poolId: "local", trust: "trusted" }, [
       "operator.admin",
     ]);
-    expect(local.ok).toBe(false);
-    expect(local.error?.message).toContain("always local");
-    expect(writtenConfigs).toHaveLength(2);
+    expect(local.ok).toBe(true);
+    expect(writtenConfigs).toHaveLength(3);
   });
 
   it("compute.trust leaves an invalid config file untouched", async () => {

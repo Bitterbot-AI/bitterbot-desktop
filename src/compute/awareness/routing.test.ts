@@ -94,6 +94,51 @@ describe("chooseEmbeddingRoute", () => {
     expect(route({ marginMs: 5000 })).toMatchObject({ kind: "local" });
   });
 
+  it("sends every class to a pool this machine serves alone, snapshot trust over config", () => {
+    recordComputeDuration({
+      workerId: LOCAL_WORKER_ID,
+      workload: "embeddings",
+      items: 10,
+      durationMs: 4000,
+    });
+    const own = snapshot([worker({ id: "local-worker", pools: ["private"] })], {
+      pools: [
+        {
+          id: "private",
+          kind: "private",
+          trust: "local",
+          workersOnline: 1,
+          workersTotal: 1,
+          gpuWorkersOnline: 1,
+        },
+      ],
+    });
+    for (const cls of ["confidential", "personal", "normal"] as const) {
+      // The config resolver has never heard of "private"; the snapshot has.
+      expect(route({ cls, snapshot: own })).toMatchObject({
+        kind: "pool",
+        poolId: "private",
+        workerId: "local-worker",
+        trust: "local",
+      });
+    }
+    // The same pool with a peer in it is no longer local: the owner's config
+    // (the resolver, which has never heard of "private") decides, so only
+    // normal content may still go there.
+    const shared = snapshot([worker({ id: "local-worker", pools: ["private"] })], {
+      pools: [{ ...own.pools[0], trust: "untrusted", workersTotal: 2 }],
+    });
+    expect(route({ cls: "confidential", snapshot: shared })).toMatchObject({
+      kind: "local",
+      reason: "confidential content stays local",
+    });
+    expect(route({ cls: "personal", snapshot: shared })).toMatchObject({ kind: "local" });
+    expect(route({ cls: "normal", snapshot: shared })).toMatchObject({
+      kind: "pool",
+      trust: "untrusted",
+    });
+  });
+
   it("never routes confidential content, and keeps personal content off untrusted pools", () => {
     recordComputeDuration({
       workerId: LOCAL_WORKER_ID,
@@ -150,8 +195,11 @@ describe("chooseEmbeddingRoute", () => {
       kind: "local",
       reason: "gpu-1: different model",
     });
+    // A pool merely named "local" (resolver says local, snapshot does not) is just another untrusted pool.
     expect(route({ snapshot: snapshot([worker({ pools: ["local"] })]) })).toMatchObject({
-      kind: "local",
+      kind: "pool",
+      poolId: "local",
+      trust: "untrusted",
     });
     const cooldowns = new CooldownBook();
     cooldowns.enter("gpu-1", "digest_mismatch", NOW, 60_000);

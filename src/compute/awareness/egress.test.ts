@@ -21,16 +21,20 @@ describe("egress policy", () => {
     expect(egressPermitted("normal", "untrusted")).toBe(true);
   });
 
-  it("takes pool trust from config, local for the local pool, untrusted otherwise", () => {
-    expect(resolvePoolTrust(undefined, "local")).toBe("local");
+  it("takes pool trust from config, untrusted otherwise, and never local", () => {
     expect(resolvePoolTrust(undefined, "lab")).toBe("untrusted");
     expect(resolvePoolTrust({ compute: { pools: { lab: { trust: "trusted" } } } }, "lab")).toBe(
       "trusted",
     );
-    // The local pool cannot be demoted or another pool promoted to local by config.
+    // A pool is not local because of its name, nor because config says so:
+    // only the snapshot's membership check can establish that.
+    expect(resolvePoolTrust(undefined, "local")).toBe("untrusted");
     expect(
-      resolvePoolTrust({ compute: { pools: { local: { trust: "untrusted" } } } }, "local"),
-    ).toBe("local");
+      resolvePoolTrust(
+        { compute: { pools: { lab: { trust: "local" as unknown as "trusted" } } } },
+        "lab",
+      ),
+    ).toBe("untrusted");
   });
 
   it("classifies by source default, raised by the text, and treats unknown sources as personal", () => {

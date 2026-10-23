@@ -13,7 +13,6 @@ import { renderJob, renderStatus } from "../../agents/tools/compute-tool.js";
 import {
   type ComputeQuote,
   type ComputeSnapshot,
-  defaultPoolTrust,
   getComputeBackend,
   getComputeRuntime,
   resolvePoolTrust,
@@ -220,10 +219,6 @@ export const computeHandlers: GatewayRequestHandlers = {
     };
     if (!POOL_ID_RE.test(poolId) || FORBIDDEN_POOL_IDS.has(poolId)) {
       invalid("poolId must be 1 to 64 characters of letters, digits, '.', '_', ':' or '-'");
-      return;
-    }
-    if (defaultPoolTrust(poolId) === "local") {
-      invalid(`${poolId} is this machine's own pool; its trust is always local and cannot be set`);
       return;
     }
     if (!TRUST_LEVELS.has(trust)) {
