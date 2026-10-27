@@ -1,0 +1,1193 @@
+{
+  "git_commit": "db896f78",
+  "snapshotSha256": "1d3432bb80e181f2b86da3e46c7a69a72f85d14b04240125a7153f45d4a7dc17",
+  "queriesSha256": "f3075b7c9129fe562d04d79893176583d4256dc70acbd65f65eddc60fa0406a2",
+  "judge": "claude-haiku-4-5",
+  "judgePromptSha256": "56d6dc5281a15b16bb9790e296c942a2e9c2629ea264bbf939a8b9956f726f79",
+  "k": 5,
+  "n": 68,
+  "pairsJudged": 398,
+  "anyRelevantQueries": 33,
+  "elapsed_seconds": 348.7,
+  "summary": {
+    "0": {
+      "n": 68,
+      "hitAtK": 0.441,
+      "precisionAtK": 0.312,
+      "mrr": 0.362,
+      "relevantAt1": 0.324
+    },
+    "1": {
+      "n": 68,
+      "hitAtK": 0.382,
+      "precisionAtK": 0.238,
+      "mrr": 0.342,
+      "relevantAt1": 0.324
+    },
+    "0.1": {
+      "n": 68,
+      "hitAtK": 0.426,
+      "precisionAtK": 0.309,
+      "mrr": 0.354,
+      "relevantAt1": 0.324
+    }
+  },
+  "per_query": [
+    {
+      "q": "c4b4aafcd5d3",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "c3e3a474a0e8",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "ec7da990967b",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "e9a264deb36c",
+      "results": {
+        "0": {
+          "ranks": [4],
+          "relevant": 1
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [4],
+          "relevant": 1
+        }
+      }
+    },
+    {
+      "q": "b7dfabb2f915",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "b99ea1dac442",
+      "results": {
+        "0": {
+          "ranks": [2, 3, 4, 5],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 4, 5],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "f1ae139c5d90",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 5],
+          "relevant": 3
+        },
+        "1": {
+          "ranks": [4],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [1, 3],
+          "relevant": 2
+        }
+      }
+    },
+    {
+      "q": "0e6f2c9a2e04",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 3, 4],
+          "relevant": 3
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "47ee47857fe7",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "562cae9685a9",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "5b9ed35adf6e",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4],
+          "relevant": 4
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "7e7063207d6c",
+      "results": {
+        "0": {
+          "ranks": [4],
+          "relevant": 1
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "a9b038920ac6",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "cda8b6a8d961",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "cc99473ea215",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "65d8d8124b44",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "82c0b0b404b8",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "981eae199386",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 5],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4],
+          "relevant": 4
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 5],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "333bb6d9fb5c",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 5],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "fe99d22ea70e",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "b018d4d40f6b",
+      "results": {
+        "0": {
+          "ranks": [1],
+          "relevant": 1
+        },
+        "1": {
+          "ranks": [1, 4],
+          "relevant": 2
+        },
+        "0.1": {
+          "ranks": [1],
+          "relevant": 1
+        }
+      }
+    },
+    {
+      "q": "3e2b5f4a1380",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 4, 5],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "b02215e97ca0",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "97ec05a4c3ab",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "048aed970085",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [2],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "e6a79b9b4cc7",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "e3d52445e415",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "81436a318599",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 5],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "729cb18fd760",
+      "results": {
+        "0": {
+          "ranks": [3, 4, 5],
+          "relevant": 3
+        },
+        "1": {
+          "ranks": [1, 2],
+          "relevant": 2
+        },
+        "0.1": {
+          "ranks": [2, 3],
+          "relevant": 2
+        }
+      }
+    },
+    {
+      "q": "c8a465002a2e",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "6786e8df7772",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "f77c4ef5a541",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "ba0fc30d63f5",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "905fa5d5246e",
+      "results": {
+        "0": {
+          "ranks": [3, 4, 5],
+          "relevant": 3
+        },
+        "1": {
+          "ranks": [1, 3, 4, 5],
+          "relevant": 4
+        },
+        "0.1": {
+          "ranks": [2, 3, 4, 5],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "92aba87c692f",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "c00a708c9ec7",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "23cebc13c9b9",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "7555e2fd5467",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "5429f2500f4e",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "5a33152ad82f",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "25231468bdf0",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "5f1b8d1a4462",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "10c3a44acefd",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "b5bbcfb9b78e",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "4f3fa8ea2506",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "fb10a91e5d1c",
+      "results": {
+        "0": {
+          "ranks": [2],
+          "relevant": 1
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [5],
+          "relevant": 1
+        }
+      }
+    },
+    {
+      "q": "c950e76feee6",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "e9c6c6749df3",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "eff01aea4852",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "8e057148916d",
+      "results": {
+        "0": {
+          "ranks": [4],
+          "relevant": 1
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [4],
+          "relevant": 1
+        }
+      }
+    },
+    {
+      "q": "a2bdc78162b6",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "0c59b211ecfd",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "7ca7dea90680",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 2, 5],
+          "relevant": 3
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "a513a54441f1",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "dd3eaf5118b7",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "8fbaad92d54e",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "9ee8f2680803",
+      "results": {
+        "0": {
+          "ranks": [1],
+          "relevant": 1
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [5],
+          "relevant": 1
+        }
+      }
+    },
+    {
+      "q": "fdc38851edae",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 2, 4, 5],
+          "relevant": 4
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "cf0350eee37c",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1, 2, 3],
+          "relevant": 3
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "2030c362bfa2",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 4, 5],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [3],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [1, 3, 4, 5],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "69c048f65839",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [1],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "3e960d925178",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 4, 5],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 4, 5],
+          "relevant": 4
+        }
+      }
+    },
+    {
+      "q": "a0113e93177b",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 5],
+          "relevant": 4
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [1, 2, 4],
+          "relevant": 3
+        }
+      }
+    },
+    {
+      "q": "bf270440c263",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [5],
+          "relevant": 1
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    },
+    {
+      "q": "882782b5ceaf",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 2, 4, 5],
+          "relevant": 4
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "fc6bcf70e4a0",
+      "results": {
+        "0": {
+          "ranks": [5],
+          "relevant": 1
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [5],
+          "relevant": 1
+        }
+      }
+    },
+    {
+      "q": "debaf62443f9",
+      "results": {
+        "0": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        },
+        "0.1": {
+          "ranks": [1, 2, 3, 4, 5],
+          "relevant": 5
+        }
+      }
+    },
+    {
+      "q": "46109093187a",
+      "results": {
+        "0": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "1": {
+          "ranks": [],
+          "relevant": 0
+        },
+        "0.1": {
+          "ranks": [],
+          "relevant": 0
+        }
+      }
+    }
+  ]
+}
