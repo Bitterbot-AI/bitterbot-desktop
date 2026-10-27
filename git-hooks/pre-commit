@@ -31,10 +31,17 @@ while IFS= read -r -d '' f; do
 done < <(node "$ROOT_DIR/scripts/pre-commit/filter-staged-files.mjs" lint -- "${files[@]}")
 
 if [[ ${#lint_files[@]} -gt 0 ]]; then
-  "$ROOT_DIR/scripts/pre-commit/run-node-tool.sh" oxlint --type-aware -- "${lint_files[@]}" || {
+  # oxlint exits 1 with "No files found to lint" when EVERY staged file falls
+  # under .oxlintrc.json ignorePatterns (e.g. a commit touching only
+  # src/agents/skills/, which the root "skills/" pattern also matches). That
+  # is not a lint failure; CI's `pnpm lint` applies the same ignore list.
+  lint_out="$("$ROOT_DIR/scripts/pre-commit/run-node-tool.sh" oxlint --type-aware -- "${lint_files[@]}" 2>&1)" && lint_rc=0 || lint_rc=$?
+  if [[ $lint_rc -ne 0 ]] && ! grep -q "No files found to lint" <<<"$lint_out"; then
+    printf '%s\n' "$lint_out"
     echo "Pre-commit lint failed. Fix the errors above, then re-stage and commit."
     exit 1
-  }
+  fi
+  [[ -n "$lint_out" ]] && printf '%s\n' "$lint_out"
 fi
 
 # Filter to formattable files and run oxfmt.

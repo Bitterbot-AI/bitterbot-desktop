@@ -949,7 +949,17 @@ export type IncomingSkillSummary = {
 export function receiverFactsFromConfig(config: BitterbotConfig): ReceiverFacts {
   let model: string | null = null;
   try {
-    model = resolveAgentModelPrimary(config, resolveDefaultAgentId(config)) ?? null;
+    // The default agent's own override first, then `agents.defaults.model`
+    // (string or `{ primary }`), which is where a typical install sets it.
+    // Found live on 2026-10-26: the override alone was null on a stock
+    // config, so every fit said "receiver model unknown".
+    const raw = config.agents?.defaults?.model as { primary?: string } | string | undefined;
+    const fromDefaults =
+      typeof raw === "string" ? raw.trim() : typeof raw === "object" ? raw?.primary?.trim() : "";
+    model = resolveAgentModelPrimary(config, resolveDefaultAgentId(config)) ?? fromDefaults ?? null;
+    if (!model) {
+      model = null;
+    }
   } catch {
     model = null;
   }
