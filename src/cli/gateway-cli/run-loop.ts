@@ -24,7 +24,12 @@ export async function runGatewayLoop(params: {
   start: () => Promise<Awaited<ReturnType<typeof startGatewayServer>>>;
   runtime: typeof defaultRuntime;
 }) {
-  const lock = await acquireGatewayLock();
+  const lock = await acquireGatewayLock({
+    onRestartHandoffWait: (parentPid) =>
+      gatewayLog.info(
+        `lock still held by the restarting gateway (pid ${parentPid}); waiting for it to exit`,
+      ),
+  });
   let server: Awaited<ReturnType<typeof startGatewayServer>> | null = null;
   let shuttingDown = false;
   let restartResolver: (() => void) | null = null;
@@ -95,6 +100,9 @@ export async function runGatewayLoop(params: {
                 ? `spawned pid ${respawn.pid ?? "unknown"}`
                 : "supervisor restart";
             gatewayLog.info(`restart mode: full process restart (${modeLabel})`);
+            // Hand the lock over now: runtime.exit() below never reaches the
+            // finally that would release it, and the child is already waiting.
+            await lock?.release().catch(() => undefined);
             cleanupSignals();
             params.runtime.exit(0);
           } else {

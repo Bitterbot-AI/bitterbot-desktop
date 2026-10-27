@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { readBootVerify } from "./boot-verify.js";
+import { RESTART_PARENT_PID_ENV } from "./gateway-lock.js";
 import { setupHandoverPending } from "./setup-handover.js";
 import { CURRENT_LINK, resolveTarballLayout } from "./tarball-install.js";
 import { spawnTarballBootWatchdog } from "./tarball-watchdog-spawn.js";
@@ -111,7 +112,7 @@ export function restartGatewayProcessWithFreshPid(): GatewayRespawnResult {
   }
   if (tarball) {
     try {
-      const env = { ...process.env };
+      const env = { ...process.env, [RESTART_PARENT_PID_ENV]: String(process.pid) };
       // The new launcher sets its own root, and its entry.js re-execs itself
       // (warning flags) unless this marker is inherited.
       delete env.BITTERBOT_INSTALL_ROOT;
@@ -128,7 +129,9 @@ export function restartGatewayProcessWithFreshPid(): GatewayRespawnResult {
   try {
     const args = [...process.execArgv, ...process.argv.slice(1)];
     const child = spawn(process.execPath, args, {
-      env: process.env,
+      // The child finds our lock still held while we drain and close; the pid
+      // lets it wait for us instead of giving up at the plain lock timeout.
+      env: { ...process.env, [RESTART_PARENT_PID_ENV]: String(process.pid) },
       detached: true,
       stdio: "inherit",
     });

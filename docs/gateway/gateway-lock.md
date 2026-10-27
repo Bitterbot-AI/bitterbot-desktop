@@ -8,7 +8,7 @@ title: "Gateway Lock"
 
 # Gateway lock
 
-Last updated: 2025-12-11
+Last updated: 2026-10-27
 
 ## Why
 
@@ -27,6 +27,13 @@ Last updated: 2025-12-11
 
 - If another process holds the port, startup throws `GatewayLockError("another gateway instance is already listening on ws://127.0.0.1:<port>")`.
 - Other bind failures surface as `GatewayLockError("failed to bind gateway socket on ws://127.0.0.1:<port>: …")`.
+
+## Restart handoff
+
+- A full-process restart (SIGUSR1, the gateway tool, a config change that needs a restart) spawns the new gateway while the old one is still draining tasks and closing the server; the orchestrator sidecar alone can take ten seconds to exit. The child therefore usually finds the lock file still held by its parent.
+- The child is told who its parent is (`BITTERBOT_RESTART_PARENT_PID`). When the lock owner is that pid, the child waits up to 120 s for the parent to release the lock or exit instead of giving up at the plain 5 s timeout, and logs `lock still held by the restarting gateway (pid …); waiting for it to exit` once.
+- The parent releases the lock right after the spawn succeeds, before it exits, so the handoff normally completes in well under a second.
+- Before 2026-10-27 the child gave up at 5 s, the parent then exited, and no gateway was left listening (a 51-minute outage on the reference node). A lock held by any other live gateway still fails fast as before.
 
 ## Operational notes
 
