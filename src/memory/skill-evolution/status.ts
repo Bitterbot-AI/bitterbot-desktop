@@ -36,6 +36,8 @@ export interface EvolutionStatus {
     gateAttempts: number;
     lastVerdict: string | null;
     senderClaim: { verdict: string; model: string | null; evolverModel: string | null } | null;
+    /** PLAN-58: this node's fit against the sender's applicability profile. */
+    applicabilityFit: { level: string; score: number | null; mismatches: string[] } | null;
   }>;
   evolvedLive: Array<{
     name: string;
@@ -110,6 +112,13 @@ export async function collectEvolutionStatus(
               verdict: meta.peer.trailer.verdict,
               model: meta.peer.trailer.model ?? null,
               evolverModel: meta.peer.trailer.evolverModel ?? null,
+            }
+          : null,
+        applicabilityFit: meta.peer?.applicabilityFit
+          ? {
+              level: meta.peer.applicabilityFit.level,
+              score: meta.peer.applicabilityFit.score,
+              mismatches: meta.peer.applicabilityFit.mismatches,
             }
           : null,
       });

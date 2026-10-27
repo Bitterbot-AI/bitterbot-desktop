@@ -12,6 +12,11 @@ import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
 import {
+  type ApplicabilityFit,
+  assessApplicabilityFit,
+  type ReceiverFacts,
+} from "../../memory/skill-evolution/applicability-profile.js";
+import {
   bindingMismatch,
   type EvolutionProvenanceRecord,
   type EvolutionRetractionRecord,
@@ -24,7 +29,9 @@ import {
   scanSkillForInjection,
   shouldForceQuarantine,
 } from "../../security/skill-injection-scanner.js";
+import { hasBinary, resolveRuntimePlatform } from "../../shared/config-eval.js";
 import { CONFIG_DIR } from "../../utils.js";
+import { resolveAgentModelPrimary, resolveDefaultAgentId } from "../agent-scope.js";
 import {
   checkDescriptionContract,
   type DescriptionContractIssue,
@@ -217,6 +224,8 @@ export async function ingestSkill(params: {
     recordIngestionResult(pubkey: string, accepted: boolean): void;
     recordInjectionFlag?(pubkey: string, severity: InjectionSeverity): void;
   };
+  /** PLAN-58: override this node's facts for the applicability fit (tests). */
+  receiverFacts?: ReceiverFacts;
   /** Override system-event sink for tests; production uses the real queue. */
   notifyQuarantine?: (message: string) => void;
 }): Promise<IngestResult> {
@@ -372,6 +381,13 @@ export async function ingestSkill(params: {
     }
   }
 
+  // PLAN-58: this node's fit against the sender's applicability profile.
+  // Display + evaluation order + canary strictness only; never admission.
+  const applicabilityFit = assessApplicabilityFit(
+    evolutionProvenance?.applicability ?? null,
+    params.receiverFacts ?? receiverFactsFromConfig(params.config),
+  );
+
   // 5b. Injection scan (PLAN-13 Phase A).
   // Runs on the decoded bytes to catch adversarial content from a signed-but-
   // malicious peer. A `critical` severity force-quarantines regardless of the
@@ -469,8 +485,10 @@ export async function ingestSkill(params: {
         injection_scan: scanResult ?? undefined,
         routing,
         evolution_provenance: evolutionProvenance ?? undefined,
+        applicability_fit: applicabilityFit,
       },
       trailer: evolutionProvenance,
+      applicabilityFit,
       reason: `auto-accepted from trusted peer ${envelope.author_peer_id}`,
     });
     log.info(
@@ -505,6 +523,7 @@ export async function ingestSkill(params: {
         routing,
         routing_hold: routingHold,
         evolution_provenance: evolutionProvenance ?? undefined,
+        applicability_fit: applicabilityFit,
       },
       null,
       2,
@@ -676,6 +695,13 @@ export async function acceptIncomingSkill(params: {
         ? provenance.content_hash
         : createHash("sha256").update(Buffer.from(content, "utf-8")).digest("hex");
     const trailer = parseProvenanceTrailer(content);
+    // PLAN-58: the fit computed at ingest travels to the stage; an entry
+    // recorded before PLAN-58 (no fit on its envelope) is assessed now.
+    const recordedFit = provenance.applicability_fit as ApplicabilityFit | undefined;
+    const applicabilityFit =
+      recordedFit && typeof recordedFit === "object" && typeof recordedFit.level === "string"
+        ? recordedFit
+        : assessApplicabilityFit(trailer?.applicability ?? null, receiverFactsFromConfig(config));
     const stageCollision = await peerStageCollision(undefined, skillName, provenance.author_pubkey);
     if (stageCollision) {
       return { ok: false, action: "rejected", reason: stageCollision };
@@ -692,8 +718,10 @@ export async function acceptIncomingSkill(params: {
         timestamp: typeof provenance.timestamp === "number" ? provenance.timestamp : 0,
         accepted_by: "operator",
         accepted_at: Date.now(),
+        applicability_fit: applicabilityFit,
       },
       trailer,
+      applicabilityFit,
       reason: "operator accept from quarantine",
     });
     const targetDir = path.dirname(staged.stagingPath);
@@ -897,7 +925,41 @@ export type IncomingSkillSummary = {
     singleModel: boolean;
     signed: boolean;
   };
+  /**
+   * PLAN-58: this node's fit against the sender's applicability profile,
+   * computed at ingest. `profile` is a display subset of what the sender
+   * shipped; absent when the sender shipped none.
+   */
+  applicability?: {
+    level: ApplicabilityFit["level"];
+    score: number | null;
+    mismatches: string[];
+    profile?: {
+      models: string[];
+      os: string[];
+      runs: number;
+      successRate: number | null;
+      maxEvidenceLevel: number;
+      failures: Array<{ mechanism: string; count: number }>;
+    };
+  };
 };
+
+/** PLAN-58: what this node knows about itself, for the applicability fit. */
+export function receiverFactsFromConfig(config: BitterbotConfig): ReceiverFacts {
+  let model: string | null = null;
+  try {
+    model = resolveAgentModelPrimary(config, resolveDefaultAgentId(config)) ?? null;
+  } catch {
+    model = null;
+  }
+  return {
+    platform: resolveRuntimePlatform(),
+    model,
+    hasBinary,
+    hasEnv: (name) => Boolean(process.env[name]),
+  };
+}
 
 /** The synthetic peer id the skill-seekers harvester stamps on local scrapes. */
 const LOCAL_SCRAPE_PEER_IDS = new Set([
@@ -1022,6 +1084,31 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
             validatedOn,
             singleModel: ep.singleModel ?? validatedOn.length < 2,
             signed: !!ep.binding,
+          };
+        })(),
+        applicability: (() => {
+          const fit = envelopeMeta?.applicability_fit as ApplicabilityFit | undefined;
+          if (!fit || typeof fit !== "object" || typeof fit.level !== "string") {
+            return undefined;
+          }
+          const ep = envelopeMeta?.evolution_provenance as EvolutionProvenanceRecord | undefined;
+          const p = ep?.applicability;
+          return {
+            level: fit.level,
+            score: typeof fit.score === "number" ? fit.score : null,
+            mismatches: Array.isArray(fit.mismatches) ? fit.mismatches : [],
+            ...(p
+              ? {
+                  profile: {
+                    models: p.measured.models,
+                    os: p.measured.os,
+                    runs: p.outcomes.runs,
+                    successRate: p.outcomes.successRate,
+                    maxEvidenceLevel: p.outcomes.maxEvidenceLevel,
+                    failures: p.failures,
+                  },
+                }
+              : {}),
           };
         })(),
       });

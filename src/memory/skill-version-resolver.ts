@@ -53,6 +53,12 @@ export type FitnessInput = {
   peerTrust: number;
   /** Age in milliseconds since creation. */
   ageMs: number;
+  /**
+   * PLAN-58: this node's applicability fit score for a peer skill (0–1),
+   * null when the sender shipped no profile. Like trust, it orders
+   * evaluation and has NO weight in the activation score.
+   */
+  applicabilityFit?: number | null;
 };
 
 // ── Fitness weights ────────────────────────────────────────────────────────
@@ -63,6 +69,8 @@ export type FitnessInput = {
 const WEIGHT_EXECUTION = 0.7;
 const WEIGHT_TRUST = 0;
 const WEIGHT_RECENCY = 0.3;
+/** PLAN-58: evaluation-order value of "no applicability profile" (below any measured fit). */
+const UNKNOWN_FIT_PRIORITY = 0.25;
 
 /** Minimum executions before success rate is considered reliable. */
 const MIN_EXECUTIONS_FOR_CONFIDENCE = 3;
@@ -121,8 +129,19 @@ export class SkillVersionResolver {
    * PLAN-45 4.1: reputation's only job. Higher goes first in evaluation
    * queues (attestation sweep, exchange); it never changes what activates.
    */
-  static evaluationPriority(input: Pick<FitnessInput, "peerTrust">): number {
-    return Number.isFinite(input.peerTrust) ? Math.min(1, Math.max(0, input.peerTrust)) : 0.5;
+  static evaluationPriority(input: Pick<FitnessInput, "peerTrust" | "applicabilityFit">): number {
+    const trust = Number.isFinite(input.peerTrust)
+      ? Math.min(1, Math.max(0, input.peerTrust))
+      : 0.5;
+    if (input.applicabilityFit === undefined) {
+      return trust;
+    }
+    // PLAN-58: half trust, half fit; a missing profile ranks below any measured fit.
+    const fit =
+      input.applicabilityFit === null || !Number.isFinite(input.applicabilityFit)
+        ? UNKNOWN_FIT_PRIORITY
+        : Math.min(1, Math.max(0, input.applicabilityFit));
+    return 0.5 * trust + 0.5 * fit;
   }
 
   /**

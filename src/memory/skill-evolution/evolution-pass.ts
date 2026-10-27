@@ -123,6 +123,8 @@ export interface EvolutionPassDeps {
   maturityDays?: number;
   /** PLAN-45 5.4: publish only skills validated on >= 2 models. */
   requireCrossModel?: boolean;
+  /** PLAN-58: build `.applicability.json` each pass and ship it in the trailer. */
+  applicabilityProfile?: { enabled?: boolean; publish?: boolean; windowDays?: number };
   publisher?: SkillPublisher | null;
   /** Tasks-mode real-rollout executor (validation gate builds the paired runner). */
   agentTurn?: AgentTurnFn;

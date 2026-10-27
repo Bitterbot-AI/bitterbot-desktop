@@ -8,10 +8,12 @@ import { verifyPeerBindings } from "../../agents/skills/peer-binding.js";
 import { pubkeyId } from "../../commerce/envelope.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { syncAttestations } from "../../services/attestation-client.js";
+import { resolveRuntimePlatform } from "../../shared/config-eval.js";
 import { CommerceReputationLedger } from "../commerce-reputation.js";
 import { ContributorStatusLedger } from "../contributor-status.js";
 import { SellerBondLedger } from "../seller-bond-ledger.js";
 import { SkillLifecycleStore } from "../skill-lifecycle.js";
+import { refreshApplicabilityProfiles } from "./applicability-refresh.js";
 import { applyAttestationDemotions } from "./attestation-actions.js";
 import { runAttestationSweep, skillContentSha256 } from "./attestation.js";
 import { makeAttesterWeight } from "./attester-weight.js";
@@ -58,6 +60,8 @@ export async function runHousekeeping(
   attestation?: { attested: number; skipped: number; held: number };
   /** PLAN-44 Phase 5a: live-skill reads credited from the journal this pass. */
   skillReads?: { scannedRuns: number; credited: number };
+  /** PLAN-58: applicability profiles rebuilt this pass. */
+  applicabilityProfiles?: { written: number; skipped: number };
   /** PLAN-45 Phase 1.1: tool-level execution rows stamped with their run's grounded outcome. */
   executionOutcomes?: BackfillExecutionOutcomesResult;
   /** PLAN-45 Phase 1.3: `.evidence.json` rebuilt for every live skill. */
@@ -113,6 +117,23 @@ export async function runHousekeeping(
     evidenceRecords = records.length;
   } catch (err) {
     log.warn(`evidence record refresh failed: ${String(err)}`);
+  }
+  // PLAN-58: the applicability profile beside the evidence record, from the
+  // same ledgers plus a bounded number of journal traces. Default on.
+  let applicabilityProfiles: { written: number; skipped: number } | undefined;
+  if (deps.applicabilityProfile?.enabled !== false) {
+    try {
+      applicabilityProfiles = await refreshApplicabilityProfiles({
+        ...(storeOpts.configDir ? { storeOpts } : {}),
+        journal: deps.journal ?? null,
+        platform: resolveRuntimePlatform(),
+        ...(deps.applicabilityProfile?.windowDays !== undefined
+          ? { windowDays: deps.applicabilityProfile.windowDays }
+          : {}),
+      });
+    } catch (err) {
+      log.warn(`applicability profile refresh failed: ${String(err)}`);
+    }
   }
   // PLAN-45 Phase 3: the post-promotion monitor runs on fresh evidence and
   // BEFORE the routing repair / gate spend anything on a skill about to be
@@ -329,6 +350,11 @@ export async function runHousekeeping(
       ...(storeOpts.configDir ? { storeOpts } : {}),
       ...(deps.maturityDays !== undefined ? { maturityDays: deps.maturityDays } : {}),
       ...(deps.requireCrossModel ? { requireCrossModel: true } : {}),
+      // PLAN-58: ship the profile unless the operator turned publishing off.
+      ...(deps.applicabilityProfile?.enabled === false ||
+      deps.applicabilityProfile?.publish === false
+        ? { applicabilityProfile: false }
+        : {}),
       // PLAN-45 4.4: sign the trailer with the device key, naming the node key.
       ...(deps.attestKeyPair && deps.nodePubkey
         ? { signing: { key: deps.attestKeyPair, nodePubkey: deps.nodePubkey } }
@@ -337,6 +363,7 @@ export async function runHousekeeping(
   }
   return {
     ...(skillReads ? { skillReads } : {}),
+    ...(applicabilityProfiles ? { applicabilityProfiles } : {}),
     ...(executionOutcomes ? { executionOutcomes } : {}),
     ...(evidenceRecords !== undefined ? { evidenceRecords } : {}),
     ...(routingRepair ? { routingRepair } : {}),

@@ -101,6 +101,7 @@
     "benchmark:longmemeval:download": "bash benchmarks/longmemeval/download.sh",
     "benchmark:longmemeval:evaluate": "node --import tsx benchmarks/longmemeval/evaluate.ts",
     "benchmark:longmemeval:oracle": "node --import tsx benchmarks/longmemeval/runner.ts --oracle",
+    "benchmark:longmemeval:retrieval": "node --import tsx benchmarks/longmemeval/runner-retrieval.ts",
     "benchmark:skills": "node --import tsx benchmarks/skill-evolution/ablation.ts",
     "benchmark:skills:check": "node --import tsx benchmarks/skill-evolution/ablation.ts --check",
     "bitterbot": "node scripts/run-node.mjs",

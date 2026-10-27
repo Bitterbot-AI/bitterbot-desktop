@@ -68,6 +68,8 @@ export type ResolvedMemorySearchConfig = {
       candidateMultiplier: number;
       mergeStrategy: "rrf" | "weighted";
     };
+    /** PLAN-58: per-channel detail the memory_search tool shows the model. */
+    channelDiagnostics: "full" | "ranks" | "off";
     recency: {
       enabled: boolean;
       alpha: number;
@@ -376,6 +378,9 @@ function mergeConfig(
         candidateMultiplier,
         mergeStrategy: hybrid.mergeStrategy as "rrf" | "weighted",
       },
+      channelDiagnostics: resolveChannelDiagnostics(
+        overrides?.query?.channelDiagnostics ?? defaults?.query?.channelDiagnostics,
+      ),
       recency: {
         enabled:
           (overrides?.query as Record<string, unknown>)?.recency != null
@@ -412,6 +417,11 @@ function mergeConfig(
           : undefined,
     },
   };
+}
+
+/** PLAN-58: default "ranks"; anything unrecognised falls back to the default. */
+export function resolveChannelDiagnostics(value: unknown): "full" | "ranks" | "off" {
+  return value === "full" || value === "off" ? value : "ranks";
 }
 
 export function resolveMemorySearchConfig(

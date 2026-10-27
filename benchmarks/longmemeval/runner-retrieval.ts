@@ -20,6 +20,7 @@
  *   node --import tsx benchmarks/longmemeval/runner-retrieval.ts [--oracle] [--limit N]
  */
 
+import { execSync } from "node:child_process";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,8 +29,79 @@ import { parseArgs } from "node:util";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+import type { HybridChannel } from "../../src/memory/hybrid.js";
+import type { MemorySearchResult } from "../../src/memory/types.js";
 import { loadDataset, sessionToMarkdown, cleanWorkDir } from "./adapter.js";
 import { createBenchmarkMemoryManager } from "./bitterbot-bridge.js";
+
+// ── PLAN-58: per-channel attribution ──
+//
+// Every result now carries `channels` (rank + native score per channel that
+// returned it). From the same fused list we can therefore compute, per
+// question, what EACH channel alone would have recalled at K and which
+// channel(s) found the gold chunk, without a second search. This is the
+// frozen baseline every later retrieval experiment is measured against.
+
+const CHANNELS: readonly HybridChannel[] = ["vector", "keyword", "graph"];
+
+type ChannelRecall = Record<HybridChannel, { recall_any_5: number; recall_any_10: number }>;
+/** Which channels contributed to the top-5 fused hit on a gold session. */
+type Attribution = "vector-only" | "keyword-only" | "graph-only" | "multi" | "none";
+
+/** Re-rank the fused list by one channel's own rank and dedupe to sessions. */
+function sessionsByChannel(chunks: MemorySearchResult[], channel: HybridChannel): string[] {
+  const ranked = chunks
+    .filter((c) => c.channels?.[channel])
+    .toSorted((a, b) => a.channels![channel]!.rank - b.channels![channel]!.rank);
+  const order: string[] = [];
+  const seen = new Set<string>();
+  for (const c of ranked) {
+    const sid = sessionIdFromPath(c.path);
+    if (!seen.has(sid)) {
+      seen.add(sid);
+      order.push(sid);
+    }
+  }
+  return order;
+}
+
+function channelRecall(chunks: MemorySearchResult[], gold: string[]): ChannelRecall {
+  const out = {} as ChannelRecall;
+  for (const ch of CHANNELS) {
+    const order = sessionsByChannel(chunks, ch);
+    const top5 = new Set(order.slice(0, 5));
+    const top10 = new Set(order.slice(0, 10));
+    out[ch] = {
+      recall_any_5: gold.some((g) => top5.has(g)) ? 1 : 0,
+      recall_any_10: gold.some((g) => top10.has(g)) ? 1 : 0,
+    };
+  }
+  return out;
+}
+
+/** For the first fused top-5 chunk on a gold session, who found it? */
+function attribution(chunks: MemorySearchResult[], top5: Set<string>, gold: string[]): Attribution {
+  const hit = chunks.find((c) => {
+    const sid = sessionIdFromPath(c.path);
+    return top5.has(sid) && gold.includes(sid);
+  });
+  if (!hit?.channels) {
+    return "none";
+  }
+  const found = CHANNELS.filter((ch) => hit.channels![ch]);
+  if (found.length > 1) {
+    return "multi";
+  }
+  return found[0] ? (`${found[0]}-only` as Attribution) : "none";
+}
+
+function gitCommit(): string | null {
+  try {
+    return execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+  } catch {
+    return null;
+  }
+}
 
 // ── CLI Args ──
 
@@ -64,6 +136,11 @@ interface PerQuestion {
   recall_all_5: number;
   recall_all_10: number;
   num_chunks_returned: number;
+  /** PLAN-58: what each channel alone would have recalled from the same fused list. */
+  channel_recall?: ChannelRecall;
+  /** PLAN-58: which channel(s) found the gold chunk in the fused top-5. */
+  attribution?: Attribution;
+  fusion?: string;
   error?: string;
 }
 
@@ -73,6 +150,10 @@ interface Aggregate {
   recall_any_10_sum: number;
   recall_all_5_sum: number;
   recall_all_10_sum: number;
+  /** PLAN-58 */
+  channel_5_sum: Record<HybridChannel, number>;
+  channel_10_sum: Record<HybridChannel, number>;
+  attribution: Record<Attribution, number>;
 }
 
 function emptyAgg(): Aggregate {
@@ -82,6 +163,9 @@ function emptyAgg(): Aggregate {
     recall_any_10_sum: 0,
     recall_all_5_sum: 0,
     recall_all_10_sum: 0,
+    channel_5_sum: { vector: 0, keyword: 0, graph: 0 },
+    channel_10_sum: { vector: 0, keyword: 0, graph: 0 },
+    attribution: { "vector-only": 0, "keyword-only": 0, "graph-only": 0, multi: 0, none: 0 },
   };
 }
 
@@ -91,6 +175,15 @@ function addToAgg(agg: Aggregate, q: PerQuestion) {
   agg.recall_any_10_sum += q.recall_any_10;
   agg.recall_all_5_sum += q.recall_all_5;
   agg.recall_all_10_sum += q.recall_all_10;
+  if (q.channel_recall) {
+    for (const ch of CHANNELS) {
+      agg.channel_5_sum[ch] += q.channel_recall[ch].recall_any_5;
+      agg.channel_10_sum[ch] += q.channel_recall[ch].recall_any_10;
+    }
+  }
+  if (q.attribution) {
+    agg.attribution[q.attribution] += 1;
+  }
 }
 
 function fmt(agg: Aggregate) {
@@ -104,6 +197,15 @@ function fmt(agg: Aggregate) {
     "R@10": pct(agg.recall_any_10_sum),
     "R@5(all)": pct(agg.recall_all_5_sum),
     "R@10(all)": pct(agg.recall_all_10_sum),
+    // PLAN-58: per-channel recall from the same fused list, and who found the gold.
+    "vector R@5": pct(agg.channel_5_sum.vector),
+    "keyword R@5": pct(agg.channel_5_sum.keyword),
+    "graph R@5": pct(agg.channel_5_sum.graph),
+    "vector R@10": pct(agg.channel_10_sum.vector),
+    "keyword R@10": pct(agg.channel_10_sum.keyword),
+    attribution: Object.fromEntries(
+      Object.entries(agg.attribution).map(([k, v]) => [k, pct(v)]),
+    ) as Record<Attribution, string>,
   };
 }
 
@@ -228,6 +330,9 @@ async function run() {
         recall_all_5,
         recall_all_10,
         num_chunks_returned: chunks.length,
+        channel_recall: channelRecall(chunks, gold),
+        attribution: attribution(chunks, top5, gold),
+        fusion: chunks[0]?.fusion,
       };
 
       perQuestion.push(q);
@@ -269,6 +374,9 @@ async function run() {
   const outputPath = join(outputDir, `bitterbot_longmemeval_${suffix}.json`);
   const summary = {
     dataset: dataFile,
+    // PLAN-58: the baseline is only comparable when it names the code it measured.
+    git_commit: gitCommit(),
+    generated_at: new Date().toISOString(),
     n_questions: perQuestion.length,
     elapsed_seconds: parseFloat(totalSec),
     overall: fmt(overall),

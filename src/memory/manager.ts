@@ -1275,7 +1275,10 @@ export class MemoryIndexManager implements MemorySearchManager {
       maxResults: want * 3,
       tagSuperseded: false,
     });
-    return filterGuestResults(this.db, results).slice(0, want);
+    // PLAN-58: a guest learns nothing about the shape of the owner's index.
+    return filterGuestResults(this.db, results)
+      .slice(0, want)
+      .map(({ channels: _c, fusion: _f, ...rest }) => rest);
   }
 
   guestMayRead(relPath: string): boolean {
@@ -1521,7 +1524,16 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     let results: MemorySearchResult[];
     if (!hybrid.enabled) {
-      const boosted = applyImportanceBoost(vectorResults);
+      // PLAN-58: rank by cosine before the boost so `channels.vector.rank`
+      // is the channel's own order, not the boosted one.
+      const ranked = [...vectorResults]
+        .toSorted((a, b) => b.score - a.score)
+        .map((entry, i) => ({
+          ...entry,
+          channels: { vector: { rank: i + 1, score: entry.score } },
+          fusion: "vector-only" as const,
+        }));
+      const boosted = applyImportanceBoost(ranked);
       boosted.sort((a, b) => b.score - a.score);
       results = boosted.filter((entry) => entry.score >= minScore).slice(0, maxResults);
     } else if (useRrf) {
@@ -1682,6 +1694,8 @@ export class MemoryIndexManager implements MemorySearchManager {
           score: entry.score,
           snippet: entry.snippet,
           source: entry.source as MemorySource,
+          channels: entry.channels,
+          fusion: entry.fusion,
         }));
     } else {
       // Legacy weighted merge: score = vectorWeight * vectorScore + textWeight * textScore
@@ -2302,6 +2316,17 @@ export class MemoryIndexManager implements MemorySearchManager {
       },
       // ── Knowledge Crystal extended status ──
       crystals: this.getCrystalStatus(),
+      // PLAN-58: which channels a search can draw on right now.
+      search: {
+        fusion: !this.settings.query.hybrid.enabled
+          ? "vector-only"
+          : this.settings.query.hybrid.mergeStrategy,
+        channels: {
+          vector: this.vector.enabled && this.vector.available !== false,
+          keyword: this.settings.query.hybrid.enabled && this.fts.enabled && this.fts.available,
+          graph: this.settings.query.hybrid.enabled && this.knowledgeGraph != null,
+        },
+      },
     };
   }
 

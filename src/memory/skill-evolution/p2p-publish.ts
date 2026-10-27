@@ -37,6 +37,7 @@ import {
 import type { KeyPair } from "../../commerce/envelope.js";
 import { redactSensitiveText } from "../../logging/redact.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { readApplicabilityProfile } from "./applicability-refresh.js";
 import { atomicWriteJson } from "./fs-atomic.js";
 import {
   buildProvenanceTrailer,
@@ -161,6 +162,12 @@ export async function publishEligibleEvolvedSkills(deps: {
    * models (default false: such a skill publishes tagged `singleModel`).
    */
   requireCrossModel?: boolean;
+  /**
+   * PLAN-58: ship the skill's `.applicability.json` inside the signed
+   * trailer (default true). A profile the leak check flags is dropped and
+   * the skill still publishes with its verdict alone.
+   */
+  applicabilityProfile?: boolean;
 }): Promise<PublishSweepResult> {
   const storeOpts = deps.storeOpts ?? {};
   const trailOpts = storeOpts.configDir ? { configDir: storeOpts.configDir } : {};
@@ -204,6 +211,20 @@ export async function publishEligibleEvolvedSkills(deps: {
       // peer skill later patched here) is published with ONE trailer, and
       // the binding commits to the trailer-free body receivers recompute.
       const body = stripProvenanceTrailer(content);
+      // PLAN-58: the applicability profile rides inside the signed trailer.
+      // It is built from names, hashes and counts only, but the leak check
+      // runs over it anyway; a hit drops the PROFILE, never the skill.
+      let applicability =
+        deps.applicabilityProfile === false
+          ? null
+          : await readApplicabilityProfile(roots.liveRoot, skill.name);
+      if (applicability) {
+        const profileLeak = findPublishLeak(JSON.stringify(applicability));
+        if (profileLeak) {
+          log.warn(`${skill.name}: applicability profile withheld: ${profileLeak}`);
+          applicability = null;
+        }
+      }
       const trailer = provenanceTrailer(
         skill.meta,
         deps.signing
@@ -215,6 +236,7 @@ export async function publishEligibleEvolvedSkills(deps: {
               ...(deps.now !== undefined ? { now: deps.now } : {}),
             }
           : undefined,
+        { applicability },
       );
       const withProvenance = `${body}\n${trailer}`;
       const raw = await deps.publisher.publishSkill(

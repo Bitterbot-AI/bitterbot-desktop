@@ -790,6 +790,17 @@ export const BitterbotSchema = z
             propagate: z.boolean().optional().describe("Default: true"),
             maturityDays: z.number().positive().optional().describe("Default: 3"),
             requireCrossModel: z.boolean().optional().describe("Default: false"),
+            applicabilityProfile: z
+              .object({
+                enabled: z.boolean().optional().describe("Default: true"),
+                publish: z.boolean().optional().describe("Default: true"),
+                windowDays: z.number().int().positive().optional().describe("Default: 14"),
+              })
+              .strict()
+              .optional()
+              .describe(
+                "PLAN-58: build and publish the skill applicability profile (conditions a skill was measured under)",
+              ),
             validationBudgetMinutes: z.number().positive().optional().describe("Default: 45"),
             descriptionRepair: z.boolean().optional().describe("Default: true"),
             routingRepair: z.boolean().optional().describe("Default: true"),

@@ -386,6 +386,15 @@ export type MemorySearchConfig = {
       mergeStrategy?: "rrf" | "weighted";
     };
     /**
+     * PLAN-58: how much per-channel retrieval detail the `memory_search`
+     * tool shows the model on each result.
+     * - `"ranks"` (default): compact per-channel ranks, e.g. `{v:2,k:5}`.
+     * - `"full"`: ranks and native scores (vector cosine, BM25-derived, graph).
+     * - `"off"`: tool output byte-identical to pre-PLAN-58.
+     * Programmatic callers of `manager.search` always get the full block.
+     */
+    channelDiagnostics?: "full" | "ranks" | "off";
+    /**
      * Weight for importance-score boost applied after hybrid merge (0–1).
      * Only active when `hybrid.mergeStrategy` is `"weighted"`.
      * With RRF (default), importance is decoupled from retrieval entirely.

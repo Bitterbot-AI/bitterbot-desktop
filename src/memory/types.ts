@@ -16,6 +16,16 @@ export type MemorySearchResult = {
   score: number;
   snippet: string;
   source: MemorySource;
+  /**
+   * PLAN-58: which retrieval channels found this result, with each channel's
+   * 1-based rank and native score (vector cosine, BM25-derived, graph). The
+   * fused `score` under RRF is rank-only (max about 0.05 for k = 60), so a
+   * consumer that wants "how similar" must read `channels.vector.score`.
+   * Absent on guest searches.
+   */
+  channels?: import("./hybrid.js").HybridChannels;
+  /** PLAN-58: how `score` was produced. Absent on guest searches. */
+  fusion?: import("./hybrid.js").HybridFusion;
   citation?: string;
   crystal?: import("./crystal-types.js").KnowledgeCrystal;
   /**
@@ -90,6 +100,11 @@ export type MemoryProviderStatus = {
   /** `pool` when memory batches may be routed to compute pools (PLAN-57), else `local`. */
   computeRouting?: "pool" | "local";
   crystals?: Record<string, unknown>;
+  /** PLAN-58: which retrieval channels are live and how they are fused. */
+  search?: {
+    fusion: import("./hybrid.js").HybridFusion;
+    channels: { vector: boolean; keyword: boolean; graph: boolean };
+  };
 };
 
 export interface MemorySearchManager {

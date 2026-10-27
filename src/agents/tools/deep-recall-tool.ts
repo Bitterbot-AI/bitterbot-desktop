@@ -15,7 +15,7 @@ import path from "node:path";
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import { getMemorySearchManager } from "../../memory/index.js";
-import type { MemorySearchManager } from "../../memory/types.js";
+import type { MemorySearchManager, MemorySearchResult } from "../../memory/types.js";
 import { resolveSessionAgentId, resolveAgentModelPrimary } from "../agent-scope.js";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER } from "../defaults.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
@@ -78,6 +78,28 @@ function sandboxCacheKey(
  * reported in the tool result rather than failing, so the model can still
  * answer from the current conversation. Exported for tests.
  */
+/** Cosine (or weighted-fusion score) a quick hit needs before the REPL is skipped. */
+export const DEEP_RECALL_SHORTCUT_THRESHOLD = 0.8;
+
+/**
+ * PLAN-58: whether a quick `memory_search` hit is confident enough to count
+ * toward skipping the REPL. Under RRF the fused score is rank-only and tops
+ * out near 3/(60+1), so thresholding it at 0.8 meant the shortcut could never
+ * fire; the vector channel's native cosine is the number the threshold was
+ * written for. Weighted and vector-only fusion keep the fused score, which is
+ * already on the cosine scale.
+ */
+export function isHighConfidenceHit(
+  r: Pick<MemorySearchResult, "score" | "channels" | "fusion">,
+  threshold = DEEP_RECALL_SHORTCUT_THRESHOLD,
+): boolean {
+  if (r.fusion === "rrf") {
+    const cosine = r.channels?.vector?.score;
+    return typeof cosine === "number" && cosine >= threshold;
+  }
+  return r.score >= threshold;
+}
+
 export function resolveDeepRecallScope(params: {
   requested: RLMScope | undefined;
   defaultScope: RLMScope;
@@ -482,7 +504,7 @@ export function createDeepRecallTool(options: {
           });
           // Only shortcut if we have 3+ genuinely high-confidence results.
           // manager.search may ignore minScore (e.g. RRF strategy), so filter here.
-          const highConfidence = quickResults.filter((r) => r.score >= 0.8);
+          const highConfidence = quickResults.filter((r) => isHighConfidenceHit(r));
           if (highConfidence.length >= 3) {
             return jsonResult({
               source: "memory_search_shortcut",

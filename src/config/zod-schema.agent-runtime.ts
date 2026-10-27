@@ -549,6 +549,7 @@ export const MemorySearchSchema = z
           })
           .strict()
           .optional(),
+        channelDiagnostics: z.enum(["full", "ranks", "off"]).optional(),
         recency: z
           .object({
             enabled: z.boolean().optional(),
