@@ -112,7 +112,10 @@ export function restartGatewayProcessWithFreshPid(): GatewayRespawnResult {
   }
   if (tarball) {
     try {
-      const env = { ...process.env, [RESTART_PARENT_PID_ENV]: String(process.pid) };
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        [RESTART_PARENT_PID_ENV]: String(process.pid),
+      };
       // The new launcher sets its own root, and its entry.js re-execs itself
       // (warning flags) unless this marker is inherited.
       delete env.BITTERBOT_INSTALL_ROOT;
