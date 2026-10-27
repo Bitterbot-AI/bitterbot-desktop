@@ -229,7 +229,7 @@ export async function ingestSkill(params: {
   /** Override system-event sink for tests; production uses the real queue. */
   notifyQuarantine?: (message: string) => void;
 }): Promise<IngestResult> {
-  const { envelope, config, workspaceDir } = params;
+  const { envelope, config } = params;
   const origin = params.origin ?? "peer";
   // PLAN-45 Phase 0: "external-scrape" (Skill Seekers harvest) used to count
   // as local origin and accept straight into skills/, bypassing the review

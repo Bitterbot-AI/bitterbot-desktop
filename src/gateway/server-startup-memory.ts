@@ -27,9 +27,16 @@ export async function startGatewayMemoryBackend(params: {
 
   const { manager, error } = await getMemorySearchManager({ cfg: params.cfg, agentId });
   if (!manager) {
-    params.log.warn(
-      `memory startup initialization failed for agent "${agentId}": ${error ?? "unknown error"}`,
-    );
+    // No manager and no error means memory search is turned off for this
+    // agent (agents.defaults.memorySearch.enabled=false): a configuration,
+    // not a failure. Only a thrown initialization error is a warning.
+    if (error) {
+      params.log.warn(`memory startup initialization failed for agent "${agentId}": ${error}`);
+    } else {
+      params.log.info?.(
+        `memory search is disabled for agent "${agentId}"; skill network bridge not started`,
+      );
+    }
     return { skillNetworkBridge: null };
   }
 

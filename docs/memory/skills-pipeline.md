@@ -345,6 +345,19 @@ gate or touching the orchestrator.
 - Config: `skills.evolution.applicabilityProfile.{enabled, publish,
   windowDays}`, defaults `true`, `true`, `14`.
 
+#### Exercising it locally
+
+`scripts/sim-mesh/` brings up two throwaway gateways on one machine, joined
+only over loopback with the public bootstraps stripped, and drives the whole
+outbound and inbound path without an LLM: seeded evolved skills on the
+publisher go through the real housekeeping pass (evidence record, profile,
+signed trailer, orchestrator publish), arrive on the receiver through its
+orchestrator, and land in quarantine with the fit on the envelope, in the
+review list, in the staged meta after an operator accept and in the
+evolution status. A signed retraction from the publisher removes the
+receiver's quarantined copy. See the README there for the exact commands and
+the expected fits.
+
 ### Measuring it: the ablation harness (PLAN-45 Phase 5.1 and 5.2)
 
 The mechanism above is only a claim until it has numbers. `pnpm

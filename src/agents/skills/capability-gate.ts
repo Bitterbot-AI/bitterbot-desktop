@@ -171,9 +171,9 @@ function compareDeclarationAgainstProfile(
     }
   }
 
-  if (decl.wallet === true && profile.wallet === false) blocked.push("wallet");
-  if (decl.shell === true && profile.shell === false) blocked.push("shell");
-  if (decl.process === true && profile.process === false) blocked.push("process");
+  if (decl.wallet && !profile.wallet) blocked.push("wallet");
+  if (decl.shell && !profile.shell) blocked.push("shell");
+  if (decl.process && !profile.process) blocked.push("process");
 
   return blocked;
 }

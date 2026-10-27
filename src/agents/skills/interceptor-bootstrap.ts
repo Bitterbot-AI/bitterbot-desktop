@@ -32,7 +32,7 @@ interface BootstrapDeps {
    * Reads the current GCCRF state. Lives behind a getter so the dream
    * engine can lazily provide it after its own startup completes.
    */
-  gccrfState?: () => unknown | null;
+  gccrfState?: () => unknown;
   /** Optional channel resolver — `internal` if absent. */
   resolveChannel?: (sessionKey: string) => string;
   /** Optional Ed25519 signer. Unsigned-local fallback if absent. */

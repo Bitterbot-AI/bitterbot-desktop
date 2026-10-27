@@ -296,7 +296,7 @@ export function SkillEditor({ onClose }: { onClose: () => void }) {
   const validation = useMemo<ValidationResult>(() => validate(content), [content]);
 
   const appTheme = useUIStore((s) => s.theme);
-  const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
+  const monacoRef = useRef<Parameters<OnMount>[1]>(null);
 
   const onEditorMount: OnMount = useCallback((editor, monaco) => {
     monacoRef.current = monaco;

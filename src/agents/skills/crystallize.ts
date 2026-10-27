@@ -230,7 +230,7 @@ function detectRequiredBins(candidate: CrystallizationCandidate): string[] {
       }
     }
   }
-  return [...bins].sort();
+  return [...bins].toSorted();
 }
 
 function validateSkillMd(content: string): boolean {
