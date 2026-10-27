@@ -95,9 +95,19 @@ function attribution(chunks: MemorySearchResult[], top5: Set<string>, gold: stri
   return found[0] ? (`${found[0]}-only` as Attribution) : "none";
 }
 
+/**
+ * The commit under test, read ONCE before the first question. A run takes
+ * long enough for HEAD to move (the 2026-10-27 baseline was stamped with a
+ * commit made while it ran), so the stamp is taken at the start, and a dirty
+ * working tree is marked because the measured code is then not that commit.
+ */
 function gitCommit(): string | null {
   try {
-    return execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+    const head = execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+    const dirty = execSync("git status --porcelain --untracked-files=no", {
+      encoding: "utf-8",
+    }).trim();
+    return dirty ? `${head}+dirty` : head;
   } catch {
     return null;
   }
@@ -212,6 +222,7 @@ function fmt(agg: Aggregate) {
 // ── Main ──
 
 async function run() {
+  const measuredCommit = gitCommit();
   const dataFile = args.oracle
     ? join(args["data-dir"]!, "longmemeval_oracle.json")
     : join(args["data-dir"]!, "longmemeval_s.json");
@@ -375,7 +386,7 @@ async function run() {
   const summary = {
     dataset: dataFile,
     // PLAN-58: the baseline is only comparable when it names the code it measured.
-    git_commit: gitCommit(),
+    git_commit: measuredCommit,
     generated_at: new Date().toISOString(),
     n_questions: perQuestion.length,
     elapsed_seconds: parseFloat(totalSec),
