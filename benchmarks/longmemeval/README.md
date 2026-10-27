@@ -47,7 +47,7 @@ baseline any later retrieval change is compared against.
 
 Saved runs (LongMemEval-S, first 50 questions, all `single-session-user`, quiet bridge):
 
-| metric                            | `bitterbot_longmemeval_s_retrieval.json` (code 9708d2d1, AND-joined FTS) | `..._2026-10-27_keyword-or.json` (code b7e5d70f, OR-joined FTS) |
+| metric                            | `bitterbot_longmemeval_s_retrieval.json` (code 9708d2d1, AND-joined FTS) | `..._2026-10-27_keyword-or.json` (code 09e5a54e, OR-joined FTS) |
 | --------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
 | questions scored                  | 49 (one lost to the empty-embedding NOT NULL bug)                        | 50                                                              |
 | R@5 / R@10                        | 98.0% / 100%                                                             | 100% / 100%                                                     |
