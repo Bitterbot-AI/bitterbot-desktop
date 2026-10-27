@@ -21,6 +21,7 @@ import { yieldToEventLoop } from "./event-loop.js";
 import { maxSensitivity, tagSensitivity } from "./guest-access.js";
 import {
   chunkMarkdown,
+  embeddingToBlob as vectorToBlob,
   hashText,
   parseEmbedding,
   remapChunkLines,
@@ -63,9 +64,6 @@ const PENDING_EMBED_MODEL = "pending";
 // sub-batch reaches this size and still fails, its items are left pending instead
 // of aborting the whole sync.
 const EMBEDDING_BISECT_MIN_BATCH = 16;
-
-const vectorToBlob = (embedding: number[]): Buffer =>
-  Buffer.from(new Float32Array(embedding).buffer);
 
 const log = createSubsystemLogger("memory");
 

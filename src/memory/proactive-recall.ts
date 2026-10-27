@@ -15,6 +15,7 @@
 
 import type { DatabaseSync } from "node:sqlite";
 import type { HormonalState } from "./hormonal.js";
+import { FTS_STOPWORDS } from "./hybrid.js";
 import type { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { moodCongruentBonus } from "./mood-congruent-boost.js";
 import { graphAnchoredFacts } from "./proactive-recall-graph.js";
@@ -70,108 +71,19 @@ export const DEFAULT_PROACTIVE_RECALL_CONFIG: ProactiveRecallConfig = {
 };
 
 /**
- * Minimal English stopword set for the recall FTS fallback. Only needs to
- * strip the glue words of a conversational sentence; bm25 handles the rest.
- */
-const RECALL_STOPWORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "are",
-  "was",
-  "were",
-  "did",
-  "does",
-  "has",
-  "had",
-  "have",
-  "you",
-  "your",
-  "yours",
-  "our",
-  "ours",
-  "his",
-  "her",
-  "hers",
-  "its",
-  "their",
-  "theirs",
-  "this",
-  "that",
-  "these",
-  "those",
-  "with",
-  "from",
-  "what",
-  "which",
-  "when",
-  "where",
-  "who",
-  "whom",
-  "why",
-  "how",
-  "can",
-  "could",
-  "would",
-  "should",
-  "will",
-  "shall",
-  "may",
-  "might",
-  "must",
-  "about",
-  "into",
-  "onto",
-  "over",
-  "under",
-  "again",
-  "then",
-  "than",
-  "there",
-  "here",
-  "just",
-  "very",
-  "not",
-  "but",
-  "any",
-  "all",
-  "some",
-  "one",
-  "two",
-  "get",
-  "got",
-  "let",
-  "lets",
-  "please",
-  "tell",
-  "know",
-  "think",
-  "want",
-  "need",
-  "yesterday",
-  "today",
-  "tomorrow",
-  "now",
-  "still",
-  "yet",
-  "also",
-  "too",
-]);
-
-/**
  * Build an FTS5 query for the recall keyword fallback from a conversational
- * user message. Unlike `buildFtsQuery` (hybrid search), which ANDs every
- * token — correct for terse search-tool queries, useless for a natural
- * sentence where no fact contains every word — this ORs the content words and
- * lets bm25 rank by how many (and how rare) the matches are. Returns null
- * when the message has no usable content words.
+ * user message: ORs the content words (minimum three letters, stopwords
+ * dropped, at most twelve) and lets bm25 rank by how many (and how rare) the
+ * matches are. Returns null when the message has no usable content words.
+ * The hybrid search's `buildFtsQuery` now ORs as well; this variant stays
+ * stricter about short tokens because it runs on every user turn.
  */
 export function buildRecallFtsQuery(raw: string): string | null {
   const tokens =
     raw
       .toLowerCase()
       .match(/[\p{L}\p{N}_]+/gu)
-      ?.filter((t) => t.length >= 3 && !RECALL_STOPWORDS.has(t)) ?? [];
+      ?.filter((t) => t.length >= 3 && !FTS_STOPWORDS.has(t)) ?? [];
   if (tokens.length === 0) {
     return null;
   }

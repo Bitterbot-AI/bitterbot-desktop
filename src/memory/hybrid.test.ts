@@ -8,12 +8,28 @@ import {
 import { rrfFuse } from "./rrf.js";
 
 describe("memory hybrid helpers", () => {
-  it("buildFtsQuery tokenizes and AND-joins", () => {
-    expect(buildFtsQuery("hello world")).toBe('"hello" AND "world"');
-    expect(buildFtsQuery("FOO_bar baz-1")).toBe('"FOO_bar" AND "baz" AND "1"');
+  it("buildFtsQuery tokenizes and OR-joins so bm25 ranks by how many terms match", () => {
+    expect(buildFtsQuery("hello world")).toBe('"hello" OR "world"');
+    expect(buildFtsQuery("FOO_bar baz-1")).toBe('"FOO_bar" OR "baz" OR "1"');
     expect(buildFtsQuery("金银价格")).toBe('"金银价格"');
-    expect(buildFtsQuery("価格 2026年")).toBe('"価格" AND "2026年"');
+    expect(buildFtsQuery("価格 2026年")).toBe('"価格" OR "2026年"');
     expect(buildFtsQuery("   ")).toBeNull();
+  });
+
+  it("buildFtsQuery drops stopwords from a sentence but keeps every word of a short lookup", () => {
+    // A natural question: under AND this matched nothing anywhere.
+    expect(buildFtsQuery("what did the user say about their trip to Paris")).toBe(
+      '"user" OR "say" OR "trip" OR "Paris"',
+    );
+    // Two tokens: no stopword pass, so "the" survives on purpose.
+    expect(buildFtsQuery("the matrix")).toBe('"the" OR "matrix"');
+    // All stopwords: fall back to the raw tokens rather than returning nothing.
+    expect(buildFtsQuery("and the for")).toBe('"and" OR "the" OR "for"');
+    // Duplicates collapse and the term list is capped.
+    expect(buildFtsQuery("alpha alpha beta")).toBe('"alpha" OR "beta"');
+    expect(
+      buildFtsQuery(Array.from({ length: 30 }, (_, i) => `term${i}`).join(" "))?.split(" OR "),
+    ).toHaveLength(16);
   });
 
   it("bm25RankToScore is monotonic and clamped", () => {

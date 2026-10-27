@@ -62,6 +62,143 @@ export type HybridKeywordResult = {
   emotionalValence?: number | null;
 };
 
+/**
+ * Minimal English stopword set shared by the keyword channel and the
+ * proactive-recall fallback. It only needs to strip the glue words of a
+ * conversational sentence; bm25's inverse document frequency handles the rest.
+ */
+export const FTS_STOPWORDS: ReadonlySet<string> = new Set([
+  "the",
+  "and",
+  "for",
+  "are",
+  "was",
+  "were",
+  "did",
+  "does",
+  "has",
+  "had",
+  "have",
+  "you",
+  "your",
+  "yours",
+  "our",
+  "ours",
+  "his",
+  "her",
+  "hers",
+  "its",
+  "their",
+  "theirs",
+  "this",
+  "that",
+  "these",
+  "those",
+  "with",
+  "from",
+  "what",
+  "which",
+  "when",
+  "where",
+  "who",
+  "whom",
+  "why",
+  "how",
+  "can",
+  "could",
+  "would",
+  "should",
+  "will",
+  "shall",
+  "may",
+  "might",
+  "must",
+  "about",
+  "into",
+  "onto",
+  "over",
+  "under",
+  "again",
+  "then",
+  "than",
+  "there",
+  "here",
+  "just",
+  "very",
+  "not",
+  "but",
+  "any",
+  "all",
+  "some",
+  "one",
+  "two",
+  "get",
+  "got",
+  "let",
+  "lets",
+  "please",
+  "tell",
+  "know",
+  "think",
+  "want",
+  "need",
+  "yesterday",
+  "today",
+  "tomorrow",
+  "now",
+  "still",
+  "yet",
+  "also",
+  "too",
+  "a",
+  "i",
+  "to",
+  "of",
+  "in",
+  "on",
+  "at",
+  "it",
+  "is",
+  "as",
+  "be",
+  "by",
+  "or",
+  "an",
+  "if",
+  "we",
+  "my",
+  "me",
+  "do",
+  "so",
+  "up",
+  "no",
+  "us",
+  "he",
+  "she",
+  "they",
+  "them",
+  "been",
+  "being",
+]);
+
+/** Query terms kept after stopword removal; bm25 ranks by how many match. */
+export const FTS_MAX_QUERY_TERMS = 16;
+
+/**
+ * Build the FTS5 MATCH expression for the keyword channel.
+ *
+ * Terms are OR-joined, not AND-joined. Under AND, a chunk had to contain
+ * every token of the query, which held for terse two-word lookups and for
+ * nothing conversational: the PLAN-58 per-channel diagnostics showed the
+ * keyword channel contributing zero results to natural-language questions on
+ * the live store and on the LongMemEval baseline, so "hybrid" search had been
+ * vector-only in practice. With OR, bm25 ranks chunks by how many of the
+ * query's terms they contain and how rare those terms are, so an all-terms
+ * match still sorts first and the channel has something to say about the
+ * rest. Stopwords are dropped only when the query has three or more tokens,
+ * so a short lookup keeps every word it was given. Returns null when nothing
+ * searchable remains.
+ */
 export function buildFtsQuery(raw: string): string | null {
   const tokens =
     raw
@@ -71,8 +208,16 @@ export function buildFtsQuery(raw: string): string | null {
   if (tokens.length === 0) {
     return null;
   }
-  const quoted = tokens.map((t) => `"${t.replaceAll('"', "")}"`);
-  return quoted.join(" AND ");
+  const content =
+    tokens.length >= 3 ? tokens.filter((t) => !FTS_STOPWORDS.has(t.toLowerCase())) : tokens;
+  const kept = content.length > 0 ? content : tokens;
+  const unique = [...new Set(kept.map((t) => t.replaceAll('"', "")))]
+    .filter(Boolean)
+    .slice(0, FTS_MAX_QUERY_TERMS);
+  if (unique.length === 0) {
+    return null;
+  }
+  return unique.map((t) => `"${t}"`).join(" OR ");
 }
 
 export function bm25RankToScore(rank: number): number {
