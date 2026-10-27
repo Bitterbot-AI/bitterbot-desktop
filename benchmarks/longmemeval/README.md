@@ -45,6 +45,18 @@ chunk (`vector-only`, `keyword-only`, `graph-only`, `multi`). The output
 JSON records the git commit it measured, so a saved run is the frozen
 baseline any later retrieval change is compared against.
 
+Saved runs (LongMemEval-S, first 50 questions, all `single-session-user`, quiet bridge):
+
+| metric                            | `bitterbot_longmemeval_s_retrieval.json` (code 9708d2d1, AND-joined FTS) | `..._2026-10-27_keyword-or.json` (code b7e5d70f, OR-joined FTS) |
+| --------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| questions scored                  | 49 (one lost to the empty-embedding NOT NULL bug)                        | 50                                                              |
+| R@5 / R@10                        | 98.0% / 100%                                                             | 100% / 100%                                                     |
+| vector R@5                        | 98.0%                                                                    | 98.0%                                                           |
+| keyword R@5 / R@10                | 0.0% / 0.0%                                                              | 100% / 100%                                                     |
+| attribution of the top-5 gold hit | vector-only 98%, none 2%                                                 | multi 100%                                                      |
+
+The vector channel did not change between the two runs; the difference is that the keyword channel now takes part at all. On this slice it agrees with the vector channel on every gold session, which is what the fused score should reflect.
+
 ## How It Works
 
 1. **Ingest**: Each question's chat history is converted to timestamped session files and ingested through Bitterbot's normal memory pipeline (chunk → embed → store with temporal metadata)
