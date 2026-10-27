@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { MeshPanel } from "./MeshPanel";
 const fake = vi.hoisted(() => ({ status: "connected", request: vi.fn() }));
@@ -7,6 +7,7 @@ vi.mock("../../stores/gateway-store", () => ({
 }));
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 const peer = "12D3KooW" + "A".repeat(44);
@@ -29,6 +30,44 @@ const snapshot = {
   batches: [],
   activity: [],
 };
+it("clears a failed status poll after discovery reconnects", async () => {
+  vi.useFakeTimers();
+  fake.request
+    .mockReset()
+    .mockRejectedValueOnce(Error("gateway restarting"))
+    .mockResolvedValue(snapshot);
+  await act(async () => {
+    render(<MeshPanel />);
+  });
+  expect(screen.getByRole("alert").textContent).toContain("connected gateway");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("Discovery active")).toBeTruthy();
+});
+it("keeps an action failure visible when background polling succeeds", async () => {
+  vi.useFakeTimers();
+  fake.request.mockReset().mockImplementation(async (method: string) => {
+    if (method === "soapbox.mesh.grant") throw Error("grant denied");
+    return snapshot;
+  });
+  await act(async () => {
+    render(<MeshPanel />);
+  });
+  fireEvent.click(screen.getByText("Peers and operator access"));
+  fireEvent.change(screen.getByLabelText("Scope to share"), {
+    target: { value: "private:circle" },
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByText("Grant selected scope"));
+  });
+  expect(screen.getByRole("alert").textContent).toContain("Action failed");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(screen.getByRole("alert").textContent).toContain("Action failed");
+});
 it("keeps approvals explicit and retries the same batch without accessing a wallet", async () => {
   fake.request.mockImplementation(async (method: string) => {
     if (method === "soapbox.mesh.submit") throw Error("response lost");

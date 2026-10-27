@@ -10,6 +10,7 @@ export function MeshPanel() {
   const connected = useGatewayStore((s) => s.status) === "connected";
   const [data, setData] = useState<Snapshot>();
   const [error, setError] = useState("");
+  const [pollError, setPollError] = useState("");
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [mode, setMode] = useState<"private" | "collective">("private");
@@ -38,8 +39,9 @@ export function MeshPanel() {
     const poll = async () => {
       try {
         await refresh();
+        if (live) setPollError("");
       } catch {
-        if (live) setError("Compute mesh needs an updated, connected gateway.");
+        if (live) setPollError("Compute mesh needs an updated, connected gateway.");
       }
     };
     void poll();
@@ -111,6 +113,11 @@ export function MeshPanel() {
       {data?.error && (
         <p role="status" className="text-sm">
           {data.error}
+        </p>
+      )}
+      {pollError && (
+        <p role="alert" className="text-sm text-danger">
+          {pollError}
         </p>
       )}
       {error && (

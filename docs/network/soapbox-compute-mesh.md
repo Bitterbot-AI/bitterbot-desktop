@@ -201,3 +201,23 @@ The packaged plugin finds that archive without an overlay or source checkout.
 Base Sepolia and mainnet wallets remain separate. Follow the
 [buyer and operator guide](./soapbox.md); the older overlay acceptance above is
 historical evidence, not a substitute for testing the new release artifacts.
+
+### P2P is connected, but Compute discovery is unavailable
+
+Check the sidecar path reported in the gateway startup log. A source checkout's
+`orchestrator/target/release` or `target/debug` binary takes precedence over the
+downloaded sidecar in `~/.bitterbot/bin`. An old development binary can connect to
+the skill network while rejecting `bitterbot/compute/v1` with an error such as
+`only bitterbot/circle/*/v1 topics allowed`.
+
+Set `p2p.orchestratorBinary` to a versioned, signature-verified compatible release
+binary (0.2.4 supports the Compute topic and descriptor signer), then restart the
+gateway. Preserve the existing P2P key directory so the node keeps its identity
+and grants. Compute remains on, and the separate Base Sepolia wallet is unchanged.
+A successful status poll clears the UI's connection warning; failed user actions
+remain visible independently of background polling.
+
+Verify discovery with a separate peer receiving a fresh, valid signed descriptor.
+The panel's advertised GPU total counts discovered remote peers, so it can be zero
+on the operator itself even when that operator is advertising a GPU. Discovery
+does not grant workload access: existing pool/project approval is still required.
