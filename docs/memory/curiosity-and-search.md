@@ -236,6 +236,17 @@ flowchart TB
 
 **Keyword query shape.** `buildFtsQuery()` OR-joins the query's terms for the FTS5 `MATCH`, dropping a short shared stopword list when the query has three or more tokens (a one- or two-word lookup keeps every word) and capping at 16 distinct terms. bm25 then ranks chunks by how many of the terms they contain and how rare those terms are, so a chunk holding every term still sorts first. Until 2026-10-27 the terms were AND-joined: a chunk had to contain every token, which held for terse lookups and for no conversational question, and the per-channel diagnostics showed the keyword channel contributing nothing to natural-language queries on the live store or the LongMemEval baseline. The `fusion` field still reports `rrf` in that case, so look at `channels.keyword` presence, not `fusion`, to tell whether the keyword channel took part.
 
+**Post-fusion boosts are bounded.** After fusion the search still applies the recency boost (`query.recency`, up to 1.5x with a 48 h half-life), an emotional-valence boost, the mood-congruent bonus and the temporal-intent multiplier (which for an ordinary question halves a memory's score every 45 days). Those multipliers were sized for cosine-scale scores. Under RRF the fused score is rank-only and adjacent ranks sit 1 to 3% apart, so the full multipliers reordered the list wholesale: on a 60-question held-out set built from one node's own memory (`benchmarks/live-recall/`, 2026-10-27), chunks ranked first by both channels landed at fused positions 13 to 23 and the fused list recalled less than either channel alone. `query.postFusionBoostScale` (default 0.1) shrinks every boost toward the fused score: a 1.5x boost becomes 1.05x, the six-month decay 0.906x, enough to break near-ties and not enough to overrule the channels.
+
+| `postFusionBoostScale`  | fused R@1 | fused R@5 | fused MRR |
+| ----------------------- | --------- | --------- | --------- |
+| 1 (legacy, full boosts) | 3.3%      | 8.3%      | 0.063     |
+| 0.25                    | 15.0%     | 33.3%     | 0.241     |
+| 0.1 (default)           | 20.0%     | 40.0%     | 0.276     |
+| 0 (pure fusion order)   | 26.7%     | 41.7%     | 0.336     |
+
+Vector alone scored 23% R@5 and keyword alone 55% on that set. The boosts did not help even the questions with explicit "currently / right now" intent (0 of 5 under the legacy setting, 1 of 5 bounded). Operators who want pure fusion order set the scale to 0; the LongMemEval retrieval runner pins 1 so its saved runs stay comparable (its sessions carry synthetic dates).
+
 **Per-channel diagnostics (PLAN-58).** Every result carries `channels` and `fusion` alongside the fused `score`:
 
 ```ts

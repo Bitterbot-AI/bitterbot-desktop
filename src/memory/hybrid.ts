@@ -220,6 +220,29 @@ export function buildFtsQuery(raw: string): string | null {
   return unique.map((t) => `"${t}"`).join(" OR ");
 }
 
+/**
+ * Bound a post-fusion multiplicative boost to the fused score's own scale.
+ *
+ * The recency, emotional, mood-congruent and temporal-intent boosts multiply
+ * the search score and were designed for cosine-scale scores. Under RRF the
+ * fused score is rank-only (1/(k+rank), adjacent ranks ~1-3% apart), so the
+ * same multipliers (recency up to x1.5, the default temporal decay down to
+ * x0.06 for a six-month-old memory) reorder the list wholesale: on the
+ * 2026-10-27 live-memory held-out set, chunks ranked first by BOTH channels
+ * landed at fused positions 13-23 and the fused list recalled less than either
+ * channel alone. `scale` shrinks the boost toward 1: with 0.1 a x1.5 boost
+ * becomes x1.05 and a x0.06 decay becomes x0.906, enough to break near-ties
+ * and not enough to overrule the channels. 1 keeps the full boost (legacy),
+ * 0 ignores the boosts and keeps pure fusion order.
+ */
+export function boundPostFusionBoost(base: number, boosted: number, scale: number): number {
+  if (!(base > 0) || !Number.isFinite(boosted) || scale >= 1) {
+    return boosted;
+  }
+  const s = Math.max(0, scale);
+  return base * (1 + s * (boosted / base - 1));
+}
+
 export function bm25RankToScore(rank: number): number {
   const normalized = Number.isFinite(rank) ? Math.max(0, rank) : 999;
   return 1 / (1 + normalized);

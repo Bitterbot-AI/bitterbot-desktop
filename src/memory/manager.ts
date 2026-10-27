@@ -103,6 +103,7 @@ import { filterGuestResults, guestMayReadPath } from "./guest-access.js";
 import { HormonalStateManager } from "./hormonal.js";
 import {
   bm25RankToScore,
+  boundPostFusionBoost,
   buildFtsQuery,
   mergeHybridResults,
   mergeHybridResultsRRF,
@@ -1614,6 +1615,9 @@ export class MemoryIndexManager implements MemorySearchManager {
       // Cortisol (stress) sharpens focus on recent memories via recency bias.
       // Dopamine boosts importance weight slightly (optimism lifts all boats).
       const hormonalMod = this.hormonalManager?.getRetrievalModulation();
+      // The fused RRF score each boost below starts from; the boosts are
+      // bounded against it afterwards (query.postFusionBoostScale).
+      const fusedBase = merged.map((entry) => entry.score);
 
       // Apply recency boost: recent memories get a temporal advantage
       const recencyCfg: RecencyConfig = this.settings.query.recency;
@@ -1680,6 +1684,13 @@ export class MemoryIndexManager implements MemorySearchManager {
         }
       } catch {
         // temporal-scoring module not available — non-critical
+      }
+
+      const boostScale = this.settings.query.postFusionBoostScale;
+      if (boostScale < 1) {
+        merged.forEach((entry, i) => {
+          entry.score = boundPostFusionBoost(fusedBase[i] ?? entry.score, entry.score, boostScale);
+        });
       }
 
       merged.sort((a, b) => b.score - a.score);

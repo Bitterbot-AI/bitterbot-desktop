@@ -227,6 +227,8 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.memorySearch.query.hybrid.candidateMultiplier":
     "Memory Search Hybrid Candidate Multiplier",
   "agents.defaults.memorySearch.query.channelDiagnostics": "Memory Search Channel Diagnostics",
+  "agents.defaults.memorySearch.query.postFusionBoostScale":
+    "Memory Search Post-Fusion Boost Scale",
   "agents.defaults.memorySearch.cache.enabled": "Memory Search Embedding Cache",
   "agents.defaults.memorySearch.cache.maxEntries": "Memory Search Embedding Cache Max Entries",
   memory: "Memory",

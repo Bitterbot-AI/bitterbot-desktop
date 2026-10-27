@@ -113,12 +113,29 @@ function gitCommit(): string | null {
   }
 }
 
+/** The first `n` items of each question_type, keeping dataset order within and across types. */
+function firstPerType<T extends { question_type: string }>(dataset: T[], n: number): T[] {
+  const taken = new Map<string, number>();
+  return dataset.filter((item) => {
+    const seen = taken.get(item.question_type) ?? 0;
+    if (seen >= n) {
+      return false;
+    }
+    taken.set(item.question_type, seen + 1);
+    return true;
+  });
+}
+
 // ── CLI Args ──
 
 const { values: args } = parseArgs({
   options: {
     oracle: { type: "boolean", default: false },
     limit: { type: "string", default: "0" },
+    // First N questions of EACH question_type, in dataset order. The first-N
+    // slice of LongMemEval-S is all single-session-user, which cannot show
+    // where one channel beats another; a stratified slice can.
+    "per-type": { type: "string", default: "0" },
     "max-chunks": { type: "string", default: "50" },
     "data-dir": { type: "string", default: join(__dirname, "data") },
     "output-dir": { type: "string", default: join(__dirname, "results") },
@@ -132,6 +149,69 @@ const { values: args } = parseArgs({
 function sessionIdFromPath(path: string): string {
   const base = basename(path);
   return base.endsWith(".md") ? base.slice(0, -3) : base;
+}
+
+// ── Evidence-level scoring ──
+//
+// Session-level recall@5 saturates on LongMemEval-S: a decent embedder puts
+// SOME chunk of the gold session in the top 5 nearly every time, so two
+// retrievers that are both "pretty good" look identical. The dataset marks the
+// turns that actually carry the answer (`has_answer`). Scoring whether one of
+// THOSE turns' chunks is retrieved, and at what rank, separates them.
+
+type LineRange = { start: number; end: number };
+
+/**
+ * 1-based line ranges of the `has_answer` turns in the markdown
+ * sessionToMarkdown() writes: header, date, blank, then per turn the content
+ * lines followed by one blank line.
+ */
+function evidenceLineRanges(
+  session: Array<{ role: string; content: string; has_answer?: boolean }>,
+): LineRange[] {
+  const ranges: LineRange[] = [];
+  let line = 4; // lines 1-3: title, date, blank
+  for (const turn of session) {
+    const n = turn.content.split("\n").length;
+    if (turn.has_answer) {
+      ranges.push({ start: line, end: line + n - 1 });
+    }
+    line += n + 1; // content lines + the blank separator
+  }
+  return ranges;
+}
+
+function chunkHitsEvidence(chunk: MemorySearchResult, evidence: Map<string, LineRange[]>): boolean {
+  const ranges = evidence.get(sessionIdFromPath(chunk.path));
+  if (!ranges) {
+    return false;
+  }
+  return ranges.some((r) => chunk.startLine <= r.end && chunk.endLine >= r.start);
+}
+
+/** 1-based rank of the first evidence chunk in `ordered`, or null. */
+function firstEvidenceRank(
+  ordered: MemorySearchResult[],
+  evidence: Map<string, LineRange[]>,
+): number | null {
+  const i = ordered.findIndex((c) => chunkHitsEvidence(c, evidence));
+  return i < 0 ? null : i + 1;
+}
+
+type EvidenceRanks = { fused: number | null } & Record<HybridChannel, number | null>;
+
+function evidenceRanks(
+  chunks: MemorySearchResult[],
+  evidence: Map<string, LineRange[]>,
+): EvidenceRanks {
+  const out = { fused: firstEvidenceRank(chunks, evidence) } as EvidenceRanks;
+  for (const ch of CHANNELS) {
+    const ranked = chunks
+      .filter((c) => c.channels?.[ch])
+      .toSorted((a, b) => a.channels![ch]!.rank - b.channels![ch]!.rank);
+    out[ch] = firstEvidenceRank(ranked, evidence);
+  }
+  return out;
 }
 
 interface PerQuestion {
@@ -151,6 +231,15 @@ interface PerQuestion {
   /** PLAN-58: which channel(s) found the gold chunk in the fused top-5. */
   attribution?: Attribution;
   fusion?: string;
+  /**
+   * Evidence-level: 1-based rank of the first chunk overlapping a `has_answer`
+   * turn, in the fused list and in each channel's own order; null = not in the
+   * returned chunks. Session-level numbers above are kept for continuity.
+   */
+  evidence_rank?: EvidenceRanks;
+  num_evidence_turns?: number;
+  /** Chunks re-embedded after a transient provider failure, and how many stayed unembedded. */
+  embedding_retries?: { embedded: number; remaining: number };
   error?: string;
 }
 
@@ -164,6 +253,9 @@ interface Aggregate {
   channel_5_sum: Record<HybridChannel, number>;
   channel_10_sum: Record<HybridChannel, number>;
   attribution: Record<Attribution, number>;
+  /** Evidence-level sums: hits at 1/5/10 and reciprocal rank, fused and per channel. */
+  ev: Record<"fused" | HybridChannel, { at1: number; at5: number; at10: number; rr: number }>;
+  ev_count: number;
 }
 
 function emptyAgg(): Aggregate {
@@ -176,6 +268,13 @@ function emptyAgg(): Aggregate {
     channel_5_sum: { vector: 0, keyword: 0, graph: 0 },
     channel_10_sum: { vector: 0, keyword: 0, graph: 0 },
     attribution: { "vector-only": 0, "keyword-only": 0, "graph-only": 0, multi: 0, none: 0 },
+    ev: {
+      fused: { at1: 0, at5: 0, at10: 0, rr: 0 },
+      vector: { at1: 0, at5: 0, at10: 0, rr: 0 },
+      keyword: { at1: 0, at5: 0, at10: 0, rr: 0 },
+      graph: { at1: 0, at5: 0, at10: 0, rr: 0 },
+    },
+    ev_count: 0,
   };
 }
 
@@ -193,6 +292,19 @@ function addToAgg(agg: Aggregate, q: PerQuestion) {
   }
   if (q.attribution) {
     agg.attribution[q.attribution] += 1;
+  }
+  if (q.evidence_rank) {
+    agg.ev_count++;
+    for (const k of ["fused", ...CHANNELS] as const) {
+      const r = q.evidence_rank[k];
+      if (r !== null) {
+        const e = agg.ev[k];
+        if (r <= 1) e.at1++;
+        if (r <= 5) e.at5++;
+        if (r <= 10) e.at10++;
+        e.rr += 1 / r;
+      }
+    }
   }
 }
 
@@ -213,6 +325,16 @@ function fmt(agg: Aggregate) {
     "graph R@5": pct(agg.channel_5_sum.graph),
     "vector R@10": pct(agg.channel_10_sum.vector),
     "keyword R@10": pct(agg.channel_10_sum.keyword),
+    ...(agg.ev_count > 0
+      ? Object.fromEntries(
+          (["fused", ...CHANNELS] as const).flatMap((k) => [
+            [`ev ${k} R@1`, ((100 * agg.ev[k].at1) / agg.ev_count).toFixed(1) + "%"],
+            [`ev ${k} R@5`, ((100 * agg.ev[k].at5) / agg.ev_count).toFixed(1) + "%"],
+            [`ev ${k} R@10`, ((100 * agg.ev[k].at10) / agg.ev_count).toFixed(1) + "%"],
+            [`ev ${k} MRR`, (agg.ev[k].rr / agg.ev_count).toFixed(3)],
+          ]),
+        )
+      : {}),
     attribution: Object.fromEntries(
       Object.entries(agg.attribution).map(([k, v]) => [k, pct(v)]),
     ) as Record<Attribution, string>,
@@ -237,6 +359,7 @@ async function run() {
   mkdirSync(outputDir, { recursive: true });
 
   const limit = parseInt(args.limit!, 10) || 0;
+  const perType = parseInt(args["per-type"]!, 10) || 0;
   const maxChunks = parseInt(args["max-chunks"]!, 10);
   const verbose = args.verbose!;
 
@@ -247,10 +370,17 @@ async function run() {
   if (limit) {
     console.log(`   Limit: ${limit} questions`);
   }
+  if (perType) {
+    console.log(`   Stratified: first ${perType} questions of each question_type`);
+  }
   console.log("");
 
   const dataset = loadDataset(dataFile);
-  const items = limit ? dataset.slice(0, limit) : dataset;
+  const items = perType
+    ? firstPerType(dataset, perType)
+    : limit
+      ? dataset.slice(0, limit)
+      : dataset;
   console.log(`Loaded ${items.length} questions (of ${dataset.length} total)`);
 
   const bridge = await createBenchmarkMemoryManager();
@@ -301,8 +431,16 @@ async function run() {
         sessionFiles.push(fp);
       }
 
-      // Single batch ingest
+      // Single batch ingest, then retry anything the embedding API dropped so
+      // the vector channel sees every chunk (else a flaky minute at the
+      // provider reads as a retrieval regression).
       await bridge.memory.ingestMarkdownFiles(sessionFiles);
+      const drained = await bridge.memory.drainPendingEmbeddings();
+      if (drained.remaining > 0) {
+        console.warn(
+          `   ${item.question_id}: ${drained.remaining} chunk(s) still unembedded after retries`,
+        );
+      }
 
       // Search — request enough chunks to dedupe down to top-10 sessions safely
       const chunks = await bridge.memory.search(item.question, { maxResults: maxChunks });
@@ -323,6 +461,20 @@ async function run() {
       const top5 = new Set(order.slice(0, 5));
       const top10 = new Set(order.slice(0, 10));
       const gold = item.answer_session_ids ?? [];
+      // Evidence turns of every gold session, keyed by session id.
+      const evidence = new Map<string, LineRange[]>();
+      let numEvidenceTurns = 0;
+      for (let si = 0; si < item.haystack_sessions.length; si++) {
+        const sid = item.haystack_session_ids[si] ?? `session_${si}`;
+        if (!gold.includes(sid)) {
+          continue;
+        }
+        const ranges = evidenceLineRanges(item.haystack_sessions[si]);
+        if (ranges.length > 0) {
+          evidence.set(sid, ranges);
+          numEvidenceTurns += ranges.length;
+        }
+      }
 
       const recall_any_5 = gold.some((g) => top5.has(g)) ? 1 : 0;
       const recall_any_10 = gold.some((g) => top10.has(g)) ? 1 : 0;
@@ -344,6 +496,10 @@ async function run() {
         channel_recall: channelRecall(chunks, gold),
         attribution: attribution(chunks, top5, gold),
         fusion: chunks[0]?.fusion,
+        ...(evidence.size > 0
+          ? { evidence_rank: evidenceRanks(chunks, evidence), num_evidence_turns: numEvidenceTurns }
+          : {}),
+        ...(drained.remaining > 0 || drained.embedded > 0 ? { embedding_retries: drained } : {}),
       };
 
       perQuestion.push(q);
@@ -387,6 +543,7 @@ async function run() {
     dataset: dataFile,
     // PLAN-58: the baseline is only comparable when it names the code it measured.
     git_commit: measuredCommit,
+    sampling: perType ? { perType } : limit ? { limit } : { all: true },
     generated_at: new Date().toISOString(),
     n_questions: perQuestion.length,
     elapsed_seconds: parseFloat(totalSec),

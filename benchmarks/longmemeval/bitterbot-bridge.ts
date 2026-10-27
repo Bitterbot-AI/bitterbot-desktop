@@ -33,6 +33,8 @@ export interface BenchmarkMemoryManager {
   search(query: string, opts?: { maxResults?: number }): Promise<MemorySearchResult[]>;
   sync(opts?: { reason?: string }): Promise<void>;
   ingestMarkdownFiles(files: string[]): Promise<void>;
+  /** Retry embeddings for chunks a transient failure left pending; returns what is still pending. */
+  drainPendingEmbeddings(maxPasses?: number): Promise<{ embedded: number; remaining: number }>;
   reset(): Promise<void>;
 }
 
@@ -99,6 +101,11 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
               keywordWeight: 0.3,
               candidateMultiplier: 5,
             },
+            // LongMemEval sessions carry synthetic 2023 dates, so the recency and
+            // temporal boosts are uniform noise here. Pin the legacy full-boost
+            // behaviour so every saved run stays comparable; the live-recall
+            // benchmark is where the boost scale is measured.
+            postFusionBoostScale: 1,
           },
           cache: { enabled: false },
           fts: { enabled: true },
@@ -216,6 +223,34 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
         // Set the dirty flag so sync scans files without triggering a full reindex
         markDirty();
         await manager.sync({ reason: "longmemeval-ingest" });
+      },
+
+      async drainPendingEmbeddings(maxPasses = 4) {
+        // A transient embedding failure leaves chunks pending (model='pending');
+        // left that way they are invisible to the vector channel and the run
+        // measures the API's mood, not retrieval. Retry until none remain or
+        // the passes run out, and report what is still pending.
+        const backfill = (
+          manager as unknown as {
+            backfillPendingEmbeddings?: (o?: {
+              limit?: number;
+            }) => Promise<{ embedded: number; remaining: number }>;
+          }
+        ).backfillPendingEmbeddings;
+        if (!backfill) {
+          return { embedded: 0, remaining: -1 };
+        }
+        let embedded = 0;
+        let remaining = -1;
+        for (let pass = 0; pass < maxPasses; pass++) {
+          const r = await backfill.call(manager, { limit: 5000 });
+          embedded += r.embedded;
+          remaining = r.remaining;
+          if (remaining === 0) {
+            break;
+          }
+        }
+        return { embedded, remaining };
       },
 
       async reset() {

@@ -178,6 +178,8 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
     "src/memory/skill-evolution/housekeeping.ts — only `false` withholds the profile from the trailer (default on).",
   "agents.defaults.memorySearch.query.channelDiagnostics":
     'src/agents/memory-search.ts resolveChannelDiagnostics — anything but "full" or "off" resolves to "ranks".',
+  "agents.defaults.memorySearch.query.postFusionBoostScale":
+    "src/agents/memory-search.ts DEFAULT_POST_FUSION_BOOST_SCALE (0.1) — clamped to [0, 1]; applied in src/memory/manager.ts via boundPostFusionBoost.",
   "skills.skillSeekers.enabled": "src/agents/tools/skill-seekers-tool.ts:68 — `!== true` refuses.",
   "skills.skillSeekers.trending.enabled":
     "src/memory/manager.ts:3678 — `!== true` skips the sweep.",

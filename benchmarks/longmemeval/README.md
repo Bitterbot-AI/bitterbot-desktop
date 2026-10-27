@@ -57,6 +57,33 @@ Saved runs (LongMemEval-S, first 50 questions, all `single-session-user`, quiet 
 
 The vector channel did not change between the two runs; the difference is that the keyword channel now takes part at all. On this slice it agrees with the vector channel on every gold session, which is what the fused score should reflect.
 
+Stratified run (`--per-type 10`: the first 10 questions of each of the six LongMemEval-S question types, 60 questions, quiet bridge), before and after the keyword-channel change:
+
+| question type             | R@5 before → after | R@10 | vector R@5 | keyword R@5 before → after |
+| ------------------------- | ------------------ | ---- | ---------- | -------------------------- |
+| single-session-user       | 100% → 100%        | 100% | 100%       | 0% → 100%                  |
+| multi-session             | 100% → 90%         | 100% | 100%       | 0% → 90%                   |
+| single-session-preference | 100% → 100%        | 100% | 100%       | 0% → 80%                   |
+| temporal-reasoning        | 100% → 100%        | 100% | 100%       | 0% → 100%                  |
+| knowledge-update          | 100% → 100%        | 100% | 100%       | 0% → 100%                  |
+| single-session-assistant  | 90% → 100%         | 100% | 100%       | 0% → 100%                  |
+| all 60                    | 98.3% → 98.3%      | 100% | 100%       | 0% → 95%                   |
+
+Files: `bitterbot_longmemeval_s_retrieval_2026-10-27_stratified-before.json` and `..._stratified-after.json`. Reading: the vector channel alone already finds the gold session in the top 5 on every one of the 60 questions, so this benchmark at this size cannot show a fusion gain, only fusion noise. The keyword channel went from absent to agreeing with vector on 57 of 60. The two R@5 changes are one gain (a single-session-assistant question the importance boost had pushed to rank 6 under vector-only fusion) and one loss (a multi-session question where the keyword channel's own top 5 did not hold the gold session and its other hits pushed the fused gold rank from 5 to 10). R@10 is 100% in both runs. A harder instrument (LongMemEval-M, or chunk-level rather than session-level recall) is needed before channel weighting can be judged.
+
+Evidence-level view of the same stratified 60 (did a chunk overlapping a `has_answer` turn come back, and at what rank; files `..._2026-10-27_evidence-{before,after}.json`, boosts held at the legacy scale so only the keyword channel differs):
+
+| evidence-level metric | before (AND) | after (OR) |
+| --------------------- | ------------ | ---------- |
+| fused R@1             | 43.3%        | 47.5%      |
+| fused R@5             | 83.3%        | 93.2%      |
+| fused R@10            | 96.7%        | 98.3%      |
+| fused MRR             | 0.615        | 0.661      |
+| vector alone MRR      | 0.645        | 0.642      |
+| keyword alone R@5     | 0.0%         | 83.1%      |
+
+Per question the evidence rank improved on 21 and worsened on 9. Per type, single-session-user MRR went 0.66 to 0.82 and knowledge-update 0.51 to 0.60; multi-session was flat at 0.48 and single-session-preference slipped 0.61 to 0.58. Session-level R@5 stayed at 98.3%, which is why the session-level table above could not see any of this. With the keyword channel present, the fused list now beats the best single channel (0.661 against vector's 0.642); before it trailed it.
+
 ## How It Works
 
 1. **Ingest**: Each question's chat history is converted to timestamped session files and ingested through Bitterbot's normal memory pipeline (chunk → embed → store with temporal metadata)

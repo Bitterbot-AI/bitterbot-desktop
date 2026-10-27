@@ -75,6 +75,8 @@ export type ResolvedMemorySearchConfig = {
       alpha: number;
       halfLifeHours: number;
     };
+    /** How much of the post-fusion boosts (recency, emotional, mood, temporal) reaches an RRF score; 1 = full, 0 = none. */
+    postFusionBoostScale: number;
   };
   cache: {
     enabled: boolean;
@@ -101,6 +103,12 @@ const DEFAULT_HYBRID_MERGE_STRATEGY: "rrf" | "weighted" = "rrf";
 const DEFAULT_RECENCY_ENABLED = true;
 const DEFAULT_RECENCY_ALPHA = 0.5;
 const DEFAULT_RECENCY_HALF_LIFE_HOURS = 48;
+// Chosen on the 2026-10-27 live-memory held-out set (60 questions, one node):
+// fused MRR 0.063 at 1 (legacy), 0.241 at 0.25, 0.276 at 0.1, 0.336 at 0.
+// 0.1 keeps the designed recency / temporal preference as a tie-breaker and
+// takes most of the gain; 0 is the measured optimum if an operator wants it.
+// See boundPostFusionBoost in src/memory/hybrid.ts.
+const DEFAULT_POST_FUSION_BOOST_SCALE = 0.1;
 const DEFAULT_CACHE_ENABLED = true;
 // Memory audit 2026-09-07 P1.4: the embedding cache had no default cap, so
 // pruneEmbeddingCacheIfNeeded early-returned and the cache grew forever (it
@@ -408,6 +416,13 @@ function mergeConfig(
             DEFAULT_RECENCY_HALF_LIFE_HOURS,
         ),
       },
+      postFusionBoostScale: clampNumber(
+        ((overrides?.query as Record<string, unknown>)?.postFusionBoostScale as number) ??
+          ((defaults?.query as Record<string, unknown>)?.postFusionBoostScale as number) ??
+          DEFAULT_POST_FUSION_BOOST_SCALE,
+        0,
+        1,
+      ),
     },
     cache: {
       enabled: Boolean(cache.enabled),

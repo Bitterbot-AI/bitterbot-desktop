@@ -1,0 +1,770 @@
+{
+  "git_commit": "33abb4e0+dirty",
+  "recencyBoost": true,
+  "postFusionBoostScale": 0.1,
+  "snapshotSha256": "1d3432bb80e181f2b86da3e46c7a69a72f85d14b04240125a7153f45d4a7dc17",
+  "questionsSha256": "63a048d32bd0438b852970a341a29d604cc6ee997932717bdfcf7e3cd978a531",
+  "n": 60,
+  "maxResults": 50,
+  "elapsed_seconds": 219.7,
+  "summary": {
+    "fused": {
+      "R@1": "20.0%",
+      "R@5": "40.0%",
+      "R@10": "46.7%",
+      "MRR": "0.276"
+    },
+    "vector": {
+      "R@1": "6.7%",
+      "R@5": "23.3%",
+      "R@10": "40.0%",
+      "MRR": "0.150"
+    },
+    "keyword": {
+      "R@1": "28.3%",
+      "R@5": "55.0%",
+      "R@10": "66.7%",
+      "MRR": "0.398"
+    },
+    "graph": {
+      "R@1": "0.0%",
+      "R@5": "0.0%",
+      "R@10": "0.0%",
+      "MRR": "0.000"
+    }
+  },
+  "bySource": {
+    "memory": {
+      "n": 34,
+      "fusedAt5": 15,
+      "keywordAt5": 24
+    },
+    "sessions": {
+      "n": 26,
+      "fusedAt5": 9,
+      "keywordAt5": 9
+    }
+  },
+  "per_question": [
+    {
+      "chunkId": "5f8a69bcc1abc60e8799fa8ae8d36207e7302d66b453fb2de6404f71b384f72d",
+      "source": "memory",
+      "ranks": {
+        "fused": 4,
+        "vector": 19,
+        "keyword": 5,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "22dc543e9804eb55ec4038332e038d7628fe3c6cb876bdbc8f30fa9a139d0dbb",
+      "source": "sessions",
+      "ranks": {
+        "fused": 17,
+        "vector": 23,
+        "keyword": 15,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_09dc1692-877d-46f4-8c9e-461b91188414",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 1,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "dc18ffb0459d032093dac17c8b7b45e03041332755cded9582cbc2a30c520dcc",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "0ed4c92a59c9ad5a819cd7a031b697ba7b6efabad198e5706f9351c312e091e5",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "90d60f313c052ea0c85074b61ed7cb1a1f97677c96383ce3372589bbfd0d63b7",
+      "source": "sessions",
+      "ranks": {
+        "fused": 20,
+        "vector": 7,
+        "keyword": 37,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "447f9795b25df9be38063de4b9b1d4c1290531fd3ae6168848c557317aa11dcf",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "bf45d59b420c7ee6bacf6fc39d8836d2ed965aa297bd2d9243078c1e523e6f2f",
+      "source": "memory",
+      "ranks": {
+        "fused": 31,
+        "vector": 50,
+        "keyword": 6,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "66064693c65de41cec5293b2dfa1e118baaaf0c217f26b1ff86f82c3af97d50f",
+      "source": "memory",
+      "ranks": {
+        "fused": 6,
+        "vector": 6,
+        "keyword": 2,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "57dbdc025659c60caf744290e66c5bf9038a543f9e7a05070ea449f8a3a2b541",
+      "source": "sessions",
+      "ranks": {
+        "fused": 1,
+        "vector": 1,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "a2bab9969dda02aaf7b2f4427e12eac2fff6839838024ae82a471d09edd0cb5d",
+      "source": "sessions",
+      "ranks": {
+        "fused": 5,
+        "vector": 6,
+        "keyword": 9,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "01dd35289b1175d09c08da445df0e51c2686ae18921eab6c493ad9b17545c5e3",
+      "source": "sessions",
+      "ranks": {
+        "fused": 9,
+        "vector": 9,
+        "keyword": 12,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "e47a986ce05f942ff864043ceed612dc866fef3087103157a6743314d828f6d6",
+      "source": "memory",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "d2d6acd1664def1a8fee4574e6bc115dad59a628c326426881b64a127d491ab0",
+      "source": "memory",
+      "ranks": {
+        "fused": 13,
+        "vector": 42,
+        "keyword": 4,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "f99eec73d744ed70746585ab643faadb36d9c064b4fd6501450bdd56b4b8c859",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "9aa68f54f565aaadca47490a2ee0f033cc540927e09b80f9800bcb2d1faebcbe",
+      "source": "memory",
+      "ranks": {
+        "fused": 3,
+        "vector": 31,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "6311c31384293752c977c6ba971e5cfb43bf392f2d1c7d375f1c91df5688235f",
+      "source": "memory",
+      "ranks": {
+        "fused": 3,
+        "vector": 10,
+        "keyword": 4,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_78734098-c104-4ff5-b100-5c5094840fcc",
+      "source": "memory",
+      "ranks": {
+        "fused": 12,
+        "vector": 29,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "7601751475114fdbeaab14645e17e923747e39280addfb630cc0a949c7ba82f0",
+      "source": "memory",
+      "ranks": {
+        "fused": 4,
+        "vector": 6,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "8597cc1ddd9b197b5d9e8dfd8c39cf567fe3b793794a724d6692c750dc634556",
+      "source": "sessions",
+      "ranks": {
+        "fused": 5,
+        "vector": 5,
+        "keyword": 5,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_de7b77ea-8d38-4458-afdf-5aeda560f2c4",
+      "source": "memory",
+      "ranks": {
+        "fused": 2,
+        "vector": 2,
+        "keyword": 2,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "2fa7df73a7c0a5e82235d2916edaf1f98bbc4ea9a53c8d26eb6bdf49a817c363",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "2b1f554363d4bfa17a15c676b0b0eb83f12ab4a14f64565860dc3f0cc4d981bb",
+      "source": "memory",
+      "ranks": {
+        "fused": 42,
+        "vector": null,
+        "keyword": 7,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "5197a81f57d2ab0d55e865ef57e8ce51c930a1716c0bb0a234646677e2c1ac70",
+      "source": "sessions",
+      "ranks": {
+        "fused": 4,
+        "vector": 4,
+        "keyword": 2,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "d4971f53fa59be1b2f695d753b755c4fd324d133dc9985b68c3c87bdef96ca50",
+      "source": "memory",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "f62bdb7028365e8a7235c8734442c75de15653ed6bfde4e02a57e5e0e8f826e5",
+      "source": "sessions",
+      "ranks": {
+        "fused": 4,
+        "vector": 6,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "07f96fb17b6c570cad58064477fdef1bec8c805df449e7eb65a3c3f10cef1510",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "f81949b8c4fc678b1eaba3ee4b553cd92e6247949a421f52d38be0bc2377ec58",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "72c7f973a8484f03d393621327c3829716c5b10a5b52becbdd92fb1140de7ee3",
+      "source": "memory",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "331915af094c82e6f3723763f06bc0ee7082babe54cb75e25d936658ba80ded9",
+      "source": "sessions",
+      "ranks": {
+        "fused": 1,
+        "vector": 1,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_b9c67188-f4a6-4122-9564-edf1883aa4be",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 12,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "561c54c4c41ba21ab250deacf03d5baa16a492b95830739fa5f3b509d00d85d7",
+      "source": "sessions",
+      "ranks": {
+        "fused": 5,
+        "vector": 5,
+        "keyword": 4,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "330214f78b60cca4e32291ec2488496f4271b8fc6759a3752c513e467e8af722",
+      "source": "sessions",
+      "ranks": {
+        "fused": 31,
+        "vector": null,
+        "keyword": 2,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "e53cfbb76bc7ce70d29aeb1243c70124a3e3749a7feeaaf3bd053988842845d9",
+      "source": "memory",
+      "ranks": {
+        "fused": 6,
+        "vector": 31,
+        "keyword": 6,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "8bccdf8a10755d480dc8bcb3c292bc7968954c1853b981506c43dd97eee28b44",
+      "source": "memory",
+      "ranks": {
+        "fused": 32,
+        "vector": null,
+        "keyword": 4,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "338e1e7bc4e0ae21dbb387ff3339832e367bd7687fd5d81ab49fba188bfbfcf6",
+      "source": "memory",
+      "ranks": {
+        "fused": 18,
+        "vector": 47,
+        "keyword": 4,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "12ec73d2e11ff91ff74dfc059b3966975d5f076d4c063e7c4b8790fc2175f083",
+      "source": "memory",
+      "ranks": {
+        "fused": 16,
+        "vector": 46,
+        "keyword": 2,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_e69c4ade-3aa9-4b05-afab-621274922d0f",
+      "source": "memory",
+      "ranks": {
+        "fused": 5,
+        "vector": 7,
+        "keyword": 3,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "3d2f6d9f9d95c24294040241c4ba2d21f3bc985b7bb1ee378bde42b6441446d9",
+      "source": "sessions",
+      "ranks": {
+        "fused": 1,
+        "vector": 5,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "4e58a6809315d1bf195ae745d5956b0033cd481828dd18a83d87ff89fd1fc5c4",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "0412d0918defeef3981279fa26e41380032e3754b21726be1327e3bd76d842e3",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "3712130701f961ec97ddf7b0c34b4f024f997db47aec31817edd50660862e8b6",
+      "source": "memory",
+      "ranks": {
+        "fused": 3,
+        "vector": 2,
+        "keyword": 2,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_c76b06df-6b26-4169-8add-112d294ac2b7",
+      "source": "memory",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "ad1bb55559dd53fb2baa768fcd4a438e58931d73abafc8a673e2a2cf59f8e457",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 3,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "80e5e002a5840aa5d076d2d8dd87ae1e2d31ebc636ecd95b9d87344381cac722",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "9d9921b61c956a32e6dfce48028339a56c23bbb0e48a1152ea8ff37b0684ae32",
+      "source": "memory",
+      "ranks": {
+        "fused": 16,
+        "vector": null,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "6f070ba83ed57b07304bdbbb70c1ac8a57a29025639815fd8381f1b9d4fc4a4b",
+      "source": "memory",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_234f9b11-34ef-481f-9ce7-6c5efec14c48",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 9,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "2f57a9cf708afef7e80381a0bece510e23b1f0e44f6c90765951bf09b23ac14b",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 6,
+        "keyword": 7,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "c44b2a5801bb584729fc53aa2091af3f5c1d63479dd16fe746a87c48eeef1d52",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "19be09a5e354d7758a500fc4702be62d5c002a51e905a2b131cb520ec8c1e6d1",
+      "source": "sessions",
+      "ranks": {
+        "fused": null,
+        "vector": null,
+        "keyword": null,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "20ed4918ca1101c4142dc60ce216b00f400c92ddc7eedb599406ebd3c94ac3ee",
+      "source": "sessions",
+      "ranks": {
+        "fused": 25,
+        "vector": null,
+        "keyword": 10,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "b6e813937223c1fc2fd4e5dcdc4cd953a7a503d72407742dff72e146e91f6195",
+      "source": "memory",
+      "ranks": {
+        "fused": 10,
+        "vector": 40,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "955052b283698073f27ad51e3624e82051d79f382bba9d9d71459495807c187a",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 1,
+        "keyword": 2,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "3970a76226232e978ceb532f6fc035b5ac8b7278b2d10d115b2b33f147cfca5b",
+      "source": "memory",
+      "ranks": {
+        "fused": 17,
+        "vector": 44,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "handover_8f1f14a8-e912-48c3-999e-b046e0806946",
+      "source": "memory",
+      "ranks": {
+        "fused": 46,
+        "vector": null,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "e38b2ddf7b34e02686466114277a503140a759cbb67766b31a137cd10508c8a7",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 5,
+        "keyword": 4,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "77c8f5bc614038a6eb24c649e4b04ccde76e21c52dd7e6bdd1b9fa31372ae76e",
+      "source": "memory",
+      "ranks": {
+        "fused": 24,
+        "vector": 46,
+        "keyword": 6,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "08306c409c34fa64eded748eb029a4bea13ce34969f6d125be0be741c35957c4",
+      "source": "memory",
+      "ranks": {
+        "fused": 1,
+        "vector": 2,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    },
+    {
+      "chunkId": "d1bbabeb14840fdb8d5bb49a1e8e3d69106c3afd9b2dc67b25ff25460165f21c",
+      "source": "sessions",
+      "ranks": {
+        "fused": 1,
+        "vector": 4,
+        "keyword": 1,
+        "graph": null
+      },
+      "returned": 50,
+      "fusion": "rrf"
+    }
+  ]
+}
