@@ -145,7 +145,8 @@ jobs:
           - platform: linux-arm64
             runner: ubuntu-22.04-arm
           - platform: darwin-arm64
-            runner: macos-14
+            # macOS 14 retires November 2, 2026; reduced capacity can strand releases.
+            runner: macos-15
           - platform: darwin-x64
             runner: macos-15-intel
             optional: true
