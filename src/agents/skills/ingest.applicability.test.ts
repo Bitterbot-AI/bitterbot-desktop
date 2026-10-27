@@ -156,6 +156,20 @@ describe("PLAN-58: applicability fit on receipt", () => {
     expect(listed?.applicability && "profile" in listed.applicability).toBe(false);
   });
 
+  it("receiverFactsFromConfig resolves the primary model from agents.defaults.model in both shapes", () => {
+    expect(
+      receiverFactsFromConfig({
+        agents: { defaults: { model: { primary: "anthropic/claude-opus-4-8" } } },
+      } as unknown as BitterbotConfig).model,
+    ).toBe("anthropic/claude-opus-4-8");
+    expect(
+      receiverFactsFromConfig({
+        agents: { defaults: { model: "openai/gpt-x" } },
+      } as unknown as BitterbotConfig).model,
+    ).toBe("openai/gpt-x");
+    expect(receiverFactsFromConfig({} as BitterbotConfig).model).toBeNull();
+  });
+
   it("receiverFactsFromConfig reports this platform and probes the real PATH", () => {
     const f = receiverFactsFromConfig({} as BitterbotConfig);
     expect(f.platform).toBe(process.platform);
