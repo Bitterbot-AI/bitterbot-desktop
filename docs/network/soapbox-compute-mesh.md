@@ -204,11 +204,17 @@ historical evidence, not a substitute for testing the new release artifacts.
 
 ### P2P is connected, but Compute discovery is unavailable
 
-Check the sidecar path reported in the gateway startup log. A source checkout's
-`orchestrator/target/release` or `target/debug` binary takes precedence over the
+Check the sidecar path reported in the gateway startup log. Older app versions let a source checkout's
+`orchestrator/target/release` or `target/debug` binary take precedence over the
 downloaded sidecar in `~/.bitterbot/bin`. An old development binary can connect to
 the skill network while rejecting `bitterbot/compute/v1` with an error such as
 `only bitterbot/circle/*/v1 topics allowed`.
+
+The current resolver prefers the bundled release binary, then the installed
+sidecar, and uses local Cargo builds only as a fallback. An explicit
+`p2p.orchestratorBinary` still takes priority, including for intentional development
+builds; update or remove an outdated override when upgrading. The beta bundles
+the verified 0.2.4 sidecar and pins Soapbox rc9 for new Linux x64 operator setups.
 
 Set `p2p.orchestratorBinary` to a versioned, signature-verified compatible release
 binary (0.2.4 supports the Compute topic and descriptor signer), then restart the

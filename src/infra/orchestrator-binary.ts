@@ -76,12 +76,14 @@ export function listOrchestratorBinaryCandidates(
     const bundledPath = path.join(installRoot, "bin", bin);
     candidates.push({ source: "bundled", path: bundledPath, exists: existsFile(bundledPath) });
   }
+  // Installed sidecars take precedence over stale build output left in a
+  // checkout. Developers can deliberately select a build with the config override.
+  const prebuiltPath = path.join(os.homedir(), ".bitterbot", "bin", bin);
+  candidates.push({ source: "prebuilt", path: prebuiltPath, exists: existsFile(prebuiltPath) });
   const releasePath = path.join(cargoBase, "release", bin);
   candidates.push({ source: "release", path: releasePath, exists: existsFile(releasePath) });
   const debugPath = path.join(cargoBase, "debug", bin);
   candidates.push({ source: "debug", path: debugPath, exists: existsFile(debugPath) });
-  const prebuiltPath = path.join(os.homedir(), ".bitterbot", "bin", bin);
-  candidates.push({ source: "prebuilt", path: prebuiltPath, exists: existsFile(prebuiltPath) });
   return candidates;
 }
 
@@ -89,9 +91,9 @@ export function listOrchestratorBinaryCandidates(
  * Resolve the orchestrator binary using the priority order:
  *   1. Explicit config override (p2p.orchestratorBinary)
  *   1b. The release tarball's bundled binary (BITTERBOT_INSTALL_ROOT/bin)
- *   2. Local cargo release build  (dev iteration wins over prebuilt)
- *   3. Local cargo debug build    (noted with a warning)
- *   4. Postinstall-downloaded prebuilt at ~/.bitterbot/bin/
+ *   2. Postinstall-downloaded prebuilt at ~/.bitterbot/bin/
+ *   3. Local cargo release build  (fallback when no installed binary exists)
+ *   4. Local cargo debug build    (noted with a warning)
  *
  * Returns a structured result so callers can render diagnostics, not
  * just get "the path or a throw." Bridge wraps this to preserve the
