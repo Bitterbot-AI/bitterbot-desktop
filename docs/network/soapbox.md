@@ -25,9 +25,10 @@ operator wizard. Node is bundled; a separate source checkout is unnecessary.
 The older Soapbox rc4/rc5/rc6 overlays are for their recorded Bitterbot versions
 and must not be installed over this integrated release.
 
-Existing installs upgrade with `bitterbot update` or the in-app update; the
-previous app version is retained for rollback. The native Tauri installer is
-not part of this release.
+Download `install.ps1` or `install.sh` from that beta's release assets and use
+the explicit version below. Normal app updates stay on the stable channel;
+this beta does not replace latest. The previous app version is retained for
+rollback. The native Tauri installer is not part of this release.
 
 ### Windows with WSL2
 
@@ -41,7 +42,7 @@ The installer uses your default WSL2 distribution; use `-Distro Ubuntu` to selec
 one. It checks for WSL2 and explains missing prerequisites. It does not install
 WSL, GPU drivers or Docker for you. An existing native Windows gateway is
 reported separately; the installer does not stop its scheduled task. To pin a
-release, download **install.ps1** from that release and pass `-Version 1.10.0`.
+release, download **install.ps1** from that release and pass its exact version.
 
 ### Linux or macOS
 
@@ -54,7 +55,7 @@ bundled runtime and offers onboarding. Existing users are offered a gateway
 switch; the previous app version is retained. `--no-switch` (Windows:
 `-NoSwitch`) leaves an existing gateway running. To pin a release, download
 **install.sh** from that release and run
-`bash install.sh --version 1.10.0 --require-signature`. Normal updates select
+`bash install.sh --version 1.11.0-beta.1 --require-signature`. Normal updates select
 stable releases only; a beta build, when one is published, is installed by its
 explicit `X.Y.Z-beta.N` version and never replaces latest.
 
@@ -94,6 +95,19 @@ act as buyers; they cannot run this beta's NVIDIA operator runtime.
 If setup fails, read its prerequisite/progress message, correct the underlying
 Docker, GPU or disk issue and retry. Setup does not change Docker permissions
 or install drivers. A damaged runtime requires reinstalling the release.
+
+The mesh should report **Discovery active**, and the worker should report
+**GPU probe passed** before GPU capacity is advertised. The GPU total in the
+mesh panel counts other discovered operators, not this machine's own worker.
+See [sidecar troubleshooting](./soapbox-compute-mesh.md#p2p-is-connected-but-compute-discovery-is-unavailable)
+if P2P connects but Compute discovery does not.
+
+This beta pins rc9 for newly prepared operators. An already configured operator
+keeps its existing runtime directory and pinned image; upgrading the app alone
+does not replace those files. Upgrade the coordinator, worker and runner image
+together using the [rc9 runtime release instructions](https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.9),
+retaining enrollment, database, model cache and GPU lock. Its optional WSL Docker
+service must be explicitly installed; the app does not change host Docker setup.
 
 ## Submit private or collective work
 

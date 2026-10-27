@@ -1,6 +1,6 @@
 {
   "name": "bitterbot-control-ui",
-  "version": "1.10.1",
+  "version": "1.11.0-beta.1",
   "private": true,
   "description": "Bitterbot Control UI - browser-based dashboard for the gateway",
   "type": "module",
