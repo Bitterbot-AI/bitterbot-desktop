@@ -73,6 +73,42 @@ out of the returned 50 by the boosts has no channel rank either.
 
 Result files are in `results/` and hold ranks, chunk ids and sources only.
 
+## Real agent queries (journal replay)
+
+Generated questions always contain findable terms. The event journal records
+every `memory_search` the agent has made, with its query text, so the same
+code paths can be judged on what the agent actually asks:
+
+1. `extract-journal-queries.mts` pulls the distinct queries from
+   `~/.bitterbot/event-journal.sqlite` (stream `tool`, phase `start`). Private
+   output under `~/.bitterbot`, never committed; a manifest with counts and the
+   file hash is.
+2. `replay-judge.mts` searches a copy of the snapshot once per setting
+   (here `postFusionBoostScale` 1, 0.1, 0), pools the top-k passages across
+   settings, and asks a small model ONCE per (query, passage) pair whether the
+   passage answers the query. The same verdicts score every setting, so the
+   comparison is fair even where the judge is not. Output: hit@k (any relevant
+   passage in the top k), precision@k, relevant@1, MRR; hashes and ranks only.
+
+Results, 2026-10-27: 68 distinct real queries (May to October 2026, median 36
+characters), k = 5, judge `claude-haiku-4-5`, 398 pairs judged. Only 33 of the
+68 queries had any relevant passage under any setting; the store simply does
+not hold an answer for the rest, which is itself a finding about what the agent
+asks for versus what it has kept.
+
+| `postFusionBoostScale` | hit@5 | precision@5 | relevant@1 | MRR   |
+| ---------------------- | ----- | ----------- | ---------- | ----- |
+| 1 (legacy)             | 38.2% | 23.8%       | 32.4%      | 0.342 |
+| 0.1 (default)          | 42.6% | 30.9%       | 32.4%      | 0.354 |
+| 0                      | 44.1% | 31.2%       | 32.4%      | 0.362 |
+
+Per query, 0.1 against 1 moved the first relevant passage up on 8 queries and
+down on 5 (55 unchanged); 0 against 0.1 moved 3 up and 3 down. The direction
+agrees with the held-out set; the size of the effect is far smaller on real
+queries, which are short and keyword-shaped and sit closer to the keyword
+channel's strengths, and 0 is not distinguishable from 0.1 on this sample. The
+default stays at 0.1.
+
 ## Caveats
 
 - The question writer sees the passage, so questions can be easier than real
