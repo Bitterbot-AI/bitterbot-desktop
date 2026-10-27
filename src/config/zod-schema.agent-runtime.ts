@@ -550,6 +550,7 @@ export const MemorySearchSchema = z
           .strict()
           .optional(),
         channelDiagnostics: z.enum(["full", "ranks", "off"]).optional(),
+        postFusionBoostScale: z.number().min(0).max(1).optional(),
         recency: z
           .object({
             enabled: z.boolean().optional(),

@@ -1,0 +1,13 @@
+{
+  "createdAt": "2026-10-27T18:30:38.570Z",
+  "snapshot": "/tmp/claude-1000/-mnt-d-Bitterbot-bitterbot-desktop/50d3c3a2-52de-4c6c-b556-d6fde8b9c93d/scratchpad/live-db/main-snapshot.sqlite",
+  "snapshotChunks": 4083,
+  "eligible": 907,
+  "clean": 905,
+  "questions": 60,
+  "failed": 0,
+  "seed": "1",
+  "model": "claude-haiku-4-5",
+  "promptSha256": "34f762f32c9b27fa1f2a9172a4e16f57c98058e61d6e060b3537d918c65b1ef5",
+  "questionsSha256": "63a048d32bd0438b852970a341a29d604cc6ee997932717bdfcf7e3cd978a531"
+}

@@ -380,6 +380,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Multiplier for candidate pool size (default: 4).",
   "agents.defaults.memorySearch.query.channelDiagnostics":
     "Per-channel retrieval detail shown to the model on memory_search results: ranks (default), full (ranks + native scores), or off.",
+  "agents.defaults.memorySearch.query.postFusionBoostScale":
+    "How much of the recency, emotional, mood and temporal boosts reaches a rank-fused (RRF) score: 0.1 = tie-breaking strength (default), 1 = full legacy boosts, 0 = pure fusion order.",
   "agents.defaults.memorySearch.cache.enabled":
     "Cache chunk embeddings in SQLite to speed up reindexing and frequent updates (default: true).",
   memory: "Memory system configuration (global).",

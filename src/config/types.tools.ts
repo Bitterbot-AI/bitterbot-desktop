@@ -401,6 +401,15 @@ export type MemorySearchConfig = {
      * Default: 0.15.
      */
     importanceWeight?: number;
+    /**
+     * How much of the post-fusion boosts (recency, emotional valence, mood
+     * congruence, temporal intent) reaches a rank-fused score. They multiply
+     * the score and were sized for cosine-scale scores; under RRF (rank-only,
+     * adjacent ranks 1-3% apart) the full boosts reorder results wholesale.
+     * 1 = full boosts (legacy), 0.1 = tie-breaking strength, 0 = pure fusion
+     * order. Default: 0.1 (measured 2026-10-27; see docs/memory/curiosity-and-search.md).
+     */
+    postFusionBoostScale?: number;
     /** Recency boost for search results (post-RRF multiplier). */
     recency?: {
       /** Enable recency boost (default: true). */

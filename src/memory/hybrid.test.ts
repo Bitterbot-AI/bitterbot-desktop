@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bm25RankToScore,
+  boundPostFusionBoost,
   buildFtsQuery,
   mergeHybridResults,
   mergeHybridResultsRRF,
@@ -14,6 +15,17 @@ describe("memory hybrid helpers", () => {
     expect(buildFtsQuery("金银价格")).toBe('"金银价格"');
     expect(buildFtsQuery("価格 2026年")).toBe('"価格" OR "2026年"');
     expect(buildFtsQuery("   ")).toBeNull();
+  });
+
+  it("boundPostFusionBoost shrinks a multiplicative boost toward the fused score's scale", () => {
+    const base = 2 / 61; // rank 1 in two channels under RRF k=60
+    expect(boundPostFusionBoost(base, base * 1.5, 1)).toBeCloseTo(base * 1.5, 12);
+    expect(boundPostFusionBoost(base, base * 1.5, 0.1)).toBeCloseTo(base * 1.05, 12);
+    expect(boundPostFusionBoost(base, base * 0.0625, 0.1)).toBeCloseTo(base * 0.90625, 12);
+    expect(boundPostFusionBoost(base, base * 0.0625, 0)).toBeCloseTo(base, 12);
+    // Degenerate inputs pass the boosted value through untouched.
+    expect(boundPostFusionBoost(0, 0.5, 0.1)).toBe(0.5);
+    expect(boundPostFusionBoost(base, Number.NaN, 0.1)).toBeNaN();
   });
 
   it("buildFtsQuery drops stopwords from a sentence but keeps every word of a short lookup", () => {
