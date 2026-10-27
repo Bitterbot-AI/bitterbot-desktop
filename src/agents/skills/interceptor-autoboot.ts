@@ -109,12 +109,12 @@ function buildSigner(): ((canonicalJson: string) => { ed25519: string; pubkeyId:
   }
 }
 
-async function buildMemoryManagerAccessor(): Promise<() => unknown | null> {
+async function buildMemoryManagerAccessor(): Promise<() => unknown> {
   // Returns a cached lazy accessor — first call resolves the manager
   // singleton, subsequent calls reuse it. The manager itself owns its
   // hormonal + GCCRF state.
-  let cached: unknown | null = null;
-  let resolving: Promise<unknown | null> | null = null;
+  let cached: unknown = null;
+  let resolving: Promise<unknown> | null = null;
   return () => {
     if (cached) return cached;
     if (!resolving) {
@@ -213,7 +213,7 @@ export function ensureInterceptorsAutoBoot(): void {
 
   // The memory-manager accessor is async-cached; we hand bootstrap a sync
   // getter that returns null until the lazy resolution completes.
-  let mgrAccessor: () => unknown | null = () => null;
+  let mgrAccessor: () => unknown = () => null;
   void buildMemoryManagerAccessor().then((acc) => {
     mgrAccessor = acc;
     log.debug(`interceptors: memory manager accessor ready`);
