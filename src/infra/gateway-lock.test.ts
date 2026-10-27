@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveConfigPath, resolveGatewayLockDir, resolveStateDir } from "../config/paths.js";
-import { acquireGatewayLock, GatewayLockError } from "./gateway-lock.js";
+import { acquireGatewayLock, GatewayLockError, RESTART_PARENT_PID_ENV } from "./gateway-lock.js";
 
 let fixtureRoot = "";
 let fixtureCount = 0;
@@ -212,6 +212,63 @@ describe("gateway lock", () => {
 
     await lock?.release();
     staleSpy.mockRestore();
+    await cleanup();
+  });
+});
+
+describe("restart handoff", () => {
+  // Real timers: the loop polls the filesystem.
+  it("outlives a parent that is still shutting down when spawned as its restart", async () => {
+    vi.useRealTimers();
+    const { env, cleanup } = await makeEnv();
+    const parent = await acquireGatewayLock({
+      env,
+      allowInTests: true,
+      timeoutMs: 50,
+      pollIntervalMs: 2,
+    });
+    expect(parent).not.toBeNull();
+    // The lock owner is this process; the child is told this process is its parent.
+    const childEnv = { ...env, [RESTART_PARENT_PID_ENV]: String(process.pid) };
+    const waited: number[] = [];
+    const pending = acquireGatewayLock({
+      env: childEnv,
+      allowInTests: true,
+      timeoutMs: 30,
+      restartHandoffTimeoutMs: 3000,
+      pollIntervalMs: 2,
+      onRestartHandoffWait: (pid) => waited.push(pid),
+    });
+    // Well past the plain timeout, the parent finally lets go.
+    await new Promise((r) => setTimeout(r, 150));
+    await parent?.release();
+    const child = await pending;
+    expect(child).not.toBeNull();
+    expect(waited).toEqual([process.pid]);
+    await child?.release();
+    await cleanup();
+  });
+
+  it("still gives up at the plain timeout when the owner is not its parent", async () => {
+    vi.useRealTimers();
+    const { env, cleanup } = await makeEnv();
+    const owner = await acquireGatewayLock({
+      env,
+      allowInTests: true,
+      timeoutMs: 50,
+      pollIntervalMs: 2,
+    });
+    const childEnv = { ...env, [RESTART_PARENT_PID_ENV]: String(process.pid + 100_000) };
+    await expect(
+      acquireGatewayLock({
+        env: childEnv,
+        allowInTests: true,
+        timeoutMs: 30,
+        restartHandoffTimeoutMs: 3000,
+        pollIntervalMs: 2,
+      }),
+    ).rejects.toBeInstanceOf(GatewayLockError);
+    await owner?.release();
     await cleanup();
   });
 });

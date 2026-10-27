@@ -8,6 +8,16 @@ import { isPidAlive } from "../shared/pid-alive.js";
 const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_POLL_INTERVAL_MS = 100;
 const DEFAULT_STALE_MS = 30_000;
+/**
+ * A full-process restart spawns the new gateway while the old one is still
+ * draining and closing (the orchestrator alone can take ~10 s to exit), so the
+ * child regularly finds the lock held by its parent. With the plain 5 s
+ * timeout the child gave up, the parent then exited, and nothing was left
+ * listening: a 51-minute outage on 2026-10-27. When the lock owner IS the
+ * parent named in RESTART_PARENT_PID_ENV, the child waits this long instead.
+ */
+const DEFAULT_RESTART_HANDOFF_TIMEOUT_MS = 120_000;
+export const RESTART_PARENT_PID_ENV = "BITTERBOT_RESTART_PARENT_PID";
 
 type LockPayload = {
   pid: number;
@@ -29,6 +39,10 @@ export type GatewayLockOptions = {
   staleMs?: number;
   allowInTests?: boolean;
   platform?: NodeJS.Platform;
+  /** How long to wait for the restart parent (env RESTART_PARENT_PID_ENV) to let go of the lock. */
+  restartHandoffTimeoutMs?: number;
+  /** Called once when the wait is extended for the restart parent. */
+  onRestartHandoffWait?: (parentPid: number) => void;
 };
 
 export class GatewayLockError extends Error {
@@ -200,10 +214,13 @@ export async function acquireGatewayLock(
     return null;
   }
 
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  let timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const pollIntervalMs = opts.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const staleMs = opts.staleMs ?? DEFAULT_STALE_MS;
   const platform = opts.platform ?? process.platform;
+  const restartParentPid = Number.parseInt(env[RESTART_PARENT_PID_ENV] ?? "", 10);
+  const handoffTimeoutMs = opts.restartHandoffTimeoutMs ?? DEFAULT_RESTART_HANDOFF_TIMEOUT_MS;
+  let handoffExtended = false;
   const { lockPath, configPath } = resolveGatewayLockPath(env);
   await fs.mkdir(path.dirname(lockPath), { recursive: true });
 
@@ -245,6 +262,20 @@ export async function acquireGatewayLock(
       if (ownerStatus === "dead" && ownerPid) {
         await fs.rm(lockPath, { force: true });
         continue;
+      }
+      // Restart handoff: the lock is held by the gateway that spawned us and is
+      // still shutting down. Outlive it instead of giving up at the plain
+      // timeout; it releases the lock or dies, and either frees the loop above.
+      if (
+        !handoffExtended &&
+        Number.isFinite(restartParentPid) &&
+        restartParentPid > 0 &&
+        ownerPid === restartParentPid &&
+        handoffTimeoutMs > timeoutMs
+      ) {
+        handoffExtended = true;
+        timeoutMs = handoffTimeoutMs;
+        opts.onRestartHandoffWait?.(restartParentPid);
       }
       if (ownerStatus !== "alive") {
         let stale = false;
