@@ -113,12 +113,29 @@ function gitCommit(): string | null {
   }
 }
 
+/** The first `n` items of each question_type, keeping dataset order within and across types. */
+function firstPerType<T extends { question_type: string }>(dataset: T[], n: number): T[] {
+  const taken = new Map<string, number>();
+  return dataset.filter((item) => {
+    const seen = taken.get(item.question_type) ?? 0;
+    if (seen >= n) {
+      return false;
+    }
+    taken.set(item.question_type, seen + 1);
+    return true;
+  });
+}
+
 // ── CLI Args ──
 
 const { values: args } = parseArgs({
   options: {
     oracle: { type: "boolean", default: false },
     limit: { type: "string", default: "0" },
+    // First N questions of EACH question_type, in dataset order. The first-N
+    // slice of LongMemEval-S is all single-session-user, which cannot show
+    // where one channel beats another; a stratified slice can.
+    "per-type": { type: "string", default: "0" },
     "max-chunks": { type: "string", default: "50" },
     "data-dir": { type: "string", default: join(__dirname, "data") },
     "output-dir": { type: "string", default: join(__dirname, "results") },
@@ -237,6 +254,7 @@ async function run() {
   mkdirSync(outputDir, { recursive: true });
 
   const limit = parseInt(args.limit!, 10) || 0;
+  const perType = parseInt(args["per-type"]!, 10) || 0;
   const maxChunks = parseInt(args["max-chunks"]!, 10);
   const verbose = args.verbose!;
 
@@ -247,10 +265,17 @@ async function run() {
   if (limit) {
     console.log(`   Limit: ${limit} questions`);
   }
+  if (perType) {
+    console.log(`   Stratified: first ${perType} questions of each question_type`);
+  }
   console.log("");
 
   const dataset = loadDataset(dataFile);
-  const items = limit ? dataset.slice(0, limit) : dataset;
+  const items = perType
+    ? firstPerType(dataset, perType)
+    : limit
+      ? dataset.slice(0, limit)
+      : dataset;
   console.log(`Loaded ${items.length} questions (of ${dataset.length} total)`);
 
   const bridge = await createBenchmarkMemoryManager();
@@ -387,6 +412,7 @@ async function run() {
     dataset: dataFile,
     // PLAN-58: the baseline is only comparable when it names the code it measured.
     git_commit: measuredCommit,
+    sampling: perType ? { perType } : limit ? { limit } : { all: true },
     generated_at: new Date().toISOString(),
     n_questions: perQuestion.length,
     elapsed_seconds: parseFloat(totalSec),
