@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { __testing as ctxTesting } from "../interceptor-context.js";
 import type { StepContext } from "../interceptor.js";
 import { calibrateClaimConfidence } from "./calibrate-claim-confidence.js";

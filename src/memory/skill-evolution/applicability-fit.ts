@@ -255,7 +255,7 @@ export function assessApplicabilityFit(
     !profile.measured.models.includes(facts.model) &&
     !profile.measured.validatedOn.includes(facts.model)
   ) {
-    const senders = [...profile.measured.validatedOn, ...profile.measured.models];
+    const senders = [...new Set([...profile.measured.validatedOn, ...profile.measured.models])];
     const directions = new Set(senders.map((s) => transferDirection(s, facts.model)));
     if (directions.has("peer-to-peer") || directions.has("stronger-to-weaker")) {
       model = 0.7;

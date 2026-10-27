@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendImpactEntry,
   impactTrailPath,
-  provenancePath,
   readProvenance,
   resolveWikiDir,
 } from "./impact-trail.js";

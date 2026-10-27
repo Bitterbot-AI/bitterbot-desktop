@@ -71,7 +71,7 @@ describe("intervention-store", () => {
     store.insert(rec({ id: "r1", ts: 1000 }));
     store.insert(rec({ id: "r2", ts: 2000 }));
     const recent = store.recent({ limit: 10 });
-    expect(recent.map((r) => r.id).sort()).toEqual(["r1", "r2"]);
+    expect(recent.map((r) => r.id).toSorted()).toEqual(["r1", "r2"]);
   });
 
   it("recent filters by sessionKey", () => {

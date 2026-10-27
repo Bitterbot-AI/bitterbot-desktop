@@ -17,7 +17,6 @@
  */
 
 import fs from "node:fs/promises";
-import path from "node:path";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
 import { checkDescriptionContract } from "./description-contract.js";
 import { liveSkillPath, type StorageRoots } from "./skill-storage.js";

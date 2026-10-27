@@ -22,18 +22,12 @@ import { ensureInterceptorsAutoBoot } from "./interceptor-autoboot.js";
 import { resolveStepContext } from "./interceptor-context.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
 import { getInterceptorStrikesStore } from "./interceptor-strikes-store.js";
-import type {
-  CandidateAction,
-  Intervention,
-  RegisteredInterceptor,
-  StepContext,
-} from "./interceptor.js";
+import type { Intervention, RegisteredInterceptor, StepContext } from "./interceptor.js";
 import {
   getInterventionStore,
   signInterventionRecord,
   type InterventionRecord,
 } from "./intervention-record.js";
-import { recordTool } from "./session-context-tracker.js";
 
 const MESSAGE_TOOL_HINT_RX = /(send_message|_send|_reply|send$|reply$|^message$)/i;
 const TEXT_PARAM_KEYS = ["text", "content", "message", "body", "reply"] as const;

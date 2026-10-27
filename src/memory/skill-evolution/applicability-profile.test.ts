@@ -362,6 +362,10 @@ describe("assessApplicabilityFit", () => {
     expect(fit.level).toBe("poor");
     expect(fitTakesStrictCanary(fit.level)).toBe(true);
     expect(fit.mismatches.length).toBeGreaterThanOrEqual(3);
+    // The sender's gate model and read model are the same string: name it once.
+    expect(fit.mismatches[0]).toBe(
+      "measured on mystery/model-z: weaker or unknown tier than anthropic/claude-opus-4-8",
+    );
   });
 
   it("treats a missing env name as soft and an unknown receiver model as half credit", () => {

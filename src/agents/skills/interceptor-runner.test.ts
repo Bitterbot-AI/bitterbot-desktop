@@ -1,8 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import {
-  setInterceptorContextProviders,
-  clearInterceptorContextProviders,
-} from "./interceptor-context.js";
+import { clearInterceptorContextProviders } from "./interceptor-context.js";
 import { getInterceptorRegistry } from "./interceptor-registry.js";
 import { runInterceptors, resetInterceptorRunnerState } from "./interceptor-runner.js";
 import type { PreActionInterceptor } from "./interceptor.js";

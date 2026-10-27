@@ -39,7 +39,6 @@ import {
   createSqliteInterceptorStrikesStore,
   setInterceptorStrikesStore,
 } from "./interceptor-strikes-store.js";
-import { getInterventionStore, setInterventionStore } from "./intervention-record.js";
 import {
   getRecentTurns,
   getSessionChannel,

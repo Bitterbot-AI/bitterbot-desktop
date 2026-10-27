@@ -123,7 +123,7 @@ export function channelFromSessionKey(sessionKey: string): ChannelKind {
   //   "main"                                (default agent direct chat)
   //   "voice:<id>"
   // Tokenize on both : and / and check the head.
-  const head = sessionKey.split(/[:\/]/, 1)[0]?.toLowerCase() ?? "internal";
+  const head = sessionKey.split(/[:/]/, 1)[0]?.toLowerCase() ?? "internal";
   if ((KNOWN_CHANNELS as readonly string[]).includes(head)) {
     return head as ChannelKind;
   }

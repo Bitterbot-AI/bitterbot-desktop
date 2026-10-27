@@ -165,13 +165,6 @@ export function applySubstringPatch(params: {
     if (before === after) {
       return { error: "patch-no-match", detail: `no occurrences of oldString found` };
     }
-    const replacedCount =
-      before.length -
-        after.length +
-        (params.newString.length - params.oldString.length) *
-          ((before.length - after.length) / (params.oldString.length - params.newString.length) ||
-            0) || 0;
-    // The arithmetic above is brittle for empty-newString cases; recount.
     const count = before.split(params.oldString).length - 1;
     return { content: after, replacedCount: count };
   }

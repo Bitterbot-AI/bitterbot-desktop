@@ -41,7 +41,7 @@ describe("interceptor-registry", () => {
     reg.register(mk("b:1", "b", { tools: ["t2"] }));
     reg.register(mk("c:1", "c")); // matches all
     const r = reg.candidatesFor("t1").map((e) => e.interceptor.id);
-    expect(r.sort()).toEqual(["a:1", "c:1"]);
+    expect(r.toSorted()).toEqual(["a:1", "c:1"]);
   });
 
   it("config disabled list excludes by id or skill", () => {
