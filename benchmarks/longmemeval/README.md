@@ -30,6 +30,21 @@ pnpm benchmark:longmemeval --oracle
 pnpm benchmark:longmemeval:evaluate
 ```
 
+### Retrieval-only baseline with per-channel attribution (PLAN-58)
+
+```bash
+pnpm benchmark:longmemeval:retrieval            # LongMemEval-S, Recall@5 / Recall@10
+pnpm benchmark:longmemeval:retrieval -- --oracle
+```
+
+`runner-retrieval.ts` does no answer generation. Since every search result
+now carries `channels` (rank and native score per vector / keyword / graph
+channel), the runner also reports, from the same fused list, what each
+channel alone would have recalled at K and which channel(s) found the gold
+chunk (`vector-only`, `keyword-only`, `graph-only`, `multi`). The output
+JSON records the git commit it measured, so a saved run is the frozen
+baseline any later retrieval change is compared against.
+
 ## How It Works
 
 1. **Ingest**: Each question's chat history is converted to timestamped session files and ingested through Bitterbot's normal memory pipeline (chunk → embed → store with temporal metadata)

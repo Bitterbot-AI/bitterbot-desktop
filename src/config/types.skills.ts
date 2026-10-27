@@ -154,6 +154,22 @@ export type SkillsEvolutionConfig = {
    */
   requireCrossModel?: boolean;
   /**
+   * PLAN-58: the skill applicability profile. Each housekeeping pass
+   * rebuilds `<skill>/.applicability.json` (models, platform, declared
+   * requirements, run shape, outcome depth; names, hashes and counts only)
+   * and the P2P publisher ships it inside the signed provenance trailer.
+   * Receivers compute a fit that orders evaluation and can tighten the
+   * canary; it never admits or rejects a skill.
+   */
+  applicabilityProfile?: {
+    /** Build the profile in housekeeping. Default: true. */
+    enabled?: boolean;
+    /** Ship it in the trailer when publishing. Default: true. */
+    publish?: boolean;
+    /** Read window in days. Default: 14. */
+    windowDays?: number;
+  };
+  /**
    * PLAN-44 Phase 2: wall-clock budget for one tasks-mode validation run.
    * When exceeded the gate stops issuing rollouts and HOLDs the proposal
    * (`budget-exhausted`); the incumbent memo makes the retry cheap.

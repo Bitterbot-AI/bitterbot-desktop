@@ -39,6 +39,12 @@ export const FIELD_HELP: Record<string, string> = {
     "Days a validated evolved skill must survive locally before P2P publish. Default 3.",
   "skills.evolution.requireCrossModel":
     "Publish over P2P only a skill validated on at least two models. Default false: a single-model skill publishes tagged singleModel on its provenance trailer, and receivers apply the strict canary to it.",
+  "skills.evolution.applicabilityProfile.enabled":
+    "Rebuild each live skill's applicability profile (models, platform, declared requirements, run shape, outcome depth; names, hashes and counts only) every housekeeping pass. Default true.",
+  "skills.evolution.applicabilityProfile.publish":
+    "Ship the applicability profile inside the signed provenance trailer when a skill is published to the mesh. Receivers use it only to order evaluation and tighten the canary. Default true.",
+  "skills.evolution.applicabilityProfile.windowDays":
+    "Days of read evidence the applicability profile summarises. Default 14.",
   "skills.evolution.validationTools.exec":
     "Give skill-validation rollouts a shell (exec/process) with approvals off, a scrubbed environment (HOME/TMPDIR inside the scratch workspace), a workdir confined to it and a validation-specific binary allowlist with no network clients. On by default (PLAN-45 D-2) so the gate measures the pathway the runtime uses; set false to keep validation shell-less.",
   "skills.evolution.validationBudgetMinutes":
@@ -372,6 +378,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Weight for BM25 text relevance when merging results (0-1).",
   "agents.defaults.memorySearch.query.hybrid.candidateMultiplier":
     "Multiplier for candidate pool size (default: 4).",
+  "agents.defaults.memorySearch.query.channelDiagnostics":
+    "Per-channel retrieval detail shown to the model on memory_search results: ranks (default), full (ranks + native scores), or off.",
   "agents.defaults.memorySearch.cache.enabled":
     "Cache chunk embeddings in SQLite to speed up reindexing and frequent updates (default: true).",
   memory: "Memory system configuration (global).",

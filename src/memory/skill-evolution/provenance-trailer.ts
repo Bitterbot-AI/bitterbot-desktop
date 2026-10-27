@@ -18,6 +18,10 @@
 import crypto from "node:crypto";
 import { type KeyPair, pubkeyId } from "../../commerce/envelope.js";
 import { canonicalJson, type JsonValue } from "../../commerce/sku.js";
+import {
+  parseApplicabilityProfile,
+  type SkillApplicabilityProfile,
+} from "./applicability-profile.js";
 import type { EvolutionMeta } from "./validation-gate.js";
 
 export const PROVENANCE_TRAILER_MARKER = "wiki-evolution-provenance";
@@ -63,6 +67,13 @@ export interface EvolutionProvenanceRecord {
   /** PLAN-45 5.4: true when the candidate was measured on fewer than two models. */
   singleModel?: boolean;
   notice?: string;
+  /**
+   * PLAN-58: the conditions the sender measured the skill under (models,
+   * platform, declared requirements, run shape, outcome depth). Covered by
+   * the binding signature like every other claim. Display and soft-ranking
+   * only on the receiver; never an admission input.
+   */
+  applicability?: SkillApplicabilityProfile;
   /** PLAN-45 4.4: present and VERIFIED when the sender signed the trailer with its device key. */
   binding?: ProvenanceBinding;
 }
@@ -126,7 +137,11 @@ export interface TrailerSigning {
  * binding (PLAN-45 4.4); without it (no device identity, no node key) the
  * trailer is the legacy unsigned claim.
  */
-export function buildProvenanceTrailer(meta: EvolutionMeta, signing?: TrailerSigning): string {
+export function buildProvenanceTrailer(
+  meta: EvolutionMeta,
+  signing?: TrailerSigning,
+  extra?: { applicability?: SkillApplicabilityProfile | null },
+): string {
   const v = meta.validation;
   const record: Record<string, unknown> = {
     origin: "wiki-evolution",
@@ -141,6 +156,8 @@ export function buildProvenanceTrailer(meta: EvolutionMeta, signing?: TrailerSig
     ...(v?.validatedOn?.length ? { validatedOn: v.validatedOn.slice(0, 4) } : {}),
     singleModel: (v?.validatedOn?.length ?? (v?.model ? 1 : 0)) < 2,
     validatedAt: v?.validatedAt,
+    // PLAN-58: inside `record` so the binding preimage signs it.
+    ...(extra?.applicability ? { applicability: extra.applicability } : {}),
   };
   if (signing) {
     const unsigned: Omit<ProvenanceBinding, "signature"> = {
@@ -262,6 +279,12 @@ export function parseProvenanceTrailer(md: string): EvolutionProvenanceRecord | 
         : {}),
       ...(typeof r.singleModel === "boolean" ? { singleModel: r.singleModel } : {}),
       notice: optionalString(r.notice, 400),
+      // PLAN-58: a malformed profile drops silently; the verdict still parses.
+      ...(() => {
+        const profile =
+          r.applicability === undefined ? null : parseApplicabilityProfile(r.applicability);
+        return profile ? { applicability: profile } : {};
+      })(),
       ...(binding ? { binding } : {}),
     };
   }

@@ -290,6 +290,61 @@ The evidence record carries `ladder`, `canary`, and `modelDrift`; status
   strict canary (a fifth of runs, 16 determinate runs per side, looks at
   4/8/16/32/64 with alpha 0.05/5, 40 runs or 21 days to graduate).
 
+### Evidence of conditions travels with the skill (PLAN-58 Phase B)
+
+The trailer above says a skill helped on the sender's suite. It did not say
+under what conditions, so a receiver could tell "this skill sounds relevant"
+from "this skill has evidence under conditions like mine" only by running
+the gate. The **applicability profile** closes that gap without adding a
+gate or touching the orchestrator.
+
+- **Built every housekeeping pass** (`applicability-refresh.ts`, right
+  after the evidence record, default on) into `<skill>/.applicability.json`
+  from ledgers that already exist: the read ledger (models the skill was
+  read under, pass / fail / indeterminate counts, highest L0-L4 evidence
+  level), the evolution meta (gate trials, delta, CI, `validatedOn`,
+  corpus version), the SKILL.md frontmatter (declared `os`,
+  `requires.bins/anyBins/env` **names**, capability **keys**, tier) and up
+  to 40 reconstructed journal traces that credited a read (tool names by
+  run count, tool-sequence hashes, failure mechanisms). Names, hashes and
+  counts only: no task text, run ids, session keys, arguments, results,
+  paths or env values ever enter it, the builder is unit-tested against
+  planted secrets, and the whole thing is capped at 4 KB.
+- **Shipped inside the signed trailer.** `buildProvenanceTrailer` places
+  the profile in the claims block, so the device-key binding (4.4) signs it
+  with no change to the signing code; a single altered byte makes the
+  trailer parse as no trailer at all. The publisher runs `findPublishLeak`
+  over the serialized profile too and withholds the **profile** (never the
+  skill) on a hit. Total growth is under 4 KB against the 256 KB gossip
+  cap; zero Rust changes. A pre-PLAN-58 receiver verifies the same
+  signature and simply does not read the field.
+- **Fit on receipt** (`assessApplicabilityFit`, pure). The receiver scores
+  the profile against its own facts: primary model (exact match, else the
+  4.6 transfer direction), platform versus declared and measured OS,
+  declared binaries on PATH, declared env names set, and the sender's
+  evidence depth (five or more runs at L3+ for full credit). A declared OS
+  that excludes this platform or a missing required binary is a **hard**
+  mismatch that caps the level at `partial`. No profile is `unknown`, never
+  `poor`. The fit is stored on `.envelope.json` (`applicability_fit`) and on
+  `.evolution-meta.json.peer.applicabilityFit` when the skill is staged.
+- **Soft signal, three consumers, nothing else.** The review list
+  (`listIncomingSkills().applicability`) shows the level, the mismatches
+  and a display subset of the profile. `evaluationPriority` becomes half
+  trust, half fit when a fit is supplied (no profile ranks below any
+  measured fit); the activation score keeps weight 0 for both, asserted by
+  `trust-not-evidence.test.ts`. The gate applies the **strict canary**
+  when the fit is `poor` or `unknown`, even for a trusted attester; a
+  `good` fit changes nothing (fit can tighten, never loosen). There is no
+  fit-based admission, rejection or auto-accept.
+- **The claim this makes testable.** Peer skills with a `good` fit should
+  pass the local re-gate more often than skills with a `poor` fit. The
+  status RPC carries the fit per pending peer so the stratified pass rate
+  can be read off after a few dozen receipts; if the strata do not
+  separate, `skills.evolution.applicabilityProfile.publish: false` is the
+  right default and the profile is not earning its bytes.
+- Config: `skills.evolution.applicabilityProfile.{enabled, publish,
+  windowDays}`, defaults `true`, `true`, `14`.
+
 ### Measuring it: the ablation harness (PLAN-45 Phase 5.1 and 5.2)
 
 The mechanism above is only a claim until it has numbers. `pnpm

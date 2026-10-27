@@ -45,6 +45,31 @@ describe("I5: trust is not evidence", () => {
     expect(SkillVersionResolver.evaluationPriority({ peerTrust: Number.NaN })).toBe(0.5);
   });
 
+  it("PLAN-58: applicability fit has zero activation weight and only orders evaluation", () => {
+    const base = { executionSuccessRate: 0.4, executionCount: 10, ageMs: 1000, peerTrust: 0.5 };
+    expect(SkillVersionResolver.fitness({ ...base, applicabilityFit: 0 })).toBe(
+      SkillVersionResolver.fitness({ ...base, applicabilityFit: 1 }),
+    );
+    expect(SkillVersionResolver.fitness({ ...base, applicabilityFit: null })).toBe(
+      SkillVersionResolver.fitness(base),
+    );
+    // Priority: half trust, half fit; no profile ranks below any measured fit.
+    expect(SkillVersionResolver.evaluationPriority({ peerTrust: 1, applicabilityFit: 1 })).toBe(1);
+    expect(SkillVersionResolver.evaluationPriority({ peerTrust: 1, applicabilityFit: 0 })).toBe(
+      0.5,
+    );
+    expect(
+      SkillVersionResolver.evaluationPriority({ peerTrust: 0.5, applicabilityFit: null }),
+    ).toBe(0.5 * 0.5 + 0.5 * 0.25);
+    expect(
+      SkillVersionResolver.evaluationPriority({ peerTrust: 0.5, applicabilityFit: 0.3 }),
+    ).toBeGreaterThan(
+      SkillVersionResolver.evaluationPriority({ peerTrust: 0.5, applicabilityFit: null }),
+    );
+    // Omitting the field keeps the pre-PLAN-58 behaviour byte for byte.
+    expect(SkillVersionResolver.evaluationPriority({ peerTrust: 0.7 })).toBe(0.7);
+  });
+
   it("demotion counts only the node's own verdict and trusted attesters, never reputation or unknown keys", () => {
     const own = generateKeyPair();
     const trustedA = generateKeyPair();

@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
 import type { MemoryCitationsMode } from "../../config/types.memory.js";
 import { normalizeCanonicalScope } from "../../memory/canonical-facts.js";
+import type { HybridChannels } from "../../memory/hybrid.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import type { MemorySearchResult } from "../../memory/types.js";
 import { parseAgentSessionKey } from "../../routing/session-key.js";
@@ -112,7 +113,12 @@ export function createMemorySearchTool(options: {
           : await manager.search(query, searchOpts);
         const status = manager.status();
         const decorated = decorateCitations(rawResults, includeCitations);
-        const results = decorated;
+        // PLAN-58: per-channel diagnostics are model input, so their size is
+        // a config decision ("ranks" by default); a guest never sees them.
+        const diagnostics = options.memoryGuest
+          ? "off"
+          : (resolveMemorySearchConfig(cfg, agentId)?.query.channelDiagnostics ?? "ranks");
+        const results = projectChannelDiagnostics(decorated, diagnostics);
         // PLAN-40 funnel: the tool's return IS model input, so dream-origin
         // hits here are genuine consumption (unlike manager.search() calls
         // from the CLI or deep-recall candidate sweeps, which must never
@@ -468,6 +474,40 @@ function resolveMemoryCitationsMode(cfg: BitterbotConfig): MemoryCitationsMode {
   }
   return "auto";
 }
+
+/**
+ * PLAN-58: shape the per-channel block for the model. `"ranks"` keeps the
+ * fused score and a compact `{v,k,g}` rank map (about 12 tokens per result);
+ * `"full"` keeps `channels` as the manager returned it; `"off"` strips both
+ * so tool output is byte-identical to pre-PLAN-58.
+ */
+export function projectChannelDiagnostics(
+  results: MemorySearchResult[],
+  mode: "full" | "ranks" | "off",
+): Array<Omit<MemorySearchResult, "channels"> & { channels?: HybridChannels | CompactRanks }> {
+  if (mode === "full") {
+    return results;
+  }
+  return results.map(({ channels, fusion, ...rest }) => {
+    if (mode === "off" || !channels) {
+      return rest;
+    }
+    const compact: CompactRanks = {};
+    if (channels.vector) {
+      compact.v = channels.vector.rank;
+    }
+    if (channels.keyword) {
+      compact.k = channels.keyword.rank;
+    }
+    if (channels.graph) {
+      compact.g = channels.graph.rank;
+    }
+    return { ...rest, fusion, channels: compact };
+  });
+}
+
+/** Compact per-channel ranks: v = vector, k = keyword, g = graph. */
+export type CompactRanks = { v?: number; k?: number; g?: number };
 
 function decorateCitations(results: MemorySearchResult[], include: boolean): MemorySearchResult[] {
   if (!include) {

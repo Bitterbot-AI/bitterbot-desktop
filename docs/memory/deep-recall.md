@@ -95,17 +95,30 @@ The sandbox is cached per `agent:session:scope` and **reused across `deep_recall
 
 ## Smart Shortcut
 
-Before spawning the REPL, the tool runs a quick hybrid search (BM25 + vector). If 3+ results score ≥ 0.8, they're returned directly — skipping the REPL.
+Before spawning the REPL, the tool runs a quick hybrid search (BM25 + vector). If 3+ results are high-confidence, they're returned directly, skipping the REPL.
 
-**Important:** The 0.8 threshold is applied **client-side** after retrieval, because the RRF (Reciprocal Rank Fusion) merge strategy ignores the `minScore` parameter. This was a critical bug that caused the shortcut to ALWAYS fire.
+**What "high-confidence" means (PLAN-58).** The threshold is 0.8 on the **cosine scale**, applied client-side. Under the default RRF (Reciprocal Rank Fusion) merge strategy the fused `score` is rank-only and tops out near 3/61 ≈ 0.049, so a threshold on the fused score has two failure modes, and the tool has had both:
+
+- Before the client-side filter, the manager ignored `minScore` under RRF and the shortcut **always** fired.
+- With a client-side `score >= 0.8` filter on the fused RRF score, the shortcut could **never** fire, and every `deep_recall` paid for the REPL.
+
+The fix reads the vector channel's native cosine from the per-channel diagnostics every search result now carries:
 
 ```typescript
-// Fixed: filter scores client-side
-const highConfidence = quickResults.filter((r) => r.score >= 0.8);
+// src/agents/tools/deep-recall-tool.ts
+export function isHighConfidenceHit(r, threshold = 0.8) {
+  if (r.fusion === "rrf") {
+    return (r.channels?.vector?.score ?? 0) >= threshold; // cosine, not fused rank score
+  }
+  return r.score >= threshold; // weighted / vector-only are already on the cosine scale
+}
+const highConfidence = quickResults.filter((r) => isHighConfidenceHit(r));
 if (highConfidence.length >= 3) {
   return formatQuickResults(highConfidence); // Skip REPL
 }
 ```
+
+A keyword-only hit has no cosine and never counts toward the shortcut.
 
 ---
 

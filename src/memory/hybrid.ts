@@ -2,6 +2,38 @@ import { rrfFuse, type RankedEntry } from "./rrf.js";
 
 export type HybridSource = string;
 
+/**
+ * PLAN-58: the retrieval channels a hybrid search fuses. Every merged
+ * result says which of these found it and how well, so a consumer can see
+ * WHY a memory matched instead of reasoning about one fused number.
+ */
+export type HybridChannel = "vector" | "keyword" | "graph";
+
+/** A channel's 1-based rank and native score (cosine, BM25-derived, graph) for one result. */
+export type HybridChannelHit = { rank: number; score: number };
+
+export type HybridChannels = Partial<Record<HybridChannel, HybridChannelHit>>;
+
+/** How the channels were combined into `score`. */
+export type HybridFusion = "rrf" | "weighted" | "vector-only";
+
+function rankChannel<T extends { id: string }>(
+  sorted: readonly T[],
+  score: (r: T) => number,
+  into: Map<string, HybridChannels>,
+  channel: HybridChannel,
+): void {
+  sorted.forEach((r, i) => {
+    const hit: HybridChannelHit = { rank: i + 1, score: score(r) };
+    const existing = into.get(r.id);
+    if (existing) {
+      existing[channel] = hit;
+    } else {
+      into.set(r.id, { [channel]: hit });
+    }
+  });
+}
+
 export type HybridVectorResult = {
   id: string;
   path: string;
@@ -61,7 +93,22 @@ export function mergeHybridResults(params: {
   snippet: string;
   source: HybridSource;
   importanceScore?: number;
+  channels: HybridChannels;
+  fusion: HybridFusion;
 }> {
+  const channels = new Map<string, HybridChannels>();
+  rankChannel(
+    [...params.vector].toSorted((a, b) => b.vectorScore - a.vectorScore),
+    (r) => r.vectorScore,
+    channels,
+    "vector",
+  );
+  rankChannel(
+    [...params.keyword].toSorted((a, b) => b.textScore - a.textScore),
+    (r) => r.textScore,
+    channels,
+    "keyword",
+  );
   const byId = new Map<
     string,
     {
@@ -130,6 +177,8 @@ export function mergeHybridResults(params: {
       snippet: entry.snippet,
       source: entry.source,
       importanceScore: entry.importanceScore,
+      channels: channels.get(entry.id) ?? {},
+      fusion: "weighted" as const,
     };
   });
 
@@ -148,6 +197,9 @@ export type HybridMergedResult = {
   updatedAt?: number;
   lastAccessedAt?: number | null;
   emotionalValence?: number | null;
+  /** PLAN-58: per-channel rank and native score for every channel that returned this id. */
+  channels?: HybridChannels;
+  fusion?: HybridFusion;
 };
 
 /**
@@ -281,6 +333,11 @@ export function mergeHybridResultsRRF(params: {
     ? [...params.graph].toSorted((a, b) => b.graphScore - a.graphScore)
     : [];
 
+  const channels = new Map<string, HybridChannels>();
+  rankChannel(vectorSorted, (r) => r.vectorScore, channels, "vector");
+  rankChannel(keywordSorted, (r) => r.textScore, channels, "keyword");
+  rankChannel(graphSorted, (r) => r.graphScore, channels, "graph");
+
   type PayloadType = { id: string };
   const vectorRanked: Array<RankedEntry<PayloadType>> = vectorSorted.map((r, i) => ({
     id: r.id,
@@ -313,6 +370,10 @@ export function mergeHybridResultsRRF(params: {
 
   return fused.map((entry) => {
     const meta = payloads.get(entry.id)!;
+    // `rrfFuse` reports the rank it used per list; the channel map carries
+    // the same ranks plus the native scores. They are built from the same
+    // sorted lists, so they agree by construction (asserted in tests).
+    const hits = channels.get(entry.id) ?? {};
     return {
       id: entry.id,
       path: meta.path,
@@ -325,6 +386,8 @@ export function mergeHybridResultsRRF(params: {
       updatedAt: meta.updatedAt,
       lastAccessedAt: meta.lastAccessedAt,
       emotionalValence: meta.emotionalValence,
+      channels: hits,
+      fusion: "rrf" as const,
     };
   });
 }

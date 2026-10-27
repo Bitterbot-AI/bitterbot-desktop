@@ -180,3 +180,71 @@ describe("PLAN-45 4.4 / 4.6: signed trailer binding and model tags", () => {
     expect(parseProvenanceTrailer(legacy)?.evolverModel).toBe("anthropic/claude-opus-5");
   });
 });
+
+describe("PLAN-58: applicability profile inside the signed trailer", () => {
+  const profile = {
+    v: 1 as const,
+    generatedAt: "2026-10-26T00:00:00.000Z",
+    windowDays: 14,
+    measured: { models: ["openai/gpt-x"], validatedOn: ["openai/gpt-x"], os: ["linux"] },
+    declared: { bins: ["docker"] },
+    shape: { tools: [{ name: "exec", runs: 3 }], sequenceHashes: ["0123456789ab"] },
+    outcomes: {
+      runs: 6,
+      pass: 5,
+      fail: 1,
+      indeterminate: 0,
+      successRate: 5 / 6,
+      maxEvidenceLevel: 3,
+      gate: { trials: 9, meanDelta: 0.2, ci95Low: 0.01 },
+    },
+    failures: [{ mechanism: "unresolved-tool-error" as const, count: 1 }],
+  };
+  const meta = {
+    origin: "wiki-evolution",
+    validation: {
+      mode: "tasks" as const,
+      verdict: "accepted",
+      validatedAt: 1_700_000_000_000,
+      model: "openai/gpt-x",
+      validatedOn: ["openai/gpt-x"],
+    },
+  };
+  const body = "---\nname: s\ndescription: d\n---\nbody";
+
+  it("round-trips unsigned and signed, and the binding covers the profile", async () => {
+    const unsigned = parseProvenanceTrailer(
+      `${body}\n${buildProvenanceTrailer(meta, undefined, { applicability: profile })}`,
+    );
+    expect(unsigned?.applicability).toEqual(profile);
+    const { generateKeyPair } = await import("../../commerce/envelope.js");
+    const key = generateKeyPair();
+    const md = `${body}\n${buildProvenanceTrailer(
+      meta,
+      { skillName: "s", body, key, nodePubkey: "NODEKEY==", now: 1_700_000_001_000 },
+      { applicability: profile },
+    )}`;
+    const parsed = parseProvenanceTrailer(md);
+    expect(parsed?.applicability).toEqual(profile);
+    expect(parsed?.binding?.nodePubkey).toBe("NODEKEY==");
+    // One byte of the profile changed under the signature: no trailer at all.
+    const forged = md.replace('"runs":6', '"runs":60');
+    expect(forged).not.toBe(md);
+    expect(parseProvenanceTrailer(forged)).toBeNull();
+  });
+
+  it("a malformed profile drops the profile and keeps the verdict", () => {
+    const md = `${body}\n${buildProvenanceTrailer(meta, undefined, {
+      applicability: { ...profile, v: 2 } as unknown as typeof profile,
+    })}`;
+    const parsed = parseProvenanceTrailer(md);
+    expect(parsed?.verdict).toBe("accepted");
+    expect(parsed?.applicability).toBeUndefined();
+  });
+
+  it("a trailer without a profile parses exactly as before", () => {
+    const parsed = parseProvenanceTrailer(`${body}\n${buildProvenanceTrailer(meta)}`);
+    expect(parsed?.applicability).toBeUndefined();
+    expect("applicability" in (parsed ?? {})).toBe(false);
+  });
+});

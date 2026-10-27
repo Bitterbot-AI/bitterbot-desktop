@@ -232,7 +232,26 @@ flowchart TB
     H --> K[Return results]
 ```
 
-**Hybrid merging** uses reciprocal rank fusion by default (`mergeStrategy: "rrf"`); the configurable weights (0.7 vector + 0.3 text) apply only with `mergeStrategy: "weighted"`. BM25 ranks are converted to [0,1] scores via `bm25RankToScore()`.
+**Hybrid merging** uses reciprocal rank fusion by default (`mergeStrategy: "rrf"`); the configurable weights (0.7 vector + 0.3 text) apply only with `mergeStrategy: "weighted"`. BM25 ranks are converted to [0,1] scores via `bm25RankToScore()`. A PLAN-18 graph-reader channel joins the fusion as a third ranked list when the knowledge graph is populated.
+
+**Per-channel diagnostics (PLAN-58).** Every result carries `channels` and `fusion` alongside the fused `score`:
+
+```ts
+type MemorySearchResult = {
+  score: number; // fused; under RRF this is rank-only and tops out near 3/61
+  fusion?: "rrf" | "weighted" | "vector-only";
+  channels?: {
+    vector?: { rank: number; score: number }; // 1-based rank, cosine
+    keyword?: { rank: number; score: number }; // 1-based rank, bm25RankToScore
+    graph?: { rank: number; score: number }; // 1-based rank, graph reader score
+  };
+  // ...
+};
+```
+
+A channel that did not return the chunk is absent, never zero-filled. The ranks are the same ones `rrfFuse` used (it reports them as `sourceRanks`), so a consumer can see _why_ a memory matched: vector consensus, an exact keyword hit, a graph hop, or several at once. Anything that needs "how similar" (the `deep_recall` shortcut, thresholds, evaluation) must read `channels.vector.score`, not the fused RRF score.
+
+What the **model** sees is a config decision, `agents.defaults.memorySearch.query.channelDiagnostics`: `"ranks"` (default) adds a compact `{v, k, g}` rank map to each `memory_search` result (about 12 tokens); `"full"` adds native scores too; `"off"` makes tool output byte-identical to before. Programmatic callers of `manager.search()` always get the full block. Guest searches never carry it. `manager.status().search` reports which channels are live (`vector`, `keyword`, `graph`) and the fusion in effect.
 
 **Importance boost** applies a multiplicative factor:
 

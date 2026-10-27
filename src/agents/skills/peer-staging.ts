@@ -11,6 +11,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { ApplicabilityFit } from "../../memory/skill-evolution/applicability-profile.js";
 import { atomicWriteJson } from "../../memory/skill-evolution/fs-atomic.js";
 import { hashProposalContent } from "../../memory/skill-evolution/proposal-apply.js";
 import type { EvolutionProvenanceRecord } from "../../memory/skill-evolution/provenance-trailer.js";
@@ -36,6 +37,8 @@ export interface PeerStageParams {
     timestamp: number;
   };
   trailer: EvolutionProvenanceRecord | null;
+  /** PLAN-58: this node's fit against the trailer's applicability profile. */
+  applicabilityFit?: ApplicabilityFit;
   reason: string;
   roots?: SkillStorageRoots;
   now?: number;
@@ -113,6 +116,7 @@ export async function stagePeerSkill(params: PeerStageParams): Promise<{ staging
       timestamp: params.provenance.timestamp,
       receivedAt: now,
       trailer: params.trailer,
+      ...(params.applicabilityFit ? { applicabilityFit: params.applicabilityFit } : {}),
     },
   };
   // stageSkill strips sidecars for non-evolution authors; write them after.

@@ -23,6 +23,9 @@ export const FIELD_LABELS: Record<string, string> = {
   "skills.evolution.maturityDays": "Evolved Skill Maturity (days)",
   "skills.evolution.requireCrossModel": "Require Cross-Model Validation Before Publish",
   "skills.evolution.validationBudgetMinutes": "Skill Validation Budget (minutes)",
+  "skills.evolution.applicabilityProfile.enabled": "Skill Applicability Profile",
+  "skills.evolution.applicabilityProfile.publish": "Publish Applicability Profile",
+  "skills.evolution.applicabilityProfile.windowDays": "Applicability Profile Window (days)",
   "skills.evolution.descriptionRepair": "Skill Description Repair",
   "skills.evolution.routingRepair": "Harvested Skill Routing Repair",
   "skills.evolution.validationTools.exec": "Skill Validation Shell Access",
@@ -223,6 +226,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.memorySearch.query.hybrid.textWeight": "Memory Search Text Weight",
   "agents.defaults.memorySearch.query.hybrid.candidateMultiplier":
     "Memory Search Hybrid Candidate Multiplier",
+  "agents.defaults.memorySearch.query.channelDiagnostics": "Memory Search Channel Diagnostics",
   "agents.defaults.memorySearch.cache.enabled": "Memory Search Embedding Cache",
   "agents.defaults.memorySearch.cache.maxEntries": "Memory Search Embedding Cache Max Entries",
   memory: "Memory",

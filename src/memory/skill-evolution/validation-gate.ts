@@ -47,6 +47,7 @@ import { type KeyPair, pubkeyId } from "../../commerce/envelope.js";
 import type { EventJournal } from "../../infra/event-journal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { getActiveSkillNetworkBridge } from "../skill-network-bridge.js";
+import { type ApplicabilityFit, fitTakesStrictCanary } from "./applicability-profile.js";
 import {
   ATTEST_PROTOCOL,
   isMeasuredVerdict,
@@ -217,6 +218,12 @@ export interface EvolutionMeta {
     trailer: EvolutionProvenanceRecord | null;
     /** PLAN-45 4.6: sender's evolver model vs this node's primary. */
     transfer?: { direction: string; evolverModel: string | null; receiverModel: string | null };
+    /**
+     * PLAN-58: this node's fit against the sender's applicability profile,
+     * computed at ingest. Soft signal: orders evaluation, can only make the
+     * canary stricter, zero weight in activation.
+     */
+    applicabilityFit?: ApplicabilityFit;
     /** PLAN-45 4.2: why the memory chunk is not written yet (retried by housekeeping). */
     chunkPending?: string;
   };
@@ -1214,8 +1221,12 @@ async function settleOne(
   const senderTrusted =
     !!meta.peer?.trailer?.binding &&
     (deps.trustedAttesters ?? []).includes(meta.peer.trailer.binding.attesterPubkey);
+  // PLAN-58: a trusted sender still takes the strict window when this node's
+  // fit against the sender's applicability profile is poor or unknown
+  // (no profile shipped). Fit can only tighten, never loosen.
+  const fitStrict = isPeer && fitTakesStrictCanary(meta.peer?.applicabilityFit?.level);
   const strict = transfer
-    ? senderTrusted
+    ? senderTrusted && !fitStrict
       ? strictCanaryFor(transfer)
       : strictCanaryFor("unknown")
     : null;

@@ -172,6 +172,12 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
   "forage.audit.enabled": "src/gateway/a2a/a2a-http.ts:423 — `=== true`.",
   "skills.evolution.requireCrossModel":
     "src/memory/dream-engine.ts:2792 — only a truthy value sets requireCrossModel.",
+  "skills.evolution.applicabilityProfile.enabled":
+    "src/memory/skill-evolution/housekeeping.ts — `enabled !== false` builds the profile (default on).",
+  "skills.evolution.applicabilityProfile.publish":
+    "src/memory/skill-evolution/housekeeping.ts — only `false` withholds the profile from the trailer (default on).",
+  "agents.defaults.memorySearch.query.channelDiagnostics":
+    'src/agents/memory-search.ts resolveChannelDiagnostics — anything but "full" or "off" resolves to "ranks".',
   "skills.skillSeekers.enabled": "src/agents/tools/skill-seekers-tool.ts:68 — `!== true` refuses.",
   "skills.skillSeekers.trending.enabled":
     "src/memory/manager.ts:3678 — `!== true` skips the sweep.",
