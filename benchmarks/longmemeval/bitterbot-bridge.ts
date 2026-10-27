@@ -108,6 +108,20 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
       },
       list: [{ id: agentId, default: true, workspace: workspaceDir }],
     },
+    // Retrieval baseline = raw store + search. Without these switches the
+    // manager starts the dream engine (trigger-on-start cycle, emotional
+    // mini-dreams), consolidation, curiosity and the health sweep inside the
+    // benchmark process: minutes per question, LLM calls on the operator's
+    // key, and a score that is no longer "raw mode". The biological runner
+    // has its own bridge for that comparison.
+    memory: {
+      dream: { enabled: false },
+      consolidation: { enabled: false },
+      curiosity: { enabled: false },
+      emotional: { enabled: false },
+      healthSweep: { enabled: false },
+      coverageDiagnostics: { enabled: false },
+    },
   } as BitterbotConfig;
 
   const manager = await MemoryIndexManager.get({ cfg: config, agentId });

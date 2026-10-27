@@ -318,7 +318,22 @@ export function parseEmbedding(raw: string | Uint8Array | null | undefined): num
  * Encode an embedding for storage as a compact float32 BLOB (memory audit
  * 2026-09-07 P1.5). ~4.8x smaller than the JSON text form.
  */
-export function embeddingToBlob(embedding: number[]): Buffer {
+/**
+ * Serialize an embedding for the `chunks.embedding` column (TEXT NOT NULL,
+ * holding Float32 blobs). An EMPTY embedding (graceful degradation left the
+ * row pending for the backfill drainer) must bind as a zero-length blob, not
+ * as NULL: `Buffer.from(new Float32Array([]).buffer)` has no backing memory and
+ * node:sqlite binds it as NULL, so the insert failed its NOT NULL constraint
+ * and the whole file's sync aborted (live finding, LongMemEval baseline
+ * 2026-10-27: "NOT NULL constraint failed: chunks.embedding" after one
+ * embedding sub-batch failed). A fresh zero-length Uint8Array binds as a blob,
+ * reads back as [] through parseEmbedding, and matches the drainer's
+ * `length(embedding) = 0` clause.
+ */
+export function embeddingToBlob(embedding: number[]): Uint8Array {
+  if (embedding.length === 0) {
+    return new Uint8Array(0);
+  }
   return Buffer.from(new Float32Array(embedding).buffer);
 }
 
