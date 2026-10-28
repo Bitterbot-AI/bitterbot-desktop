@@ -5,7 +5,7 @@
  * Policies: "auto" (accept if valid), "review" (quarantine), "deny" (reject all).
  */
 
-import { createHash, createPublicKey, verify } from "node:crypto";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
@@ -42,6 +42,7 @@ import {
   type LiveSkillIndexEntry,
   listLiveSkillIndex,
 } from "./description-overlap.js";
+import { verifySkillSignature as verifySignature } from "./envelope-validation.js";
 import { appendImpactEntry, resolveWikiDir } from "./impact-trail.js";
 import { SELF_LOOPBACK_REASON } from "./ingest-stats.js";
 import { peerStageCollision, stagePeerSkill } from "./peer-staging.js";
@@ -1126,26 +1127,6 @@ export async function listIncomingSkills(config: BitterbotConfig): Promise<Incom
     return skills;
   } catch {
     return [];
-  }
-}
-
-function verifySignature(envelope: SkillEnvelope): boolean {
-  try {
-    const pubkeyBytes = Buffer.from(envelope.author_pubkey, "base64");
-    const signatureBytes = Buffer.from(envelope.signature, "base64");
-    const skillBytes = Buffer.from(envelope.skill_md, "base64");
-
-    // Ed25519 verification: construct SPKI DER from raw 32-byte pubkey
-    const spkiDer = Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), pubkeyBytes]);
-    const publicKey = createPublicKey({
-      key: spkiDer,
-      format: "der",
-      type: "spki",
-    });
-    return verify(null, skillBytes, publicKey, signatureBytes);
-  } catch (err) {
-    log.debug(`Signature verification error: ${String(err)}`);
-    return false;
   }
 }
 

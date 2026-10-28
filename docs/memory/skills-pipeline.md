@@ -1011,13 +1011,32 @@ the 2026-09-03 code-first audit in `docs/reviews/`).
 
 The `SkillNetworkBridge` (`skill-network-bridge.ts`) mediates between the local crystal store and the P2P network.
 
-**Publishing** (`publishCrystalSkill()`):
+**Publishing** (`publishCrystalSkill()`), the single outbound gate. Every
+selector that can put a skill on the wire goes through it: auto-publish on
+crystallize, the maturity re-attempt after an execution, Forage query
+responses (same gate, wire name `response-<query>-<skill>`), and the manual
+`skills.publish` RPC. The gate fails closed:
 
-1. Loads the crystal from the database
+1. Loads the crystal from the database; only a chunk with
+   `semantic_type = 'skill'` and `lifecycle_state = 'active'` whose `lifecycle`
+   is not `archived`/`expired` qualifies. A non-skill chunk or an archived
+   crystal never leaves the node, whatever its governance says.
 2. Enforces governance: only `shared` or `public` scope, never `confidential` sensitivity
 3. Checks provenance chain for confidential ancestors (blocks publish if found)
-4. Generates a SKILL.md format with frontmatter
-5. Sends to the Rust orchestrator via `orchestratorBridge.publishSkill()`
+4. Maturity bar (the same one the marketplace lists with): `SkillVerifier`
+   passes AND the `SkillExecutionTracker` reports at least 3 executions with
+   a success rate in `(0.7, 1]`. If either dependency is not wired on the
+   bridge, or a metric is non-finite or above 1, the answer is "no": missing
+   evidence is never permission to publish.
+5. Generates a SKILL.md format with frontmatter
+6. Sends to the Rust orchestrator via `orchestratorBridge.publishSkill()`
+
+The `skills.publish` RPC does not publish arbitrary operator-supplied bytes.
+Its `content` must byte-match the text of an active skill crystal; the bridge
+resolves that crystal and runs it through the gate above. Hand-written
+SKILL.md that was never crystallized (or has not matured) is refused with
+`INVALID_REQUEST`. This closes the one path that let a node broadcast content
+with no execution evidence behind it.
 
 **Receiving — the file half first** (`src/agents/skills/ingest.ts`,
 PLAN-13/PLAN-44): the gateway hands every `skill_received` envelope to
@@ -1041,6 +1060,15 @@ the mesh-content trust notice, subject to the load-time capability gate.
 
 **Ingesting — the memory-chunk half** (`ingestNetworkSkill()`):
 
+0. **Authenticity, before anything else.** The envelope's Ed25519 signature
+   over the decoded `skill_md` bytes is verified against the raw 32-byte
+   `author_pubkey`, then the SHA-256 of those bytes must equal
+   `content_hash` (`src/agents/skills/envelope-validation.ts`, shared with
+   the filesystem ingest). A failing envelope is rejected before
+   deduplication, version resolution or any write; the bridge does not
+   assume its caller already checked. Only an envelope the filesystem
+   ingest `accepted` is handed here at all; a quarantined (`review`) skill
+   is not crystallized until the operator accepts it.
 1. Checks if the sender peer is banned via `PeerReputationManager`
 2. **Cortisol gate** — if a network cortisol spike is active (`haltUntrustedIngestion`), rejects skills from peers with trust level below `"trusted"` (i.e., `untrusted` and `provisional` peers are blocked)
 3. Deduplicates by content hash

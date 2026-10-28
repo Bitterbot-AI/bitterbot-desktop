@@ -41,7 +41,14 @@ export async function crystallizeSkill(params: {
 }): Promise<CrystallizationResult> {
   const { candidate, config, bridge, workspaceDir, configDir } = params;
 
-  // 1. Evaluate reward threshold
+  // 1. Evaluate reward threshold. The score is self-reported by the caller, so
+  //    a NaN/Infinity or a value above 1 is a malformed candidate, not a pass.
+  if (!Number.isFinite(candidate.rewardScore) || candidate.rewardScore > 1) {
+    return {
+      ok: false,
+      error: `reward score ${candidate.rewardScore} is not a finite value in [0, 1]`,
+    };
+  }
   if (candidate.rewardScore < SUCCESS_THRESHOLD) {
     return {
       ok: false,

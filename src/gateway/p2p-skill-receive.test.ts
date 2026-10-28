@@ -57,6 +57,8 @@ describe("P2P skill receive path", () => {
     await fs.rm(tmp, { recursive: true, force: true });
   });
 
+  const bridgeIngest = vi.fn();
+
   function handler(getIdentity: () => Promise<{ pubkey: string }>) {
     const config = {
       skills: { p2p: { ingestPolicy: "review", quarantineDir: quarantine } },
@@ -66,7 +68,7 @@ describe("P2P skill receive path", () => {
       loadConfig: () => config,
       getSkillNetworkBridge: () => ({
         getPeerReputation: () => reputation as never,
-        ingestNetworkSkill: vi.fn(),
+        ingestNetworkSkill: bridgeIngest,
       }),
       log: { warn: vi.fn() },
     });
@@ -114,6 +116,9 @@ describe("P2P skill receive path", () => {
       heldForReview: 1,
       ownEchoesIgnored: 0,
     });
+    // A quarantined (review) skill must NOT be crystallised: only an accepted
+    // envelope reaches the crystal store (PLAN-44 Phase 3).
+    expect(bridgeIngest).not.toHaveBeenCalled();
   });
 
   it("an unavailable orchestrator identity does not break receiving", async () => {
