@@ -1,0 +1,43 @@
+{
+  "protocol": "xiaowu0162/LongMemEval@9e0b455f4ef0e2ab8f2e582289761153549043fc",
+  "dataset": {
+    "file": "longmemeval_s.json",
+    "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+    "variant": "s",
+    "n": 500
+  },
+  "selection": {
+    "limit": 0,
+    "perType": 0,
+    "questions": 500
+  },
+  "git_commit": "4260fca4",
+  "reader": {
+    "model": "anthropic/claude-sonnet-4-5-20250929",
+    "temperature": 0,
+    "maxTokens": 800,
+    "reading": "con",
+    "templateSha256": "9e2b3110622929ab896696dd8937231c7436740ec3b9586f653f97346e19ab2c"
+  },
+  "retrieval": {
+    "mode": "memory",
+    "unit": "session",
+    "k": 10,
+    "candidateChunks": 50,
+    "postFusionBoostScale": "production",
+    "embedding": "openai/text-embedding-3-small",
+    "chunking": "markdown 384 tokens / 48 overlap, one document per session",
+    "clock": "question_date",
+    "sessionRecall": {
+      "n": 470,
+      "recall_any_5": 0.9915,
+      "recall_all_5": 0.9149,
+      "recall_any_10": 0.9915,
+      "recall_all_10": 0.9638
+    }
+  },
+  "started_at": "2026-10-28T06:19:45.729Z",
+  "errors": [],
+  "finished_at": "2026-10-28T10:50:05.738Z",
+  "elapsed_seconds": 16213.9
+}

@@ -17,6 +17,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Bitterbot internal imports
+import type { DatabaseSync } from "node:sqlite";
+import { resolveApiKeyForProvider } from "../../src/agents/model-auth.js";
+import { loadConfig } from "../../src/config/io.js";
 import type { BitterbotConfig } from "../../src/config/types.js";
 import { MemoryIndexManager } from "../../src/memory/manager.js";
 import type { MemorySearchResult } from "../../src/memory/types.js";
@@ -30,7 +33,17 @@ export interface BenchmarkBridge {
 }
 
 export interface BenchmarkMemoryManager {
-  search(query: string, opts?: { maxResults?: number }): Promise<MemorySearchResult[]>;
+  /** `now` = the instant the question is asked (epoch ms); boosts measure age from it. */
+  search(
+    query: string,
+    opts?: { maxResults?: number; now?: number },
+  ): Promise<MemorySearchResult[]>;
+  /**
+   * Back-date the chunks of each ingested file to the time the conversation
+   * happened, so age-dependent scoring sees the history's own timeline rather
+   * than the ingest wall clock. Keys are file basenames as passed to ingest.
+   */
+  setChunkTimestamps(timestamps: Record<string, number>): number;
   sync(opts?: { reason?: string }): Promise<void>;
   ingestMarkdownFiles(files: string[]): Promise<void>;
   /** Retry embeddings for chunks a transient failure left pending; returns what is still pending. */
@@ -39,12 +52,48 @@ export interface BenchmarkMemoryManager {
 }
 
 export interface BenchmarkLlmProvider {
-  complete(params: { model: string; prompt: string; maxTokens?: number }): Promise<string>;
+  complete(params: {
+    model: string;
+    prompt: string;
+    maxTokens?: number;
+    temperature?: number;
+  }): Promise<string>;
+}
+
+export interface BenchmarkBridgeOptions {
+  /**
+   * `query.postFusionBoostScale` for the run. Omitted = the legacy pin of 1
+   * every saved retrieval run used; `"production"` = leave the key unset so
+   * the shipped default applies (what an official-protocol run must measure).
+   */
+  postFusionBoostScale?: number | "production";
+  /** `query.maxResults` default for searches that do not pass one. */
+  maxResults?: number;
+}
+
+/**
+ * API keys: environment first, then the operator's normal auth path (the same
+ * resolution the gateway uses), so a benchmark never needs keys pasted into a
+ * shell.
+ */
+async function resolveKey(provider: "openai" | "anthropic"): Promise<string | undefined> {
+  const env = provider === "openai" ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
+  if (env?.trim()) {
+    return env.trim();
+  }
+  try {
+    const resolved = await resolveApiKeyForProvider({ provider, cfg: loadConfig() });
+    return resolved?.apiKey ?? undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 // ── Factory ──
 
-export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
+export async function createBenchmarkMemoryManager(
+  options: BenchmarkBridgeOptions = {},
+): Promise<BenchmarkBridge> {
   const runId = randomUUID().slice(0, 8);
   const benchDir = join(__dirname, ".bench-runs", runId);
   const workspaceDir = join(benchDir, "workspace");
@@ -58,12 +107,14 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
   // Write an empty MEMORY.md so the workspace is recognized
   writeFileSync(join(memoryDir, "MEMORY.md"), "# Benchmark Memory\n", "utf-8");
 
-  // Resolve API keys from env
-  const openaiApiKey = process.env.OPENAI_API_KEY?.trim();
+  // Resolve API keys: env, else the operator's configured auth profiles.
+  const openaiApiKey = await resolveKey("openai");
   if (!openaiApiKey) {
-    throw new Error("OPENAI_API_KEY env var is required for LongMemEval embeddings");
+    throw new Error(
+      "no OpenAI key: set OPENAI_API_KEY or configure the openai provider (embeddings need it)",
+    );
   }
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  const anthropicApiKey = await resolveKey("anthropic");
 
   // Use the static factory — this creates the embedding provider and DB properly
   const agentId = `benchmark-${runId}`;
@@ -91,7 +142,7 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
             onStartup: false,
           },
           query: {
-            maxResults: 15,
+            maxResults: options.maxResults ?? 15,
             minScore: 0.0,
             importanceWeight: 0.15,
             hybrid: {
@@ -101,11 +152,13 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
               keywordWeight: 0.3,
               candidateMultiplier: 5,
             },
-            // LongMemEval sessions carry synthetic 2023 dates, so the recency and
-            // temporal boosts are uniform noise here. Pin the legacy full-boost
-            // behaviour so every saved run stays comparable; the live-recall
-            // benchmark is where the boost scale is measured.
-            postFusionBoostScale: 1,
+            // Legacy retrieval runs pinned the full boosts (scale 1) so every
+            // saved run stays comparable. The official runner asks for
+            // "production" so the shipped default is what gets measured, and
+            // passes the question date as `now` so the boosts see 2023 as 2023.
+            ...(options.postFusionBoostScale === "production"
+              ? {}
+              : { postFusionBoostScale: options.postFusionBoostScale ?? 1 }),
           },
           cache: { enabled: false },
           fts: { enabled: true },
@@ -125,7 +178,10 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
       dream: { enabled: false },
       consolidation: { enabled: false },
       curiosity: { enabled: false },
-      emotional: { enabled: false },
+      // `emotional.enabled` alone leaves the hormonal manager constructed (the
+      // gate reads `emotional.hormonal.enabled`); close it too so the quiet
+      // arm has no hormonal recency bias: retriever + reader only.
+      emotional: { enabled: false, hormonal: { enabled: false } },
       healthSweep: { enabled: false },
       coverageDiagnostics: { enabled: false },
     },
@@ -141,13 +197,16 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
     model,
     prompt,
     maxTokens,
+    temperature,
   }: {
     model: string;
     prompt: string;
     maxTokens?: number;
+    temperature?: number;
   }): Promise<string> => {
     const isAnthropic = model.startsWith("anthropic/") || model.startsWith("claude-");
     const tokens = maxTokens ?? 256;
+    const sampling = temperature === undefined ? {} : { temperature };
 
     if (isAnthropic && anthropicApiKey) {
       const modelName = model.replace("anthropic/", "");
@@ -161,6 +220,7 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
         body: JSON.stringify({
           model: modelName,
           max_tokens: tokens,
+          ...sampling,
           messages: [{ role: "user", content: prompt }],
         }),
       });
@@ -184,6 +244,7 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
         model: modelName,
         messages: [{ role: "user", content: prompt }],
         max_tokens: tokens,
+        ...sampling,
       }),
     });
     if (!res.ok) {
@@ -208,6 +269,20 @@ export async function createBenchmarkMemoryManager(): Promise<BenchmarkBridge> {
     memory: {
       async search(query, opts) {
         return manager.search(query, opts);
+      },
+
+      setChunkTimestamps(timestamps) {
+        const db = (manager as unknown as { db: DatabaseSync }).db;
+        const stmt = db.prepare(
+          `UPDATE chunks SET created_at = ?, updated_at = ?
+             WHERE source = 'memory' AND (path = ? OR path LIKE ?)`,
+        );
+        let changed = 0;
+        for (const [basename, epochMs] of Object.entries(timestamps)) {
+          const r = stmt.run(epochMs, epochMs, basename, `%/${basename}`);
+          changed += Number(r.changes);
+        }
+        return changed;
       },
 
       async sync(opts) {

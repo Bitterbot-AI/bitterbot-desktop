@@ -2,6 +2,157 @@
 
 Runs the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) benchmark (ICLR 2025) against Bitterbot's biological memory system.
 
+Two kinds of runner live here. `runner-official.ts` follows the reference
+protocol exactly and produces numbers that can be placed next to published
+ones. Everything else (`runner.ts`, `runner-biological.ts`,
+`runner-retrieval.ts`, `runner-contrastive.ts`) is diagnostic tooling whose
+output is **not comparable** to any published LongMemEval figure: those
+runners use their own judge prompt, feed `question_type` hints to the
+reader, and until 2026-10-27 wrote the dataset's gold-marked session ids into
+the retrieval corpus. Use them to compare Bitterbot against Bitterbot, never
+against the leaderboard.
+
+## Official protocol run
+
+The reference pipeline defines a third-party result as: feed each question's
+timestamped history to the memory system without the question, ask the
+question at `question_date`, write `{question_id, hypothesis}` JSONL, score it
+with the unmodified `evaluate_qa.py` using the pinned `gpt-4o-2024-08-06`
+judge and its five question-type prompts, and report overall (question
+weighted), task-averaged (mean of the six type means) and abstention accuracy.
+`official-protocol.ts` holds the reader template, context formatting, judge
+prompts and aggregates copied verbatim from the reference at commit
+`9e0b455f`; `official-protocol.test.ts` pins them.
+
+```bash
+pnpm benchmark:longmemeval:download                   # cleaned S + oracle from HF, hashes checked below
+
+# 1. Answer all 500 questions (hours; resumable with --resume)
+pnpm benchmark:longmemeval:official -- \
+  --out benchmarks/longmemeval/results/official-s-haiku-4-5.jsonl \
+  --reader anthropic/claude-haiku-4-5-20251001 --unit session --k 10
+
+# 2a. Score with the reference scripts themselves (venv + OPENAI_API_KEY)
+pnpm benchmark:longmemeval:official:scorer -- benchmarks/longmemeval/results/official-s-haiku-4-5.jsonl
+
+# 2b. Or with the TypeScript port (same judge, prompts, decoding, output format).
+#     Refuses a file with fewer than 500 distinct ids unless --allow-partial (pilots).
+pnpm benchmark:longmemeval:official:evaluate -- --hyp benchmarks/longmemeval/results/official-s-haiku-4-5.jsonl
+
+# Baselines with the same reader: long context (no retrieval) and oracle (gold sessions only)
+pnpm benchmark:longmemeval:official -- --full-context --out benchmarks/longmemeval/results/official-s-fullctx-haiku-4-5.jsonl
+pnpm benchmark:longmemeval:official -- --oracle --out benchmarks/longmemeval/results/official-oracle-haiku-4-5.jsonl
+```
+
+What the runner does per question, and why each step is there:
+
+| Step                                                                                                                 | Protocol reason                                                                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rebuild every turn as `{role, content}` and give sessions positional ids `session-001`…                              | The dataset leaks gold two ways: `has_answer` keys exist only on evidence-session turns, and every evidence session id contains the substring `answer`. Neither may reach the system. |
+| One document per session, `Session Date:` header, `role: content` lines (the reference `nl` format)                  | Every retrieved chunk maps to one session and so to one date.                                                                                                                         |
+| Back-date each session's chunks to the session timestamp and search with `now = question_date`                       | Recency and temporal-intent boosts measure age; the history is from 2023 and must be scored as of the question, not as of the ingest.                                                 |
+| Query = the raw question. No `question_type` anywhere on the inference path                                          | `question_type` is a scoring key in `evaluate_qa.py`; the reference retrieval query is the question text.                                                                             |
+| Top-k distinct sessions by best chunk (or top-k chunks with `--unit chunk`), rendered date-sorted as `### Session i` | `run_generation.py` sorts retrieved items by timestamp and labels each with its date; sessions are rendered as `json.dumps` of the turn list, the paper's recommended format.         |
+| Chain-of-Note template (`--reading con`), pinned reader id, temperature 0, 800 max tokens                            | The paper's default reading strategy and decoding.                                                                                                                                    |
+| Production retrieval settings (`postFusionBoostScale` unset, hybrid RRF, 384/48 chunking)                            | The number has to describe the system as shipped.                                                                                                                                     |
+| A reader failure after four attempts is an empty hypothesis, scored wrong                                            | The reference script silently drops failed questions; counting them wrong is stricter and keeps N at 500.                                                                             |
+| `now` is never earlier than the latest session                                                                       | In 76 S questions `question_date` precedes the last session (same day); the maintainers say to treat the question as asked right after it.                                            |
+| `--full-context` hands the reader every session, date-sorted, no retrieval                                           | The paper's long-context baseline, with the same reader and prompt, so retrieval cost and memory benefit are measured on one footing. `--oracle` with the memory arm is the ceiling.  |
+
+`analyze-official.ts --hyp <out>` joins the judge output with the retrieval
+log and splits every miss into a reading failure (every gold session was in the
+reader's context) or a retrieval failure (one was not, and at what rank it sat),
+per question type, with recall at several k and abstention behaviour. That split
+is what decides whether the next change belongs in the reader or in retrieval.
+
+Each run writes three files: the hypothesis JSONL, `<out>.meta.json`
+(protocol commit, dataset SHA-256, git commit with `+dirty` marker, reader,
+k, unit, boost scale, session recall of the retrieval stage, every error) and
+`<out>.retrieval.jsonl` (ranked opaque session ids and the gold ids per
+question, for recall analysis). Scoring writes `<out>.eval-results-gpt-4o` in
+the reference format (`autoeval_label: {model, label}` appended to each line).
+
+Things to state with any number: dataset variant and hash, reader model id,
+k and unit, that assistant turns are indexed (the reference retrievers index
+user turns only), that `_abs` questions are excluded from the retrieval recall
+figures (as the reference does), and that `print_qa_metrics.py` reports the
+task-averaged figure while most vendors quote the question-weighted one.
+
+Fair comparators for a run scored this way are other results that used the
+official judge with a GPT-4o-class reader on the cleaned or original S set.
+The paper itself reports GPT-4o full context at 0.606 direct and 0.640 CoN,
+and oracle retrieval at 0.870 and 0.924; it has no retrieval-augmented number
+on S (the often quoted 0.72 is LongMemEval-M). Vendor figures above 0.90
+almost all use a different judge or reader and are not comparable.
+
+### Results
+
+Full 500-question run, 2026-10-28, commit `e07a4188`, reader
+`claude-haiku-4-5-20251001` (Chain-of-Note, temperature 0, 800 tokens),
+session-level retrieval with k = 10 over 50 candidate chunks, production boost
+settings, clock = question date. Judge `gpt-4o-2024-08-06`. The unmodified
+reference scripts (`official-scorer.sh`) returned the same overall figure; two
+individual labels differed, one in each direction.
+
+| metric                                    | value |
+| ----------------------------------------- | ----- |
+| overall (question-weighted)               | 0.858 |
+| task-averaged (mean of 6 type means)      | 0.883 |
+| abstention accuracy (30 `_abs` questions) | 0.933 |
+| single-session-user (70)                  | 0.957 |
+| single-session-assistant (56)             | 1.000 |
+| single-session-preference (30)            | 0.867 |
+| temporal-reasoning (133)                  | 0.835 |
+| knowledge-update (78)                     | 0.897 |
+| multi-session (133)                       | 0.744 |
+| session recall_all@10 (470 non-abs)       | 0.964 |
+
+`analyze-official.ts` splits the 71 misses into 58 reading failures (every
+gold session in the reader's context), 11 retrieval failures and 2 abstention
+questions answered. Of the reading failures, 23 are the reader declining to
+infer an answer the evidence supports, 18 are multi-session counts off by one
+item, 7 are date arithmetic, 6 are superseded knowledge-update values. Seven of
+the eleven retrieval failures are questions with a relative time expression and
+no content words ("what kitchen appliance did I buy 10 days ago"). Files:
+`results/official-s-haiku-4-5.jsonl` with `.meta.json`, `.retrieval.jsonl` and
+`.eval-results-gpt-4o`. The 60-question pilot (`official-s-haiku-4-5_pilot-per-type-10`,
+10 per type) scored 0.800; it under-weights the two hardest types.
+
+Oracle arm (`--oracle`, gold sessions only, same reader, judge and prompt;
+`results/official-oracle-haiku-4-5.jsonl`): overall 0.920, task-averaged
+0.917, abstention 0.900; temporal 0.940, multi-session 0.857, knowledge-update
+0.949, preference 0.800. That is the Haiku reader's ceiling. Per question, the
+oracle arm answers 46 of the memory arm's 71 misses correctly, 37 of them
+questions whose gold sessions were already in the memory arm's top 10, so most
+"reading" failures are distractor noise in the context rather than reader
+inability. 25 questions are wrong in both arms (5 with disputed golds).
+Preference and abstention score lower without distractors, so any context
+cleanup needs an explicit abstention path. The full-context arm was not run.
+
+Sonnet 4.5 reader (`claude-sonnet-4-5-20250929`, same pipeline, identical
+retrieval; `results/official-s-sonnet-4-5.jsonl`): overall 0.868, task-averaged
+0.891, abstention 0.900; temporal 0.850, multi-session 0.759, knowledge-update
+0.897. One point over Haiku at about three times the reader cost. Sonnet fixed
+29 of Haiku's misses and lost 24 of its hits; 42 questions are wrong with both
+readers and 25 of those are right in the oracle arm. The lever is the distractor
+sessions in the reader's top-10 context, not the reader.
+
+### Data
+
+`download.sh` fetches the canonical files from `xiaowu0162/longmemeval-cleaned`
+(the September 2025 revision the authors point to; 1,245 empty or leaking filler
+sessions removed from S, questions and answers unchanged):
+
+| file                    | saved as                  | SHA-256 (first 16)  |
+| ----------------------- | ------------------------- | ------------------- |
+| `longmemeval_s_cleaned` | `longmemeval_s.json`      | `d6f21ea9d60a0d56…` |
+| `longmemeval_oracle`    | `longmemeval_oracle.json` | `821a2034d219ab45…` |
+
+LongMemEval-M (2.7 GB, about 500 sessions per question) is not downloaded by
+default; the runner accepts it as `--data-dir` with the file renamed to
+`longmemeval_s.json` only as a stopgap and will grow a `--variant m` flag when
+a run is planned.
+
 ## What LongMemEval Tests
 
 500 questions across 5 long-term memory abilities:
@@ -14,7 +165,7 @@ Runs the [LongMemEval](https://github.com/xiaowu0162/LongMemEval) benchmark (ICL
 | **Knowledge Updates**       | 78        | Can you handle outdated/changed information?                |
 | **Abstention**              | 30        | Do you know when you DON'T have the answer?                 |
 
-## Quick Start
+## Diagnostic runners (not comparable to published numbers)
 
 ```bash
 # 1. Download the data (one-time)
@@ -96,10 +247,15 @@ Per question the evidence rank improved on 21 and worsened on 9. Per type, singl
 ```
 longmemeval/
 ├── README.md
-├── adapter.ts          # Bitterbot ↔ LongMemEval bridge
-├── ingest.ts           # Convert chat sessions → memory chunks
-├── runner.ts           # Main benchmark runner
-├── evaluate.ts         # Score aggregation
+├── official-protocol.ts    # reference reader/judge templates, formats, aggregates (tested)
+├── runner-official.ts      # official-protocol runner (hypothesis JSONL + meta + retrieval log)
+├── evaluate-official.ts    # evaluate_qa.py port: pinned judge, per-type prompts, same output
+├── analyze-official.ts     # miss attribution: reading vs retrieval, recall@k, abstention, per type
+├── official-scorer.sh      # runs the unmodified reference evaluate_qa.py / print_qa_metrics.py
+├── adapter.ts              # legacy Bitterbot ↔ LongMemEval bridge (diagnostic runners)
+├── runner.ts               # legacy QA runner (type hints, own prompt; not comparable)
+├── runner-retrieval.ts     # retrieval-only diagnostics with per-channel attribution
+├── evaluate.ts / judge.ts  # legacy scorer (own prompt; not the official judge)
 ├── data/               # Downloaded LongMemEval datasets
 │   ├── longmemeval_oracle.json
 │   └── longmemeval_s.json
@@ -118,4 +274,4 @@ Most systems treat this as pure retrieval. Bitterbot has architectural advantage
 
 ## Data
 
-Download from HuggingFace: https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned
+Download from HuggingFace: <https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned>
