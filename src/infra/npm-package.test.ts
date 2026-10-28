@@ -32,6 +32,15 @@ const readPkg = (): PackageManifest =>
   JSON.parse(fs.readFileSync(repoFile("package.json"), "utf8")) as PackageManifest;
 
 describe("launcherManifest", () => {
+  it("accepts explicit beta releases but rejects malformed versions", () => {
+    const base = launcherManifest(readPkg());
+    expect(launcherManifestProblems({ ...base, version: "1.11.0-beta.2" })).toEqual([]);
+    for (const version of ["1.11.0-beta.0", "1.11.0-alpha.1", "1.11.0-beta.2\n", "../1.11.0"]) {
+      expect(launcherManifestProblems({ ...base, version })).toEqual([
+        expect.stringContaining("version must be"),
+      ]);
+    }
+  });
   it("publishes the repo's name and version with no dependencies and no scripts", () => {
     const pkg = readPkg();
     // The repo manifest has both (pnpm source installs); none may leak.
