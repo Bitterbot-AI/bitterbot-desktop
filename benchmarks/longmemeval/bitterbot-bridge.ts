@@ -178,7 +178,10 @@ export async function createBenchmarkMemoryManager(
       dream: { enabled: false },
       consolidation: { enabled: false },
       curiosity: { enabled: false },
-      emotional: { enabled: false },
+      // `emotional.enabled` alone leaves the hormonal manager constructed (the
+      // gate reads `emotional.hormonal.enabled`); close it too so the quiet
+      // arm has no hormonal recency bias: retriever + reader only.
+      emotional: { enabled: false, hormonal: { enabled: false } },
       healthSweep: { enabled: false },
       coverageDiagnostics: { enabled: false },
     },

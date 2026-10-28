@@ -38,6 +38,8 @@ const { values: args } = parseArgs({
     hyp: { type: "string" },
     ref: { type: "string", default: join(__dirname, "data", "longmemeval_s.json") },
     concurrency: { type: "string", default: "4" },
+    /** Score a partial file (pilots). An official number needs all 500. */
+    "allow-partial": { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -57,6 +59,15 @@ const ref = new Map(
     (r) => [r.question_id, r] as const,
   ),
 );
+const distinct = new Set(hyps.map((h) => h.question_id));
+if (distinct.size !== hyps.length) {
+  throw new Error(`${hyps.length - distinct.size} duplicate question_id(s) in ${hypPath}`);
+}
+if (distinct.size !== ref.size && !args["allow-partial"]) {
+  throw new Error(
+    `${distinct.size} hypotheses for ${ref.size} reference questions; an official number needs every one (pass --allow-partial for a pilot)`,
+  );
+}
 
 // Resume: verdicts already written are kept (same inputs, deterministic judge).
 const judged = new Map<string, Judged>();

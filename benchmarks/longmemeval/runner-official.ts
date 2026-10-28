@@ -25,6 +25,7 @@
  *     --out benchmarks/longmemeval/results/official-s-haiku.jsonl \
  *     [--oracle] [--limit N | --per-type N] [--reader anthropic/claude-haiku-4-5-20251001] \
  *     [--reading con|direct] [--unit session|chunk] [--k 10] [--max-results 50] [--resume]
+ *     [--full-context]   # no retrieval: every session, date-sorted (the paper's long-context baseline)
  *
  * Then: node --import tsx benchmarks/longmemeval/evaluate-official.ts --hyp <out>
  */
@@ -78,6 +79,12 @@ const { values: args } = parseArgs({
     "max-results": { type: "string", default: "50" },
     resume: { type: "boolean", default: false },
     verbose: { type: "boolean", default: false },
+    /**
+     * Skip retrieval and hand the reader every session, date-sorted, as the
+     * reference `full-history-session` baseline does. Same reader and prompt
+     * as the memory arm, so retrieval cost is measured on one footing.
+     */
+    "full-context": { type: "boolean", default: false },
   },
   strict: true,
 });
@@ -160,6 +167,7 @@ type Meta = {
     templateSha256: string;
   };
   retrieval: {
+    mode: "memory" | "full-context";
     unit: "session" | "chunk";
     k: number;
     candidateChunks: number;
@@ -193,6 +201,7 @@ const meta: Meta = {
     templateSha256: sha256(reading === "con" ? READER_TEMPLATE_CON : READER_TEMPLATE_DIRECT),
   },
   retrieval: {
+    mode: args["full-context"] ? "full-context" : "memory",
     unit,
     k,
     candidateChunks: maxResults,
@@ -217,7 +226,11 @@ console.log(`  questions ${items.length}${done.size ? ` (${done.size} already do
 console.log(
   `  reader    ${args.reader} temp ${READER_TEMPERATURE} max_tokens ${READER_MAX_TOKENS} reading ${reading}`,
 );
-console.log(`  retrieval unit ${unit} k ${k} candidates ${maxResults} boost scale production`);
+console.log(
+  args["full-context"]
+    ? `  retrieval none (full context: every session)`
+    : `  retrieval unit ${unit} k ${k} candidates ${maxResults} boost scale production`,
+);
 console.log(`  commit    ${measuredCommit}`);
 
 // ── Run ──
@@ -247,6 +260,8 @@ async function completeWithRetry(prompt: string): Promise<string> {
   throw lastErr;
 }
 
+/** Sentinel: the full-context arm has no retrieval stage to fall through to. */
+const FULL_CONTEXT_DONE = Symbol("full-context");
 const recallSums = { any5: 0, all5: 0, anyK: 0, allK: 0, n: 0 };
 const t0 = Date.now();
 let processed = 0;
@@ -260,6 +275,17 @@ for (let i = 0; i < items.length; i++) {
   let hypothesis = "";
   let rankedSessions: string[] = [];
   try {
+    if (args["full-context"]) {
+      const prompt = buildReaderPrompt({
+        items: inference.sessions.map((s) => ({ date: s.date, turns: s.turns })),
+        questionDate: inference.question_date,
+        question: inference.question,
+        reading,
+        format: "json",
+      });
+      hypothesis = (await completeWithRetry(prompt)).trim();
+      throw FULL_CONTEXT_DONE;
+    }
     await bridge.memory.reset();
     rmSync(itemDir, { recursive: true, force: true });
     mkdirSync(itemDir, { recursive: true });
@@ -282,7 +308,14 @@ for (let i = 0; i < items.length; i++) {
     }
     bridge.memory.setChunkTimestamps(timestamps);
 
-    const now = parseLongMemEvalDate(inference.question_date);
+    // The question's instant. In 76 S questions `question_date` precedes the
+    // last session's timestamp (same day); the maintainers' guidance is to
+    // treat the question as asked right after the final session, so "now"
+    // is never earlier than any memory.
+    const now = Math.max(
+      parseLongMemEvalDate(inference.question_date),
+      ...inference.sessions.map((s) => parseLongMemEvalDate(s.date)),
+    );
     const chunks = await bridge.memory.search(inference.question, { maxResults, now });
 
     // Only this question's sessions count. The store also holds the
@@ -320,8 +353,10 @@ for (let i = 0; i < items.length; i++) {
     });
     hypothesis = (await completeWithRetry(prompt)).trim();
   } catch (err) {
-    meta.errors.push({ question_id: inference.question_id, error: String(err).slice(0, 300) });
-    console.error(`  ${inference.question_id}: ${String(err).slice(0, 200)}`);
+    if (err !== FULL_CONTEXT_DONE) {
+      meta.errors.push({ question_id: inference.question_id, error: String(err).slice(0, 300) });
+      console.error(`  ${inference.question_id}: ${String(err).slice(0, 200)}`);
+    }
   } finally {
     rmSync(itemDir, { recursive: true, force: true });
   }
@@ -332,7 +367,7 @@ for (let i = 0; i < items.length; i++) {
   );
 
   // Retrieval-stage recall over the opaque ids (evaluation-only, computed after search).
-  if (!gold.isAbstention && gold.goldOpaqueIds.size > 0) {
+  if (!args["full-context"] && !gold.isAbstention && gold.goldOpaqueIds.size > 0) {
     const r5 = sessionRecall(rankedSessions, gold.goldOpaqueIds, 5);
     const rk = sessionRecall(rankedSessions, gold.goldOpaqueIds, k);
     recallSums.any5 += r5.any;

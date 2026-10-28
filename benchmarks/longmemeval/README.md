@@ -35,8 +35,13 @@ pnpm benchmark:longmemeval:official -- \
 # 2a. Score with the reference scripts themselves (venv + OPENAI_API_KEY)
 pnpm benchmark:longmemeval:official:scorer -- benchmarks/longmemeval/results/official-s-haiku-4-5.jsonl
 
-# 2b. Or with the TypeScript port (same judge, prompts, decoding, output format)
+# 2b. Or with the TypeScript port (same judge, prompts, decoding, output format).
+#     Refuses a file with fewer than 500 distinct ids unless --allow-partial (pilots).
 pnpm benchmark:longmemeval:official:evaluate -- --hyp benchmarks/longmemeval/results/official-s-haiku-4-5.jsonl
+
+# Baselines with the same reader: long context (no retrieval) and oracle (gold sessions only)
+pnpm benchmark:longmemeval:official -- --full-context --out benchmarks/longmemeval/results/official-s-fullctx-haiku-4-5.jsonl
+pnpm benchmark:longmemeval:official -- --oracle --out benchmarks/longmemeval/results/official-oracle-haiku-4-5.jsonl
 ```
 
 What the runner does per question, and why each step is there:
@@ -51,6 +56,8 @@ What the runner does per question, and why each step is there:
 | Chain-of-Note template (`--reading con`), pinned reader id, temperature 0, 800 max tokens                            | The paper's default reading strategy and decoding.                                                                                                                                    |
 | Production retrieval settings (`postFusionBoostScale` unset, hybrid RRF, 384/48 chunking)                            | The number has to describe the system as shipped.                                                                                                                                     |
 | A reader failure after four attempts is an empty hypothesis, scored wrong                                            | The reference script silently drops failed questions; counting them wrong is stricter and keeps N at 500.                                                                             |
+| `now` is never earlier than the latest session                                                                       | In 76 S questions `question_date` precedes the last session (same day); the maintainers say to treat the question as asked right after it.                                            |
+| `--full-context` hands the reader every session, date-sorted, no retrieval                                           | The paper's long-context baseline, with the same reader and prompt, so retrieval cost and memory benefit are measured on one footing. `--oracle` with the memory arm is the ceiling.  |
 
 Each run writes three files: the hypothesis JSONL, `<out>.meta.json`
 (protocol commit, dataset SHA-256, git commit with `+dirty` marker, reader,
