@@ -4,6 +4,7 @@ import {
   type SoapboxJob,
   type SoapboxClient,
 } from "../../infra/soapbox-client.js";
+import { withSoapboxOperation } from "../../infra/soapbox-transition.js";
 import { assertApprovedSoapboxQuote } from "../../services/soapbox-payment.js";
 import { createSoapboxWallet, getSoapboxWalletStatus } from "../../services/soapbox-wallet.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
@@ -83,15 +84,24 @@ export function createSoapboxHandlers(
         const job = await client.request<SoapboxJob>("GET", `/v1/jobs/${id(params.id)}`);
         if (!job.payment || job.status !== "awaiting_payment")
           throw new Error("Job is not awaiting USDC funding");
+        if (
+          !Number.isFinite(job.deadline) ||
+          !Number.isFinite(job.payment.expires) ||
+          Math.min(job.deadline!, job.payment.expires) <= Date.now() / 1000
+        )
+          throw new Error("Funding deadline expired; request a fresh quote");
         assertApprovedSoapboxQuote(params.approval, job.payment);
-        const wallet = await createSoapboxWallet(mainWallet, job.payment);
-        const funding = await wallet.fundSoapbox!(job.payment);
-        const updated = await client.request<SoapboxJob>(
-          "POST",
-          `/v1/jobs/${id(params.id)}/payment`,
-          {},
-        );
-        respond(true, { funding, job: updated });
+        const result = await withSoapboxOperation(async () => {
+          const wallet = await createSoapboxWallet(mainWallet, job.payment!);
+          const funding = await wallet.fundSoapbox!(job.payment!);
+          const updated = await client.request<SoapboxJob>(
+            "POST",
+            `/v1/jobs/${id(params.id)}/payment`,
+            {},
+          );
+          return { funding, job: updated };
+        });
+        respond(true, result);
       } catch {
         respond(
           false,
@@ -109,6 +119,48 @@ export function createSoapboxHandlers(
         respond(true, client ? await client.status() : { enabled: false });
       } catch (error) {
         respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, String(error)));
+      }
+    },
+    "soapbox.requote": async ({ params, respond }) => {
+      try {
+        requireBuyer();
+        const client = getClient();
+        if (!client) throw new Error("Soapbox is disabled");
+        const jobId = id(params.id);
+        // Refresh chain state before cancelling: an earlier funding attempt may have succeeded.
+        const job = await client.request<SoapboxJob>("POST", `/v1/jobs/${jobId}/payment`, {});
+        if (
+          !job.payment ||
+          job.spec.mode.kind !== "paid_usdc" ||
+          !job.deadline ||
+          job.deadline > Date.now() / 1000 ||
+          job.attempts !== 0 ||
+          !["awaiting_payment", "cancelled"].includes(job.status) ||
+          !job.spec.resources
+        )
+          throw new Error(
+            "Only expired, unexecuted quotes can be replaced. Refresh payment status first.",
+          );
+        const cancelled =
+          job.status === "cancelled"
+            ? job
+            : await client.request<SoapboxJob>("POST", `/v1/jobs/${jobId}/cancel`, {});
+        if (cancelled.status !== "cancelled")
+          throw new Error(
+            "The previous payment must finish refunding before requesting a new quote",
+          );
+        respond(
+          true,
+          await client.request<SoapboxJob>("POST", "/v1/jobs", {
+            // Retrying after a lost response returns the same replacement, even after a restart.
+            idempotency_key: `requote-${jobId}`,
+            mode: job.spec.mode,
+            workload: job.spec.workload,
+            resources: job.spec.resources,
+          }),
+        );
+      } catch (error) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(error)));
       }
     },
     ...Object.fromEntries(

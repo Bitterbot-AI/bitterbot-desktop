@@ -521,7 +521,7 @@ jobs:
       - name: Derive version B (same code) and a broken B' (gateway exits 1), sign B
         run: |
           set -euo pipefail
-          IFS=. read -r MA MI PA <<< "$VERSION"
+          IFS=. read -r MA MI PA <<< "${VERSION%%-*}"
           VB="$MA.$MI.$((PA + 1))"
           VC="$MA.$MI.$((PA + 2))"
           A_TGZ="$RUNNER_TEMP/release-out/bitterbot-$VERSION-linux-x64.tar.gz"

@@ -18,8 +18,8 @@ peer access and each payment require deliberate actions in the UI.
 
 ## Install Compute
 
-Use [Bitterbot v1.11.0-beta.1](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.11.0-beta.1).
-This release includes the gateway, Control UI, signed orchestrator 0.2.4 and Soapbox rc9.
+Use [Bitterbot v1.11.0-beta.2](https://github.com/Bitterbot-AI/bitterbot-desktop/releases/tag/v1.11.0-beta.2).
+This release includes the gateway, Control UI, signed orchestrator 0.2.4 and Soapbox rc10.
 Linux x64 also includes the checksum-pinned Soapbox runtime required by the
 operator wizard. Node is bundled; a separate source checkout is unnecessary.
 The older Soapbox rc4/rc5/rc6 overlays are for their recorded Bitterbot versions
@@ -35,7 +35,7 @@ rollback. The native Tauri installer is not part of this release.
 In PowerShell, run:
 
 ```powershell
-.\install.ps1 -Version 1.11.0-beta.1
+.\install.ps1 -Version 1.11.0-beta.2
 ```
 
 The installer uses your default WSL2 distribution; use `-Distro Ubuntu` to select
@@ -47,7 +47,7 @@ release, download **install.ps1** from that release and pass its exact version.
 ### Linux or macOS
 
 ```bash
-bash install.sh --version 1.11.0-beta.1 --require-signature
+bash install.sh --version 1.11.0-beta.2 --require-signature
 ```
 
 The installer verifies the release signature and archive checksum, installs the
@@ -55,7 +55,7 @@ bundled runtime and offers onboarding. Existing users are offered a gateway
 switch; the previous app version is retained. `--no-switch` (Windows:
 `-NoSwitch`) leaves an existing gateway running. To pin a release, download
 **install.sh** from that release and run
-`bash install.sh --version 1.11.0-beta.1 --require-signature`. Normal updates select
+`bash install.sh --version 1.11.0-beta.2 --require-signature`. Normal updates select
 stable releases only; a beta build, when one is published, is installed by its
 explicit `X.Y.Z-beta.N` version and never replaces latest.
 
@@ -71,6 +71,39 @@ explicit `X.Y.Z-beta.N` version and never replaces latest.
 A release download does not provide a public paid coordinator or enrollment.
 The coordinator owner supplies the scoped enrollment for paid tests. Never
 share wallet secrets or use a mainnet deposit to fund this beta.
+
+### Save and switch buyer/operator profiles
+
+Open **Compute → Set up buyer or operator**. A configured buyer or operator
+shows **Buyer and operator profiles**. Choose **Add buyer or operator profile**
+to run the wizard again. The current profile stays active while you prepare;
+activation saves both profiles and reconnects the gateway. You can then choose
+**Switch to …** to return to a saved profile without importing it again.
+
+Only one profile is active at a time. Pause new work before leaving an operator.
+Finish or cancel jobs and wait for payment settlement/refunds before switching.
+An offline coordinator or one older than Soapbox rc10 cannot confirm that the
+account is idle, so switching is blocked until it is available/upgraded. Buyer
+enrollment and the separate Compute wallet are revalidated on every switch.
+The legacy developer pilot configuration is not a managed profile.
+
+### Expired payment quotes
+
+After submitting a paid job, its payment card shows **Fund within m:ss** using
+the earlier job deadline and escrow expiry. Funding remains a separate action.
+When an unexecuted quote expires, choose **Request fresh quote**. The gateway
+refreshes the old payment state and requires cancellation/refund resolution
+before creating a replacement with the same workload, resource limits, operator
+and maximum price. Review the new exact quote before funding. Retrying this
+action returns the same replacement; it does not submit duplicate jobs.
+
+### Readiness and operator pause
+
+**Checking readiness** means the worker is checking isolation and warming the
+model. A cold GPU probe can take several minutes. **Paused by operator** means
+you selected Pause new work; use Resume new work when ready. Failed GPU checks
+keep GPU capacity unavailable and display the reason. Actual paid job execution
+limits are unchanged by the longer cold-readiness budget.
 
 ## Host a P2P GPU operator
 

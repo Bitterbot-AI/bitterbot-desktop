@@ -1,6 +1,6 @@
 {
   "name": "@bitterbot/whatsapp",
-  "version": "1.11.0-beta.1",
+  "version": "1.11.0-beta.2",
   "private": true,
   "description": "Bitterbot WhatsApp channel plugin",
   "type": "module",

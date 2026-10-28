@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SoapboxSetupStatus } from "../../../../../src/infra/soapbox-setup-types";
 import { useGatewayStore } from "../../stores/gateway-store";
+import { ComputeProfiles } from "./ComputeProfiles";
 import { SoapboxLogo } from "./SoapboxLogo";
 
 const button = "rounded-lg bg-brand px-4 py-2 text-sm text-white disabled:opacity-40";
@@ -19,6 +20,14 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
   const [connectionError, setConnectionError] = useState("");
   const [upload, setUpload] = useState<number>();
   const [activating, setActivating] = useState(false);
+  const reconnecting = useRef(false);
+  useEffect(() => {
+    if (!connected && activating) reconnecting.current = true;
+    if (connected && reconnecting.current) {
+      reconnecting.current = false;
+      setActivating(false);
+    }
+  }, [connected, activating]);
   const [acknowledged, setAcknowledged] = useState(false);
   const [remoteOperator, setRemoteOperator] = useState(false);
   const refresh = useCallback(async () => {
@@ -124,17 +133,53 @@ export function ComputeSetup({ onClose }: { onClose: () => void }) {
         </p>
       )}
       {!status && <p role="status">Loading setup…</p>}
-      {status?.configured ? (
+      {status?.addingProfile && (
+        <p className="text-sm">
+          Your current profile stays active until you activate this setup.{" "}
+          <button
+            className="underline"
+            disabled={locked}
+            onClick={() =>
+              void run(async () => {
+                await request("soapbox.setup.profile.cancel");
+              })
+            }
+          >
+            Cancel new profile
+          </button>
+        </p>
+      )}
+      {status?.configured && !status.addingProfile ? (
         <div className="space-y-2">
           <p role="status">
             {status.configuredRole === "mesh-operator"
               ? "This device is configured as a P2P GPU operator."
               : `Compute is configured on this gateway (${status.configuredRole}).`}
           </p>
-          <p className="text-sm">
-            Use the Compute dashboard to submit work or manage your operator. Run setup on the
-            tester’s own Bitterbot app.
-          </p>
+          {status.canManageProfiles ? (
+            <ComputeProfiles
+              status={status}
+              busy={locked}
+              add={() =>
+                void run(async () => {
+                  await request("soapbox.setup.profile.new");
+                  setAcknowledged(false);
+                  setActivating(false);
+                })
+              }
+              select={(id) =>
+                void run(async () => {
+                  await request("soapbox.setup.profile.switch", { id });
+                  setActivating(true);
+                })
+              }
+            />
+          ) : (
+            <p className="text-sm">
+              Use the Compute dashboard to submit work or manage your operator. Run setup on the
+              tester’s own Bitterbot app.
+            </p>
+          )}
           <button className={button} onClick={onClose}>
             Open Compute dashboard
           </button>

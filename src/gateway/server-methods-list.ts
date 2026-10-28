@@ -2,6 +2,9 @@ import { listChannelPlugins } from "../channels/plugins/index.js";
 
 const BASE_METHODS = [
   "soapbox.setup.status",
+  "soapbox.setup.profile.new",
+  "soapbox.setup.profile.cancel",
+  "soapbox.setup.profile.switch",
   "soapbox.setup.operator.enable",
   "soapbox.mesh.status",
   "soapbox.mesh.grant",
@@ -23,6 +26,7 @@ const BASE_METHODS = [
   "soapbox.jobs",
   "soapbox.job",
   "soapbox.submit",
+  "soapbox.requote",
   "soapbox.cancel",
   "soapbox.worker.pause",
   "soapbox.artifact.put",

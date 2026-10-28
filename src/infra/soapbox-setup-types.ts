@@ -1,6 +1,15 @@
+export type SoapboxSetupProfile = {
+  id: string;
+  role: "buyer" | "operator" | "mesh-operator";
+  name: string;
+  active: boolean;
+};
 export type SoapboxSetupStatus = {
   configured: boolean;
   configuredRole?: string;
+  profiles?: SoapboxSetupProfile[];
+  addingProfile?: boolean;
+  canManageProfiles?: boolean;
   platformSupported: boolean;
   bundledRuntimeAvailable?: boolean;
   hasWalletCredentials: boolean;

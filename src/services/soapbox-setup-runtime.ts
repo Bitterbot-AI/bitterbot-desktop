@@ -261,7 +261,7 @@ export class SoapboxSetupRuntime {
       }),
       { mode: 0o600 },
     );
-    const probe = JSON.parse(await run(binary, ["inspect", "--config", worker]));
+    const probe = JSON.parse(await run(binary, ["inspect", "--config", worker], 240000));
     if (!probe.gpu_observed || probe.isolation !== "docker_v1")
       throw new Error("GPU runtime is not ready");
     this.ready = { binary, worker };
