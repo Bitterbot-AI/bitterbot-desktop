@@ -85,6 +85,39 @@ and oracle retrieval at 0.870 and 0.924; it has no retrieval-augmented number
 on S (the often quoted 0.72 is LongMemEval-M). Vendor figures above 0.90
 almost all use a different judge or reader and are not comparable.
 
+### Results
+
+Full 500-question run, 2026-10-28, commit `e07a4188`, reader
+`claude-haiku-4-5-20251001` (Chain-of-Note, temperature 0, 800 tokens),
+session-level retrieval with k = 10 over 50 candidate chunks, production boost
+settings, clock = question date. Judge `gpt-4o-2024-08-06`. The unmodified
+reference scripts (`official-scorer.sh`) returned the same overall figure; two
+individual labels differed, one in each direction.
+
+| metric                                    | value |
+| ----------------------------------------- | ----- |
+| overall (question-weighted)               | 0.858 |
+| task-averaged (mean of 6 type means)      | 0.883 |
+| abstention accuracy (30 `_abs` questions) | 0.933 |
+| single-session-user (70)                  | 0.957 |
+| single-session-assistant (56)             | 1.000 |
+| single-session-preference (30)            | 0.867 |
+| temporal-reasoning (133)                  | 0.835 |
+| knowledge-update (78)                     | 0.897 |
+| multi-session (133)                       | 0.744 |
+| session recall_all@10 (470 non-abs)       | 0.964 |
+
+`analyze-official.ts` splits the 71 misses into 58 reading failures (every
+gold session in the reader's context), 11 retrieval failures and 2 abstention
+questions answered. Of the reading failures, 23 are the reader declining to
+infer an answer the evidence supports, 18 are multi-session counts off by one
+item, 7 are date arithmetic, 6 are superseded knowledge-update values. Seven of
+the eleven retrieval failures are questions with a relative time expression and
+no content words ("what kitchen appliance did I buy 10 days ago"). Files:
+`results/official-s-haiku-4-5.jsonl` with `.meta.json`, `.retrieval.jsonl` and
+`.eval-results-gpt-4o`. The 60-question pilot (`official-s-haiku-4-5_pilot-per-type-10`,
+10 per type) scored 0.800; it under-weights the two hardest types.
+
 ### Data
 
 `download.sh` fetches the canonical files from `xiaowu0162/longmemeval-cleaned`
