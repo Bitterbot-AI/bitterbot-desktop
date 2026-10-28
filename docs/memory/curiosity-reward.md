@@ -102,7 +102,7 @@ The Dream Engine's **FSHO oscillator** (Fractional Stuart-Landau Hopf Oscillator
 - **GCCRF high learning progress + FSHO high R** → Both agree: compress (coherent, consolidating memories)
 - **GCCRF wants exploration + FSHO wants compression** → Disagreement resolved via weighted normalization (0.3 GCCRF, 0.4 FSHO × validation factor, 0.3 curiosity heuristics)
 
-**FSHO alpha coupling (opt-in, `memory.curiosity.fshoCoupling`, default off):** when enabled, the FSHO order parameter R informs alpha annealing via a running EMA: `effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)`. High R (coherent memory set) shifts alpha toward frontier-seeking; low R shifts toward consolidation. By default the coupling is **not** applied: R is tracked (and persisted as `gccrf_state.fsho_r_avg`) for telemetry, and novelty uses the pure maturity schedule. The FSHO signal is also **self-validating** — `computeFshoWeightAdjustment()` checks Pearson correlation between R and DQS, scaling FSHO's mode selection weight between 0.5x (noise) and 1.5x (validated).
+**FSHO alpha coupling (opt-in, `memory.curiosity.fshoCoupling`, default off):** when enabled, the FSHO order parameter R informs alpha annealing via a running EMA: `effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)`. High R (coherent memory set) shifts alpha toward frontier-seeking; low R shifts toward consolidation. By default the coupling is **not** applied: R is tracked (and persisted as `gccrf_state.fsho_r_avg`) for telemetry, and novelty uses the pure maturity schedule. The FSHO signal is also **self-validating**: `computeFshoWeightAdjustment()` checks Pearson correlation between R and DQS, scaling FSHO's mode selection weight between 0.5x (noise) and 1.5x (validated).
 
 ### Maturity Calculation
 

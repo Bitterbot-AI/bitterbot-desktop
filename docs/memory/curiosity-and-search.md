@@ -43,7 +43,7 @@ When a new chunk is indexed, `assessChunk()` uses the internal GCCRF reward func
 | E·μ (Empowerment)           | Knowledge agency gated by uncertainty              | 0.20   |
 | S (Strategic Alignment)     | Alignment with active exploration targets          | 0.10   |
 
-Additionally, **contradiction detection** runs separately — it flags chunks with high cosine similarity (0.85 to 0.98) but different content hashes as _candidate_ conflicts. Near-identical embeddings (cosine >= 0.98) with different bytes are duplicates or paraphrases and score 0. This is a candidate signal for target generation, not an adjudication that the two chunks contradict each other; contradictions do not influence the reward score.
+Additionally, **contradiction detection** runs separately: it flags chunks with high cosine similarity (0.85 to 0.98) but different content hashes as _candidate_ conflicts. Near-identical embeddings (cosine >= 0.98) with different bytes are duplicates or paraphrases and score 0. This is a candidate signal for target generation, not an adjudication that the two chunks contradict each other; contradictions do not influence the reward score.
 
 ```typescript
 type SurpriseAssessment = {
@@ -203,7 +203,7 @@ flowchart LR
 `assessDreamInsight()` checks each new dream insight against existing curiosity state:
 
 - **Gap filling** — If the insight's embedding is close to a knowledge gap target, the target is resolved
-- **Contradiction closure** — A `simulation` insight with confidence >= 0.7 resolves a contradiction target only when it is scoped to that target: it was dreamed from one of the chunks the contradiction was detected on, or it lands in the target's region (cosine >= 0.6 to the centroid) and its text names a term of the region label. An unrelated simulation leaves every contradiction target open. The normal closure path for targets remains the PLAN-54 research loop above.
+- **Contradiction closure**: a `simulation` insight with confidence >= 0.7 resolves a contradiction target only when it is scoped to that target: it was dreamed from one of the chunks the contradiction was detected on, or it lands in the target's region (cosine >= 0.6 to the centroid) and its text names a term of the region label. An unrelated simulation leaves every contradiction target open. The normal closure path for targets remains the PLAN-54 research loop above.
 - **Frontier opening** — If the insight represents genuinely novel territory, a new `frontier` target is created
 
 ---
