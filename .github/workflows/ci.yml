@@ -555,7 +555,7 @@ jobs:
           const asset = (tag, n) => ({ name: n, browser_download_url: `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/${tag}/${n}` });
           const listing = [{ tag_name: "v99.0.0", draft: false, prerelease: false, assets: [asset("v99.0.0", "docker-compose.yml")] }];
           for (const tag of fs.readdirSync(`${dir}/download`)) {
-            listing.push({ tag_name: tag, draft: false, prerelease: false, assets: fs.readdirSync(`${dir}/download/${tag}`).map((n) => asset(tag, n)) });
+            listing.push({ tag_name: tag, draft: false, prerelease: tag.includes("-"), assets: fs.readdirSync(`${dir}/download/${tag}`).map((n) => asset(tag, n)) });
           }
           fs.writeFileSync(`${dir}/api/releases.json`, JSON.stringify(listing));
           JS
@@ -586,7 +586,7 @@ jobs:
           # bundled node inside ~/.bitterbot/app/<version>/runtime).
           gw_versions() {
             for pid in $(pgrep -f "^bitterbot-gateway"); do
-              readlink "/proc/$pid/exe" | sed -n 's#.*/app/\([0-9.]*\)/runtime/.*#\1#p'
+              readlink "/proc/$pid/exe" | sed -nE 's#.*/app/([0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?)/runtime/.*#\1#p'
             done | sort -u
           }
           healthy() {
