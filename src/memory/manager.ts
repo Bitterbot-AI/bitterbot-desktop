@@ -1297,6 +1297,13 @@ export class MemoryIndexManager implements MemorySearchManager {
        * ledger's current value. Owner searches only; guestSearch passes false.
        */
       tagSuperseded?: boolean;
+      /**
+       * The instant the query is asked, epoch ms. Every age-dependent boost
+       * (recency, temporal intent) measures from here instead of the wall
+       * clock. Benchmarks that replay a dated history pass the question's
+       * date so a 2023 memory is scored as it would have been in 2023.
+       */
+      now?: number;
     },
   ): Promise<MemorySearchResult[]> {
     // PLAN-55 Phase 2: over-fetch while marks exist, so demoted results never
@@ -1459,6 +1466,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       maxResults?: number;
       minScore?: number;
       sessionKey?: string;
+      /** See search(): the instant the query is asked, for age-dependent boosts. */
+      now?: number;
     },
     layers?: SearchLayerCounts,
   ): Promise<MemorySearchResult[]> {
@@ -1618,6 +1627,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       // The fused RRF score each boost below starts from; the boosts are
       // bounded against it afterwards (query.postFusionBoostScale).
       const fusedBase = merged.map((entry) => entry.score);
+      // "Now" for every age-dependent boost: the caller's instant if given.
+      const boostNow = opts?.now ?? Date.now();
 
       // Apply recency boost: recent memories get a temporal advantage
       const recencyCfg: RecencyConfig = this.settings.query.recency;
@@ -1628,9 +1639,10 @@ export class MemoryIndexManager implements MemorySearchManager {
           : recencyCfg;
         for (const entry of merged) {
           entry.score *= computeRecencyBoost(
-            entry.updatedAt ?? Date.now(),
+            entry.updatedAt ?? boostNow,
             entry.lastAccessedAt ?? null,
             effectiveRecencyCfg,
+            boostNow,
           );
         }
       }
@@ -1677,8 +1689,9 @@ export class MemoryIndexManager implements MemorySearchManager {
               intent: temporalIntent,
               epistemicLayer:
                 ((entry as Record<string, unknown>).epistemicLayer as string | null) ?? null,
-              createdAt: ((entry as Record<string, unknown>).createdAt as number) ?? Date.now(),
+              createdAt: ((entry as Record<string, unknown>).createdAt as number) ?? boostNow,
               updatedAt: entry.updatedAt ?? null,
+              now: boostNow,
             });
           }
         }

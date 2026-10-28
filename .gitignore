@@ -264,3 +264,6 @@ docs/plans/
 docs/reviews/v1-release-audit-2026-08-21.md
 docs/reviews/v1-release-audit-2026-08-21-verification.md
 docs/reviews/circles-p2p-security-remediation-2026-08-14.md
+
+benchmarks/longmemeval/.work-official/
+benchmarks/longmemeval/.work-official-scorer/

@@ -247,6 +247,8 @@ flowchart TB
 
 Vector alone scored 23% R@5 and keyword alone 55% on that set. The boosts did not help even the questions with explicit "currently / right now" intent (0 of 5 under the legacy setting, 1 of 5 bounded). Operators who want pure fusion order set the scale to 0; the LongMemEval retrieval runner pins 1 so its saved runs stay comparable (its sessions carry synthetic dates).
 
+**The clock is injectable.** Every age-dependent boost measures from `opts.now` when `manager.search(query, { now })` is given one, and from the wall clock otherwise. Nothing in the agent passes it; it exists so a benchmark that replays a dated history (the official-protocol LongMemEval runner back-dates each session's chunks to the session and asks each question at its `question_date`) scores a 2023 memory as it would have been scored in 2023 rather than as three years old.
+
 **Per-channel diagnostics (PLAN-58).** Every result carries `channels` and `fusion` alongside the fused `score`:
 
 ```ts
