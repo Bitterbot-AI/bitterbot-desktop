@@ -118,6 +118,17 @@ no content words ("what kitchen appliance did I buy 10 days ago"). Files:
 `.eval-results-gpt-4o`. The 60-question pilot (`official-s-haiku-4-5_pilot-per-type-10`,
 10 per type) scored 0.800; it under-weights the two hardest types.
 
+Oracle arm (`--oracle`, gold sessions only, same reader, judge and prompt;
+`results/official-oracle-haiku-4-5.jsonl`): overall 0.920, task-averaged
+0.917, abstention 0.900; temporal 0.940, multi-session 0.857, knowledge-update
+0.949, preference 0.800. That is the Haiku reader's ceiling. Per question, the
+oracle arm answers 46 of the memory arm's 71 misses correctly, 37 of them
+questions whose gold sessions were already in the memory arm's top 10, so most
+"reading" failures are distractor noise in the context rather than reader
+inability. 25 questions are wrong in both arms (5 with disputed golds).
+Preference and abstention score lower without distractors, so any context
+cleanup needs an explicit abstention path. The full-context arm was not run.
+
 ### Data
 
 `download.sh` fetches the canonical files from `xiaowu0162/longmemeval-cleaned`
