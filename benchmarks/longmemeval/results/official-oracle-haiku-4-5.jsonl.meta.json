@@ -1,0 +1,43 @@
+{
+  "protocol": "xiaowu0162/LongMemEval@9e0b455f4ef0e2ab8f2e582289761153549043fc",
+  "dataset": {
+    "file": "longmemeval_oracle.json",
+    "sha256": "821a2034d219ab45846873dd14c14f12cfe7776e73527a483f9dac095d38620c",
+    "variant": "oracle",
+    "n": 500
+  },
+  "selection": {
+    "limit": 0,
+    "perType": 0,
+    "questions": 500
+  },
+  "git_commit": "67f0437b",
+  "reader": {
+    "model": "anthropic/claude-haiku-4-5-20251001",
+    "temperature": 0,
+    "maxTokens": 800,
+    "reading": "con",
+    "templateSha256": "9e2b3110622929ab896696dd8937231c7436740ec3b9586f653f97346e19ab2c"
+  },
+  "retrieval": {
+    "mode": "memory",
+    "unit": "session",
+    "k": 10,
+    "candidateChunks": 50,
+    "postFusionBoostScale": "production",
+    "embedding": "openai/text-embedding-3-small",
+    "chunking": "markdown 384 tokens / 48 overlap, one document per session",
+    "clock": "question_date",
+    "sessionRecall": {
+      "n": 470,
+      "recall_any_5": 1,
+      "recall_all_5": 0.9936,
+      "recall_any_10": 1,
+      "recall_all_10": 1
+    }
+  },
+  "started_at": "2026-10-28T05:31:55.784Z",
+  "errors": [],
+  "finished_at": "2026-10-28T06:16:23.851Z",
+  "elapsed_seconds": 2661.2
+}
