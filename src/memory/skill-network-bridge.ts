@@ -8,6 +8,7 @@
 
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { validateSkillEnvelope } from "../agents/skills/envelope-validation.js";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
@@ -22,6 +23,12 @@ import type { SkillVerifier } from "./skill-verifier.js";
 import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");
+
+/** `PublishResult` plus what the orchestrator reported about the broadcast. */
+export type NetworkPublishResult = PublishResult & {
+  contentHash?: string;
+  deliveredTo?: number;
+};
 
 /** Network-wide census snapshot received over gossipsub. Mirrors the JSON
  * shape published by `BootnodeRegistry::census` on the Rust side, plus a
@@ -347,17 +354,50 @@ export class SkillNetworkBridge {
   }
 
   /**
-   * Outbound: publish a crystal skill to the P2P network.
+   * Outbound: publish operator-supplied SKILL.md content. The content must
+   * byte-match an active skill crystal; a manual RPC may select existing,
+   * matured content but cannot manufacture maturity evidence for new bytes.
    */
-  async publishCrystalSkill(crystalId: string): Promise<PublishResult | null> {
+  async publishSkillContent(content: string): Promise<NetworkPublishResult | null> {
+    const row = this.db
+      .prepare(
+        `SELECT id FROM chunks
+         WHERE semantic_type = 'skill' AND COALESCE(lifecycle_state, 'active') = 'active'
+           AND text = ?
+         ORDER BY id LIMIT 1`,
+      )
+      .get(content) as { id: string } | undefined;
+    if (!row) {
+      log.debug("publishSkillContent: content does not match an active skill crystal");
+      return null;
+    }
+    return this.publishCrystalSkill(row.id);
+  }
+
+  /**
+   * Outbound: publish a crystal skill to the P2P network. This is the single
+   * outbound gate: auto-publish on crystallize, the maturity re-attempt, query
+   * responses and the manual `skills.publish` RPC all go through it.
+   */
+  async publishCrystalSkill(
+    crystalId: string,
+    options: { nameOverride?: string } = {},
+  ): Promise<NetworkPublishResult | null> {
     if (!this.orchestratorBridge) {
       log.debug("no orchestrator bridge, skipping publish");
       return null;
     }
 
-    // Read crystal from DB
+    // Read crystal from DB. Only an active skill crystal is publishable: an
+    // archived/expired lifecycle or a non-skill chunk never leaves the node,
+    // whatever its governance says.
     const row = this.db
-      .prepare(`SELECT id, text, path, governance_json FROM chunks WHERE id = ?`)
+      .prepare(
+        `SELECT id, text, path, governance_json FROM chunks
+         WHERE id = ? AND semantic_type = 'skill'
+           AND COALESCE(lifecycle_state, 'active') = 'active'
+           AND COALESCE(lifecycle, 'generated') NOT IN ('archived', 'expired')`,
+      )
       .get(crystalId) as
       | {
           id: string;
@@ -368,7 +408,7 @@ export class SkillNetworkBridge {
       | undefined;
 
     if (!row) {
-      log.warn(`publishCrystalSkill: crystal ${crystalId} not found`);
+      log.debug(`publishCrystalSkill: crystal ${crystalId} not found or not an active skill`);
       return null;
     }
 
@@ -414,11 +454,13 @@ export class SkillNetworkBridge {
     // Generate SKILL.md from crystal content and base64-encode for the wire protocol
     const skillMd = this.generateSkillMd(row.text, row.path, crystalId);
     const skillMdBase64 = Buffer.from(skillMd, "utf-8").toString("base64");
-    const name = this.extractSkillName(row.path, crystalId);
+    const name = options.nameOverride ?? this.extractSkillName(row.path, crystalId);
 
     try {
       const raw = await this.orchestratorBridge.publishSkill(skillMdBase64, name);
-      const result = raw as { ok?: boolean; content_hash?: string } | undefined;
+      const result = raw as
+        | { ok?: boolean; content_hash?: string; delivered_to?: number }
+        | undefined;
       if (result?.ok) {
         const now = Date.now();
         // Update crystal's publish state
@@ -442,7 +484,13 @@ export class SkillNetworkBridge {
           );
 
         log.debug("crystal published to network", { crystalId, name });
-        return { crystalId, visibility: "shared", publishedAt: now };
+        return {
+          crystalId,
+          visibility: "shared",
+          publishedAt: now,
+          contentHash: result.content_hash,
+          deliveredTo: result.delivered_to,
+        };
       }
     } catch (err) {
       log.warn(`failed to publish crystal ${crystalId}: ${String(err)}`);
@@ -457,6 +505,16 @@ export class SkillNetworkBridge {
   ingestNetworkSkill(envelope: SkillEnvelope): ImportResult {
     if (!envelope.content_hash || !envelope.skill_md) {
       return { ok: false, action: "rejected", reason: "invalid envelope" };
+    }
+
+    // Authenticity first: an envelope whose bytes fail Ed25519 + SHA-256 must
+    // never reach dedup, version resolution or the chunk store. The filesystem
+    // ingest checks this too, but this method is also a public entry point
+    // (promotion re-import, tests, embedders), so it does not trust its caller.
+    const authenticityError = validateSkillEnvelope(envelope);
+    if (authenticityError) {
+      log.warn(`Rejected crystal import from ${envelope.author_peer_id}: ${authenticityError}`);
+      return { ok: false, action: "rejected", reason: authenticityError };
     }
 
     // Reject skills from banned peers
@@ -767,23 +825,30 @@ export class SkillNetworkBridge {
    * replaces this with run-level outcomes.
    */
   private checkBountyClaimQuality(crystalId: string, text: string): boolean {
-    // 1. SkillVerifier must pass
-    if (this.skillVerifier) {
-      const result = this.skillVerifier.verify(text, null);
-      if (!result.passed) {
-        return false;
-      }
+    // Fail closed: missing evidence dependencies are not permission to publish.
+    // An embedder that constructs the bridge without a verifier or tracker gets
+    // no outbound propagation rather than ungated propagation.
+    if (!this.skillVerifier || !this.executionTracker) {
+      return false;
     }
 
-    // 2. Execution metrics: 3+ runs, >70% success
-    if (this.executionTracker) {
-      const metrics = this.executionTracker.getSkillMetrics(crystalId);
-      if (metrics.totalExecutions < 3) {
-        return false;
-      }
-      if (metrics.successRate < 0.7) {
-        return false;
-      }
+    // 1. SkillVerifier must pass
+    const result = this.skillVerifier.verify(text, null);
+    if (!result.passed) {
+      return false;
+    }
+
+    // 2. Execution metrics: 3+ runs, >70% success. Non-finite or out-of-range
+    // metrics are corrupt evidence, not a pass.
+    const metrics = this.executionTracker.getSkillMetrics(crystalId);
+    if (!Number.isFinite(metrics.totalExecutions) || !Number.isFinite(metrics.successRate)) {
+      return false;
+    }
+    if (metrics.totalExecutions < 3) {
+      return false;
+    }
+    if (metrics.successRate < 0.7 || metrics.successRate > 1) {
+      return false;
     }
 
     return true;
@@ -1035,48 +1100,27 @@ export class SkillNetworkBridge {
     // Find best-matching crystals with high importance
     const crystals = this.db
       .prepare(
-        `SELECT id, text, path, importance_score, governance_json
+        `SELECT id, path
        FROM chunks
        WHERE lifecycle_state = 'active' AND semantic_type = 'skill'
        ORDER BY importance_score DESC LIMIT 3`,
       )
-      .all() as Array<{
-      id: string;
-      text: string;
-      path: string;
-      importance_score: number;
-      governance_json: string | null;
-    }>;
+      .all() as Array<{ id: string; path: string }>;
 
-    // Publish matching crystals as skill responses
+    // Publish matching crystals as skill responses. A query answer is still an
+    // outbound broadcast to the mesh, so it goes through the single outbound
+    // gate (publishCrystalSkill): governance scope, confidential ancestors,
+    // archived lifecycle and the maturity bar. An immature/unexecuted dream
+    // crystal must not be re-broadcast as a "response-*" skill (a second
+    // amplification vector). Only the wire name differs, so Forage can tell
+    // a response from an unsolicited publish.
     for (const crystal of crystals) {
-      // Governance check
-      let gov: Record<string, unknown> = {};
-      try {
-        if (crystal.governance_json) {
-          gov = JSON.parse(crystal.governance_json);
-        }
-      } catch {}
-      if (gov.accessScope !== "shared" && gov.accessScope !== "public") {
-        continue;
-      }
-      if (gov.sensitivity === "confidential") {
-        continue;
-      }
-      // Same maturity gate as auto-publish: a query answer is still an outbound
-      // broadcast to the mesh, so an immature/unexecuted dream crystal must not
-      // be re-broadcast as a "response-*" skill (a second amplification vector).
-      if (!this.checkBountyClaimQuality(crystal.id, crystal.text)) {
-        continue;
-      }
-
-      const skillMd = this.generateSkillMd(crystal.text, crystal.path, crystal.id);
-      const skillMdBase64 = Buffer.from(skillMd, "utf-8").toString("base64");
       const name = `response-${event.query_id.slice(0, 8)}-${this.extractSkillName(crystal.path, crystal.id)}`;
-
       try {
-        await this.orchestratorBridge.publishSkill(skillMdBase64, name);
-        log.debug(`query response sent: crystal=${crystal.id} for query '${event.query}'`);
+        const sent = await this.publishCrystalSkill(crystal.id, { nameOverride: name });
+        if (sent) {
+          log.debug(`query response sent: crystal=${crystal.id} for query '${event.query}'`);
+        }
       } catch (err) {
         log.debug(`failed to respond to query: ${String(err)}`);
       }

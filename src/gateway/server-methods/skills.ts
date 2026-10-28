@@ -902,28 +902,35 @@ export const skillsHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const skillMdBase64 = Buffer.from(p.content, "utf8").toString("base64");
+    // The RPC selects existing content; it does not manufacture evidence. The
+    // bytes must match an active skill crystal, and the publish runs through the
+    // bridge's single outbound gate (governance, confidential ancestors,
+    // archived lifecycle, verifier + execution maturity). Hand-written
+    // SKILL.md that was never crystallized is not publishable from here.
+    if (!context.skillNetworkBridge) {
+      respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "skill network bridge is not available"),
+      );
+      return;
+    }
     try {
-      const raw = (await context.orchestratorBridge.publishSkill(skillMdBase64, p.name)) as
-        | {
-            ok?: boolean;
-            content_hash?: string;
-            delivered_to?: number;
-            error?: string;
-          }
-        | undefined;
+      const raw = await context.skillNetworkBridge.publishSkillContent(p.content);
       const result = {
-        ok: raw?.ok === true,
-        contentHash: raw?.content_hash,
-        deliveredTo: raw?.delivered_to,
-        error: raw?.error,
+        ok: raw != null,
+        contentHash: raw?.contentHash,
+        deliveredTo: raw?.deliveredTo,
+        error: raw
+          ? undefined
+          : "content must byte-match an active, shareable skill crystal that has matured (verifier + executions)",
       };
       respond(
         result.ok,
         result,
         result.ok
           ? undefined
-          : errorShape(ErrorCodes.UNAVAILABLE, result.error ?? "publish failed"),
+          : errorShape(ErrorCodes.INVALID_REQUEST, result.error ?? "publish failed"),
       );
     } catch (err) {
       respond(

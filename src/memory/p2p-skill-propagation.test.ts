@@ -199,18 +199,44 @@ function createSkillChunk(
   });
 }
 
+/**
+ * A genuinely signed envelope: the bridge now verifies Ed25519 + SHA-256
+ * before storing anything, so fixtures carry a real keypair and a real hash
+ * over the (possibly overridden) skill bytes.
+ */
 function createEnvelope(overrides: Partial<SkillEnvelope> = {}): SkillEnvelope {
+  const keys = crypto.generateKeyPairSync("ed25519");
+  const skillMd =
+    overrides.skill_md ?? Buffer.from("Test skill content from peer").toString("base64");
+  const bytes = Buffer.from(skillMd, "base64");
   return {
     version: 1,
-    skill_md: Buffer.from("Test skill content from peer").toString("base64"),
+    skill_md: skillMd,
     name: "test-skill",
     author_peer_id: "peer-123",
-    author_pubkey: "pubkey-abc",
-    signature: "sig-xyz",
+    author_pubkey: keys.publicKey
+      .export({ format: "der", type: "spki" })
+      .subarray(-32)
+      .toString("base64"),
+    signature: crypto.sign(null, bytes, keys.privateKey).toString("base64"),
     timestamp: Date.now(),
-    content_hash: `hash-${crypto.randomUUID()}`,
+    content_hash: crypto.createHash("sha256").update(bytes).digest("hex"),
     ...overrides,
   };
+}
+
+/**
+ * The transport/governance tests below assume a matured crystal; the gate
+ * itself (missing verifier/tracker, execution counts, NaN metrics) is covered
+ * in skill-network-bridge.gates.test.ts and skill-network-bridge.maturity.test.ts.
+ */
+function createMatureBridge(...args: ConstructorParameters<typeof SkillNetworkBridge>) {
+  const bridge = new SkillNetworkBridge(...args);
+  bridge.setSkillVerifier({ verify: () => ({ passed: true }) } as never);
+  bridge.setExecutionTracker({
+    getSkillMetrics: () => ({ totalExecutions: 3, successRate: 1 }),
+  } as never);
+  return bridge;
 }
 
 function mockOrchestratorBridge(opts?: {
@@ -632,7 +658,7 @@ describe("SkillNetworkBridge", () => {
   describe("publishCrystalSkill", () => {
     it("publishes a shared skill to the network", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       const skillId = createSkillChunk(db, "Deploy with Docker and monitoring");
 
@@ -662,7 +688,7 @@ describe("SkillNetworkBridge", () => {
 
     it("refuses to publish private crystals", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       const skillId = createSkillChunk(db, "Private skill", {
         governance_json: JSON.stringify({ accessScope: "private", sensitivity: "normal" }),
@@ -675,7 +701,7 @@ describe("SkillNetworkBridge", () => {
 
     it("refuses to publish confidential crystals", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       const skillId = createSkillChunk(db, "Secret skill", {
         governance_json: JSON.stringify({ accessScope: "shared", sensitivity: "confidential" }),
@@ -687,7 +713,7 @@ describe("SkillNetworkBridge", () => {
 
     it("refuses to publish crystal with confidential ancestor", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       // Create confidential parent
       const parentId = createSkillChunk(db, "Confidential parent", {
@@ -705,7 +731,7 @@ describe("SkillNetworkBridge", () => {
 
     it("checks provenance_dag for confidential ancestors", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       const parentId = createSkillChunk(db, "Confidential parent", {
         governance_json: JSON.stringify({ accessScope: "private", sensitivity: "confidential" }),
@@ -729,7 +755,7 @@ describe("SkillNetworkBridge", () => {
     });
 
     it("returns null when no orchestrator bridge is set", async () => {
-      const bridge = new SkillNetworkBridge(db, null);
+      const bridge = createMatureBridge(db, null);
       const skillId = createSkillChunk(db, "Orphan skill");
 
       const result = await bridge.publishCrystalSkill(skillId);
@@ -738,7 +764,7 @@ describe("SkillNetworkBridge", () => {
 
     it("returns null when crystal doesn't exist", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       const result = await bridge.publishCrystalSkill("nonexistent-id");
       expect(result).toBeNull();
@@ -746,7 +772,7 @@ describe("SkillNetworkBridge", () => {
 
     it("handles orchestrator publish failure gracefully", async () => {
       const mockBridge = mockOrchestratorBridge({ shouldFail: true });
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       const skillId = createSkillChunk(db, "Fail skill");
       const result = await bridge.publishCrystalSkill(skillId);
@@ -757,7 +783,7 @@ describe("SkillNetworkBridge", () => {
       const mockBridge = mockOrchestratorBridge({
         publishResult: { ok: false, error: "peers unreachable" },
       });
-      const bridge = new SkillNetworkBridge(db, mockBridge);
+      const bridge = createMatureBridge(db, mockBridge);
 
       const skillId = createSkillChunk(db, "No peers skill");
       const result = await bridge.publishCrystalSkill(skillId);
@@ -767,7 +793,7 @@ describe("SkillNetworkBridge", () => {
 
   describe("ingestNetworkSkill", () => {
     it("ingests a valid skill envelope as a crystal", () => {
-      const bridge = new SkillNetworkBridge(db, null);
+      const bridge = createMatureBridge(db, null);
       const envelope = createEnvelope({ name: "docker-deploy" });
 
       const result = bridge.ingestNetworkSkill(envelope);
@@ -791,17 +817,17 @@ describe("SkillNetworkBridge", () => {
 
       // Verify governance has peerOrigin
       const gov = JSON.parse(String(row.governance_json));
-      expect(gov.peerOrigin).toBe("pubkey-abc");
+      expect(gov.peerOrigin).toBe(envelope.author_pubkey);
 
       // Verify provenance DAG was created
       const dag = JSON.parse(String(row.provenance_dag));
       expect(dag.length).toBe(1);
       expect(dag[0].operation).toBe("imported");
-      expect(dag[0].actor).toBe("peer:pubkey-abc");
+      expect(dag[0].actor).toBe(`peer:${envelope.author_pubkey}`);
     });
 
     it("rejects duplicate content hash", () => {
-      const bridge = new SkillNetworkBridge(db, null);
+      const bridge = createMatureBridge(db, null);
       const envelope = createEnvelope();
 
       const result1 = bridge.ingestNetworkSkill(envelope);
@@ -813,7 +839,7 @@ describe("SkillNetworkBridge", () => {
     });
 
     it("rejects envelope with missing fields", () => {
-      const bridge = new SkillNetworkBridge(db, null);
+      const bridge = createMatureBridge(db, null);
 
       const result = bridge.ingestNetworkSkill({
         ...createEnvelope(),
@@ -823,23 +849,25 @@ describe("SkillNetworkBridge", () => {
       expect(result.reason).toBe("invalid envelope");
     });
 
-    it("rejects invalid base64 content", () => {
-      const bridge = new SkillNetworkBridge(db, null);
+    it("rejects content that no longer matches the envelope's signature and hash", () => {
+      const bridge = createMatureBridge(db, null);
 
       const result = bridge.ingestNetworkSkill({
         ...createEnvelope(),
         skill_md: "!!!not-valid-base64!!!",
       });
-      // Base64 decoding is permissive, but the content should still be stored
-      // The actual validation happens at a higher level (ingest.ts)
-      expect(result.ok).toBe(true);
+      // The crystal import checks authenticity itself; it does not rely on the
+      // filesystem ingest having done so upstream.
+      expect(result.ok).toBe(false);
+      expect(result.reason).toBe("invalid Ed25519 signature");
+      expect(db.prepare("SELECT COUNT(*) AS n FROM chunks").get()).toEqual({ n: 0 });
     });
   });
 
   describe("onSkillCrystallized", () => {
     it("auto-publishes when configured", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge, { autoPublishOnCrystallize: true });
+      const bridge = createMatureBridge(db, mockBridge, { autoPublishOnCrystallize: true });
 
       const skillId = createSkillChunk(db, "Auto-publish skill");
 
@@ -852,7 +880,7 @@ describe("SkillNetworkBridge", () => {
 
     it("does not auto-publish when disabled", async () => {
       const mockBridge = mockOrchestratorBridge();
-      const bridge = new SkillNetworkBridge(db, mockBridge, { autoPublishOnCrystallize: false });
+      const bridge = createMatureBridge(db, mockBridge, { autoPublishOnCrystallize: false });
 
       const skillId = createSkillChunk(db, "No auto-publish");
       bridge.onSkillCrystallized(skillId);
@@ -864,7 +892,7 @@ describe("SkillNetworkBridge", () => {
 
   describe("setOrchestratorBridge", () => {
     it("allows late wiring of orchestrator bridge", async () => {
-      const bridge = new SkillNetworkBridge(db, null);
+      const bridge = createMatureBridge(db, null);
       const skillId = createSkillChunk(db, "Late wire skill");
 
       // No bridge yet
@@ -1611,7 +1639,7 @@ describe("End-to-End P2P Skill Propagation", () => {
 
   it("governance blocks publish of confidential skills to network", async () => {
     const mockBridge = mockOrchestratorBridge();
-    const bridge = new SkillNetworkBridge(db, mockBridge);
+    const bridge = createMatureBridge(db, mockBridge);
 
     // Confidential skill — should not be published
     const id = createSkillChunk(db, "Top secret skill", {

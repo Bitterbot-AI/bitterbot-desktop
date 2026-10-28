@@ -104,4 +104,18 @@ describe("crystallizeSkill (PLAN-42 Phase 0: staged + gated, no direct live writ
     expect(result.error).toContain("below threshold");
     expect(await readProvenance({ configDir: tmpDir })).toHaveLength(0);
   });
+
+  it.each([NaN, Number.POSITIVE_INFINITY, 1.5, -Infinity])(
+    "refuses a malformed self-reported reward score (%s) before staging",
+    async (rewardScore) => {
+      const result = await crystallizeSkill({
+        candidate: candidate({ rewardScore }),
+        config,
+        configDir: tmpDir,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toMatch(/not a finite value|below threshold/);
+      expect(await readProvenance({ configDir: tmpDir })).toHaveLength(0);
+    },
+  );
 });
