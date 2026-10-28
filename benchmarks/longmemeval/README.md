@@ -59,6 +59,12 @@ What the runner does per question, and why each step is there:
 | `now` is never earlier than the latest session                                                                       | In 76 S questions `question_date` precedes the last session (same day); the maintainers say to treat the question as asked right after it.                                            |
 | `--full-context` hands the reader every session, date-sorted, no retrieval                                           | The paper's long-context baseline, with the same reader and prompt, so retrieval cost and memory benefit are measured on one footing. `--oracle` with the memory arm is the ceiling.  |
 
+`analyze-official.ts --hyp <out>` joins the judge output with the retrieval
+log and splits every miss into a reading failure (every gold session was in the
+reader's context) or a retrieval failure (one was not, and at what rank it sat),
+per question type, with recall at several k and abstention behaviour. That split
+is what decides whether the next change belongs in the reader or in retrieval.
+
 Each run writes three files: the hypothesis JSONL, `<out>.meta.json`
 (protocol commit, dataset SHA-256, git commit with `+dirty` marker, reader,
 k, unit, boost scale, session recall of the retrieval stage, every error) and
@@ -192,6 +198,7 @@ longmemeval/
 ├── official-protocol.ts    # reference reader/judge templates, formats, aggregates (tested)
 ├── runner-official.ts      # official-protocol runner (hypothesis JSONL + meta + retrieval log)
 ├── evaluate-official.ts    # evaluate_qa.py port: pinned judge, per-type prompts, same output
+├── analyze-official.ts     # miss attribution: reading vs retrieval, recall@k, abstention, per type
 ├── official-scorer.sh      # runs the unmodified reference evaluate_qa.py / print_qa_metrics.py
 ├── adapter.ts              # legacy Bitterbot ↔ LongMemEval bridge (diagnostic runners)
 ├── runner.ts               # legacy QA runner (type hints, own prompt; not comparable)
