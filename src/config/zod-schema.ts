@@ -52,6 +52,7 @@ const MemorySchema = z
         z
           .object({
             enabled: z.boolean().optional(),
+            fshoCoupling: z.boolean().optional(),
             research: z
               .union([
                 z

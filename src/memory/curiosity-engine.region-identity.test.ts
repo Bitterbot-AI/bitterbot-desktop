@@ -35,13 +35,14 @@ describe("deriveStableRegionId (F8)", () => {
   });
 });
 
-// The learning-progress formula that rebuildRegions now applies: for a region
-// that persisted (same stable id), learning_progress = max(0, priorError -
-// newError) — the reduction in prediction error, i.e. the GCCRF learning
-// signal, which was previously hardcoded to 0.
+// The learning-progress formula that rebuildRegions applies: for a region that
+// persisted (same stable id), learning_progress = clamp(priorError - newError,
+// -1, 1) — the SIGNED change in prediction error. It used to be clamped at 0,
+// which meant the stale-region detector (learning_progress < -0.3) could never
+// fire off the rebuild value.
 describe("learning-progress formula (F8)", () => {
   const lp = (priorError: number | undefined, newError: number): number =>
-    priorError == null ? 0 : Math.max(0, priorError - newError);
+    priorError == null ? 0 : Math.max(-1, Math.min(1, priorError - newError));
 
   it("is 0 for a brand-new region (no prior)", () => {
     expect(lp(undefined, 0.4)).toBe(0);
@@ -51,7 +52,7 @@ describe("learning-progress formula (F8)", () => {
     expect(lp(0.6, 0.4)).toBeCloseTo(0.2);
   });
 
-  it("clamps to 0 when error rises (no negative learning)", () => {
-    expect(lp(0.3, 0.5)).toBe(0);
+  it("goes negative when error rises (region is drifting / going stale)", () => {
+    expect(lp(0.3, 0.5)).toBeCloseTo(-0.2);
   });
 });

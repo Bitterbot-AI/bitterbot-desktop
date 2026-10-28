@@ -23,6 +23,7 @@ import {
   saveGCCRFState,
   loadGCCRFState,
   ensureGCCRFSchema,
+  GCCRF_SCORING_VERSION,
 } from "./gccrf-state.js";
 import { cosineSimilarity, parseEmbedding } from "./internal.js";
 
@@ -51,6 +52,21 @@ export interface GCCRFConfig {
   muGain: number;
   /** Threshold for mu_t sigmoid. Default: 0.3 */
   muThreshold: number;
+  /**
+   * RBF bandwidth for KDE density, applied to raw cosine distances and shared
+   * by every query. Default: 0.3. A per-query min/max stretch (the previous
+   * behaviour) made every neighbourhood look identical, so a chunk sitting on
+   * top of 50 near-duplicates scored the same density as one 0.7 away from
+   * everything.
+   */
+  densityBandwidth: number;
+  /**
+   * Let the FSHO order parameter modulate the alpha schedule
+   * (`getFshoCoupledAlpha`). Default: false. Set via
+   * `memory.curiosity.fshoCoupling`; off, novelty uses the pure maturity
+   * schedule and FSHO R is tracked for telemetry only.
+   */
+  fshoCoupling: boolean;
 }
 
 export const DEFAULT_GCCRF_CONFIG: GCCRFConfig = {
@@ -67,7 +83,26 @@ export const DEFAULT_GCCRF_CONFIG: GCCRFConfig = {
   etaWindowSize: 20,
   muGain: 5.0,
   muThreshold: 0.3,
+  densityBandwidth: 0.3,
+  fshoCoupling: false,
 };
+
+/** Scoring context for one chunk: lets KNN exclude the chunk itself. */
+export type GCCRFComputeContext = {
+  /** The id of the chunk being scored, when it is already in `chunks`/`chunks_vec`. */
+  chunkId?: string;
+};
+
+/**
+ * Extra rows requested from the vector index beyond k: the assessed chunk is
+ * its own nearest neighbour (distance 0) and the index can still hold rows
+ * for chunks that were archived or deleted since. Filtered after the MATCH.
+ */
+const KNN_OVERFETCH = 8;
+const KNN_MAX_ROUNDS = 3;
+
+/** |α + 1| below this uses the -log p limit of I_α (prefactor instability). */
+const ALPHA_LOG_LIMIT_WINDOW = 1e-3;
 
 // ── Result Types ──
 
@@ -179,6 +214,21 @@ export class GCCRFRewardFunction {
   constructor(db: DatabaseSync, config?: Partial<GCCRFConfig>) {
     this.db = db;
     this.config = { ...DEFAULT_GCCRF_CONFIG, ...config };
+    if (!Number.isFinite(this.config.densityBandwidth) || this.config.densityBandwidth <= 0) {
+      log.warn(
+        `invalid gccrf.densityBandwidth ${String(this.config.densityBandwidth)}; using ${DEFAULT_GCCRF_CONFIG.densityBandwidth}`,
+      );
+      this.config.densityBandwidth = DEFAULT_GCCRF_CONFIG.densityBandwidth;
+    }
+    if (
+      !Number.isFinite(this.config.expectedMatureCycles) ||
+      this.config.expectedMatureCycles <= 0
+    ) {
+      log.warn(
+        `invalid gccrf.expectedMatureCycles ${String(this.config.expectedMatureCycles)}; using ${DEFAULT_GCCRF_CONFIG.expectedMatureCycles}`,
+      );
+      this.config.expectedMatureCycles = DEFAULT_GCCRF_CONFIG.expectedMatureCycles;
+    }
     ensureGCCRFSchema(db);
 
     // Initialize normalizers with defaults
@@ -203,12 +253,14 @@ export class GCCRFRewardFunction {
    * @param chunkEmbedding - The chunk's embedding vector
    * @param regionCentroids - Map of region ID → centroid embedding
    * @param strategicTargets - Array of active curiosity target embeddings
+   * @param context - The chunk being scored, so KNN can exclude it from its own neighbourhood
    * @returns Full reward result with components, diagnostics, and alpha
    */
   compute(
     chunkEmbedding: number[],
     regionCentroids: Map<string, number[]>,
     strategicTargets: number[][],
+    context: GCCRFComputeContext = {},
   ): GCCRFRewardResult {
     const [w1, w2, w3, w4, w5] = this.config.weights;
 
@@ -226,12 +278,15 @@ export class GCCRFRewardFunction {
     // KDE density with alpha-annealed reward shaping.
     // Young agent (α < -1): rewards high density (common things).
     // Mature agent (α → 0): rewards low density (frontier exploration).
-    const { iAlpha: rawIAlpha, density } = this.computeInformationTheoreticNovelty(chunkEmbedding);
+    const { iAlpha: rawIAlpha, density } = this.computeInformationTheoreticNovelty(
+      chunkEmbedding,
+      context,
+    );
 
     // ── Component 4: Empowerment (E · μ_t) ──
     // E = neighborhood diversity (regions × types).
     // μ_t = interoceptive gate: opens when prediction errors are volatile.
-    const rawEmpowerment = this.computeEmpowerment(chunkEmbedding, rawEta);
+    const rawEmpowerment = this.computeEmpowerment(chunkEmbedding, rawEta, context);
 
     // ── Component 5: Strategic Alignment (S) ──
     // S = max cosine similarity to active exploration targets.
@@ -239,7 +294,13 @@ export class GCCRFRewardFunction {
 
     // ── Normalize all components to [0, 1] via running EMA normalizers ──
     const normEta = this.normEta.normalize(rawEta);
-    const normDeltaEta = this.normDeltaEta.normalize(rawDeltaEta);
+    // Progress preserves zero: the EMA normalizer maps "no change" to 0.5 (its
+    // running mean), which rewarded a region that is not moving at all. Raw Δη
+    // is already a bounded difference of two η EMAs, so clamp it instead. The
+    // normalizer still sees the value so its statistics remain available for
+    // telemetry (getState) and for the dream-mode thresholds that read them.
+    this.normDeltaEta.normalize(rawDeltaEta);
+    const normDeltaEta = Math.max(0, Math.min(1, rawDeltaEta));
     const normIAlpha = this.normIAlpha.normalize(rawIAlpha);
     const normEmpowerment = this.normEmpowerment.normalize(rawEmpowerment);
     const normStrategic = this.normStrategic.normalize(rawStrategic);
@@ -283,7 +344,7 @@ export class GCCRFRewardFunction {
         empowerment: rawEmpowerment,
         strategic: rawStrategic,
       },
-      alpha: this.getCurrentAlpha(),
+      alpha: this.getEffectiveAlpha(),
       density,
       regionId,
       maturity,
@@ -333,10 +394,13 @@ export class GCCRFRewardFunction {
       return 0;
     }
 
-    // Get or initialize per-region ETA state
+    // Get or initialize per-region ETA state. A new region starts at the
+    // observed η, not at 0.5: seeding both EMAs at a constant manufactured a
+    // spurious Δη for the first dozens of samples in every region whose η sat
+    // away from 0.5.
     let state = this.regionEta.get(regionId);
     if (!state) {
-      state = { emaLong: 0.5, emaShort: 0.5, sampleCount: 0 };
+      state = { emaLong: currentEta, emaShort: currentEta, sampleCount: 0 };
       this.regionEta.set(regionId, state);
     }
 
@@ -363,10 +427,17 @@ export class GCCRFRewardFunction {
   //    α anneals to 0.0 (rewards low density → frontier exploration).
   // 3. Shaped reward: I_α = (density + ε)^(-(α+1)/2) - 1
   //
-  // Curse of dimensionality fix: contrast-stretch local distances before RBF kernel.
+  // Density uses one shared RBF bandwidth over raw cosine distances
+  // (config.densityBandwidth) so that absolute proximity is preserved across
+  // queries: a neighbourhood at distance 0.01 and one at 0.7 must not score
+  // the same just because their internal spacing is similar. The previous
+  // per-query min/max stretch had exactly that defect.
   // Cold start protection: return 0.5 (neutral) when < 10 neighbors available.
 
-  private computeInformationTheoreticNovelty(chunkEmbedding: number[]): {
+  private computeInformationTheoreticNovelty(
+    chunkEmbedding: number[],
+    context: GCCRFComputeContext = {},
+  ): {
     iAlpha: number;
     density: number;
   } {
@@ -380,7 +451,8 @@ export class GCCRFRewardFunction {
       )
       .get() as { c: number } | undefined;
     const totalChunks = totalRow?.c ?? 0;
-    const actualK = Math.min(targetK, totalChunks - 1);
+    // The assessed chunk is not its own neighbour.
+    const actualK = Math.min(targetK, totalChunks - (context.chunkId ? 1 : 0));
 
     // Cold start protection: neutral value if insufficient topology
     if (actualK < 10) {
@@ -388,42 +460,28 @@ export class GCCRFRewardFunction {
     }
 
     // KNN search: get K nearest neighbors and their distances
-    const neighbors = this.knnSearch(chunkEmbedding, actualK);
+    const neighbors = this.knnSearch(chunkEmbedding, actualK, context);
     if (neighbors.length < 10) {
       return { iAlpha: 0.5, density: 0.5 };
     }
 
-    const distances = neighbors.map((n) => 1 - n.similarity);
-
-    // Curse of dimensionality fix: contrast-stretch local distances
-    // In 1536D, all distances collapse to ~0.4-0.7. Stretch to [0,1] locally.
-    const dMin = Math.min(...distances);
-    const dMax = Math.max(...distances);
-    const dRange = dMax - dMin + EPS;
-    const adjustedDistances = distances.map((d) => (d - dMin) / dRange);
-
-    // Adaptive bandwidth = median of adjusted distances
-    const sorted = [...adjustedDistances].toSorted((a, b) => a - b);
-    const bandwidth = sorted[Math.floor(sorted.length / 2)]! || 0.5;
-    const bwSq = bandwidth * bandwidth || 0.25;
-
-    // RBF kernel density estimation
+    // RBF kernel density estimation over raw cosine distances
     // density = (1/K) * Σ exp(-d² / (2 * bandwidth²))
+    const bwSq = this.config.densityBandwidth * this.config.densityBandwidth;
     let densitySum = 0;
-    for (const d of adjustedDistances) {
+    for (const n of neighbors) {
+      const d = Math.max(0, 1 - n.similarity);
       densitySum += Math.exp(-(d * d) / (2 * bwSq));
     }
-    const density = densitySum / actualK;
+    const density = densitySum / neighbors.length;
 
-    // Alpha annealing schedule (tied to dream cycles, not chunk count)
-    const alpha = this.getCurrentAlpha();
+    // Alpha annealing schedule (tied to dream cycles, not chunk count),
+    // optionally FSHO-modulated when memory.curiosity.fshoCoupling is on.
+    const alpha = this.getEffectiveAlpha();
 
-    // Shaped reward: I_α = (density + ε)^(-(α+1)/2) - 1
-    // When α < -1 (young): exponent > 0 → high density = high reward (rewards commonality)
-    // When α = -1: exponent = 0 → I_α = 0 (transition point)
-    // When α > -1 (mature): exponent < 0 → low density = high reward (rewards novelty)
-    const exponent = -(alpha + 1) / 2;
-    const iAlpha = Math.pow(density + EPS, exponent) - 1;
+    // Shaped reward: the alpha-family novelty of Nedergaard & Morales (eq. 23),
+    // including its 4/(1-α²) prefactor. See informationGeometricNovelty.
+    const iAlpha = informationGeometricNovelty(density + EPS, alpha);
 
     return { iAlpha, density };
   }
@@ -437,7 +495,11 @@ export class GCCRFRewardFunction {
   // The interoceptive modulator μ_t gates empowerment by uncertainty:
   // when prediction errors are volatile (confused), seek agency.
 
-  private computeEmpowerment(chunkEmbedding: number[], _currentEta: number): number {
+  private computeEmpowerment(
+    chunkEmbedding: number[],
+    _currentEta: number,
+    context: GCCRFComputeContext = {},
+  ): number {
     const targetK = this.config.empowermentK;
 
     // Get total chunk count for cold start check
@@ -447,7 +509,7 @@ export class GCCRFRewardFunction {
       )
       .get() as { c: number } | undefined;
     const totalChunks = totalRow?.c ?? 0;
-    const actualK = Math.min(targetK, totalChunks - 1);
+    const actualK = Math.min(targetK, totalChunks - (context.chunkId ? 1 : 0));
 
     // Cold start protection
     if (actualK < 10) {
@@ -455,7 +517,7 @@ export class GCCRFRewardFunction {
     }
 
     // Get neighborhood: chunks with their region assignments and semantic types
-    const neighbors = this.getNeighborhoodDiversity(chunkEmbedding, actualK);
+    const neighbors = this.getNeighborhoodDiversity(chunkEmbedding, actualK, context);
 
     // E = log(regions_touched + 1) * log(types_touched + 1)
     const E = Math.log(neighbors.regionsCount + 1) * Math.log(neighbors.typesCount + 1);
@@ -507,17 +569,22 @@ export class GCCRFRewardFunction {
   }
 
   /**
-   * Agent maturity ratio [0, 1]. Uses the maximum of three independent signals
-   * so that agents with sparse dream cycles but rich knowledge can still mature:
-   *   - Dream cycles completed (original metric)
-   *   - Total crystal count (knowledge volume)
-   *   - Days since first crystal (calendar age)
+   * Agent maturity ratio [0, 1], from completed dream cycles only. A bulk
+   * import of 500 chunks or 30 days on the clock is not consolidation: the
+   * chunk-count and calendar-age shortcuts let a node with many chunks and
+   * almost no completed cycles jump straight to the frontier-seeking regime.
    */
   getMaturity(): number {
     const cycleMat = this.getDreamCyclesCompleted() / this.config.expectedMatureCycles;
-    const crystalMat = this.getTotalCrystalCount() / 500;
-    const ageMat = this.getDaysSinceFirstCrystal() / 30;
-    return Math.min(1, Math.max(cycleMat, crystalMat, ageMat));
+    return Math.min(1, Math.max(0, cycleMat));
+  }
+
+  /**
+   * The alpha novelty actually uses: the maturity schedule, FSHO-modulated only
+   * when `fshoCoupling` is enabled.
+   */
+  getEffectiveAlpha(): number {
+    return this.config.fshoCoupling ? this.getFshoCoupledAlpha() : this.getCurrentAlpha();
   }
 
   // ── Plan 7, Phase 10: FSHO Alpha Coupling ──
@@ -564,40 +631,20 @@ export class GCCRFRewardFunction {
     }
   }
 
-  /** Count total active crystals (chunks). */
-  private getTotalCrystalCount(): number {
-    try {
-      const row = this.db
-        .prepare(
-          `SELECT COUNT(*) as c FROM chunks WHERE COALESCE(lifecycle_state, 'active') = 'active'`,
-        )
-        .get() as { c: number } | undefined;
-      return row?.c ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  /** Days elapsed since the earliest crystal was created. */
-  private getDaysSinceFirstCrystal(): number {
-    try {
-      const row = this.db.prepare(`SELECT MIN(created_at) as earliest FROM chunks`).get() as
-        | { earliest: number | null }
-        | undefined;
-      if (!row?.earliest) {
-        return 0;
-      }
-      return Math.max(0, (Date.now() - row.earliest) / (24 * 60 * 60_000));
-    } catch {
-      return 0;
-    }
-  }
-
   // ── KNN Search ──
   // Uses sqlite-vec for K-nearest-neighbor search when available,
   // falls back to brute-force cosine similarity over recent chunks.
+  // Both paths exclude the assessed chunk itself (context.chunkId) and only
+  // return active chunks, so they rank the same corpus.
 
-  private knnSearch(embedding: number[], k: number): Array<{ id: string; similarity: number }> {
+  private knnSearch(
+    embedding: number[],
+    k: number,
+    context: GCCRFComputeContext = {},
+  ): Array<{ id: string; similarity: number }> {
+    if (k <= 0) {
+      return [];
+    }
     // Try sqlite-vec first
     try {
       const vecBlob = float32ArrayToBlob(new Float32Array(embedding));
@@ -608,39 +655,80 @@ export class GCCRFRewardFunction {
       // minutes once the embedded set grew. chunks_vec uses vec0's default L2
       // metric and the embeddings are unit-normalized, so the L2 ranking equals
       // the cosine ranking and cosine = 1 - L2^2/2 exactly.
-      const rows = this.db
-        .prepare(`SELECT id, distance FROM chunks_vec WHERE embedding MATCH ? AND k = ?`)
-        .all(vecBlob, k) as Array<{ id: string; distance: number }>;
+      //
+      // The MATCH stays index-wide. We overfetch a little and post-filter: the
+      // assessed chunk is its own nearest neighbour (self-match at distance 0
+      // inflated every density estimate), and the index can hold rows for
+      // chunks archived since. The filter is one primary-key IN lookup over
+      // ~k ids; no embedding is parsed and no recency window is applied.
+      const stmt = this.db.prepare(
+        `SELECT id, distance FROM chunks_vec WHERE embedding MATCH ? AND k = ?`,
+      );
+      let fetch = k + KNN_OVERFETCH;
+      let eligible: Array<{ id: string; distance: number }> = [];
+      for (let round = 0; round < KNN_MAX_ROUNDS; round++) {
+        const rows = stmt.all(vecBlob, fetch) as Array<{ id: string; distance: number }>;
+        eligible = this.filterEligibleNeighbors(rows, context.chunkId);
+        if (eligible.length >= k || rows.length < fetch) {
+          break;
+        }
+        fetch *= 2;
+      }
 
-      return rows.map((r) => ({
+      return eligible.slice(0, k).map((r) => ({
         id: r.id,
         similarity: 1 - (r.distance * r.distance) / 2,
       }));
     } catch {
       // Fallback: brute-force over recent active chunks
-      return this.knnSearchFallback(embedding, k);
+      return this.knnSearchFallback(embedding, k, context);
     }
+  }
+
+  /** Drop the assessed chunk and any index row whose chunk is gone or inactive. */
+  private filterEligibleNeighbors(
+    rows: Array<{ id: string; distance: number }>,
+    selfId: string | undefined,
+  ): Array<{ id: string; distance: number }> {
+    const candidates = rows.filter((r) => r.id !== selfId);
+    if (candidates.length === 0) {
+      return candidates;
+    }
+    const placeholders = candidates.map(() => "?").join(",");
+    const active = new Set(
+      (
+        this.db
+          .prepare(
+            `SELECT id FROM chunks WHERE id IN (${placeholders})
+               AND COALESCE(lifecycle_state, 'active') = 'active'`,
+          )
+          .all(...candidates.map((r) => r.id)) as Array<{ id: string }>
+      ).map((r) => r.id),
+    );
+    return candidates.filter((r) => active.has(r.id));
   }
 
   private knnSearchFallback(
     embedding: number[],
     k: number,
+    context: GCCRFComputeContext = {},
   ): Array<{ id: string; similarity: number }> {
     const rows = this.db
       .prepare(
         `SELECT id, embedding FROM chunks
          WHERE COALESCE(lifecycle_state, 'active') = 'active'
            AND embedding IS NOT NULL AND embedding != '[]'
+           AND id != ?
          ORDER BY updated_at DESC LIMIT 500`,
       )
-      .all() as Array<{ id: string; embedding: string }>;
+      .all(context.chunkId ?? "") as Array<{ id: string; embedding: string }>;
 
+    // Rank every parseable neighbour, like the vec0 path does: an orthogonal
+    // (similarity 0) chunk is still one of the k nearest when the corpus is small.
     const withSim = rows
-      .map((r) => {
-        const emb = parseEmbedding(r.embedding);
-        return { id: r.id, similarity: emb.length > 0 ? cosineSimilarity(embedding, emb) : 0 };
-      })
-      .filter((r) => r.similarity > 0)
+      .map((r) => ({ id: r.id, emb: parseEmbedding(r.embedding) }))
+      .filter((r) => r.emb.length === embedding.length && r.emb.length > 0)
+      .map((r) => ({ id: r.id, similarity: cosineSimilarity(embedding, r.emb) }))
       .toSorted((a, b) => b.similarity - a.similarity)
       .slice(0, k);
 
@@ -652,9 +740,10 @@ export class GCCRFRewardFunction {
   private getNeighborhoodDiversity(
     embedding: number[],
     k: number,
+    context: GCCRFComputeContext = {},
   ): { regionsCount: number; typesCount: number } {
     // Get K nearest neighbor IDs
-    const neighbors = this.knnSearch(embedding, k);
+    const neighbors = this.knnSearch(embedding, k, context);
     if (neighbors.length === 0) {
       return { regionsCount: 0, typesCount: 0 };
     }
@@ -771,6 +860,8 @@ export class GCCRFRewardFunction {
       regionEta: Object.fromEntries(this.regionEta),
       recentEtas: this.recentEtas,
       totalChunksProcessed: this.totalChunksProcessed,
+      scoringVersion: GCCRF_SCORING_VERSION,
+      fshoRAvg: this.fshoRAvg,
     };
 
     try {
@@ -790,24 +881,46 @@ export class GCCRFRewardFunction {
 
       const alpha = this.config.etaEmaAlpha;
 
-      if (state.normalizers?.eta) {
-        this.normEta = RunningEMANormalizer.fromJSON(alpha, state.normalizers.eta);
-      }
-      if (state.normalizers?.deltaEta) {
-        this.normDeltaEta = RunningEMANormalizer.fromJSON(alpha, state.normalizers.deltaEta);
-      }
-      if (state.normalizers?.iAlpha) {
-        this.normIAlpha = RunningEMANormalizer.fromJSON(alpha, state.normalizers.iAlpha);
-      }
-      if (state.normalizers?.empowerment) {
-        this.normEmpowerment = RunningEMANormalizer.fromJSON(alpha, state.normalizers.empowerment);
-      }
-      if (state.normalizers?.strategic) {
-        this.normStrategic = RunningEMANormalizer.fromJSON(alpha, state.normalizers.strategic);
+      // Version gate: normalizer statistics and per-region η EMAs accumulated
+      // under an older scoring version are in different units (per-query
+      // stretched density, 0.5-seeded region EMAs). They are reset once here;
+      // the next saveState stamps the current version. The η window and the
+      // processed counter are version-independent and are kept.
+      const sameVersion = state.scoringVersion === GCCRF_SCORING_VERSION;
+      if (!sameVersion) {
+        log.info("GCCRF scoring version changed; resetting normalizer and region state", {
+          from: state.scoringVersion ?? "legacy",
+          to: GCCRF_SCORING_VERSION,
+        });
       }
 
-      if (state.regionEta) {
-        this.regionEta = new Map(Object.entries(state.regionEta));
+      if (sameVersion) {
+        if (state.normalizers?.eta) {
+          this.normEta = RunningEMANormalizer.fromJSON(alpha, state.normalizers.eta);
+        }
+        if (state.normalizers?.deltaEta) {
+          this.normDeltaEta = RunningEMANormalizer.fromJSON(alpha, state.normalizers.deltaEta);
+        }
+        if (state.normalizers?.iAlpha) {
+          this.normIAlpha = RunningEMANormalizer.fromJSON(alpha, state.normalizers.iAlpha);
+        }
+        if (state.normalizers?.empowerment) {
+          this.normEmpowerment = RunningEMANormalizer.fromJSON(
+            alpha,
+            state.normalizers.empowerment,
+          );
+        }
+        if (state.normalizers?.strategic) {
+          this.normStrategic = RunningEMANormalizer.fromJSON(alpha, state.normalizers.strategic);
+        }
+
+        if (state.regionEta) {
+          this.regionEta = new Map(Object.entries(state.regionEta));
+        }
+      }
+
+      if (typeof state.fshoRAvg === "number" && Number.isFinite(state.fshoRAvg)) {
+        this.fshoRAvg = state.fshoRAvg;
       }
 
       if (Array.isArray(state.recentEtas)) {
@@ -840,6 +953,8 @@ export class GCCRFRewardFunction {
       regionEta: Object.fromEntries(this.regionEta),
       recentEtas: [...this.recentEtas],
       totalChunksProcessed: this.totalChunksProcessed,
+      scoringVersion: GCCRF_SCORING_VERSION,
+      fshoRAvg: this.fshoRAvg,
     };
   }
 
@@ -850,6 +965,33 @@ export class GCCRFRewardFunction {
 }
 
 // ── Utility Functions ──
+
+/**
+ * Alpha-family information-geometric novelty of a density estimate p in (0, 1]:
+ *
+ *   I_α(p) = 4 / (1 - α²) · (p^(-(α+1)/2) - 1)      for α ≠ ±1
+ *   I_-1(p) = -log p                                 (the α → -1 limit)
+ *
+ * (Nedergaard & Morales, eq. 23). The prefactor is not cosmetic: without it the
+ * ordering flips for α < -1. At α = -3 the bare power term is p - 1, a
+ * familiarity bonus that scored the most common material highest, while the
+ * full I_-3(p) = (1 - p) / 2 is decreasing in p like every other member of the
+ * family. So the schedule does not switch from "familiar is interesting" to
+ * "rare is interesting"; it moves from a bounded, forgiving novelty bonus
+ * (I_-3 ∈ [0, 0.5)) to an unbounded, sharply frontier-seeking one
+ * (I_0 = 4(1/√p - 1)). The per-component normalizer absorbs the scale.
+ *
+ * Near α = -1 the prefactor blows up (about +21 at -0.9, -19 at -1.1) while
+ * the power term goes to 0, so a window around -1 uses the log limit.
+ */
+export function informationGeometricNovelty(p: number, alpha: number): number {
+  const safeP = Math.max(p, Number.EPSILON);
+  if (Math.abs(alpha + 1) < ALPHA_LOG_LIMIT_WINDOW) {
+    return -Math.log(safeP);
+  }
+  const prefactor = 4 / (1 - alpha * alpha);
+  return prefactor * (Math.pow(safeP, -(alpha + 1) / 2) - 1);
+}
 
 function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));

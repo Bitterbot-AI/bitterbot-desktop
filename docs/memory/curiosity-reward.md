@@ -16,13 +16,19 @@ When new information arrives, GCCRF measures how far it is from what the agent a
 
 For each knowledge region, the agent tracks whether it's getting less surprised over time. If prediction errors are decreasing in a region, the agent is learning. This component rewards active learning zones and deprioritizes areas where the agent is stuck or already understands.
 
+Progress **preserves zero**: a region whose error is not moving contributes 0, not the normalizer's resting value of 0.5. The raw Δη (a bounded difference of two per-region η EMAs, both seeded at the first observed η rather than at a constant) is clamped to `[0, 1]` directly; the running normalizer still records it for telemetry.
+
 ### 3. Information-Theoretic Novelty ("How rare is this part of my knowledge space?")
 
 This is GCCRF's most distinctive feature. It uses density estimation to determine how crowded or sparse a region of knowledge space is.
 
-**The developmental twist**: A young agent (few dream cycles completed) is rewarded for exploring _common_ things -- building foundational understanding, like a baby fixating on faces. As the agent matures, it shifts to being rewarded for exploring _rare_ things -- frontier territory, like a researcher seeking the unknown.
+Density is an RBF kernel over the raw cosine distances to the K nearest neighbours with one **shared bandwidth** (`gccrf.densityBandwidth`, default 0.3). The bandwidth is deliberately not fitted per query: a per-query min/max stretch (the previous behaviour) made every neighbourhood look identical, so a chunk sitting on top of fifty near-duplicates scored the same density as one far from everything. The assessed chunk is excluded from its own neighbourhood, and archived chunks still present in the vector index are filtered out.
 
-This transition happens automatically through **alpha annealing**: a parameter that smoothly shifts the density reward from "common is interesting" to "rare is interesting" over the agent's lifetime.
+The shaped term is the alpha-family novelty of Nedergaard & Morales (eq. 23) **with its prefactor**: `I_α(p) = 4 / (1 - α²) · (p^(-(α+1)/2) - 1)`, with `I_-1(p) = -log p` as the limit (a small window around α = -1 uses the log form because the prefactor is numerically unstable there). The prefactor matters: without it the ordering flips for α < -1, and the "young agent" end of the schedule rewarded the most familiar material (the bare power term at α = -3 is `p - 1`). With it, `I_α` is decreasing in density for every α.
+
+**The developmental twist**: a young agent (few dream cycles completed) gets a _bounded, forgiving_ novelty bonus: at α = -3 the term is `(1 - p) / 2`, between 0 and 0.5, so common and rare material differ only mildly. As the agent matures the bonus becomes _sharply frontier-seeking_: at α = 0 it is `4 (1/√p - 1)`, unbounded as density falls. The per-component normalizer absorbs the scale change; what anneals is how strongly rarity is preferred, never the direction.
+
+This transition happens automatically through **alpha annealing**, a parameter that moves from -3 to 0 over the agent's completed dream cycles.
 
 ### 4. Empowerment ("Does knowing this give me more agency?")
 
@@ -66,7 +72,7 @@ The alpha parameter controls the agent's developmental stage:
 | -1.5 to -0.5 | Adolescent | Transitioning from common to novel        |
 | -0.5 to 0.0  | Mature     | Curious about rare, frontier things       |
 
-Maturity is tied to **dream cycles completed**, not raw data volume. This prevents bulk file imports from "speedrunning" the agent's childhood -- maturity tracks actual consolidation and reflection.
+Maturity is tied to **dream cycles completed** and nothing else: `maturity = min(1, completed_cycles / expectedMatureCycles)`. Chunk count and calendar age used to count too (500 chunks or 30 days meant "mature"), which let a node with a large import and almost no completed cycles jump straight to the frontier-seeking regime. Removing those shortcuts means an upgraded node with many chunks but few completed cycles moves back toward the young regime until its dreams catch up.
 
 ## Configuration
 
@@ -82,6 +88,11 @@ GCCRF configuration is set in the `memory.gccrf` section of the Bitterbot config
 | `empowermentK`         | `30`                             | Neighbors for empowerment computation                             |
 | `muGain`               | `5.0`                            | Interoceptive modulator sensitivity                               |
 | `muThreshold`          | `0.3`                            | Interoceptive modulator threshold                                 |
+| `densityBandwidth`     | `0.3`                            | Shared RBF bandwidth over cosine distance for KDE density         |
+
+FSHO alpha coupling is switched on with `memory.curiosity.fshoCoupling: true` (default `false`, see below).
+
+Normalizer statistics and per-region η EMAs are stamped with a scoring version (`gccrf_state.scoring_version`, currently `gccrf-v2`). When the version changes, those statistics are reset once on load because their units changed; the η window and processed-chunk counter are kept.
 
 ## FSHO Oscillator Coupling
 
@@ -91,18 +102,11 @@ The Dream Engine's **FSHO oscillator** (Fractional Stuart-Landau Hopf Oscillator
 - **GCCRF high learning progress + FSHO high R** → Both agree: compress (coherent, consolidating memories)
 - **GCCRF wants exploration + FSHO wants compression** → Disagreement resolved via weighted normalization (0.3 GCCRF, 0.4 FSHO × validation factor, 0.3 curiosity heuristics)
 
-**FSHO alpha coupling (implemented):** The FSHO order parameter R informs alpha annealing via a running EMA: `effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)`. High R (coherent memory set) shifts alpha toward frontier-seeking; low R shifts toward consolidation. The FSHO signal is also **self-validating** — `computeFshoWeightAdjustment()` checks Pearson correlation between R and DQS, scaling FSHO's mode selection weight between 0.5x (noise) and 1.5x (validated).
+**FSHO alpha coupling (opt-in, `memory.curiosity.fshoCoupling`, default off):** when enabled, the FSHO order parameter R informs alpha annealing via a running EMA: `effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)`. High R (coherent memory set) shifts alpha toward frontier-seeking; low R shifts toward consolidation. By default the coupling is **not** applied: R is tracked (and persisted as `gccrf_state.fsho_r_avg`) for telemetry, and novelty uses the pure maturity schedule. The FSHO signal is also **self-validating** — `computeFshoWeightAdjustment()` checks Pearson correlation between R and DQS, scaling FSHO's mode selection weight between 0.5x (noise) and 1.5x (validated).
 
 ### Maturity Calculation
 
-Maturity is now computed from multiple factors rather than dream cycles alone:
-
-- Dream cycles completed (primary signal)
-- Knowledge crystal count and diversity
-- Exploration target resolution rate
-- Bond stability (Jaccard overlap history)
-
-This prevents both "speedrunning" via bulk imports and stalling on a single factor.
+Maturity is computed from completed dream cycles only (see Developmental Annealing above). It is exposed on the dashboard together with the current alpha.
 
 ### Exploration Target TTL
 

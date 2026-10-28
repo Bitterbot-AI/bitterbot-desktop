@@ -24,7 +24,20 @@ export interface GCCRFState {
   regionEta: Record<string, { emaLong: number; emaShort: number; sampleCount: number }>;
   recentEtas: number[];
   totalChunksProcessed: number;
+  /**
+   * Scoring version the normalizer statistics were accumulated under. The
+   * density component changed units in v2 (shared bandwidth over raw cosine
+   * distance instead of a per-query contrast stretch) and learning progress
+   * stopped being EMA-normalized, so statistics from an older version are
+   * discarded once on load instead of being mixed in. Absent on legacy rows.
+   */
+  scoringVersion?: string;
+  /** FSHO order-parameter EMA, so optional alpha coupling survives a restart. */
+  fshoRAvg?: number;
 }
+
+/** Bump when a component changes units; see GCCRFState.scoringVersion. */
+export const GCCRF_SCORING_VERSION = "gccrf-v2";
 
 // ── Schema ──
 
@@ -60,6 +73,12 @@ export function saveGCCRFState(db: DatabaseSync, state: GCCRFState): void {
 
   // Save total chunks processed counter
   stmt.run("total_chunks_processed", String(state.totalChunksProcessed), now);
+
+  // Version stamp for the normalizer statistics, and the FSHO EMA
+  stmt.run("scoring_version", state.scoringVersion ?? GCCRF_SCORING_VERSION, now);
+  if (typeof state.fshoRAvg === "number" && Number.isFinite(state.fshoRAvg)) {
+    stmt.run("fsho_r_avg", String(state.fshoRAvg), now);
+  }
 }
 
 export function loadGCCRFState(db: DatabaseSync): GCCRFState | null {
@@ -92,7 +111,17 @@ export function loadGCCRFState(db: DatabaseSync): GCCRFState | null {
       ? Number(map.get("total_chunks_processed")!)
       : 0;
 
-    return { normalizers, regionEta, recentEtas, totalChunksProcessed };
+    const scoringVersion = map.get("scoring_version");
+    const fshoRaw = map.has("fsho_r_avg") ? Number(map.get("fsho_r_avg")!) : NaN;
+
+    return {
+      normalizers,
+      regionEta,
+      recentEtas,
+      totalChunksProcessed,
+      ...(scoringVersion ? { scoringVersion } : {}),
+      ...(Number.isFinite(fshoRaw) ? { fshoRAvg: fshoRaw } : {}),
+    };
   } catch {
     return null;
   }

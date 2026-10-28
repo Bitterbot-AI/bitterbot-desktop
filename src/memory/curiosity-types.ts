@@ -127,6 +127,13 @@ export type CuriosityConfig = {
   maxQueryHistory?: number;
   /** Score threshold below which a query indicates a gap. Default: 0.5. */
   gapScoreThreshold?: number;
+  /**
+   * Let the dream engine's FSHO order parameter modulate GCCRF's alpha
+   * schedule (`effective_alpha = base_alpha + 0.5 * (R_avg - 0.5)`). Default:
+   * false. Off, FSHO R is tracked for telemetry only and novelty uses the pure
+   * dream-cycle maturity schedule.
+   */
+  fshoCoupling?: boolean;
   /** GCCRF reward function configuration. When provided, GCCRF replaces heuristic scoring. */
   gccrf?:
     | import("./gccrf-reward.js").GCCRFConfig
