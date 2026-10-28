@@ -110,7 +110,7 @@ export function createMemorySearchTool(options: {
         const searchOpts = { maxResults, minScore, sessionKey: options.agentSessionKey };
         const rawResults = options.memoryGuest
           ? ((await manager.guestSearch?.(query, searchOpts)) ?? [])
-          : await manager.search(query, searchOpts);
+          : await manager.search(query, { ...searchOpts, caller: "memory_search" });
         const status = manager.status();
         const decorated = decorateCitations(rawResults, includeCitations);
         // PLAN-58: per-channel diagnostics are model input, so their size is

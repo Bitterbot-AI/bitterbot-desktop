@@ -2750,6 +2750,95 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 79,
+    description:
+      "PLAN-59 Phase 0 (2026-10-28): evidence telemetry. retrieval_hits records the " +
+      "top-K of every owner memory search (chunk id, rank, fused score, per-channel " +
+      "ranks) under a keyed query digest, never the query text. surfacing_events " +
+      "records what the agent proactively surfaced (curiosity findings, proactive " +
+      "recall, dream briefs) and, separately, what the owner did about it; silence " +
+      "stays `unknown`. decision_traces (shadow mode only) records what a " +
+      "GCCRF-as-diagnostic routing would have decided next to the legacy decision. " +
+      "evidence_meta holds the node-local HMAC key for the digests. All tables start " +
+      "empty; nothing is backfilled and no read path consumes them yet.",
+    up: (db: DatabaseSync) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS retrieval_hits (
+          id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+          query_id           TEXT NOT NULL,
+          query_digest       TEXT NOT NULL,
+          session_digest     TEXT,
+          caller             TEXT,
+          query_len          INTEGER NOT NULL,
+          chunk_id           TEXT NOT NULL,
+          rank               INTEGER NOT NULL,
+          fused_score        REAL,
+          channel_ranks_json TEXT,
+          injected           INTEGER,
+          cited              INTEGER,
+          embedding_model    TEXT,
+          scoring_version    TEXT,
+          created_at         INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_retrieval_hits_created ON retrieval_hits(created_at)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_retrieval_hits_chunk ` +
+          `ON retrieval_hits(chunk_id, created_at)`,
+      );
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_retrieval_hits_query ON retrieval_hits(query_id)`);
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS surfacing_events (
+          id               INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id         TEXT NOT NULL UNIQUE,
+          kind             TEXT NOT NULL,
+          ref_id           TEXT,
+          arm              TEXT NOT NULL DEFAULT 'legacy',
+          opportunity_id   TEXT,
+          session_digest   TEXT,
+          stage            TEXT NOT NULL,
+          outcome          TEXT,
+          label_provenance TEXT,
+          cost_usd         REAL,
+          created_at       INTEGER NOT NULL,
+          outcome_at       INTEGER
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_surfacing_events_created ON surfacing_events(created_at)`,
+      );
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_surfacing_events_ref ` +
+          `ON surfacing_events(ref_id, stage, created_at)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS decision_traces (
+          id              INTEGER PRIMARY KEY AUTOINCREMENT,
+          kind            TEXT NOT NULL,
+          legacy_json     TEXT NOT NULL,
+          proposed_json   TEXT NOT NULL,
+          diverged        INTEGER NOT NULL,
+          scoring_version TEXT,
+          created_at      INTEGER NOT NULL
+        )
+      `);
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_decision_traces_created ON decision_traces(created_at)`,
+      );
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS evidence_meta (
+          key   TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        )
+      `);
+      db.prepare(`INSERT OR IGNORE INTO evidence_meta (key, value) VALUES ('schema_note', ?)`).run(
+        "PLAN-59 Phase 0: digests are HMAC-SHA256 under digest_key; query text is never stored",
+      );
+    },
+  },
 ];
 
 /**

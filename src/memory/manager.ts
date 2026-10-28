@@ -89,6 +89,7 @@ import {
 import { EpistemicDirectiveEngine } from "./epistemic-directives.js";
 import { yieldToEventLoop } from "./event-loop.js";
 import { parseEvidenceRefs, scoreCitationSupport } from "./evidence-expand.js";
+import { EvidenceTelemetry, resolveEvidenceConfig } from "./evidence-telemetry.js";
 import { createExecutionTrackingHook } from "./execution-tracking-hook.js";
 import { ExperienceSignalCollector } from "./experience-signal-collector.js";
 import {
@@ -379,6 +380,17 @@ export class MemoryIndexManager implements MemorySearchManager {
   private sagePlannerLlmCall: ((prompt: string) => Promise<string>) | null = null;
   private sagePlannerLlmTried = false;
   private curiosityEngine: CuriosityEngine | null = null;
+  /**
+   * PLAN-59 Phase 0: evidence telemetry (retrieval hits, surfacing events,
+   * shadow decision traces). Observation only; never alters a result.
+   */
+  private evidenceTelemetry: EvidenceTelemetry | null = null;
+  /**
+   * Chunk ids of the result objects searchInner built, keyed by identity so
+   * the final returned list can be recorded without changing the public
+   * result shape. WeakMap: entries die with the result objects.
+   */
+  private readonly resultChunkIds = new WeakMap<MemorySearchResult, string>();
   private hormonalManager: HormonalStateManager | null = null;
   private userModelManager: UserModelManager | null = null;
   private governance: MemoryGovernance | null = null;
@@ -414,6 +426,8 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (this.dreamEngine) {
       this.dreamEngine.updateDb(this.db);
     }
+    // PLAN-59 Phase 0: the evidence writer holds the handle too.
+    this.evidenceTelemetry?.rebind(this.db);
     if (this.curiosityEngine) {
       (this.curiosityEngine as unknown as { db: DatabaseSync }).db = this.db;
     }
@@ -949,6 +963,22 @@ export class MemoryIndexManager implements MemorySearchManager {
         result.facts.length > 0
           ? formatProactiveFacts(result.facts, { includedDreamChunkIds })
           : undefined;
+      // PLAN-59 Phase 0: each fact that reaches the prompt is a delivery.
+      // Exposure only; what the owner made of it is a separate row.
+      if (facts && this.evidenceTelemetry?.isEnabled()) {
+        const bucket = Math.floor(Date.now() / 3_600_000);
+        this.evidenceTelemetry.recordSurfacingBatch(
+          result.facts
+            .filter((f) => typeof f.chunkId === "string")
+            .map((f) => ({
+              eventId: `pr:${f.chunkId}:${bucket}`,
+              kind: "proactive_recall",
+              refId: f.chunkId as string,
+              sessionKey: opts?.scopeKey,
+              stage: "delivered" as const,
+            })),
+        );
+      }
       return { facts, embedding, renderedDreamChunkIds: includedDreamChunkIds };
     } catch (err) {
       log.debug(`proactive recall failed: ${String(err)}`);
@@ -1275,6 +1305,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       ...opts,
       maxResults: want * 3,
       tagSuperseded: false,
+      // PLAN-59 Phase 0: guest searches are not owner evidence.
+      observe: false,
     });
     // PLAN-58: a guest learns nothing about the shape of the owner's index.
     return filterGuestResults(this.db, results)
@@ -1304,6 +1336,13 @@ export class MemoryIndexManager implements MemorySearchManager {
        * date so a 2023 memory is scored as it would have been in 2023.
        */
       now?: number;
+      /**
+       * PLAN-59 Phase 0: short tag naming the call site for the retrieval
+       * evidence row (`memory_search`, `deep_recall`, ...). Optional.
+       */
+      caller?: string;
+      /** PLAN-59 Phase 0: `false` skips the evidence row (guest searches). */
+      observe?: boolean;
     },
   ): Promise<MemorySearchResult[]> {
     // PLAN-55 Phase 2: over-fetch while marks exist, so demoted results never
@@ -1353,7 +1392,77 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (results.length === 0) {
       this.recordCoverageMiss(query);
     }
+    // PLAN-59 Phase 0: record the top-K of exactly what is returned. Runs
+    // after every reorder above, touches nothing in `results`, never throws.
+    if (opts?.observe !== false) {
+      this.recordRetrievalEvidence(query, results, opts?.sessionKey, opts?.caller);
+    }
     return results;
+  }
+
+  /** PLAN-59 Phase 0: the evidence telemetry writer, for status and tests. */
+  getEvidenceTelemetry(): EvidenceTelemetry | null {
+    return this.evidenceTelemetry;
+  }
+
+  /**
+   * PLAN-59 Phase 0: write the retrieval evidence row set for one search.
+   * Chunk ids come from the identity map searchInner filled; a result built
+   * elsewhere (a superseded copy) falls back to a bounded indexed lookup.
+   */
+  private recordRetrievalEvidence(
+    query: string,
+    results: MemorySearchResult[],
+    sessionKey: string | undefined,
+    caller: string | undefined,
+  ): void {
+    const telemetry = this.evidenceTelemetry;
+    if (!telemetry || !telemetry.isEnabled() || results.length === 0) {
+      return;
+    }
+    try {
+      const topK = telemetry.config.topK;
+      let lookup: ReturnType<typeof this.db.prepare> | null = null;
+      const hits: Array<{
+        chunkId: string;
+        rank: number;
+        score?: number;
+        channelRanks?: Record<string, number>;
+      }> = [];
+      for (let i = 0; i < results.length && hits.length < topK; i++) {
+        const r = results[i]!;
+        let chunkId = this.resultChunkIds.get(r) ?? (r as { id?: unknown }).id;
+        if (typeof chunkId !== "string") {
+          lookup ??= this.db.prepare(
+            `SELECT id FROM chunks WHERE path = ? AND start_line = ? AND end_line = ? LIMIT 1`,
+          );
+          const row = lookup.get(r.path, r.startLine, r.endLine) as { id: string } | undefined;
+          chunkId = row?.id;
+        }
+        if (typeof chunkId !== "string") {
+          continue;
+        }
+        let channelRanks: Record<string, number> | undefined;
+        if (r.channels) {
+          channelRanks = {};
+          for (const [channel, hit] of Object.entries(r.channels)) {
+            if (hit) {
+              channelRanks[channel] = hit.rank;
+            }
+          }
+        }
+        hits.push({ chunkId, rank: i + 1, score: r.score, channelRanks });
+      }
+      telemetry.recordRetrieval({
+        query,
+        sessionKey,
+        caller,
+        results: hits,
+        embeddingModel: this.provider.model,
+      });
+    } catch (err) {
+      log.debug(`retrieval evidence skipped: ${String(err)}`);
+    }
   }
 
   /**
@@ -1711,16 +1820,22 @@ export class MemoryIndexManager implements MemorySearchManager {
       results = merged
         .filter((entry) => entry.score >= minScore)
         .slice(0, maxResults)
-        .map((entry) => ({
-          path: entry.path,
-          startLine: entry.startLine,
-          endLine: entry.endLine,
-          score: entry.score,
-          snippet: entry.snippet,
-          source: entry.source as MemorySource,
-          channels: entry.channels,
-          fusion: entry.fusion,
-        }));
+        .map((entry) => {
+          const out: MemorySearchResult = {
+            path: entry.path,
+            startLine: entry.startLine,
+            endLine: entry.endLine,
+            score: entry.score,
+            snippet: entry.snippet,
+            source: entry.source as MemorySource,
+            channels: entry.channels,
+            fusion: entry.fusion,
+          };
+          // PLAN-59 Phase 0: remember the chunk id for the evidence row
+          // without adding it to the public result shape.
+          this.resultChunkIds.set(out, entry.id);
+          return out;
+        });
     } else {
       // Legacy weighted merge: score = vectorWeight * vectorScore + textWeight * textScore
       const merged = this.mergeHybridResults({
@@ -2949,6 +3064,20 @@ export class MemoryIndexManager implements MemorySearchManager {
         if (this.canonicalFactsStore) {
           this.canonicalFactsStore.decayTick();
         }
+        // 18. PLAN-59 Phase 0: bounded retention on the evidence tables.
+        //     Chunked deletes with yields; best-effort.
+        if (this.evidenceTelemetry) {
+          try {
+            await yieldToEventLoop();
+            const pruned = await this.evidenceTelemetry.prune();
+            const n = pruned.retrievalHits + pruned.surfacingEvents + pruned.decisionTraces;
+            if (n > 0) {
+              log.debug(`evidence telemetry pruned ${n} row(s)`);
+            }
+          } catch (err) {
+            log.debug(`evidence telemetry prune failed: ${String(err)}`);
+          }
+        }
       } catch (err) {
         log.warn(`memory consolidation failed: ${String(err)}`);
       }
@@ -3222,6 +3351,10 @@ export class MemoryIndexManager implements MemorySearchManager {
     // (CuriosityEngine now exposes updateFshoR/getFshoRAvg/getFshoCoupledAlpha)
     if (this.curiosityEngine) {
       this.dreamEngine.setGccrfRewardFunction(this.curiosityEngine);
+    }
+    // PLAN-59 Phase 0: shadow decision traces (no-op outside shadow mode).
+    if (this.evidenceTelemetry) {
+      this.dreamEngine.setEvidenceTelemetry(this.evidenceTelemetry);
     }
 
     // Plan 8, Phase 7: Wire marketplace intelligence for demand-driven dreams
@@ -3590,11 +3723,13 @@ export class MemoryIndexManager implements MemorySearchManager {
           : c?.autoResearch?.enabled === false && c?.research?.enabled !== true
             ? "memory.curiosity.autoResearch.enabled"
             : null;
-    return curiosityStatus(this.db, this.curiosityResearchConfig(), {
+    const status = curiosityStatus(this.db, this.curiosityResearchConfig(), {
       searchConfigured: isWebSearchConfigured(this.cfg),
       hormonal: this.hormonalManager?.getState() ?? null,
       disabledBy,
     });
+    // PLAN-59 Phase 0: row counts of the evidence tables.
+    return { ...status, evidence: this.evidenceTelemetry?.stats() ?? null };
   }
 
   async curiosityList(limit?: number) {
@@ -3610,7 +3745,16 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   async curiosityDismiss(id: string): Promise<boolean> {
     const { dismissCuriosityTarget } = await import("./curiosity-researcher.js");
-    return dismissCuriosityTarget(this.db, id);
+    const dismissed = dismissCuriosityTarget(this.db, id);
+    // PLAN-59 Phase 0: an explicit owner label. Matches the finding delivered
+    // for this target (opportunity id) or records the response on its own.
+    this.evidenceTelemetry?.recordSurfacingOutcome({
+      refId: id,
+      outcome: "dismissed",
+      provenance: "explicit",
+      kind: "curiosity_target",
+    });
+    return dismissed;
   }
 
   async curiosityAsk(question: string): Promise<string | null> {
@@ -3645,10 +3789,18 @@ export class MemoryIndexManager implements MemorySearchManager {
       }
       const text = renderDreamBrief(brief);
       const { notifyOwner } = await import("../infra/owner-notify.js");
+      const dedupeKey = `dream-brief:${this.agentId}:${new Date().toISOString().slice(0, 10)}`;
       await notifyOwner({
         kind: "dream-brief",
-        dedupeKey: `dream-brief:${this.agentId}:${new Date().toISOString().slice(0, 10)}`,
+        dedupeKey,
         text,
+      });
+      // PLAN-59 Phase 0: the daily dream digest went out to the owner.
+      this.evidenceTelemetry?.recordSurfacing({
+        eventId: `dd:${dedupeKey}`,
+        kind: "dream_digest",
+        refId: dedupeKey,
+        stage: "delivered",
       });
       return text;
     } catch (err) {
@@ -6899,9 +7051,18 @@ export class MemoryIndexManager implements MemorySearchManager {
       if (!row) {
         return null;
       }
+      const surfacedAt = Date.now();
       this.db
         .prepare(`UPDATE dream_briefs SET status = 'surfaced', surfaced_at = ? WHERE id = ?`)
-        .run(Date.now(), row.id);
+        .run(surfacedAt, row.id);
+      // PLAN-59 Phase 0: the anticipation brief reached the prompt.
+      this.evidenceTelemetry?.recordSurfacing({
+        eventId: `db:${row.id}:${Math.floor(surfacedAt / 3_600_000)}`,
+        kind: "dream_brief",
+        refId: row.id,
+        stage: "delivered",
+        now: surfacedAt,
+      });
       void import("./dream-utility.js")
         .then(({ markDreamConsumption }) => {
           markDreamConsumption(this.db, row.id, "surfaced");
@@ -6939,6 +7100,19 @@ export class MemoryIndexManager implements MemorySearchManager {
         this.db,
         rows.map((r) => r.target_id),
         now,
+      );
+      // PLAN-59 Phase 0: the finding was delivered to the owner's prompt.
+      // ref = finding id, opportunity = the target it answered (the dismiss
+      // RPC labels by target id).
+      this.evidenceTelemetry?.recordSurfacingBatch(
+        rows.map((r) => ({
+          eventId: `cf:${r.id}:${Math.floor(now / 3_600_000)}`,
+          kind: "curiosity_finding",
+          refId: r.id,
+          opportunityId: r.target_id,
+          stage: "delivered" as const,
+          now,
+        })),
       );
       return rows.map((r) => ({ finding: r.finding, sourceUrl: r.source_url }));
     } catch {
@@ -7568,6 +7742,21 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private ensureCuriosityEngine(): void {
     const curiosityCfg = this.cfg.memory?.curiosity;
+    // PLAN-59 Phase 0: the evidence layer observes retrieval and surfacing
+    // whether or not the curiosity engine itself is on; `evidence.mode: off`
+    // is its own switch. Shares this.db; a database without the tables
+    // (pre-v79) makes it a no-op.
+    if (!this.evidenceTelemetry) {
+      try {
+        this.evidenceTelemetry = new EvidenceTelemetry(
+          this.db,
+          resolveEvidenceConfig(curiosityCfg?.evidence),
+        );
+        this.dreamEngine?.setEvidenceTelemetry(this.evidenceTelemetry);
+      } catch (err) {
+        log.debug(`evidence telemetry unavailable: ${String(err)}`);
+      }
+    }
     if (curiosityCfg?.enabled === false) {
       return;
     }

@@ -630,6 +630,7 @@ export async function buildDeepRecallContext(params: {
         const results = await params.memoryManager.search(q, {
           maxResults: 20,
           tagSuperseded: params.tagSuperseded === true,
+          caller: "rlm_context",
         });
         for (const r of results) {
           const key = r.snippet.slice(0, 100);

@@ -1943,6 +1943,29 @@ The same notice is not repeated within 30 minutes.
 
 ---
 
+## Memory
+
+The memory subsystems (`memory.dream`, `memory.consolidation`, `memory.curiosity`, ...) are documented with the memory system itself; see [How the memory works](/memory/how-the-memory-works) and [Curiosity and search](/memory/curiosity-and-search). One key is listed here because it is a telemetry switch rather than a behaviour:
+
+### `memory.curiosity.evidence`
+
+```json5
+{
+  memory: {
+    curiosity: {
+      evidence: {
+        mode: "observe", // "off" | "observe" | "shadow" (default "observe")
+        retentionDays: 90, // prune rows older than this on the consolidation tick
+        topK: 10, // retrieval rows kept per search
+      },
+    },
+  },
+}
+```
+
+- `off`: nothing is written. `observe`: retrieval hits and surfacing events. `shadow`: also dream-engine decision traces.
+- Observation changes no behaviour in any mode. Query text is never stored; queries and session keys appear only as node-keyed digests. See [Evidence telemetry](/memory/evidence-telemetry).
+
 ## Browser
 
 ```json5

@@ -63,6 +63,7 @@ import {
   DEFAULT_MODE_TIERS,
 } from "./dream-types.js";
 import { yieldToEventLoop } from "./event-loop.js";
+import type { EvidenceTelemetry } from "./evidence-telemetry.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 import { ensureColumn } from "./memory-schema.js";
@@ -205,6 +206,12 @@ export class DreamEngine {
   private state: DreamState = "DORMANT";
   private lastModeUsed: DreamMode | null = null;
   /**
+   * PLAN-59 Phase 0: shadow decision traces. In shadow mode the engine also
+   * computes what seed ranking and mode selection would be with the GCCRF
+   * signal zeroed and records both; the legacy decision is always the one used.
+   */
+  private evidenceTelemetry: EvidenceTelemetry | null = null;
+  /**
    * PLAN-40: the TRUE remaining LLM budget for the running cycle, refreshed
    * before each mode and before the promotion verifier. In-mode loops and
    * the verifier compare against this — never against the full per-cycle
@@ -346,6 +353,11 @@ export class DreamEngine {
    */
   setCuriosityWeightProvider(provider: CuriosityWeightProvider | null): void {
     this.curiosityWeightProvider = provider;
+  }
+
+  /** PLAN-59 Phase 0: wire the evidence telemetry writer (shadow traces). */
+  setEvidenceTelemetry(telemetry: EvidenceTelemetry | null): void {
+    this.evidenceTelemetry = telemetry;
   }
 
   /**
@@ -1204,6 +1216,24 @@ export class DreamEngine {
     // Silence unused-var lint for the stalled count — surfaced in telemetry below.
     void stalledTaskCount;
 
+    // PLAN-59 Phase 0 (shadow mode only): the same weights with the GCCRF
+    // term zeroed, selected below with the same random draws, so a divergence
+    // reflects the GCCRF weight and nothing else. Never used for the cycle.
+    const shadow = this.evidenceTelemetry?.isShadow() === true;
+    const shadowModes = shadow
+      ? enabledModes.map(([mode, cfg]) => {
+          const adj =
+            CURIOSITY_W * (curiosityAdj[mode] ?? 0) +
+            FSHO_W * (fshoAdj[mode] ?? 0) +
+            MARKET_W * (marketAdj[mode] ?? 0) +
+            TASK_W * (taskAdj[mode] ?? 0);
+          return [mode, { ...cfg, weight: Math.max(0, cfg.weight + adj) }] as [
+            DreamMode,
+            DreamModeConfig,
+          ];
+        })
+      : null;
+
     // Weighted random selection, pick 1-3 modes
     const _totalWeight = adjustedModes.reduce((sum, [, cfg]) => sum + cfg.weight, 0);
     const selected: DreamMode[] = [];
@@ -1241,8 +1271,66 @@ export class DreamEngine {
       : baseTemp;
     const temperature = Math.max(0.3, Math.min(2.0, hormonalTemp));
 
-    // Fill remaining slots via temperature-scaled softmax (using curiosity-adjusted weights)
+    // Fill remaining slots via temperature-scaled softmax (using curiosity-adjusted weights).
+    // Draws are memoized by slot so the shadow selection below can replay them.
+    const draws: number[] = [];
+    const drawAt = (i: number): number => (draws[i] ??= Math.random());
+    const preSoftmax = shadow ? [...selected] : null;
     const remaining = adjustedModes.filter(([mode]) => !selected.includes(mode));
+    this.fillModesBySoftmax(selected, remaining, numModes, temperature, this.lastModeUsed, drawAt);
+
+    if (shadowModes && preSoftmax) {
+      try {
+        const proposedSelected = [...preSoftmax];
+        const proposedRemaining = shadowModes.filter(([mode]) => !proposedSelected.includes(mode));
+        this.fillModesBySoftmax(
+          proposedSelected,
+          proposedRemaining,
+          numModes,
+          temperature,
+          this.lastModeUsed,
+          drawAt,
+        );
+        const weightsOf = (list: Array<[DreamMode, DreamModeConfig]>) =>
+          Object.fromEntries(list.map(([m, c]) => [m, Number(c.weight.toFixed(4))]));
+        this.evidenceTelemetry?.recordDecisionTrace({
+          kind: "dream_mode_select",
+          legacy: {
+            selected: [...selected],
+            weights: weightsOf(adjustedModes),
+            gccrfWeight: GCCRF_W,
+          },
+          proposed: { selected: proposedSelected, weights: weightsOf(shadowModes), gccrfWeight: 0 },
+          decisionKey: "selected",
+        });
+      } catch (err) {
+        log.debug(`dream_mode_select shadow trace skipped: ${String(err)}`);
+      }
+    }
+
+    if (selected.length > 0) {
+      this.lastModeUsed = selected[selected.length - 1]!;
+    }
+
+    return selected;
+  }
+
+  /**
+   * Temperature-scaled softmax fill of the remaining mode slots. Mutates
+   * `selected` and `remaining`. `draw(i)` supplies the random number for the
+   * i-th slot so two selections can share one sequence of draws (PLAN-59
+   * shadow traces); with a fresh `Math.random` per slot it is the original
+   * selection loop, unchanged.
+   */
+  private fillModesBySoftmax(
+    selected: DreamMode[],
+    remaining: Array<[DreamMode, DreamModeConfig]>,
+    numModes: number,
+    temperature: number,
+    lastModeUsed: DreamMode | null,
+    draw: (slot: number) => number,
+  ): void {
+    let slot = 0;
     while (selected.length < numModes && remaining.length > 0) {
       // Softmax with temperature
       const logits = remaining.map(([, cfg]) => cfg.weight / temperature);
@@ -1251,13 +1339,13 @@ export class DreamEngine {
       const sumExp = expWeights.reduce((a, b) => a + b, 0);
       const probs = expWeights.map((e) => e / sumExp);
 
-      const rand = Math.random();
+      const rand = draw(slot++);
       let cumulative = 0;
       for (let i = 0; i < remaining.length; i++) {
         cumulative += probs[i]!;
         if (rand <= cumulative) {
           const picked = remaining[i]![0];
-          if (picked === this.lastModeUsed && remaining.length > 1) {
+          if (picked === lastModeUsed && remaining.length > 1) {
             continue;
           }
           selected.push(picked);
@@ -1274,12 +1362,6 @@ export class DreamEngine {
         selected.push(remaining.shift()![0]);
       }
     }
-
-    if (selected.length > 0) {
-      this.lastModeUsed = selected[selected.length - 1]!;
-    }
-
-    return selected;
   }
 
   /**
@@ -2970,6 +3052,37 @@ export class DreamEngine {
               .all(this.config.minImportanceForDream, remaining) as ChunkRow[],
           )
         : [];
+
+    // PLAN-59 Phase 0 (shadow mode only): the same selection ranked by
+    // importance alone (GCCRF reward term removed, dream-count penalty kept),
+    // ids only, recorded next to the legacy order. Never used for the cycle.
+    if (remaining > 0 && this.evidenceTelemetry?.isShadow()) {
+      try {
+        const proposed = (
+          this.db
+            .prepare(
+              `SELECT id FROM chunks
+         WHERE (COALESCE(lifecycle, 'generated') IN ('generated', 'activated')
+                OR (lifecycle IS NULL AND COALESCE(lifecycle_state, 'active') = 'active'))
+           AND COALESCE(memory_type, 'plaintext') != 'skill'
+           AND importance_score >= ?
+           AND NOT (COALESCE(origin, 'indexed') = 'dream'
+                    AND COALESCE(semantic_type, 'general') = 'insight')
+         ORDER BY importance_score / (COALESCE(dream_count, 0) + 1) DESC
+         LIMIT ?`,
+            )
+            .all(this.config.minImportanceForDream, remaining) as Array<{ id: string }>
+        ).map((r) => r.id);
+        this.evidenceTelemetry.recordDecisionTrace({
+          kind: "dream_seed_rank",
+          legacy: { ids: normalSeeds.map((r) => r.id), limit: remaining },
+          proposed: { ids: proposed, limit: remaining },
+          decisionKey: "ids",
+        });
+      } catch (err) {
+        log.debug(`dream_seed_rank shadow trace skipped: ${String(err)}`);
+      }
+    }
 
     // Merge, deduplicate
     const seen = new Set<string>();

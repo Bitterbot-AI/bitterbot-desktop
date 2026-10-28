@@ -116,6 +116,8 @@ export interface MemorySearchManager {
       sessionKey?: string;
       /** PLAN-55 Phase 2: tag superseded results with ledger values (owner only; default true). */
       tagSuperseded?: boolean;
+      /** PLAN-59 Phase 0: short call-site tag for the retrieval evidence row. */
+      caller?: string;
     },
   ): Promise<MemorySearchResult[]>;
   readFile(params: {
