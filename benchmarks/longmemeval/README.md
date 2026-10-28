@@ -129,6 +129,14 @@ inability. 25 questions are wrong in both arms (5 with disputed golds).
 Preference and abstention score lower without distractors, so any context
 cleanup needs an explicit abstention path. The full-context arm was not run.
 
+Sonnet 4.5 reader (`claude-sonnet-4-5-20250929`, same pipeline, identical
+retrieval; `results/official-s-sonnet-4-5.jsonl`): overall 0.868, task-averaged
+0.891, abstention 0.900; temporal 0.850, multi-session 0.759, knowledge-update
+0.897. One point over Haiku at about three times the reader cost. Sonnet fixed
+29 of Haiku's misses and lost 24 of its hits; 42 questions are wrong with both
+readers and 25 of those are right in the oracle arm. The lever is the distractor
+sessions in the reader's top-10 context, not the reader.
+
 ### Data
 
 `download.sh` fetches the canonical files from `xiaowu0162/longmemeval-cleaned`
