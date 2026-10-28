@@ -131,6 +131,11 @@ export class HormonalStateManager {
   private onAnchorRecalled: ((anchorId: string) => void) | null = null;
   /** Tracks last auto-anchor time per label to prevent duplicate anchors from rapid-fire events. */
   private lastAutoAnchorAt: Map<string, number> = new Map();
+  /** Consecutive GCCRF rewards below the stagnation floor (see stimulateFromGCCRF). */
+  private lowRewardStreak = 0;
+  private static readonly STAGNATION_REWARD_FLOOR = 0.2;
+  /** How many consecutive sub-floor rewards count as "sustained" stagnation. */
+  private static readonly STAGNATION_STREAK = 5;
   private static readonly AUTO_ANCHOR_COOLDOWN_MS = 15 * 60_000; // 15 minutes (prevents anchor flooding during extended sessions)
 
   constructor(config?: HormonalConfig) {
@@ -341,9 +346,18 @@ export class HormonalStateManager {
       events.push("curiosity_aligned");
     }
 
-    // Sustained low GCCRF reward → mild cortisol (stagnation/frustration)
-    if (reward < 0.2) {
-      events.push("curiosity_stagnant");
+    // Sustained low GCCRF reward → mild cortisol (stagnation/frustration).
+    // "Sustained" means a run of consecutive sub-floor rewards, not a single
+    // dull chunk: firing on every score < 0.2 pushed cortisol on routine
+    // indexing of unremarkable material. One event per completed run.
+    if (reward < HormonalStateManager.STAGNATION_REWARD_FLOOR) {
+      this.lowRewardStreak++;
+      if (this.lowRewardStreak >= HormonalStateManager.STAGNATION_STREAK) {
+        events.push("curiosity_stagnant");
+        this.lowRewardStreak = 0;
+      }
+    } else {
+      this.lowRewardStreak = 0;
     }
 
     // High empowerment on relationship/preference chunks → oxytocin

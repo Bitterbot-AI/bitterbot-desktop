@@ -33,13 +33,21 @@ describe("GCCRF knnSearch (vec0 MATCH)", () => {
     db.enableLoadExtension(true);
     sqliteVec.load(db);
     // The GCCRF constructor adds a curiosity_reward column to chunks.
-    db.exec("CREATE TABLE chunks (id TEXT PRIMARY KEY, embedding TEXT, lifecycle_state TEXT)");
+    db.exec(
+      "CREATE TABLE chunks (id TEXT PRIMARY KEY, embedding TEXT, lifecycle_state TEXT, updated_at INTEGER)",
+    );
     // Same shape as production chunks_vec: vec0 default (L2) metric.
     db.exec("CREATE VIRTUAL TABLE chunks_vec USING vec0(id TEXT PRIMARY KEY, embedding FLOAT[4])");
     const ins = db.prepare("INSERT INTO chunks_vec(id, embedding) VALUES (?, ?)");
     ins.run("a", blob(a));
     ins.run("b", blob(b));
     ins.run("c", blob(c));
+    // Every index row has a live chunk: the MATCH results are post-filtered
+    // against active chunks so stale index rows cannot count as neighbours.
+    const chunk = db.prepare("INSERT INTO chunks VALUES (?, ?, 'active', 1)");
+    chunk.run("a", JSON.stringify(a));
+    chunk.run("b", JSON.stringify(b));
+    chunk.run("c", JSON.stringify(c));
     reward = new GCCRFRewardFunction(db);
   });
 
@@ -58,6 +66,33 @@ describe("GCCRF knnSearch (vec0 MATCH)", () => {
     expect(knn[0]!.similarity).toBeCloseTo(1, 3); // identical
     expect(knn[1]!.similarity).toBeCloseTo(Math.SQRT1_2, 3); // 45 degrees (1/sqrt(2))
     expect(knn[2]!.similarity).toBeCloseTo(0, 3); // orthogonal
+  });
+
+  it("excludes the assessed chunk and stale index rows, and agrees with the fallback", () => {
+    // An index row with no chunk behind it (deleted since) must not be a neighbour.
+    db.prepare("INSERT INTO chunks_vec(id, embedding) VALUES (?, ?)").run("orphan", blob(a));
+    type Search = {
+      knnSearch: (
+        e: number[],
+        k: number,
+        c: { chunkId: string },
+      ) => Array<{ id: string; similarity: number }>;
+    };
+    const native = (reward as unknown as Search).knnSearch(a, 2, { chunkId: "a" });
+    expect(native.map((n) => n.id)).toEqual(["c", "b"]);
+
+    // Same corpus, same ranking without the extension (brute-force fallback).
+    db.exec("ALTER TABLE chunks_vec RENAME TO hidden_vectors");
+    try {
+      const fallback = (reward as unknown as Search).knnSearch(a, 2, { chunkId: "a" });
+      expect(fallback.map((n) => n.id)).toEqual(native.map((n) => n.id));
+      for (let i = 0; i < native.length; i++) {
+        expect(fallback[i]!.similarity).toBeCloseTo(native[i]!.similarity, 5);
+      }
+    } finally {
+      db.exec("ALTER TABLE hidden_vectors RENAME TO chunks_vec");
+      db.prepare("DELETE FROM chunks_vec WHERE id = 'orphan'").run();
+    }
   });
 
   it("falls back without throwing when the vec table is missing", () => {

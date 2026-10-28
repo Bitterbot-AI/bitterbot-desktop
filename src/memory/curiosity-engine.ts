@@ -44,6 +44,11 @@ const log = createSubsystemLogger("memory/curiosity");
 // seconds of synchronous work. Cap the batch (the backlog drains across cycles)
 // and yield to the event loop every few chunks so it never freezes the gateway
 // (which would stall WS requests and bounce the Control UI's connection).
+/**
+ * Cosine similarity at or above which two differently-hashed chunks are treated
+ * as duplicates/paraphrases rather than contradiction candidates.
+ */
+const PARAPHRASE_SIMILARITY = 0.98;
 const PENDING_SCORE_BATCH = 50;
 const PENDING_SCORE_YIELD_EVERY = 8;
 // Greedy region clustering is O(n^2) over every active chunk and is unbounded,
@@ -123,11 +128,14 @@ export class CuriosityEngine {
     };
     ensureCuriositySchema(db);
 
-    // Initialize GCCRF reward function as the single scoring engine
-    this.gccrfReward = new GCCRFRewardFunction(
-      db,
-      config?.gccrf as Partial<GCCRFConfig> | undefined,
-    );
+    // Initialize GCCRF reward function as the single scoring engine.
+    // memory.curiosity.fshoCoupling is the documented switch for FSHO alpha
+    // coupling; it wins over a stray gccrf.fshoCoupling key.
+    const gccrfConfig = (config?.gccrf ?? {}) as Partial<GCCRFConfig>;
+    this.gccrfReward = new GCCRFRewardFunction(db, {
+      ...gccrfConfig,
+      ...(config?.fshoCoupling != null ? { fshoCoupling: config.fshoCoupling } : {}),
+    });
   }
 
   /** Update the database handle after a reindex swaps the underlying file. */
@@ -189,8 +197,16 @@ export class CuriosityEngine {
       /* targets table may not exist yet */
     }
 
-    // Compute GCCRF reward (the single scoring path)
-    const gccrfResult = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets);
+    // Compute GCCRF reward (the single scoring path). The chunk id lets KNN
+    // leave the chunk out of its own neighbourhood.
+    const gccrfResult = this.gccrfReward.compute(
+      chunkEmbedding,
+      regionCentroids,
+      strategicTargets,
+      {
+        chunkId,
+      },
+    );
 
     // Contradiction detection (unique signal not in GCCRF)
     const neighbors = this.getNeighborChunks(chunkEmbedding, chunkId, 10);
@@ -300,8 +316,11 @@ export class CuriosityEngine {
 
     const regionsBuilt = await this.rebuildRegions();
     const expired = this.expireTargets();
-    const targetsGenerated = this.detectGapsAndGenerateTargets();
+    // Learning progress is computed BEFORE gap detection so the stale-region
+    // detector (learning_progress < -0.3) sees this cycle's signed drift
+    // instead of last cycle's value (or the rebuild's placeholder).
     this.computeRegionLearningProgress();
+    const targetsGenerated = this.detectGapsAndGenerateTargets();
 
     // GCCRF-enhanced: retire satisfied targets and generate new ones from GCCRF signals
     const gccrfRetired = this.retireGCCRFTargets();
@@ -626,7 +645,7 @@ export class CuriosityEngine {
     if (insight.embedding.length > 0) {
       const targets = this.db
         .prepare(
-          `SELECT id, type, description, region_id FROM curiosity_targets
+          `SELECT id, type, description, region_id, metadata FROM curiosity_targets
            WHERE resolved_at IS NULL AND expires_at > ?
            ORDER BY priority DESC LIMIT 20`,
         )
@@ -635,6 +654,7 @@ export class CuriosityEngine {
         type: string;
         description: string;
         region_id: string | null;
+        metadata: string | null;
       }>;
 
       // If the insight is highly relevant to a gap target's region, mark it resolved
@@ -656,9 +676,13 @@ export class CuriosityEngine {
           }
         }
 
-        // High-confidence contradictions from simulation mode
+        // High-confidence contradictions from simulation mode. Only a
+        // simulation that is actually about this target may close it: one that
+        // re-processed the chunks the contradiction was detected on, or one
+        // that lands in the target's region and names it. An unrelated
+        // simulation used to close every open contradiction target at once.
         if (target.type === "contradiction" && insight.mode === "simulation") {
-          if (insight.confidence >= 0.7) {
+          if (insight.confidence >= 0.7 && this.simulationAddressesTarget(insight, target)) {
             this.resolveTarget(target.id);
             result.contradictions++;
           }
@@ -905,6 +929,49 @@ export class CuriosityEngine {
     } catch {
       // Non-critical
     }
+  }
+
+  /**
+   * Whether a simulation insight is scoped to a contradiction target: it was
+   * dreamed from one of the chunks the contradiction was detected on, or it
+   * sits in the target's region (cosine >= 0.6 to the centroid) and its text
+   * references a term of that region's label.
+   */
+  private simulationAddressesTarget(
+    insight: DreamInsight,
+    target: { region_id: string | null; metadata: string | null },
+  ): boolean {
+    let meta: { chunkIds?: unknown } = {};
+    try {
+      meta = target.metadata ? (JSON.parse(target.metadata) as { chunkIds?: unknown }) : {};
+    } catch {
+      meta = {};
+    }
+    const chunkIds = Array.isArray(meta.chunkIds)
+      ? meta.chunkIds.filter((id): id is string => typeof id === "string")
+      : [];
+    if (chunkIds.length > 0 && insight.sourceChunkIds?.some((id) => chunkIds.includes(id))) {
+      return true;
+    }
+    if (!target.region_id || insight.embedding.length === 0) {
+      return false;
+    }
+    const region = this.db
+      .prepare(`SELECT label, centroid FROM curiosity_regions WHERE id = ?`)
+      .get(target.region_id) as { label: string; centroid: string } | undefined;
+    if (!region) {
+      return false;
+    }
+    const centroid = parseEmbedding(region.centroid);
+    if (centroid.length === 0 || cosineSimilarity(insight.embedding, centroid) < 0.6) {
+      return false;
+    }
+    const content = insight.content.toLowerCase();
+    const terms = region.label
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 3);
+    return terms.some((t) => content.includes(t));
   }
 
   // --- Private methods ---
@@ -1191,10 +1258,15 @@ export class CuriosityEngine {
           errors.length > 0 ? errors.reduce((a, b) => a + b, 0) / errors.length : 0;
 
         // Learning progress = how much surprise fell since this region was last
-        // seen. Positive means the agent is learning this region; 0 for new
-        // regions or where error rose.
+        // seen, SIGNED: positive means the agent is learning this region,
+        // negative means its error is rising (the stale-region detector keys on
+        // < -0.3, which a non-negative clamp could never reach). 0 for new
+        // regions. computeRegionLearningProgress replaces this with the slope
+        // over the progress history once two samples exist.
         const prior = priorById.get(id);
-        const learningProgress = prior ? Math.max(0, prior.predictionError - predictionError) : 0;
+        const learningProgress = prior
+          ? Math.max(-1, Math.min(1, prior.predictionError - predictionError))
+          : 0;
         const createdAt = prior?.createdAt ?? now;
 
         stmt.run(
@@ -1505,14 +1577,22 @@ export class CuriosityEngine {
           .run(region.id, region.id);
       } catch {}
 
-      // Compute learning progress from history
-      const history = this.db
-        .prepare(
-          `SELECT prediction_error as error, timestamp FROM curiosity_progress
-           WHERE region_id = ? ORDER BY timestamp ASC LIMIT 50`,
-        )
-        .all(region.id) as Array<{ error: number; timestamp: number }>;
+      // Compute learning progress from the NEWEST 50 samples (the ASC window
+      // used to take the oldest 50 and never saw recent drift once a region had
+      // more than 50 rows), in chronological order for the slope fit.
+      const history = (
+        this.db
+          .prepare(
+            `SELECT prediction_error as error, timestamp FROM curiosity_progress
+             WHERE region_id = ? ORDER BY timestamp DESC, rowid DESC LIMIT 50`,
+          )
+          .all(region.id) as Array<{ error: number; timestamp: number }>
+      ).toReversed();
 
+      if (history.length < 2) {
+        // Keep the signed single-step value rebuildRegions just wrote.
+        continue;
+      }
       const progress = this.computeLearningProgressFromHistory(history);
 
       this.db
@@ -1644,6 +1724,20 @@ export class CuriosityEngine {
       /* gccrf_state may not exist yet */
     }
 
+    // Dedupe: one open target per (type, region). Without this every curiosity
+    // run re-inserted the same GCCRF knowledge_gap/stale_region rows for a
+    // region until maxTargets filled up with copies.
+    const openKeys = new Set(
+      (
+        this.db
+          .prepare(
+            `SELECT type, region_id FROM curiosity_targets
+             WHERE resolved_at IS NULL AND expires_at > ? AND region_id IS NOT NULL`,
+          )
+          .all(now) as Array<{ type: string; region_id: string }>
+      ).map((r) => `${r.type}\u0000${r.region_id}`),
+    );
+
     const regions = this.loadRegions();
     const targets: Array<{
       type: ExplorationTargetType;
@@ -1690,7 +1784,10 @@ export class CuriosityEngine {
 
     // Store targets
     const slotsAvailable = this.config.maxTargets - activeCount;
-    const toStore = targets.toSorted((a, b) => b.priority - a.priority).slice(0, slotsAvailable);
+    const toStore = targets
+      .filter((t) => !openKeys.has(`${t.type}\u0000${t.regionId}`))
+      .toSorted((a, b) => b.priority - a.priority)
+      .slice(0, slotsAvailable);
     const stmt = this.db.prepare(
       `INSERT INTO curiosity_targets (id, type, description, priority, region_id, metadata, created_at, resolved_at, expires_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1935,7 +2032,9 @@ export class CuriosityEngine {
         /* non-critical */
       }
 
-      const result = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets);
+      const result = this.gccrfReward.compute(chunkEmbedding, regionCentroids, strategicTargets, {
+        chunkId,
+      });
 
       setChunkCuriosityReward(this.db, chunkId, result.reward);
 
@@ -2010,7 +2109,9 @@ export class CuriosityEngine {
           if (emb.length === 0) {
             continue;
           }
-          const result = this.gccrfReward.compute(emb, regionCentroids, strategicTargets);
+          const result = this.gccrfReward.compute(emb, regionCentroids, strategicTargets, {
+            chunkId: row.id,
+          });
           setChunkCuriosityReward(this.db, row.id, result.reward);
           scored++;
         } catch {
@@ -2063,9 +2164,17 @@ export class CuriosityEngine {
       return 0;
     }
 
+    // This is a CANDIDATE signal, not adjudication: two chunks that are very
+    // close in embedding space but differ in bytes may conflict, or may simply
+    // say the same thing twice. Near-identical embeddings (cosine >= 0.98) with
+    // different hashes are duplicates or paraphrases and score 0; the 0.85
+    // similarity band below is kept as the candidate signal for targets.
     let maxContradiction = 0;
     for (const neighbor of neighborEmbeddings) {
       const sim = cosineSimilarity(chunkEmbedding, neighbor.embedding);
+      if (sim >= PARAPHRASE_SIMILARITY) {
+        continue;
+      }
       if (sim >= 0.85 && chunkHash !== neighbor.hash) {
         const contradiction = sim * 0.8;
         if (contradiction > maxContradiction) {
