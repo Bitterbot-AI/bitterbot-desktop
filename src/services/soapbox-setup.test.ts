@@ -71,15 +71,9 @@ describe("Compute onboarding", () => {
     } as SoapboxStatus);
     await setup.mutate(() => setup.newProfile(), true);
     await setup.mutate(() => setup.import({ ...connection, id: "tester-2" }, "buyer"));
-    const beforeActivation = await readFile(configPath, "utf8");
     expect((await setup.status()).addingProfile).toBe(true);
     // Wallet, preparation and import do not replace the running profile.
-    expect(
-      JSON.parse(beforeActivation).plugins.entries["soapbox-compute"].config.stateDirectory,
-    ).toBe(
-      JSON.parse(await readFile(configPath, "utf8")).plugins.entries["soapbox-compute"].config
-        .stateDirectory,
-    );
+    expect((await setup.status()).profiles!.find((p) => p.id === first.id)?.active).toBe(true);
     await setup.activate();
     await setup.stop();
     setup = new SoapboxSetup({ root: directory, configPath, configuredRole: "participant" });

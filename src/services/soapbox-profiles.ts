@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { access, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import JSON5 from "json5";
 import type { BitterbotConfig } from "../config/types.js";
@@ -179,6 +180,7 @@ export class SoapboxProfiles {
       !path.isAbsolute(c.binary)
     )
       throw new Error("Saved operator requires an isolated runtime");
+    await access(c.binary, constants.X_OK);
   }
 
   async saveAndWrite(original: string, config: BitterbotConfig): Promise<void> {

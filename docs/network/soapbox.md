@@ -135,10 +135,10 @@ mesh panel counts other discovered operators, not this machine's own worker.
 See [sidecar troubleshooting](./soapbox-compute-mesh.md#p2p-is-connected-but-compute-discovery-is-unavailable)
 if P2P connects but Compute discovery does not.
 
-This beta pins rc9 for newly prepared operators. An already configured operator
+This beta pins rc10 for newly prepared operators. An already configured operator
 keeps its existing runtime directory and pinned image; upgrading the app alone
 does not replace those files. Upgrade the coordinator, worker and runner image
-together using the [rc9 runtime release instructions](https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.9),
+together using the [rc10 runtime release instructions](https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.10),
 retaining enrollment, database, model cache and GPU lock. Its optional WSL Docker
 service must be explicitly installed; the app does not change host Docker setup.
 

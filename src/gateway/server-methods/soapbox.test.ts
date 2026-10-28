@@ -46,7 +46,8 @@ describe("Soapbox gateway adapter", () => {
     fake.request.mockImplementation(async (_method: string, path: string) =>
       path === "/v1/jobs" ? { id: "replacement" } : old,
     );
-    for (let i = 0; i < 2; i++) {
+    for (const status of ["cancelled", "refunded"]) {
+      old.status = status;
       const result = await invoke("soapbox.requote", {
         id: "job-1",
         workload: { texts: ["tampered"] },

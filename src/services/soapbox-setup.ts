@@ -75,6 +75,8 @@ export class SoapboxSetup {
 
   async mutate<T>(action: () => Promise<T>, profileAction = false): Promise<T> {
     if (this.busy || this.localRunning) throw new Error("Another setup action is in progress");
+    if (profileAction && this.runtime.progress.state === "preparing")
+      throw new Error("Wait for runtime preparation to finish");
     if (
       (this.options.configuredRole || this.activated) &&
       !profileAction &&
@@ -127,13 +129,15 @@ export class SoapboxSetup {
     if (this.draftEntry !== undefined && JSON.stringify(entry) !== this.draftEntry)
       throw new Error("Compute profile changed during setup; reopen setup before activating");
     const release = beginSoapboxTransition();
+    this.releaseTransition = release;
     try {
       await this.profiles.requireIdle(entry);
+      if (this.stopping) throw new Error("Gateway is stopping; retry setup after reconnecting");
       await this.profiles.saveAndWrite(original, config);
-      this.releaseTransition = release;
       this.activated = true;
     } catch (error) {
       release();
+      this.releaseTransition = undefined;
       throw error;
     }
   }

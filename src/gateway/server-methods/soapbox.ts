@@ -135,17 +135,16 @@ export function createSoapboxHandlers(
           !job.deadline ||
           job.deadline > Date.now() / 1000 ||
           job.attempts !== 0 ||
-          !["awaiting_payment", "cancelled"].includes(job.status) ||
+          !["awaiting_payment", "cancelled", "refunded"].includes(job.status) ||
           !job.spec.resources
         )
           throw new Error(
             "Only expired, unexecuted quotes can be replaced. Refresh payment status first.",
           );
-        const cancelled =
-          job.status === "cancelled"
-            ? job
-            : await client.request<SoapboxJob>("POST", `/v1/jobs/${jobId}/cancel`, {});
-        if (cancelled.status !== "cancelled")
+        const cancelled = ["cancelled", "refunded"].includes(job.status)
+          ? job
+          : await client.request<SoapboxJob>("POST", `/v1/jobs/${jobId}/cancel`, {});
+        if (!["cancelled", "refunded"].includes(cancelled.status))
           throw new Error(
             "The previous payment must finish refunding before requesting a new quote",
           );

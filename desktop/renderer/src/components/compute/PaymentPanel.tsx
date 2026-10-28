@@ -25,7 +25,9 @@ export function PaymentPanel({
   const seconds = Math.max(0, Math.ceil(deadline - now));
   const expired = deadline > 0 && seconds === 0;
   const replaceable =
-    expired && job.attempts === 0 && ["awaiting_payment", "cancelled"].includes(job.status);
+    expired &&
+    job.attempts === 0 &&
+    ["awaiting_payment", "cancelled", "refunded"].includes(job.status);
   return (
     <section className="rounded-lg border border-border p-4 space-y-2 text-sm">
       <h3 className="font-medium">Base Sepolia USDC payment</h3>
@@ -75,6 +77,13 @@ export function PaymentPanel({
         <p>Work completed. Waiting for the operator’s on-chain payout.</p>
       )}
       {job.status === "succeeded" && <p>Operator payment confirmed on chain.</p>}
+      {job.status === "refund_pending" && (
+        <p>
+          Waiting for the old escrow to be refunded or voided. A replacement quote becomes available
+          after this is confirmed.
+        </p>
+      )}
+      {job.status === "refunded" && <p>Refund to the buyer confirmed on chain.</p>}
     </section>
   );
 }
