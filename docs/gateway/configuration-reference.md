@@ -1954,7 +1954,7 @@ The memory subsystems (`memory.dream`, `memory.consolidation`, `memory.curiosity
   memory: {
     curiosity: {
       evidence: {
-        mode: "observe", // "off" | "observe" | "shadow" (default "observe")
+        mode: "shadow", // "off" | "observe" | "shadow" (default "shadow")
         retentionDays: 90, // prune rows older than this on the consolidation tick
         topK: 10, // retrieval rows kept per search
       },

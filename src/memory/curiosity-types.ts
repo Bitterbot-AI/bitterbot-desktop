@@ -107,7 +107,10 @@ export type CuriosityWeights = {
 export type CuriosityEvidenceMode = "off" | "observe" | "shadow";
 
 export type CuriosityEvidenceConfig = {
-  /** Default: "observe". */
+  /**
+   * Default: "shadow" (every tier of evidence, so the GCCRF retirement decision
+   * in PLAN-59 section 7 can be evaluated on any node without a config change).
+   */
   mode?: CuriosityEvidenceMode;
   /** Rows older than this are pruned on the consolidation tick. Default: 90. */
   retentionDays?: number;
@@ -155,7 +158,7 @@ export type CuriosityConfig = {
    * what the agent proactively surfaced to the owner and what came of it,
    * and (shadow mode only) what a GCCRF-as-diagnostic routing would have
    * decided next to what the legacy routing did. Observation changes no
-   * behaviour in any mode. Default mode `observe`.
+   * behaviour in any mode. Default mode `shadow`.
    */
   evidence?: CuriosityEvidenceConfig;
   /** GCCRF reward function configuration. When provided, GCCRF replaces heuristic scoring. */

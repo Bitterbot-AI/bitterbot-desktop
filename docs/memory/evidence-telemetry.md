@@ -13,7 +13,7 @@ Code: `src/memory/evidence-telemetry.ts` (writer), migration v79 in `src/memory/
   memory: {
     curiosity: {
       evidence: {
-        mode: "observe", // "off" | "observe" | "shadow"; default "observe"
+        mode: "shadow", // "off" | "observe" | "shadow"; default "shadow"
         retentionDays: 90, // rows older than this are pruned on the consolidation tick
         topK: 10, // at most this many retrieval rows per search
       },
@@ -23,10 +23,10 @@ Code: `src/memory/evidence-telemetry.ts` (writer), migration v79 in `src/memory/
 ```
 
 - `off`: nothing is written. The tables still exist (the migration creates them) and old rows are still pruned.
-- `observe` (default): retrieval hits and surfacing events.
-- `shadow`: observe plus decision traces from the dream engine.
+- `observe`: retrieval hits and surfacing events.
+- `shadow` (default): observe plus decision traces from the dream engine. Shadow is the default so the divergence traces that decide whether GCCRF stays a live ranking term or becomes a diagnostic accumulate on every node; the traces are a few rows per dream cycle and change nothing the engine does.
 
-A mode that is not one of the three falls back to `observe` with a warning; a non-positive `retentionDays` or `topK` falls back to the default. The layer works whether or not `memory.curiosity.enabled` is on; `evidence.mode: "off"` is its own switch.
+A mode that is not one of the three falls back to `shadow` with a warning; a non-positive `retentionDays` or `topK` falls back to the default. The layer works whether or not `memory.curiosity.enabled` is on; `evidence.mode: "off"` is its own switch.
 
 ## The three tables
 
