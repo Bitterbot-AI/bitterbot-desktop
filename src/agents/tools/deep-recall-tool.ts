@@ -501,6 +501,7 @@ export function createDeepRecallTool(options: {
             maxResults: 5,
             // PLAN-55: superseded tags carry ledger values; owner only.
             tagSuperseded: options.senderIsOwner === true,
+            caller: "deep_recall",
           });
           // Only shortcut if we have 3+ genuinely high-confidence results.
           // manager.search may ignore minScore (e.g. RRF strategy), so filter here.
@@ -550,6 +551,7 @@ export function createDeepRecallTool(options: {
           const results = await mgr.search(q, {
             maxResults: opts?.maxResults ?? 10,
             tagSuperseded: options.senderIsOwner === true,
+            caller: "deep_recall",
           });
           return results.map((r) => ({
             snippet: r.snippet,
@@ -655,6 +657,7 @@ export function createDeepRecallTool(options: {
           const quickResults = await memManager.search(query, {
             maxResults: 10,
             tagSuperseded: options.senderIsOwner === true,
+            caller: "deep_recall",
           });
           if (quickResults.length >= 3 && memManager.db) {
             const db = memManager.db;

@@ -6,6 +6,10 @@ The Geodesic Crystal-Field Curiosity Reward Function (GCCRF) is Bitterbot's intr
 
 Unlike simple keyword matching or random exploration, the curiosity engine computes curiosity from five neuroscience-grounded components that together model how biological curiosity actually works. The GCCRF reward function is invoked internally by `CuriosityEngine.assessChunk()` — there is no separate scoring path.
 
+## Where the score is read, and how that is measured
+
+Every place on main that reads the score is listed in [Evidence telemetry](/memory/evidence-telemetry), together with the surfaces the agent uses to put self-learned material in front of the owner. With `memory.curiosity.evidence.mode: "shadow"` the two dream-engine readers (mode selection weight and seed ranking) also record what they would have decided with the GCCRF term removed, next to what they did decide. This is observation only: the score keeps steering exactly as described on this page in every mode.
+
 ## The Five Components
 
 ### 1. Prediction Error ("How surprising is this?")

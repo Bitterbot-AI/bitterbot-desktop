@@ -723,6 +723,7 @@
                   "memory/dream-engine",
                   "memory/curiosity-and-search",
                   "memory/curiosity-reward",
+                  "memory/evidence-telemetry",
                   "memory/emotional-system",
                   "memory/biological-identity"
                 ]

@@ -99,6 +99,22 @@ export type CuriosityWeights = {
   contradiction: number;
 };
 
+/**
+ * PLAN-59 Phase 0 evidence telemetry modes. `off` writes nothing (the tables
+ * still exist), `observe` records retrieval hits and surfacing events,
+ * `shadow` adds decision traces from the dream engine.
+ */
+export type CuriosityEvidenceMode = "off" | "observe" | "shadow";
+
+export type CuriosityEvidenceConfig = {
+  /** Default: "observe". */
+  mode?: CuriosityEvidenceMode;
+  /** Rows older than this are pruned on the consolidation tick. Default: 90. */
+  retentionDays?: number;
+  /** At most this many retrieval rows per search. Default: 10. */
+  topK?: number;
+};
+
 export type CuriosityConfig = {
   /** Enable curiosity engine. Default: true. */
   enabled?: boolean;
@@ -134,6 +150,14 @@ export type CuriosityConfig = {
    * dream-cycle maturity schedule.
    */
   fshoCoupling?: boolean;
+  /**
+   * PLAN-59 Phase 0: the evidence layer. Records what retrieval surfaced,
+   * what the agent proactively surfaced to the owner and what came of it,
+   * and (shadow mode only) what a GCCRF-as-diagnostic routing would have
+   * decided next to what the legacy routing did. Observation changes no
+   * behaviour in any mode. Default mode `observe`.
+   */
+  evidence?: CuriosityEvidenceConfig;
   /** GCCRF reward function configuration. When provided, GCCRF replaces heuristic scoring. */
   gccrf?:
     | import("./gccrf-reward.js").GCCRFConfig

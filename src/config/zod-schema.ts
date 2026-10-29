@@ -28,6 +28,20 @@ const NodeHostSchema = z
   .strict()
   .optional();
 
+/**
+ * PLAN-59 Phase 0: `memory.curiosity.evidence`. Exported so the typed branch can
+ * be tested on its own: inside MemorySchema it sits in a union whose fallback
+ * is `z.unknown()`, so a bad mode there degrades to the unknown branch and the
+ * code-read site (`resolveEvidenceConfig`) falls back to the default.
+ */
+export const CuriosityEvidenceSchema = z
+  .object({
+    mode: z.enum(["off", "observe", "shadow"]).optional(),
+    retentionDays: z.number().positive().optional(),
+    topK: z.number().int().positive().optional(),
+  })
+  .strict();
+
 const MemorySchema = z
   .object({
     backend: z.literal("builtin").optional(),
@@ -53,6 +67,7 @@ const MemorySchema = z
           .object({
             enabled: z.boolean().optional(),
             fshoCoupling: z.boolean().optional(),
+            evidence: CuriosityEvidenceSchema.optional(),
             research: z
               .union([
                 z
