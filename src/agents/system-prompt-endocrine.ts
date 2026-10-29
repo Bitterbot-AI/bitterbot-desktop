@@ -16,6 +16,7 @@ export type EndocrineStateInput = {
   maturity?: number;
   lastSessionBrief?: string;
   proactiveMemories?: string;
+  onProactiveRecallInjected?: () => void;
   sessionCoherence?: string;
   budgetPressure?: number;
   budgetLabel?: string;
@@ -172,6 +173,7 @@ export function buildEndocrineStateSection(params: {
   // Plan 7, Phase 1: Proactive memory surfacing — involuntary recall
   if (proactiveMemories) {
     lines.push("", proactiveMemories);
+    endocrineState.onProactiveRecallInjected?.();
   }
 
   // Plan 7, Phase 2+9: Intra-session coherence + intent tracking

@@ -868,6 +868,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     embedding: number[] | null;
     /** PLAN-40 funnel: dream-origin chunk ids that survived the render. */
     renderedDreamChunkIds?: string[];
+    renderedChunkIds?: string[];
   }> {
     if (!text || !text.trim()) {
       return { facts: undefined, embedding: null };
@@ -952,6 +953,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       // minimal-mode assembly discards this block after selection, and a
       // selection-time stamp would re-create the vanity-metric disease.
       const includedDreamChunkIds: string[] = [];
+      const includedChunkIds: string[] = [];
       // PLAN-54: a self-learned fact that comes to mind unprompted counts as used.
       recordCuriosityUse(
         this.db,
@@ -961,28 +963,42 @@ export class MemoryIndexManager implements MemorySearchManager {
       );
       const facts =
         result.facts.length > 0
-          ? formatProactiveFacts(result.facts, { includedDreamChunkIds })
+          ? formatProactiveFacts(result.facts, { includedDreamChunkIds, includedChunkIds })
           : undefined;
-      // PLAN-59 Phase 0: each fact that reaches the prompt is a delivery.
-      // Exposure only; what the owner made of it is a separate row.
-      if (facts && this.evidenceTelemetry?.isEnabled()) {
-        const bucket = Math.floor(Date.now() / 3_600_000);
-        this.evidenceTelemetry.recordSurfacingBatch(
-          result.facts
-            .filter((f) => typeof f.chunkId === "string")
-            .map((f) => ({
-              eventId: `pr:${f.chunkId}:${bucket}`,
-              kind: "proactive_recall",
-              refId: f.chunkId as string,
-              sessionKey: opts?.scopeKey,
-              stage: "delivered" as const,
-            })),
-        );
-      }
-      return { facts, embedding, renderedDreamChunkIds: includedDreamChunkIds };
+      // The prompt renderer acknowledges inclusion; selection alone is not exposure.
+      return {
+        facts,
+        embedding,
+        renderedDreamChunkIds: includedDreamChunkIds,
+        renderedChunkIds: includedChunkIds,
+      };
     } catch (err) {
       log.debug(`proactive recall failed: ${String(err)}`);
       return { facts: undefined, embedding };
+    }
+  }
+
+  /** Prompt inclusion, not owner visibility or usefulness. Retries share a delivery id. */
+  recordProactiveRecallDelivery(
+    chunkIds: readonly string[],
+    delivery: { id: string; sessionKey?: string },
+  ): void {
+    try {
+      const telemetry = this.evidenceTelemetry;
+      if (!telemetry?.isEnabled() || chunkIds.length === 0) return;
+      const key = telemetry.digest(JSON.stringify([delivery.sessionKey ?? null, delivery.id]));
+      if (!key) return;
+      telemetry.recordSurfacingBatch(
+        [...new Set(chunkIds)].map((chunkId) => ({
+          eventId: `pr:${key}:${chunkId}`,
+          kind: "proactive_recall",
+          refId: chunkId,
+          sessionKey: delivery.sessionKey,
+          stage: "delivered" as const,
+        })),
+      );
+    } catch (err) {
+      log.debug(`proactive recall evidence skipped: ${String(err)}`);
     }
   }
 
@@ -3063,20 +3079,6 @@ export class MemoryIndexManager implements MemorySearchManager {
         //     idempotent, and interval-independent (safe at any cadence).
         if (this.canonicalFactsStore) {
           this.canonicalFactsStore.decayTick();
-        }
-        // 18. PLAN-59 Phase 0: bounded retention on the evidence tables.
-        //     Chunked deletes with yields; best-effort.
-        if (this.evidenceTelemetry) {
-          try {
-            await yieldToEventLoop();
-            const pruned = await this.evidenceTelemetry.prune();
-            const n = pruned.retrievalHits + pruned.surfacingEvents + pruned.decisionTraces;
-            if (n > 0) {
-              log.debug(`evidence telemetry pruned ${n} row(s)`);
-            }
-          } catch (err) {
-            log.debug(`evidence telemetry prune failed: ${String(err)}`);
-          }
         }
       } catch (err) {
         log.warn(`memory consolidation failed: ${String(err)}`);
@@ -7752,6 +7754,7 @@ export class MemoryIndexManager implements MemorySearchManager {
           this.db,
           resolveEvidenceConfig(curiosityCfg?.evidence),
         );
+        this.evidenceTelemetry.startMaintenance();
         this.dreamEngine?.setEvidenceTelemetry(this.evidenceTelemetry);
       } catch (err) {
         log.debug(`evidence telemetry unavailable: ${String(err)}`);
@@ -7894,6 +7897,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     this.closed = true;
+    await this.evidenceTelemetry?.stopMaintenance();
     // PLAN-57 §4.7: let the next default manager take over compute episodes.
     if (this.episodeSink && getComputeEpisodeSink() === this.episodeSink) {
       registerComputeEpisodeSink(null);
