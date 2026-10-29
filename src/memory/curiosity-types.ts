@@ -106,6 +106,32 @@ export type CuriosityWeights = {
  */
 export type CuriosityEvidenceMode = "off" | "observe" | "shadow";
 
+/**
+ * PLAN-59 Phase 2 surfacing trial modes. `off` writes delivered rows with the
+ * `legacy` arm as Phase 0 did; `shadow` logs eligibility and a randomised-block
+ * arm for every proactive surfacing opportunity and delivers exactly as before.
+ * A `live` mode (withholding) is a separate exposure decision and PR.
+ */
+export type CuriositySurfacingTrialMode = "off" | "shadow";
+
+export type CuriositySurfacingTrialConfig = {
+  /** Default: "shadow" (observation only; nothing the owner sees changes). */
+  mode?: CuriositySurfacingTrialMode;
+  /** Length of one randomisation block in minutes. Default: 240. */
+  blockMinutes?: number;
+  /**
+   * An item (same kind and ref id) assigned within this many days keeps its
+   * arm instead of drawing again. Default: 7.
+   */
+  carryOverDays?: number;
+  /**
+   * Trial seed for the arm draw. Absent, it is derived from the node's own
+   * evidence digest key, so assignment is deterministic per node and cannot
+   * be reconstructed from the logged rows.
+   */
+  seed?: string;
+};
+
 export type CuriosityEvidenceConfig = {
   /**
    * Default: "shadow" (every tier of evidence, so the GCCRF retirement decision
@@ -116,6 +142,11 @@ export type CuriosityEvidenceConfig = {
   retentionDays?: number;
   /** At most this many retrieval rows per search. Default: 10. */
   topK?: number;
+  /**
+   * PLAN-59 Phase 2: shadow eligibility and assignment for proactive surfacing.
+   * Writes nothing when `mode` (the evidence layer) is `off`.
+   */
+  surfacingTrial?: CuriositySurfacingTrialConfig;
 };
 
 export type CuriosityConfig = {

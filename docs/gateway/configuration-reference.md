@@ -1957,6 +1957,12 @@ The memory subsystems (`memory.dream`, `memory.consolidation`, `memory.curiosity
         mode: "shadow", // "off" | "observe" | "shadow" (default "shadow")
         retentionDays: 90, // prune rows older than this on the consolidation tick
         topK: 10, // retrieval rows kept per search
+        surfacingTrial: {
+          mode: "shadow", // "off" | "shadow" (default "shadow")
+          blockMinutes: 240, // length of one randomisation block
+          carryOverDays: 7, // an item assigned within this window keeps its arm
+          seed: "optional", // absent: derived from this node's evidence digest key
+        },
       },
     },
   },
@@ -1965,6 +1971,7 @@ The memory subsystems (`memory.dream`, `memory.consolidation`, `memory.curiosity
 
 - `off`: nothing is written. `observe`: retrieval hits and surfacing events. `shadow`: also dream-engine decision traces.
 - Observation changes no behaviour in any mode. Query text is never stored; queries and session keys appear only as node-keyed digests. See [Evidence telemetry](/memory/evidence-telemetry).
+- `surfacingTrial` (PLAN-59 Phase 2, shadow stage): logs every proactive surfacing opportunity as `eligible` and assigns it `surface` or `withhold` by a randomised block design, then delivers exactly as before. `shadow` changes nothing the owner sees; `off` restores the Phase 0 rows. A `live` mode does not exist yet; the withhold condition is a separate decision and PR. Writes nothing when `evidence.mode` is `off`. See [Surfacing trial](/memory/evidence-telemetry#surfacing-trial-shadow-stage).
 
 ## Browser
 

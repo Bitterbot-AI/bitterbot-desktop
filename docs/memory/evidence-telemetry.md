@@ -2,7 +2,7 @@
 
 An observational layer under the curiosity and dream system. It records what retrieval surfaced, what the agent proactively surfaced to the owner and what came of it, and (in shadow mode) what a "GCCRF as diagnostic only" routing would have decided in the dream engine next to what the legacy routing actually decided. It changes no behaviour in any mode: retrieval order, dream seeds, dream mode choice, hormone events and target closure are exactly what they were before it existed. Later phases read these tables; this phase only writes them.
 
-Code: `src/memory/evidence-telemetry.ts` (writer), migration v79 in `src/memory/migrations.ts`, call sites in `src/memory/manager.ts` and `src/memory/dream-engine.ts`.
+Code: `src/memory/evidence-telemetry.ts` (writer), `src/memory/surfacing-trial.ts` (PLAN-59 Phase 2 shadow assignment), migrations v79 and v80 in `src/memory/migrations.ts`, call sites in `src/memory/manager.ts` and `src/memory/dream-engine.ts`.
 
 ## Modes and defaults
 
@@ -55,20 +55,21 @@ Indexes: `created_at`; `(chunk_id, created_at)`; `query_id`.
 
 What the agent put in front of the owner, and separately what the owner did about it.
 
-| column             | meaning                                                                                                   |
-| ------------------ | --------------------------------------------------------------------------------------------------------- |
-| `event_id`         | idempotency key (`INSERT OR IGNORE`), for example `cf:<finding id>:<hour bucket>`                         |
-| `kind`             | `curiosity_finding`, `proactive_recall`, `dream_brief`, `dream_digest`, `curiosity_target`                |
-| `ref_id`           | the surfaced item (finding id, chunk id, brief id, notification key)                                      |
-| `arm`              | `legacy` in Phase 0; later phases add arms                                                                |
-| `opportunity_id`   | the curiosity target a finding answered, so a dismiss by target id finds the delivery                     |
-| `session_digest`   | digest of the conversation the item was surfaced in, when known                                           |
-| `stage`            | `eligible`, `assigned`, `delivered`, `visible`, `responded`                                               |
-| `outcome`          | `useful`, `corrected`, `dismissed`, `answered`, `engaged_weak`, `unknown`; NULL until something labels it |
-| `label_provenance` | `explicit` (the owner acted), `inferred`, `unknown`                                                       |
-| `cost_usd`         | cost attributed to producing the item, when known                                                         |
-| `created_at`       | when the stage was reached                                                                                |
-| `outcome_at`       | when the outcome was labelled                                                                             |
+| column             | meaning                                                                                                                                                                                             |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `event_id`         | idempotency key (`INSERT OR IGNORE`), for example `cf:<finding id>:<hour bucket>`                                                                                                                   |
+| `kind`             | `curiosity_finding`, `proactive_recall`, `dream_brief`, `dream_digest`, `curiosity_target`                                                                                                          |
+| `ref_id`           | the surfaced item (finding id, chunk id, brief id, notification key)                                                                                                                                |
+| `arm`              | `legacy` (Phase 0 rows, or the trial off), `unassigned` (an `eligible` row, before the draw), `surface` or `withhold` (assigned by the surfacing trial)                                             |
+| `opportunity_id`   | shared id of one opportunity across its `eligible`, `assigned` and `delivered` rows: the curiosity target a finding answered (so a dismiss by target id finds the delivery), the event id otherwise |
+| `session_digest`   | digest of the conversation the item was surfaced in, when known                                                                                                                                     |
+| `stage`            | `eligible`, `assigned`, `delivered`, `visible`, `responded`                                                                                                                                         |
+| `outcome`          | `useful`, `corrected`, `dismissed`, `answered`, `engaged_weak`, `explicit_retrieval`, `unknown`; NULL until something labels it                                                                     |
+| `label_provenance` | `explicit` (the owner acted), `inferred`, `shadow_crossover` (the crossover marker below), `unknown`                                                                                                |
+| `cost_usd`         | cost attributed to producing the item, when known                                                                                                                                                   |
+| `details_json`     | small JSON for the stage; an `assigned` row carries `{ blockId, blockMinutes, carryOver }` (v80); NULL otherwise                                                                                    |
+| `created_at`       | when the stage was reached                                                                                                                                                                          |
+| `outcome_at`       | when the outcome was labelled                                                                                                                                                                       |
 
 Exposure and outcome are kept apart on purpose. A surfaced item is `delivered`; usefulness is only `explicit` when the owner acted. Silence is `unknown` (NULL outcome), never "ignored" or "disliked". A label that arrives for an item with no delivered row (for example a dismiss of a target whose finding was never voiced) creates a `responded` row so the action is kept.
 
@@ -129,19 +130,83 @@ SELECT kind, COUNT(*) AS traces, SUM(diverged) AS diverged
   FROM decision_traces GROUP BY kind;
 ```
 
-`curiosity.status` (RPC and `bitterbot curiosity status`) returns `evidence: { mode, available, retrievalHits, surfacingEvents, decisionTraces, oldestAt }`.
+`curiosity.status` (RPC and `bitterbot curiosity status --json`) returns `evidence: { mode, available, retrievalHits, surfacingEvents, decisionTraces, oldestAt, surfacingTrial }`; the `surfacingTrial` block is described below. The plain-text CLI status does not print the evidence block.
 
 ## Surfaces hooked on main
 
-| surface                                                   | where                                                                  | kind                            | stage                                      |
-| --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------- | ------------------------------------------ |
-| curiosity findings voiced in the system prompt            | `MemoryIndexManager.consumeResearchFindings` (research-findings block) | `curiosity_finding`             | `delivered`                                |
-| `curiosity.dismiss` RPC                                   | `MemoryIndexManager.curiosityDismiss`                                  | labels the finding by target id | outcome `dismissed`, provenance `explicit` |
-| proactive recall facts injected into the prompt (PLAN-27) | `MemoryIndexManager.recallForUserTurn`                                 | `proactive_recall`              | `delivered`                                |
-| anticipation brief offered in the prompt                  | `MemoryIndexManager.consumeDreamBrief`                                 | `dream_brief`                   | `delivered`                                |
-| daily dream digest sent to the owner (PLAN-53 G4)         | `MemoryIndexManager.sendDreamBrief`                                    | `dream_digest`                  | `delivered`                                |
+| surface                                                   | where                                                                  | kind                            | stages                                                      |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------- |
+| curiosity findings voiced in the system prompt            | `MemoryIndexManager.consumeResearchFindings` (research-findings block) | `curiosity_finding`             | `eligible`, `assigned`, `delivered`                         |
+| `curiosity.dismiss` RPC                                   | `MemoryIndexManager.curiosityDismiss`                                  | labels the finding by target id | outcome `dismissed`, provenance `explicit`                  |
+| proactive recall facts injected into the prompt (PLAN-27) | `MemoryIndexManager.recallForUserTurn`                                 | `proactive_recall`              | `eligible`, `assigned`, `delivered`                         |
+| anticipation brief offered in the prompt                  | `MemoryIndexManager.consumeDreamBrief`                                 | `dream_brief`                   | `eligible`, `assigned`, `delivered`                         |
+| daily dream digest sent to the owner (PLAN-53 G4)         | `MemoryIndexManager.sendDreamBrief`                                    | `dream_digest`                  | `eligible`, `assigned` before the send; `delivered` after   |
+| explicit owner search (`memory_search` tool)              | `MemoryIndexManager.search`, after the retrieval row                   | crossover marker                | outcome `explicit_retrieval`, provenance `shadow_crossover` |
 
-Found and not hooked in Phase 0: the Curiosity page's list of findings (`curiosity.list`, a read, no delivery event), the skill-pipeline digest, auto-initiated owner messages (`auto-initiate-decider`), and `message_owner` tool sends. None of these carry a curiosity or dream artifact id that a later outcome could be joined to; they wait for Phase 1.
+Found and not hooked: the Curiosity page's list of findings (`curiosity.list`, a read, no delivery event), the skill-pipeline digest, auto-initiated owner messages and `message_owner` tool sends. Auto-initiated owner messages have no single call site that is cheap to hook as `owner_message`: they leave through `notifyOwner`, which is shared with task completions, stall sweeps, monitor alerts, cron notices and guest messages, most of which are essential or owner-requested and so exempt from the trial; hooking the shared sink would log exempt content as eligible. None of these carry a curiosity or dream artifact id that a later outcome could be joined to.
+
+## Surfacing trial (shadow stage)
+
+PLAN-59 Phase 2 asks whether proactively surfacing autonomously learned information is useful to the owner. Answering that needs a condition in which such content is withheld, and a withhold condition is an exposure decision the owner takes separately (PLAN-59 section 7, decision 2: live exposure accepted in principle, start gated). Before it can start, the instrument must run in shadow: every eligible surfacing opportunity is logged, assigned to an arm by a randomised block design, and then delivered exactly as today. This section describes that shadow stage. Nothing the owner sees changes in it, and the test `manager.surfacing-trial-neutrality.test.ts` asserts byte-identical output from every hooked surface with the trial off and in shadow.
+
+Code: `src/memory/surfacing-trial.ts`. Config: `memory.curiosity.evidence.surfacingTrial` (see [configuration reference](/gateway/configuration-reference#memory-curiosity-evidence)).
+
+### What is logged
+
+For every opportunity at one of the four hooked surfaces, three `surfacing_events` rows with the same `kind`, `ref_id`, `opportunity_id` and `session_digest`, in this order:
+
+1. `eligible`, arm `unassigned`, event id `eligible:<delivered event id>`. Logged before the draw; an opportunity logged eligible is never excluded afterwards.
+2. `assigned`, arm `surface` or `withhold`, event id `assigned:<delivered event id>`, `details_json` `{ blockId, blockMinutes, carryOver }`.
+3. `delivered`, the Phase 0 row, now carrying the assigned arm instead of `legacy`.
+
+For the prompt-injected surfaces (findings, recall, brief) the three rows are written in one transaction at the moment the content is returned to the prompt builder. For the dream digest, `eligible` and `assigned` are written before `notifyOwner` and `delivered` after it returns, so a failed send leaves an assigned opportunity without a delivery, which is the truth. The Phase 0 idempotency key is kept: a repeat of the same item in the same hour bucket is ignored as a whole, never half-logged.
+
+### Block design
+
+Block id = `floor(now / blockMinutes)` (default 240 minutes). The arm for (kind, block) is read from the first four bytes of `HMAC-SHA256(seed, "<kind>\n<blockId>")`: `surface` below 2^31, `withhold` otherwise. The draw is balanced in expectation and stratified by surface kind, and consecutive blocks are independent draws rather than an alternation (a test checks 2,000 consecutive blocks for 45 to 55 percent `withhold` and about half equal neighbours). The seed is `surfacingTrial.seed` when configured; otherwise it is `HMAC-SHA256(digest_key, "plan59:surfacing-trial:seed")`, derived once from the node's own `evidence_meta` key, so assignment is deterministic per node and cannot be reconstructed from the logged rows. Neither the key nor the derived seed is stored in any row.
+
+### Carry-over
+
+Before drawing, the trial looks for the most recent `assigned` row with the same `kind` and `ref_id` inside `carryOverDays` (default 7). If one exists its arm is reused and the new `assigned` row has `carryOver: true` in `details_json`; a repeated appearance of an item is therefore consistent within the window, and a fresh draw happens only after it. Carry-over is per kind: the same chunk surfaced by proactive recall and cited in a dream brief are two items.
+
+### Exemptions
+
+Content the owner explicitly asked for is not an opportunity and is never logged as eligible: the answer to a `curiosity.ask` question, anything returned by an explicit memory search, recall of the owner's own stated facts in reply to a direct question. Essential warnings (task failures, stall sweeps, monitor alerts, security notices) are likewise not opportunities. The rule follows PLAN-59 section 4.2 and decision 2: only optional, autonomously learned content (findings, briefs, digests, unprompted recall) can ever be withheld, so only that content is assigned. The four hooked surfaces are exactly those.
+
+### Shadow crossover marker
+
+When a search with caller `memory_search` (the owner's explicit `memory_search` tool) returns a chunk that a `withhold`-assigned opportunity surfaced within the carry-over window, the opportunity's `delivered` row (falling back to its `assigned` row) is labelled outcome `explicit_retrieval`, provenance `shadow_crossover`. Proactive-recall opportunities match on `ref_id` (the chunk id); curiosity findings match through `curiosity_findings.chunk_id` to the target the finding answered. The marker never overwrites an outcome the owner gave (`dismissed`, `answered`), never creates a `responded` row, and fires once per opportunity. Other callers (`deep_recall`, `rlm_context`, the CLI) are not explicit owner retrieval and set nothing.
+
+In shadow nothing was withheld, so this does not measure crossover from a withheld condition. It measures the baseline rate at which items the trial would have withheld are retrieved by the owner anyway, which the live design needs in order to size its crossover expectation.
+
+### Status
+
+`curiosity.status` returns, inside `evidence`:
+
+```json5
+surfacingTrial: {
+  mode: "shadow", // "off" | "shadow"
+  active: true, // false when the evidence layer is off or the tables are missing
+  blockMinutes: 240,
+  carryOverDays: 7,
+  blocks: 12, // distinct randomisation blocks with at least one assignment
+  byKind: {
+    proactive_recall: { eligible, assigned, surface, withhold, delivered, carryOver, crossover },
+    // curiosity_finding, dream_brief, dream_digest likewise
+  },
+  balance: 0.48, // share of assignments that drew withhold; null before the first
+}
+```
+
+`delivered` here counts rows under a trial arm only; Phase 0 `legacy` rows are not part of the trial. `bitterbot curiosity status --json` prints the same object.
+
+### What shadow does not measure
+
+Shadow measures the instrument, not the effect: that eligibility fires at the right places, that assignment is balanced and consistent, how many opportunities each surface produces per block, and the baseline explicit-retrieval rate. It says nothing about whether surfacing is useful, because both arms deliver. No arm is ever read by a surface in this stage; the arm label is written and never consulted.
+
+### Switches
+
+`memory.curiosity.evidence.mode: "off"` wins: with the evidence layer off the trial writes nothing regardless of its own mode. `surfacingTrial.mode: "off"` with the evidence layer on restores the Phase 0 rows exactly (`delivered`, arm `legacy`). The mode enum is `off | shadow`; `live` is not accepted and falls back to `shadow` with a warning. The live withhold condition, the only part of Phase 2 that changes what the owner sees, is a separate decision and a separate PR; it will add `live` and make a surface read the arm.
 
 ## Readers of the GCCRF score on main
 
@@ -182,4 +247,4 @@ Reading: the migration is one DDL transaction well under a second on a real stor
 
 ## Deliberately not built (Phase 1 and later)
 
-No consumer of these tables; no change to retrieval, dream seeds, dream modes, hormones or target closure; no `injected` or `cited` signals; no alternative arms; no inferred usefulness labels; no UI. Phase 0 is the instrument, not the experiment.
+No consumer of these tables that changes behaviour; no change to retrieval, dream seeds, dream modes, hormones or target closure; no `injected` or `cited` signals; no arm that any surface reads (the Phase 2 shadow stage writes arms and consults none); no inferred usefulness labels beyond the shadow crossover marker; no UI. Phase 0 and the Phase 2 shadow stage are the instrument, not the experiment.

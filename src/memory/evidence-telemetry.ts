@@ -115,8 +115,19 @@ export type SurfacingOutcome =
   | "dismissed"
   | "answered"
   | "engaged_weak"
+  /**
+   * PLAN-59 Phase 2: the owner retrieved the item through an explicit memory
+   * search. In the shadow stage this is a baseline rate, not a crossover from
+   * a withheld condition (nothing is withheld in shadow).
+   */
+  | "explicit_retrieval"
   | "unknown";
-export type LabelProvenance = "explicit" | "inferred" | "unknown";
+export type LabelProvenance =
+  | "explicit"
+  | "inferred"
+  /** PLAN-59 Phase 2: set by the shadow crossover marker, never by the owner. */
+  | "shadow_crossover"
+  | "unknown";
 
 export type RecordSurfacingInput = {
   /** Idempotency key: the same event id is written once (INSERT OR IGNORE). */
@@ -128,6 +139,12 @@ export type RecordSurfacingInput = {
   sessionKey?: string;
   stage: SurfacingStage;
   costUsd?: number;
+  /**
+   * PLAN-59 Phase 2: small JSON payload for the stage (the surfacing trial
+   * stores the randomisation block id and the carry-over flag on `assigned`
+   * rows). Never content, never a query.
+   */
+  details?: Record<string, unknown>;
   now?: number;
 };
 
@@ -138,6 +155,12 @@ export type RecordSurfacingOutcomeInput = {
   provenance: LabelProvenance;
   /** Kind for the `responded` row created when no delivered row matches. */
   kind?: string;
+  /**
+   * PLAN-59 Phase 2: leave a row alone when it already carries an outcome, so
+   * an inferred marker never overwrites what the owner said. Also skips the
+   * `responded` fallback row.
+   */
+  onlyIfUnlabelled?: boolean;
   now?: number;
 };
 
@@ -234,6 +257,16 @@ export class EvidenceTelemetry {
     return { ...this.cfg };
   }
 
+  /**
+   * The live connection, or null when the tables are missing. For the
+   * surfacing trial's own lookups (carry-over, crossover, counts): it reads
+   * through this accessor on every call, so a rebind after a database swap is
+   * picked up without the trial holding a handle of its own.
+   */
+  connection(): DatabaseSync | null {
+    return this.available ? this.db : null;
+  }
+
   /** True when rows can be written at all (mode not off, tables present). */
   isEnabled(): boolean {
     return this.available && this.cfg.mode !== "off";
@@ -318,8 +351,9 @@ export class EvidenceTelemetry {
     try {
       const stmt = this.db.prepare(
         `INSERT OR IGNORE INTO surfacing_events
-           (event_id, kind, ref_id, arm, opportunity_id, session_digest, stage, cost_usd, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (event_id, kind, ref_id, arm, opportunity_id, session_digest, stage, cost_usd,
+            details_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
       let inserted = 0;
       this.inTransaction(() => {
@@ -333,6 +367,7 @@ export class EvidenceTelemetry {
             this.sessionDigest(e.sessionKey),
             e.stage,
             typeof e.costUsd === "number" && Number.isFinite(e.costUsd) ? e.costUsd : null,
+            e.details ? canonicalJson(e.details) : null,
             e.now ?? Date.now(),
           );
           inserted += Number(res.changes);
@@ -361,23 +396,29 @@ export class EvidenceTelemetry {
       const now = input.now ?? Date.now();
       const target = input.eventId
         ? (this.db
-            .prepare(`SELECT id FROM surfacing_events WHERE event_id = ? LIMIT 1`)
-            .get(input.eventId) as { id: number } | undefined)
+            .prepare(`SELECT id, outcome FROM surfacing_events WHERE event_id = ? LIMIT 1`)
+            .get(input.eventId) as { id: number; outcome: string | null } | undefined)
         : (this.db
             .prepare(
-              `SELECT id FROM surfacing_events
+              `SELECT id, outcome FROM surfacing_events
                 WHERE (ref_id = ? OR opportunity_id = ?)
                 ORDER BY CASE WHEN stage = 'delivered' THEN 0 ELSE 1 END, created_at DESC, id DESC
                 LIMIT 1`,
             )
-            .get(input.refId!, input.refId!) as { id: number } | undefined);
+            .get(input.refId!, input.refId!) as { id: number; outcome: string | null } | undefined);
       if (target) {
+        if (input.onlyIfUnlabelled && target.outcome !== null) {
+          return false;
+        }
         this.db
           .prepare(
             `UPDATE surfacing_events SET outcome = ?, label_provenance = ?, outcome_at = ? WHERE id = ?`,
           )
           .run(input.outcome, input.provenance, now, target.id);
         return true;
+      }
+      if (input.onlyIfUnlabelled) {
+        return false;
       }
       const ref = input.refId ?? input.eventId!;
       this.db

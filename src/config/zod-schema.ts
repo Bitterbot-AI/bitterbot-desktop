@@ -34,11 +34,26 @@ const NodeHostSchema = z
  * is `z.unknown()`, so a bad mode there degrades to the unknown branch and the
  * code-read site (`resolveEvidenceConfig`) falls back to the default.
  */
+/**
+ * PLAN-59 Phase 2: `memory.curiosity.evidence.surfacingTrial`. Same arrangement
+ * as the evidence block: the typed branch feeds the form; the read site
+ * (`resolveSurfacingTrialConfig`) does its own coercion.
+ */
+export const CuriositySurfacingTrialSchema = z
+  .object({
+    mode: z.enum(["off", "shadow"]).optional(),
+    blockMinutes: z.number().positive().optional(),
+    carryOverDays: z.number().positive().optional(),
+    seed: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const CuriosityEvidenceSchema = z
   .object({
     mode: z.enum(["off", "observe", "shadow"]).optional(),
     retentionDays: z.number().positive().optional(),
     topK: z.number().int().positive().optional(),
+    surfacingTrial: CuriositySurfacingTrialSchema.optional(),
   })
   .strict();
 
