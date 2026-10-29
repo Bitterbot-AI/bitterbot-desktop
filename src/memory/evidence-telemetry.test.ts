@@ -61,7 +61,8 @@ afterEach(async () => {
 });
 
 describe("resolveEvidenceConfig", () => {
-  it("defaults to observe / 90 days / topK 10", () => {
+  it("defaults to shadow / 90 days / topK 10", () => {
+    expect(EVIDENCE_DEFAULTS).toEqual({ mode: "shadow", retentionDays: 90, topK: 10 });
     expect(resolveEvidenceConfig(undefined, quiet)).toEqual(EVIDENCE_DEFAULTS);
     expect(resolveEvidenceConfig({}, quiet)).toEqual(EVIDENCE_DEFAULTS);
   });
@@ -80,7 +81,7 @@ describe("resolveEvidenceConfig", () => {
   it("falls back to the default on a mode typo, retention 0 and garbage numbers", () => {
     const warned: string[] = [];
     const log = { debug: () => {}, warn: (m: string) => warned.push(m) };
-    expect(resolveEvidenceConfig({ mode: "shadwo" }, log).mode).toBe("observe");
+    expect(resolveEvidenceConfig({ mode: "shadwo" }, log).mode).toBe("shadow");
     expect(warned).toHaveLength(1);
     expect(resolveEvidenceConfig({ retentionDays: 0 }, quiet).retentionDays).toBe(90);
     expect(resolveEvidenceConfig({ retentionDays: -3 }, quiet).retentionDays).toBe(90);

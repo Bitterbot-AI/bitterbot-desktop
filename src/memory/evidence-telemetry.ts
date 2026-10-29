@@ -44,7 +44,7 @@ export type ResolvedEvidenceConfig = {
 };
 
 export const EVIDENCE_DEFAULTS: ResolvedEvidenceConfig = {
-  mode: "observe",
+  mode: "shadow",
   retentionDays: 90,
   topK: 10,
 };
@@ -57,8 +57,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Coerce the raw `memory.curiosity.evidence` value. The config schema keeps
  * `memory` passthrough, so anything can arrive here: a typo in `mode` falls
- * back to the default (observe) rather than silently disabling or enabling the
- * shadow traces; non-positive or non-numeric retention/topK fall back too.
+ * back to the default (shadow) rather than silently disabling the traces; non-positive or non-numeric retention/topK fall back too.
  */
 export function resolveEvidenceConfig(
   raw: unknown,
