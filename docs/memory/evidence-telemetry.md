@@ -32,7 +32,7 @@ A mode that is not one of the three falls back to `observe` with a warning; a no
 
 ### `retrieval_hits`
 
-One row per returned result, at most `topK` per search, written in one transaction after the final ordering (fusion, boosts, superseded demotion) is fixed. Guest searches (`guestSearch`) are never recorded.
+One row per returned result, at most `topK` per search, written in one transaction after the final ordering (fusion, boosts, superseded demotion) is fixed. Guest searches (`guestSearch`) are never recorded. The PLAN-59 Phase 1 pilot harness (`benchmarks/plan59-phase1/`) reads this table, decayed with a 30-day half-life, as the demand term of its need estimate whenever it is present and non-empty on the snapshot under test.
 
 | column               | meaning                                                                                             |
 | -------------------- | --------------------------------------------------------------------------------------------------- |

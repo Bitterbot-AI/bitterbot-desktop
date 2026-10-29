@@ -40,6 +40,7 @@ export default defineConfig({
       "benchmarks/arc-agi-3/**/*.test.ts",
       "benchmarks/compaction-policy/**/*.test.ts",
       "benchmarks/longmemeval/**/*.test.ts",
+      "benchmarks/plan59-phase1/**/*.test.ts",
       "benchmarks/skill-evolution/**/*.test.ts",
     ],
     setupFiles: ["test/setup.ts"],
