@@ -216,6 +216,8 @@ keys/
 
 # Research / planning playground (internal only)
 research/
+# PLAN-59 phase reports are published documentation, not the playground.
+!docs/research/
 
 # Wallet seed data (should never be in repo)
 wallet-data.json

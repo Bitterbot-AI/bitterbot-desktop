@@ -736,6 +736,10 @@
                   "memory/external-skill-ingestion",
                   "memory/deep-recall"
                 ]
+              },
+              {
+                "group": "Research",
+                "pages": ["research/plan59-phase1-pilot"]
               }
             ]
           },
