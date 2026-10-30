@@ -42,9 +42,35 @@ so an older report is flagged rather than compared. The
 `skills-ablation` workflow runs the harness self-test weekly with a
 deterministic executor and can produce a live report on demand.
 
+## Long-term memory recall (LongMemEval-S)
+
+A full 500-question run of [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval)
+under the reference protocol (the benchmark's own GPT-4o judge and
+per-question-type prompts), 2026-10-28, with Bitterbot's production retrieval
+(hybrid search, session-level recall, k = 10) feeding a Claude Haiku 4.5
+reader. The unmodified reference scorer returned the same overall figure.
+
+| metric                                    | value |
+| ----------------------------------------- | ----- |
+| overall (question-weighted)               | 0.858 |
+| task-averaged (mean of 6 type means)      | 0.883 |
+| abstention accuracy (30 `_abs` questions) | 0.933 |
+| session recall_all@10 (470 non-abs)       | 0.964 |
+| multi-session (133), the weakest type     | 0.744 |
+
+Caveats. The score is reader and judge dependent: the same retrieval with an
+oracle context (gold sessions only) scores 0.920 with the Haiku reader, so the
+remaining gap is mostly context noise and reading, not retrieval misses (58 of
+the 71 misses had every gold session in context). A Claude Sonnet 4.5 reader
+scored 0.868, one point higher at about three times the cost. Published
+numbers from other systems mostly use a different judge or reader and are not
+directly comparable. Setup, per-type table, miss analysis and raw outputs:
+[benchmarks/longmemeval](https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/benchmarks/longmemeval/README.md).
+
 ## Reports
 
 Newest first.
 
+- [2026-10-28 LongMemEval-S official protocol](https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/benchmarks/longmemeval/README.md#results): 500 questions, Haiku 4.5 reader, GPT-4o judge, 0.858 overall; oracle-context and Sonnet 4.5 reader baselines.
 - [2026-09-06 external](skills-2026-09-06-external.md): ContinualSkillBench math, deterministic subset, baseline and harvested arms, primary model, six tasks, two trials.
 - [2026-09-06](skills-2026-09-06.md): first run on the reference node; baseline and harvested arms only (no evolved skill live yet), primary model, frozen corpus, six tasks per suite, two trials.
