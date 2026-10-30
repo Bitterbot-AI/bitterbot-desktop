@@ -59,7 +59,7 @@ backend.port = 993
 backend.encryption.type = "tls"
 backend.login = "you@example.com"
 backend.auth.type = "password"
-backend.auth.cmd = "pass show email/imap"  # or use keyring
+backend.auth.cmd = "pass show email/imap" # or use keyring
 
 message.send.backend.type = "smtp"
 message.send.backend.host = "smtp.example.com"

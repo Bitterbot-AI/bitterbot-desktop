@@ -240,7 +240,7 @@ The source of truth for the orchestrator version is `orchestrator/Cargo.toml`:
 ```toml
 [package]
 name = "bitterbot-orchestrator"
-version = "0.1.1"   # ← bump this
+version = "0.1.1" # ← bump this
 ```
 
 No second manifest, no duplicate `VERSION` file. The postinstall script reads `Cargo.toml` directly with a regex, and the CI workflow derives the tag from the pushed ref.
