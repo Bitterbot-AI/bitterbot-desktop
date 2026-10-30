@@ -159,8 +159,18 @@ bitterbot gateway uninstall
 
 Notes:
 
-- `gateway install` supports `--port`, `--runtime`, `--token`, `--force`, `--json`.
+- `gateway install` supports `--port`, `--runtime`, `--token`, `--force`, `--dry-run`, `--json`.
+- `--dry-run` prints what would be installed without writing, registering or starting anything. It is supported by the `wsl-supervisor` backend (task XML plus the `schtasks.exe` and supervisor commands); other backends refuse it.
 - Lifecycle commands accept `--json` for scripting.
+- Backends: launchd (macOS), systemd user service (Linux), Scheduled Task (Windows), and `wsl-supervisor` on WSL2 when `systemctl --user` has no bus. See [/gateway/background-process#wsl2-without-systemd](/gateway/background-process#wsl2-without-systemd).
+
+### `gateway supervise`
+
+```bash
+bitterbot gateway supervise
+```
+
+The WSL crash supervisor: what the Windows logon task registered by `gateway install` runs on a WSL2 host without systemd. It spawns the recorded gateway command, relaunches it after crashes with a backoff (5 s doubling to 60 s), adopts a gateway that is already running, logs to `~/.bitterbot/logs/gateway-<YYYYMMDD>.log` and `gateway-exits.log`, and stops the gateway on SIGTERM. Not for interactive use: install with `bitterbot gateway install`, stop with `bitterbot gateway stop`.
 
 ### `gateway switch`
 

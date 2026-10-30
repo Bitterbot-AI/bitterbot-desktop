@@ -17,9 +17,8 @@ export function isSystemdUnavailableDetail(detail?: string): boolean {
 export function renderSystemdUnavailableHints(options: { wsl?: boolean } = {}): string[] {
   if (options.wsl) {
     return [
-      "WSL2 needs systemd enabled: edit /etc/wsl.conf with [boot]\\nsystemd=true",
-      "Then run: wsl --shutdown (from PowerShell) and reopen your distro.",
-      "Verify: systemctl --user status",
+      `WSL2 without systemd: the gateway can run under the WSL supervisor (crash relaunch + a Windows logon task): ${formatCliCommand("bitterbot gateway install")}`,
+      "Alternative: enable systemd in /etc/wsl.conf ([boot] systemd=true), then wsl --shutdown from PowerShell and reopen the distro; verify with systemctl --user status.",
     ];
   }
   return [

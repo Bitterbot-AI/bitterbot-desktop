@@ -65,6 +65,7 @@ export type DaemonStatus = {
       detail?: string;
       cachedLabel?: boolean;
       missingUnit?: boolean;
+      lines?: string[];
     };
     configAudit?: ServiceConfigAudit;
   };

@@ -50,6 +50,11 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
   }
 
   const service = resolveGatewayService();
+  const dryRun = Boolean(opts.dryRun);
+  if (dryRun && !service.supportsDryRun) {
+    fail(`--dry-run is not supported by the ${service.label} backend.`);
+    return;
+  }
   let loaded = false;
   try {
     loaded = await service.isLoaded({ env: process.env });
@@ -57,7 +62,7 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
     fail(`Gateway service check failed: ${String(err)}`);
     return;
   }
-  if (loaded) {
+  if (loaded && !dryRun) {
     if (!opts.force) {
       emit({
         ok: true,
@@ -87,7 +92,15 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
   let token: string | undefined =
     opts.token || cfg.gateway?.auth?.token || process.env.BITTERBOT_GATEWAY_TOKEN;
 
-  if (!token && needsToken) {
+  if (!token && needsToken && dryRun) {
+    const msg = "Dry run: a gateway token would be generated and saved to config.";
+    if (json) {
+      warnings.push(msg);
+    } else {
+      defaultRuntime.log(msg);
+    }
+    token = "<generated-at-install>";
+  } else if (!token && needsToken) {
     token = randomToken();
     const warnMsg = "No gateway token found. Auto-generated one and saving to config.";
     if (json) {
@@ -154,6 +167,29 @@ export async function runDaemonInstall(opts: DaemonInstallOptions) {
     },
     config: cfg,
   });
+
+  if (dryRun) {
+    try {
+      await service.install({
+        env: process.env,
+        stdout,
+        programArguments,
+        workingDirectory,
+        environment,
+        dryRun: true,
+      });
+    } catch (err) {
+      fail(`Gateway install dry run failed: ${String(err)}`);
+      return;
+    }
+    emit({
+      ok: true,
+      result: "dry-run",
+      message: "Nothing was installed.",
+      service: buildDaemonServiceSnapshot(service, loaded),
+    });
+    return;
+  }
 
   await installDaemonServiceAndEmit({
     serviceNoun: "Gateway",

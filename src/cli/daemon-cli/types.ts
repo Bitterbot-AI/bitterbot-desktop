@@ -20,6 +20,7 @@ export type DaemonInstallOptions = {
   token?: string;
   force?: boolean;
   json?: boolean;
+  dryRun?: boolean;
 };
 
 export type DaemonLifecycleOptions = {

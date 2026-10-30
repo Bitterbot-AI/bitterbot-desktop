@@ -1,3 +1,4 @@
+import { isWSLSync } from "../infra/wsl.js";
 import {
   installLaunchAgent,
   isLaunchAgentLoaded,
@@ -22,10 +23,12 @@ import {
   isSystemdServiceEnabled,
   readSystemdServiceExecStart,
   readSystemdServiceRuntime,
+  isSystemdUserServiceAvailableSync,
   restartSystemdService,
   stopSystemdService,
   uninstallSystemdService,
 } from "./systemd.js";
+import { createWslSupervisorService } from "./wsl-supervisor.js";
 
 export type GatewayServiceInstallArgs = {
   env: Record<string, string | undefined>;
@@ -34,12 +37,16 @@ export type GatewayServiceInstallArgs = {
   workingDirectory?: string;
   environment?: Record<string, string | undefined>;
   description?: string;
+  /** Print what would be done (XML, commands) without writing, registering or starting anything. */
+  dryRun?: boolean;
 };
 
 export type GatewayService = {
   label: string;
   loadedText: string;
   notLoadedText: string;
+  /** The backend honours GatewayServiceInstallArgs.dryRun. */
+  supportsDryRun?: boolean;
   install: (args: GatewayServiceInstallArgs) => Promise<void>;
   uninstall: (args: {
     env: Record<string, string | undefined>;
@@ -63,8 +70,23 @@ export type GatewayService = {
   readRuntime: (env: Record<string, string | undefined>) => Promise<GatewayServiceRuntime>;
 };
 
-export function resolveGatewayService(): GatewayService {
-  if (process.platform === "darwin") {
+export type GatewayServiceSelection = {
+  platform?: NodeJS.Platform;
+  /** Running inside WSL (default: isWSLSync()). */
+  isWsl?: () => boolean;
+  /** The systemd user bus answers (default: one cached `systemctl --user status` probe). */
+  systemdUserAvailable?: () => boolean;
+};
+
+/**
+ * Linux keeps systemd whenever the user bus works. A WSL2 distro without
+ * systemd (`init` as PID 1, "Failed to connect to bus") gets the WSL
+ * supervisor backend instead, which needs nothing root-owned. Non-WSL Linux
+ * without systemd keeps the systemd backend and its hints, as before.
+ */
+export function resolveGatewayService(selection: GatewayServiceSelection = {}): GatewayService {
+  const platform = selection.platform ?? process.platform;
+  if (platform === "darwin") {
     return {
       label: "LaunchAgent",
       loadedText: "loaded",
@@ -93,7 +115,12 @@ export function resolveGatewayService(): GatewayService {
     };
   }
 
-  if (process.platform === "linux") {
+  if (platform === "linux") {
+    const isWsl = selection.isWsl ?? isWSLSync;
+    const systemdAvailable = selection.systemdUserAvailable ?? isSystemdUserServiceAvailableSync;
+    if (isWsl() && !systemdAvailable()) {
+      return createWslSupervisorService();
+    }
     return {
       label: "systemd",
       loadedText: "enabled",
@@ -122,7 +149,7 @@ export function resolveGatewayService(): GatewayService {
     };
   }
 
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     return {
       label: "Scheduled Task",
       loadedText: "registered",
@@ -151,5 +178,5 @@ export function resolveGatewayService(): GatewayService {
     };
   }
 
-  throw new Error(`Gateway service install not supported on ${process.platform}`);
+  throw new Error(`Gateway service install not supported on ${platform}`);
 }

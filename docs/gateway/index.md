@@ -149,6 +149,18 @@ sudo loginctl enable-linger <user>
 
   </Tab>
 
+  <Tab title="WSL2 without systemd">
+
+When `systemctl --user` reports `Failed to connect to bus`, `bitterbot gateway install` selects the `wsl-supervisor` backend: a Windows logon task (`Bitterbot Gateway (WSL <distro>)`) starts `bitterbot gateway supervise`, which relaunches the gateway after crashes and adopts one that is already running. No root, no `/etc/wsl.conf` change. See [/gateway/background-process#wsl2-without-systemd](/gateway/background-process#wsl2-without-systemd).
+
+```bash
+bitterbot gateway install --dry-run
+bitterbot gateway install
+bitterbot gateway status
+```
+
+  </Tab>
+
   <Tab title="Linux (system service)">
 
 Use a system unit for multi-user/always-on hosts.

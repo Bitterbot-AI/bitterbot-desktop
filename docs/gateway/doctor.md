@@ -88,7 +88,8 @@ cat ~/.bitterbot/bitterbot.json
 - Gateway port collision diagnostics (default `19001`).
 - Security warnings for open DM policies.
 - Gateway auth warnings when no `gateway.auth.token` is set (local mode; offers token generation).
-- systemd linger check on Linux.
+- systemd linger check on Linux (systemd backend only).
+- WSL2 without systemd: reports an unsupervised gateway (no `wsl-supervisor` installed) as a finding, fix `bitterbot gateway install`.
 - Source install checks (pnpm workspace mismatch, missing UI assets, missing tsx binary).
 - Writes updated config + wizard metadata.
 

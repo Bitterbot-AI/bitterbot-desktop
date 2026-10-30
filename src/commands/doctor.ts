@@ -313,7 +313,7 @@ async function runDoctor(
     } catch {
       loaded = false;
     }
-    if (loaded) {
+    if (loaded && service.label === "systemd") {
       await ensureSystemdUserLingerInteractive({
         runtime,
         prompter: {

@@ -598,7 +598,12 @@ async function hasServiceManager(): Promise<boolean> {
   }
   if (process.platform === "linux") {
     try {
-      return await (await import("../daemon/systemd.js")).isSystemdUserServiceAvailable();
+      if (await (await import("../daemon/systemd.js")).isSystemdUserServiceAvailable()) {
+        return true;
+      }
+      // WSL2 without systemd: the WSL supervisor backend stands in.
+      const { resolveGatewayService } = await import("../daemon/service.js");
+      return resolveGatewayService().label === "wsl-supervisor";
     } catch {
       return false;
     }
