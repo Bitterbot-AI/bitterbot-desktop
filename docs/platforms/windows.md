@@ -14,8 +14,11 @@ compatible (Node, Linux binaries, skills). WSL2 itself is one command:
 `wsl --install`. Without WSL2, use the [Docker](/platforms/docker) image with
 Docker Desktop.
 
-A native Windows install (and a Scheduled Task to run the gateway without
-WSL) is not available yet; native companion apps are planned.
+A native Windows install is not available yet; native companion apps are
+planned. The gateway does survive reboots: `bitterbot gateway install` inside
+WSL2 registers a Windows logon task that starts a crash supervisor in the
+distro, with `bitterbot gateway status` and `bitterbot doctor` reporting on it.
+See [running in the background](/gateway/background-process#wsl2-without-systemd).
 
 ## Install with install.ps1 (WSL2)
 

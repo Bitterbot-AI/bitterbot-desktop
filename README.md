@@ -296,6 +296,7 @@ In a source checkout use `pnpm bitterbot doctor`; in Docker, `docker compose exe
 - **Control UI shows "Disconnected" or the first-run screen.** Open the UI at `http://127.0.0.1:19001` on the gateway machine, or through an SSH tunnel to it: the token handoff only works over loopback.
 - **Port 19001 already in use.** Another gateway is running. Find it with `ss -tlnp | grep 19001` (Linux) or `lsof -i :19001` (macOS), or start on another port with `BITTERBOT_GATEWAY_PORT=19002`.
 - **`npm install -g bitterbot` fails with `EACCES`.** Your npm cannot write to its global folder (normal with Node from nodejs.org or `apt`). Do not use `sudo`. Run the one command from Quick Start instead; it needs no npm. If you must stay on npm: [give npm a folder you own](docs/start/npm.md#eacces-permission-denied).
+- **Gateway gone after a reboot.** Run `bitterbot gateway install` once and the gateway comes back on its own: a systemd user service on Linux, a launchd agent on macOS, and on WSL2 without systemd a Windows logon task with a crash supervisor that relaunches the gateway and keeps daily logs. Details: [running in the background](docs/gateway/background-process.md).
 - **"Orchestrator binary NOT FOUND".** No prebuilt P2P orchestrator was available for your platform. Build it with `cargo build --release --manifest-path orchestrator/Cargo.toml` from a checkout.
 - **P2P peers not connecting.** The P2P Network section of `bitterbot doctor` shows whether bootstrap DNS resolves and the fallback peer is reachable; firewall problems show up there.
 
