@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.11.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.10.1...v1.11.0) (2026-10-30)
+
+
+### Features
+
+* **benchmarks:** LongMemEval runner on the official protocol ([#318](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/318)) ([c22b293](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c22b29326d4013ab356f40b6b4746fd939f6bb65))
+* **gateway:** WSL2 autostart and crash supervision without systemd ([#333](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/333)) ([15bc061](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/15bc0611a320965d0b41ed51c95030723fe4ed1f))
+* **memory:** default evidence telemetry to shadow mode ([#328](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/328)) ([04bc81f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/04bc81f12237d781f557f64a255656cfd19c5f40))
+* **memory:** evidence telemetry and shadow decision traces (PLAN-59 Phase 0) ([#322](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/322)) ([ecc86c0](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ecc86c07f41794bea7b1f1edad5ce4d589969b17))
+* **memory:** per-channel retrieval diagnostics and skill applicability profiles (PLAN-58) ([#309](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/309)) ([6f704fc](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/6f704fc7e79b2b19bb9642fcde01c146bb50ea1a))
+* **memory:** PLAN-59 Phase 1 pilot harness (forked consolidation arms) ([#329](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/329)) ([f9ac780](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f9ac780ab15fa3c4c10455479e0ce229e01f1700))
+* **memory:** shadow surfacing trial eligibility and assignment (PLAN-59 Phase 2) ([#331](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/331)) ([b6c09df](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/b6c09df15523dacb471dd051a01272f39cf301ae))
+* **memory:** weighted RRF channel fusion with sweep and real-query validation ([#332](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/332)) ([fe51748](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fe517486e7f85c82fdcea02ab0b09e2f4265651d))
+
+
+### Bug Fixes
+
+* **compute:** local operator pools are local trust, startup reconcile waits for the coordinator, beta installs update to stable ([#308](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/308)) ([733b741](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/733b741952b627b1ca34aa892a8d1b4a9333e7b6))
+* **gateway:** restarted gateway outlives its parent's lock instead of dying at the 5 s timeout ([#316](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/316)) ([fce458c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fce458c18aae43bf4fb85785105a3fb598cf74b4))
+* **memory:** attach compute episode and nudge sinks on every manager get ([#292](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/292)) ([3e824c9](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3e824c99b55bacec34ba2e882ef72c436ca0e4cf))
+* **memory:** bound post-fusion boosts to the RRF scale; held-out live-memory benchmark; evidence-level LongMemEval metrics ([#315](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/315)) ([45e9cfe](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/45e9cfebff3abc9c6afaf69e5bed3d9c83c50db9))
+* **memory:** GCCRF and curiosity-target defects ([#321](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/321)) ([098582e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/098582e408f2ff620b1cde2be486e4daa557d6be))
+* **memory:** keyword channel matches natural-language queries; failed embedding batch no longer aborts sync ([#312](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/312)) ([a22e2df](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a22e2df09698ee379db98d22232375ebac740c60))
+* **p2p:** fail-closed skill ingest and publish gates ([#320](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/320)) ([5ce4577](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/5ce45773f39b7b740da9f808e721fdfe96b08be9))
+* **skills:** lint src/agents/skills again, dedupe fit text, two-node mesh harness, startup log ([#311](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/311)) ([ee51008](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/ee51008c3482dc927b4061bcbc7b0b7a456cc8c6))
+* **skills:** resolve the receiver's primary model from agents.defaults.model for the applicability fit ([#310](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/310)) ([d75ef15](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/d75ef15815519bcc76a114a15a262ba30e42d7d4))
+
 ## [1.10.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.10.0...v1.10.1) (2026-10-22)
 
 
