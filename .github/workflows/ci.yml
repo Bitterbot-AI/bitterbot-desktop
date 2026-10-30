@@ -312,7 +312,7 @@ jobs:
           if grep -v -m5 " 0/0 " "$RUNNER_TEMP/tar-list.txt"; then echo "entries not owned by 0/0"; exit 1; fi
 
       - name: Keep the tarball for manual upgrade tests
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-tarball-linux-x64
           path: ${{ runner.temp }}/release-out/bitterbot-*
@@ -1092,7 +1092,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
