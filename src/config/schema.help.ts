@@ -378,6 +378,14 @@ export const FIELD_HELP: Record<string, string> = {
     "Weight for BM25 text relevance when merging results (0-1).",
   "agents.defaults.memorySearch.query.hybrid.candidateMultiplier":
     "Multiplier for candidate pool size (default: 4).",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.vector":
+    "RRF weight of the vector (embedding) channel: it contributes weight / (k + rank) per result (default: 1, unweighted RRF). 0 silences the channel; 0.25 and 0.1 were measured 2026-10-29, see docs/research/fusion-weights-2026-10-29.md.",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.keyword":
+    "RRF weight of the keyword (BM25) channel (default: 1). 0 silences the channel.",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.graph":
+    "RRF weight of the knowledge-graph channel (default: 1). 0 silences the channel.",
+  "agents.defaults.memorySearch.query.hybrid.rrfK":
+    "RRF smoothing constant k in weight / (k + rank) (default: 60). Lower rewards top ranks more sharply.",
   "agents.defaults.memorySearch.query.channelDiagnostics":
     "Per-channel retrieval detail shown to the model on memory_search results: ranks (default), full (ranks + native scores), or off.",
   "agents.defaults.memorySearch.query.postFusionBoostScale":

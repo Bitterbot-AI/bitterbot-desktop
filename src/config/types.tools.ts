@@ -384,6 +384,29 @@ export type MemorySearchConfig = {
        *   with importance boost applied post-merge.
        */
       mergeStrategy?: "rrf" | "weighted";
+      /**
+       * Per-channel weights for RRF fusion (`mergeStrategy: "rrf"` only).
+       * A channel contributes `weight / (rrfK + rank)` for every result it
+       * ranked; 1/1/1 is plain unweighted RRF, 0 silences a channel without
+       * changing what it retrieves. Negative or non-finite values fall back
+       * to the default with a warning. See
+       * docs/research/fusion-weights-2026-10-29.md for the measurement that
+       * set the defaults.
+       */
+      rrfWeights?: {
+        /** Default 1 (unweighted RRF; 0.25 and 0.1 measured 2026-10-29, see the page above). */
+        vector?: number;
+        /** Default 1. */
+        keyword?: number;
+        /** Default 1. */
+        graph?: number;
+      };
+      /**
+       * RRF smoothing constant k in `weight / (k + rank)` (default 60).
+       * Lower k rewards top ranks more sharply; higher k flattens the list.
+       * Must be a positive finite number, else the default with a warning.
+       */
+      rrfK?: number;
     };
     /**
      * PLAN-58: how much per-channel retrieval detail the `memory_search`

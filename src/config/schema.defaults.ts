@@ -180,6 +180,14 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
     'src/agents/memory-search.ts resolveChannelDiagnostics — anything but "full" or "off" resolves to "ranks".',
   "agents.defaults.memorySearch.query.postFusionBoostScale":
     "src/agents/memory-search.ts DEFAULT_POST_FUSION_BOOST_SCALE (0.1) — clamped to [0, 1]; applied in src/memory/manager.ts via boundPostFusionBoost.",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.vector":
+    "src/agents/memory-search.ts DEFAULT_HYBRID_RRF_WEIGHTS (1, unweighted; docs/research/fusion-weights-2026-10-29.md) — negative or non-finite falls back with a warning; applied in src/memory/rrf.ts rrfFuse.",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.keyword":
+    "src/agents/memory-search.ts DEFAULT_HYBRID_RRF_WEIGHTS (1) — negative or non-finite falls back with a warning; applied in src/memory/rrf.ts rrfFuse.",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.graph":
+    "src/agents/memory-search.ts DEFAULT_HYBRID_RRF_WEIGHTS (1) — negative or non-finite falls back with a warning; applied in src/memory/rrf.ts rrfFuse.",
+  "agents.defaults.memorySearch.query.hybrid.rrfK":
+    "src/agents/memory-search.ts DEFAULT_HYBRID_RRF_K (60) — non-positive or non-finite falls back with a warning; applied in src/memory/rrf.ts rrfFuse.",
   "skills.skillSeekers.enabled": "src/agents/tools/skill-seekers-tool.ts:68 — `!== true` refuses.",
   "skills.skillSeekers.trending.enabled":
     "src/memory/manager.ts:3678 — `!== true` skips the sweep.",

@@ -226,6 +226,11 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.defaults.memorySearch.query.hybrid.textWeight": "Memory Search Text Weight",
   "agents.defaults.memorySearch.query.hybrid.candidateMultiplier":
     "Memory Search Hybrid Candidate Multiplier",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.vector": "Memory Search RRF Vector Weight",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.keyword":
+    "Memory Search RRF Keyword Weight",
+  "agents.defaults.memorySearch.query.hybrid.rrfWeights.graph": "Memory Search RRF Graph Weight",
+  "agents.defaults.memorySearch.query.hybrid.rrfK": "Memory Search RRF Constant (k)",
   "agents.defaults.memorySearch.query.channelDiagnostics": "Memory Search Channel Diagnostics",
   "agents.defaults.memorySearch.query.postFusionBoostScale":
     "Memory Search Post-Fusion Boost Scale",

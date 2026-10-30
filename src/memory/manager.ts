@@ -1716,6 +1716,10 @@ export class MemoryIndexManager implements MemorySearchManager {
           emotionalValence: r.emotionalValence,
         })),
         graph: graphChannel,
+        // Weighted RRF (docs/research/fusion-weights-2026-10-29.md): the
+        // resolver has already replaced bad values with the defaults.
+        weights: hybrid.rrfWeights,
+        k: hybrid.rrfK,
       });
 
       // The boosts below key on a memory's type, epistemic layer and age, which

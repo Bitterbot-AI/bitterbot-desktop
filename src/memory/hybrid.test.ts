@@ -243,6 +243,58 @@ describe("mergeHybridResultsRRF (PLAN-58 channel diagnostics)", () => {
     expect(merged.find((r) => r.id === "low")?.channels?.vector?.rank).toBe(2);
   });
 
+  it("applies per-channel weights and k, and 1/1/1 at 60 is the unweighted order", () => {
+    const vector = [vec("a", 0.9), vec("b", 0.8), vec("c", 0.7)];
+    const keyword = [kw("c", 1.0), kw("d", 0.9), kw("b", 0.5)];
+    const graph = [gr("b", 0.9)];
+    const plain = mergeHybridResultsRRF({ vector, keyword, graph });
+    const explicit = mergeHybridResultsRRF({
+      vector,
+      keyword,
+      graph,
+      weights: { vector: 1, keyword: 1, graph: 1 },
+      k: 60,
+    });
+    expect(explicit).toEqual(plain);
+    expect(plain.map((r) => r.id)).toEqual(["b", "c", "a", "d"]);
+
+    const keywordHeavy = mergeHybridResultsRRF({
+      vector,
+      keyword,
+      graph,
+      weights: { vector: 0.1 },
+    });
+    // "a" (vector rank 1 only) drops behind "d" (keyword rank 2 only).
+    expect(keywordHeavy.map((r) => r.id)).toEqual(["b", "c", "d", "a"]);
+    const b = keywordHeavy.find((r) => r.id === "b")!;
+    expect(b.score).toBeCloseTo(0.1 / 62 + 1 / 63 + 1 / 61, 12);
+    // channel diagnostics are unaffected by the weights
+    expect(b.channels).toEqual({
+      vector: { rank: 2, score: 0.8 },
+      keyword: { rank: 3, score: 0.5 },
+      graph: { rank: 1, score: 0.9 },
+    });
+    // a smaller k sharpens the top ranks: "d" (keyword 2) overtakes "c"? No:
+    // c holds keyword 1, so c stays ahead; what moves is the gap, which the
+    // scores show (ratio c/d grows as k shrinks).
+    const sharp = mergeHybridResultsRRF({ vector, keyword, graph, weights: { vector: 0.1 }, k: 5 });
+    const ratio = (list: typeof sharp) =>
+      list.find((r) => r.id === "c")!.score / list.find((r) => r.id === "d")!.score;
+    expect(ratio(sharp)).toBeGreaterThan(ratio(keywordHeavy));
+  });
+
+  it("weight 0 silences a channel: vector-only ids vanish, the rest match a two-channel merge", () => {
+    const vector = [vec("a", 0.9), vec("solo", 0.85), vec("b", 0.8)];
+    const keyword = [kw("c", 1.0), kw("b", 0.5)];
+    const twoChannel = mergeHybridResultsRRF({ vector: [], keyword });
+    const silenced = mergeHybridResultsRRF({ vector, keyword, weights: { vector: 0 } });
+    expect(silenced.map((r) => r.id)).toEqual(twoChannel.map((r) => r.id));
+    expect(silenced.map((r) => r.score)).toEqual(twoChannel.map((r) => r.score));
+    expect(silenced.find((r) => r.id === "solo")).toBeUndefined();
+    // the silenced channel's rank is still reported on the ids it shares
+    expect(silenced.find((r) => r.id === "b")?.channels?.vector).toEqual({ rank: 3, score: 0.8 });
+  });
+
   it("keeps the fused RRF score on its own scale (below 0.05 even for triple consensus)", () => {
     const merged = mergeHybridResultsRRF({
       vector: [vec("a", 0.99)],
