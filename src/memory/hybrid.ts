@@ -1,4 +1,4 @@
-import { rrfFuse, type RankedEntry } from "./rrf.js";
+import { DEFAULT_RRF_K, type RankedEntry, type RankedList, rrfFuse } from "./rrf.js";
 
 export type HybridSource = string;
 
@@ -16,6 +16,19 @@ export type HybridChannels = Partial<Record<HybridChannel, HybridChannelHit>>;
 
 /** How the channels were combined into `score`. */
 export type HybridFusion = "rrf" | "weighted" | "vector-only";
+
+/**
+ * Per-channel weights for RRF fusion: a channel contributes
+ * `weight / (k + rank)` for every id it ranked. 1/1/1 is unweighted RRF.
+ * 0 silences a channel without changing what it retrieved.
+ */
+export type HybridRrfWeights = Record<HybridChannel, number>;
+
+export const DEFAULT_RRF_WEIGHTS: Readonly<HybridRrfWeights> = Object.freeze({
+  vector: 1,
+  keyword: 1,
+  graph: 1,
+});
 
 function rankChannel<T extends { id: string }>(
   sorted: readonly T[],
@@ -400,7 +413,13 @@ export function mergeHybridResultsRRF(params: {
   keyword: HybridKeywordResult[];
   /** Optional PLAN-18 graph-reader channel. */
   graph?: HybridGraphResult[];
+  /** Per-channel RRF weights; a missing channel weight is 1 (unweighted). */
+  weights?: Partial<HybridRrfWeights>;
+  /** RRF smoothing constant; default 60. */
+  k?: number;
 }): HybridMergedResult[] {
+  const weights: HybridRrfWeights = { ...DEFAULT_RRF_WEIGHTS, ...params.weights };
+  const k = params.k ?? DEFAULT_RRF_K;
   // Build payload lookup by id — store metadata from whichever source provides it
   const payloads = new Map<
     string,
@@ -523,18 +542,21 @@ export function mergeHybridResultsRRF(params: {
     payload: { id: r.id },
   }));
 
-  const lists: Array<{ name: string; entries: Array<RankedEntry<PayloadType>> }> = [];
+  const lists: Array<RankedList<PayloadType>> = [];
   if (vectorRanked.length > 0) {
-    lists.push({ name: "vector", entries: vectorRanked });
+    lists.push({ name: "vector", entries: vectorRanked, weight: weights.vector });
   }
   if (keywordRanked.length > 0) {
-    lists.push({ name: "keyword", entries: keywordRanked });
+    lists.push({ name: "keyword", entries: keywordRanked, weight: weights.keyword });
   }
   if (graphRanked.length > 0) {
-    lists.push({ name: "graph", entries: graphRanked });
+    lists.push({ name: "graph", entries: graphRanked, weight: weights.graph });
   }
 
-  const fused = rrfFuse(lists);
+  // Weighted: `weight / (k + rank)` per channel. 1/1/1 at k 60 is the
+  // unweighted fusion this function always did; an id found only by
+  // zero-weighted channels is dropped by rrfFuse.
+  const fused = rrfFuse(lists, k);
 
   return fused.map((entry) => {
     const meta = payloads.get(entry.id)!;

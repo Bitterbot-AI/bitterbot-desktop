@@ -2,8 +2,13 @@ import os from "node:os";
 import path from "node:path";
 import type { BitterbotConfig, MemorySearchConfig } from "../config/config.js";
 import { resolveStateDir } from "../config/paths.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { DEFAULT_RRF_WEIGHTS, type HybridRrfWeights } from "../memory/hybrid.js";
+import { DEFAULT_RRF_K } from "../memory/rrf.js";
 import { clampInt, clampNumber, resolveUserPath } from "../utils.js";
 import { resolveAgentConfig } from "./agent-scope.js";
+
+const log = createSubsystemLogger("memory-search/config");
 
 export type ResolvedMemorySearchConfig = {
   enabled: boolean;
@@ -67,6 +72,10 @@ export type ResolvedMemorySearchConfig = {
       textWeight: number;
       candidateMultiplier: number;
       mergeStrategy: "rrf" | "weighted";
+      /** Per-channel RRF weights (`weight / (k + rank)`); 1/1/1 is unweighted. */
+      rrfWeights: HybridRrfWeights;
+      /** RRF smoothing constant k (default 60). */
+      rrfK: number;
     };
     /** PLAN-58: per-channel detail the memory_search tool shows the model. */
     channelDiagnostics: "full" | "ranks" | "off";
@@ -100,6 +109,18 @@ const DEFAULT_HYBRID_TEXT_WEIGHT = 0.3;
 const DEFAULT_HYBRID_CANDIDATE_MULTIPLIER = 4;
 const DEFAULT_IMPORTANCE_WEIGHT = 0.15;
 const DEFAULT_HYBRID_MERGE_STRATEGY: "rrf" | "weighted" = "rrf";
+// RRF channel weights. 1/1/1 at k 60 is plain unweighted RRF, the fusion that
+// has always shipped, and it stays the default. The 2026-10-29 sweep on 318
+// generated questions found vector 0.1 / keyword 1 far better (qualification
+// MRR 0.238 -> 0.406), but on the 68 real journal queries no keyword-heavy
+// setting was better than 1/1/1 (0.25: MRR 0.402 vs 0.400, hit@5 identical),
+// so the gain did not transfer and there is no measured benefit to pay the
+// comparability cost for. 0.25 and 0.1 are non-inferior on real queries and
+// available as configuration; a LongMemEval-S retrieval check at 0.25 is the
+// precondition for any future default change. See
+// docs/research/fusion-weights-2026-10-29.md.
+const DEFAULT_HYBRID_RRF_WEIGHTS: HybridRrfWeights = { ...DEFAULT_RRF_WEIGHTS };
+const DEFAULT_HYBRID_RRF_K = DEFAULT_RRF_K;
 const DEFAULT_RECENCY_ENABLED = true;
 const DEFAULT_RECENCY_ALPHA = 0.5;
 const DEFAULT_RECENCY_HALF_LIFE_HOURS = 48;
@@ -329,6 +350,11 @@ function mergeConfig(
       (overrides?.query?.hybrid as Record<string, unknown>)?.mergeStrategy ??
       (defaults?.query?.hybrid as Record<string, unknown>)?.mergeStrategy ??
       DEFAULT_HYBRID_MERGE_STRATEGY,
+    rrfWeights: resolveRrfWeights(
+      overrides?.query?.hybrid?.rrfWeights,
+      defaults?.query?.hybrid?.rrfWeights,
+    ),
+    rrfK: resolveRrfK(overrides?.query?.hybrid?.rrfK ?? defaults?.query?.hybrid?.rrfK),
   };
   const cache = {
     enabled: overrides?.cache?.enabled ?? defaults?.cache?.enabled ?? DEFAULT_CACHE_ENABLED,
@@ -385,6 +411,8 @@ function mergeConfig(
         textWeight: normalizedTextWeight,
         candidateMultiplier,
         mergeStrategy: hybrid.mergeStrategy as "rrf" | "weighted",
+        rrfWeights: hybrid.rrfWeights,
+        rrfK: hybrid.rrfK,
       },
       channelDiagnostics: resolveChannelDiagnostics(
         overrides?.query?.channelDiagnostics ?? defaults?.query?.channelDiagnostics,
@@ -432,6 +460,54 @@ function mergeConfig(
           : undefined,
     },
   };
+}
+
+/** Render a rejected config value for a warning (numbers as written, else JSON). */
+const describeValue = (raw: unknown): string =>
+  typeof raw === "number" ? String(raw) : JSON.stringify(raw);
+
+/**
+ * Per-channel RRF weights. Each channel is read from the override then the
+ * default; a negative or non-finite value falls back to that channel's
+ * default with a warning rather than failing the whole config.
+ */
+export function resolveRrfWeights(
+  overrides: Partial<Record<keyof HybridRrfWeights, unknown>> | undefined,
+  defaults: Partial<Record<keyof HybridRrfWeights, unknown>> | undefined,
+  warn: (message: string) => void = (m) => log.warn(m),
+): HybridRrfWeights {
+  const out: HybridRrfWeights = { ...DEFAULT_HYBRID_RRF_WEIGHTS };
+  for (const channel of Object.keys(out) as Array<keyof HybridRrfWeights>) {
+    const raw = overrides?.[channel] ?? defaults?.[channel];
+    if (raw === undefined || raw === null) {
+      continue;
+    }
+    if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) {
+      out[channel] = raw;
+    } else {
+      warn(
+        `memorySearch.query.hybrid.rrfWeights.${channel}=${describeValue(raw)} is not a finite number >= 0; using ${out[channel]}`,
+      );
+    }
+  }
+  return out;
+}
+
+/** RRF constant k: a positive finite number, else the default (60) with a warning. */
+export function resolveRrfK(
+  raw: unknown,
+  warn: (message: string) => void = (m) => log.warn(m),
+): number {
+  if (raw === undefined || raw === null) {
+    return DEFAULT_HYBRID_RRF_K;
+  }
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return raw;
+  }
+  warn(
+    `memorySearch.query.hybrid.rrfK=${describeValue(raw)} is not a finite number > 0; using ${DEFAULT_HYBRID_RRF_K}`,
+  );
+  return DEFAULT_HYBRID_RRF_K;
 }
 
 /** PLAN-58: default "ranks"; anything unrecognised falls back to the default. */

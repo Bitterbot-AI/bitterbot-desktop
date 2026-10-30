@@ -546,6 +546,18 @@ export const MemorySearchSchema = z
             textWeight: z.number().min(0).max(1).optional(),
             candidateMultiplier: z.number().int().positive().optional(),
             mergeStrategy: z.enum(["rrf", "weighted"]).optional(),
+            // Any number is accepted here; the resolver replaces a negative or
+            // non-finite value with the default and warns, so one bad weight
+            // never fails the whole config.
+            rrfWeights: z
+              .object({
+                vector: z.number().optional(),
+                keyword: z.number().optional(),
+                graph: z.number().optional(),
+              })
+              .strict()
+              .optional(),
+            rrfK: z.number().optional(),
           })
           .strict()
           .optional(),

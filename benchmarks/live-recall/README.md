@@ -83,12 +83,26 @@ code paths can be judged on what the agent actually asks:
    `~/.bitterbot/event-journal.sqlite` (stream `tool`, phase `start`). Private
    output under `~/.bitterbot`, never committed; a manifest with counts and the
    file hash is.
-2. `replay-judge.mts` searches a copy of the snapshot once per setting
-   (here `postFusionBoostScale` 1, 0.1, 0), pools the top-k passages across
-   settings, and asks a small model ONCE per (query, passage) pair whether the
-   passage answers the query. The same verdicts score every setting, so the
-   comparison is fair even where the judge is not. Output: hit@k (any relevant
-   passage in the top k), precision@k, relevant@1, MRR; hashes and ranks only.
+2. `replay-judge.mts` searches a copy of the snapshot once per setting,
+   pools the top-k passages across settings, and asks a small model ONCE per
+   (query, passage) pair whether the passage answers the query. The same
+   verdicts score every setting, so the comparison is fair even where the
+   judge is not. Output: hit@k (any relevant passage in the top k),
+   precision@k, relevant@1, MRR; hashes and ranks only.
+
+   A setting is `boost=<postFusionBoostScale>;rrf=<vector>,<keyword>,<graph>[;k=<rrfK>]`,
+   passed as `--settings "boost=0.1;rrf=1,1,1" "boost=0.1;rrf=0.25,1,1" ...`
+   (`--scales 1,0.1,0` is the older spelling for boost scales alone). The first
+   setting is the baseline. Every search runs with the wall clock frozen at
+   `--now` and hormonal modulation off, so a setting's list depends on the
+   code and the snapshot only; the recency boost keeps its production default.
+   `--rejudge N` asks the judge again about N random pooled pairs to estimate
+   its flip rate; the output then carries, per setting against the baseline,
+   the paired delta in hit@k and MRR, a paired bootstrap over queries
+   (sampling noise), the sd of the delta when every pooled verdict flips at
+   that rate (judge noise), and a `nonInferior` flag (both deltas at least
+   minus twice the judge-noise sd). `--verdict-cache` checkpoints verdicts
+   (hashes and booleans) so a run that loses the network resumes for free.
 
 Results, 2026-10-27: 68 distinct real queries (May to October 2026, median 36
 characters), k = 5, judge `claude-haiku-4-5`, 398 pairs judged. Only 33 of the
@@ -108,6 +122,56 @@ agrees with the held-out set; the size of the effect is far smaller on real
 queries, which are short and keyword-shaped and sit closer to the keyword
 channel's strengths, and 0 is not distinguishable from 0.1 on this sample. The
 default stays at 0.1.
+
+Results, 2026-10-29 (`results/replay-journal-fusion-weights-2026-10-29.json`):
+the same 68 queries against a fresh snapshot (3,952 chunks), k = 5, clock
+frozen, hormonal modulation off, `postFusionBoostScale` 0.1 throughout, RRF
+channel weights varied (vector, keyword, graph). 329 pairs judged by
+`claude-haiku-4-5` ($0.06); 36 of 68 queries had any relevant passage under
+any setting. Re-judging 80 random pairs flipped 3 (3.75 percent).
+
+| RRF weights (vector, keyword, graph) | hit@5 | precision@5 | relevant@1 | MRR   | delta hit@5 vs 1,1,1 | delta MRR vs 1,1,1 | judge-noise margin (hit@5 / MRR) |
+| ------------------------------------ | ----- | ----------- | ---------- | ----- | -------------------- | ------------------ | -------------------------------- |
+| 1, 1, 1 (unweighted, default)        | 47.1% | 33.5%       | 36.8%      | 0.400 |                      |                    |                                  |
+| 0.5, 1, 1                            | 45.6% | 33.5%       | 36.8%      | 0.398 | -1.5 pt              | -0.003             | 3.5 pt / 0.017                   |
+| 0.25, 1, 1                           | 47.1% | 32.6%       | 36.8%      | 0.402 | 0.0 pt               | +0.002             | 4.7 pt / 0.026                   |
+| 0.1, 1, 1                            | 48.5% | 32.6%       | 35.3%      | 0.394 | +1.5 pt              | -0.006             | 5.1 pt / 0.030                   |
+
+The margin is twice the sd of the paired delta when every pooled verdict flips
+independently at the observed 3.75 percent rate; all three keyword-heavier
+settings are non-inferior to 1/1/1 under it, and none is better (paired
+bootstrap over queries spans zero for every contrast). The large gain the
+generated questions showed does not appear on real queries, which are short
+and keyword-shaped and already sit where both channels agree. The default
+stays 1/1/1: with no measured real-query benefit there is nothing to pay the
+comparability cost for. 0.25 and 0.1 are available as configuration. Full
+tables and the decision: `docs/research/fusion-weights-2026-10-29.md`.
+
+## Fusion-weight sweep (generated questions, partitioned)
+
+`fusion-sweep.mts` asks how the fused list should combine its channels. It
+runs one deep search per question (fused top 200 with every channel's own rank
+on each result) from a frozen fork of the snapshot, then re-fuses offline
+through the production `rrfFuse` over a grid of RRF channel weights (vector 0
+to 1 against keyword 1, graph 0 to 1) and RRF constants (5 to 60). It uses the
+PLAN-59 Phase 1 partition (`benchmarks/plan59-phase1/`): the grid is selected
+on the development split only, the selected setting is confirmed on the
+qualification split with a family-paired bootstrap, and the final split stays
+sealed behind that harness's `--final --freeze <sha256>` gate (implemented,
+never opened). The capture holds private paths and is written only under
+`~/.bitterbot/benchmarks/live-recall/` with mode 0600 and reused on later
+runs; a partial capture is checkpointed every ten questions. The result file
+holds weights, hashes and numbers only.
+
+```bash
+node --import tsx benchmarks/live-recall/fusion-sweep.mts --snapshot $SNAP \
+  --questions ~/.bitterbot/benchmarks/live-recall/plan59-questions-$(date +%F).jsonl \
+  --capture ~/.bitterbot/benchmarks/live-recall/plan59-fusion-capture-$(date +%F).json \
+  --out benchmarks/live-recall/results/fusion-sweep-$(date +%F).json
+```
+
+Result of 2026-10-29 (`results/fusion-sweep-2026-10-29.json`) and the
+real-query check that kept the default: `docs/research/fusion-weights-2026-10-29.md`.
 
 ## Caveats
 
