@@ -76,6 +76,8 @@ describe("migration v79 (PLAN-59 Phase 0 evidence tables)", () => {
       "cost_usd",
       "created_at",
       "outcome_at",
+      // v80 (PLAN-59 Phase 2): surfacing trial assignment details
+      "details_json",
     ]);
     expect(columns(db, "decision_traces")).toEqual([
       "id",
@@ -94,7 +96,11 @@ describe("migration v79 (PLAN-59 Phase 0 evidence tables)", () => {
       ]),
     );
     expect(indexes(db, "surfacing_events")).toEqual(
-      expect.arrayContaining(["idx_surfacing_events_created", "idx_surfacing_events_ref"]),
+      expect.arrayContaining([
+        "idx_surfacing_events_created",
+        "idx_surfacing_events_ref",
+        "idx_surfacing_events_opportunity",
+      ]),
     );
     expect(indexes(db, "decision_traces")).toContain("idx_decision_traces_created");
   });

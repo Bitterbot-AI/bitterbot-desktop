@@ -2839,6 +2839,22 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 80,
+    description:
+      "PLAN-59 Phase 2 shadow stage (2026-10-29): surfacing trial assignment details. " +
+      "surfacing_events.details_json (nullable JSON) carries the randomisation block id " +
+      "and the carry-over flag of an `assigned` row; an index on opportunity_id lets the " +
+      "shadow crossover marker find the delivery an opportunity produced. No row is " +
+      "rewritten; existing rows read as details NULL.",
+    up: (db) => {
+      addColumnIfMissing(db, "surfacing_events", "details_json", "TEXT");
+      db.exec(
+        `CREATE INDEX IF NOT EXISTS idx_surfacing_events_opportunity ` +
+          `ON surfacing_events(opportunity_id, stage, created_at)`,
+      );
+    },
+  },
 ];
 
 /**

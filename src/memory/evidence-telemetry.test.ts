@@ -285,6 +285,81 @@ describe("EvidenceTelemetry", () => {
     ).toBeNull();
   });
 
+  it("stores stage details as canonical JSON and a guarded label never overwrites or creates a row", () => {
+    const db = openDb();
+    const t = new EvidenceTelemetry(db, { mode: "observe" }, quiet);
+    t.recordSurfacing({
+      eventId: "assigned:pr:c1:1",
+      kind: "proactive_recall",
+      refId: "c1",
+      arm: "withhold",
+      stage: "assigned",
+      details: { carryOver: false, blockId: 7 },
+      now: 1000,
+    });
+    t.recordSurfacing({
+      eventId: "pr:c1:1",
+      kind: "proactive_recall",
+      refId: "c1",
+      arm: "withhold",
+      stage: "delivered",
+      now: 1000,
+    });
+    expect(
+      (
+        db
+          .prepare(`SELECT details_json FROM surfacing_events WHERE event_id = 'assigned:pr:c1:1'`)
+          .get() as { details_json: string }
+      ).details_json,
+    ).toBe('{"blockId":7,"carryOver":false}');
+    expect(
+      (
+        db
+          .prepare(`SELECT details_json FROM surfacing_events WHERE event_id = 'pr:c1:1'`)
+          .get() as {
+          details_json: string | null;
+        }
+      ).details_json,
+    ).toBeNull();
+    // guarded label on an unlabelled row: applied
+    expect(
+      t.recordSurfacingOutcome({
+        eventId: "pr:c1:1",
+        outcome: "explicit_retrieval",
+        provenance: "shadow_crossover",
+        onlyIfUnlabelled: true,
+        now: 2000,
+      }),
+    ).toBe(true);
+    // the owner's explicit label replaces it (ungarded), and the guarded marker then leaves it alone
+    t.recordSurfacingOutcome({ eventId: "pr:c1:1", outcome: "dismissed", provenance: "explicit" });
+    expect(
+      t.recordSurfacingOutcome({
+        eventId: "pr:c1:1",
+        outcome: "explicit_retrieval",
+        provenance: "shadow_crossover",
+        onlyIfUnlabelled: true,
+      }),
+    ).toBe(false);
+    expect(
+      db
+        .prepare(
+          `SELECT outcome, label_provenance FROM surfacing_events WHERE event_id = 'pr:c1:1'`,
+        )
+        .get(),
+    ).toEqual({ outcome: "dismissed", label_provenance: "explicit" });
+    // guarded with no matching row: no responded row is created
+    expect(
+      t.recordSurfacingOutcome({
+        refId: "nothing-here",
+        outcome: "explicit_retrieval",
+        provenance: "shadow_crossover",
+        onlyIfUnlabelled: true,
+      }),
+    ).toBe(false);
+    expect(count(db, "surfacing_events")).toBe(2);
+  });
+
   it("decision traces are shadow-only and diverged compares canonical forms (or the decision key)", () => {
     const db = openDb();
     const observe = new EvidenceTelemetry(db, { mode: "observe" }, quiet);

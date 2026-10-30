@@ -184,6 +184,7 @@ import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
 import { SkillVerifier } from "./skill-verifier.js";
 import { recordAccess } from "./spacing-effect.js";
+import { SurfacingTrial, resolveSurfacingTrialConfig } from "./surfacing-trial.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
 import type {
@@ -385,6 +386,13 @@ export class MemoryIndexManager implements MemorySearchManager {
    * shadow decision traces). Observation only; never alters a result.
    */
   private evidenceTelemetry: EvidenceTelemetry | null = null;
+  /**
+   * PLAN-59 Phase 2: shadow eligibility and assignment for the proactive
+   * surfaces. Every delivery routes through it; in shadow it adds the
+   * eligible/assigned rows and the arm label, and changes nothing delivered.
+   * Reads the connection through the telemetry writer, so a rebind covers it.
+   */
+  private surfacingTrial: SurfacingTrial | null = null;
   /**
    * Chunk ids of the result objects searchInner built, keyed by identity so
    * the final returned list can be recorded without changing the public
@@ -964,10 +972,12 @@ export class MemoryIndexManager implements MemorySearchManager {
           ? formatProactiveFacts(result.facts, { includedDreamChunkIds })
           : undefined;
       // PLAN-59 Phase 0: each fact that reaches the prompt is a delivery.
-      // Exposure only; what the owner made of it is a separate row.
-      if (facts && this.evidenceTelemetry?.isEnabled()) {
-        const bucket = Math.floor(Date.now() / 3_600_000);
-        this.evidenceTelemetry.recordSurfacingBatch(
+      // Exposure only; what the owner made of it is a separate row. Phase 2:
+      // the trial logs eligible and assigned ahead of it (shadow, no change).
+      if (facts && this.surfacingTrial && this.evidenceTelemetry?.isEnabled()) {
+        const deliveredAt = Date.now();
+        const bucket = Math.floor(deliveredAt / 3_600_000);
+        this.surfacingTrial.surfaceBatch(
           result.facts
             .filter((f) => typeof f.chunkId === "string")
             .map((f) => ({
@@ -975,7 +985,7 @@ export class MemoryIndexManager implements MemorySearchManager {
               kind: "proactive_recall",
               refId: f.chunkId as string,
               sessionKey: opts?.scopeKey,
-              stage: "delivered" as const,
+              now: deliveredAt,
             })),
         );
       }
@@ -1405,6 +1415,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.evidenceTelemetry;
   }
 
+  /** PLAN-59 Phase 2: the shadow surfacing trial, for status and tests. */
+  getSurfacingTrial(): SurfacingTrial | null {
+    return this.surfacingTrial;
+  }
+
   /**
    * PLAN-59 Phase 0: write the retrieval evidence row set for one search.
    * Chunk ids come from the identity map searchInner filled; a result built
@@ -1459,6 +1474,12 @@ export class MemoryIndexManager implements MemorySearchManager {
         caller,
         results: hits,
         embeddingModel: this.provider.model,
+      });
+      // PLAN-59 Phase 2: an explicit owner retrieval of an item a withhold-
+      // assigned opportunity surfaced is the shadow crossover marker.
+      this.surfacingTrial?.noteExplicitRetrieval({
+        chunkIds: hits.map((h) => h.chunkId),
+        caller,
       });
     } catch (err) {
       log.debug(`retrieval evidence skipped: ${String(err)}`);
@@ -3728,8 +3749,15 @@ export class MemoryIndexManager implements MemorySearchManager {
       hormonal: this.hormonalManager?.getState() ?? null,
       disabledBy,
     });
-    // PLAN-59 Phase 0: row counts of the evidence tables.
-    return { ...status, evidence: this.evidenceTelemetry?.stats() ?? null };
+    // PLAN-59 Phase 0: row counts of the evidence tables. Phase 2: the
+    // shadow surfacing trial's assignment counts and balance.
+    const evidence = this.evidenceTelemetry?.stats() ?? null;
+    return {
+      ...status,
+      evidence: evidence
+        ? { ...evidence, surfacingTrial: this.surfacingTrial?.stats() ?? null }
+        : null,
+    };
   }
 
   async curiosityList(limit?: number) {
@@ -3790,18 +3818,24 @@ export class MemoryIndexManager implements MemorySearchManager {
       const text = renderDreamBrief(brief);
       const { notifyOwner } = await import("../infra/owner-notify.js");
       const dedupeKey = `dream-brief:${this.agentId}:${new Date().toISOString().slice(0, 10)}`;
+      // PLAN-59 Phase 2: the digest is an opportunity before it is sent;
+      // eligible and assigned are logged first, delivered once it went out.
+      // Shadow: the arm changes nothing about the send.
+      const opportunity = {
+        eventId: `dd:${dedupeKey}`,
+        kind: "dream_digest",
+        refId: dedupeKey,
+      };
+      const assignment = this.surfacingTrial?.assign(opportunity);
       await notifyOwner({
         kind: "dream-brief",
         dedupeKey,
         text,
       });
       // PLAN-59 Phase 0: the daily dream digest went out to the owner.
-      this.evidenceTelemetry?.recordSurfacing({
-        eventId: `dd:${dedupeKey}`,
-        kind: "dream_digest",
-        refId: dedupeKey,
-        stage: "delivered",
-      });
+      if (this.surfacingTrial && assignment) {
+        this.surfacingTrial.deliver(opportunity, assignment);
+      }
       return text;
     } catch (err) {
       log.warn(`dream brief failed: ${String(err)}`);
@@ -7055,12 +7089,12 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.db
         .prepare(`UPDATE dream_briefs SET status = 'surfaced', surfaced_at = ? WHERE id = ?`)
         .run(surfacedAt, row.id);
-      // PLAN-59 Phase 0: the anticipation brief reached the prompt.
-      this.evidenceTelemetry?.recordSurfacing({
+      // PLAN-59 Phase 0: the anticipation brief reached the prompt. Phase 2:
+      // eligible and assigned are logged ahead of the delivered row.
+      this.surfacingTrial?.surface({
         eventId: `db:${row.id}:${Math.floor(surfacedAt / 3_600_000)}`,
         kind: "dream_brief",
         refId: row.id,
-        stage: "delivered",
         now: surfacedAt,
       });
       void import("./dream-utility.js")
@@ -7103,14 +7137,13 @@ export class MemoryIndexManager implements MemorySearchManager {
       );
       // PLAN-59 Phase 0: the finding was delivered to the owner's prompt.
       // ref = finding id, opportunity = the target it answered (the dismiss
-      // RPC labels by target id).
-      this.evidenceTelemetry?.recordSurfacingBatch(
+      // RPC labels by target id). Phase 2: eligible and assigned precede it.
+      this.surfacingTrial?.surfaceBatch(
         rows.map((r) => ({
           eventId: `cf:${r.id}:${Math.floor(now / 3_600_000)}`,
           kind: "curiosity_finding",
           refId: r.id,
           opportunityId: r.target_id,
-          stage: "delivered" as const,
           now,
         })),
       );
@@ -7753,6 +7786,13 @@ export class MemoryIndexManager implements MemorySearchManager {
           resolveEvidenceConfig(curiosityCfg?.evidence),
         );
         this.dreamEngine?.setEvidenceTelemetry(this.evidenceTelemetry);
+        // PLAN-59 Phase 2: the surfacing trial rides on the same writer and
+        // inherits its `off`; its own mode only adds the shadow rows.
+        const evidenceRaw = curiosityCfg?.evidence as { surfacingTrial?: unknown } | undefined;
+        this.surfacingTrial = new SurfacingTrial(
+          this.evidenceTelemetry,
+          resolveSurfacingTrialConfig(evidenceRaw?.surfacingTrial),
+        );
       } catch (err) {
         log.debug(`evidence telemetry unavailable: ${String(err)}`);
       }
