@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import {
@@ -167,6 +168,34 @@ export async function isSystemdUserServiceAvailable(): Promise<boolean> {
     return false;
   }
   return false;
+}
+
+let systemdUserProbeCache: boolean | null = null;
+
+/**
+ * Synchronous one-shot probe of the systemd user bus, for the backend
+ * selection in resolveGatewayService() (a sync call site). Cached for the
+ * process: the bus does not appear or vanish while a command runs.
+ */
+export function isSystemdUserServiceAvailableSync(): boolean {
+  if (systemdUserProbeCache !== null) {
+    return systemdUserProbeCache;
+  }
+  try {
+    const res = spawnSync("systemctl", ["--user", "status"], {
+      encoding: "utf8",
+      timeout: 3000,
+      windowsHide: true,
+    });
+    systemdUserProbeCache = !res.error && res.status === 0;
+  } catch {
+    systemdUserProbeCache = false;
+  }
+  return systemdUserProbeCache;
+}
+
+export function resetSystemdUserProbeCacheForTests(): void {
+  systemdUserProbeCache = null;
 }
 
 async function assertSystemdAvailable() {

@@ -201,6 +201,26 @@ Related:
 - [/gateway/configuration](/gateway/configuration)
 - [/gateway/doctor](/gateway/doctor)
 
+## Gateway did not come back after a Windows reboot (WSL2)
+
+Use this when the gateway runs inside WSL2 and was down after Windows restarted or after a crash.
+
+```bash
+bitterbot gateway status
+bitterbot doctor
+systemctl --user status
+```
+
+Look for:
+
+- `Failed to connect to bus` from `systemctl --user`: the distro has no systemd user bus, so a systemd unit cannot restart the gateway. `bitterbot gateway status` then shows the `wsl-supervisor` backend.
+- `Service: wsl-supervisor (not installed)`: nothing restarts the gateway. Fix: `bitterbot gateway install` (registers a Windows logon task and starts the supervisor; it adopts a gateway that is already running). `bitterbot gateway install --dry-run` prints the task XML and the commands first.
+- `Logon task: not registered` with the supervisor installed: Windows interop was not reachable at install time. Enable interop in `/etc/wsl.conf` and rerun `bitterbot gateway install --force`, or start the supervisor by hand after a reboot with `bitterbot gateway start`.
+- `Supervisor: not running` with the task registered: the task starts at the Windows user's logon, not at boot; log on, or run the task from Task Scheduler. Closing the task's console window kills the supervisor; use `bitterbot gateway stop`.
+- Repeated lines in `~/.bitterbot/logs/gateway-exits.log` with the same exit code: the gateway crashes at start. Read `~/.bitterbot/logs/gateway-<YYYYMMDD>.log` for the cause; the supervisor backs off up to 60 s between attempts.
+
+See [/gateway/background-process#wsl2-without-systemd](/gateway/background-process#wsl2-without-systemd) for what the supervisor installs and its relaunch policy.
+
 ## Channel connected messages not flowing
 
 If channel state is connected but message flow is dead, focus on policy, permissions, and channel specific delivery rules.

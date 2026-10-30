@@ -5,6 +5,8 @@ import {
 } from "../../daemon/constants.js";
 import { resolveGatewayLogPaths } from "../../daemon/launchd.js";
 import { formatRuntimeStatus } from "../../daemon/runtime-format.js";
+import { resolveGatewayService } from "../../daemon/service.js";
+import { WSL_SUPERVISOR_LABEL } from "../../daemon/wsl-supervisor.js";
 import { pickPrimaryLanIPv4 } from "../../gateway/net.js";
 import { getResolvedLoggerSettings } from "../../logging.js";
 import { colorize, isRich, theme } from "../../terminal/theme.js";
@@ -158,6 +160,9 @@ export function renderGatewayServiceStartHints(env: NodeJS.ProcessEnv = process.
       return [...base, `launchctl bootstrap gui/$UID ~/Library/LaunchAgents/${label}.plist`];
     }
     case "linux": {
+      if (resolveGatewayService().label === WSL_SUPERVISOR_LABEL) {
+        return base;
+      }
       const unit = resolveGatewaySystemdServiceName(profile);
       return [...base, `systemctl --user start ${unit}.service`];
     }

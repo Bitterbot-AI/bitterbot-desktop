@@ -9,6 +9,8 @@ import {
   isSystemdUnavailableDetail,
   renderSystemdUnavailableHints,
 } from "../../daemon/systemd-hints.js";
+import { resolveWslSupervisorPaths } from "../../daemon/wsl-supervisor-record.js";
+import { WSL_SUPERVISOR_LABEL } from "../../daemon/wsl-supervisor.js";
 import { isWSLEnv } from "../../infra/wsl.js";
 import { getResolvedLoggerSettings } from "../../logging.js";
 import { defaultRuntime } from "../../runtime.js";
@@ -176,6 +178,9 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean })
             : theme.warn;
     defaultRuntime.log(`${label("Runtime:")} ${colorize(rich, runtimeColor, runtimeLine)}`);
   }
+  for (const line of service.runtime?.lines ?? []) {
+    defaultRuntime.log(`  ${infoText(line)}`);
+  }
 
   if (rpc && !rpc.ok && service.loaded && service.runtime?.status === "running") {
     defaultRuntime.log(
@@ -200,8 +205,11 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean })
     spacer();
   }
 
+  const wslSupervisor = service.label === WSL_SUPERVISOR_LABEL;
   const systemdUnavailable =
-    process.platform === "linux" && isSystemdUnavailableDetail(service.runtime?.detail);
+    process.platform === "linux" &&
+    !wslSupervisor &&
+    isSystemdUnavailableDetail(service.runtime?.detail);
   if (systemdUnavailable) {
     defaultRuntime.error(errorText("systemd user services unavailable."));
     for (const hint of renderSystemdUnavailableHints({ wsl: isWSLEnv() })) {
@@ -271,7 +279,14 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean })
     if (status.lastError) {
       defaultRuntime.error(`${errorText("Last gateway error:")} ${status.lastError}`);
     }
-    if (process.platform === "linux") {
+    if (wslSupervisor) {
+      const paths = resolveWslSupervisorPaths(process.env as Record<string, string | undefined>);
+      defaultRuntime.error(
+        errorText(
+          `Logs: ${shortenHomePath(paths.logDir)}/gateway-<YYYYMMDD>.log and ${shortenHomePath(paths.exitsLogPath)}`,
+        ),
+      );
+    } else if (process.platform === "linux") {
       const env = (service.command?.environment ?? process.env) as NodeJS.ProcessEnv;
       const unit = resolveGatewaySystemdServiceName(env.BITTERBOT_PROFILE);
       defaultRuntime.error(

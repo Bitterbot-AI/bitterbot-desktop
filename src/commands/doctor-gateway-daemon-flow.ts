@@ -15,6 +15,7 @@ import {
 import { resolveGatewayService } from "../daemon/service.js";
 import { renderSystemdUnavailableHints } from "../daemon/systemd-hints.js";
 import { isSystemdUserServiceAvailable } from "../daemon/systemd.js";
+import { WSL_SUPERVISOR_LABEL } from "../daemon/wsl-supervisor.js";
 import { formatPortDiagnostics, inspectPortUsage } from "../infra/ports.js";
 import { isWSL } from "../infra/wsl.js";
 import type { RuntimeEnv } from "../runtime.js";
@@ -27,6 +28,7 @@ import {
   type GatewayDaemonRuntime,
 } from "./daemon-runtime.js";
 import { buildGatewayRuntimeHints, formatGatewayRuntimeSummary } from "./doctor-format.js";
+import { recordFinding } from "./doctor-outcome.js";
 import type { DoctorOptions, DoctorPrompter } from "./doctor-prompter.js";
 import { formatHealthCheckFailure } from "./health-format.js";
 import { healthCommand } from "./health.js";
@@ -150,10 +152,27 @@ export async function maybeRepairGatewayDaemon(params: {
   if (!loaded) {
     if (process.platform === "linux") {
       const systemdAvailable = await isSystemdUserServiceAvailable().catch(() => false);
-      if (!systemdAvailable) {
+      if (!systemdAvailable && service.label !== WSL_SUPERVISOR_LABEL) {
         const wsl = await isWSL();
         note(renderSystemdUnavailableHints({ wsl }).join("\n"), "Gateway");
         return;
+      }
+      if (!systemdAvailable) {
+        // WSL2 without systemd and no supervisor: nothing brings the gateway
+        // back after a Windows reboot or a crash. A finding, with the fix.
+        const fix = formatCliCommand("bitterbot gateway install");
+        recordFinding(
+          "Gateway",
+          "warn",
+          `WSL2 without systemd: the gateway is not supervised, so nothing restarts it after a Windows reboot or a crash. Fix: ${fix}`,
+        );
+        note(
+          [
+            "WSL2 without systemd: the gateway is not supervised. Nothing restarts it after a Windows reboot or a crash.",
+            `Fix: ${fix} (installs the WSL supervisor and a Windows logon task; needs no root).`,
+          ].join("\n"),
+          "Gateway",
+        );
       }
     }
     note("Gateway service not installed.", "Gateway");

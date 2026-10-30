@@ -37,6 +37,11 @@ export function addGatewayServiceCommands(parent: Command, opts?: { statusDescri
     .option("--runtime <runtime>", "Daemon runtime (node|bun). Default: node")
     .option("--token <token>", "Gateway token (token auth)")
     .option("--force", "Reinstall/overwrite if already installed", false)
+    .option(
+      "--dry-run",
+      "Print what would be installed (WSL supervisor: task XML + commands) without changing anything",
+      false,
+    )
     .option("--json", "Output JSON", false)
     .action(async (cmdOpts) => {
       await runDaemonInstall(cmdOpts);

@@ -90,6 +90,16 @@ export function registerGatewayCli(program: Command) {
     statusDescription: "Show gateway service status + probe the Gateway",
   });
 
+  gateway
+    .command("supervise")
+    .description(
+      "Run the gateway under the WSL crash supervisor (what the Windows logon task runs; use `gateway install`, not this)",
+    )
+    .action(async () => {
+      const { runGatewaySuperviseCommand } = await import("./supervise.js");
+      await runGatewaySuperviseCommand();
+    });
+
   gatewayCallOpts(
     gateway
       .command("call")
