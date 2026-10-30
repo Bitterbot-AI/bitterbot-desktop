@@ -19,6 +19,7 @@ import {
   type LiveViewResolution,
 } from "../../browser/live-view.js";
 import { getPwAiModule } from "../../browser/pw-ai-module.js";
+import { browserTeaching } from "../../browser/teaching-service.js";
 import { loadConfig } from "../../config/config.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayBroadcastToConnIdsFn } from "../server-broadcast.js";
@@ -67,6 +68,7 @@ let emitToConnIds: GatewayBroadcastToConnIdsFn | null = null;
 function getLiveView(broadcastToConnIds: GatewayBroadcastToConnIdsFn): BrowserLiveView {
   emitToConnIds = broadcastToConnIds;
   liveView ??= createBrowserLiveView({
+    teaching: browserTeaching,
     resolve: resolveLiveTarget,
     startScreencast: async (opts) => {
       const pw = await getPwAiModule({ mode: "soft" });
@@ -89,6 +91,10 @@ function getLiveView(broadcastToConnIds: GatewayBroadcastToConnIdsFn): BrowserLi
 /** Stop the screencast and drop every viewer. Called on gateway shutdown. */
 export async function shutdownBrowserLiveView(): Promise<void> {
   await liveView?.shutdown().catch(() => {});
+}
+
+export function currentBrowserLiveView(): BrowserLiveView | null {
+  return liveView;
 }
 
 export const browserLiveHandlers: GatewayRequestHandlers = {

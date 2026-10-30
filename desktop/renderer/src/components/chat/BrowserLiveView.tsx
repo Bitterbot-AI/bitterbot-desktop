@@ -10,6 +10,7 @@ import {
 } from "../../lib/browser-live-input";
 import { cn } from "../../lib/utils";
 import { useBrowserLiveStore, type BrowserLiveFrame } from "../../stores/browser-live-store";
+import { BrowserTeaching } from "./BrowserTeaching";
 import { extractDomain } from "./tool-views/tool-view-utils";
 
 /** Pointer moves are a stream; this many per second is plenty to hover and drag. */
@@ -75,6 +76,8 @@ export function BrowserLiveView({ className }: { className?: string }) {
           </button>
         )}
       </div>
+
+      <BrowserTeaching mine={showing && mine} />
 
       {showing && control === "user" && (
         <div className="px-3 py-1.5 text-xs bg-warning/10 text-warning border-b border-warning/20">

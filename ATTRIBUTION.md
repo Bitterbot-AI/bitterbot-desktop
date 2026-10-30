@@ -30,6 +30,14 @@ Code ported or vendored into the tree keeps a header naming its source:
 
 ## Original work provenance
 
+The browser teaching workflow (`src/browser/teaching-*.ts` and the Control UI's
+`BrowserTeaching` component) is independently implemented for Bitterbot's live
+browser and skill gate. Its semantic demonstration, parameterized draft and
+owner-review patterns were inspired by
+[CopilotKit/OpenDuet](https://github.com/CopilotKit/OpenDuet) (MIT), particularly
+`openbot/agent-computer/src/demonstration.ts` and
+`openbot/server/src/demonstrations/draft.ts`.
+
 The following components are original work by Victor Michael Gil and
 constitute the novel intellectual contributions of the Bitterbot project:
 

@@ -15,6 +15,8 @@
 import type { CDPSession, Page } from "playwright-core";
 import type { CdpInputCommand } from "./live-input.js";
 import { getPageForTargetId } from "./pw-session.js";
+import { describeTeachingInput } from "./teaching-capture.js";
+import type { TeachingAction } from "./teaching-types.js";
 
 export type ScreencastFrame = {
   /** Base64 JPEG. */
@@ -30,6 +32,8 @@ export type ScreencastHandle = {
   describe: () => Promise<{ url: string; title: string }>;
   /** Deliver one validated pointer or key event to the page. */
   input: (command: CdpInputCommand) => Promise<void>;
+  /** Semantic, value-free description, requested only during owner recording. */
+  describeInput?: (command: CdpInputCommand) => Promise<TeachingAction | null>;
 };
 
 export type ScreencastOptions = {
@@ -114,9 +118,10 @@ export async function startScreencastViaPlaywright(
     }),
     input: async (command) => {
       if (stopped) {
-        return;
+        throw new Error("The browser view has closed.");
       }
       await session.send(command.method, command.params as never);
     },
+    describeInput: (command) => describeTeachingInput(page, command),
   };
 }
