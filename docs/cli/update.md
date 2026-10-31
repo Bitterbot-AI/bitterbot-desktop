@@ -59,7 +59,9 @@ git checkout on a branch. A configured `update.channel` always wins.
 
 A pre-release install such as `1.10.1-beta.2` counts as older than the stable
 `1.10.1`, so `bitterbot update` on the stable channel moves it forward instead
-of reporting it as current.
+of reporting it as current. The gateway's startup update check, `bitterbot
+status`, and the Control UI update banner apply the same ordering, so a node
+left on a beta is told about the stable release it preceded.
 
 ## Usage
 

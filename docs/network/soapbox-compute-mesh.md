@@ -228,8 +228,8 @@ The current resolver prefers the bundled release binary, then the installed
 sidecar, and uses local Cargo builds only as a fallback. An explicit
 `p2p.orchestratorBinary` still takes priority, including for intentional development
 builds; update or remove an outdated override when upgrading. Releases bundle
-the verified 0.2.4 sidecar; from the release after v1.11.0 they pin Soapbox rc10
-for new Linux x64 operator setups (v1.10.0 through v1.11.0 pinned rc5).
+the verified 0.2.4 sidecar; from v1.12.0 they pin Soapbox rc10 for new Linux x64
+operator setups (v1.10.0 through v1.11.0 pinned rc5).
 
 Set `p2p.orchestratorBinary` to a versioned, signature-verified compatible release
 binary (0.2.4 supports the Compute topic and descriptor signer), then restart the

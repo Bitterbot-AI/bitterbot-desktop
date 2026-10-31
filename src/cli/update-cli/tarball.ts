@@ -309,30 +309,15 @@ export type TarballCliOptions = UpdateCommandOptions & {
   restoreConfig?: boolean;
 };
 
-const PRERELEASE_RE = /^v?\d+\.\d+\.\d+-/;
-
 /**
- * Order two release versions. `compareSemverStrings` ignores pre-release
- * labels, so `1.10.1-beta.2` and `1.10.1` compare equal; here the beta is
- * behind the stable release of the same number (and ahead of nothing), so an
+ * Order two release versions. `compareSemverStrings` applies the SemVer
+ * pre-release tie-break, so `1.10.1-beta.2` sorts behind `1.10.1` and an
  * install left on a beta still moves forward to the release it preceded.
+ * Kept as a named helper for the call sites and tests that read as
+ * "release order".
  */
 export function releaseOrder(from: string, target: string): number | null {
-  const cmp = compareSemverStrings(from, target);
-  if (cmp !== 0) {
-    return cmp;
-  }
-  const fromPre = PRERELEASE_RE.test(from);
-  const targetPre = PRERELEASE_RE.test(target);
-  if (fromPre !== targetPre) {
-    return fromPre ? -1 : 1;
-  }
-  if (!fromPre) {
-    return 0;
-  }
-  const a = from.replace(/^v/, "");
-  const b = target.replace(/^v/, "");
-  return a === b ? 0 : a.localeCompare(b, "en", { numeric: true }) < 0 ? -1 : 1;
+  return compareSemverStrings(from, target);
 }
 
 export async function runTarballUpdateCommand(params: {

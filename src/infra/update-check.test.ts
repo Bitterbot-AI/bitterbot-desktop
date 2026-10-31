@@ -64,6 +64,22 @@ describe("compareSemverStrings (PLAN-41 D-A CalVer guard)", async () => {
     expect(compareSemverStrings("1.0.0", "1.1.0")).toBe(-1);
     expect(compareSemverStrings("2.0.0", "2.0.0")).toBe(0);
   });
+
+  it("a pre-release is behind the release it precedes (beta node sees the stable build)", () => {
+    expect(compareSemverStrings("1.11.0-beta.1", "1.11.0")).toBe(-1);
+    expect(compareSemverStrings("1.11.0", "1.11.0-beta.1")).toBe(1);
+    expect(compareSemverStrings("v1.11.0-beta.1", "v1.11.0")).toBe(-1);
+    expect(compareSemverStrings("1.11.0-beta.1", "1.10.1")).toBe(1);
+    expect(compareSemverStrings("1.12.0", "1.11.0-beta.1")).toBe(1);
+  });
+
+  it("orders pre-releases by identifier, numerically where both are numbers", () => {
+    expect(compareSemverStrings("1.11.0-beta.1", "1.11.0-beta.2")).toBe(-1);
+    expect(compareSemverStrings("1.11.0-beta.10", "1.11.0-beta.9")).toBe(1);
+    expect(compareSemverStrings("1.11.0-beta.1", "1.11.0-beta.1")).toBe(0);
+    expect(compareSemverStrings("1.11.0-alpha.1", "1.11.0-beta.1")).toBe(-1);
+    expect(compareSemverStrings("1.11.0-beta", "1.11.0-beta.1")).toBe(-1);
+  });
 });
 
 describe("fetchNpmTagVersion not-published mapping (D-J)", () => {
