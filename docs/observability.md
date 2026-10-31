@@ -97,9 +97,13 @@ enough to risk starving the WebSocket keepalive" — the class of stall
 that bounces the Control UI with a `code=1006` tick-timeout. The sampler
 runs even with OTel disabled (the default), where it still logs a
 structured WARN under the `[gateway/event-loop]` subsystem; the span is
-just the exported form of the same event. Tune it with
-`BITTERBOT_EVENT_LOOP_MONITOR` / `BITTERBOT_EVENT_LOOP_SAMPLE_MS` /
-`BITTERBOT_EVENT_LOOP_WARN_MS`. See
+just the exported form of the same event. Once a window has stalled, the
+sampler also arms V8's sampling profiler and logs a stall attribution (the
+frames that held the loop, self time per frame) for later windows that
+cross `BITTERBOT_EVENT_LOOP_PROFILE_MS`; it disarms after a quiet period.
+Tune it with `BITTERBOT_EVENT_LOOP_MONITOR` / `BITTERBOT_EVENT_LOOP_SAMPLE_MS`
+/ `BITTERBOT_EVENT_LOOP_WARN_MS` / `BITTERBOT_EVENT_LOOP_PROFILE` /
+`BITTERBOT_EVENT_LOOP_PROFILE_MS`. See
 [/gateway/troubleshooting](/gateway/troubleshooting).
 
 ## What it looks like
