@@ -30,6 +30,65 @@ async function invoke(method: string, params: Record<string, unknown>) {
   return respond;
 }
 describe("Soapbox gateway adapter", () => {
+  it("replaces only an expired unexecuted quote and preserves the exact workload with a stable retry key", async () => {
+    const old = {
+      id: "job-1",
+      status: "cancelled",
+      deadline: 1,
+      attempts: 0,
+      payment: { chain_id: 84532 },
+      spec: {
+        mode: { kind: "paid_usdc", operator: "worker", max_cost_microusdc: 2000 },
+        workload: { kind: "embeddings", texts: ["original"], model_digest: "pinned" },
+        resources: { cpu_threads: 1, memory_mib: 1024, require_gpu: true },
+      },
+    };
+    fake.request.mockImplementation(async (_method: string, path: string) =>
+      path === "/v1/jobs" ? { id: "replacement" } : old,
+    );
+    for (const status of ["cancelled", "refunded"]) {
+      old.status = status;
+      const result = await invoke("soapbox.requote", {
+        id: "job-1",
+        workload: { texts: ["tampered"] },
+      });
+      expect(result).toHaveBeenCalledWith(true, { id: "replacement" });
+    }
+    expect(fake.request).toHaveBeenCalledWith("POST", "/v1/jobs", {
+      ...old.spec,
+      idempotency_key: "requote-job-1",
+    });
+    expect(fake.fund).not.toHaveBeenCalled();
+    expect(fake.wallet).not.toHaveBeenCalled();
+  });
+  it("refuses fresh quotes while payment is unsettled or the original already ran", async () => {
+    for (const [status, attempts] of [
+      ["refund_pending", 0],
+      ["settlement_pending", 1],
+      ["cancelled", 1],
+      ["queued", 0],
+    ]) {
+      fake.request.mockResolvedValue({
+        status,
+        attempts,
+        deadline: 1,
+        payment: {},
+        spec: { mode: { kind: "paid_usdc" } },
+      });
+      expect((await invoke("soapbox.requote", { id: "job-1" })).mock.calls[0][0]).toBe(false);
+    }
+    expect(fake.request.mock.calls.some(([, path]) => path === "/v1/jobs")).toBe(false);
+    expect(fake.fund).not.toHaveBeenCalled();
+  });
+  it("rejects an expired job even when the on-chain quote expiry is later", async () => {
+    const payment = { chain_id: 84532, expires: Date.now() / 1000 + 3600, amount_microusdc: 2000 };
+    fake.request.mockResolvedValue({ status: "awaiting_payment", deadline: 1, payment });
+    expect(
+      (await invoke("soapbox.payment.fund", { id: "job-1", approval: payment })).mock.calls[0][0],
+    ).toBe(false);
+    expect(fake.wallet).not.toHaveBeenCalled();
+    expect(fake.fund).not.toHaveBeenCalled();
+  });
   it("blocks operator wallet access and funding before creating a wallet", async () => {
     const handlers = createSoapboxHandlers(undefined, { role: "operator", client: fake as never });
     for (const method of [
@@ -51,11 +110,15 @@ describe("Soapbox gateway adapter", () => {
   });
   it("funds through the dedicated wallet while the main wallet remains on Base", async () => {
     const main = { enabled: true, network: "base" as const, walletStorePath: "/mainnet" };
-    const payment = { chain_id: 84532, amount_microusdc: 2000 };
+    const payment = { chain_id: 84532, amount_microusdc: 2000, expires: Date.now() / 1000 + 3600 };
     fake.wallet.mockResolvedValue({ fundSoapbox: fake.fund });
     fake.fund.mockResolvedValue({ status: "funded", txHash: "0xtest" });
     fake.request
-      .mockResolvedValueOnce({ status: "awaiting_payment", payment })
+      .mockResolvedValueOnce({
+        status: "awaiting_payment",
+        payment,
+        deadline: Date.now() / 1000 + 600,
+      })
       .mockResolvedValueOnce({ status: "queued" });
     const respond = vi.fn();
     await createSoapboxHandlers(main)["soapbox.payment.fund"]({

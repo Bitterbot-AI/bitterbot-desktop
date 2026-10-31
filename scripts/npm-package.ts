@@ -37,6 +37,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { VERSION_DIR_RE } from "../src/infra/tarball-install.js";
 
 export type PackageManifest = {
   name?: string;
@@ -178,9 +179,9 @@ export function launcherManifestProblems(pkg: PackageManifest): string[] {
   if (engines?.node !== LAUNCHER_NODE_ENGINE) {
     problems.push(`engines.node must be "${LAUNCHER_NODE_ENGINE}"`);
   }
-  if (!/^\d+\.\d+\.\d+$/.test(String(pkg.version ?? ""))) {
+  if (!VERSION_DIR_RE.test(String(pkg.version ?? ""))) {
     problems.push(
-      `version must be X.Y.Z (the release the launcher installs), got ${String(pkg.version)}`,
+      `version must be X.Y.Z or X.Y.Z-beta.N (the exact release the launcher installs), got ${String(pkg.version)}`,
     );
   }
   for (const key of ["main", "exports", "gypfile", "pnpm", "packageManager"]) {

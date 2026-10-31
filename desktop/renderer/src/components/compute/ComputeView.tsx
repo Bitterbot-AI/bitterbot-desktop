@@ -531,6 +531,12 @@ export function ComputeView() {
                 job={selected}
                 busy={busy}
                 canFund={!operatorOnly}
+                replaceQuote={() =>
+                  void run(async () => {
+                    setSelected(await request<SoapboxJob>("soapbox.requote", { id: selected.id }));
+                    await refresh();
+                  })
+                }
                 fund={() =>
                   void run(async () => {
                     const response = await request<{ job: SoapboxJob }>(

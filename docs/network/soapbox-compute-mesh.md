@@ -63,12 +63,18 @@ machinery; there is no second DHT, blockchain, wallet or publicly exposed coordi
 - The operator grants selected pools/projects in the UI. The gateway creates a durable,
   peer-specific Rust submitter principal. The runtime stores only a token hash. The raw
   credential stays in the operator gateway's protected local SQLite database.
-- The four `compute/v1/{access,submit,job,cancel}` methods use the existing Noise-encrypted
+- The `compute/v1/{access,submit,job,cancel,cancel-intent}` methods use the existing Noise-encrypted
   libp2p request-response transport. The authenticated stream peer selects its grant.
   Circle membership alone grants no Compute permission. No generic gateway method proxy exists.
 - Revocation first disables gateway access, then revokes the runtime credential and cancels
   outstanding jobs. If the coordinator is unavailable, access stays disabled and the UI
-  action must be retried to finish runtime cancellation.
+  reconciliation retries automatically on service ticks and after restart.
+- `cancel-intent` remains available after revocation, bound to the authenticated
+  peer's public key and original batch/shard key. The admin-only runtime endpoint
+  atomically records a cancellation fence and cancels any matching private/collective
+  job. It never submits work, creates a grant, or returns inputs/results. The journal
+  survives restart and re-admission. Missing-job entries are bounded per identity
+  and globally; a full journal refuses new acknowledgements rather than dropping fences.
 
 ### Distributed workloads
 
@@ -82,8 +88,10 @@ shard steps in flight. CPU shards reserve 256 MiB; the current embedding adapter
 The durable journal records intent before submission. Retries after a timeout or restart
 reuse the same coordinator idempotency key. An ambiguous submission stays on its original
 peer, avoiding duplicate work elsewhere. The runtime handles worker lease retries within
-that coordinator. Cancel remains pending while a peer is offline; it does not pretend an
-unreachable node has acknowledged cancellation. CPU results are recomputed by the buyer.
+that coordinator. Preflight failure alone is not a submission attempt; such work
+cancels locally. Sent or ambiguous work stays pending while a peer is offline and
+retries cancellation only. The buyer validates the returned intent/job binding before
+accepting acknowledgement. CPU results are recomputed by the buyer.
 GPU results receive shape and pinned-runtime checks and still require trusted operators.
 
 An isolated GPU worker acquires the host GPU reservation before registering its capacity
@@ -141,6 +149,12 @@ pinned GPU embeddings and revocation. `SOAPBOX_BIN`, `ORCHESTRATOR_BIN` and
 `SOAPBOX_SANDBOX_CONFIG` select matching builds and a pinned sandbox image. It uses no wallet
 and makes no payment. Local processes share this computer's hardware; this is not a
 two-physical-host acceptance result.
+
+`scripts/compute-cancellation-e2e.ts` exercises real loopback P2P and Rust
+coordinator failures: offline/denied preflight, lost submit replies, cancellation
+before a delayed submit, revocation during a lease, coordinator and P2P restarts,
+completed work, and cross-identity forgery. Its CPU lease driver is synthetic;
+GPU execution is validated separately. It loads no wallet and sends no payments.
 
 Colocated protocol, transport, batching, gateway authorization and UI tests cover spoofed
 identity, stale/tampered metadata, frame limits, denied methods, lost responses, cancellation
@@ -201,3 +215,30 @@ The packaged plugin finds that archive without an overlay or source checkout.
 Base Sepolia and mainnet wallets remain separate. Follow the
 [buyer and operator guide](./soapbox.md); the older overlay acceptance above is
 historical evidence, not a substitute for testing the new release artifacts.
+
+### P2P is connected, but Compute discovery is unavailable
+
+Check the sidecar path reported in the gateway startup log. Older app versions let a source checkout's
+`orchestrator/target/release` or `target/debug` binary take precedence over the
+downloaded sidecar in `~/.bitterbot/bin`. An old development binary can connect to
+the skill network while rejecting `bitterbot/compute/v1` with an error such as
+`only bitterbot/circle/*/v1 topics allowed`.
+
+The current resolver prefers the bundled release binary, then the installed
+sidecar, and uses local Cargo builds only as a fallback. An explicit
+`p2p.orchestratorBinary` still takes priority, including for intentional development
+builds; update or remove an outdated override when upgrading. Releases bundle
+the verified 0.2.4 sidecar; from the release after v1.11.0 they pin Soapbox rc10
+for new Linux x64 operator setups (v1.10.0 through v1.11.0 pinned rc5).
+
+Set `p2p.orchestratorBinary` to a versioned, signature-verified compatible release
+binary (0.2.4 supports the Compute topic and descriptor signer), then restart the
+gateway. Preserve the existing P2P key directory so the node keeps its identity
+and grants. Compute remains on, and the separate Base Sepolia wallet is unchanged.
+A successful status poll clears the UI's connection warning; failed user actions
+remain visible independently of background polling.
+
+Verify discovery with a separate peer receiving a fresh, valid signed descriptor.
+The panel's advertised GPU total counts discovered remote peers, so it can be zero
+on the operator itself even when that operator is advertising a GPU. Discovery
+does not grant workload access: existing pool/project approval is still required.

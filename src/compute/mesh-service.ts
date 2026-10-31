@@ -3,10 +3,13 @@ import type { SoapboxJob, SoapboxStatus } from "../infra/soapbox-client.js";
 import { SoapboxClient } from "../infra/soapbox-client.js";
 import {
   COMPUTE_TOPIC,
+  COMPUTE_METHODS,
   DESCRIPTOR_TTL_MS,
   decodeMesh,
   encodeMesh,
   parseDescriptor,
+  peerIdForPublicKey,
+  type CancellationReceipt,
   type MeshBridge,
   type ComputeDescriptor,
 } from "./mesh-protocol.js";
@@ -15,12 +18,6 @@ import type { ComputeMeshSnapshot } from "./mesh-types.js";
 import { advanceBatch, validateBatch, type BatchRequest } from "./mesh-work.js";
 
 export type MeshBackend = { admin: SoapboxClient; client(token: string): SoapboxClient };
-export const COMPUTE_METHODS = new Set([
-  "compute/v1/access",
-  "compute/v1/submit",
-  "compute/v1/job",
-  "compute/v1/cancel",
-]);
 type RpcReply = { ok: boolean; result?: unknown; error?: string };
 export class ComputeMeshService {
   private timer?: ReturnType<typeof setInterval>;
@@ -37,6 +34,7 @@ export class ComputeMeshService {
   private mutations: Promise<unknown> = Promise.resolve();
   private requests = new Set<Promise<RpcReply>>();
   private batchCursor = 0;
+  private revocationCursor = 0;
   constructor(
     readonly bridge: MeshBridge,
     readonly store: ComputeMeshStore,
@@ -86,6 +84,8 @@ export class ComputeMeshService {
     return this.cycle;
   }
   private async runCycle(): Promise<void> {
+    // Retry the durable journal even without discovery or incoming requests.
+    await this.reconcileRevocations();
     if (Date.now() - this.lastAdvertised > 30_000) {
       try {
         const backend = this.backend();
@@ -159,7 +159,9 @@ export class ComputeMeshService {
     return {
       enabled: true,
       ready: this.ready,
-      error: this.lastError,
+      error: this.store.pendingRevocations().length
+        ? "Access disabled; coordinator revocation is pending and will retry automatically"
+        : this.lastError,
       peerId: this.identity?.peerId,
       hosting: Boolean(
         this.local?.capabilities?.mesh_admissions && this.local?.principal?.roles.includes("admin"),
@@ -196,16 +198,20 @@ export class ComputeMeshService {
       if (!valid(pools) || !valid(projects) || pools.length + projects.length === 0)
         throw Error("Choose at least one pool or project");
       const old = this.store.grant(peerId);
+      // Finish an earlier revoke before re-admission, so a stale retry cannot
+      // remove a new grant and old queued work cannot be revived by re-granting.
+      if (old && !old.enabled) await this.finishRevocation(old, backend);
       const grant: MeshGrant = {
         peerId,
         pubkey: peer.pubkey,
         principal: `mesh_${Buffer.from(peer.pubkey, "base64").toString("hex")}`,
-        token: old?.token ?? randomBytes(32).toString("hex"),
+        token: randomBytes(32).toString("hex"),
         pools,
         projects,
         enabled: false,
       };
-      // Journal intent before touching the runtime. A crash can only deny access.
+      // Journal local denial before touching the runtime. Interrupted updates
+      // are reconciled as revocations before this peer can be re-admitted.
       this.store.saveGrant(grant);
       await backend.admin.request("POST", "/v1/admissions", {
         public_key: Buffer.from(peer.pubkey, "base64").toString("hex"),
@@ -226,14 +232,36 @@ export class ComputeMeshService {
       this.store.saveGrant(grant);
       const backend = this.backend();
       if (!backend)
-        throw Error("Access disabled; reconnect coordinator to cancel outstanding jobs");
-      await backend.admin.request(
-        "POST",
-        `/v1/admissions/${Buffer.from(grant.pubkey, "base64").toString("hex")}/revoke`,
-        {},
-      );
-      this.store.revoke(peerId);
-      this.store.activity(peerId, "access_revoked");
+        throw Error("Access disabled; revocation will retry when the coordinator returns");
+      await this.finishRevocation(grant, backend);
+    });
+  }
+  private async finishRevocation(grant: MeshGrant, backend: MeshBackend): Promise<void> {
+    await backend.admin.request(
+      "POST",
+      `/v1/admissions/${Buffer.from(grant.pubkey, "base64").toString("hex")}/revoke`,
+      {},
+      3000,
+    );
+    this.store.revoke(grant.peerId);
+    this.store.activity(grant.peerId, "access_revoked");
+  }
+  private reconcileRevocations(): Promise<void> {
+    return this.mutate(async () => {
+      const pending = this.store.pendingRevocations();
+      const backend = this.backend();
+      if (!backend || pending.length === 0) return;
+      // Bound each cycle and rotate failures so one peer cannot starve others.
+      const start = this.revocationCursor % pending.length;
+      const count = Math.min(4, pending.length);
+      this.revocationCursor = start + count;
+      for (let i = 0; i < count; i++) {
+        try {
+          await this.finishRevocation(pending[(start + i) % pending.length]!, backend);
+        } catch {
+          // Keep the disabled journal entry for the next tick or process restart.
+        }
+      }
     });
   }
   private mutate<T>(fn: () => Promise<T>): Promise<T> {
@@ -251,7 +279,8 @@ export class ComputeMeshService {
   private async handleRequest(peerId: string, method: string, params: unknown): Promise<RpcReply> {
     if (!COMPUTE_METHODS.has(method)) return { ok: false, error: "method not allowed" };
     const grant = this.store.grant(peerId);
-    if (!grant?.enabled) return { ok: false, error: "Operator approval required" };
+    const cancellation = method === "compute/v1/cancel-intent";
+    if (!cancellation && !grant?.enabled) return { ok: false, error: "Operator approval required" };
     const now = Date.now();
     for (const [key, r] of this.rates)
       if (now - r.at > 60_000 && r.active === 0) this.rates.delete(key);
@@ -268,6 +297,25 @@ export class ComputeMeshService {
       const p = params as Record<string, unknown>;
       const backend = this.backend();
       if (!backend) throw Error("Unavailable");
+      if (cancellation) {
+        // The transport authenticates peerId. Cancellation is confined to its
+        // own intent namespace and remains available after access is revoked.
+        if (
+          typeof p.publicKey !== "string" ||
+          peerIdForPublicKey(p.publicKey) !== peerId ||
+          typeof p.key !== "string" ||
+          !/^mesh-[a-f0-9-]{36}-\d{1,3}$/.test(p.key)
+        )
+          throw Error("Invalid cancellation identity or intent");
+        const result = await backend.admin.request<CancellationReceipt>(
+          "POST",
+          `/v1/admissions/${Buffer.from(p.publicKey, "base64").toString("hex")}/cancel`,
+          { idempotency_key: p.key },
+        );
+        this.store.activity(peerId, "cancellation_acknowledged");
+        return { ok: true, result };
+      }
+      if (!grant?.enabled) throw Error("Operator approval required");
       const client = backend.client(grant.token);
       if (method === "compute/v1/access")
         return { ok: true, result: { pools: grant.pools, projects: grant.projects } };
@@ -322,6 +370,25 @@ export class ComputeMeshService {
     ) as { ok?: unknown; result?: unknown };
     if (!reply || reply.ok !== true) throw Error("Peer refused request or is unavailable");
     return reply.result as T;
+  }
+  async cancelRemote(peer: string, key: string): Promise<CancellationReceipt> {
+    const identity = this.identity ?? (await this.bridge.getIdentity());
+    const receipt = await this.call<CancellationReceipt>(peer, "compute/v1/cancel-intent", {
+      publicKey: identity.pubkey,
+      key,
+    });
+    if (
+      !receipt ||
+      receipt.idempotency_key !== key ||
+      !(
+        receipt.job_id === null ||
+        (typeof receipt.job_id === "string" && /^[a-f0-9-]{36}$/.test(receipt.job_id))
+      ) ||
+      !["cancelled", "succeeded", "failed"].includes(receipt.status) ||
+      (receipt.job_id === null && receipt.status !== "cancelled")
+    )
+      throw Error("Invalid cancellation acknowledgement");
+    return receipt;
   }
   submit(request: BatchRequest): MeshBatch {
     validateBatch(request);
@@ -394,6 +461,16 @@ export class ComputeMeshService {
     if (!batch) throw Error("Unknown batch");
     if (batch.status === "running") {
       batch.status = "cancelling";
+      for (const shard of batch.shards) {
+        if (!shard.jobId && shard.attempts === 0) {
+          shard.status = "cancelled";
+          shard.error = undefined;
+        }
+      }
+      if (batch.shards.every((s) => ["succeeded", "failed", "cancelled"].includes(s.status))) {
+        batch.status = "cancelled";
+        this.store.activity("", "batch_cancelled", batch.inputs.length);
+      }
       this.store.saveBatch(batch);
     }
   }

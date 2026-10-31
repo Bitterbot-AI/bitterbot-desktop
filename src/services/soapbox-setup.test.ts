@@ -52,10 +52,74 @@ beforeEach(async () => {
   } as SoapboxStatus);
 });
 afterEach(async () => {
+  await setup.stop();
   vi.restoreAllMocks();
   await rm(directory, { recursive: true, force: true });
 });
 describe("Compute onboarding", () => {
+  it("saves buyer profiles, switches back without touching the main wallet, and rechecks revocation", async () => {
+    const original = JSON.parse(await readFile(configPath, "utf8"));
+    await setup.import(connection, "buyer");
+    await setup.activate();
+    await setup.stop();
+    setup = new SoapboxSetup({ root: directory, configPath, configuredRole: "participant" });
+    const first = (await setup.status()).profiles![0];
+    coordinatorStatus.mockResolvedValue({
+      principal: { id: "tester-2", roles: ["submitter"] },
+      payment_account: { chain_id: 84532, address },
+      active_jobs: 0,
+    } as SoapboxStatus);
+    await setup.mutate(() => setup.newProfile(), true);
+    await setup.mutate(() => setup.import({ ...connection, id: "tester-2" }, "buyer"));
+    expect((await setup.status()).addingProfile).toBe(true);
+    // Wallet, preparation and import do not replace the running profile.
+    expect((await setup.status()).profiles!.find((p) => p.id === first.id)?.active).toBe(true);
+    await setup.activate();
+    await setup.stop();
+    setup = new SoapboxSetup({ root: directory, configPath, configuredRole: "participant" });
+    const before = await readFile(configPath, "utf8");
+    coordinatorStatus.mockRejectedValueOnce(new Error("revoked"));
+    await expect(setup.switchProfile(first.id)).rejects.toThrow("revoked");
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    coordinatorStatus.mockResolvedValue({
+      principal: { id: "tester", roles: ["submitter"] },
+      payment_account: { chain_id: 84532, address },
+      active_jobs: 0,
+    } as SoapboxStatus);
+    await setup.switchProfile(first.id);
+    expect((await setup.status()).profiles).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: first.id, active: true })]),
+    );
+    const after = JSON.parse(await readFile(configPath, "utf8"));
+    expect(after.tools).toEqual(original.tools);
+    expect(after.channels).toEqual(original.channels);
+    const registry = await readFile(path.join(directory, "profiles.json"), "utf8");
+    expect(registry).not.toMatch(/main-wallet|cccccccc|private-secret|private-key/);
+  });
+  it("blocks profile changes with pending payments, unknown counts, or an offline coordinator", async () => {
+    await setup.import(connection, "buyer");
+    await setup.activate();
+    await setup.stop();
+    setup = new SoapboxSetup({ root: directory, configPath, configuredRole: "participant" });
+    const first = (await setup.status()).profiles![0];
+    const before = await readFile(configPath, "utf8");
+    for (const count of [1, undefined]) {
+      coordinatorStatus.mockResolvedValue({
+        principal: { id: "tester", roles: ["submitter"] },
+        payment_account: { chain_id: 84532, address },
+        active_jobs: count,
+        jobs: [],
+      } as SoapboxStatus);
+      await expect(setup.switchProfile(first.id)).rejects.toThrow(
+        count ? "pending payments" : "active-job count",
+      );
+      expect(await readFile(configPath, "utf8")).toBe(before);
+    }
+    coordinatorStatus.mockRejectedValue(new Error("offline"));
+    await expect(setup.switchProfile(first.id)).rejects.toThrow("offline");
+    expect(await readFile(configPath, "utf8")).toBe(before);
+    await expect(setup.switchProfile("../bad")).rejects.toThrow("profile ID");
+  });
   it("creates a verified local operator without enrollment and preserves wallet settings", async () => {
     const original = JSON.parse(await readFile(configPath, "utf8"));
     const archive = path.join(directory, "runtime.tar.gz");
@@ -87,6 +151,7 @@ describe("Compute onboarding", () => {
       config: { mode: "mesh-operator" },
     });
     expect((await local.status()).configuredRole).toBe("mesh-operator");
+    await local.stop();
   });
   it("keeps configuration intact when one-click runtime verification fails", async () => {
     const before = await readFile(configPath, "utf8");

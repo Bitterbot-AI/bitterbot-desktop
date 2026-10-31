@@ -21,16 +21,31 @@ export function WorkerPanel({
             <span className="font-medium text-sm">{node.id}</span>
             <span className="text-xs">
               {node.online ? "Online" : "Offline"}
-              {node.operator_paused || node.offer.paused ? " · Paused" : ""}
+              {node.operator_paused
+                ? " · Paused by operator"
+                : node.offer.paused
+                  ? node.offer.gpu_unavailable_reason === "Checking sandbox and runtime readiness"
+                    ? " · Checking readiness"
+                    : " · Waiting for resources"
+                  : ""}
             </span>
           </div>
+          {!node.operator_paused &&
+            node.offer.gpu_unavailable_reason === "Checking sandbox and runtime readiness" && (
+              <p className="text-xs text-muted-foreground">
+                Checking isolation and warming the model. This can take a few minutes after startup;
+                work starts when checks pass.
+              </p>
+            )}
           <p className="text-xs text-muted-foreground">
             {node.offer.cpu_threads} CPU slot · {node.offer.memory_mib} MiB RAM allowance
           </p>
           <p className="text-xs text-muted-foreground">
             {node.offer.isolation === "docker_v1"
               ? "Isolated jobs · network disabled"
-              : "Shared host · development only"}
+              : node.offer.paused
+                ? "Isolation not ready · new work blocked"
+                : "Shared host · development only"}
           </p>
           {node.offer.hardware?.map((gpu) => (
             <p key={gpu.uuid} className="text-xs">
@@ -48,9 +63,12 @@ export function WorkerPanel({
                 : "GPU unavailable"}
             </p>
           )}
-          {node.offer.gpu_unavailable_reason && (
-            <p className="text-xs text-warning">GPU waiting: {node.offer.gpu_unavailable_reason}</p>
-          )}
+          {node.offer.gpu_unavailable_reason &&
+            node.offer.gpu_unavailable_reason !== "Checking sandbox and runtime readiness" && (
+              <p className="text-xs text-warning">
+                GPU waiting: {node.offer.gpu_unavailable_reason}
+              </p>
+            )}
           <p className="text-xs text-muted-foreground">
             {node.offer.modes.join(" / ")} · worker-reported measurements
           </p>

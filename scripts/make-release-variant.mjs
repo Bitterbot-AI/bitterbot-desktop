@@ -91,7 +91,10 @@ try {
     fail(`expected one top directory in ${args.tarball}, found ${tops.join(", ")}`);
   }
   const oldTop = tops[0];
-  const m = /^bitterbot-(\d+\.\d+\.\d+)-(.+)$/.exec(oldTop);
+  const m =
+    /^bitterbot-(\d+\.\d+\.\d+(?:-beta\.[1-9]\d*)?)-(linux-x64|linux-arm64|darwin-x64|darwin-arm64)$/.exec(
+      oldTop,
+    );
   if (!m) {
     fail(`unexpected top directory ${oldTop}`);
   }

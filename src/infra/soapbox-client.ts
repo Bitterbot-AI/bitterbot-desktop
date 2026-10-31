@@ -1,3 +1,4 @@
+import { withSoapboxOperation } from "./soapbox-transition.js";
 /** Versioned adapter to the standalone Soapbox service. Secrets stay in the gateway. */
 export type SoapboxPaymentQuote = {
   chain_id: number;
@@ -21,7 +22,9 @@ export type SoapboxJob = {
   owner: string;
   status: string;
   attempts: number;
+  deadline?: number;
   spec: {
+    resources?: { cpu_threads: number; memory_mib: number; require_gpu: boolean };
     mode: SoapboxMode;
     workload: {
       kind: "sha256" | "embeddings";
@@ -66,6 +69,7 @@ export type SoapboxWalletStatus = {
 
 export type SoapboxStatus = {
   enabled: boolean;
+  active_jobs?: number;
   local_operator?: boolean;
   capabilities?: { mesh_admissions?: boolean };
   api_version?: number;
@@ -118,6 +122,16 @@ export class SoapboxClient {
   }
 
   async request<T>(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+    timeoutMs = 10_000,
+  ): Promise<T> {
+    const run = () => this.perform<T>(method, path, body, timeoutMs);
+    return method === "POST" ? withSoapboxOperation(run) : run();
+  }
+
+  private async perform<T>(
     method: "GET" | "POST",
     path: string,
     body?: unknown,

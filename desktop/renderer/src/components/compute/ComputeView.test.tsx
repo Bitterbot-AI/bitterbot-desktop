@@ -52,7 +52,9 @@ describe("Compute view", () => {
     const job = {
       id: "paid-job",
       status: "awaiting_payment",
+      deadline: Math.floor(Date.now() / 1000) + 600,
       payment: {
+        expires: Math.floor(Date.now() / 1000) + 3600,
         amount_microusdc: 2000,
         operator: `0x${"3".repeat(40)}`,
         chain_id: 84532,

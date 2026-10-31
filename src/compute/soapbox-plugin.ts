@@ -27,10 +27,10 @@ export function registerSoapboxPlugin(api: BitterbotPluginApi) {
     configPath: resolveConfigPath(),
     mainWallet: api.config.tools?.wallet,
     bundledRuntimeArchive:
-      typeof api.pluginConfig?.bundledRuntimeArchive === "string"
-        ? api.pluginConfig.bundledRuntimeArchive
-        : bundledArchive && existsSync(bundledArchive)
-          ? bundledArchive
+      bundledArchive && existsSync(bundledArchive)
+        ? bundledArchive
+        : typeof api.pluginConfig?.bundledRuntimeArchive === "string"
+          ? api.pluginConfig.bundledRuntimeArchive
           : undefined,
     configuredRole: setupOnly
       ? undefined
