@@ -5,9 +5,12 @@ import * as readline from "node:readline";
 import { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
-  ClientSideConnection,
+  client as createClientApp,
+  methods,
   PROTOCOL_VERSION,
   ndJsonStream,
+  type ClientConnection,
+  type ClientContext,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
@@ -244,7 +247,10 @@ export type AcpClientOptions = {
 };
 
 export type AcpClientHandle = {
-  client: ClientSideConnection;
+  /** The ACP connection to the spawned agent process. */
+  connection: ClientConnection;
+  /** Peer context for calling agent-side methods (initialize, session/*). */
+  peer: ClientContext;
   agent: ChildProcess;
   sessionId: string;
 };
@@ -345,20 +351,18 @@ export async function createAcpClient(opts: AcpClientOptions = {}): Promise<AcpC
   const output = Readable.toWeb(agent.stdout) as unknown as ReadableStream<Uint8Array>;
   const stream = ndJsonStream(input, output);
 
-  const client = new ClientSideConnection(
-    () => ({
-      sessionUpdate: async (params: SessionNotification) => {
-        printSessionUpdate(params);
-      },
-      requestPermission: async (params: RequestPermissionRequest) => {
-        return resolvePermissionRequest(params);
-      },
-    }),
-    stream,
-  );
+  const app = createClientApp({ name: "bitterbot-acp-client" })
+    .onNotification(methods.client.session.update, ({ params }) => {
+      printSessionUpdate(params);
+    })
+    .onRequest(methods.client.session.requestPermission, ({ params }) =>
+      resolvePermissionRequest(params),
+    );
+  const connection = app.connect(stream);
+  const peer = connection.agent;
 
   log("initializing");
-  await client.initialize({
+  await peer.request(methods.agent.initialize, {
     protocolVersion: PROTOCOL_VERSION,
     clientCapabilities: {
       fs: { readTextFile: true, writeTextFile: true },
@@ -368,20 +372,21 @@ export async function createAcpClient(opts: AcpClientOptions = {}): Promise<AcpC
   });
 
   log("creating session");
-  const session = await client.newSession({
+  const session = await peer.request(methods.agent.session.new, {
     cwd,
     mcpServers: [],
   });
 
   return {
-    client,
+    connection,
+    peer,
     agent,
     sessionId: session.sessionId,
   };
 }
 
 export async function runAcpClientInteractive(opts: AcpClientOptions = {}): Promise<void> {
-  const { client, agent, sessionId } = await createAcpClient(opts);
+  const { connection, peer, agent, sessionId } = await createAcpClient(opts);
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -400,13 +405,14 @@ export async function runAcpClientInteractive(opts: AcpClientOptions = {}): Prom
         return;
       }
       if (text === "exit" || text === "quit") {
+        connection.close();
         agent.kill();
         rl.close();
         process.exit(0);
       }
 
       try {
-        const response = await client.prompt({
+        const response = await peer.request(methods.agent.session.prompt, {
           sessionId,
           prompt: [{ type: "text", text }],
         });
