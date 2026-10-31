@@ -127,7 +127,14 @@ async function promptChannelMode(runtime: RuntimeEnv): Promise<ChannelsWizardMod
   ) as ChannelsWizardMode;
 }
 
-type SearchProviderChoice = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
+type SearchProviderChoice =
+  | "brave"
+  | "perplexity"
+  | "grok"
+  | "tavily"
+  | "parallel"
+  | "serply"
+  | "keenable";
 
 const SEARCH_PROVIDER_META: Record<
   SearchProviderChoice,
@@ -169,6 +176,12 @@ const SEARCH_PROVIDER_META: Record<
     envVar: "SERPLY_API_KEY",
     keyPlaceholder: "",
   },
+  keenable: {
+    label: "Keenable",
+    hint: "Free, keyless; optional KEENABLE_API_KEY lifts rate limits",
+    envVar: "KEENABLE_API_KEY",
+    keyPlaceholder: "",
+  },
 };
 
 async function promptWebToolsConfig(
@@ -182,7 +195,7 @@ async function promptWebToolsConfig(
   note(
     [
       "Web search lets your agent look things up online using the `web_search` tool.",
-      "Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply, and Parallel (keyless).",
+      "Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply, and keyless Parallel or Keenable.",
       "Docs: https://docs.bitterbot.ai/tools/web",
     ].join("\n"),
     "Web search",
@@ -193,7 +206,9 @@ async function promptWebToolsConfig(
       message: "Enable web_search?",
       initialValue:
         existingSearch?.enabled ??
-        (existingProvider === "parallel" || Boolean(existingSearch?.apiKey)),
+        (existingProvider === "parallel" ||
+          existingProvider === "keenable" ||
+          Boolean(existingSearch?.apiKey)),
     }),
     runtime,
   );
@@ -234,7 +249,9 @@ async function promptWebToolsConfig(
         await text({
           message: hasExistingKey
             ? `${meta.label} API key (leave blank to keep current or use ${meta.envVar})`
-            : `${meta.label} API key (paste it here; leave blank to use ${meta.envVar})`,
+            : provider === "keenable"
+              ? `${meta.label} API key (optional; leave blank to search keyless or use ${meta.envVar})`
+              : `${meta.label} API key (paste it here; leave blank to use ${meta.envVar})`,
           placeholder: hasExistingKey ? "Leave blank to keep current" : meta.keyPlaceholder,
         }),
         runtime,
@@ -255,7 +272,7 @@ async function promptWebToolsConfig(
             },
           };
         }
-      } else if (!hasExistingKey) {
+      } else if (!hasExistingKey && provider !== "keenable") {
         note(
           [
             `No key stored yet, so web_search (${meta.label}) will stay unavailable.`,

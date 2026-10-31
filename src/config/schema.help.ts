@@ -273,7 +273,7 @@ export const FIELD_HELP: Record<string, string> = {
   "tools.message.broadcast.enabled": "Enable broadcast action (default: true).",
   "tools.web.search.enabled": "Enable the web_search tool (requires a provider API key).",
   "tools.web.search.provider":
-    'Search provider ("brave", "perplexity", "grok", "tavily", "parallel", or "serply").',
+    'Search provider ("brave", "perplexity", "grok", "tavily", "parallel", "serply", or "keenable").',
   "tools.web.search.apiKey": "Brave Search API key (fallback: BRAVE_API_KEY env var).",
   "tools.web.search.maxResults": "Default number of results to return (1-10).",
   "tools.web.search.timeoutSeconds": "Timeout in seconds for web_search requests.",
@@ -288,6 +288,8 @@ export const FIELD_HELP: Record<string, string> = {
   "tools.web.search.tavily.searchDepth":
     'Tavily search depth ("basic" or "advanced"; default: "basic").',
   "tools.web.search.serply.apiKey": "Serply API key (fallback: SERPLY_API_KEY env var).",
+  "tools.web.search.keenable.apiKey":
+    "Optional Keenable API key; lifts the keyless rate limits (fallback: KEENABLE_API_KEY env var).",
   "tools.web.fetch.enabled": "Enable the web_fetch tool (lightweight HTTP fetch).",
   "tools.web.fetch.maxChars": "Max characters returned by web_fetch (truncated).",
   "tools.web.fetch.maxCharsCap":
