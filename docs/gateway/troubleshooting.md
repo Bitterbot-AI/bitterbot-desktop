@@ -153,6 +153,22 @@ span. Tune or disable via env: `BITTERBOT_EVENT_LOOP_MONITOR=0` (off),
 `BITTERBOT_EVENT_LOOP_SAMPLE_MS` (window, default 30000),
 `BITTERBOT_EVENT_LOOP_WARN_MS` (threshold, default 250).
 
+Stalls with no RPC in flight (a timer-driven memory sweep, a GC pause) leave
+nothing to line up against, so the monitor also attributes them. After the
+first stalled window it arms V8's sampling profiler; every later window whose
+worst stall reaches `BITTERBOT_EVENT_LOOP_PROFILE_MS` (default 1000) logs the
+frames that held the loop:
+
+```
+[gateway/event-loop] event loop stall attribution: max=8577ms samples=2400 over 30000ms
+   27%   8100ms  detectOrphanClusters /home/me/.bitterbot/app/current/dist/entry.js:88123
+    3%    900ms  (garbage collector)
+```
+
+Self time per frame, heaviest first; `(garbage collector)` means the stall was
+a GC pause. The profiler disarms after five quiet minutes, so a healthy gateway
+pays nothing for it. Set `BITTERBOT_EVENT_LOOP_PROFILE=0` to never arm it.
+
 A healthy build should not exhibit this. If it reappears:
 
 - Watch for RPC durations ballooning in the logs (e.g. `skills.network` taking
