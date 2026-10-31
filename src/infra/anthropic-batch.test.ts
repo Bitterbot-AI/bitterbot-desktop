@@ -7,6 +7,7 @@ import {
   normalizeBatchBaseUrl,
   resetAnthropicBatchStateForTest,
   runAnthropicBatchCall,
+  sanitizeBatchCustomId,
 } from "./anthropic-batch.js";
 
 type Call = { url: string; method: string; body?: unknown; headers: Record<string, string> };
@@ -268,5 +269,89 @@ describe("runAnthropicBatchCall", () => {
     expect(batchStopReason("max_tokens")).toBe("length");
     expect(batchStopReason("tool_use")).toBe("toolUse");
     expect(batchStopReason("refusal")).toBe("error");
+  });
+});
+
+describe("sanitizeBatchCustomId", () => {
+  it("keeps ids the Batches API already accepts", () => {
+    expect(sanitizeBatchCustomId("lane-1")).toBe("lane-1");
+    expect(sanitizeBatchCustomId("memory-dream_run-1")).toBe("memory-dream_run-1");
+  });
+
+  it("replaces the slashes in feature-derived ids and trims the ends", () => {
+    expect(sanitizeBatchCustomId("memory/dream-run-1")).toBe("memory-dream-run-1");
+    expect(sanitizeBatchCustomId("skills/evolution-")).toBe("skills-evolution");
+    expect(sanitizeBatchCustomId("rlm/deep-recall-a:b c")).toBe("rlm-deep-recall-a-b-c");
+  });
+
+  it("clamps to 64 characters without leaving a trailing dash", () => {
+    const long = `${"a".repeat(63)}/${"b".repeat(20)}`;
+    const out = sanitizeBatchCustomId(long);
+    expect(out).toHaveLength(63);
+    expect(out).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+    expect(sanitizeBatchCustomId("x".repeat(80))).toBe("x".repeat(64));
+  });
+
+  it("never returns an empty id", () => {
+    expect(sanitizeBatchCustomId("///")).toMatch(/^[a-zA-Z0-9_-]{1,64}$/);
+  });
+});
+
+describe("runAnthropicBatchCall custom_id", () => {
+  beforeEach(() => resetAnthropicBatchStateForTest());
+
+  it("submits the sanitized id and matches the result line by that same id", async () => {
+    const request = {
+      model: "claude-test",
+      max_tokens: 16,
+      messages: [{ role: "user" as const, content: [{ type: "text" as const, text: "hi" }] }],
+    };
+    const results = `${JSON.stringify({
+      custom_id: "memory-dream-run-1",
+      result: {
+        type: "succeeded",
+        message: {
+          id: "msg_1",
+          role: "assistant",
+          content: [{ type: "text", text: "dreamt" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      },
+    })}\n`;
+    const { fetchImpl } = makeFetch([
+      (c) => {
+        const body = c.body as { requests: Array<{ custom_id: string }> };
+        expect(body.requests[0]?.custom_id).toBe("memory-dream-run-1");
+        return json(200, { id: "msgbatch_2", processing_status: "in_progress", results_url: null });
+      },
+      () =>
+        json(200, {
+          id: "msgbatch_2",
+          processing_status: "ended",
+          results_url: "https://api.anthropic.com/v1/messages/batches/msgbatch_2/results",
+          request_counts: { processing: 0, succeeded: 1, errored: 0, canceled: 0, expired: 0 },
+        }),
+      () => json(200, results),
+    ]);
+    let clock = 0;
+    const out = await runAnthropicBatchCall({
+      apiKey: "sk-test",
+      baseUrl: "https://api.anthropic.com",
+      request,
+      customId: "memory/dream-run-1",
+      fetchImpl,
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      now: () => clock,
+      pollInitialMs: 1_000,
+      pollMaxMs: 2_000,
+      maxWaitMs: 60_000,
+    });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.message.content?.[0]?.text).toBe("dreamt");
+    }
   });
 });

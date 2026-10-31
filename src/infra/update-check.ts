@@ -627,7 +627,50 @@ export function compareSemverStrings(a: string | null, b: string | null): number
   if (pa.patch !== pb.patch) {
     return pa.patch < pb.patch ? -1 : 1;
   }
-  return 0;
+  return comparePrerelease(a, b);
+}
+
+const PRERELEASE_RE = /^v?\d+\.\d+\.\d+-([0-9A-Za-z.-]+)/;
+
+/**
+ * SemVer §11 tie-break once `major.minor.patch` match: a pre-release sorts
+ * before the release it precedes, and two pre-releases compare identifier by
+ * identifier (numeric before alphanumeric, numerics by value, the shorter
+ * list first). Without this a node left on `1.11.0-beta.1` saw `1.11.0` as
+ * equal and was never offered the stable build it preceded.
+ */
+function comparePrerelease(a: string | null, b: string | null): number {
+  const preA = a?.match(PRERELEASE_RE)?.[1] ?? null;
+  const preB = b?.match(PRERELEASE_RE)?.[1] ?? null;
+  if (preA === null && preB === null) {
+    return 0;
+  }
+  if (preA === null || preB === null) {
+    return preA === null ? 1 : -1;
+  }
+  const idsA = preA.split(".");
+  const idsB = preB.split(".");
+  const len = Math.min(idsA.length, idsB.length);
+  for (let i = 0; i < len; i += 1) {
+    const x = idsA[i];
+    const y = idsB[i];
+    if (x === y) {
+      continue;
+    }
+    const xNum = /^\d+$/.test(x);
+    const yNum = /^\d+$/.test(y);
+    if (xNum && yNum) {
+      return Number(x) < Number(y) ? -1 : 1;
+    }
+    if (xNum !== yNum) {
+      return xNum ? -1 : 1;
+    }
+    return x < y ? -1 : 1;
+  }
+  if (idsA.length === idsB.length) {
+    return 0;
+  }
+  return idsA.length < idsB.length ? -1 : 1;
 }
 
 export async function checkUpdateStatus(params: {

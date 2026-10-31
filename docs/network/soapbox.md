@@ -26,8 +26,8 @@ source checkout is unnecessary. The older Soapbox rc4/rc5/rc6 overlays are for
 their recorded Bitterbot versions and must not be installed over an integrated
 release.
 
-Releases up to v1.11.0 bundle Soapbox rc5 for new Linux x64 operator setups; the
-next release bundles rc10, which adds durable cancellation, revocation recovery
+Releases up to v1.11.0 bundle Soapbox rc5 for new Linux x64 operator setups;
+v1.12.0 and later bundle rc10, which adds durable cancellation, revocation recovery
 and readiness checks (see [Permission changes and revocation](#permission-changes-and-revocation)).
 
 Existing installs upgrade with `bitterbot update` or the in-app update; the

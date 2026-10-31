@@ -151,13 +151,32 @@ export function resetAnthropicBatchStateForTest(): void {
   unsupportedUntil.clear();
 }
 
+const CUSTOM_ID_MAX_LENGTH = 64;
+
+/**
+ * Coerce a caller-supplied id into the shape the Batches API accepts
+ * (`^[a-zA-Z0-9_-]{1,64}$`). Lane callers pass `feature-runId` and features are
+ * slash-separated (`memory/dream`, `skills/evolution`), which the API rejects with
+ * HTTP 400 on every submit; before this coercion no lane ever reached the batch
+ * queue and each call silently paid the live price. Ids that already match are
+ * returned unchanged, so the same value keys the submit and the results lookup.
+ */
+export function sanitizeBatchCustomId(id: string): string {
+  const cleaned = id
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, CUSTOM_ID_MAX_LENGTH)
+    .replace(/-+$/g, "");
+  return cleaned || makeCustomId();
+}
+
 function makeCustomId(seed?: string): string {
   const base = (seed ?? "")
     .replace(/[^a-zA-Z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 40);
   const rand = Math.random().toString(36).slice(2, 10);
-  return `${base || "lane"}-${Date.now().toString(36)}-${rand}`.slice(0, 64);
+  return `${base || "lane"}-${Date.now().toString(36)}-${rand}`.slice(0, CUSTOM_ID_MAX_LENGTH);
 }
 
 function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -226,7 +245,9 @@ export async function runAnthropicBatchCall(
     "x-api-key": params.apiKey,
     "anthropic-version": ANTHROPIC_API_VERSION,
   };
-  const customId = params.customId ?? makeCustomId(params.request.model);
+  const customId = params.customId
+    ? sanitizeBatchCustomId(params.customId)
+    : makeCustomId(params.request.model);
 
   if (isBatchTemporarilyUnsupported(base, now())) {
     return { ok: false, reason: "unsupported", waitedMs: 0, canceled: false };
