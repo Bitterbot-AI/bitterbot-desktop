@@ -118,6 +118,8 @@ export interface MemorySearchManager {
       tagSuperseded?: boolean;
       /** PLAN-59 Phase 0: short call-site tag for the retrieval evidence row. */
       caller?: string;
+      /** Exclude guest/internal searches from owner retrieval evidence. Defaults to true. */
+      observe?: boolean;
     },
   ): Promise<MemorySearchResult[]>;
   readFile(params: {

@@ -61,6 +61,7 @@ export function buildEmbeddedSystemPrompt(params: {
     maturity?: number;
     /** Involuntary proactive-recall facts; rendered into the prompt body. */
     proactiveMemories?: string;
+    onProactiveRecallInjected?: () => void;
     lastSessionBrief?: string;
     sessionCoherence?: string;
   };

@@ -14,7 +14,7 @@ Code: `src/memory/evidence-telemetry.ts` (writer), `src/memory/surfacing-trial.t
     curiosity: {
       evidence: {
         mode: "shadow", // "off" | "observe" | "shadow"; default "shadow"
-        retentionDays: 90, // rows older than this are pruned on the consolidation tick
+        retentionDays: 90, // rows older than this are pruned independently every 30 minutes
         topK: 10, // at most this many retrieval rows per search
       },
     },
@@ -32,7 +32,7 @@ A mode that is not one of the three falls back to `shadow` with a warning; a non
 
 ### `retrieval_hits`
 
-One row per returned result, at most `topK` per search, written in one transaction after the final ordering (fusion, boosts, superseded demotion) is fixed. Guest searches (`guestSearch`) are never recorded. The PLAN-59 Phase 1 pilot harness (`benchmarks/plan59-phase1/`) reads this table, decayed with a 30-day half-life, as the demand term of its need estimate whenever it is present and non-empty on the snapshot under test.
+One row per returned result, at most `topK` per search, written in one transaction after the final ordering (fusion, boosts, superseded demotion) is fixed. Guest searches (`guestSearch`) and non-owner deep-recall searches (including context and live API searches) are never recorded. The PLAN-59 Phase 1 pilot harness (`benchmarks/plan59-phase1/`) reads this table, decayed with a 30-day half-life, as the demand term of its need estimate whenever it is present and non-empty on the snapshot under test.
 
 | column               | meaning                                                                                             |
 | -------------------- | --------------------------------------------------------------------------------------------------- |
@@ -73,6 +73,15 @@ What the agent put in front of the owner, and separately what the owner did abou
 
 Exposure and outcome are kept apart on purpose. A surfaced item is `delivered`; usefulness is only `explicit` when the owner acted. Silence is `unknown` (NULL outcome), never "ignored" or "disliked". A label that arrives for an item with no delivered row (for example a dismiss of a target whose finding was never voiced) creates a `responded` row so the action is kept.
 
+For proactive recall, `delivered` means inclusion in a full model prompt, not
+proof that the owner saw the fact. Selection, discarded prompt assembly and
+minimal prompts record nothing. The formatter supplies only the chunk ids
+that survived its cap. The full prompt renderer acknowledges them using
+`pr:<keyed delivery digest>:<chunk id>`; the digest covers session and run/turn
+identity. Rebuilding the same delivery is idempotent, while distinct turns or
+sessions remain distinct even within the same hour. A caller without a run id
+receives a fresh opaque delivery id for that resolved prompt.
+
 ### `decision_traces`
 
 Shadow mode only. One row per decision the dream engine took where a GCCRF-as-diagnostic routing could have differed.
@@ -86,7 +95,7 @@ Shadow mode only. One row per decision the dream engine took where a GCCRF-as-di
 | `scoring_version` | `gccrf_state.scoring_version` at write time                                              |
 
 - `dream_seed_rank`: legacy = the ids `selectSeeds` returned under `ORDER BY (importance_score + COALESCE(curiosity_reward, curiosity_boost, 0)) / (dream_count + 1)`; proposed = the same `WHERE` and `LIMIT` under `ORDER BY importance_score / (dream_count + 1)`. The dream-count penalty is kept on both sides because it is not a GCCRF signal.
-- `dream_mode_select`: legacy = the modes `selectModes` chose with their adjusted weights and the GCCRF weight in force (0.25 to 0.3); proposed = the modes chosen from the same enabled set with the GCCRF adjustment zeroed. Both selections consume the same random draws, so a divergence reflects the weights and nothing else. The reserved utility-lane slot and the exploration auto-trigger are shared by both.
+- `dream_mode_select`: legacy = the modes `selectModes` chose with their adjusted weights and the GCCRF weight in force (0.25 to 0.3); proposed = the modes chosen from the same enabled set with the GCCRF adjustment zeroed. The counterfactual reuses the live selection's random-draw prefix. If last-mode avoidance requires extra counterfactual iterations, independent cryptographic draws extend that prefix without advancing the live `Math.random` stream. Both draw sequences are stored in the trace for replay. The reserved utility-lane slot and the exploration auto-trigger are shared by both.
 
 ### `evidence_meta`
 
@@ -103,7 +112,7 @@ Digests are HMAC-SHA256 under a key that exists only in this node's database, so
 
 ## Retention and cost
 
-`prune()` runs once per consolidation tick (every 30 minutes by default) after the existing steps, deleting rows older than `retentionDays` in chunks of 2000 with an event-loop yield between chunks, so a backlog can never starve the gateway loop (see the event-loop notes in the memory docs). Every write is best-effort: a telemetry failure is caught and debug-logged and never reaches search or dreaming. A search writes at most `topK` rows in one transaction. The seed-rank shadow query is one extra indexed read per dream cycle; the mode shadow is pure arithmetic.
+`prune()` runs on startup and on its own 30-minute maintenance timer, even when consolidation or evidence collection is disabled. Concurrent maintenance ticks do not overlap, and shutdown drains pruning before closing the database. It deletes rows older than `retentionDays` in chunks of 2000 with an event-loop yield between chunks. This bounds each batch, not its wall-clock latency. Every write is best-effort: a telemetry failure is caught and debug-logged and never reaches search or dreaming. A search writes at most `topK` rows in one transaction. The seed-rank shadow query is one extra indexed read per dream cycle; mode shadowing performs an additional selection, with independent random draws when it needs more than the live choice.
 
 ## How to query it
 
@@ -138,7 +147,7 @@ SELECT kind, COUNT(*) AS traces, SUM(diverged) AS diverged
 | --------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------- |
 | curiosity findings voiced in the system prompt            | `MemoryIndexManager.consumeResearchFindings` (research-findings block) | `curiosity_finding`             | `eligible`, `assigned`, `delivered`                         |
 | `curiosity.dismiss` RPC                                   | `MemoryIndexManager.curiosityDismiss`                                  | labels the finding by target id | outcome `dismissed`, provenance `explicit`                  |
-| proactive recall facts injected into the prompt (PLAN-27) | `MemoryIndexManager.recallForUserTurn`                                 | `proactive_recall`              | `eligible`, `assigned`, `delivered`                         |
+| proactive recall facts injected into the prompt (PLAN-27) | full prompt renderer → `recordProactiveRecallDelivery`                 | `proactive_recall`              | `eligible`, `assigned`, `delivered`                         |
 | anticipation brief offered in the prompt                  | `MemoryIndexManager.consumeDreamBrief`                                 | `dream_brief`                   | `eligible`, `assigned`, `delivered`                         |
 | daily dream digest sent to the owner (PLAN-53 G4)         | `MemoryIndexManager.sendDreamBrief`                                    | `dream_digest`                  | `eligible`, `assigned` before the send; `delivered` after   |
 | explicit owner search (`memory_search` tool)              | `MemoryIndexManager.search`, after the retrieval row                   | crossover marker                | outcome `explicit_retrieval`, provenance `shadow_crossover` |
@@ -235,7 +244,7 @@ Results, 2026-10-28, one node's store, 68 real queries, 3 repetitions, interleav
 | queries                                        | 68 real `memory_search` queries x 3 reps, maxResults 10, topK 10                               |
 | search mean, off / observe                     | 1234 ms / 1310 ms                                                                              |
 | search p50, off / observe                      | 1202 ms / 1224 ms (delta 22 ms)                                                                |
-| search p95, off / observe                      | 2342 ms / 2694 ms (delta 352 ms over 10 samples)                                               |
+| search p95, off / observe                      | 2342 ms / 2694 ms (delta 352 ms; 204 timings per arm)                                          |
 | neutrality: ordered chunk ids identical        | PASS, 204 of 204 comparisons (within-mode drift across reps: off 1, observe 1, the same query) |
 | rows after the off pass                        | 0 (PASS)                                                                                       |
 | rows == min(topK, returned) per observe search | PASS, 2720 rows over 272 searches                                                              |
@@ -243,7 +252,13 @@ Results, 2026-10-28, one node's store, 68 real queries, 3 repetitions, interleav
 | prune at 90 days                               | removed 1360 of 1360 backdated rows, kept 1360, 144 ms (PASS)                                  |
 | stats() == COUNT(*)                            | PASS                                                                                           |
 
-Reading: the migration is one DDL transaction well under a second on a real store. The observe-mode write adds about 22 ms at the median to a 1.2 s search (one WAL commit of 10 rows on this disk); the p95 delta rests on 10 samples and is noise-dominated. The two modes return identical ordered lists on every query and repetition. The one within-mode drift (the same query, the same repetition, in both modes) is a property of search on main, not of the telemetry: the graph channel reads the wall clock and access counters that every search advances, which is also why the gate freezes `Date.now` and runs with the recency boost and hormonal modulation off.
+Reading: the migration is one DDL transaction well under a second on a real store. The observed median difference is about 22 ms and the p95 difference about 352 ms. There are 204 timings per arm, with approximately ten observations in the upper five-percent tail. This run does not quantify uncertainty or isolate WAL-commit latency; the gate does not enforce a latency threshold. It establishes no negligible-overhead claim. The saved aggregate identifies `098582e4+dirty`, not an immutable final PR source hash. The two modes return identical ordered lists on every query and repetition. The one within-mode drift (the same query, the same repetition, in both modes) is a property of search on main, not of the telemetry: the graph channel reads the wall clock and access counters that every search advances, which is also why the gate freezes `Date.now` and runs with the recency boost and hormonal modulation off.
+
+## Independent correction validation (2026-10-29)
+
+The correction checkout is based on main `04bc81f12237d781f557f64a255656cfd19c5f40`, using Node 22.22.1 and the exact pinned dependencies. All 94 distinct targeted tests in 17 files pass, including 15 new regressions for actual prompt inclusion, same-turn deduplication, distinct sessions and turns, dropped formatting candidates, telemetry failure containment, guest deep-recall routes and sandbox separation, live RNG neutrality, and independent retention maintenance/shutdown. The initial test report counted 188 executions because a review symlink caused duplicate discovery; those are not additional tests. The full TypeScript check and type-aware lint of changed code pass. No live store, production gateway or paid provider calls are used by these checks.
+
+These tests establish the corrected instrumentation behavior. They do not measure learning efficacy or establish negligible telemetry latency. See the separate [Phase 1 pilot review](./plan59-phase1-independent-review.md) for the limits of the subsequent stopped experiment.
 
 ## Deliberately not built (Phase 1 and later)
 

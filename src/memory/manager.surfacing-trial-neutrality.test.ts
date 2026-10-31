@@ -206,6 +206,12 @@ describe("surfacing trial is neutral to every hooked surface (PLAN-59 Phase 2 sh
     );
     expect(recallOff.facts).toBeTruthy();
     expect(recallShadow.facts).toBe(recallOff.facts);
+    // Selection is not exposure: the full prompt renderer acknowledges the
+    // facts it included, with the turn's stable id, and only then is the
+    // opportunity logged (Phase 0 correction).
+    const delivery = { id: "run-1", sessionKey: "agent:main:s1" };
+    off.manager.recordProactiveRecallDelivery(recallOff.renderedChunkIds ?? [], delivery);
+    shadow.manager.recordProactiveRecallDelivery(recallShadow.renderedChunkIds ?? [], delivery);
 
     // dream_digest (forced: the stores have no dream cycles to make it worth sending)
     const digestOff = await off.manager.sendDreamBrief({ force: true });

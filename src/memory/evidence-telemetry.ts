@@ -221,6 +221,8 @@ export class EvidenceTelemetry {
   private available: boolean;
   private digestKey: Buffer | null = null;
   private scoringVersion: string;
+  private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  private maintenanceRun: Promise<void> | null = null;
 
   constructor(
     db: DatabaseSync,
@@ -239,6 +241,30 @@ export class EvidenceTelemetry {
 
   get mode(): CuriosityEvidenceMode {
     return this.cfg.mode;
+  }
+
+  /** Retention is independent of consolidation and still applies when collection is off. */
+  startMaintenance(): void {
+    if (this.maintenanceTimer) return;
+    const tick = () => {
+      if (this.maintenanceRun) return;
+      this.maintenanceRun = this.prune()
+        .then(() => {})
+        .catch((err) => this.log.debug(`evidence maintenance failed: ${String(err)}`))
+        .finally(() => {
+          this.maintenanceRun = null;
+        });
+    };
+    this.maintenanceTimer = setInterval(tick, 30 * 60_000);
+    this.maintenanceTimer.unref();
+    tick();
+  }
+
+  /** Drain in-flight pruning before the owner closes its database connection. */
+  async stopMaintenance(): Promise<void> {
+    if (this.maintenanceTimer) clearInterval(this.maintenanceTimer);
+    this.maintenanceTimer = null;
+    await this.maintenanceRun;
   }
 
   /**
