@@ -1,14 +1,11 @@
-#!/usr/bin/env node
 import { Readable, Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
-import { AgentSideConnection, ndJsonStream } from "@agentclientprotocol/sdk";
+import { ndJsonStream } from "@agentclientprotocol/sdk";
 import { loadConfig } from "../config/config.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { buildGatewayConnectionDetails } from "../gateway/call.js";
 import { GatewayClient } from "../gateway/client.js";
-import { isMainModule } from "../infra/is-main.js";
 import { GATEWAY_CLIENT_MODES, GATEWAY_CLIENT_NAMES } from "../utils/message-channel.js";
-import { AcpGatewayAgent } from "./translator.js";
+import { AcpGatewayAgent, createAcpAgentApp } from "./translator.js";
 import type { AcpServerOptions } from "./types.js";
 
 export function serveAcpGateway(opts: AcpServerOptions = {}): Promise<void> {
@@ -39,6 +36,13 @@ export function serveAcpGateway(opts: AcpServerOptions = {}): Promise<void> {
     onClosed = resolve;
   });
   let stopped = false;
+  // Resolves on the first successful gateway handshake so `initialize` can
+  // hold the IDE briefly instead of failing its first prompt with
+  // "gateway not connected" while the WebSocket is still coming up.
+  let onGatewayReady!: () => void;
+  const gatewayReady = new Promise<void>((resolve) => {
+    onGatewayReady = resolve;
+  });
 
   const gateway = new GatewayClient({
     url: connection.url,
@@ -52,6 +56,7 @@ export function serveAcpGateway(opts: AcpServerOptions = {}): Promise<void> {
       void agent?.handleGatewayEvent(evt);
     },
     onHelloOk: () => {
+      onGatewayReady();
       agent?.handleGatewayReconnect();
     },
     onClose: (code, reason) => {
@@ -83,92 +88,13 @@ export function serveAcpGateway(opts: AcpServerOptions = {}): Promise<void> {
   const output = Readable.toWeb(process.stdin) as unknown as ReadableStream<Uint8Array>;
   const stream = ndJsonStream(input, output);
 
-  new AgentSideConnection((conn: AgentSideConnection) => {
-    agent = new AcpGatewayAgent(conn, gateway, opts);
-    agent.start();
-    return agent;
-  }, stream);
+  agent = new AcpGatewayAgent(gateway, { ...opts, gatewayReady });
+  const acpConnection = createAcpAgentApp(agent).connect(stream);
+  agent.start();
+  // When the IDE closes the stdio pipe, stop the bridge instead of lingering
+  // on the gateway WebSocket with nobody to deliver to.
+  void acpConnection.closed.then(shutdown);
 
   gateway.start();
   return closed;
-}
-
-function parseArgs(args: string[]): AcpServerOptions {
-  const opts: AcpServerOptions = {};
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
-    if (arg === "--url" || arg === "--gateway-url") {
-      opts.gatewayUrl = args[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === "--token" || arg === "--gateway-token") {
-      opts.gatewayToken = args[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === "--password" || arg === "--gateway-password") {
-      opts.gatewayPassword = args[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === "--session") {
-      opts.defaultSessionKey = args[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === "--session-label") {
-      opts.defaultSessionLabel = args[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === "--require-existing") {
-      opts.requireExistingSession = true;
-      continue;
-    }
-    if (arg === "--reset-session") {
-      opts.resetSession = true;
-      continue;
-    }
-    if (arg === "--no-prefix-cwd") {
-      opts.prefixCwd = false;
-      continue;
-    }
-    if (arg === "--verbose" || arg === "-v") {
-      opts.verbose = true;
-      continue;
-    }
-    if (arg === "--help" || arg === "-h") {
-      printHelp();
-      process.exit(0);
-    }
-  }
-  return opts;
-}
-
-function printHelp(): void {
-  console.log(`Usage: bitterbot acp [options]
-
-Gateway-backed ACP server for IDE integration.
-
-Options:
-  --url <url>             Gateway WebSocket URL
-  --token <token>         Gateway auth token
-  --password <password>   Gateway auth password
-  --session <key>         Default session key (e.g. "agent:main:main")
-  --session-label <label> Default session label to resolve
-  --require-existing      Fail if the session key/label does not exist
-  --reset-session         Reset the session key before first use
-  --no-prefix-cwd         Do not prefix prompts with the working directory
-  --verbose, -v           Verbose logging to stderr
-  --help, -h              Show this help message
-`);
-}
-
-if (isMainModule({ currentFile: fileURLToPath(import.meta.url) })) {
-  const opts = parseArgs(process.argv.slice(2));
-  serveAcpGateway(opts).catch((err) => {
-    console.error(String(err));
-    process.exit(1);
-  });
 }

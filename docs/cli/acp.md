@@ -11,7 +11,8 @@ title: "acp"
 Run the ACP (Agent Client Protocol) bridge that talks to a Bitterbot Gateway.
 
 This command speaks ACP over stdio for IDEs and forwards prompts to the Gateway
-over WebSocket. It keeps ACP sessions mapped to Gateway session keys.
+over WebSocket. It keeps ACP sessions mapped to Gateway session keys. When the
+IDE closes the stdio pipe, the bridge disconnects from the Gateway and exits.
 
 ## Usage
 
