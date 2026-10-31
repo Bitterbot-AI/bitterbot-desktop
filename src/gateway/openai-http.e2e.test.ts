@@ -74,6 +74,9 @@ describe("OpenAI-compatible HTTP API (e2e)", () => {
           messages: [{ role: "user", content: "hi" }],
         });
         expect(res.status).toBe(404);
+        const body = (await res.json()) as { error?: { code?: string; message?: string } };
+        expect(body.error?.code).toBe("endpoint_disabled");
+        expect(body.error?.message).toContain("gateway.http.endpoints.chatCompletions.enabled");
       } finally {
         await server.close({ reason: "test done" });
       }
@@ -90,6 +93,9 @@ describe("OpenAI-compatible HTTP API (e2e)", () => {
           messages: [{ role: "user", content: "hi" }],
         });
         expect(res.status).toBe(404);
+        const body = (await res.json()) as { error?: { code?: string; message?: string } };
+        expect(body.error?.code).toBe("endpoint_disabled");
+        expect(body.error?.message).toContain("gateway.http.endpoints.chatCompletions.enabled");
       } finally {
         await server.close({ reason: "test done" });
       }

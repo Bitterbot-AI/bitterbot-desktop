@@ -187,6 +187,24 @@ Related:
 - [/gateway/authentication](/gateway/authentication)
 - [/gateway/remote](/gateway/remote)
 
+## 404 from `/v1/chat/completions` or `/v1/responses`
+
+The Gateway answers but an OpenAI-style client gets `404`. Both OpenAI-compatible
+endpoints are **off by default**. Check the response body: a JSON error with
+`"code": "endpoint_disabled"` names the setting to flip, and the gateway log
+shows the same line once. Enable the one you need and restart:
+
+```bash
+bitterbot config set gateway.http.endpoints.chatCompletions.enabled true --json
+# or, for the OpenResponses API
+bitterbot config set gateway.http.endpoints.responses.enabled true --json
+```
+
+In Docker, prefix the command with
+`docker compose exec -u node bitterbot-gateway node bitterbot.mjs`. A plain
+`404 Not Found` with no JSON body means the Gateway is older than 1.12; the fix
+is the same. See [OpenAI Chat Completions](/gateway/openai-http-api).
+
 ## Gateway service not running
 
 Use this when service is installed but process does not stay up.

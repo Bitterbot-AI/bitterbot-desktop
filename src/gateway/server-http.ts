@@ -54,6 +54,7 @@ import { getBearerToken, getHeader } from "./http-utils.js";
 import { handleMemoryExportHttpRequest } from "./memory-export-http.js";
 import { getMobileAvatarBytes, renderMobileUiPage } from "./mobile-ui-page.js";
 import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
+import { createDisabledOpenAiEndpointHandler } from "./openai-disabled-http.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
@@ -526,6 +527,12 @@ export function createGatewayHttpServer(opts: {
     resolvedAuth,
     rateLimiter,
   } = opts;
+  // A known OpenAI-style route that is switched off answers with the config
+  // key to flip instead of the bare 404 below.
+  const handleDisabledOpenAiEndpoint = createDisabledOpenAiEndpointHandler({
+    chatCompletionsEnabled: openAiChatCompletionsEnabled,
+    responsesEnabled: openResponsesEnabled,
+  });
   const httpServer: HttpServer = opts.tlsOptions
     ? createHttpsServer(opts.tlsOptions, (req, res) => {
         void handleRequest(req, res);
@@ -753,6 +760,9 @@ export function createGatewayHttpServer(opts: {
         ) {
           return;
         }
+      }
+      if (handleDisabledOpenAiEndpoint(req, res)) {
+        return;
       }
       if (canvasHost) {
         if (isCanvasPath(requestPath)) {
