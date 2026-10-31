@@ -793,6 +793,7 @@
                 "group": "Browser",
                 "pages": [
                   "tools/browser",
+                  "tools/browser-teaching",
                   "tools/browser-login",
                   "tools/chrome-extension",
                   "tools/browser-linux-troubleshooting"

@@ -49,6 +49,9 @@ export interface PromoteParams {
   author?: string;
   /** When true, promote even if the staging gate did not pass. */
   forceGate?: boolean;
+  /** Optional owner-review binding, checked again by the final storage read. */
+  expectedContent?: string;
+  createOnly?: boolean;
   /**
    * PLAN-44 Phase 3: content staged by the evolution pipeline (carrying
    * `.evolution-meta.json`) is promoted ONLY by the validation gate, or by
@@ -132,6 +135,14 @@ export async function promoteStaged(
       previousArchived: null,
       error: "gate-not-passed",
       detail: `gate status is "${staged.meta.gateStatus ?? "pending"}"; pass forceGate=true to override`,
+    };
+  }
+  if (params.expectedContent !== undefined && staged.content !== params.expectedContent) {
+    return {
+      ok: false,
+      previousArchived: null,
+      error: "storage-error",
+      detail: "The staged skill changed. Review it again.",
     };
   }
 
@@ -238,6 +249,8 @@ export async function promoteStaged(
       reason,
       author,
       ...(params.timestamp ? { timestamp: params.timestamp } : {}),
+      expectedContent: params.expectedContent,
+      createOnly: params.createOnly,
     });
     for (const file of EVOLUTION_SIDECARS) {
       const content = sidecars.get(file);

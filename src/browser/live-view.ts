@@ -2,10 +2,7 @@
  * Live view of the agent's browser for the Control UI's "BitterBot's Computer"
  * pane (PLAN-53 A2).
  *
- * The pane used to show a mock browser frame: tool results are stripped before
- * they reach the UI, so no screenshot ever arrived. This streams the real page
- * instead, as its own event, so it does not depend on tool output at all.
- *
+ * Streams page frames as events, independently of agent tool output.
  * Design constraints, each learned from how the gateway behaves:
  *   - Watching must never launch a browser. An open pane resolves to "idle"
  *     until the agent starts one, then follows it.
@@ -18,6 +15,7 @@
  *     drop-if-slow so a slow client cannot back up the socket.
  */
 
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { cardEntryActive } from "./card-entry.js";
 import { toCdpInput } from "./live-input.js";
 import type { ScreencastFrame, ScreencastHandle } from "./pw-screencast.js";
@@ -27,6 +25,9 @@ import {
   takeBrowserControl,
   touchBrowserControl,
 } from "./takeover.js";
+import type { BrowserTeachingStore } from "./teaching-store.js";
+
+const log = createSubsystemLogger("browser/live-view");
 
 export type LiveViewTarget = {
   profile: string;
@@ -90,6 +91,7 @@ export type LiveViewDeps = {
   ) => void;
   settings?: () => Partial<LiveViewSettings>;
   now?: () => number;
+  teaching?: BrowserTeachingStore;
 };
 
 export const LIVE_VIEW_DEFAULTS: LiveViewSettings = {
@@ -293,6 +295,17 @@ export function createBrowserLiveView(deps: LiveViewDeps) {
     // Once per tick, not once per frame: settings come from the config file.
     active = readSettings();
     pruneViewers();
+    const held = getBrowserControl(now());
+    try {
+      await deps.teaching?.reconcile(
+        held && viewers.has(held.controller) ? held.controller : undefined,
+        held?.profile,
+      );
+    } catch (error) {
+      // A recording storage failure must not kill the live-view timer or
+      // prevent the owner from handing control back.
+      log.warn(`Could not update the browser teaching recording: ${String(error)}`);
+    }
     if (viewers.size === 0) {
       stopFollowing();
       await detach();
@@ -415,25 +428,63 @@ export function createBrowserLiveView(deps: LiveViewDeps) {
 
     /** Deliver pointer or keyboard input from the viewer who holds control. */
     async input(connId: string, raw: unknown): Promise<{ ok: boolean; reason?: string }> {
-      const control = getBrowserControl(now());
-      if (
-        !attached ||
-        control?.controller !== connId ||
-        control.profile !== attached.target.profile
-      ) {
-        return { ok: false, reason: "take control of the browser first" };
-      }
-      const command = toCdpInput(raw, {
-        width: lastFrame?.deviceWidth ?? 0,
-        height: lastFrame?.deviceHeight ?? 0,
+      const recordingId = deps.teaching?.recordingId(connId);
+      const work = queue.then(async () => {
+        const control = getBrowserControl(now());
+        if (
+          !attached ||
+          control?.controller !== connId ||
+          control.profile !== attached.target.profile
+        ) {
+          return { ok: false, reason: "take control of the browser first" };
+        }
+        const command = toCdpInput(raw, {
+          width: lastFrame?.deviceWidth ?? 0,
+          height: lastFrame?.deviceHeight ?? 0,
+        });
+        if (!command) {
+          return { ok: false, reason: "unrecognised input" };
+        }
+        touchBrowserControl(now());
+        const handle = attached.handle;
+        let action = null;
+        if (recordingId) {
+          try {
+            if (!handle.describeInput) throw new Error("Semantic capture unavailable.");
+            action = await handle.describeInput(command);
+          } catch {
+            await deps.teaching?.fail(connId, recordingId);
+          }
+        }
+        // A hand-back can occur while the page is being inspected.
+        if (attached?.handle !== handle || getBrowserControl(now())?.controller !== connId) {
+          return { ok: false, reason: "browser control changed" };
+        }
+        try {
+          await handle.input(command);
+        } catch (error) {
+          if (recordingId) await deps.teaching?.fail(connId, recordingId);
+          throw error;
+        }
+        if (recordingId && action) {
+          try {
+            await deps.teaching?.append(connId, recordingId, action);
+          } catch (error) {
+            await deps.teaching?.fail(connId, recordingId);
+            throw error;
+          }
+        }
+        return { ok: true };
       });
-      if (!command) {
-        return { ok: false, reason: "unrecognised input" };
-      }
-      touchBrowserControl(now());
-      await attached.handle.input(command);
-      return { ok: true };
+      queue = work.then(
+        () => {},
+        () => {},
+      );
+      return work;
     },
+
+    /** Stop/draft waits for all already-received input to be captured. */
+    flushInput: () => queue,
 
     async shutdown(): Promise<void> {
       viewers.clear();

@@ -5,6 +5,7 @@ import { agentHandlers } from "./server-methods/agent.js";
 import { agentsHandlers } from "./server-methods/agents.js";
 import { browserLiveHandlers } from "./server-methods/browser-live.js";
 import { browserReplayHandlers } from "./server-methods/browser-replay.js";
+import { browserTeachingHandlers } from "./server-methods/browser-teaching.js";
 import { browserHandlers } from "./server-methods/browser.js";
 import { channelsHandlers } from "./server-methods/channels.js";
 import { chatHandlers } from "./server-methods/chat.js";
@@ -407,6 +408,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...agentsHandlers,
   ...browserHandlers,
   ...browserLiveHandlers,
+  ...browserTeachingHandlers,
   ...browserReplayHandlers,
   ...toolOutputHandlers,
   ...reviewHandlers,

@@ -651,6 +651,9 @@ These are useful for “make the site behave like X” workflows:
 
 ## Security & privacy
 
+To turn a repeated task into a reviewed local skill, see
+[Teach a browser workflow](/tools/browser-teaching).
+
 - The bitterbot browser profile may contain logged-in sessions; treat it as sensitive.
 - `browser act kind=evaluate` / `bitterbot browser evaluate` and `wait --fn`
   execute arbitrary JavaScript in the page context. Prompt injection can steer

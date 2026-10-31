@@ -21,6 +21,7 @@
  * snapshot, so the archive grows linearly and never loses history.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -543,7 +544,16 @@ export async function readArchivedVersion(
  */
 export async function publishStaged(
   roots: StorageRoots,
-  params: { name: string; reason: string; author: string; timestamp?: number },
+  params: {
+    name: string;
+    reason: string;
+    author: string;
+    timestamp?: number;
+    /** Pin owner-reviewed bytes across the final storage read. */
+    expectedContent?: string;
+    /** Install a new skill without replacing a concurrently created live file. */
+    createOnly?: boolean;
+  },
 ): Promise<{
   previousArchived: ArchivedVersion | null;
   publishedContent: string;
@@ -553,8 +563,13 @@ export async function publishStaged(
   if (!staged) {
     throw new SkillStorageError("not-found", `no staged content found for skill "${params.name}"`);
   }
+  if (params.expectedContent !== undefined && staged.content !== params.expectedContent) {
+    throw new Error("The staged skill changed. Review it again.");
+  }
   // Snapshot the previous live, if any.
   const prevLive = await readLive(roots, params.name);
+  if (params.createOnly && prevLive !== null)
+    throw new Error("A live skill already uses that name.");
   let previousArchived: ArchivedVersion | null = null;
   if (prevLive) {
     previousArchived = await archiveVersion(roots, {
@@ -568,7 +583,20 @@ export async function publishStaged(
   }
   // Write staged content to live.
   await fs.mkdir(liveSkillDir(roots, params.name), { recursive: true });
-  await atomicWrite(liveSkillPath(roots, params.name), staged.content);
+  if (params.createOnly) {
+    // Linking a complete sibling file is atomic and fails if the destination
+    // exists. Unlike rename, it cannot overwrite a skill created during review.
+    const target = liveSkillPath(roots, params.name);
+    const temp = `${target}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(temp, staged.content, { flag: "wx", mode: 0o600 });
+      await fs.link(temp, target);
+    } finally {
+      await fs.rm(temp, { force: true });
+    }
+  } else {
+    await atomicWrite(liveSkillPath(roots, params.name), staged.content);
+  }
   await discardStaged(roots, params.name);
   log.debug(`published ${params.name} (previous version ${previousArchived?.version ?? "n/a"})`);
   return { previousArchived, publishedContent: staged.content };
