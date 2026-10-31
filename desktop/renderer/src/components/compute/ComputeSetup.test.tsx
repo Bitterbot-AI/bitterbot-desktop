@@ -101,6 +101,22 @@ it("keeps configured gateways read only and explains where the tester runs setup
   expect(screen.getByText(/tester’s own Bitterbot app/)).toBeTruthy();
 });
 
+it("offers explicit saved-profile switching without funding or creating wallets", async () => {
+  status.configured = true;
+  status.configuredRole = "mesh-operator";
+  status.canManageProfiles = true;
+  status.profiles = [
+    { id: "operator", role: "mesh-operator", name: "Local P2P operator", active: true },
+    { id: "buyer", role: "buyer", name: "Buyer · tester", active: false },
+  ];
+  render(<ComputeSetup onClose={() => {}} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Switch to Buyer · tester" }));
+  await waitFor(() =>
+    expect(fake.request).toHaveBeenCalledWith("soapbox.setup.profile.switch", { id: "buyer" }),
+  );
+  expect(fake.request.mock.calls.some(([method]) => /wallet|payment/.test(method))).toBe(false);
+});
+
 it("clears a transient status error after the gateway reconnects", async () => {
   fake.request.mockRejectedValueOnce(new Error("Gateway restarting"));
   render(<ComputeSetup onClose={() => {}} />);

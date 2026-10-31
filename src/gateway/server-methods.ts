@@ -199,6 +199,7 @@ const READ_METHODS = new Set([
 ]);
 const WRITE_METHODS = new Set([
   "soapbox.submit",
+  "soapbox.requote",
   "soapbox.cancel",
   "soapbox.artifact.put",
   "send",

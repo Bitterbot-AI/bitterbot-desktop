@@ -6,6 +6,15 @@ import type { GatewayRequestHandlers } from "./types.js";
 export function createSoapboxSetupHandlers(setup: SoapboxSetup): GatewayRequestHandlers {
   const actions: Record<string, (params: Record<string, unknown>) => Promise<unknown>> = {
     status: () => setup.status(),
+    "profile.new": async () => {
+      await setup.newProfile();
+      return setup.status();
+    },
+    "profile.cancel": async () => {
+      await setup.cancelProfile();
+      return setup.status();
+    },
+    "profile.switch": (p) => setup.switchProfile(p.id),
     "operator.enable": async () => {
       await setup.enableLocalOperator();
       return setup.status();
@@ -52,7 +61,9 @@ export function createSoapboxSetupHandlers(setup: SoapboxSetup): GatewayRequestH
         try {
           respond(
             true,
-            await (action === "status" ? run(params) : setup.mutate(() => run(params))),
+            await (action === "status"
+              ? run(params)
+              : setup.mutate(() => run(params), action.startsWith("profile."))),
           );
         } catch (error) {
           respond(

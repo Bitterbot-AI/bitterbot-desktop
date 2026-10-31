@@ -339,7 +339,7 @@ jobs:
             const asset = (tag, n) => ({ name: n, browser_download_url: `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/${tag}/${n}` });
             const listing = [
               { tag_name: "v99.0.0", draft: false, prerelease: false, assets: [asset("v99.0.0", "docker-compose.yml")] },
-              { tag_name: `v${version}`, draft: false, prerelease: false, assets: fs.readdirSync(`${dir}/download/v${version}`).map((n) => asset(`v${version}`, n)) },
+              { tag_name: `v${version}`, draft: false, prerelease: version.includes("-"), assets: fs.readdirSync(`${dir}/download/v${version}`).map((n) => asset(`v${version}`, n)) },
             ];
             fs.writeFileSync(`${dir}/api/releases.json`, JSON.stringify(listing));
           ' "$RUNNER_TEMP/releases" "$VERSION"
@@ -395,8 +395,19 @@ jobs:
         run: |
           set -euo pipefail
           export HOME="$RUNNER_TEMP/home" BITTERBOT_INSTALL_TEST_MODE=1             BITTERBOT_INSTALL_BASE_URL=http://127.0.0.1:8765 BITTERBOT_INSTALL_TEST_PUBKEY="$TEST_PUBKEY"
-          curl -fsSL http://127.0.0.1:8765/install.sh | bash -s -- --yes --no-onboard | tee "$RUNNER_TEMP/install1.log"
-          grep -q "Newest complete release: $VERSION" "$RUNNER_TEMP/install1.log"
+          version_args=()
+          if [[ "$VERSION" == *-* ]]; then
+            # A beta must never become the implicit stable-channel install.
+            if bash scripts/install.sh --yes --no-onboard > "$RUNNER_TEMP/beta-unpinned.log" 2>&1; then
+              echo "an unpinned install selected a prerelease"; exit 1
+            fi
+            grep -q "no published release carries a signed tarball" "$RUNNER_TEMP/beta-unpinned.log"
+            version_args=(--version "$VERSION")
+          fi
+          curl -fsSL http://127.0.0.1:8765/install.sh | bash -s -- --yes --no-onboard "${version_args[@]}" | tee "$RUNNER_TEMP/install1.log"
+          if [[ "$VERSION" != *-* ]]; then
+            grep -q "Newest complete release: $VERSION" "$RUNNER_TEMP/install1.log"
+          fi
           grep -q "Verified: minisign signature (pinned key)" "$RUNNER_TEMP/install1.log"
           # Same build again: every file is re-checked against manifest.json
           # and the directory is kept in place.
@@ -521,7 +532,7 @@ jobs:
       - name: Derive version B (same code) and a broken B' (gateway exits 1), sign B
         run: |
           set -euo pipefail
-          IFS=. read -r MA MI PA <<< "$VERSION"
+          IFS=. read -r MA MI PA <<< "${VERSION%%-*}"
           VB="$MA.$MI.$((PA + 1))"
           VC="$MA.$MI.$((PA + 2))"
           A_TGZ="$RUNNER_TEMP/release-out/bitterbot-$VERSION-linux-x64.tar.gz"
@@ -544,7 +555,7 @@ jobs:
           const asset = (tag, n) => ({ name: n, browser_download_url: `https://github.com/Bitterbot-AI/bitterbot-desktop/releases/download/${tag}/${n}` });
           const listing = [{ tag_name: "v99.0.0", draft: false, prerelease: false, assets: [asset("v99.0.0", "docker-compose.yml")] }];
           for (const tag of fs.readdirSync(`${dir}/download`)) {
-            listing.push({ tag_name: tag, draft: false, prerelease: false, assets: fs.readdirSync(`${dir}/download/${tag}`).map((n) => asset(tag, n)) });
+            listing.push({ tag_name: tag, draft: false, prerelease: tag.includes("-"), assets: fs.readdirSync(`${dir}/download/${tag}`).map((n) => asset(tag, n)) });
           }
           fs.writeFileSync(`${dir}/api/releases.json`, JSON.stringify(listing));
           JS
@@ -575,7 +586,7 @@ jobs:
           # bundled node inside ~/.bitterbot/app/<version>/runtime).
           gw_versions() {
             for pid in $(pgrep -f "^bitterbot-gateway"); do
-              readlink "/proc/$pid/exe" | sed -n 's#.*/app/\([0-9.]*\)/runtime/.*#\1#p'
+              readlink "/proc/$pid/exe" | sed -nE 's#.*/app/([0-9]+\.[0-9]+\.[0-9]+(-beta\.[1-9][0-9]*)?)/runtime/.*#\1#p'
             done | sort -u
           }
           healthy() {

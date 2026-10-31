@@ -86,6 +86,23 @@ export function verifyShard(
     throw Error("Runtime evidence mismatch");
   return rows;
 }
+function cancellationRequested(mesh: ComputeMeshService, b: MeshBatch): boolean {
+  const state = mesh.store.batch(b.id)?.status ?? b.status;
+  return state === "cancelling" || state === "cancelled";
+}
+async function cancelShard(
+  mesh: ComputeMeshService,
+  b: MeshBatch,
+  s: MeshBatch["shards"][number],
+): Promise<void> {
+  if (s.jobId || s.attempts > 0) {
+    const receipt = await mesh.cancelRemote(s.peerId, `mesh-${b.id}-${s.index}`);
+    if (s.jobId && receipt.job_id !== s.jobId) throw Error("Cancellation job binding mismatch");
+    s.cancelledRemoteStatus = receipt.status;
+  }
+  s.status = "cancelled";
+  s.error = undefined;
+}
 export async function advanceBatch(mesh: ComputeMeshService, b: MeshBatch): Promise<void> {
   const pending = b.shards.filter((s) => !["succeeded", "failed", "cancelled"].includes(s.status));
   const selected = pending
@@ -93,15 +110,18 @@ export async function advanceBatch(mesh: ComputeMeshService, b: MeshBatch): Prom
     .slice(0, 4);
   for (const s of selected) {
     s.lastTriedAt = Date.now();
-    if (b.status !== "cancelling") s.attempts = Math.max(s.attempts, 1);
   }
   mesh.store.saveBatch(b);
   await Promise.all(
     selected.map(async (s) => {
       try {
-        // The same intent and shard id are sent after every transport timeout/restart.
-        // A lost response must not create a second job at the same coordinator.
-        if (!s.jobId && (b.status !== "cancelling" || s.attempts > 0)) {
+        if (cancellationRequested(mesh, b)) {
+          await cancelShard(mesh, b, s);
+          return;
+        }
+        // Retries of active work use the same key. Cancellation never replays a
+        // submission: the runtime atomically fences this key instead.
+        if (!s.jobId) {
           const access = await mesh.call<{ pools: string[]; projects: string[] }>(
             s.peerId,
             "compute/v1/access",
@@ -109,7 +129,15 @@ export async function advanceBatch(mesh: ComputeMeshService, b: MeshBatch): Prom
           );
           if (!(b.mode === "private" ? access.pools : access.projects).includes(b.scope))
             throw Error("Peer has not approved this scope");
+          // Cancel may have arrived while the access RPC was in flight.
+          if (cancellationRequested(mesh, b)) {
+            await cancelShard(mesh, b, s);
+            return;
+          }
           s.attempts = Math.max(s.attempts, 1);
+          // Persist before sending, so a crash/lost response is never mistaken
+          // for work that stayed local. No await between the cancel check and this.
+          mesh.store.saveBatch(b);
           const job = await mesh.call<RemoteJob>(s.peerId, "compute/v1/submit", {
             spec: {
               idempotency_key: `mesh-${b.id}-${s.index}`,
@@ -134,17 +162,12 @@ export async function advanceBatch(mesh: ComputeMeshService, b: MeshBatch): Prom
           s.status = "queued";
           mesh.store.activity(s.peerId, "shard_dispatched", s.count);
         }
-        const cancelling = mesh.store.batch(b.id)?.status === "cancelling";
-        if (cancelling && !s.jobId) {
-          s.status = "cancelled";
+        if (cancellationRequested(mesh, b)) {
+          await cancelShard(mesh, b, s);
           return;
         }
         if (!s.jobId) return;
-        const job = await mesh.call<RemoteJob>(
-          s.peerId,
-          cancelling ? "compute/v1/cancel" : "compute/v1/job",
-          { id: s.jobId },
-        );
+        const job = await mesh.call<RemoteJob>(s.peerId, "compute/v1/job", { id: s.jobId });
         if (job.id !== s.jobId) throw Error("Remote job binding mismatch");
         if (job.status === "succeeded") {
           s.result = verifyShard(b, s.offset, s.count, job.result);
@@ -154,32 +177,40 @@ export async function advanceBatch(mesh: ComputeMeshService, b: MeshBatch): Prom
             mesh.store.activity(s.peerId, "shard_completed", s.count);
         } else if (["failed", "cancelled"].includes(job.status)) {
           s.status = job.status;
-          if (!cancelling && mesh.store.outcome(`${s.peerId}:${s.jobId}`, s.peerId, false))
+          if (mesh.store.outcome(`${s.peerId}:${s.jobId}`, s.peerId, false))
             mesh.store.activity(s.peerId, "shard_failed", s.count);
         } else {
           s.status = "running";
           s.failures = 0;
-          if (Date.now() - b.createdAt > 20 * 60_000 && !cancelling) {
+          if (Date.now() - b.createdAt > 20 * 60_000 && !cancellationRequested(mesh, b)) {
             s.status = "failed";
             s.error = "Batch deadline exceeded";
             await mesh.call(s.peerId, "compute/v1/cancel", { id: s.jobId }).catch(() => {});
           }
         }
       } catch {
+        if (cancellationRequested(mesh, b) && !s.jobId && s.attempts === 0) {
+          s.status = "cancelled";
+          s.error = undefined;
+          return;
+        }
         s.failures = (s.failures ?? 0) + 1;
-        s.error = "Peer unavailable, scope refused or result rejected";
+        s.error = cancellationRequested(mesh, b)
+          ? "Waiting for the operator to confirm cancellation; workload will not be resubmitted"
+          : "Peer unavailable, scope refused or result rejected";
         // Free work only. Transport failures are not negative reputation evidence.
         // Do not move ambiguous submissions elsewhere: that could duplicate work.
-        if (Date.now() - b.createdAt > 20 * 60_000 && b.status !== "cancelling")
+        if (Date.now() - b.createdAt > 20 * 60_000 && !cancellationRequested(mesh, b))
           s.status = "failed";
       }
     }),
   );
   const current = mesh.store.batch(b.id);
-  if (current?.status === "cancelling") b.status = "cancelling";
+  if (current?.status === "cancelling" || current?.status === "cancelled")
+    b.status = current.status;
   const done = b.shards.every((s) => ["succeeded", "failed", "cancelled"].includes(s.status));
   if (done) {
-    if (b.status === "cancelling") b.status = "cancelled";
+    if (b.status === "cancelling" || b.status === "cancelled") b.status = "cancelled";
     else if (b.shards.every((s) => s.status === "succeeded")) {
       const rows = b.shards.flatMap((s) => s.result as unknown[]);
       if (
@@ -196,7 +227,8 @@ export async function advanceBatch(mesh: ComputeMeshService, b: MeshBatch): Prom
         };
       }
     } else b.status = "failed";
-    mesh.store.activity("", `batch_${b.status}`, b.inputs.length);
+    if (current?.status !== "cancelled")
+      mesh.store.activity("", `batch_${b.status}`, b.inputs.length);
   }
   mesh.store.saveBatch(b);
 }

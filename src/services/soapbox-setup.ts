@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { copyFile, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import JSON5 from "json5";
 import type { BitterbotConfig } from "../config/types.js";
@@ -11,7 +11,9 @@ import {
   type SoapboxConnection,
 } from "../infra/soapbox-connection.js";
 import type { SoapboxSetupStatus } from "../infra/soapbox-setup-types.js";
+import { beginSoapboxTransition } from "../infra/soapbox-transition.js";
 import { LocalOperatorService, prepareLocalOperator } from "./soapbox-local-operator.js";
+import { SoapboxProfiles } from "./soapbox-profiles.js";
 import { SOAPBOX_SETUP_RELEASE, SoapboxSetupRuntime } from "./soapbox-setup-runtime.js";
 import {
   initializeSoapboxWallet,
@@ -29,6 +31,9 @@ export class SoapboxSetup {
   private localRunning = false;
   private stopping = false;
   private localService?: LocalOperatorService;
+  private profiles: SoapboxProfiles;
+  private draftEntry?: string;
+  private releaseTransition?: () => void;
   constructor(
     private options: {
       root: string;
@@ -39,6 +44,7 @@ export class SoapboxSetup {
     },
   ) {
     this.runtime = new SoapboxSetupRuntime(path.join(options.root, "runtime"));
+    this.profiles = new SoapboxProfiles(options.root, options.configPath);
   }
 
   async status(): Promise<SoapboxSetupStatus> {
@@ -48,6 +54,11 @@ export class SoapboxSetup {
       configured: Boolean(this.options.configuredRole || this.activated),
       configuredRole:
         this.options.configuredRole ?? (this.activated ? (c?.role ?? "mesh-operator") : undefined),
+      profiles: await this.profiles.list(),
+      addingProfile: this.draftEntry !== undefined,
+      canManageProfiles: ["participant", "mesh-operator"].includes(
+        this.options.configuredRole ?? "",
+      ),
       platformSupported: process.platform === "linux" && process.arch === "x64",
       bundledRuntimeAvailable: Boolean(this.options.bundledRuntimeArchive),
       hasWalletCredentials: Boolean(auth.apiKeyId && auth.apiKeySecret && auth.walletSecret),
@@ -62,15 +73,72 @@ export class SoapboxSetup {
     };
   }
 
-  async mutate<T>(action: () => Promise<T>): Promise<T> {
+  async mutate<T>(action: () => Promise<T>, profileAction = false): Promise<T> {
     if (this.busy || this.localRunning) throw new Error("Another setup action is in progress");
-    if (this.options.configuredRole || this.activated)
+    if (profileAction && this.runtime.progress.state === "preparing")
+      throw new Error("Wait for runtime preparation to finish");
+    if (
+      (this.options.configuredRole || this.activated) &&
+      !profileAction &&
+      this.draftEntry === undefined
+    )
       throw new Error("This gateway already has a Compute setup");
     this.busy = true;
     try {
       return await action();
     } finally {
       this.busy = false;
+    }
+  }
+
+  async newProfile(): Promise<void> {
+    if (!["participant", "mesh-operator"].includes(this.options.configuredRole ?? ""))
+      throw new Error("This setup cannot manage saved profiles");
+    if (this.releaseTransition) throw new Error("Wait for the gateway to reconnect");
+    this.draftEntry = JSON.stringify((await this.profiles.config()).entry);
+    this.enrollment = undefined;
+    this.runtime.ready = undefined;
+    this.runtime.progress = {
+      state: "idle",
+      percent: 0,
+      message: "Prepare another profile. The current profile stays active until you activate.",
+    };
+  }
+
+  async cancelProfile(): Promise<void> {
+    if (this.runtime.progress.state === "preparing")
+      throw new Error("Wait for runtime preparation to finish");
+    this.draftEntry = undefined;
+    this.enrollment = undefined;
+  }
+
+  async switchProfile(id: unknown): Promise<{ activated: true }> {
+    if (!["participant", "mesh-operator"].includes(this.options.configuredRole ?? ""))
+      throw new Error("This setup cannot switch profiles");
+    const next = await this.profiles.find(id);
+    await this.profiles.verify(next, await soapboxWalletIdentity(this.options.mainWallet));
+    const { original, config } = await this.profiles.config();
+    config.plugins!.entries!["soapbox-compute"] = next;
+    await this.commitProfile(original, config);
+    return { activated: true };
+  }
+
+  private async commitProfile(original: string, config: BitterbotConfig): Promise<void> {
+    const prior = JSON5.parse(original) as BitterbotConfig;
+    const entry = prior.plugins?.entries?.["soapbox-compute"];
+    if (this.draftEntry !== undefined && JSON.stringify(entry) !== this.draftEntry)
+      throw new Error("Compute profile changed during setup; reopen setup before activating");
+    const release = beginSoapboxTransition();
+    this.releaseTransition = release;
+    try {
+      await this.profiles.requireIdle(entry);
+      if (this.stopping) throw new Error("Gateway is stopping; retry setup after reconnecting");
+      await this.profiles.saveAndWrite(original, config);
+      this.activated = true;
+    } catch (error) {
+      release();
+      this.releaseTransition = undefined;
+      throw error;
     }
   }
 
@@ -197,7 +265,7 @@ export class SoapboxSetup {
     )
       throw new Error("Externally managed configuration cannot be changed automatically");
     const existing = config.plugins?.entries?.["soapbox-compute"]?.config;
-    if (existing && existing.mode !== "setup")
+    if (existing && existing.mode !== "setup" && this.draftEntry === undefined)
       throw new Error("Compute was configured elsewhere; refresh before continuing");
     const directory = path.join(this.options.root, `operator-${randomUUID()}`);
     await prepareLocalOperator(directory, this.runtime.ready!);
@@ -229,12 +297,7 @@ export class SoapboxSetup {
     };
     config.p2p = { ...config.p2p, enabled: true };
     await writeFile(path.join(directory, "bitterbot.before.json"), original, { mode: 0o600 });
-    const temporary = `${this.options.configPath}.soapbox-${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
-    if ((await readFile(this.options.configPath, "utf8")) !== original)
-      throw new Error("Gateway settings changed during setup; retry");
-    await rename(temporary, this.options.configPath);
-    this.activated = true;
+    await this.commitProfile(original, config);
     this.runtime.progress = {
       state: "ready",
       message: "Operator enabled. Reconnecting to the gateway…",
@@ -247,6 +310,7 @@ export class SoapboxSetup {
     await this.runtime.stop();
     await this.localService?.stop();
     await this.localSetup;
+    this.releaseTransition?.();
   }
 
   async waitForLocalSetup(): Promise<void> {
@@ -280,6 +344,7 @@ export class SoapboxSetup {
     const existing = config.plugins?.entries?.["soapbox-compute"]?.config;
     if (
       existing &&
+      this.draftEntry === undefined &&
       (existing.mode === "participant" ||
         existing.mode === "pilot" ||
         existing.mode === "mesh-operator" ||
@@ -303,12 +368,7 @@ export class SoapboxSetup {
     };
     const backup = path.join(directory, "bitterbot.before.json");
     await writeFile(backup, original, { mode: 0o600 });
-    const temporary = `${this.options.configPath}.soapbox-${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
-    if ((await readFile(this.options.configPath, "utf8")) !== original)
-      throw new Error("Gateway settings changed during setup; try activation again");
-    await rename(temporary, this.options.configPath);
-    this.activated = true;
+    await this.commitProfile(original, config);
     return { activated: true };
   }
 }

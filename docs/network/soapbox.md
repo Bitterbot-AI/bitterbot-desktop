@@ -26,6 +26,10 @@ source checkout is unnecessary. The older Soapbox rc4/rc5/rc6 overlays are for
 their recorded Bitterbot versions and must not be installed over an integrated
 release.
 
+Releases up to v1.11.0 bundle Soapbox rc5 for new Linux x64 operator setups; the
+next release bundles rc10, which adds durable cancellation, revocation recovery
+and readiness checks (see [Permission changes and revocation](#permission-changes-and-revocation)).
+
 Existing installs upgrade with `bitterbot update` or the in-app update; the
 previous app version is retained for rollback. The native Tauri installer is
 not part of this release.
@@ -72,6 +76,39 @@ A release download does not provide a public paid coordinator or enrollment.
 The coordinator owner supplies the scoped enrollment for paid tests. Never
 share wallet secrets or use a mainnet deposit to fund this beta.
 
+### Save and switch buyer/operator profiles
+
+Open **Compute → Set up buyer or operator**. A configured buyer or operator
+shows **Buyer and operator profiles**. Choose **Add buyer or operator profile**
+to run the wizard again. The current profile stays active while you prepare;
+activation saves both profiles and reconnects the gateway. You can then choose
+**Switch to …** to return to a saved profile without importing it again.
+
+Only one profile is active at a time. Pause new work before leaving an operator.
+Finish or cancel jobs and wait for payment settlement/refunds before switching.
+An offline coordinator or one older than Soapbox rc10 cannot confirm that the
+account is idle, so switching is blocked until it is available/upgraded. Buyer
+enrollment and the separate Compute wallet are revalidated on every switch.
+The legacy developer pilot configuration is not a managed profile.
+
+### Expired payment quotes
+
+After submitting a paid job, its payment card shows **Fund within m:ss** using
+the earlier job deadline and escrow expiry. Funding remains a separate action.
+When an unexecuted quote expires, choose **Request fresh quote**. The gateway
+refreshes the old payment state and requires cancellation/refund resolution
+before creating a replacement with the same workload, resource limits, operator
+and maximum price. Review the new exact quote before funding. Retrying this
+action returns the same replacement; it does not submit duplicate jobs.
+
+### Readiness and operator pause
+
+**Checking readiness** means the worker is checking isolation and warming the
+model. A cold GPU probe can take several minutes. **Paused by operator** means
+you selected Pause new work; use Resume new work when ready. Failed GPU checks
+keep GPU capacity unavailable and display the reason. Actual paid job execution
+limits are unchanged by the longer cold-readiness budget.
+
 ## Host a P2P GPU operator
 
 The current operator supports an **Ubuntu 24.04 x64 gateway**, including WSL2,
@@ -96,6 +133,19 @@ If setup fails, read its prerequisite/progress message, correct the underlying
 Docker, GPU or disk issue and retry. Setup does not change Docker permissions
 or install drivers. A damaged runtime requires reinstalling the release.
 
+The mesh should report **Discovery active**, and the worker should report
+**GPU probe passed** before GPU capacity is advertised. The GPU total in the
+mesh panel counts other discovered operators, not this machine's own worker.
+See [sidecar troubleshooting](./soapbox-compute-mesh.md#p2p-is-connected-but-compute-discovery-is-unavailable)
+if P2P connects but Compute discovery does not.
+
+This release pins rc10 for newly prepared operators. An already configured operator
+keeps its existing runtime directory and pinned image; upgrading the app alone
+does not replace those files. Upgrade the coordinator, worker and runner image
+together using the [rc10 runtime release instructions](https://github.com/Bitterbot-AI/soapbox/releases/tag/v0.3.0-rc.10),
+retaining enrollment, database, model cache and GPU lock. Its optional WSL Docker
+service must be explicitly installed; the app does not change host Docker setup.
+
 ## Submit private or collective work
 
 1. Open **Compute → P2P Compute** on the buyer and ensure P2P is connected.
@@ -107,9 +157,11 @@ or install drivers. A damaged runtime requires reinstalling the release.
    in Compute; the P2P dashboard shows the same local activity.
 
 Buyers need no local GPU or coordinator for P2P work. Capacity announcements
-expire when an operator goes offline. A cancellation stays pending while the
-peer is unreachable. Retrying an ambiguous submission uses its original job
-identity. Only send data that the selected operators are allowed to see.
+expire when an operator goes offline. Cancel finishes immediately if no submission
+was sent. Otherwise it stays pending until the operator confirms, including after
+access is revoked. Pending cancellation retries automatically after reconnection
+or a gateway restart; it never submits new work or requests access again.
+Only send data that the selected operators are allowed to see.
 
 ## Buy a paid Base Sepolia test job
 
@@ -151,6 +203,42 @@ Paid coordinator jobs and private/collective mesh batches are distinct paths.
 
 ## Data, recovery and rollback
 
+### Permission changes and revocation
+
+With the authorization-recovery update installed in both the gateway and Soapbox
+runtime, narrowing a peer grant cancels its queued or running jobs in the removed
+pools/projects. Work in scopes that remain granted is preserved. The runtime
+rechecks the current admission at submission, claim, lease renewal and result
+commit; an HTTP request authenticated before a change cannot enqueue using a
+revoked credential. Grant updates rotate the local runtime credential.
+
+Revocation immediately persists local denial in the gateway. If the coordinator
+is unavailable, Compute reports revocation as pending and retries automatically
+on its service cycle and after restart. No manual revoke retry is required once
+the coordinator is reachable. Re-admission waits for pending cleanup to finish.
+The runtime commits credential removal and cancellation together. Until that
+commit succeeds, gateway denial alone does not establish that a remote worker
+has stopped. Cancellation rejects further results; already executed effects
+cannot be undone, and physical GPU shutdown can lag.
+
+These changes do not enable paid mesh work, alter the default-on Compute setting,
+or change the dedicated Base Sepolia wallet. Upgrade both components together;
+1.10.1-beta.1 introduced both fixes. Beta.2 bundles rc8 and adds cancellation
+recovery without re-admission or submission replay.
+
+### Cancellation after lost replies, offline periods or revocation
+
+The operator authenticates the cancelling peer's P2P identity and accepts only
+its own batch/shard identifier. The runtime records a durable cancellation fence
+before acknowledging it. A delayed submission using that identifier is refused,
+even after restart or a later access grant. This narrow cancellation route grants
+no submission/read access and returns no inputs or results. If work already
+completed, the UI reports that fact; cancellation cannot undo its effects.
+
+Both gateways and the operator runtime must have this update. An older operator
+cannot acknowledge the new cancellation request, so it remains pending until
+the operator upgrades. Do not restore access simply to clear a cancelled job.
+
 Setup data, local coordinator state and verified runtime/model files live under
 the gateway state directory's `compute/setup/`. The buyer's durable mesh journal
 stores job inputs/results locally; selected operators also process and store
@@ -159,7 +247,12 @@ are local private files. OS-backed secret storage is not implemented yet.
 
 For an app upgrade, retain the installer's previous version and use
 `bitterbot update --rollback` to return to it. Stop or settle outstanding work
-before deliberately switching versions. Rollback keeps wallet data; it is not
+before deliberately switching versions. Soapbox rc8 upgrades its coordinator
+database to schema 2. Older runtimes refuse that database to protect cancellation
+records; a desktop rollback to a release bundling rc7 cannot resume that operator.
+Reinstall the matching rc8-or-newer release to resume. Do not delete the database
+or restore an older snapshot to clear this check: that loses cancellation fences.
+Rollback keeps wallet data; it is not
 a reversal of a transaction or completed job. Do not use the old overlay's
 **Soapbox-Setup** rollback against an integrated installation. Keep a backup of
 the gateway state and separate Compute wallet identity before moving machines.
