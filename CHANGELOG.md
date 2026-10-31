@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.12.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.11.0...v1.12.0) (2026-10-31)
+
+
+### Features
+
+* **browser:** teach reusable skills from reviewed demonstrations ([#338](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/338)) ([9cfd9db](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/9cfd9db0e4fe7c05d443cdcabe505a9e17bd4be5))
+* **compute:** land the beta recovery stack on main with Soapbox rc10 ([#343](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/343)) ([c8d414d](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c8d414db5d9e01e94dfe376c4b3f0147f782ab18))
+* **gateway:** attribute event-loop stalls with an on-demand sampling profiler ([#341](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/341)) ([7a563ca](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/7a563ca074f515cf0febe6ec6488163e73880601))
+* **gateway:** explain disabled OpenAI-compatible endpoints instead of a bare 404 ([#342](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/342)) ([299269a](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/299269afa1cf95aa5e63064540f73b3fdf19658c))
+
+
+### Bug Fixes
+
+* **acp:** migrate to @agentclientprotocol/sdk 2.x and fix the stdio bridge ([#340](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/340)) ([687e906](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/687e906e3f037e2d91467162a8f80d67e946744a))
+* **memory:** record evidence only for prompt-included facts, owner searches and on an independent retention clock ([#344](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/344)) ([aa0953e](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/aa0953e9805852dd81588818d81414cd8e6f4ae9))
+* **orchestrator:** reconcile Cargo.lock after the ed25519-dalek and sha2 bumps ([#336](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/336)) ([a776707](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a7767075c83c5dc5feb30f3aac3b0715620f9af1))
+
 ## [1.11.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.10.1...v1.11.0) (2026-10-30)
 
 
