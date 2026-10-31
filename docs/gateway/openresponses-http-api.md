@@ -331,3 +331,11 @@ curl -N http://127.0.0.1:19001/v1/responses \
     "input": "hi"
   }'
 ```
+
+## Troubleshooting
+
+A `404` whose JSON body has `"code": "endpoint_disabled"` means the Gateway is
+reachable but `gateway.http.endpoints.responses.enabled` is not set. Enable it
+(`bitterbot config set gateway.http.endpoints.responses.enabled true --json`),
+restart the Gateway, and retry. A plain `404 Not Found` without that body comes
+from a Gateway older than 1.12, where the disabled endpoint gave no hint.

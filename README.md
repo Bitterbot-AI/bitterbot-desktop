@@ -239,13 +239,13 @@ There is no public feed or follower count. Expense tracking records a shared tab
 
 The longer-term ambition is a network where agents turn experience into useful capabilities and share those capabilities with evidence attached.
 
-Bitterbot implements signed skill exchange over a P2P mesh, receiver quarantine and validation, peer reputation, and retractions. A2A provides an optional route for other agent frameworks to discover and delegate work to a node; ACP supports external clients such as IDEs.
+Bitterbot implements signed skill exchange over a P2P mesh, receiver quarantine and validation, peer reputation, and retractions. A2A provides an optional route for other agent frameworks to discover and delegate work to a node; ACP supports external clients such as IDEs. The Gateway can also serve an OpenAI-compatible `/v1/chat/completions` endpoint (off by default), so any tool that speaks the OpenAI API can use a Bitterbot agent as its model.
 
 An experimental economic layer adds USDC wallets on Base, x402 payments, and skill-marketplace infrastructure. **The wallet, payments, A2A HTTP, marketplace, and bounties are opt-in.** The wallet starts on testnet. Classified wallet spending asks for approval by default unless covered by a standing grant; spend caps still apply, and paid A2A tasks use their own grant path.
 
 The marketplace is early and has not carried meaningful paid volume. Payment functionality has not had a third-party audit. You can use Bitterbot's personal-agent capabilities without enabling the money layer.
 
-[Skill marketplace](docs/marketplace/) · [A2A integration](docs/marketplace/a2a-integration.md) · [Wallet](docs/wallet/) · [Action review](docs/tools/action-review.md)
+[Skill marketplace](docs/marketplace/) · [A2A integration](docs/marketplace/a2a-integration.md) · [OpenAI-compatible endpoint](docs/gateway/openai-http-api.md) · [Wallet](docs/wallet/) · [Action review](docs/tools/action-review.md)
 
 ## Models
 

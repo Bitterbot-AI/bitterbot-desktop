@@ -59,6 +59,48 @@ Set `gateway.http.endpoints.chatCompletions.enabled` to `true`:
 }
 ```
 
+Or from the CLI, then restart the Gateway:
+
+```bash
+bitterbot config set gateway.http.endpoints.chatCompletions.enabled true --json
+```
+
+In Docker, run the same command through the container:
+
+```bash
+docker compose exec -u node bitterbot-gateway \
+  node bitterbot.mjs config set gateway.http.endpoints.chatCompletions.enabled true --json
+docker compose restart bitterbot-gateway
+```
+
+## Troubleshooting
+
+### 404 with `"code": "endpoint_disabled"`
+
+The Gateway is reachable but the endpoint is switched off. Since 1.12 the
+response is a JSON error in the OpenAI shape that names the config key:
+
+```json
+{
+  "error": {
+    "message": "The OpenAI Chat Completions endpoint (/v1/chat/completions) is disabled on this Bitterbot Gateway. Set gateway.http.endpoints.chatCompletions.enabled to true in bitterbot.json (bitterbot config set gateway.http.endpoints.chatCompletions.enabled true --json) and restart the Gateway. Docs: https://docs.bitterbot.ai/gateway/openai-http-api",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "endpoint_disabled"
+  }
+}
+```
+
+The gateway log carries the same line once per endpoint. Older Gateways
+answered a plain `404 Not Found` with no hint, which read as "not an
+OpenAI-compatible API". Enable the endpoint as shown above and retry.
+
+### 401 Unauthorized
+
+The endpoint is on but the request carried no (or the wrong) bearer token. Send
+the Gateway token as `Authorization: Bearer <token>`; `bitterbot config get
+gateway.auth.token` prints it.
+
 ## Disabling the endpoint
 
 Set `gateway.http.endpoints.chatCompletions.enabled` to `false`:

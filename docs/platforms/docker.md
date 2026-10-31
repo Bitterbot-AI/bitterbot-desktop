@@ -192,6 +192,34 @@ it. Safer ways to reach it from elsewhere, in order:
    past host firewalls such as ufw. Never publish the port to the internet
    without HTTPS in front of it.
 
+## Using it as an OpenAI-compatible model server
+
+Tools that speak the OpenAI Chat Completions API (robotics bridges, Open WebUI,
+LangChain, plain `curl`) can use a Bitterbot agent as their model. The
+endpoint is **off by default**; a request to a Gateway that has not enabled it
+gets a `404` whose JSON body says so and names the setting. Turn it on through
+the container and restart:
+
+```bash
+docker compose exec -u node bitterbot-gateway \
+  node bitterbot.mjs config set gateway.http.endpoints.chatCompletions.enabled true --json
+docker compose restart bitterbot-gateway
+```
+
+Then point the client at `http://127.0.0.1:19001/v1/chat/completions` with the
+Gateway token as the API key and `bitterbot:main` as the model:
+
+```bash
+curl -s http://127.0.0.1:19001/v1/chat/completions \
+  -H "Authorization: Bearer $BITTERBOT_GATEWAY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"bitterbot:main","messages":[{"role":"user","content":"hello"}]}'
+```
+
+Each call runs a normal agent turn, with the agent's memory and tools, and
+replies in the OpenAI response shape (streaming with `"stream": true`). Details
+and the `/v1/responses` variant: [OpenAI Chat Completions](/gateway/openai-http-api).
+
 ## The P2P port
 
 By default the P2P port is published on `127.0.0.1` only. The node still joins
