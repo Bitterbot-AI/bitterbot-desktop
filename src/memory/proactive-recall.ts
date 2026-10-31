@@ -533,6 +533,8 @@ export interface FormatProactiveFactsOptions {
    * prompt assembly after the fact).
    */
   includedDreamChunkIds?: string[];
+  /** All chunk ids that survived formatting, for prompt-inclusion evidence. */
+  includedChunkIds?: string[];
 }
 
 export const MEMORY_FENCE_OPEN_TAG = "<memory-context>";
@@ -590,6 +592,7 @@ export function formatProactiveFacts(
       if (f.chunkId && options.includedDreamChunkIds) {
         options.includedDreamChunkIds.push(f.chunkId);
       }
+      if (f.chunkId) options.includedChunkIds?.push(f.chunkId);
       continue;
     }
     // PLAN-54: a fact the agent went and learned on its own is said so. The
@@ -597,6 +600,7 @@ export function formatProactiveFacts(
     const learned = f.origin === "curiosity" ? "(learned on my own) " : "";
     const prefix = f.confidence < 0.4 ? "(uncertain) " : "";
     lines.push(`- ${learned}${prefix}${f.text}`);
+    if (f.chunkId) options.includedChunkIds?.push(f.chunkId);
   }
   const header = anyDream
     ? "What you already know (act on this naturally, never announce it). Items marked as hypotheses may be shared as hunches, not facts:"

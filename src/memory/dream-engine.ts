@@ -1283,13 +1283,18 @@ export class DreamEngine {
       try {
         const proposedSelected = [...preSoftmax];
         const proposedRemaining = shadowModes.filter(([mode]) => !proposedSelected.includes(mode));
+        // The counterfactual can require more iterations (e.g. last-mode avoidance).
+        // Reuse the live prefix, but never advance Math.random for shadow-only draws.
+        const proposedDraws = [...draws];
+        const shadowDrawAt = (i: number): number =>
+          (proposedDraws[i] ??= crypto.randomBytes(4).readUInt32BE(0) / 0x1_0000_0000);
         this.fillModesBySoftmax(
           proposedSelected,
           proposedRemaining,
           numModes,
           temperature,
           this.lastModeUsed,
-          drawAt,
+          shadowDrawAt,
         );
         const weightsOf = (list: Array<[DreamMode, DreamModeConfig]>) =>
           Object.fromEntries(list.map(([m, c]) => [m, Number(c.weight.toFixed(4))]));
@@ -1299,8 +1304,14 @@ export class DreamEngine {
             selected: [...selected],
             weights: weightsOf(adjustedModes),
             gccrfWeight: GCCRF_W,
+            draws,
           },
-          proposed: { selected: proposedSelected, weights: weightsOf(shadowModes), gccrfWeight: 0 },
+          proposed: {
+            selected: proposedSelected,
+            weights: weightsOf(shadowModes),
+            gccrfWeight: 0,
+            draws: proposedDraws,
+          },
           decisionKey: "selected",
         });
       } catch (err) {

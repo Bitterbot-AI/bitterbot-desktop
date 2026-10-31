@@ -131,6 +131,7 @@ export async function runCliAgent(params: {
     sessionKey: params.sessionKey,
     // PLAN-40 funnel: CLI turns are owner-driven full prompts.
     promptMode: "full",
+    deliveryId: params.runId,
   }).catch(() => undefined);
 
   // PLAN-33: canonical facts resolve independently of endocrine state.

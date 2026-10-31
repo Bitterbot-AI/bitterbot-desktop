@@ -4,6 +4,7 @@
  * phenotype summary from MEMORY.md.
  */
 
+import { randomUUID } from "node:crypto";
 import type { BitterbotConfig } from "../config/config.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 
@@ -27,6 +28,8 @@ export type EndocrineStateForPrompt = {
   lastSessionBrief?: string;
   /** Proactive memory facts for involuntary recall (Plan 7, Phase 1) */
   proactiveMemories?: string;
+  /** Called only when the full prompt renderer includes proactiveMemories. */
+  onProactiveRecallInjected?: () => void;
   /** Intra-session coherence context (Plan 7, Phase 2+9) */
   sessionCoherence?: string;
   /**
@@ -55,6 +58,8 @@ export async function resolveEndocrineState(params: {
    * fresh conversation is not suppressed by the previous session's window.
    */
   sessionKey?: string;
+  /** Stable run/turn identity for retry-safe exposure accounting. */
+  deliveryId?: string;
   /**
    * PLAN-40 funnel: the caller's prompt mode. Dream-artifact consumption is
    * stamped ONLY when "full" — minimal-mode assembly discards the proactive
@@ -119,6 +124,7 @@ export async function resolveEndocrineState(params: {
     // matched directive/world_fact/mental_model crystals. This is what lets the
     // agent answer already knowing what it has stored about a topic.
     let proactiveMemories: string | undefined;
+    let onProactiveRecallInjected: (() => void) | undefined;
     let userMessageEmbedding: number[] | null = null;
     const liveTurn = Boolean(params.userMessage) && !params.isHeartbeat;
     try {
@@ -130,8 +136,13 @@ export async function resolveEndocrineState(params: {
           facts: string | undefined;
           embedding: number[] | null;
           renderedDreamChunkIds?: string[];
+          renderedChunkIds?: string[];
         }>;
         markDreamArtifactsConsumed?(ids: readonly string[], kind: "retrieved"): void;
+        recordProactiveRecallDelivery?(
+          ids: readonly string[],
+          delivery: { id: string; sessionKey?: string },
+        ): void;
       };
       if (liveTurn && typeof recallManager.recallForUserTurn === "function") {
         const recall = await recallManager.recallForUserTurn(params.userMessage!, {
@@ -139,17 +150,25 @@ export async function resolveEndocrineState(params: {
         });
         proactiveMemories = recall.facts;
         userMessageEmbedding = recall.embedding;
-        // PLAN-40 funnel: these dream facts WILL render — buildEndocrine-
-        // StateSection includes proactiveMemories only on the full-mode
-        // branch, so the stamp is gated on the caller's declared mode.
-        if (
-          params.promptMode === "full" &&
-          proactiveMemories &&
-          recall.renderedDreamChunkIds &&
-          recall.renderedDreamChunkIds.length > 0 &&
-          typeof recallManager.markDreamArtifactsConsumed === "function"
-        ) {
-          recallManager.markDreamArtifactsConsumed(recall.renderedDreamChunkIds, "retrieved");
+        // Selection may be discarded. The renderer, not the resolver, acknowledges
+        // prompt inclusion. A stable id deduplicates rebuilds of the same turn.
+        if (params.promptMode === "full" && proactiveMemories) {
+          const delivery = { id: params.deliveryId ?? randomUUID(), sessionKey: params.sessionKey };
+          onProactiveRecallInjected = () => {
+            try {
+              if (recall.renderedDreamChunkIds?.length) {
+                recallManager.markDreamArtifactsConsumed?.(
+                  recall.renderedDreamChunkIds,
+                  "retrieved",
+                );
+              }
+              if (recall.renderedChunkIds?.length) {
+                recallManager.recordProactiveRecallDelivery?.(recall.renderedChunkIds, delivery);
+              }
+            } catch (err) {
+              log.debug(`proactive recall inclusion evidence skipped: ${String(err)}`);
+            }
+          };
         }
       } else {
         // No live message (status/compaction) or a heartbeat — identity-only
@@ -355,6 +374,7 @@ export async function resolveEndocrineState(params: {
       maturity,
       lastSessionBrief,
       proactiveMemories,
+      onProactiveRecallInjected,
       sessionCoherence,
       budgetPressure,
       budgetLabel,

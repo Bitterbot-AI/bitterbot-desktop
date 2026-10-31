@@ -584,6 +584,7 @@ export async function runEmbeddedAttempt(
             // PLAN-40 funnel: dream-fact consumption stamps only in full mode
             // (minimal assembly drops the proactive block after selection).
             promptMode,
+            deliveryId: params.runId,
             // Heartbeat ticks must not spend embeddings on proactive recall or
             // drain the continuity gate (token-efficiency build, W2 contract).
             isHeartbeat: params.isHeartbeat === true,

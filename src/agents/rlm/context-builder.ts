@@ -505,6 +505,8 @@ export async function buildDeepRecallContext(params: {
   memoryManager?: MemorySearchManager | null;
   /** PLAN-55: tag superseded memories with the ledger's current value (owner senders only). */
   tagSuperseded?: boolean;
+  /** Only an explicitly owner-authored turn contributes owner retrieval evidence. */
+  observeEvidence?: boolean;
 }): Promise<string> {
   const { agentId, scope, sessionId, includeMemory = true, maxTokens = 500_000 } = params;
   const includeToolResults = params.includeToolResults ?? scope === "current_session";
@@ -631,6 +633,8 @@ export async function buildDeepRecallContext(params: {
           maxResults: 20,
           tagSuperseded: params.tagSuperseded === true,
           caller: "rlm_context",
+          observe: params.observeEvidence === true,
+          sessionKey: params.sessionKey,
         });
         for (const r of results) {
           const key = r.snippet.slice(0, 100);

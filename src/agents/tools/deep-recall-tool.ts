@@ -499,6 +499,8 @@ export function createDeepRecallTool(options: {
         try {
           const quickResults = await manager.search(query, {
             maxResults: 5,
+            observe: options.senderIsOwner === true,
+            sessionKey: options.agentSessionKey,
             // PLAN-55: superseded tags carry ledger values; owner only.
             tagSuperseded: options.senderIsOwner === true,
             caller: "deep_recall",
@@ -550,6 +552,8 @@ export function createDeepRecallTool(options: {
         liveApis.search = async (q, opts) => {
           const results = await mgr.search(q, {
             maxResults: opts?.maxResults ?? 10,
+            observe: options.senderIsOwner === true,
+            sessionKey: options.agentSessionKey,
             tagSuperseded: options.senderIsOwner === true,
             caller: "deep_recall",
           });
@@ -564,7 +568,9 @@ export function createDeepRecallTool(options: {
 
       // Step 3b: Session-persistent sandbox — reuse REPL state (stored
       // variables, prior findings) across deep_recall calls in this session.
-      const cacheKey = sandboxCacheKey(agentId, options.agentSessionKey, scope, range);
+      // A reused sandbox retains its live search closure. Never reuse an owner's
+      // closure (or context) on a non-owner turn in the same conversation.
+      const cacheKey = `${sandboxCacheKey(agentId, options.agentSessionKey, scope, range)}:${options.senderIsOwner === true ? "owner" : "guest"}`;
       const maxTokens = rlmCfg?.maxContextTokens ?? DEFAULT_RLM_CONFIG.maxContextTokens;
       let entry = sessionSandboxes.get(cacheKey);
       let context: string;
@@ -588,6 +594,7 @@ export function createDeepRecallTool(options: {
           maxTokens,
           memoryManager: manager,
           tagSuperseded: options.senderIsOwner === true,
+          observeEvidence: options.senderIsOwner === true,
         });
         if (context.length < 50 && !entry) {
           return jsonResult({
@@ -656,6 +663,8 @@ export function createDeepRecallTool(options: {
           // Use quick search results as proxy for the knowledge region
           const quickResults = await memManager.search(query, {
             maxResults: 10,
+            observe: options.senderIsOwner === true,
+            sessionKey: options.agentSessionKey,
             tagSuperseded: options.senderIsOwner === true,
             caller: "deep_recall",
           });
