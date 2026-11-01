@@ -12,7 +12,7 @@ The memory system stores everything — crystals, embeddings, dream insights, pe
 2. **Edge-native** — Each node carries its own brain. In a P2P swarm, every peer is fully self-contained. No shared Postgres cluster, no Pinecone account, no cloud dependency.
 3. **Transactional consistency** — Consolidation engine applies decay, merges, and lifecycle transitions in a single ACID transaction. No eventual-consistency bugs.
 4. **sqlite-vec** — The `sqlite-vec` extension provides real vector search (cosine similarity) inside SQLite, combined with FTS5 for BM25 keyword search. Hybrid retrieval with zero network hops.
-5. **Portability** — The entire memory is one `.db` file. Back it up, move it between machines, or inspect it with any SQLite viewer.
+5. **Portability** — The entire memory is one `.sqlite` file. Back it up, move it between machines, or inspect it with any SQLite viewer.
 
 For deployments that need distributed vector search at scale, the embedding and retrieval layers are abstracted behind provider interfaces — but for the primary use case (a single bot's memory), SQLite is the optimal choice.
 
@@ -27,41 +27,40 @@ Get a working memory system in 3 steps:
 ```typescript
 import { MemoryIndexManager } from "./memory/manager.js";
 
+// Returns null when memory search is not configured for the agent
 const manager = await MemoryIndexManager.get({
   cfg: loadConfig(),
   agentId: "my-agent",
 });
 
-// Index a chunk of text — this creates a knowledge crystal
-await manager.indexChunk({
-  text: "TypeScript interfaces are erased at runtime. Use 'type' for simple aliases.",
-  path: "notes/typescript.md",
-  source: "memory",
-  startLine: 1,
-  endLine: 1,
-});
+// Crystals are created by indexing files, not by a direct insert API.
+// Write a note under the agent workspace's memory/ folder, then sync:
+//   <workspace>/memory/notes/typescript.md
+await manager?.sync({ reason: "quick-start", force: true });
 ```
+
+The file watcher also picks up `memory/**/*.md` changes on its own, and session transcripts are indexed as they grow.
 
 ### 2. Force Consolidation
 
 ```typescript
 // Run one consolidation cycle immediately (normally timer-driven every 30 min)
-const result = await manager.consolidate();
-// result: { scored: 1, forgotten: 0, merged: 0 }
+const result = await manager?.consolidate();
+// result: { totalChunks, scoredChunks, mergedChunks, forgottenChunks, durationMs } | null
 ```
 
 ### 3. Search
 
 ```typescript
-const results = await manager.search("typescript runtime types");
+const results = await manager?.search("typescript runtime types");
 // results: [{ id, text, score, importanceScore, ... }]
 ```
 
 ### Inspect State
 
 ```bash
-# Open the database directly
-sqlite3 .bitterbot/memory/memory.db
+# Open the database directly (one file per agent)
+sqlite3 ~/.bitterbot/memory/<agentId>.sqlite
 
 # Count crystals
 SELECT COUNT(*) FROM chunks;
@@ -78,6 +77,8 @@ SELECT * FROM memory_audit_log ORDER BY timestamp DESC LIMIT 10;
 # Check dream history
 SELECT cycle_id, started_at, insights_generated, modes_used FROM dream_cycles ORDER BY started_at DESC LIMIT 5;
 ```
+
+Retrieval fuses three ranked lists (vector, keyword, graph) with Reciprocal Rank Fusion at `k = 60`. Each channel carries a weight from `agents.defaults.memorySearch.query.rrfWeights` (default `1/1/1`, unweighted). Keyword terms are OR-joined before FTS5. Post-fusion boosts (recency, emotional valence, mood congruence, temporal intent) are scaled by `agents.defaults.memorySearch.query.postFusionBoostScale` (default `0.1`) so they break ties without reordering the fused list.
 
 ---
 
@@ -137,7 +138,7 @@ flowchart TB
     end
 
     subgraph "Deep Recall (on-demand)"
-        DR[deep_recall tool] --> SS[Smart Shortcut - score ≥ 0.8]
+        DR[deep_recall tool] --> SS[Smart Shortcut - 3+ results with score ≥ 0.8]
         SS -->|miss| SUB[Sub-LLM REPL in VM Sandbox]
         SUB --> DB2[(Memory DB + Session JSONL)]
     end
@@ -197,13 +198,15 @@ flowchart TB
 | `src/memory/manager.ts`               | Central orchestrator. Creates all subsystems, runs search, exposes public API |
 | `src/memory/manager-sync-ops.ts`      | File-watching sync logic (mixin)                                              |
 | `src/memory/manager-embedding-ops.ts` | Embedding batch operations (mixin)                                            |
-| `src/memory/migrations.ts`            | Schema versioning: 70 migration versions                                      |
+| `src/memory/migrations.ts`            | Schema versioning: 80 migration versions (v1 to v80)                          |
 | `src/memory/memory-schema.ts`         | Base table creation, `ensureColumn()` helper                                  |
 | `src/memory/crystal-types.ts`         | All type definitions: `KnowledgeCrystal`, lifecycle, governance, etc.         |
 | `src/memory/crystal.ts`               | `CrystalStore` — CRUD operations on knowledge crystals                        |
 | `src/memory/importance.ts`            | `calculateImportance()` — Ebbinghaus decay formula                            |
 | `src/memory/internal.ts`              | Shared math: `cosineSimilarity()`, `computeCentroid()`, `parseEmbedding()`    |
-| `src/memory/hybrid.ts`                | `mergeHybridResults()`, `buildFtsQuery()`, `bm25RankToScore()`                |
+| `src/memory/hybrid.ts`                | `mergeHybridResultsRRF()`, `buildFtsQuery()` (OR-joined), `bm25RankToScore()` |
+| `src/memory/rrf.ts`                   | Weighted Reciprocal Rank Fusion (`rrfFuse`, `k = 60`, per-list weight)        |
+| `src/memory/maintenance-mutex.ts`     | `MaintenanceMutex`: serializes consolidation, dream, sweeps and digest        |
 
 ### Dream System
 
@@ -245,7 +248,7 @@ flowchart TB
 | `src/agents/rlm/prompts.ts`            | REPL system prompts and diverse query generation                    |
 | `src/agents/rlm/cost-tracker.ts`       | Per-query token usage and cost monitoring                           |
 | `src/agents/rlm/context-builder.ts`    | Conversation history and session context assembly                   |
-| `src/agents/tools/deep-recall-tool.ts` | Agent tool — smart shortcut, REPL dispatch                          |
+| `src/agents/tools/deep-recall-tool.ts` | Agent tool — smart shortcut, REPL dispatch, owner-only sessions     |
 
 ### Session & User Knowledge
 
@@ -253,6 +256,7 @@ flowchart TB
 | --------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `src/memory/session-extractor.ts` | Extract structured facts from session transcripts during dream cycles                             |
 | `src/memory/session-handover.ts`  | Generate/load compact session handover briefs for cross-session continuity, quality gate scoring  |
+| `src/memory/continuity-gate.ts`   | Cosine gate (`0.25`) that decides whether the handover brief is injected into a new session       |
 | `src/memory/user-model.ts`        | `UserModelManager` — preference storage, `upsertFromDirective()`, Bayesian confidence calibration |
 
 ### Cognitive Coherence (Plan 7)
@@ -288,12 +292,20 @@ See [Working Memory](./working-memory.md) for full documentation.
 | File                             | Purpose                                                                                      |
 | -------------------------------- | -------------------------------------------------------------------------------------------- |
 | `src/memory/curiosity-engine.ts` | `CuriosityEngine` — unified GCCRF scoring, gap detection, region tracking, target management |
-| `src/memory/curiosity-types.ts`  | Curiosity types: regions, targets, surprise assessment                                       |
+| `src/memory/curiosity-types.ts`  | Curiosity types: regions, targets, surprise assessment, evidence config                      |
 | `src/memory/gccrf-reward.ts`     | `GCCRFRewardFunction` — five-component reward computation (internal to CuriosityEngine)      |
 | `src/memory/hormonal.ts`         | `HormonalStateManager` — dopamine/cortisol/oxytocin with exponential decay                   |
 | `src/memory/consolidation.ts`    | `ConsolidationEngine` — Ebbinghaus decay, merge, lifecycle transitions                       |
 | `src/memory/user-model.ts`       | `UserModelManager` — preference extraction, pattern detection                                |
 | `src/memory/task-memory.ts`      | `TaskMemoryManager` — goal tracking, progress, stall detection                               |
+
+### Curiosity Research & Evidence (PLAN-54, PLAN-59)
+
+| File                                 | Purpose                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `src/memory/curiosity-researcher.ts` | Autonomous web research on the maintenance tick (`memory.curiosity.research`)                     |
+| `src/memory/evidence-telemetry.ts`   | Observational layer: retrieval hits, surfacing events, shadow decision traces                     |
+| `src/memory/surfacing-trial.ts`      | Shadow eligibility/assignment for proactive surfaces (`memory.curiosity.evidence.surfacingTrial`) |
 
 ### PLAN-9: Neuroscience Memory Mechanisms
 
@@ -321,6 +333,7 @@ See [Working Memory](./working-memory.md) for full documentation.
 | `src/memory/graph-optimization-hook.ts` | Dream-engine hook: runs the optimizer, rejects validation regressions, materializes gate_value |
 | `src/memory/graph-bridge-target.ts`     | Writer-reader coupling: emits `graph_bridge` curiosity targets from retrieval misses (Phase 4) |
 | `src/memory/sage-memory.ts`             | Public façade composing all phases — `sageRetrieve(db, kg, query, config)`                     |
+| `src/memory/graph-abstraction.ts`       | Community detection and summary nodes over the entity graph (`memory.graphAbstraction`)        |
 
 ### Skills & P2P
 
@@ -350,6 +363,22 @@ See [Working Memory](./working-memory.md) for full documentation.
 | `src/memory/scheduler.ts`  | `MemoryScheduler` — per-hour LLM/embedding budgets                       |
 | `src/memory/pipeline.ts`   | `MemoryPipeline` — fluent retrieve-filter-augment-store API              |
 
+### Owner Controls & Canonical Ledger
+
+| File                                  | Purpose                                                                           |
+| ------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/memory/canonical-facts.ts`       | Canonical facts ledger: tiers, 48-fact cap, 90-day decay, rapid-supersede window  |
+| `src/memory/canonical-propagation.ts` | `canonical:changed` queue, outbox, followers (search, preferences, graph, briefs) |
+| `src/memory/canonical-supersede-*.ts` | The individual followers that mark, close or flag what repeated an old value      |
+| `src/memory/correction-capture.ts`    | Per-turn correction capture into the canonical ledger (12 s model-call cap)       |
+| `src/memory/owner-controls.ts`        | Memory page operations: list, get, edit, forget, export writer (0600 file)        |
+| `src/memory/forget-cascade.ts`        | Forget/edit cascade planning and batched apply (`planHash`)                       |
+| `src/memory/memory-suppressions.ts`   | `memory_suppressions` table: what the owner removed stays removed                 |
+| `src/memory/memory-export.ts`         | Export version 2 (paged, redacted)                                                |
+| `src/memory/memory-import.ts`         | Import rules: suppressions win, tier capping, owner-tier confirmation hash        |
+
+See [Your memory controls](./controls.md) for the user-facing behaviour.
+
 ---
 
 ## Initialization Chain
@@ -367,15 +396,20 @@ The private constructor runs this initialization sequence:
 6.  ensureIntervalSync()        — periodic re-index timer
 7.  ensureConsolidationInterval() — periodic consolidation + curiosity + hormonal decay
 8.  ensureDreamEngine()         — DreamEngine + interval timer
-9.  ensureCuriosityEngine()     — CuriosityEngine
-10. ensureHormonalManager()     — HormonalStateManager
-11. ensureUserModelManager()    — UserModelManager
-12. ensureExecutionTracker()    — SkillExecutionTracker (SkillRefiner retired, PLAN-45 Phase 1)
-13. ensureGovernance()          — MemoryGovernance
-14. ensureTaskMemory()          — TaskMemoryManager
-15. ensureScheduler()           — MemoryScheduler
-16. ensureMemStore()            — MemStore (publish/subscribe)
-17. ensureSkillNetworkBridge()  — SkillNetworkBridge (null orchestrator, wired later)
+9.  ensureDigestInterval()      -- scheduled memory digest (memory.digest)
+10. ensureHealthSweepInterval() -- scheduled health sweep (memory.healthSweep)
+11. ensureTrendingSweepInterval() -- marketplace trending sweep
+12. ensureCuriosityEngine()     — CuriosityEngine
+13. ensureHormonalManager()     — HormonalStateManager
+14. ensureUserModelManager()    — UserModelManager
+15. ensureCanonicalFacts()      -- canonical facts ledger store
+16. ensureExecutionTracker()    — SkillExecutionTracker (SkillRefiner retired, PLAN-45 Phase 1)
+17. ensureGovernance()          — MemoryGovernance
+18. ensureTaskMemory()          — TaskMemoryManager
+19. ensureScheduler()           — MemoryScheduler
+20. ensureMemStore()            — MemStore (publish/subscribe)
+21. ensurePeerReputationManager() -- PeerReputationManager
+22. ensureSkillNetworkBridge()  — SkillNetworkBridge (null orchestrator, wired later)
 ```
 
 The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestratorBridge()`.
@@ -386,7 +420,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 
 **Engine:** Node.js built-in `node:sqlite` (`DatabaseSync`) + `sqlite-vec` extension for vector search + FTS5 for full-text search.
 
-**Schema versions:** 13 migrations in `migrations.ts`:
+**Schema versions:** 80 migrations (v1 to v80) in `migrations.ts`; `LATEST_SCHEMA_VERSION` is derived from the last entry. The first thirteen:
 
 | Version | Description                                                                                                                                                                                                             |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -403,7 +437,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | v11     | Skill curator follow-ups (PLAN-15 staging gate columns)                                                                                                                                                                 |
 | v12     | PLAN-15 procedural-memory curator — `skill_lifecycle` table backfilled from `skill_executions`                                                                                                                          |
 | v13     | **PLAN-18 SAGE graph memory** — `gate_value` + `gate_features` BLOB columns on `relationships`, `graph_gate_training_pairs` table, `graph_reward_delta` column on `dream_cycles`                                        |
-| v14–v70 | Later migrations (lifecycle columns, canonical facts, skill evolution, review and usage tables, and more); see `src/memory/migrations.ts`                                                                               |
+| v14–v80 | Later migrations (lifecycle columns, canonical facts, skill evolution, review and usage tables, evidence telemetry, and more); see `src/memory/migrations.ts`                                                           |
 
 **Key tables:**
 
@@ -441,15 +475,32 @@ All memory configuration flows from `BitterbotConfig.memory`:
 
 ```typescript
 cfg.memory?.consolidation  → ConsolidationEngine config (decayRate, thresholds, forgottenRetentionDays)
-cfg.memory?.dream          → DreamEngineConfig (modes, tiers, intervals, LLM calls)
+cfg.memory?.dream          → DreamEngineConfig (modes, tiers, intervals, readiness gates, LLM calls)
 cfg.memory?.curiosity      → CuriosityConfig (weights, thresholds, max regions)
-cfg.memory?.emotional      → EmotionalConfig
-  .hormonal                → HormonalConfig (halflife values)
+  .research                → autonomous research on the maintenance tick (interval, pages, attempts)
+  .autoResearch            → research egress budget (enabled, maxPerDay)
+  .evidence                → evidence telemetry (mode: off | observe | shadow; default shadow)
+    .surfacingTrial        → shadow eligibility/assignment for proactive surfaces (mode: off | shadow)
+cfg.memory?.gccrf          → GCCRFConfig (component weights, alpha schedule)
+cfg.memory?.emotional      → EmotionalConfig (decayResistance)
+  .hormonal                → HormonalConfig (halflife values, homeostasis)
   .userModel               → UserModelConfig (preference/pattern extraction)
 cfg.memory?.scheduler      → BudgetConfig (per-hour API limits)
+cfg.memory?.rlm            → RLMConfig (deep recall iterations, model routing)
+cfg.memory?.canonicalLedger → canonical facts ledger (enabled, maxFacts 48, budgetTokens)
+cfg.memory?.extraction     → session fact extraction (model, minSessionDelta, maxFactsPerSession)
+cfg.memory?.correction     → per-turn correction capture (enabled, confirm)
+cfg.memory?.batch          → Message Batches lanes (enabled, lanes, maxWaitMinutes)
+cfg.memory?.provenance     → evidence pointers on extracted facts
+cfg.memory?.architectEvolution → learned construction rules (opt-in)
+cfg.memory?.graphAbstraction → community summary nodes over the entity graph
+cfg.memory?.coverageDiagnostics → recall-miss blame router
+cfg.memory?.healthSweep / .digest / .dreamBrief → scheduled reports
 ```
 
-Each subsystem has sensible defaults and is enabled by default. Disable any subsystem by setting `enabled: false` in its config block.
+Most subsystems have sensible defaults and are enabled by default; disable one by setting `enabled: false` in its config block. The opt-in exceptions: the `exploration` dream mode (`memory.dream.modes.exploration.enabled`), learned construction rules (`memory.architectEvolution.enabled`), the dream engine's Skill Seekers research step (`memory.curiosity.autoResearch.enabled` must be `true`), and harness evolution (`agents.defaults.harnessEvolve.enabled`).
+
+**Message Batches lanes.** `memory.batch` (kill switch `enabled`, default `true`) routes latency-tolerant background lanes through the Anthropic Message Batches API: a lane call submits one batch, polls with backoff, and falls back to the live call on timeout (`maxWaitMinutes`, default 20) or any error. Default `lanes`: `memory/dream`, `memory/extraction`, `memory/discovery`, `skills/evolution` (the judge and maintainer; the proposer loop and on-demand RPC lanes always run live). Only Anthropic API-key models qualify; other providers take the live path.
 
 ---
 
@@ -468,12 +519,14 @@ accumulating:
   the provider-fallback path can activate. Each pass logs a structured summary:
   `memory embeddings: N/M embedded, K cache hit(s), S split(s) in Xms`, escalating
   to `WARN` with a pending count when any item is deferred.
-- **Pending backfill drainer.** `backfillPendingEmbeddings()` runs every
-  consolidation cycle (bounded per pass) and is also exposed as
+- **Pending backfill drainer.** `backfillPendingEmbeddings()` runs at the end of
+  every sync cycle (bounded per pass), again in small bounded passes right after a
+  curiosity finding is stored, an owner edit or an import, and is also exposed as
   `bitterbot memory backfill-embeddings` to clear a backlog manually. It vectorizes
   `model='pending'` chunks and indexes them into `chunks_vec` + `chunks_fts`.
-- **Recall stays off the hot path.** Hybrid recall fuses vector + keyword
-  results by Reciprocal Rank Fusion (`mergeHybridResultsRRF`); vector search is a
+- **Recall stays off the hot path.** Hybrid recall fuses vector, keyword and graph
+  results by weighted Reciprocal Rank Fusion (`mergeHybridResultsRRF`, `k = 60`,
+  default weights `1/1/1`); vector search is a
   `chunks_vec` (sqlite-vec) KNN over float32 BLOB vectors, not a JS scan of the
   row store. Embeddings are stored as compact float32 BLOBs (~6 KB), never dragged
   through a sort — the 2026-09-07 audit's freeze came from scan queries that
@@ -506,6 +559,16 @@ SELECT COUNT(*) FROM chunks WHERE model='pending' OR embedding IS NULL OR length
 SELECT COUNT(*) FROM chunks WHERE lifecycle_state='forgotten' OR lifecycle='expired';
 ```
 
+### Evidence telemetry (shadow mode)
+
+`memory.curiosity.evidence.mode` defaults to `shadow`. This is an observational layer that changes no behaviour: GCCRF still scores every indexed chunk and still feeds the hormonal system. Shadow mode additionally records, under HMAC digests of the query (the text is never stored):
+
+- `retrieval_hits`: the top-K of each owner search with per-channel ranks and fused score;
+- `surfacing_events`: what was proactively surfaced (a curiosity finding, a proactive-recall fact, a dream brief). `delivered` means the item was included in the prompt for a run, keyed by that run's id; usefulness becomes `explicit` only when the owner acts on it, otherwise it stays `unknown`;
+- `decision_traces`: what a "GCCRF as diagnostic only" dream routing would have decided next to the legacy routing. The legacy decision is always the one used.
+
+`memory.curiosity.evidence.surfacingTrial.mode` (default `shadow`) adds eligibility and assignment rows for the optional proactive surfaces; in shadow nothing is withheld. Retention is bounded (`retentionDays`, default 90) and pruned with event-loop yields. `off` disables both; `observe` keeps hits and surfacing events without decision traces.
+
 ---
 
 ## Observability & Debugging
@@ -534,23 +597,25 @@ Every lifecycle transition (crystal promoted, merged, expired, ingested from pee
 
 ```sql
 -- Recent audit events
-SELECT action, crystal_id, details, timestamp
+SELECT event, chunk_id, actor, metadata, timestamp
 FROM memory_audit_log
 ORDER BY timestamp DESC LIMIT 20;
 
--- All peer-ingested skills
-SELECT * FROM memory_audit_log WHERE action = 'peer_skill_ingested';
+-- Everything the P2P skill bridge wrote (publish and ingest events)
+SELECT * FROM memory_audit_log WHERE actor = 'skill_network_bridge';
 
--- Crystals that were cortisol-gated (rejected during spike)
-SELECT * FROM memory_audit_log WHERE details LIKE '%cortisol%';
+-- Events whose metadata mentions cortisol (gated during a spike)
+SELECT * FROM memory_audit_log WHERE metadata LIKE '%cortisol%';
 ```
+
+Columns: `id`, `chunk_id`, `event`, `timestamp`, `actor` (default `system`), `metadata` (JSON), plus `operation` and `context_json` on newer rows.
 
 ### Dream Cycles
 
 ```sql
 -- Recent dream cycles with mode breakdown
 SELECT cycle_id, started_at, duration_ms, insights_generated,
-       modes_used, tiers_used, error
+       modes_used, llm_calls_used, error
 FROM dream_cycles
 ORDER BY started_at DESC LIMIT 10;
 
@@ -564,7 +629,7 @@ ORDER BY confidence DESC LIMIT 10;
 
 ```sql
 -- Peer trust levels
-SELECT pubkey, trust_level, reputation_score, skills_accepted, skills_rejected,
+SELECT peer_pubkey, trust_level, reputation_score, skills_accepted, skills_rejected,
        is_banned, eigentrust_score, anomaly_flag
 FROM peer_reputation
 ORDER BY reputation_score DESC;
@@ -619,10 +684,10 @@ GROUP BY tier;
 ## Running Tests
 
 ```bash
-# Full knowledge crystal test suite (117 tests)
+# Full knowledge crystal test suite (about 115 tests)
 npx vitest run src/memory/knowledge-crystal-system.test.ts
 
-# P2P skill propagation tests (88 tests)
+# P2P skill propagation tests (about 86 tests)
 npx vitest run src/memory/p2p-skill-propagation.test.ts
 
 # All memory tests

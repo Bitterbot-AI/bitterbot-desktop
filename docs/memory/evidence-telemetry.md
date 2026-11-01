@@ -15,7 +15,7 @@ Code: `src/memory/evidence-telemetry.ts` (writer), `src/memory/surfacing-trial.t
       evidence: {
         mode: "shadow", // "off" | "observe" | "shadow"; default "shadow"
         retentionDays: 90, // rows older than this are pruned independently every 30 minutes
-        topK: 10, // at most this many retrieval rows per search
+        topK: 10, // at most this many retrieval rows per search (capped at 200)
       },
     },
   },
@@ -26,7 +26,7 @@ Code: `src/memory/evidence-telemetry.ts` (writer), `src/memory/surfacing-trial.t
 - `observe`: retrieval hits and surfacing events.
 - `shadow` (default): observe plus decision traces from the dream engine. Shadow is the default so the divergence traces that decide whether GCCRF stays a live ranking term or becomes a diagnostic accumulate on every node; the traces are a few rows per dream cycle and change nothing the engine does.
 
-A mode that is not one of the three falls back to `shadow` with a warning; a non-positive `retentionDays` or `topK` falls back to the default. The layer works whether or not `memory.curiosity.enabled` is on; `evidence.mode: "off"` is its own switch.
+A mode that is not one of the three falls back to `shadow` with a warning; a non-positive `retentionDays` or `topK` falls back to the default, and a `topK` above 200 is clamped to 200. The layer works whether or not `memory.curiosity.enabled` is on; `evidence.mode: "off"` is its own switch.
 
 ## The three tables
 
@@ -79,8 +79,11 @@ minimal prompts record nothing. The formatter supplies only the chunk ids
 that survived its cap. The full prompt renderer acknowledges them using
 `pr:<keyed delivery digest>:<chunk id>`; the digest covers session and run/turn
 identity. Rebuilding the same delivery is idempotent, while distinct turns or
-sessions remain distinct even within the same hour. A caller without a run id
-receives a fresh opaque delivery id for that resolved prompt.
+sessions remain distinct even within the same hour. The delivery id is the
+agent run id, passed as `deliveryId` by `src/agents/cli-runner.ts` into the
+endocrine renderer (`src/agents/endocrine-state.ts`), which hands the rendered
+chunk ids and `{ id, sessionKey }` to `recordProactiveRecallDelivery`. A caller
+without a run id receives a fresh opaque delivery id for that resolved prompt.
 
 ### `decision_traces`
 
@@ -95,7 +98,7 @@ Shadow mode only. One row per decision the dream engine took where a GCCRF-as-di
 | `scoring_version` | `gccrf_state.scoring_version` at write time                                              |
 
 - `dream_seed_rank`: legacy = the ids `selectSeeds` returned under `ORDER BY (importance_score + COALESCE(curiosity_reward, curiosity_boost, 0)) / (dream_count + 1)`; proposed = the same `WHERE` and `LIMIT` under `ORDER BY importance_score / (dream_count + 1)`. The dream-count penalty is kept on both sides because it is not a GCCRF signal.
-- `dream_mode_select`: legacy = the modes `selectModes` chose with their adjusted weights and the GCCRF weight in force (0.25 to 0.3); proposed = the modes chosen from the same enabled set with the GCCRF adjustment zeroed. The counterfactual reuses the live selection's random-draw prefix. If last-mode avoidance requires extra counterfactual iterations, independent cryptographic draws extend that prefix without advancing the live `Math.random` stream. Both draw sequences are stored in the trace for replay. The reserved utility-lane slot and the exploration auto-trigger are shared by both.
+- `dream_mode_select`: legacy = the modes `selectModes` chose with their adjusted weights and the GCCRF weight in force (0.3, or 0.275 with pending tasks, or 0.25 with marketplace activity); proposed = the modes chosen from the same enabled set with the GCCRF adjustment zeroed. The counterfactual reuses the live selection's random-draw prefix. If last-mode avoidance requires extra counterfactual iterations, independent cryptographic draws extend that prefix without advancing the live `Math.random` stream. Both draw sequences are stored in the trace for replay. The reserved utility-lane slot and the exploration auto-trigger are shared by both.
 
 ### `evidence_meta`
 
@@ -221,15 +224,15 @@ Shadow measures the instrument, not the effect: that eligibility fires at the ri
 
 The shadow traces exist to measure the score where it changes a decision. These are the places on main that read `curiosity_reward` or a GCCRF component today:
 
-| reader                                          | where                                                                                                             | effect                                                                                                                                                | traced                               |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| dream mode selection                            | `DreamEngine.selectModes` via `computeGCCRFModeAdjustments`                                                       | weight 0.25 to 0.3 on the per-mode adjustment derived from the recent `curiosity_reward` distribution                                                 | yes (`dream_mode_select`)            |
-| dream seed ranking                              | `DreamEngine.selectSeeds`                                                                                         | `importance_score + COALESCE(curiosity_reward, curiosity_boost, 0)` in the `ORDER BY`                                                                 | yes (`dream_seed_rank`)              |
-| dream curiosity-reward stats                    | `dream.curiosityReward` RPC (`src/gateway/server-methods/dream.ts`)                                               | read-only aggregate for the UI; no decision                                                                                                           | no (read only)                       |
-| importance boost on assessment                  | `CuriosityEngine.assessChunk` (`boostThreshold` 0.4, `boostMultiplier` 1.3)                                       | multiplies a new chunk's importance when its reward clears the threshold                                                                              | no (Phase 1 candidate)               |
-| hormonal events from the score                  | `HormonalStateManager.stimulateFromGCCRF` (`src/memory/hormonal.ts`)                                              | `curiosity_progress` dopamine +0.2, `curiosity_aligned` dopamine +0.1, `curiosity_stagnant` cortisol +0.15 after a sustained run of sub-floor rewards | no (hormone log exists)              |
-| hormonal retrieval and consolidation modulators | `getRetrievalModulation`, `getConsolidationModulation` read in `MemoryIndexManager.searchInner` and `consolidate` | hormones (which the score moves) scale the recency bias, importance boost, merge threshold and decay resistance                                       | indirectly, through `retrieval_hits` |
-| research target ranking                         | `curiosity-researcher.ts` (priority + 0.25 x region ROI)                                                          | the ROI is use-based, not score-based                                                                                                                 | no (not a score reader)              |
+| reader                                          | where                                                                                                             | effect                                                                                                                                                                                                                                                    | traced                               |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| dream mode selection                            | `DreamEngine.selectModes` via `computeGCCRFModeAdjustments`                                                       | weight 0.3 (0.275 with pending tasks, 0.25 with marketplace activity) on the per-mode adjustment derived from the recent `curiosity_reward` distribution                                                                                                  | yes (`dream_mode_select`)            |
+| dream seed ranking                              | `DreamEngine.selectSeeds`                                                                                         | `importance_score + COALESCE(curiosity_reward, curiosity_boost, 0)` in the `ORDER BY`                                                                                                                                                                     | yes (`dream_seed_rank`)              |
+| dream curiosity-reward stats                    | `dream.curiosityReward` RPC (`src/gateway/server-methods/dream.ts`)                                               | read-only aggregate for the UI; no decision                                                                                                                                                                                                               | no (read only)                       |
+| importance boost on assessment                  | `CuriosityEngine.assessChunk` (`boostThreshold` 0.4, `boostMultiplier` 1.3)                                       | multiplies a new chunk's importance when its reward clears the threshold                                                                                                                                                                                  | no (Phase 1 candidate)               |
+| hormonal events from the score                  | `HormonalStateManager.stimulateFromGCCRF` (`src/memory/hormonal.ts`)                                              | `curiosity_high` dopamine +0.25 (reward > 0.7), `curiosity_progress` dopamine +0.2, `curiosity_aligned` dopamine +0.1, `curiosity_stagnant` cortisol +0.15 after 5 consecutive rewards below 0.2, `curiosity_bonding` oxytocin +0.25 on relational chunks | no (hormone log exists)              |
+| hormonal retrieval and consolidation modulators | `getRetrievalModulation`, `getConsolidationModulation` read in `MemoryIndexManager.searchInner` and `consolidate` | hormones (which the score moves) scale the recency bias, importance boost, merge threshold and decay resistance                                                                                                                                           | indirectly, through `retrieval_hits` |
+| research target ranking                         | `curiosity-researcher.ts` (priority + 0.25 x region ROI)                                                          | the ROI is use-based, not score-based                                                                                                                                                                                                                     | no (not a score reader)              |
 
 ## Engineering gate
 

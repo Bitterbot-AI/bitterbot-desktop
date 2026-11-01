@@ -19,19 +19,19 @@ This document covers Knowledge Crystals. For Memory Crystals, see the main memor
 
 Knowledge Crystals are automatically priced by the marketplace economics engine:
 
-- **Base price:** Configurable (default $0.01 USDC)
-- **Quality multiplier:** successRate × avgRewardScore
-- **Demand multiplier:** 1 + log(uniqueBuyers + bountyMatches + 1) × 0.1
-- **Reputation multiplier:** Publishing agent's peer reputation score
-- **Scarcity bonus:** 1.5x for rare skill types, 1.2x for uncommon, 1.0x for common
+- **Base price:** Configurable (default $0.01 USDC, `basePriceUsdc` in `skill-pricing.ts`)
+- **Quality multiplier:** successRate alone (the reward-score column is always NULL at the source, so it is not used)
+- **Demand multiplier:** 1 + log(downloadCount + bountyMatches + 1) × 0.1
+- **Reputation multiplier:** max(0.1, publishing agent's peer reputation score)
+- **Scarcity bonus:** by count of similar skills on the network: 1.5x for 2 or fewer, 1.2x for 3 to 5, 1.0x otherwise
 
-Skills must pass quality gates before listing: minimum 3 executions and 60% success rate.
+Skills must pass quality gates before listing: minimum 3 executions and 60% success rate (`minExecutionsForListing`, `minSuccessRateForListing`).
 
 ---
 
 ## Crystal Anatomy
 
-The `KnowledgeCrystal` type (`crystal-types.ts`) defines ~50 fields across several categories:
+The `KnowledgeCrystal` type (`crystal-types.ts`) defines about 40 fields across several categories. A few per-crystal attributes documented below exist only as columns on the `chunks` table and are not surfaced on the type; those are marked as columns.
 
 ### Payload
 
@@ -82,28 +82,30 @@ type CrystalOrigin =
 
 ### Behavioral Fields
 
-| Field               | Type                        | Description                                                                                                                                                                                                                        |
-| ------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `importanceScore`   | `number`                    | 0-1, recalculated by consolidation engine                                                                                                                                                                                          |
-| `accessCount`       | `number`                    | Times retrieved in search results                                                                                                                                                                                                  |
-| `lastAccessedAt`    | `number \| null`            | Timestamp of last search hit                                                                                                                                                                                                       |
-| `emotionalValence`  | `number \| null`            | Derived: `(dopamine + oxytocin - cortisol) / 2` at ingestion time. Influences dream seed selection, Ebbinghaus decay resistance, and limbic bridge feedback.                                                                       |
-| `hormonalInfluence` | `HormonalInfluence \| null` | Dopamine/cortisol/oxytocin snapshot at ingestion time                                                                                                                                                                              |
-| `curiosityBoost`    | `number`                    | Legacy boost field (backward compat). New scoring uses `curiosityReward` from unified CuriosityEngine                                                                                                                              |
-| `dreamCount`        | `number`                    | Times processed in dream cycles                                                                                                                                                                                                    |
-| `lastDreamedAt`     | `number \| null`            | Last dream processing timestamp                                                                                                                                                                                                    |
-| `lastRippleCount`   | `number \| null`            | Poisson-sampled ripple count from last replay (enables spaced repetition prioritization)                                                                                                                                           |
-| `steeringReward`    | `number`                    | -1 to 1, accumulated from skill execution outcomes                                                                                                                                                                                 |
-| `epistemicLayer`    | `EpistemicType \| null`     | Knowledge type: `"experience"` \| `"directive"` \| `"world_fact"` \| `"mental_model"`. Populated by session extraction pipeline during dream cycles. Directives (explicit user preferences) take priority over inferred knowledge. |
+| Field               | Type                        | Description                                                                                                                                                                                                                                               |
+| ------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `importanceScore`   | `number`                    | 0-1, recalculated by consolidation engine                                                                                                                                                                                                                 |
+| `accessCount`       | `number`                    | Times retrieved in search results                                                                                                                                                                                                                         |
+| `lastAccessedAt`    | `number \| null`            | Timestamp of last search hit                                                                                                                                                                                                                              |
+| `emotionalValence`  | `number \| null`            | Derived at ingestion time as `dopamine + oxytocin - cortisol`, clamped to [-1, 1]; `null` when the sum is below 0.05 in magnitude (`manager-embedding-ops.ts`). Influences dream seed selection, Ebbinghaus decay resistance, and limbic bridge feedback. |
+| `hormonalInfluence` | `HormonalInfluence \| null` | Dopamine/cortisol/oxytocin snapshot at ingestion time                                                                                                                                                                                                     |
+| `curiosityBoost`    | `number`                    | Legacy boost field (backward compat). The current GCCRF score is stored in the `curiosity_reward` column, which is not on the type                                                                                                                        |
+| `dreamCount`        | `number`                    | Times processed in dream cycles                                                                                                                                                                                                                           |
+| `lastDreamedAt`     | `number \| null`            | Last dream processing timestamp                                                                                                                                                                                                                           |
+| `last_ripple_count` | column, `INTEGER`           | Poisson-sampled ripple count from last replay (enables spaced repetition prioritization). Added by `dream-schema.ts`; not on the type                                                                                                                     |
+| `steeringReward`    | `number`                    | -1 to 1, accumulated from skill execution outcomes                                                                                                                                                                                                        |
+| `epistemic_layer`   | column, `TEXT`              | Knowledge type as a plain string: `experience`, `directive`, `world_fact` or `mental_model`. Populated by the session extraction pipeline. Directives (explicit user preferences) take priority over inferred knowledge. Not on the type                  |
 
 ### Verification & Bounties (Phase 3)
 
-| Field                 | Type             | Description                                                   |
-| --------------------- | ---------------- | ------------------------------------------------------------- |
-| `isVerified`          | `boolean`        | Whether endorsed by a management node's Ed25519 signature     |
-| `verifiedBy`          | `string \| null` | Base64 pubkey of the management node that endorsed this skill |
-| `bountyMatchId`       | `string \| null` | ID of the bounty this crystal fulfilled (if any)              |
-| `bountyPriorityBoost` | `number`         | Reward multiplier from the matched bounty                     |
+These live as `chunks` columns (`migrations.ts`), not as fields on `KnowledgeCrystal`:
+
+| Column                  | Type               | Description                                                   |
+| ----------------------- | ------------------ | ------------------------------------------------------------- |
+| `is_verified`           | `INTEGER` (0/1)    | Whether endorsed by a management node's Ed25519 signature     |
+| `verified_by`           | `TEXT`             | Base64 pubkey of the management node that endorsed this skill |
+| `bounty_match_id`       | `TEXT`             | ID of the bounty this crystal fulfilled (if any)              |
+| `bounty_priority_boost` | `REAL` (default 0) | Reward multiplier from the matched bounty                     |
 
 ### Versioning (Skills)
 
@@ -121,22 +123,32 @@ type CrystalOrigin =
 
 ## Lifecycle
 
-Crystals progress through a defined lifecycle managed by the consolidation engine:
+Crystals progress through a defined lifecycle. The stored transitions are written by the consolidation engine and governance; `activated` is not a stored transition (see below):
 
 ```mermaid
 stateDiagram-v2
     [*] --> generated: indexChunk() / ingest
-    generated --> activated: accessCount increases, high importance
-    activated --> consolidated: merged with related crystal
-    generated --> consolidated: merged with related crystal
-    activated --> archived: low importance over time
+    [*] --> activated: inserted directly (compute episodes, dream task patterns)
+    [*] --> frozen: indexed from skills/ (source = skills)
+    generated --> consolidated: merge winner
+    activated --> consolidated: merge winner
+    generated --> archived: merge loser (parent_id = winner)
+    activated --> archived: merge loser (parent_id = winner)
     generated --> expired: importance below forgetThreshold
-    generated --> frozen: crystallized as skill
-    activated --> frozen: crystallized as skill
+    activated --> expired: importance below forgetThreshold
+    generated --> expired: governance ttl elapsed (enforceLifespan)
     frozen --> frozen: immutable (new skill versions are new crystals)
-    expired --> [*]: purgeExpired() physical deletion
-    archived --> [*]: purgeExpired() physical deletion
+    expired --> [*]: purgeExpired() after forgottenRetentionDays
+    archived --> [*]: purgeExpired() after forgottenRetentionDays
 ```
+
+Notes on what the code actually does:
+
+- No code path writes `generated -> activated`. The `activated` label is derived at read time for legacy rows (`crystal.ts` `mapLifecycle()`: `lifecycle_state='active'` with importance >= 0.8) and in status counts (`manager.ts` `getCrystalStatus()`), or set directly at insert by compute episodes and dream task patterns.
+- `archived` is written only as the loser of a merge. Low importance goes straight to `expired`.
+- The consolidation engine rescans only `generated` and `activated` rows that are not `frozen` (`consolidation.ts` `loadLiveChunks()`), so `consolidated` winners are never rescored or forgotten by it.
+- Each lifecycle write also updates the legacy `lifecycle_state` column (`forgotten` for `expired` and `archived`) via `setChunkLifecycle()` in `chunk-writer.ts`.
+- `purgeExpired()` runs every maintenance tick and physically deletes `expired`/`archived` rows (plus their `chunks_vec` and `chunks_fts` rows) older than `memory.consolidation.forgottenRetentionDays` (default 14; a negative value disables the purge).
 
 ```typescript
 type CrystalLifecycle =
@@ -150,7 +162,7 @@ type CrystalLifecycle =
 
 **Transition rules (in `ConsolidationEngine.run()`):**
 
-- Skills (`memory_type='skill'`) are immune to decay — they never reach `expired`
+- Skills (`memory_type='skill'`) are immune to decay — they never reach `expired`; `frozen` rows are not loaded at all
 - Crystals below `forgetThreshold` (default 0.02) transition to `expired`
 - Merged crystals: the winner becomes `consolidated`, the loser becomes `archived` with a `parent_id` pointing to the winner
 - All transitions are logged to `memory_audit_log`
@@ -186,10 +198,10 @@ Expired crystals always return `false` regardless of scope.
 
 ### Sensitivity Detection (`MemoryGovernance.tagSensitivity()`)
 
-Content is automatically classified via regex patterns:
+Content is automatically classified via regex patterns (the patterns live in `guest-access.ts`; governance delegates to them):
 
-- **confidential**: passwords, API keys, tokens, secrets
-- **personal**: names, emails, opinions, personal feelings
+- **confidential**: password, passphrase, secret, API key, token, bearer, credential, private/SSH key, seed or recovery phrase
+- **personal**: self-referential identity and health/finance terms ("my name", "my email", "my phone", home address, birthday, SSN, credit card, bank account, diagnosis, medication, therapist, salary) and first-person opinion markers ("i feel", "i think", "personally", "my opinion", "my preference")
 - **normal**: everything else
 
 ### Lifespan Policies
@@ -225,17 +237,17 @@ The `HormonalStateManager` (`hormonal.ts`) maintains three hormone levels that m
 
 ### Hormone Channels
 
-| Hormone  | Signal             | Half-life (default) | Trigger patterns                                       |
-| -------- | ------------------ | ------------------- | ------------------------------------------------------ |
-| Dopamine | Reward/achievement | 30 min              | "success", "fixed", "shipped", "deployed", "milestone" |
-| Cortisol | Stress/urgency     | 60 min              | "fail", "error", "bug", "crash", "urgent", "deadline"  |
-| Oxytocin | Social/relational  | 45 min              | "thank", "help", "appreciate", "team", "collaborate"   |
+| Hormone  | Signal             | Half-life (default) | Trigger patterns (examples; the full regex lists are in `hormonal.ts`)       |
+| -------- | ------------------ | ------------------- | ---------------------------------------------------------------------------- |
+| Dopamine | Reward/achievement | 30 min              | "success", "fixed", "resolved", "shipped", "deployed", "merged", "works"     |
+| Cortisol | Stress/urgency     | 60 min              | "fail", "error", "bug", "crash", "broken", "stuck", "doesn't work", "urgent" |
+| Oxytocin | Social/relational  | 45 min              | "thank", "please", "help", "appreciate", "grateful", "sorry", "welcome"      |
 
 ### Event Types and Spike Magnitudes
 
-```typescript
-type HormonalEvent = "reward" | "error" | "social" | "achievement" | "urgency";
+The five text-detected events and their spikes:
 
+```typescript
 // Spike values (added to current level, clamped to [0, 1]):
 reward:      { dopamine: 0.3, cortisol: 0,   oxytocin: 0   }
 error:       { dopamine: 0,   cortisol: 0.3, oxytocin: 0   }
@@ -243,6 +255,8 @@ social:      { dopamine: 0,   cortisol: 0,   oxytocin: 0.3 }
 achievement: { dopamine: 0.4, cortisol: 0,   oxytocin: 0.2 }
 urgency:     { dopamine: 0,   cortisol: 0.4, oxytocin: 0   }
 ```
+
+The `HormonalEvent` union also carries smaller programmatic events fired by other subsystems, each with its own spike in `EVENT_SPIKES`: `curiosity_high`, `curiosity_progress`, `curiosity_aligned`, `curiosity_stagnant`, `curiosity_bonding` (GCCRF), `marketplace_sale`, `recall_positive`, `recall_negative`, `recall_relational` (limbic memory bridge), and `compute_success`, `compute_setback` (compute pools).
 
 ### Decay Formula
 
@@ -296,7 +310,7 @@ await orchestratorBridge.publishWeather(0.9, 300_000, "suspicious skill burst fr
 
 ## Consolidation Engine
 
-The `ConsolidationEngine` (`consolidation.ts`) runs periodically (default: every 30 minutes) and performs 4 phases:
+The `ConsolidationEngine` (`consolidation.ts`) runs periodically (default: every 30 minutes, `memory.consolidation.intervalMinutes`) as step 2 of the memory maintenance cycle and performs six phases plus a near-merge discovery sub-step:
 
 It runs in the gateway process on the event loop with the synchronous SQLite driver, so it loads the live set in batches of 50 rows with a yield between batches, and the two per-tick lookups that usually match nothing (pending GCCRF scores, TTL-governed crystals) are served by partial indexes. Before that (2026-10-03 soak), each tick ran three cold full scans of `chunks`, about 5 seconds of blocked I/O each on a 6,000-crystal store with a small page cache.
 
@@ -323,11 +337,23 @@ Crystals scoring below `forgetThreshold` (default 0.02) are marked `expired` —
 
 ### Phase 3: Merge Overlapping Promoted Chunks
 
-Crystals scoring above `promoteThreshold` (default 0.7) are candidates for merging. Two promoted crystals from the **same file path** with cosine similarity >= `mergeOverlapThreshold` (default 0.92) are merged: the higher-importance one becomes `consolidated`, the lower one becomes `archived` with `parent_id` set.
+Crystals scoring above `promoteThreshold` (default 0.7) are candidates for merging; only the top `PAIRWISE_MERGE_CHUNK_CAP` candidates by score enter the pairwise sweep. Two promoted crystals from the **same file path** with cosine similarity >= `mergeOverlapThreshold` (default 0.92) are merged: the higher-importance one becomes `consolidated`, the lower one becomes `archived` with `parent_id` set.
+
+### Phase 3b: SNN Near-Merge Discovery
+
+Among the surviving chunks (same cap), pairs in the near-miss cosine zone below the merge threshold that share enough nearest neighbours are written to the `near_merge_hints` table for the dream engine to consume. Consumed hints and hints older than 14 days are deleted on the same pass.
 
 ### Phase 4: Apply Changes (Transaction)
 
 All score updates, lifecycle transitions, and merges are applied in a single SQLite transaction. Every transition is logged to `memory_audit_log`.
+
+### Phase 5: Decay Steering Rewards
+
+`steering_reward` values are decayed so they cannot accumulate without bound.
+
+### Phase 6: Anti-Catastrophic Forgetting
+
+Orphan clusters (groups of related chunks whose neighbourhood has thinned out) are detected, capped at 100 rows, and queued for dream replay so a whole topic cannot silently fade.
 
 ### Configuration
 
@@ -335,11 +361,13 @@ All score updates, lifecycle transitions, and merges are applied in a single SQL
 type ConsolidationConfig = {
   decayRate: number; // Default: 5e-10 (~16-day half-life)
   promoteThreshold: number; // Default: 0.7
-  forgetThreshold: number; // Default: 0.02
+  forgetThreshold: number; // Default: 0.02 (scaled down by up to half as curiosity maturity approaches 1)
   mergeOverlapThreshold: number; // Default: 0.92 (raised by 0.03 × cortisol at run time)
   emotionDecayResistance: number; // Default: 0.5 baseline; the current hormones add to it, up to 0.8
 };
 ```
+
+The manager builds the engine per tick (`manager.ts` `consolidate()`): the user's `memory.consolidation.*` values are the baseline, `getConsolidationModulation()` supplies the run-time merge threshold and the hormonal addend to decay resistance, and `resolveEmotionDecayResistance()` caps the result at 0.8.
 
 ---
 
@@ -356,16 +384,21 @@ flowchart LR
     C --> F[HormonalSystem.computeCrystalInfluence]
     F --> G[Store hormonal values on chunk]
     C --> H[CuriosityEngine.assessChunk]
-    H --> I{Composite reward > boostThreshold?}
-    I -->|Yes| J[Boost importance by boostMultiplier]
-    I -->|No| K[No boost]
+    H --> I[Record GCCRF reward on chunk]
+    H --> J{Composite reward > novelty threshold?}
+    J -->|Yes| K[Emit novelty signal to the skill network]
+    H --> L[Fire curiosity_* hormonal events]
 ```
+
+Skill content (`source === "skills"`) is written with `lifecycle = 'frozen'` at this point; everything else starts as `generated`.
+
+The curiosity config still accepts `boostThreshold` (default 0.4) and `boostMultiplier` (default 1.3), but nothing reads them after parsing: `assessChunkCuriosity()` in `manager.ts` records the reward, emits the novelty signal and fires hormonal events, and does not change `importance_score`. They are configured but not applied.
 
 The `MemoryPipeline` class (`pipeline.ts`) provides a fluent API for custom retrieve-filter-augment-store workflows:
 
 ```typescript
 const result = await MemoryPipeline.create()
-  .retrieve("query", { semanticType: "skill", limit: 20 })
+  .retrieve("query", { semanticType: "skill", limit: 20 }) // opts also accept `lifecycle`
   .filter((c) => c.importanceScore > 0.5)
   .augment((c) => ({ ...c, importanceScore: c.importanceScore * 1.1 }))
   .store()

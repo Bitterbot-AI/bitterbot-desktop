@@ -1,8 +1,8 @@
 # PLAN-9: Memory Enhancement — Neuroscience Mechanisms
 
-PLAN-9 adds nine neuroscience-inspired mechanisms to the memory system, making Bitterbot the first agent memory system to implement reconsolidation, spacing effect, Zeigarnik persistence, prospective memory, synaptic tagging, active inference, mood-congruent retrieval, somatic markers, and a general-purpose knowledge graph with temporal validity.
+This page is the reference for the nine neuroscience-inspired mechanisms PLAN-9 added to the memory system. All nine landed in July 2026 and are live today: reconsolidation, spacing effect, Zeigarnik persistence, prospective memory, synaptic tagging, active inference (epistemic directives), mood-congruent retrieval, somatic markers, and a general-purpose knowledge graph with temporal validity. The per-mechanism sections below describe current behaviour and were re-checked against the code on 2026-11-01; the competitive table at the end is kept as written at the time of the plan.
 
-**Migration:** v9 in `src/memory/migrations.ts`
+**Migration:** v9 in `src/memory/migrations.ts` (the `status` column on `epistemic_directives` came later, in v34)
 
 ---
 
@@ -64,20 +64,15 @@ When new information supersedes old (e.g., "Bob is now the lead, not Alice"), th
 
 ### Graph-Enhanced Retrieval
 
-The knowledge graph acts as a 3rd retrieval modality alongside vector + BM25:
-
-1. Extract entity names from the query
-2. Traverse the graph to find connected entities
-3. Return evidence chunk IDs ranked by graph relevance (weight x importance)
-4. RRF-fuse with vector and BM25 results
+The knowledge graph acts as a 3rd retrieval modality alongside vector + BM25. `graphSearch()` implements the original design (extract entities from the query, traverse, rank evidence chunks by weight x importance). In the live search path the `graph` channel of `hybrid.ts` is fed by the PLAN-18 graph reader (`graph-reader.ts`) and RRF-fused with the vector and keyword lists; it is enabled whenever hybrid search is on and a knowledge graph exists.
 
 ### Dream Integration
 
-During consolidation cycles:
+During maintenance cycles:
 
-- **Prune** relationships not reinforced with new evidence in 30+ days (low weight)
-- **Merge** duplicate entities discovered over time
-- **Detect contradictions** for epistemic directive generation
+- **Prune** relationships not reinforced with new evidence in 30+ days (low weight), `pruneStaleRelationships(staleDays = 30)`, step 13 of the cycle
+- **Merge** happens at write time only: `upsertEntity()` merges properties into an existing entity with the same name and type, and `upsertRelationship()` merges evidence. There is no separate duplicate-entity sweep.
+- **Detect contradictions** for epistemic directive generation (`EpistemicDirectiveEngine.detectContradictions()`, step 14)
 
 ### Key Methods
 
@@ -223,11 +218,15 @@ Unfinished tasks are remembered better than completed ones. The human brain keep
 
 ### How It Works
 
-**Detection:** Pattern matching on chunk text during session extraction:
+**Detection:** `scanForOpenLoops()` runs over newly extracted fact chunks during session extraction. The patterns (`OPEN_LOOP_PATTERNS`):
 
-- "TODO", "need to", "working on", "started", "will do later"
-- Unanswered questions (ends with `?`)
-- Unresolved errors ("bug still", "issue remains")
+- A deferral word ("todo", "need to", "have to", "should", "must") followed in the same text by "later", "tomorrow", "next", "soon" or "eventually"
+- "working on", "started", "in progress", "wip"
+- "not sure", "don't know", "unclear", "confused about", "need to figure out"
+- An error word ("bug", "error", "issue", "broken", "failing", "crashed") followed by "still", "remains", "unresolved" or "unfixed"
+- "will do", "gonna", "going to", "plan to"
+- "remind me", "don't forget", "remember to"
+- Unanswered questions (a line ending with `?`)
 
 **Persistence:** Open loop chunks get:
 
@@ -235,7 +234,7 @@ Unfinished tasks are remembered better than completed ones. The human brain keep
 - `open_loop_context` with surrounding text
 - **Decay resistance** — score never drops below `forgetThreshold * 2`
 
-**Proactive Surfacing:** Open loops appear in proactive recall:
+**Proactive Surfacing:** Up to two active open loops (`getActiveOpenLoops(db, 2)`) appear in proactive recall:
 
 > "Unfinished: you were working on the Docker port conflict and hadn't resolved it"
 
@@ -276,6 +275,8 @@ Later, user mentions CI:
   → Semantic match (cosine > 0.75) OR keyword match (60%+ words)
   → Memory triggered! Action injected into context.
 ```
+
+`checkTriggers()` is called once per session from the session-start path (`src/agents/endocrine-state.ts`). Besides user requests, the dream engine writes prediction rows of its own (`source_session` prefixed `dream:`, 7-day TTL, at most 5 active, see `isDreamPredictionSource()`); those rows match semantically only and skip the keyword fallback.
 
 ### Schema
 
@@ -357,7 +358,7 @@ For each detection, an epistemic directive is created:
 
 > "I have conflicting info about whether the production DB is Postgres or MySQL. Can you clarify?"
 
-Directives are injected into proactive recall (max 2 per session) and tracked until resolved.
+Directives are injected into proactive recall and tracked until resolved; a user-answerable question stops being injected after `MAX_ASKS` (3) sessions (see Resolution below).
 
 ### Resolution (PLAN-34 Phase 1)
 
@@ -391,8 +392,8 @@ CREATE TABLE epistemic_directives (
 ### Cross-Cutting Interactions
 
 - **Zeigarnik:** Unresolved directives are inherently "open loops" — they nag until resolved
-- **Prospective Memory:** High-priority directives could auto-generate prospective memories
-- **Hormonal:** Resolving a directive fires a dopamine event (curiosity satisfied)
+- **Prospective Memory:** High-priority directives could auto-generate prospective memories (not built)
+- **Hormonal:** Resolving a directive does not fire a hormonal event today; `epistemic-directives.ts` and `directive-resolution.ts` write audit rows only. A dopamine spike on resolution was part of the plan and is not implemented.
 
 ---
 
@@ -409,7 +410,7 @@ Damasio's somatic marker hypothesis — biological brains use emotional "gut fee
 
 ### How It Works
 
-Before expensive operations (Deep Recall, skill execution), query the aggregate emotional signature of chunks near the query:
+Before an expensive operation, query the aggregate emotional signature of chunks near the query. The only caller today is the `deep_recall` tool (`src/agents/tools/deep-recall-tool.ts`); the planned skill-execution hook was not built.
 
 | Condition                                            | Verdict   | Effect                                                            |
 | ---------------------------------------------------- | --------- | ----------------------------------------------------------------- |
@@ -423,26 +424,34 @@ Uses existing `hormonal_cortisol`, `hormonal_dopamine`, and `steering_reward` co
 
 ## Integration Map
 
-### Consolidation Cycle (every 30 min)
+### Maintenance Cycle (every 30 min)
 
-Steps 12-15 are new in PLAN-9:
+The numbered steps follow the comments in `manager.ts`. Steps 12-15 were added by PLAN-9; the list has grown since and two of the original steps were retired:
 
 ```
  1. Hormonal decay
  2. Ebbinghaus consolidation + merge (with spacing & Zeigarnik modulation)
+ 2b. GC: purge expired/forgotten chunks past forgottenRetentionDays
  3. Curiosity engine (rebuild regions, detect gaps)
+ 3b-3d. Exploration targets as network queries; repeated and weak user queries become knowledge_gap targets
  4. Governance TTL enforcement
  5. Task memory stall detection
  6. Auto-scratch from hormonal spikes
  7. EigenTrust + anomaly detection
- 8. Skill crystallization
- 9. Steering reward decay
+ 7b-7d. Peer quality from execution outcomes; peer decay; quarantine TTL sweep
+ 8. (retired, PLAN-45 Phase 0) skill crystallization
+ 8b. Ground tool-level execution rows in their skills
+ 9. (removed) steering-reward decay now runs inside consolidation (Phase 5)
 10. CuriosityEngine batch scoring (GCCRF pending chunks)
+10b. Contributor standings from verified signals
 11. Marketplace refresh
-12. Reconsolidation: restabilize expired labile chunks     ← NEW
-13. Knowledge Graph: prune stale relationships              ← NEW
-14. Epistemic Directives: detect contradictions, expire old ← NEW
-15. Prospective Memory: clean expired                       ← NEW
+11b-11h. Sales notifications, revenue queue, bounty funding/settlement/payouts, deadlines, night shift, circles sweep
+12. Reconsolidation: restabilize expired labile chunks     ← PLAN-9
+13. Knowledge Graph: prune stale relationships              ← PLAN-9
+14. Epistemic Directives: detect contradictions, expire old ← PLAN-9
+15. Prospective Memory: clean expired                       ← PLAN-9
+16. Dead-wire detector for retrieval layers
+17. Canonical ledger decay
 ```
 
 ### Search Pipeline
@@ -493,6 +502,8 @@ User message arrives
 
 ## Competitive Position After PLAN-9
 
+This table is kept as written in July 2026 and has not been re-verified against the other systems since. One Bitterbot cell has drifted: the dream engine now defines 13 modes (`DreamMode` in `dream-types.ts`), not 7.
+
 | Capability                 | Bitterbot           | Mem0       | Zep                 | Hindsight | FadeMem |
 | -------------------------- | ------------------- | ---------- | ------------------- | --------- | ------- |
 | Knowledge Graph            | Yes (temporal)      | Yes        | Yes (best temporal) | Yes       | No      |
@@ -506,7 +517,7 @@ User message arrives
 | Active Inference           | Yes (FIRST)         | No         | No                  | No        | No      |
 | Somatic Markers            | Yes (FIRST)         | No         | No                  | No        | No      |
 | GCCRF Curiosity            | Yes                 | No         | No                  | No        | No      |
-| Dream Consolidation        | Yes (7 modes)       | ADD/UPDATE | Episode decomp      | Reflect   | Fusion  |
+| Dream Consolidation        | Yes (7 modes then)  | ADD/UPDATE | Episode decomp      | Reflect   | Fusion  |
 | Ebbinghaus Decay           | Yes                 | No         | No                  | No        | Yes     |
 | Emotional Anchors          | Yes                 | No         | No                  | No        | No      |
 | Session Continuity Gate    | Yes (entropy-gated) | No         | Yes (basic)         | No        | No      |
@@ -519,7 +530,7 @@ User message arrives
 
 - [Architecture Overview](./architecture-overview.md) — full system architecture and data flow
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model
-- [Dream Engine](./dream-engine.md) — 7 modes, FSHO selector
+- [Dream Engine](./dream-engine.md) — dream modes, FSHO selector
 - [Emotional System](./emotional-system.md) — hormones, anchors, limbic bridge
 - [Curiosity & Search](./curiosity-and-search.md) — unified curiosity engine and retrieval
 - [How the Memory Works](./how-the-memory-works.md) — plain-language guide to the complete system

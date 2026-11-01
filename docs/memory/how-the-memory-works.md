@@ -43,17 +43,23 @@ But raw access count isn't the whole story.
 
 ## The Consolidation Engine — Housekeeping
 
-Every 30 minutes, the system runs a consolidation cycle. This is the brain's janitorial staff:
+Every 30 minutes, the system runs a consolidation cycle. This is the brain's janitorial staff, in the order the work happens:
 
-1. **Score every crystal** using the Ebbinghaus formula, modified by semantic type, emotional valence, spacing score, and open-loop status
-2. **Forget** crystals that have decayed below the threshold (soft-delete — they're marked as expired, not destroyed)
-3. **Merge** crystals that are semantically near-identical (cosine similarity > 0.92)
-4. **Discover near-merges** using shared-nearest-neighbor analysis for the dream engine to evaluate later
-5. **Detect orphan clusters** — groups of important but neglected memories — and queue them for dream replay so they don't silently disappear
-6. **Restabilize** any memories that were recalled and entered a labile window (more on this below)
-7. **Prune** stale knowledge graph relationships that haven't been reinforced
-8. **Detect contradictions** in the knowledge graph and generate questions for the user
-9. **Clean up** expired prospective memories and old epistemic directives
+1. **Let the hormones decay** toward their resting baselines (see the next section)
+2. **Score every crystal** using the Ebbinghaus formula, modified by semantic type, emotional valence, spacing score, and open-loop status
+3. **Forget** crystals that have decayed below the threshold (soft-delete — they're marked as expired, not destroyed)
+4. **Merge** crystals that are semantically near-identical (cosine similarity > 0.92)
+5. **Discover near-merges** using shared-nearest-neighbor analysis for the dream engine to evaluate later
+6. **Detect orphan clusters** — groups of important but neglected memories — and queue them for dream replay so they don't silently disappear
+7. **Purge tombstones**: memories forgotten or expired more than 14 days ago (`memory.consolidation.forgottenRetentionDays`) are physically deleted, together with their vector and keyword index rows
+8. **Rebuild the curiosity map**: knowledge regions are recomputed and new gaps become exploration targets
+9. **Enforce governance lifespans**: memories with a time-to-live policy that has run out are expired
+10. **Mark stalled goals**: tracked goals with no progress for a week are flagged
+11. **Restabilize** any memories that were recalled and entered a labile window (more on this below)
+12. **Prune** stale knowledge graph relationships that haven't been reinforced
+13. **Detect contradictions** in the knowledge graph and generate questions for the user, and retire old questions
+14. **Clean up** expired prospective memories
+15. **Decay the canonical ledger**: settled facts that have gone 90 days without confirmation are retired (see [Your memory controls](/memory/controls#what-sticks-and-who-can-undo-it))
 
 The forget threshold itself isn't static. It scales with the agent's maturity — young agents forget more aggressively (exploring broadly), mature agents become more retentive (protecting personality-defining memories).
 
@@ -125,7 +131,12 @@ mode for that turn:
   leaves out the canonical facts ledger.
 - `memory_get` reads a file only when every memory in it is safe for a guest.
   `MEMORY.md` is never readable.
-- `memory_expand` (raw transcripts) and `memory_pin` (the facts ledger) refuse.
+- `memory_expand` (raw transcripts) refuses. `memory_pin` (the facts ledger) is
+  not offered at all on a guest turn: the tool is absent rather than listed and
+  refusing.
+- `deep_recall` searches the current conversation only; its cross-session
+  scopes (`recent_sessions`, `all_sessions`) are owner-only, and a guest's
+  results never carry the superseded tags or the evidence observation.
 - `dream_search`, the emotional anchor tools and the curiosity tools refuse: they
   show or change what the agent has made of the owner's life.
 
@@ -229,6 +240,8 @@ The agent has a curiosity engine that tracks what it knows and what surprises it
 These feed into the CuriosityEngine's unified GCCRF (Geodesic Crystal-Field Curiosity Reward Function), a five-component reward function that also incorporates learning progress and strategic alignment with exploration goals. High curiosity rewards trigger dopamine spikes, creating a genuine reward signal for discovering interesting things.
 
 The curiosity engine generates exploration targets — specific knowledge gaps the dream engine should try to fill. But it doesn't stop at passive observation.
+
+**What is measured, and what is only watched.** The curiosity system runs with an evidence layer switched to shadow mode by default (`memory.curiosity.evidence.mode`, one of `off`, `observe`, `shadow`). This layer changes nothing: GCCRF still scores every new memory and still feeds the hormonal system as described above. What shadow mode adds is a record. Every owner search logs which memories came back and through which channel (under a keyed digest, never the query text). Every time the agent volunteers something (a curiosity finding, a proactive-recall fact, a dream brief) a surfacing event is written: "delivered" means the item was actually included in the prompt for that run, keyed by the run's id, and it only becomes "useful" when you act on it (answer, dismiss, correct); silence is recorded as unknown, never as ignored. And each dream cycle records what a routing driven by the curiosity reward alone would have chosen next to what the usual routing chose; the usual routing is always the one used. The shadow stage (`memory.curiosity.evidence.surfacingTrial`, also `shadow` by default) adds eligibility and assignment rows for the proactive surfaces without withholding anything. Records are kept for 90 days by default.
 
 **Active inference** closes the loop. When the knowledge graph contains contradictions, when the curiosity engine detects high prediction error in a region, or when the canonical ledger records a conflict (a background source proposed a value that lost to a deliberate pin, or a corroborated belief flipped within 72 hours), the agent generates epistemic directives — structured questions injected into the next conversation:
 
@@ -355,6 +368,10 @@ When the agent needs to reason over more information than fits in context, it sp
 
 This is the RLM pattern (Recursive Language Model). The sub-LLM doesn't use pre-baked search functions — it writes custom JavaScript to combine semantic search with keyword filtering, cross-reference across sessions, apply temporal reasoning, and chain multiple searches based on intermediate results. It can answer questions that require connecting dots across months of conversation history.
 
+Before the sub-LLM is spawned, a cheap shortcut runs an ordinary memory search; when three or more results clear a confidence bar (0.8) the answer is returned from them and no sandbox is started.
+
+Deep recall across conversations is for the owner only. Other conversations hold the owner's file reads and command output, so when someone else is talking (a guest turn) the tool is downgraded to the current conversation, a sandbox prepared for the owner is never reused for the guest, and the evidence layer above does not observe the guest's results.
+
 ---
 
 ## P2P Skills — An Economy of Knowledge
@@ -369,15 +386,19 @@ Marketplace demand signals feed back into the dream engine — if users are sear
 
 ## The Search Pipeline — How It All Comes Together
 
-When the agent searches its memory, seven layers of processing happen:
+When the agent searches its memory, these layers of processing happen:
 
-1. **Vector search** — cosine similarity via sqlite-vec
-2. **Keyword search** — BM25 full-text via FTS5
-3. **Reciprocal Rank Fusion** — merge both lists without requiring comparable score scales
-4. **Recency boost** — recent memories get a temporal advantage, modulated by cortisol (stressed agents focus more on recent memories)
-5. **Emotional boost** — emotionally charged memories surface more easily
-6. **Mood-congruent boost** — current hormonal state biases retrieval toward emotionally-matching memories
-7. **Temporal scoring** — query intent detection ("what am I working on?" vs. "when did I...?") applies different temporal decay profiles based on epistemic layer half-lives
+1. **Canonical ledger lookup**: exact-key or verbatim-value hits from the settled-facts ledger are returned first, ahead of anything fuzzy (see Proactive Recall below)
+2. **Vector search** — cosine similarity via sqlite-vec
+3. **Keyword search** — BM25 full-text via FTS5. The query's terms are OR-joined, so a memory only has to contain some of them to rank, not all of them
+4. **Graph search**: entities in the query are resolved in the knowledge graph and their neighbourhood is read (see The Knowledge Graph above)
+5. **Reciprocal Rank Fusion**: merge the three ranked lists without requiring comparable score scales. Each list contributes `weight / (60 + rank)` for every memory it ranked; the three weights are configurable (`agents.defaults.memorySearch.query.rrfWeights`) and default to 1/1/1, which is plain unweighted fusion
+6. **Recency boost** — recent memories get a temporal advantage, modulated by cortisol (stressed agents focus more on recent memories)
+7. **Emotional boost** — emotionally charged memories surface more easily
+8. **Mood-congruent boost** — current hormonal state biases retrieval toward emotionally-matching memories
+9. **Temporal scoring** — query intent detection ("what am I working on?" vs. "when did I...?") applies different temporal decay profiles based on epistemic layer half-lives
+
+The four boosts (6 to 9) were sized for cosine-scale scores; on a rank-fused list, where adjacent results sit a few percent apart, applying them in full reorders the results wholesale. They are therefore scaled down by `agents.defaults.memorySearch.query.postFusionBoostScale`, default 0.1, so they break ties instead of overriding the fusion order (1 restores the full boosts, 0 keeps the pure fusion order).
 
 After results are returned:
 

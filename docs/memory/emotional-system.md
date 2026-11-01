@@ -24,20 +24,24 @@ value = baseline + (value - baseline) × 2^(-elapsed / halfLife)
 
 Events stimulate specific hormones. Each event has a magnitude (how much to add) and a target hormone:
 
-| Event               | Hormone            | Magnitude    | Trigger                                                                                               |
-| ------------------- | ------------------ | ------------ | ----------------------------------------------------------------------------------------------------- |
-| `reward`            | dopamine           | +0.30        | Positive feedback                                                                                     |
-| `achievement`       | dopamine, oxytocin | +0.40, +0.20 | Task completion, breakthrough                                                                         |
-| `curiosity_high`    | dopamine           | +0.25        | Curiosity reward > 0.7                                                                                |
-| `error`             | cortisol           | +0.30        | Bug, error, frustration                                                                               |
-| `urgency`           | cortisol           | +0.40        | Time pressure detected                                                                                |
-| `social`            | oxytocin           | +0.30        | Personal sharing, trust building                                                                      |
-| `marketplace_sale`  | dopamine, oxytocin | +0.15, +0.05 | Skill sold on marketplace                                                                             |
-| `recall_positive`   | dopamine           | +0.05        | Retrieved positive memories                                                                           |
-| `recall_negative`   | cortisol           | +0.05        | Retrieved negative memories                                                                           |
-| `recall_relational` | oxytocin           | +0.05        | Retrieved personal/relational memories                                                                |
-| `compute_success`   | dopamine           | +0.05        | A compute job you can see succeeded on the pool (rate-limited)                                        |
-| `compute_setback`   | cortisol           | +0.05        | A pool worker went offline, the coordinator went away, or embeddings keep falling back (rate-limited) |
+| Event                | Hormone            | Magnitude    | Trigger                                                                                               |
+| -------------------- | ------------------ | ------------ | ----------------------------------------------------------------------------------------------------- |
+| `reward`             | dopamine           | +0.30        | Positive feedback                                                                                     |
+| `achievement`        | dopamine, oxytocin | +0.40, +0.20 | Task completion, breakthrough                                                                         |
+| `curiosity_high`     | dopamine           | +0.25        | Curiosity reward > 0.7                                                                                |
+| `curiosity_progress` | dopamine           | +0.20        | Learning-progress component (`deltaEta`) > 0.7                                                        |
+| `curiosity_aligned`  | dopamine           | +0.10        | Strategic-alignment component > 0.7                                                                   |
+| `curiosity_stagnant` | cortisol           | +0.15        | Five consecutive curiosity rewards below 0.2 (one event per run)                                      |
+| `curiosity_bonding`  | oxytocin, dopamine | +0.25, +0.10 | Empowerment > 0.6 on a preference, relationship or episode chunk                                      |
+| `error`              | cortisol           | +0.30        | Bug, error, frustration                                                                               |
+| `urgency`            | cortisol           | +0.40        | Time pressure detected                                                                                |
+| `social`             | oxytocin           | +0.30        | Personal sharing, trust building                                                                      |
+| `marketplace_sale`   | dopamine, oxytocin | +0.15, +0.05 | Skill sold on marketplace                                                                             |
+| `recall_positive`    | dopamine           | +0.05        | Retrieved positive memories                                                                           |
+| `recall_negative`    | cortisol           | +0.05        | Retrieved negative memories                                                                           |
+| `recall_relational`  | oxytocin           | +0.05        | Retrieved personal/relational memories                                                                |
+| `compute_success`    | dopamine           | +0.05        | A compute job you can see succeeded on the pool (rate-limited)                                        |
+| `compute_setback`    | cortisol           | +0.05        | A pool worker went offline, the coordinator went away, or embeddings keep falling back (rate-limited) |
 
 Note the **recall events** have smaller magnitudes (0.05) than direct events (0.10-0.40) to prevent runaway feedback loops.
 
@@ -48,7 +52,13 @@ Hormones are stimulated from multiple paths:
 1. **Text analysis** (`stimulateFromText`) — Detects emotional language in user messages
 2. **Curiosity rewards** (`stimulateFromGCCRF`) — CuriosityEngine GCCRF scoring feeds back into hormones
 3. **Limbic bridge** — Memory retrieval results influence emotional state (see below)
-4. **Network weather** — P2P swarm cortisol spikes from management node broadcasts
+4. **Network weather** — P2P swarm cortisol spikes from management node broadcasts. `handleWeatherEvent` in `skill-network-bridge.ts` calls `applyNetworkCortisolSpike(level, durationMs, reason)`, which sets a timed override rather than adding to the local value: consolidation and the skill-import cortisol gate use `max(local cortisol, override)` until it expires.
+
+### Effect on consolidation
+
+`getConsolidationModulation()` turns the current state into decay resistance for the consolidation pass: `min(0.5, 0.3 × cortisol + 0.2 × dopamine + 0.2 × oxytocin)` (effective cortisol includes a network override), a merge threshold of `0.92 + 0.03 × cortisol` (stricter merging under stress), and `haltUntrustedIngestion` while a network override is active.
+
+Setting `memory.emotional.hormonal.enabled: false` skips the hormonal manager entirely: no Endocrine State block, no anchors, no mini-dreams, no limbic bridge.
 
 ---
 
@@ -84,21 +94,19 @@ Default influence is 0.3 (subtle blending, not total replacement).
 
 ### Dream Integration
 
-The dream engine detects anchors during processing. High-emotion anchors (where any hormone exceeded 0.7 at creation time) receive extra attention during replay mode, reinforcing the emotional association.
+Anchors reach the dream engine only through the MEMORY.md synthesis prompt: the five most recent anchors are rendered as an `## Input: Emotional History` block (label, age, mood description, recall count, context) with the instruction to use them for The Phenotype and Active Context (`working-memory-prompt.ts`). No dream mode selects or replays chunks by anchor; the anchor's hormone values do not weight replay.
 
 ### Auto-Anchoring
 
-The system automatically creates anchors when it detects significant hormonal spikes. A 5-minute cooldown prevents duplicate auto-anchors from the same event.
+The system automatically creates anchors when it detects significant hormonal spikes: `achievement` with dopamine > 0.5, `urgency` with cortisol > 0.6, `curiosity_high` with dopamine > 0.4. A 15-minute cooldown per anchor label prevents duplicate auto-anchors from the same kind of event, and at most 20 anchors are held in memory.
 
 ### Proactive Anchor Recall
 
-Anchors can be recalled automatically through two mechanisms:
+Anchors are recalled automatically by one mechanism:
 
-1. **State-triggered:** When the current emotional state (dopamine/cortisol/oxytocin vector) has cosine similarity > 0.85 with a stored anchor's state, the anchor is blended in at low influence (0.15). This creates associative emotional memory — entering a similar mood brings back the associated experience.
+**State-triggered:** after each stimulation, when the current emotional state (dopamine/cortisol/oxytocin vector) has cosine similarity > 0.85 with a stored anchor's state, the single best match is blended in at low influence (0.15). This creates associative emotional memory — entering a similar mood brings back the associated experience.
 
-2. **Keyword-triggered:** When a user message contains emotional reference words ("remember when", "breakthrough", "that time"), stored anchors are matched by label/description keywords and blended at moderate influence (0.25).
-
-Both mechanisms use mild blending strengths to avoid destabilizing the current emotional state while providing continuity of emotional experience across interactions.
+`findAnchorsByKeywords()` (match a message against anchor labels and descriptions) exists on the hormonal manager but has no caller; keyword-triggered recall is not wired. The mild blending strength avoids destabilizing the current emotional state while providing continuity of emotional experience across interactions.
 
 ---
 
@@ -146,12 +154,14 @@ When a hormone rises sharply, an immediate mini-dream cycle fires:
 | Dopamine rise ≥ 0.15 since last check | 90 min cooldown | `replay`      | Reinforce the positive experience |
 | Cortisol rise ≥ 0.15 since last check | 90 min cooldown | `compression` | Process the stressful event       |
 
+The rise threshold is `memory.dream.hormonalTriggerDelta` (default 0.15, shared with auto-scratch) and the cooldown is `memory.dream.miniDreamCooldownMinutes` (default 90). The check compares against the level at the previous check, not an absolute level, so a hormone pinned high by routine stimulation cannot re-fire a mini-dream every tick.
+
 Mini-dreams:
 
 - Use the same `run()` pipeline as normal dreams (inherit ripple-enhanced replay, etc.)
 - Run only 1 non-LLM mode (zero cost)
 - Bypass the dream readiness check (emotional urgency overrides efficiency)
-- Skip silently if the dream engine is already running
+- Skip silently if the dream engine is not dormant
 
 The trigger is checked after every `stimulate()` call in the memory manager — consistent with the existing pattern where the manager orchestrates all subsystems.
 
@@ -161,11 +171,10 @@ The trigger is checked after every `stimulate()` call in the memory manager — 
 
 The current hormonal state is injected into the agent's system prompt as an `## Endocrine State` block. This includes:
 
-- Current hormone values and which are dominant/active
-- **Response modulation guidance** — natural-language instructions like "be enthusiastic and celebrate wins" or "be focused and concise"
-- Tone parameters (warmth, energy, focus, playfulness) derived from hormone ratios
+- Current hormone values, rounded to one decimal and labelled (`0.5 moderate (DOMINANT)`, `0.1 low (baseline)`), and which are dominant/active
+- **Response modulation guidance** — the `briefing` string from `responseModulation()`: natural-language hints like "be enthusiastic and celebrate wins" or "be concise and action-oriented"
 
-The agent is instructed to **embody** the emotional state naturally without mentioning it. This produces organic personality variation — the agent is more energetic after achievements, more focused during stress, warmer during personal conversations.
+The tone parameters behind the briefing (warmth, energy, focus, playfulness, verbosity, curiosity expression, assertiveness, empathy expression) stay internal; only the briefing text is injected. The agent is instructed to **embody** the emotional state naturally without mentioning it. This produces organic personality variation — the agent is more energetic after achievements, more focused during stress, warmer during personal conversations.
 
 ---
 
@@ -187,11 +196,13 @@ The handover brief is generated during dream cycles by the session extraction pi
 
 ## Per-Crystal Emotional Influence
 
-Each knowledge crystal stores an `emotional_valence` derived from the hormonal state at ingestion time:
+Each knowledge crystal stores an `emotional_valence` derived at ingestion time from the hormonal events detected in its own text (`computeCrystalInfluence`: the keyword patterns above, summed per hormone; session-transcript chunks get +0.1 oxytocin), not from the agent's live state:
 
 ```
-emotional_valence = (dopamine + oxytocin - cortisol) / 2
+emotional_valence = clamp(dopamine + oxytocin - cortisol, -1, 1)
 ```
+
+A result with magnitude below 0.05 is stored as NULL (`deriveValenceFromHormonal` in `manager-embedding-ops.ts`).
 
 This value influences:
 
@@ -212,7 +223,7 @@ homeostasis:
   oxytocin: 0.20 # Resting warmth
 ```
 
-The dream engine may propose adjusted baselines based on observed interaction patterns, but only with user approval (respecting Phenotype Constraints).
+Only the operator changes these values; no dream mode reads or proposes homeostasis baselines. Half-lives live in `memory.emotional.hormonal` (`dopamineHalflife`, `cortisolHalflife`, `oxytocinHalflife`, in ms).
 
 ---
 

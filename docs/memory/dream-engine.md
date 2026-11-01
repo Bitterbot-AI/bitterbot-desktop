@@ -71,12 +71,13 @@ readiness = newChunks / totalChunks   (information ratio)
 The cycle is skipped if:
 
 - No chunks have been added/updated since the last dream
-- Fewer than 3 new chunks AND no pending near-merge hints AND no curiosity targets
+- Fewer than 3 new chunks AND no pending near-merge hints AND an empty orphan replay queue AND no unexplored curiosity targets
 
 Secondary triggers that guarantee readiness:
 
 - **Near-merge hints** from SNN discovery (score ≥ 0.3)
-- **Active curiosity targets** (score ≥ 0.2)
+- **Queued orphan clusters** in `orphan_replay_queue` (score ≥ 0.3)
+- **Unexplored curiosity targets** (score ≥ 0.2)
 
 Mini-dreams (emotionally triggered) bypass the readiness check entirely.
 
@@ -101,7 +102,8 @@ Each mode serves a different purpose and has a default weight controlling how of
 **`hygiene` (PLAN-40 Lane 2, enabled, reserved slot):** each cycle it
 (a) drains the never-embedded crystal backlog (200/cycle, no LLM,
 cursorless) and (b) enqueues up to 2 "still true?" questions for canonical
-facts unconfirmed for 90+ days (3 asks max, then the fact transitions to
+facts unconfirmed for 90+ days (never the same fact twice within 30 days;
+3 asks max, then the fact transitions to
 `unconfirmed`; a tier ≥ 1 re-confirmation resets the budget for the next
 staleness episode). One selection slot per cycle is reserved for utility
 lanes round-robin so softmax competition can never starve them.
@@ -146,15 +148,21 @@ individually re-enablable via `memory.dream.modes.<mode>.enabled`.
 
 ### Mode Selection — Three-Signal Architecture
 
-`selectModes()` picks 1-3 modes using three complementary signals from the unified `CuriosityEngine`, combined via weighted normalization. The marketplace signal activates only when there is recent marketplace activity; otherwise the original two-signal weights are preserved:
+`selectModes()` picks 1-3 modes using three complementary signals from the unified `CuriosityEngine`, combined via weighted normalization. The marketplace signal activates only when there is recent marketplace activity; a pending-task bias (PLAN-17) takes a smaller share when long-horizon tasks are waiting; otherwise the original weights are preserved:
 
-**When marketplace is active** (purchases, bounties, or searches in the last 24h):
+**When marketplace is active** (purchases, bounties, or searches in the last 7 days, `MarketplaceIntelligence.hasActivity()`):
 
 ```
 adjustment = 0.25 × curiosityAdj + 0.25 × gccrfAdj + (0.30 × fshoFactor) × fshoAdj + 0.20 × marketAdj
 ```
 
-**When no marketplace activity** (fallback to original weights):
+**When tasks are pending and no marketplace activity** (long-horizon tasks waiting on a wakeup or stuck in planning; disable with `BITTERBOT_DREAM_TASK_BIAS=0`):
+
+```
+adjustment = 0.275 × curiosityAdj + 0.275 × gccrfAdj + (0.30 × fshoFactor) × fshoAdj + 0.15 × taskAdj
+```
+
+**When neither is active** (fallback to original weights):
 
 ```
 adjustment = 0.30 × curiosityAdj + 0.30 × gccrfAdj + (0.40 × fshoFactor) × fshoAdj
@@ -203,7 +211,7 @@ After adjustment, mode selection uses temperature-scaled softmax:
 
 #### Auto-Triggers
 
-- `exploration` forced if unresolved curiosity targets exist
+- `exploration` is added when unexplored, unresolved curiosity targets exist, the mode is enabled (`memory.dream.modes.exploration.enabled`, off by default) and a selection slot is still free after the reserved utility-lane slot
 - (the `mutation` auto-trigger was retired in PLAN-45 Phase 1)
 
 ---
@@ -253,7 +261,7 @@ Cross-domain creative recombination. Uses **farthest-point sampling** to select 
 
 ### Exploration Mode (local LLM)
 
-Gap-filling driven by the curiosity engine. Loads unresolved `curiosity_targets` of type `knowledge_gap` and generates content to fill those gaps using a local LLM (to minimize cost).
+Gap-filling driven by the curiosity engine. Loads up to 3 unresolved, unexpired `curiosity_targets` that carry no `explored` stamp, of any type, by priority, and generates content to fill those gaps using a local LLM (to minimize cost). The optional external-research step (only when the external research adapter is available and `autoResearch` is on) is narrower: it selects `knowledge_gap`, `market_demand` and `frontier` targets not yet externally researched.
 
 **Off by default since the token-efficiency pass (2026-09-19).** On the reference node exploration asked near-identical questions every cycle (28 of 30 frontier targets already explored) and the live config had already disabled it. Re-enable with `memory.dream.modes.exploration.enabled: true`.
 
@@ -263,7 +271,7 @@ Gap-filling driven by the curiosity engine. Loads unresolved `curiosity_targets`
 
 ### Slow Update (PLAN-21 Phase D)
 
-**Retired in PLAN-45 Phase 1 (2026-09-05).** The epoch-wise longitudinal regression (`dream-slow-update.ts`) and its per-cycle hook were deleted. The `skill_text_history` table it read is intentionally left in place with no migration and is now orphaned (no reader, no writer); `dream_telemetry` rows under phase `plan21_slow_update` and `memory_audit_log` `plan21_slow_update_fired` events are historical only.
+**Retired in PLAN-45 Phase 1 (2026-09-05).** The epoch-wise longitudinal regression (`dream-slow-update.ts`) and its per-cycle hook were deleted. The `skill_text_history` table it read was left orphaned at the time and then dropped in migration v67 (PLAN-46 dead-code pass); `dream_telemetry` rows under phase `plan21_slow_update` and `memory_audit_log` `plan21_slow_update_fired` events are historical only.
 
 ---
 
@@ -291,7 +299,7 @@ All dream phases write structured metrics to the `dream_telemetry` table:
 ```sql
 CREATE TABLE dream_telemetry (
   cycle_id TEXT NOT NULL,
-  phase TEXT NOT NULL,       -- 'fsho', 'ripple', 'snn_merge', 'orphan_rescue', 'readiness'
+  phase TEXT NOT NULL,       -- 'readiness', 'ripple', 'snn_merge', 'orphan_rescue', 'simulation', 'promotion', 'outcome'
   metric_name TEXT NOT NULL,
   metric_value REAL NOT NULL,
   created_at INTEGER NOT NULL
@@ -300,9 +308,12 @@ CREATE TABLE dream_telemetry (
 
 Examples:
 
-- `(cycle_123, "fsho", "order_parameter", 0.62)` — FSHO computed R=0.62 (creative zone)
 - `(cycle_123, "ripple", "ripple_count", 4)` — 4 Poisson-sampled ripples this replay
 - `(cycle_123, "readiness", "score", 0.45)` — 45% of knowledge base is new
+- `(cycle_123, "simulation", "gate_pass_rate", 0.8)`: the relevance gate kept 80% of simulation insights
+- `(cycle_123, "outcome", "dqs", 0.61)`: the cycle's Dream Quality Score
+
+The FSHO order parameter is not a telemetry row: each cycle's R is stored as `dream_outcomes.fsho_r` next to its DQS, which is what the correlation check below reads. The `snn_merge` and `orphan_rescue` phases are written by the consolidation engine, not the dream engine.
 
 This enables closed-loop validation: empirically measuring whether FSHO's R-parameter actually correlates with better dream outcomes.
 
@@ -350,7 +361,7 @@ Market demand signals feed into dream mode selection as the fourth signal, enabl
 
 - High-demand categories boost `exploration` and `distillation` modes (the `mutation`/`research` boosts were retired in PLAN-45 Phase 1), directing creative energy toward market opportunities
 - Demand targets are injected into the curiosity engine as exploration targets with a **24-hour TTL**, ensuring stale market signals expire naturally
-- When marketplace activity is detected (any signal within the last 24h), the four-signal weighting activates (0.25/0.25/0.30/0.20); when no marketplace activity exists, the system falls back to the original three-signal weights (0.30/0.30/0.40)
+- When marketplace activity is detected (any purchase, bounty or search within the last 7 days), the four-signal weighting activates (0.25/0.25/0.30/0.20); when no marketplace activity exists, the system falls back to the pending-task weights (0.275/0.275/0.30 + 0.15 task bias) or the original three-signal weights (0.30/0.30/0.40)
 
 **Virtuous cycle:** marketplace purchases surface demand → dream engine distills toward that demand → new skills crystallize → marketplace lists them → sales generate dopamine → reinforcement loop closes.
 
@@ -510,8 +521,10 @@ decides per call: submit one Message Batch (`POST /v1/messages/batches`, one req
 with backoff (3s growing to 30s) until `processing_status` is `ended`, fetch the JSONL
 results by `custom_id`, and return the message. On timeout, abort or any error the batch is
 canceled (`POST .../cancel`, best effort) and the same call runs live, so a lane can be
-slower but never stalls. Prompt caching works inside batches; the ledger records the rows
-with `batch = 1` and the cache split as reported.
+slower but never stalls. Slash-separated feature ids such as `memory/dream` are rewritten
+to the Batches API `custom_id` pattern (`^[a-zA-Z0-9_-]{1,64}$`) before submission, so the
+result line can be matched back. Prompt caching works inside batches; the ledger records the
+rows with `batch = 1` and the cache split as reported.
 
 | Key                           | Default                                                                         | Meaning                                               |
 | ----------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
@@ -540,6 +553,17 @@ behind it waits; user turns are unaffected.
 type DreamEngineConfig = {
   enabled?: boolean; // Default: true
   intervalMinutes?: number; // Default: 120
+  initialDelayMinutes?: number; // Default: 5 (delay before the first cycle, so hot reloads do not reset the timer)
+  adaptiveInterval?: {
+    enabled?: boolean; // Default: true (false = fixed intervalMinutes)
+    minMinutes?: number; // Default: 30 (floor)
+    maxMinutes?: number; // Default: 240 (ceiling)
+    windowHours?: number; // Default: 8 (marketplace activity smoothing window)
+    cooldownMinutes?: number; // Default: 60 (minimum time between interval changes)
+    highThreshold?: number; // Default: 0.7 (activity above this halves the interval)
+    lowThreshold?: number; // Default: 0.3 (activity below this doubles it)
+  };
+  disableFsho?: boolean; // Default: false (true skips the FSHO signal in mode selection)
   minNewSessions?: number; // Default: 1 (scheduled-cycle gate)
   minIdleMinutes?: number; // Default: 60 (scheduled-cycle gate)
   minHoursBetween?: number; // Default: 8 (scheduled-cycle gate)
@@ -588,7 +612,7 @@ This creates a virtuous cycle: the agent's daily work generates episodes → dre
 
 ## Relationship reconsolidation (PLAN-23 SABM)
 
-A 9th dream mode, `relationship_reconsolidation`, runs each cycle when enabled (it is off by default) and is the only place the memory system performs a destructive belief revision. The write path merely _flags_ conflicting relationship edges (both stay active); this mode drains those flags and closes the losing edge only after (1) the supporting evidence has exited its labile window and (2) a hormonally-gated confidence floor is cleared (high cortisol makes it more conservative). Closed beliefs are retained and remain queryable. See `docs/memory/sabm-belief-adjudication.md`.
+The `relationship_reconsolidation` mode runs each cycle when enabled (it is off by default) and is the only place the memory system performs a destructive belief revision. The write path merely _flags_ conflicting relationship edges (both stay active); this mode drains those flags and closes the losing edge only after (1) the supporting evidence has exited its labile window and (2) a hormonally-gated confidence floor is cleared (high cortisol makes it more conservative). Closed beliefs are retained and remain queryable. See `docs/memory/sabm-belief-adjudication.md`.
 
 ## Relationship mining (PLAN-28 A2)
 

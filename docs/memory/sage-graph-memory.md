@@ -34,9 +34,9 @@ type QueryPlan = {
 };
 ```
 
-- **Primary path:** a fast LLM call (caller injects `llmCall`, typically Haiku 4.5) with a strict JSON schema and `temperature: 0`.
+- **Primary path:** a fast LLM call (caller injects `llmCall`; the memory manager supplies one through `getSagePlannerLlmCall`) that must return strict JSON. The planner sets no sampling parameters itself; they are whatever the injected call uses.
 - **Fallback path:** a pure heuristic decomposer that never fails — extracts capitalized noun runs (plus single tokens for verb-prefixed runs like "Wrote Bitterbot" → `["Wrote Bitterbot", "Wrote", "Bitterbot"]`), infers `answerType` from interrogatives, and matches ISO dates, quarters (`2026-Q1`), file paths, and quoted strings.
-- **Cache:** LRU keyed by query hash + `maxPseudoQueries`, 5-min TTL (matches the Anthropic prompt-cache window).
+- **Cache:** in-process LRU (256 entries) keyed by query hash + `maxPseudoQueries`, 5-min TTL (matches the prompt-cache window); `noCache` and `cacheTtlMs` options override it.
 
 The plan widens the retrieval surface so a single vector probe doesn't dominate. SAGE Section 4.1 calls this "multi-cue activation."
 
@@ -134,7 +134,7 @@ r = (α · recall + β · precision + γ · deducibility) / (α + β + γ)
 
 ### Training-pair collection
 
-The `graph_gate_training_pairs` table holds `(query, ground_truth_chunk_id)` tuples sourced from real session traces. `insertTrainingPair()` is invoked by the experience-signal-collector when an agent turn cites a specific chunk; the table is capped at 5 000 rows.
+The `graph_gate_training_pairs` table holds `(query, ground_truth_chunk_id)` tuples sourced from real session traces. `insertTrainingPair()` has two callers: the memory manager's access log, when a search result is later cited (`source: 'access_log'`), and the coverage diagnostics, when a chunk the graph channel missed was present in another channel (`source: 'coverage_miss'`, `coverage-diagnostics.ts`). The table is capped at 5 000 rows.
 
 ### Dream-engine integration
 
@@ -261,12 +261,12 @@ These settings are not user-configurable; the manager uses the built-in
 | `structuralGating`        | 3     | on      | Load gate file, apply learned δ-tanh-MLP |
 | `hormonalModulation`      | 5     | on      | Cortisol/dopamine/oxytocin modulate δ    |
 
-Planned (not yet implemented as config):
+Still not exposed as config (hard-coded in `graph-optimization-hook.ts` as `DEFAULT_COOLDOWN_MS` and `DEFAULT_MIN_PAIRS`; `maybeRunGraphOptimization` accepts them as function options only):
 
-| Key                                        | Phase | Default | Effect                             |
-| ------------------------------------------ | ----- | ------- | ---------------------------------- |
-| `dream.graphOptimization.cooldownMs`       | 3     | `6h`    | Minimum gap between optimizer runs |
-| `dream.graphOptimization.minTrainingPairs` | 3     | `50`    | Floor before optimization starts   |
+| Setting            | Phase | Default | Effect                             |
+| ------------------ | ----- | ------- | ---------------------------------- |
+| `cooldownMs`       | 3     | `6h`    | Minimum gap between optimizer runs |
+| `minTrainingPairs` | 3     | `50`    | Floor before optimization starts   |
 
 ---
 
@@ -281,9 +281,9 @@ Each module ships with a dedicated vitest file:
 - `graph-optimizer.test.ts` — 5 tests covering training-pair store, gate evaluation, optimizer-cycle monotonicity, high-cortisol skip gate.
 - `graph-bridge-target.test.ts` — 7 tests covering gap detection, signal persistence, deduplication, prioritized reads.
 - `graph-optimization-hook.test.ts` — 5 tests covering feature-flag gating, training-floor gating, cooldown, regression rejection, gate-value materialization.
-- `sage-memory.test.ts` — 4 integration tests covering disabled-reader degraded mode, end-to-end retrieval, hormonal forwarding, gate-file loading.
+- `sage-memory.test.ts` — 7 integration tests covering disabled-reader degraded mode, end-to-end retrieval, hormonal forwarding, gate-file loading.
 
-All 59 SAGE tests pass; no adjacent regressions in `knowledge-crystal-system.test.ts`, `curiosity-engine.task-spawn.test.ts`, or `hybrid.test.ts`.
+62 SAGE tests in total across these eight files.
 
 ---
 

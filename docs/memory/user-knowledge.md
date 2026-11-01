@@ -58,21 +58,21 @@ Each extracted fact is classified into one of four epistemic types:
 | `world_fact`   | External knowledge             | "Their company uses Kubernetes"     | Crystal with `epistemic_layer` column    |
 | `mental_model` | Inferred behavioral pattern    | "User works late on Wednesdays"     | Crystal with `epistemic_layer` column    |
 
-**Directives override inferred knowledge.** If the user explicitly says "I prefer X," this takes priority over any pattern the system has inferred. The `working_memory_note` tool supports a `type="correction"` parameter for user-initiated overrides.
+**Directives override inferred knowledge.** If the user explicitly says "I prefer X," this takes priority over any pattern the system has inferred. The `working_memory_note` tool takes the same four values in its `type` parameter (`experience`, `directive`, `world_fact`, `mental_model`); there is no `correction` type. Corrections the user states in conversation are picked up by the extractor's correction pass and the canonical ledger instead (see `session-extractor.ts`).
 
 ### Layer 3: User Model
 
-Only the owner's own conversations teach preferences. Group chats, guests (anyone else in a direct chat), agent-to-agent tasks and subagents never do, whether the preference is found by the extraction model or by the simpler pattern match run at indexing time.
+Only the owner's own conversations teach preferences. Group chats, guests (anyone else in a direct chat), agent-to-agent tasks and subagents never do, whether the preference is found by the extraction model or by the simpler pattern match run at indexing time. The gate is the per-session trust resolver in the extraction pass (`buildSessionTrustResolver`; directive facts route to `user_preferences` only when `sessionTrust(path) === "first_party"`, `manager.ts`).
 
-The `UserModelManager` aggregates directive-type facts into a `user_preferences` table organized by category:
+The `UserModelManager` aggregates directive-type facts into a `user_preferences` table organized by category. Facts from the extraction model carry whatever category the extractor assigned; the built-in pattern matcher (`PREFERENCE_PATTERNS` in `user-model.ts`) uses a fixed set:
 
-| Category                | Examples                                      |
-| ----------------------- | --------------------------------------------- |
-| `communication_style`   | "Prefers casual tone," "Likes emoji"          |
-| `technical_preferences` | "Uses TypeScript," "Prefers vim"              |
-| `work_patterns`         | "Most productive mornings," "Deploys Fridays" |
-| `personal_context`      | "Has a dog named Max," "Lives in Toronto"     |
-| `ui_preference`         | "Dark mode," "Compact layout"                 |
+| Category        | Keys                                                                   | Examples                                    |
+| --------------- | ---------------------------------------------------------------------- | ------------------------------------------- |
+| `language`      | `preferred_language`                                                   | "I prefer TypeScript"                       |
+| `tool`          | `preferred_editor`, `preferred_package_manager`, `preferred_framework` | "I use vim," "we use pnpm"                  |
+| `style`         | `code_style`                                                           | "Prefers tabs over spaces"                  |
+| `workflow`      | `preferred_workflow`                                                   | "Always run the tests first"                |
+| `communication` | `communication_style`                                                  | "Keep answers short," "Prefers casual tone" |
 
 The `upsertFromDirective()` method handles updates. Confidence calibration uses Bayesian-style updates:
 
@@ -83,17 +83,19 @@ User preferences are fed into the dream engine's MEMORY.md synthesis as an `## I
 
 ### Layer 4: Bond Drift Guard
 
-The Theory of Mind ("The Bond" section in MEMORY.md) evolves through dream cycles. To prevent catastrophic drift — where the Bond diverges from reality due to LLM hallucination during synthesis — a **Jaccard term overlap** guard validates each update:
+The Theory of Mind ("The Bond" section in MEMORY.md) evolves through dream cycles. To prevent catastrophic drift — where the Bond diverges from reality due to LLM hallucination during synthesis — a **term retention** guard validates each update (`validateWorkingMemory` in `working-memory-prompt.ts`). Terms are lowercased words longer than three characters; the ratio is the share of the old Bond's terms that survive, not a symmetric Jaccard overlap:
 
 ```
-overlap = |terms_old ∩ terms_new| / |terms_old ∪ terms_new|
+retention = |terms_old ∩ terms_new| / |terms_old|
 ```
 
-| Overlap | Action                                   |
-| ------- | ---------------------------------------- |
-| ≥ 50%   | Accept new Bond (normal evolution)       |
-| 30-50%  | Accept with warning log                  |
-| < 30%   | **Collapse to previous Bond** (rollback) |
+The check runs only when the previous Bond is longer than 100 characters.
+
+| Retention | Action                                                                                               |
+| --------- | ---------------------------------------------------------------------------------------------------- |
+| ≥ 50%     | Accept new Bond (normal evolution)                                                                   |
+| 30-50%    | Accept with warning log                                                                              |
+| < 30%     | **Collapse**: the LLM synthesis is rejected; the heuristic builder carries the previous Bond forward |
 
 This prevents a single bad LLM call from erasing the accumulated understanding of the user.
 
@@ -162,17 +164,20 @@ The agent can explicitly record knowledge via the `working_memory_note` tool:
 
 ```
 working_memory_note(
-  text: "User prefers dark mode in all editors",
+  note: "User prefers dark mode in all editors",
   type: "directive",           // epistemic type
   importance: 0.8
 )
 ```
 
-Notes are written to `memory/scratch.md` (the write-ahead log) and consumed by the next dream cycle. The `type` parameter determines how the note is processed:
+Notes are written to `memory/scratch.md` (the write-ahead log) and consumed by the next dream cycle; every note also becomes a crystal immediately so `memory_search` can find it before then. The `type` parameter sets the crystal's semantic type and epistemic layer:
 
-- `directive` → `user_preferences` table (survives indefinitely)
-- `experience` → Crystal with high importance (natural decay)
-- `correction` → Overrides existing knowledge in the same category
+- `directive` → preference crystal, and also upserted into the `user_preferences` table (confidence = importance)
+- `experience` → episode crystal (natural decay)
+- `world_fact` → fact crystal
+- `mental_model` → insight crystal
+
+There is no `correction` type; a restated preference corroborates or contradicts the stored row through `upsertFromDirective()` as described above.
 
 ---
 
@@ -183,13 +188,17 @@ The agent can query its accumulated user knowledge via the `fullUserProfile()` m
 ```typescript
 {
   preferences: UserPreference[],    // From user_preferences table
-  recentFacts: Crystal[],           // Epistemic-typed crystals
-  bondSummary: string,              // Current Bond section from MEMORY.md
-  lastHandover: HandoverBrief,      // Most recent session handover
+  patterns: UserPattern[],          // Behavioral patterns detected by the user model
+  latestHandover?: string,          // Compact summary of the most recent handover brief
+  stats: {
+    totalPreferences: number,
+    categories: Record<string, number>,  // preference count per category
+    avgConfidence: number,
+  },
 }
 ```
 
-The system prompt includes guidance for the agent to reference this profile naturally in conversation.
+It returns `null` when the user model is disabled. The Bond section itself is read from MEMORY.md by the bootstrap loader, not through this method.
 
 ---
 

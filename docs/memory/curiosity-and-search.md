@@ -76,11 +76,11 @@ The former "emerging skill" frontier generator was deleted: it mistook handover 
 
 ```typescript
 type ExplorationTargetType =
-  | "question" // A question the agent wants answered (working memory, owner)
   | "knowledge_gap" // Missing knowledge detected from search
   | "contradiction" // Conflicting information found
   | "stale_region" // Region with declining learning progress
-  | "frontier"; // Edge of knowledge — opportunity to expand
+  | "frontier" // Edge of knowledge — opportunity to expand
+  | "graph_bridge"; // PLAN-18: the graph reader missed a chunk that vector/FTS found
 
 type ExplorationTarget = {
   id: string;
@@ -92,25 +92,25 @@ type ExplorationTarget = {
   createdAt: number;
   resolvedAt: number | null;
   expiresAt: number; // 48h for engine targets, 14 days for questions
-  attempts: number; // research attempts (closed as unanswered after 2)
-  embeddingJson: string | null; // for dedupe
 };
 ```
+
+Two more things live on the `curiosity_targets` row but outside the engine's type: the `question` row type (working-memory and owner questions, written by `curiosity-gaps.ts` and `curiosity.ask`, never produced by the engine itself), and the research columns `attempts` (closed as `unanswered` once it reaches `research.maxAttempts`, default 3) and `embedding_json` (for dedupe), which `curiosity-gaps.ts` reads directly.
 
 Maximum active targets: 10 (configurable). Expired targets are cleaned up during `run()`.
 
 ### The research loop (PLAN-54)
 
-`src/memory/curiosity-researcher.ts`, on the maintenance tick, every `intervalMinutes` (240):
+`src/memory/curiosity-researcher.ts`, on the maintenance tick, every `intervalMinutes` (240). One pass has an 8-minute wall-clock deadline; targets not started by then wait for the next pass:
 
 1. Pick up to 4 researchable targets (`question`, or `metadata.researchable = 1`), ranked by priority plus 0.25 × the region's curiosity ROI, minus 0.1 per prior attempt.
-2. Skip sensitive topics on the node (`isSensitiveTopic`), and questions the web cannot answer: the model marks `web_answerable` false for questions about the author's own life, schedule, people, projects or files, and any first-person question ("my", "our", "I") is closed as `not_web_answerable` without a search. Rewrite the question as a search phrase with the agent's own model (a genuinely local model when configured), which also declares the public subject terms it kept (at most 4, each copied from the question). Reject the phrase if it contains an email, a URL, the owner's name or any knowledge-graph person/organization/project (checked on the raw phrase, so a "public term" can never launder a private name), a 3-token fragment or three copied bigrams of the question outside the declared public terms, or a copied non-ASCII token. `research.strictEgress: true` ignores declared public terms (then named technologies cannot be searched). A rejected phrase is never sent; the page shows the question as held back.
+2. Skip sensitive topics on the node (`isSensitiveTopic`), and questions the web cannot answer: the model marks `web_answerable` false for questions about the author's own life, schedule, people, projects or files, and any possessive first-person question ("my", "our", "mine", "ours") is closed as `not_web_answerable` without a web search (the rewrite call below still runs first). Rewrite the question as a search phrase with the agent's own model (a genuinely local model when configured), which also declares the public subject terms it kept (at most 4, each copied from the question). Reject the phrase if it contains an email, a URL, the owner's name or any knowledge-graph person/organization/project (checked on the raw phrase, so a "public term" can never launder a private name), a 3-token fragment or three copied bigrams of the question outside the declared public terms, or a copied non-ASCII token. `research.strictEgress: true` ignores declared public terms (then named technologies cannot be searched). A rejected phrase is never sent; the page shows the question as held back.
 3. Search (`runConfiguredWebSearch`, one retry with "explained"), fetch up to `maxPagesPerTarget` (3) pages from distinct hosts through the SSRF guard, log every egress to `research_egress_log`.
-4. Distill a ≤120-word answer with `confidence` and `supporting_sources`. Verified when confidence ≥ `minConfidence` (0.45) and two sources support it, or one does at confidence ≥ floor + 0.15.
+4. Distill a ≤120-word answer with `confidence` and `supporting_sources`. Verified when confidence ≥ `minConfidence` (0.45) and two sources support it, or one does at confidence ≥ floor + 0.15 (that single-source bar is capped at 0.95).
 5. Store: a `world_fact` chunk (`origin = curiosity`, `path = curiosity/<target>`, evidence URLs, `valid_time_start`), a `curiosity_findings` row (question, phrase, answer, confidence, sources, hormonal state, cost, chunk), and a `research_findings` line the system prompt voices once. An earlier answer to the same target gets `valid_time_end` and is archived, never deleted. The target resolves with `researchOutcome = learned`; a dopamine `curiosity_progress` event fires.
 6. Otherwise the outcome is `inconclusive` (retry later) or, on the last attempt, `unanswered`. The answer it did find is kept as an unverified finding (`curiosity_findings.verified = 0`, no chunk, never voiced, excluded from utility and the brief) and shown dimmed on the Curiosity page as "found, but not confident enough to remember", so a miss is never silent.
 
-Budget: `maxPerDay` (10) questions per UTC day, +2 when dopamine > 0.65, −2 when cortisol > 0.65 (cortisol also raises the confidence floor by 0.1). Pause state lives in `memory_meta`.
+Budget: `maxPerDay` (10) questions per UTC day, +2 when dopamine > 0.65, −2 when cortisol > 0.65 (cortisol also raises the confidence floor by 0.1, to at most 0.9). Pause state lives in `memory_meta`.
 
 Use ledger (`src/memory/curiosity-use.ts`): memory search and proactive recall call `recordCuriosityUse` for any self-learned chunk they return; `curiosityRoiByRegion` feeds step 1. Evidence layer (`memory.curiosity.evidence`, default `shadow`): every owner search writes its top-K chunk ids under a keyed query digest, every voiced finding, proactive-recall fact and dream brief writes a `delivered` row, and a dismiss labels it `explicit`; since PLAN-59 Phase 2 the shadow surfacing trial (`evidence.surfacingTrial`, default `shadow`) logs each of those as `eligible` and `assigned` to a randomised-block arm first, without changing what is delivered; see [Evidence telemetry](/memory/evidence-telemetry). RPCs: `curiosity.status`, `curiosity.list`, `curiosity.pause`, `curiosity.resume`, `curiosity.dismiss`, `curiosity.ask`, `curiosity.runNow`; the same from the terminal as [`bitterbot curiosity`](/cli/curiosity).
 
@@ -370,6 +370,18 @@ type CuriosityConfig = {
   targetTtlHours?: number; // Default: 48
   maxQueryHistory?: number; // Default: 200
   gapScoreThreshold?: number; // Default: 0.5
+  fshoCoupling?: boolean; // Default: false (FSHO R modulates GCCRF alpha; see curiosity-reward.md)
+  evidence?: {
+    mode?: "off" | "observe" | "shadow"; // Default: "shadow" (see evidence-telemetry.md)
+    retentionDays?: number; // Default: 90
+    topK?: number; // Default: 10 (capped at 200)
+    surfacingTrial?: {
+      mode?: "off" | "shadow"; // Default: "shadow"
+      blockMinutes?: number; // Default: 240
+      carryOverDays?: number; // Default: 7
+      seed?: string; // Default: derived from the node's evidence digest key
+    };
+  };
   research?: {
     enabled?: boolean; // Default: true (autoResearch.enabled=false also disables)
     intervalMinutes?: number; // Default: 240
@@ -379,6 +391,14 @@ type CuriosityConfig = {
     minConfidence?: number; // Default: 0.45
     blockedDomains?: string[]; // Default: []
     maxAttempts?: number; // Default: 3
+    strictEgress?: boolean; // Default: false (true ignores declared public terms)
+  };
+  requestFrequency?: {
+    enabled?: boolean; // Default: true (repeated-query analyzer over curiosity_queries)
+    lookbackDays?: number; // Default: 7
+    minFrequency?: number; // Default: 3 (phrase repeats before it becomes a signal)
+    maxSignals?: number; // Default: 5 (signals emitted per run)
+    ttlDays?: number; // Default: 14 (TTL of the injected knowledge_gap targets)
   };
 };
 
