@@ -130,6 +130,33 @@ Unsigned proofs are rejected by default. `a2a.payment.allowUnsignedProofs: true`
 
 6. **Result delivery.** The task result is returned in the JSON-RPC response. The `PAYMENT-RESPONSE` header is included on the 200 OK response, containing a Base64-encoded JSON object with `transactionHash`, `payer`, and `network`.
 
+### Optional XNO rail
+
+An operator can also accept Nano (XNO) next to USDC. It is off unless configured, and the Base rail does not change:
+
+```json5
+{
+  a2a: {
+    payment: {
+      nano: {
+        address: "nano_...", // checksummed receiving account
+        rawPerUsd: "1000000000000000000000000000000", // raw charged per 1 USD of price
+        rpcUrl: "http://127.0.0.1:7076", // default: your own node
+        maxAgeSeconds: 300, // default
+      },
+    },
+  },
+}
+```
+
+When set, the 402 `PAYMENT-REQUIRED` list gets a second entry with `network: "nano:mainnet"`, `asset: "XNO"`, the account as `payTo`, and `maxAmountRequired` in raw (price times `rawPerUsd`, rounded up). The Agent Card gains a `nano-payment` extension. The buyer sends XNO, then retries with a Base64 JSON token in the same `X-PAYMENT` header:
+
+```text
+{ network: "nano:mainnet", blockHash, account, recipient, amountRaw, timestamp, signature }
+```
+
+`signature` is an Ed25519-BLAKE2b signature (the Nano account key scheme) by `account` over `<recipient>|<BLOCKHASH>|<amountRaw>|<timestamp-ms>`. The seller makes one `block_info` call and requires a confirmed send from `account` to its own account for exactly `amountRaw`, at least the price, seen within `maxAgeSeconds`. Each block hash is accepted once. If the node cannot be reached the task is not paid.
+
 ---
 
 ## Agent Card Schema

@@ -57,3 +57,40 @@ describe("verifyA2aPayment pricing", () => {
     expect(result.pricing?.priceUsdc).toBe(0.05);
   });
 });
+
+describe("verifyA2aPayment Nano routing", () => {
+  function reqWithToken(payload: Record<string, unknown>): IncomingMessage {
+    const req = new IncomingMessage(new Socket());
+    req.headers = { "x-payment": Buffer.from(JSON.stringify(payload)).toString("base64") };
+    return req;
+  }
+
+  it("refuses a nano:mainnet token when the Nano rail is not configured", async () => {
+    const result = await verifyA2aPayment(
+      reqWithToken({ network: "nano:mainnet", blockHash: "AB".repeat(32) }),
+      { a2a: { payment: { enabled: true } } } as never,
+      stubMarketplace,
+    );
+    expect(result.paid).toBe(false);
+  });
+
+  it("refuses a nano:mainnet token that fails verification without touching x402", async () => {
+    const result = await verifyA2aPayment(
+      reqWithToken({ network: "nano:mainnet", blockHash: "not-a-hash" }),
+      {
+        a2a: {
+          payment: {
+            enabled: true,
+            nano: {
+              address: "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3",
+              rawPerUsd: "1000",
+            },
+          },
+        },
+      } as never,
+      stubMarketplace,
+    );
+    expect(result.paid).toBe(false);
+    expect(result.txHash).toBeUndefined();
+  });
+});

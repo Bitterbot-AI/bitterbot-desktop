@@ -73,6 +73,16 @@ function sendBody() {
   };
 }
 
+async function get402Raw(config: Record<string, unknown>) {
+  const h = makeHandler(config);
+  const req = mockReq({ body: sendBody() });
+  const res = mockRes();
+  await h.handle(req, res, { auth: {} as never, trustedProxies: [], rateLimiter: undefined });
+  h.close();
+  expect(res.statusCode).toBe(402);
+  return { header: res._headers["payment-required"], body: res._body };
+}
+
 async function get402Requirements(config: Record<string, unknown>) {
   const h = makeHandler(config);
   const req = mockReq({ body: sendBody() });
@@ -142,6 +152,73 @@ describe("A2A 402 payment requirements", () => {
     expect(requirements.network).toBe("base-sepolia");
     expect(requirements.asset).toBe("0x036CbD53842c5426634e7929541eC2318f3dCF7e");
     expect(errorData.chain).toBe("base-sepolia");
+  });
+});
+
+describe("A2A 402 with the opt-in Nano rail", () => {
+  const NANO_ADDR = "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3";
+  const baseOnly = {
+    a2a: {
+      enabled: true,
+      authentication: { type: "none" },
+      payment: { enabled: true, x402: { address: WALLET_ADDR } },
+    },
+    tools: { wallet: { network: "base" } },
+  };
+
+  it("leaves the Base-only 402 untouched when payment.nano is unset", async () => {
+    const { header, body } = await get402Raw(baseOnly);
+    // Exact bytes of the pre-Nano response: one accepts entry, same body.
+    const expectedAccepts = [
+      {
+        scheme: "exact",
+        network: "base",
+        maxAmountRequired: "0.01",
+        resource: "/a2a",
+        description: "Payment required for skill execution",
+        mimeType: "application/json",
+        payTo: WALLET_ADDR,
+        maxTimeoutSeconds: 300,
+        asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+      },
+    ];
+    expect(header).toBe(Buffer.from(JSON.stringify(expectedAccepts)).toString("base64"));
+    expect(body).toBe(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        error: {
+          code: -32006,
+          message: "Payment required for this task",
+          data: {
+            pricing: { priceUsdc: 0.01, skills: [] },
+            payTo: WALLET_ADDR,
+            chain: "base",
+            token: "USDC",
+          },
+        },
+        id: "pay-1",
+      }),
+    );
+  });
+
+  it("adds a second accepts entry for XNO when payment.nano is configured", async () => {
+    const config = structuredClone(baseOnly);
+    (config.a2a.payment as Record<string, unknown>).nano = {
+      address: NANO_ADDR,
+      rawPerUsd: "100000000000000000000000000000",
+    };
+    const { header, body } = await get402Raw(config);
+    const accepts = JSON.parse(Buffer.from(header, "base64").toString("utf-8"));
+    expect(accepts).toHaveLength(2);
+    expect(accepts[0].network).toBe("base");
+    expect(accepts[1]).toMatchObject({
+      network: "nano:mainnet",
+      payTo: NANO_ADDR,
+      asset: "XNO",
+      maxAmountRequired: "1000000000000000000000000000",
+    });
+    // The JSON-RPC body is the same as on a Base-only node.
+    expect(body).toBe((await get402Raw(baseOnly)).body);
   });
 });
 
