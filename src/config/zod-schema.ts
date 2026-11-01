@@ -929,6 +929,24 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        // Experience-guided skill prior (index reordering), default off.
+        prior: z
+          .object({
+            enabled: z.boolean().optional().describe("Default: false"),
+            mode: z
+              .union([z.literal("mean"), z.literal("thompson")])
+              .optional()
+              .describe("Default: mean"),
+            placement: z
+              .union([z.literal("first"), z.literal("last")])
+              .optional()
+              .describe("Default: first"),
+            discount: z.number().min(0).max(1).optional().describe("Default: 0.98"),
+            pseudoCount: z.number().min(0).max(100).optional().describe("Default: 4"),
+            ledgerPath: z.string().optional().describe("Default: CONFIG_DIR/skill-prior.json"),
+          })
+          .strict()
+          .optional(),
         agentskills: z
           .object({
             enabled: z.boolean().optional(),

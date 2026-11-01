@@ -484,6 +484,23 @@ the next turn. Consequences the rest of this document depends on:
   credits each live SKILL.md the agent actually opened in a real run, with
   the run's outcome, into `skill-wiki/skill-reads.jsonl` and the lifecycle
   store; `skills.evolution.status` reports per-skill 14-day read counts.
+- **Index order is directory order.** Entries arrive in `readdirSync` order
+  per root and roots merge by precedence; nothing ranks them, and the
+  budget compactor never reorders or drops a block. The experimental
+  **experience-guided skill prior** (`skills.prior`, default off,
+  `src/agents/skills/skill-prior.ts`) is the one component that may reorder
+  the index: a Beta-Bernoulli posterior per (context cell, skill) with
+  hierarchical shrinkage, geometric discounting and a reset when the skill's
+  content hash changes, updated only from a deterministically verified
+  outcome for the one skill that was read (never from co-occurrence). It
+  reorders and may annotate; it never removes an entry or grants a tool, and
+  validation rollouts bypass it. The decision is journaled on the `skills`
+  stream (`prior: {cell, mode, baseline, order, means}`). No live path writes
+  the ledger today, because the live `skill_executions` signal is empty
+  (see above); the controlled test in `benchmarks/skill-prior/` manufactures
+  outcomes from the canonical capability families and measures order
+  sensitivity, headroom and the prior against global-success, shuffled and
+  ungated controls before any live enablement.
 
 ## Skill Lifecycle
 

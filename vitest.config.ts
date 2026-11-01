@@ -42,6 +42,7 @@ export default defineConfig({
       "benchmarks/longmemeval/**/*.test.ts",
       "benchmarks/plan59-phase1/**/*.test.ts",
       "benchmarks/skill-evolution/**/*.test.ts",
+      "benchmarks/skill-prior/**/*.test.ts",
     ],
     setupFiles: ["test/setup.ts"],
     exclude: [

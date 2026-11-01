@@ -42,6 +42,21 @@ so an older report is flagged rather than compared. The
 `skills-ablation` workflow runs the harness self-test weekly with a
 deterministic executor and can produce a live report on demand.
 
+## Experience-guided skill prior (controlled test)
+
+`node --import tsx benchmarks/skill-prior/run.ts --phase order|headroom|arms`
+tests whether an outcome-gated, per-context bandit that reorders the
+`<available_skills>` index (`skills.prior`, default off) changes which skill the
+agent reads first and whether that changes verified task outcomes. The pool is
+controlled: for each canonical capability family one correct skill, one decoy
+with the same routing description and a wrong rule, plus unrelated fillers.
+Two abort gates run first: order sensitivity (correct skill listed first vs
+last) and headroom (forced-skill truth table). The treatment is then compared,
+paired by task instance, against directory order, context-free global-success
+ordering, shuffled associations and ungated co-occurrence, all learned from the
+same episodes. Results are written under the run's output directory, never
+under `~/.bitterbot`; see `benchmarks/skill-prior/README.md`.
+
 ## Long-term memory recall (LongMemEval-S)
 
 A full 500-question run of [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval)

@@ -9,6 +9,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "forage.nightShift.enabled": "Forage Night Shift",
   "forage.audit.enabled": "Forage Check-in Audits",
   "skills.evolution.enabled": "Skill Evolution (Wiki)",
+  "skills.prior.enabled": "Experience-Guided Skill Prior",
   "skills.evolution.propagate": "Evolved Skill P2P Publishing",
   "skills.evolution.cadenceHours": "Skill Evolution Cadence (hours)",
   "skills.evolution.validationMode": "Skill Evolution Validation Mode",

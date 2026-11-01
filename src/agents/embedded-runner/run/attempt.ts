@@ -84,6 +84,7 @@ import {
   resolveSkillsPromptForRun,
 } from "../../skills.js";
 import { applyCanaryExposure } from "../../skills/canary-registry.js";
+import { applySkillPriorForRun } from "../../skills/skill-prior-runtime.js";
 import { buildSystemPromptParams } from "../../system-prompt-params.js";
 import { buildSystemPromptReport } from "../../system-prompt-report.js";
 import { getGlobalToolCache } from "../../tool-cache.js";
@@ -288,7 +289,7 @@ export async function runEmbeddedAttempt(
     // a hash-bucketed share of runs; those runs are the monitor's control
     // cohort. Validation rollouts bypass the filter (the gate must see the
     // candidate). The exposure is journaled once per run.
-    const skillsPrompt = applyCanaryExposure({
+    const canaryPrompt = applyCanaryExposure({
       prompt: resolveSkillsPromptForRun({
         skillsSnapshot: params.skillsSnapshot,
         entries: shouldLoadSkillEntries ? skillEntries : undefined,
@@ -297,6 +298,17 @@ export async function runEmbeddedAttempt(
       }),
       runId: params.runId,
       ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+      bypass: isSkillEvolveValidationSessionKey(params.sessionKey),
+    });
+    // Experience-guided skill prior (default off): reorder the index from the
+    // outcome-gated ledger and journal the decision. Validation rollouts
+    // bypass it (the benchmark applies its own arm to the snapshot).
+    const skillsPrompt = applySkillPriorForRun({
+      prompt: canaryPrompt,
+      config: params.config,
+      runId: params.runId,
+      ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+      skills: params.skillsSnapshot?.resolvedSkills ?? skillEntries.map((entry) => entry.skill),
       bypass: isSkillEvolveValidationSessionKey(params.sessionKey),
     });
 
