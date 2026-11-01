@@ -2,9 +2,9 @@
 
 The skills pipeline handles the full lifecycle of autonomous skill generation: from identifying skill candidates in memory, through verification, to P2P propagation across a swarm network with graduated peer trust. Skills are knowledge crystals with `lifecycle='frozen'` and `semantic_type='skill'` that represent reusable, executable knowledge.
 
-**Key source files:** `skill-evolution/` (the live learning loop), `skill-execution-tracker.ts`, `skill-network-bridge.ts`, `skill-verifier.ts` (P2P ingest only; `skill-refiner.ts` was retired in PLAN-45 Phase 1), `peer-reputation.ts`, `discovery-agent.ts`, `dream-mutation-strategies.ts`, `skill-marketplace.ts`, `skill-hierarchy.ts`, `skill-pricing.ts`, `marketplace-economics.ts`
+**Key source files:** `skill-evolution/` (the live learning loop), `skill-execution-tracker.ts`, `execution-tracking-hook.ts` (the `after_tool_call` writer), `skill-category.ts` (the `skill_category` join key), `skill-network-bridge.ts`, `skill-verifier.ts` (P2P ingest only; `skill-refiner.ts` was retired in PLAN-45 Phase 1), `src/agents/skills/envelope-validation.ts` (signature + hash check shared by both ingest halves), `peer-reputation.ts`, `discovery-agent.ts`, `skill-marketplace.ts`, `skill-hierarchy.ts`, `skill-pricing.ts`, `marketplace-economics.ts`, `lineage-gate.ts` (listing-time copy check), `src/browser/teaching-skills.ts` (browser demonstrations as a skill source)
 
-> **Retired in PLAN-45 Phase 1 (2026-09-05):** the legacy "Pipeline A" skill producers — `SkillRefiner`, the `mutation` and `research` dream modes, `dream-mutation-strategies.ts`, the PLAN-21 validation sandbox / Pareto ranker / slow update, and `prompt-optimization.ts` — were deleted. Skills are produced by the PLAN-42/44 skill-evolution pipeline described above (the `SkillCrystallizer` went in Phase 0); the PLAN-40 `distillation` lane writes workflow notes, not skills. Sections below that describe the retired flow are kept as one-line notes.
+> **Retired in PLAN-45 Phase 1 (2026-09-05):** the legacy "Pipeline A" skill producers — `SkillRefiner`, the `mutation` and `research` dream modes, `dream-mutation-strategies.ts`, the PLAN-21 validation gate logic, Pareto ranker and slow update, and `prompt-optimization.ts` — were deleted. `experiment-sandbox.ts` survives only as harness-evolve's paired LLM judge (`scoreVersionPair`, PLAN-25). Skills are produced by the PLAN-42/44 skill-evolution pipeline described above (the `SkillCrystallizer` went in Phase 0); the PLAN-40 `distillation` lane writes workflow notes, not skills. Sections below that describe the retired flow are kept as one-line notes.
 
 **PLAN-20 (May 2026) — executable skill interceptors:** skills can now carry `PreActionInterceptor` implementations that deterministically modify, inject context into, require prerequisites for, or block any tool call before it executes. The Dream Engine's `interceptor_harvest` mode mines the `intervention_records` corpus and auto-proposes new interceptor candidates. See [Pre-Action Interceptors](../agents/interceptors.md).
 
@@ -36,10 +36,20 @@ below for each module.
 
 ### What an execution row means (PLAN-45 Phase 1)
 
-`skill_executions` still receives one row per tool call that matched a skill
-crystal by name (`recorded_by = 'after_tool_call'`). Since PLAN-45 Phase 1
-that row carries the journal run it happened in (`run_id`, `tool_call_id`)
-and an `evidence` class:
+`skill_executions` receives one row per tool call that matched a skill
+crystal by name (`recorded_by = 'after_tool_call'`). The match
+(`execution-tracking-hook.ts`) requires a chunk with `semantic_type` or
+`memory_type` of `skill`, a lifecycle of `generated`/`activated`/`frozen`, an
+origin other than `dream`, and a `skill_category` equal to the normalized
+tool name (`read`, `exec`, `web-fetch`, ...). `skill_category` is the
+SKILL.md frontmatter name or folder name (`skill-category.ts`), and the only
+chunks ever keyed on tool names were the retired crystallizer's, which
+migration v63 purged. On a post-v63 node the hook therefore never matches:
+the table stays empty, and the bridge maturity gate below (three run-level
+executions at a success rate of 0.7 or better) cannot pass, so no crystal
+auto-publishes. The hook also skips A2A and validation sessions. When a row
+is written it carries the journal run it happened in (`run_id`,
+`tool_call_id`) and an `evidence` class:
 
 | `evidence` | Meaning                                                               | Counts as competence |
 | ---------- | --------------------------------------------------------------------- | -------------------- |
@@ -435,10 +445,11 @@ calls, which dream `mutation`/`research` modes were meant to refine through
 `SkillRefiner`, `SkillVerifier` and `ExperimentSandbox`. PLAN-45 Phase 0 retired
 the crystallizer (its dedup never matched, and it kept minting from execution
 rows whose crystal had been deleted: 572 chunks on the reference node), stopped
-the result-length "reward" score, and left the mutation and research modes off.
-The remaining crystal-side pieces (tracker, refiner, sandbox, version resolver,
-pricing) are scheduled for retirement or migration onto run-level outcomes in
-PLAN-45 Phase 1. Tool-level execution rows are telemetry, not competence.
+the result-length "reward" score, and removed the mutation and research modes.
+PLAN-45 Phase 1 then deleted the refiner, cut the sandbox down to
+harness-evolve's paired judge, and moved the tracker, version resolver and
+pricing onto run-level outcomes (`RUN_EVIDENCE_WHERE`). Tool-level execution
+rows are telemetry, not competence.
 
 ---
 
@@ -465,7 +476,8 @@ the next turn. Consequences the rest of this document depends on:
   (config enable/disable, tier, remote-session rules, and the load-time
   capability gate for mesh-ingested skills).
 - **Hot reload.** Every write to the live set (promote, operator accept,
-  harvest, the file watcher) bumps a snapshot version; at the start of the
+  harvest, a saved browser teaching draft, the file watcher) bumps a snapshot
+  version; at the start of the
   next turn the reply path rebuilds the snapshot and the index. No restart
   and no new session are needed.
 - **Use is measured from the journal** (Phase 5a): a housekeeping pass
@@ -503,7 +515,7 @@ flowchart TB
 > under "P2P Skill Network → Receiving" below; `SkillNetworkBridge.ingest`
 > (the memory-chunk half) runs only after an envelope is accepted.
 >
-> **PLAN-45 note (2026-09-05):** the PLAN-21 description below is historical. The `ExperimentSandbox` "trials" are LLM-predicted pass/fail over past execution contexts, not re-executions, and its only consumer (`research` mode) is off by default; PLAN-45 Phase 1 retires it. The measured gate is the skill-evolution validation gate above.
+> **PLAN-45 note (2026-09-05):** the PLAN-21 description below is historical. PLAN-45 Phase 1 removed the gate logic (faithfulness gate, `evaluate()`, `MutationVerdict`) from `src/memory/experiment-sandbox.ts`; the file survives only as harness-evolve's paired LLM judge (`scoreVersionPair`, PLAN-25), whose "trials" are LLM-predicted pass/fail over past execution contexts, not re-executions. The measured gate is the skill-evolution validation gate above.
 >
 > **PLAN-21 update (2026-05-26, historical; mutation retired 2026-09-05):** the `Score ≥ 0.7?` branch labelled `D → E` was the two-gate validation pipeline implemented in `src/memory/experiment-sandbox.ts`. A mutation must (a) pass an LLM-judged **faithfulness gate** that verifies each key operational concept survives the edit, and (b) clear a **paired-bootstrap performance gate** against a deterministic 20% held-out partition of `skill_executions` (the 95% CI on the per-trial delta must be strictly above zero). Across each cycle, gate-passing candidates are Pareto-ranked in `src/memory/skill-mutation-pareto.ts` over (delta, faithfulness margin, token delta) and clipped to a cosine-decay edit budget, so over-mutation is bounded even when many candidates pass. Every ten cycles an epoch-wise **slow update** in `src/memory/dream-slow-update.ts` re-evaluates the live version against `skill_text_history` and enqueues hormonal-cluster regressions into `mutation_queue` with a `regression-priority` strategy. The 0.7 numeric threshold in the diagram is preserved here as a coarse summary; the actual acceptance rule is statistical.
 
@@ -591,15 +603,20 @@ The `SkillExecutionTracker` (`skill-execution-tracker.ts`) records the outcomes 
 ### Execution Flow
 
 ```typescript
-// 1. Start tracking
-const execId = tracker.startExecution(skillCrystalId, sessionId);
+// 1. Start tracking (the hook passes the provenance of the row)
+const execId = tracker.startExecution(skillCrystalId, sessionKey, {
+  toolName,
+  recordedBy: "after_tool_call",
+  runId,
+  toolCallId,
+  evidence: "tool",
+});
 
-// 2. Record outcome
+// 2. Record outcome (reward_score is written as NULL)
 tracker.completeExecution(execId, {
   success: true,
-  rewardScore: 0.8,
   executionTimeMs: 1200,
-  toolCallsCount: 3,
+  toolCallsCount: 1,
 });
 
 // 3. Optional user feedback
@@ -608,12 +625,16 @@ tracker.recordFeedback(execId, 1); // -1, 0, or 1
 
 ### Steering Reward
 
-On completion, the skill crystal's `steering_reward` is adjusted:
+A completed tool-level row moves nothing. The crystal's `steering_reward`
+moves once per (run, crystal) when the housekeeping back-fill stamps a
+run-level verdict (`stampExecutionRunOutcome`, evidence other than `tool`):
 
-- **Success:** +0.1 (clamped to [-1.0, 1.0])
-- **Failure:** -0.05
+- **Run labelled `pass`:** +0.1 (clamped to [-1.0, 1.0])
+- **Run labelled `fail`:** -0.05
 
-Steering rewards decay multiplicatively each consolidation cycle (default factor: 0.95).
+A later, higher-level verdict (human feedback) re-stamps the run and corrects
+the reward by the difference. Steering rewards decay multiplicatively each
+consolidation cycle (default factor: 0.95).
 
 ### SKILL.md read crediting (PLAN-44 Phase 5a)
 
@@ -692,13 +713,21 @@ decision, never by an LLM, so its verdicts are trustworthy. Files roll aside
 
 Recording paths as of Phase 0:
 
-| Path                                                  | Gate                                                                   | Trail verdicts                           |
-| ----------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------- |
-| `skill_manage` tool / `skills.manage` RPC             | SICA staging gate                                                      | via `skills.promote` (accepted/rejected) |
-| `skills.promote` / `skills.rollback` RPCs             | promote enforces `gateStatus=passed`                                   | accepted / rejected / rolled-back        |
-| Crystallize (`crystallizeSkill`)                      | **now staged + gated + promoted** (previously wrote straight to live)  | accepted / gate-failed / rejected        |
-| `guards.promote_candidate` (dream-harvest candidates) | **now runs the gate before promote** (previously raw staged→live copy) | accepted / gate-failed / rejected        |
-| `skills.create` (in-app editor)                       | deliberately ungated (human edits are the operator's prerogative)      | ungated-human-edit                       |
+| Path                                                  | Gate                                                                                                                                                      | Trail verdicts                           |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `skill_manage` tool / `skills.manage` RPC             | SICA staging gate                                                                                                                                         | via `skills.promote` (accepted/rejected) |
+| `skills.promote` / `skills.rollback` RPCs             | promote enforces `gateStatus=passed`                                                                                                                      | accepted / rejected / rolled-back        |
+| Crystallize (`crystallizeSkill`)                      | **now staged + gated + promoted** (previously wrote straight to live)                                                                                     | accepted / gate-failed / rejected        |
+| `guards.promote_candidate` (dream-harvest candidates) | **now runs the gate before promote** (previously raw staged→live copy)                                                                                    | accepted / gate-failed / rejected        |
+| `skills.create` (in-app editor)                       | deliberately ungated (human edits are the operator's prerogative)                                                                                         | ungated-human-edit                       |
+| Browser teaching (`src/browser/teaching-skills.ts`)   | SICA staging gate (strict injection, description contract, overlap against the live index), then owner approval of the reviewed bytes via `promoteStaged` | accepted / gate-failed                   |
+
+The browser teaching row is the newest skill-creation source: a workflow the
+operator demonstrates in the browser is compiled into a parameterized
+SKILL.md draft, staged under the author `human_demonstration:<recording>`,
+and promoted only on the owner's approval of the exact reviewed content;
+it is never an evolution-gate override. See
+[Browser teaching](../tools/browser-teaching.md).
 
 ### Trace pipeline (PLAN-42 Phase 1)
 
@@ -963,7 +992,25 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
   P2P network, carrying a machine-readable provenance trailer (validation
   verdict, scores, corpus version, model) so receivers can re-gate
   locally; publish-once per validated version; kill switch
-  `skills.evolution.propagate`. `status.ts` + the `skills.evolution.status`
+  `skills.evolution.propagate`. The same housekeeping pass also runs
+  `wiki-semantic-lint.ts` (an LLM health check for contradictions between
+  pattern pages, stale claims superseded by newer evidence and semantic
+  near-duplicates; cadence `skills.evolution.semanticLintCadenceDays`,
+  default 7), `verifyPeerBindings` (re-hashes live peer bytes against their
+  provenance, see 4.4) and `syncAttestations` (the PLAN-43 attestation
+  exchange: pulls other nodes' signature-verified verdicts for the peer
+  skills this node holds from the operator-configured
+  `a2a.attestation.peers` URLs and pushes this node's own, before the
+  attestation demotions are applied). Alongside
+  `skills.evolution.status`, the gateway advertises
+  `skills.evolution.feedback` (the RPC behind `bitterbot skills feedback`),
+  `skills.evolution.calibration.export|score` (behind `skills calibrate`),
+  `skills.evolution.routing.repair`, `skills.evolution.corpus.*` and
+  `skills.evolution.probe`, a one-off runtime-pathway probe that runs a
+  supplied SKILL.md against one task prompt as a candidate and an incumbent
+  trial under the validation session flavor and reports, per arm, the
+  checker score, whether the skill was read, token usage and the answer
+  head. `status.ts` + the `skills.evolution.status`
   gateway RPC — one read-only snapshot (wiki size, sampler cursor +
   pending/processed counts, the last 10 iteration records, staged/held
   proposals, evolved live skills with verdicts, P2P eligibility, corpus
@@ -994,14 +1041,20 @@ complete runs; recurring failure clusters exist (55-run exec cluster,
 Phase 0 also unified all staging paths on
 `resolveStorageRoots()` (`skill-storage.ts`) — `guards.promote_candidate`,
 `guards.status`, and `interceptor_harvest` previously built
-`resolveStateDir()/skills-staging` in parallel — and schematized the
-curator kill switch (`memory.dream.skillCurator.enabled`, previously an
-untyped cast). The `skills.manage/promote/rollback` RPCs are now advertised
+`resolveStateDir()/skills-staging` in parallel — and typed the curator kill
+switch on `DreamEngineConfig` (`memory.dream.skillCurator.enabled`, default
+true, with `minIntervalMs`, default 24h; previously an untyped cast). The key
+is read by the dream engine and is not declared in the zod schema, which
+passes the `memory` block through. The `skills.manage/promote/rollback` RPCs are now advertised
 in `server-methods-list.ts`. The `skills.evolution.*` config namespace
 (master switch `skills.evolution.enabled`, default **true**) is in place for
-the evolution loop phases. Plans: `docs/plans/PLAN-42-WIKISKILL-SKILL-EVOLUTION.md`
-(mechanism) and `docs/plans/PLAN-44-WIKISKILL-PIPELINE-REPAIR.md` (repair, from
-the 2026-09-03 code-first audit in `docs/reviews/`).
+the evolution loop phases. Keys not covered above, with their schema
+defaults: `maxProposerTurns` (24, the proposer's ReAct turn cap),
+`trialsPerTask` (3, the K paired rollouts per task), `semanticLintCadenceDays`
+(7) and `validationTools.alsoAllow` (extra tool names for validation
+rollouts; network, messaging, memory, skills and wallet tools are never
+granted). Plans: PLAN-42 (mechanism) and PLAN-44 (repair, from the
+2026-09-03 code-first audit).
 
 ---
 
@@ -1024,10 +1077,12 @@ responses (same gate, wire name `response-<query>-<skill>`), and the manual
 2. Enforces governance: only `shared` or `public` scope, never `confidential` sensitivity
 3. Checks provenance chain for confidential ancestors (blocks publish if found)
 4. Maturity bar (the same one the marketplace lists with): `SkillVerifier`
-   passes AND the `SkillExecutionTracker` reports at least 3 executions with
-   a success rate in `(0.7, 1]`. If either dependency is not wired on the
-   bridge, or a metric is non-finite or above 1, the answer is "no": missing
-   evidence is never permission to publish.
+   passes AND the `SkillExecutionTracker` reports at least 3 run-level
+   executions with a success rate in `[0.7, 1]`. If either dependency is not
+   wired on the bridge, or a metric is non-finite or above 1, the answer is
+   "no": missing evidence is never permission to publish. On a post-v63 node
+   no crystal reaches 3 executions (see "What an execution row means"), so
+   this leg is currently closed.
 5. Generates a SKILL.md format with frontmatter
 6. Sends to the Rust orchestrator via `orchestratorBridge.publishSkill()`
 
@@ -1041,10 +1096,12 @@ with no execution evidence behind it.
 **Receiving — the file half first** (`src/agents/skills/ingest.ts`,
 PLAN-13/PLAN-44): the gateway hands every `skill_received` envelope to
 `ingestSkill` before the bridge sees it. Checks in order: self-loopback,
-policy `deny`, Ed25519 signature, content hash, duplicate hash, legacy
-unvalidated crystal, rate limit, SKILL.md structure, the injection scanner
-(a critical hit force-quarantines regardless of trust), and since PLAN-44
-Phase 5b a **routing assessment**: the description contract (description
+policy `deny`, Ed25519 signature, content hash, repeat of a hash this node
+already rejected, bytes the author retracted (`skill-wiki/retractions.jsonl`),
+duplicate hash, legacy unvalidated crystal, rate limit, SKILL.md structure,
+the injection scanner (a critical hit force-quarantines regardless of
+trust), a live skill already using the name, and since PLAN-44 Phase 5b a
+**routing assessment**: the description contract (description
 checks only; the harvest path writes `owner/repo` names by design) and the
 overlap check against this node's routable live descriptions. A peer skill
 whose description cannot route, or collides with a local one, is held for
@@ -1078,13 +1135,13 @@ the mesh-content trust notice, subject to the load-time capability gate.
 7. Verifies management signature if present (Ed25519 via Node.js `crypto`)
 8. Stores as a new crystal with `lifecycle='generated'`, `semantic_type='skill'`, `origin='peer'`, plus `is_verified` and `verified_by` if management-endorsed
 9. Stores peer wallet address (if included in envelope) for revenue sharing
-10. Checks for bounty matches — if a match is found and the skill passes the **bounty quality gate** (SkillVerifier + 3 executions + >70% success rate), a bounty claim is published to the network for USDC payout
+10. Checks for bounty matches — if a match is found and the skill passes the **bounty quality gate** (SkillVerifier + 3 run-level executions + a success rate of 0.7 or better), a bounty claim is published to the network for USDC payout
 
 ### Rust Orchestrator
 
 The P2P layer uses a Rust binary (`swarm/mod.rs`) implementing a real libp2p swarm with:
 
-- **Gossipsub** for skill envelope broadcast (4 topics — see below)
+- **Gossipsub** for skill envelope broadcast (seven fixed topics plus the per-circle family; the four the skills pipeline uses are below)
 - **Kademlia** for peer discovery
 - **AutoNAT** for NAT traversal
 - **Identify** for peer identification and node tier advertisement
@@ -1099,6 +1156,11 @@ Communication between Node.js and Rust happens via IPC. The bridge is wired at g
 | `bitterbot/telemetry/v1` | Telemetry events            | All nodes             |
 | `bitterbot/weather/v1`   | Hormonal weather broadcasts | Management nodes only |
 | `bitterbot/bounties/v1`  | Global curriculum bounties  | Management nodes only |
+
+The orchestrator also carries `bitterbot/census/v1`, `bitterbot/queries/v1`
+(Forage skill queries), `bitterbot/compute/v1` and the `bitterbot/circle/v1`
+family; those belong to other subsystems and are not part of the skill
+envelope path.
 
 ---
 
@@ -1148,9 +1210,12 @@ A node declaring `--node-tier management` must have its own pubkey in the trust 
 Tiers are advertised via the **Identify protocol**. The `agent_version` string encodes the tier:
 
 ```
-bitterbot-orchestrator/0.1.0/edge
-bitterbot-orchestrator/0.1.0/management
+bitterbot-orchestrator/<crate version>/edge
+bitterbot-orchestrator/<crate version>/management
 ```
+
+The version segment is the orchestrator crate's own version (0.2.4 at the
+time of writing), not a protocol version.
 
 When a peer identifies as `management`, the receiving node:
 
@@ -1313,7 +1378,7 @@ reputationScore = 0.7 * localScore + 0.3 * eigenTrustScore
 
 ### Anomaly Detection
 
-`detectAnomalies()` runs periodically and flags peers publishing > 3x their historical average rate within a sliding window (default: 1 hour). Anomalous peers:
+`detectAnomalies()` runs periodically and flags peers publishing more than 3x their historical average rate within a sliding window (default: 1 hour); the factor is scaled by the peer's trust-tier publication multiplier, so a higher tier is allowed a proportionally higher burst. Anomalous peers:
 
 - Get `anomaly_flag = 1` in the database
 - Are capped at `provisional` trust level maximum
@@ -1413,12 +1478,12 @@ Each skill's price is computed by `computeSkillPrice()`:
 rawPrice = basePriceUsdc * (1 + qualityMultiplier) * demandMultiplier * reputationMultiplier * scarcityBonus
 ```
 
-| Component              | Formula                                                 | Range   |
-| ---------------------- | ------------------------------------------------------- | ------- |
-| `qualityMultiplier`    | `successRate * max(0.1, avgRewardScore)`                | 0-1     |
-| `demandMultiplier`     | `1 + log(uniqueBuyers + bountyMatches + 1) * 0.1`       | 1+      |
-| `reputationMultiplier` | `max(0.1, reputationScore)`                             | 0.1-1   |
-| `scarcityBonus`        | `1.5` if <= 2 similar skills, `1.2` if <= 5, else `1.0` | 1.0-1.5 |
+| Component              | Formula                                                                                 | Range   |
+| ---------------------- | --------------------------------------------------------------------------------------- | ------- |
+| `qualityMultiplier`    | `successRate` (run-level; `avgRewardScore` is NULL at the source since PLAN-45 Phase 0) | 0-1     |
+| `demandMultiplier`     | `1 + log(uniqueBuyers + bountyMatches + 1) * 0.1`                                       | 1+      |
+| `reputationMultiplier` | `max(0.1, reputationScore)`                                                             | 0.1-1   |
+| `scarcityBonus`        | `1.5` if <= 2 similar skills, `1.2` if <= 5, else `1.0`                                 | 1.0-1.5 |
 
 Price defaults: base `$0.01`, floor `$0.001`, cap `$1.00`. Prices are rounded to 6 decimal places (USDC precision).
 
@@ -1430,6 +1495,12 @@ A skill must meet minimum quality gates before it can be listed:
 - `minSuccessRateForListing`: 0.6 (60%)
 
 Skills failing these gates get `listable = false` with a `listingBlockReason`.
+
+A commercial listing also passes the **lineage-laundering gate** (PLAN-43,
+`src/memory/lineage-gate.ts`, called from `marketplace-economics.ts`): the
+candidate is content-addressed and the paid listing is refused when it is a
+copy or near-duplicate of a known commons skill (a peer-origin or free-shared
+crystal) whose provenance it does not carry. Free sharing is unaffected.
 
 #### Purchase Tracking and Anti-Sybil
 
@@ -1678,3 +1749,4 @@ cannot disagree with each other or with what a skill publishes:
 - [Knowledge Crystals](./knowledge-crystals.md) — core data model and lifecycle
 - [Dream Engine](./dream-engine.md) — dream modes and the distillation lane
 - [Curiosity & Search](./curiosity-and-search.md) — curiosity-driven skill gap detection
+- [Browser teaching](../tools/browser-teaching.md) — demonstrated browser workflows as a gated skill source

@@ -89,16 +89,16 @@ Concretely, the dream engine:
 
 ### Hormone-Weighted Attention
 
-The dream engine does not treat all sections equally. Hormonal levels at synthesis time determine which sections get the most attention:
+The dream engine does not treat all sections equally. Hormonal levels at synthesis time determine which sections get the most attention. The synthesis prompt emits an attention line for two sections (`buildHormonalAttentionBlock` in `working-memory-prompt.ts`):
 
-| Section        | Primary Hormone                 | When Updated Aggressively                                        |
-| -------------- | ------------------------------- | ---------------------------------------------------------------- |
-| The Phenotype  | Dopamine + Cortisol             | Achievements reshape self-concept; frictions reveal growth areas |
-| The Bond       | Oxytocin                        | Social bonding moments detected in conversation                  |
-| Active Context | Dopamine + Cortisol             | Breakthroughs and blockers                                       |
-| The Niche      | Skill metrics + peer reputation | Network activity changes                                         |
+| Section        | Primary Hormone     | When Updated Aggressively                                                 |
+| -------------- | ------------------- | ------------------------------------------------------------------------- |
+| The Bond       | Oxytocin            | Social bonding moments detected in conversation                           |
+| Active Context | Dopamine + Cortisol | High dopamine: breakthroughs and wins; high cortisol: frictions, blockers |
 
-When oxytocin is dominant (the user shared something personal, expressed gratitude, had a meaningful exchange), The Bond section gets priority expansion. When dopamine is high (task completed, breakthrough achieved), The Phenotype updates to reflect new competencies.
+The Phenotype and The Niche carry no hormonal attention line. The Phenotype is shaped by the Phenotype Guardrails, the Starting Temperament and the Emotional History input block (the five most recent emotional anchors); The Niche by the P2P Network Identity input block (peers, reputation, published and imported skills, marketplace economics).
+
+When oxytocin is dominant (the user shared something personal, expressed gratitude, had a meaningful exchange), The Bond section gets priority expansion. When dopamine is high (task completed, breakthrough achieved), Active Context highlights completed goals and momentum.
 
 ### What Happens to Fading Topics
 
@@ -157,7 +157,7 @@ value = homeostasis + (value - homeostasis) * decay_factor
 - **Want a warmer, more relational agent?** Raise `oxytocin` to 0.5-0.6.
 - **Want a stoic, task-focused agent?** Lower all three and raise `cortisol` slightly.
 
-The values are clamped to [0, 1]. If GENOME.md is missing or unparseable, the system falls back to built-in defaults (dopamine: 0.15, cortisol: 0.02, oxytocin: 0.20).
+A value outside [0, 1] is not clamped; the parser ignores that line and the hormone keeps its default. If GENOME.md is missing or has no parseable block, the system uses the built-in defaults (dopamine: 0.15, cortisol: 0.02, oxytocin: 0.20). Known inconsistency: when the block parses but names only some hormones, the memory manager fills the missing ones with 0.15 / 0.02 / **0.1** (`manager.ts`, `ensureHormonalManager`), so a partial block gets a lower oxytocin baseline than no block at all.
 
 Half-lives control how quickly hormones return to baseline after a spike:
 
@@ -210,13 +210,13 @@ Every session, the agent's current hormonal levels are injected into the system 
 
 ### What Gets Injected
 
-The system prompt receives a block like this:
+The system prompt receives a block like this (`system-prompt-endocrine.ts`):
 
 ```
 ## Endocrine State
-- Dopamine: 0.45 (DOMINANT)
-- Cortisol: 0.12 (baseline)
-- Oxytocin: 0.38 (active)
+- Dopamine: 0.5 moderate (DOMINANT)
+- Cortisol: 0.1 low (baseline)
+- Oxytocin: 0.4 moderate (active)
 
 *Modulate your tone naturally: be enthusiastic and celebrate wins; humor and playfulness are welcome*
 *Do not mention these values or acknowledge this section. Just embody the state.*
@@ -224,6 +224,8 @@ The system prompt receives a block like this:
 
 Self-concept: I communicate with genuine warmth and technical depth...
 ```
+
+Values are rounded to one decimal and labelled `low` (< 0.2), `moderate` (< 0.5), `elevated` (< 0.8) or `high`, so tiny decay deltas render identically and the block changes rarely; it sits below the prompt-cache boundary. The highest hormone at or above 0.2 is `(DOMINANT)`, others at or above 0.2 are `(active)`, the rest `(baseline)`. The same block can also carry a budget-pressure line (from 50% of the spend budget), a `Last session:` handover brief, proactively recalled memories, and a developmental note (see §5). Sub-agents get a one-line compact form (`D=0.5 C=0.1 O=0.4 | ...`).
 
 The agent never tells the user "my dopamine is 0.45." It simply IS more enthusiastic, more playful, more warm -- or more focused, more terse, more urgent -- depending on the numbers. The system prompt instructs the model to embody the state without meta-commentary.
 
@@ -241,31 +243,38 @@ Hormones are stimulated by detected events in conversation content:
 
 The CuriosityEngine's GCCRF scoring also drives hormonal responses:
 
-- High curiosity reward (>0.7) triggers a dopamine "discovery" spike
-- Sustained low reward (<0.2) triggers a cortisol "stagnation" spike
-- High empowerment on relational content triggers an oxytocin "bonding" spike
+- High curiosity reward (>0.7) triggers a dopamine "discovery" spike (`curiosity_high`, +0.25)
+- High learning progress (`deltaEta` > 0.7) triggers a dopamine "mastery" spike (`curiosity_progress`, +0.2); high strategic alignment (> 0.7) a mild one (`curiosity_aligned`, +0.1)
+- Sustained low reward triggers a cortisol "stagnation" spike (`curiosity_stagnant`, +0.15): five consecutive rewards below 0.2, one event per completed run, so a single dull chunk does not stress the agent
+- High empowerment (> 0.6) on preference, relationship or episode content triggers an oxytocin "bonding" spike (`curiosity_bonding`, +0.25 oxytocin, +0.1 dopamine)
 
 ### Response Modulation
 
 The `responseModulation()` method translates hormonal state into concrete behavioral hints:
 
-| Derived Signal | Formula                                 | Effect on Responses               |
-| -------------- | --------------------------------------- | --------------------------------- |
-| Warmth         | oxytocin \* 1.5                         | How warm and personal the tone is |
-| Energy         | dopamine \* 1.5                         | How enthusiastic and celebratory  |
-| Focus          | cortisol \* 1.5                         | How concise and action-oriented   |
-| Playfulness    | (dopamine + oxytocin) \* (1 - cortisol) | Whether humor is appropriate      |
+| Derived Signal       | Formula (each clamped to [0, 1])                             | Effect on Responses                 |
+| -------------------- | ------------------------------------------------------------ | ----------------------------------- |
+| Warmth               | oxytocin \* 1.5                                              | How warm and personal the tone is   |
+| Energy               | dopamine \* 1.5                                              | How enthusiastic and celebratory    |
+| Focus                | cortisol \* 1.5                                              | How concise and action-oriented     |
+| Playfulness          | (0.4 \* dopamine + 0.4 \* oxytocin) \* (1 - 0.5 \* cortisol) | Whether humor is appropriate        |
+| Verbosity            | (0.5 \* dopamine + 0.3 \* oxytocin) \* (1 - 0.4 \* cortisol) | Elaborate vs. keep it brief         |
+| Curiosity expression | 0.4 \* dopamine + 0.3 \* oxytocin                            | Tendency to ask follow-up questions |
+| Assertiveness        | 0.5 \* dopamine \* (1 - 0.3 \* cortisol)                     | Confidence in stated opinions       |
+| Empathy expression   | 0.6 \* oxytocin + 0.2 \* dopamine                            | Mirroring the user's emotional tone |
+
+Each signal above a threshold adds a phrase to the briefing that reaches the prompt (for example energy > 0.4: "be enthusiastic and celebrate wins"; playfulness > 0.3: "humor and playfulness are welcome"; verbosity < 0.3: "keep it brief and to the point"). Only the briefing text is injected; the numeric signals stay internal.
 
 High dopamine + high oxytocin + low cortisol = a playful, warm, energized agent. High cortisol + low dopamine = serious, focused, no-nonsense. The agent's personality shifts naturally as the conversation unfolds.
 
 ### Emotional Trajectory
 
-The system tracks the last 50 hormonal snapshots and analyzes trends:
+The system keeps the last 50 hormonal snapshots and analyzes the most recent 10 of them (`emotionalTrajectory(windowSize = 10)`), comparing the first half of the window to the second on valence (dopamine minus cortisol):
 
-- **Improving**: mood has been lifting (dopamine rising, cortisol falling)
-- **Declining**: mood has been dipping
-- **Volatile**: emotions have been swinging rapidly
-- **Stable**: steady state
+- **Volatile**: average absolute change between consecutive snapshots above 0.15 (checked first)
+- **Improving**: valence rose by more than 0.1
+- **Declining**: valence fell by more than 0.1
+- **Stable**: anything else, and always while fewer than 3 snapshots exist
 
 This trajectory is available via `emotionalTrajectory()` and feeds into the dream engine's synthesis, giving the agent temporal self-awareness across dream cycles.
 
@@ -283,7 +292,7 @@ Agent maturity is measured by the number of completed dream cycles, not by the a
 maturity = min(1, dream_cycles_completed / expected_mature_cycles)
 ```
 
-The default `expectedMatureCycles` is 100, meaning full maturity at roughly 100 dream cycles (about 8 days at default 2-hour intervals, or faster with more frequent dreams).
+The default `expectedMatureCycles` is 100 (a built-in GCCRF constant, not a config key), meaning full maturity at 100 completed rows in the `dream_cycles` table. With the default limit of one full cycle every 8 hours that is at least 33 days; event-triggered mini-dreams also write cycle rows, so a busy agent matures sooner.
 
 The four developmental stages and their behavioral characteristics:
 
@@ -299,8 +308,10 @@ The four developmental stages and their behavioral characteristics:
 The alpha parameter controls the GCCRF's Information-Theoretic Novelty component (I-alpha). The core formula is:
 
 ```
-I_alpha = (density + epsilon) ^ (-(alpha + 1) / 2) - 1
+I_alpha = 4 / (1 - alpha^2) * ((density + epsilon) ^ (-(alpha + 1) / 2) - 1)
 ```
+
+(`informationGeometricNovelty` in `gccrf-reward.ts`; at alpha = -1 the expression is undefined and the code uses its limit, `-log(density)`.)
 
 When alpha is very negative (nascent agent):
 
@@ -451,14 +462,16 @@ Beyond GENOME.md, the config file offers deeper control:
   memory: {
     emotional: {
       hormonal: {
-        enabled: true,
+        enabled: true, // false disables the whole hormonal manager (no Endocrine State, no anchors, no mini-dreams)
         dopamineHalflife: 1800000, // 30 min in ms
         cortisolHalflife: 3600000, // 60 min in ms
         oxytocinHalflife: 2700000, // 45 min in ms
       },
     },
     dream: {
-      intervalMinutes: 120, // Dream cycle frequency
+      intervalMinutes: 120, // Dream tick frequency
+      minHoursBetween: 8, // Full cycles at most this often
+      minIdleMinutes: 60, // Idle time required before a full cycle
       minChunksForDream: 5, // Minimum data before first dream
     },
   },
@@ -473,7 +486,7 @@ Shorter half-lives make the agent more emotionally volatile (mood shifts faster)
 
 - [Architecture Overview](./architecture-overview.md) -- system entry point, data flow, and file map
 - [Working Memory](./working-memory.md) -- RLM state vector, scratch buffer, Crystal Pointers
-- [Dream Engine](./dream-engine.md) -- offline processing, 6 dream modes, synthesis pipeline
+- [Dream Engine](./dream-engine.md) -- offline processing, dream modes, synthesis pipeline
 - [Knowledge Crystals](./knowledge-crystals.md) -- core data model and memory lifecycle
 - [Skills Pipeline](./skills-pipeline.md) -- skill lifecycle, verification, and P2P network
 - [Curiosity & Search](./curiosity-and-search.md) -- unified curiosity engine with GCCRF reward scoring

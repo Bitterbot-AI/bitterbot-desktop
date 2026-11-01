@@ -14,7 +14,7 @@ Bitterbot's memory is a biological cognitive architecture, not a vector database
 
 | Component                      | What It Does                                                                                                                                                                                                                                                                                                        | Docs                                                    |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **Knowledge Crystals**         | Memories that naturally decay via Ebbinghaus curves. Frequently accessed facts become permanent; unused info fades.                                                                                                                                                                                                 | [Knowledge Crystals](../memory/knowledge-crystals.md)   |
+| **Knowledge Crystals**         | Memories that naturally decay via Ebbinghaus curves. Use, spaced repetition and emotional weight slow the decay; unused info fades. Only skills are frozen and never decay.                                                                                                                                         | [Knowledge Crystals](../memory/knowledge-crystals.md)   |
 | **Dream Engine**               | A dream tick runs every 2 hours (adaptive, 30 to 240 minutes). A full cycle runs at most every 8 hours, only after new input and an hour idle, and picks from replay, compression, simulation, extrapolation and the utility lanes (hygiene, distillation, anticipation, relationship mining, canonical promotion). | [Dream Engine](../memory/dream-engine.md)               |
 | **Curiosity Engine**           | Unified intrinsic motivation with GCCRF reward scoring. Maps what the agent _doesn't_ know. Detects gaps, contradictions, and semantic frontiers. Developmental alpha annealing shifts curiosity from common knowledge to frontier exploration.                                                                     | [Curiosity & Search](../memory/curiosity-and-search.md) |
 | **Hormonal System**            | Three neuromodulators (dopamine, cortisol, oxytocin) shape personality in real-time and determine what's worth remembering.                                                                                                                                                                                         | [Emotional System](../memory/emotional-system.md)       |
@@ -56,12 +56,16 @@ Canonical Facts (the ledger described in [How the Memory Works](../memory/how-th
 Session → Chunk indexing → Embedding → Crystal creation
                                             ↓
                               Consolidation (every 30 min)
-                              ├── Ebbinghaus decay
+                              ├── Hormonal decay toward baseline
+                              ├── Ebbinghaus decay + forgetting
                               ├── Chunk merging (cosine ≥ 0.92)
                               ├── SNN near-merge discovery (cosine 0.82-0.91)
                               ├── Orphan cluster detection → replay queue
+                              ├── Tombstone purge (forgotten > 14 days)
                               ├── Curiosity region mapping
-                              └── Hormonal modulation
+                              ├── Governance TTL + stalled goals
+                              ├── Restabilize labile memories, prune graph, contradictions
+                              └── Canonical ledger decay (90 days unconfirmed)
                                             ↓
                                 Dream Engine (tick every 2 h; full cycle at most every 8 h; emotional triggers)
                                 ├── Readiness check (skip if nothing new)
@@ -90,7 +94,7 @@ Everything lives in a single SQLite database per agent at `~/.bitterbot/memory/<
 - Marketplace listings and purchases
 - Skill execution metrics
 
-No external database, no cloud dependency. One `.db` file is the entire memory.
+No external database, no cloud dependency. One `.sqlite` file is the entire memory.
 
 ## Configuration
 

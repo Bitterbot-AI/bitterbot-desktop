@@ -76,15 +76,17 @@ _Patterns detected from repeated tasks. Pre-crystallization:_
 
 ### Section Weighting
 
-Each section has a hormonal attention weight that controls how aggressively the dream engine updates it:
+The synthesis prompt carries a hormonal attention line for two sections (`buildHormonalAttentionBlock`); the others are driven by their own input blocks:
 
-| Section          | Primary Hormone     | When Updated Aggressively                                    |
-| ---------------- | ------------------- | ------------------------------------------------------------ |
-| The Bond         | Oxytocin            | High oxytocin → social bonding moments detected              |
-| Active Context   | Dopamine + Cortisol | High dopamine → breakthroughs; High cortisol → frictions     |
-| Crystal Pointers | (decay-driven)      | Topics fading from Active Context → compressed to pointers   |
-| Curiosity Gaps   | (curiosity engine)  | Updated from CuriosityEngine exploration targets             |
-| Emerging Skills  | (access patterns)   | Updated from repeated task patterns in crystal access counts |
+| Section          | Primary Hormone     | When Updated Aggressively                                                 |
+| ---------------- | ------------------- | ------------------------------------------------------------------------- |
+| The Bond         | Oxytocin            | High oxytocin → social bonding moments detected                           |
+| Active Context   | Dopamine + Cortisol | High dopamine → breakthroughs; High cortisol → frictions                  |
+| The Phenotype    | (anchors, Genome)   | Emotional History input block, Phenotype Guardrails, Starting Temperament |
+| The Niche        | (network input)     | P2P Network Identity input block: peers, reputation, skills, economics    |
+| Crystal Pointers | (decay-driven)      | Topics fading from Active Context → compressed to pointers                |
+| Curiosity Gaps   | (curiosity engine)  | Updated from CuriosityEngine exploration targets                          |
+| Emerging Skills  | (access patterns)   | Updated from repeated task patterns in crystal access counts              |
 
 ### The 7-Section Schema
 
@@ -100,11 +102,14 @@ The working memory state (MEMORY.md) contains 7 required sections:
 
 ### Catastrophic Collapse Guard
 
-The `validateWorkingMemory()` function includes three collapse guards:
+The `validateWorkingMemory()` function includes four collapse guards:
 
-- **Mass drop:** Rejects synthesis if new state is <50% the length of a mature (>2000 char) previous state
-- **Eviction runaway:** Rejects if >20 crystal pointers (LLM over-evicting active topics)
+- **Mass drop:** Rejects synthesis if new state is <50% the length of a mature (>=2000 char) previous state
+- **Eviction runaway:** Rejects if >20 crystal pointers (`MAX_CRYSTAL_POINTERS`; LLM over-evicting active topics)
 - **Empty synthesis:** Rejects if all section headers present but <50 chars of substance
+- **Bond drift:** Rejects if the new Bond retains <30% of the previous Bond's terms (warning between 30% and 50%); see [User Knowledge](./user-knowledge.md) for the ratio
+
+An eviction-runaway result gets one bounded repair attempt (`synthesizeValidatedWorkingMemory`): the model is asked to merge the pointer list down, the repaired state is re-validated against the same previous state, and only then does the caller fall back to the heuristic builder.
 
 ### Snapshots, Provenance, and Rollback
 
@@ -123,7 +128,14 @@ Besides the dream tick, a synthesis fires at moments of **context pressure** via
 - **After compaction** — context was just discarded; unsynthesized scratch notes are folded into MEMORY.md immediately.
 - **On session end** — when a session key is replaced by a new session.
 
-The flush is a no-op when the scratch WAL has no pending notes, and is debounced (10 min) so hook storms can't thrash MEMORY.md.
+The flush is a no-op when the scratch WAL has no pending notes, and is debounced (10 min) so hook storms can't thrash MEMORY.md. Callers: the compaction handlers (`embedded-subscribe.handlers.compaction.ts`, `embedded-runner/compact.ts`) with reason `compaction`, and the gateway `sessions` RPC and the auto-reply session manager with reason `session-end`.
+
+### Canonical Ledger and Owner Sections
+
+Two further inputs shape every rewrite (`working-memory-canonical.ts`, PLAN-55):
+
+- **Ledger keys in the prompt.** The rewrite receives the active canonical facts (`key = value`) and the recent supersedes and owner retires (`key: old -> new`), with the instruction that the ledger wins and an old value is never restated as current. Without this the rewrite kept repeating whatever MEMORY.md said before a correction.
+- **Owner sections.** Text the owner wraps in `<!-- owner -->` ... `<!-- /owner -->` (an optional label after the colon, `<!-- owner:label -->`) is preserved verbatim: the prompt says so and `preserveOwnerSections()` enforces it on the output, restoring a block the model dropped or altered to the section it came from and removing owner markers the model invented. Only the owner writes these markers; the MEMORY.md read right before the rewrite is the source of truth.
 
 ### Economic Data in The Niche
 
@@ -253,15 +265,17 @@ The agent's primary interface for persisting observations:
 // Schema
 {
   note: string,          // The observation to persist
-  importance?: number    // 0-1, default 0.7
+  importance?: number,   // 0-1, default 0.7
+  type?: "experience" | "directive" | "world_fact" | "mental_model"  // epistemic type
 }
 ```
 
 **What it does:**
 
 1. Appends a timestamped entry to `memory/scratch.md`
-2. Creates an immediate crystal for searchability (so memory_search can find it before the next dream cycle)
-3. Returns confirmation with timestamp and crystal status
+2. Creates an immediate crystal for searchability (so memory_search can find it before the next dream cycle); `type` sets the crystal's semantic type and epistemic layer (experience → episode, directive → preference, world_fact → fact, mental_model → insight)
+3. Routes a `directive` note into the `user_preferences` table as well (`upsertFromDirective`, confidence = importance)
+4. Returns confirmation with timestamp and crystal status
 
 **When to use it** (from system prompt guidance):
 
@@ -310,18 +324,27 @@ Relevant existing config keys:
   memory: {
     dream: {
       enabled: true, // Must be true for RLM state updates
-      intervalMinutes: 120, // Dream cycle frequency
+      intervalMinutes: 120, // Dream tick frequency
+      minHoursBetween: 8, // Full cycles at most this often
       minChunksForDream: 5, // Lowered from 20 — activates in first session
+      hormonalTriggerDelta: 0.15, // Rise that fires auto-scratch and mini-dreams
+      synthesisMaxTokens: 6144, // Output cap for the synthesis call
     },
-    search: {
-      sources: ["memory", "sessions"], // Sessions now indexed by default
-      experimental: {
-        sessionMemory: true, // Enabled by default
+  },
+  agents: {
+    defaults: {
+      memorySearch: {
+        sources: ["memory", "sessions"], // Sessions indexed by default
+        experimental: {
+          sessionMemory: true, // Runtime default is true (the type comment still says false)
+        },
       },
     },
   },
 }
 ```
+
+Session indexing is configured under `agents.defaults.memorySearch`, not under `memory`; there is no `memory.search` key.
 
 ---
 

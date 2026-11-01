@@ -60,7 +60,7 @@ Each GCCRF component also influences which _mode_ the Dream Engine uses:
 
 ### Hormonal Feedback
 
-High GCCRF rewards trigger dopamine spikes (discovery/achievement). High learning progress triggers mastery signals. Sustained low rewards cause mild stress (stagnation). High empowerment on relational memories triggers oxytocin (the agent is learning about its human).
+`HormonalStateManager.stimulateFromGCCRF` turns the score into hormonal events: a reward above 0.7 fires `curiosity_high` (dopamine +0.25, discovery), a learning-progress component above 0.7 fires `curiosity_progress` (dopamine +0.2, mastery), a strategic-alignment component above 0.7 fires `curiosity_aligned` (dopamine +0.1), a run of 5 consecutive rewards below 0.2 fires `curiosity_stagnant` once (cortisol +0.15, stagnation), and an empowerment component above 0.6 on a `preference`, `relationship` or `episode` chunk fires `curiosity_bonding` (oxytocin +0.25, dopamine +0.1: the agent is learning about its human).
 
 ### Memory Consolidation
 
@@ -75,6 +75,8 @@ The alpha parameter controls the agent's developmental stage:
 | -3.0 to -1.5 | Infant     | Curious about common, foundational things |
 | -1.5 to -0.5 | Adolescent | Transitioning from common to novel        |
 | -0.5 to 0.0  | Mature     | Curious about rare, frontier things       |
+
+These bands describe the schedule; the dashboard's stage label uses coarser cut-offs (Infant below -1, Adolescent below -0.3, Mature otherwise).
 
 Maturity is tied to **dream cycles completed** and nothing else: `maturity = min(1, completed_cycles / expectedMatureCycles)`. Chunk count and calendar age used to count too (500 chunks or 30 days meant "mature"), which let a node with a large import and almost no completed cycles jump straight to the frontier-seeking regime. Removing those shortcuts means an upgraded node with many chunks but few completed cycles moves back toward the young regime until its dreams catch up.
 
@@ -104,9 +106,9 @@ The Dream Engine's **FSHO oscillator** (Fractional Stuart-Landau Hopf Oscillator
 
 - **GCCRF high prediction error + FSHO low R** → Both agree: explore (scattered, surprising memories)
 - **GCCRF high learning progress + FSHO high R** → Both agree: compress (coherent, consolidating memories)
-- **GCCRF wants exploration + FSHO wants compression** → Disagreement resolved via weighted normalization (0.3 GCCRF, 0.4 FSHO × validation factor, 0.3 curiosity heuristics)
+- **GCCRF wants exploration + FSHO wants compression** → Disagreement resolved via weighted normalization (0.3 GCCRF, 0.4 FSHO × validation factor, 0.3 curiosity heuristics; the GCCRF and curiosity shares drop to 0.275 when long-horizon tasks are pending and to 0.25 when the marketplace is active, see the dream engine page)
 
-**FSHO alpha coupling (opt-in, `memory.curiosity.fshoCoupling`, default off):** when enabled, the FSHO order parameter R informs alpha annealing via a running EMA: `effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)`. High R (coherent memory set) shifts alpha toward frontier-seeking; low R shifts toward consolidation. By default the coupling is **not** applied: R is tracked (and persisted as `gccrf_state.fsho_r_avg`) for telemetry, and novelty uses the pure maturity schedule. The FSHO signal is also **self-validating**: `computeFshoWeightAdjustment()` checks Pearson correlation between R and DQS, scaling FSHO's mode selection weight between 0.5x (noise) and 1.5x (validated).
+**FSHO alpha coupling (opt-in, `memory.curiosity.fshoCoupling`, default off):** when enabled, the FSHO order parameter R informs alpha annealing via a running EMA: `effective_alpha = base_alpha + 0.5 × (R_avg - 0.5)`, clamped to `[alphaStart, alphaEnd]`. High R (coherent memory set) shifts alpha toward frontier-seeking; low R shifts toward consolidation. By default the coupling is **not** applied: R is tracked (and persisted as `gccrf_state.fsho_r_avg`) for telemetry, and novelty uses the pure maturity schedule. The FSHO signal is also **self-validating**: `computeFshoWeightAdjustment()` checks Pearson correlation between R and DQS, scaling FSHO's mode selection weight between 0.5x (noise) and 1.5x (validated).
 
 ### Maturity Calculation
 

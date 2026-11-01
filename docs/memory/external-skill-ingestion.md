@@ -15,6 +15,8 @@ You get zero-install coverage of the common case and can opt into the full 17+ s
                          ┌───────────────────────────────────────┐
   Source URL arrives ──▶ │ classifyNativeSource(url)             │
                          │  • github.com/owner/repo  → github    │
+                         │    (github.io, raw.githubusercontent  │
+                         │     .com are github hosts too)        │
                          │  • anything .pdf/.ipynb/  → null      │
                          │  • youtube/vimeo/notion/  → null      │
                          │  • confluence (.atlassian)→ null      │
@@ -64,9 +66,9 @@ For the native-covered sources, **no install is required** — the scraper is bu
 
 ## How it works
 
-Three entry points feed the adapter; all share the same ingestion pipeline:
+Three entry points feed the adapter; all share the same ingestion pipeline. A fourth, the scheduled trending sweep, is covered under Configuration, and a separate registry import bridge is described at the end of the Trust model section.
 
-1. **Background**: The dream engine's exploration mode processes curiosity targets (`knowledge_gap`, `market_demand`, and — since PLAN-34 Phase 2 — `frontier`) during idle cycles, respecting `maxSkillsPerCycle` and `maxConcurrentScrapes`. Every attempt records an honest outcome code on the target (`no_url` | `domain_blocked` | `irrelevant` | `resolved`); a target only resolves when the research product's embedding similarity to the target description clears the 0.4 relevance floor — scrape success alone never resolves anything.
+1. **Background**: The dream engine's exploration mode processes curiosity targets (`knowledge_gap`, `market_demand`, and — since PLAN-34 Phase 2 — `frontier`) during idle cycles, respecting `maxSkillsPerCycle` and `maxConcurrentScrapes`. Every attempt records an honest outcome code on the target (`no_url` | `domain_blocked` | `irrelevant` | `resolved` | `sensitive_skipped` | `containment_rejected` | `transient_error`, see `recordResearchOutcome()` in `dream-engine.ts`); a target only resolves when the research product's embedding similarity to the target description clears the 0.4 relevance floor (`RESEARCH_RESOLVED_RELEVANCE_FLOOR`) — scrape success alone never resolves anything. The adapter's own result errors are more specific (`no_url_in_gap_description`, `domain_blocked`, `domain_blocked_via_search`); the target carries the coarser code.
 2. **On-demand**: Agents call the `skill_seekers_ingest` tool mid-session when they encounter an unfamiliar library or API.
 3. **Marketplace-driven**: `ingestFromMarketOpportunities()` converts top demand signals into skill-generation targets with revenue attribution.
 
@@ -83,6 +85,7 @@ Every generated skill:
 - Enters quarantine as untrusted (synthetic peer, reputation 0.5). No automatic trust promotion exists today; the operator accepts or rejects it, and PLAN-45 Phase 4 adds a measured receiver re-gate.
 - Carries `expires_at` (defaults to 30 days) so memory governance can prune stale auto-generated skills.
 - Embeds provenance metadata — source URL, transport used (`native` / `mcp` / `cli` / `python`), marketplace opportunity — for later attribution.
+- Leaves an egress audit trail: every outbound seam (`search-query`, `fetch-host`, `transport-post`) is logged with the host and payload summary (`logEgress()` in the adapter, backed by `auto-research-egress.ts`).
 
 ---
 
@@ -136,19 +139,30 @@ Add to `~/.bitterbot/bitterbot.json`:
 }
 ```
 
-| Field                     | Default    | Description                                                                                                                                                |
-| ------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enabled`                 | `true`     | Enable/disable the adapter. Native scraper is enabled alongside; upstream is probed opportunistically.                                                     |
-| `maxSkillsPerCycle`       | `3`        | Maximum skills generated per dream cycle. Enforced across direct, gap-fill, and batch paths.                                                               |
-| `maxConcurrentScrapes`    | `2`        | Concurrent scrape operations. Used by `ingestBatch()` and `ingestFromMarketOpportunities()`.                                                               |
-| `allowedDomains`          | `[]` (all) | Only scrape these domains. Empty = allow all. Enforced on every path, including URLs discovered via web search.                                            |
-| `blockedDomains`          | `[]`       | Never scrape these domains.                                                                                                                                |
-| `defaultTtlDays`          | `30`       | Auto-generated skills get `expires_at = now + defaultTtlDays` so stale scrapes can be pruned.                                                              |
-| `useWebSearchFallback`    | `true`     | When a knowledge gap contains no URL, use the configured web search provider to find an authoritative docs URL. Requires `tools.web.search` to be enabled. |
-| `enableMarketplaceDemand` | `true`     | When true, market-demand curiosity targets tag generated envelopes with `marketplace_opportunity` metadata for revenue attribution.                        |
-| `mcpEndpoint`             | `null`     | Optional HTTP MCP endpoint URL. When set and reachable, upstream prefers it over the local CLI.                                                            |
+| Field                     | Default    | Description                                                                                                                                                                                               |
+| ------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                 | `false`    | Enable/disable the adapter (opt-in; the tool and the dream step refuse unless this is exactly `true`). Native scraper is enabled alongside; upstream is probed opportunistically.                         |
+| `maxSkillsPerCycle`       | `3`        | Maximum skills generated per dream cycle. Enforced across direct, gap-fill, and batch paths.                                                                                                              |
+| `maxConcurrentScrapes`    | `2`        | Concurrent scrape operations. Used by `ingestBatch()` and `ingestFromMarketOpportunities()`.                                                                                                              |
+| `allowedDomains`          | `[]` (all) | Only scrape these domains. Empty = allow all. Enforced on every path, including URLs discovered via web search.                                                                                           |
+| `blockedDomains`          | `[]`       | Never scrape these domains.                                                                                                                                                                               |
+| `defaultTtlDays`          | `30`       | Auto-generated skills get `expires_at = now + defaultTtlDays` so stale scrapes can be pruned.                                                                                                             |
+| `useWebSearchFallback`    | `true`     | When a knowledge gap contains no URL, use the configured web search provider to find an authoritative docs URL. Requires `tools.web.search` to be enabled; effectively off when search is not configured. |
+| `enableMarketplaceDemand` | `true`     | When true, market-demand curiosity targets tag generated envelopes with `marketplace_opportunity` metadata for revenue attribution.                                                                       |
+| `mcpEndpoint`             | `null`     | Optional HTTP MCP endpoint URL. When set and reachable, upstream prefers it over the local CLI.                                                                                                           |
 
-Setting `skills.skillSeekers.enabled: true` activates the adapter (V1 default flip: off by default; the scheduled GitHub-trending sweep additionally wants `skills.skillSeekers.trending.enabled: true`). The native scraper covers docs + GitHub unconditionally; the upstream probes only matter for URL types native can't handle.
+Setting `skills.skillSeekers.enabled: true` activates the adapter (V1 default flip: off by default; the scheduled trending sweep additionally wants `skills.skillSeekers.trending.enabled: true`). The native scraper covers docs + GitHub unconditionally; the upstream probes only matter for URL types native can't handle.
+
+### Trending sweep
+
+`skills.skillSeekers.trending` (`skill-seekers-trending.ts`) is a scheduled fourth entry point, off by default:
+
+| Field           | Default | Description                                                                                                                                                                                                       |
+| --------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`       | `false` | Run the sweep at all. Also requires `skills.skillSeekers.enabled`.                                                                                                                                                |
+| `intervalHours` | `24`    | Hours between sweeps.                                                                                                                                                                                             |
+| `maxPerSweep`   | `5`     | Maximum URLs scraped per sweep.                                                                                                                                                                                   |
+| `sources`       | none    | List of `{ kind: "github", since, minStars, limit }`, `{ kind: "hackernews", minPoints, limit }` or `{ kind: "curated", urls, limit }` entries. Each discovered URL goes through the same adapter and quarantine. |
 
 ---
 
@@ -165,6 +179,8 @@ Agents can trigger scraping mid-session via the `skill_seekers_ingest` tool:
   "type": "docs"
 }
 ```
+
+`type` is an optional hint (`docs`, `github`, `pdf`, `video` or `codebase`); when omitted it is inferred from the URL.
 
 The tool:
 
@@ -198,7 +214,11 @@ Trust maturation through execution feedback is not implemented: the synthetic pe
 
 Independently of trust, every ingested skill is assessed for **routing** (PLAN-44 Phase 5b): the receiving agent finds a skill only through its `description` in the prompt index, so a description that names no triggering situation, no scope-out, or overlaps a local skill's is recorded on the envelope (`routing`). For P2P peers that assessment holds the skill for review even under `auto` policy; for local harvests (this adapter) it is a stamp and a warning: harvested descriptions are repository taglines by construction, and the skill-evolution housekeeping pass rewrites them into routable "use when … not for …" form afterwards (`bitterbot skills routing repair` runs it on demand).
 
-The adapter registers a **synthetic peer** (`local-skill-seekers`) with a real Ed25519 keypair generated once per installation and persisted in the memory DB. All envelopes — native and upstream — are signed with the same keypair and pass the same cryptographic verification as P2P skills.
+The adapter registers a **synthetic peer** (`local-skill-seekers`) with a real Ed25519 keypair generated once per installation and persisted in the memory DB (`memory_meta` key `skill_seekers_keypair`). All envelopes — native and upstream — are signed with the same keypair and pass the same cryptographic verification as P2P skills.
+
+### Registry import bridge
+
+A separate ingestion source, `src/agents/skills/agentskills-ingest.ts`, fetches a published `SKILL.md` from a skills registry (by slug or https URL) and routes it through the same `skills-incoming/` quarantine, so accept/reject is identical to the paths above. It is driven by `bitterbot skills agentskills <slug|url>` and the `skills.agentskills.*` config block (`enabled`, `registryBaseUrl`, `defaultTrust`, `transformThreshold`, `royaltyBps`, `royaltyWallet`, `maxBytes`, `apiKey`). Imported skills carry an `origin` provenance block that gates downstream marketplace promotion in `crystallize.ts`.
 
 ---
 
@@ -206,11 +226,12 @@ The adapter registers a **synthetic peer** (`local-skill-seekers`) with a real E
 
 When the upstream Skill Seekers transport detects discrepancies between documentation and source code (e.g., an API documented but not in the codebase), the adapter creates **epistemic directives** — questions the agent surfaces to the user for resolution.
 
-Only high-severity conflicts generate directives (capped at 2 per ingestion to avoid noise). Directive types:
+Only conflicts the upstream payload marks `severity: "high"` generate directives (capped at 2 per ingestion to avoid noise; each becomes a `contradiction` directive at priority 0.8). The severity is assigned upstream, not by Bitterbot. Conflict types accepted by the adapter (`SkillSeekersConflict.type`):
 
-- `missing_in_code` (high severity) — API documented but doesn't exist
-- `signature_mismatch` (medium) — Parameters/types differ between docs and code
-- `missing_in_docs` (medium) — API exists in code but isn't documented
+- `missing_in_code` — API documented but doesn't exist
+- `signature_mismatch` — Parameters/types differ between docs and code
+- `missing_in_docs` — API exists in code but isn't documented
+- `description_mismatch`: accepted by the adapter; its meaning is defined upstream
 
 The native scraper doesn't currently perform conflict detection (it's a feature unique to the upstream Python implementation). Future roadmap item.
 
@@ -225,7 +246,7 @@ The integration with marketplace intelligence creates a closed economic loop wit
    - **Indirect**: `injectDemandTargets()` creates curiosity targets of type `market_demand`, and the dream engine's exploration mode picks them up via the same `fillKnowledgeGap` pipeline.
    - **Direct**: `SkillSeekersAdapter.ingestFromMarketOpportunities(resolveUrl)` iterates opportunities and calls a caller-supplied URL resolver — useful for curated allowlists or when the marketplace has a known canonical docs source per category.
 3. Generated envelopes are tagged with `marketplace_opportunity` provenance (category, expected revenue, demand score) so downstream analytics can attribute sales back to the originating signal.
-4. Skills that pass the quality gate (3+ executions, >70% success rate) become listable for USDC trade.
+4. Skills that pass the quality gate (at least 3 executions and a 60% success rate, `minExecutionsForListing` / `minSuccessRateForListing` in `skill-pricing.ts`) become listable for USDC trade.
 5. Sales revenue reinforces demand signals for that category — the loop closes.
 
 ---
