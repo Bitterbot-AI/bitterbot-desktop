@@ -1855,6 +1855,12 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
 
       sag: { enabled: false },
     },
+    prior: {
+      enabled: false, // experimental: reorder the skills index from verified outcomes
+      mode: "mean", // mean | thompson
+      discount: 0.98,
+      pseudoCount: 4,
+    },
   },
 }
 ```
@@ -1862,6 +1868,12 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
 - `allowBundled`: optional allowlist for bundled skills only (managed/workspace skills unaffected).
 - `entries.<skillKey>.enabled: false` disables a skill even if bundled/installed.
 - `entries.<skillKey>.apiKey`: convenience for skills declaring a primary env var.
+- `prior`: the experience-guided skill prior (default off). When enabled, the
+  `<available_skills>` index is reordered from an outcome-gated ledger
+  (`ledgerPath`, default `CONFIG_DIR/skill-prior.json`) before each run; it
+  never removes an entry or grants a tool. The ledger is written only by the
+  controlled benchmark until a verified live outcome signal exists; see
+  [Skills pipeline](/memory/skills-pipeline).
 
 ---
 
