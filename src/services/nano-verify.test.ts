@@ -274,7 +274,11 @@ describe("verifyNanoPayment", () => {
     expect(isSafeNanoRpcUrl("http://[::1]:7076")).toBe(true);
     expect(isSafeNanoRpcUrl("http://127.0.0.1@evil.test/")).toBe(false);
     expect(
-      resolveNanoRail({ address: payee.account, rawPerUsd: RAW_PER_USD, rpcUrl: "http://10.0.0.5" }),
+      resolveNanoRail({
+        address: payee.account,
+        rawPerUsd: RAW_PER_USD,
+        rpcUrl: "http://10.0.0.5",
+      }),
     ).toBeUndefined();
     mockRpc({ ...blockInfo(), pad: "x".repeat(70_000) });
     expect((await verify(makeToken())).error).toMatch(/too large/);

@@ -157,6 +157,13 @@ When set, the 402 `PAYMENT-REQUIRED` list gets a second entry with `network: "na
 
 `signature` is an Ed25519-BLAKE2b signature (the Nano account key scheme) by `account` over `<recipient>|<BLOCKHASH>|<amountRaw>|<timestamp-ms>`. The seller makes one `block_info` call and requires a confirmed send from `account` to its own account for exactly `amountRaw`, at least the price, seen within `maxAgeSeconds`. Each block hash is accepted once. If the node cannot be reached the task is not paid.
 
+Two things to weigh before turning it on:
+
+- **Payouts stay in USDC.** A Nano sale is recorded at its USD price, so revenue shares owed to skill authors are queued in USDC and, when the wallet is enabled, paid from your USDC balance. You receive XNO for that sale and pay its shares in USDC.
+- **The rate is fixed.** `rawPerUsd` is a number you set; there is no price feed. If XNO falls, each sale brings in less value than the USD price it was recorded at, and the USDC shares paid against it stay the same. Review the rate regularly.
+
+The rail also trusts the `confirmed` flag of the node at `rpcUrl`. Point it at a node you run; a public node means trusting its operator.
+
 ---
 
 ## Agent Card Schema
