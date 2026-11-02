@@ -76,3 +76,24 @@ writes to the live skill-prior ledger.
 
 Nine engineered families, one or two seeds per family per phase in the pilot, and
 a single cheap model. These runs size the confirmatory study; they are not it.
+
+- Arms, underspecified variant (54 learning episodes, 36 paired evaluation
+  tasks on qualification seeds): pass rates were baseline 69.4%, global 72.2%,
+  prior 69.4%, shuffled 80.6%, ungated 66.7%, and no pass contrast excluded
+  zero. The prior LOWERED correct-skill reads against directory order (80.6%
+  to 61.1%, 0 wins / 7 losses, CI excludes zero), with the top pick placed
+  last or first alike (best-first re-evaluation on the same frozen ledgers:
+  61.1%). The ledger learned the right associations (the correct skill had
+  the highest posterior in 8 of 9 family cells); presenting that ranking as
+  index order did not help. Paired inspection shows why: directory order
+  happens to list each correct skill next to its decoy, while the prior
+  isolates the correct skill at the top. Isolated, the model often read no
+  skill at all and still passed; on ledger-sum it read the decoy three times
+  out of three. Choice is driven by description match and a preference for
+  later entries, not by rank.
+- Registered outcome at pilot scale: no value for index reordering on this
+  model and task family. `skills.prior` stays default off. Levers left
+  untested: the pre-action interceptor (redirect a read of a low-posterior
+  skill to its higher-posterior sibling) and withholding low-posterior
+  entries, which would break the reorder-never-remove invariant and needs its
+  own decision. Spend for all phases: about $12.40 at list prices.

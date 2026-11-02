@@ -57,6 +57,14 @@ ordering, shuffled associations and ungated co-occurrence, all learned from the
 same episodes. Results are written under the run's output directory, never
 under `~/.bitterbot`; see `benchmarks/skill-prior/README.md`.
 
+Pilot, 2026-11-01, Claude Haiku 4.5: on fully specified tasks skills were a net
+cost (no skill 81.5%, correct skill forced 70.4%), so the headroom gate blocked
+the treatment arms. On the underspecified variant the correct skill helped
+(59.3% to 74.1%) but the learned prior did not: pass rate equalled directory
+order (69.4% both) and correct-skill reads fell from 80.6% to 61.1% with the
+top pick placed first or last. Registered outcome: no value for index
+reordering at pilot scale; `skills.prior` stays off.
+
 ## Long-term memory recall (LongMemEval-S)
 
 A full 500-question run of [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval)

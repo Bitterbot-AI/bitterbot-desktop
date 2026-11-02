@@ -79,6 +79,7 @@ const { values: args } = parseArgs({
     "timeout-ms": { type: "string" },
     placement: { type: "string", default: "last" },
     variant: { type: "string", default: "specified" },
+    "eval-arms": { type: "string" },
     yes: { type: "boolean", default: false },
   },
 });
@@ -89,7 +90,9 @@ if (basePhase !== "order" && basePhase !== "headroom" && basePhase !== "arms") {
 }
 const VARIANT: TaskVariant = args.variant === "underspecified" ? "underspecified" : "specified";
 /** Records and reports are keyed by phase + variant so the two task shapes never mix. */
-const phase = VARIANT === "underspecified" ? `${basePhase}-u` : basePhase;
+const phase =
+  (VARIANT === "underspecified" ? `${basePhase}-u` : basePhase) +
+  (basePhase === "arms" && args.placement === "first" ? "-pf" : "");
 const learnPhase = VARIANT === "underspecified" ? "learn-u" : "learn";
 const instances = (seed: number) => applyVariant(instancesForSeed(seed, families), VARIANT);
 const trials = Number(args.trials);
@@ -333,7 +336,10 @@ async function main(): Promise<void> {
         }
       }
     }
-    const evalArms = ["baseline", "global", "prior", "shuffled", "ungated"] as const;
+    const ALL_EVAL_ARMS = ["baseline", "global", "prior", "shuffled", "ungated"] as const;
+    const evalArms = args["eval-arms"]
+      ? ALL_EVAL_ARMS.filter((a) => args["eval-arms"]!.split(",").includes(a))
+      : ALL_EVAL_ARMS;
     await confirm(
       learnSpecs.length + evalArms.length * evalSeeds.length * families.length * trials,
       records,
