@@ -175,3 +175,68 @@ describe("createExecutionTrackingHook evidence semantics (PLAN-45 Phase 0)", () 
     expect(rows.map((r) => r.success)).toEqual([1, 0]);
   });
 });
+
+describe("createExecutionTrackingHook SKILL.md attribution", () => {
+  function readSetup() {
+    const { db } = setup();
+    db.prepare(
+      `INSERT INTO chunks (
+        id, path, source, start_line, end_line, text, hash, model, embedding,
+        updated_at, created_at, lifecycle, semantic_type, skill_category, origin
+      ) VALUES ('sk2', '/home/u/.bitterbot/skills/public-apis', 'skills', 0, 0, 'skill body', 'h2',
+        'local', '[]', ?, ?, 'frozen', 'skill', 'public-apis', 'indexed')`,
+    ).run(NOW, NOW);
+    const tracker = new SkillExecutionTracker(db);
+    const hook = createExecutionTrackingHook(tracker, db, null);
+    const read = (path: string, runId = "r1", key = "path") =>
+      hook(
+        { toolName: "read", params: { [key]: path }, result: "ok", durationMs: 3 },
+        { toolName: "read", sessionKey: "s1", runId, toolCallId: `tc-${runId}-${path}` },
+      );
+    const rows = () =>
+      db
+        .prepare(`SELECT skill_crystal_id AS id, run_id, tool_name FROM skill_executions`)
+        .all() as Array<{ id: string; run_id: string; tool_name: string }>;
+    return { db, read, rows };
+  }
+
+  it("credits the skill whose SKILL.md the agent read, by folder name", () => {
+    const { read, rows } = readSetup();
+    read("/opt/elsewhere/public-apis/SKILL.md");
+    expect(rows()).toEqual([{ id: "sk2", run_id: "r1", tool_name: "read" }]);
+  });
+
+  it("matches by crystal path and accepts file_path and Windows separators", () => {
+    const { read, rows } = readSetup();
+    read("C:\\Users\\u\\skills\\public-apis\\SKILL.md", "r1", "file_path");
+    read("/home/u/.bitterbot/skills/public-apis/skill.md", "r2");
+    expect(rows().map((r) => r.run_id)).toEqual(["r1", "r2"]);
+  });
+
+  it("records one row per skill per run when the SKILL.md is read again", () => {
+    const { read, rows } = readSetup();
+    read("/s/public-apis/SKILL.md", "r1");
+    read("/s/public-apis/SKILL.md", "r1");
+    read("/s/public-apis/SKILL.md", "r2");
+    expect(rows().map((r) => r.run_id)).toEqual(["r1", "r2"]);
+  });
+
+  it("ignores reads of other files and SKILL.md files with no crystal", () => {
+    const { read, rows } = readSetup();
+    read("/s/public-apis/README.md");
+    read("/s/unknown-skill/SKILL.md");
+    read("SKILL.md");
+    expect(rows()).toEqual([]);
+  });
+
+  it("lets the run-outcome back-fill stamp the row", () => {
+    const { db, read } = readSetup();
+    read("/s/public-apis/SKILL.md", "r9");
+    expect(stampExecutionRunOutcome(db, "r9", { label: "pass", level: 1 })).toBe(1);
+    const row = db
+      .prepare(`SELECT run_outcome_label, evidence FROM skill_executions WHERE run_id = 'r9'`)
+      .get() as { run_outcome_label: string; evidence: string };
+    expect(row.run_outcome_label).toBe("pass");
+    expect(row.evidence).not.toBe("tool");
+  });
+});
