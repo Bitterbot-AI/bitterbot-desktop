@@ -13,7 +13,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveDefaultAgentId } from "../../src/agents/agent-scope.js";
 import { runEmbeddedPiAgent } from "../../src/agents/embedded-runner.js";
-import { reorderSkillsPrompt, skillOrderInPrompt } from "../../src/agents/skills/skill-prior.js";
+import {
+  annotateSkillsPrompt,
+  reorderSkillsPrompt,
+  type SkillEvidence,
+  type SkillEvidenceStyle,
+  skillOrderInPrompt,
+} from "../../src/agents/skills/skill-prior.js";
 import {
   collectTrialEgress,
   registerTrialDeclaredHosts,
@@ -40,6 +46,9 @@ export interface TrialSpec {
   skills: readonly string[];
   /** Desired index order (names); names not listed keep their relative order. */
   order?: readonly string[];
+  /** Verified outcome counts shown as an `<evidence>` line on these skills' index entries. */
+  evidence?: Readonly<Record<string, SkillEvidence>>;
+  evidenceStyle?: SkillEvidenceStyle;
 }
 
 export interface TrialRecord {
@@ -163,6 +172,9 @@ export function makeExecutor(deps: ExecutorDeps) {
     });
     if (spec.order && spec.order.length > 0) {
       snapshot.prompt = reorderSkillsPrompt(snapshot.prompt, spec.order);
+    }
+    if (spec.evidence) {
+      snapshot.prompt = annotateSkillsPrompt(snapshot.prompt, spec.evidence, spec.evidenceStyle);
     }
     const indexOrder = skillOrderInPrompt(snapshot.prompt);
     const runId = crypto.randomUUID();

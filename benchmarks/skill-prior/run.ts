@@ -16,6 +16,11 @@
  *             co-occurrence ledgers fed the SAME episodes), freeze, then
  *             evaluate on qualification seeds: baseline, global, prior,
  *             shuffled, ungated.
+ *   cards     Evidence cards: the learned per-family pass counts (from the
+ *             arms learning log, frozen) shown as an `<evidence>` line on each
+ *             skill's index entry, order unchanged. Arms: baseline (no card),
+ *             card (real counts), card-swapped (correct and decoy records
+ *             exchanged), card-text (the same verdict with no numbers).
  *
  * Every real turn is logged to <out>/records.jsonl (resumable by key); the
  * journal, pool, trial dirs and ledgers live under <out>, never under
@@ -31,6 +36,7 @@ import { parseArgs } from "node:util";
 import {
   type Candidate,
   placeRanking,
+  type SkillEvidence,
   SkillPriorLedger,
   type SkillPriorMode,
   type SkillPriorPlacement,
@@ -85,8 +91,13 @@ const { values: args } = parseArgs({
 });
 
 const basePhase = args.phase;
-if (basePhase !== "order" && basePhase !== "headroom" && basePhase !== "arms") {
-  throw new Error("--phase must be order | headroom | arms");
+if (
+  basePhase !== "order" &&
+  basePhase !== "headroom" &&
+  basePhase !== "arms" &&
+  basePhase !== "cards"
+) {
+  throw new Error("--phase must be order | headroom | arms | cards");
 }
 const VARIANT: TaskVariant = args.variant === "underspecified" ? "underspecified" : "specified";
 /** Records and reports are keyed by phase + variant so the two task shapes never mix. */
@@ -477,6 +488,115 @@ async function main(): Promise<void> {
       contrasts,
       ledger: treatment.snapshot(),
     });
+  }
+
+  if (basePhase === "cards") {
+    // Counts come from the arms learning log: gated episodes only (one pool
+    // skill read, verifier settled), keyed by family cell. Frozen; nothing
+    // here learns.
+    const learnLog = JSON.parse(
+      await fs.readFile(path.join(out, "learn-log.json"), "utf-8"),
+    ) as Array<{ family: string; read: string | null; pass: 0 | 1; gate: boolean }>;
+    const counts: Record<string, Record<string, SkillEvidence>> = {};
+    for (const e of learnLog) {
+      if (!e.read || !e.gate) {
+        continue;
+      }
+      const cell = (counts[e.family] ??= {});
+      const c = (cell[e.read] ??= { passed: 0, runs: 0 });
+      c.passed += e.pass;
+      c.runs += 1;
+    }
+    // card-swapped: the correct skill shows the decoy's record and the decoy
+    // the correct skill's. If the model reads the numbers, this should hurt.
+    const swapped = (family: string): Record<string, SkillEvidence> => {
+      const cell = { ...counts[family] };
+      const { correct, decoy } = poolByFamily(family);
+      const c = cell[correct.name];
+      const d = cell[decoy.name];
+      delete cell[correct.name];
+      delete cell[decoy.name];
+      if (d) {
+        cell[correct.name] = d;
+      }
+      if (c) {
+        cell[decoy.name] = c;
+      }
+      return cell;
+    };
+    const evalSeeds = seedsIn("qualification", 1, Number(args["eval-seeds"]));
+    const ALL_CARD_ARMS = ["baseline", "card", "card-swapped", "card-text"] as const;
+    const cardArms = args["eval-arms"]
+      ? ALL_CARD_ARMS.filter((a) => args["eval-arms"]!.split(",").includes(a))
+      : ALL_CARD_ARMS;
+    await confirm(cardArms.length * evalSeeds.length * families.length * trials, records);
+    for (const seed of evalSeeds) {
+      for (const instance of instances(seed)) {
+        for (let t = 0; t < trials; t++) {
+          for (const arm of cardArms) {
+            const evidence =
+              arm === "baseline"
+                ? undefined
+                : arm === "card-swapped"
+                  ? swapped(instance.family)
+                  : (counts[instance.family] ?? {});
+            await runSpec({
+              phase,
+              arm,
+              instance,
+              trialIndex: t,
+              skills: POOL_NAMES,
+              ...(evidence ? { evidence } : {}),
+              ...(arm === "card-text" ? { evidenceStyle: "verdict" as const } : {}),
+            });
+          }
+        }
+      }
+    }
+    const rs = [...records.values()].filter((r) => r.phase === phase);
+    const of = (arm: string) => rs.filter((r) => r.arm === arm);
+    const summaries = cardArms.map((a) => summarizeArm(of(a))).filter(Boolean) as ArmSummary[];
+    const contrasts: PairedContrast[] = [];
+    for (const metric of ["pass", "readCorrect"] as const) {
+      for (const arm of cardArms.slice(1)) {
+        const c = pairedContrast(of(arm), of("baseline"), metric);
+        if (c) {
+          contrasts.push(c);
+        }
+      }
+      for (const b of ["card-swapped", "card-text"] as const) {
+        const c = pairedContrast(of("card"), of(b), metric);
+        if (c) {
+          contrasts.push(c);
+        }
+      }
+    }
+    report.push(
+      "## Evidence cards (frozen counts, qualification seeds)",
+      "",
+      `Counts from ${learnLog.filter((e) => e.gate && e.read).length} gated learning episodes. Evaluation seeds ${evalSeeds.join(", ")}. Index order is directory order in every arm.`,
+      "",
+      renderArmTable(summaries),
+      "",
+      renderContrasts(contrasts),
+      "",
+      "### Counts shown (card arm)",
+      "",
+      "| Cell | Skill | Role | Passed | Runs |",
+      "| --- | --- | --- | ---: | ---: |",
+      ...Object.entries(counts).flatMap(([cell, skills]) =>
+        Object.entries(skills).map(([skill, c]) => {
+          const { correct, decoy } = poolByFamily(cell);
+          const role =
+            skill === correct.name ? "correct" : skill === decoy.name ? "decoy" : "other";
+          return `| ${cell} | ${skill} | ${role} | ${c.passed} | ${c.runs} |`;
+        }),
+      ),
+      "",
+      "Reading: `card minus baseline` is the effect of showing measured outcomes; `card minus card-swapped` is whether the model uses the numbers (wrong numbers should hurt); `card minus card-text` is what exact counts add over the same verdict in words.",
+      "",
+    );
+    Object.assign(summary, { evalSeeds, summaries, contrasts, counts });
   }
 
   const spent = spentUsd(records.values());

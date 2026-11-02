@@ -44,7 +44,7 @@ deterministic executor and can produce a live report on demand.
 
 ## Experience-guided skill prior (controlled test)
 
-`node --import tsx benchmarks/skill-prior/run.ts --phase order|headroom|arms`
+`node --import tsx benchmarks/skill-prior/run.ts --phase order|headroom|arms|cards`
 tests whether an outcome-gated, per-context bandit that reorders the
 `<available_skills>` index (`skills.prior`, default off) changes which skill the
 agent reads first and whether that changes verified task outcomes. The pool is
@@ -64,6 +64,16 @@ the treatment arms. On the underspecified variant the correct skill helped
 order (69.4% both) and correct-skill reads fell from 80.6% to 61.1% with the
 top pick placed first or last. Registered outcome: no value for index
 reordering at pilot scale; `skills.prior` stays off.
+
+Evidence cards, 2026-11-02, same model and variant: instead of reordering, each
+skill's index entry carried its verified record in the task's family ("5 of 5
+runs passed"), 54 paired tasks per arm. The model used the numbers: real counts
+beat the same counts swapped between the correct skill and its decoy by 13.0 pp
+pass (7 wins / 0 losses, p 0.008) and 24.1 pp correct reads. Correct counts
+against no card were +3.7 pp pass, CI [-5.6, 13.0], because the model already
+avoided the decoy in 92.6% of trials; exact counts did no better than the same
+verdict in words. Evidence shown at the choice is used where order was not,
+and its main measured risk is that a wrong record misleads.
 
 ## Long-term memory recall (LongMemEval-S)
 

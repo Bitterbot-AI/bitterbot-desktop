@@ -444,6 +444,51 @@ export function reorderSkillsPrompt(prompt: string, order: readonly string[]): s
   return out;
 }
 
+/** Verified outcome counts for one skill in one context cell. */
+export interface SkillEvidence {
+  passed: number;
+  runs: number;
+}
+
+/** How an evidence line is worded: exact counts, or a verdict without numbers. */
+export type SkillEvidenceStyle = "counts" | "verdict";
+
+/** The text of one evidence line. */
+export function formatSkillEvidence(e: SkillEvidence, style: SkillEvidenceStyle): string {
+  if (style === "verdict") {
+    return e.passed * 2 >= e.runs
+      ? "This skill worked in past tasks like this one."
+      : "This skill failed in past tasks like this one.";
+  }
+  return `Verified record in past tasks like this one: ${e.passed} of ${e.runs} runs passed.`;
+}
+
+/**
+ * Add an `<evidence>` line to the `<skill>` blocks named in `evidence`, just
+ * before `</skill>`. Order and every other byte stay as they were; skills with
+ * no entry (or zero runs) are untouched. Indexed, measured outcomes shown next
+ * to the choice, rather than a reordering the model can ignore.
+ */
+export function annotateSkillsPrompt(
+  prompt: string,
+  evidence: Readonly<Record<string, SkillEvidence>>,
+  style: SkillEvidenceStyle = "counts",
+): string {
+  return prompt.replace(SKILL_BLOCK_RE, (block, name: string) => {
+    const e = evidence[name];
+    if (!e || e.runs <= 0) {
+      return block;
+    }
+    const m = /^([ \t]*)<\/skill>\n?$/m.exec(block);
+    if (!m || m.index === undefined) {
+      return block;
+    }
+    const indent = `${m[1]}  `;
+    const line = `${indent}<evidence>${formatSkillEvidence(e, style)}</evidence>\n`;
+    return block.slice(0, m.index) + line + block.slice(m.index);
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Run-path application
 // ---------------------------------------------------------------------------

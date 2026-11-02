@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  annotateSkillsPrompt,
   applySkillPrior,
   derange,
   reorderSkillsPrompt,
@@ -236,6 +237,36 @@ describe("prompt surgery", () => {
     });
     expect(last.order.at(-1)).toBe("cedar");
     expect(last.result?.order[0]).toBe("cedar");
+  });
+});
+
+describe("evidence annotation", () => {
+  it("adds an evidence line inside the named skill blocks only, keeping order", () => {
+    const out = annotateSkillsPrompt(PROMPT, {
+      bravo: { passed: 5, runs: 5 },
+      cedar: { passed: 0, runs: 0 },
+    });
+    expect(skillOrderInPrompt(out)).toEqual(["alpha", "bravo", "cedar"]);
+    expect(out).toContain(
+      "    <location>/s/bravo/SKILL.md</location>\n    <evidence>Verified record in past tasks like this one: 5 of 5 runs passed.</evidence>\n  </skill>",
+    );
+    expect(out.match(/<evidence>/g)).toHaveLength(1);
+    expect(out.replace(/ {4}<evidence>.*<\/evidence>\n/, "")).toBe(PROMPT);
+  });
+
+  it("words a verdict without numbers in verdict style", () => {
+    const out = annotateSkillsPrompt(
+      PROMPT,
+      { alpha: { passed: 1, runs: 4 }, cedar: { passed: 2, runs: 4 } },
+      "verdict",
+    );
+    expect(out).toContain("<evidence>This skill failed in past tasks like this one.</evidence>");
+    expect(out).toContain("<evidence>This skill worked in past tasks like this one.</evidence>");
+    expect(out).not.toMatch(/<evidence>[^<]*\d/);
+  });
+
+  it("returns the prompt unchanged with no evidence", () => {
+    expect(annotateSkillsPrompt(PROMPT, {})).toBe(PROMPT);
   });
 });
 

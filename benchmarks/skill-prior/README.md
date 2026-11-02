@@ -33,6 +33,7 @@ by key, and the run stops at `--ceiling-usd` (token usage at list prices).
 node --import tsx benchmarks/skill-prior/run.ts --phase order    --seeds 3 --trials 1
 node --import tsx benchmarks/skill-prior/run.ts --phase headroom --seeds 3 --trials 1
 node --import tsx benchmarks/skill-prior/run.ts --phase arms --learn-seeds 6 --eval-seeds 4 --trials 2 --yes
+node --import tsx benchmarks/skill-prior/run.ts --phase cards --variant underspecified --eval-seeds 6 --trials 1 --yes
 ```
 
 | Phase      | Question                                                                                                                                                                                                                                                                                                                    | Abort rule                                                                                                                                                                                    |
@@ -97,3 +98,42 @@ a single cheap model. These runs size the confirmatory study; they are not it.
   skill to its higher-posterior sibling) and withholding low-posterior
   entries, which would break the reorder-never-remove invariant and needs its
   own decision. Spend for all phases: about $12.40 at list prices.
+
+## Evidence cards (2026-11-02, Claude Haiku 4.5, underspecified variant)
+
+The `cards` phase shows measured outcomes instead of reordering: each skill's
+index entry gets an `<evidence>` line with its verified record in the task's
+family cell ("Verified record in past tasks like this one: 5 of 5 runs
+passed.", `annotateSkillsPrompt` in `src/agents/skills/skill-prior.ts`).
+Counts are exact, taken from the 40 gated learning episodes of the arms phase,
+and frozen. Index order is directory order in every arm. Arms: `baseline` (no
+card), `card` (real counts), `card-swapped` (the correct skill and its decoy
+exchange records: if the model reads the numbers this should hurt), `card-text`
+(the same verdict in words, no numbers). 54 paired tasks per arm on six
+qualification seeds.
+
+| Arm          | Pass  | Read correct | Read decoy |
+| ------------ | ----- | ------------ | ---------- |
+| baseline     | 72.2% | 68.5%        | 7.4%       |
+| card         | 75.9% | 68.5%        | 7.4%       |
+| card-swapped | 63.0% | 44.4%        | 29.6%      |
+| card-text    | 77.8% | 66.7%        | 11.1%      |
+
+- The model uses the evidence. Real against swapped counts: pass +13.0 pp
+  (7 wins / 0 losses, CI [5.6, 22.2], p 0.008), correct reads +24.1 pp
+  (15 / 2, p 0.001). Wrong numbers pull it to the decoy.
+- Correct evidence adds little here: card minus baseline +3.7 pp pass, CI
+  [-5.6, 13.0]. Without a card the model already read the decoy in only 7.4% of
+  trials on this index, so there was little error for evidence to correct.
+- Exact counts did no better than the same verdict in words (card minus
+  card-text -1.9 pp, CI [-13.0, 7.4]).
+- Registered reading: evidence shown next to the choice is causally used,
+  unlike index order (arms phase), but on this pool its benefit is bounded by
+  the baseline error rate; its main measured effect is that bad evidence
+  misleads. That makes the accuracy of the record, not its presence, the
+  thing to protect.
+- The first run of this phase was invalid and is archived beside the records:
+  the system prompt's skills compactor merged any `<skill>` block carrying an
+  extra line into the next block, so annotated entries pointed at the decoy's
+  SKILL.md. Fixed in `src/agents/system-prompt-skills.ts` (#351) before the
+  run reported here. Spend for this phase, including the invalid run: about $9.
