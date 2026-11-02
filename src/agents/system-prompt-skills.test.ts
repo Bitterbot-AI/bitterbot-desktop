@@ -117,6 +117,35 @@ describe("compactSkillsPrompt", () => {
     expect(out.length).toBeLessThan(4_000);
   });
 
+  it("keeps a block with an extra child line intact and never merges it with the next block", () => {
+    const annotated = [
+      "  <skill>",
+      "    <name>alpha</name>",
+      "    <description>Use for alpha. Not for beta.</description>",
+      "    <location>/skills/alpha/SKILL.md</location>",
+      "    <evidence>Verified record in past tasks like this one: 5 of 5 runs passed.</evidence>",
+      "  </skill>",
+    ].join("\n");
+    const out = compactSkillsPrompt(
+      index([annotated, skill("beta", "Use for beta."), skill("gamma", "Use for gamma.")]),
+    );
+    expect([...skillNamesInPrompt(out)]).toEqual(["alpha", "beta", "gamma"]);
+    const alpha = out.slice(out.indexOf("<name>alpha</name>"), out.indexOf("<name>beta</name>"));
+    expect(alpha).toContain(
+      "<evidence>Verified record in past tasks like this one: 5 of 5 runs passed.</evidence>",
+    );
+    expect(alpha).not.toContain("beta/SKILL.md");
+    expect(alpha).toContain("<description>Use for alpha.</description>");
+    expect(compactSkillsPrompt(out)).toBe(out);
+  });
+
+  it("leaves a block with an unescaped < in its description alone rather than merging", () => {
+    const raw = skill("alpha", "Use when x < y.");
+    const out = compactSkillsPrompt(index([raw, skill("beta", "Use for beta.")]));
+    expect([...skillNamesInPrompt(out)]).toEqual(["alpha", "beta"]);
+    expect(out).toContain("<location>/skills/alpha/SKILL.md</location>");
+  });
+
   it("is a no-op without skill blocks", () => {
     expect(compactSkillsPrompt("no skills here")).toBe("no skills here");
   });
