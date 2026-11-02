@@ -10,8 +10,16 @@
 export const SKILLS_PROMPT_BUDGET_CHARS = 4_000;
 const DESCRIPTION_STEPS = [160, 80, 40];
 
+/**
+ * One `<skill>` block. The description is XML-escaped, so it holds no `<` and
+ * cannot run past its own closing tag into the next block. Any further child
+ * lines (an `<evidence>` note, say) are captured and kept as they are; the
+ * old lazy `[\s\S]*?` description let a block with an extra line swallow
+ * the next block whole, pairing one skill's name with the next one's
+ * location.
+ */
 const SKILL_BLOCK_RE =
-  /^([ \t]*)<skill>\n[ \t]*<name>([^<\n]*)<\/name>\n(?:[ \t]*<description>([\s\S]*?)<\/description>\n)?(?:[ \t]*<location>([^<\n]*)<\/location>\n)?[ \t]*<\/skill>/gm;
+  /^([ \t]*)<skill>\n[ \t]*<name>([^<\n]*)<\/name>\n(?:[ \t]*<description>([^<]*)<\/description>\n)?(?:[ \t]*<location>([^<\n]*)<\/location>\n)?((?:[ \t]*<(?!\/?skill>)[^\n]*\n)*)[ \t]*<\/skill>/gm;
 
 function unescapeXml(text: string): string {
   return text
@@ -88,7 +96,14 @@ function renderCompact(prompt: string, maxDescriptionChars: number | null): stri
   const defaultRoot = resolveDefaultSkillsRoot(prompt);
   const rendered = prompt.replace(
     SKILL_BLOCK_RE,
-    (_block, indent: string, name: string, description: string | undefined, location) => {
+    (
+      _block,
+      indent: string,
+      name: string,
+      description: string | undefined,
+      location: string | undefined,
+      extra: string | undefined,
+    ) => {
       const inner = `${indent}  `;
       const lines = [`${indent}<skill>`, `${inner}<name>${name}</name>`];
       if (maxDescriptionChars !== null && description) {
@@ -103,6 +118,9 @@ function renderCompact(prompt: string, maxDescriptionChars: number | null): stri
         !(defaultRoot?.names.has(name) && location === `${defaultRoot.root}/${name}/SKILL.md`)
       ) {
         lines.push(`${inner}<location>${location}</location>`);
+      }
+      if (extra) {
+        lines.push(extra.replace(/\n$/, ""));
       }
       lines.push(`${indent}</skill>`);
       return lines.join("\n");
