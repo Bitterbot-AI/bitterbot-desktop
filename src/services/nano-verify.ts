@@ -32,6 +32,27 @@ export const NANO_NETWORK = "nano:mainnet";
 export const NANO_DEFAULT_RPC_URL = "http://127.0.0.1:7076";
 export const NANO_DEFAULT_MAX_AGE_SECONDS = 300;
 const RPC_TIMEOUT_MS = 10_000;
+/** A real block_info reply is well under 2 KiB; anything larger is refused. */
+const RPC_MAX_REPLY_BYTES = 64 * 1024;
+
+/**
+ * An RPC URL is usable when it is https, or plain http to a loopback host. A
+ * cleartext lookup to any other host lets a network attacker forge the reply
+ * that admits a payment.
+ */
+export function isSafeNanoRpcUrl(raw: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (u.username || u.password) return false;
+  if (u.protocol === "https:") return true;
+  if (u.protocol !== "http:") return false;
+  const host = u.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "localhost" || host === "::1" || /^127(\.\d{1,3}){3}$/.test(host);
+}
 
 const ALPHABET = "13456789abcdefghijkmnopqrstuwxyz";
 
@@ -117,6 +138,10 @@ export function resolveNanoRail(cfg: NanoRailConfig | undefined): NanoRailConfig
   if (!cfg?.address || !cfg.rawPerUsd || !/^[1-9][0-9]*$/.test(cfg.rawPerUsd)) return undefined;
   if (!isValidNanoAccount(cfg.address)) {
     log.warn("a2a.payment.nano.address fails its checksum; Nano payments stay off");
+    return undefined;
+  }
+  if (!isSafeNanoRpcUrl(cfg.rpcUrl ?? NANO_DEFAULT_RPC_URL)) {
+    log.warn("a2a.payment.nano.rpcUrl must be https or loopback http; Nano payments stay off");
     return undefined;
   }
   return cfg;
@@ -254,9 +279,13 @@ export async function verifyNanoPayment(params: {
       }
     }
 
+    const rpcUrl = params.rpcUrl ?? NANO_DEFAULT_RPC_URL;
+    if (!isSafeNanoRpcUrl(rpcUrl)) {
+      return { valid: false, error: "Nano RPC URL must be https or loopback http" };
+    }
     let info: BlockInfo;
     try {
-      const res = await fetch(params.rpcUrl ?? NANO_DEFAULT_RPC_URL, {
+      const res = await fetch(rpcUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "block_info", json_block: "true", hash: blockHash }),
@@ -265,7 +294,15 @@ export async function verifyNanoPayment(params: {
       if (!res.ok) {
         return { valid: false, error: `Nano RPC returned HTTP ${res.status}` };
       }
-      info = (await res.json()) as BlockInfo;
+      const declared = Number(res.headers.get("content-length") ?? "0");
+      if (declared > RPC_MAX_REPLY_BYTES) {
+        return { valid: false, error: "Nano RPC reply too large" };
+      }
+      const text = await res.text();
+      if (text.length > RPC_MAX_REPLY_BYTES) {
+        return { valid: false, error: "Nano RPC reply too large" };
+      }
+      info = JSON.parse(text) as BlockInfo;
     } catch (err) {
       return { valid: false, error: `Nano RPC failed: ${String(err)}` };
     }

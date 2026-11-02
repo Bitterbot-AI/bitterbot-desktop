@@ -9,6 +9,8 @@ import {
   nanoAccountToPublicKey,
   nanoPaymentMessage,
   publicKeyToNanoAccount,
+  isSafeNanoRpcUrl,
+  resolveNanoRail,
   usdToRaw,
   verifyNanoPayment,
 } from "./nano-verify.js";
@@ -32,7 +34,7 @@ const RAW_PER_USD = "100000000000000000000000000000";
 const PRICE_USD = 0.05;
 const PRICE_RAW = usdToRaw(PRICE_USD, RAW_PER_USD).toString();
 const HASH = "ab".repeat(32);
-const RPC = "http://nano-node.test:7076";
+const RPC = "https://nano-node.test/rpc";
 
 function makeToken(
   over: {
@@ -255,5 +257,26 @@ describe("verifyNanoPayment", () => {
   it("ignores tokens for other networks", async () => {
     const t = Buffer.from(JSON.stringify({ txHash: "0xabc", amount: 1 })).toString("base64");
     expect((await verify(t)).valid).toBe(false);
+  });
+
+  it("refuses plain-http non-loopback RPC URLs and oversized replies", async () => {
+    const fetchMock = mockRpc(blockInfo());
+    const r = await verifyNanoPayment({
+      paymentToken: makeToken(),
+      expectedRecipient: payee.account,
+      minimumUsd: PRICE_USD,
+      rawPerUsd: RAW_PER_USD,
+      rpcUrl: "http://nano-node.test:7076",
+    });
+    expect(r.valid).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(isSafeNanoRpcUrl("http://127.0.0.1:7076")).toBe(true);
+    expect(isSafeNanoRpcUrl("http://[::1]:7076")).toBe(true);
+    expect(isSafeNanoRpcUrl("http://127.0.0.1@evil.test/")).toBe(false);
+    expect(
+      resolveNanoRail({ address: payee.account, rawPerUsd: RAW_PER_USD, rpcUrl: "http://10.0.0.5" }),
+    ).toBeUndefined();
+    mockRpc({ ...blockInfo(), pad: "x".repeat(70_000) });
+    expect((await verify(makeToken())).error).toMatch(/too large/);
   });
 });
