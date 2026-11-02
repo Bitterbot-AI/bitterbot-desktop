@@ -774,9 +774,30 @@ export function createA2aHttpHandler(opts: {
           maxTimeoutSeconds: 300,
           asset: usdcAsset,
         };
-        const paymentRequiredB64 = Buffer.from(JSON.stringify([paymentRequirements])).toString(
-          "base64",
-        );
+        const accepts: Array<Record<string, unknown>> = [paymentRequirements];
+        // Opt-in Nano rail: a second accepts entry, only when a2a.payment.nano
+        // is configured. Amount is in raw (integer string) at the operator's rate.
+        if (config.a2a?.payment?.nano) {
+          const { NANO_DEFAULT_MAX_AGE_SECONDS, NANO_NETWORK, resolveNanoRail, usdToRaw } =
+            await import("../../services/nano-verify.js");
+          const nano = resolveNanoRail(config.a2a.payment.nano);
+          if (nano) {
+            const priceUsd = paymentResult.pricing?.priceUsdc ?? 0.01;
+            accepts.push({
+              scheme: "exact",
+              network: NANO_NETWORK,
+              maxAmountRequired: usdToRaw(priceUsd, nano.rawPerUsd).toString(),
+              resource: req.url ?? "/a2a",
+              description: "Payment required for skill execution",
+              mimeType: "application/json",
+              payTo: nano.address,
+              maxTimeoutSeconds: nano.maxAgeSeconds ?? NANO_DEFAULT_MAX_AGE_SECONDS,
+              asset: "XNO",
+              extra: { unit: "raw", rawPerUsd: nano.rawPerUsd, priceUsd: String(priceUsd) },
+            });
+          }
+        }
+        const paymentRequiredB64 = Buffer.from(JSON.stringify(accepts)).toString("base64");
         res.setHeader("PAYMENT-REQUIRED", paymentRequiredB64);
 
         sendJson(res, 402, {
@@ -801,7 +822,7 @@ export function createA2aHttpHandler(opts: {
         const settlementResponse = {
           success: true,
           scheme: "exact",
-          network: "base",
+          network: paymentResult.network ?? "base",
           transactionHash: paymentResult.txHash,
           payer: paymentResult.buyerPeerId ?? "unknown",
         };

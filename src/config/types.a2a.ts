@@ -88,6 +88,20 @@ export type A2aConfig = {
       /** Minimum per-task payment in USDC. Default: 0.01. */
       minPayment?: number;
     };
+    /**
+     * Optional second rail: accept Nano (XNO) next to x402 USDC. Off unless
+     * `address` and `rawPerUsd` are set; the Base rail is unchanged either way.
+     */
+    nano?: {
+      /** Checksummed nano_ receiving account. */
+      address: string;
+      /** Raw units (1 XNO = 10^30 raw) charged per 1 USD of price, as an integer string. */
+      rawPerUsd: string;
+      /** Nano node RPC used for block_info. Default: http://127.0.0.1:7076 (your own node). */
+      rpcUrl?: string;
+      /** Max age of the proof and of the send block. Default: 300. */
+      maxAgeSeconds?: number;
+    };
     /** AP2 payment mandates over the x402 rail (PLAN-47 Phase 1). */
     ap2?: {
       /**

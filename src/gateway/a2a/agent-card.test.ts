@@ -104,6 +104,31 @@ describe("buildAgentCard", () => {
     expect(card.extensions?.["x402-payment"]).toBeUndefined();
   });
 
+  it("advertises the Nano rail only when payment.nano is configured", () => {
+    const nanoAddress = "nano_3t6k35gi95xu6tergt6p69ck76ogmitsa8mnijtpxm9fkcm736xtoncuohr3";
+    const build = (nano?: { address: string; rawPerUsd: string }) =>
+      buildAgentCard({
+        config: baseConfig({
+          a2a: {
+            enabled: true,
+            payment: { enabled: true, x402: { address: "0x" + "ab".repeat(20) }, nano },
+          },
+        }),
+        skills: [],
+        gatewayUrl: "http://localhost:19001",
+      });
+    expect(build().extensions?.["nano-payment"]).toBeUndefined();
+    const ext = build({ address: nanoAddress, rawPerUsd: "1000" }).extensions?.["nano-payment"] as
+      | Record<string, unknown>
+      | undefined;
+    expect(ext).toMatchObject({ network: "nano:mainnet", token: "XNO", address: nanoAddress });
+    // A typo'd (bad checksum) account is never advertised.
+    const typo = nanoAddress.slice(0, -1) + "4";
+    expect(
+      build({ address: typo, rawPerUsd: "1000" }).extensions?.["nano-payment"],
+    ).toBeUndefined();
+  });
+
   it("emits erc8004 extension when configured with tokenId", () => {
     const card = buildAgentCard({
       config: baseConfig({
