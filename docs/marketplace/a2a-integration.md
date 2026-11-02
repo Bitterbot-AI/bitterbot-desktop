@@ -130,6 +130,40 @@ Unsigned proofs are rejected by default. `a2a.payment.allowUnsignedProofs: true`
 
 6. **Result delivery.** The task result is returned in the JSON-RPC response. The `PAYMENT-RESPONSE` header is included on the 200 OK response, containing a Base64-encoded JSON object with `transactionHash`, `payer`, and `network`.
 
+### Optional XNO rail
+
+An operator can also accept Nano (XNO) next to USDC. It is off unless configured, and the Base rail does not change:
+
+```json5
+{
+  a2a: {
+    payment: {
+      nano: {
+        address: "nano_...", // checksummed receiving account
+        rawPerUsd: "1000000000000000000000000000000", // raw charged per 1 USD of price
+        rpcUrl: "http://127.0.0.1:7076", // default: your own node
+        maxAgeSeconds: 300, // default
+      },
+    },
+  },
+}
+```
+
+When set, the 402 `PAYMENT-REQUIRED` list gets a second entry with `network: "nano:mainnet"`, `asset: "XNO"`, the account as `payTo`, and `maxAmountRequired` in raw (price times `rawPerUsd`, rounded up). The Agent Card gains a `nano-payment` extension. The buyer sends XNO, then retries with a Base64 JSON token in the same `X-PAYMENT` header:
+
+```text
+{ network: "nano:mainnet", blockHash, account, recipient, amountRaw, timestamp, signature }
+```
+
+`signature` is an Ed25519-BLAKE2b signature (the Nano account key scheme) by `account` over `<recipient>|<BLOCKHASH>|<amountRaw>|<timestamp-ms>`. The seller makes one `block_info` call and requires a confirmed send from `account` to its own account for exactly `amountRaw`, at least the price, seen within `maxAgeSeconds`. Each block hash is accepted once. If the node cannot be reached the task is not paid.
+
+Two things to weigh before turning it on:
+
+- **Payouts stay in USDC.** A Nano sale is recorded at its USD price, so revenue shares owed to skill authors are queued in USDC and, when the wallet is enabled, paid from your USDC balance. You receive XNO for that sale and pay its shares in USDC.
+- **The rate is fixed.** `rawPerUsd` is a number you set; there is no price feed. If XNO falls, each sale brings in less value than the USD price it was recorded at, and the USDC shares paid against it stay the same. Review the rate regularly.
+
+The rail also trusts the `confirmed` flag of the node at `rpcUrl`. Point it at a node you run; a public node means trusting its operator.
+
 ---
 
 ## Agent Card Schema
