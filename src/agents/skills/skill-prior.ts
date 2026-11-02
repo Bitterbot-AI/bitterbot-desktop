@@ -450,11 +450,18 @@ export interface SkillEvidence {
   runs: number;
 }
 
-/** How an evidence line is worded: exact counts, or a verdict without numbers. */
-export type SkillEvidenceStyle = "counts" | "verdict";
+/**
+ * How an evidence line is worded: exact counts, a verdict without numbers, or
+ * a usage count with no outcome at all (the placebo control: same place, same
+ * shape, no information about which skill worked).
+ */
+export type SkillEvidenceStyle = "counts" | "verdict" | "usage";
 
 /** The text of one evidence line. */
 export function formatSkillEvidence(e: SkillEvidence, style: SkillEvidenceStyle): string {
+  if (style === "usage") {
+    return `Usage record in past tasks like this one: ${e.runs} runs logged.`;
+  }
   if (style === "verdict") {
     return e.passed * 2 >= e.runs
       ? "This skill worked in past tasks like this one."

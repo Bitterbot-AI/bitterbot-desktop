@@ -34,13 +34,20 @@ import {
 } from "../../src/memory/skill-evolution/task-runner.js";
 import { makeSkillEvolveValidationSessionKey } from "../../src/sessions/session-key-utils.js";
 import { disableMemory } from "../skill-evolution/ablation/executors.js";
-import { POOL, poolSkillFromPath, writePool } from "./pool.js";
+import { POOL, type PoolSkill, poolSkillFromPath, writePool } from "./pool.js";
 import type { Instance } from "./tasks.js";
 
 export interface TrialSpec {
   phase: string;
   arm: string;
   instance: Instance;
+  /** Skill pool to draw `skills` from (default: the correct/decoy POOL). */
+  pool?: readonly PoolSkill[];
+  /** Environment-relative truth (latent-convention pool): which skill is right here. */
+  correctSkill?: string;
+  decoySkills?: readonly string[];
+  /** Memory cell the trial belongs to (recorded for analysis). */
+  cell?: string;
   trialIndex: number;
   /** Pool skill names to include in the index (empty = no skills). */
   skills: readonly string[];
@@ -71,6 +78,12 @@ export interface TrialRecord {
   model: string;
   error: string | null;
   runId: string;
+  /** Set for latent-convention trials, where the right skill depends on the workspace. */
+  correctSkill?: string;
+  decoySkills?: string[];
+  cell?: string;
+  /** The last `FINAL:` value, so analysis can tell which convention an answer followed. */
+  final?: string | null;
 }
 
 export function trialKey(spec: TrialSpec): string {
@@ -99,7 +112,11 @@ function splitSpec(spec: string): { provider: string; model: string } {
  * first-read order). A `read` counts only when its result row is `ok`: an
  * attempt the sandbox refused is not a read.
  */
-export function poolSkillsRead(runId: string, poolRoot: string): string[] | null {
+export function poolSkillsRead(
+  runId: string,
+  poolRoot: string,
+  names?: readonly string[],
+): string[] | null {
   const journal = getActiveEventJournal();
   if (!journal || journal.queryMeta({ runId, limit: 1 }).length === 0) {
     return null;
@@ -118,10 +135,10 @@ export function poolSkillsRead(runId: string, poolRoot: string): string[] | null
         const p = [args.path, args.file_path, args.filePath].find((v) => typeof v === "string") as
           | string
           | undefined;
-        hit = p ? poolSkillFromPath(poolRoot, p) : null;
+        hit = p ? poolSkillFromPath(poolRoot, p, names) : null;
       } else if (d.name === "exec" && typeof args.command === "string") {
         const m = args.command.match(/(\S*\/xp-[a-z0-9-]+\/SKILL\.md)/);
-        hit = m?.[1] ? poolSkillFromPath(poolRoot, m[1]) : null;
+        hit = m?.[1] ? poolSkillFromPath(poolRoot, m[1], names) : null;
       }
       if (hit && callId) {
         attempts.set(callId, hit);
@@ -160,9 +177,10 @@ export function makeExecutor(deps: ExecutorDeps) {
     // the pool must live INSIDE the trial workspace or every SKILL.md read is
     // refused as a sandbox escape. Only the arm's skills are written.
     const skillsRoot = path.join(workspaceDir, "skills");
+    const pool = spec.pool ?? POOL;
     await writePool(
       skillsRoot,
-      POOL.filter((s) => spec.skills.includes(s.name)),
+      pool.filter((s) => spec.skills.includes(s.name)),
     );
     const snapshot = buildWorkspaceSkillSnapshot(workspaceDir, {
       config: cfg,
@@ -218,7 +236,12 @@ export function makeExecutor(deps: ExecutorDeps) {
       error = String(err);
     }
     collectTrialEgress(workspaceDir);
-    const read = poolSkillsRead(runId, skillsRoot) ?? [];
+    const read =
+      poolSkillsRead(
+        runId,
+        skillsRoot,
+        pool.map((s) => s.name),
+      ) ?? [];
     if (!deps.keepTrialDirs) {
       await fs.rm(trialDir, { recursive: true, force: true }).catch(() => undefined);
     }
@@ -240,6 +263,11 @@ export function makeExecutor(deps: ExecutorDeps) {
       model: deps.modelSpec,
       error,
       runId,
+      ...(spec.correctSkill ? { correctSkill: spec.correctSkill } : {}),
+      ...(spec.decoySkills ? { decoySkills: [...spec.decoySkills] } : {}),
+      ...(spec.cell ? { cell: spec.cell } : {}),
+      final:
+        [...text.matchAll(/^[ \t]*FINAL:[ \t]*(.*)$/gim)].at(-1)?.[1]?.trim().slice(0, 200) ?? null,
     };
   };
 }

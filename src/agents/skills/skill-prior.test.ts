@@ -265,6 +265,18 @@ describe("evidence annotation", () => {
     expect(out).not.toMatch(/<evidence>[^<]*\d/);
   });
 
+  it("shows only a usage count, never an outcome, in usage (placebo) style", () => {
+    const out = annotateSkillsPrompt(
+      PROMPT,
+      { alpha: { passed: 0, runs: 2 }, cedar: { passed: 2, runs: 2 } },
+      "usage",
+    );
+    expect(
+      out.match(/<evidence>Usage record in past tasks like this one: 2 runs logged\.<\/evidence>/g),
+    ).toHaveLength(2);
+    expect(out).not.toMatch(/passed|worked|failed/);
+  });
+
   it("returns the prompt unchanged with no evidence", () => {
     expect(annotateSkillsPrompt(PROMPT, {})).toBe(PROMPT);
   });

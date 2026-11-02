@@ -341,12 +341,16 @@ export async function writePool(
 }
 
 /** The pool skill a `read`/`exec` path under the pool root refers to, else null. */
-export function poolSkillFromPath(poolRoot: string, filePath: string): string | null {
+export function poolSkillFromPath(
+  poolRoot: string,
+  filePath: string,
+  names: readonly string[] = POOL_NAMES,
+): string | null {
   const root = path.resolve(poolRoot);
   const resolved = path.resolve(filePath);
   if (!resolved.startsWith(root + path.sep) || !resolved.endsWith("SKILL.md")) {
     return null;
   }
   const name = path.basename(path.dirname(resolved));
-  return POOL_NAMES.includes(name) ? name : null;
+  return names.includes(name) ? name : null;
 }

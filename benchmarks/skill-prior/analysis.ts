@@ -13,11 +13,21 @@ export function correctSkillFor(family: string): string {
   return poolByFamily(family).correct.name;
 }
 
+/**
+ * Latent-convention trials carry their own truth and score the FIRST skill
+ * read (the choice), since a run that opens all four variants has not chosen.
+ */
 export function readCorrect(r: TrialRecord): 0 | 1 {
+  if (r.correctSkill) {
+    return r.read[0] === r.correctSkill ? 1 : 0;
+  }
   return r.read.includes(correctSkillFor(r.family)) ? 1 : 0;
 }
 
 export function readDecoy(r: TrialRecord): 0 | 1 {
+  if (r.decoySkills) {
+    return r.read[0] !== undefined && r.decoySkills.includes(r.read[0]) ? 1 : 0;
+  }
   return r.read.includes(poolByFamily(r.family).decoy.name) ? 1 : 0;
 }
 
