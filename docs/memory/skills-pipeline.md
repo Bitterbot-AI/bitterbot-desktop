@@ -36,18 +36,28 @@ below for each module.
 
 ### What an execution row means (PLAN-45 Phase 1)
 
-`skill_executions` receives one row per tool call that matched a skill
-crystal by name (`recorded_by = 'after_tool_call'`). The match
-(`execution-tracking-hook.ts`) requires a chunk with `semantic_type` or
-`memory_type` of `skill`, a lifecycle of `generated`/`activated`/`frozen`, an
-origin other than `dream`, and a `skill_category` equal to the normalized
-tool name (`read`, `exec`, `web-fetch`, ...). `skill_category` is the
-SKILL.md frontmatter name or folder name (`skill-category.ts`), and the only
-chunks ever keyed on tool names were the retired crystallizer's, which
-migration v63 purged. On a post-v63 node the hook therefore never matches:
-the table stays empty, and the bridge maturity gate below (three run-level
-executions at a success rate of 0.7 or better) cannot pass, so no crystal
-auto-publishes. The hook also skips A2A and validation sessions. When a row
+`skill_executions` receives one row per skill a run loaded
+(`recorded_by = 'after_tool_call'`). The hook (`execution-tracking-hook.ts`)
+matches a chunk with `semantic_type` or `memory_type` of `skill`, a lifecycle
+of `generated`/`activated`/`frozen` and an origin other than `dream`, in one
+of two ways:
+
+- **SKILL.md read** (the match that fires in practice): a `read` call whose
+  path ends in `SKILL.md` credits the crystal whose `skill_category` equals
+  the skill's folder name, or whose `path` is that folder. A second read of
+  the same SKILL.md in the same run adds no row, so a run is counted once.
+- **Tool name**: a crystal whose `skill_category` equals the normalized tool
+  name (`read`, `exec`, `web-fetch`, ...). `skill_category` is the SKILL.md
+  frontmatter name or folder name (`skill-category.ts`), and the only chunks
+  ever keyed on tool names were the retired crystallizer's, which migration
+  v63 purged, so on a post-v63 node this match finds nothing. Before the
+  SKILL.md match was added (2026-11-02) the table therefore stayed empty and
+  the bridge maturity gate below could not pass.
+
+Only skills that have a crystal get rows. File-based skills without one
+(bundled skills, most workspace skills) are credited by the SKILL.md read
+crediting pass instead (see "SKILL.md read crediting" below). The hook also
+skips A2A and validation sessions. When a row
 is written it carries the journal run it happened in (`run_id`,
 `tool_call_id`) and an `evidence` class:
 
@@ -638,8 +648,8 @@ consolidation cycle (default factor: 0.95).
 
 ### SKILL.md read crediting (PLAN-44 Phase 5a)
 
-The tracker above matches tool names against memory crystals; it never
-saw a file-based skill. `src/memory/skill-evolution/skill-reads.ts` closes
+The tracker above records only skills that have a memory crystal; most
+file-based skills have none. `src/memory/skill-evolution/skill-reads.ts` closes
 that: on every housekeeping pass it scans journal runs since a cursor,
 finds `read` (or exec) tool calls whose path is a live skill's SKILL.md,
 and records one event per (run, skill) with the run's outcome (ended
@@ -1080,9 +1090,8 @@ responses (same gate, wire name `response-<query>-<skill>`), and the manual
    passes AND the `SkillExecutionTracker` reports at least 3 run-level
    executions with a success rate in `[0.7, 1]`. If either dependency is not
    wired on the bridge, or a metric is non-finite or above 1, the answer is
-   "no": missing evidence is never permission to publish. On a post-v63 node
-   no crystal reaches 3 executions (see "What an execution row means"), so
-   this leg is currently closed.
+   "no": missing evidence is never permission to publish. Executions count
+   only once the run outcome is stamped (see "What an execution row means").
 5. Generates a SKILL.md format with frontmatter
 6. Sends to the Rust orchestrator via `orchestratorBridge.publishSkill()`
 

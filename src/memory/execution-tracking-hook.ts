@@ -2,11 +2,17 @@
  * Execution Tracking Hook: an `after_tool_call` plugin hook that feeds
  * tool execution outcomes into the SkillExecutionTracker.
  *
- * What a row here MEANS (PLAN-45 Phase 0): "a tool whose name matches a
- * skill crystal's category ran and did not report an error". That is
- * tool-level evidence (`recorded_by = 'after_tool_call'`), never a judgment
- * that the user's task succeeded. Competence consumers must not read it as
- * such; Phase 1 back-fills run-level outcomes from the event journal.
+ * What a row here MEANS (PLAN-45 Phase 0): "the agent loaded a skill in this
+ * run" (it read the skill's SKILL.md), or "a tool whose name matches a skill
+ * crystal's category ran". Either way the row is tool-level evidence
+ * (`recorded_by = 'after_tool_call'`), never a judgment that the user's task
+ * succeeded. Competence consumers must not read it as such; Phase 1
+ * back-fills run-level outcomes from the event journal by run id.
+ *
+ * The SKILL.md match is the one that fires in practice. Skill crystals carry
+ * the skill's folder or frontmatter name as `skill_category`, not a tool
+ * name, so after migration v63 removed the tool-name-keyed crystals the
+ * tool-name match found nothing and the table stayed empty.
  *
  * `reward_score` is written as NULL. The previous value was a bucket of the
  * result's character count (0.5-0.8), which also fired the hormonal "reward"
@@ -69,6 +75,65 @@ function findMatchingSkill(db: DatabaseSync, toolName: string): string | null {
 }
 
 /**
+ * The skill a `read` call loaded, when it read a SKILL.md: the skill key (its
+ * folder name) and folder. Null for any other call.
+ */
+export function skillReadTarget(
+  toolName: string,
+  params: Record<string, unknown> | undefined,
+): { key: string; dir: string } | null {
+  if (normalizeToolName(toolName) !== "read" || !params) {
+    return null;
+  }
+  const raw = [params.path, params.file_path, params.filePath].find(
+    (v): v is string => typeof v === "string",
+  );
+  if (!raw) {
+    return null;
+  }
+  const parts = raw.replace(/\\/g, "/").split("/");
+  if (parts.length < 2 || parts.at(-1)?.toLowerCase() !== "skill.md") {
+    return null;
+  }
+  const key = parts.at(-2);
+  return key ? { key, dir: parts.slice(0, -1).join("/") } : null;
+}
+
+/** The skill crystal for a SKILL.md read, by skill key or crystal path. */
+function findSkillForRead(db: DatabaseSync, target: { key: string; dir: string }): string | null {
+  try {
+    const row = db
+      .prepare(
+        `SELECT id FROM chunks
+         WHERE (COALESCE(semantic_type, 'general') = 'skill'
+                OR COALESCE(memory_type, 'plaintext') = 'skill')
+           AND COALESCE(lifecycle, 'generated') IN ('generated', 'activated', 'frozen')
+           AND COALESCE(origin, '') != 'dream'
+           AND (skill_category = ? OR path = ?)
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .get(target.key, target.dir) as { id: string } | undefined;
+    return row?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** True when this run already has a row for this skill (a re-read). */
+function alreadyRecordedForRun(db: DatabaseSync, skillId: string, runId: string): boolean {
+  try {
+    return (
+      db
+        .prepare(`SELECT 1 FROM skill_executions WHERE skill_crystal_id = ? AND run_id = ? LIMIT 1`)
+        .get(skillId, runId) !== undefined
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Publish maturity gate (mirrors checkBountyClaimQuality's execution floor in
  * skill-network-bridge.ts): re-attempt network publish once a skill has this
  * many completed executions with RUN-level evidence (PLAN-45 Phase 1.1: a
@@ -113,8 +178,16 @@ export function createExecutionTrackingHook(
         hormonalManager.stimulate("error");
       }
 
-      const skillId = findMatchingSkill(db, event.toolName);
+      const readTarget = skillReadTarget(event.toolName, event.params);
+      const skillId = readTarget
+        ? findSkillForRead(db, readTarget)
+        : findMatchingSkill(db, event.toolName);
       if (!skillId) {
+        return;
+      }
+      // One row per skill per run: the run outcome is stamped by run id, so
+      // a second read of the same SKILL.md would count the run twice.
+      if (readTarget && ctx.runId && alreadyRecordedForRun(db, skillId, ctx.runId)) {
         return;
       }
 
