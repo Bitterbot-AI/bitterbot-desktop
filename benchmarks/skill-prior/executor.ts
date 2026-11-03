@@ -276,6 +276,7 @@ export function makeExecutor(deps: ExecutorDeps) {
 export const PRICES: Record<string, { input: number; output: number; cacheRead: number }> = {
   "anthropic/claude-haiku-4-5": { input: 1, output: 5, cacheRead: 0.1 },
   "anthropic/claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3 },
+  "openai/gpt-5.4-mini": { input: 0.75, output: 4.5, cacheRead: 0.075 },
 };
 
 export function estimateUsd(

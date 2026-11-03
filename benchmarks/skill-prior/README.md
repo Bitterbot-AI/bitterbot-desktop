@@ -209,3 +209,38 @@ Main, 8 families x 8 workspaces x 3 seeds = 192 instances, 2 trials each:
   for perfectly accurate evidence. Noisy or stale records, and a second model
   vendor, are the next tests. Spend for train, pilot and main: about $40 at
   list prices.
+
+### Record accuracy (2026-11-03, same model and instances)
+
+`--phase noise` re-runs `none` and `card` as anchors and adds records with a
+controlled verifier error: each variant shows `n` logged runs whose true
+outcome is flipped with probability `eps`. Draws are nested (a higher `eps`
+only adds flips, `n = 10` extends `n = 5`). The ideal follower is a reader that
+always picks the highest shown pass rate, ties split.
+
+| Arm                 | Pass  | First read right | Ideal follower right | Minus none (pass, cluster CI) |
+| ------------------- | ----- | ---------------- | -------------------- | ----------------------------- |
+| none                | 28.1% | 27.6%            |                      |                               |
+| card (real records) | 86.5% | 95.8%            | 97.7%                | +58.3 pp [50.3, 66.1]         |
+| eps 0.1, n 5        | 89.6% | 97.7%            | 99.7%                | +61.5 pp [53.6, 69.0]         |
+| eps 0.2, n 5        | 80.7% | 88.5%            | 95.9%                | +52.6 pp [43.5, 61.5]         |
+| eps 0.3, n 5        | 68.0% | 72.9%            | 79.3%                | +39.8 pp [31.5, 48.2]         |
+| eps 0.4, n 5        | 41.7% | 45.6%            | 48.8%                | +13.5 pp [3.9, 22.9]          |
+| eps 0.3, n 10       | 75.3% | 82.0%            | 90.8%                | +47.1 pp [35.9, 57.8]         |
+
+- The anchors replicate the main run (none 28.1% vs 26.8%, card 86.5% vs
+  88.5%).
+- Every noisy arm beats no records after Holm adjustment (largest Holm p
+  0.0016, at eps 0.4). Evidence degrades smoothly with verifier error rather
+  than collapsing.
+- The model tracks the ideal follower closely: it is 2 to 8 pp below it on
+  right first reads. When the shown records have a unique best, the model
+  opens that skill first in 98.7% (real records) down to 84.4% (eps 0.4) of
+  trials; the shortfall grows as counts get close.
+- More runs offset a noisier verifier: at eps 0.3, ten logged runs instead of
+  five raise pass by 7.3 pp (48 wins / 24 losses, p 0.003; cluster CI
+  [0.0, 14.6]) and right first reads by 9.1 pp.
+- Practical reading: a verifier that is right 80% of the time keeps most of
+  the benefit (+52.6 pp); at 60% it keeps little (+13.5 pp). Show the run
+  count, require a minimum before showing a record, and treat record accuracy
+  as the quantity to protect. Spend for this phase: about $32.

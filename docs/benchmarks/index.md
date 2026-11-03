@@ -92,6 +92,13 @@ defect). Records here are exact by construction, so this measures the upper
 bound of showing accurate evidence; `benchmarks/skill-prior/README.md` has the
 full tables.
 
+Record accuracy, same instances: records with a simulated verifier that flips
+each logged outcome with probability eps (5 runs per skill) still beat no
+records at every level tested (Holm-adjusted): +61.5 pp at eps 0.1, +52.6 at
+0.2, +39.8 at 0.3, +13.5 at 0.4. The model's choices stay within 2 to 8 pp of
+an ideal reader of the same counts, and ten logged runs instead of five
+recover 7.3 pp at eps 0.3.
+
 ## Long-term memory recall (LongMemEval-S)
 
 A full 500-question run of [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval)
