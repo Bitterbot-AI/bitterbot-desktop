@@ -45,6 +45,7 @@ deterministic executor and can produce a live report on demand.
 ## Experience-guided skill prior (controlled test)
 
 `node --import tsx benchmarks/skill-prior/run.ts --phase order|headroom|arms|cards`
+(and `conventions-run.ts --phase train|pilot|main`)
 tests whether an outcome-gated, per-context bandit that reorders the
 `<available_skills>` index (`skills.prior`, default off) changes which skill the
 agent reads first and whether that changes verified task outcomes. The pool is
@@ -74,6 +75,22 @@ against no card were +3.7 pp pass, CI [-5.6, 13.0], because the model already
 avoided the decoy in 92.6% of trials; exact counts did no better than the same
 verdict in words. Evidence shown at the choice is used where order was not,
 and its main measured risk is that a wrong record misleads.
+
+Latent-convention twins, 2026-11-03, same model: each task family has four
+skills with identical descriptions whose bodies follow different house
+conventions, and a hidden per-workspace convention decides which one is right
+(each variant right in a balanced quarter of workspaces, 39-skill index). Cards
+come from forced training runs only; evaluation is on held-out seeds, 192
+instances x 2 trials per arm, six arms. Without evidence the agent passed
+26.8% (chance is 25%) and opened a wrong variant first 71% of the time. With
+verified records it passed 88.5%: +61.7 pp, 152 wins / 2 losses, family-cluster
+CI [54.2, 69.5]. A placebo line of the same shape with no outcome content did
+nothing (+1.3 pp), swapped records drove the pass rate to 1.3%, and the learned
+order (prior) added nothing alone (0.0 pp) or on top of cards (-1.0 pp). One
+of nine families was excluded by the registered truth-table rule (harness
+defect). Records here are exact by construction, so this measures the upper
+bound of showing accurate evidence; `benchmarks/skill-prior/README.md` has the
+full tables.
 
 ## Long-term memory recall (LongMemEval-S)
 

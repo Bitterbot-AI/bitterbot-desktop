@@ -137,3 +137,75 @@ qualification seeds.
   extra line into the next block, so annotated entries pointed at the decoy's
   SKILL.md. Fixed in `src/agents/system-prompt-skills.ts` (#351) before the
   run reported here. Spend for this phase, including the invalid run: about $9.
+
+## Latent-convention twins (2026-11-03, Claude Haiku 4.5)
+
+`conventions.ts` builds a harder pool: for each of nine families, four skills
+(`xp-<family>-a..d`) share one routing description word for word, and their
+bodies follow different house conventions (for example inclusive versus
+end-exclusive date windows, ERROR only versus ERROR plus FATAL). Eight named
+workspaces each have a hidden convention per family; each variant is right in
+two of eight workspaces, assigned by a seeded shuffle, so no name or position
+is right on average. Every instance is rejection-sampled so the four
+conventions give four different answers. The memory cell is
+`<workspace>:<family>`.
+
+```sh
+node --import tsx benchmarks/skill-prior/conventions-run.ts --phase train --train-seeds 2 --yes
+node --import tsx benchmarks/skill-prior/conventions-run.ts --phase pilot --pilot-seeds 1
+node --import tsx benchmarks/skill-prior/conventions-run.ts --phase main --eval-seeds 3 --trials 2 --families <list> --yes
+```
+
+- `train`: forced single-skill runs on development seeds (576). Only these
+  verified runs feed the records; they also give the truth table.
+- `pilot`: headroom gate with no card on separate development seeds. Rule:
+  wrong variant opened first in at least 30% of trials and pass at most 65%.
+- `main`: qualification seeds, six arms in the same randomized index order per
+  instance: `none`, `card` (verified record per variant in this cell),
+  `swapped` (the right variant's record exchanged with a wrong one),
+  `placebo` (a usage line of the same shape with no outcome), `prior` (order by
+  the learned ledger, top pick last), `prior-card`. The protocol is hashed on
+  the first main run; a changed protocol needs a new `--out`.
+
+Truth table: right variant forced 82.6% pass, wrong variant forced 0.2%
+(144 / 432 runs). `multi-file-rename` failed with the right variant too (0 of
+16: the agent cannot complete the rename in the validation sandbox), so the
+registered rule excluded it from `main`. Pilot gate: pass 27.8%, wrong
+variant first 69.4%: passed.
+
+Main, 8 families x 8 workspaces x 3 seeds = 192 instances, 2 trials each:
+
+| Arm        | Pass  | Read correct (first) | Read wrong variant (first) | pass^2 |
+| ---------- | ----- | -------------------- | -------------------------- | ------ |
+| none       | 26.8% | 27.6%                | 71.1%                      | 12.0%  |
+| card       | 88.5% | 95.8%                | 3.4%                       | 83.9%  |
+| swapped    | 1.3%  | 0.5%                 | 97.7%                      | 0.5%   |
+| placebo    | 28.1% | 26.3%                | 72.7%                      | 13.0%  |
+| prior      | 26.8% | 25.3%                | 74.0%                      | 15.1%  |
+| prior-card | 87.5% | 96.1%                | 2.9%                       | 81.8%  |
+
+| Contrast (pass)       | W / L / T     | Delta    | Family-cluster 95% CI | Holm p   |
+| --------------------- | ------------- | -------- | --------------------- | -------- |
+| card minus none       | 152 / 2 / 38  | +61.7 pp | [54.2, 69.5]          | primary  |
+| card minus placebo    | 148 / 3 / 41  | +60.4 pp | [52.3, 68.0]          | < 0.0001 |
+| card minus swapped    | 177 / 0 / 15  | +87.2 pp | [77.6, 95.1]          | < 0.0001 |
+| prior minus none      | 42 / 41 / 109 | 0.0 pp   | [-7.0, 7.3]           | 1.0      |
+| prior-card minus card | 13 / 17 / 162 | -1.0 pp  | [-5.2, 2.9]           | 1.0      |
+
+- When the description cannot tell the variants apart, a verified record next
+  to each one is what the agent chooses by: right first reads went from 27.6%
+  to 95.8%. The placebo shows the content does the work, not the presence of
+  an extra line.
+- Ordering by the learned prior did not move the choice, alone or with cards,
+  which replicates the arms-phase result on a pool built to give it room.
+- Without cards the agent favours the first-listed variant (45.5% pass when
+  the right variant is listed first, 18.7 to 22.2% otherwise); with cards
+  position stops mattering (85.9 to 91.2%).
+- Swapped records are followed almost perfectly (1.3% pass), so a wrong
+  record is as strong as a right one. Record accuracy is the property to
+  protect.
+- Limits: one model; engineered conventions that never change within a cell;
+  records exact by construction (100% vs 0%), so +61.7 pp is the upper bound
+  for perfectly accurate evidence. Noisy or stale records, and a second model
+  vendor, are the next tests. Spend for train, pilot and main: about $40 at
+  list prices.
