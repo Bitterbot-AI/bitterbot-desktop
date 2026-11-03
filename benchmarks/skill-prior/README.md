@@ -244,3 +244,22 @@ always picks the highest shown pass rate, ties split.
   the benefit (+52.6 pp); at 60% it keeps little (+13.5 pp). Show the run
   count, require a minimum before showing a record, and treat record accuracy
   as the quantity to protect. Spend for this phase: about $32.
+
+## Online experience study (design, not yet run)
+
+`online-run.ts` drops the agent cold into each `<workspace>:<family>` cell of
+the latent-convention pool and runs a stream of episodes with accept/reject
+feedback only. What carries forward differs by arm, with retrieval held fixed
+(same cell, all prior episodes): `none`, `lessons` (the same model writes a
+two-sentence lesson after each verdict), `episodes` (skill used, answer,
+verdict), `records` (accepted/runs per variant), `records-index` (the same
+counts as `<evidence>` lines), `records-lessons`, and a `bandit` reference
+(Thompson sampling picks the skill, forced alone into the index). Outcomes
+are credited to the last variant read. Primary: records minus lessons on the
+per-cell mean pass over episodes after the first; secondaries Holm-adjusted;
+regret against the truth-table oracle. The protocol is hashed on the first
+run. Pure logic and tests: `online.ts`, `online.test.ts`.
+
+```sh
+node --import tsx benchmarks/skill-prior/online-run.ts --episodes 8 --yes
+```
