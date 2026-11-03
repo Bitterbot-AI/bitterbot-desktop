@@ -132,3 +132,49 @@ export function deltasByFamily(
   }
   return out;
 }
+
+/**
+ * Records with controlled verifier error: each variant gets `n` logged runs
+ * whose true outcome (pass for the right variant, fail for the others) is
+ * flipped with probability `eps`. The uniform draw per run slot depends only
+ * on (seed, variant, slot), so a higher `eps` only adds flips and a larger
+ * `n` only adds runs: the dose arms are nested (common random numbers).
+ */
+export function noisyRecords(
+  variants: readonly string[],
+  correct: string,
+  eps: number,
+  n: number,
+  seed: string,
+): Record<string, SkillEvidence> {
+  const out: Record<string, SkillEvidence> = {};
+  for (const v of variants) {
+    let passed = 0;
+    for (let slot = 0; slot < n; slot++) {
+      const u =
+        createHash("sha256").update(`${seed}:${v}:${slot}`).digest().readUInt32BE(0) / 2 ** 32;
+      const truth = v === correct ? 1 : 0;
+      passed += u < eps ? 1 - truth : truth;
+    }
+    out[v] = { passed, runs: n };
+  }
+  return out;
+}
+
+/**
+ * Probability that an ideal record follower (pick the highest pass rate,
+ * break ties uniformly) picks the right variant from these records.
+ */
+export function idealPickProb(
+  cell: Readonly<Record<string, SkillEvidence>>,
+  correct: string,
+): number {
+  const rate = (e: SkillEvidence) => (e.runs ? e.passed / e.runs : 0);
+  const entries = Object.entries(cell);
+  if (entries.length === 0 || !cell[correct]) {
+    return 0;
+  }
+  const best = Math.max(...entries.map(([, e]) => rate(e)));
+  const top = entries.filter(([, e]) => rate(e) === best).map(([k]) => k);
+  return top.includes(correct) ? 1 / top.length : 0;
+}

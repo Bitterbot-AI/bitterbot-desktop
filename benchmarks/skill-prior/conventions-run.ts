@@ -28,6 +28,13 @@
  *          Primary: card minus none on pass. Secondary (Holm): card minus
  *          placebo, card minus swapped, prior minus none, prior-card minus card.
  *
+ *   noise  Record accuracy, same qualification instances and orders as main:
+ *          none, card (real records) and records with controlled verifier
+ *          error eps in {0.1, 0.2, 0.3, 0.4} over 5 runs, plus eps 0.3 over
+ *          10 runs. Primary: pass against eps; each noisy arm against none
+ *          (Holm). Mechanism: the model's right first reads against an ideal
+ *          record follower (highest shown pass rate, ties split).
+ *
  * Records go to <out>/records.jsonl (resumable by key); journal, trial dirs
  * and ledgers live under <out> (default ~/bitterbot-skill-prior/conventions),
  * never under ~/.bitterbot.
@@ -58,6 +65,8 @@ import {
   clusterBootstrapCi,
   deltasByFamily,
   holm,
+  idealPickProb,
+  noisyRecords,
   recordsFromTraining,
   shuffled,
   swapRecords,
@@ -104,8 +113,8 @@ const { values: args } = parseArgs({
 });
 
 const phase = args.phase;
-if (phase !== "train" && phase !== "pilot" && phase !== "main") {
-  throw new Error("--phase must be train | pilot | main");
+if (phase !== "train" && phase !== "pilot" && phase !== "main" && phase !== "noise") {
+  throw new Error("--phase must be train | pilot | main | noise");
 }
 const families = args.families
   ? (args.families.split(",").map((f) => f.trim()) as (typeof FAMILIES)[number][])
@@ -136,6 +145,21 @@ const candidateOf = (name: string) => CANDIDATES.find((c) => c.name === name)!;
 
 const MAIN_ARMS = ["none", "card", "swapped", "placebo", "prior", "prior-card"] as const;
 type MainArm = (typeof MAIN_ARMS)[number];
+
+/**
+ * Record-accuracy arms (phase noise): `n` logged runs per variant, each true
+ * outcome flipped with probability `eps` (nested draws, see noisyRecords).
+ * `none` and `card` (the real training records) are re-run as anchors.
+ */
+const NOISE_ARMS = [
+  { arm: "none" },
+  { arm: "card" },
+  { arm: "eps10", eps: 0.1, n: 5 },
+  { arm: "eps20", eps: 0.2, n: 5 },
+  { arm: "eps30", eps: 0.3, n: 5 },
+  { arm: "eps40", eps: 0.4, n: 5 },
+  { arm: "eps30-n10", eps: 0.3, n: 10 },
+] as const;
 
 const cellOf = (inst: ConventionInstance) => `${inst.env}:${inst.family}`;
 
@@ -585,6 +609,181 @@ async function main(): Promise<void> {
       ...posRows,
       "",
       "Reading: `card minus none` is the net benefit of verified records; `card minus placebo` separates content from the mere presence of a line; `card minus swapped` replicates the earlier content test; `prior minus none` asks whether the learned order alone moves the choice; `prior-card minus card` asks whether the two add. Read correct and read decoy score the FIRST skill opened.",
+      "",
+    );
+    Object.assign(summary, { evalSeeds, summaries, contrasts, protoHash });
+  }
+
+  if (phase === "noise") {
+    const train = [...records.values()].filter((r) => r.phase === P("train"));
+    if (train.length === 0) {
+      throw new Error("no training records: run --phase train first");
+    }
+    const evidence = recordsFromTraining(train);
+    const evalSeeds = seedsIn("qualification", 1, Number(args["eval-seeds"]), SALT);
+    const arms = args.arms
+      ? NOISE_ARMS.filter((a) => args.arms!.split(",").includes(a.arm))
+      : NOISE_ARMS;
+    const protocol = {
+      salt: SALT,
+      model: args.model,
+      families,
+      envs,
+      evalSeeds,
+      trainSeeds,
+      trials,
+      arms: NOISE_ARMS,
+      primary:
+        "pass against eps (eps10..eps40), each noisy arm minus none, exact sign test + family-cluster bootstrap",
+      correction: "Holm over the five noisy-arm-minus-none contrasts on pass",
+      mechanism: "right first reads against the ideal record follower",
+      evidence: hashOf(JSON.stringify(evidence)),
+    };
+    const protoFile = path.join(out, `protocol-${P("noise")}.json`);
+    const protoHash = hashOf(JSON.stringify(protocol));
+    try {
+      const prev = JSON.parse(await fs.readFile(protoFile, "utf-8")) as { hash: string };
+      if (prev.hash !== protoHash) {
+        throw new Error(
+          `protocol changed since the first noise run (${protoFile}); use a new --out`,
+        );
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+      await fs.writeFile(
+        protoFile,
+        JSON.stringify({ hash: protoHash, protocol }, null, 2),
+        "utf-8",
+      );
+    }
+    const insts: ConventionInstance[] = [];
+    for (const seed of evalSeeds) {
+      for (const env of envs) {
+        for (const family of families) {
+          insts.push(conventionInstance(env, family, seed));
+        }
+      }
+    }
+    const variantsOf = (inst: ConventionInstance) =>
+      [inst.correctSkill, ...inst.decoySkills].toSorted();
+    const cardFor = (inst: ConventionInstance, a: (typeof NOISE_ARMS)[number]) =>
+      a.arm === "none"
+        ? undefined
+        : a.arm === "card"
+          ? (evidence[cellOf(inst)] ?? {})
+          : noisyRecords(variantsOf(inst), inst.correctSkill, a.eps, a.n, inst.task.id);
+    confirm(insts.length * trials * arms.length);
+    for (const inst of insts) {
+      for (let t = 0; t < trials; t++) {
+        const order = shuffled(CONVENTION_POOL_NAMES, `${inst.task.id}:${t}`);
+        for (const a of arms) {
+          const ev = cardFor(inst, a);
+          await runSpec(
+            specFor(inst, P("noise"), a.arm, t, ev ? { order, evidence: ev } : { order }),
+          );
+        }
+      }
+    }
+    const rs = [...records.values()].filter((r) => r.phase === P("noise"));
+    const of = (arm: string) => rs.filter((r) => r.arm === arm);
+    const summaries = arms.map((a) => summarizeArm(of(a.arm))).filter(Boolean) as ArmSummary[];
+    const instById = new Map(insts.map((i) => [i.task.id, i]));
+    // Mechanism: ideal follower, and how often the first read is the record's unique best.
+    const mechRows = arms
+      .filter((a) => a.arm !== "none")
+      .map((a) => {
+        const list = of(a.arm);
+        let ideal = 0;
+        let uniq = 0;
+        let followed = 0;
+        for (const r of list) {
+          const inst = instById.get(r.taskId);
+          const ev = inst ? cardFor(inst, a) : undefined;
+          if (!inst || !ev) {
+            continue;
+          }
+          ideal += idealPickProb(ev, inst.correctSkill);
+          const rate = (e: { passed: number; runs: number }) => (e.runs ? e.passed / e.runs : 0);
+          const ranked = Object.entries(ev).toSorted((x, y) => rate(y[1]) - rate(x[1]));
+          if (ranked.length > 1 && rate(ranked[0]![1]) > rate(ranked[1]![1])) {
+            uniq++;
+            const first = r.read.find(
+              (n) => n === inst.correctSkill || inst.decoySkills.includes(n),
+            );
+            followed += first === ranked[0]![0] ? 1 : 0;
+          }
+        }
+        const n = list.length || 1;
+        return `| ${a.arm} | ${list.length} | ${pct(ideal / n)} | ${pct(list.reduce((s, r) => s + readCorrect(r), 0) / n)} | ${pct(list.reduce((s, r) => s + r.pass, 0) / n)} | ${uniq ? pct(followed / uniq) : "-"} (${uniq}) |`;
+      });
+    const contrasts: PairedContrast[] = [];
+    const clustered: string[] = [];
+    const pairs: Array<[string, string]> = [
+      ["card", "none"],
+      ...arms
+        .filter((a) => a.arm.startsWith("eps"))
+        .map((a) => [a.arm, "none"] as [string, string]),
+      ...arms
+        .filter((a) => a.arm.startsWith("eps"))
+        .map((a) => [a.arm, "card"] as [string, string]),
+      ["eps30-n10", "eps30"],
+    ];
+    for (const metric of ["pass", "readCorrect"] as const) {
+      for (const [a, b] of pairs) {
+        const c = pairedContrast(of(a), of(b), metric);
+        if (!c) {
+          continue;
+        }
+        contrasts.push(c);
+        const ci = clusterBootstrapCi(deltasByFamily(of(a), of(b), metric));
+        if (ci) {
+          clustered.push(
+            `| ${a} minus ${b} | ${metric} | ${(ci.mean * 100).toFixed(1)} pp | [${(ci.lo * 100).toFixed(1)}, ${(ci.hi * 100).toFixed(1)}] pp |`,
+          );
+        }
+      }
+    }
+    const primary = contrasts.filter(
+      (c) => c.metric === "pass" && c.baseline === "none" && c.arm.startsWith("eps"),
+    );
+    const adj = holm(primary.map((c) => c.pValue ?? 1));
+    report.push(
+      `Protocol hash ${protoHash.slice(0, 16)} (${protoFile}). Evaluation seeds ${evalSeeds.join(", ")}; ${insts.length} instances x ${trials} trial(s). Real records come from ${train.length} forced training runs; eps arms log n runs per variant with each true outcome flipped with probability eps.`,
+      "",
+      "## Arms",
+      "",
+      renderArmTable(summaries),
+      "",
+      renderAnswers(arms.map((a) => [a.arm, of(a.arm)] as [string, TrialRecord[]])),
+      "",
+      "## Mechanism: the model against an ideal record follower",
+      "",
+      "| Arm | Trials | Ideal follower picks right | Model first read right | Model pass | First read = record's unique best (n) |",
+      "| --- | ---: | ---: | ---: | ---: | ---: |",
+      ...mechRows,
+      "",
+      "## Paired contrasts (exact sign test, instance bootstrap)",
+      "",
+      renderContrasts(contrasts),
+      "",
+      "## Family-cluster bootstrap",
+      "",
+      "| Contrast | Metric | Mean delta | 95% CI |",
+      "| --- | --- | ---: | ---: |",
+      ...clustered,
+      "",
+      "## Noisy records against no records, Holm-adjusted (pass)",
+      "",
+      "| Contrast | Raw p | Holm p |",
+      "| --- | ---: | ---: |",
+      ...primary.map(
+        (c, i) =>
+          `| ${c.arm} minus ${c.baseline} | ${(c.pValue ?? 1).toFixed(4)} | ${adj[i]!.toFixed(4)} |`,
+      ),
+      "",
+      "Reading: the eps arms trace how fast verified evidence loses value as the verifier errs; the ideal-follower column is what a reader that always picks the highest shown pass rate would get, so the gap to the model's right first reads measures whether the model uses noisy counts well.",
       "",
     );
     Object.assign(summary, { evalSeeds, summaries, contrasts, protoHash });

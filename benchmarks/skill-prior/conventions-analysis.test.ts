@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   clusterBootstrapCi,
   holm,
+  idealPickProb,
+  noisyRecords,
   recordsFromTraining,
   shuffled,
   swapRecords,
@@ -99,5 +101,50 @@ describe("shuffled", () => {
     const xs = ["a", "b", "c", "d", "e"];
     expect(shuffled(xs, "s").toSorted()).toEqual(xs);
     expect(shuffled(xs, "s")).toEqual(shuffled(xs, "s"));
+  });
+});
+
+describe("noisyRecords", () => {
+  const vs = ["a", "b", "c", "d"];
+  it("is exact at eps 0", () => {
+    const r = noisyRecords(vs, "b", 0, 5, "s");
+    expect(r.b).toEqual({ passed: 5, runs: 5 });
+    expect(r.a).toEqual({ passed: 0, runs: 5 });
+  });
+  it("nests: higher eps only adds flips, larger n only adds runs", () => {
+    for (let i = 0; i < 50; i++) {
+      const lo = noisyRecords(vs, "a", 0.1, 5, `s${i}`);
+      const hi = noisyRecords(vs, "a", 0.3, 5, `s${i}`);
+      const big = noisyRecords(vs, "a", 0.3, 10, `s${i}`);
+      expect(hi.a!.passed).toBeLessThanOrEqual(lo.a!.passed);
+      for (const v of ["b", "c", "d"]) {
+        expect(hi[v]!.passed).toBeGreaterThanOrEqual(lo[v]!.passed);
+      }
+      for (const v of vs) {
+        expect(big[v]!.passed).toBeGreaterThanOrEqual(hi[v]!.passed);
+        expect(big[v]!.passed - hi[v]!.passed).toBeLessThanOrEqual(5);
+      }
+    }
+  });
+  it("flip rate tracks eps", () => {
+    let flips = 0;
+    let total = 0;
+    for (let i = 0; i < 400; i++) {
+      const r = noisyRecords(vs, "a", 0.3, 5, `t${i}`);
+      flips += 5 - r.a!.passed + r.b!.passed + r.c!.passed + r.d!.passed;
+      total += 20;
+    }
+    expect(flips / total).toBeGreaterThan(0.27);
+    expect(flips / total).toBeLessThan(0.33);
+  });
+});
+
+describe("idealPickProb", () => {
+  it("handles unique best, ties and inversions", () => {
+    const e = (passed: number) => ({ passed, runs: 5 });
+    expect(idealPickProb({ a: e(4), b: e(1), c: e(0), d: e(2) }, "a")).toBe(1);
+    expect(idealPickProb({ a: e(3), b: e(3), c: e(0), d: e(2) }, "a")).toBe(0.5);
+    expect(idealPickProb({ a: e(2), b: e(3), c: e(0), d: e(2) }, "a")).toBe(0);
+    expect(idealPickProb({}, "a")).toBe(0);
   });
 });
