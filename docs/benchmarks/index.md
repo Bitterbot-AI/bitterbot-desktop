@@ -99,6 +99,13 @@ records at every level tested (Holm-adjusted): +61.5 pp at eps 0.1, +52.6 at
 an ideal reader of the same counts, and ten logged runs instead of five
 recover 7.3 pp at eps 0.3.
 
+Second vendor, same design: on OpenAI gpt-5.4-mini verified records lifted
+pass from 29.2% to 80.5% (+51.3 pp, 138 wins / 4 losses, cluster CI
+[43.2, 59.4]); the placebo line again did nothing (+1.8 pp) and swapped
+records dropped the pass rate to 6.0%. Unlike Haiku, gpt-5.4-mini gained a
+further 8.6 pp when the learned order was added to the cards (Holm p 0.0002),
+though order alone still did not help.
+
 ## Long-term memory recall (LongMemEval-S)
 
 A full 500-question run of [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval)

@@ -245,6 +245,44 @@ always picks the highest shown pass rate, ties split.
   count, require a minimum before showing a record, and treat record accuracy
   as the quantity to protect. Spend for this phase: about $32.
 
+### Second vendor (2026-11-04, OpenAI gpt-5.4-mini)
+
+Same design, seeds, families and arms, with the model swapped
+(`--model openai/gpt-5.4-mini`; phases tagged `cv-*@gpt-5.4-mini`, so the
+records and protocol are separate). gpt-5.4-mini trained its own truth table
+(512 forced runs: right variant 96.1%, wrong 0.8%) and passed the pilot gate
+(none 23.4%, wrong-first 70.3%). Main: 192 instances x 2 trials per arm, no
+errors.
+
+| Arm        | Pass (gpt-5.4-mini) | Pass (Haiku 4.5) | First read right (gpt-5.4-mini) |
+| ---------- | ------------------- | ---------------- | ------------------------------- |
+| none       | 29.2%               | 26.8%            | 27.9%                           |
+| card       | 80.5%               | 88.5%            | 85.9%                           |
+| swapped    | 6.0%                | 1.3%             | 4.7%                            |
+| placebo    | 31.0%               | 28.1%            | 31.0%                           |
+| prior      | 22.1%               | 26.8%            | 20.6%                           |
+| prior-card | 89.1%               | 87.5%            | 91.4%                           |
+
+| Contrast (pass)       | Wins / losses | Mean delta | Cluster 95% CI | Holm p |
+| --------------------- | ------------- | ---------- | -------------- | ------ |
+| card minus none       | 138 / 4       | +51.3 pp   | [43.2, 59.4]   | <0.001 |
+| card minus placebo    | 141 / 8       | +49.5 pp   | [41.1, 57.0]   | <0.001 |
+| card minus swapped    | 168 / 1       | +74.5 pp   | [64.8, 83.6]   | <0.001 |
+| prior minus none      | 33 / 55       | -7.0 pp    | [-14.3, 0.5]   | 0.99   |
+| prior-card minus card | 39 / 12       | +8.6 pp    | [3.6, 14.3]    | 0.0002 |
+
+- The primary result replicates across vendors: verified records lift pass by
+  about 51 pp (Haiku 62 pp), the placebo line does nothing, and swapped
+  records pull the model below its no-record rate.
+- One difference: on gpt-5.4-mini the learned order adds to the cards
+  (+8.6 pp, Holm p 0.0002), while on Haiku it did not (-1.0 pp). gpt-5.4-mini
+  follows its cards less tightly (wrong first read 12.5% vs Haiku 3.4%) and
+  has a stronger first-listed bias without cards (53.5% pass when the right
+  variant is listed first vs about 20% otherwise). Putting the best-supported
+  variant first therefore recovers trials where the card alone did not win.
+  Order alone still does not help (-7.0 pp, CI spans 0).
+- Spend for this replication: about $16 at list prices.
+
 ## Online experience study (design, not yet run)
 
 `online-run.ts` drops the agent cold into each `<workspace>:<family>` cell of
