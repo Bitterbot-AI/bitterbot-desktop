@@ -106,6 +106,15 @@ records dropped the pass rate to 6.0%. Unlike Haiku, gpt-5.4-mini gained a
 further 8.6 pp when the learned order was added to the cards (Holm p 0.0002),
 though order alone still did not help.
 
+Learning online from accept/reject feedback (cold start, 64 workspace and
+family cells, 8 episodes, Claude Haiku 4.5): a plain log of earlier episodes
+(skill used, answer, verdict) raised mean pass after the first episode from
+27.2% to 63.6% (+36.4 pp, 49 of 64 cells better), more than model-written
+lessons (40.6%), counts in the notes (41.3%), counts on the skill index
+(56.9%) or a Thompson-sampling reference (49.6%). The registered primary
+(counts above lessons) was null. Agents with counts or lessons kept going
+back to a skill after it was rejected; agents with the episode log moved on.
+
 ## Long-term memory recall (LongMemEval-S)
 
 A full 500-question run of [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval)

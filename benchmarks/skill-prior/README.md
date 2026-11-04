@@ -283,7 +283,7 @@ errors.
   Order alone still does not help (-7.0 pp, CI spans 0).
 - Spend for this replication: about $16 at list prices.
 
-## Online experience study (design, not yet run)
+## Online experience study (2026-11-04)
 
 `online-run.ts` drops the agent cold into each `<workspace>:<family>` cell of
 the latent-convention pool and runs a stream of episodes with accept/reject
@@ -301,3 +301,49 @@ run. Pure logic and tests: `online.ts`, `online.test.ts`.
 ```sh
 node --import tsx benchmarks/skill-prior/online-run.ts --episodes 8 --yes
 ```
+
+### Result (2026-11-04, Claude Haiku 4.5, 64 cells x 8 episodes per arm)
+
+| Arm             | e0    | e1    | e3    | e5    | e7    | Mean e1+ | Regret |
+| --------------- | ----- | ----- | ----- | ----- | ----- | -------- | ------ |
+| none            | 21.9% | 35.9% | 17.2% | 26.6% | 28.1% | 27.2%    | 340    |
+| lessons         | 23.4% | 39.1% | 31.3% | 48.4% | 43.8% | 40.6%    | 279    |
+| episodes        | 25.0% | 39.1% | 71.9% | 67.2% | 70.3% | 63.6%    | 175    |
+| records         | 34.4% | 31.3% | 35.9% | 43.8% | 46.9% | 41.3%    | 269    |
+| records-index   | 26.6% | 31.3% | 53.1% | 68.8% | 78.1% | 56.9%    | 204    |
+| records-lessons | 31.3% | 37.5% | 48.4% | 48.4% | 46.9% | 44.9%    | 255    |
+| bandit          | 21.9% | 32.8% | 43.8% | 54.7% | 64.1% | 49.6%    | 240    |
+
+| Contrast (mean pass e1+, paired by cell) | W / L   | Delta    | Family-cluster CI | Holm p    |
+| ---------------------------------------- | ------- | -------- | ----------------- | --------- |
+| records minus lessons (primary)          | 19 / 21 | +0.7 pp  | [-13.4, 15.6]     | 0.68 *    |
+| records minus none                       | 27 / 20 | +14.1 pp | [-0.4, 31.0]      | 0.57      |
+| lessons minus none                       | 33 / 20 | +13.4 pp | [-2.5, 29.2]      | 0.20      |
+| records-lessons minus records            | 21 / 17 | +3.6 pp  | [-11.8, 20.8]     | 0.63      |
+| records minus episodes                   | 12 / 36 | -22.3 pp | [-40.2, -2.7]     | 1.00 \*\* |
+| records-index minus records              | 32 / 15 | +15.6 pp | [-0.7, 30.6]      | 0.047     |
+| episodes minus none (reference)          | 49 / 9  | +36.4 pp | [23.0, 49.6]      | <0.001 *  |
+
+\* unadjusted sign-test p (primary or reference). \*\* one-sided test in the
+predicted direction (records above episodes); the observed direction is the
+opposite.
+
+- The primary prediction failed: summarized counts in the notes did no better
+  than model-written lessons (+0.7 pp).
+- The raw episode log was the best memory format, by a wide margin: 63.6% mean
+  pass after the first episode, +36.4 pp over no memory (49 / 9 cells), and
+  above the Thompson-sampling reference (49.6%). This contrast was not the
+  registered primary, so it is a finding to confirm, not a confirmed one.
+- The gain runs through skill choice in every arm: when the last variant read
+  is the right one, pass is 86 to 94%; when it is wrong, 2 to 10%.
+- Mechanism: every memory arm repeats an accepted skill (95 to 99% stay after
+  an accept). They differ after a rejection. Agents with the episode log
+  switch away from the rejected skill (stay 33%, about chance among four);
+  agents with counts in the notes go back to it 68% of the time, and with
+  lessons 59%. Counts as `<evidence>` on the index (records-index) sit in
+  between (37%) and recover most of the gap. Reading: a skill named in a
+  memory note gets picked again even when the note says it failed.
+- Thompson sampling keeps exploring after a win (stays 57%), which costs it in
+  an 8-episode horizon with near-deterministic outcomes; a win-stay,
+  lose-shift reader of the episode log does better here.
+- Spend: about $46 (agent runs plus lesson calls).
