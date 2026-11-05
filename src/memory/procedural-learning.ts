@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { ExperienceMemory } from "./experience-memory.js";
+import { FailureExperiments } from "./failure-experiments.js";
 import { LearningStrategyLab } from "./learning-strategy.js";
 import {
   addLearningCost,
@@ -26,6 +27,10 @@ export class ProceduralLearning {
   readonly experience: ExperienceMemory;
   readonly associations: ProcedureAssociationHost;
   private strategyLab: LearningStrategyLab | null = null;
+  private failureExperimentRunner: FailureExperiments | null = null;
+  get failureExperiments(): FailureExperiments {
+    return (this.failureExperimentRunner ??= new FailureExperiments(this.store));
+  }
   /** Explicit host access only. Lazy construction does not enable background learning. */
   get strategies(): LearningStrategyLab {
     return (this.strategyLab ??= new LearningStrategyLab(this.store));
@@ -73,6 +78,7 @@ export class ProceduralLearning {
   }
   async close(): Promise<void> {
     this.closing = true;
+    await this.failureExperimentRunner?.close();
     await Promise.allSettled(this.inFlight);
     await this.strategyLab?.close();
     this.store.db.close();
@@ -257,6 +263,7 @@ export class ProceduralLearning {
       .all();
     return {
       mode: this.store.config.mode,
+      automaticExperiments: this.failureExperiments.status(),
       counts,
       costs: this.store.costs(),
       calibration,

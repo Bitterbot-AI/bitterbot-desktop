@@ -54,6 +54,8 @@ type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAK
 
 A cycle is triggered by a timer (default tick every 120 minutes, adaptive between 30 and 240 minutes by default), manually via `MemoryIndexManager.dream()`, or by an **emotional mini-dream** (see below). A scheduled full cycle also needs at least one new conversation, 60 minutes idle and 8 hours since the last full cycle (`minNewSessions`, `minIdleMinutes`, `minHoursBetween`).
 
+The same scheduled tick checks a dedicated [failure-learning lane](learning-strategy-lab.md#automatic-failure-experiments) before the creative-cycle gate. On the default agent, it can propose and test improvements after the idle threshold even if there are no new turns or a full dream ran recently. It shares the production evolution cadence (24 hours by default) and the full-cycle hook's single run, with durable dispatch limits and pause checks. Its task gate, canary and rollback modules retain promotion authority. The lane is serialized with other memory maintenance and may defer it while network work finishes; it does not consume the creative-cycle counters or run in emotional mini-dreams.
+
 The minimum chunks required to trigger a dream cycle is **5**, so the dream engine activates within a single conversation session rather than requiring days of accumulated data.
 
 After each dream cycle completes, the engine also performs an **RLM Working Memory rewrite** — updating MEMORY.md as a recursive state vector. See [Working Memory](./working-memory.md) for details.

@@ -551,6 +551,8 @@ export async function publishStaged(
     timestamp?: number;
     /** Pin owner-reviewed bytes across the final storage read. */
     expectedContent?: string;
+    /** Refuse to replace an incumbent changed since behavioral validation. */
+    expectedLiveContent?: string | null;
     /** Install a new skill without replacing a concurrently created live file. */
     createOnly?: boolean;
   },
@@ -568,6 +570,9 @@ export async function publishStaged(
   }
   // Snapshot the previous live, if any.
   const prevLive = await readLive(roots, params.name);
+  if (params.expectedLiveContent !== undefined && prevLive !== params.expectedLiveContent) {
+    throw new Error("The live skill changed during validation. Compare against it again.");
+  }
   if (params.createOnly && prevLive !== null)
     throw new Error("A live skill already uses that name.");
   let previousArchived: ArchivedVersion | null = null;

@@ -12,12 +12,12 @@ The skills pipeline handles the full lifecycle of autonomous skill generation: f
 
 ## How skills are learned today (PLAN-42/44/45)
 
-This production loop is on by default (`skills.evolution.enabled`, default `true`). It runs when the dream-cycle gates, model availability, evidence, cadence and budgets permit; setting the flag does not guarantee a proposal or promotion on every cycle.
+This production loop is on by default (`skills.evolution.enabled`, default `true`). The dream engine coordinates it as a dedicated learning lane: an idle scheduled tick can run it even when the full creative cycle skips. The default agent's shadow procedural service supplies durable experiment records and dispatch limits. Model availability, evidence, the evolution cadence (24 hours by default), idle state and usage budgets still apply; a tick does not guarantee a proposal or promotion. The full-cycle hook joins the same lane. See [automatic failure experiments](learning-strategy-lab.md#automatic-failure-experiments) for controls and recovery.
 
 The separate [Learning Strategy Lab](learning-strategy-lab.md) is also available by default, in shadow mode, with verified-experience capture for host-supplied acquisition runs. It is a host-invoked research facility: its candidates are not automatically promoted into this production pipeline. Its synthetic experiment results and failed qualification gates are recorded in the [benchmark archive](../../benchmarks/learning-strategy/README.md).
 
 The live learning path is the skill-evolution pass in `src/memory/skill-evolution/`,
-run as a dream-engine post-cycle hook:
+run from idle dream ticks or the dream-engine post-cycle hook:
 
 ```
 Journaled runs (user prompt, tool outcomes, lifecycle)

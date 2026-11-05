@@ -1,6 +1,14 @@
 export const FIELD_HELP: Record<string, string> = {
   "memory.proceduralLearning.mode":
-    "Default shadow: make the per-agent evidence store and host-only strategy lab available on first use. Off disables the service; active is for explicit host adapters and cannot run the strategy lab. This setting does not schedule experiments, inject lessons into live prompts, or publish candidates.",
+    "Default shadow: enable the per-agent evidence store, host-only strategy lab, and automatic failure-experiment coordinator. Off disables this service and its idle lane; active is for explicit host adapters. Production skill evolution remains separately controlled by skills.evolution.enabled. Research candidates are never activated by this setting.",
+  "memory.proceduralLearning.automation.enabled":
+    "Default on in shadow mode: idle dream ticks run failure-driven skill experiments on the default agent, using the existing evolution cadence, usage budgets, task gates and canary rollback. Disable to retain the lab and the legacy full-dream evolution hook without the idle coordinator. Restart to apply.",
+  "memory.proceduralLearning.automation.maxLlmCalls":
+    "Maximum model callback dispatches per automatic learning cycle (default 64). Reserved before dispatch, including failed calls. Not a token, dollar, or provider-request count; existing usage budgets still apply.",
+  "memory.proceduralLearning.automation.maxAgentTurns":
+    "Maximum trial agent turns per automatic learning cycle (default 240). A turn can make multiple provider requests. Exhaustion holds the candidate instead of scoring a failure.",
+  "memory.proceduralLearning.automation.maxWallMinutes":
+    "Stop dispatching work and hold promotion after this many minutes (default 60). An in-flight request finishes under its existing timeout; shutdown drains it before closing the evidence store.",
   "memory.proceduralLearning.experienceMemory.enabled":
     "Capture redacted experience from settled, independently checked acquisition runs when a registered host adapter supplies an extractor. On by default. Held-out runs are excluded; shadow-mode recall requires explicit shadow evaluation. Does not capture ordinary conversations.",
   "p2p.enabled":

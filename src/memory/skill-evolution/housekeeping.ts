@@ -75,6 +75,7 @@ export async function runHousekeeping(
   /** PLAN-45 4.3: peer skills withheld from every run on regression attestations this pass. */
   attestationDemotions?: string[];
 }> {
+  deps.assertCanValidate?.();
   // PLAN-44 Phase 5a: the usage signal. Runs first so the lifecycle
   // counters the validation gate's regression check reads are current.
   let skillReads: { scannedRuns: number; credited: number } | undefined;
@@ -212,6 +213,10 @@ export async function runHousekeeping(
     }
   }
   const validation = await runValidationGate({
+    ...(deps.assertCanValidate ? { assertCanValidate: deps.assertCanValidate } : {}),
+    ...(deps.failureExperiments
+      ? { recordExperimentVerdict: deps.failureExperiments.verdict }
+      : {}),
     journal: deps.journal,
     llmCall: deps.llmCall,
     ...(storeOpts.configDir ? { storeOpts } : {}),

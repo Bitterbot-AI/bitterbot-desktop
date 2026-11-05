@@ -21,6 +21,18 @@
 
 import type { DatabaseSync } from "node:sqlite";
 
+/** Learning needs user idle time, but does not consume the creative-cycle counters. */
+export function isDreamLearningIdle(
+  input: { now: number; lastUserTurnAt: number },
+  minIdleMinutes: number,
+): boolean {
+  return (
+    Number.isFinite(minIdleMinutes) &&
+    minIdleMinutes >= 0 &&
+    input.now - input.lastUserTurnAt >= minIdleMinutes * 60_000
+  );
+}
+
 export type DreamGateConfig = {
   minNewSessions: number;
   minIdleMinutes: number;

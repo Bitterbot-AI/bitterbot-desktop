@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -5,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readCanaryRegistry } from "../../agents/skills/canary-registry.js";
 import { readProvenance } from "../../agents/skills/impact-trail.js";
 import { readLive, resolveStorageRoots } from "../../agents/skills/skill-storage.js";
+import { LearningDispatchStopped } from "../learning-dispatch-stopped.js";
 import { appendFixtureRun, makeFixtureJournal } from "./__fixtures__/journal-fixture.js";
 import { bootstrapMeanCi } from "./bootstrap-ci.js";
 import { applyProposal } from "./proposal-apply.js";
@@ -362,6 +364,120 @@ describe("runValidationGate (PLAN-44 Phase 2)", () => {
           answer: variant === "candidate" ? "FINAL: PASS" : "FINAL: nope",
           skillRead: variant === "candidate",
         };
+
+  it("rechecks host permission before promotion and records the exact measured hash", async () => {
+    await stage();
+    await growCorpus(6);
+    let checks = 0;
+    const receipts: Array<{ hash: string; outcome: string }> = [];
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      runTask: winningRunner,
+      trialsPerTask: 1,
+      assertCanValidate: () => {
+        if (++checks > 1) throw new LearningDispatchStopped("paused");
+      },
+      recordExperimentVerdict: (hash, result) => {
+        receipts.push({ hash, outcome: result.outcome });
+      },
+    });
+    expect(outcomes[0]).toMatchObject({
+      outcome: "held",
+      detail: expect.stringContaining("paused"),
+    });
+    expect(receipts).toEqual([{ hash: expect.any(String), outcome: "held" }]);
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
+    const meta = JSON.parse(
+      await fs.readFile(
+        path.join(roots.stagingRoot, "curl-timeout-guard", ".evolution-meta.json"),
+        "utf8",
+      ),
+    ) as { contentHash: string };
+    expect(receipts[0]?.hash).toBe(meta.contentHash);
+  });
+
+  it("holds when staged bytes change during otherwise successful trials", async () => {
+    await stage();
+    await growCorpus(6);
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    let changed = false;
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      trialsPerTask: 1,
+      runTask: async (task, variant) => {
+        if (!changed) {
+          changed = true;
+          await fs.writeFile(
+            path.join(roots.stagingRoot, "curl-timeout-guard", "SKILL.md"),
+            SKILL_MD + "\nChanged after trials started.",
+          );
+        }
+        return winningRunner(task, variant);
+      },
+    });
+    expect(outcomes[0]).toMatchObject({
+      outcome: "held",
+      detail: "staged-content-changed-during-validation",
+    });
+    expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
+  });
+
+  it("binds the final storage publication to the evaluated bytes", async () => {
+    await stage();
+    await growCorpus(6);
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    let checks = 0;
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      trialsPerTask: 1,
+      runTask: winningRunner,
+      assertCanValidate: () => {
+        if (++checks === 2)
+          writeFileSync(
+            path.join(roots.stagingRoot, "curl-timeout-guard", "SKILL.md"),
+            SKILL_MD + "\nChanged at publication.",
+          );
+      },
+    });
+    expect(outcomes[0]?.outcome).toBe("error");
+    expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
+  });
+
+  it("preserves a live skill edited after its incumbent trials", async () => {
+    await stage();
+    await growCorpus(6);
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const liveDir = path.join(roots.liveRoot, "curl-timeout-guard");
+    await fs.mkdir(liveDir, { recursive: true });
+    await fs.writeFile(path.join(liveDir, "SKILL.md"), SKILL_MD + "\nOriginal baseline.");
+    const edited = SKILL_MD + "\nOwner changed this during the experiment.";
+    let checks = 0;
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      trialsPerTask: 1,
+      runTask: winningRunner,
+      assertCanValidate: () => {
+        if (++checks === 2) writeFileSync(path.join(liveDir, "SKILL.md"), edited);
+      },
+    });
+    expect(outcomes[0]).toMatchObject({
+      outcome: "error",
+      detail: expect.stringContaining("live skill changed"),
+    });
+    expect(await readLive(roots, "curl-timeout-guard")).toBe(edited);
+    expect(
+      (await readCanaryRegistry({ configDir: tmpDir })).skills["curl-timeout-guard"],
+    ).toBeUndefined();
+  });
 
   it("auto-flips to tasks mode once the corpus has 5 reviewed capability tasks (D-2)", async () => {
     await stage();
