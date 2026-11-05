@@ -1,0 +1,27 @@
+Getting closer to fully autonomous learning, step by step…
+
+Can an AI agent turn a successful repair into something it can do again—without reasoning through the whole problem from scratch?
+
+We’re testing that in Bitterbot.
+
+The agent discovered repairs while investigating failed synthetic support tasks. We verified those repairs, then asked a model to turn the evidence into conditional, executable procedures.
+
+Two independently generated procedures each:
+
+• Fixed 12 of 28 additional failed recorded states—43%.
+• Preserved all 16 already-working states, without changing them.
+• Required zero LLM calls during reuse.
+
+Generating the procedures required model calls. Executing them didn’t.
+
+The most interesting moment came when an agent applied a remembered repair, checked the result, saw that it hadn’t worked—and discovered an additional intervention. Removing either intervention made the failure return.
+
+That points toward a practical learning loop:
+
+Reuse what worked → verify the outcome → investigate what remains broken → retain the next verified repair.
+
+The limits matter: these are development results from four previously seen synthetic cases. Executing the procedures tied ordinary advice at 6/12 on the original inputs, and the qualification gate failed. Broader transfer remains unproven.
+
+We have a working piece of the learning loop: agent-discovered experience becoming reusable behavior, with evidence attached.
+
+Evidence and code: https://github.com/Bitterbot-AI/bitterbot-desktop/tree/main/benchmarks/learning-strategy/published/telecom-repair-reuse-v1

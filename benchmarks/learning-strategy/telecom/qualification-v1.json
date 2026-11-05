@@ -1,0 +1,1619 @@
+{
+  "commit": "989d3285ae669e49503324bdb9981bf14fccedeb",
+  "python": "3.12.14 (main, Aug 25 2026, 14:01:42) [MSC v.1944 64 bit (AMD64)]",
+  "dependencies": {
+    "addict": "2.4.0",
+    "annotated-types": "0.8.0",
+    "cachebox": "5.2.3",
+    "colorama": "0.4.6",
+    "deepdiff": "9.1.0",
+    "docstring_parser": "0.18.0",
+    "loguru": "0.7.3",
+    "orderly-set": "5.5.0",
+    "pip": "25.0.1",
+    "pydantic": "2.14.2",
+    "pydantic_core": "2.50.2",
+    "python-dotenv": "1.2.4",
+    "PyYAML": "6.0.3",
+    "toml": "0.10.2",
+    "typing_extensions": "4.16.0",
+    "typing-inspection": "0.4.4",
+    "tzdata": "2026.6",
+    "win32_setctime": "1.2.1"
+  },
+  "rows": [
+    {
+      "index": 0,
+      "id": "[mobile_data_issue]airplane_mode_on|data_mode_off[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 1
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 1,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 1
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 2,
+      "id": "[mobile_data_issue]data_saver_mode_on|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          true,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 1
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 3,
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          true,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 4,
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          true,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 5,
+      "id": "[mobile_data_issue]data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 6,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 7,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_saver_mode_on[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 8,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 9,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 10,
+      "id": "[mobile_data_issue]bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          true,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 11,
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          true,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 12,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 13,
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          true,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 14,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 7
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 15,
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 7
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 17,
+      "id": "[service_issue]airplane_mode_on|overdue_bill_suspension[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 20,
+      "id": "[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 7
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 21,
+      "id": "[service_issue]break_apn_settings|overdue_bill_suspension|unseat_sim_card[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 7
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 28,
+      "id": "[mms_issue]break_app_storage_permission|data_usage_exceeded[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 1
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 29,
+      "id": "[mms_issue]break_apn_mms_setting|user_abroad_roaming_enabled_off[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 30,
+      "id": "[mms_issue]bad_network_preference|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 1
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 31,
+      "id": "[mms_issue]bad_network_preference|break_app_both_permissions[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 32,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|data_usage_exceeded[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 33,
+      "id": "[mms_issue]break_app_storage_permission|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 34,
+      "id": "[mms_issue]bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 35,
+      "id": "[mms_issue]break_apn_mms_setting|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 36,
+      "id": "[mms_issue]bad_network_preference|break_app_sms_permission|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 3
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 2
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 37,
+      "id": "[mms_issue]airplane_mode_on|break_app_both_permissions|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 6
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 38,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_usage_exceeded[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 39,
+      "id": "[mms_issue]break_apn_mms_setting|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 40,
+      "id": "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_usage_exceeded[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 41,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|unseat_sim_card[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 42,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|break_app_storage_permission|data_mode_off|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 43,
+      "id": "[mms_issue]bad_network_preference|break_app_sms_permission|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 5
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 4
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 44,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_mode_off|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 8
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 7
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 45,
+      "id": "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 9
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 8
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 46,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Hard]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 9
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 8
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 47,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:None]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 10
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 9
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 48,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 10
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 9
+      },
+      "unrelatedTamperRejected": true
+    },
+    {
+      "index": 49,
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "noop": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          false
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 0
+      },
+      "reference": {
+        "passed": true,
+        "nativePassed": true,
+        "checks": [
+          true,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 11
+      },
+      "referenceErrors": [],
+      "omitFirst": {
+        "passed": false,
+        "nativePassed": false,
+        "checks": [
+          false,
+          true
+        ],
+        "replayMatch": true,
+        "unrelatedPreserved": true,
+        "toolCalls": 10
+      },
+      "unrelatedTamperRejected": true
+    }
+  ]
+}

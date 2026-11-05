@@ -1,0 +1,50 @@
+{
+  "kind": "published-benchmark-evidence-bundle",
+  "sourceRun": "telecom-guarded-procedure-v1",
+  "sourceAnalysisHash": "828df5d68a2f8d1405270b28ef9fdcb5c565387f20e8558849e5324b1522e113",
+  "sourceAuditHash": "acb619d98d80daf08041e2e86f3427feda5af428c986b7f92f87f22c7eedbbeb",
+  "matplotlib": "3.11.2",
+  "files": {
+    "evidence/analysis.json": "828df5d68a2f8d1405270b28ef9fdcb5c565387f20e8558849e5324b1522e113",
+    "evidence/artifacts.json": "e1d9c76ef84040a0925bebba1ff97483bb934b5971c3ef3252f8fc5484aba806",
+    "evidence/audit.json": "acb619d98d80daf08041e2e86f3427feda5af428c986b7f92f87f22c7eedbbeb",
+    "evidence/complete.json": "ea667d452e17e5c6e2d24b8a5a8955a4965267665866795717b302db8306e16e",
+    "evidence/protocol.json": "5639e2a487af23e42074abb27efc5eefef9fa903b7e0cacd21cb855e52788595",
+    "evidence/trials.jsonl": "d7309f393225f1d9f50623f7917b50af2d23e912b0093380aaff5c07dad58853",
+    "linkedin-graphic.png": "67d081f80dbf513e3aba884b61574adda623bb965a016b6e25f7fd5e897724b9",
+    "linkedin-graphic.svg": "9ef26716069097d5a61ada8f80ef79996d4708d5f6bfa1b99bc22e3431e9b42b",
+    "prepare-reuse-social.py": "c17bf317f24bdbcddf517ca7d1f53d266739c871858ba236e160dda0ef08075d",
+    "README.md": "c81027855122c87e15415e0cb958f3d14c27e9e9173301b47beb7b6f0b735aa4",
+    "linkedin-post.txt": "565fb78f5032d66f17ec12a4f11de429cd99578b916060fab0bb766beb92396b",
+    "linkedin-graphic-branded.png": "65ec62bf4fb5e69732db801cb877a5a188c624df425e9af7f37eaca2a901f788",
+    "linkedin-graphic-branded.svg": "693b9568459b4f1f0441f22a5ecf4a1c22eaae91aaae81c3522caa9c0c006da7",
+    "style-reuse-bitterbot.py": "564c5825321a4a1af54c5db9954cbd3647a526b676cf4e25d98d870a38b61857"
+  },
+  "scope": "Readable derived evidence; full raw runs and replay dependencies are preserved in ../../data with a per-file SHA-256 manifest.",
+  "branding": {
+    "reference": "Bitterbot_Cognitum_Architecture_Proposal.pdf",
+    "referenceSha256": "e20509fafd4f97c3aa0bc3a9e74a78b325cfd3ac60d30fa6ca72d12ec394fefc",
+    "logoSource": "docs/Bitterbot_logo.svg",
+    "logoSha256": "06a3718e6e7130d3bd29c55930a55a8aa132e60ec56aa21648ac262663d4c892",
+    "fontSource": "desktop/renderer/public/fonts/Geist-Variable.woff2",
+    "fontSha256": "46525b05bbf4527d263f8624ca7024c7d0dce3c64430267d30c31c6dd3821e4d",
+    "palette": {
+      "plum": "#17101F",
+      "purple": "#9333EA",
+      "purple_light": "#C084FC",
+      "purple_deep": "#7E22CE",
+      "logo": "#A855F7",
+      "surface": "#FAF9FE",
+      "lavender": "#F0EDF9",
+      "ink": "#39333F",
+      "muted": "#6B6472",
+      "line": "#E3DBEA",
+      "white": "#FFFFFF"
+    },
+    "outputs": [
+      "linkedin-graphic-branded.png",
+      "linkedin-graphic-branded.svg"
+    ],
+    "note": "Brand restyle only; numerical evidence unchanged. LinkedIn text remains an unpublished draft."
+  }
+}

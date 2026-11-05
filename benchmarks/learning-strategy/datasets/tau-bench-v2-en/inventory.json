@@ -1,0 +1,1667 @@
+{
+  "schemaVersion": 1,
+  "commit": "989d3285ae669e49503324bdb9981bf14fccedeb",
+  "status": "Data integrity and schema checks passed; native execution and verifier correctness not yet qualified.",
+  "totalTasks": 150,
+  "hostOnly": "Task IDs can reveal hidden issues. Keep this inventory, reference actions, expected states, descriptions and grading criteria outside actor context.",
+  "domains": {
+    "airline": {
+      "tasks": 50,
+      "rewardComponents": {
+        "DB": 50,
+        "COMMUNICATE": 50
+      },
+      "environmentOnly": 0,
+      "referenceActionNames": {
+        "get_user_details": 14,
+        "get_reservation_details": 57,
+        "update_reservation_flights": 20,
+        "cancel_reservation": 11,
+        "search_direct_flight": 20,
+        "book_reservation": 10,
+        "calculate": 1,
+        "update_reservation_baggages": 5,
+        "transfer_to_human_agents": 1,
+        "update_reservation_passengers": 3
+      }
+    },
+    "retail": {
+      "tasks": 50,
+      "rewardComponents": {
+        "DB": 50,
+        "NL_ASSERTION": 50
+      },
+      "environmentOnly": 0,
+      "referenceActionNames": {
+        "find_user_id_by_name_zip": 30,
+        "get_user_details": 28,
+        "get_order_details": 82,
+        "get_product_details": 21,
+        "exchange_delivered_order_items": 15,
+        "find_user_id_by_email": 5,
+        "return_delivered_order_items": 18,
+        "calculate": 7,
+        "cancel_pending_order": 10,
+        "modify_pending_order_address": 11,
+        "get_item_details": 3,
+        "modify_pending_order_items": 18,
+        "modify_user_address": 5,
+        "transfer_to_human_agents": 2,
+        "modify_pending_order_payment": 1
+      }
+    },
+    "telecom": {
+      "tasks": 50,
+      "rewardComponents": {
+        "ENV_ASSERTION": 50,
+        "ACTION": 9
+      },
+      "environmentOnly": 41,
+      "referenceActionNames": {
+        "toggle_airplane_mode": 21,
+        "toggle_data": 20,
+        "set_network_mode_preference": 27,
+        "toggle_data_saver_mode": 9,
+        "toggle_roaming": 17,
+        "disconnect_vpn": 6,
+        "enable_roaming": 20,
+        "refuel_data": 20,
+        "transfer_to_human_agents": 9,
+        "send_payment_request": 3,
+        "make_payment": 3,
+        "resume_line": 3,
+        "reboot_device": 16,
+        "reset_apn_settings": 13,
+        "reseat_sim_card": 8,
+        "grant_app_permission": 18,
+        "toggle_wifi_calling": 7
+      }
+    }
+  },
+  "stateOnlyTelecomTaskIds": [
+    "[mobile_data_issue]airplane_mode_on|data_mode_off[PERSONA:None]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference[PERSONA:Hard]",
+    "[mobile_data_issue]data_saver_mode_on|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+    "[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+    "[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[mobile_data_issue]data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Hard]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_saver_mode_on[PERSONA:Hard]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+    "[mobile_data_issue]bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+    "[mobile_data_issue]bad_network_preference|bad_vpn|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[mobile_data_issue]bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+    "[mobile_data_issue]airplane_mode_on|bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[service_issue]airplane_mode_on|overdue_bill_suspension[PERSONA:None]",
+    "[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension[PERSONA:None]",
+    "[service_issue]break_apn_settings|overdue_bill_suspension|unseat_sim_card[PERSONA:Hard]",
+    "[mms_issue]break_app_storage_permission|data_usage_exceeded[PERSONA:Easy]",
+    "[mms_issue]break_apn_mms_setting|user_abroad_roaming_enabled_off[PERSONA:Hard]",
+    "[mms_issue]bad_network_preference|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[mms_issue]bad_network_preference|break_app_both_permissions[PERSONA:Easy]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|data_usage_exceeded[PERSONA:None]",
+    "[mms_issue]break_app_storage_permission|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]",
+    "[mms_issue]bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:None]",
+    "[mms_issue]break_apn_mms_setting|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+    "[mms_issue]bad_network_preference|break_app_sms_permission|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+    "[mms_issue]airplane_mode_on|break_app_both_permissions|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_usage_exceeded[PERSONA:Hard]",
+    "[mms_issue]break_apn_mms_setting|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+    "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_usage_exceeded[PERSONA:Hard]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|unseat_sim_card[PERSONA:Hard]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|break_app_storage_permission|data_mode_off|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+    "[mms_issue]bad_network_preference|break_app_sms_permission|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_mode_off|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+    "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Hard]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:None]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]",
+    "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]"
+  ],
+  "catalog": [
+    {
+      "domain": "airline",
+      "id": "0",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 0
+    },
+    {
+      "domain": "airline",
+      "id": "1",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "airline",
+      "id": "2",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "airline",
+      "id": "3",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "airline",
+      "id": "4",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "airline",
+      "id": "5",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "6",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "7",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "airline",
+      "id": "8",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 4
+    },
+    {
+      "domain": "airline",
+      "id": "9",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "10",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 0
+    },
+    {
+      "domain": "airline",
+      "id": "11",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "12",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "airline",
+      "id": "13",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "14",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "airline",
+      "id": "15",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "16",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "17",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "airline",
+      "id": "18",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "airline",
+      "id": "19",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "20",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "21",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "airline",
+      "id": "22",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "airline",
+      "id": "23",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 4
+    },
+    {
+      "domain": "airline",
+      "id": "24",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "25",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "26",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 0
+    },
+    {
+      "domain": "airline",
+      "id": "27",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "28",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 0
+    },
+    {
+      "domain": "airline",
+      "id": "29",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "airline",
+      "id": "30",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "airline",
+      "id": "31",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 0
+    },
+    {
+      "domain": "airline",
+      "id": "32",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "airline",
+      "id": "33",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "airline",
+      "id": "34",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 0
+    },
+    {
+      "domain": "airline",
+      "id": "35",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "36",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "37",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 4
+    },
+    {
+      "domain": "airline",
+      "id": "38",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "airline",
+      "id": "39",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 11
+    },
+    {
+      "domain": "airline",
+      "id": "40",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "airline",
+      "id": "41",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 8
+    },
+    {
+      "domain": "airline",
+      "id": "42",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 10
+    },
+    {
+      "domain": "airline",
+      "id": "43",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "airline",
+      "id": "44",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 19
+    },
+    {
+      "domain": "airline",
+      "id": "45",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "46",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 0
+    },
+    {
+      "domain": "airline",
+      "id": "47",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "48",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "airline",
+      "id": "49",
+      "rewardBasis": [
+        "DB",
+        "COMMUNICATE"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "6",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "8",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "11",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "13",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "retail",
+      "id": "14",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "16",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 9
+    },
+    {
+      "domain": "retail",
+      "id": "17",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "18",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "retail",
+      "id": "19",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 7
+    },
+    {
+      "domain": "retail",
+      "id": "21",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 12
+    },
+    {
+      "domain": "retail",
+      "id": "22",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 7
+    },
+    {
+      "domain": "retail",
+      "id": "23",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 12
+    },
+    {
+      "domain": "retail",
+      "id": "25",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "26",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 8
+    },
+    {
+      "domain": "retail",
+      "id": "30",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 13
+    },
+    {
+      "domain": "retail",
+      "id": "32",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 13
+    },
+    {
+      "domain": "retail",
+      "id": "36",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "38",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 4
+    },
+    {
+      "domain": "retail",
+      "id": "39",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "retail",
+      "id": "40",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 4
+    },
+    {
+      "domain": "retail",
+      "id": "42",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 10
+    },
+    {
+      "domain": "retail",
+      "id": "47",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 7
+    },
+    {
+      "domain": "retail",
+      "id": "49",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 10
+    },
+    {
+      "domain": "retail",
+      "id": "50",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "52",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "retail",
+      "id": "53",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "56",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 7
+    },
+    {
+      "domain": "retail",
+      "id": "58",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 6
+    },
+    {
+      "domain": "retail",
+      "id": "59",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "retail",
+      "id": "63",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 7
+    },
+    {
+      "domain": "retail",
+      "id": "64",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 8
+    },
+    {
+      "domain": "retail",
+      "id": "65",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "retail",
+      "id": "66",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "retail",
+      "id": "68",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 4
+    },
+    {
+      "domain": "retail",
+      "id": "70",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "71",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "retail",
+      "id": "74",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "retail",
+      "id": "78",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "retail",
+      "id": "79",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "80",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "83",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "85",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "86",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "retail",
+      "id": "89",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "97",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "retail",
+      "id": "102",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "retail",
+      "id": "104",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 5
+    },
+    {
+      "domain": "retail",
+      "id": "105",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "retail",
+      "id": "107",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 2
+    },
+    {
+      "domain": "retail",
+      "id": "112",
+      "rewardBasis": [
+        "DB",
+        "NL_ASSERTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|data_mode_off[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 2
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 2
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]data_saver_mode_on|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 2
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 4
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 4
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_saver_mode_on[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 4
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 6
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 6
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 6
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 6
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 6
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 7
+    },
+    {
+      "domain": "telecom",
+      "id": "[mobile_data_issue]airplane_mode_on|bad_network_preference|bad_vpn|data_mode_off|data_saver_mode_on|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 7
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|lock_sim_card_pin[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|overdue_bill_suspension[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|lock_sim_card_pin|unseat_sim_card[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|break_apn_settings|overdue_bill_suspension[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 7
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]break_apn_settings|overdue_bill_suspension|unseat_sim_card[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 7
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]break_apn_settings|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|unseat_sim_card[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|contract_end_suspension|lock_sim_card_pin|unseat_sim_card[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|break_apn_settings|lock_sim_card_pin|overdue_bill_suspension[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]airplane_mode_on|break_apn_settings|contract_end_suspension|lock_sim_card_pin[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[service_issue]break_apn_settings|lock_sim_card_pin|overdue_bill_suspension|unseat_sim_card[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION",
+        "ACTION"
+      ],
+      "environmentOnly": false,
+      "referenceActions": 1
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]break_app_storage_permission|data_usage_exceeded[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 2
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]break_apn_mms_setting|user_abroad_roaming_enabled_off[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]bad_network_preference|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 2
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]bad_network_preference|break_app_both_permissions[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|data_usage_exceeded[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]break_app_storage_permission|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]bad_network_preference|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]break_apn_mms_setting|data_mode_off|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 4
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]bad_network_preference|break_app_sms_permission|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 3
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|break_app_both_permissions|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 6
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_usage_exceeded[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]break_apn_mms_setting|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_on[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_usage_exceeded[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_app_storage_permission|unseat_sim_card[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|break_app_storage_permission|data_mode_off|user_abroad_roaming_enabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]bad_network_preference|break_app_sms_permission|data_mode_off|data_usage_exceeded|user_abroad_roaming_enabled_off[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 5
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|break_apn_mms_setting|data_mode_off|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 8
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|data_mode_off|data_usage_exceeded|user_abroad_roaming_disabled_off[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 9
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_both_permissions|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:Hard]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 9
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_sms_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_enabled_off[PERSONA:None]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 10
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_on[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 10
+    },
+    {
+      "domain": "telecom",
+      "id": "[mms_issue]airplane_mode_on|bad_network_preference|bad_wifi_calling|break_apn_mms_setting|break_app_storage_permission|data_mode_off|data_usage_exceeded|unseat_sim_card|user_abroad_roaming_disabled_off[PERSONA:Easy]",
+      "rewardBasis": [
+        "ENV_ASSERTION"
+      ],
+      "environmentOnly": true,
+      "referenceActions": 11
+    }
+  ],
+  "integrity": [
+    {
+      "path": "upstream/LICENSE",
+      "bytes": 1072,
+      "sha256": "e67c5aa0074dfcaefd3c3a1aedb94cb539234aecd15d5a972574e3200e6252fe"
+    },
+    {
+      "path": "upstream/data/tau2/benchmarks/text.json",
+      "bytes": 3362,
+      "sha256": "ec60753bfc4d750b52196ce5f606284403cfde93bc567c0a0ecf542047562de5"
+    },
+    {
+      "path": "upstream/data/tau2/domains/airline/tasks.json",
+      "bytes": 155528,
+      "sha256": "ccd8ba737b4cc371415af70151187788f728d6108d0916e73bb4317b40542052"
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/retail_tasks_en.json",
+      "bytes": 128941,
+      "sha256": "431d7c1ba3554bfcf687509b0bd0c6fab9b7c04edc745dae94d509658f7b5753"
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/telecom_tasks_en.json",
+      "bytes": 502397,
+      "sha256": "e0e83ebc389bf561901f38b4e60522a16ebace8428d1f2b0dbae50921a249875"
+    },
+    {
+      "path": "upstream/data/tau2/task_subsets/airline_50.json",
+      "bytes": 932,
+      "sha256": "055b5d4f8a0a09d297226ee1fe6f2fb01115ac0953e705388fd3dc34b46998db"
+    },
+    {
+      "path": "upstream/data/tau2/task_subsets/retail_50.json",
+      "bytes": 2730,
+      "sha256": "dc7490f023d1bf9c345edf9c37a8e658298ac3a5be884e012bfb271b3678f2be"
+    },
+    {
+      "path": "upstream/data/tau2/task_subsets/telecom_50.json",
+      "bytes": 7335,
+      "sha256": "c6376fe23ee7f8c5d94d38b2ba9864c638cfda25f4d4efd8a8dfb2ecdd9f9c03"
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/pack.yaml",
+      "bytes": 10125,
+      "sha256": "6453ef2c2f06ca34fb0a4f90841780913a2f7af28b680a08be402190876e6435"
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/airline_metadata_en.json",
+      "bytes": 3733,
+      "sha256": "d40cb3ab048cb0818483da9721bbdfb365c193c9cf4b8771094a2c6db5062b2d"
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/retail_metadata_en.json",
+      "bytes": 3765,
+      "sha256": "357c5ad5768b30a0bdf05a126d5588238034ad206ccb39c688b439e368ce2ac9"
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/telecom_metadata_en.json",
+      "bytes": 15061,
+      "sha256": "ec0130b2285e582ea75d824f1735f872e7900b0623a30f76f8c3735112ccfd8b"
+    },
+    {
+      "path": "upstream/data/tau2/domains/airline/policy.md",
+      "bytes": 7676,
+      "sha256": "10dc0525421521208be39cee235bba84a16e2bcba9899eb93d92cd81d2f62fc4"
+    },
+    {
+      "path": "upstream/data/tau2/domains/retail/policy.md",
+      "bytes": 6699,
+      "sha256": "2c9652afbce57d6e087768d37cda64d31c53d50b3e3225cfdb791bac66466467"
+    },
+    {
+      "path": "upstream/data/tau2/domains/telecom/main_policy.md",
+      "bytes": 5699,
+      "sha256": "95943844a0cf11fdf0e2842b483b81d9f9338aa53235712ed131db075d086ed7"
+    },
+    {
+      "path": "upstream/docs/evaluation.md",
+      "bytes": 13634,
+      "sha256": "2fa0e2bc5c996b0bce0fc2fb77533394126f1c7368c92f8adef142dcd43aae06"
+    }
+  ]
+}

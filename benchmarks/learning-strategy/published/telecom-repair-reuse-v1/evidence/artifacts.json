@@ -1,0 +1,184 @@
+{
+  "artifacts": [
+    {
+      "candidate": "candidate-0",
+      "valid": true,
+      "procedure": {
+        "description": "Resolve MMS blockage caused by roaming being disabled on the customer line. Identify customer by phone number, verify MMS is blocked and line roaming is off, enable roaming on the account, then confirm MMS is restored. Skip if MMS already works or roaming is already enabled.",
+        "steps": [
+          {
+            "id": "check_mms_initial",
+            "tool": "user.can_send_mms",
+            "argumentsJson": "{}",
+            "when": [],
+            "successWhen": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app can send MMS messages.\""
+              }
+            ]
+          },
+          {
+            "id": "lookup_customer",
+            "tool": "assistant.get_customer_by_phone",
+            "argumentsJson": "{\"phone_number\": \"${phoneNumber}\"}",
+            "when": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app cannot send MMS messages.\""
+              }
+            ],
+            "successWhen": []
+          },
+          {
+            "id": "lookup_line",
+            "tool": "assistant.get_details_by_id",
+            "argumentsJson": "{\"id\": \"${lineId}\"}",
+            "when": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app cannot send MMS messages.\""
+              }
+            ],
+            "successWhen": [
+              {
+                "step": "lookup_line",
+                "format": "json",
+                "path": "/roaming_enabled",
+                "valueJson": "true"
+              }
+            ]
+          },
+          {
+            "id": "enable_roaming_account",
+            "tool": "assistant.enable_roaming",
+            "argumentsJson": "{\"customer_id\": \"${customerId}\", \"line_id\": \"${lineId}\"}",
+            "when": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app cannot send MMS messages.\""
+              },
+              {
+                "step": "lookup_line",
+                "format": "json",
+                "path": "/roaming_enabled",
+                "valueJson": "false"
+              }
+            ],
+            "successWhen": []
+          },
+          {
+            "id": "check_mms_final",
+            "tool": "user.can_send_mms",
+            "argumentsJson": "{}",
+            "when": [],
+            "successWhen": [
+              {
+                "step": "check_mms_final",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app can send MMS messages.\""
+              }
+            ]
+          }
+        ]
+      },
+      "generationUsd": 0.174594
+    },
+    {
+      "candidate": "candidate-1",
+      "valid": true,
+      "procedure": {
+        "description": "Resolve MMS failure for a customer line by enabling account-side roaming. Looks up the customer by phone number, identifies the matching line, confirms MMS is blocked and account roaming is disabled, enables roaming on the line, then verifies MMS is restored. Skips remediation if MMS already works at the start.",
+        "steps": [
+          {
+            "id": "check_mms_initial",
+            "tool": "user.can_send_mms",
+            "argumentsJson": "{}",
+            "when": [],
+            "successWhen": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app can send MMS messages.\""
+              }
+            ]
+          },
+          {
+            "id": "lookup_customer",
+            "tool": "assistant.get_customer_by_phone",
+            "argumentsJson": "{\"phone_number\": \"${phoneNumber}\"}",
+            "when": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app cannot send MMS messages.\""
+              }
+            ],
+            "successWhen": []
+          },
+          {
+            "id": "lookup_line",
+            "tool": "assistant.get_details_by_id",
+            "argumentsJson": "{\"id\": \"${lineId}\"}",
+            "when": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app cannot send MMS messages.\""
+              }
+            ],
+            "successWhen": []
+          },
+          {
+            "id": "enable_roaming_on_line",
+            "tool": "assistant.enable_roaming",
+            "argumentsJson": "{\"customer_id\": \"${customerId}\", \"line_id\": \"${lineId}\"}",
+            "when": [
+              {
+                "step": "check_mms_initial",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app cannot send MMS messages.\""
+              },
+              {
+                "step": "lookup_line",
+                "format": "json",
+                "path": "/roaming_enabled",
+                "valueJson": "false"
+              }
+            ],
+            "successWhen": []
+          },
+          {
+            "id": "check_mms_final",
+            "tool": "user.can_send_mms",
+            "argumentsJson": "{}",
+            "when": [],
+            "successWhen": [
+              {
+                "step": "check_mms_final",
+                "format": "text",
+                "path": "",
+                "valueJson": "\"Your messaging app can send MMS messages.\""
+              }
+            ]
+          }
+        ]
+      },
+      "generationUsd": 0.20153459999999998
+    }
+  ],
+  "generationCompleteBeforeEvaluation": true
+}

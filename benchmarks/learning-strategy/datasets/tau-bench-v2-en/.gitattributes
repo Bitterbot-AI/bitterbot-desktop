@@ -1,0 +1,2 @@
+# Preserve the byte-exact upstream snapshots used by verify.mjs, including on Windows.
+upstream/** -text

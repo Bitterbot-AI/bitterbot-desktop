@@ -15,8 +15,15 @@ import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
 import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { ExplorationTargetType } from "./curiosity-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
+import { STRATEGY_PACKET_MARKER } from "./learning-strategy-peer.js";
 import type { PublishResult, ImportResult } from "./mem-store.js";
 import type { PeerReputationManager } from "./peer-reputation.js";
+import {
+  exportLearningPacket,
+  importLearningPacket,
+  LEARNING_PACKET_MARKER,
+} from "./procedural-learning-peer.js";
+import type { ProceduralLearning } from "./procedural-learning.js";
 import { skillCategoryFromContent } from "./skill-category.js";
 import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
 import type { SkillVerifier } from "./skill-verifier.js";
@@ -81,6 +88,21 @@ export function getActiveSkillNetworkBridge(): SkillNetworkBridge | null {
 }
 
 export class SkillNetworkBridge {
+  private learningProvider: (() => ProceduralLearning | null) | null = null;
+  setProceduralLearning(provider: () => ProceduralLearning | null): void {
+    this.learningProvider = provider;
+  }
+
+  async publishLearningCandidate(hash: string): Promise<unknown> {
+    const service = this.learningProvider?.();
+    if (!service || service.store.config.mode !== "active" || !this.orchestratorBridge)
+      throw new Error("Learning publication disabled");
+    return this.orchestratorBridge.publishSkill(
+      Buffer.from(exportLearningPacket(service.store, hash), "utf8").toString("base64"),
+      `verified-procedure-${hash.slice(0, 12)}`,
+    );
+  }
+
   private readonly db: DatabaseSync;
   private orchestratorBridge: OrchestratorBridgeLike | null;
   private readonly config: Required<SkillNetworkBridgeConfig>;
@@ -537,7 +559,35 @@ export class SkillNetworkBridge {
       }
     }
 
+    // Strategy imports require the explicit host research API; never activate as a crystal.
+    if (
+      Buffer.from(envelope.skill_md, "base64").toString("utf8").includes(STRATEGY_PACKET_MARKER)
+    ) {
+      return {
+        ok: false,
+        action: "rejected",
+        reason: "learning strategies require host shadow import",
+      };
+    }
     // Check for duplicate content
+    if (
+      Buffer.from(envelope.skill_md, "base64").toString("utf8").includes(LEARNING_PACKET_MARKER)
+    ) {
+      const service = this.learningProvider?.();
+      if (!service)
+        return { ok: false, action: "rejected", reason: "procedural learning disabled" };
+      try {
+        importLearningPacket(service.store, envelope);
+        return {
+          ok: false,
+          action: "rejected",
+          reason: "procedural candidate quarantined; no crystal activation",
+        };
+      } catch {
+        return { ok: false, action: "rejected", reason: "invalid procedural candidate" };
+      }
+    }
+
     const existing = this.db
       .prepare(`SELECT id FROM chunks WHERE hash = ?`)
       .get(envelope.content_hash) as { id: string } | undefined;

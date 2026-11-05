@@ -1,0 +1,17 @@
+addict==2.4.0
+annotated-types==0.8.0
+cachebox==5.2.3
+colorama==0.4.6
+deepdiff==9.1.0
+docstring_parser==0.18.0
+loguru==0.7.3
+orderly-set==5.5.0
+pydantic==2.14.2
+pydantic_core==2.50.2
+python-dotenv==1.2.4
+PyYAML==6.0.3
+toml==0.10.2
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+tzdata==2026.6
+win32_setctime==1.2.1; sys_platform == 'win32'

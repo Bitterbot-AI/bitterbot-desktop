@@ -1,0 +1,827 @@
+{
+  "status": "passed",
+  "adapterRevision": "text-v6-public-observations",
+  "observationMode": "structured",
+  "rulesHash": "f849e6d8691cb7628e1f5af792cc193a87ddadf6e960bca9e809fa9ead503910",
+  "sources": [
+    {
+      "file": "benchmarks/learning-strategy/telecom/native.py",
+      "sha256": "c1f99894bb3b768e0a0531b415e40eaaeab8feae5684d5e9158e478954ab72e1"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/bridge.mjs",
+      "sha256": "99ce8c2464d9548e840ab773d0434a609199cae0d8fd7233e102fdee82e0c421"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/episode.mjs",
+      "sha256": "e986c33b01691f318af24675f30996a111e8966477cdb6f3e4e790d07a9275b9"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/provider.mjs",
+      "sha256": "917596d3288817c96fea5a30c5e40d93211a5f1831a9d6729e55a040e0a06c74"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/run.mjs",
+      "sha256": "a1c9eff58e5942059a22543d4e21b5cff065859703f85ffce77b091775c5a0bf"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/requirements.txt",
+      "sha256": "217f4cf76b5c9af429e80fafb188ce3874ca380097965912c8fa4add12c513a6"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/native-sources.json",
+      "sha256": "8963c1ae1060b80c1501d2f5cd034cbc89ccc3150b6dbfdcca186afbe743d3bc"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/qualification-v1.json",
+      "sha256": "f53f0a3f5598c89a45dc21051b4d4ae7487da1192da56e44b8492a6e79d9a0ac"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/utils/pydantic_utils.py",
+      "sha256": "618dfc39b619bb0f623151682962ddc52bf2ea70bc2562dded884f118c84b78a"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/utils/io_utils.py",
+      "sha256": "ce66fb275b9bbf09a17be2cb2092bf2e696ab07655bf7571fe53ba8db4ed3015"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/utils/__init__.py",
+      "sha256": "e255aeff0258cf0042f57283c5375cd78b034509b886ba827cd927a2a6d27c6a"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/domains/telecom/environment.py",
+      "sha256": "06977ad57bb875a7caabff6a826e94fd47812448d77a82581e21ad2ab11aca96"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/environment/environment.py",
+      "sha256": "b3edf22c4d11234cc8794807a8c5ba47ef84555a9726243a0e8684b7821826ba"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/environment/toolkit.py",
+      "sha256": "3e897891e8878c3399aec72e42eb0eb5546642420c0c902b225421fc936b924a"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/environment/tool.py",
+      "sha256": "6dd74021ba95a6f8dfa0971546b768b90e15b212f8f9051156ae6bcdd24b77d3"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/environment/db.py",
+      "sha256": "49e12f900a8aabe62d6137a9baa1e7d471f9b3e516cf7c85fb61ecde8a65154c"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/data_model/tasks.py",
+      "sha256": "99f67ed89291a3d378406ebfb0e3bb5f12a522eefe1d69c235d6af233e788e85"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/data_model/message.py",
+      "sha256": "18bd315dfc9b15a03870dc001b714273028f74fd80ad9a7701ce5cfdeb9ade5a"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/utils/utils.py",
+      "sha256": "68cb14fe08e7dda6fdecd40acaccbd95849b0286b1e1ea45eeaf63637b59859a"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/data_model/audio_effects.py",
+      "sha256": "1d4b224987671c46711122ef56415f0889d30e81d72b4296e5c0e10724c30041"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/voice_config.py",
+      "sha256": "48cbab50985e22b0afd9d6afa0a469d039dcd70049b8bd79c912b4881260db71"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/data_model/audio.py",
+      "sha256": "443de1a2c4fa856621eaccf8b6d0637f4e8d4f0de0aba990e9732c49b3751bb0"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/config.py",
+      "sha256": "5ab3f7037ab27992753c4c0274bc30964975803c6ef425f694faef7516c778c9"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/domains/telecom/utils.py",
+      "sha256": "9195707fca3d96b41d78de661bd2408cfaab75793769c9a739a7521b690fc6dd"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/domains/telecom/user_tools.py",
+      "sha256": "ad1d2a633daa704ed30d8078d37fbbb6315b1af4a300ed156a36f27cac93de1d"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/environment/regional.py",
+      "sha256": "58a10060efe1d400d33ae98f49bf3a9d5b4e14509cb36a73b6872ccb7a4591aa"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/domains/telecom/user_data_model.py",
+      "sha256": "27be0006694e9a740dd378f42099d6d1afecbd445f7906aedcd1f800087377c2"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/domains/telecom/region.py",
+      "sha256": "7dc83c419cb3518c0f83987b2cbb7c56cfb9127f5b42c0e7a7706ee826309b60"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/domains/telecom/tools.py",
+      "sha256": "d9d080a61b99a47523c838fe8036451ff7dfbd285946b3e87554e1033cbac44a"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/utils/text_match.py",
+      "sha256": "7580b760a4dd88d986e720f45df33b0fc1fafaa44a780d41ce0b6e108f38065a"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/src/tau2/domains/telecom/data_model.py",
+      "sha256": "f868cbbd344cadf6c376f21976edfa38b8cfe199922748e31eee666f791a0628"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/LICENSE",
+      "sha256": "e67c5aa0074dfcaefd3c3a1aedb94cb539234aecd15d5a972574e3200e6252fe"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/data/tau2/domains/telecom/db.toml",
+      "sha256": "562d647ef9d7df8df91eafd8ee76036e707c8f9e32aaedc4a7fde06975aea2c0"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/data/tau2/domains/telecom/user_db.toml",
+      "sha256": "4886107ea0c16f8e16d74bef91cfb557de61822afe9361f5a9b241806aea2e4c"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/data/tau2/domains/telecom/tech_support_manual.md",
+      "sha256": "015a3ee49ec8c199c5e1a059c922081937b92cf3a5ea74fedbc4357816f389ba"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/vendor/data/tau2/domains/telecom/main_policy.md",
+      "sha256": "95943844a0cf11fdf0e2842b483b81d9f9338aa53235712ed131db075d086ed7"
+    },
+    {
+      "file": "benchmarks/learning-strategy/datasets/tau-bench-v2-en/upstream/data/tau2/multilingual/en/telecom_tasks_en.json",
+      "sha256": "e0e83ebc389bf561901f38b4e60522a16ebace8428d1f2b0dbae50921a249875"
+    },
+    {
+      "file": "src/memory/learning-strategy.ts",
+      "sha256": "f4e623ba6ca205f34d814538eae9b40b2632923372c93d07422e7a3fa93d9189"
+    },
+    {
+      "file": "src/memory/learning-strategy-archive.ts",
+      "sha256": "27e0cdc0957ffd5588f1d540c282eb0759b1f01094b60a45d4a0c9f67ca0b332"
+    },
+    {
+      "file": "src/memory/learning-strategy-contract.ts",
+      "sha256": "8539de7ebe1cbd6536fb2a21b1e8dd705f272234bfdc307fd81f45461c0edec2"
+    },
+    {
+      "file": "src/memory/procedural-learning.ts",
+      "sha256": "15857308390a2251e0d6bfdc9fcda333f04e6102c0d9401a50598a3a2bfd70b6"
+    },
+    {
+      "file": "src/memory/procedural-learning-store.ts",
+      "sha256": "133cb42388fdb83bae2a21f2e31e4233b8ee1c89c6fd15d70a31683d5fef5f94"
+    },
+    {
+      "file": "src/memory/procedural-learning-contract.ts",
+      "sha256": "d238237d2067ea18cb5a95ddd04b9c5da15396e6efa8aedda11c0da9f6120621"
+    },
+    {
+      "file": "src/memory/learning-strategy-reminders.ts",
+      "sha256": "419072312c3c1cf33036320436bd5d4250bc41f0689e21706ce6089bbaa27505"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/reminders.mjs",
+      "sha256": "88ca6571f74928f4d3552fc4277c67c2f4f6d7730fe708dd9228596b92fafc06"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/grounding.mjs",
+      "sha256": "a3606448119b34a201c5b576b913448f9ac68ee815d547b150028da38ea5e48b"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/diagnostic-observations.mjs",
+      "sha256": "0ad48b69c03b0968477d95393f2907a9d5bf50844ce25768b3f7d3ad44a484e1"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/diagnostic-protocol.mjs",
+      "sha256": "186b20ad677c049a611822e633ce066a7864484f1b70134d469883386695ec77"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/qualification-diagnostic-v1.json",
+      "sha256": "b3d55d6025f37a699ccb15990bd209274190c5f1ca9e32a4a24d8707678492a0"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/qualify-diagnostic.mjs",
+      "sha256": "04dbe9006655024459613c020047076ceff916397f89fd4cc02477b0296054d5"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/diagnostic-observations.test.mjs",
+      "sha256": "710077e6686672319a2fdb0e0696fd74fe97511209bcb7f63bdbb2f7c1804c82"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/trace-observations.mjs",
+      "sha256": "8c304bd81f8dfa8c7b43a870afed2a266beb4a729edefe779f5979b886b4792f"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/conditional.mjs",
+      "sha256": "5471439c6ee6c09d7efdcab88b171a1f4611f249237fa252c3cac77148576a49"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/audit.mjs",
+      "sha256": "70cf30be7c5103e6056b2f34ff2babc0647f954724ba48be0f55b56e27ef4850"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/analyze.mjs",
+      "sha256": "c44d3aee5f9824699f4703fb878f710937dee2174719b296c613e42516e157c2"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/qualification-reminders-v1.json",
+      "sha256": "34abcdb38c1f2d2d5a2a9e76e154fc10882399196b618dbe104339ec1d69cd9d"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/public-observations.mjs",
+      "sha256": "d64059d25f27550b41eac2224c497d87d402ed463cd57e9f9606abe2c72bcecf"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/public-observations.test.mjs",
+      "sha256": "f31aea7641808e1f33dae0df9cc47b7c04a8d6eb5edc4d601e4845e52828f83f"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/qualify-public-observations.mjs",
+      "sha256": "00111e0b1c62961ed240c3d3f4d16ed18602d611aa63900af20ed6732d4a799d"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/public-observation-variants.json",
+      "sha256": "74dfc360b268ae95e41085fecd72a5534d7073508d58595a4c574e97770214f2"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/feedback.mjs",
+      "sha256": "49ccdde41344e443f1fd1754c7c22a55387dd2ee6ac16f28663f8e24020994a7"
+    }
+  ],
+  "providerCalls": 0,
+  "newPaidUsd": 0,
+  "exposureUsd": 12.923171399999978,
+  "fixtures": [
+    {
+      "label": "baseline-blocked",
+      "nativeOutcome": false,
+      "expectedNativeOutcome": false,
+      "exactReplay": true,
+      "publications": 1,
+      "reminders": 0,
+      "scriptedResponses": 3
+    },
+    {
+      "label": "static-blocked",
+      "nativeOutcome": false,
+      "expectedNativeOutcome": false,
+      "exactReplay": true,
+      "publications": 1,
+      "reminders": 0,
+      "scriptedResponses": 3
+    },
+    {
+      "label": "conditional-blocked",
+      "nativeOutcome": false,
+      "expectedNativeOutcome": false,
+      "exactReplay": true,
+      "publications": 1,
+      "reminders": 1,
+      "scriptedResponses": 3
+    },
+    {
+      "label": "baseline-working",
+      "nativeOutcome": true,
+      "expectedNativeOutcome": true,
+      "exactReplay": true,
+      "publications": 1,
+      "reminders": 0,
+      "scriptedResponses": 3
+    },
+    {
+      "label": "static-working",
+      "nativeOutcome": true,
+      "expectedNativeOutcome": true,
+      "exactReplay": true,
+      "publications": 1,
+      "reminders": 0,
+      "scriptedResponses": 3
+    },
+    {
+      "label": "conditional-working",
+      "nativeOutcome": true,
+      "expectedNativeOutcome": true,
+      "exactReplay": true,
+      "publications": 1,
+      "reminders": 0,
+      "scriptedResponses": 3
+    }
+  ],
+  "metamorphic": [
+    {
+      "fixture": "baseline-blocked",
+      "variant": 0,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 1,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 2,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 3,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 4,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 5,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 6,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 7,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 8,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 9,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 10,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-blocked",
+      "variant": 11,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 0,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 1,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 2,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 3,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 4,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 5,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 6,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 7,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 8,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 9,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 10,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-blocked",
+      "variant": 11,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 0,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 1,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 2,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 3,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 4,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 5,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 6,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 7,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 8,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 9,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 10,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-blocked",
+      "variant": 11,
+      "publicSnapshotHash": "76959a2cea263ccf17c1b5e0bc1a50a8d31887a4dc9dd8314b1f11a079a0b6d8",
+      "reminders": 1,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 0,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 1,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 2,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 3,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 4,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 5,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 6,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 7,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 8,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 9,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 10,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "baseline-working",
+      "variant": 11,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 0,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 1,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 2,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 3,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 4,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 5,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 6,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 7,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 8,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 9,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 10,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "static-working",
+      "variant": 11,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 0,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 1,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 2,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 3,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 4,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 5,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 6,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 7,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 8,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 9,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 10,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    },
+    {
+      "fixture": "conditional-working",
+      "variant": 11,
+      "publicSnapshotHash": "e77be92a0f38caa64cf2fcedbd760f5198c6fd26c125b279269e371fafff8231",
+      "reminders": 0,
+      "emptyAndPartialQuiet": true
+    }
+  ],
+  "summary": {
+    "nativeFixtures": 6,
+    "exactScriptedReplays": 6,
+    "scriptedResponses": 18,
+    "reportVariants": 12,
+    "variantArmConditionChecks": 72,
+    "negativeSnapshotChecks": 144,
+    "conditionalBlockedDeliveries": 12
+  },
+  "limitations": "All focused tests pass. Six native scripted fixtures give identical public records to every arm, trigger only the conditional blocked fixture, and suppress advice for working MMS. Every additional wording variant preserves those typed observations; unshared private results and snapshots missing a required fact do not trigger. Replay the scripted requests exactly without new provider calls. This is adapter qualification, not agent repair, efficiency, transfer or model tool-compliance evidence."
+}

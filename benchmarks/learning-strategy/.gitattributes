@@ -1,0 +1,7 @@
+# Preserve recorded hashes on every platform.
+data/** -text linguist-generated=true
+published/** -text
+telecom/qualification-*.json -text
+telecom/native-sources.json -text
+datasets/** -text linguist-vendored=true
+telecom/vendor/** -text linguist-vendored=true

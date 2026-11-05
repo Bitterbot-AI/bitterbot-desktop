@@ -1,0 +1,121 @@
+{
+  "kind": "offline-visible-trace-router-qualification",
+  "providerCalls": 0,
+  "episodes": [
+    {
+      "label": "source-development-14",
+      "hits": [
+        {
+          "beforeTranscriptPosition": 13,
+          "matches": [
+            {
+              "id": "observed-data-exhaustion",
+              "text": "Account observations show exhausted data. Follow the policy and obtain consent before refueling; verify the updated allowance and requested service. Do not repeat an already-completed refill or substitute unrelated device changes.",
+              "evidence": [
+                "tool-12",
+                "speech-0"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "source-development-45",
+      "hits": [
+        {
+          "beforeTranscriptPosition": 10,
+          "matches": [
+            {
+              "id": "observed-data-exhaustion",
+              "text": "Account observations show exhausted data. Follow the policy and obtain consent before refueling; verify the updated allowance and requested service. Do not repeat an already-completed refill or substitute unrelated device changes.",
+              "evidence": [
+                "tool-9",
+                "speech-0"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "recipient-baseline-38",
+      "hits": []
+    },
+    {
+      "label": "recipient-baseline-41",
+      "hits": [
+        {
+          "beforeTranscriptPosition": 18,
+          "matches": [
+            {
+              "id": "ambiguous-data-status",
+              "text": "A status bar saying Data Disabled describes availability, not necessarily the configured switch. Ask for check_network_status before toggling mobile data. If the switch is already on, leave it on and diagnose SIM, airplane mode or signal instead.",
+              "evidence": [
+                "speech-17"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "recipient-transferred-38",
+      "hits": []
+    },
+    {
+      "label": "recipient-transferred-41",
+      "hits": [
+        {
+          "beforeTranscriptPosition": 19,
+          "matches": [
+            {
+              "id": "ambiguous-data-status",
+              "text": "A status bar saying Data Disabled describes availability, not necessarily the configured switch. Ask for check_network_status before toggling mobile data. If the switch is already on, leave it on and diagnose SIM, airplane mode or signal instead.",
+              "evidence": [
+                "speech-18"
+              ]
+            }
+          ]
+        },
+        {
+          "beforeTranscriptPosition": 23,
+          "matches": [
+            {
+              "id": "ambiguous-data-status",
+              "text": "A status bar saying Data Disabled describes availability, not necessarily the configured switch. Ask for check_network_status before toggling mobile data. If the switch is already on, leave it on and diagnose SIM, airplane mode or signal instead.",
+              "evidence": [
+                "speech-22"
+              ]
+            }
+          ]
+        },
+        {
+          "beforeTranscriptPosition": 29,
+          "matches": [
+            {
+              "id": "ambiguous-data-status",
+              "text": "A status bar saying Data Disabled describes availability, not necessarily the configured switch. Ask for check_network_status before toggling mobile data. If the switch is already on, leave it on and diagnose SIM, airplane mode or signal instead.",
+              "evidence": [
+                "speech-28"
+              ]
+            }
+          ]
+        },
+        {
+          "beforeTranscriptPosition": 37,
+          "matches": [
+            {
+              "id": "ambiguous-data-status",
+              "text": "A status bar saying Data Disabled describes availability, not necessarily the configured switch. Ask for check_network_status before toggling mobile data. If the switch is already on, leave it on and diagnose SIM, airplane mode or signal instead.",
+              "evidence": [
+                "speech-36"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "note": "Old trajectories are now development evidence. This is counterfactual reminder routing only; recorded actors were not re-executed and outcomes did not change. Hidden customer tool responses and grading state never enter the router."
+}

@@ -153,6 +153,8 @@ import {
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { truncateAtSentence } from "./proactive-recall.js";
+import { ProceduralLearningStore } from "./procedural-learning-store.js";
+import { ProceduralLearning } from "./procedural-learning.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
 import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
@@ -184,6 +186,7 @@ import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
 import { SkillVerifier } from "./skill-verifier.js";
 import { recordAccess } from "./spacing-effect.js";
+import { requireNodeSqlite } from "./sqlite.js";
 import { SurfacingTrial, resolveSurfacingTrialConfig } from "./surfacing-trial.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
@@ -267,6 +270,7 @@ const HEALTH_SWEEP_STALE_MS = 20 * 60 * 60_000;
 const HEALTH_SWEEP_CATCHUP_DELAY_MS = 3 * 60_000;
 
 export class MemoryIndexManager implements MemorySearchManager {
+  private proceduralLearningService: ProceduralLearning | null = null;
   // oxlint-disable-next-line typescript/no-explicit-any
   [key: string]: any;
   private readonly cacheKey: string;
@@ -7590,6 +7594,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private ensureSkillNetworkBridge(): void {
     // Created with null orchestrator; wire via setOrchestratorBridge() later
     this.skillNetworkBridge = new SkillNetworkBridge(this.db, null);
+    this.skillNetworkBridge.setProceduralLearning(() => this.proceduralLearning());
 
     // Wire hormonal manager and curiosity engine if available
     if (this.hormonalManager) {
@@ -7846,6 +7851,29 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.curiosityEngine.getState();
   }
 
+  /** A separate per-agent database survives vector reindexing without evidence loss. */
+  proceduralLearning(): ProceduralLearning | null {
+    if (this.closed) return null;
+    const config = this.cfg.memory?.proceduralLearning;
+    if (!config || config.mode === "off") return null;
+    if (!this.proceduralLearningService) {
+      const dir = resolveAgentDir(this.cfg, this.agentId);
+      mkdirSync(dir, { recursive: true });
+      const { DatabaseSync } = requireNodeSqlite();
+      const db = new DatabaseSync(path.join(dir, "procedural-learning.sqlite"));
+      db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000");
+      try {
+        this.proceduralLearningService = new ProceduralLearning(
+          new ProceduralLearningStore(db, config),
+        );
+      } catch (error) {
+        db.close();
+        throw error;
+      }
+    }
+    return this.proceduralLearningService;
+  }
+
   curiosityResolve(targetId: string): boolean {
     if (!this.curiosityEngine) {
       return false;
@@ -8026,6 +8054,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         // The launching call site already logs sync failures.
       }
     }
+    await this.proceduralLearningService?.close();
+    this.proceduralLearningService = null;
     this.db.close();
     INDEX_CACHE.delete(this.cacheKey);
   }

@@ -1,0 +1,1762 @@
+{
+  "kind": "telecom-guarded-procedure-reuse",
+  "version": 1,
+  "model": "claude-sonnet-4-6",
+  "rates": {
+    "input": 3,
+    "output": 15,
+    "cacheRead": 0.3,
+    "cacheWrite": 3.75,
+    "cacheWrite1h": 6
+  },
+  "candidates": [
+    "candidate-0",
+    "candidate-1"
+  ],
+  "inputs": [
+    {
+      "index": 36,
+      "alias": "case-0",
+      "parentLabel": "blind-0-r0-case-36",
+      "eligibleCount": 9,
+      "input": "inputs/episode-blind-0-r0-case-36.json",
+      "sha256": "6d070b0c06c0ca87b21246a77e19a11cbf358b38b19b913b2dc94fd84b464179",
+      "scope": "primary"
+    },
+    {
+      "index": 37,
+      "alias": "case-1",
+      "parentLabel": "blind-1-r2-case-37",
+      "eligibleCount": 1,
+      "input": "inputs/episode-blind-1-r2-case-37.json",
+      "sha256": "f298c278f334338d149a01f3dbfd062948f6d585deeeb85d75b01765fb51cd62",
+      "scope": "primary"
+    },
+    {
+      "index": 39,
+      "alias": "case-2",
+      "parentLabel": "blind-0-r0-case-39",
+      "eligibleCount": 10,
+      "input": "inputs/episode-blind-0-r0-case-39.json",
+      "sha256": "5a4a46723ec01dba09f580e7e2d80fa6c590a3bd928b6dd62db8034dfd48d8e6",
+      "scope": "primary"
+    },
+    {
+      "index": 44,
+      "alias": "case-3",
+      "parentLabel": "blind-0-r0-case-44",
+      "eligibleCount": 12,
+      "input": "inputs/episode-blind-0-r0-case-44.json",
+      "sha256": "35dc52767d3d780803271e561aa1f0d27f8be736dd685303d4965d308e461168",
+      "scope": "primary"
+    }
+  ],
+  "panelInputs": [
+    {
+      "index": 36,
+      "alias": "panel-0",
+      "input": "inputs/panel-experience-0-r0-case-36.json",
+      "sha256": "1eaa975a59271e23d536537fc0cfe136a53f5f6d8d1cbfa14a446e210c55a51d",
+      "scope": "panel",
+      "parent": "experience-0-r0-case-36",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 36,
+      "alias": "panel-1",
+      "input": "inputs/panel-blind-1-r0-case-36.json",
+      "sha256": "83c51e1a71baf742b8f363ee052d1ef61dbf98cf8cf83dd8748dab140aef0994",
+      "scope": "panel",
+      "parent": "blind-1-r0-case-36",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-2",
+      "input": "inputs/panel-experience-0-r0-case-37.json",
+      "sha256": "de5fff06604b5e985ef05ef2e52a9cef66c99f7af53cd2c3c6cdd0a95f21aab9",
+      "scope": "panel",
+      "parent": "experience-0-r0-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-3",
+      "input": "inputs/panel-blind-1-r0-case-37.json",
+      "sha256": "b9b80770f98f933e8d39364b44457efd743afec56a214f1e9ae4a2fbb86654c1",
+      "scope": "panel",
+      "parent": "blind-1-r0-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-4",
+      "input": "inputs/panel-blind-0-r0-case-37.json",
+      "sha256": "3889e81f8c1637dcf880640f1d3a71a9578a8228840f8ae95284f81cbb443a40",
+      "scope": "panel",
+      "parent": "blind-0-r0-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-5",
+      "input": "inputs/panel-experience-0-r0-case-39.json",
+      "sha256": "f7b3041f612a789840fc24e77c77724f8fd5289aacb186cd0e72b67c067a2d78",
+      "scope": "panel",
+      "parent": "experience-0-r0-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-6",
+      "input": "inputs/panel-blind-1-r0-case-39.json",
+      "sha256": "73305760bc2e7e3c8c8ee20de71e9930207c6bbf09addd3c160264735c37aef6",
+      "scope": "panel",
+      "parent": "blind-1-r0-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-7",
+      "input": "inputs/panel-experience-0-r0-case-44.json",
+      "sha256": "4747817465b770c455b76527a9aba8d3261a308df741aa238b15b4e7c32b5b16",
+      "scope": "panel",
+      "parent": "experience-0-r0-case-44",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 44,
+      "alias": "panel-8",
+      "input": "inputs/panel-blind-1-r0-case-44.json",
+      "sha256": "a40a7554742cafb17d67d16aaf02906fa38d9396e0fdf3fb4248c2d7a63f52c9",
+      "scope": "panel",
+      "parent": "blind-1-r0-case-44",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 36,
+      "alias": "panel-9",
+      "input": "inputs/panel-experience-0-r1-case-36.json",
+      "sha256": "94d504a7c20cbbc24fde5d11d9786b059491a94bf2efc837a0bc38ae1a35d2af",
+      "scope": "panel",
+      "parent": "experience-0-r1-case-36",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 36,
+      "alias": "panel-10",
+      "input": "inputs/panel-blind-1-r1-case-36.json",
+      "sha256": "d179ebe283c69a808b8eff877f773e4448a0833956263ea3b76ffdc57f718618",
+      "scope": "panel",
+      "parent": "blind-1-r1-case-36",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-11",
+      "input": "inputs/panel-experience-0-r1-case-37.json",
+      "sha256": "11c4298c95f7c284ff67c22e8dd659eecc071c7030fc04f71ffe6254bda25e69",
+      "scope": "panel",
+      "parent": "experience-0-r1-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-12",
+      "input": "inputs/panel-blind-1-r1-case-37.json",
+      "sha256": "e7bd72395a49a327e18eae3bf6df3ba188f1556224b644cd69024e7d1ab06e66",
+      "scope": "panel",
+      "parent": "blind-1-r1-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-13",
+      "input": "inputs/panel-experience-0-r1-case-39.json",
+      "sha256": "a5b5876fc96e609d34bb9d8467cd55f194bbbc01d53a83bcf4974ed0423a5174",
+      "scope": "panel",
+      "parent": "experience-0-r1-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 36,
+      "alias": "panel-14",
+      "input": "inputs/panel-blind-0-r1-case-36.json",
+      "sha256": "24994b57e9613871990172d881b63f4f1b59fe3938604ea5ab5b67fb9ce22c9c",
+      "scope": "panel",
+      "parent": "blind-0-r1-case-36",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 39,
+      "alias": "panel-15",
+      "input": "inputs/panel-blind-1-r1-case-39.json",
+      "sha256": "6b707c53dc9ac7382459518796bbe012498fcc8296edb11ed62f67165335656a",
+      "scope": "panel",
+      "parent": "blind-1-r1-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-16",
+      "input": "inputs/panel-experience-0-r1-case-44.json",
+      "sha256": "c1a398a72e59ff430acea9216b89af181dba8a09a656e01ebb27aee8c5044f5c",
+      "scope": "panel",
+      "parent": "experience-0-r1-case-44",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-17",
+      "input": "inputs/panel-blind-0-r1-case-37.json",
+      "sha256": "15352744693699934287514a6c587ab05f1dfb6eb05927b517c2fb02c2777934",
+      "scope": "panel",
+      "parent": "blind-0-r1-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-18",
+      "input": "inputs/panel-blind-1-r1-case-44.json",
+      "sha256": "a8eeb6693ded9591ad1b86361f263c1cb33ab8fb1fe873c49bb01c3cd600b178",
+      "scope": "panel",
+      "parent": "blind-1-r1-case-44",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-19",
+      "input": "inputs/panel-blind-0-r1-case-39.json",
+      "sha256": "c4aa1fc0cd5a3ce5ab0232942deadece2fcdd56d5cab6a3ad838fc93def2daba",
+      "scope": "panel",
+      "parent": "blind-0-r1-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 36,
+      "alias": "panel-20",
+      "input": "inputs/panel-experience-0-r2-case-36.json",
+      "sha256": "15ffc921d291d0e0ab01a2daa2c4164804dff81852993c077cf2b7d2ebdda179",
+      "scope": "panel",
+      "parent": "experience-0-r2-case-36",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-21",
+      "input": "inputs/panel-blind-0-r1-case-44.json",
+      "sha256": "97c23bd4e04e7c6b6aad619c51491c61b5fac6cf344e8aa266188d4e3d5bcf42",
+      "scope": "panel",
+      "parent": "blind-0-r1-case-44",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 37,
+      "alias": "panel-22",
+      "input": "inputs/panel-experience-0-r2-case-37.json",
+      "sha256": "42aafb898ee945fd0bbe436b440b70469be8cc82ad41b94f9482de76837bc5fe",
+      "scope": "panel",
+      "parent": "experience-0-r2-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 36,
+      "alias": "panel-23",
+      "input": "inputs/panel-blind-1-r2-case-36.json",
+      "sha256": "0dbf111f23513542a93b5ac2a0260faa97b219231c6449c28eb10d7d7187173a",
+      "scope": "panel",
+      "parent": "blind-1-r2-case-36",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-24",
+      "input": "inputs/panel-experience-0-r2-case-39.json",
+      "sha256": "0d538c264d2649400a026c9df485702d07d1968747149506e3963c8d53412d32",
+      "scope": "panel",
+      "parent": "experience-0-r2-case-39",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-25",
+      "input": "inputs/panel-experience-0-r2-case-44.json",
+      "sha256": "3a6ae8dfb8ed000ba11cae2f8af452404146ca70aaf3779277e61e614da99194",
+      "scope": "panel",
+      "parent": "experience-0-r2-case-44",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-26",
+      "input": "inputs/panel-blind-1-r2-case-39.json",
+      "sha256": "7886d17b6a5ccc47555da8bcfdb392ee90515b761a38e623f185c186c9824c6e",
+      "scope": "panel",
+      "parent": "blind-1-r2-case-39",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 36,
+      "alias": "panel-27",
+      "input": "inputs/panel-blind-0-r2-case-36.json",
+      "sha256": "f00948c5d9a78a37c0d7a5625df3be09f0d3894c12bdb365c7a9084c1e2094cc",
+      "scope": "panel",
+      "parent": "blind-0-r2-case-36",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-28",
+      "input": "inputs/panel-blind-1-r2-case-44.json",
+      "sha256": "7f26f9c2a6cfccb5628ecd13f569cb217191440c992d8aab2c879283e2bac650",
+      "scope": "panel",
+      "parent": "blind-1-r2-case-44",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-29",
+      "input": "inputs/panel-blind-0-r2-case-37.json",
+      "sha256": "438b5c30f846b8a5b366ae78fbec9dc1a0b4e9904f812223700df9d25960b2a1",
+      "scope": "panel",
+      "parent": "blind-0-r2-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 36,
+      "alias": "panel-30",
+      "input": "inputs/panel-experience-1-r0-case-36.json",
+      "sha256": "649728c89fa97638d8121c30838b9a779ec7acc7d2b70d7b91f91b865b61ffd0",
+      "scope": "panel",
+      "parent": "experience-1-r0-case-36",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 39,
+      "alias": "panel-31",
+      "input": "inputs/panel-blind-0-r2-case-39.json",
+      "sha256": "e8fc00de20642122eb56e10821d8d01ab8f4a64df951d179ec6c598cdf0ea236",
+      "scope": "panel",
+      "parent": "blind-0-r2-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-32",
+      "input": "inputs/panel-experience-1-r0-case-37.json",
+      "sha256": "565c629d66ae54440e96fe5633194e3a4de315680417aa4a72f580e4f7ea2865",
+      "scope": "panel",
+      "parent": "experience-1-r0-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-33",
+      "input": "inputs/panel-blind-0-r2-case-44.json",
+      "sha256": "48550766a2a18462060c9ce693bbae34b8a2b9d38138c61d9bcd1261390e6b48",
+      "scope": "panel",
+      "parent": "blind-0-r2-case-44",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 39,
+      "alias": "panel-34",
+      "input": "inputs/panel-experience-1-r0-case-39.json",
+      "sha256": "685842a5c3d05182a43a215576e93c3b9ee62b3062ab0836d69459ac42472da3",
+      "scope": "panel",
+      "parent": "experience-1-r0-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-35",
+      "input": "inputs/panel-experience-1-r0-case-44.json",
+      "sha256": "13652b0cee2e2087ca9b9fd39eca274f935bedb01d09a48ef08f39e0cfeb73ea",
+      "scope": "panel",
+      "parent": "experience-1-r0-case-44",
+      "beforePassed": false,
+      "bindingError": "Missing or ambiguous affected line\n\n0 !== 1\n"
+    },
+    {
+      "index": 36,
+      "alias": "panel-36",
+      "input": "inputs/panel-experience-1-r1-case-36.json",
+      "sha256": "fe433aa58bbe48568dbfb06b285c8cf9dc24a78730c5a2d7307715006da18e2c",
+      "scope": "panel",
+      "parent": "experience-1-r1-case-36",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-37",
+      "input": "inputs/panel-experience-1-r1-case-37.json",
+      "sha256": "14782fcdef155c8c8d2c9b7153ab35e3507bb771dd348a6e274dcc687fad442d",
+      "scope": "panel",
+      "parent": "experience-1-r1-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-38",
+      "input": "inputs/panel-experience-1-r1-case-39.json",
+      "sha256": "1c185336083087abf853ebb59baef9aae810323535c150384e98a0dd1971e22c",
+      "scope": "panel",
+      "parent": "experience-1-r1-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-39",
+      "input": "inputs/panel-experience-1-r1-case-44.json",
+      "sha256": "47091b3e642f3ffe7b1ad411d0a9f12cb536881816cb60f4bae2983d42f1e75e",
+      "scope": "panel",
+      "parent": "experience-1-r1-case-44",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 36,
+      "alias": "panel-40",
+      "input": "inputs/panel-experience-1-r2-case-36.json",
+      "sha256": "c32e15035be862ef3a098de58c36479f4dea7b779bbcabf06660b8dafd603af8",
+      "scope": "panel",
+      "parent": "experience-1-r2-case-36",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 37,
+      "alias": "panel-41",
+      "input": "inputs/panel-experience-1-r2-case-37.json",
+      "sha256": "79d7bdd7c0125d83580a240d5083c124562c38bc40f0997d87e3d6f95a66183b",
+      "scope": "panel",
+      "parent": "experience-1-r2-case-37",
+      "beforePassed": true,
+      "bindingError": null
+    },
+    {
+      "index": 39,
+      "alias": "panel-42",
+      "input": "inputs/panel-experience-1-r2-case-39.json",
+      "sha256": "0985456e9a97adf6741e497a032d77a08031db051e3e1ee6a237679d99cd1cd9",
+      "scope": "panel",
+      "parent": "experience-1-r2-case-39",
+      "beforePassed": false,
+      "bindingError": null
+    },
+    {
+      "index": 44,
+      "alias": "panel-43",
+      "input": "inputs/panel-experience-1-r2-case-44.json",
+      "sha256": "d297ba2af69699c94dbda4c4da965dd3975f857e386b0a89a5b36c29746b3e79",
+      "scope": "panel",
+      "parent": "experience-1-r2-case-44",
+      "beforePassed": false,
+      "bindingError": null
+    }
+  ],
+  "assignments": [
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r0-case-0",
+      "repetition": 0,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r0-case-0",
+      "repetition": 0,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r0-case-0",
+      "repetition": 0,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r0-case-0",
+      "repetition": 0,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r0-case-0",
+      "repetition": 0,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r0-case-1",
+      "repetition": 0,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r0-case-1",
+      "repetition": 0,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r0-case-1",
+      "repetition": 0,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r0-case-1",
+      "repetition": 0,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r0-case-1",
+      "repetition": 0,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r0-case-2",
+      "repetition": 0,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r0-case-2",
+      "repetition": 0,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r0-case-2",
+      "repetition": 0,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r0-case-2",
+      "repetition": 0,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r0-case-2",
+      "repetition": 0,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r0-case-3",
+      "repetition": 0,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r0-case-3",
+      "repetition": 0,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r0-case-3",
+      "repetition": 0,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r0-case-3",
+      "repetition": 0,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r0-case-3",
+      "repetition": 0,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r1-case-0",
+      "repetition": 1,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r1-case-0",
+      "repetition": 1,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r1-case-0",
+      "repetition": 1,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r1-case-0",
+      "repetition": 1,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r1-case-0",
+      "repetition": 1,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r1-case-1",
+      "repetition": 1,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r1-case-1",
+      "repetition": 1,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r1-case-1",
+      "repetition": 1,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r1-case-1",
+      "repetition": 1,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r1-case-1",
+      "repetition": 1,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r1-case-2",
+      "repetition": 1,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r1-case-2",
+      "repetition": 1,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r1-case-2",
+      "repetition": 1,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r1-case-2",
+      "repetition": 1,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r1-case-2",
+      "repetition": 1,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r1-case-3",
+      "repetition": 1,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r1-case-3",
+      "repetition": 1,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r1-case-3",
+      "repetition": 1,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r1-case-3",
+      "repetition": 1,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r1-case-3",
+      "repetition": 1,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r2-case-0",
+      "repetition": 2,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r2-case-0",
+      "repetition": 2,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r2-case-0",
+      "repetition": 2,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r2-case-0",
+      "repetition": 2,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r2-case-0",
+      "repetition": 2,
+      "index": 36,
+      "alias": "case-0",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r2-case-1",
+      "repetition": 2,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r2-case-1",
+      "repetition": 2,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r2-case-1",
+      "repetition": 2,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r2-case-1",
+      "repetition": 2,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r2-case-1",
+      "repetition": 2,
+      "index": 37,
+      "alias": "case-1",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r2-case-2",
+      "repetition": 2,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r2-case-2",
+      "repetition": 2,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r2-case-2",
+      "repetition": 2,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r2-case-2",
+      "repetition": 2,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r2-case-2",
+      "repetition": 2,
+      "index": 39,
+      "alias": "case-2",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-0",
+      "label": "advice-candidate-0-r2-case-3",
+      "repetition": 2,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "label": "compiled-candidate-0-r2-case-3",
+      "repetition": 2,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "advice",
+      "candidate": "candidate-1",
+      "label": "advice-candidate-1-r2-case-3",
+      "repetition": 2,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "label": "compiled-candidate-1-r2-case-3",
+      "repetition": 2,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    },
+    {
+      "arm": "retrieval",
+      "candidate": null,
+      "label": "retrieval-shared-r2-case-3",
+      "repetition": 2,
+      "index": 44,
+      "alias": "case-3",
+      "scope": "primary"
+    }
+  ],
+  "panelAssignments": [
+    {
+      "label": "compiled-candidate-0-panel-0",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-0",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-0",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-0",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-1",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-1",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-1",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-1",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-2",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-2",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-2",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-2",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-3",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-3",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-3",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-3",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-4",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-4",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-4",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-4",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-5",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-5",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-5",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-5",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-6",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-6",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-6",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-6",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-7",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-7",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-7",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-7",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-8",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-8",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-8",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-8",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-9",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-9",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-9",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-9",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-10",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-10",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-10",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-10",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-11",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-11",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-11",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-11",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-12",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-12",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-12",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-12",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-13",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-13",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-13",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-13",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-14",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-14",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-14",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-14",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-15",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-15",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-15",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-15",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-16",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-16",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-16",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-16",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-17",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-17",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-17",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-17",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-18",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-18",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-18",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-18",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-19",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-19",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-19",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-19",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-20",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-20",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-20",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-20",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-21",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-21",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-21",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-21",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-22",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-22",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-22",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-22",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-23",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-23",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-23",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-23",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-24",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-24",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-24",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-24",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-25",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-25",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-25",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-25",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-26",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-26",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-26",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-26",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-27",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-27",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-27",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-27",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-28",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-28",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-28",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-28",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-29",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-29",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-29",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-29",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-30",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-30",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-30",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-30",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-31",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-31",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-31",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-31",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-32",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-32",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-32",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-32",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-33",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-33",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-33",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-33",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-34",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-34",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-34",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-34",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-35",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-35",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-35",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-35",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-36",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-36",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-36",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-36",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-37",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-37",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-37",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-37",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-38",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-38",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-38",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-38",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-39",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-39",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-39",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-39",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-40",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 36,
+      "alias": "panel-40",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-40",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 36,
+      "alias": "panel-40",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-41",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 37,
+      "alias": "panel-41",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-41",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 37,
+      "alias": "panel-41",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-42",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 39,
+      "alias": "panel-42",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-42",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 39,
+      "alias": "panel-42",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-0-panel-43",
+      "arm": "compiled",
+      "candidate": "candidate-0",
+      "index": 44,
+      "alias": "panel-43",
+      "scope": "panel"
+    },
+    {
+      "label": "compiled-candidate-1-panel-43",
+      "arm": "compiled",
+      "candidate": "candidate-1",
+      "index": 44,
+      "alias": "panel-43",
+      "scope": "panel"
+    }
+  ],
+  "sourceRun": "telecom-repair-learning-v1",
+  "sourceAuditHash": "a236b9a4b05163d47aa86c0bc947cd195544ddfdf5b0294bdaf739fd5471dc76",
+  "panelSourceRun": "telecom-corrected-discovery-v1",
+  "evidenceHash": "21c6f10a13c9f8779927f5e6273993e66909ad2b0710bee66c1cd5e643eee37c",
+  "contextHash": "395e081703be510cf6f5c2f4d33d9a9cd2cbb720f62083b9037b8dee906afcf8",
+  "controls": "Two independent procedures generated from the same verified repairs and prior public diagnostic observations. At most two generation calls each, one compiler-only correction. No human repair recipe, task-outcome revisions or candidate selection. Both sealed before evaluation. Compare each exact artifact as compiled procedure versus LLM advice; raw evidence retrieval is shared control. Same primary inputs, identity binding, policy, six native actions/eight decisions. Advice/retrieval 2048 output tokens/decision. All assignments retained.",
+  "panel": "All44 other consumed final states of the same four development cases, including28 failed and16 healthy. Generation receives none of their traces. Missing/ambiguous public identity causes zero-action abstention and remains in denominator. This is state reuse, not fresh-case or recipient transfer. Repeated deterministic executions are not independent samples.",
+  "gate": "Both candidates valid; primary noerrors; each compiled >=10/12 repairs and >=its advice arm; each panel repairs >=half of all28 failed states, preserves all16 healthy states with zero WRITE actions, noerrors and no false self-verification. Gate qualifies development reuse only. Mechanism advantage reported separately; no requirement to manufacture improvement over advice.",
+  "reservedRecipients": [
+    11,
+    12,
+    15,
+    49
+  ],
+  "generatorCeilingUsd": 25,
+  "laneCeilingUsd": 40,
+  "concurrency": 3,
+  "authorization": "Thorough paid synthetic experiments authorized; ceilings are circuit breakers. No live activation, propagation or publication."
+}

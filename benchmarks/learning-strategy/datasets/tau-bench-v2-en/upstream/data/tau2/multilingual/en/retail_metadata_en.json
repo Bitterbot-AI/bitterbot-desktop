@@ -1,0 +1,202 @@
+{
+  "6": {
+    "canonical_task_id": "6",
+    "caller_gender": "female"
+  },
+  "8": {
+    "canonical_task_id": "8",
+    "caller_gender": "female"
+  },
+  "11": {
+    "canonical_task_id": "11",
+    "caller_gender": "female"
+  },
+  "13": {
+    "canonical_task_id": "13",
+    "caller_gender": "female"
+  },
+  "14": {
+    "canonical_task_id": "14",
+    "caller_gender": "female"
+  },
+  "16": {
+    "canonical_task_id": "16",
+    "caller_gender": "female"
+  },
+  "17": {
+    "canonical_task_id": "17",
+    "caller_gender": "female"
+  },
+  "18": {
+    "canonical_task_id": "18",
+    "caller_gender": "female"
+  },
+  "19": {
+    "canonical_task_id": "19",
+    "caller_gender": "female"
+  },
+  "21": {
+    "canonical_task_id": "21",
+    "caller_gender": "male"
+  },
+  "22": {
+    "canonical_task_id": "22",
+    "caller_gender": "male"
+  },
+  "23": {
+    "canonical_task_id": "23",
+    "caller_gender": "female"
+  },
+  "25": {
+    "canonical_task_id": "25",
+    "caller_gender": "female"
+  },
+  "26": {
+    "canonical_task_id": "26",
+    "caller_gender": "female"
+  },
+  "30": {
+    "canonical_task_id": "30",
+    "caller_gender": "female"
+  },
+  "32": {
+    "canonical_task_id": "32",
+    "caller_gender": "female"
+  },
+  "36": {
+    "canonical_task_id": "36",
+    "caller_gender": "male"
+  },
+  "38": {
+    "canonical_task_id": "38",
+    "caller_gender": "male"
+  },
+  "39": {
+    "canonical_task_id": "39",
+    "caller_gender": "female"
+  },
+  "40": {
+    "canonical_task_id": "40",
+    "caller_gender": "female"
+  },
+  "42": {
+    "canonical_task_id": "42",
+    "caller_gender": "female"
+  },
+  "47": {
+    "canonical_task_id": "47",
+    "caller_gender": "male"
+  },
+  "49": {
+    "canonical_task_id": "49",
+    "caller_gender": "male"
+  },
+  "50": {
+    "canonical_task_id": "50",
+    "caller_gender": "female"
+  },
+  "52": {
+    "canonical_task_id": "52",
+    "caller_gender": "female"
+  },
+  "53": {
+    "canonical_task_id": "53",
+    "caller_gender": "female"
+  },
+  "56": {
+    "canonical_task_id": "56",
+    "caller_gender": "male"
+  },
+  "58": {
+    "canonical_task_id": "58",
+    "caller_gender": "male"
+  },
+  "59": {
+    "canonical_task_id": "59",
+    "caller_gender": "male"
+  },
+  "63": {
+    "canonical_task_id": "63",
+    "caller_gender": "female"
+  },
+  "64": {
+    "canonical_task_id": "64",
+    "caller_gender": "male"
+  },
+  "65": {
+    "canonical_task_id": "65",
+    "caller_gender": "male"
+  },
+  "66": {
+    "canonical_task_id": "66",
+    "caller_gender": "male"
+  },
+  "68": {
+    "canonical_task_id": "68",
+    "caller_gender": "male"
+  },
+  "70": {
+    "canonical_task_id": "70",
+    "caller_gender": "female"
+  },
+  "71": {
+    "canonical_task_id": "71",
+    "caller_gender": "male"
+  },
+  "74": {
+    "canonical_task_id": "74",
+    "caller_gender": "male"
+  },
+  "78": {
+    "canonical_task_id": "78",
+    "caller_gender": "female"
+  },
+  "79": {
+    "canonical_task_id": "79",
+    "caller_gender": "female"
+  },
+  "80": {
+    "canonical_task_id": "80",
+    "caller_gender": "female"
+  },
+  "83": {
+    "canonical_task_id": "83",
+    "caller_gender": "female"
+  },
+  "85": {
+    "canonical_task_id": "85",
+    "caller_gender": "male"
+  },
+  "86": {
+    "canonical_task_id": "86",
+    "caller_gender": "male"
+  },
+  "89": {
+    "canonical_task_id": "89",
+    "caller_gender": "male"
+  },
+  "97": {
+    "canonical_task_id": "97",
+    "caller_gender": "male"
+  },
+  "102": {
+    "canonical_task_id": "102",
+    "caller_gender": "male"
+  },
+  "104": {
+    "canonical_task_id": "104",
+    "caller_gender": "male"
+  },
+  "105": {
+    "canonical_task_id": "105",
+    "caller_gender": "male"
+  },
+  "107": {
+    "canonical_task_id": "107",
+    "caller_gender": "female"
+  },
+  "112": {
+    "canonical_task_id": "112",
+    "caller_gender": "female"
+  }
+}

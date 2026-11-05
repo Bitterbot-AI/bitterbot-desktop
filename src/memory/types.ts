@@ -108,6 +108,7 @@ export type MemoryProviderStatus = {
 };
 
 export interface MemorySearchManager {
+  proceduralLearning?(): import("./procedural-learning.js").ProceduralLearning | null;
   search(
     query: string,
     opts?: {

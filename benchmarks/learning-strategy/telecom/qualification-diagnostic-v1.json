@@ -1,0 +1,304 @@
+{
+  "status": "passed",
+  "adapterRevision": "text-v5-missing-diagnostic",
+  "providerCalls": 0,
+  "modelDecisionsRerun": 0,
+  "rulesHash": "f849e6d8691cb7628e1f5af792cc193a87ddadf6e960bca9e809fa9ead503910",
+  "sources": [
+    {
+      "file": "benchmarks/learning-strategy/telecom/diagnostic-observations.mjs",
+      "sha256": "0ad48b69c03b0968477d95393f2907a9d5bf50844ce25768b3f7d3ad44a484e1"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/diagnostic-protocol.mjs",
+      "sha256": "186b20ad677c049a611822e633ce066a7864484f1b70134d469883386695ec77"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/reminders.mjs",
+      "sha256": "e032cc3b43964bb1f1d031439146188c247f74bda07b10cedb08b94e63281886"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/episode.mjs",
+      "sha256": "8084b809dfd0398d3fead9b295a93021cf4c040c0b5272554d8f3fb6bcb44b3e"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/grounding.mjs",
+      "sha256": "a3606448119b34a201c5b576b913448f9ac68ee815d547b150028da38ea5e48b"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/trace-observations.mjs",
+      "sha256": "764121bc5d7a1d78dfacb7ae444c804d8f45d404affb64eb00f2c006e121c785"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/telecom.test.mjs",
+      "sha256": "bf8f528dc062dcd34414a3c1cc1cf8f4ca6c1311acd317e83a63566fb1b6b935"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/diagnostic-observations.test.mjs",
+      "sha256": "710077e6686672319a2fdb0e0696fd74fe97511209bcb7f63bdbb2f7c1804c82"
+    },
+    {
+      "file": "benchmarks/learning-strategy/telecom/qualify-diagnostic.mjs",
+      "sha256": "04dbe9006655024459613c020047076ceff916397f89fd4cc02477b0296054d5"
+    }
+  ],
+  "inputs": [
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "freezeSha256": "4d5287e0812ef1fb92de67e0d2efb379d302c93b3038871c7bdb23fff471bc91"
+    },
+    {
+      "study": "telecom-additive-transfer-v1",
+      "freezeSha256": "d185c90a6c56167fae99e1da8c9822ad4c7162d9c628923a2482e584dfe3291f"
+    }
+  ],
+  "tests": "TAP version 13\n# (node:22296) ExperimentalWarning: SQLite is an experimental feature and might change at any time\n# (Use `node --trace-warnings ...` to show where the warning was created)\n# Subtest: small protocol covers each arm/case once and registers with the existing strategy lab\nok 1 - small protocol covers each arm/case once and registers with the existing strategy lab\n  ---\n  duration_ms: 13.4778\n  type: 'test'\n  ...\n# Subtest: missing diagnostic requires a fresh failure, strong signal and unknown allowance\nok 2 - missing diagnostic requires a fresh failure, strong signal and unknown allowance\n  ---\n  duration_ms: 12.0967\n  type: 'test'\n  ...\n# Subtest: negative and contradictory reports cannot establish the diagnostic trigger\nok 3 - negative and contradictory reports cannot establish the diagnostic trigger\n  ---\n  duration_ms: 1.2865\n  type: 'test'\n  ...\n# Subtest: known allowance, line changes and private reports suppress missing-check advice\nok 4 - known allowance, line changes and private reports suppress missing-check advice\n  ---\n  duration_ms: 1.4216\n  type: 'test'\n  ...\n# Subtest: consumed failure is intercepted before repeated device checks and six simple controls stay quiet\nok 5 - consumed failure is intercepted before repeated device checks and six simple controls stay quiet\n  ---\n  duration_ms: 22.1965\n  type: 'test'\n  ...\n# Subtest: native tools enforce roles, reject hidden methods, and reset state\nok 6 - native tools enforce roles, reject hidden methods, and reset state\n  ---\n  duration_ms: 1370.4284\n  type: 'test'\n  ...\n# Subtest: cache pricing distinguishes five-minute and hour writes\nok 7 - cache pricing distinguishes five-minute and hour writes\n  ---\n  duration_ms: 0.4904\n  type: 'test'\n  ...\n# Subtest: reminders reuse explicit settings and invalidate them after possible mutations\nok 8 - reminders reuse explicit settings and invalidate them after possible mutations\n  ---\n  duration_ms: 10.9633\n  type: 'test'\n  ...\n# Subtest: allowance reminders account for refuels and cannot retain another customer's state\nok 9 - allowance reminders account for refuels and cannot retain another customer's state\n  ---\n  duration_ms: 1.6629\n  type: 'test'\n  ...\n# Subtest: travel reports distinguish current observations from questions, quotes and hypothetical trips\nok 10 - travel reports distinguish current observations from questions, quotes and hypothetical trips\n  ---\n  duration_ms: 4.4092\n  type: 'test'\n  ...\n# Subtest: line and plan joins follow the requested phone, not inspection order or primary contact\nok 11 - line and plan joins follow the requested phone, not inspection order or primary contact\n  ---\n  duration_ms: 0.6909\n  type: 'test'\n  ...\n# Subtest: refueling invalidates cached joins until fresh usage arrives; malformed values stay unknown\nok 12 - refueling invalidates cached joins until fresh usage arrives; malformed values stay unknown\n  ---\n  duration_ms: 0.5987\n  type: 'test'\n  ...\n# Subtest: a phone change resets prior device and customer observations even within one account\nok 13 - a phone change resets prior device and customer observations even within one account\n  ---\n  duration_ms: 1.3664\n  type: 'test'\n  ...\n# Subtest: birth date grounding uses declared knowledge, never persona age or invented identities\nok 14 - birth date grounding uses declared knowledge, never persona age or invented identities\n  ---\n  duration_ms: 2.2801\n  type: 'test'\n  ...\n# Subtest: offline routing preserves private tool boundaries and never adds post-termination advice\nok 15 - offline routing preserves private tool boundaries and never adds post-termination advice\n  ---\n  duration_ms: 0.895\n  type: 'test'\n  ...\n# Subtest: ungrounded customer speech stops before actor delivery, remains charged and is excluded from feedback\nok 16 - ungrounded customer speech stops before actor delivery, remains charged and is excluded from feedback\n  ---\n  duration_ms: 2052\n  type: 'test'\n  ...\n# Subtest: episode reminder routing sees only public customer speech, never private tool responses\nok 17 - episode reminder routing sees only public customer speech, never private tool responses\n  ---\n  duration_ms: 1972.7652\n  type: 'test'\n  ...\n# Subtest: successful human handoff ends immediately without farewell loops or later writes\nok 18 - successful human handoff ends immediately without farewell loops or later writes\n  ---\n  duration_ms: 1071.8142\n  type: 'test'\n  ...\n# Subtest: development evidence preserves dialogue while excluding private user state and post-handoff chatter\nok 19 - development evidence preserves dialogue while excluding private user state and post-handoff chatter\n  ---\n  duration_ms: 2.2813\n  type: 'test'\n  ...\n# Subtest: paid requests reserve before dispatch, settle usage and retain failures\nok 20 - paid requests reserve before dispatch, settle usage and retain failures\n  ---\n  duration_ms: 50.53\n  type: 'test'\n  ...\n1..20\n# tests 20\n# suites 0\n# pass 20\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 7093.5692\n",
+  "rows": [
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "baseline-0-1",
+      "index": 1,
+      "episodeSha256": "89292256fe4aed088b09c1941497abc6d98e7e387e468cc5941c8df50f06611f",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "baseline-0-32",
+      "index": 32,
+      "episodeSha256": "5196f76df23ad9646b0127c1518ad72b8dba0b6266597117ef72b2312b7a4654",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "baseline-0-42",
+      "index": 42,
+      "episodeSha256": "c2ff988b6d94ff4697e5dda45d497455958697507c57fd76af66863c5a6460db",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "static-0-1",
+      "index": 1,
+      "episodeSha256": "f3f701127c72293edf2456218ccfaa60b80623ce149925bf3cbcfca27b5e932b",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "static-0-32",
+      "index": 32,
+      "episodeSha256": "2cfef920e4cc37d733918fdc35f476e6667934ab19984a2dc42597ca0e8fcb28",
+      "hits": [
+        {
+          "beforeTranscriptPosition": 47,
+          "matches": [
+            {
+              "id": "missing-allowance-check",
+              "text": "MMS still fails despite reported strong cellular signal, and this line's data allowance is unverified. Check the affected line's usage against its plan allowance before repeating device resets or handing off. Unknown allowance is not proof of exhaustion; obtain required consent before changes.",
+              "evidence": [
+                "speech-46",
+                "speech-34"
+              ]
+            }
+          ]
+        }
+      ],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "static-0-42",
+      "index": 42,
+      "episodeSha256": "e2602144e41cd61a3af167c9bcf33929fe3f590d25f78651c081c7a5d8d53fa8",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "conditional-0-1",
+      "index": 1,
+      "episodeSha256": "177010874d49f88975cdb26b831b6366d4ab4af645b4451136d21f9024d1694f",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "conditional-0-32",
+      "index": 32,
+      "episodeSha256": "cbbf75fec38ca931374920a7282d6082752c048bbfadd05422f90cb4c7485ec0",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "conditional-0-42",
+      "index": 42,
+      "episodeSha256": "ee6e3e22c2b4ce2244dc98c259f24efa12b8dbb3a7ee047b6a28bbe0c25abd23",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "conditional-1-42",
+      "index": 42,
+      "episodeSha256": "deda2e53f4d05766404854b574e2e5335c7c5326fdac6c61e2b6bbc017705923",
+      "hits": [],
+      "groundingFailure": {
+        "position": 2,
+        "responseId": "0ed957c8-ab7a-4138-a254-64311787db13",
+        "issue": "unsupported-birth-date"
+      }
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "conditional-1-32",
+      "index": 32,
+      "episodeSha256": "679f825e8b061f87ca77c108c8c9578a598cfcd51859c2b4388ca3fa9d8bfd76",
+      "hits": [
+        {
+          "beforeTranscriptPosition": 23,
+          "matches": [
+            {
+              "id": "missing-allowance-check",
+              "text": "MMS still fails despite reported strong cellular signal, and this line's data allowance is unverified. Check the affected line's usage against its plan allowance before repeating device resets or handing off. Unknown allowance is not proof of exhaustion; obtain required consent before changes.",
+              "evidence": [
+                "speech-18",
+                "speech-22"
+              ]
+            }
+          ]
+        }
+      ],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "conditional-1-1",
+      "index": 1,
+      "episodeSha256": "677260a5f85b468d44a00a3878ec11b6ea4b69e96b440ea1f85351ca10e5d64b",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "static-1-42",
+      "index": 42,
+      "episodeSha256": "94e96dad955045afe8f2a11a0787b1ffe756df230b85edb554e785eda5e1d42f",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "static-1-32",
+      "index": 32,
+      "episodeSha256": "2a922333ec0ca9562fbbc556dd44f334d9534a164871399fc4defc5752b3940a",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "static-1-1",
+      "index": 1,
+      "episodeSha256": "5fcdd94bb7d9a7f4af41d7063de178a44b774e81a461ce1157825aa279b8280f",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "baseline-1-42",
+      "index": 42,
+      "episodeSha256": "f7146f66a4891a62af6625994de86f96a33bce6e560b0534782a21a494fa48b1",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "baseline-1-32",
+      "index": 32,
+      "episodeSha256": "d8ac983e129baafb82f03938f48a7b7c1e226655e9528e17d6b62f6192da225d",
+      "hits": [
+        {
+          "beforeTranscriptPosition": 35,
+          "matches": [
+            {
+              "id": "missing-allowance-check",
+              "text": "MMS still fails despite reported strong cellular signal, and this line's data allowance is unverified. Check the affected line's usage against its plan allowance before repeating device resets or handing off. Unknown allowance is not proof of exhaustion; obtain required consent before changes.",
+              "evidence": [
+                "speech-18",
+                "speech-34"
+              ]
+            }
+          ]
+        }
+      ],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-conditional-comparison-v2",
+      "label": "baseline-1-1",
+      "index": 1,
+      "episodeSha256": "a9b4f70664e30b4e376aa81d797c876643d4efb8883cab9aed416e4ab240bb41",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-additive-transfer-v1",
+      "label": "source-development-14",
+      "index": 14,
+      "episodeSha256": "cb1e66d296fb7255766b261b528859bc036f5d6762dc0096dc8214c30fcb7a38",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-additive-transfer-v1",
+      "label": "source-development-45",
+      "index": 45,
+      "episodeSha256": "da7a319d2a30f7870f8e0ed4a6e15797f62b7c0f050c9db419cd3624e2208239",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-additive-transfer-v1",
+      "label": "recipient-baseline-38",
+      "index": 38,
+      "episodeSha256": "d83c9c6edb1eef4460abe701b205d41e5ed29e469032817c0ff36272a692d14d",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-additive-transfer-v1",
+      "label": "recipient-baseline-41",
+      "index": 41,
+      "episodeSha256": "8eb1eaa695c46c66b1adf2e5998d78daadf0b1132523f79695793f3e9194a313",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-additive-transfer-v1",
+      "label": "recipient-transferred-38",
+      "index": 38,
+      "episodeSha256": "2c18b54be6a1f982efb26e2344d686db3e6ab10417576268ed0326c891466ece",
+      "hits": [],
+      "groundingFailure": null
+    },
+    {
+      "study": "telecom-additive-transfer-v1",
+      "label": "recipient-transferred-41",
+      "index": 41,
+      "episodeSha256": "3d829bb2af475712c480d1fef3a290fd6812f929c24750b40799bf52b26b4f0a",
+      "hits": [],
+      "groundingFailure": null
+    }
+  ],
+  "summary": {
+    "trajectories": 24,
+    "activated": 3,
+    "deliveries": 3,
+    "simpleControls": 6,
+    "controlsActivated": 0
+  },
+  "limitations": "Consumed development trajectories only. Recorded model decisions remain fixed; routing coverage does not demonstrate changed behavior, repaired tasks, causal benefit or transfer. Bounded public phrase parsing does not establish general observation coverage."
+}

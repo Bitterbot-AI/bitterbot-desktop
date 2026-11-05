@@ -14,6 +14,13 @@
     "CHANGELOG.md",
     "desktop/src-tauri/tauri.conf.json",
     "benchmarks/longmemeval/data/",
+    // Byte-pinned study evidence and upstream snapshots must retain their hashes.
+    "benchmarks/learning-strategy/data/",
+    "benchmarks/learning-strategy/datasets/",
+    "benchmarks/learning-strategy/published/",
+    "benchmarks/learning-strategy/telecom/vendor/",
+    "benchmarks/learning-strategy/telecom/qualification-*.json",
+    "benchmarks/learning-strategy/telecom/native-sources.json",
     "dist/",
     "docs/_layouts/",
     "node_modules/",

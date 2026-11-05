@@ -1,0 +1,146 @@
+{
+  "repository": "sierra-research/tau2-bench",
+  "commit": "989d3285ae669e49503324bdb9981bf14fccedeb",
+  "files": [
+    {
+      "path": "src/tau2/utils/pydantic_utils.py",
+      "gitBlobSha": "adc02cb8db38d1b55340ead43207f3ff0ecf7c76",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/utils/io_utils.py",
+      "gitBlobSha": "16edf0e8af54adee8118206cb64baeb6058795b0",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/utils/__init__.py",
+      "gitBlobSha": "42a638ed754506b85e80f714bddde9c7883e38c6",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/domains/telecom/environment.py",
+      "gitBlobSha": "0acd01b734f7a750da6fe2c0472d4a1b8f3f1ade",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/environment/environment.py",
+      "gitBlobSha": "dcb6b5a6a62190b77b7e2504d72eccd91fa113be",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/environment/toolkit.py",
+      "gitBlobSha": "b6ccc92f4b4d7d692a7b7db10197ce3630fadaae",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/environment/tool.py",
+      "gitBlobSha": "cf55463cbac9286f36f5b01f5c799d5b0b50da88",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/environment/db.py",
+      "gitBlobSha": "5a4122a575449d2e8f531399f77391a237b6d958",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/data_model/tasks.py",
+      "gitBlobSha": "aed24b4f1babed6c7492023e826af773d34d5ff8",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/data_model/message.py",
+      "gitBlobSha": "b1cbe019e77c07f5cb8530c57071702b353ffaea",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/utils/utils.py",
+      "gitBlobSha": "4dae36b06f3741934e5aefa24fbafec9aad91d03",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/data_model/audio_effects.py",
+      "gitBlobSha": "5592c66ca68bf6dfe8391050960af0dfb2eed8ca",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/voice_config.py",
+      "gitBlobSha": "d396eea77ff6adc4f2d560c0fc5bf545834d15ec",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/data_model/audio.py",
+      "gitBlobSha": "11b2217dd9c22288801335d3e2f0fe7b999c799e",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/config.py",
+      "gitBlobSha": "9b09b7c2468fcf106ce61ce6c364d96128ad0b43",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/domains/telecom/utils.py",
+      "gitBlobSha": "15ddf884b4592f290c3a7ab5396398956c45582e",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/domains/telecom/user_tools.py",
+      "gitBlobSha": "f69c60dbf7b9edfd5b59c64682c26f5ff9b42071",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/environment/regional.py",
+      "gitBlobSha": "913fccb627ef3fce416f95092a1e98c538c4811f",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/domains/telecom/user_data_model.py",
+      "gitBlobSha": "78288cfc3f27cef39b4f7016d6b4646480338ecf",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/domains/telecom/region.py",
+      "gitBlobSha": "c3b23d976e99d0e27f04dba7de8b659554712f51",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/domains/telecom/tools.py",
+      "gitBlobSha": "8fd853313a297568d0ea7380aeaf53ee63d01fda",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/utils/text_match.py",
+      "gitBlobSha": "eb4e6055cbeedb0bea9347993e9cb73df52fd2af",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "src/tau2/domains/telecom/data_model.py",
+      "gitBlobSha": "54e95d47c9e73da268bc7ac4d7969d4f8a03f013",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "LICENSE",
+      "gitBlobSha": "f0323a32227c1327820da33d2fb9d3338a27ac84",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "data/tau2/domains/telecom/db.toml",
+      "gitBlobSha": "6c8a639d85896a049a5daf87332107a840a55aac",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "data/tau2/domains/telecom/user_db.toml",
+      "gitBlobSha": "1def9a98eabf1d4a5fc95a67387ec294f56196d8",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "data/tau2/domains/telecom/tech_support_manual.md",
+      "gitBlobSha": "b64a9f1433bfb62bdaf9e5c1d90c10e833b26c17",
+      "sourceEndsWithNewline": false
+    },
+    {
+      "path": "data/tau2/domains/telecom/main_policy.md",
+      "gitBlobSha": "c55f5bd10c49a3d0b48f6e83a3168e6242fb2be7",
+      "sourceEndsWithNewline": false
+    }
+  ]
+}

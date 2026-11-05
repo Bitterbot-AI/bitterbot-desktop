@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LearningConfigSchema } from "../memory/procedural-learning-contract.js";
 import { ToolsSchema } from "./zod-schema.agent-runtime.js";
 import { AgentsSchema, AudioSchema, BindingsSchema, BroadcastSchema } from "./zod-schema.agents.js";
 import { ApprovalsSchema } from "./zod-schema.approvals.js";
@@ -59,6 +60,7 @@ export const CuriosityEvidenceSchema = z
 
 const MemorySchema = z
   .object({
+    proceduralLearning: LearningConfigSchema.optional(),
     backend: z.literal("builtin").optional(),
     citations: z.union([z.literal("auto"), z.literal("on"), z.literal("off")]).optional(),
     // Token-efficiency item 3: Anthropic Message Batches for latency-tolerant lanes.

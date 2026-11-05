@@ -10,6 +10,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { BitterbotConfig } from "../../config/config.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { STRATEGY_PACKET_MARKER } from "../../memory/learning-strategy-peer.js";
+import { LEARNING_PACKET_MARKER } from "../../memory/procedural-learning-peer.js";
 import { parseSkillMarkdown } from "../../memory/skill-curator-judge.js";
 import {
   type ApplicabilityFit,
@@ -147,6 +149,7 @@ export type SkillEnvelope = {
 };
 
 export type IngestResult = {
+  proceduralCandidate?: boolean;
   ok: boolean;
   /**
    * `retracted`: PLAN-45 Phase 3.4, a signed retraction stub was applied (never stored as a skill).
@@ -336,6 +339,8 @@ export async function ingestSkill(params: {
   // the same key is refused. It runs BEFORE the rate limit (adversarial
   // 3-9): the one message that must land after a publish burst.
   const skillContent = skillBytes.toString("utf-8");
+  const proceduralCandidate =
+    skillContent.includes(LEARNING_PACKET_MARKER) || skillContent.includes(STRATEGY_PACKET_MARKER);
   const retraction = parseRetractionTrailer(skillContent);
   if (retraction) {
     if (seenHashes.size >= MAX_SEEN_HASHES) {
@@ -470,7 +475,8 @@ export async function ingestSkill(params: {
   // injection scan still guards even our own scraped content. A skill is
   // accepted directly when it is local-origin (our own research) OR a trusted
   // peer under `auto` policy; everything else is held for review.
-  const acceptDirectly = !forceQuarantine && !routingHold && policy === "auto" && isAutoAccepted;
+  const acceptDirectly =
+    !proceduralCandidate && !forceQuarantine && !routingHold && policy === "auto" && isAutoAccepted;
   if (acceptDirectly) {
     // PLAN-45 4.2 (D-8): "auto" skips quarantine REVIEW, never the gate. A
     // trusted peer's skill lands in staging for the local validation gate;
@@ -559,7 +565,13 @@ export async function ingestSkill(params: {
   }
 
   log.info(`Quarantined skill: ${skillName} from ${envelope.author_peer_id} (${reason})`);
-  return { ok: true, action: "quarantined", skillName, skillPath };
+  return {
+    ok: true,
+    action: "quarantined",
+    skillName,
+    skillPath,
+    ...(proceduralCandidate && !forceQuarantine ? { proceduralCandidate: true } : {}),
+  };
 }
 
 /**
@@ -646,6 +658,13 @@ export async function acceptIncomingSkill(params: {
 
   try {
     const content = await fs.readFile(skillPath, "utf-8");
+    if (content.includes(STRATEGY_PACKET_MARKER) || content.includes(LEARNING_PACKET_MARKER)) {
+      return {
+        ok: false,
+        action: "rejected",
+        reason: "Learning packets require host import; they cannot become active filesystem skills",
+      };
+    }
     // Read the author pubkey BEFORE we delete the quarantine dir.
     const authorPubkey = await readQuarantineAuthorPubkey(incomingDir);
     // PLAN-44 Phase 3 (adversarial L7): the file sat in a writable review
@@ -1493,4 +1512,9 @@ export async function nameCollision(params: {
     }
   }
   return null;
+}
+
+/** Successful filesystem acceptance alone authorizes ordinary crystal import. */
+export function permitsCrystalImport(result: IngestResult | null | undefined): boolean {
+  return result?.ok === true && shouldBridgeIngest(result);
 }
