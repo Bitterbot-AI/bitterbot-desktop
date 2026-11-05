@@ -42,6 +42,7 @@
 
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { yieldToEventLoop } from "../event-loop.js";
+import { LearningDispatchStopped } from "../learning-dispatch-stopped.js";
 import { bootstrapMeanCi, MIN_PAIRED_TRIALS } from "./bootstrap-ci.js";
 import { exactSignTest } from "./sign-test.js";
 import { type CorpusTask, scoreTaskAnswer, type TaskCorpus } from "./task-corpus.js";
@@ -380,6 +381,7 @@ export async function validateAgainstTasks(params: {
         wallMs: ms,
       };
     } catch (err) {
+      if (err instanceof LearningDispatchStopped) throw err;
       if (variant === "incumbent") {
         incumbentErrors += 1;
       } else {

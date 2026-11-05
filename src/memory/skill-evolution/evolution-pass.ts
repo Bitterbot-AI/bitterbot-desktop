@@ -28,6 +28,8 @@ import type { KeyPair } from "../../commerce/envelope.js";
 import type { EventJournal } from "../../infra/event-journal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { recordDreamArtifact } from "../dream-utility.js";
+import type { FailureExperimentRecorder } from "../failure-experiments.js";
+import { LearningDispatchStopped } from "../learning-dispatch-stopped.js";
 import type { CanaryMonitorAction, CanaryMonitorResult } from "./canary-monitor.js";
 import { loadEffectiveCorpus } from "./canonical-corpus.js";
 import { mineCapabilityTasks } from "./corpus-miner.js";
@@ -71,6 +73,10 @@ export { runHousekeeping } from "./housekeeping.js";
 export const RECENT_WINDOW_DAYS = 14;
 
 export interface EvolutionPassDeps {
+  /** Host experiment ledger. Supplies provenance, never permission to promote. */
+  failureExperiments?: FailureExperimentRecorder;
+  /** Operational pause/budget guard; checked again immediately before promotion. */
+  assertCanValidate?: () => void;
   journal: EventJournal | null;
   llmCall: LlmCallFn | null;
   /** Separate judge call for trace labeling; defaults to llmCall. */
@@ -323,16 +329,6 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
     };
   }
 
-  await writeSamplerState(
-    {
-      cursorSeq: sample.nextCursorSeq,
-      pending: sample.pending,
-      processed: sample.processedRunIds,
-      parseFailures: null,
-    },
-    storeOpts,
-  );
-
   if (deps.db && maintenance.apply) {
     for (const name of [...maintenance.apply.created, ...maintenance.apply.updated]) {
       recordDreamArtifact(deps.db, {
@@ -350,7 +346,13 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
   let proposer: ProposerRunResult | undefined;
   let proposalOutcome: ApplyProposalResult | undefined;
   const minFails = Math.max(0, deps.minFailsForProposer ?? 1);
-  if (deps.runProposer !== false && sample.stats.failsSelected < minFails) {
+  const experimentId =
+    deps.runProposer !== false && sample.stats.failsSelected >= minFails
+      ? deps.failureExperiments?.begin(sample.samples)
+      : null;
+  if (deps.failureExperiments && !experimentId) {
+    log.info("skill proposer skipped: no new eligible failure experiment");
+  } else if (deps.runProposer !== false && sample.stats.failsSelected < minFails) {
     log.info(
       `skill proposer skipped: ${sample.stats.failsSelected} failing trace(s) sampled (need ${minFails})`,
     );
@@ -369,7 +371,7 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
       });
       proposer.lane = deps.proposerLlmCall ? "dedicated" : "evolution";
     } catch (err) {
-      if (!deps.proposerLlmCall) {
+      if (!deps.proposerLlmCall || err instanceof LearningDispatchStopped) {
         throw err;
       }
       // Adversarial H4: the dedicated proposer lane (D-1: the agent's
@@ -388,7 +390,21 @@ async function runEvolutionIterationInner(deps: EvolutionPassDeps): Promise<Evol
       // PLAN-44 Phase 3: bind the proposal to the traces it actually read.
       evidence: collectProposalEvidence(proposer.reads, sample.samples),
     });
+    if (experimentId) deps.failureExperiments?.proposal(experimentId, proposalOutcome);
   }
+
+  // Commit intake only once proposal generation settles. If it is interrupted,
+  // the same traces remain eligible for the host's bounded retry. Staged
+  // candidates are durable and housekeeping can resume their gate independently.
+  await writeSamplerState(
+    {
+      cursorSeq: sample.nextCursorSeq,
+      pending: sample.pending,
+      processed: sample.processedRunIds,
+      parseFailures: null,
+    },
+    storeOpts,
+  );
 
   // Corpus miner (2026-09-02 upgrade): draft capability-suite tasks from
   // this window's FAILING traces into the pending-review file. Best-effort

@@ -1,5 +1,9 @@
 export const FIELD_LABELS: Record<string, string> = {
   "memory.proceduralLearning.mode": "Procedural Learning Mode",
+  "memory.proceduralLearning.automation.enabled": "Automatic Failure Experiments",
+  "memory.proceduralLearning.automation.maxLlmCalls": "Learning Model Dispatch Limit",
+  "memory.proceduralLearning.automation.maxAgentTurns": "Learning Trial Turn Limit",
+  "memory.proceduralLearning.automation.maxWallMinutes": "Learning Cycle Time Limit",
   "memory.proceduralLearning.experienceMemory.enabled": "Verified Experience Capture",
   // PLAN-41 adjudicated D-D: every default-flipped flag must be reachable as
   // a Settings toggle, not just via Raw JSON / dotted keys.

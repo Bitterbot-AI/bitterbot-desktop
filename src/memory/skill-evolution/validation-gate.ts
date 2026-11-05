@@ -46,6 +46,7 @@ import {
 import { type KeyPair, pubkeyId } from "../../commerce/envelope.js";
 import type { EventJournal } from "../../infra/event-journal.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { LearningDispatchStopped } from "../learning-dispatch-stopped.js";
 import { getActiveSkillNetworkBridge } from "../skill-network-bridge.js";
 import { type ApplicabilityFit, fitTakesStrictCanary } from "./applicability-profile.js";
 import {
@@ -316,6 +317,8 @@ export interface EvolutionMeta {
 }
 
 export interface ValidationGateDeps {
+  assertCanValidate?: () => void;
+  recordExperimentVerdict?: (contentHash: string, result: ValidationGateOutcome) => void;
   journal: EventJournal | null;
   llmCall: LlmCallFn | null;
   storeOpts?: ImpactTrailOptions;
@@ -444,13 +447,38 @@ export async function runValidationGate(
   }
   try {
     for (const name of staged) {
+      let measuredHash: string | undefined;
+      let outcome: ValidationGateOutcome;
       try {
-        outcomes.push(
-          await settleOne(name, roots, { ...deps, trialCache: cache ?? undefined }, trailOpts),
+        deps.assertCanValidate?.();
+        outcome = await settleOne(
+          name,
+          roots,
+          {
+            ...deps,
+            trialCache: cache ?? undefined,
+            observeContentHash: (hash) => {
+              measuredHash = hash;
+            },
+          },
+          trailOpts,
         );
       } catch (err) {
-        log.warn(`validation gate error for ${name}: ${String(err)}`);
-        outcomes.push({ skillName: name, outcome: "error", detail: String(err) });
+        if (!(err instanceof LearningDispatchStopped))
+          log.warn(`validation gate error for ${name}: ${String(err)}`);
+        outcome = {
+          skillName: name,
+          outcome: err instanceof LearningDispatchStopped ? "held" : "error",
+          detail: String(err),
+        };
+      }
+      outcomes.push(outcome);
+      if (measuredHash && deps.recordExperimentVerdict) {
+        try {
+          deps.recordExperimentVerdict(measuredHash, outcome);
+        } catch (error) {
+          log.warn(`experiment receipt write failed: ${String(error)}`);
+        }
       }
     }
   } finally {
@@ -464,7 +492,7 @@ export async function runValidationGate(
 async function settleOne(
   name: string,
   roots: StorageRoots,
-  deps: ValidationGateDeps,
+  deps: ValidationGateDeps & { observeContentHash?: (hash: string) => void },
   trailOpts: ImpactTrailOptions,
 ): Promise<ValidationGateOutcome> {
   const stagedDir = stagingSkillDir(roots, name);
@@ -481,6 +509,7 @@ async function settleOne(
   const incumbent = await readLive(roots, name);
   const isCreate = incumbent === null;
   const contentHash = hashProposalContent(staged.content);
+  deps.observeContentHash?.(contentHash);
 
   // Adversarial H1: the staged SKILL.md must be the one the pipeline wrote.
   // stageSkill strips the sidecars for other authors, but a direct file
@@ -1184,12 +1213,19 @@ async function settleOne(
   } catch {
     purposeMd = null;
   }
+  const currentStaged = await readStaged(roots, name);
+  if (!currentStaged || hashProposalContent(currentStaged.content) !== contentHash) {
+    return { skillName: name, outcome: "held", detail: "staged-content-changed-during-validation" };
+  }
+  deps.assertCanValidate?.();
   const promoted = await promoteStaged(
     { storageRoots: roots },
     {
       name,
       reason: `validation gate accept (${mode}${isPeer ? ", peer re-gate" : ""})`,
       author: isPeer ? "peer" : "evolution",
+      expectedContent: staged.content,
+      createOnly: isCreate,
       // PLAN-44 Phase 3: the validation gate is the ONE path allowed to
       // promote evolution-staged content.
       allowEvolutionStaged: true,

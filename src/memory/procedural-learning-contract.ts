@@ -26,6 +26,15 @@ export const LearningConfigSchema = z
     maxAgeDays: z.number().int().min(1).max(365).default(30),
     toolScopes: z.record(z.string().min(1), LearningScopeSchema).default({}),
     executionBudget: LearningCostSchema.default({ providerUsd: 0, toolCalls: 100, wallMs: 60000 }),
+    automation: z
+      .object({
+        enabled: z.boolean().default(true),
+        maxLlmCalls: z.number().int().min(1).max(256).default(64),
+        maxAgentTurns: z.number().int().min(1).max(1000).default(240),
+        maxWallMinutes: z.number().int().min(1).max(180).default(60),
+      })
+      .strict()
+      .default({ enabled: true, maxLlmCalls: 64, maxAgentTurns: 240, maxWallMinutes: 60 }),
     experienceMemory: z
       .object({
         enabled: z.boolean().default(true),

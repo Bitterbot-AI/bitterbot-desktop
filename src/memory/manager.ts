@@ -4,7 +4,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { type FSWatcher } from "chokidar";
-import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
+import {
+  resolveAgentDir,
+  resolveAgentWorkspaceDir,
+  resolveDefaultAgentId,
+} from "../agents/agent-scope.js";
 import { resolveHarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
 import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
@@ -26,7 +30,9 @@ import {
 import { getComputeRuntime } from "../compute/awareness/runtime.js";
 import { getComputeSnapshot } from "../compute/awareness/state.js";
 import { loadConfig, type BitterbotConfig } from "../config/config.js";
+import { isBackgroundUsagePaused } from "../infra/usage-budgets.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
+import { getUsageLedger } from "../infra/usage-ledger.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
 import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
@@ -71,6 +77,7 @@ import {
   DreamGateState,
   evaluateDreamGate,
   HormonalDeltaTrigger,
+  isDreamLearningIdle,
   lastAutoScratchEvent,
 } from "./dream-gate.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
@@ -353,6 +360,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private syncing: Promise<void> | null = null;
   /** PLAN-46 Phase 4: serializes heavy maintenance jobs (I4). */
   private readonly maintenanceMutex = new MaintenanceMutex();
+  private failureLearningPending: Promise<unknown> | null = null;
   private consolidationTimer: NodeJS.Timeout | null = null;
   private dreamTimer: NodeJS.Timeout | null = null;
   /**
@@ -3317,6 +3325,10 @@ export class MemoryIndexManager implements MemorySearchManager {
           CORRECTION_LLM_LANE,
         );
     this.dreamEngine = new DreamEngine(this.db, engineCfg, synthesizeFn, embedBatchFn);
+    this.dreamEngine.setFailureLearningHost({
+      service: () => this.proceduralLearning(),
+      canDispatch: () => this.canRunFailureLearning(),
+    });
 
     if (this.hormonalManager) {
       this.dreamEngine.setHormonalStateGetter(() => this.hormonalManager?.getState() ?? null);
@@ -4254,12 +4266,58 @@ export class MemoryIndexManager implements MemorySearchManager {
    * minHoursBetween). Explicit triggers (`dream.trigger` RPC, CLI, tests)
    * omit it and always run.
    */
+  private canRunFailureLearning(): boolean {
+    // Evolution's wiki and gateway executor are node-wide and use the default
+    // agent. Other managers must not race it or learn into the wrong identity.
+    if (
+      this.closed ||
+      this.syncing ||
+      this.agentId !== resolveDefaultAgentId(this.cfg) ||
+      this.cfg.memory?.dream?.enabled === false ||
+      this.cfg.skills?.evolution?.enabled === false
+    )
+      return false;
+    if (
+      !isDreamLearningIdle(
+        this.getDreamGateState().snapshot(),
+        this.cfg.memory?.dream?.minIdleMinutes ?? DEFAULT_DREAM_CONFIG.minIdleMinutes,
+      )
+    )
+      return false;
+    return !isBackgroundUsagePaused({
+      ledger: getUsageLedger(),
+      cfg: this.cfg,
+      feature: USAGE_FEATURES.skillsEvolution,
+    });
+  }
+
   async dream(opts?: { scheduled?: boolean }): Promise<DreamStats | null> {
     if (!this.dreamEngine) {
       return null;
     }
     const gateState = this.getDreamGateState();
     if (opts?.scheduled) {
+      // Even a creative-cycle skip can make learning progress. Serialize with
+      // memory maintenance just like the existing full-cycle evolution hook.
+      // Dispatch also pauses during index sync; the engine detects DB swaps.
+      if (this.canRunFailureLearning() && !this.failureLearningPending) {
+        const pending = this.maintenanceMutex
+          .run(
+            "failure-learning",
+            async () => {
+              if (this.canRunFailureLearning())
+                await this.dreamEngine?.runLearningLane(`idle-${Date.now()}`, true);
+            },
+            60_000,
+          )
+          .catch((error) => {
+            log.warn(`automatic failure learning failed: ${String(error)}`);
+          });
+        this.failureLearningPending = pending;
+        void pending.finally(() => {
+          if (this.failureLearningPending === pending) this.failureLearningPending = null;
+        });
+      }
       const dreamCfg = this.cfg.memory?.dream;
       const decision = evaluateDreamGate(
         {
@@ -8055,6 +8113,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         // The launching call site already logs sync failures.
       }
     }
+    await this.failureLearningPending;
+    await this.dreamEngine?.waitForLearning();
     await this.proceduralLearningService?.close();
     this.proceduralLearningService = null;
     this.db.close();

@@ -67,6 +67,7 @@ import type { EvidenceTelemetry } from "./evidence-telemetry.js";
 import type { HormonalStateManager } from "./hormonal.js";
 import { computeCentroid, cosineSimilarity, parseEmbedding } from "./internal.js";
 import { ensureColumn } from "./memory-schema.js";
+import type { ProceduralLearning } from "./procedural-learning.js";
 const log = createSubsystemLogger("memory/dream");
 
 type ChunkRow = {
@@ -108,6 +109,32 @@ export type GCCRFModeInfluence = {
 };
 
 export class DreamEngine {
+  private failureLearningHost: {
+    service: () => ProceduralLearning | null;
+    canDispatch: () => boolean;
+  } | null = null;
+  private learningPending: Promise<void> | null = null;
+
+  setFailureLearningHost(host: NonNullable<DreamEngine["failureLearningHost"]>): void {
+    this.failureLearningHost = host;
+  }
+
+  /** Idle ticks and full cycles share one lane; no parallel evolution pass. */
+  runLearningLane(cycleId: string, automatic = false): Promise<void> {
+    if (this.learningPending) return this.learningPending;
+    const pending = this.maybeRunSkillEvolutionPass(cycleId, automatic);
+    this.learningPending = pending;
+    void pending
+      .finally(() => {
+        if (this.learningPending === pending) this.learningPending = null;
+      })
+      .catch(() => {});
+    return pending;
+  }
+
+  async waitForLearning(): Promise<void> {
+    await this.learningPending?.catch(() => {});
+  }
   private db: DatabaseSync;
   private readonly config: Required<
     Omit<
@@ -1027,7 +1054,7 @@ export class DreamEngine {
       // degrades to a clean no-op without a journal or LLM. Kill switch:
       // skills.evolution.enabled.
       try {
-        await this.maybeRunSkillEvolutionPass(cycleId);
+        await this.runLearningLane(cycleId);
       } catch (err) {
         // PLAN-44 Phase 0: a subsystem crash must be visible at the default
         // log level; the audit found five live iterations undiagnosable.
@@ -2786,11 +2813,20 @@ export class DreamEngine {
    * own lane, mirroring the curator. Degrades to a no-op with no journal or
    * no LLM (keyless installs) — D-A requires on-by-default to be harmless.
    */
-  private async maybeRunSkillEvolutionPass(cycleId: string): Promise<void> {
+  private async maybeRunSkillEvolutionPass(cycleId: string, automatic = false): Promise<void> {
     const cfg = this.config.skillEvolution;
     if (cfg?.enabled === false) {
       return;
     }
+    const host = this.failureLearningHost;
+    if (host && !host.canDispatch()) return;
+    const service = host?.service();
+    const automaticService =
+      service?.store.config.mode === "shadow" && service.store.config.automation.enabled
+        ? service
+        : null;
+    if (automatic && !automaticService) return;
+    const passDb = this.db;
     const cadenceMs = Math.max(1, cfg?.cadenceHours ?? 24) * 60 * 60 * 1000;
     const now = Date.now();
     if (now - this.lastEvolutionAttemptAt < cadenceMs) {
@@ -2858,10 +2894,10 @@ export class DreamEngine {
         log.debug(`attestation identity unavailable: ${String(err)}`);
       }
     }
-    const result = await runEvolutionIteration({
+    const deps: import("./skill-evolution/evolution-pass.js").EvolutionPassDeps = {
       journal,
       llmCall,
-      db: this.db,
+      db: passDb,
       cycleId,
       ...(this.llmCallEvolutionProposer ? { proposerLlmCall: this.llmCallEvolutionProposer } : {}),
       // Token-efficiency pass (2026-09-19): no failing trace, no proposer run.
@@ -2911,7 +2947,15 @@ export class DreamEngine {
         ? { unknownAttesterWeight: this.config.a2aAttestation.unknownAttesterWeight }
         : {}),
       ...(this.config.attesterPriority ? { attesterPriority: this.config.attesterPriority } : {}),
-    });
+    };
+    const result =
+      automaticService && host
+        ? await automaticService.failureExperiments.run(deps, {
+            cadenceMs,
+            canDispatch: () => this.db === passDb && host.canDispatch(),
+          })
+        : await runEvolutionIteration(deps);
+    if (!result) return;
     if (result.ran) {
       const apply = result.maintenance?.apply;
       log.info(

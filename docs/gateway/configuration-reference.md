@@ -1949,13 +1949,19 @@ The memory subsystems (`memory.dream`, `memory.consolidation`, `memory.curiosity
 
 ### `memory.proceduralLearning`
 
-Available by default in shadow mode. No config block is needed. These settings make the host service available; they do not schedule experiments or inject research lessons into live prompts. The separate production skill-evolution loop is already on by default through `skills.evolution.enabled`.
+Available by default in shadow mode. No config block is needed. The service hosts both manual research experiments and an automatic failure-learning coordinator. Idle dream ticks run production experiments through the existing skill-evolution task gates; research candidates remain shadow-only. Production evolution is separately controlled by `skills.evolution.enabled`.
 
 ```json5
 {
   memory: {
     proceduralLearning: {
       mode: "shadow", // "off" | "shadow" | "active"; default "shadow"
+      automation: {
+        enabled: true, // idle failure experiments through the production gates
+        maxLlmCalls: 64, // callback dispatches, not dollars or provider requests
+        maxAgentTurns: 240, // a trial turn can make multiple model requests
+        maxWallMinutes: 60, // checked before dispatch and promotion
+      },
       experienceMemory: {
         enabled: true, // redacted experience from verified acquisition runs only
         minSupport: 2,
@@ -1970,7 +1976,7 @@ Available by default in shadow mode. No config block is needed. These settings m
 }
 ```
 
-`mode: "off"` prevents the service from opening. `experienceMemory.enabled: false` disables extraction while retaining the lab. Explicit settings survive the default change; restart the gateway to apply changes. The strategy lab requires `shadow`; `active` is for explicit host adapters and does not start autonomous learning. Host integrations supply sandbox adapters, pinned verifiers and experiment budgets. Ordinary conversations are not automatically collected, and held-out results cannot become acquisition experience. See [Learning Strategy Lab](/memory/learning-strategy-lab) for the API, storage and promotion boundaries.
+`mode: "off"` prevents the service from opening. `automation.enabled: false` disables the idle coordinator while preserving the legacy full-dream evolution hook; `skills.evolution.enabled: false` disables production evolution altogether. `experienceMemory.enabled: false` disables adapter extraction while retaining the lab. Restart the gateway to apply changes. The automatic coordinator and strategy lab require `shadow`; `active` is for explicit host adapters. Automatic work respects the dream idle threshold, evolution cadence, usage budgets and pause state. Dispatch limits are reserved durably before work; exhausted limits hold candidates, and in-flight calls finish under their existing timeouts. Research host integrations still supply their own adapters, verifiers and budgets. The experiment ledger stores journal references and hashes, not raw conversations; held-out results cannot become acquisition experience. See [Learning Strategy Lab](/memory/learning-strategy-lab#automatic-failure-experiments) for recovery, accounting and promotion boundaries.
 
 ### `memory.curiosity.evidence`
 

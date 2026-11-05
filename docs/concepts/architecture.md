@@ -69,7 +69,9 @@ The core of Bitterbot. A cognitive architecture grounded in computational neuros
 | **Evolving Identity**    | `GENOME.md` (immutable safety axioms) constrains evolution. `MEMORY.md` (the Phenotype) is rewritten every dream cycle based on lived experience.                                                                                                                                                                                                                          |
 | **Consolidation Engine** | Runs every 30 minutes: Ebbinghaus decay, chunk merging, SNN near-merge discovery, orphan cluster rescue, curiosity region mapping, governance enforcement.                                                                                                                                                                                                                 |
 
-**Storage:** Single SQLite database per agent at `~/.bitterbot/memory/<agentId>.sqlite`. No external services.
+**Storage:** The memory index lives at `~/.bitterbot/memory/<agentId>.sqlite`. The procedural evidence service uses a separate `procedural-learning.sqlite` in the agent directory, so experiment records survive vector reindexing. No external database service is required.
+
+The dream engine also coordinates a [failure-learning lane](../memory/learning-strategy-lab.md#automatic-failure-experiments). Idle ticks can start bounded experiments independently of creative dreaming; proposal generation, task validation, canary monitoring and rollback remain separate modules.
 
 Full documentation: [Memory Architecture](../memory/architecture-overview.md) · [Dream Engine](../memory/dream-engine.md) · [Curiosity](../memory/curiosity-and-search.md) · [Emotional System](../memory/emotional-system.md)
 
