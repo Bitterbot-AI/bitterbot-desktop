@@ -8,7 +8,9 @@ import {
   lessonPrompt,
   recordsFrom,
   renderMemory,
+  switchStats,
   thompsonPick,
+  verbalRecord,
 } from "./online.js";
 
 const V = ["xp-f-a", "xp-f-b", "xp-f-c", "xp-f-d"];
@@ -60,6 +62,16 @@ describe("renderMemory", () => {
     const both = renderMemory("records-lessons", traces, V)!;
     expect(both).toContain("1 of 1 accepted");
     expect(both).toContain("- Avoid -a here.");
+  });
+  it("confirmation formats carry the same history in other words", () => {
+    const vb = renderMemory("records-verbal", traces, V)!;
+    expect(vb).toContain("- xp-f-a: REJECTED every time it was used (1 use)");
+    expect(vb).toContain("- xp-f-b: ACCEPTED every time it was used (1 use)");
+    expect(vb).toContain("- xp-f-c: not tried yet");
+    const na = renderMemory("episodes-noanswer", traces, V)!;
+    expect(na).toContain("Task 1: used xp-f-a, REJECTED");
+    expect(na).not.toContain("answered");
+    expect(verbalRecord({ passed: 1, runs: 3 })).toBe("accepted 1 of 3 uses, rejected the rest");
   });
   it("the lesson writer sees the verdict and nothing else about truth", () => {
     const p = lessonPrompt({
@@ -115,5 +127,20 @@ describe("metrics", () => {
   });
   it("regret is oracle minus achieved", () => {
     expect(cumulativeRegret(rows, { f: 0.9 })).toBeCloseTo(0.9 * 5 - 3);
+  });
+});
+
+describe("switchStats", () => {
+  it("counts stays after accepts and rejects separately", () => {
+    const cell = [
+      tr({ skill: "xp-f-a" }),
+      tr({ skill: "xp-f-a" }),
+      tr({ skill: "xp-f-b", accepted: true }),
+      tr({ skill: "xp-f-b", accepted: true }),
+    ];
+    expect(switchStats([cell])).toEqual({
+      afterAccept: { n: 1, stay: 1 },
+      afterReject: { n: 2, stay: 1 },
+    });
   });
 });

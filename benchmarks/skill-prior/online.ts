@@ -20,7 +20,23 @@ export const ONLINE_ARMS = [
   "records-lessons",
   "bandit",
 ] as const;
-export type OnlineArm = (typeof ONLINE_ARMS)[number];
+
+/**
+ * Confirmation study arms (registered after the first study): the first
+ * study's leading formats on fresh seeds, plus two arms that split what the
+ * episode log carries. `records-verbal` states the same counts in words
+ * ("not tried yet", "rejected every time"); `episodes-noanswer` drops the
+ * answer text, so it carries exactly the skill and verdict sequence.
+ */
+export const CONFIRM_ARMS = [
+  "none",
+  "records",
+  "records-verbal",
+  "records-index",
+  "episodes",
+  "episodes-noanswer",
+] as const;
+export type OnlineArm = (typeof ONLINE_ARMS)[number] | (typeof CONFIRM_ARMS)[number];
 
 /** What one finished episode leaves behind in its cell. */
 export interface EpisodeTrace {
@@ -87,10 +103,18 @@ export function renderMemory(
       lines.push(`- ${v}: ${rec[v]!.passed} of ${rec[v]!.runs} accepted`);
     }
   }
-  if (arm === "episodes") {
+  if (arm === "records-verbal") {
+    const rec = recordsFrom(traces, variants);
+    lines.push("Outcome record per skill:");
+    for (const v of variants) {
+      lines.push(`- ${v}: ${verbalRecord(rec[v]!)}`);
+    }
+  }
+  if (arm === "episodes" || arm === "episodes-noanswer") {
     for (const t of traces) {
+      const answer = arm === "episodes" ? ` answered ${t.final ?? "(nothing)"},` : "";
       lines.push(
-        `- Task ${t.episode + 1}: used ${t.skill ?? "no skill"}, answered ${t.final ?? "(nothing)"}, ${t.accepted ? "ACCEPTED" : "REJECTED"}.`,
+        `- Task ${t.episode + 1}: used ${t.skill ?? "no skill"},${answer} ${t.accepted ? "ACCEPTED" : "REJECTED"}.`,
       );
     }
   }
@@ -107,6 +131,21 @@ export function renderMemory(
     }
   }
   return lines.length ? `${HEADER}:\n${lines.join("\n")}\n\n` : null;
+}
+
+/** The same counts as `records`, in words. */
+export function verbalRecord(e: SkillEvidence): string {
+  if (e.runs === 0) {
+    return "not tried yet";
+  }
+  const uses = e.runs === 1 ? "1 use" : `${e.runs} uses`;
+  if (e.passed === 0) {
+    return `REJECTED every time it was used (${uses})`;
+  }
+  if (e.passed === e.runs) {
+    return `ACCEPTED every time it was used (${uses})`;
+  }
+  return `accepted ${e.passed} of ${uses}, rejected the rest`;
 }
 
 /** Prompt for the lesson writer: same feedback the other arms get, nothing more. */
@@ -230,4 +269,26 @@ export function cumulativeRegret(
   oracle: Readonly<Record<string, number>>,
 ): number {
   return rows.reduce((s, r) => s + ((oracle[r.family] ?? 1) - r.pass), 0);
+}
+
+export interface SwitchStats {
+  afterAccept: { n: number; stay: number };
+  afterReject: { n: number; stay: number };
+}
+
+/**
+ * Win-stay / lose-shift: for consecutive episodes of one cell, how often the
+ * credited skill stays the same after an accepted vs a rejected episode.
+ * `traces` are one cell's episodes in order.
+ */
+export function switchStats(cells: ReadonlyArray<readonly EpisodeTrace[]>): SwitchStats {
+  const s: SwitchStats = { afterAccept: { n: 0, stay: 0 }, afterReject: { n: 0, stay: 0 } };
+  for (const ts of cells) {
+    for (let i = 1; i < ts.length; i++) {
+      const b = ts[i - 1]!.accepted ? s.afterAccept : s.afterReject;
+      b.n += 1;
+      b.stay += ts[i]!.skill === ts[i - 1]!.skill ? 1 : 0;
+    }
+  }
+  return s;
 }

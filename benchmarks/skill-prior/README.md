@@ -347,3 +347,30 @@ opposite.
   an 8-episode horizon with near-deterministic outcomes; a win-stay,
   lose-shift reader of the episode log does better here.
 - Spend: about $46 (agent runs plus lesson calls).
+
+### Confirmation study (registered 2026-11-05, before any run)
+
+The episode-log result above was not the registered primary, so it gets its
+own test. `--study confirm` uses fresh seeds (development 30000..) and six
+arms: `none`, `records`, `records-verbal` (the same counts in words: "not
+tried yet", "REJECTED every time it was used"), `records-index`, `episodes`,
+and `episodes-noanswer` (skill and verdict only, no answer text). Run on
+Claude Haiku 4.5 and OpenAI gpt-5.4-mini, 64 cells x 8 episodes per arm.
+
+- Primary, per model: `episodes` minus `records`, per-cell mean pass over
+  episodes 1..7, one-sided sign test (predicted positive) with
+  family-cluster bootstrap.
+- Secondary, Holm: `episodes-noanswer` minus `records` (event format alone),
+  `episodes` minus `episodes-noanswer` (does the answer text matter),
+  `records-verbal` minus `records` (are numeric counts the problem),
+  `records-index` minus `records`.
+- Reference: `episodes` minus `none`, `records` minus `none`, and the stay
+  rate after an accept and after a reject per arm.
+- Predictions: episodes above records on both models; most of the gap
+  survives without the answer text; the records arms stay on a rejected
+  skill more often than the episode arms.
+
+```sh
+node --import tsx benchmarks/skill-prior/online-run.ts --study confirm --episodes 8 --yes
+node --import tsx benchmarks/skill-prior/online-run.ts --study confirm --episodes 8 --model openai/gpt-5.4-mini --yes
+```

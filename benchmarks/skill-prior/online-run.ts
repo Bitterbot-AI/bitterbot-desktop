@@ -26,6 +26,15 @@
  * episodes, records-index minus records. Reference: records minus bandit,
  * cumulative regret against the truth-table oracle.
  *
+ * Confirmation (`--study confirm`, registered after the first study): fresh
+ * seeds (development 30000..), arms none, records, records-verbal,
+ * records-index, episodes, episodes-noanswer. Primary: episodes minus records
+ * (predicted positive). Secondary, Holm: episodes-noanswer minus records
+ * (format alone), episodes minus episodes-noanswer (answer text),
+ * records-verbal minus records (counts in words), records-index minus records.
+ * Reference: episodes minus none, records minus none. Mechanism: how often
+ * the credited skill stays the same after an accept vs a reject.
+ *
  * Records under <out> (default ~/bitterbot-skill-prior/online), never under
  * ~/.bitterbot. Resumable: traces and lessons are rebuilt from disk.
  */
@@ -62,10 +71,12 @@ import {
   type EpisodeTrace,
   learningCurve,
   lessonPrompt,
+  CONFIRM_ARMS,
   ONLINE_ARMS,
   type OnlineArm,
   recordsFrom,
   renderMemory,
+  switchStats,
   thompsonPick,
 } from "./online.js";
 import { FAMILIES, writePool } from "./pool.js";
@@ -78,6 +89,7 @@ const DEFAULT_FAMILIES = FAMILIES.filter((f) => f !== "multi-file-rename");
 const { values: args } = parseArgs({
   options: {
     episodes: { type: "string", default: "8" },
+    study: { type: "string", default: "main" },
     model: { type: "string", default: "anthropic/claude-haiku-4-5" },
     out: { type: "string" },
     "truth-from": { type: "string" },
@@ -93,6 +105,11 @@ const { values: args } = parseArgs({
 });
 
 const E = Number(args.episodes);
+if (args.study !== "main" && args.study !== "confirm") {
+  throw new Error("--study must be main | confirm");
+}
+const CONFIRM = args.study === "confirm";
+const ARM_SET: readonly OnlineArm[] = CONFIRM ? CONFIRM_ARMS : ONLINE_ARMS;
 const families = args.families
   ? (args.families.split(",").map((f) => f.trim()) as (typeof FAMILIES)[number][])
   : [...DEFAULT_FAMILIES];
@@ -100,14 +117,16 @@ const envs = args.envs
   ? (args.envs.split(",").map((e) => e.trim()) as (typeof ENVS)[number][])
   : [...ENVS];
 const arms = (
-  args.arms ? ONLINE_ARMS.filter((a) => args.arms!.split(",").includes(a)) : ONLINE_ARMS
+  args.arms ? ARM_SET.filter((a) => args.arms!.split(",").includes(a)) : ARM_SET
 ) as readonly OnlineArm[];
 const ceilingUsd = Number(args["ceiling-usd"]);
 const maxRuns =
   args["max-runs"] !== undefined ? Number(args["max-runs"]) : Number.POSITIVE_INFINITY;
 const modelTag = args.model!.replace(/^.*\//, "");
 const home = os.homedir();
-const out = path.resolve(args.out ?? path.join(home, "bitterbot-skill-prior", "online"));
+const out = path.resolve(
+  args.out ?? path.join(home, "bitterbot-skill-prior", CONFIRM ? "online-confirm" : "online"),
+);
 const truthFrom = path.resolve(
   args["truth-from"] ?? path.join(home, "bitterbot-skill-prior", "conventions"),
 );
@@ -116,10 +135,14 @@ for (const p of [out, truthFrom]) {
     throw new Error("--out / --truth-from must not live under ~/.bitterbot");
   }
 }
-const PHASE = modelTag === "claude-haiku-4-5" ? "ol-main" : `ol-main@${modelTag}`;
+const PHASE_BASE = CONFIRM ? "ol-confirm" : "ol-main";
+const PHASE = modelTag === "claude-haiku-4-5" ? PHASE_BASE : `${PHASE_BASE}@${modelTag}`;
 const TRAIN_PHASE = modelTag === "claude-haiku-4-5" ? "cv-train" : `cv-train@${modelTag}`;
-/** Episode seeds: development split, far from the train (1..) and pilot (5000..) seeds. */
-const SEEDS = seedsIn("development", 20_000, E, SALT);
+/**
+ * Episode seeds: development split, far from the train (1..) and pilot
+ * (5000..) seeds; the confirmation study uses a fresh range.
+ */
+const SEEDS = seedsIn("development", CONFIRM ? 30_000 : 20_000, E, SALT);
 
 const hashOf = (s: string) => createHash("sha256").update(s).digest("hex");
 const cellOf = (inst: ConventionInstance) => `${inst.env}:${inst.family}`;
@@ -266,27 +289,48 @@ async function main(): Promise<void> {
     oracle[f] = rs.length ? rs.reduce((s, r) => s + r.pass, 0) / rs.length : 1;
   }
 
-  const protocol = {
-    salt: SALT,
-    model: args.model,
-    families,
-    envs,
-    seeds: SEEDS,
-    arms: ONLINE_ARMS,
-    credit: "last variant read",
-    lessonWriter: "same model, one call after the verdict, <= 2 sentences",
-    memory: "prompt prefix for prompt arms; same cell, all prior episodes",
-    primary:
-      "records minus lessons, per-cell mean pass over episodes 1..E-1, sign test + family-cluster bootstrap",
-    secondary: [
-      "records minus none",
-      "lessons minus none",
-      "records-lessons minus records",
-      "records minus episodes",
-      "records-index minus records",
-    ],
-    reference: ["records minus bandit", "cumulative regret vs truth-table oracle"],
-  };
+  const protocol = CONFIRM
+    ? {
+        study: "confirm",
+        salt: SALT,
+        model: args.model,
+        families,
+        envs,
+        seeds: SEEDS,
+        arms: CONFIRM_ARMS,
+        credit: "last variant read",
+        memory: "prompt prefix for prompt arms; same cell, all prior episodes",
+        primary:
+          "episodes minus records (predicted > 0), per-cell mean pass over episodes 1..E-1, one-sided sign test + family-cluster bootstrap",
+        secondary: [
+          "episodes-noanswer minus records",
+          "episodes minus episodes-noanswer",
+          "records-verbal minus records",
+          "records-index minus records",
+        ],
+        reference: ["episodes minus none", "records minus none", "stay rate after accept / reject"],
+      }
+    : {
+        salt: SALT,
+        model: args.model,
+        families,
+        envs,
+        seeds: SEEDS,
+        arms: ONLINE_ARMS,
+        credit: "last variant read",
+        lessonWriter: "same model, one call after the verdict, <= 2 sentences",
+        memory: "prompt prefix for prompt arms; same cell, all prior episodes",
+        primary:
+          "records minus lessons, per-cell mean pass over episodes 1..E-1, sign test + family-cluster bootstrap",
+        secondary: [
+          "records minus none",
+          "lessons minus none",
+          "records-lessons minus records",
+          "records minus episodes",
+          "records-index minus records",
+        ],
+        reference: ["records minus bandit", "cumulative regret vs truth-table oracle"],
+      };
   const protoFile = path.join(out, `protocol-${PHASE}.json`);
   const protoHash = hashOf(JSON.stringify(protocol));
   try {
@@ -460,16 +504,28 @@ async function main(): Promise<void> {
     `Regret: sum over episodes of (truth-table right-forced pass for the family minus achieved pass); oracle ${families.map((f) => `${f} ${pct(oracle[f]!)}`).join(", ")}.`,
     "",
   ];
-  const pairs: Array<[OnlineArm, OnlineArm, "primary" | "secondary" | "reference"]> = [
-    ["records", "lessons", "primary"],
-    ["records", "none", "secondary"],
-    ["lessons", "none", "secondary"],
-    ["records-lessons", "records", "secondary"],
-    ["records", "episodes", "secondary"],
+  type Pair = [OnlineArm, OnlineArm, "primary" | "secondary" | "reference"];
+  const confirmPairs: Pair[] = [
+    ["episodes", "records", "primary"],
+    ["episodes-noanswer", "records", "secondary"],
+    ["episodes", "episodes-noanswer", "secondary"],
+    ["records-verbal", "records", "secondary"],
     ["records-index", "records", "secondary"],
-    ["records", "bandit", "reference"],
     ["episodes", "none", "reference"],
+    ["records", "none", "reference"],
   ];
+  const pairs: Pair[] = CONFIRM
+    ? confirmPairs
+    : [
+        ["records", "lessons", "primary"],
+        ["records", "none", "secondary"],
+        ["lessons", "none", "secondary"],
+        ["records-lessons", "records", "secondary"],
+        ["records", "episodes", "secondary"],
+        ["records-index", "records", "secondary"],
+        ["records", "bandit", "reference"],
+        ["episodes", "none", "reference"],
+      ];
   const results = pairs
     .filter(([a, b]) => arms.includes(a) && arms.includes(b))
     .map(([a, b, kind]) => ({ a, b, kind, c: cellContrast(scores.get(a)!, scores.get(b)!) }));
@@ -487,6 +543,21 @@ async function main(): Promise<void> {
         : "";
       return `| ${r.a} minus ${r.b} | ${r.kind} | ${r.c.n} | ${r.c.sign.wins} / ${r.c.sign.losses} / ${r.c.sign.ties} | ${(r.c.ci.meanDelta * 100).toFixed(1)} pp | [${(r.c.ci.ci95Low * 100).toFixed(1)}, ${(r.c.ci.ci95High * 100).toFixed(1)}] | ${cl} | ${r.c.sign.pValue.toFixed(4)} | ${h} |`;
     }),
+    "",
+    "## Mechanism: does the agent keep or change its skill?",
+    "",
+    "| Arm | Stay after accept | Stay after reject |",
+    "| --- | ---: | ---: |",
+    ...arms.map((a) => {
+      const st = switchStats(
+        [...traces].filter(([k]) => k.startsWith(`${a}|`)).map(([, ts]) => ts),
+      );
+      const f = (b: { n: number; stay: number }) =>
+        b.n ? `${pct(b.stay / b.n)} (${b.stay}/${b.n})` : "";
+      return `| ${a} | ${f(st.afterAccept)} | ${f(st.afterReject)} |`;
+    }),
+    "",
+    "Stay = the credited skill (last variant read) is the same as in the previous episode of the cell.",
     "",
     `Spend in this output directory: $${spent().toFixed(2)} (list prices, agent runs plus lesson calls).`,
     "",
