@@ -353,4 +353,18 @@ describe("automatic failure experiments (real sampler, proposer, staging and tas
     expect(await runner.run(deps, options())).toBeNull();
     expect(runner.status().cycles).toEqual([]);
   });
+
+  it("commits reservations without relying on newer Node SQLite introspection", async () => {
+    // The supported Node 22.12 floor predates DatabaseSync.isTransaction.
+    const legacyDb = { exec: db.exec.bind(db), prepare: db.prepare.bind(db) } as DatabaseSync;
+    store = new ProceduralLearningStore(legacyDb, {}, () => now);
+    runner = new FailureExperiments(store);
+    await runner.run(deps, options());
+    // A leaked transaction would reject BEGIN and leave reservations uncommitted.
+    db.exec("BEGIN IMMEDIATE");
+    db.exec("ROLLBACK");
+    expect(db.prepare("SELECT status FROM failure_learning_cycles").get()).toMatchObject({
+      status: "complete",
+    });
+  });
 });

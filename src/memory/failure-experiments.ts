@@ -76,6 +76,7 @@ export class FailureExperiments {
     const db = this.store.db,
       now = this.store.now();
     db.exec("BEGIN IMMEDIATE");
+    let failed = false;
     try {
       const running = db
         .prepare("SELECT * FROM failure_learning_cycles WHERE status='running'")
@@ -105,10 +106,11 @@ export class FailureExperiments {
       ).run(id, process.pid, BOOT_ID, now, JSON.stringify(this.store.config.automation));
       return id;
     } catch (error) {
+      failed = true;
       db.exec("ROLLBACK");
       throw error;
     } finally {
-      if (db.isTransaction) {
+      if (!failed) {
         db.exec("COMMIT");
       }
     }
