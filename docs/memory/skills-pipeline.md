@@ -12,6 +12,10 @@ The skills pipeline handles the full lifecycle of autonomous skill generation: f
 
 ## How skills are learned today (PLAN-42/44/45)
 
+This production loop is on by default (`skills.evolution.enabled`, default `true`). It runs when the dream-cycle gates, model availability, evidence, cadence and budgets permit; setting the flag does not guarantee a proposal or promotion on every cycle.
+
+The separate [Learning Strategy Lab](learning-strategy-lab.md) is also available by default, in shadow mode, with verified-experience capture for host-supplied acquisition runs. It is a host-invoked research facility: its candidates are not automatically promoted into this production pipeline. Its synthetic experiment results and failed qualification gates are recorded in the [benchmark archive](../../benchmarks/learning-strategy/README.md).
+
 The live learning path is the skill-evolution pass in `src/memory/skill-evolution/`,
 run as a dream-engine post-cycle hook:
 

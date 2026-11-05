@@ -1,0 +1,86 @@
+import { existsSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, expect, it, vi } from "vitest";
+import type { BitterbotConfig } from "../config/config.js";
+import { MemoryIndexManager } from "./manager.js";
+
+vi.mock("./embeddings.js", () => ({
+  createEmbeddingProvider: async () => ({
+    requestedProvider: "openai",
+    provider: {
+      id: "mock",
+      model: "mock",
+      embedQuery: async () => [1],
+      embedBatch: async () => [],
+    },
+  }),
+}));
+
+const roots: string[] = [];
+const managers: MemoryIndexManager[] = [];
+afterEach(async () => {
+  for (const manager of managers.splice(0)) await manager.close();
+  for (const root of roots.splice(0)) await fs.rm(root, { recursive: true, force: true });
+});
+
+async function open(mode?: "off") {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "bitterbot-learning-default-"));
+  roots.push(root);
+  const cfg: BitterbotConfig = {
+    compute: { enabled: false },
+    p2p: { enabled: false },
+    agents: {
+      defaults: {
+        workspace: path.join(root, "workspace"),
+        memorySearch: {
+          provider: "openai",
+          model: "mock",
+          store: { path: path.join(root, "index.sqlite"), vector: { enabled: false } },
+          sync: { watch: false, onSessionStart: false, onSearch: false },
+        },
+      },
+      list: [{ id: "main", agentDir: path.join(root, "agent") }],
+    },
+    memory: {
+      dream: { enabled: false },
+      consolidation: { enabled: false },
+      emotional: { enabled: false },
+      curiosity: { enabled: false },
+      ...(mode ? { proceduralLearning: { mode } } : {}),
+    },
+  };
+  await fs.mkdir(path.join(root, "workspace"), { recursive: true });
+  const manager = await MemoryIndexManager.get({ cfg, agentId: "main", purpose: "status" });
+  if (!manager) throw new Error("manager missing");
+  managers.push(manager);
+  return { manager, file: path.join(root, "agent", "procedural-learning.sqlite") };
+}
+
+it("opens the default store lazily, isolates agents, caches it, and closes it with the manager", async () => {
+  const a = await open();
+  const b = await open();
+  expect(existsSync(a.file)).toBe(false);
+  const service = a.manager.proceduralLearning();
+  if (!service) throw new Error("default learning service missing");
+  expect(existsSync(a.file)).toBe(true);
+  expect(service.store.config).toMatchObject({
+    mode: "shadow",
+    experienceMemory: { enabled: true },
+  });
+  expect(a.manager.proceduralLearning()).toBe(service);
+  service.store.audit("isolation-probe", "a");
+  const other = b.manager.proceduralLearning();
+  expect(other?.store.db.prepare("SELECT * FROM learning_audit").all()).toEqual([]);
+  expect(service.strategies).toBe(service.strategies);
+  await a.manager.close();
+  expect(a.manager.proceduralLearning()).toBeNull();
+  expect(() => service.store.db.prepare("SELECT 1")).toThrow();
+});
+
+it("creates no procedural database when explicitly off", async () => {
+  const { manager, file } = await open("off");
+  expect(manager.proceduralLearning()).toBeNull();
+  expect(existsSync(file)).toBe(false);
+});

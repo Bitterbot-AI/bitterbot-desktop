@@ -1945,7 +1945,32 @@ The same notice is not repeated within 30 minutes.
 
 ## Memory
 
-The memory subsystems (`memory.dream`, `memory.consolidation`, `memory.curiosity`, ...) are documented with the memory system itself; see [How the memory works](/memory/how-the-memory-works) and [Curiosity and search](/memory/curiosity-and-search). One key is listed here because it is a telemetry switch rather than a behaviour:
+The memory subsystems (`memory.dream`, `memory.consolidation`, `memory.curiosity`, ...) are documented with the memory system itself; see [How the memory works](/memory/how-the-memory-works) and [Curiosity and search](/memory/curiosity-and-search). Research and evidence settings are listed below.
+
+### `memory.proceduralLearning`
+
+Available by default in shadow mode. No config block is needed. These settings make the host service available; they do not schedule experiments or inject research lessons into live prompts. The separate production skill-evolution loop is already on by default through `skills.evolution.enabled`.
+
+```json5
+{
+  memory: {
+    proceduralLearning: {
+      mode: "shadow", // "off" | "shadow" | "active"; default "shadow"
+      experienceMemory: {
+        enabled: true, // redacted experience from verified acquisition runs only
+        minSupport: 2,
+        maxPromptChars: 6000,
+      },
+      maxEntries: 1000,
+      maxResults: 3,
+      maxAgeDays: 30,
+      executionBudget: { providerUsd: 0, toolCalls: 100, wallMs: 60000 },
+    },
+  },
+}
+```
+
+`mode: "off"` prevents the service from opening. `experienceMemory.enabled: false` disables extraction while retaining the lab. Explicit settings survive the default change; restart the gateway to apply changes. The strategy lab requires `shadow`; `active` is for explicit host adapters and does not start autonomous learning. Host integrations supply sandbox adapters, pinned verifiers and experiment budgets. Ordinary conversations are not automatically collected, and held-out results cannot become acquisition experience. See [Learning Strategy Lab](/memory/learning-strategy-lab) for the API, storage and promotion boundaries.
 
 ### `memory.curiosity.evidence`
 

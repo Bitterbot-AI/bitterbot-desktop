@@ -13,7 +13,7 @@ The useful next direction is a procedure with a bounded exploration fallback: re
 
 This follows the [failure-engineered repair study](telecom-interactive-repair-learning.md), whose experience-informed strategy repaired 3/12 attempts versus 0/12 without experience. That earlier comparison and this one have different interventions and controls; their percentages must not be presented as a controlled before/after improvement.
 
-![Audited procedure reuse results](../../benchmarks/learning-strategy/data/telecom-guarded-procedure-summary-v2.zip)
+![Audited procedure reuse results](../../benchmarks/learning-strategy/published/telecom-repair-reuse-v1/linkedin-graphic-branded.png)
 
 ## Frozen comparison
 

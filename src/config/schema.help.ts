@@ -1,4 +1,8 @@
 export const FIELD_HELP: Record<string, string> = {
+  "memory.proceduralLearning.mode":
+    "Default shadow: make the per-agent evidence store and host-only strategy lab available on first use. Off disables the service; active is for explicit host adapters and cannot run the strategy lab. This setting does not schedule experiments, inject lessons into live prompts, or publish candidates.",
+  "memory.proceduralLearning.experienceMemory.enabled":
+    "Capture redacted experience from settled, independently checked acquisition runs when a registered host adapter supplies an extractor. On by default. Held-out runs are excluded; shadow-mode recall requires explicit shadow evaluation. Does not capture ordinary conversations.",
   "p2p.enabled":
     "Join the libp2p mesh (skill sharing, circles transport, census). Off = fully local node.",
   "circles.enabled":

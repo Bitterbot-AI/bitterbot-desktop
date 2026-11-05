@@ -31,8 +31,9 @@ export type MemoryConsolidationConfig = {
 };
 
 export type MemoryConfig = {
-  /** Verified procedural memory. Absent/off disables it; shadow never supplies lessons to decisions. */
-  proceduralLearning?: Partial<import("../memory/procedural-learning-contract.js").LearningConfig>;
+  /** Default-on shadow service with verified-experience capture. Explicit mode: off disables it.
+   * Host adapters must supply executions; this does not schedule experiments or alter live prompts. */
+  proceduralLearning?: import("../memory/procedural-learning-contract.js").LearningConfigInput;
   backend?: MemoryBackend;
   citations?: MemoryCitationsMode;
   consolidation?: MemoryConsolidationConfig;

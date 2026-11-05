@@ -475,6 +475,8 @@ All memory configuration flows from `BitterbotConfig.memory`:
 
 ```typescript
 cfg.memory?.consolidation  → ConsolidationEngine config (decayRate, thresholds, forgottenRetentionDays)
+cfg.memory?.proceduralLearning → lazy host evidence service (mode: off | shadow | active; default shadow)
+  .experienceMemory        → verified acquisition capture (enabled by default; host extractor required)
 cfg.memory?.dream          → DreamEngineConfig (modes, tiers, intervals, readiness gates, LLM calls)
 cfg.memory?.curiosity      → CuriosityConfig (weights, thresholds, max regions)
   .research                → autonomous research on the maintenance tick (interval, pages, attempts)
@@ -499,6 +501,8 @@ cfg.memory?.healthSweep / .digest / .dreamBrief → scheduled reports
 ```
 
 Most subsystems have sensible defaults and are enabled by default; disable one by setting `enabled: false` in its config block. The opt-in exceptions: the `exploration` dream mode (`memory.dream.modes.exploration.enabled`), learned construction rules (`memory.architectEvolution.enabled`), the dream engine's Skill Seekers research step (`memory.curiosity.autoResearch.enabled` must be `true`), and harness evolution (`agents.defaults.harnessEvolve.enabled`).
+
+**Procedural learning uses a mode switch:** `memory.proceduralLearning.mode` defaults to `shadow`; `off` disables it. Its per-agent database opens lazily for host use, with verified-experience extraction enabled when an adapter supplies a redacted extractor. This research facility does not automatically collect conversation traces, schedule experiments or modify live prompts. The separate production [skill-evolution loop](skills-pipeline.md) is already on by default and retains its validation, canary and rollback gates. See [Learning Strategy Lab](learning-strategy-lab.md) for configuration and evidence boundaries.
 
 **Message Batches lanes.** `memory.batch` (kill switch `enabled`, default `true`) routes latency-tolerant background lanes through the Anthropic Message Batches API: a lane call submits one batch, polls with backoff, and falls back to the live call on timeout (`maxWaitMinutes`, default 20) or any error. Default `lanes`: `memory/dream`, `memory/extraction`, `memory/discovery`, `skills/evolution` (the judge and maintainer; the proposer loop and on-demand RPC lanes always run live). Only Anthropic API-key models qualify; other providers take the live path.
 

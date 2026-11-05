@@ -7,6 +7,7 @@ import {
   LearningVerdictSchema,
   learningHash,
   type LearningConfig,
+  type LearningConfigInput,
   type LearningCost,
   type LearningEntry,
   type LearningEpisode,
@@ -21,7 +22,7 @@ export class ProceduralLearningStore {
   readonly config: LearningConfig;
   constructor(
     readonly db: DatabaseSync,
-    config: Partial<LearningConfig> = {},
+    config: LearningConfigInput = {},
     readonly now = Date.now,
   ) {
     this.config = LearningConfigSchema.parse(config);

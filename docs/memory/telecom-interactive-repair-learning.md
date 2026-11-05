@@ -4,7 +4,7 @@ A strategy generated from failed investigations repaired **3/12 attempts**, vers
 
 This follows the [corrected study's negative fresh result](telecom-corrected-autonomous-learning.md). The new work tests repair discovery on isolated copies of failed final states. It does not rescore the original support episodes or overwrite their results.
 
-![Complete repair comparisons](../../benchmarks/learning-strategy/data/telecom-repair-learning-summary-v1.zip)
+[Download the complete repair comparison figures](../../benchmarks/learning-strategy/data/telecom-repair-learning-summary-v1.zip).
 
 ## Two separate comparisons
 

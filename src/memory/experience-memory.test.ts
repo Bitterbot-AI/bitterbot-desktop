@@ -14,13 +14,15 @@ const scope = {
   contractHash: learningHash("sum-v2"),
 };
 const budget = { providerUsd: 0, toolCalls: 1000, wallMs: 1000000 };
-function setup(mode: LearningConfig["mode"] = "active") {
+function setup(mode: LearningConfig["mode"] = "active", useDefaults = false) {
   let now = 100000;
   const db = new DatabaseSync(":memory:");
   databases.push(db);
   const store = new ProceduralLearningStore(
     db,
-    { mode, experienceMemory: { enabled: true, minSupport: 2, maxPromptChars: 6000 } },
+    useDefaults
+      ? {}
+      : { mode, experienceMemory: { enabled: true, minSupport: 2, maxPromptChars: 6000 } },
     () => now,
   );
   const service = new ProceduralLearning(store);
@@ -107,6 +109,16 @@ function setup(mode: LearningConfig["mode"] = "active") {
     },
   };
 }
+it("captures by default only after verified acquisition and keeps recall inside shadow evaluation", async () => {
+  const f = setup("shadow", true);
+  await f.run([1, 2]);
+  await f.run([3, 4], "held-out");
+  expect(f.sources()).toHaveLength(1);
+  const query = { scope, query: "sum export", kind: "episodes" as const };
+  expect(f.service.experience.recall(query).items).toEqual([]);
+  expect(f.service.experience.recall(query, true).items).toHaveLength(1);
+});
+
 it("captures independently checked acquisition, recalls compact advice and expands original evidence", async () => {
   const f = setup();
   await f.run([1, 2]);
