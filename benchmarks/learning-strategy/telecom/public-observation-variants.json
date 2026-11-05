@@ -1,0 +1,17 @@
+{
+  "purpose": "Additional public-report wording for an offline contract check. Typed facts come from explicitly selected native diagnostics; prose is not classified. These are not real model or held-out task outcomes.",
+  "variants": [
+    "I have the results here; please read the attached diagnostic records.",
+    "The phone's diagnostic check has finished. Here is what it found.",
+    "Here's the radio and messaging report you asked me to share.",
+    "I've attached the current readings from my device.",
+    "Could you take a look at these results and tell me what to do next?",
+    "This is the latest diagnostic report from the checks we just ran.",
+    "I'm unsure how to interpret this, so I am sharing the exact readings.",
+    "The check completed; its findings are in the attached records.",
+    "These are the two observations I can share from my phone.",
+    "Let's use these readings to decide the next step.",
+    "Rather than paraphrase the output, I've attached the relevant fields.",
+    "I selected the current radio and messaging results for you."
+  ]
+}

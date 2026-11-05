@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "protocolHash": "20b36291a431af42e1e85e32c30efa069f9973caf2ee1a434cf7eb1aee520277",
+  "completeHash": "ea667d452e17e5c6e2d24b8a5a8955a4965267665866795717b302db8306e16e",
+  "assignments": 148,
+  "exactProviderRequests": 147,
+  "nativeActions": 461,
+  "providerUsd": 7.923466050000003,
+  "gatePassed": false,
+  "note": "Cold reconstruction from frozen sources: all generated artifacts, exact requests/receipts, native transitions, primary and full additional-state denominators. Repeated runs are not independent cases. Integrity is not efficacy."
+}

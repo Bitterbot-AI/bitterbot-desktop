@@ -409,3 +409,22 @@ export {
   type ConnectorExecutor,
   type ConnectorToolInfo,
 } from "../review/connectors.js";
+
+// Verified procedural memory: host-owned adapters and evidence, never model-authored verifiers.
+export { getProceduralLearning } from "../memory/procedural-learning-host.js";
+export { createToolProcedureAdapter } from "../memory/procedural-learning-adapter.js";
+export { learningHash } from "../memory/procedural-learning-contract.js";
+export { ExperienceMemory } from "../memory/experience-memory.js";
+export type {
+  LearningStrategy,
+  StrategyPanel,
+  StrategyEvaluation,
+} from "../memory/learning-strategy-contract.js";
+export { exportStrategyPacket, importStrategyPacket } from "../memory/learning-strategy-peer.js";
+export type { ExperienceDescription, ExperienceLesson } from "../memory/experience-memory.js";
+export type {
+  LearningAdapter,
+  LearningCandidate,
+  LearningScope,
+  LearningCost,
+} from "../memory/procedural-learning-contract.js";

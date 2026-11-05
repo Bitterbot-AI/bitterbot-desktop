@@ -1,12 +1,24 @@
+import type { DatabaseSync } from "node:sqlite";
+import { type FSWatcher } from "chokidar";
 import crypto from "node:crypto";
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { DatabaseSync } from "node:sqlite";
-import { type FSWatcher } from "chokidar";
+import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
+import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
+import type { CuriosityState } from "./curiosity-types.js";
+import type { DreamStats, SynthesizeFn } from "./dream-types.js";
+import type { ManagementNodeService } from "./management-node-service.js";
+import type {
+  MemoryEmbeddingProbeResult,
+  MemoryProviderStatus,
+  MemorySearchManager,
+  MemorySearchResult,
+  MemorySource,
+  MemorySyncProgressUpdate,
+} from "./types.js";
 import { resolveAgentDir, resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { resolveHarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
-import type { ResolvedMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveMemorySearchConfig } from "../agents/memory-search.js";
 import { resolveDefaultModelForAgent } from "../agents/model-selection.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
@@ -29,7 +41,6 @@ import { loadConfig, type BitterbotConfig } from "../config/config.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { withSpan, withSpanAttrs } from "../observability/otel.js";
-import type { PluginHookAfterToolCallEvent, PluginHookToolContext } from "../plugins/types.js";
 import {
   evidenceTouchesUntrusted,
   findExternalUntrustedLineRanges,
@@ -56,7 +67,6 @@ import {
   parseCuriosityGaps,
 } from "./curiosity-gaps.js";
 import { resolveCuriosityResearchConfig } from "./curiosity-researcher.js";
-import type { CuriosityState } from "./curiosity-types.js";
 import { recordCuriosityUse, recordCuriosityUseByTarget } from "./curiosity-use.js";
 import { applyDirectiveResolutions, finalizeAnsweredDirectives } from "./directive-resolution.js";
 import {
@@ -74,7 +84,6 @@ import {
   lastAutoScratchEvent,
 } from "./dream-gate.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
-import type { DreamStats, SynthesizeFn } from "./dream-types.js";
 import { DEFAULT_DREAM_CONFIG } from "./dream-types.js";
 import { type EmbeddingProfile, embeddingProfileKey } from "./embedding-profile.js";
 import { createPoolEmbeddingProvider, isPoolEmbeddingProvider } from "./embeddings-pool.js";
@@ -117,7 +126,6 @@ import * as kgAdmission from "./kg-entity-admission.js";
 import * as kgExtract from "./kg-relationship-extract.js";
 import { KnowledgeGraphManager } from "./knowledge-graph.js";
 import { MaintenanceMutex } from "./maintenance-mutex.js";
-import type { ManagementNodeService } from "./management-node-service.js";
 import { memoryManagerEmbeddingOps } from "./manager-embedding-ops.js";
 import { searchKeyword, searchVector } from "./manager-search.js";
 import { memoryManagerSyncOps } from "./manager-sync-ops.js";
@@ -153,6 +161,8 @@ import {
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { truncateAtSentence } from "./proactive-recall.js";
+import { ProceduralLearningStore } from "./procedural-learning-store.js";
+import { ProceduralLearning } from "./procedural-learning.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
 import { computeRecencyBoost, type RecencyConfig } from "./recency-boost.js";
 import { ReconsolidationEngine } from "./reconsolidation.js";
@@ -184,17 +194,10 @@ import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
 import { SkillVerifier } from "./skill-verifier.js";
 import { recordAccess } from "./spacing-effect.js";
+import { requireNodeSqlite } from "./sqlite.js";
 import { SurfacingTrial, resolveSurfacingTrialConfig } from "./surfacing-trial.js";
 import { captureNearbyWeakChunks, shouldTriggerCapture } from "./synaptic-tagging.js";
 import { TaskMemoryManager } from "./task-memory.js";
-import type {
-  MemoryEmbeddingProbeResult,
-  MemoryProviderStatus,
-  MemorySearchManager,
-  MemorySearchResult,
-  MemorySource,
-  MemorySyncProgressUpdate,
-} from "./types.js";
 import { UserModelManager } from "./user-model.js";
 import {
   synthesizeValidatedWorkingMemory,
@@ -267,6 +270,7 @@ const HEALTH_SWEEP_STALE_MS = 20 * 60 * 60_000;
 const HEALTH_SWEEP_CATCHUP_DELAY_MS = 3 * 60_000;
 
 export class MemoryIndexManager implements MemorySearchManager {
+  private proceduralLearningService: ProceduralLearning | null = null;
   // oxlint-disable-next-line typescript/no-explicit-any
   [key: string]: any;
   private readonly cacheKey: string;
@@ -7590,6 +7594,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private ensureSkillNetworkBridge(): void {
     // Created with null orchestrator; wire via setOrchestratorBridge() later
     this.skillNetworkBridge = new SkillNetworkBridge(this.db, null);
+    this.skillNetworkBridge.setProceduralLearning(() => this.proceduralLearning());
 
     // Wire hormonal manager and curiosity engine if available
     if (this.hormonalManager) {
@@ -7846,6 +7851,29 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.curiosityEngine.getState();
   }
 
+  /** A separate per-agent database survives vector reindexing without evidence loss. */
+  proceduralLearning(): ProceduralLearning | null {
+    if (this.closed) return null;
+    const config = this.cfg.memory?.proceduralLearning;
+    if (!config || config.mode === "off") return null;
+    if (!this.proceduralLearningService) {
+      const dir = resolveAgentDir(this.cfg, this.agentId);
+      mkdirSync(dir, { recursive: true });
+      const { DatabaseSync } = requireNodeSqlite();
+      const db = new DatabaseSync(path.join(dir, "procedural-learning.sqlite"));
+      db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000");
+      try {
+        this.proceduralLearningService = new ProceduralLearning(
+          new ProceduralLearningStore(db, config),
+        );
+      } catch (error) {
+        db.close();
+        throw error;
+      }
+    }
+    return this.proceduralLearningService;
+  }
+
   curiosityResolve(targetId: string): boolean {
     if (!this.curiosityEngine) {
       return false;
@@ -7877,9 +7905,9 @@ export class MemoryIndexManager implements MemorySearchManager {
     if (assessment?.gccrfReward != null && assessment.gccrfComponents && this.hormonalManager) {
       let semanticType: string | null = null;
       try {
-        const row = this.db
-          .prepare(`SELECT semantic_type FROM chunks WHERE id = ?`)
-          .get(chunkId) as { semantic_type: string | null } | undefined;
+        const row = this.db.prepare(`SELECT semantic_type FROM chunks WHERE id = ?`).get(chunkId) as
+          | { semantic_type: string | null }
+          | undefined;
         semanticType = row?.semantic_type ?? null;
       } catch {
         /* column may not exist */
@@ -8026,6 +8054,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         // The launching call site already logs sync failures.
       }
     }
+    await this.proceduralLearningService?.close();
+    this.proceduralLearningService = null;
     this.db.close();
     INDEX_CACHE.delete(this.cacheKey);
   }

@@ -1,0 +1,164 @@
+{
+  "name": "retail_50",
+  "domain": "retail",
+  "strategy": "stratified",
+  "stratifier": "write_profile",
+  "seed": 42,
+  "frame": {
+    "task_set": "retail",
+    "task_split": "base",
+    "size": 114,
+    "digest": "f05763b3fe863611f18a82c95cb3cf72c3243b3e95d8e40e88c046861fa88213"
+  },
+  "strata": [
+    {
+      "key": "cancel_pending_order/1",
+      "frame_size": 5,
+      "drawn": 2
+    },
+    {
+      "key": "cancel_pending_order/2",
+      "frame_size": 6,
+      "drawn": 2
+    },
+    {
+      "key": "cancel_pending_order/3+",
+      "frame_size": 4,
+      "drawn": 2
+    },
+    {
+      "key": "exchange_delivered_order_items/1",
+      "frame_size": 20,
+      "drawn": 9
+    },
+    {
+      "key": "exchange_delivered_order_items/2",
+      "frame_size": 5,
+      "drawn": 2
+    },
+    {
+      "key": "exchange_delivered_order_items/3+",
+      "frame_size": 2,
+      "drawn": 1
+    },
+    {
+      "key": "modify_pending_order_address/1",
+      "frame_size": 2,
+      "drawn": 1
+    },
+    {
+      "key": "modify_pending_order_address/2",
+      "frame_size": 4,
+      "drawn": 2
+    },
+    {
+      "key": "modify_pending_order_address/3+",
+      "frame_size": 8,
+      "drawn": 3
+    },
+    {
+      "key": "modify_pending_order_items/1",
+      "frame_size": 13,
+      "drawn": 6
+    },
+    {
+      "key": "modify_pending_order_items/2",
+      "frame_size": 3,
+      "drawn": 1
+    },
+    {
+      "key": "modify_pending_order_items/3+",
+      "frame_size": 2,
+      "drawn": 1
+    },
+    {
+      "key": "modify_pending_order_payment/1",
+      "frame_size": 1,
+      "drawn": 1
+    },
+    {
+      "key": "modify_user_address/1",
+      "frame_size": 3,
+      "drawn": 1
+    },
+    {
+      "key": "modify_user_address/3+",
+      "frame_size": 1,
+      "drawn": 1
+    },
+    {
+      "key": "read_only/0",
+      "frame_size": 10,
+      "drawn": 4
+    },
+    {
+      "key": "return_delivered_order_items/1",
+      "frame_size": 16,
+      "drawn": 7
+    },
+    {
+      "key": "return_delivered_order_items/2",
+      "frame_size": 5,
+      "drawn": 2
+    },
+    {
+      "key": "return_delivered_order_items/3+",
+      "frame_size": 4,
+      "drawn": 2
+    }
+  ],
+  "created": "2026-07-27",
+  "git_commit": null,
+  "task_ids": [
+    "6",
+    "8",
+    "11",
+    "13",
+    "14",
+    "16",
+    "17",
+    "18",
+    "19",
+    "21",
+    "22",
+    "23",
+    "25",
+    "26",
+    "30",
+    "32",
+    "36",
+    "38",
+    "39",
+    "40",
+    "42",
+    "47",
+    "49",
+    "50",
+    "52",
+    "53",
+    "56",
+    "58",
+    "59",
+    "63",
+    "64",
+    "65",
+    "66",
+    "68",
+    "70",
+    "71",
+    "74",
+    "78",
+    "79",
+    "80",
+    "83",
+    "85",
+    "86",
+    "89",
+    "97",
+    "102",
+    "104",
+    "105",
+    "107",
+    "112"
+  ]
+}

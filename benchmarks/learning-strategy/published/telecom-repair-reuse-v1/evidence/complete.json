@@ -1,0 +1,225 @@
+{
+  "status": "complete",
+  "artifactHash": "e1d9c76ef84040a0925bebba1ff97483bb934b5971c3ef3252f8fc5484aba806",
+  "summary": [
+    {
+      "group": "advice:candidate-0",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 0,
+      "modelCalls": 51,
+      "nativeActions": 44,
+      "providerUsd": 1.8284686499999998,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "compiled:candidate-0",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 9,
+      "modelCalls": 0,
+      "nativeActions": 54,
+      "providerUsd": 0,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "advice:candidate-1",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 0,
+      "modelCalls": 54,
+      "nativeActions": 48,
+      "providerUsd": 1.7950839000000003,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "compiled:candidate-1",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 6,
+      "modelCalls": 0,
+      "nativeActions": 57,
+      "providerUsd": 0,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "retrieval:shared",
+      "assigned": 12,
+      "repaired": 5,
+      "errors": 4,
+      "selfVerified": 0,
+      "modelCalls": 39,
+      "nativeActions": 29,
+      "providerUsd": 3.9237849000000002,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 1
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 1
+        }
+      ]
+    }
+  ],
+  "panel": [
+    {
+      "candidate": "candidate-0",
+      "assigned": 44,
+      "failed": 28,
+      "repaired": 12,
+      "healthy": 16,
+      "preserved": 16,
+      "healthyWrites": 0,
+      "abstained": 8,
+      "errors": 0,
+      "selfVerifiedFalsePositives": 1
+    },
+    {
+      "candidate": "candidate-1",
+      "assigned": 44,
+      "failed": 28,
+      "repaired": 12,
+      "healthy": 16,
+      "preserved": 16,
+      "healthyWrites": 0,
+      "abstained": 8,
+      "errors": 0,
+      "selfVerifiedFalsePositives": 0
+    }
+  ],
+  "gatePassed": false,
+  "provider": [
+    {
+      "spent": 0.3761286,
+      "reserved": 0,
+      "unresolved": 0,
+      "ceiling": 25,
+      "active": false
+    },
+    {
+      "spent": 2.5787869499999996,
+      "reserved": 0,
+      "unresolved": 0,
+      "ceiling": 40,
+      "active": false
+    },
+    {
+      "spent": 2.8645684499999993,
+      "reserved": 0,
+      "unresolved": 0,
+      "ceiling": 40,
+      "active": false
+    },
+    {
+      "spent": 2.1039820499999995,
+      "reserved": 0,
+      "unresolved": 0,
+      "ceiling": 40,
+      "active": false
+    }
+  ],
+  "priorExposureUsd": 195.72633329999988,
+  "cumulativeExposureUsd": 203.64979934999988
+}

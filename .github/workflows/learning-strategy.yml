@@ -1,0 +1,44 @@
+name: Learning strategy evidence
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/learning-strategy/**"
+      - "src/memory/learning-strategy*"
+      - "src/memory/procedural-learning*"
+      - ".github/workflows/learning-strategy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "benchmarks/learning-strategy/**"
+      - "src/memory/learning-strategy*"
+      - "src/memory/procedural-learning*"
+      - ".github/workflows/learning-strategy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify immutable data and publication counts
+        run: |
+          python benchmarks/learning-strategy/test_restore_data.py
+          python benchmarks/learning-strategy/restore-data.py --verify-only
+          node --test benchmarks/learning-strategy/publication.test.mjs
+      - name: Check guarded repair behavior (no provider calls)
+        run: >-
+          node --test
+          benchmarks/learning-strategy/telecom/guarded-procedure-runtime.test.mjs
+          benchmarks/learning-strategy/telecom/guarded-outcome-contract.test.mjs
+          benchmarks/learning-strategy/telecom/diagnostic-session.test.mjs
+          benchmarks/learning-strategy/telecom/repair-learning-runtime.test.mjs

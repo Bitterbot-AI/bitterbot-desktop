@@ -1,0 +1,1129 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:ns2="http://creativecommons.org/ns#" xmlns:ns4="http://www.w3.org/1999/xlink" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" width="576pt" height="720pt" viewBox="0 0 576 720" version="1.1">
+ <metadata>
+  <rdf:RDF>
+   <ns2:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+    <dc:date>2026-11-03T21:33:00.773001</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <ns2:Agent>
+      <dc:title>Matplotlib v3.11.2, https://matplotlib.org/</dc:title>
+     </ns2:Agent>
+    </dc:creator>
+   </ns2:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 720  L 576 720  L 576 0  L 0 0  z " style="fill: #ffffff" />
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 0 201.6  L 576 201.6  L 576 0  L 0 0  z " clip-path="url(#p6c27f0431a)" style="fill: #17101f" />
+   </g>
+   <g id="patch_3">
+    <path d="M 38.592 405.36  L 537.408 405.36  Q 544.32 405.36 544.32 396.72  L 544.32 255.6  Q 544.32 246.96 537.408 246.96  L 38.592 246.96  Q 31.68 246.96 31.68 255.6  L 31.68 396.72  Q 31.68 405.36 38.592 405.36  z " clip-path="url(#p6c27f0431a)" style="fill: #faf9fe; stroke: #e3dbea; stroke-width: 0.7; stroke-linejoin: miter" />
+   </g>
+   <g id="patch_4">
+    <path d="M 51.84 368.64  L 524.16 368.64  L 524.16 354.96  L 51.84 354.96  z " clip-path="url(#p6c27f0431a)" style="fill: #e3dbea" />
+   </g>
+   <g id="patch_5">
+    <path d="M 51.84 368.64  L 254.262857 368.64  L 254.262857 354.96  L 51.84 354.96  z " clip-path="url(#p6c27f0431a)" style="fill: #9333ea" />
+   </g>
+   <g id="patch_6">
+    <path d="M 38.592 499.68  L 275.328 499.68  Q 282.24 499.68 282.24 491.04  L 282.24 425.52  Q 282.24 416.88 275.328 416.88  L 38.592 416.88  Q 31.68 416.88 31.68 425.52  L 31.68 491.04  Q 31.68 499.68 38.592 499.68  z " clip-path="url(#p6c27f0431a)" style="fill: #faf9fe; stroke: #e3dbea; stroke-width: 0.7; stroke-linejoin: miter" />
+   </g>
+   <g id="patch_7">
+    <path d="M 300.672 499.68  L 537.408 499.68  Q 544.32 499.68 544.32 491.04  L 544.32 425.52  Q 544.32 416.88 537.408 416.88  L 300.672 416.88  Q 293.76 416.88 293.76 425.52  L 293.76 491.04  Q 293.76 499.68 300.672 499.68  z " clip-path="url(#p6c27f0431a)" style="fill: #faf9fe; stroke: #e3dbea; stroke-width: 0.7; stroke-linejoin: miter" />
+   </g>
+   <g id="patch_8">
+    <path d="M 37.44 575.28  L 538.56 575.28  L 538.56 554.4  L 37.44 554.4  z " clip-path="url(#p6c27f0431a)" style="fill: #17101f" />
+   </g>
+   <g id="patch_9">
+    <path d="M 37.44 602.64  L 538.56 602.64  L 538.56 575.28  L 37.44 575.28  z " clip-path="url(#p6c27f0431a)" style="fill: #f0edf9" />
+   </g>
+  </g>
+  <g id="text_1">
+   
+   <g style="fill: #ffffff" transform="translate(73.728 46.8) scale(0.17 -0.17)">
+    <defs>
+     <path id="Geist-SemiBold-e" d="M 512 4544  L 2214 4544  Q 3053 4544 3481 4243  Q 3910 3942 3910 3315  Q 3910 3027 3792 2812  Q 3674 2598 3443 2476  Q 3213 2355 2899 2342  L 2893 2355  Q 3469 2336 3785 2041  Q 4102 1747 4102 1248  Q 4102 634 3673 317  Q 3245 0 2445 0  L 512 0  L 512 4544  z M 2406 704  Q 2803 704 3027 867  Q 3251 1030 3251 1338  Q 3251 1651 3030 1817  Q 2810 1984 2406 1984  L 1344 1984  L 1344 704  L 2406 704  z M 2189 2637  Q 2605 2637 2832 2793  Q 3059 2950 3059 3238  Q 3059 3539 2838 3689  Q 2618 3840 2189 3840  L 1344 3840  L 1344 2637  L 2189 2637  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-da" d="M 448 3418  L 1267 3418  L 1267 0  L 448 0  L 448 3418  z M 435 4602  L 1287 4602  L 1287 3872  L 435 3872  L 435 4602  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-164" d="M 1818 0  Q 1306 0 1066 237  Q 826 474 826 979  L 826 4218  L 1645 4218  L 1645 1056  Q 1645 826 1744 730  Q 1843 634 2067 634  L 2547 634  L 2547 0  L 1818 0  z M 288 3418  L 2547 3418  L 2547 2784  L 288 2784  L 288 3418  z M 4020 0  Q 3508 0 3268 237  Q 3028 474 3028 979  L 3028 4218  L 3847 4218  L 3847 1056  Q 3847 826 3946 730  Q 4045 634 4269 634  L 4749 634  L 4749 0  L 4020 0  z M 2490 3418  L 4749 3418  L 4749 2784  L 2490 2784  L 2490 3418  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-c3" d="M 1939 -77  Q 1434 -77 1056 144  Q 678 365 470 768  Q 262 1171 262 1709  Q 262 2240 470 2646  Q 678 3053 1052 3273  Q 1427 3494 1920 3494  Q 2406 3494 2774 3276  Q 3142 3059 3344 2643  Q 3546 2227 3546 1664  L 3546 1478  L 1114 1478  Q 1133 1037 1353 806  Q 1574 576 1946 576  Q 2221 576 2400 697  Q 2579 819 2656 1050  L 3494 998  Q 3360 499 2944 211  Q 2528 -77 1939 -77  z M 2694 2029  Q 2669 2432 2464 2640  Q 2259 2848 1920 2848  Q 1587 2848 1372 2637  Q 1158 2426 1114 2029  L 2694 2029  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-105" d="M 448 3418  L 1216 3418  L 1248 2470  L 1178 2483  Q 1254 2970 1465 3194  Q 1677 3418 2054 3418  L 2368 3418  L 2368 2714  L 2048 2714  Q 1779 2714 1609 2637  Q 1440 2560 1353 2393  Q 1267 2227 1267 1971  L 1267 0  L 448 0  L 448 3418  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-e" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(69.5 0)" />
+    <use ns4:href="#Geist-SemiBold-164" transform="translate(93.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(169.3125 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(228.015625 0)" />
+   </g>
+  </g>
+  <g id="text_2">
+   
+   <g style="fill: #c084fc" transform="translate(119.628 46.8) scale(0.17 -0.17)">
+    <defs>
+     <path id="Geist-SemiBold-b8" d="M 2285 -77  Q 1933 -77 1664 76  Q 1395 230 1248 506  L 1229 0  L 448 0  L 448 4544  L 1267 4544  L 1267 2931  Q 1408 3181 1680 3337  Q 1952 3494 2285 3494  Q 2720 3494 3046 3273  Q 3373 3053 3549 2649  Q 3725 2246 3725 1709  Q 3725 1171 3549 768  Q 3373 365 3046 144  Q 2720 -77 2285 -77  z M 2099 589  Q 2451 589 2662 886  Q 2874 1184 2874 1709  Q 2874 2234 2666 2531  Q 2458 2829 2106 2829  Q 1843 2829 1654 2697  Q 1466 2566 1366 2313  Q 1267 2061 1267 1709  Q 1267 1363 1366 1110  Q 1466 858 1651 723  Q 1837 589 2099 589  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-f8" d="M 1946 -77  Q 1440 -77 1062 144  Q 685 365 473 768  Q 262 1171 262 1709  Q 262 2246 473 2649  Q 685 3053 1062 3273  Q 1440 3494 1946 3494  Q 2445 3494 2825 3273  Q 3206 3053 3414 2649  Q 3622 2246 3622 1709  Q 3622 1171 3414 768  Q 3206 365 2825 144  Q 2445 -77 1946 -77  z M 1946 589  Q 2342 589 2560 883  Q 2778 1178 2778 1709  Q 2778 2234 2560 2531  Q 2342 2829 1946 2829  Q 1549 2829 1331 2534  Q 1114 2240 1114 1709  Q 1114 1178 1331 883  Q 1549 589 1946 589  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-110" d="M 1818 0  Q 1306 0 1066 237  Q 826 474 826 979  L 826 4218  L 1645 4218  L 1645 1056  Q 1645 826 1744 730  Q 1843 634 2067 634  L 2547 634  L 2547 0  L 1818 0  z M 288 3418  L 2547 3418  L 2547 2784  L 288 2784  L 288 3418  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-b8" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(61.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(119.59375 0)" />
+   </g>
+  </g>
+  <g id="text_3">
+   
+   <g style="fill: #c084fc" transform="translate(463.508438 42.48) scale(0.09 -0.09)">
+    <defs>
+     <path id="Geist-SemiBold-59" d="M 512 4544  L 2413 4544  Q 2899 4544 3260 4377  Q 3622 4211 3820 3900  Q 4019 3590 4019 3181  Q 4019 2874 3884 2630  Q 3750 2387 3523 2236  Q 3296 2086 3021 2054  L 2989 2118  Q 3430 2118 3667 1920  Q 3904 1722 3942 1312  L 4058 0  L 3213 0  L 3117 1190  Q 3098 1466 2941 1590  Q 2784 1715 2432 1715  L 1344 1715  L 1344 0  L 512 0  L 512 4544  z M 2362 2445  Q 2733 2445 2947 2624  Q 3162 2803 3162 3130  Q 3162 3462 2944 3641  Q 2726 3821 2323 3821  L 1344 3821  L 1344 2445  L 2362 2445  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-19" d="M 512 4544  L 3571 4544  L 3571 3821  L 1344 3821  L 1344 2637  L 3494 2637  L 3494 1920  L 1344 1920  L 1344 723  L 3622 723  L 3622 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-5d" d="M 2234 -102  Q 1670 -102 1260 93  Q 851 288 614 646  Q 378 1005 339 1478  L 1184 1530  Q 1229 1229 1357 1027  Q 1485 826 1705 720  Q 1926 614 2246 614  Q 2650 614 2870 764  Q 3091 915 3091 1203  Q 3091 1389 3001 1520  Q 2912 1651 2675 1763  Q 2438 1875 1984 1984  Q 1402 2118 1069 2281  Q 736 2445 585 2688  Q 435 2931 435 3302  Q 435 3699 630 4003  Q 826 4307 1197 4476  Q 1568 4646 2074 4646  Q 2598 4646 2982 4454  Q 3366 4262 3584 3923  Q 3802 3584 3853 3136  L 3014 3098  Q 2989 3347 2867 3536  Q 2746 3725 2544 3827  Q 2342 3930 2061 3930  Q 1702 3930 1491 3766  Q 1280 3603 1280 3334  Q 1280 3149 1369 3027  Q 1459 2906 1673 2819  Q 1888 2733 2304 2637  Q 2906 2509 3264 2313  Q 3622 2118 3779 1859  Q 3936 1600 3936 1248  Q 3936 838 3725 534  Q 3514 230 3126 64  Q 2739 -102 2234 -102  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-2" d="M 1786 4544  L 2803 4544  L 4442 0  L 3571 0  L 3194 1075  L 1395 1075  L 1018 0  L 147 0  L 1786 4544  z M 2950 1786  L 2298 3706  L 1638 1786  L 2950 1786  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-f" d="M 2381 -102  Q 1760 -102 1286 182  Q 813 467 544 1004  Q 275 1542 275 2266  Q 275 2982 537 3523  Q 800 4064 1277 4355  Q 1754 4646 2394 4646  Q 3238 4646 3728 4224  Q 4218 3802 4365 3008  L 3494 2963  Q 3411 3418 3132 3670  Q 2854 3923 2394 3923  Q 2010 3923 1725 3721  Q 1440 3520 1289 3145  Q 1139 2771 1139 2266  Q 1139 1760 1292 1389  Q 1446 1018 1728 819  Q 2010 621 2387 621  Q 2880 621 3161 893  Q 3443 1165 3520 1664  L 4390 1619  Q 4256 800 3741 349  Q 3226 -102 2381 -102  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-2d" d="M 512 4544  L 1344 4544  L 1344 2374  L 960 2650  L 3635 2650  L 3258 2374  L 3258 4544  L 4090 4544  L 4090 0  L 3258 0  L 3258 2195  L 3635 1926  L 960 1926  L 1344 2195  L 1344 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-1" transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-46" d="M 512 4544  L 1485 4544  L 3443 1126  L 3443 4544  L 4275 4544  L 4275 0  L 3277 0  L 1344 3322  L 1344 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-4c" d="M 2445 -102  Q 1773 -102 1286 182  Q 800 467 537 1001  Q 275 1536 275 2266  Q 275 2995 537 3532  Q 800 4070 1286 4358  Q 1773 4646 2445 4646  Q 3117 4646 3606 4358  Q 4096 4070 4355 3532  Q 4614 2995 4614 2266  Q 4614 1536 4355 1001  Q 4096 467 3606 182  Q 3117 -102 2445 -102  z M 2445 621  Q 2854 621 3148 816  Q 3443 1011 3596 1382  Q 3750 1754 3750 2266  Q 3750 2784 3596 3155  Q 3443 3526 3148 3724  Q 2854 3923 2445 3923  Q 2035 3923 1744 3724  Q 1453 3526 1296 3155  Q 1139 2784 1139 2266  Q 1139 1754 1296 1382  Q 1453 1011 1744 816  Q 2035 621 2445 621  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-64" d="M 1523 3821  L 141 3821  L 141 4544  L 3738 4544  L 3738 3821  L 2355 3821  L 2355 0  L 1523 0  L 1523 3821  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-59" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(68.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-5d" transform="translate(130.40625 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(195 0)" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(256.5 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(328.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-f" transform="translate(395.703125 0)" />
+    <use ns4:href="#Geist-SemiBold-2d" transform="translate(468.203125 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(540.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-46" transform="translate(563.703125 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(637.40625 0)" />
+    <use ns4:href="#Geist-SemiBold-64" transform="translate(711.8125 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(772.40625 0)" />
+   </g>
+  </g>
+  <g id="text_4">
+   
+   <g style="fill: #ffffff" transform="translate(37.44 82.3296) scale(0.28 -0.28)">
+    <defs>
+     <path id="Geist-Bold-2" d="M 1798 4544  L 2950 4544  L 4589 0  L 3578 0  L 3245 966  L 1498 966  L 1165 0  L 160 0  L 1798 4544  z M 2976 1766  L 2374 3520  L 1773 1766  L 2976 1766  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-1" transform="scale(0.015625)" />
+     <path id="Geist-Bold-bf" d="M 1651 -77  Q 1229 -77 909 144  Q 589 365 419 768  Q 250 1171 250 1715  Q 250 2259 422 2662  Q 595 3066 912 3286  Q 1229 3507 1651 3507  Q 2016 3507 2281 3356  Q 2547 3206 2688 2944  L 2688 4544  L 3648 4544  L 3648 0  L 2726 0  L 2707 506  Q 2566 230 2288 76  Q 2010 -77 1651 -77  z M 1971 659  Q 2202 659 2362 780  Q 2522 902 2605 1136  Q 2688 1370 2688 1715  Q 2688 2061 2605 2297  Q 2522 2534 2362 2652  Q 2202 2771 1971 2771  Q 1632 2771 1433 2486  Q 1235 2202 1235 1715  Q 1235 1235 1436 947  Q 1638 659 1971 659  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-da" d="M 422 3430  L 1382 3430  L 1382 0  L 422 0  L 422 3430  z M 404 4621  L 1396 4621  L 1396 3853  L 404 3853  L 404 4621  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-109" d="M 1894 -77  Q 1382 -77 1017 70  Q 653 218 464 477  Q 275 736 250 1082  L 1222 1114  Q 1267 864 1430 733  Q 1594 602 1901 602  Q 2163 602 2304 688  Q 2445 774 2445 941  Q 2445 1056 2390 1126  Q 2336 1197 2185 1251  Q 2035 1306 1747 1350  Q 1203 1440 896 1571  Q 589 1702 461 1904  Q 333 2106 333 2406  Q 333 2912 723 3209  Q 1114 3507 1856 3507  Q 2554 3507 2947 3187  Q 3341 2867 3405 2330  L 2445 2291  Q 2413 2541 2256 2685  Q 2099 2829 1843 2829  Q 1594 2829 1456 2723  Q 1318 2618 1318 2445  Q 1318 2317 1379 2237  Q 1440 2157 1577 2105  Q 1715 2054 1958 2022  Q 2509 1939 2829 1808  Q 3149 1677 3289 1472  Q 3430 1267 3430 960  Q 3430 467 3017 195  Q 2605 -77 1894 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-b9" d="M 1990 -77  Q 1472 -77 1075 144  Q 678 365 464 771  Q 250 1178 250 1715  Q 250 2253 464 2659  Q 678 3066 1075 3286  Q 1472 3507 1990 3507  Q 2445 3507 2806 3347  Q 3168 3187 3392 2883  Q 3616 2579 3667 2163  L 2675 2118  Q 2630 2432 2451 2598  Q 2272 2765 1990 2765  Q 1632 2765 1433 2489  Q 1235 2214 1235 1715  Q 1235 1210 1433 934  Q 1632 659 1990 659  Q 2272 659 2454 832  Q 2637 1005 2675 1344  L 3667 1306  Q 3616 890 3395 576  Q 3174 262 2812 92  Q 2451 -77 1990 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-f8" d="M 1990 -77  Q 1466 -77 1072 144  Q 678 365 464 771  Q 250 1178 250 1715  Q 250 2253 464 2659  Q 678 3066 1072 3286  Q 1466 3507 1990 3507  Q 2509 3507 2902 3286  Q 3296 3066 3513 2659  Q 3731 2253 3731 1715  Q 3731 1178 3513 771  Q 3296 365 2902 144  Q 2509 -77 1990 -77  z M 1990 659  Q 2349 659 2544 937  Q 2739 1216 2739 1715  Q 2739 2214 2544 2492  Q 2349 2771 1990 2771  Q 1632 2771 1433 2492  Q 1235 2214 1235 1715  Q 1235 1210 1433 934  Q 1632 659 1990 659  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-120" d="M 134 3430  L 1139 3430  L 1952 966  L 2765 3430  L 3763 3430  L 2509 0  L 1389 0  L 134 3430  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-c3" d="M 1978 -77  Q 1459 -77 1065 144  Q 672 365 461 771  Q 250 1178 250 1715  Q 250 2253 461 2659  Q 672 3066 1062 3286  Q 1453 3507 1971 3507  Q 2477 3507 2857 3283  Q 3238 3059 3443 2640  Q 3648 2221 3648 1651  L 3648 1459  L 1242 1459  Q 1254 1062 1452 857  Q 1651 653 1997 653  Q 2240 653 2403 755  Q 2566 858 2637 1069  L 3603 1011  Q 3462 499 3030 211  Q 2598 -77 1978 -77  z M 2669 2048  Q 2650 2413 2464 2605  Q 2278 2797 1971 2797  Q 1664 2797 1472 2598  Q 1280 2400 1242 2048  L 2669 2048  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-105" d="M 422 3430  L 1331 3430  L 1363 2432  L 1293 2451  Q 1376 2970 1587 3200  Q 1798 3430 2170 3430  L 2483 3430  L 2483 2637  L 2170 2637  Q 1894 2637 1721 2563  Q 1549 2490 1465 2336  Q 1382 2182 1382 1926  L 1382 0  L 422 0  L 422 3430  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-102" d="M 422 3430  L 1344 3430  L 1363 2707  L 1286 2739  Q 1408 3104 1699 3305  Q 1990 3507 2374 3507  Q 2842 3507 3168 3273  Q 3494 3040 3657 2633  Q 3821 2227 3821 1715  Q 3821 1203 3654 796  Q 3488 390 3161 156  Q 2835 -77 2368 -77  Q 2118 -77 1900 16  Q 1683 109 1526 275  Q 1370 442 1299 672  L 1382 723  L 1382 -960  L 422 -960  L 422 3430  z M 2106 659  Q 2445 659 2640 940  Q 2835 1222 2835 1715  Q 2835 2208 2640 2489  Q 2445 2771 2106 2771  Q 1882 2771 1718 2649  Q 1555 2528 1468 2294  Q 1382 2061 1382 1715  Q 1382 1370 1468 1136  Q 1555 902 1715 780  Q 1875 659 2106 659  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-ac" d="M 1453 -77  Q 909 -77 579 172  Q 250 422 250 858  Q 250 1306 525 1555  Q 800 1805 1376 1920  L 2483 2138  Q 2483 2470 2332 2640  Q 2182 2810 1894 2810  Q 1626 2810 1472 2685  Q 1318 2560 1267 2317  L 307 2362  Q 403 2925 812 3216  Q 1222 3507 1894 3507  Q 2662 3507 3052 3142  Q 3443 2778 3443 2074  L 3443 902  Q 3443 762 3488 710  Q 3533 659 3635 659  L 3731 659  L 3731 0  Q 3680 -13 3581 -25  Q 3482 -38 3386 -38  Q 3034 -38 2826 141  Q 2618 320 2618 755  L 2701 691  Q 2605 339 2278 131  Q 1952 -77 1453 -77  z M 1683 582  Q 1920 582 2102 675  Q 2285 768 2384 947  Q 2483 1126 2483 1370  L 2483 1536  L 1702 1370  Q 1466 1325 1350 1219  Q 1235 1114 1235 947  Q 1235 768 1347 675  Q 1459 582 1683 582  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-25e" d="M 250 979  L 1286 979  L 1286 0  L 250 0  L 250 979  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Bold-2" />
+    <use ns4:href="#Geist-Bold-1" transform="translate(74.09375 0)" />
+    <use ns4:href="#Geist-Bold-bf" transform="translate(96.890625 0)" />
+    <use ns4:href="#Geist-Bold-da" transform="translate(158.28125 0)" />
+    <use ns4:href="#Geist-Bold-109" transform="translate(185.96875 0)" />
+    <use ns4:href="#Geist-Bold-b9" transform="translate(242.671875 0)" />
+    <use ns4:href="#Geist-Bold-f8" transform="translate(301.96875 0)" />
+    <use ns4:href="#Geist-Bold-120" transform="translate(361.265625 0)" />
+    <use ns4:href="#Geist-Bold-c3" transform="translate(419.46875 0)" />
+    <use ns4:href="#Geist-Bold-105" transform="translate(479.46875 0)" />
+    <use ns4:href="#Geist-Bold-c3" transform="translate(518.46875 0)" />
+    <use ns4:href="#Geist-Bold-bf" transform="translate(578.578125 0)" />
+    <use ns4:href="#Geist-Bold-1" transform="translate(642.171875 0)" />
+    <use ns4:href="#Geist-Bold-105" transform="translate(664.96875 0)" />
+    <use ns4:href="#Geist-Bold-c3" transform="translate(703.96875 0)" />
+    <use ns4:href="#Geist-Bold-102" transform="translate(763.96875 0)" />
+    <use ns4:href="#Geist-Bold-ac" transform="translate(826.96875 0)" />
+    <use ns4:href="#Geist-Bold-da" transform="translate(888.0625 0)" />
+    <use ns4:href="#Geist-Bold-105" transform="translate(914.859375 0)" />
+    <use ns4:href="#Geist-Bold-25e" transform="translate(952.25 0)" />
+   </g>
+   
+   <g style="fill: #ffffff" transform="translate(37.44 118.08) scale(0.28 -0.28)">
+    <defs>
+     <path id="Geist-Bold-115" d="M 1549 -77  Q 1018 -77 720 262  Q 422 602 422 1222  L 422 3430  L 1382 3430  L 1382 1446  Q 1382 1050 1504 867  Q 1626 685 1888 685  Q 2182 685 2345 889  Q 2509 1094 2509 1491  L 2509 3430  L 3469 3430  L 3469 0  L 2592 0  L 2566 986  L 2688 960  Q 2611 448 2323 185  Q 2035 -77 1549 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-b8" d="M 2394 -77  Q 2035 -77 1769 73  Q 1504 224 1357 506  L 1338 0  L 422 0  L 422 4544  L 1382 4544  L 1382 2944  Q 1523 3194 1788 3350  Q 2054 3507 2394 3507  Q 2822 3507 3145 3286  Q 3469 3066 3645 2659  Q 3821 2253 3821 1715  Q 3821 1178 3645 771  Q 3469 365 3145 144  Q 2822 -77 2394 -77  z M 2125 659  Q 2451 659 2643 940  Q 2835 1222 2835 1715  Q 2835 2214 2646 2492  Q 2458 2771 2131 2771  Q 1894 2771 1724 2646  Q 1555 2522 1468 2285  Q 1382 2048 1382 1715  Q 1382 1389 1468 1152  Q 1555 915 1724 787  Q 1894 659 2125 659  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-ec" d="M 1318 0  Q 883 0 652 217  Q 422 435 422 896  L 422 4544  L 1382 4544  L 1382 998  Q 1382 845 1449 781  Q 1517 717 1658 717  L 1888 717  L 1888 0  L 1318 0  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-110" d="M 1843 0  Q 1312 0 1062 246  Q 813 493 813 1030  L 813 4237  L 1773 4237  L 1773 1146  Q 1773 902 1875 809  Q 1978 717 2195 717  L 2675 717  L 2675 0  L 1843 0  z M 262 3430  L 2675 3430  L 2675 2714  L 262 2714  L 262 3430  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-127" d="M 710 -243  L 1165 -243  Q 1325 -243 1405 -195  Q 1485 -147 1530 -26  L 1606 173  L 1344 173  L 134 3430  L 1120 3430  L 1901 1069  L 2643 3430  L 3622 3430  L 2304 -326  Q 2182 -666 1968 -813  Q 1754 -960 1363 -960  L 710 -960  L 710 -243  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Bold-2" />
+    <use ns4:href="#Geist-Bold-1" transform="translate(74.09375 0)" />
+    <use ns4:href="#Geist-Bold-105" transform="translate(96.890625 0)" />
+    <use ns4:href="#Geist-Bold-c3" transform="translate(135.890625 0)" />
+    <use ns4:href="#Geist-Bold-115" transform="translate(195.59375 0)" />
+    <use ns4:href="#Geist-Bold-109" transform="translate(255 0)" />
+    <use ns4:href="#Geist-Bold-ac" transform="translate(311.90625 0)" />
+    <use ns4:href="#Geist-Bold-b8" transform="translate(373 0)" />
+    <use ns4:href="#Geist-Bold-ec" transform="translate(436.09375 0)" />
+    <use ns4:href="#Geist-Bold-c3" transform="translate(468.09375 0)" />
+    <use ns4:href="#Geist-Bold-1" transform="translate(529 0)" />
+    <use ns4:href="#Geist-Bold-b9" transform="translate(551.796875 0)" />
+    <use ns4:href="#Geist-Bold-ac" transform="translate(611.296875 0)" />
+    <use ns4:href="#Geist-Bold-102" transform="translate(672.09375 0)" />
+    <use ns4:href="#Geist-Bold-ac" transform="translate(735.09375 0)" />
+    <use ns4:href="#Geist-Bold-b8" transform="translate(796.1875 0)" />
+    <use ns4:href="#Geist-Bold-da" transform="translate(858.484375 0)" />
+    <use ns4:href="#Geist-Bold-ec" transform="translate(886.578125 0)" />
+    <use ns4:href="#Geist-Bold-da" transform="translate(919.375 0)" />
+    <use ns4:href="#Geist-Bold-110" transform="translate(944.5625 0)" />
+    <use ns4:href="#Geist-Bold-127" transform="translate(989.265625 0)" />
+    <use ns4:href="#Geist-Bold-25e" transform="translate(1042.765625 0)" />
+   </g>
+  </g>
+  <g id="text_5">
+   
+   <g style="fill: #e3dbea" transform="translate(37.44 155.5125) scale(0.125 -0.125)">
+    <defs>
+     <path id="Geist-Regular-64" d="M 1568 4006  L 154 4006  L 154 4544  L 3533 4544  L 3533 4006  L 2118 4006  L 2118 0  L 1568 0  L 1568 4006  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-121" d="M 141 3392  L 730 3392  L 1523 563  L 2330 3392  L 2906 3392  L 3712 563  L 4512 3392  L 5101 3392  L 4051 0  L 3373 0  L 2618 2579  L 1862 0  L 1190 0  L 141 3392  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-f8" d="M 1856 -77  Q 1389 -77 1037 140  Q 685 358 493 758  Q 301 1158 301 1696  Q 301 2234 493 2634  Q 685 3034 1037 3251  Q 1389 3469 1856 3469  Q 2317 3469 2669 3251  Q 3021 3034 3213 2634  Q 3405 2234 3405 1696  Q 3405 1158 3213 758  Q 3021 358 2669 140  Q 2317 -77 1856 -77  z M 1856 435  Q 2323 435 2582 771  Q 2842 1107 2842 1696  Q 2842 2285 2582 2621  Q 2323 2957 1856 2957  Q 1389 2957 1126 2624  Q 864 2291 864 1696  Q 864 1101 1126 768  Q 1389 435 1856 435  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-1" transform="scale(0.015625)" />
+     <path id="Geist-Regular-da" d="M 512 3392  L 1050 3392  L 1050 0  L 512 0  L 512 3392  z M 499 4550  L 1062 4550  L 1062 3923  L 499 3923  L 499 4550  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-f2" d="M 512 3392  L 1005 3392  L 1024 2528  L 960 2586  Q 1050 3021 1347 3245  Q 1645 3469 2061 3469  Q 2618 3469 2912 3110  Q 3206 2752 3206 2182  L 3206 0  L 2669 0  L 2669 2029  Q 2669 2509 2496 2752  Q 2323 2995 1946 2995  Q 1542 2995 1296 2742  Q 1050 2490 1050 2029  L 1050 0  L 512 0  L 512 3392  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-bf" d="M 1734 -77  Q 1299 -77 972 140  Q 646 358 473 758  Q 301 1158 301 1696  Q 301 2234 473 2634  Q 646 3034 972 3251  Q 1299 3469 1734 3469  Q 2080 3469 2358 3321  Q 2637 3174 2778 2918  L 2778 4544  L 3315 4544  L 3315 0  L 2829 0  L 2810 512  Q 2669 237 2381 80  Q 2093 -77 1734 -77  z M 1843 435  Q 2138 435 2349 588  Q 2560 742 2669 1024  Q 2778 1306 2778 1696  Q 2778 2086 2669 2371  Q 2560 2656 2352 2806  Q 2144 2957 1843 2957  Q 1395 2957 1129 2621  Q 864 2285 864 1696  Q 864 1114 1129 774  Q 1395 435 1843 435  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-c3" d="M 1856 -77  Q 1382 -77 1030 140  Q 678 358 489 758  Q 301 1158 301 1696  Q 301 2227 489 2630  Q 678 3034 1024 3251  Q 1370 3469 1830 3469  Q 2272 3469 2611 3261  Q 2950 3053 3139 2649  Q 3328 2246 3328 1690  L 3328 1530  L 864 1530  Q 890 992 1149 713  Q 1408 435 1856 435  Q 2182 435 2396 585  Q 2611 736 2701 1005  L 3277 960  Q 3142 493 2761 208  Q 2381 -77 1856 -77  z M 2739 2003  Q 2701 2477 2461 2717  Q 2221 2957 1830 2957  Q 1434 2957 1181 2713  Q 928 2470 864 2003  L 2739 2003  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-102" d="M 512 3392  L 1011 3392  L 1024 2662  L 947 2701  Q 1069 3072 1366 3270  Q 1664 3469 2061 3469  Q 2547 3469 2876 3229  Q 3206 2989 3366 2585  Q 3526 2182 3526 1696  Q 3526 1210 3366 806  Q 3206 403 2876 163  Q 2547 -77 2061 -77  Q 1798 -77 1571 12  Q 1344 102 1187 265  Q 1030 429 973 640  L 1050 730  L 1050 -960  L 512 -960  L 512 3392  z M 2010 435  Q 2451 435 2707 768  Q 2963 1101 2963 1696  Q 2963 2291 2707 2624  Q 2451 2957 2010 2957  Q 1715 2957 1497 2813  Q 1280 2669 1165 2387  Q 1050 2106 1050 1696  Q 1050 1286 1165 1004  Q 1280 723 1494 579  Q 1709 435 2010 435  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-110" d="M 1754 0  Q 1293 0 1072 211  Q 851 422 851 870  L 851 4186  L 1389 4186  L 1389 883  Q 1389 659 1488 566  Q 1587 474 1805 474  L 2291 474  L 2291 0  L 1754 0  z M 352 3392  L 2291 3392  L 2291 2918  L 352 2918  L 352 3392  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-ec" d="M 1178 0  Q 864 0 688 157  Q 512 314 512 640  L 512 4544  L 1050 4544  L 1050 685  Q 1050 582 1104 528  Q 1158 474 1261 474  L 1555 474  L 1555 0  L 1178 0  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-127" d="M 659 -486  L 1050 -486  Q 1222 -486 1308 -432  Q 1395 -378 1446 -256  L 1568 64  L 1382 64  L 141 3392  L 730 3392  L 1741 563  L 2707 3392  L 3296 3392  L 1920 -429  Q 1824 -704 1632 -832  Q 1440 -960 1101 -960  L 659 -960  L 659 -486  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-cf" d="M 1818 -1037  Q 1459 -1037 1161 -915  Q 864 -794 665 -570  Q 467 -346 397 -51  L 960 -13  Q 1043 -269 1241 -397  Q 1440 -525 1818 -525  Q 2285 -525 2528 -339  Q 2771 -154 2771 218  L 2771 768  Q 2643 499 2377 339  Q 2112 179 1779 179  Q 1350 179 1014 387  Q 678 595 489 969  Q 301 1344 301 1824  Q 301 2304 486 2678  Q 672 3053 1001 3261  Q 1331 3469 1754 3469  Q 2112 3469 2397 3302  Q 2682 3136 2797 2854  L 2797 3392  L 3309 3392  L 3309 230  Q 3309 -365 2912 -701  Q 2515 -1037 1818 -1037  z M 1805 691  Q 2093 691 2310 828  Q 2528 966 2649 1222  Q 2771 1478 2771 1824  Q 2778 2170 2659 2426  Q 2541 2682 2320 2819  Q 2099 2957 1805 2957  Q 1363 2957 1113 2653  Q 864 2349 864 1824  Q 864 1299 1117 995  Q 1370 691 1805 691  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-105" d="M 512 3392  L 986 3392  L 1011 2534  L 960 2554  Q 1024 2982 1235 3187  Q 1446 3392 1811 3392  L 2144 3392  L 2144 2880  L 1818 2880  Q 1562 2880 1392 2787  Q 1222 2694 1136 2508  Q 1050 2323 1050 2048  L 1050 0  L 512 0  L 512 3392  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-ac" d="M 1446 -77  Q 915 -77 608 166  Q 301 410 301 845  Q 301 1280 557 1529  Q 813 1779 1370 1882  L 2573 2106  Q 2573 2534 2371 2745  Q 2170 2957 1766 2957  Q 1421 2957 1213 2803  Q 1005 2650 928 2349  L 358 2394  Q 454 2886 828 3177  Q 1203 3469 1766 3469  Q 2413 3469 2761 3104  Q 3110 2739 3110 2086  L 3110 685  Q 3110 570 3152 522  Q 3194 474 3290 474  L 3424 474  L 3424 0  Q 3386 -6 3334 -9  Q 3283 -13 3219 -13  Q 2867 -13 2720 153  Q 2573 320 2573 704  L 2637 691  Q 2573 365 2227 144  Q 1882 -77 1446 -77  z M 1498 397  Q 1830 397 2073 528  Q 2317 659 2445 886  Q 2573 1114 2573 1395  L 2573 1638  L 1472 1434  Q 1139 1376 1001 1245  Q 864 1114 864 896  Q 864 659 1030 528  Q 1197 397 1498 397  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-b9" d="M 1856 -77  Q 1389 -77 1037 140  Q 685 358 493 761  Q 301 1165 301 1696  Q 301 2227 493 2630  Q 685 3034 1037 3251  Q 1389 3469 1856 3469  Q 2246 3469 2550 3331  Q 2854 3194 3046 2928  Q 3238 2662 3296 2291  L 2733 2253  Q 2675 2586 2441 2771  Q 2208 2957 1856 2957  Q 1389 2957 1126 2624  Q 864 2291 864 1696  Q 864 1101 1126 768  Q 1389 435 1856 435  Q 2208 435 2441 630  Q 2675 826 2733 1203  L 3296 1165  Q 3238 787 3046 508  Q 2854 230 2547 76  Q 2240 -77 1856 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-115" d="M 1626 -77  Q 1114 -77 813 265  Q 512 608 512 1210  L 512 3392  L 1050 3392  L 1050 1357  Q 1050 864 1226 630  Q 1402 397 1766 397  Q 2170 397 2400 656  Q 2630 915 2630 1370  L 2630 3392  L 3168 3392  L 3168 0  L 2656 0  L 2656 838  L 2739 794  Q 2637 378 2349 150  Q 2061 -77 1626 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-109" d="M 1766 -77  Q 1325 -77 1001 67  Q 678 211 502 470  Q 326 730 301 1069  L 864 1107  Q 915 787 1132 611  Q 1350 435 1766 435  Q 2125 435 2326 550  Q 2528 666 2528 909  Q 2528 1050 2461 1136  Q 2394 1222 2211 1289  Q 2029 1357 1664 1421  Q 1184 1504 902 1638  Q 621 1773 502 1965  Q 384 2157 384 2432  Q 384 2893 723 3181  Q 1062 3469 1664 3469  Q 2253 3469 2598 3161  Q 2944 2854 3027 2381  L 2464 2342  Q 2406 2624 2198 2790  Q 1990 2957 1658 2957  Q 1306 2957 1126 2819  Q 947 2682 947 2458  Q 947 2291 1027 2185  Q 1107 2080 1280 2013  Q 1453 1946 1766 1894  Q 2285 1805 2569 1680  Q 2854 1555 2972 1372  Q 3091 1190 3091 909  Q 3091 448 2716 185  Q 2342 -77 1766 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-25e" d="M 301 723  L 1024 723  L 1024 0  L 301 0  L 301 723  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-64" />
+    <use ns4:href="#Geist-Regular-121" transform="translate(55.09375 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(134.5 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(192.40625 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(217.40625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(240.3125 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(296.90625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(356.703125 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(412.90625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(472.203125 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(528.40625 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(585 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(644.796875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(701 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(756.09375 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(795.59375 0)" />
+    <use ns4:href="#Geist-Regular-127" transform="translate(821.390625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(875.09375 0)" />
+    <use ns4:href="#Geist-Regular-cf" transform="translate(900.09375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(958.296875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1014.5 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1071.09375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1127.296875 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1162.5 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1214.5 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1252.5 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1308.703125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1368.5 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(1393.5 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1452.796875 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(1488 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(1545.40625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1600.109375 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1656.3125 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(1714.109375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1771.609375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1806.8125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1863.015625 0)" />
+    <use ns4:href="#Geist-Regular-25e" transform="translate(1916.015625 0)" />
+   </g>
+   
+   <g style="fill: #e3dbea" transform="translate(37.44 176.4) scale(0.125 -0.125)">
+    <defs>
+     <path id="Geist-Regular-e" d="M 589 4544  L 2150 4544  Q 2963 4544 3363 4246  Q 3763 3949 3763 3322  Q 3763 3027 3635 2803  Q 3507 2579 3267 2454  Q 3027 2330 2707 2330  L 2701 2368  Q 3277 2368 3616 2061  Q 3955 1754 3955 1248  Q 3955 634 3555 317  Q 3155 0 2406 0  L 589 0  L 589 4544  z M 2406 538  Q 2874 538 3126 730  Q 3379 922 3379 1280  Q 3379 1638 3126 1840  Q 2874 2042 2406 2042  L 1139 2042  L 1139 538  L 2406 538  z M 2150 2579  Q 2650 2579 2918 2768  Q 3187 2957 3187 3296  Q 3187 3654 2928 3830  Q 2669 4006 2150 4006  L 1139 4006  L 1139 2579  L 2150 2579  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-d7" d="M 512 4544  L 1050 4544  L 1050 2643  L 986 2656  Q 1075 3066 1363 3267  Q 1651 3469 2074 3469  Q 2611 3469 2908 3117  Q 3206 2765 3206 2182  L 3206 0  L 2669 0  L 2669 2029  Q 2669 2515 2493 2755  Q 2317 2995 1958 2995  Q 1536 2995 1293 2739  Q 1050 2483 1050 2022  L 1050 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-120" d="M 141 3392  L 730 3392  L 1715 550  L 2701 3392  L 3290 3392  L 2054 0  L 1376 0  L 141 3392  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-f1" d="M 512 3392  L 1005 3392  L 1024 2534  L 947 2560  Q 1005 2835 1149 3040  Q 1293 3245 1504 3357  Q 1715 3469 1971 3469  Q 2413 3469 2691 3229  Q 2970 2989 3040 2547  L 2938 2554  Q 3014 2989 3283 3229  Q 3552 3469 3981 3469  Q 4339 3469 4592 3318  Q 4845 3168 4973 2880  Q 5101 2592 5101 2182  L 5101 0  L 4563 0  L 4563 2067  Q 4563 2528 4384 2761  Q 4205 2995 3853 2995  Q 3616 2995 3440 2880  Q 3264 2765 3168 2547  Q 3072 2330 3072 2029  L 3072 0  L 2534 0  L 2534 2029  Q 2534 2496 2368 2745  Q 2202 2995 1837 2995  Q 1600 2995 1421 2880  Q 1242 2765 1146 2544  Q 1050 2323 1050 2029  L 1050 0  L 512 0  L 512 3392  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-260" d="M 589 723  L 1312 723  L 1312 0  L 589 0  L 589 723  z M 589 3238  L 1312 3238  L 1312 2515  L 589 2515  L 589 3238  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-e" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(68 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(122.90625 0)" />
+    <use ns4:href="#Geist-Regular-d7" transform="translate(162.40625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(220.5 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(245.5 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(301.5 0)" />
+    <use ns4:href="#Geist-Regular-d7" transform="translate(354.703125 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(412.796875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(437.203125 0)" />
+    <use ns4:href="#Geist-Regular-120" transform="translate(491.40625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(542.5 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(598.703125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(658.5 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(683.5 0)" />
+    <use ns4:href="#Geist-Regular-d7" transform="translate(723 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(779.59375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(836.296875 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(861.296875 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(914.296875 0)" />
+    <use ns4:href="#Geist-Regular-f1" transform="translate(970.796875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1057 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1113.703125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1138.703125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1173.90625 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1230.109375 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(1282.109375 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(1339.609375 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1362.90625 0)" />
+    <use ns4:href="#Geist-Regular-260" transform="translate(1402.40625 0)" />
+   </g>
+  </g>
+  <g id="text_6">
+   
+   <g style="fill: #9333ea" transform="translate(37.44 230.4) scale(0.1 -0.1)">
+    <defs>
+     <path id="Geist-SemiBold-1fd" d="M 2202 -102  Q 1626 -102 1197 186  Q 768 474 537 1008  Q 307 1542 307 2266  Q 307 2989 540 3526  Q 774 4064 1200 4355  Q 1626 4646 2202 4646  Q 2778 4646 3203 4358  Q 3629 4070 3859 3532  Q 4090 2995 4090 2266  Q 4090 1542 3862 1008  Q 3635 474 3206 186  Q 2778 -102 2202 -102  z M 2202 621  Q 2534 621 2764 809  Q 2995 998 3113 1366  Q 3232 1734 3232 2266  Q 3232 2803 3113 3174  Q 2995 3546 2764 3734  Q 2534 3923 2202 3923  Q 1869 3923 1638 3734  Q 1408 3546 1289 3174  Q 1171 2803 1171 2266  Q 1171 1734 1289 1366  Q 1408 998 1638 809  Q 1869 621 2202 621  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-1fe" d="M 1216 3117  L 243 3117  L 243 3750  L 634 3750  Q 915 3750 1078 3824  Q 1242 3898 1315 4070  Q 1389 4243 1389 4544  L 2048 4544  L 2048 0  L 1216 0  L 1216 3117  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-26c" d="M 2112 4800  L 2918 4800  L 1024 -704  L 218 -704  L 2112 4800  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-40" d="M 512 4544  L 1344 4544  L 1344 256  L 890 723  L 3501 723  L 3501 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-30" d="M 512 4544  L 1344 4544  L 1344 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-25" d="M 2355 -102  Q 1715 -102 1244 198  Q 774 499 524 1033  Q 275 1568 275 2266  Q 275 2950 531 3491  Q 787 4032 1264 4339  Q 1741 4646 2394 4646  Q 3226 4646 3702 4230  Q 4179 3814 4326 3085  L 3462 3040  Q 3386 3462 3126 3692  Q 2867 3923 2400 3923  Q 1779 3923 1459 3459  Q 1139 2995 1139 2266  Q 1139 1779 1273 1408  Q 1408 1037 1696 829  Q 1984 621 2413 621  Q 2739 621 2985 761  Q 3232 902 3373 1145  Q 3514 1389 3533 1696  L 2406 1696  L 2406 2342  L 4339 2342  L 4339 0  L 3802 0  L 3750 998  L 3853 934  Q 3789 634 3574 397  Q 3360 160 3040 29  Q 2720 -102 2355 -102  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-69" d="M 2234 -102  Q 1683 -102 1270 109  Q 858 320 637 710  Q 416 1101 416 1626  L 416 4550  L 1248 4550  L 1248 1626  Q 1248 1139 1504 880  Q 1760 621 2234 621  Q 2707 621 2966 880  Q 3226 1139 3226 1626  L 3226 4550  L 4058 4550  L 4058 1626  Q 4058 1101 3834 710  Q 3610 320 3200 109  Q 2790 -102 2234 -102  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-74" d="M 147 4544  L 1024 4544  L 2298 928  L 3571 4544  L 4442 4544  L 2797 0  L 1792 0  L 147 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-24" d="M 512 4544  L 3552 4544  L 3552 3821  L 890 3821  L 1344 4288  L 1344 2202  L 890 2579  L 3437 2579  L 3437 1862  L 890 1862  L 1344 2240  L 1344 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-15" d="M 512 4544  L 2022 4544  Q 3110 4544 3696 3952  Q 4282 3360 4282 2266  Q 4282 1178 3706 589  Q 3130 0 2061 0  L 512 0  L 512 4544  z M 2022 723  Q 2733 723 3078 1107  Q 3424 1491 3424 2266  Q 3424 3053 3078 3437  Q 2733 3821 2022 3821  L 1344 3821  L 1344 723  L 2022 723  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-56" d="M 512 4544  L 2272 4544  Q 2797 4544 3177 4371  Q 3558 4198 3763 3872  Q 3968 3546 3968 3098  Q 3968 2643 3763 2313  Q 3558 1984 3177 1811  Q 2797 1638 2272 1638  L 1344 1638  L 1344 0  L 512 0  L 512 4544  z M 2234 2362  Q 2656 2362 2883 2547  Q 3110 2733 3110 3098  Q 3110 3450 2883 3635  Q 2656 3821 2234 3821  L 1344 3821  L 1344 2362  L 2234 2362  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-1fd" />
+    <use ns4:href="#Geist-SemiBold-1fe" transform="translate(68.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(111.5 0)" />
+    <use ns4:href="#Geist-SemiBold-26c" transform="translate(135.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(185.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-40" transform="translate(209.484375 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(268.078125 0)" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(329.578125 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(401.375 0)" />
+    <use ns4:href="#Geist-SemiBold-46" transform="translate(470.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(542.78125 0)" />
+    <use ns4:href="#Geist-SemiBold-46" transform="translate(569.484375 0)" />
+    <use ns4:href="#Geist-SemiBold-25" transform="translate(643.1875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(715.78125 0)" />
+    <use ns4:href="#Geist-SemiBold-64" transform="translate(739.375 0)" />
+    <use ns4:href="#Geist-SemiBold-2d" transform="translate(799.96875 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(869.578125 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(936.984375 0)" />
+    <use ns4:href="#Geist-SemiBold-69" transform="translate(1013.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-25" transform="translate(1083.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-2d" transform="translate(1155.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1227.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-74" transform="translate(1251.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(1323.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(1384.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(1453.5 0)" />
+    <use ns4:href="#Geist-SemiBold-24" transform="translate(1482.5 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(1542.5 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(1569.203125 0)" />
+    <use ns4:href="#Geist-SemiBold-15" transform="translate(1630.703125 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1702 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(1725.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(1794.5 0)" />
+    <use ns4:href="#Geist-SemiBold-56" transform="translate(1856 0)" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(1914.5 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(1986.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(2013 0)" />
+   </g>
+  </g>
+  <g id="text_7">
+   
+   <g style="fill: #9333ea" transform="translate(51.84 337.68) scale(0.67 -0.67)">
+    <defs>
+     <path id="Geist-Bold-201" d="M 2554 864  L 294 864  L 294 1638  L 2368 4544  L 3526 4544  L 3526 1683  L 4058 1683  L 4058 864  L 3526 864  L 3526 0  L 2554 0  L 2554 864  z M 2554 1683  L 2554 3347  L 1325 1683  L 2554 1683  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-200" d="M 2086 -102  Q 1248 -102 787 278  Q 326 659 294 1331  L 1286 1370  Q 1318 1037 1523 877  Q 1728 717 2086 717  Q 2445 717 2665 877  Q 2886 1037 2886 1344  Q 2886 1555 2787 1702  Q 2688 1850 2499 1923  Q 2310 1997 2054 1997  L 1645 1997  L 1645 2720  L 2054 2720  Q 2368 2720 2553 2854  Q 2739 2989 2739 3270  Q 2739 3539 2576 3683  Q 2413 3827 2074 3827  Q 1741 3827 1561 3692  Q 1382 3558 1344 3322  L 365 3373  Q 429 3962 877 4304  Q 1325 4646 2074 4646  Q 2874 4646 3306 4307  Q 3738 3968 3738 3373  Q 3738 2970 3472 2704  Q 3206 2438 2707 2349  L 2707 2458  Q 3270 2374 3577 2067  Q 3885 1760 3885 1274  Q 3885 845 3664 537  Q 3443 230 3036 64  Q 2630 -102 2086 -102  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-2dd" d="M 1312 2342  Q 832 2342 541 2630  Q 250 2918 250 3469  Q 250 4019 541 4307  Q 832 4595 1312 4595  Q 1792 4595 2080 4307  Q 2368 4019 2368 3469  Q 2368 2912 2080 2627  Q 1792 2342 1312 2342  z M 1312 2829  Q 1510 2829 1616 2989  Q 1722 3149 1722 3469  Q 1722 3789 1616 3949  Q 1510 4109 1312 4109  Q 1107 4109 1004 3949  Q 902 3789 902 3469  Q 902 3149 1004 2989  Q 1107 2829 1312 2829  z M 3872 4544  L 4461 4544  L 1440 0  L 851 0  L 3872 4544  z M 4000 -51  Q 3520 -51 3229 237  Q 2938 525 2938 1075  Q 2938 1626 3229 1914  Q 3520 2202 4000 2202  Q 4480 2202 4768 1914  Q 5056 1626 5056 1075  Q 5056 518 4768 233  Q 4480 -51 4000 -51  z M 4000 435  Q 4205 435 4307 595  Q 4410 755 4410 1075  Q 4410 1395 4307 1555  Q 4205 1715 4000 1715  Q 3795 1715 3692 1555  Q 3590 1395 3590 1075  Q 3590 755 3692 595  Q 3795 435 4000 435  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Bold-201" />
+    <use ns4:href="#Geist-Bold-200" transform="translate(68 0)" />
+    <use ns4:href="#Geist-Bold-2dd" transform="translate(133.296875 0)" />
+   </g>
+  </g>
+  <g id="text_8">
+   
+   <g style="fill: #17101f" transform="translate(259.2 275.039766) scale(0.15 -0.15)">
+    <defs>
+     <path id="Geist-SemiBold-ce" d="M 806 3552  Q 806 4026 1068 4285  Q 1331 4544 1862 4544  L 2528 4544  L 2528 3910  L 2016 3910  Q 1818 3910 1725 3808  Q 1632 3706 1632 3507  L 1632 0  L 806 0  L 806 3552  z M 320 3328  L 2483 3328  L 2483 2694  L 320 2694  L 320 3328  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-ac" d="M 1453 -77  Q 909 -77 585 169  Q 262 416 262 858  Q 262 1293 534 1542  Q 806 1792 1376 1907  L 2509 2131  Q 2509 2496 2342 2678  Q 2176 2861 1856 2861  Q 1562 2861 1389 2726  Q 1216 2592 1158 2330  L 320 2368  Q 416 2912 816 3203  Q 1216 3494 1856 3494  Q 2579 3494 2953 3129  Q 3328 2765 3328 2074  L 3328 832  Q 3328 698 3376 646  Q 3424 595 3520 595  L 3629 595  L 3629 0  Q 3584 -13 3501 -19  Q 3418 -26 3334 -26  Q 2982 -26 2793 147  Q 2605 320 2605 742  L 2675 691  Q 2598 352 2262 137  Q 1926 -77 1453 -77  z M 1619 518  Q 1894 518 2092 627  Q 2291 736 2400 931  Q 2509 1126 2509 1382  L 2509 1574  L 1626 1395  Q 1357 1344 1235 1229  Q 1114 1114 1114 934  Q 1114 736 1245 627  Q 1376 518 1619 518  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-bf" d="M 1683 -77  Q 1248 -77 928 140  Q 608 358 435 761  Q 262 1165 262 1709  Q 262 2246 435 2652  Q 608 3059 931 3276  Q 1254 3494 1683 3494  Q 2042 3494 2310 3347  Q 2579 3200 2720 2931  L 2720 4544  L 3539 4544  L 3539 0  L 2765 0  L 2746 506  Q 2598 230 2316 76  Q 2035 -77 1683 -77  z M 1926 589  Q 2176 589 2355 717  Q 2534 845 2627 1097  Q 2720 1350 2720 1709  Q 2720 2067 2627 2320  Q 2534 2573 2358 2701  Q 2182 2829 1926 2829  Q 1555 2829 1334 2531  Q 1114 2234 1114 1709  Q 1114 1197 1334 893  Q 1555 589 1926 589  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-f2" d="M 448 3418  L 1190 3418  L 1222 2458  L 1126 2496  Q 1203 3008 1497 3251  Q 1792 3494 2234 3494  Q 2784 3494 3091 3142  Q 3398 2790 3398 2195  L 3398 0  L 2579 0  L 2579 1933  Q 2579 2387 2441 2608  Q 2304 2829 1984 2829  Q 1651 2829 1459 2595  Q 1267 2362 1267 1933  L 1267 0  L 448 0  L 448 3418  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-ec" d="M 1267 0  Q 877 0 662 195  Q 448 390 448 806  L 448 4544  L 1267 4544  L 1267 890  Q 1267 762 1334 698  Q 1402 634 1523 634  L 1773 634  L 1773 0  L 1267 0  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-f8" />
+    <use ns4:href="#Geist-SemiBold-ce" transform="translate(58.703125 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(101.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(125.5 0)" />
+    <use ns4:href="#Geist-SemiBold-bf" transform="translate(184.5 0)" />
+    <use ns4:href="#Geist-SemiBold-bf" transform="translate(246.5 0)" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(306.5 0)" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(330.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(373.015625 0)" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(399.625 0)" />
+    <use ns4:href="#Geist-SemiBold-f2" transform="translate(459.53125 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(518.421875 0)" />
+    <use ns4:href="#Geist-SemiBold-ec" transform="translate(577.21875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(608.515625 0)" />
+    <use ns4:href="#Geist-SemiBold-ce" transform="translate(632.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(673.3125 0)" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(733.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-ec" transform="translate(760.015625 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(790.515625 0)" />
+    <use ns4:href="#Geist-SemiBold-bf" transform="translate(849.3125 0)" />
+   </g>
+   
+   <g style="fill: #17101f" transform="translate(259.2 298.8) scale(0.15 -0.15)">
+    <defs>
+     <path id="Geist-SemiBold-b9" d="M 1946 -77  Q 1440 -77 1062 144  Q 685 365 473 771  Q 262 1178 262 1709  Q 262 2240 473 2646  Q 685 3053 1062 3273  Q 1440 3494 1946 3494  Q 2381 3494 2723 3340  Q 3066 3187 3277 2896  Q 3488 2605 3539 2208  L 2694 2163  Q 2643 2483 2444 2656  Q 2246 2829 1946 2829  Q 1549 2829 1331 2534  Q 1114 2240 1114 1709  Q 1114 1178 1331 883  Q 1549 589 1946 589  Q 2253 589 2451 765  Q 2650 941 2694 1299  L 3539 1261  Q 3494 851 3283 550  Q 3072 250 2726 86  Q 2381 -77 1946 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-109" d="M 1856 -77  Q 1363 -77 1014 67  Q 666 211 477 473  Q 288 736 262 1075  L 1101 1114  Q 1146 838 1328 694  Q 1510 550 1856 550  Q 2150 550 2310 643  Q 2470 736 2470 934  Q 2470 1050 2412 1126  Q 2355 1203 2195 1260  Q 2035 1318 1722 1376  Q 1197 1466 899 1597  Q 602 1728 474 1923  Q 346 2118 346 2419  Q 346 2906 720 3200  Q 1094 3494 1792 3494  Q 2458 3494 2832 3177  Q 3206 2861 3283 2342  L 2451 2304  Q 2406 2573 2233 2720  Q 2061 2867 1786 2867  Q 1498 2867 1347 2752  Q 1197 2637 1197 2445  Q 1197 2310 1264 2220  Q 1331 2131 1478 2076  Q 1626 2022 1894 1978  Q 2432 1894 2742 1763  Q 3053 1632 3187 1437  Q 3322 1242 3322 947  Q 3322 461 2922 192  Q 2522 -77 1856 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-102" d="M 448 3418  L 1235 3418  L 1254 2688  L 1171 2726  Q 1293 3098 1587 3296  Q 1882 3494 2272 3494  Q 2739 3494 3068 3260  Q 3398 3027 3561 2620  Q 3725 2214 3725 1709  Q 3725 1203 3561 796  Q 3398 390 3068 156  Q 2739 -77 2266 -77  Q 2010 -77 1789 12  Q 1568 102 1411 272  Q 1254 442 1190 659  L 1267 723  L 1267 -960  L 448 -960  L 448 3418  z M 2074 589  Q 2445 589 2659 886  Q 2874 1184 2874 1709  Q 2874 2234 2659 2531  Q 2445 2829 2074 2829  Q 1824 2829 1641 2701  Q 1459 2573 1363 2323  Q 1267 2074 1267 1709  Q 1267 1344 1363 1091  Q 1459 838 1638 713  Q 1818 589 2074 589  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-105" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(37.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-b9" transform="translate(96.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(154.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(214.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-bf" transform="translate(252.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(314.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-bf" transform="translate(372.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(435.1875 0)" />
+    <use ns4:href="#Geist-SemiBold-109" transform="translate(458.78125 0)" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(512.078125 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(554.984375 0)" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(610.375 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(652.078125 0)" />
+    <use ns4:href="#Geist-SemiBold-109" transform="translate(710.875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(766.875 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(790.46875 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(828.265625 0)" />
+    <use ns4:href="#Geist-SemiBold-102" transform="translate(886.96875 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(948.859375 0)" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(1008.65625 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(1034.265625 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(1072.0625 0)" />
+    <use ns4:href="#Geist-SemiBold-bf" transform="translate(1130.859375 0)" />
+   </g>
+  </g>
+  <g id="text_9">
+   
+   <g style="fill: #6b6472" transform="translate(259.2 339.12) scale(0.12 -0.12)">
+    <defs>
+     <path id="Geist-Regular-1fe" d="M 1203 3366  L 256 3366  L 256 3840  L 640 3840  Q 896 3840 1043 3904  Q 1190 3968 1254 4121  Q 1318 4275 1318 4544  L 1754 4544  L 1754 0  L 1203 0  L 1203 3366  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-1ff" d="M 384 0  Q 384 499 537 883  Q 691 1267 1072 1612  Q 1453 1958 2125 2317  Q 2464 2496 2646 2633  Q 2829 2771 2915 2928  Q 3002 3085 3002 3315  Q 3002 3674 2768 3891  Q 2534 4109 2093 4109  Q 1619 4109 1337 3862  Q 1056 3616 986 3149  L 410 3187  Q 486 3866 924 4256  Q 1363 4646 2093 4646  Q 2554 4646 2890 4480  Q 3226 4314 3402 4016  Q 3578 3718 3578 3328  Q 3578 2976 3462 2729  Q 3347 2483 3081 2265  Q 2816 2048 2330 1792  Q 1734 1478 1408 1142  Q 1082 806 1062 538  L 3578 538  L 3578 0  L 384 0  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-ce" d="M 845 3699  Q 845 4090 1069 4317  Q 1293 4544 1741 4544  L 2278 4544  L 2278 4070  L 1779 4070  Q 1581 4070 1481 3964  Q 1382 3859 1382 3661  L 1382 0  L 845 0  L 845 3699  z M 384 3392  L 2234 3392  L 2234 2918  L 384 2918  L 384 3392  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-205" d="M 1933 -102  Q 1440 -102 1059 54  Q 678 211 467 515  Q 256 819 256 1248  Q 256 1734 544 2060  Q 832 2387 1331 2502  L 1344 2374  Q 934 2483 704 2736  Q 474 2989 474 3398  Q 474 3757 656 4041  Q 838 4326 1168 4486  Q 1498 4646 1933 4646  Q 2368 4646 2697 4486  Q 3027 4326 3209 4041  Q 3392 3757 3392 3398  Q 3392 2989 3161 2736  Q 2931 2483 2522 2374  L 2534 2502  Q 3034 2387 3322 2060  Q 3610 1734 3610 1248  Q 3610 819 3398 515  Q 3187 211 2806 54  Q 2426 -102 1933 -102  z M 1933 435  Q 2451 435 2742 646  Q 3034 858 3034 1280  Q 3034 1690 2758 1923  Q 2483 2157 1933 2157  Q 1382 2157 1107 1923  Q 832 1690 832 1280  Q 832 858 1123 646  Q 1414 435 1933 435  z M 1933 2669  Q 2362 2669 2589 2854  Q 2816 3040 2816 3398  Q 2816 3731 2589 3920  Q 2362 4109 1933 4109  Q 1504 4109 1277 3920  Q 1050 3731 1050 3398  Q 1050 3040 1277 2854  Q 1504 2669 1933 2669  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-25f" d="M 627 0  L 301 0  L 301 723  L 1024 723  L 1024 90  L 640 -998  L 320 -998  L 627 0  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-1fe" />
+    <use ns4:href="#Geist-Regular-1ff" transform="translate(38.40625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(100.3125 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(125.3125 0)" />
+    <use ns4:href="#Geist-Regular-ce" transform="translate(181.21875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(221.015625 0)" />
+    <use ns4:href="#Geist-Regular-1ff" transform="translate(246.015625 0)" />
+    <use ns4:href="#Geist-Regular-205" transform="translate(307.921875 0)" />
+    <use ns4:href="#Geist-Regular-25f" transform="translate(368.328125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(389.03125 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(414.03125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(473.328125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(529.53125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(567.734375 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(592.734375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(652.03125 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(687.234375 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(744.640625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(799.34375 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(855.546875 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(913.34375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(970.84375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1006.046875 0)" />
+   </g>
+  </g>
+  <g id="text_10">
+   
+   <g style="fill: #7e22ce" transform="translate(51.84 387.36) scale(0.1 -0.1)">
+    <defs>
+     <path id="Geist-SemiBold-1ff" d="M 378 0  Q 378 557 534 969  Q 691 1382 1049 1721  Q 1408 2061 2035 2387  Q 2368 2566 2544 2691  Q 2720 2816 2800 2950  Q 2880 3085 2880 3277  Q 2880 3571 2688 3747  Q 2496 3923 2144 3923  Q 1760 3923 1529 3705  Q 1299 3488 1248 3072  L 390 3123  Q 454 3840 912 4243  Q 1370 4646 2144 4646  Q 2637 4646 2998 4476  Q 3360 4307 3549 4000  Q 3738 3693 3738 3290  Q 3738 2938 3619 2694  Q 3501 2451 3248 2246  Q 2995 2042 2522 1792  Q 1971 1498 1683 1219  Q 1395 941 1376 723  L 3738 723  L 3738 0  L 378 0  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-1fe" />
+    <use ns4:href="#Geist-SemiBold-1ff" transform="translate(42.703125 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(106.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(130.5 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(168.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-102" transform="translate(227 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(288.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(348.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(374.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(412.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-bf" transform="translate(470.890625 0)" />
+   </g>
+  </g>
+  <g id="text_11">
+   
+   <g style="fill: #6b6472" transform="translate(331.27875 387.36) scale(0.09 -0.09)">
+    <defs>
+     <path id="Geist-Regular-203" d="M 1997 -102  Q 1229 -102 806 422  Q 384 947 384 1920  Q 384 2714 560 3322  Q 736 3930 1133 4288  Q 1530 4646 2176 4646  Q 2752 4646 3097 4361  Q 3443 4077 3584 3571  L 3008 3520  Q 2925 3808 2729 3958  Q 2534 4109 2176 4109  Q 1600 4109 1283 3622  Q 966 3136 947 2176  L 832 2202  Q 941 2566 1286 2812  Q 1632 3059 2099 3059  Q 2541 3059 2883 2867  Q 3226 2675 3414 2323  Q 3603 1971 3603 1510  Q 3603 1018 3398 653  Q 3194 288 2829 93  Q 2464 -102 1997 -102  z M 2010 435  Q 2464 435 2745 723  Q 3027 1011 3027 1510  Q 3027 1978 2758 2256  Q 2490 2534 2061 2534  Q 1754 2534 1510 2409  Q 1267 2285 1126 2051  Q 986 1818 986 1510  Q 986 1197 1110 953  Q 1235 710 1468 572  Q 1702 435 2010 435  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-27b" d="M 301 2118  L 2419 2118  L 2419 1613  L 301 1613  L 301 2118  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-b8" d="M 2067 -77  Q 1715 -77 1440 76  Q 1165 230 1018 512  L 998 0  L 512 0  L 512 4544  L 1050 4544  L 1050 2918  Q 1184 3149 1459 3309  Q 1734 3469 2067 3469  Q 2509 3469 2838 3251  Q 3168 3034 3347 2634  Q 3526 2234 3526 1696  Q 3526 1158 3347 758  Q 3168 358 2838 140  Q 2509 -77 2067 -77  z M 2035 435  Q 2464 435 2713 774  Q 2963 1114 2963 1696  Q 2963 2285 2716 2621  Q 2470 2957 2048 2957  Q 1734 2957 1510 2806  Q 1286 2656 1168 2371  Q 1050 2086 1050 1696  Q 1050 1312 1168 1027  Q 1286 742 1507 588  Q 1728 435 2035 435  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-1fe" />
+    <use ns4:href="#Geist-Regular-203" transform="translate(38.40625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(100.8125 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(125.8125 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(183.3125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(239.40625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(274.609375 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(330.8125 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(383.3125 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(440.71875 0)" />
+    <use ns4:href="#Geist-Regular-120" transform="translate(466.515625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(517.609375 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(573.8125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(633.609375 0)" />
+    <use ns4:href="#Geist-Regular-27b" transform="translate(658.609375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(701.109375 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(726.109375 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(749.015625 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(805.609375 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(860.3125 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(887.609375 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(943.609375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1003.40625 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1059.609375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1112.609375 0)" />
+    <use ns4:href="#Geist-Regular-205" transform="translate(1137.609375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1198.015625 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(1223.015625 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1247.421875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1307.21875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1363.421875 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1418.515625 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(1458.015625 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1478.421875 0)" />
+    <use ns4:href="#Geist-Regular-127" transform="translate(1517.921875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1571.625 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1596.625 0)" />
+    <use ns4:href="#Geist-Regular-b8" transform="translate(1653.625 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1712.921875 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1762.921875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1800.921875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1857.125 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1912.21875 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(1951.71875 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(1976.125 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(2033.53125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(2090.125 0)" />
+   </g>
+  </g>
+  <g id="text_12">
+   
+   <g style="fill: #17101f" transform="translate(51.84 457.92) scale(0.29 -0.29)">
+    <defs>
+     <path id="Geist-Bold-1fe" d="M 1229 2989  L 243 2989  L 243 3699  L 634 3699  Q 922 3699 1094 3779  Q 1267 3859 1347 4041  Q 1427 4224 1427 4544  L 2202 4544  L 2202 0  L 1229 0  L 1229 2989  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-203" d="M 2125 -102  Q 1261 -102 809 445  Q 358 992 358 2003  Q 358 2784 569 3379  Q 781 3974 1209 4310  Q 1638 4646 2278 4646  Q 2925 4646 3321 4332  Q 3718 4019 3846 3456  L 2944 3392  Q 2861 3616 2710 3731  Q 2560 3846 2278 3846  Q 1818 3846 1565 3449  Q 1312 3053 1286 2253  L 1152 2278  Q 1261 2579 1568 2780  Q 1875 2982 2330 2982  Q 2784 2982 3136 2796  Q 3488 2611 3677 2275  Q 3866 1939 3866 1498  Q 3866 992 3648 633  Q 3430 275 3036 86  Q 2643 -102 2125 -102  z M 2118 672  Q 2470 672 2684 893  Q 2899 1114 2899 1485  Q 2899 1850 2691 2070  Q 2483 2291 2150 2291  Q 1914 2291 1728 2188  Q 1542 2086 1440 1907  Q 1338 1728 1338 1485  Q 1338 1248 1434 1062  Q 1530 877 1709 774  Q 1888 672 2118 672  z " transform="scale(0.015625)" />
+     <path id="Geist-Bold-26c" d="M 2099 4800  L 3046 4800  L 1152 -704  L 205 -704  L 2099 4800  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Bold-1fe" />
+    <use ns4:href="#Geist-Bold-203" transform="translate(44.90625 0)" />
+    <use ns4:href="#Geist-Bold-26c" transform="translate(111 0)" />
+    <use ns4:href="#Geist-Bold-1fe" transform="translate(163.203125 0)" />
+    <use ns4:href="#Geist-Bold-203" transform="translate(208.109375 0)" />
+   </g>
+  </g>
+  <g id="text_13">
+   
+   <g style="fill: #6b6472" transform="translate(51.84 480.96) scale(0.105 -0.105)">
+    <defs>
+     <path id="Geist-Regular-e9" d="M 512 4544  L 1050 4544  L 1050 1568  L 2701 3392  L 3418 3392  L 2080 1952  L 3475 0  L 2822 0  L 1715 1587  L 1050 883  L 1050 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-121" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(79.40625 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(136.8125 0)" />
+    <use ns4:href="#Geist-Regular-e9" transform="translate(173.515625 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(230.015625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(252.921875 0)" />
+    <use ns4:href="#Geist-Regular-cf" transform="translate(309.515625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(369.21875 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(394.21875 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(444.21875 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(483.71875 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(535.71875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(573.71875 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(629.921875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(682.921875 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(707.921875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(735.21875 0)" />
+    <use ns4:href="#Geist-Regular-ce" transform="translate(789.921875 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(829.71875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(869.21875 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(894.21875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(951.71875 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(1008.3125 0)" />
+    <use ns4:href="#Geist-Regular-d7" transform="translate(1061.515625 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1118.609375 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1175.109375 0)" />
+    <use ns4:href="#Geist-Regular-cf" transform="translate(1231.703125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1289.90625 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1346.109375 0)" />
+   </g>
+  </g>
+  <g id="text_14">
+   
+   <g style="fill: #9333ea" transform="translate(313.92 457.92) scale(0.29 -0.29)">
+    <defs>
+     <path id="Geist-Bold-1fd" d="M 2227 -102  Q 1632 -102 1197 182  Q 762 467 528 1001  Q 294 1536 294 2266  Q 294 2995 528 3532  Q 762 4070 1200 4358  Q 1638 4646 2227 4646  Q 2822 4646 3257 4358  Q 3693 4070 3929 3532  Q 4166 2995 4166 2266  Q 4166 1536 3929 1001  Q 3693 467 3257 182  Q 2822 -102 2227 -102  z M 2227 717  Q 2528 717 2736 889  Q 2944 1062 3053 1408  Q 3162 1754 3162 2266  Q 3162 2778 3053 3126  Q 2944 3475 2736 3651  Q 2528 3827 2227 3827  Q 1926 3827 1718 3651  Q 1510 3475 1401 3126  Q 1293 2778 1293 2266  Q 1293 1754 1401 1408  Q 1510 1062 1718 889  Q 1926 717 2227 717  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Bold-1fd" />
+   </g>
+  </g>
+  <g id="text_15">
+   
+   <g style="fill: #6b6472" transform="translate(313.92 480.96) scale(0.11 -0.11)">
+    <defs>
+     <path id="Geist-Regular-40" d="M 589 4544  L 1139 4544  L 1139 256  L 864 538  L 3411 538  L 3411 0  L 589 0  L 589 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-45" d="M 589 4544  L 1357 4544  L 2810 602  L 4256 4544  L 5024 4544  L 5024 0  L 4474 0  L 4474 3520  L 3174 0  L 2438 0  L 1139 3520  L 1139 0  L 589 0  L 589 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-269" d="M 640 2662  L 1069 3315  L 301 3315  L 301 3725  L 1069 3725  L 640 4378  L 973 4595  L 1395 3910  L 1824 4595  L 2157 4378  L 1722 3725  L 2490 3725  L 2490 3315  L 1722 3315  L 2157 2662  L 1824 2445  L 1395 3123  L 973 2445  L 640 2662  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-40" />
+    <use ns4:href="#Geist-Regular-40" transform="translate(58 0)" />
+    <use ns4:href="#Geist-Regular-45" transform="translate(116 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(203.703125 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(228.703125 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(283.90625 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(339.90625 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(367.203125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(394.5 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(447.5 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(472.5 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(530.296875 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(587.796875 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(624.5 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(647.40625 0)" />
+    <use ns4:href="#Geist-Regular-cf" transform="translate(704 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(763.703125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(788.703125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(823.90625 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(879.609375 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(935.609375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(988.109375 0)" />
+    <use ns4:href="#Geist-Regular-269" transform="translate(1042.8125 0)" />
+   </g>
+  </g>
+  <g id="text_16">
+   
+   <g style="fill: #6b6472" transform="translate(37.44 514.8) scale(0.105 -0.105)">
+    <defs>
+     <path id="Geist-Regular-25" d="M 2342 -102  Q 1715 -102 1257 202  Q 800 506 557 1043  Q 314 1581 314 2266  Q 314 2950 560 3491  Q 806 4032 1267 4339  Q 1728 4646 2355 4646  Q 3130 4646 3584 4236  Q 4038 3827 4173 3149  L 3597 3110  Q 3507 3584 3206 3846  Q 2906 4109 2355 4109  Q 1619 4109 1254 3587  Q 890 3066 890 2266  Q 890 1728 1046 1318  Q 1203 909 1532 672  Q 1862 435 2355 435  Q 2746 435 3043 614  Q 3341 794 3504 1101  Q 3667 1408 3674 1773  L 2368 1773  L 2368 2298  L 4186 2298  L 4186 0  L 3776 0  L 3738 1050  L 3814 960  Q 3738 653 3523 413  Q 3309 173 2998 35  Q 2688 -102 2342 -102  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-104" d="M 2778 -960  L 2778 730  L 2854 640  Q 2797 429 2640 265  Q 2483 102 2256 12  Q 2029 -77 1766 -77  Q 1280 -77 950 163  Q 621 403 461 806  Q 301 1210 301 1696  Q 301 2182 461 2585  Q 621 2989 950 3229  Q 1280 3469 1766 3469  Q 2163 3469 2460 3270  Q 2758 3072 2880 2701  L 2803 2662  L 2816 3392  L 3315 3392  L 3315 -960  L 2778 -960  z M 1818 435  Q 2118 435 2332 579  Q 2547 723 2662 1004  Q 2778 1286 2778 1696  Q 2778 2106 2662 2387  Q 2547 2669 2329 2813  Q 2112 2957 1818 2957  Q 1376 2957 1120 2624  Q 864 2291 864 1696  Q 864 1101 1120 768  Q 1376 435 1818 435  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-269" />
+    <use ns4:href="#Geist-Regular-25" transform="translate(43.59375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(115.390625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(171.59375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(228.1875 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(284.390625 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(319.59375 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(371.59375 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(411.09375 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(434 0)" />
+    <use ns4:href="#Geist-Regular-cf" transform="translate(490.59375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(550.296875 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(575.296875 0)" />
+    <use ns4:href="#Geist-Regular-d7" transform="translate(614.796875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(671.390625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(728.09375 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(753.09375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(812.390625 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(847.59375 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(905 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(959.703125 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1015.90625 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(1073.703125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1131.203125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1166.40625 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1222.609375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1275.609375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1300.609375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1335.8125 0)" />
+    <use ns4:href="#Geist-Regular-104" transform="translate(1392.015625 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(1451.8125 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(1507.8125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1530.71875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1565.921875 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1622.125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1681.921875 0)" />
+    <use ns4:href="#Geist-Regular-f1" transform="translate(1706.921875 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(1793.125 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1850.53125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1910.328125 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(1966.53125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1994.828125 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(2019.828125 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(2075.03125 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(2131.03125 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(2158.328125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(2185.625 0)" />
+    <use ns4:href="#Geist-Regular-25e" transform="translate(2238.625 0)" />
+   </g>
+  </g>
+  <g id="text_17">
+   
+   <g style="fill: #9333ea" transform="translate(37.44 540.72) scale(0.095 -0.095)">
+    <defs>
+     <path id="Geist-SemiBold-45" d="M 512 4544  L 1632 4544  L 2886 1024  L 4141 4544  L 5261 4544  L 5261 0  L 4429 0  L 4429 3136  L 3283 6  L 2490 6  L 1344 3136  L 1344 0  L 512 0  L 512 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-27b" d="M 262 2214  L 2438 2214  L 2438 1523  L 262 1523  L 262 2214  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-1fd" />
+    <use ns4:href="#Geist-SemiBold-1ff" transform="translate(67.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(131.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-26c" transform="translate(155.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(206.1875 0)" />
+    <use ns4:href="#Geist-SemiBold-f" transform="translate(229.78125 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(302.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-46" transform="translate(376.484375 0)" />
+    <use ns4:href="#Geist-SemiBold-64" transform="translate(451.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(511.875 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(579.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-40" transform="translate(654.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(712.984375 0)" />
+    <use ns4:href="#Geist-SemiBold-f" transform="translate(736.578125 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(809.078125 0)" />
+    <use ns4:href="#Geist-SemiBold-45" transform="translate(883.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-56" transform="translate(971.1875 0)" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(1029.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(1101.484375 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(1170.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-5d" transform="translate(1198.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(1265.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-46" transform="translate(1339.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1414.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-27b" transform="translate(1437.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1479.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(1503.484375 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(1577.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(1646.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-25" transform="translate(1674.5 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(1747.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-46" transform="translate(1773.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(1848.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-40" transform="translate(1918.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1977.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(2000.875 0)" />
+    <use ns4:href="#Geist-SemiBold-46" transform="translate(2027.578125 0)" />
+    <use ns4:href="#Geist-SemiBold-56" transform="translate(2100.078125 0)" />
+    <use ns4:href="#Geist-SemiBold-69" transform="translate(2166.484375 0)" />
+    <use ns4:href="#Geist-SemiBold-64" transform="translate(2236.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-5d" transform="translate(2294.984375 0)" />
+   </g>
+  </g>
+  <g id="text_18">
+   
+   <g style="fill: #ffffff" transform="translate(110.195156 568.08) scale(0.09 -0.09)">
+    <defs>
+     <path id="Geist-SemiBold-7a" d="M 1702 2278  L 192 4544  L 1158 4544  L 2214 2912  L 3251 4544  L 4218 4544  L 2707 2291  L 4237 0  L 3270 0  L 2202 1658  L 1146 0  L 179 0  L 1702 2278  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-19" />
+    <use ns4:href="#Geist-SemiBold-7a" transform="translate(61.5 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(130.5 0)" />
+    <use ns4:href="#Geist-SemiBold-f" transform="translate(192 0)" />
+    <use ns4:href="#Geist-SemiBold-69" transform="translate(264.5 0)" />
+    <use ns4:href="#Geist-SemiBold-64" transform="translate(334.40625 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(395 0)" />
+    <use ns4:href="#Geist-SemiBold-15" transform="translate(456.5 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(527.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-56" transform="translate(551.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(617.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(685.203125 0)" />
+    <use ns4:href="#Geist-SemiBold-f" transform="translate(761.609375 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(834.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-15" transform="translate(895.609375 0)" />
+    <use ns4:href="#Geist-SemiBold-69" transform="translate(966.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(1036.8125 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(1105.71875 0)" />
+   </g>
+  </g>
+  <g id="text_19">
+   
+   <g style="fill: #ffffff" transform="translate(346.779141 568.08) scale(0.09 -0.09)">
+    <use ns4:href="#Geist-SemiBold-5d" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(62.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-45" transform="translate(134.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(222.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(284.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-56" transform="translate(307.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(374.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-4c" transform="translate(441.5 0)" />
+    <use ns4:href="#Geist-SemiBold-f" transform="translate(517.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(590.40625 0)" />
+    <use ns4:href="#Geist-SemiBold-15" transform="translate(651.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-69" transform="translate(723.203125 0)" />
+    <use ns4:href="#Geist-SemiBold-59" transform="translate(793.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(862.015625 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(923.515625 0)" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(947.109375 0)" />
+    <use ns4:href="#Geist-SemiBold-5d" transform="translate(1015 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1081.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-2" transform="translate(1105.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-15" transform="translate(1177.1875 0)" />
+    <use ns4:href="#Geist-SemiBold-74" transform="translate(1244.1875 0)" />
+    <use ns4:href="#Geist-SemiBold-30" transform="translate(1315.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-f" transform="translate(1343.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-19" transform="translate(1416.296875 0)" />
+   </g>
+  </g>
+  <g id="text_20">
+   
+   <g style="fill: #7e22ce" transform="translate(143.2975 595.44) scale(0.17 -0.17)">
+    <defs>
+     <path id="Geist-Bold-1ff" d="M 371 0  Q 371 589 528 1014  Q 685 1440 1037 1773  Q 1389 2106 1984 2426  Q 2317 2598 2489 2720  Q 2662 2842 2739 2966  Q 2816 3091 2816 3264  Q 2816 3514 2649 3670  Q 2483 3827 2176 3827  Q 1830 3827 1628 3625  Q 1427 3424 1376 3040  L 378 3098  Q 442 3827 909 4236  Q 1376 4646 2163 4646  Q 2682 4646 3053 4473  Q 3424 4301 3619 3993  Q 3814 3686 3814 3277  Q 3814 2925 3699 2681  Q 3584 2438 3331 2236  Q 3078 2035 2624 1792  Q 2093 1510 1821 1260  Q 1549 1011 1530 819  L 3814 819  L 3814 0  L 371 0  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Bold-203" />
+    <use ns4:href="#Geist-Bold-26c" transform="translate(66.09375 0)" />
+    <use ns4:href="#Geist-Bold-1fe" transform="translate(118.296875 0)" />
+    <use ns4:href="#Geist-Bold-1ff" transform="translate(163.203125 0)" />
+   </g>
+  </g>
+  <g id="text_21">
+   
+   <g style="fill: #7e22ce" transform="translate(393.8575 595.44) scale(0.17 -0.17)">
+    <use ns4:href="#Geist-Bold-203" />
+    <use ns4:href="#Geist-Bold-26c" transform="translate(66.09375 0)" />
+    <use ns4:href="#Geist-Bold-1fe" transform="translate(118.296875 0)" />
+    <use ns4:href="#Geist-Bold-1ff" transform="translate(163.203125 0)" />
+   </g>
+  </g>
+  <g id="text_22">
+   
+   <g style="fill: #39333f" transform="translate(37.44 617.04) scale(0.1 -0.1)">
+    <defs>
+     <path id="Geist-Regular-58" d="M 3155 45  Q 2816 -102 2368 -102  Q 1734 -102 1267 211  Q 800 525 557 1062  Q 314 1600 314 2266  Q 314 2938 557 3478  Q 800 4019 1264 4332  Q 1728 4646 2368 4646  Q 3014 4646 3481 4332  Q 3949 4019 4189 3478  Q 4429 2938 4429 2266  Q 4429 1632 4201 1107  Q 3974 582 3558 269  L 4122 -442  L 3533 -442  L 3155 45  z M 2368 435  Q 2662 435 2810 506  L 2150 1331  L 2739 1331  L 3226 691  Q 3539 941 3696 1337  Q 3853 1734 3853 2266  Q 3853 2784 3686 3200  Q 3520 3616 3184 3862  Q 2848 4109 2368 4109  Q 1888 4109 1555 3862  Q 1222 3616 1056 3200  Q 890 2784 890 2266  Q 890 1754 1056 1338  Q 1222 922 1558 678  Q 1894 435 2368 435  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-162" d="M 845 3699  Q 845 4090 1069 4317  Q 1293 4544 1741 4544  L 2278 4544  L 2278 4070  L 1779 4070  Q 1581 4070 1481 3964  Q 1382 3859 1382 3661  L 1382 0  L 845 0  L 845 3699  z M 384 3392  L 2234 3392  L 2234 2918  L 384 2918  L 384 3392  z M 3059 3392  L 3597 3392  L 3597 0  L 3059 0  L 3059 3392  z M 3047 4550  L 3610 4550  L 3610 3923  L 3047 3923  L 3047 4550  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-46" d="M 589 4544  L 1370 4544  L 3616 550  L 3616 4544  L 4166 4544  L 4166 0  L 3347 0  L 1139 3917  L 1139 0  L 589 0  L 589 4544  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-58" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(74.09375 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(131.59375 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(187.59375 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(215.890625 0)" />
+    <use ns4:href="#Geist-Regular-162" transform="translate(240.296875 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(304.5 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(359.703125 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(411.703125 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(451.203125 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(475.609375 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(533.015625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(591.109375 0)" />
+    <use ns4:href="#Geist-Regular-cf" transform="translate(616.109375 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(675.8125 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(727.8125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(765.8125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(822.515625 0)" />
+    <use ns4:href="#Geist-Regular-ce" transform="translate(847.515625 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(885.3125 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(942.3125 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(966.71875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(994.015625 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(1050.21875 0)" />
+    <use ns4:href="#Geist-Regular-25e" transform="translate(1110.015625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1130.71875 0)" />
+    <use ns4:href="#Geist-Regular-46" transform="translate(1155.71875 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(1230.015625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1287.921875 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1312.921875 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(1368.921875 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(1423.625 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(1477.828125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1535.328125 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1570.53125 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(1626.53125 0)" />
+    <use ns4:href="#Geist-Regular-127" transform="translate(1679.234375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1732.9375 0)" />
+    <use ns4:href="#Geist-Regular-cf" transform="translate(1757.9375 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1817.640625 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(1874.640625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1897.546875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1955.640625 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(1980.640625 0)" />
+    <use ns4:href="#Geist-Regular-120" transform="translate(2036.046875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2087.140625 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(2143.34375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(2181.546875 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(2206.546875 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(2262.546875 0)" />
+    <use ns4:href="#Geist-Regular-120" transform="translate(2322.34375 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(2375.9375 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(2400.34375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2455.046875 0)" />
+    <use ns4:href="#Geist-Regular-25e" transform="translate(2511.75 0)" />
+   </g>
+  </g>
+  <g id="text_23">
+   
+   <g style="fill: #7e22ce" transform="translate(37.44 638.119391) scale(0.13 -0.13)">
+    <defs>
+     <path id="Geist-SemiBold-cf" d="M 1920 -1037  Q 1485 -1037 1161 -915  Q 838 -794 640 -576  Q 442 -358 365 -64  L 1210 -6  Q 1274 -218 1437 -317  Q 1600 -416 1920 -416  Q 2310 -416 2508 -243  Q 2707 -70 2707 282  L 2707 717  Q 2586 461 2317 313  Q 2048 166 1715 166  Q 1293 166 963 374  Q 634 582 448 956  Q 262 1331 262 1824  Q 262 2310 448 2691  Q 634 3072 960 3283  Q 1286 3494 1702 3494  Q 2067 3494 2336 3331  Q 2605 3168 2733 2886  L 2733 3418  L 3533 3418  L 3533 301  Q 3533 -346 3097 -691  Q 2662 -1037 1920 -1037  z M 1907 806  Q 2150 806 2332 931  Q 2515 1056 2614 1286  Q 2714 1517 2714 1830  Q 2720 2144 2621 2374  Q 2522 2605 2339 2729  Q 2157 2854 1907 2854  Q 1536 2854 1325 2579  Q 1114 2304 1114 1830  Q 1114 1363 1328 1084  Q 1542 806 1907 806  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-115" d="M 1574 -77  Q 1050 -77 749 265  Q 448 608 448 1216  L 448 3418  L 1267 3418  L 1267 1421  Q 1267 992 1411 790  Q 1555 589 1850 589  Q 2182 589 2364 809  Q 2547 1030 2547 1453  L 2547 3418  L 3366 3418  L 3366 0  L 2618 0  L 2598 941  L 2701 909  Q 2624 422 2336 172  Q 2048 -77 1574 -77  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-127" d="M 691 -326  L 1126 -326  Q 1293 -326 1373 -275  Q 1453 -224 1504 -102  L 1594 134  L 1357 134  L 141 3418  L 986 3418  L 1850 902  L 2662 3418  L 3514 3418  L 2176 -358  Q 2067 -678 1856 -819  Q 1645 -960 1274 -960  L 691 -960  L 691 -326  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-f1" d="M 448 3418  L 1190 3418  L 1216 2579  L 1139 2618  Q 1197 2886 1341 3084  Q 1485 3283 1693 3388  Q 1901 3494 2150 3494  Q 2579 3494 2851 3251  Q 3123 3008 3194 2573  L 3085 2573  Q 3168 3014 3437 3254  Q 3706 3494 4122 3494  Q 4474 3494 4730 3344  Q 4986 3194 5123 2902  Q 5261 2611 5261 2195  L 5261 0  L 4442 0  L 4442 1984  Q 4442 2406 4298 2617  Q 4154 2829 3859 2829  Q 3661 2829 3520 2726  Q 3379 2624 3305 2429  Q 3232 2234 3232 1958  L 3232 0  L 2470 0  L 2470 1958  Q 2470 2394 2336 2611  Q 2202 2829 1901 2829  Q 1702 2829 1561 2726  Q 1421 2624 1344 2425  Q 1267 2227 1267 1958  L 1267 0  L 448 0  L 448 3418  z " transform="scale(0.015625)" />
+     <path id="Geist-SemiBold-25f" d="M 653 0  L 262 0  L 262 896  L 1203 896  L 1203 102  L 774 -1011  L 320 -1011  L 653 0  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-25" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(73.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-164" transform="translate(130.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(207.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-f2" transform="translate(233.40625 0)" />
+    <use ns4:href="#Geist-SemiBold-cf" transform="translate(292.203125 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(354.5 0)" />
+    <use ns4:href="#Geist-SemiBold-b9" transform="translate(378.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-ec" transform="translate(436.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(466.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-109" transform="translate(526.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(581.890625 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(640.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(681.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(705.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(747.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(807.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-ce" transform="translate(831.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-115" transform="translate(874.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-ec" transform="translate(934.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-ec" transform="translate(964.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-127" transform="translate(992.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1049.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(1073.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-115" transform="translate(1132.28125 0)" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(1190.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(1232.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-f2" transform="translate(1292.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(1351.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-f1" transform="translate(1411 0)" />
+    <use ns4:href="#Geist-SemiBold-f8" transform="translate(1498.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-115" transform="translate(1558.40625 0)" />
+    <use ns4:href="#Geist-SemiBold-109" transform="translate(1616.8125 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(1672.8125 0)" />
+    <use ns4:href="#Geist-SemiBold-ec" transform="translate(1696.40625 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(1726.90625 0)" />
+    <use ns4:href="#Geist-SemiBold-ac" transform="translate(1786 0)" />
+    <use ns4:href="#Geist-SemiBold-105" transform="translate(1845.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-f2" transform="translate(1884.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-da" transform="translate(1944.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-f2" transform="translate(1970 0)" />
+    <use ns4:href="#Geist-SemiBold-cf" transform="translate(2028.796875 0)" />
+    <use ns4:href="#Geist-SemiBold-25f" transform="translate(2091.09375 0)" />
+   </g>
+   
+   <g style="fill: #7e22ce" transform="translate(37.44 657.36) scale(0.13 -0.13)">
+    <defs>
+     <path id="Geist-SemiBold-25e" d="M 262 896  L 1203 896  L 1203 0  L 262 0  L 262 896  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-SemiBold-109" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(53.296875 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(95 0)" />
+    <use ns4:href="#Geist-SemiBold-102" transform="translate(153.703125 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(216 0)" />
+    <use ns4:href="#Geist-SemiBold-b8" transform="translate(239.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-127" transform="translate(299.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-1" transform="translate(356.09375 0)" />
+    <use ns4:href="#Geist-SemiBold-109" transform="translate(379.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-110" transform="translate(432.984375 0)" />
+    <use ns4:href="#Geist-SemiBold-c3" transform="translate(474.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-102" transform="translate(533.390625 0)" />
+    <use ns4:href="#Geist-SemiBold-25e" transform="translate(595.6875 0)" />
+    <use ns4:href="#Geist-SemiBold-25e" transform="translate(618.59375 0)" />
+    <use ns4:href="#Geist-SemiBold-25e" transform="translate(641.5 0)" />
+   </g>
+  </g>
+  <g id="text_24">
+   
+   <g style="fill: #6b6472" transform="translate(37.44 680.854781) scale(0.09 -0.09)">
+    <defs>
+     <path id="Geist-Regular-24" d="M 589 4544  L 3443 4544  L 3443 4006  L 864 4006  L 1139 4288  L 1139 2202  L 864 2483  L 3328 2483  L 3328 1958  L 864 1958  L 1139 2240  L 1139 0  L 589 0  L 589 4544  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-261" d="M 589 3238  L 1312 3238  L 1312 2515  L 589 2515  L 589 3238  z M 915 0  L 589 0  L 589 723  L 1312 723  L 1312 90  L 928 -998  L 608 -998  L 915 0  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-24" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(59 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(115.90625 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(173.40625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(211.609375 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(236.609375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(295.90625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(331.109375 0)" />
+    <use ns4:href="#Geist-Regular-120" transform="translate(385.3125 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(438.90625 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(463.3125 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(520.21875 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(576.21875 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(628.71875 0)" />
+    <use ns4:href="#Geist-Regular-127" transform="translate(654.515625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(708.21875 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(733.21875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(785.71875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(841.921875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(898.125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(956.21875 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(981.21875 0)" />
+    <use ns4:href="#Geist-Regular-127" transform="translate(1031.71875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1085.421875 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1140.515625 0)" />
+    <use ns4:href="#Geist-Regular-d7" transform="translate(1180.015625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1236.609375 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1290.3125 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(1329.8125 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(1354.21875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1409.421875 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(1434.421875 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1489.625 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1545.625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1598.125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1654.328125 0)" />
+    <use ns4:href="#Geist-Regular-261" transform="translate(1707.328125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1737.03125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1762.03125 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1812.03125 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(1851.53125 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(1903.53125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1941.53125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1997.734375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(2050.734375 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(2075.734375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(2132.234375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2167.4375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(2224.140625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(2249.140625 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(2305.734375 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(2360.640625 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(2400.140625 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(2425.140625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(2448.046875 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(2504.640625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2564.4375 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(2620.640625 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2679.9375 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(2736.140625 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(2792.734375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2852.53125 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(2908.734375 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(2963.828125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(3003.328125 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(3028.328125 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(3067.828125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(3123.828125 0)" />
+    <use ns4:href="#Geist-Regular-e9" transform="translate(3174.828125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(3228.828125 0)" />
+    <use ns4:href="#Geist-Regular-25e" transform="translate(3281.828125 0)" />
+   </g>
+   
+   <g style="fill: #6b6472" transform="translate(37.44 694.8) scale(0.09 -0.09)">
+    <defs>
+     <path id="Geist-Regular-201" d="M 2630 986  L 320 986  L 320 1485  L 2592 4544  L 3181 4544  L 3181 1523  L 3744 1523  L 3744 986  L 3181 986  L 3181 0  L 2630 0  L 2630 986  z M 2630 1523  L 2630 3699  L 986 1523  L 2630 1523  z " transform="scale(0.015625)" />
+     <path id="Geist-Regular-126" d="M 1549 1741  L 365 3392  L 992 3392  L 1882 2112  L 2746 3392  L 3386 3392  L 2214 1728  L 3443 0  L 2816 0  L 1882 1370  L 941 0  L 301 0  L 1549 1741  z " transform="scale(0.015625)" />
+    </defs>
+    <use ns4:href="#Geist-Regular-e" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(68 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(103.203125 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(161.109375 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(217.109375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(276.90625 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(333.109375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(371.3125 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(396.3125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(436.3125 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(471.515625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(528.015625 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(584.609375 0)" />
+    <use ns4:href="#Geist-Regular-ce" transform="translate(635.609375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(672.40625 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(728.609375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(766.8125 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(791.8125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(827.015625 0)" />
+    <use ns4:href="#Geist-Regular-f1" transform="translate(883.21875 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(969.921875 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(1026.921875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1049.828125 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(1106.421875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1159.421875 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(1184.421875 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1241.921875 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(1298.015625 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(1357.3125 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(1392.515625 0)" />
+    <use ns4:href="#Geist-Regular-120" transform="translate(1447.921875 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1499.015625 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(1555.21875 0)" />
+    <use ns4:href="#Geist-Regular-25e" transform="translate(1613.3125 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1634.015625 0)" />
+    <use ns4:href="#Geist-Regular-1fe" transform="translate(1659.015625 0)" />
+    <use ns4:href="#Geist-Regular-201" transform="translate(1697.421875 0)" />
+    <use ns4:href="#Geist-Regular-205" transform="translate(1760.921875 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(1821.328125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1846.328125 0)" />
+    <use ns4:href="#Geist-Regular-126" transform="translate(1898.03125 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(1951.53125 0)" />
+    <use ns4:href="#Geist-Regular-b9" transform="translate(2007.734375 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(2061.9375 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(2117.53125 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(2157.03125 0)" />
+    <use ns4:href="#Geist-Regular-f8" transform="translate(2181.4375 0)" />
+    <use ns4:href="#Geist-Regular-f2" transform="translate(2238.84375 0)" />
+    <use ns4:href="#Geist-Regular-109" transform="translate(2295.4375 0)" />
+    <use ns4:href="#Geist-Regular-1" transform="translate(2348.4375 0)" />
+    <use ns4:href="#Geist-Regular-105" transform="translate(2373.4375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2408.640625 0)" />
+    <use ns4:href="#Geist-Regular-102" transform="translate(2464.84375 0)" />
+    <use ns4:href="#Geist-Regular-ec" transform="translate(2524.140625 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(2552.4375 0)" />
+    <use ns4:href="#Geist-Regular-127" transform="translate(2606.9375 0)" />
+    <use ns4:href="#Geist-Regular-27b" transform="translate(2660.640625 0)" />
+    <use ns4:href="#Geist-Regular-ac" transform="translate(2703.140625 0)" />
+    <use ns4:href="#Geist-Regular-115" transform="translate(2759.140625 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(2815.140625 0)" />
+    <use ns4:href="#Geist-Regular-da" transform="translate(2872.4375 0)" />
+    <use ns4:href="#Geist-Regular-110" transform="translate(2892.84375 0)" />
+    <use ns4:href="#Geist-Regular-c3" transform="translate(2930.84375 0)" />
+    <use ns4:href="#Geist-Regular-bf" transform="translate(2987.046875 0)" />
+    <use ns4:href="#Geist-Regular-25e" transform="translate(3046.84375 0)" />
+   </g>
+  </g>
+ <svg version="1.1" viewBox="0.00 0.00 1545.00 1514.00" id="bitterbot-symbol" x="37.44" y="25.199999999999967" width="30.24" height="30.240000000000002">
+<g stroke-width="2.00" fill="none" stroke-linecap="butt">
+<path stroke="#a855f7" d="   M 267.38 216.63   Q 246.77 235.40 224.77 258.60   C 218.07 265.67 211.26 273.89 206.00 279.50   C 201.19 284.64 197.80 289.29 193.65 294.08   C 189.01 299.44 184.01 306.65 178.72 312.88   Q 176.59 315.39 172.77 320.53   Q 158.00 340.42 145.53 359.14   Q 141.31 365.48 139.31 369.08   C 134.55 377.65 129.00 385.37 124.17 394.17   Q 121.77 398.53 111.52 417.29   C 106.59 426.33 102.73 435.19 98.69 443.02   C 92.03 455.97 85.90 471.32 80.39 484.12   C 74.95 496.73 69.59 513.91 65.98 523.81   C 61.35 536.51 57.22 550.76 54.63 561.13   C 51.11 575.19 47.61 587.38 44.76 600.69   Q 39.57 624.87 36.81 645.10   C 34.67 660.76 32.46 675.02 31.04 691.75   Q 30.04 703.44 29.06 724.25   C 25.77 793.86 34.13 863.12 51.55 930.92   Q 66.83 990.34 89.10 1040.68   C 93.91 1051.54 96.02 1055.65 101.18 1066.71   Q 105.63 1076.22 110.89 1085.88   Q 126.69 1114.88 128.06 1117.21   Q 136.89 1132.22 150.06 1152.32   Q 161.26 1169.42 173.89 1186.14   Q 217.26 1243.56 269.88 1290.63   Q 289.44 1308.13 304.65 1320.10   Q 347.30 1353.65 395.97 1381.61   C 402.80 1385.53 409.62 1388.79 416.44 1392.73   Q 421.93 1395.90 432.03 1400.72   Q 451.94 1410.22 456.45 1412.37   Q 475.99 1421.68 499.39 1430.35   C 513.73 1435.66 526.55 1440.43 537.69 1443.86   Q 585.82 1458.73 633.94 1466.84   Q 641.82 1468.17 670.06 1472.33   Q 673.86 1472.89 677.98 1473.15   C 684.55 1473.57 691.49 1474.67 697.78 1475.08   Q 724.60 1476.81 738.50 1477.19   Q 788.44 1478.58 838.47 1472.60   C 864.65 1469.48 894.74 1464.34 923.33 1456.91   Q 955.14 1448.66 961.64 1446.65   Q 988.47 1438.39 1014.85 1428.24   Q 1023.42 1424.94 1031.16 1421.59   Q 1046.53 1414.93 1047.34 1414.60   C 1055.29 1411.33 1067.16 1405.09 1073.43 1402.36   Q 1080.04 1399.48 1092.63 1392.49   Q 1101.67 1387.47 1113.06 1381.32   Q 1117.20 1379.09 1129.11 1371.54   C 1134.54 1368.11 1140.46 1365.10 1146.17 1361.25   C 1156.81 1354.08 1170.08 1345.45 1181.77 1336.62   Q 1203.92 1319.89 1206.40 1317.90   Q 1267.64 1268.71 1317.30 1208.13   C 1321.49 1203.02 1324.72 1197.85 1328.73 1193.34   Q 1332.53 1189.06 1337.41 1182.34   Q 1357.29 1154.91 1368.36 1137.13   Q 1372.20 1130.97 1381.12 1115.84   C 1385.82 1107.86 1389.24 1100.73 1393.51 1093.51   Q 1396.76 1088.01 1402.41 1076.58   Q 1415.65 1049.82 1426.73 1023.42   Q 1431.05 1013.11 1435.74 999.84   Q 1442.82 979.82 1443.99 975.99   Q 1451.65 951.02 1459.99 918.50   Q 1463.43 905.08 1467.26 884.01   Q 1472.17 856.94 1475.19 831.75   Q 1482.23 773.04 1478.71 716.26   Q 1475.04 656.79 1462.86 598.69   Q 1460.19 585.91 1455.35 568.19   Q 1448.99 544.89 1446.76 538.00   C 1439.23 514.65 1430.41 489.08 1419.56 464.89   Q 1399.56 420.29 1380.61 388.38   Q 1364.57 361.37 1353.11 344.63   Q 1345.69 333.80 1330.28 313.42   Q 1317.76 296.87 1305.98 283.36   Q 1279.16 252.60 1258.37 232.86   Q 1227.14 203.22 1203.46 184.32   Q 1175.33 161.88 1142.36 140.65   Q 1098.43 112.36 1051.14 90.90   Q 1042.33 86.91 1037.23 84.86   C 1024.94 79.93 1013.78 74.79 1001.99 70.61   Q 946.97 51.15 897.09 40.95   Q 847.02 30.72 800.24 28.14   Q 765.40 26.22 735.75 27.00   Q 692.38 28.15 648.50 34.46   Q 615.13 39.26 584.68 46.89   Q 551.35 55.25 527.08 63.33   Q 522.65 64.81 497.21 74.12   C 487.85 77.55 478.19 82.42 469.13 85.84   C 457.36 90.28 447.71 95.51 435.13 101.32   Q 429.48 103.93 421.38 108.28   Q 393.10 123.45 365.25 141.27   C 363.10 142.64 360.71 144.67 358.84 145.85   Q 340.29 157.52 329.10 166.10   C 314.91 176.97 299.91 188.01 286.99 199.23   Q 275.62 209.12 267.38 216.63" />
+<path stroke="#a855f7" d="   M 785.86 100.13   Q 761.86 99.30 742.26 99.53   Q 687.46 100.17 631.68 110.27   C 620.66 112.27 608.83 115.51 598.94 117.75   Q 587.01 120.44 574.58 124.16   Q 546.96 132.41 531.14 138.16   Q 521.15 141.78 518.14 143.14   C 508.61 147.42 497.83 151.52 488.40 155.81   Q 488.23 155.89 468.29 165.40   Q 457.15 170.72 448.48 175.57   Q 429.93 185.94 425.55 188.56   Q 392.62 208.23 358.55 234.07   Q 354.85 236.88 347.77 242.77   Q 344.37 245.60 337.05 251.57   Q 324.99 261.40 304.62 280.62   Q 279.47 304.34 257.71 329.80   C 252.34 336.08 248.44 341.49 243.59 347.27   Q 239.61 352.03 233.27 360.57   Q 225.01 371.71 220.31 378.22   Q 218.02 381.39 216.82 383.37   C 214.01 388.00 210.57 392.02 207.95 396.17   Q 195.09 416.57 192.16 421.44   Q 189.38 426.06 176.20 449.88   Q 171.08 459.14 167.58 466.73   C 164.08 474.34 157.65 486.52 153.48 496.87   Q 150.46 504.36 147.94 510.13   Q 144.12 518.87 140.15 530.16   Q 122.81 579.52 113.89 624.04   Q 104.74 669.71 101.70 733.00   Q 100.72 753.25 101.71 773.25   C 103.39 807.48 106.04 840.70 112.23 871.82   Q 116.11 891.30 121.58 913.97   Q 124.88 927.62 129.14 940.87   Q 141.13 978.23 155.64 1012.13   C 159.13 1020.29 164.61 1030.88 169.32 1040.93   Q 170.32 1043.06 175.06 1052.26   Q 182.65 1067.03 187.25 1074.89   Q 204.72 1104.72 218.52 1124.10   C 230.12 1140.40 241.23 1154.01 252.32 1168.09   C 255.82 1172.54 259.63 1176.37 262.82 1180.27   Q 267.18 1185.62 270.50 1189.26   Q 297.27 1218.59 327.33 1244.54   C 335.79 1251.84 343.63 1257.90 353.03 1265.50   Q 365.54 1275.60 384.04 1288.68   Q 393.51 1295.38 405.88 1302.91   C 425.16 1314.66 437.32 1321.60 457.40 1332.58   C 462.35 1335.29 466.80 1337.08 471.43 1339.50   Q 476.09 1341.93 481.96 1344.58   Q 509.28 1356.91 529.51 1364.42   Q 569.26 1379.18 618.36 1390.37   Q 632.57 1393.61 648.76 1396.18   Q 690.88 1402.88 732.49 1404.59   Q 784.25 1406.73 835.16 1399.92   Q 851.23 1397.77 851.58 1397.74   Q 856.91 1397.17 867.93 1395.09   Q 891.67 1390.61 918.01 1383.76   C 961.95 1372.33 1005.46 1355.20 1046.28 1335.26   Q 1052.00 1332.47 1057.17 1329.63   Q 1085.33 1314.19 1113.54 1296.02   Q 1124.84 1288.74 1151.10 1269.14   C 1157.00 1264.73 1161.86 1260.27 1167.86 1255.65   Q 1173.21 1251.53 1180.33 1245.45   Q 1209.47 1220.59 1234.75 1192.96   C 1239.33 1187.95 1243.81 1182.21 1247.74 1178.15   Q 1251.13 1174.66 1257.12 1166.77   Q 1258.27 1165.26 1268.88 1152.13   Q 1285.15 1132.00 1301.58 1106.60   C 1305.35 1100.78 1308.86 1093.92 1312.96 1088.21   Q 1315.31 1084.92 1321.79 1073.30   Q 1336.12 1047.56 1340.70 1037.08   Q 1342.56 1032.83 1346.48 1025.58   Q 1348.57 1021.72 1351.87 1013.87   Q 1358.57 997.94 1359.60 995.58   C 1366.08 980.76 1369.29 969.78 1375.83 950.41   C 1383.17 928.71 1387.95 907.68 1393.29 884.70   Q 1396.08 872.68 1397.90 860.95   Q 1401.27 839.15 1403.96 811.76   Q 1407.33 777.36 1406.53 744.52   Q 1405.56 704.98 1399.59 655.44   C 1396.83 632.51 1390.10 604.89 1386.11 588.89   C 1381.60 570.81 1376.30 555.01 1369.39 534.34   Q 1365.48 522.66 1361.27 512.27   Q 1349.46 483.11 1333.50 451.85   C 1329.91 444.84 1325.92 438.33 1321.06 429.67   Q 1314.33 417.68 1299.61 395.39   Q 1299.40 395.06 1286.95 377.28   Q 1271.53 355.25 1251.74 331.52   Q 1219.72 293.13 1174.55 254.29   Q 1131.18 217.01 1081.22 187.70   C 1075.37 184.27 1070.29 181.90 1064.59 178.40   Q 1059.88 175.50 1053.34 172.18   Q 1037.96 164.36 1025.28 158.36   C 1014.80 153.40 1005.36 149.76 995.22 145.35   Q 983.75 140.36 972.33 136.43   Q 939.71 125.22 920.95 120.60   Q 892.90 113.68 882.66 111.63   Q 834.93 102.09 785.58 100.45   A 0.19 0.19 0.0 0 1 785.57 100.07   Q 785.71 100.06 785.86 100.13" />
+<path stroke="#a855f7" d="   M 419.95 735.60   C 412.58 740.50 406.40 745.58 397.60 753.02   C 380.91 767.12 366.94 783.64 355.45 802.51   Q 348.50 813.92 344.09 825.01   C 338.61 838.79 333.29 853.13 330.20 868.45   Q 321.69 910.69 323.89 954.24   Q 325.54 986.79 332.27 1013.86   Q 338.79 1040.12 349.57 1061.30   Q 358.60 1079.05 373.93 1096.59   Q 384.81 1109.02 392.47 1115.63   C 398.67 1120.98 405.76 1125.77 414.79 1131.79   Q 425.26 1138.77 431.80 1141.44   C 442.38 1145.76 448.57 1148.49 458.16 1151.50   Q 492.63 1162.30 528.53 1164.92   Q 543.39 1166.01 563.26 1166.30   Q 607.17 1166.93 642.25 1166.26   Q 662.48 1165.87 683.23 1161.00   C 698.56 1157.41 713.09 1149.30 724.87 1140.11   Q 728.55 1137.24 731.31 1133.83   Q 732.41 1132.47 732.45 1130.03   Q 732.85 1100.80 732.83 1088.00   Q 732.66 965.91 732.69 381.54   C 732.69 377.61 733.31 373.27 730.55 370.46   Q 719.50 359.19 705.09 352.18   Q 691.21 345.42 677.26 342.44   Q 653.52 337.38 624.24 337.29   C 596.69 337.22 569.73 338.44 543.00 342.52   Q 509.34 347.66 480.89 362.35   Q 478.80 363.43 465.65 371.93   Q 460.25 375.42 454.83 380.15   Q 445.95 387.89 444.68 389.18   Q 429.26 404.81 417.81 423.63   C 408.73 438.56 401.81 456.15 396.97 472.70   Q 381.45 525.83 382.12 581.25   Q 382.64 623.90 391.81 663.24   Q 394.75 675.86 397.60 684.36   C 403.45 701.81 410.30 718.66 420.28 734.04   A 1.13 1.13 0.0 0 1 419.95 735.60" />
+<path stroke="#a855f7" d="   M 1088.42 733.76   C 1099.39 716.00 1108.64 695.60 1113.68 675.62   C 1117.89 658.94 1121.27 641.53 1123.60 622.73   Q 1127.60 590.34 1125.57 557.47   Q 1124.36 537.98 1123.30 530.13   Q 1119.32 500.76 1111.10 472.59   Q 1104.12 448.67 1093.41 428.80   Q 1078.71 401.50 1053.78 379.98   Q 1048.82 375.68 1041.62 370.90   Q 1032.46 364.82 1028.69 362.84   Q 1001.41 348.46 970.91 343.15   Q 956.29 340.61 948.38 339.87   Q 910.96 336.37 874.25 337.57   Q 863.31 337.92 841.60 340.82   Q 810.41 344.97 786.15 362.86   C 783.60 364.74 776.09 370.36 775.89 373.89   Q 775.60 379.09 775.60 381.75   C 776.09 618.91 775.65 865.16 775.72 1077.25   Q 775.74 1110.28 776.09 1129.25   C 776.14 1131.89 776.89 1132.97 778.72 1134.87   C 785.76 1142.21 795.98 1148.55 804.21 1152.83   Q 812.18 1156.97 822.84 1159.94   Q 843.28 1165.64 862.50 1166.13   Q 889.32 1166.81 927.69 1166.64   Q 953.92 1166.52 977.75 1165.09   Q 1015.70 1162.80 1051.68 1151.24   Q 1058.39 1149.08 1065.12 1146.36   Q 1074.60 1142.53 1078.28 1140.77   Q 1094.52 1133.03 1110.33 1120.34   Q 1136.07 1099.68 1153.09 1071.72   Q 1160.85 1058.99 1167.08 1042.76   Q 1173.66 1025.64 1176.77 1012.05   C 1183.09 984.50 1185.16 957.34 1184.71 929.77   Q 1184.27 903.05 1179.32 875.41   Q 1176.42 859.20 1171.33 843.90   Q 1166.23 828.61 1159.25 813.74   Q 1153.56 801.61 1143.35 787.95   C 1134.53 776.14 1126.40 766.54 1116.27 757.73   Q 1102.61 745.84 1088.79 735.66   A 1.43 1.43 0.0 0 1 1088.42 733.76" />
+<path stroke="#a855f7" d="   M 671.90 726.15   A 0.49 0.49 0.0 0 0 672.39 725.66   Q 672.49 571.93 672.29 452.25   Q 672.28 444.29 668.79 435.24   C 666.66 429.73 662.59 425.86 657.44 424.05   Q 648.35 420.85 638.49 420.84   Q 601.89 420.78 592.63 420.65   C 573.68 420.39 557.38 421.45 541.45 425.20   C 526.65 428.68 511.19 438.19 501.40 450.91   Q 495.39 458.72 492.24 466.02   C 486.02 480.47 482.36 495.56 479.87 512.06   Q 477.65 526.82 476.77 535.25   C 473.36 567.82 473.71 600.54 478.17 633.04   Q 481.43 656.75 489.34 679.44   Q 494.00 692.82 503.74 704.00   C 509.08 710.12 514.84 713.61 522.17 717.29   Q 527.80 720.12 533.27 721.61   Q 546.00 725.07 554.37 725.59   C 566.09 726.31 589.78 725.67 607.56 726.21   C 621.50 726.63 635.38 725.97 648.55 726.09   Q 658.72 726.18 671.90 726.15" />
+<path stroke="#a855f7" d="   M 424.34 912.94   Q 423.64 924.73 423.39 931.23   Q 422.15 963.55 428.08 993.70   C 433.61 1021.80 446.23 1046.31 469.87 1062.92   C 483.19 1072.28 498.65 1077.50 515.02 1080.16   Q 517.42 1080.55 529.96 1082.07   C 540.24 1083.32 554.11 1083.26 562.00 1083.25   Q 630.74 1083.16 642.50 1083.10   Q 649.62 1083.07 657.33 1080.34   Q 665.34 1077.50 668.45 1069.69   C 672.50 1059.47 672.40 1050.65 672.40 1037.11   Q 672.46 875.20 672.46 799.75   Q 672.46 779.59 672.45 779.21   A 0.65 0.65 0.0 0 0 671.92 778.57   Q 670.28 778.25 668.00 778.27   Q 634.42 778.57 560.75 778.34   Q 542.22 778.28 522.98 781.42   C 515.12 782.70 505.04 785.46 498.70 787.70   Q 480.58 794.09 465.69 806.48   C 452.33 817.60 442.26 833.90 436.60 849.84   C 432.86 860.38 429.36 872.43 427.71 884.30   Q 426.89 890.17 425.92 896.57   Q 425.12 901.86 424.58 914.59   A 0.01 0.01 0.0 0 1 424.56 914.59   Q 424.55 914.57 424.54 914.56   A 0.16 0.08 46.7 0 1 424.50 914.43   Q 424.74 913.63 424.55 912.92   A 0.11 0.11 0.0 0 0 424.34 912.94" />
+<path stroke="#a855f7" d="   M 1033.25 597.52   Q 1035.73 550.24 1027.56 504.57   Q 1024.65 488.24 1019.18 473.08   Q 1014.37 459.75 1006.07 449.61   Q 997.73 439.43 987.04 433.19   Q 976.05 426.77 963.49 424.31   Q 945.60 420.81 931.99 420.86   Q 893.22 420.99 869.76 420.84   Q 859.45 420.77 850.22 424.70   C 842.87 427.83 839.59 433.86 837.60 441.31   C 835.42 449.46 835.68 455.05 835.67 465.29   Q 835.65 519.66 835.70 725.13   A 0.77 0.76 -89.6 0 0 836.45 725.90   C 848.68 726.13 860.36 725.75 873.11 726.00   Q 900.51 726.53 922.46 726.10   Q 932.28 725.90 939.05 725.89   Q 952.67 725.87 955.63 725.60   Q 967.87 724.48 980.92 720.12   C 990.27 716.99 1000.07 710.06 1006.80 701.47   Q 1012.74 693.88 1014.05 691.30   Q 1018.01 683.50 1019.71 678.72   Q 1026.93 658.39 1029.43 637.21   C 1030.70 626.41 1032.27 615.63 1032.72 606.34   Q 1032.94 601.89 1033.09 600.17   Q 1033.14 599.70 1033.25 597.52" />
+<path stroke="#a855f7" d="   M 1083.14 908.01   C 1081.80 887.77 1078.38 867.32 1071.42 848.57   C 1061.55 821.98 1041.96 799.94 1015.09 789.69   C 992.99 781.27 969.48 778.33 946.23 778.38   Q 874.30 778.52 835.89 778.36   A 0.43 0.42 -0.7 0 0 835.46 778.79   Q 835.60 794.95 835.61 796.25   Q 835.73 996.62 835.85 1049.73   Q 835.87 1058.62 839.81 1068.39   C 842.32 1074.61 845.47 1077.48 851.39 1079.95   Q 858.74 1083.01 866.23 1083.11   Q 900.51 1083.57 948.00 1083.21   Q 957.86 1083.14 964.85 1082.80   C 976.39 1082.24 986.79 1081.53 995.32 1080.09   Q 1003.56 1078.70 1014.13 1075.35   Q 1027.82 1071.01 1038.97 1062.66   C 1051.27 1053.46 1060.21 1044.53 1067.17 1031.34   Q 1077.25 1012.22 1080.66 991.74   Q 1087.50 950.73 1083.37 908.19   A 0.06 0.06 0.0 0 0 1083.31 908.13   Q 1083.30 908.13 1083.26 908.14   A 0.13 0.09 81.4 0 1 1083.14 908.01" />
+</g>
+<path fill="none" d="   M 1545.00 0.00   L 1545.00 1514.00   L 0.00 1514.00   L 0.00 0.00   L 1545.00 0.00   Z   M 267.38 216.63   Q 246.77 235.40 224.77 258.60   C 218.07 265.67 211.26 273.89 206.00 279.50   C 201.19 284.64 197.80 289.29 193.65 294.08   C 189.01 299.44 184.01 306.65 178.72 312.88   Q 176.59 315.39 172.77 320.53   Q 158.00 340.42 145.53 359.14   Q 141.31 365.48 139.31 369.08   C 134.55 377.65 129.00 385.37 124.17 394.17   Q 121.77 398.53 111.52 417.29   C 106.59 426.33 102.73 435.19 98.69 443.02   C 92.03 455.97 85.90 471.32 80.39 484.12   C 74.95 496.73 69.59 513.91 65.98 523.81   C 61.35 536.51 57.22 550.76 54.63 561.13   C 51.11 575.19 47.61 587.38 44.76 600.69   Q 39.57 624.87 36.81 645.10   C 34.67 660.76 32.46 675.02 31.04 691.75   Q 30.04 703.44 29.06 724.25   C 25.77 793.86 34.13 863.12 51.55 930.92   Q 66.83 990.34 89.10 1040.68   C 93.91 1051.54 96.02 1055.65 101.18 1066.71   Q 105.63 1076.22 110.89 1085.88   Q 126.69 1114.88 128.06 1117.21   Q 136.89 1132.22 150.06 1152.32   Q 161.26 1169.42 173.89 1186.14   Q 217.26 1243.56 269.88 1290.63   Q 289.44 1308.13 304.65 1320.10   Q 347.30 1353.65 395.97 1381.61   C 402.80 1385.53 409.62 1388.79 416.44 1392.73   Q 421.93 1395.90 432.03 1400.72   Q 451.94 1410.22 456.45 1412.37   Q 475.99 1421.68 499.39 1430.35   C 513.73 1435.66 526.55 1440.43 537.69 1443.86   Q 585.82 1458.73 633.94 1466.84   Q 641.82 1468.17 670.06 1472.33   Q 673.86 1472.89 677.98 1473.15   C 684.55 1473.57 691.49 1474.67 697.78 1475.08   Q 724.60 1476.81 738.50 1477.19   Q 788.44 1478.58 838.47 1472.60   C 864.65 1469.48 894.74 1464.34 923.33 1456.91   Q 955.14 1448.66 961.64 1446.65   Q 988.47 1438.39 1014.85 1428.24   Q 1023.42 1424.94 1031.16 1421.59   Q 1046.53 1414.93 1047.34 1414.60   C 1055.29 1411.33 1067.16 1405.09 1073.43 1402.36   Q 1080.04 1399.48 1092.63 1392.49   Q 1101.67 1387.47 1113.06 1381.32   Q 1117.20 1379.09 1129.11 1371.54   C 1134.54 1368.11 1140.46 1365.10 1146.17 1361.25   C 1156.81 1354.08 1170.08 1345.45 1181.77 1336.62   Q 1203.92 1319.89 1206.40 1317.90   Q 1267.64 1268.71 1317.30 1208.13   C 1321.49 1203.02 1324.72 1197.85 1328.73 1193.34   Q 1332.53 1189.06 1337.41 1182.34   Q 1357.29 1154.91 1368.36 1137.13   Q 1372.20 1130.97 1381.12 1115.84   C 1385.82 1107.86 1389.24 1100.73 1393.51 1093.51   Q 1396.76 1088.01 1402.41 1076.58   Q 1415.65 1049.82 1426.73 1023.42   Q 1431.05 1013.11 1435.74 999.84   Q 1442.82 979.82 1443.99 975.99   Q 1451.65 951.02 1459.99 918.50   Q 1463.43 905.08 1467.26 884.01   Q 1472.17 856.94 1475.19 831.75   Q 1482.23 773.04 1478.71 716.26   Q 1475.04 656.79 1462.86 598.69   Q 1460.19 585.91 1455.35 568.19   Q 1448.99 544.89 1446.76 538.00   C 1439.23 514.65 1430.41 489.08 1419.56 464.89   Q 1399.56 420.29 1380.61 388.38   Q 1364.57 361.37 1353.11 344.63   Q 1345.69 333.80 1330.28 313.42   Q 1317.76 296.87 1305.98 283.36   Q 1279.16 252.60 1258.37 232.86   Q 1227.14 203.22 1203.46 184.32   Q 1175.33 161.88 1142.36 140.65   Q 1098.43 112.36 1051.14 90.90   Q 1042.33 86.91 1037.23 84.86   C 1024.94 79.93 1013.78 74.79 1001.99 70.61   Q 946.97 51.15 897.09 40.95   Q 847.02 30.72 800.24 28.14   Q 765.40 26.22 735.75 27.00   Q 692.38 28.15 648.50 34.46   Q 615.13 39.26 584.68 46.89   Q 551.35 55.25 527.08 63.33   Q 522.65 64.81 497.21 74.12   C 487.85 77.55 478.19 82.42 469.13 85.84   C 457.36 90.28 447.71 95.51 435.13 101.32   Q 429.48 103.93 421.38 108.28   Q 393.10 123.45 365.25 141.27   C 363.10 142.64 360.71 144.67 358.84 145.85   Q 340.29 157.52 329.10 166.10   C 314.91 176.97 299.91 188.01 286.99 199.23   Q 275.62 209.12 267.38 216.63   Z" />
+<path fill="#a855f7" d="   M 267.38 216.63   Q 275.62 209.12 286.99 199.23   C 299.91 188.01 314.91 176.97 329.10 166.10   Q 340.29 157.52 358.84 145.85   C 360.71 144.67 363.10 142.64 365.25 141.27   Q 393.10 123.45 421.38 108.28   Q 429.48 103.93 435.13 101.32   C 447.71 95.51 457.36 90.28 469.13 85.84   C 478.19 82.42 487.85 77.55 497.21 74.12   Q 522.65 64.81 527.08 63.33   Q 551.35 55.25 584.68 46.89   Q 615.13 39.26 648.50 34.46   Q 692.38 28.15 735.75 27.00   Q 765.40 26.22 800.24 28.14   Q 847.02 30.72 897.09 40.95   Q 946.97 51.15 1001.99 70.61   C 1013.78 74.79 1024.94 79.93 1037.23 84.86   Q 1042.33 86.91 1051.14 90.90   Q 1098.43 112.36 1142.36 140.65   Q 1175.33 161.88 1203.46 184.32   Q 1227.14 203.22 1258.37 232.86   Q 1279.16 252.60 1305.98 283.36   Q 1317.76 296.87 1330.28 313.42   Q 1345.69 333.80 1353.11 344.63   Q 1364.57 361.37 1380.61 388.38   Q 1399.56 420.29 1419.56 464.89   C 1430.41 489.08 1439.23 514.65 1446.76 538.00   Q 1448.99 544.89 1455.35 568.19   Q 1460.19 585.91 1462.86 598.69   Q 1475.04 656.79 1478.71 716.26   Q 1482.23 773.04 1475.19 831.75   Q 1472.17 856.94 1467.26 884.01   Q 1463.43 905.08 1459.99 918.50   Q 1451.65 951.02 1443.99 975.99   Q 1442.82 979.82 1435.74 999.84   Q 1431.05 1013.11 1426.73 1023.42   Q 1415.65 1049.82 1402.41 1076.58   Q 1396.76 1088.01 1393.51 1093.51   C 1389.24 1100.73 1385.82 1107.86 1381.12 1115.84   Q 1372.20 1130.97 1368.36 1137.13   Q 1357.29 1154.91 1337.41 1182.34   Q 1332.53 1189.06 1328.73 1193.34   C 1324.72 1197.85 1321.49 1203.02 1317.30 1208.13   Q 1267.64 1268.71 1206.40 1317.90   Q 1203.92 1319.89 1181.77 1336.62   C 1170.08 1345.45 1156.81 1354.08 1146.17 1361.25   C 1140.46 1365.10 1134.54 1368.11 1129.11 1371.54   Q 1117.20 1379.09 1113.06 1381.32   Q 1101.67 1387.47 1092.63 1392.49   Q 1080.04 1399.48 1073.43 1402.36   C 1067.16 1405.09 1055.29 1411.33 1047.34 1414.60   Q 1046.53 1414.93 1031.16 1421.59   Q 1023.42 1424.94 1014.85 1428.24   Q 988.47 1438.39 961.64 1446.65   Q 955.14 1448.66 923.33 1456.91   C 894.74 1464.34 864.65 1469.48 838.47 1472.60   Q 788.44 1478.58 738.50 1477.19   Q 724.60 1476.81 697.78 1475.08   C 691.49 1474.67 684.55 1473.57 677.98 1473.15   Q 673.86 1472.89 670.06 1472.33   Q 641.82 1468.17 633.94 1466.84   Q 585.82 1458.73 537.69 1443.86   C 526.55 1440.43 513.73 1435.66 499.39 1430.35   Q 475.99 1421.68 456.45 1412.37   Q 451.94 1410.22 432.03 1400.72   Q 421.93 1395.90 416.44 1392.73   C 409.62 1388.79 402.80 1385.53 395.97 1381.61   Q 347.30 1353.65 304.65 1320.10   Q 289.44 1308.13 269.88 1290.63   Q 217.26 1243.56 173.89 1186.14   Q 161.26 1169.42 150.06 1152.32   Q 136.89 1132.22 128.06 1117.21   Q 126.69 1114.88 110.89 1085.88   Q 105.63 1076.22 101.18 1066.71   C 96.02 1055.65 93.91 1051.54 89.10 1040.68   Q 66.83 990.34 51.55 930.92   C 34.13 863.12 25.77 793.86 29.06 724.25   Q 30.04 703.44 31.04 691.75   C 32.46 675.02 34.67 660.76 36.81 645.10   Q 39.57 624.87 44.76 600.69   C 47.61 587.38 51.11 575.19 54.63 561.13   C 57.22 550.76 61.35 536.51 65.98 523.81   C 69.59 513.91 74.95 496.73 80.39 484.12   C 85.90 471.32 92.03 455.97 98.69 443.02   C 102.73 435.19 106.59 426.33 111.52 417.29   Q 121.77 398.53 124.17 394.17   C 129.00 385.37 134.55 377.65 139.31 369.08   Q 141.31 365.48 145.53 359.14   Q 158.00 340.42 172.77 320.53   Q 176.59 315.39 178.72 312.88   C 184.01 306.65 189.01 299.44 193.65 294.08   C 197.80 289.29 201.19 284.64 206.00 279.50   C 211.26 273.89 218.07 265.67 224.77 258.60   Q 246.77 235.40 267.38 216.63   Z   M 785.86 100.13   Q 761.86 99.30 742.26 99.53   Q 687.46 100.17 631.68 110.27   C 620.66 112.27 608.83 115.51 598.94 117.75   Q 587.01 120.44 574.58 124.16   Q 546.96 132.41 531.14 138.16   Q 521.15 141.78 518.14 143.14   C 508.61 147.42 497.83 151.52 488.40 155.81   Q 488.23 155.89 468.29 165.40   Q 457.15 170.72 448.48 175.57   Q 429.93 185.94 425.55 188.56   Q 392.62 208.23 358.55 234.07   Q 354.85 236.88 347.77 242.77   Q 344.37 245.60 337.05 251.57   Q 324.99 261.40 304.62 280.62   Q 279.47 304.34 257.71 329.80   C 252.34 336.08 248.44 341.49 243.59 347.27   Q 239.61 352.03 233.27 360.57   Q 225.01 371.71 220.31 378.22   Q 218.02 381.39 216.82 383.37   C 214.01 388.00 210.57 392.02 207.95 396.17   Q 195.09 416.57 192.16 421.44   Q 189.38 426.06 176.20 449.88   Q 171.08 459.14 167.58 466.73   C 164.08 474.34 157.65 486.52 153.48 496.87   Q 150.46 504.36 147.94 510.13   Q 144.12 518.87 140.15 530.16   Q 122.81 579.52 113.89 624.04   Q 104.74 669.71 101.70 733.00   Q 100.72 753.25 101.71 773.25   C 103.39 807.48 106.04 840.70 112.23 871.82   Q 116.11 891.30 121.58 913.97   Q 124.88 927.62 129.14 940.87   Q 141.13 978.23 155.64 1012.13   C 159.13 1020.29 164.61 1030.88 169.32 1040.93   Q 170.32 1043.06 175.06 1052.26   Q 182.65 1067.03 187.25 1074.89   Q 204.72 1104.72 218.52 1124.10   C 230.12 1140.40 241.23 1154.01 252.32 1168.09   C 255.82 1172.54 259.63 1176.37 262.82 1180.27   Q 267.18 1185.62 270.50 1189.26   Q 297.27 1218.59 327.33 1244.54   C 335.79 1251.84 343.63 1257.90 353.03 1265.50   Q 365.54 1275.60 384.04 1288.68   Q 393.51 1295.38 405.88 1302.91   C 425.16 1314.66 437.32 1321.60 457.40 1332.58   C 462.35 1335.29 466.80 1337.08 471.43 1339.50   Q 476.09 1341.93 481.96 1344.58   Q 509.28 1356.91 529.51 1364.42   Q 569.26 1379.18 618.36 1390.37   Q 632.57 1393.61 648.76 1396.18   Q 690.88 1402.88 732.49 1404.59   Q 784.25 1406.73 835.16 1399.92   Q 851.23 1397.77 851.58 1397.74   Q 856.91 1397.17 867.93 1395.09   Q 891.67 1390.61 918.01 1383.76   C 961.95 1372.33 1005.46 1355.20 1046.28 1335.26   Q 1052.00 1332.47 1057.17 1329.63   Q 1085.33 1314.19 1113.54 1296.02   Q 1124.84 1288.74 1151.10 1269.14   C 1157.00 1264.73 1161.86 1260.27 1167.86 1255.65   Q 1173.21 1251.53 1180.33 1245.45   Q 1209.47 1220.59 1234.75 1192.96   C 1239.33 1187.95 1243.81 1182.21 1247.74 1178.15   Q 1251.13 1174.66 1257.12 1166.77   Q 1258.27 1165.26 1268.88 1152.13   Q 1285.15 1132.00 1301.58 1106.60   C 1305.35 1100.78 1308.86 1093.92 1312.96 1088.21   Q 1315.31 1084.92 1321.79 1073.30   Q 1336.12 1047.56 1340.70 1037.08   Q 1342.56 1032.83 1346.48 1025.58   Q 1348.57 1021.72 1351.87 1013.87   Q 1358.57 997.94 1359.60 995.58   C 1366.08 980.76 1369.29 969.78 1375.83 950.41   C 1383.17 928.71 1387.95 907.68 1393.29 884.70   Q 1396.08 872.68 1397.90 860.95   Q 1401.27 839.15 1403.96 811.76   Q 1407.33 777.36 1406.53 744.52   Q 1405.56 704.98 1399.59 655.44   C 1396.83 632.51 1390.10 604.89 1386.11 588.89   C 1381.60 570.81 1376.30 555.01 1369.39 534.34   Q 1365.48 522.66 1361.27 512.27   Q 1349.46 483.11 1333.50 451.85   C 1329.91 444.84 1325.92 438.33 1321.06 429.67   Q 1314.33 417.68 1299.61 395.39   Q 1299.40 395.06 1286.95 377.28   Q 1271.53 355.25 1251.74 331.52   Q 1219.72 293.13 1174.55 254.29   Q 1131.18 217.01 1081.22 187.70   C 1075.37 184.27 1070.29 181.90 1064.59 178.40   Q 1059.88 175.50 1053.34 172.18   Q 1037.96 164.36 1025.28 158.36   C 1014.80 153.40 1005.36 149.76 995.22 145.35   Q 983.75 140.36 972.33 136.43   Q 939.71 125.22 920.95 120.60   Q 892.90 113.68 882.66 111.63   Q 834.93 102.09 785.58 100.45   A 0.19 0.19 0.0 0 1 785.57 100.07   Q 785.71 100.06 785.86 100.13   Z" />
+<path fill="none" d="   M 785.86 100.13   Q 785.71 100.06 785.57 100.07   A 0.19 0.19 0.0 0 0 785.58 100.45   Q 834.93 102.09 882.66 111.63   Q 892.90 113.68 920.95 120.60   Q 939.71 125.22 972.33 136.43   Q 983.75 140.36 995.22 145.35   C 1005.36 149.76 1014.80 153.40 1025.28 158.36   Q 1037.96 164.36 1053.34 172.18   Q 1059.88 175.50 1064.59 178.40   C 1070.29 181.90 1075.37 184.27 1081.22 187.70   Q 1131.18 217.01 1174.55 254.29   Q 1219.72 293.13 1251.74 331.52   Q 1271.53 355.25 1286.95 377.28   Q 1299.40 395.06 1299.61 395.39   Q 1314.33 417.68 1321.06 429.67   C 1325.92 438.33 1329.91 444.84 1333.50 451.85   Q 1349.46 483.11 1361.27 512.27   Q 1365.48 522.66 1369.39 534.34   C 1376.30 555.01 1381.60 570.81 1386.11 588.89   C 1390.10 604.89 1396.83 632.51 1399.59 655.44   Q 1405.56 704.98 1406.53 744.52   Q 1407.33 777.36 1403.96 811.76   Q 1401.27 839.15 1397.90 860.95   Q 1396.08 872.68 1393.29 884.70   C 1387.95 907.68 1383.17 928.71 1375.83 950.41   C 1369.29 969.78 1366.08 980.76 1359.60 995.58   Q 1358.57 997.94 1351.87 1013.87   Q 1348.57 1021.72 1346.48 1025.58   Q 1342.56 1032.83 1340.70 1037.08   Q 1336.12 1047.56 1321.79 1073.30   Q 1315.31 1084.92 1312.96 1088.21   C 1308.86 1093.92 1305.35 1100.78 1301.58 1106.60   Q 1285.15 1132.00 1268.88 1152.13   Q 1258.27 1165.26 1257.12 1166.77   Q 1251.13 1174.66 1247.74 1178.15   C 1243.81 1182.21 1239.33 1187.95 1234.75 1192.96   Q 1209.47 1220.59 1180.33 1245.45   Q 1173.21 1251.53 1167.86 1255.65   C 1161.86 1260.27 1157.00 1264.73 1151.10 1269.14   Q 1124.84 1288.74 1113.54 1296.02   Q 1085.33 1314.19 1057.17 1329.63   Q 1052.00 1332.47 1046.28 1335.26   C 1005.46 1355.20 961.95 1372.33 918.01 1383.76   Q 891.67 1390.61 867.93 1395.09   Q 856.91 1397.17 851.58 1397.74   Q 851.23 1397.77 835.16 1399.92   Q 784.25 1406.73 732.49 1404.59   Q 690.88 1402.88 648.76 1396.18   Q 632.57 1393.61 618.36 1390.37   Q 569.26 1379.18 529.51 1364.42   Q 509.28 1356.91 481.96 1344.58   Q 476.09 1341.93 471.43 1339.50   C 466.80 1337.08 462.35 1335.29 457.40 1332.58   C 437.32 1321.60 425.16 1314.66 405.88 1302.91   Q 393.51 1295.38 384.04 1288.68   Q 365.54 1275.60 353.03 1265.50   C 343.63 1257.90 335.79 1251.84 327.33 1244.54   Q 297.27 1218.59 270.50 1189.26   Q 267.18 1185.62 262.82 1180.27   C 259.63 1176.37 255.82 1172.54 252.32 1168.09   C 241.23 1154.01 230.12 1140.40 218.52 1124.10   Q 204.72 1104.72 187.25 1074.89   Q 182.65 1067.03 175.06 1052.26   Q 170.32 1043.06 169.32 1040.93   C 164.61 1030.88 159.13 1020.29 155.64 1012.13   Q 141.13 978.23 129.14 940.87   Q 124.88 927.62 121.58 913.97   Q 116.11 891.30 112.23 871.82   C 106.04 840.70 103.39 807.48 101.71 773.25   Q 100.72 753.25 101.70 733.00   Q 104.74 669.71 113.89 624.04   Q 122.81 579.52 140.15 530.16   Q 144.12 518.87 147.94 510.13   Q 150.46 504.36 153.48 496.87   C 157.65 486.52 164.08 474.34 167.58 466.73   Q 171.08 459.14 176.20 449.88   Q 189.38 426.06 192.16 421.44   Q 195.09 416.57 207.95 396.17   C 210.57 392.02 214.01 388.00 216.82 383.37   Q 218.02 381.39 220.31 378.22   Q 225.01 371.71 233.27 360.57   Q 239.61 352.03 243.59 347.27   C 248.44 341.49 252.34 336.08 257.71 329.80   Q 279.47 304.34 304.62 280.62   Q 324.99 261.40 337.05 251.57   Q 344.37 245.60 347.77 242.77   Q 354.85 236.88 358.55 234.07   Q 392.62 208.23 425.55 188.56   Q 429.93 185.94 448.48 175.57   Q 457.15 170.72 468.29 165.40   Q 488.23 155.89 488.40 155.81   C 497.83 151.52 508.61 147.42 518.14 143.14   Q 521.15 141.78 531.14 138.16   Q 546.96 132.41 574.58 124.16   Q 587.01 120.44 598.94 117.75   C 608.83 115.51 620.66 112.27 631.68 110.27   Q 687.46 100.17 742.26 99.53   Q 761.86 99.30 785.86 100.13   Z   M 419.95 735.60   C 412.58 740.50 406.40 745.58 397.60 753.02   C 380.91 767.12 366.94 783.64 355.45 802.51   Q 348.50 813.92 344.09 825.01   C 338.61 838.79 333.29 853.13 330.20 868.45   Q 321.69 910.69 323.89 954.24   Q 325.54 986.79 332.27 1013.86   Q 338.79 1040.12 349.57 1061.30   Q 358.60 1079.05 373.93 1096.59   Q 384.81 1109.02 392.47 1115.63   C 398.67 1120.98 405.76 1125.77 414.79 1131.79   Q 425.26 1138.77 431.80 1141.44   C 442.38 1145.76 448.57 1148.49 458.16 1151.50   Q 492.63 1162.30 528.53 1164.92   Q 543.39 1166.01 563.26 1166.30   Q 607.17 1166.93 642.25 1166.26   Q 662.48 1165.87 683.23 1161.00   C 698.56 1157.41 713.09 1149.30 724.87 1140.11   Q 728.55 1137.24 731.31 1133.83   Q 732.41 1132.47 732.45 1130.03   Q 732.85 1100.80 732.83 1088.00   Q 732.66 965.91 732.69 381.54   C 732.69 377.61 733.31 373.27 730.55 370.46   Q 719.50 359.19 705.09 352.18   Q 691.21 345.42 677.26 342.44   Q 653.52 337.38 624.24 337.29   C 596.69 337.22 569.73 338.44 543.00 342.52   Q 509.34 347.66 480.89 362.35   Q 478.80 363.43 465.65 371.93   Q 460.25 375.42 454.83 380.15   Q 445.95 387.89 444.68 389.18   Q 429.26 404.81 417.81 423.63   C 408.73 438.56 401.81 456.15 396.97 472.70   Q 381.45 525.83 382.12 581.25   Q 382.64 623.90 391.81 663.24   Q 394.75 675.86 397.60 684.36   C 403.45 701.81 410.30 718.66 420.28 734.04   A 1.13 1.13 0.0 0 1 419.95 735.60   Z   M 1088.42 733.76   C 1099.39 716.00 1108.64 695.60 1113.68 675.62   C 1117.89 658.94 1121.27 641.53 1123.60 622.73   Q 1127.60 590.34 1125.57 557.47   Q 1124.36 537.98 1123.30 530.13   Q 1119.32 500.76 1111.10 472.59   Q 1104.12 448.67 1093.41 428.80   Q 1078.71 401.50 1053.78 379.98   Q 1048.82 375.68 1041.62 370.90   Q 1032.46 364.82 1028.69 362.84   Q 1001.41 348.46 970.91 343.15   Q 956.29 340.61 948.38 339.87   Q 910.96 336.37 874.25 337.57   Q 863.31 337.92 841.60 340.82   Q 810.41 344.97 786.15 362.86   C 783.60 364.74 776.09 370.36 775.89 373.89   Q 775.60 379.09 775.60 381.75   C 776.09 618.91 775.65 865.16 775.72 1077.25   Q 775.74 1110.28 776.09 1129.25   C 776.14 1131.89 776.89 1132.97 778.72 1134.87   C 785.76 1142.21 795.98 1148.55 804.21 1152.83   Q 812.18 1156.97 822.84 1159.94   Q 843.28 1165.64 862.50 1166.13   Q 889.32 1166.81 927.69 1166.64   Q 953.92 1166.52 977.75 1165.09   Q 1015.70 1162.80 1051.68 1151.24   Q 1058.39 1149.08 1065.12 1146.36   Q 1074.60 1142.53 1078.28 1140.77   Q 1094.52 1133.03 1110.33 1120.34   Q 1136.07 1099.68 1153.09 1071.72   Q 1160.85 1058.99 1167.08 1042.76   Q 1173.66 1025.64 1176.77 1012.05   C 1183.09 984.50 1185.16 957.34 1184.71 929.77   Q 1184.27 903.05 1179.32 875.41   Q 1176.42 859.20 1171.33 843.90   Q 1166.23 828.61 1159.25 813.74   Q 1153.56 801.61 1143.35 787.95   C 1134.53 776.14 1126.40 766.54 1116.27 757.73   Q 1102.61 745.84 1088.79 735.66   A 1.43 1.43 0.0 0 1 1088.42 733.76   Z" />
+<path fill="#a855f7" d="   M 419.95 735.60   A 1.13 1.13 0.0 0 0 420.28 734.04   C 410.30 718.66 403.45 701.81 397.60 684.36   Q 394.75 675.86 391.81 663.24   Q 382.64 623.90 382.12 581.25   Q 381.45 525.83 396.97 472.70   C 401.81 456.15 408.73 438.56 417.81 423.63   Q 429.26 404.81 444.68 389.18   Q 445.95 387.89 454.83 380.15   Q 460.25 375.42 465.65 371.93   Q 478.80 363.43 480.89 362.35   Q 509.34 347.66 543.00 342.52   C 569.73 338.44 596.69 337.22 624.24 337.29   Q 653.52 337.38 677.26 342.44   Q 691.21 345.42 705.09 352.18   Q 719.50 359.19 730.55 370.46   C 733.31 373.27 732.69 377.61 732.69 381.54   Q 732.66 965.91 732.83 1088.00   Q 732.85 1100.80 732.45 1130.03   Q 732.41 1132.47 731.31 1133.83   Q 728.55 1137.24 724.87 1140.11   C 713.09 1149.30 698.56 1157.41 683.23 1161.00   Q 662.48 1165.87 642.25 1166.26   Q 607.17 1166.93 563.26 1166.30   Q 543.39 1166.01 528.53 1164.92   Q 492.63 1162.30 458.16 1151.50   C 448.57 1148.49 442.38 1145.76 431.80 1141.44   Q 425.26 1138.77 414.79 1131.79   C 405.76 1125.77 398.67 1120.98 392.47 1115.63   Q 384.81 1109.02 373.93 1096.59   Q 358.60 1079.05 349.57 1061.30   Q 338.79 1040.12 332.27 1013.86   Q 325.54 986.79 323.89 954.24   Q 321.69 910.69 330.20 868.45   C 333.29 853.13 338.61 838.79 344.09 825.01   Q 348.50 813.92 355.45 802.51   C 366.94 783.64 380.91 767.12 397.60 753.02   C 406.40 745.58 412.58 740.50 419.95 735.60   Z   M 671.90 726.15   A 0.49 0.49 0.0 0 0 672.39 725.66   Q 672.49 571.93 672.29 452.25   Q 672.28 444.29 668.79 435.24   C 666.66 429.73 662.59 425.86 657.44 424.05   Q 648.35 420.85 638.49 420.84   Q 601.89 420.78 592.63 420.65   C 573.68 420.39 557.38 421.45 541.45 425.20   C 526.65 428.68 511.19 438.19 501.40 450.91   Q 495.39 458.72 492.24 466.02   C 486.02 480.47 482.36 495.56 479.87 512.06   Q 477.65 526.82 476.77 535.25   C 473.36 567.82 473.71 600.54 478.17 633.04   Q 481.43 656.75 489.34 679.44   Q 494.00 692.82 503.74 704.00   C 509.08 710.12 514.84 713.61 522.17 717.29   Q 527.80 720.12 533.27 721.61   Q 546.00 725.07 554.37 725.59   C 566.09 726.31 589.78 725.67 607.56 726.21   C 621.50 726.63 635.38 725.97 648.55 726.09   Q 658.72 726.18 671.90 726.15   Z   M 424.34 912.94   Q 423.64 924.73 423.39 931.23   Q 422.15 963.55 428.08 993.70   C 433.61 1021.80 446.23 1046.31 469.87 1062.92   C 483.19 1072.28 498.65 1077.50 515.02 1080.16   Q 517.42 1080.55 529.96 1082.07   C 540.24 1083.32 554.11 1083.26 562.00 1083.25   Q 630.74 1083.16 642.50 1083.10   Q 649.62 1083.07 657.33 1080.34   Q 665.34 1077.50 668.45 1069.69   C 672.50 1059.47 672.40 1050.65 672.40 1037.11   Q 672.46 875.20 672.46 799.75   Q 672.46 779.59 672.45 779.21   A 0.65 0.65 0.0 0 0 671.92 778.57   Q 670.28 778.25 668.00 778.27   Q 634.42 778.57 560.75 778.34   Q 542.22 778.28 522.98 781.42   C 515.12 782.70 505.04 785.46 498.70 787.70   Q 480.58 794.09 465.69 806.48   C 452.33 817.60 442.26 833.90 436.60 849.84   C 432.86 860.38 429.36 872.43 427.71 884.30   Q 426.89 890.17 425.92 896.57   Q 425.12 901.86 424.58 914.59   A 0.01 0.01 0.0 0 1 424.56 914.59   Q 424.55 914.57 424.54 914.56   A 0.16 0.08 46.7 0 1 424.50 914.43   Q 424.74 913.63 424.55 912.92   A 0.11 0.11 0.0 0 0 424.34 912.94   Z" />
+<path fill="#a855f7" d="   M 1088.42 733.76   A 1.43 1.43 0.0 0 0 1088.79 735.66   Q 1102.61 745.84 1116.27 757.73   C 1126.40 766.54 1134.53 776.14 1143.35 787.95   Q 1153.56 801.61 1159.25 813.74   Q 1166.23 828.61 1171.33 843.90   Q 1176.42 859.20 1179.32 875.41   Q 1184.27 903.05 1184.71 929.77   C 1185.16 957.34 1183.09 984.50 1176.77 1012.05   Q 1173.66 1025.64 1167.08 1042.76   Q 1160.85 1058.99 1153.09 1071.72   Q 1136.07 1099.68 1110.33 1120.34   Q 1094.52 1133.03 1078.28 1140.77   Q 1074.60 1142.53 1065.12 1146.36   Q 1058.39 1149.08 1051.68 1151.24   Q 1015.70 1162.80 977.75 1165.09   Q 953.92 1166.52 927.69 1166.64   Q 889.32 1166.81 862.50 1166.13   Q 843.28 1165.64 822.84 1159.94   Q 812.18 1156.97 804.21 1152.83   C 795.98 1148.55 785.76 1142.21 778.72 1134.87   C 776.89 1132.97 776.14 1131.89 776.09 1129.25   Q 775.74 1110.28 775.72 1077.25   C 775.65 865.16 776.09 618.91 775.60 381.75   Q 775.60 379.09 775.89 373.89   C 776.09 370.36 783.60 364.74 786.15 362.86   Q 810.41 344.97 841.60 340.82   Q 863.31 337.92 874.25 337.57   Q 910.96 336.37 948.38 339.87   Q 956.29 340.61 970.91 343.15   Q 1001.41 348.46 1028.69 362.84   Q 1032.46 364.82 1041.62 370.90   Q 1048.82 375.68 1053.78 379.98   Q 1078.71 401.50 1093.41 428.80   Q 1104.12 448.67 1111.10 472.59   Q 1119.32 500.76 1123.30 530.13   Q 1124.36 537.98 1125.57 557.47   Q 1127.60 590.34 1123.60 622.73   C 1121.27 641.53 1117.89 658.94 1113.68 675.62   C 1108.64 695.60 1099.39 716.00 1088.42 733.76   Z   M 1033.25 597.52   Q 1035.73 550.24 1027.56 504.57   Q 1024.65 488.24 1019.18 473.08   Q 1014.37 459.75 1006.07 449.61   Q 997.73 439.43 987.04 433.19   Q 976.05 426.77 963.49 424.31   Q 945.60 420.81 931.99 420.86   Q 893.22 420.99 869.76 420.84   Q 859.45 420.77 850.22 424.70   C 842.87 427.83 839.59 433.86 837.60 441.31   C 835.42 449.46 835.68 455.05 835.67 465.29   Q 835.65 519.66 835.70 725.13   A 0.77 0.76 -89.6 0 0 836.45 725.90   C 848.68 726.13 860.36 725.75 873.11 726.00   Q 900.51 726.53 922.46 726.10   Q 932.28 725.90 939.05 725.89   Q 952.67 725.87 955.63 725.60   Q 967.87 724.48 980.92 720.12   C 990.27 716.99 1000.07 710.06 1006.80 701.47   Q 1012.74 693.88 1014.05 691.30   Q 1018.01 683.50 1019.71 678.72   Q 1026.93 658.39 1029.43 637.21   C 1030.70 626.41 1032.27 615.63 1032.72 606.34   Q 1032.94 601.89 1033.09 600.17   Q 1033.14 599.70 1033.25 597.52   Z   M 1083.14 908.01   C 1081.80 887.77 1078.38 867.32 1071.42 848.57   C 1061.55 821.98 1041.96 799.94 1015.09 789.69   C 992.99 781.27 969.48 778.33 946.23 778.38   Q 874.30 778.52 835.89 778.36   A 0.43 0.42 -0.7 0 0 835.46 778.79   Q 835.60 794.95 835.61 796.25   Q 835.73 996.62 835.85 1049.73   Q 835.87 1058.62 839.81 1068.39   C 842.32 1074.61 845.47 1077.48 851.39 1079.95   Q 858.74 1083.01 866.23 1083.11   Q 900.51 1083.57 948.00 1083.21   Q 957.86 1083.14 964.85 1082.80   C 976.39 1082.24 986.79 1081.53 995.32 1080.09   Q 1003.56 1078.70 1014.13 1075.35   Q 1027.82 1071.01 1038.97 1062.66   C 1051.27 1053.46 1060.21 1044.53 1067.17 1031.34   Q 1077.25 1012.22 1080.66 991.74   Q 1087.50 950.73 1083.37 908.19   A 0.06 0.06 0.0 0 0 1083.31 908.13   Q 1083.30 908.13 1083.26 908.14   A 0.13 0.09 81.4 0 1 1083.14 908.01   Z" />
+<path fill="none" d="   M 671.90 726.15   Q 658.72 726.18 648.55 726.09   C 635.38 725.97 621.50 726.63 607.56 726.21   C 589.78 725.67 566.09 726.31 554.37 725.59   Q 546.00 725.07 533.27 721.61   Q 527.80 720.12 522.17 717.29   C 514.84 713.61 509.08 710.12 503.74 704.00   Q 494.00 692.82 489.34 679.44   Q 481.43 656.75 478.17 633.04   C 473.71 600.54 473.36 567.82 476.77 535.25   Q 477.65 526.82 479.87 512.06   C 482.36 495.56 486.02 480.47 492.24 466.02   Q 495.39 458.72 501.40 450.91   C 511.19 438.19 526.65 428.68 541.45 425.20   C 557.38 421.45 573.68 420.39 592.63 420.65   Q 601.89 420.78 638.49 420.84   Q 648.35 420.85 657.44 424.05   C 662.59 425.86 666.66 429.73 668.79 435.24   Q 672.28 444.29 672.29 452.25   Q 672.49 571.93 672.39 725.66   A 0.49 0.49 0.0 0 1 671.90 726.15   Z" />
+<path fill="none" d="   M 1033.25 597.52   Q 1033.14 599.70 1033.09 600.17   Q 1032.94 601.89 1032.72 606.34   C 1032.27 615.63 1030.70 626.41 1029.43 637.21   Q 1026.93 658.39 1019.71 678.72   Q 1018.01 683.50 1014.05 691.30   Q 1012.74 693.88 1006.80 701.47   C 1000.07 710.06 990.27 716.99 980.92 720.12   Q 967.87 724.48 955.63 725.60   Q 952.67 725.87 939.05 725.89   Q 932.28 725.90 922.46 726.10   Q 900.51 726.53 873.11 726.00   C 860.36 725.75 848.68 726.13 836.45 725.90   A 0.77 0.76 -89.6 0 1 835.70 725.13   Q 835.65 519.66 835.67 465.29   C 835.68 455.05 835.42 449.46 837.60 441.31   C 839.59 433.86 842.87 427.83 850.22 424.70   Q 859.45 420.77 869.76 420.84   Q 893.22 420.99 931.99 420.86   Q 945.60 420.81 963.49 424.31   Q 976.05 426.77 987.04 433.19   Q 997.73 439.43 1006.07 449.61   Q 1014.37 459.75 1019.18 473.08   Q 1024.65 488.24 1027.56 504.57   Q 1035.73 550.24 1033.25 597.52   Z" />
+<path fill="none" d="   M 424.55 912.92   Q 424.74 913.63 424.50 914.43   A 0.16 0.08 46.7 0 0 424.54 914.56   Q 424.55 914.57 424.56 914.59   A 0.01 0.01 0.0 0 0 424.58 914.59   Q 425.12 901.86 425.92 896.57   Q 426.89 890.17 427.71 884.30   C 429.36 872.43 432.86 860.38 436.60 849.84   C 442.26 833.90 452.33 817.60 465.69 806.48   Q 480.58 794.09 498.70 787.70   C 505.04 785.46 515.12 782.70 522.98 781.42   Q 542.22 778.28 560.75 778.34   Q 634.42 778.57 668.00 778.27   Q 670.28 778.25 671.92 778.57   A 0.65 0.65 0.0 0 1 672.45 779.21   Q 672.46 779.59 672.46 799.75   Q 672.46 875.20 672.40 1037.11   C 672.40 1050.65 672.50 1059.47 668.45 1069.69   Q 665.34 1077.50 657.33 1080.34   Q 649.62 1083.07 642.50 1083.10   Q 630.74 1083.16 562.00 1083.25   C 554.11 1083.26 540.24 1083.32 529.96 1082.07   Q 517.42 1080.55 515.02 1080.16   C 498.65 1077.50 483.19 1072.28 469.87 1062.92   C 446.23 1046.31 433.61 1021.80 428.08 993.70   Q 422.15 963.55 423.39 931.23   Q 423.64 924.73 424.34 912.94   A 0.11 0.11 0.0 0 1 424.55 912.92   Z" />
+<path fill="none" d="   M 1083.26 908.14   Q 1083.30 908.13 1083.31 908.13   A 0.06 0.06 0.0 0 1 1083.37 908.19   Q 1087.50 950.73 1080.66 991.74   Q 1077.25 1012.22 1067.17 1031.34   C 1060.21 1044.53 1051.27 1053.46 1038.97 1062.66   Q 1027.82 1071.01 1014.13 1075.35   Q 1003.56 1078.70 995.32 1080.09   C 986.79 1081.53 976.39 1082.24 964.85 1082.80   Q 957.86 1083.14 948.00 1083.21   Q 900.51 1083.57 866.23 1083.11   Q 858.74 1083.01 851.39 1079.95   C 845.47 1077.48 842.32 1074.61 839.81 1068.39   Q 835.87 1058.62 835.85 1049.73   Q 835.73 996.62 835.61 796.25   Q 835.60 794.95 835.46 778.79   A 0.43 0.42 -0.7 0 1 835.89 778.36   Q 874.30 778.52 946.23 778.38   C 969.48 778.33 992.99 781.27 1015.09 789.69   C 1041.96 799.94 1061.55 821.98 1071.42 848.57   C 1078.38 867.32 1081.80 887.77 1083.14 908.01   A 0.13 0.09 81.4 0 0 1083.26 908.14   Z" />
+</svg></g>
+ <defs>
+  <clipPath id="p6c27f0431a">
+   <rect x="0" y="0" width="576" height="720" />
+  </clipPath>
+  <clipPath id="pb88ae72d8c">
+   <rect x="37.44" y="25.515" width="30.24" height="29.61" />
+  </clipPath>
+ </defs>
+</svg>

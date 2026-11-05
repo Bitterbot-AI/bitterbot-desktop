@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="576pt" height="720pt" viewBox="0 0 576 720" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-03T19:54:25.512148</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.11.2, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 720 
+L 576 720 
+L 576 0 
+L 0 0 
+z
+" style="fill: #0b1526"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 39.168 379.44 
+L 536.832 379.44 
+Q 545.472 379.44 545.472 368.64 
+L 545.472 185.76 
+Q 545.472 174.96 536.832 174.96 
+L 39.168 174.96 
+Q 30.528 174.96 30.528 185.76 
+L 30.528 368.64 
+Q 30.528 379.44 39.168 379.44 
+z
+" clip-path="url(#p4954fa1d9a)" style="fill: #152339"/>
+   </g>
+   <g id="patch_3">
+    <path d="M 51.84 327.6 
+L 524.16 327.6 
+L 524.16 309.6 
+L 51.84 309.6 
+z
+" clip-path="url(#p4954fa1d9a)" style="fill: #34465f"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 51.84 327.6 
+L 254.262857 327.6 
+L 254.262857 309.6 
+L 51.84 309.6 
+z
+" clip-path="url(#p4954fa1d9a)" style="fill: #65e5bc"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 39.168 474.48 
+L 274.752 474.48 
+Q 283.392 474.48 283.392 463.68 
+L 283.392 401.76 
+Q 283.392 390.96 274.752 390.96 
+L 39.168 390.96 
+Q 30.528 390.96 30.528 401.76 
+L 30.528 463.68 
+Q 30.528 474.48 39.168 474.48 
+z
+" clip-path="url(#p4954fa1d9a)" style="fill: #152339"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 301.248 474.48 
+L 536.832 474.48 
+Q 545.472 474.48 545.472 463.68 
+L 545.472 401.76 
+Q 545.472 390.96 536.832 390.96 
+L 301.248 390.96 
+Q 292.608 390.96 292.608 401.76 
+L 292.608 463.68 
+Q 292.608 474.48 301.248 474.48 
+z
+" clip-path="url(#p4954fa1d9a)" style="fill: #152339"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 39.168 565.92 
+L 536.832 565.92 
+Q 545.472 565.92 545.472 555.12 
+L 545.472 515.52 
+Q 545.472 504.72 536.832 504.72 
+L 39.168 504.72 
+Q 30.528 504.72 30.528 515.52 
+L 30.528 555.12 
+Q 30.528 565.92 39.168 565.92 
+z
+" clip-path="url(#p4954fa1d9a)" style="fill: #152339"/>
+   </g>
+  </g>
+  <g id="text_1">
+   <text style="font-weight: 700; font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #65e5bc" x="37.44" y="33.84" transform="rotate(-0 37.44 33.84)">BITTERBOT  /  RESEARCH NOTE</text>
+  </g>
+  <g id="text_2">
+   <text style="font-weight: 700; font-size: 28px; font-family: 'DejaVu Sans'; fill: #f5f8fc" transform="translate(37.44 64.229375)">A discovered repair.</text>
+   <text style="font-weight: 700; font-size: 28px; font-family: 'DejaVu Sans'; fill: #f5f8fc" transform="translate(37.44 95.76)">A reusable capability.</text>
+  </g>
+  <g id="text_3">
+   <text style="font-size: 13px; font-family: 'DejaVu Sans'; fill: #bcc9dc" transform="translate(37.44 131.020625)">Two independently generated procedures.</text>
+   <text style="font-size: 13px; font-family: 'DejaVu Sans'; fill: #bcc9dc" transform="translate(37.44 150.48)">Both achieved the same result:</text>
+  </g>
+  <g id="text_4">
+   <text style="font-weight: 700; font-size: 67px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #65e5bc" x="51.84" y="280.8" transform="rotate(-0 51.84 280.8)">43%</text>
+  </g>
+  <g id="text_5">
+   <text style="font-size: 15px; font-family: 'DejaVu Sans'; fill: #f5f8fc" transform="translate(264.96 220.153125)">of additional failed</text>
+   <text style="font-size: 15px; font-family: 'DejaVu Sans'; fill: #f5f8fc" transform="translate(264.96 241.2)">recorded states repaired</text>
+  </g>
+  <g id="text_6">
+   <text style="font-size: 12px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #bcc9dc" x="264.96" y="289.44" transform="rotate(-0 264.96 289.44)">12 of 28, per procedure</text>
+  </g>
+  <g id="text_7">
+   <text style="font-weight: 700; font-size: 10px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #65e5bc" x="51.84" y="350.64" transform="rotate(-0 51.84 350.64)">12 repaired</text>
+  </g>
+  <g id="text_8">
+   <text style="font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: end; fill: #bcc9dc" x="524.16" y="350.64" transform="rotate(-0 524.16 350.64)">16 unresolved · includes 8 identity abstentions</text>
+  </g>
+  <g id="text_9">
+   <text style="font-weight: 700; font-size: 29px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #f5f8fc" x="51.84" y="431.28" transform="rotate(-0 51.84 431.28)">16/16</text>
+  </g>
+  <g id="text_10">
+   <text style="font-size: 10.5px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #bcc9dc" x="51.84" y="455.76" transform="rotate(-0 51.84 455.76)">working states left unchanged</text>
+  </g>
+  <g id="text_11">
+   <text style="font-weight: 700; font-size: 29px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #65e5bc" x="313.92" y="431.28" transform="rotate(-0 313.92 431.28)">0</text>
+  </g>
+  <g id="text_12">
+   <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #bcc9dc" x="313.92" y="455.76" transform="rotate(-0 313.92 455.76)">LLM calls during reuse*</text>
+  </g>
+  <g id="text_13">
+   <text style="font-size: 10.5px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #bcc9dc" x="37.44" y="488.16" transform="rotate(-0 37.44 488.16)">*Generating the procedures required model calls.</text>
+  </g>
+  <g id="text_14">
+   <text style="font-weight: 700; font-size: 9px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #bcc9dc" x="48.96" y="526.32" transform="rotate(-0 48.96 526.32)">CONTROL COMPARISON · ORIGINAL INPUTS</text>
+  </g>
+  <g id="text_15">
+   <text style="font-weight: 700; font-size: 13.5px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #f5f8fc" x="48.96" y="546.48" transform="rotate(-0 48.96 546.48)">Executed procedure 6/12    ·    Advice 6/12</text>
+  </g>
+  <g id="text_16">
+   <text style="font-size: 11px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #ffd191" x="37.44" y="576.72" transform="rotate(-0 37.44 576.72)">Qualification gate failed. No accuracy gain over advice.</text>
+  </g>
+  <g id="text_17">
+   <text style="font-size: 14px; font-family: 'DejaVu Sans'; fill: #65e5bc" transform="translate(37.44 606.06)">Getting closer to fully autonomous learning,</text>
+   <text style="font-size: 14px; font-family: 'DejaVu Sans'; fill: #65e5bc" transform="translate(37.44 624.96)">step by step…</text>
+  </g>
+  <g id="text_18">
+   <text style="font-size: 9.5px; font-family: 'DejaVu Sans'; fill: #bcc9dc" transform="translate(37.44 658.95)">Development only: four previously seen synthetic cases.</text>
+   <text style="font-size: 9.5px; font-family: 'DejaVu Sans'; fill: #bcc9dc" transform="translate(37.44 673.2)">These states are not independent tasks. Broader transfer is unproven.</text>
+  </g>
+  <g id="text_19">
+   <text style="font-size: 8.5px; font-family: 'DejaVu Sans'; text-anchor: start; fill: #bcc9dc" x="37.44" y="702" transform="rotate(-0 37.44 702)">148 executions replay-audited  ·  telecom-guarded-procedure-v1</text>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p4954fa1d9a">
+   <rect x="0" y="0" width="576" height="720"/>
+  </clipPath>
+ </defs>
+</svg>

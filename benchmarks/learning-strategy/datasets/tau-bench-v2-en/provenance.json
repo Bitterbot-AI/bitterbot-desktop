@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "repository": "sierra-research/tau2-bench",
+  "release": "v2.0.0",
+  "commit": "989d3285ae669e49503324bdb9981bf14fccedeb",
+  "language": "en",
+  "benchmark": "text-v1",
+  "license": "MIT",
+  "downloadedAt": "2026-11-02T03:35:58.348Z",
+  "status": "data inspected; runtime and outcomes not yet qualified",
+  "files": [
+    {
+      "path": "upstream/LICENSE",
+      "sourcePath": "LICENSE",
+      "gitBlobSha": "f0323a32227c1327820da33d2fb9d3338a27ac84",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/benchmarks/text.json",
+      "sourcePath": "data/tau2/benchmarks/text.json",
+      "gitBlobSha": "a75438a5f508a588b3eac1b9510ee93899e1efd5",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/domains/airline/tasks.json",
+      "sourcePath": "data/tau2/domains/airline/tasks.json",
+      "gitBlobSha": "ea4ff5e3f5e3d97ca391846a6e8dd9eb3437dc80",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/retail_tasks_en.json",
+      "sourcePath": "data/tau2/multilingual/en/retail_tasks_en.json",
+      "gitBlobSha": "03feba659718b884af3d051d540f5de01c9ae187",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/telecom_tasks_en.json",
+      "sourcePath": "data/tau2/multilingual/en/telecom_tasks_en.json",
+      "gitBlobSha": "bd047b51ce4629b7393c267de886ec2049937826",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/task_subsets/airline_50.json",
+      "sourcePath": "data/tau2/task_subsets/airline_50.json",
+      "gitBlobSha": "beedcb2439a506f27b8d8cac0084564814ee84bd",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/task_subsets/retail_50.json",
+      "sourcePath": "data/tau2/task_subsets/retail_50.json",
+      "gitBlobSha": "837e569fe3c3447851f3ea67d174a318b120c983",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/task_subsets/telecom_50.json",
+      "sourcePath": "data/tau2/task_subsets/telecom_50.json",
+      "gitBlobSha": "14744fc750067785b988c22ca38f305e74ca498a",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/pack.yaml",
+      "sourcePath": "data/tau2/multilingual/en/pack.yaml",
+      "gitBlobSha": "ce96565b5296b7c36778ad7cd6aebb9259fe0c3f",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/airline_metadata_en.json",
+      "sourcePath": "data/tau2/multilingual/en/airline_metadata_en.json",
+      "gitBlobSha": "c03c07bc3de33dc9dfd6f807864f7a18df457c19",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/retail_metadata_en.json",
+      "sourcePath": "data/tau2/multilingual/en/retail_metadata_en.json",
+      "gitBlobSha": "3eab8916b121a1f97f8e3a81ae18c7cb6237db90",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/multilingual/en/telecom_metadata_en.json",
+      "sourcePath": "data/tau2/multilingual/en/telecom_metadata_en.json",
+      "gitBlobSha": "489dbb7c4e33af8c99c76992d4bcd5b4d9275944",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/domains/airline/policy.md",
+      "sourcePath": "data/tau2/domains/airline/policy.md",
+      "gitBlobSha": "8098be7db3f47de943fad39d1e057ede6cc6cd04",
+      "sourceEndsWithNewline": false
+    },
+    {
+      "path": "upstream/data/tau2/domains/retail/policy.md",
+      "sourcePath": "data/tau2/domains/retail/policy.md",
+      "gitBlobSha": "d127e6b074654926f337d0d98b0e669ebe90d19e",
+      "sourceEndsWithNewline": true
+    },
+    {
+      "path": "upstream/data/tau2/domains/telecom/main_policy.md",
+      "sourcePath": "data/tau2/domains/telecom/main_policy.md",
+      "gitBlobSha": "c55f5bd10c49a3d0b48f6e83a3168e6242fb2be7",
+      "sourceEndsWithNewline": false
+    },
+    {
+      "path": "upstream/docs/evaluation.md",
+      "sourcePath": "docs/evaluation.md",
+      "gitBlobSha": "ae42a6df5db0fc312364c855e8ac8ab0a7bbfcf2",
+      "sourceEndsWithNewline": true
+    }
+  ]
+}

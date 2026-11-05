@@ -1,0 +1,324 @@
+{
+  "status": "complete",
+  "protocolHash": "5639e2a487af23e42074abb27efc5eefef9fa903b7e0cacd21cb855e52788595",
+  "auditHash": "acb619d98d80daf08041e2e86f3427feda5af428c986b7f92f87f22c7eedbbeb",
+  "completeHash": "ea667d452e17e5c6e2d24b8a5a8955a4965267665866795717b302db8306e16e",
+  "summary": [
+    {
+      "group": "advice:candidate-0",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 0,
+      "modelCalls": 51,
+      "nativeActions": 44,
+      "providerUsd": 1.8284686499999998,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "compiled:candidate-0",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 9,
+      "modelCalls": 0,
+      "nativeActions": 54,
+      "providerUsd": 0,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "advice:candidate-1",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 0,
+      "modelCalls": 54,
+      "nativeActions": 48,
+      "providerUsd": 1.7950839000000003,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "compiled:candidate-1",
+      "assigned": 12,
+      "repaired": 6,
+      "errors": 0,
+      "selfVerified": 6,
+      "modelCalls": 0,
+      "nativeActions": 57,
+      "providerUsd": 0,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 0
+        }
+      ]
+    },
+    {
+      "group": "retrieval:shared",
+      "assigned": 12,
+      "repaired": 5,
+      "errors": 4,
+      "selfVerified": 0,
+      "modelCalls": 39,
+      "nativeActions": 29,
+      "providerUsd": 3.9237849000000002,
+      "cases": [
+        {
+          "index": 36,
+          "assigned": 3,
+          "repaired": 3
+        },
+        {
+          "index": 37,
+          "assigned": 3,
+          "repaired": 0
+        },
+        {
+          "index": 39,
+          "assigned": 3,
+          "repaired": 1
+        },
+        {
+          "index": 44,
+          "assigned": 3,
+          "repaired": 1
+        }
+      ]
+    }
+  ],
+  "panel": [
+    {
+      "candidate": "candidate-0",
+      "assigned": 44,
+      "failed": 28,
+      "repaired": 12,
+      "healthy": 16,
+      "preserved": 16,
+      "healthyWrites": 0,
+      "abstained": 8,
+      "errors": 0,
+      "selfVerifiedFalsePositives": 1
+    },
+    {
+      "candidate": "candidate-1",
+      "assigned": 44,
+      "failed": 28,
+      "repaired": 12,
+      "healthy": 16,
+      "preserved": 16,
+      "healthyWrites": 0,
+      "abstained": 8,
+      "errors": 0,
+      "selfVerifiedFalsePositives": 0
+    }
+  ],
+  "gatePassed": false,
+  "byCandidate": [
+    {
+      "candidate": "candidate-0",
+      "valid": true,
+      "generationUsd": 0.174594,
+      "compiledRepairs": 6,
+      "adviceRepairs": 6,
+      "assignedEach": 12,
+      "compiledMinusAdvice": 0,
+      "additionalUnrepaired": {
+        "identity-abstention": 8,
+        "unverified": 7,
+        "verified": 1
+      },
+      "perCase": [
+        {
+          "index": 36,
+          "compiled": 3,
+          "advice": 3
+        },
+        {
+          "index": 37,
+          "compiled": 0,
+          "advice": 0
+        },
+        {
+          "index": 39,
+          "compiled": 3,
+          "advice": 3
+        },
+        {
+          "index": 44,
+          "compiled": 0,
+          "advice": 0
+        }
+      ],
+      "adviceUncachedEquivalentUsd": 2.74155
+    },
+    {
+      "candidate": "candidate-1",
+      "valid": true,
+      "generationUsd": 0.20153459999999998,
+      "compiledRepairs": 6,
+      "adviceRepairs": 6,
+      "assignedEach": 12,
+      "compiledMinusAdvice": 0,
+      "additionalUnrepaired": {
+        "identity-abstention": 8,
+        "unverified": 8
+      },
+      "perCase": [
+        {
+          "index": 36,
+          "compiled": 3,
+          "advice": 3
+        },
+        {
+          "index": 37,
+          "compiled": 0,
+          "advice": 0
+        },
+        {
+          "index": 39,
+          "compiled": 3,
+          "advice": 3
+        },
+        {
+          "index": 44,
+          "compiled": 0,
+          "advice": 0
+        }
+      ],
+      "adviceUncachedEquivalentUsd": 2.898879
+    }
+  ],
+  "review": {
+    "assignments": 148,
+    "interfaceErrors": [
+      {
+        "label": "retrieval-shared-r1-case-2",
+        "error": {
+          "phase": "selection",
+          "message": "The expression evaluated to a falsy value:\n\n  assert.ok(value.actions.length <= (arm === \"batch\" ? 6 : 1))\n"
+        }
+      },
+      {
+        "label": "retrieval-shared-r1-case-3",
+        "error": {
+          "phase": "selection",
+          "message": "The expression evaluated to a falsy value:\n\n  assert.ok(value.actions.length <= (arm === \"batch\" ? 6 : 1))\n"
+        }
+      },
+      {
+        "label": "retrieval-shared-r2-case-2",
+        "error": {
+          "phase": "selection",
+          "message": "The expression evaluated to a falsy value:\n\n  assert.ok(value.actions.length <= (arm === \"batch\" ? 6 : 1))\n"
+        }
+      },
+      {
+        "label": "retrieval-shared-r2-case-3",
+        "error": {
+          "phase": "selection",
+          "message": "The expression evaluated to a falsy value:\n\n  assert.ok(value.actions.length <= (arm === \"batch\" ? 6 : 1))\n"
+        }
+      }
+    ],
+    "wrongEntityActions": 0,
+    "toolErrors": 0,
+    "invalidSubmissions": 0,
+    "serviceChecks": 128,
+    "serviceGradeDisagreements": [],
+    "falseSelfVerifications": [
+      "compiled-candidate-0-r0-case-1",
+      "compiled-candidate-0-r1-case-1",
+      "compiled-candidate-0-r2-case-1",
+      "compiled-candidate-0-panel-34"
+    ],
+    "writeTools": [
+      "assistant.enable_roaming",
+      "user.reset_apn_settings",
+      "user.reboot_device",
+      "user.toggle_roaming"
+    ]
+  },
+  "providerUsd": 7.923466050000003,
+  "uncachedEquivalentUsd": 11.721339000000002,
+  "cumulativeExposureUsd": 203.64979934999988,
+  "interpretation": "Two procedure generations from one prior discovery history; four consumed case clusters. Compiled repetitions are deterministic. Additional44 states are also previously consumed, including28 failed/16 healthy, and are not44 new tasks. Compiled execution removes inference by design; no claim that model weights or general capability improved. All assignments, identity abstentions and failures retained."
+}

@@ -154,7 +154,9 @@
     "tui": "node scripts/run-node.mjs tui",
     "tui:dev": "BITTERBOT_PROFILE=dev node scripts/run-node.mjs --dev tui",
     "ui:build": "node scripts/ui-build.mjs",
-    "version:sync": "node scripts/bump-version.mjs"
+    "version:sync": "node scripts/bump-version.mjs",
+    "test:learning-strategy": "vitest run --config vitest.unit.config.ts src/memory/learning-strategy src/memory/procedural-learning src/memory/experience-memory src/memory/procedure-association",
+    "test:learning-strategy:benchmark": "vitest run --config benchmarks/learning-strategy/vitest.config.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.2",

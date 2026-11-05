@@ -1,0 +1,111 @@
+{
+  "benchmark_version": "text-v1",
+  "revision": "regional-release-data-v16",
+  "mode": "text",
+  "task_subsets": {
+    "airline": {
+      "name": "airline_50",
+      "sha256": "055b5d4f8a0a09d297226ee1fe6f2fb01115ac0953e705388fd3dc34b46998db"
+    },
+    "retail": {
+      "name": "retail_50",
+      "sha256": "dc7490f023d1bf9c345edf9c37a8e658298ac3a5be884e012bfb271b3678f2be"
+    },
+    "telecom": {
+      "name": "telecom_50",
+      "sha256": "c6376fe23ee7f8c5d94d38b2ba9864c638cfda25f4d4efd8a8dfb2ecdd9f9c03"
+    }
+  },
+  "cells": [
+    {
+      "language": "en",
+      "domain": "airline",
+      "binding_revision": "fe3df4be3f8a956b448afc8d5a543d023de67e90ec2eab180c8af7ad3f8c5ddc"
+    },
+    {
+      "language": "en",
+      "domain": "retail",
+      "binding_revision": "e73f190f6820db05b0baa8472505f4676d3c40114bae0fe93f5fbd56d8321bf3"
+    },
+    {
+      "language": "en",
+      "domain": "telecom",
+      "binding_revision": "1fb3090c843b636beccba54b714eca4235d6ca673db54bfa32492805afd3ffbe"
+    },
+    {
+      "language": "es",
+      "domain": "airline",
+      "binding_revision": "44d6b60878afb6d840f0e1425125e960a14f2826111408344eb1109fc688f03a"
+    },
+    {
+      "language": "es",
+      "domain": "retail",
+      "binding_revision": "3f2366d4734b378929bf8fe71395459a6507b67332c152e07b3239a148745a4c"
+    },
+    {
+      "language": "es",
+      "domain": "telecom",
+      "binding_revision": "6c753f8f5ddac1a43303db63ae3ca96771e23a59a801b5a1f84736f771094452"
+    },
+    {
+      "language": "pt",
+      "domain": "airline",
+      "binding_revision": "c9797cc49f3c695dad2a6ab79ef6eb0d21c4566db913cba8f79c38b103396904"
+    },
+    {
+      "language": "pt",
+      "domain": "retail",
+      "binding_revision": "1ac505466dbb4199a0ef1a24d8a0d29e8c47ef5abd50b3068a5c18207421e398"
+    },
+    {
+      "language": "pt",
+      "domain": "telecom",
+      "binding_revision": "cd1b623edc150a5949cfc9d1a5a4665d608fd1beed1da180b4926e065867fe74"
+    },
+    {
+      "language": "hi",
+      "domain": "airline",
+      "binding_revision": "d5cee890689c3eeb928d2554f12e60b71bf68e5008cf70efd405daadc47841b7"
+    },
+    {
+      "language": "hi",
+      "domain": "retail",
+      "binding_revision": "29fbba4005cdcea64685fd48eeb09f3bd8ba11b294222a3f7c72f1a47f4c040a"
+    },
+    {
+      "language": "hi",
+      "domain": "telecom",
+      "binding_revision": "0fce856d18640de50e77e109c662fd1b4c70738c829b8ac6d678b61d8035bcc2"
+    },
+    {
+      "language": "zh",
+      "domain": "airline",
+      "binding_revision": "25673a92cdf34f6ee1dcbec3eebda8c2756bf479ead377fee55d13ca493ba949"
+    },
+    {
+      "language": "zh",
+      "domain": "retail",
+      "binding_revision": "72f4818e02a34f40e704e6b6406d4bc5317fe850be6366a28212a2bbf41056c1"
+    },
+    {
+      "language": "zh",
+      "domain": "telecom",
+      "binding_revision": "d8eb9074b743d7ea35748a8e0ad1ac58510ce875719a9ec4994cb82f0c8178ee"
+    },
+    {
+      "language": "ko",
+      "domain": "airline",
+      "binding_revision": "339e3194ef83ad442553c80c695b3cd51a0da44953c1d14b1aef4a97801d9ae6"
+    },
+    {
+      "language": "ko",
+      "domain": "retail",
+      "binding_revision": "1fbe9961d927c60bd1a7a3a45307c459d1fb10c1cbdcc9ed630c0dee4e4790d3"
+    },
+    {
+      "language": "ko",
+      "domain": "telecom",
+      "binding_revision": "432731d7724ee3dbd08352a3d83c2dd84f8e8613ce5d6d4fbdfb86010a38d77d"
+    }
+  ]
+}

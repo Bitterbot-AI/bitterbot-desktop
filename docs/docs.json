@@ -724,6 +724,8 @@
                   "memory/curiosity-and-search",
                   "memory/curiosity-reward",
                   "memory/evidence-telemetry",
+                  "memory/learning-strategy-lab",
+                  "memory/telecom-guarded-procedure-reuse",
                   "memory/emotional-system",
                   "memory/biological-identity"
                 ]
