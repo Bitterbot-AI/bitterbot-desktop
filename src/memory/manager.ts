@@ -153,6 +153,7 @@ import {
 } from "./owner-controls.js";
 import { PeerReputationManager } from "./peer-reputation.js";
 import { truncateAtSentence } from "./proactive-recall.js";
+import { resolveLearningConfig } from "./procedural-learning-contract.js";
 import { ProceduralLearningStore } from "./procedural-learning-store.js";
 import { ProceduralLearning } from "./procedural-learning.js";
 import { ProspectiveMemoryEngine } from "./prospective-memory.js";
@@ -7851,11 +7852,11 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.curiosityEngine.getState();
   }
 
-  /** A separate per-agent database survives vector reindexing without evidence loss. */
+  /** Default-on, lazy shadow service. Its separate database survives vector reindexing. */
   proceduralLearning(): ProceduralLearning | null {
     if (this.closed) return null;
-    const config = this.cfg.memory?.proceduralLearning;
-    if (!config || config.mode === "off") return null;
+    const config = resolveLearningConfig(this.cfg.memory?.proceduralLearning);
+    if (config.mode === "off") return null;
     if (!this.proceduralLearningService) {
       const dir = resolveAgentDir(this.cfg, this.agentId);
       mkdirSync(dir, { recursive: true });

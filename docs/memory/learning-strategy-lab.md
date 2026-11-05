@@ -3,9 +3,34 @@ title: "Learning Strategy Lab"
 description: "Shadow evaluation of evolving actor and proposer instructions with local execution evidence and authenticated transfer."
 ---
 
-The strategy lab is a host-only experimental capability of the existing procedural-learning service. It does not start a background job, alter the live harness, or publish to the public network. Access `service.strategies` on a configured `ProceduralLearning` instance. The store must be in `shadow` mode; active and off stores reject lab work. Construction is lazy and uses additional tables in the existing database.
+The strategy lab is a host-only experimental capability of the procedural-learning service, available by default in `shadow` mode. It does not start a background job, alter the live harness, or publish to the public network. Access `service.strategies` on a `ProceduralLearning` instance. Active and off stores reject lab work. Construction is lazy; each agent has a separate `procedural-learning.sqlite` in its agent directory, which survives memory-vector reindexing.
 
-Hosts obtain the existing per-agent service with `getProceduralLearning({ cfg, agentId })` from the plugin SDK. The returned service may be null when procedural learning is disabled. A typical experiment registers development and held-out panels, adds the starting strategy with `archive.add`, evaluates it, proposes and evaluates children, selects from `archive.rank(developmentPanelId)`, and freezes the chosen hashes with `archive.seal` before final evaluation. The runnable benchmark below demonstrates this complete sequence, including fixed-proposer controls and recipient imports. Registering a panel is a trusted host operation; the `isolation` declaration is not itself an operating-system sandbox.
+Hosts obtain the per-agent service with `getProceduralLearning({ cfg, agentId })` from the plugin SDK. No configuration block is required. The returned service may be null when explicitly disabled or when the memory manager is unavailable. A typical experiment registers development and held-out panels, adds the starting strategy with `archive.add`, evaluates it, proposes and evaluates children, selects from `archive.rank(developmentPanelId)`, and freezes the chosen hashes with `archive.seal` before final evaluation. The runnable benchmark below demonstrates this complete sequence, including fixed-proposer controls and recipient imports. Registering a panel is a trusted host operation; the `isolation` declaration is not itself an operating-system sandbox.
+
+## Defaults and automatic behavior
+
+| Component                                                                  | Default             | What runs                                                                                                                                                                                 |
+| -------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production skill evolution (`skills.evolution.enabled`)                    | `true`              | The dream post-cycle hook learns from journaled runs and proposes skills when evidence, a model, cadence and budgets permit. Validation, canary monitoring and rollback govern promotion. |
+| Procedural service (`memory.proceduralLearning.mode`)                      | `shadow`            | A local evidence store opens on first host use. Sandbox evaluations run only when a host registers an adapter and requests them.                                                          |
+| Verified experience (`memory.proceduralLearning.experienceMemory.enabled`) | `true`              | After a settled acquisition run, a registered adapter's optional redacted extractor can attach experience. Held-out runs and invalid or interrupted outcomes are excluded.                |
+| Strategy lab (`service.strategies`)                                        | Available in shadow | The host explicitly supplies panels, proposals and evaluations. There is no scheduler or automatic connection to conversation traces.                                                     |
+
+The production loop is documented in [Skills pipeline](skills-pipeline.md). Enabling the research service does not feed its candidates into that loop. Shadow lookup supplies no lessons for live decisions, and experience recall requires an explicit shadow-evaluation request. No ordinary user conversation is copied into this store automatically.
+
+The defaults need no config. To disable the service:
+
+```json5
+{
+  memory: {
+    proceduralLearning: { mode: "off" },
+  },
+}
+```
+
+To retain the lab but disable experience extraction, set `memory.proceduralLearning.experienceMemory.enabled: false`. This also prevents the adapter's extraction callback from running. Existing explicit `off`, `active`, and `enabled: false` settings are respected. Restart the gateway after changing these settings. Malformed procedural settings are rejected when the service is requested; they do not fall back to enabling it.
+
+`active` remains an explicit host-integration choice for procedural execution and retrieval. It is not an autonomous-learning switch and cannot run strategy-lab experiments. No default tool scopes or adapters are registered. The procedural execution budget defaults to zero provider dollars, 100 tool calls and 60 seconds; host-requested strategy evaluations additionally use explicit, durably accounted budgets. Merely opening the service issues no model calls.
 
 ```mermaid
 flowchart LR
@@ -49,4 +74,6 @@ The [experiment harness](../../benchmarks/learning-strategy/README.md) implement
 
 ## Main integration boundary
 
-The service is opt-in through `memory.proceduralLearning`; absent configuration or `mode: "off"` returns no service. The strategy lab requires `mode: "shadow"`. This merge exposes the host SDK and isolated research harness; it does not wire lessons into live prompts, start dream learning jobs, or automatically publish candidates. Existing gateway staging and promotion controls remain in place. Signed research packets cannot become active filesystem skills through trust or manual acceptance.
+Omitted `memory.proceduralLearning` settings enable lazy shadow access; `mode: "off"` returns no service. The default-on change enables the host facility and verified-experience capture, not autonomous experiments or live procedure promotion. Existing gateway staging and promotion controls remain in place. Signed research packets cannot become active filesystem skills through trust or manual acceptance.
+
+The [latest repair-reuse study](telecom-guarded-procedure-reuse.md) found that each generated procedure repaired 12/28 additional failed recorded states and preserved 16/16 healthy states without mutations, with zero model calls during execution. Generation used model calls. Both tied advice at 6/12 on the original inputs and failed the frozen qualification gate. The four consumed case clusters do not establish fresh-task, real-user or recipient-transfer benefit. Default availability does not change those results or qualify those candidates for production. See the [complete evidence archive](../../benchmarks/learning-strategy/data/README.md), including unsuccessful runs.

@@ -67,6 +67,12 @@ numbers from other systems mostly use a different judge or reader and are not
 directly comparable. Setup, per-type table, miss analysis and raw outputs:
 [benchmarks/longmemeval](https://github.com/Bitterbot-AI/bitterbot-desktop/blob/main/benchmarks/longmemeval/README.md).
 
+## Procedural learning and repair reuse
+
+The [learning-strategy archive](../../benchmarks/learning-strategy/README.md) includes all 51 recorded synthetic runs, including unsuccessful and interrupted runs, with SHA-256 manifests, restoration tools and replay instructions. The [latest publication bundle](../../benchmarks/learning-strategy/published/telecom-repair-reuse-v1/README.md) contains all 148 execution rows and the Bitterbot-branded graphic.
+
+In the [conditional repair-reuse study](../memory/telecom-guarded-procedure-reuse.md), two generated procedures each repaired 12/28 additional failed recorded states and preserved 16/16 healthy states without mutations. Execution used zero model calls; generation required calls. Both matched advice at 6/12 on the original inputs and failed the frozen qualification gate. These are states within four consumed case clusters, not fresh-task or real-user evidence. The default-on shadow service does not promote these candidates into production.
+
 ## Reports
 
 Newest first.

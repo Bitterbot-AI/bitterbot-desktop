@@ -15,6 +15,7 @@ A consciousness-inspired memory pipeline:
 - **Session Transcript Indexing**: Conversations are automatically chunked, embedded, and made searchable. The agent can recall prior exchanges semantically.
 - **Governance**: Sensitivity tagging (normal/personal/confidential), TTL enforcement, audit trails on all memory operations. Anti-catastrophic forgetting safeguards.
 - **User Profile**: Automatically learned preferences (directive, world_fact, mental_model, experience types) persisted across sessions.
+- **Procedural learning lab** (`procedural-learning*.ts`, `learning-strategy*.ts`): default-on, lazy host service in `memory.proceduralLearning.mode: "shadow"`, with redacted experience capture from verified acquisition runs enabled. Explicit `off` disables it. Host adapters supply executions and outcome checks; no automatic conversation capture, experiment scheduler or live candidate promotion is wired here. This is separate from production skill evolution. See `docs/memory/learning-strategy-lab.md` and `benchmarks/learning-strategy/` for the API and complete research evidence, including failed qualification gates.
 
 ### 2. Dream Engine (`src/memory/dream-engine.ts`)
 

@@ -1,4 +1,6 @@
 export const FIELD_LABELS: Record<string, string> = {
+  "memory.proceduralLearning.mode": "Procedural Learning Mode",
+  "memory.proceduralLearning.experienceMemory.enabled": "Verified Experience Capture",
   // PLAN-41 adjudicated D-D: every default-flipped flag must be reachable as
   // a Settings toggle, not just via Raw JSON / dotted keys.
   "p2p.enabled": "P2P Mesh Enabled",

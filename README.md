@@ -214,6 +214,8 @@ The gate observes whether the agent actually reads the skill. A skill that does 
 
 **You can inspect the evidence.** The Evolution tab and `bitterbot skills evidence` expose validation results, credited uses, model information, and lineage. Young nodes may produce few promotions while evidence accumulates.
 
+Production skill evolution is **on by default**, subject to evidence, model availability and budgets. The separate [Learning Strategy Lab](docs/memory/learning-strategy-lab.md) is available by default in shadow mode, with verified-experience capture for host-supplied experiments. It does not automatically run experiments or put research candidates into live conversations. Set `memory.proceduralLearning.mode: "off"` to disable that facility; `skills.evolution.enabled: false` disables the production evolution loop.
+
 Skills can also include **pre-action interceptors**: code that checks proposed tool calls and can modify parameters, add context, require prerequisites, or block execution. Because an interceptor is a code path rather than a prompt, it runs on every matching tool call.
 
 Passing a task suite is a bounded result, not a guarantee of improvement on every task. Published benchmarks include their caveats; broad learning gains remain an active evaluation target.

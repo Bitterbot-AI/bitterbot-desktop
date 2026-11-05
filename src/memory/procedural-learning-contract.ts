@@ -28,12 +28,12 @@ export const LearningConfigSchema = z
     executionBudget: LearningCostSchema.default({ providerUsd: 0, toolCalls: 100, wallMs: 60000 }),
     experienceMemory: z
       .object({
-        enabled: z.boolean().default(false),
+        enabled: z.boolean().default(true),
         maxPromptChars: z.number().int().min(512).max(12000).default(6000),
         minSupport: z.number().int().min(2).max(10).default(2),
       })
       .strict()
-      .default({ enabled: false, maxPromptChars: 6000, minSupport: 2 }),
+      .default({ enabled: true, maxPromptChars: 6000, minSupport: 2 }),
   })
   .strict();
 export const LearningCandidateSchema = z
@@ -57,6 +57,13 @@ export type LearningScope = z.infer<typeof LearningScopeSchema>;
 export type LearningCost = z.infer<typeof LearningCostSchema>;
 export type LearningCandidate = z.infer<typeof LearningCandidateSchema>;
 export type LearningConfig = z.infer<typeof LearningConfigSchema>;
+export type LearningConfigInput = z.input<typeof LearningConfigSchema>;
+
+/** Omission enables the shadow service; malformed settings never opt into it. */
+export function resolveLearningConfig(input: unknown): LearningConfig {
+  return LearningConfigSchema.parse(input === undefined ? {} : input);
+}
+
 export const ZERO_LEARNING_COST: LearningCost = { providerUsd: 0, toolCalls: 0, wallMs: 0 };
 
 /** Canonical hashes do not depend on JSON property order. Only JSON data is accepted. */
