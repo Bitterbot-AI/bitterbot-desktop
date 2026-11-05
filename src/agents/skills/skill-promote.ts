@@ -51,6 +51,8 @@ export interface PromoteParams {
   forceGate?: boolean;
   /** Optional owner-review binding, checked again by the final storage read. */
   expectedContent?: string;
+  /** The incumbent used by a behavioral comparison; null pins a new create. */
+  expectedLiveContent?: string | null;
   createOnly?: boolean;
   /**
    * PLAN-44 Phase 3: content staged by the evolution pipeline (carrying
@@ -250,6 +252,7 @@ export async function promoteStaged(
       author,
       ...(params.timestamp ? { timestamp: params.timestamp } : {}),
       expectedContent: params.expectedContent,
+      expectedLiveContent: params.expectedLiveContent,
       createOnly: params.createOnly,
     });
     for (const file of EVOLUTION_SIDECARS) {

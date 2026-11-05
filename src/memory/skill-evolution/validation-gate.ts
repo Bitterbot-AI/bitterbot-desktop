@@ -1225,6 +1225,7 @@ async function settleOne(
       reason: `validation gate accept (${mode}${isPeer ? ", peer re-gate" : ""})`,
       author: isPeer ? "peer" : "evolution",
       expectedContent: staged.content,
+      expectedLiveContent: incumbent,
       createOnly: isCreate,
       // PLAN-44 Phase 3: the validation gate is the ONE path allowed to
       // promote evolution-staged content.
