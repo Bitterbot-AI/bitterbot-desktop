@@ -450,6 +450,35 @@ describe("runValidationGate (PLAN-44 Phase 2)", () => {
     expect(await readLive(roots, "curl-timeout-guard")).toBeNull();
   });
 
+  it("preserves a live skill edited after its incumbent trials", async () => {
+    await stage();
+    await growCorpus(6);
+    const roots = resolveStorageRoots({ configDir: tmpDir });
+    const liveDir = path.join(roots.liveRoot, "curl-timeout-guard");
+    await fs.mkdir(liveDir, { recursive: true });
+    await fs.writeFile(path.join(liveDir, "SKILL.md"), SKILL_MD + "\nOriginal baseline.");
+    const edited = SKILL_MD + "\nOwner changed this during the experiment.";
+    let checks = 0;
+    const outcomes = await runValidationGate({
+      journal: null,
+      llmCall: null,
+      storeOpts: { configDir: tmpDir },
+      trialsPerTask: 1,
+      runTask: winningRunner,
+      assertCanValidate: () => {
+        if (++checks === 2) writeFileSync(path.join(liveDir, "SKILL.md"), edited);
+      },
+    });
+    expect(outcomes[0]).toMatchObject({
+      outcome: "error",
+      detail: expect.stringContaining("live skill changed"),
+    });
+    expect(await readLive(roots, "curl-timeout-guard")).toBe(edited);
+    expect(
+      (await readCanaryRegistry({ configDir: tmpDir })).skills["curl-timeout-guard"],
+    ).toBeUndefined();
+  });
+
   it("auto-flips to tasks mode once the corpus has 5 reviewed capability tasks (D-2)", async () => {
     await stage();
     await growCorpus(5);
