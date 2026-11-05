@@ -57,7 +57,7 @@ function setup(mode: "shadow" | "active" | "off" = "shadow", database = ":memory
     verify: async (input, output) => ({
       passed: output === Number(input) * 3,
       cost: { ...zero, toolCalls: 1 },
-      feedback: `input=${input},output=${output}`,
+      feedback: `input=${String(input)},output=${String(output)}`,
     }),
   };
   return {

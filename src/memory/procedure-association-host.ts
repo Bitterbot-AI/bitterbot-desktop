@@ -33,6 +33,8 @@ export class ProcedureAssociationHost {
     const empty = { status: "unavailable", observations: 0, ranked: [] };
     if (
       this.store.config.mode !== "shadow" ||
+      // Retain the literal-true runtime check for JavaScript/plugin callers.
+      // oxlint-disable-next-line typescript/no-unnecessary-boolean-literal-compare
       params.shadowEvaluation !== true ||
       !this.store.config.experienceMemory.enabled
     )
