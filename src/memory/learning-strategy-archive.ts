@@ -1,10 +1,10 @@
-import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 import {
   LearningStrategySchema,
   type LearningStrategy,
   type StrategyEvaluation,
 } from "./learning-strategy-contract.js";
 import { learningHash } from "./procedural-learning-contract.js";
+import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 
 /** A search archive in the existing database; no strategy is an active skill. */
 export class LearningStrategyArchive {

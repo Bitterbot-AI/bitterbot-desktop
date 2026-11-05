@@ -1,10 +1,10 @@
-import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 import { ExperienceDescriptionSchema } from "./experience-memory.js";
 import {
   learningHash,
   LearningScopeSchema,
   type LearningScope,
 } from "./procedural-learning-contract.js";
+import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 import {
   ProcedureAssociation,
   type AssociationContext,

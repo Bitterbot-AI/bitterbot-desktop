@@ -147,6 +147,8 @@
     "test:fast": "vitest run --config vitest.unit.config.ts",
     "test:force": "node --import tsx scripts/test-force.ts",
     "test:gateway": "vitest run --config vitest.gateway.config.ts",
+    "test:learning-strategy": "vitest run --config vitest.unit.config.ts src/memory/learning-strategy src/memory/procedural-learning src/memory/experience-memory src/memory/procedure-association",
+    "test:learning-strategy:benchmark": "vitest run --config benchmarks/learning-strategy/vitest.config.ts",
     "test:live": "BITTERBOT_LIVE_TEST=1 vitest run --config vitest.live.config.ts",
     "test:macmini": "BITTERBOT_TEST_VM_FORKS=0 BITTERBOT_TEST_PROFILE=serial node scripts/test-parallel.mjs",
     "test:watch": "vitest",
@@ -154,9 +156,7 @@
     "tui": "node scripts/run-node.mjs tui",
     "tui:dev": "BITTERBOT_PROFILE=dev node scripts/run-node.mjs --dev tui",
     "ui:build": "node scripts/ui-build.mjs",
-    "version:sync": "node scripts/bump-version.mjs",
-    "test:learning-strategy": "vitest run --config vitest.unit.config.ts src/memory/learning-strategy src/memory/procedural-learning src/memory/experience-memory src/memory/procedure-association",
-    "test:learning-strategy:benchmark": "vitest run --config benchmarks/learning-strategy/vitest.config.ts"
+    "version:sync": "node scripts/bump-version.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "2.0.2",

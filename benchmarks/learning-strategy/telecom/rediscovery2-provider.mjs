@@ -1,7 +1,7 @@
-import dotenv from "dotenv";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import dotenv from "dotenv";
 
 export const model = "claude-sonnet-4-6";
 export const rates = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75, cacheWrite1h: 6 };

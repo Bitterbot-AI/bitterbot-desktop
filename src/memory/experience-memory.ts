@@ -1,10 +1,10 @@
 import { z } from "zod";
-import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 import {
   learningHash,
   LearningScopeSchema,
   type LearningScope,
 } from "./procedural-learning-contract.js";
+import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const contextSchema = z

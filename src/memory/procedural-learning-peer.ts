@@ -1,7 +1,7 @@
-import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 import { validateSkillEnvelope } from "../agents/skills/envelope-validation.js";
+import type { SkillEnvelope } from "../agents/skills/ingest.js";
 import { LearningCandidateSchema, learningHash } from "./procedural-learning-contract.js";
+import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 
 export const LEARNING_PACKET_MARKER = "bitterbot-procedural-learning-v1";
 

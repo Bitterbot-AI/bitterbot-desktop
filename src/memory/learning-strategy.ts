@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 import { LearningStrategyArchive } from "./learning-strategy-archive.js";
 import {
   StrategyEditSchema,
@@ -16,6 +15,7 @@ import {
   withinLearningBudget,
   type LearningCost,
 } from "./procedural-learning-contract.js";
+import type { ProceduralLearningStore } from "./procedural-learning-store.js";
 
 /** Host-only research capability. No background work, model tool, or live activation. */
 export class LearningStrategyLab {

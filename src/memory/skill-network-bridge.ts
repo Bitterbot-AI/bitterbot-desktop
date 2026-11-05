@@ -6,27 +6,27 @@
  * Inbound: P2P skill envelopes → Knowledge Crystal in memory
  */
 
-import type { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import { validateSkillEnvelope } from "../agents/skills/envelope-validation.js";
 import type { SkillEnvelope } from "../agents/skills/ingest.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
+import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
 import type { CuriosityEngine } from "./curiosity-engine.js";
 import type { ExplorationTargetType } from "./curiosity-types.js";
 import type { HormonalStateManager } from "./hormonal.js";
+import { STRATEGY_PACKET_MARKER } from "./learning-strategy-peer.js";
 import type { PublishResult, ImportResult } from "./mem-store.js";
 import type { PeerReputationManager } from "./peer-reputation.js";
-import type { ProceduralLearning } from "./procedural-learning.js";
-import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
-import type { SkillVerifier } from "./skill-verifier.js";
-import { validateSkillEnvelope } from "../agents/skills/envelope-validation.js";
-import { createSubsystemLogger } from "../logging/subsystem.js";
-import { scanSkillForInjection } from "../security/skill-injection-scanner.js";
-import { STRATEGY_PACKET_MARKER } from "./learning-strategy-peer.js";
 import {
   exportLearningPacket,
   importLearningPacket,
   LEARNING_PACKET_MARKER,
 } from "./procedural-learning-peer.js";
+import type { ProceduralLearning } from "./procedural-learning.js";
 import { skillCategoryFromContent } from "./skill-category.js";
+import type { SkillExecutionTracker } from "./skill-execution-tracker.js";
+import type { SkillVerifier } from "./skill-verifier.js";
 import { SkillVersionResolver } from "./skill-version-resolver.js";
 
 const log = createSubsystemLogger("memory/skill-network-bridge");

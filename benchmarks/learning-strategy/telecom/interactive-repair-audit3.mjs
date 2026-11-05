@@ -125,15 +125,20 @@ assert.deepEqual(complete.assignments, p.assignments);
 // Completion order changed only the presentation order of case rows in the frozen collector.
 // Compare every stored value after sorting those rows by case identity, then independently
 // recompute the gate by case identity. Original complete.json and frozen sources stay unchanged.
-const normalize = value => {
+const normalize = (value) => {
   const clone = structuredClone(value);
-  for (const arm of clone.arms) arm.cases.sort((a,b)=>a.index-b.index);
+  for (const arm of clone.arms) arm.cases.sort((a, b) => a.index - b.index);
   return clone;
 };
 const reconstructed = normalize(summarizeRepairs(p.assignments, attempts));
 assert.deepEqual(reconstructed, normalize(complete.summary));
 const [batch, interactive] = reconstructed.arms;
-const independentGate = reconstructed.arms.every(a=>a.errors===0) && interactive.repaired>=batch.repaired+3 && interactive.cases.every(c=>c.repaired>=batch.cases.find(b=>b.index===c.index).repaired);
+const independentGate =
+  reconstructed.arms.every((a) => a.errors === 0) &&
+  interactive.repaired >= batch.repaired + 3 &&
+  interactive.cases.every(
+    (c) => c.repaired >= batch.cases.find((b) => b.index === c.index).repaired,
+  );
 assert.equal(independentGate, complete.summary.mechanismGatePassed);
 
 const usd = receipts.reduce((s, r) => s + r.usd, 0),

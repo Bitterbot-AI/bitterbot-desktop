@@ -1,8 +1,8 @@
 import { z } from "zod";
-import type { SkillEnvelope } from "../agents/skills/ingest.js";
-import type { LearningStrategyLab } from "./learning-strategy.js";
 import { validateSkillEnvelope } from "../agents/skills/envelope-validation.js";
+import type { SkillEnvelope } from "../agents/skills/ingest.js";
 import { LearningStrategySchema } from "./learning-strategy-contract.js";
+import type { LearningStrategyLab } from "./learning-strategy.js";
 import { learningHash } from "./procedural-learning-contract.js";
 
 export const STRATEGY_PACKET_MARKER = "bitterbot-learning-strategy-v1";
