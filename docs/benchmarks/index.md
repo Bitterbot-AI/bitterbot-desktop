@@ -115,6 +115,13 @@ lessons (40.6%), counts in the notes (41.3%), counts on the skill index
 (counts above lessons) was null. Agents with counts or lessons kept going
 back to a skill after it was rejected; agents with the episode log moved on.
 
+A pre-registered confirmation on fresh seeds (both Claude Haiku 4.5 and
+gpt-5.4-mini) did not confirm the episode log over counts by its registered
+sign test (+16.5 and +15.4 pp, p 0.16 and 0.08). It found a larger, simpler
+effect: writing the same counts as words ("REJECTED every time it was used")
+raised pass from 45.3% to 67.2% on Haiku and from 34.6% to 73.7% on
+gpt-5.4-mini (Holm p 0.023 and below 0.0001), the best format on both models.
+
 ## Long-term memory recall (LongMemEval-S)
 
 A full 500-question run of [LongMemEval-S](https://github.com/xiaowu0162/LongMemEval)

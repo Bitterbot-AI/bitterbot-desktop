@@ -374,3 +374,43 @@ Claude Haiku 4.5 and OpenAI gpt-5.4-mini, 64 cells x 8 episodes per arm.
 node --import tsx benchmarks/skill-prior/online-run.ts --study confirm --episodes 8 --yes
 node --import tsx benchmarks/skill-prior/online-run.ts --study confirm --episodes 8 --model openai/gpt-5.4-mini --yes
 ```
+
+### Confirmation result (2026-11-06)
+
+Mean pass over episodes 1..7, 64 cells per arm:
+
+| Arm               | Haiku 4.5 | gpt-5.4-mini |
+| ----------------- | --------: | -----------: |
+| none              |     26.3% |        25.0% |
+| records           |     45.3% |        34.6% |
+| records-verbal    |     67.2% |        73.7% |
+| records-index     |     61.4% |        46.7% |
+| episodes          |     61.8% |        50.0% |
+| episodes-noanswer |     59.8% |        63.6% |
+
+| Contrast                         |                        Haiku 4.5 |                     gpt-5.4-mini |
+| -------------------------------- | -------------------------------: | -------------------------------: |
+| episodes minus records (primary) | +16.5 pp, 28/20/16, sign p 0.156 | +15.4 pp, 25/15/24, sign p 0.077 |
+| episodes-noanswer minus records  |           +14.5 pp, Holm p 0.044 |          +29.0 pp, Holm p 0.0065 |
+| episodes minus episodes-noanswer |             +2.0 pp, Holm p 0.50 |           -13.6 pp, Holm p 0.995 |
+| records-verbal minus records     |           +21.9 pp, Holm p 0.023 |        +39.1 pp, Holm p < 0.0001 |
+| records-index minus records      |          +16.1 pp, Holm p 0.0086 |            +12.1 pp, Holm p 0.24 |
+
+Stay rate after a reject: records 58% (Haiku) and 68% (gpt), records-verbal
+24% and 9%, episodes 28% and 60%, episodes-noanswer 29% and 36%. Stay after
+an accept is 92-99% in every memory arm.
+
+- The registered primary was not confirmed on either model. The effect points
+  the predicted way on both (+16.5 and +15.4 pp, family-cluster CIs above zero)
+  but the sign test, which counts many tied cells, does not reach 0.05.
+- The clearest result is a secondary one: the same per-skill counts written in
+  words ("REJECTED every time it was used") instead of numbers lifted pass by
+  22 pp (Haiku) and 39 pp (gpt), the best arm on both models. The agent acts
+  on a stated verdict and largely ignores a numeric tally.
+- The answer text in the episode log does not help, and on gpt-5.4-mini it
+  hurts (the log without answers is 13.6 pp better and abandons rejected
+  skills more often).
+- The mechanism prediction holds: numeric records keep returning to a rejected
+  skill; verbal records and verdict-only logs move on.
+
+Spend $34.70 (Haiku) and $18.79 (gpt-5.4-mini).
