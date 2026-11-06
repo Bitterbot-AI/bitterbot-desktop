@@ -138,6 +138,17 @@ export const FIELD_HELP: Record<string, string> = {
     "Allow Control UI auth over insecure HTTP (token-only; not recommended).",
   "gateway.controlUi.dangerouslyDisableDeviceAuth":
     "DANGEROUS. Disable Control UI device identity checks (token/password only).",
+  "gateway.mobile.enabled":
+    "Serve the phone app at /m and allow pairing phones with one-time setup codes (default: true).",
+  "gateway.mobile.publicUrl":
+    "Address a phone should open this gateway at, e.g. https://box.tailnet.ts.net. Pairing QR codes use it first.",
+  "gateway.mobile.push.enabled":
+    "Send Web Push notifications (approvals, replies, owner notices) to paired phones that turned them on (default: true).",
+  "gateway.mobile.push.subject":
+    "VAPID contact (mailto: or https: URL) the gateway gives push services (default: the project URL).",
+  "gateway.mobile.push.maxPerHour": "Push notifications per device per hour (default: 30).",
+  "gateway.mobile.push.allowedEndpointHosts":
+    "Extra push service hostnames to accept subscription endpoints from (Apple, Google, Mozilla and Microsoft are built in).",
   "gateway.http.endpoints.chatCompletions.enabled":
     "Enable the OpenAI-compatible `POST /v1/chat/completions` endpoint (default: false).",
   "gateway.reload.mode": 'Hot reload strategy for config changes ("hybrid" recommended).',

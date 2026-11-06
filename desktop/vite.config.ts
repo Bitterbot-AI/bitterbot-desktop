@@ -85,6 +85,15 @@ export default defineConfig(() => {
     build: {
       outDir: path.resolve(configDir, "dist-renderer"),
       emptyOutDir: true,
+      // Two pages from one bundle graph: the Control UI and the phone app
+      // (PLAN-62), which the gateway serves at /m/ and which shares the design
+      // tokens, gateway client and device identity with the Control UI.
+      rollupOptions: {
+        input: {
+          main: path.resolve(configDir, "renderer/index.html"),
+          mobile: path.resolve(configDir, "renderer/m/index.html"),
+        },
+      },
     },
     // Expose resolved values as import.meta.env.VITE_* in the renderer.
     // This replaces the need for a desktop/.env file.

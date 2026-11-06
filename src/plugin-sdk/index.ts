@@ -143,6 +143,10 @@ export {
   listDevicePairing,
   rejectDevicePairing,
 } from "../infra/device-pairing.js";
+// PLAN-62: phone pairing with one-time setup codes (the /pair command).
+export { createSetupCode, SETUP_CODE_TTL_MS } from "../gateway/mobile/pairing.js";
+export { buildMobilePairUrl, resolveMobileBaseUrls } from "../gateway/mobile/urls.js";
+export type { MobileBaseUrl } from "../gateway/mobile/urls.js";
 export { createDedupeCache } from "../infra/dedupe.js";
 export type { DedupeCache } from "../infra/dedupe.js";
 export { formatErrorMessage } from "../infra/errors.js";

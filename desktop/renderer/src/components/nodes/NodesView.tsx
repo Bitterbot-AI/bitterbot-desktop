@@ -1,4 +1,5 @@
-import { useCallback, useEffect } from "react";
+import { Smartphone } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useGatewayEvent } from "../../hooks/useGatewayEvent";
 import { describeError } from "../../lib/describe-error";
@@ -6,6 +7,8 @@ import { formatRelativeTime } from "../../lib/format";
 import { cn } from "../../lib/utils";
 import { useGatewayStore } from "../../stores/gateway-store";
 import { useNodesStore, type NodeEntry, type PairRequest } from "../../stores/nodes-store";
+import { DevicesSection } from "./DevicesSection";
+import { PairPhoneDialog } from "./PairPhoneDialog";
 
 function NodeCard({ node }: { node: NodeEntry }) {
   return (
@@ -191,29 +194,42 @@ export function NodesView() {
   );
 
   const connectedCount = nodes.filter((n) => n.connected).length;
+  const [pairOpen, setPairOpen] = useState(false);
 
   return (
     <div className="h-full overflow-y-auto p-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Nodes</h1>
+          <h1 className="text-2xl font-bold text-foreground">Devices</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {connectedCount} connected, {nodes.length} total
           </p>
         </div>
-        <button
-          onClick={refresh}
-          disabled={loading}
-          className={cn(
-            "px-3 py-1.5 text-xs rounded-lg",
-            "bg-brand/10 text-brand hover:bg-brand/30",
-            "border border-brand/20 transition-colors",
-            loading && "opacity-50",
-          )}
-        >
-          {loading ? "Loading…" : "Refresh"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPairOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90"
+          >
+            <Smartphone className="size-3.5" />
+            Pair a phone
+          </button>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            className={cn(
+              "px-3 py-1.5 text-xs rounded-lg",
+              "bg-brand/10 text-brand hover:bg-brand/30",
+              "border border-brand/20 transition-colors",
+              loading && "opacity-50",
+            )}
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
       </div>
+      <PairPhoneDialog open={pairOpen} onOpenChange={setPairOpen} />
+      <DevicesSection />
 
       {/* Pending pair requests */}
       {pairRequests.length > 0 && (

@@ -8,6 +8,8 @@ export const GATEWAY_CLIENT_IDS = {
   MACOS_APP: "bitterbot-macos",
   IOS_APP: "bitterbot-ios",
   ANDROID_APP: "bitterbot-android",
+  /** PLAN-62: the phone app served at /m (a PWA today, a native shell later). */
+  MOBILE_APP: "bitterbot-mobile",
   NODE_HOST: "node-host",
   TEST: "test",
   FINGERPRINT: "fingerprint",
@@ -69,6 +71,7 @@ const TRUSTED_LOCAL_UI_CLIENT_IDS: ReadonlySet<GatewayClientId> = new Set<Gatewa
   GATEWAY_CLIENT_IDS.MACOS_APP,
   GATEWAY_CLIENT_IDS.IOS_APP,
   GATEWAY_CLIENT_IDS.ANDROID_APP,
+  GATEWAY_CLIENT_IDS.MOBILE_APP,
 ]);
 
 /**

@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { create } from "zustand";
+import { loadOrCreateDeviceIdentity } from "../lib/device-identity";
 import {
   GatewayClient,
   type GatewayEventFrame,
@@ -166,6 +167,11 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
       url,
       token,
       clientName: import.meta.env.VITE_GATEWAY_CLIENT_NAME ?? "bitterbot-control-ui",
+      // PLAN-62: sign the handshake with this browser's device key so a remote
+      // Control UI pairs (with approval) instead of being refused. Secure
+      // contexts only; over plain HTTP the old deviceless path and its
+      // gateway.controlUi.allowInsecureAuth escape hatch still apply.
+      deviceIdentity: () => loadOrCreateDeviceIdentity("control-ui"),
       onHello: (hello) => {
         set({ status: "connected", hello, error: null });
       },
@@ -183,7 +189,9 @@ export const useGatewayStore = create<GatewayState>((set, get) => ({
         // Only set disconnected if we aren't already reconnecting
         set((s) => ({
           status: s.status === "connected" ? "connecting" : s.status,
-          error: reason || `Connection closed (${code})`,
+          error: reason.includes("pairing required")
+            ? "This browser is waiting for approval. On the gateway machine, approve it in Devices, or run `bitterbot devices list` and `bitterbot devices approve <request>`."
+            : reason || `Connection closed (${code})`,
         }));
         if (!mismatchHandled && isTokenMismatch(reason)) {
           mismatchHandled = true;

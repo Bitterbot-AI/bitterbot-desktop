@@ -52,7 +52,7 @@ import {
 import { sendGatewayAuthFailure } from "./http-common.js";
 import { getBearerToken, getHeader } from "./http-utils.js";
 import { handleMemoryExportHttpRequest } from "./memory-export-http.js";
-import { getMobileAvatarBytes, renderMobileUiPage } from "./mobile-ui-page.js";
+import { handleMobileHttpRequest, isPublicMobileAssetPath } from "./mobile/http.js";
 import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { createDisabledOpenAiEndpointHandler } from "./openai-disabled-http.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
@@ -632,45 +632,18 @@ export function createGatewayHttpServer(opts: {
         res.end(renderManagementDashboardPage(wsUrl, sessionTokenPath));
         return;
       }
-      // Mobile UI avatar — small static PNG, served unauthenticated.
-      // The image itself isn't sensitive (it's the public bitterbot logo)
-      // and the parent /m HTML page is what gates access via the token.
-      if (requestPath === "/m/avatar.png" && req.method === "GET") {
-        const bytes = getMobileAvatarBytes();
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "image/png");
-        res.setHeader("Cache-Control", "public, max-age=86400, immutable");
-        res.setHeader("Content-Length", String(bytes.length));
-        res.end(bytes);
-        return;
-      }
-      // Mobile chat UI — auth-protected, serves self-contained HTML.
-      // Accepts token via Bearer header OR ?t= query param (for QR-code pairing).
-      if ((requestPath === "/m" || requestPath === "/m/") && req.method === "GET") {
-        const tokenFromQuery = new URL(req.url ?? "/", "http://localhost").searchParams.get("t");
-        const bearerToken = getBearerToken(req);
-        const token = bearerToken || tokenFromQuery || "";
-        const authResult = await authorizeGatewayConnect({
-          auth: resolvedAuth,
-          connectAuth: token ? { token, password: token } : null,
-          req,
+      // PLAN-62: the phone app. /m redirects to /m/, the pairing claim and
+      // status endpoints answer here, and the app's static files are served by
+      // the Control UI handler below (public: a static shell, all data sits
+      // behind the WebSocket and the device's own token).
+      if (
+        await handleMobileHttpRequest(req, res, {
+          basePath: controlUiBasePathFor(configSnapshot),
+          enabled: configSnapshot.gateway?.mobile?.enabled !== false,
           trustedProxies,
-          rateLimiter,
-        });
-        if (!authResult.ok && !isLocalDirectRequest(req, trustedProxies)) {
-          sendGatewayAuthFailure(res, authResult);
-          return;
-        }
-        const proto = opts.tlsOptions ? "wss" : "ws";
-        const host = req.headers.host ?? "localhost";
-        const wsUrl = `${proto}://${host}`;
-        const sessionTokenPath = `${normalizeControlUiBasePath(
-          configSnapshot.gateway?.controlUi?.basePath,
-        )}${SESSION_TOKEN_PATH}`;
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.setHeader("Cache-Control", "no-store");
-        res.end(renderMobileUiPage(wsUrl, sessionTokenPath));
+          configuredRoot: configSnapshot.gateway?.controlUi?.root,
+        })
+      ) {
         return;
       }
       // Wallet funding page — auth-protected, serves self-contained HTML
@@ -832,6 +805,18 @@ export function createGatewayHttpServer(opts: {
             // holding a live setup link, e.g. through Docker's port mapping.
             if (isSetupPageRequest(request, controlUiBasePathFor(configSnapshot))) {
               return true;
+            }
+            // PLAN-62: the phone app's static shell and the shared hashed
+            // assets it loads. No secret is in them (the bundle carries no
+            // credential since PLAN-39); the phone authenticates on the socket.
+            if (configSnapshot.gateway?.mobile?.enabled !== false) {
+              const relative = stripBasePath(
+                new URL(request.url ?? "/", "http://localhost").pathname,
+                controlUiBasePathFor(configSnapshot),
+              );
+              if (relative && isPublicMobileAssetPath(relative)) {
+                return true;
+              }
             }
             const token = getBearerToken(request);
             return Boolean(token) && token === resolvedAuth?.token;

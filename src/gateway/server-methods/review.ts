@@ -7,6 +7,7 @@
 import { getReviewService } from "../../review/runtime.js";
 import { publicView } from "../../review/service.js";
 import type { ReviewStatus } from "../../review/store.js";
+import { isMobileScopedConnection } from "../mobile/scopes.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
@@ -87,6 +88,26 @@ export const reviewHandlers: GatewayRequestHandlers = {
           errorShape(
             ErrorCodes.INVALID_REQUEST,
             "compute funding cannot be approved from here; approve it in the Control UI or with `bitterbot compute approve <job>`",
+          ),
+        );
+        return;
+      }
+    }
+    // PLAN-62: a phone holds a scoped device token, not the owner's full
+    // authority. Until phone approvals carry a passkey signature (PLAN-62
+    // slice B), money is approved on the desktop; a phone may still deny.
+    if (decision === "approve" && isMobileScopedConnection(client?.connect?.scopes)) {
+      const pending = getReviewService().get(id);
+      if (
+        (pending?.cls === "spend" || pending?.tool === "compute") &&
+        pending.status === "pending"
+      ) {
+        respond(
+          false,
+          undefined,
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "payments are approved on the desktop for now; you can deny this one here",
           ),
         );
         return;

@@ -25,6 +25,8 @@ import {
 } from "../chat-abort.js";
 import { type ChatImageContent, parseMessageWithAttachments } from "../chat-attachments.js";
 import { stripEnvelopeFromMessages } from "../chat-sanitize.js";
+import { getActivePushDispatcher } from "../mobile/push-dispatcher.js";
+import { isMobileScopedConnection } from "../mobile/scopes.js";
 import { GATEWAY_CLIENT_CAPS, hasGatewayClientCap } from "../protocol/client-info.js";
 import {
   ErrorCodes,
@@ -576,6 +578,16 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
     const rawSessionKey = p.sessionKey;
     const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
+    // PLAN-62: a phone that sends here wants a push when this session replies
+    // while its app is closed. Both spellings, since the final event may carry either.
+    const phoneDeviceId = client?.connect?.device?.id;
+    if (phoneDeviceId && isMobileScopedConnection(client?.connect?.scopes)) {
+      const dispatcher = getActivePushDispatcher();
+      dispatcher?.noteChatSend(phoneDeviceId, sessionKey);
+      if (rawSessionKey !== sessionKey) {
+        dispatcher?.noteChatSend(phoneDeviceId, rawSessionKey);
+      }
+    }
 
     // PLAN-20: record the user turn in the session-context tracker so
     // interceptors (recall-before-claim, protocol-quiet-in-groups,

@@ -68,7 +68,14 @@ function hasEventScope(client: GatewayWsClient, event: string): boolean {
   return required.some((scope) => scopes.includes(scope));
 }
 
-export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient> }) {
+export function createGatewayBroadcaster(params: {
+  clients: Set<GatewayWsClient>;
+  /**
+   * PLAN-62: sees every untargeted broadcast, connected clients or not (the
+   * phone push dispatcher; a phone with the app closed has no socket).
+   */
+  onBroadcast?: (event: string, payload: unknown) => void;
+}) {
   let seq = 0;
 
   const broadcastInternal = (
@@ -77,6 +84,13 @@ export function createGatewayBroadcaster(params: { clients: Set<GatewayWsClient>
     opts?: GatewayBroadcastOpts,
     targetConnIds?: ReadonlySet<string>,
   ) => {
+    if (!targetConnIds && params.onBroadcast) {
+      try {
+        params.onBroadcast(event, payload);
+      } catch {
+        /* an observer never breaks the broadcast */
+      }
+    }
     if (params.clients.size === 0) {
       return;
     }

@@ -511,6 +511,23 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
+        // PLAN-62: the phone app, phone pairing and Web Push.
+        mobile: z
+          .object({
+            enabled: z.boolean().optional(),
+            publicUrl: z.string().optional(),
+            push: z
+              .object({
+                enabled: z.boolean().optional(),
+                subject: z.string().optional(),
+                maxPerHour: z.number().int().min(0).max(1000).optional(),
+                allowedEndpointHosts: z.array(z.string()).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
         auth: z
           .object({
             mode: z

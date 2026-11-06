@@ -1,372 +1,28 @@
-import os from "node:os";
 import type { BitterbotPluginApi } from "bitterbot/plugin-sdk";
-import { approveDevicePairing, listDevicePairing } from "bitterbot/plugin-sdk";
+import {
+  approveDevicePairing,
+  buildMobilePairUrl,
+  createSetupCode,
+  listDevicePairing,
+  rejectDevicePairing,
+  resolveMobileBaseUrls,
+  SETUP_CODE_TTL_MS,
+} from "bitterbot/plugin-sdk";
 
-const DEFAULT_GATEWAY_PORT = 19001;
+/**
+ * `/pair`: pair a phone from a chat channel (PLAN-62).
+ *
+ * `/pair` replies with a one-time link (five minutes, single use) that opens
+ * the Bitterbot phone app and claims a setup code with a key the phone makes
+ * on the spot. The phone then shows a six-digit code; `/pair approve <code>`
+ * here (or Approve in the Control UI) finishes it. The gateway token never
+ * appears in the link or in this chat.
+ */
 
 type DevicePairPluginConfig = {
+  /** Address the phone should open, e.g. https://box.tailnet.ts.net. */
   publicUrl?: string;
 };
-
-type SetupPayload = {
-  url: string;
-  token?: string;
-  password?: string;
-};
-
-type ResolveUrlResult = {
-  url?: string;
-  source?: string;
-  error?: string;
-};
-
-type ResolveAuthResult = {
-  token?: string;
-  password?: string;
-  label?: string;
-  error?: string;
-};
-
-function normalizeUrl(raw: string, schemeFallback: "ws" | "wss"): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return null;
-  }
-  try {
-    const parsed = new URL(trimmed);
-    const scheme = parsed.protocol.replace(":", "");
-    if (!scheme) {
-      return null;
-    }
-    const resolvedScheme = scheme === "http" ? "ws" : scheme === "https" ? "wss" : scheme;
-    if (resolvedScheme !== "ws" && resolvedScheme !== "wss") {
-      return null;
-    }
-    const host = parsed.hostname;
-    if (!host) {
-      return null;
-    }
-    const port = parsed.port ? `:${parsed.port}` : "";
-    return `${resolvedScheme}://${host}${port}`;
-  } catch {
-    // Fall through to host:port parsing.
-  }
-
-  const withoutPath = trimmed.split("/")[0] ?? "";
-  if (!withoutPath) {
-    return null;
-  }
-  return `${schemeFallback}://${withoutPath}`;
-}
-
-function resolveGatewayPort(cfg: BitterbotPluginApi["config"]): number {
-  const envRaw =
-    process.env.BITTERBOT_GATEWAY_PORT?.trim() || process.env.BITTERBOT_GATEWAY_PORT?.trim();
-  if (envRaw) {
-    const parsed = Number.parseInt(envRaw, 10);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  const configPort = cfg.gateway?.port;
-  if (typeof configPort === "number" && Number.isFinite(configPort) && configPort > 0) {
-    return configPort;
-  }
-  return DEFAULT_GATEWAY_PORT;
-}
-
-function resolveScheme(
-  cfg: BitterbotPluginApi["config"],
-  opts?: { forceSecure?: boolean },
-): "ws" | "wss" {
-  if (opts?.forceSecure) {
-    return "wss";
-  }
-  return cfg.gateway?.tls?.enabled === true ? "wss" : "ws";
-}
-
-function isPrivateIPv4(address: string): boolean {
-  const parts = address.split(".");
-  if (parts.length != 4) {
-    return false;
-  }
-  const octets = parts.map((part) => Number.parseInt(part, 10));
-  if (octets.some((value) => !Number.isFinite(value) || value < 0 || value > 255)) {
-    return false;
-  }
-  const [a, b] = octets;
-  if (a === 10) {
-    return true;
-  }
-  if (a === 172 && b >= 16 && b <= 31) {
-    return true;
-  }
-  if (a === 192 && b === 168) {
-    return true;
-  }
-  return false;
-}
-
-function isTailnetIPv4(address: string): boolean {
-  const parts = address.split(".");
-  if (parts.length !== 4) {
-    return false;
-  }
-  const octets = parts.map((part) => Number.parseInt(part, 10));
-  if (octets.some((value) => !Number.isFinite(value) || value < 0 || value > 255)) {
-    return false;
-  }
-  const [a, b] = octets;
-  return a === 100 && b >= 64 && b <= 127;
-}
-
-function pickLanIPv4(): string | null {
-  const nets = os.networkInterfaces();
-  for (const entries of Object.values(nets)) {
-    if (!entries) {
-      continue;
-    }
-    for (const entry of entries) {
-      const family = entry?.family;
-      // Check for IPv4 (string "IPv4" on Node 18+, number 4 on older)
-      const isIpv4 = family === "IPv4" || String(family) === "4";
-      if (!entry || entry.internal || !isIpv4) {
-        continue;
-      }
-      const address = entry.address?.trim() ?? "";
-      if (!address) {
-        continue;
-      }
-      if (isPrivateIPv4(address)) {
-        return address;
-      }
-    }
-  }
-  return null;
-}
-
-function pickTailnetIPv4(): string | null {
-  const nets = os.networkInterfaces();
-  for (const entries of Object.values(nets)) {
-    if (!entries) {
-      continue;
-    }
-    for (const entry of entries) {
-      const family = entry?.family;
-      // Check for IPv4 (string "IPv4" on Node 18+, number 4 on older)
-      const isIpv4 = family === "IPv4" || String(family) === "4";
-      if (!entry || entry.internal || !isIpv4) {
-        continue;
-      }
-      const address = entry.address?.trim() ?? "";
-      if (!address) {
-        continue;
-      }
-      if (isTailnetIPv4(address)) {
-        return address;
-      }
-    }
-  }
-  return null;
-}
-
-async function resolveTailnetHost(api: BitterbotPluginApi): Promise<string | null> {
-  const candidates = ["tailscale", "/Applications/Tailscale.app/Contents/MacOS/Tailscale"];
-  for (const candidate of candidates) {
-    try {
-      const result = await api.runtime.system.runCommandWithTimeout(
-        [candidate, "status", "--json"],
-        {
-          timeoutMs: 5000,
-        },
-      );
-      if (result.code !== 0) {
-        continue;
-      }
-      const raw = result.stdout.trim();
-      if (!raw) {
-        continue;
-      }
-      const parsed = parsePossiblyNoisyJsonObject(raw);
-      const self =
-        typeof parsed.Self === "object" && parsed.Self !== null
-          ? (parsed.Self as Record<string, unknown>)
-          : undefined;
-      const dns = typeof self?.DNSName === "string" ? self.DNSName : undefined;
-      if (dns && dns.length > 0) {
-        return dns.replace(/\.$/, "");
-      }
-      const ips = Array.isArray(self?.TailscaleIPs) ? (self?.TailscaleIPs as string[]) : [];
-      if (ips.length > 0) {
-        return ips[0] ?? null;
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
-
-function parsePossiblyNoisyJsonObject(raw: string): Record<string, unknown> {
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start === -1 || end <= start) {
-    return {};
-  }
-  try {
-    return JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
-}
-
-function resolveAuth(cfg: BitterbotPluginApi["config"]): ResolveAuthResult {
-  const mode = cfg.gateway?.auth?.mode;
-  const token =
-    process.env.BITTERBOT_GATEWAY_TOKEN?.trim() ||
-    process.env.BITTERBOT_GATEWAY_TOKEN?.trim() ||
-    cfg.gateway?.auth?.token?.trim();
-  const password =
-    process.env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
-    process.env.BITTERBOT_GATEWAY_PASSWORD?.trim() ||
-    cfg.gateway?.auth?.password?.trim();
-
-  if (mode === "password") {
-    if (!password) {
-      return { error: "Gateway auth is set to password, but no password is configured." };
-    }
-    return { password, label: "password" };
-  }
-  if (mode === "token") {
-    if (!token) {
-      return { error: "Gateway auth is set to token, but no token is configured." };
-    }
-    return { token, label: "token" };
-  }
-  if (token) {
-    return { token, label: "token" };
-  }
-  if (password) {
-    return { password, label: "password" };
-  }
-  return { error: "Gateway auth is not configured (no token or password)." };
-}
-
-async function resolveGatewayUrl(api: BitterbotPluginApi): Promise<ResolveUrlResult> {
-  const cfg = api.config;
-  const pluginCfg = (api.pluginConfig ?? {}) as DevicePairPluginConfig;
-  const scheme = resolveScheme(cfg);
-  const port = resolveGatewayPort(cfg);
-
-  if (typeof pluginCfg.publicUrl === "string" && pluginCfg.publicUrl.trim()) {
-    const url = normalizeUrl(pluginCfg.publicUrl, scheme);
-    if (url) {
-      return { url, source: "plugins.entries.device-pair.config.publicUrl" };
-    }
-    return { error: "Configured publicUrl is invalid." };
-  }
-
-  const tailscaleMode = cfg.gateway?.tailscale?.mode ?? "off";
-  if (tailscaleMode === "serve" || tailscaleMode === "funnel") {
-    const host = await resolveTailnetHost(api);
-    if (!host) {
-      return { error: "Tailscale Serve is enabled, but MagicDNS could not be resolved." };
-    }
-    return { url: `wss://${host}`, source: `gateway.tailscale.mode=${tailscaleMode}` };
-  }
-
-  const remoteUrl = cfg.gateway?.remote?.url;
-  if (typeof remoteUrl === "string" && remoteUrl.trim()) {
-    const url = normalizeUrl(remoteUrl, scheme);
-    if (url) {
-      return { url, source: "gateway.remote.url" };
-    }
-  }
-
-  const bind = cfg.gateway?.bind ?? "loopback";
-  if (bind === "custom") {
-    const host = cfg.gateway?.customBindHost?.trim();
-    if (host) {
-      return { url: `${scheme}://${host}:${port}`, source: "gateway.bind=custom" };
-    }
-    return { error: "gateway.bind=custom requires gateway.customBindHost." };
-  }
-
-  if (bind === "tailnet") {
-    const host = pickTailnetIPv4();
-    if (host) {
-      return { url: `${scheme}://${host}:${port}`, source: "gateway.bind=tailnet" };
-    }
-    return { error: "gateway.bind=tailnet set, but no tailnet IP was found." };
-  }
-
-  if (bind === "lan") {
-    const host = pickLanIPv4();
-    if (host) {
-      return { url: `${scheme}://${host}:${port}`, source: "gateway.bind=lan" };
-    }
-    return { error: "gateway.bind=lan set, but no private LAN IP was found." };
-  }
-
-  return {
-    error:
-      "Gateway is only bound to loopback. Set gateway.bind=lan, enable tailscale serve, or configure plugins.entries.device-pair.config.publicUrl.",
-  };
-}
-
-function encodeSetupCode(payload: SetupPayload): string {
-  const json = JSON.stringify(payload);
-  const base64 = Buffer.from(json, "utf8").toString("base64");
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function wsUrlToHttpUrl(wsUrl: string): string {
-  return wsUrl
-    .replace(/^wss:\/\//i, "https://")
-    .replace(/^ws:\/\//i, "http://")
-    .replace(/\/+$/g, "");
-}
-
-function buildMobileWebUrl(payload: SetupPayload): string | undefined {
-  const http = wsUrlToHttpUrl(payload.url);
-  if (!http) return undefined;
-  const auth = payload.token ?? payload.password;
-  if (!auth) return `${http}/m`;
-  const encoded = encodeURIComponent(auth);
-  return `${http}/m?t=${encoded}`;
-}
-
-function formatSetupReply(payload: SetupPayload, authLabel: string): string {
-  const setupCode = encodeSetupCode(payload);
-  const mobileUrl = buildMobileWebUrl(payload);
-  const lines = [
-    "Pairing setup code generated.",
-    "",
-    "1) Open the iOS app → Settings → Gateway",
-    "2) Paste the setup code below and tap Connect",
-    "3) Back here, run /pair approve",
-    "",
-    "Setup code:",
-    setupCode,
-    "",
-    `Gateway: ${payload.url}`,
-    `Auth: ${authLabel}`,
-  ];
-  if (mobileUrl) {
-    lines.push("", "Or open this URL on your phone for the browser chat:", mobileUrl);
-  }
-  return lines.join("\n");
-}
-
-function formatSetupInstructions(): string {
-  return [
-    "Pairing setup code generated.",
-    "",
-    "1) Open the iOS app → Settings → Gateway",
-    "2) Paste the setup code from my next message and tap Connect",
-    "3) Back here, run /pair approve",
-  ].join("\n");
-}
 
 type PendingPairingRequest = {
   requestId: string;
@@ -374,8 +30,27 @@ type PendingPairingRequest = {
   displayName?: string;
   platform?: string;
   remoteIp?: string;
+  confirmCode?: string;
   ts?: number;
 };
+
+function normalizeHttpBase(raw: string): string | null {
+  try {
+    const url = new URL(raw.trim());
+    const protocol =
+      url.protocol === "wss:" ? "https:" : url.protocol === "ws:" ? "http:" : url.protocol;
+    if (protocol !== "http:" && protocol !== "https:") {
+      return null;
+    }
+    return `${protocol}//${url.host}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return null;
+  }
+}
+
+function formatConfirmCode(code: string | undefined): string {
+  return code && code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : "";
+}
 
 function formatPendingRequests(pending: PendingPairingRequest[]): string {
   if (pending.length === 0) {
@@ -383,33 +58,63 @@ function formatPendingRequests(pending: PendingPairingRequest[]): string {
   }
   const lines: string[] = ["Pending device pairing requests:"];
   for (const req of pending) {
-    const label = req.displayName?.trim() || req.deviceId;
-    const platform = req.platform?.trim();
-    const ip = req.remoteIp?.trim();
+    const label = req.displayName?.trim() || req.deviceId.slice(0, 12);
     const parts = [
-      `- ${req.requestId}`,
-      label ? `name=${label}` : null,
-      platform ? `platform=${platform}` : null,
-      ip ? `ip=${ip}` : null,
+      `- ${label}`,
+      req.confirmCode ? `code ${formatConfirmCode(req.confirmCode)}` : null,
+      req.platform?.trim() ? `platform ${req.platform.trim()}` : null,
+      req.remoteIp?.trim() ? `ip ${req.remoteIp.trim()}` : null,
+      `id ${req.requestId}`,
     ].filter(Boolean);
     lines.push(parts.join(" · "));
   }
   return lines.join("\n");
 }
 
+/** Pick the pending request the owner means: a confirmation code, a request id, or "latest". */
+export function pickPendingRequest(
+  pending: PendingPairingRequest[],
+  requested: string | undefined,
+): { request?: PendingPairingRequest; error?: string } {
+  if (pending.length === 0) {
+    return { error: "No pending device pairing requests." };
+  }
+  const wanted = requested?.trim();
+  if (!wanted) {
+    if (pending.length === 1) {
+      return { request: pending[0] };
+    }
+    return {
+      error:
+        `${formatPendingRequests(pending)}\n\nMore than one is waiting. Approve one with ` +
+        "/pair approve <six-digit code>.",
+    };
+  }
+  if (wanted.toLowerCase() === "latest") {
+    return { request: [...pending].toSorted((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0] };
+  }
+  const digits = wanted.replace(/[\s-]/g, "");
+  if (/^\d{6}$/.test(digits)) {
+    const match = pending.find((entry) => entry.confirmCode === digits);
+    return match
+      ? { request: match }
+      : { error: "No pending phone shows that code. Check the number on the phone." };
+  }
+  const byId = pending.find((entry) => entry.requestId === wanted);
+  return byId ? { request: byId } : { error: "Pairing request not found." };
+}
+
 export default function register(api: BitterbotPluginApi) {
   api.registerCommand({
     name: "pair",
-    description: "Generate setup codes and approve device pairing requests.",
+    description: "Pair a phone with a one-time link, and approve pairing requests.",
     acceptsArgs: true,
     handler: async (ctx) => {
       const args = ctx.args?.trim() ?? "";
       const tokens = args.split(/\s+/).filter(Boolean);
       const action = tokens[0]?.toLowerCase() ?? "";
       api.logger.info?.(
-        `device-pair: /pair invoked channel=${ctx.channel} sender=${ctx.senderId ?? "unknown"} action=${
-          action || "new"
-        }`,
+        `device-pair: /pair invoked channel=${ctx.channel} action=${action || "new"}`,
       );
 
       if (action === "status" || action === "pending") {
@@ -417,104 +122,58 @@ export default function register(api: BitterbotPluginApi) {
         return { text: formatPendingRequests(list.pending) };
       }
 
-      if (action === "approve") {
-        const requested = tokens[1]?.trim();
+      if (action === "approve" || action === "reject") {
         const list = await listDevicePairing();
-        if (list.pending.length === 0) {
-          return { text: "No pending device pairing requests." };
+        const picked = pickPendingRequest(list.pending, tokens.slice(1).join(" "));
+        if (!picked.request) {
+          return { text: picked.error ?? "Pairing request not found." };
         }
-
-        let pending: (typeof list.pending)[number] | undefined;
-        if (requested) {
-          if (requested.toLowerCase() === "latest") {
-            pending = [...list.pending].toSorted((a, b) => (b.ts ?? 0) - (a.ts ?? 0))[0];
-          } else {
-            pending = list.pending.find((entry) => entry.requestId === requested);
-          }
-        } else if (list.pending.length === 1) {
-          pending = list.pending[0];
-        } else {
-          return {
-            text:
-              `${formatPendingRequests(list.pending)}\n\n` +
-              "Multiple pending requests found. Approve one explicitly:\n" +
-              "/pair approve <requestId>\n" +
-              "Or approve the most recent:\n" +
-              "/pair approve latest",
-          };
+        if (action === "reject") {
+          await rejectDevicePairing(picked.request.requestId);
+          return { text: "Pairing request rejected." };
         }
-        if (!pending) {
-          return { text: "Pairing request not found." };
-        }
-        const approved = await approveDevicePairing(pending.requestId);
+        const approved = await approveDevicePairing(picked.request.requestId);
         if (!approved) {
           return { text: "Pairing request not found." };
         }
-        const label = approved.device.displayName?.trim() || approved.device.deviceId;
-        const platform = approved.device.platform?.trim();
-        const platformLabel = platform ? ` (${platform})` : "";
-        return { text: `✅ Paired ${label}${platformLabel}.` };
+        const label = approved.device.displayName?.trim() || "the device";
+        return { text: `Paired ${label}. You can rename or remove it in the Control UI.` };
       }
 
-      const auth = resolveAuth(api.config);
-      if (auth.error) {
-        return { text: `Error: ${auth.error}` };
+      const pluginCfg = (api.pluginConfig ?? {}) as DevicePairPluginConfig;
+      const bases: string[] = [];
+      const override =
+        typeof pluginCfg.publicUrl === "string" ? normalizeHttpBase(pluginCfg.publicUrl) : null;
+      if (override) {
+        bases.push(override);
       }
-
-      const urlResult = await resolveGatewayUrl(api);
-      if (!urlResult.url) {
-        return { text: `Error: ${urlResult.error ?? "Gateway URL unavailable."}` };
-      }
-
-      const payload: SetupPayload = {
-        url: urlResult.url,
-        token: auth.token,
-        password: auth.password,
-      };
-
-      const channel = ctx.channel;
-      const target = ctx.senderId?.trim() || ctx.from?.trim() || ctx.to?.trim() || "";
-      const authLabel = auth.label ?? "auth";
-
-      if (channel === "telegram" && target) {
-        try {
-          const runtimeKeys = Object.keys(api.runtime ?? {});
-          const channelKeys = Object.keys(api.runtime?.channel ?? {});
-          api.logger.debug?.(
-            `device-pair: runtime keys=${runtimeKeys.join(",") || "none"} channel keys=${
-              channelKeys.join(",") || "none"
-            }`,
-          );
-          const send = api.runtime?.channel?.telegram?.sendMessageTelegram;
-          if (!send) {
-            throw new Error(
-              `telegram runtime unavailable (runtime keys: ${runtimeKeys.join(",")}; channel keys: ${channelKeys.join(
-                ",",
-              )})`,
-            );
-          }
-          await send(target, formatSetupInstructions(), {
-            ...(ctx.messageThreadId != null ? { messageThreadId: ctx.messageThreadId } : {}),
-            ...(ctx.accountId ? { accountId: ctx.accountId } : {}),
-          });
-          api.logger.info?.(
-            `device-pair: telegram split send ok target=${target} account=${ctx.accountId ?? "none"} thread=${
-              ctx.messageThreadId ?? "none"
-            }`,
-          );
-          return { text: encodeSetupCode(payload) };
-        } catch (err) {
-          api.logger.warn?.(
-            `device-pair: telegram split send failed, falling back to single message (${String(
-              (err as Error)?.message ?? err,
-            )})`,
-          );
+      for (const base of await resolveMobileBaseUrls(api.config)) {
+        if (!bases.includes(base.url)) {
+          bases.push(base.url);
         }
       }
-
-      return {
-        text: formatSetupReply(payload, authLabel),
-      };
+      if (bases.length === 0) {
+        return {
+          text:
+            "This gateway only listens on this computer, so a phone cannot reach it. " +
+            "Turn on Tailscale Serve (gateway.tailscale.mode=serve), bind to your network " +
+            "(gateway.bind=lan), or set gateway.mobile.publicUrl, then try /pair again.",
+        };
+      }
+      const created = createSetupCode({ createdBy: `${ctx.channel}:/pair` });
+      const minutes = Math.round(SETUP_CODE_TTL_MS / 60_000);
+      const [first, ...rest] = bases.map((base) => buildMobilePairUrl(base, created.code));
+      const lines = [
+        `Open this link on your phone within ${minutes} minutes (it works once):`,
+        first,
+        "",
+        "Your phone will show a six-digit code. If it is the phone you expect, reply:",
+        "/pair approve <code>",
+      ];
+      if (rest.length > 0) {
+        lines.push("", "Other addresses for this gateway:", ...rest);
+      }
+      return { text: lines.join("\n") };
     },
   });
 }
