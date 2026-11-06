@@ -86,19 +86,25 @@ describe("skill prior runtime evidence", () => {
     expect(apply({ evidence })).toContain(`<evidence>${expected}</evidence>`);
   });
 
-  it("keeps evidence off, disabled, bypassed and default-off runs unchanged", () => {
+  it("keeps evidence off, disabled and bypassed runs unchanged", () => {
     writeLedger();
     expect(apply({ evidence: "off" })).toBe(PROMPT);
     expect(apply({ enabled: false })).toBe(PROMPT);
     expect(apply({}, { bypass: true })).toBe(PROMPT);
-    expect(
+  });
+
+  it("is on by default and leaves the index unchanged without a ledger", () => {
+    const run = (config: { skills: { prior: SkillsPriorConfig } }) =>
       applySkillPriorForRun({
         prompt: PROMPT,
-        runId: "disabled",
-        config: undefined,
+        runId: "default-on",
+        config,
         skills: [{ name: skill.name, filePath }],
-      }),
-    ).toBe(PROMPT);
+      });
+    expect(run({ skills: { prior: { ledgerPath } } })).toBe(PROMPT);
+    writeLedger();
+    resetSkillPriorCachesForTest();
+    expect(run({ skills: { prior: { ledgerPath } } })).toContain("<evidence>");
   });
 
   it("keeps learned ordering when evidence is off", () => {

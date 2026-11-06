@@ -213,13 +213,13 @@ export type SkillsEvolutionConfig = {
  * Experience-guided skill prior: an outcome-gated, per-context-cell
  * Beta-Bernoulli posterior per skill that orders the `<available_skills>`
  * index and annotates verified outcomes (never removes an entry or grants a
- * tool). Default off; the
- * ledger is written by the controlled benchmark (benchmarks/skill-prior),
+ * tool). Default on; with no ledger every skill ties and nothing
+ * changes. The ledger is written by the controlled benchmark (benchmarks/skill-prior),
  * not by live runs, until a deterministically verified live outcome
  * signal exists. See docs/memory/skills-pipeline.md.
  */
 export type SkillsPriorConfig = {
-  /** Apply the prior to the live skills index. Default: false. */
+  /** Apply the prior to the live skills index. Default: true. */
   enabled?: boolean;
   /** "mean" orders by posterior mean (frozen); "thompson" samples (learning). Default: "mean". */
   mode?: "mean" | "thompson";
@@ -249,7 +249,7 @@ export type SkillsConfig = {
   skillSeekers?: SkillSeekersConfig;
   /** PLAN-42: WikiSkill evolution loop (on by default). */
   evolution?: SkillsEvolutionConfig;
-  /** Experience-guided skill prior (index ordering and evidence). Default: off. */
+  /** Experience-guided skill prior (index ordering and evidence). Default: on. */
   prior?: SkillsPriorConfig;
   /** PLAN-11 Gap 4: LLM-based marketability prediction (opt-in). */
   marketability?: {

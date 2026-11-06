@@ -19,8 +19,9 @@
  * What this is not. It is not a co-occurrence (Hebbian) rule, it never
  * removes a skill from the index, and it grants no permission: the index is
  * a routing key, so the prior can only change which description the model
- * reads first. Production wiring is default-off (`skills.prior.enabled`);
- * the ledger is written by the controlled benchmark, not by live runs, until
+ * reads first. Production wiring is on by default (`skills.prior.enabled`); with
+ * an empty or absent ledger every skill ties and the index is unchanged. The
+ * ledger is written by the controlled benchmark, not by live runs, until
  * a verified live outcome signal exists.
  */
 
@@ -628,8 +629,8 @@ export function resolveSkillPriorPlacement(
 }
 
 export function resolveSkillPriorMode(cfg: SkillsPriorConfig | undefined): SkillPriorMode {
-  if (!cfg?.enabled) {
+  if (cfg?.enabled === false) {
     return "off";
   }
-  return cfg.mode === "thompson" ? "thompson" : "mean";
+  return cfg?.mode === "thompson" ? "thompson" : "mean";
 }

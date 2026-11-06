@@ -929,10 +929,10 @@ export const BitterbotSchema = z
           })
           .strict()
           .optional(),
-        // Experience-guided skill prior (index ordering and evidence), default off.
+        // Experience-guided skill prior (index ordering and evidence), default on.
         prior: z
           .object({
-            enabled: z.boolean().optional().describe("Default: false"),
+            enabled: z.boolean().optional().describe("Default: true"),
             mode: z
               .union([z.literal("mean"), z.literal("thompson")])
               .optional()

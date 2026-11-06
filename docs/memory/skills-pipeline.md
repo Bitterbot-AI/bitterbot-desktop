@@ -497,7 +497,7 @@ the next turn. Consequences the rest of this document depends on:
 - **Index order is directory order.** Entries arrive in `readdirSync` order
   per root and roots merge by precedence; nothing ranks them, and the
   budget compactor never reorders or drops a block. The experimental
-  **experience-guided skill prior** (`skills.prior`, default off,
+  **experience-guided skill prior** (`skills.prior`, on by default,
   `src/agents/skills/skill-prior.ts`) is the one component that may reorder
   the index: a Beta-Bernoulli posterior per (context cell, skill) with
   hierarchical shrinkage, geometric discounting and a reset when the skill's

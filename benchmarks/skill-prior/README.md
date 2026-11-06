@@ -93,7 +93,8 @@ a single cheap model. These runs size the confirmatory study; they are not it.
   out of three. Choice is driven by description match and a preference for
   later entries, not by rank.
 - Registered outcome at pilot scale: no value for index reordering on this
-  model and task family. `skills.prior` stays default off. Levers left
+  model and task family. `skills.prior` stayed default off at this stage (switched on
+  2026-11-06 for verified verbal evidence). Levers left
   untested: the pre-action interceptor (redirect a read of a low-posterior
   skill to its higher-posterior sibling) and withholding low-posterior
   entries, which would break the reorder-never-remove invariant and needs its

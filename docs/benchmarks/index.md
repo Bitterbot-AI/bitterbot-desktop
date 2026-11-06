@@ -47,7 +47,7 @@ deterministic executor and can produce a live report on demand.
 `node --import tsx benchmarks/skill-prior/run.ts --phase order|headroom|arms|cards`
 (and `conventions-run.ts --phase train|pilot|main`)
 tests whether an outcome-gated, per-context bandit that reorders the
-`<available_skills>` index (`skills.prior`, default off) changes which skill the
+`<available_skills>` index (`skills.prior`, on by default) changes which skill the
 agent reads first and whether that changes verified task outcomes. The pool is
 controlled: for each canonical capability family one correct skill, one decoy
 with the same routing description and a wrong rule, plus unrelated fillers.
