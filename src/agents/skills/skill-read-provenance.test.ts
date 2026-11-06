@@ -171,11 +171,19 @@ describe("skill read and check provenance producers", () => {
       [
         { kind: "command", command: "exit 1" },
         { kind: "command", command: "bitterbot_intentionally_missing_command" },
-        { kind: "command", command: "sleep 1" },
       ],
-      { workspaceDir: dir, output: null, allowCommands: true, timeoutMs: 20 },
+      { workspaceDir: dir, output: null, allowCommands: true },
     );
-    expect(command.map((r) => r.executed)).toEqual([true, false, false]);
+    expect(command.map((r) => r.executed)).toEqual([process.platform !== "win32", false]);
+    if (process.platform !== "win32") {
+      const timeout = await runTaskChecks([{ kind: "command", command: "sleep 1" }], {
+        workspaceDir: dir,
+        output: null,
+        allowCommands: true,
+        timeoutMs: 20,
+      });
+      expect(timeout[0].executed).toBe(false);
+    }
     const missing = await runTaskChecks(
       [
         { kind: "file_exists", path: "absent" },

@@ -549,7 +549,9 @@ the next turn. Consequences the rest of this document depends on:
     must have produced assessable results; pass requires every check to
     pass, and failure requires an actual failed check. Disabled commands,
     missing workspaces, timeouts, launch failures and output-regex checks
-    against the model's own summary do not qualify. The check set is hashed
+    against the model's own summary do not qualify. Nonzero Windows command
+    exits are also excluded because a missing executable and an assertion
+    failure share the same exit code. The check set is hashed
     before the skill read; creation and the last check change must predate
     the run, and its store-owned revision must match at judging.
     Any check update during the run, including changing and restoring the

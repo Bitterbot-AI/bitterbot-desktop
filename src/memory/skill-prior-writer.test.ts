@@ -117,13 +117,13 @@ describe("durable verified outcome writer", () => {
   }, 20_000);
   it("serializes concurrent aliases; files are 0600 and mtime invalidates the runtime cache", async () => {
     const alias = path.join(dir, "alias");
-    await fs.symlink(dir, alias, "dir");
+    await fs.symlink(dir, alias, process.platform === "win32" ? "junction" : "dir");
     await Promise.all([
       apply(file, [credit(1)]),
       apply(path.join(alias, "prior.json"), [credit(2)]),
     ]);
     expect((await readLivePriorCredits(file, options)).length).toBe(2);
-    expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
     const cfg = { skills: { prior: { ledgerPath: file } } };
     const before = loadSkillPriorLedger(cfg).verifiedEvidence("default", credit(1).skill);
     const stamp = (await fs.stat(file)).mtimeMs;

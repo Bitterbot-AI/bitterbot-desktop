@@ -7813,16 +7813,16 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.skillNetworkBridge;
   }
 
-  /**
-   * Get the `after_tool_call` hook handler for plugin registration.
-   * Returns null if execution tracking is not initialized.
-   */
   /** Called only by gateway startup; library/harness managers never start a live writer. */
   startSkillPriorWriter(config: () => BitterbotConfig): void {
     if (this.closed || this.skillPriorWriter) return;
     this.skillPriorWriter = new SkillPriorWriterService({ db: () => this.db, config });
   }
 
+  /**
+   * Get the `after_tool_call` hook handler for plugin registration.
+   * Returns null if execution tracking is not initialized.
+   */
   getExecutionTrackingHook():
     | ((event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void)
     | null {

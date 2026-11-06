@@ -292,7 +292,13 @@ async function runOne(check: TaskCheck, ctx: TaskCheckContext): Promise<TaskChec
       if (r.timedOut) {
         return { ...base, passed: false, detail: "command timed out" };
       }
-      const executed = r.exitCode !== null && r.exitCode !== 126 && r.exitCode !== 127;
+      // cmd.exe uses exit 1 for both missing executables and failed assertions.
+      // Preserve task semantics, but do not claim verified negative evidence there.
+      const executed =
+        r.exitCode !== null &&
+        r.exitCode !== 126 &&
+        r.exitCode !== 127 &&
+        (process.platform !== "win32" || r.exitCode === 0);
       const expected = check.expectExitCode ?? 0;
       if (r.exitCode !== expected) {
         return {
