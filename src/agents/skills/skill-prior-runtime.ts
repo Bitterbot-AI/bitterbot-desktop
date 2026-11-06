@@ -1,7 +1,7 @@
 /**
  * Run-path adapter for the experience-guided skill prior (skill-prior.ts is
  * pure; this file owns the I/O): load the ledger from disk once per mtime,
- * hash the skills in the index by content, reorder, and journal the
+ * hash the skills by content, reorder, annotate verified outcomes, and journal the
  * decision on the `skills` stream next to the canary exposure row.
  *
  * Default off (`skills.prior.enabled`). Nothing here writes the ledger.
@@ -16,7 +16,9 @@ import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { CONFIG_DIR } from "../../utils.js";
 import type { Skill } from "./skill-loader.js";
 import {
+  annotateSkillsPrompt,
   applySkillPrior,
+  type SkillEvidence,
   resolveSkillPriorMode,
   resolveSkillPriorPlacement,
   SKILL_PRIOR_DEFAULTS,
@@ -107,14 +109,29 @@ export function applySkillPriorForRun(params: {
   try {
     const ledger = loadSkillPriorLedger(params.config);
     const cell = params.cell ?? DEFAULT_PRIOR_CELL;
+    const hashes = skillHashes(params.skills);
     const applied = applySkillPrior({
       prompt: params.prompt,
       cell,
       ledger,
-      hashes: skillHashes(params.skills),
+      hashes,
       mode,
       placement: resolveSkillPriorPlacement(params.config?.skills?.prior),
     });
+    const evidenceStyle = params.config?.skills?.prior?.evidence ?? SKILL_PRIOR_DEFAULTS.evidence;
+    const evidence: Record<string, SkillEvidence> = {};
+    if (evidenceStyle !== "off") {
+      for (const name of applied.baseline) {
+        const counts = ledger.verifiedEvidence(cell, { name, hash: hashes[name] ?? "unknown" });
+        if (counts) {
+          evidence[name] = counts;
+        }
+      }
+    }
+    const prompt =
+      evidenceStyle === "off"
+        ? applied.prompt
+        : annotateSkillsPrompt(applied.prompt, evidence, evidenceStyle);
     emitAgentEvent({
       runId: params.runId,
       stream: "skills",
@@ -123,14 +140,16 @@ export function applySkillPriorForRun(params: {
         prior: {
           cell,
           mode,
-          changed: applied.changed,
+          changed: prompt !== params.prompt,
+          evidenceStyle,
+          annotated: Object.keys(evidence),
           baseline: applied.baseline,
           order: applied.order,
           means: applied.result?.means ?? {},
         },
       },
     });
-    return applied.prompt;
+    return prompt;
   } catch (err) {
     log.warn(`skill prior skipped for run ${params.runId}: ${String(err)}`);
     return params.prompt;

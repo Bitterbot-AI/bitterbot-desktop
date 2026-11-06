@@ -416,6 +416,7 @@ async function main(): Promise<void> {
           outcome: r.pass,
           runId: r.runId,
           gate: true,
+          verified: true,
         });
       }
     }

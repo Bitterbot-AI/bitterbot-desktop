@@ -3,6 +3,8 @@ import {
   annotateSkillsPrompt,
   applySkillPrior,
   derange,
+  formatSkillEvidence,
+  verbalRecord,
   reorderSkillsPrompt,
   sampleBeta,
   skillOrderInPrompt,
@@ -303,5 +305,139 @@ describe("samplers", () => {
       const out = derange(items, rng);
       items.forEach((x, i) => expect(out[i]).not.toBe(x));
     }
+  });
+});
+
+describe("verified evidence counters", () => {
+  it("counts only explicitly verified, eligible, unique observations without discounting", () => {
+    const ledger = new SkillPriorLedger(undefined, { discount: 0.5, pseudoCount: 20 });
+    const base = { cell: "c", skill: A, outcome: 1 as const, gate: true };
+    ledger.update({ ...base, runId: "read-only" });
+    ledger.update({ ...base, runId: "unverified", verified: false });
+    ledger.update({ ...base, runId: "closed", gate: false, verified: true });
+    expect(ledger.verifiedEvidence("c", A)).toBeNull();
+    ledger.update({ ...base, runId: "pass", verified: true });
+    ledger.update({ ...base, runId: "fail", outcome: 0, verified: true });
+    ledger.update({ ...base, runId: "pass", verified: true });
+    expect(ledger.posterior("c", A).n).toBe(4);
+    expect(ledger.verifiedEvidence("c", A)).toEqual({ passed: 1, runs: 2 });
+    expect(SkillPriorLedger.fromJSON(ledger.toJSON()).verifiedEvidence("c", A)).toEqual({
+      passed: 1,
+      runs: 2,
+    });
+    // Pooled posterior information must not become local outcome evidence.
+    ledger.posterior("other", A);
+    expect(ledger.verifiedEvidence("other", A)).toBeNull();
+    expect(ledger.verifiedEvidence("c", B)).toBeNull();
+  });
+
+  it("loads a legacy ledger without inventing counts, then counts only fresh verified runs", () => {
+    const ledger = SkillPriorLedger.fromJSON(
+      JSON.stringify({
+        version: 1,
+        cells: { c: { alpha: { hash: A.hash, alpha: 10, beta: 2, n: 7 } } },
+        global: {},
+        seen: ["old|alpha"],
+      }),
+    );
+    expect(ledger.order({ cell: "c", candidates: [B, A], mode: "mean" }).order[0]).toBe(A.name);
+    expect(ledger.verifiedEvidence("c", A)).toBeNull();
+    ledger.update({ cell: "c", skill: A, outcome: 0, runId: "new", gate: true, verified: true });
+    expect(ledger.posterior("c", A).n).toBe(8);
+    expect(ledger.verifiedEvidence("c", A)).toEqual({ passed: 0, runs: 1 });
+  });
+
+  it("excludes old or unknown skill hashes and resets counts on a version change", () => {
+    const ledger = new SkillPriorLedger();
+    ledger.update({ cell: "c", skill: A, outcome: 1, runId: "r1", gate: true, verified: true });
+    const changed = { ...A, hash: "new-hash" };
+    expect(ledger.verifiedEvidence("c", changed)).toBeNull();
+    ledger.update({
+      cell: "c",
+      skill: changed,
+      outcome: 0,
+      runId: "r2",
+      gate: true,
+      verified: true,
+    });
+    expect(ledger.verifiedEvidence("c", changed)).toEqual({ passed: 0, runs: 1 });
+    expect(ledger.verifiedEvidence("c", A)).toBeNull();
+    const unknown = { ...A, hash: "unknown" };
+    ledger.update({
+      cell: "c",
+      skill: unknown,
+      outcome: 1,
+      runId: "r3",
+      gate: true,
+      verified: true,
+    });
+    expect(ledger.verifiedEvidence("c", unknown)).toBeNull();
+  });
+
+  it.each([
+    { passed: 2, runs: 1 },
+    { passed: -1, runs: 2 },
+    { passed: 1, runs: 1.5 },
+    { passed: 0, runs: 0 },
+    { passed: 0, runs: 6 },
+    { passed: 0, runs: Number.MAX_SAFE_INTEGER + 1 },
+  ])("excludes malformed or impossible persisted counters: %j", (verifiedEvidence) => {
+    const ledger = SkillPriorLedger.fromJSON(
+      JSON.stringify({
+        version: 1,
+        cells: { c: { alpha: { hash: A.hash, alpha: 3, beta: 3, n: 5, verifiedEvidence } } },
+      }),
+    );
+    expect(ledger.verifiedEvidence("c", A)).toBeNull();
+  });
+
+  it("does not label deliberately shuffled cells as verified local evidence", () => {
+    const ledger = new SkillPriorLedger();
+    for (const [i, cell] of ["c1", "c2"].entries()) {
+      ledger.update({
+        cell,
+        skill: A,
+        outcome: i === 0 ? 1 : 0,
+        runId: cell,
+        gate: true,
+        verified: true,
+      });
+    }
+    const shuffled = ledger.shuffledAcrossCells(mulberry32(3));
+    expect(shuffled.verifiedEvidence("c1", A)).toBeNull();
+    expect(shuffled.verifiedEvidence("c2", A)).toBeNull();
+    expect(ledger.verifiedEvidence("c1", A)).toEqual({ passed: 1, runs: 1 });
+  });
+});
+
+describe("verbal evidence wording", () => {
+  it.each([
+    [0, 1, "REJECTED every time it was used (1 use)"],
+    [0, 3, "REJECTED every time it was used (3 uses)"],
+    [1, 1, "ACCEPTED every time it was used (1 use)"],
+    [3, 3, "ACCEPTED every time it was used (3 uses)"],
+    [2, 3, "accepted 2 of 3 uses, rejected the rest"],
+  ])("preserves the benchmark wording for %i/%i", (passed, runs, expected) => {
+    const evidence = { passed, runs };
+    expect(verbalRecord(evidence)).toBe(expected);
+    expect(formatSkillEvidence(evidence, "verbal")).toBe(expected);
+    const prompt = annotateSkillsPrompt(PROMPT, { alpha: evidence }, "verbal");
+    expect(prompt).toContain(`<evidence>${expected}</evidence>`);
+    expect(prompt.replace(/ {4}<evidence>.*<\/evidence>\n/, "")).toBe(PROMPT);
+  });
+
+  it("leaves zero-run and invalid skill entries byte-identical", () => {
+    expect(verbalRecord({ passed: 0, runs: 0 })).toBe("not tried yet");
+    expect(
+      annotateSkillsPrompt(
+        PROMPT,
+        {
+          alpha: { passed: 0, runs: 0 },
+          bravo: { passed: 5, runs: 2 },
+          cedar: { passed: 0, runs: -1 },
+        },
+        "verbal",
+      ),
+    ).toBe(PROMPT);
   });
 });

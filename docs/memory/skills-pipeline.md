@@ -505,12 +505,32 @@ the next turn. Consequences the rest of this document depends on:
   outcome for the one skill that was read (never from co-occurrence). It
   reorders and may annotate; it never removes an entry or grants a tool, and
   validation rollouts bypass it. The decision is journaled on the `skills`
-  stream (`prior: {cell, mode, baseline, order, means}`). No live path writes
-  the ledger today, because the live `skill_executions` signal is empty
-  (see above); the controlled test in `benchmarks/skill-prior/` manufactures
-  outcomes from the canonical capability families and measures order
-  sensitivity, headroom and the prior against global-success, shuffled and
-  ungated controls before any live enablement.
+  stream (`prior: {cell, mode, changed, baseline, order, means, evidenceStyle,
+  annotated}`). With the prior enabled, `skills.prior.evidence` defaults to
+  `verbal`: exact verified counts become phrases such as `ACCEPTED every time
+  it was used (3 uses)`, using the same formatter as the online benchmark.
+  `counts` shows numeric pass/run counts, `verdict` shows a majority verdict,
+  and `off` disables annotation while keeping ordering. Single-skill indexes
+  can also carry evidence. Zero-run entries remain byte-identical.
+
+  Exact counters are optional fields in version-1 ledgers, separate from
+  discounted posteriors and global pseudo-counts. Only eligible, deduplicated
+  updates explicitly marked `verified: true` advance them. The use-only
+  negative control does not. Matching context and content hash are required;
+  malformed counters, unknown hashes and legacy entries without counters
+  cannot annotate. Old ledgers still order skills and count only new verified
+  observations toward annotation. The deliberate shuffled-cell control drops
+  these counters rather than claiming evidence from the wrong context.
+
+  The runtime only reads the trusted local ledger and uses the `default`
+  context cell today; it does not import benchmark cells into live contexts.
+  No live path writes this ledger. `skill_executions` now records skill reads
+  and can receive grounded run outcomes, but a read or clean tool call alone
+  does not verify task success. A future writer needs trustworthy pass/fail
+  attribution to the actual skill version and context before enablement.
+  The controlled test in `benchmarks/skill-prior/` manufactures verified
+  outcomes and tests global-success, shuffled and ungated controls.
+  `skills.prior.enabled` remains false by default.
 
 ## Skill Lifecycle
 

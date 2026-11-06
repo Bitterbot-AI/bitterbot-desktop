@@ -6,10 +6,12 @@
  * hierarchical shrinkage from the skill's global posterior, geometric
  * discounting, and a version-hash reset. Ordering is by posterior mean
  * (frozen evaluation) or by a Thompson draw (learning). The update touches
- * ONLY the skill that was read and credited, and only when the gate is
- * open: a deterministic verifier settled the outcome and the run has not
- * been counted before. Unread candidates receive nothing; replay cannot
- * inflate evidence. The posterior-mean step `(r - mean) / (alpha + beta + 1)`
+ * ONLY the skill that was read and credited, and only when the eligibility
+ * gate is open and the run has not been counted within the dedupe window.
+ * Prompt evidence additionally requires an explicit verified-outcome marker
+ * from the trusted producer; use-only controls cannot supply that evidence.
+ * Unread candidates receive nothing. The posterior-mean step
+ * `(r - mean) / (alpha + beta + 1)`
  * is the three-factor form `eta * e * g * (r - b)` with a count-based step
  * size, the read-skill indicator as eligibility, and the per-cell mean as
  * the baseline. Weights are bounded by construction (means live in [0, 1]).
@@ -26,6 +28,7 @@ import type { SkillsPriorConfig } from "../../config/types.skills.js";
 
 export const SKILL_PRIOR_DEFAULTS = {
   mode: "mean" as const,
+  evidence: "verbal" as const,
   /** Geometric forgetting per gated observation in a cell (f-dsw TS form). */
   discount: 0.98,
   /** Pseudo-count carried from the skill's global posterior into a new cell. */
@@ -54,6 +57,8 @@ export interface Posterior {
   beta: number;
   /** Gated observations folded in (undiscounted count, for reporting). */
   n: number;
+  /** Exact verified outcomes in this cell, independent of discounting. Absent in legacy ledgers. */
+  verifiedEvidence?: SkillEvidence;
 }
 
 export interface SkillPriorLedgerState {
@@ -86,12 +91,14 @@ export interface OrderResult {
 export interface UpdateParams {
   cell: string;
   skill: Candidate;
-  /** 1 = verified pass, 0 = verified fail. */
+  /** 1 = pass, 0 = fail. Controls may supply synthetic outcomes. */
   outcome: 0 | 1;
   /** Unique per agent run; the same run never updates twice. */
   runId: string;
-  /** False closes the gate: the outcome was not deterministically verified. */
+  /** Eligibility gate for the posterior update. Controls may intentionally relax it. */
   gate: boolean;
+  /** A trusted verifier settled this outcome. Required in addition to gate for prompt evidence. */
+  verified?: boolean;
 }
 
 export type UpdateResult =
@@ -231,6 +238,26 @@ export class SkillPriorLedger {
     return fresh;
   }
 
+  /** Exact local evidence only; never reconstruct it from discounted or pooled posteriors. */
+  verifiedEvidence(cell: string, skill: Candidate): SkillEvidence | null {
+    if (!skill.hash || skill.hash === "unknown") {
+      return null;
+    }
+    const p = this.state.cells[cell]?.[skill.name];
+    const e = p?.verifiedEvidence;
+    if (
+      !p ||
+      p.hash !== skill.hash ||
+      !isSkillEvidence(e) ||
+      e.runs === 0 ||
+      !Number.isSafeInteger(p.n) ||
+      e.runs > p.n
+    ) {
+      return null;
+    }
+    return { passed: e.passed, runs: e.runs };
+  }
+
   mean(cell: string, skill: Candidate): number {
     const p = this.posterior(cell, skill);
     return p.alpha / (p.alpha + p.beta);
@@ -318,6 +345,7 @@ export class SkillPriorLedger {
     }
     const p = this.posterior(params.cell, params.skill);
     const before = p.alpha / (p.alpha + p.beta);
+    const evidence = this.verifiedEvidence(params.cell, params.skill);
     const fold = (q: Posterior) => {
       q.alpha = this.discount * q.alpha + params.outcome;
       q.beta = this.discount * q.beta + (1 - params.outcome);
@@ -325,6 +353,12 @@ export class SkillPriorLedger {
     };
     fold(p);
     fold(this.globalFor(params.skill));
+    if (params.verified === true && params.skill.hash && params.skill.hash !== "unknown") {
+      p.verifiedEvidence = {
+        passed: (evidence?.passed ?? 0) + params.outcome,
+        runs: (evidence?.runs ?? 0) + 1,
+      };
+    }
     const after = p.alpha / (p.alpha + p.beta);
     return { applied: true, cell: params.cell, skill: params.skill.name, before, after };
   }
@@ -357,7 +391,9 @@ export class SkillPriorLedger {
       const values = present.map((cell) => clone.state.cells[cell]![name]!);
       present.forEach((cell, i) => {
         const target = perm[i]!;
-        clone.state.cells[target]![name] = values[i]!;
+        // A deliberate wrong-cell control cannot claim verified local evidence.
+        const { verifiedEvidence: _evidence, ...posterior } = values[i]!;
+        clone.state.cells[target]![name] = posterior;
       });
     }
     return clone;
@@ -451,14 +487,45 @@ export interface SkillEvidence {
 }
 
 /**
- * How an evidence line is worded: exact counts, a verdict without numbers, or
- * a usage count with no outcome at all (the placebo control: same place, same
+ * How an evidence line is worded: verbal outcomes with counts, numeric counts,
+ * a verdict, or a usage count with no outcome at all (the placebo control: same place, same
  * shape, no information about which skill worked).
  */
-export type SkillEvidenceStyle = "counts" | "verdict" | "usage";
+export type SkillEvidenceStyle = "verbal" | "counts" | "verdict" | "usage";
+
+function isSkillEvidence(value: unknown): value is SkillEvidence {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const e = value as Partial<SkillEvidence>;
+  return (
+    Number.isSafeInteger(e.passed) &&
+    Number.isSafeInteger(e.runs) &&
+    e.passed! >= 0 &&
+    e.runs! >= e.passed!
+  );
+}
+
+/** The same counts as `records`, in words. */
+export function verbalRecord(e: SkillEvidence): string {
+  if (e.runs === 0) {
+    return "not tried yet";
+  }
+  const uses = e.runs === 1 ? "1 use" : `${e.runs} uses`;
+  if (e.passed === 0) {
+    return `REJECTED every time it was used (${uses})`;
+  }
+  if (e.passed === e.runs) {
+    return `ACCEPTED every time it was used (${uses})`;
+  }
+  return `accepted ${e.passed} of ${uses}, rejected the rest`;
+}
 
 /** The text of one evidence line. */
 export function formatSkillEvidence(e: SkillEvidence, style: SkillEvidenceStyle): string {
+  if (style === "verbal") {
+    return verbalRecord(e);
+  }
   if (style === "usage") {
     return `Usage record in past tasks like this one: ${e.runs} runs logged.`;
   }
@@ -483,7 +550,7 @@ export function annotateSkillsPrompt(
 ): string {
   return prompt.replace(SKILL_BLOCK_RE, (block, name: string) => {
     const e = evidence[name];
-    if (!e || e.runs <= 0) {
+    if (!isSkillEvidence(e) || e.runs === 0) {
       return block;
     }
     const m = /^([ \t]*)<\/skill>\n?$/m.exec(block);

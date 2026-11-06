@@ -1856,8 +1856,9 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
       sag: { enabled: false },
     },
     prior: {
-      enabled: false, // experimental: reorder the skills index from verified outcomes
+      enabled: false, // experimental: order and annotate the skills index from verified outcomes
       mode: "mean", // mean | thompson
+      evidence: "verbal", // verbal | counts | verdict | off (ordering only)
       discount: 0.98,
       pseudoCount: 4,
     },
@@ -1871,8 +1872,15 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
 - `prior`: the experience-guided skill prior (default off). When enabled, the
   `<available_skills>` index is reordered from an outcome-gated ledger
   (`ledgerPath`, default `CONFIG_DIR/skill-prior.json`) before each run; it
-  never removes an entry or grants a tool. The ledger is written only by the
-  controlled benchmark until a verified live outcome signal exists; see
+  never removes an entry or grants a tool. `evidence` defaults to `verbal`,
+  showing exact verified outcomes beside the matching skill, for example
+  `REJECTED every time it was used (3 uses)`. `counts` shows numeric pass/run
+  counts, `verdict` shows a majority verdict, and `off` keeps ordering only.
+  Evidence requires the same context cell and skill content hash; zero-run,
+  unverified and legacy entries without exact counters remain unannotated.
+  The live context cell is currently `default`; a ledger from another cell
+  does not provide local evidence. The ledger is a trusted local input and
+  the runtime only reads it. No live outcome writer exists yet; see
   [Skills pipeline](/memory/skills-pipeline).
 
 ---
