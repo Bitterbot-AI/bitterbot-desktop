@@ -211,8 +211,9 @@ export type SkillsEvolutionConfig = {
 
 /**
  * Experience-guided skill prior: an outcome-gated, per-context-cell
- * Beta-Bernoulli posterior per skill that REORDERS the `<available_skills>`
- * index (never removes an entry, never grants a tool). Default off; the
+ * Beta-Bernoulli posterior per skill that orders the `<available_skills>`
+ * index and annotates verified outcomes (never removes an entry or grants a
+ * tool). Default off; the
  * ledger is written by the controlled benchmark (benchmarks/skill-prior),
  * not by live runs, until a deterministically verified live outcome
  * signal exists. See docs/memory/skills-pipeline.md.
@@ -224,6 +225,8 @@ export type SkillsPriorConfig = {
   mode?: "mean" | "thompson";
   /** Where the top-ranked skill is listed. Models favour the later of near-equivalent entries. Default: "first". */
   placement?: "first" | "last";
+  /** Verified per-cell outcome wording; "off" keeps ordering only. Default: "verbal". */
+  evidence?: "verbal" | "counts" | "verdict" | "off";
   /** Geometric forgetting per gated observation in a cell. Default: 0.98. */
   discount?: number;
   /** Pseudo-count carried from a skill's global posterior into a new cell. Default: 4. */
@@ -246,7 +249,7 @@ export type SkillsConfig = {
   skillSeekers?: SkillSeekersConfig;
   /** PLAN-42: WikiSkill evolution loop (on by default). */
   evolution?: SkillsEvolutionConfig;
-  /** Experience-guided skill prior (index reordering). Default: off. */
+  /** Experience-guided skill prior (index ordering and evidence). Default: off. */
   prior?: SkillsPriorConfig;
   /** PLAN-11 Gap 4: LLM-based marketability prediction (opt-in). */
   marketability?: {

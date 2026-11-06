@@ -8,8 +8,10 @@
  */
 
 import { createHash } from "node:crypto";
-import type { SkillEvidence } from "../../src/agents/skills/skill-prior.js";
+import { type SkillEvidence, verbalRecord } from "../../src/agents/skills/skill-prior.js";
 import { mulberry32 } from "./tasks.js";
+
+export { verbalRecord } from "../../src/agents/skills/skill-prior.js";
 
 export const ONLINE_ARMS = [
   "none",
@@ -131,21 +133,6 @@ export function renderMemory(
     }
   }
   return lines.length ? `${HEADER}:\n${lines.join("\n")}\n\n` : null;
-}
-
-/** The same counts as `records`, in words. */
-export function verbalRecord(e: SkillEvidence): string {
-  if (e.runs === 0) {
-    return "not tried yet";
-  }
-  const uses = e.runs === 1 ? "1 use" : `${e.runs} uses`;
-  if (e.passed === 0) {
-    return `REJECTED every time it was used (${uses})`;
-  }
-  if (e.passed === e.runs) {
-    return `ACCEPTED every time it was used (${uses})`;
-  }
-  return `accepted ${e.passed} of ${uses}, rejected the rest`;
 }
 
 /** Prompt for the lesson writer: same feedback the other arms get, nothing more. */

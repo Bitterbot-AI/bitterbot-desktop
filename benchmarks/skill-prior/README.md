@@ -414,3 +414,54 @@ an accept is 92-99% in every memory arm.
   skill; verbal records and verdict-only logs move on.
 
 Spend $34.70 (Haiku) and $18.79 (gpt-5.4-mini).
+
+## Runtime integration
+
+The live adapter can show evidence beside each skill when
+`skills.prior.enabled` is explicitly enabled. `skills.prior.evidence` selects
+`verbal` (default), `counts`, `verdict` or `off` (ordering only). The feature
+itself remains **off by default**. Validation rollouts bypass it, and the
+runtime never writes the ledger.
+
+`verbalRecord` lives in `src/agents/skills/skill-prior.ts`; `online.ts` imports
+and re-exports that same function. Its wording is unchanged, including
+`REJECTED every time it was used (1 use)`, `ACCEPTED every time it was used
+(3 uses)` and `accepted 2 of 3 uses, rejected the rest`. The runtime puts
+this text in an `<evidence>` line inside the skill block. Zero-run skills
+receive no line, although the benchmark prefix still says `not tried yet`.
+The confirmation result tested verbal records in a prompt prefix; putting
+that wording beside skills is an integration choice that still needs a
+controlled live comparison, not an already measured combined effect.
+
+The version-1 ledger has optional exact `verifiedEvidence: {passed, runs}`
+counters per context cell and skill content hash. They are independent of
+posterior discounting and hierarchical pseudo-counts. An update must pass
+the existing eligibility/deduplication gate and explicitly set
+`verified: true`. Deterministically scored benchmark callers do so; the
+use-only negative control does not, and shuffled-cell controls discard the
+counters. Legacy ledgers remain valid for ordering but show no evidence
+until new verified outcomes arrive. Malformed counters, unknown hashes and
+counts from another context or skill version cannot annotate.
+
+Live calls currently use the `default` context cell. Benchmark truth-table
+cells are not automatically live evidence, and this change adds no
+production outcome writer. Keep the prior disabled until verified outcomes
+can be attributed to a skill version and a meaningful context. A trusted
+local file supplies the evidence; loading it does not independently verify
+its producer.
+
+To check formatter refactors without spending on new model runs, copy the
+cached `online`, `online-confirm` and `conventions` directories outside Git,
+then re-render before and after the change:
+
+```sh
+node --import tsx benchmarks/skill-prior/online-run.ts --study main --model anthropic/claude-haiku-4-5 --out "$COPY/online" --truth-from "$COPY/conventions" --max-runs 0 --episodes 8 --yes
+node --import tsx benchmarks/skill-prior/online-run.ts --study confirm --model anthropic/claude-haiku-4-5 --out "$COPY/online-confirm" --truth-from "$COPY/conventions" --max-runs 0 --episodes 8 --yes
+node --import tsx benchmarks/skill-prior/online-run.ts --study confirm --model openai/gpt-5.4-mini --out "$COPY/online-confirm" --truth-from "$COPY/conventions" --max-runs 0 --episodes 8 --yes
+```
+
+Compare report bytes excluding only the `Generated` line and any trailing
+git provenance line, and compare protocol hashes exactly. The main study
+has Haiku data only. Use isolated state and deny network access for a strict
+cache-only check: the main runner initializes its lesson writer even when
+all lessons are cached, and `--max-runs 0` limits agent runs, not lesson calls.

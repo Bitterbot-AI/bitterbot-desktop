@@ -372,8 +372,15 @@ async function main(): Promise<void> {
       const gate = read !== null && r.error === null;
       if (read) {
         const skill = CANDIDATES[read]!;
-        treatment.update({ cell, skill, outcome: r.pass, runId: r.runId, gate });
-        global.update({ cell: "all", skill, outcome: r.pass, runId: r.runId, gate });
+        treatment.update({ cell, skill, outcome: r.pass, runId: r.runId, gate, verified: true });
+        global.update({
+          cell: "all",
+          skill,
+          outcome: r.pass,
+          runId: r.runId,
+          gate,
+          verified: true,
+        });
         ungated.update({ cell, skill, outcome: 1, runId: r.runId, gate: read !== null });
       }
       learnLog.push({
