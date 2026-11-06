@@ -87,7 +87,7 @@ export function buildWslTaskXml(spec: WslTaskSpec): string {
     "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
     "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>",
     "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>",
-    "    <AllowHardTerminatingTask>true</AllowHardTerminatingTask>",
+    "    <AllowHardTerminate>true</AllowHardTerminate>",
     "    <StartWhenAvailable>true</StartWhenAvailable>",
     "    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>",
     "    <IdleSettings>",
