@@ -7,6 +7,9 @@ import {
   rotateDeviceToken,
   summarizeDeviceTokens,
 } from "../../infra/device-pairing.js";
+import { disconnectDevice } from "../mobile/live-clients.js";
+import { getActivePushDispatcher } from "../mobile/push-dispatcher.js";
+import { removePushSubscription } from "../mobile/push-store.js";
 import {
   ErrorCodes,
   errorShape,
@@ -174,12 +177,23 @@ export const deviceHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const { deviceId, role } = params as { deviceId: string; role: string };
+    const deviceId = String((params as { deviceId: string }).deviceId).trim();
+    const role = String((params as { role: string }).role).trim();
     const entry = await revokeDeviceToken({ deviceId, role });
     if (!entry) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, "unknown deviceId/role"));
       return;
     }
+    // PLAN-62: revoking really revokes. The token is dead for new
+    // connections; also drop the push subscription and close the sockets the
+    // device already has open, which would otherwise keep working.
+    // Push belongs to the operator token (the phone app); a node token's
+    // revocation leaves it alone. Sockets close only for the revoked role.
+    if (role === "operator") {
+      await removePushSubscription(deviceId);
+      getActivePushDispatcher()?.forgetDevice(deviceId);
+    }
+    disconnectDevice(deviceId, "device token revoked", { role });
     context.logGateway.info(`device token revoked device=${deviceId} role=${entry.role}`);
     respond(
       true,

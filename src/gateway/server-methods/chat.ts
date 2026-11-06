@@ -25,6 +25,14 @@ import {
 } from "../chat-abort.js";
 import { type ChatImageContent, parseMessageWithAttachments } from "../chat-attachments.js";
 import { stripEnvelopeFromMessages } from "../chat-sanitize.js";
+import {
+  isPhoneMessageAllowed,
+  isPhoneSessionAllowed,
+  isPhoneSurface,
+  PHONE_COMMAND_REFUSAL,
+  PHONE_SESSION_REFUSAL,
+} from "../mobile/phone-policy.js";
+import { getActivePushDispatcher } from "../mobile/push-dispatcher.js";
 import { GATEWAY_CLIENT_CAPS, hasGatewayClientCap } from "../protocol/client-info.js";
 import {
   ErrorCodes,
@@ -548,6 +556,24 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
     const inboundMessage = sanitizedMessageResult.message;
 
+    // PLAN-62: a paired phone is a non-owner surface (mobile/phone-policy.ts):
+    // ordinary chat and harmless commands, in its own or the main conversation,
+    // never delivered out to a channel.
+    const phoneSurface = isPhoneSurface(client?.connect?.scopes);
+    if (phoneSurface) {
+      const refusal = !isPhoneMessageAllowed(inboundMessage)
+        ? PHONE_COMMAND_REFUSAL
+        : !isPhoneSessionAllowed(p.sessionKey)
+          ? PHONE_SESSION_REFUSAL
+          : p.deliver === true
+            ? "A paired phone cannot send replies out to a chat channel."
+            : null;
+      if (refusal) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, refusal));
+        return;
+      }
+    }
+
     const stopCommand = isChatStopCommandText(inboundMessage);
     const normalizedAttachments = normalizeRpcAttachmentsToChatAttachments(p.attachments);
     const rawMessage = inboundMessage.trim();
@@ -576,6 +602,16 @@ export const chatHandlers: GatewayRequestHandlers = {
     }
     const rawSessionKey = p.sessionKey;
     const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
+    // PLAN-62: a phone that sends here wants a push when this session replies
+    // while its app is closed. Both spellings, since the final event may carry either.
+    const phoneDeviceId = client?.connect?.device?.id;
+    if (phoneDeviceId && isPhoneSurface(client?.connect?.scopes)) {
+      const dispatcher = getActivePushDispatcher();
+      dispatcher?.noteChatSend(phoneDeviceId, sessionKey);
+      if (rawSessionKey !== sessionKey) {
+        dispatcher?.noteChatSend(phoneDeviceId, rawSessionKey);
+      }
+    }
 
     // PLAN-20: record the user turn in the session-context tracker so
     // interceptors (recall-before-claim, protocol-quiet-in-groups,
@@ -697,6 +733,8 @@ export const chatHandlers: GatewayRequestHandlers = {
         SenderName: clientInfo?.displayName,
         SenderUsername: clientInfo?.displayName,
         GatewayClientScopes: client?.connect?.scopes,
+        // PLAN-62: the phone's turn runs as a non-owner (see command-auth.ts).
+        ...(phoneSurface ? { GatewayPhoneSurface: true } : {}),
       };
 
       const agentId = resolveSessionAgentId({

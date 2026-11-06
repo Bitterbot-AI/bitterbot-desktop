@@ -22,6 +22,10 @@ export type DevicePairingPendingRequest = {
   remoteIp?: string;
   silent?: boolean;
   isRepair?: boolean;
+  /** Mobile pairing: the one-time setup code this request claimed. */
+  setupId?: string;
+  /** Mobile pairing: the short code the phone shows; the owner checks it matches. */
+  confirmCode?: string;
   ts: number;
 };
 
@@ -55,6 +59,8 @@ export type PairedDevice = {
   roles?: string[];
   scopes?: string[];
   remoteIp?: string;
+  /** Owner-chosen name; wins over the displayName the client reports on connect. */
+  label?: string;
   tokens?: Record<string, DeviceAuthToken>;
   createdAtMs: number;
   approvedAtMs: number;
@@ -258,6 +264,8 @@ export async function requestDevicePairing(
       remoteIp: req.remoteIp,
       silent: req.silent,
       isRepair,
+      setupId: req.setupId,
+      confirmCode: req.confirmCode,
       ts: Date.now(),
     };
     state.pendingById[request.requestId] = request;
@@ -307,6 +315,7 @@ export async function approveDevicePairing(
       roles,
       scopes,
       remoteIp: pending.remoteIp,
+      label: existing?.label,
       tokens,
       createdAtMs: existing?.createdAtMs ?? now,
       approvedAtMs: now,
@@ -544,5 +553,57 @@ export async function revokeDeviceToken(params: {
     state.pairedByDeviceId[device.deviceId] = device;
     await persistState(state, params.baseDir);
     return entry;
+  });
+}
+
+/**
+ * Forget a paired device entirely: its record, roles, scopes and every token.
+ * A later connection from the same key is an unpaired device again and has to
+ * pair from scratch. Pending requests from the same device go too.
+ */
+export async function removePairedDevice(
+  deviceId: string,
+  baseDir?: string,
+): Promise<PairedDevice | null> {
+  return await withLock(async () => {
+    const state = await loadState(baseDir);
+    const id = normalizeDeviceId(deviceId);
+    const existing = state.pairedByDeviceId[id] ?? null;
+    let changed = false;
+    if (existing) {
+      delete state.pairedByDeviceId[id];
+      changed = true;
+    }
+    for (const [requestId, pending] of Object.entries(state.pendingById)) {
+      if (pending.deviceId === id) {
+        delete state.pendingById[requestId];
+        changed = true;
+      }
+    }
+    if (changed) {
+      await persistState(state, baseDir);
+    }
+    return existing;
+  });
+}
+
+/** Set (or clear, with an empty string) the owner-chosen name of a paired device. */
+export async function renamePairedDevice(
+  deviceId: string,
+  label: string,
+  baseDir?: string,
+): Promise<PairedDevice | null> {
+  return await withLock(async () => {
+    const state = await loadState(baseDir);
+    const id = normalizeDeviceId(deviceId);
+    const existing = state.pairedByDeviceId[id];
+    if (!existing) {
+      return null;
+    }
+    const trimmed = label.trim().slice(0, 64);
+    const next: PairedDevice = { ...existing, label: trimmed || undefined };
+    state.pairedByDeviceId[id] = next;
+    await persistState(state, baseDir);
+    return next;
   });
 }

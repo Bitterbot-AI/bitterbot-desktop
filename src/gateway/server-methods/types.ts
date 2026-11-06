@@ -20,6 +20,8 @@ export type GatewayClient = {
   connId?: string;
   /** Setup-token connections only (PLAN-56 Phase 4); never sent to a client. */
   setupToken?: string;
+  /** PLAN-62: a phone's last reported page visibility (mobile.presence). */
+  mobileVisible?: boolean;
 };
 
 export type RespondFn = (

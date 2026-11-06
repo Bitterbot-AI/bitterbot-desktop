@@ -52,13 +52,16 @@ Treat these as sensitive (they gate access to your assistant).
 Nodes connect to the Gateway as **devices** with `role: node`. The Gateway
 creates a device pairing request that must be approved.
 
-### Pair via Telegram
+### Pair a phone from a chat app
 
-With the `device-pair` plugin enabled, you can pair a node from Telegram:
+With the `device-pair` plugin enabled, you can pair a phone from any chat channel:
 
-1. `/pair` generates a setup code (and a phone-ready URL).
-2. Paste the code in the node's gateway settings.
-3. `/pair approve` approves the latest pending request.
+1. `/pair` replies with a one-time link (five minutes, single use). It never contains the
+   gateway token.
+2. Open it on the phone. The [phone app](/web/mobile) makes its own key and shows a six-digit
+   code.
+3. `/pair approve <code>` approves it when the code matches (`/pair pending` lists requests,
+   `/pair reject <code>` declines).
 
 ### Approve a node device
 
@@ -82,8 +85,9 @@ Stored under `~/.bitterbot/devices/`:
   [first run from the browser](/platforms/docker#start-in-one-command).
 - The legacy `node.pair.*` API (CLI: `bitterbot nodes pending/approve`) is a
   separate gateway-owned pairing store. WS nodes still require device pairing.
-- The `/pair` chat command also emits a phone-ready URL alongside the iOS setup
-  code — paste it into a phone browser to open the [Mobile Chat UI](/web/mobile).
+- Phones pair with one-time setup codes from the Control UI (**Pair a phone**),
+  `bitterbot devices pair` or `/pair`; see the [phone app](/web/mobile). A phone's token is
+  scoped to chat, approvals and notifications.
 
 ## Related docs
 
