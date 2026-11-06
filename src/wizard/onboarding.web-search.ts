@@ -13,14 +13,21 @@
  *      provider, and skips if found
  *
  * Supported providers: Brave Search, Perplexity, Grok (xAI), Tavily, Serply,
- * and keyless Parallel.
+ * and keyless Parallel and Keenable.
  */
 
 import type { BitterbotConfig } from "../config/config.js";
 import type { WizardFlow } from "./onboarding.types.js";
 import type { WizardPrompter } from "./prompts.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
+type SearchProvider =
+  | "brave"
+  | "perplexity"
+  | "grok"
+  | "tavily"
+  | "parallel"
+  | "serply"
+  | "keenable";
 
 const PROVIDERS: Record<
   SearchProvider,
@@ -62,6 +69,12 @@ const PROVIDERS: Record<
     envVar: "SERPLY_API_KEY",
     keyPlaceholder: "",
   },
+  keenable: {
+    label: "Keenable",
+    hint: "Free, keyless web search; an optional key lifts rate limits",
+    envVar: "KEENABLE_API_KEY",
+    keyPlaceholder: "",
+  },
 };
 
 function detectExistingKey(config: BitterbotConfig): {
@@ -88,6 +101,10 @@ function detectExistingKey(config: BitterbotConfig): {
     return envVar && process.env[envVar]?.trim() ? { provider, source: "env" } : null;
   }
   for (const [p, meta] of Object.entries(PROVIDERS)) {
+    // Keenable's key is optional, so it never picks the provider on its own.
+    if (p === "keenable") {
+      continue;
+    }
     if (meta.envVar && process.env[meta.envVar]?.trim()) {
       return { provider: p as SearchProvider, source: "env" };
     }
@@ -137,6 +154,14 @@ export async function setupWebSearchForOnboarding(params: {
     return config;
   }
 
+  if (config.tools?.web?.search?.provider === "keenable") {
+    await prompter.note(
+      "Keenable is configured and searches without an API key. Set KEENABLE_API_KEY to lift the rate limits.",
+      "Web search",
+    );
+    return config;
+  }
+
   // ── QuickStart: defer entirely (PLAN-41 D-M) ──
   // No env key was detected above, so there's nothing to auto-configure.
   // The finalize step shows the "not configured" pointer; one short note
@@ -163,7 +188,7 @@ export async function setupWebSearchForOnboarding(params: {
       "",
       "Supported: Brave Search (free tier), Tavily (built for AI agents),",
       "Perplexity (Sonar API), Grok (xAI), Serply (Google results),",
-      "or Parallel (free, keyless).",
+      "Parallel (free, keyless), or Keenable (free, keyless).",
       "",
       "You can also set the key as an env var and skip this step:",
       "  BRAVE_API_KEY, TAVILY_API_KEY, PERPLEXITY_API_KEY, XAI_API_KEY, or SERPLY_API_KEY",
@@ -222,11 +247,31 @@ export async function setupWebSearchForOnboarding(params: {
 
   // ── Paste key ──
   const keyInput = await prompter.text({
-    message: `${meta.label} API key (or leave blank to use ${meta.envVar} env var later)`,
+    message:
+      provider === "keenable"
+        ? `${meta.label} API key (optional; leave blank to search keyless)`
+        : `${meta.label} API key (or leave blank to use ${meta.envVar} env var later)`,
     placeholder: meta.keyPlaceholder,
   });
 
   const key = String(keyInput ?? "").trim();
+
+  if (!key && provider === "keenable") {
+    await prompter.note(
+      "Keenable configured. It searches without a key; set KEENABLE_API_KEY later to lift the rate limits.",
+      "Web search ready",
+    );
+    return {
+      ...config,
+      tools: {
+        ...config.tools,
+        web: {
+          ...config.tools?.web,
+          search: { ...config.tools?.web?.search, provider, enabled: true },
+        },
+      },
+    };
+  }
 
   if (!key) {
     await prompter.note(

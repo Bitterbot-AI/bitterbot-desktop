@@ -8,9 +8,10 @@
  *
  * What we check (config-only, no network):
  *   1. `tools.web.search` block is present and not disabled
- *   2. A provider is selected (brave / perplexity / grok / tavily / serply)
+ *   2. A provider is selected (brave / perplexity / grok / tavily / serply,
+ *      or keyless parallel / keenable)
  *   3. A key is reachable for that provider — either in config or via
- *      the provider's well-known env var
+ *      the provider's well-known env var (optional for keenable)
  *
  * What we deliberately don't check:
  *   - Live provider reachability (noisy in flaky networks; runtime surfaces
@@ -28,7 +29,14 @@ import {
   info,
 } from "./doctor-check.js";
 
-type SearchProvider = "brave" | "perplexity" | "grok" | "tavily" | "parallel" | "serply";
+type SearchProvider =
+  | "brave"
+  | "perplexity"
+  | "grok"
+  | "tavily"
+  | "parallel"
+  | "serply"
+  | "keenable";
 
 const PROVIDER_ENV_VARS: Record<SearchProvider, readonly string[]> = {
   parallel: [],
@@ -37,6 +45,7 @@ const PROVIDER_ENV_VARS: Record<SearchProvider, readonly string[]> = {
   grok: ["XAI_API_KEY", "GROK_API_KEY"],
   tavily: ["TAVILY_API_KEY"],
   serply: ["SERPLY_API_KEY"],
+  keenable: ["KEENABLE_API_KEY"],
 };
 
 function envHasKey(provider: SearchProvider): string | null {
@@ -112,6 +121,13 @@ export function runWebSearchChecks(params: { config: BitterbotConfig }): void {
 
   const configKey = configKeyForProvider(config, provider);
   const envVar = envHasKey(provider);
+  if (provider === "keenable" && !configKey.found && !envVar) {
+    results.push(
+      ok("Keenable searches keyless; an optional KEENABLE_API_KEY lifts the rate limits."),
+    );
+    renderSection(results);
+    return;
+  }
   if (configKey.found) {
     results.push(ok(`API key present (${configKey.location})`));
   } else if (envVar) {

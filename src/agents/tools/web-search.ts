@@ -8,6 +8,7 @@ import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import { withOpenRouterAttribution } from "../openrouter-attribution.js";
 import type { AnyAgentTool } from "./common.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
+import { runKeenableSearch } from "./web-search-keenable.js";
 import { runParallelSearch } from "./web-search-parallel.js";
 import { runSerplySearch, serplySupportsFreshness } from "./web-search-serply.js";
 import {
@@ -23,7 +24,15 @@ import {
   writeCache,
 } from "./web-shared.js";
 
-const SEARCH_PROVIDERS = ["brave", "perplexity", "grok", "tavily", "parallel", "serply"] as const;
+const SEARCH_PROVIDERS = [
+  "brave",
+  "perplexity",
+  "grok",
+  "tavily",
+  "parallel",
+  "serply",
+  "keenable",
+] as const;
 const DEFAULT_SEARCH_COUNT = 5;
 const MAX_SEARCH_COUNT = 10;
 
@@ -72,7 +81,7 @@ const WebSearchSchema = Type.Object({
   freshness: Type.Optional(
     Type.String({
       description:
-        "Filter results by discovery time. Brave supports 'pd', 'pw', 'pm', 'py', and date range 'YYYY-MM-DDtoYYYY-MM-DD'. Perplexity and Serply support 'pd', 'pw', 'pm', and 'py'.",
+        "Filter results by discovery time. Brave supports 'pd', 'pw', 'pm', 'py', and date range 'YYYY-MM-DDtoYYYY-MM-DD'. Perplexity and Serply support 'pd', 'pw', 'pm', and 'py'. Keenable supports all of these and matches them against publication dates.",
     }),
   ),
 });
@@ -152,6 +161,10 @@ type TavilySearchResponse = {
 };
 
 type SerplyConfig = {
+  apiKey?: string;
+};
+
+type KeenableConfig = {
   apiKey?: string;
 };
 
@@ -277,6 +290,9 @@ function resolveSearchProvider(search?: WebSearchConfig): (typeof SEARCH_PROVIDE
   }
   if (raw === "serply") {
     return "serply";
+  }
+  if (raw === "keenable") {
+    return "keenable";
   }
   if (raw === "brave") {
     return "brave";
@@ -450,6 +466,32 @@ function resolveSerplyApiKey(serply?: SerplyConfig): string | undefined {
   }
   const fromEnv = normalizeApiKey(process.env.SERPLY_API_KEY);
   return fromEnv || undefined;
+}
+
+function resolveKeenableConfig(search?: WebSearchConfig): KeenableConfig {
+  if (!search || typeof search !== "object") {
+    return {};
+  }
+  const keenable = "keenable" in search ? search.keenable : undefined;
+  if (!keenable || typeof keenable !== "object") {
+    return {};
+  }
+  return keenable as KeenableConfig;
+}
+
+/** Optional: without a key Keenable searches keyless; a key only lifts rate limits. */
+function resolveKeenableApiKey(keenable?: KeenableConfig): string | undefined {
+  const fromConfig = normalizeApiKey(keenable?.apiKey);
+  if (fromConfig) {
+    return fromConfig;
+  }
+  const fromEnv = normalizeApiKey(process.env.KEENABLE_API_KEY);
+  return fromEnv || undefined;
+}
+
+/** Providers that search without an API key. */
+function isKeylessProvider(provider: (typeof SEARCH_PROVIDERS)[number]): boolean {
+  return provider === "parallel" || provider === "keenable";
 }
 
 function resolveTavilySearchDepth(tavily?: TavilyConfig): string {
@@ -745,7 +787,10 @@ async function runWebSearch(params: {
 }): Promise<Record<string, unknown>> {
   params.signal?.throwIfAborted();
   const cacheKey = normalizeCacheKey(
-    params.provider === "brave" || params.provider === "parallel" || params.provider === "serply"
+    params.provider === "brave" ||
+      params.provider === "parallel" ||
+      params.provider === "serply" ||
+      params.provider === "keenable"
       ? `${params.provider}:${params.query}:${params.count}:${params.country || "default"}:${params.search_lang || "default"}:${params.ui_lang || "default"}:${params.freshness || "default"}`
       : params.provider === "perplexity"
         ? `${params.provider}:${params.query}:${params.perplexityBaseUrl ?? DEFAULT_PERPLEXITY_BASE_URL}:${params.perplexityModel ?? DEFAULT_PERPLEXITY_MODEL}:${params.freshness || "default"}`
@@ -760,11 +805,17 @@ async function runWebSearch(params: {
 
   const start = Date.now();
 
-  if (params.provider === "parallel" || params.provider === "serply") {
+  if (
+    params.provider === "parallel" ||
+    params.provider === "serply" ||
+    params.provider === "keenable"
+  ) {
     const results =
       params.provider === "serply"
         ? await runSerplySearch(params)
-        : await runParallelSearch(params);
+        : params.provider === "keenable"
+          ? await runKeenableSearch(params)
+          : await runParallelSearch(params);
     const mapped = results.map((entry) => ({
       title: entry.title ? wrapWebContent(entry.title, "web_search") : "",
       url: entry.url,
@@ -969,6 +1020,7 @@ export function createWebSearchTool(options?: {
   const grokConfig = resolveGrokConfig(search);
   const tavilyConfig = resolveTavilyConfig(search);
   const serplyConfig = resolveSerplyConfig(search);
+  const keenableConfig = resolveKeenableConfig(search);
 
   const description =
     provider === "parallel"
@@ -981,7 +1033,9 @@ export function createWebSearchTool(options?: {
             ? "Search the web using Tavily. Returns structured search results with titles, URLs, and content, plus an AI-synthesized answer."
             : provider === "serply"
               ? "Search the web using Serply (Google results). Supports region-specific results via country and freshness via pd/pw/pm/py. Returns titles, URLs, and snippets."
-              : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
+              : provider === "keenable"
+                ? "Search the web using Keenable, keyless by default. Supports freshness via pd/pw/pm/py or YYYY-MM-DDtoYYYY-MM-DD, matched against publication dates. Returns titles, URLs, and page snippets. Region and language filters are unavailable."
+                : "Search the web using Brave Search API. Supports region-specific and localized search via country and language parameters. Returns titles, URLs, and snippets for fast research.";
 
   return {
     label: "Web Search",
@@ -1000,9 +1054,11 @@ export function createWebSearchTool(options?: {
               ? resolveTavilyApiKey(tavilyConfig)
               : provider === "serply"
                 ? resolveSerplyApiKey(serplyConfig)
-                : resolveSearchApiKey(search);
+                : provider === "keenable"
+                  ? resolveKeenableApiKey(keenableConfig)
+                  : resolveSearchApiKey(search);
 
-      if (!apiKey && provider !== "parallel") {
+      if (!apiKey && !isKeylessProvider(provider)) {
         return jsonResult(missingSearchKeyPayload(provider));
       }
       const params = args as Record<string, unknown>;
@@ -1019,6 +1075,13 @@ export function createWebSearchTool(options?: {
             "Parallel web_search does not support country, search_lang, or ui_lang. Include preferences in the query instead.",
         });
       }
+      if (provider === "keenable" && (country || search_lang || ui_lang)) {
+        return jsonResult({
+          error: "unsupported_search_filter",
+          message:
+            "Keenable web_search does not support country, search_lang, or ui_lang. Include preferences in the query instead.",
+        });
+      }
       if (provider === "serply" && (search_lang || ui_lang)) {
         return jsonResult({
           error: "unsupported_search_filter",
@@ -1031,12 +1094,13 @@ export function createWebSearchTool(options?: {
         rawFreshness &&
         provider !== "brave" &&
         provider !== "perplexity" &&
-        provider !== "serply"
+        provider !== "serply" &&
+        provider !== "keenable"
       ) {
         return jsonResult({
           error: "unsupported_freshness",
           message:
-            "freshness is only supported by the Brave, Perplexity, and Serply web_search providers.",
+            "freshness is only supported by the Brave, Perplexity, Serply, and Keenable web_search providers.",
           docs: "https://docs.bitterbot.ai/tools/web",
         });
       }
@@ -1086,7 +1150,7 @@ export function createWebSearchTool(options?: {
 /**
  * PLAN-34 Phase 2c: provider-agnostic search for non-tool callers (the
  * Skill-Seekers URL finder). Resolves the CONFIGURED provider — brave,
- * perplexity, grok, tavily, parallel, or serply — exactly like the web_search tool (same
+ * perplexity, grok, tavily, parallel, serply, or keenable — exactly like the web_search tool (same
  * keys, caching, timeouts) and returns normalized {title, url} results.
  * Null when web search is unavailable (disabled or no API key).
  */
@@ -1101,7 +1165,7 @@ export function isWebSearchConfigured(cfg: BitterbotConfig | undefined): boolean
     return false;
   }
   const provider = resolveSearchProvider(search);
-  if (provider === "parallel") {
+  if (isKeylessProvider(provider)) {
     return true;
   }
   const apiKey =
@@ -1131,6 +1195,7 @@ export async function runConfiguredWebSearch(
   const grokConfig = resolveGrokConfig(search);
   const tavilyConfig = resolveTavilyConfig(search);
   const serplyConfig = resolveSerplyConfig(search);
+  const keenableConfig = resolveKeenableConfig(search);
   const perplexityAuth =
     provider === "perplexity" ? resolvePerplexityApiKey(perplexityConfig) : undefined;
   const apiKey =
@@ -1142,8 +1207,10 @@ export async function runConfiguredWebSearch(
           ? resolveTavilyApiKey(tavilyConfig)
           : provider === "serply"
             ? resolveSerplyApiKey(serplyConfig)
-            : resolveSearchApiKey(search);
-  if (!apiKey && provider !== "parallel") {
+            : provider === "keenable"
+              ? resolveKeenableApiKey(keenableConfig)
+              : resolveSearchApiKey(search);
+  if (!apiKey && !isKeylessProvider(provider)) {
     return null;
   }
   const payload = await runWebSearch({
@@ -1200,4 +1267,5 @@ export const __testing = {
   resolveTavilyApiKey,
   resolveTavilySearchDepth,
   resolveSerplyApiKey,
+  resolveKeenableApiKey,
 } as const;
