@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
 /**
  * Latent-convention twins: does verified experience fix errors the model
  * cannot avoid on its own? (Design: reports "Skill selection test data and
@@ -39,12 +41,10 @@
  * and ledgers live under <out> (default ~/bitterbot-skill-prior/conventions),
  * never under ~/.bitterbot.
  */
-
-import { createHash } from "node:crypto";
-import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { skillPriorLedgerPath } from "../../src/agents/skills/skill-prior-runtime.js";
 import {
   type Candidate,
   placeRanking,
@@ -52,6 +52,7 @@ import {
 } from "../../src/agents/skills/skill-prior.js";
 import { loadConfig } from "../../src/config/config.js";
 import { startEventJournal } from "../../src/infra/event-journal.js";
+import { writeBenchmarkSkillPriorLedger } from "../../src/memory/skill-prior-writer.js";
 import {
   type ArmSummary,
   type PairedContrast,
@@ -420,7 +421,11 @@ async function main(): Promise<void> {
         });
       }
     }
-    await fs.writeFile(path.join(out, "ledger.json"), ledger.toJSON(), "utf-8");
+    await writeBenchmarkSkillPriorLedger(
+      path.join(out, "ledger.json"),
+      ledger,
+      skillPriorLedgerPath(loadConfig()),
+    );
     await fs.writeFile(path.join(out, "evidence.json"), JSON.stringify(evidence, null, 2), "utf-8");
     const evalSeeds = seedsIn("qualification", 1, Number(args["eval-seeds"]), SALT);
     const arms = (

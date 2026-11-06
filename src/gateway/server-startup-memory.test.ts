@@ -24,6 +24,13 @@ describe("startGatewayMemoryBackend", () => {
     expect(log.info).toHaveBeenCalledWith(expect.stringContaining("memory search is disabled"));
   });
 
+  it("starts the verified-outcome worker only on the initialized gateway manager", async () => {
+    const startSkillPriorWriter = vi.fn();
+    getMemorySearchManager.mockResolvedValue({ manager: { startSkillPriorWriter } });
+    await startGatewayMemoryBackend({ cfg, log });
+    expect(startSkillPriorWriter).toHaveBeenCalledExactlyOnceWith(expect.any(Function));
+  });
+
   it("warns with the real message when initialization threw", async () => {
     getMemorySearchManager.mockResolvedValue({ manager: null, error: "sqlite-vec missing" });
     await startGatewayMemoryBackend({ cfg, log });

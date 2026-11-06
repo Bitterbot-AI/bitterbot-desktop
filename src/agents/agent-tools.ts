@@ -68,6 +68,7 @@ import {
   type EnforcerContext,
   wrapToolsWithCapabilityEnforcer,
 } from "./skills/capability-enforcer.js";
+import { captureSkillReadContext } from "./skills/skill-read-provenance.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import { ToolCache } from "./tool-cache.js";
 import {
@@ -363,7 +364,9 @@ export function createBitterbotCodingTools(options?: {
         });
         return [workspaceOnly ? wrapToolWorkspaceRootGuard(sandboxed, sandboxRoot) : sandboxed];
       }
-      const freshReadTool = createReadTool(workspaceRoot);
+      const freshReadTool = createReadTool(workspaceRoot, {
+        skillReadContext: () => captureSkillReadContext(options ?? {}),
+      });
       const wrapped = createBitterbotReadTool(freshReadTool);
       return [workspaceOnly ? wrapToolWorkspaceRootGuard(wrapped, workspaceRoot) : wrapped];
     }

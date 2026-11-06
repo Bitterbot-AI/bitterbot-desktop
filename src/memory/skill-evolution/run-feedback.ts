@@ -11,9 +11,11 @@
  * Append-only JSONL under the skill wiki dir; the newest entry per run wins.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { type ImpactTrailOptions, resolveWikiDir } from "../../agents/skills/impact-trail.js";
+import { emitAgentEvent } from "../../infra/agent-events.js";
 
 export const RUN_FEEDBACK_FILENAME = "run-feedback.jsonl";
 const MAX_NOTE_CHARS = 500;
@@ -29,6 +31,11 @@ export interface RunFeedbackEntry {
   /** Who recorded it: "operator" (RPC/CLI) or a channel/user label. */
   by: string;
   ts: number;
+  eventId?: string;
+  /** Append position, assigned by the reader (not supplied by a caller). */
+  sequence?: number;
+  /** Stamped by the authenticated gateway, never copied from RPC params/by. */
+  authority?: "owner-operator";
 }
 
 export function runFeedbackPath(opts: ImpactTrailOptions = {}): string {
@@ -40,7 +47,13 @@ export function isValidRunId(runId: string): boolean {
 }
 
 export async function appendRunFeedback(
-  entry: { runId: string; verdict: RunFeedbackVerdict; note?: string | null; by?: string },
+  entry: {
+    runId: string;
+    verdict: RunFeedbackVerdict;
+    note?: string | null;
+    by?: string;
+    authority?: "owner-operator";
+  },
   opts: ImpactTrailOptions = {},
 ): Promise<RunFeedbackEntry> {
   if (!isValidRunId(entry.runId)) {
@@ -55,16 +68,24 @@ export async function appendRunFeedback(
     note: entry.note ? entry.note.slice(0, MAX_NOTE_CHARS) : null,
     by: entry.by?.trim() || "operator",
     ts: Date.now(),
+    eventId: randomUUID(),
+    ...(entry.authority === "owner-operator" ? { authority: entry.authority } : {}),
   };
   const file = runFeedbackPath(opts);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.appendFile(file, `${JSON.stringify(record)}\n`, "utf-8");
+  emitAgentEvent({
+    runId: entry.runId,
+    stream: "skills",
+    data: { phase: "run-feedback", eventId: record.eventId },
+  });
   return record;
 }
 
 /** Newest verdict per run id. Missing file = empty map; a corrupt line is skipped. */
 export async function readRunFeedback(
   opts: ImpactTrailOptions = {},
+  filter?: { ownerOnly?: boolean },
 ): Promise<Map<string, RunFeedbackEntry>> {
   const out = new Map<string, RunFeedbackEntry>();
   let raw: string;
@@ -73,7 +94,9 @@ export async function readRunFeedback(
   } catch {
     return out;
   }
+  let sequence = 0;
   for (const line of raw.split("\n")) {
+    sequence += 1;
     if (!line.trim()) {
       continue;
     }
@@ -83,7 +106,9 @@ export async function readRunFeedback(
         typeof parsed.runId === "string" &&
         (parsed.verdict === "confirmed" || parsed.verdict === "rejected")
       ) {
-        out.set(parsed.runId, parsed);
+        if (!filter?.ownerOnly || parsed.authority === "owner-operator") {
+          out.set(parsed.runId, { ...parsed, sequence });
+        }
       }
     } catch {
       // skip corrupt line

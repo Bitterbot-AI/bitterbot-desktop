@@ -214,13 +214,14 @@ export type SkillsEvolutionConfig = {
  * Beta-Bernoulli posterior per skill that orders the `<available_skills>`
  * index and annotates verified outcomes (never removes an entry or grants a
  * tool). Default on; with no ledger every skill ties and nothing
- * changes. The ledger is written by the controlled benchmark (benchmarks/skill-prior),
- * not by live runs, until a deterministically verified live outcome
- * signal exists. See docs/memory/skills-pipeline.md.
+ * changes. The gateway verified-outcome writer ships in shadow mode;
+ * enabling it records attributed task checks and explicit owner feedback. See docs/memory/skills-pipeline.md.
  */
 export type SkillsPriorConfig = {
   /** Apply the prior to the live skills index. Default: true. */
   enabled?: boolean;
+  /** Verified live outcome recording. Shadow journals proposals without changing the ledger. Default: "shadow". */
+  writer?: "shadow" | "on" | "off";
   /** "mean" orders by posterior mean (frozen); "thompson" samples (learning). Default: "mean". */
   mode?: "mean" | "thompson";
   /** Where the top-ranked skill is listed. Models favour the later of near-equivalent entries. Default: "first". */

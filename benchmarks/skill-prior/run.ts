@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
 /**
  * Experience-guided skill prior: the controlled test.
  *
@@ -27,12 +29,10 @@
  * ~/.bitterbot. Spend is estimated from token usage at list prices and the
  * run stops at --ceiling-usd.
  */
-
-import { createHash } from "node:crypto";
-import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import { skillPriorLedgerPath } from "../../src/agents/skills/skill-prior-runtime.js";
 import {
   type Candidate,
   placeRanking,
@@ -43,6 +43,7 @@ import {
 } from "../../src/agents/skills/skill-prior.js";
 import { loadConfig } from "../../src/config/config.js";
 import { startEventJournal } from "../../src/infra/event-journal.js";
+import { writeBenchmarkSkillPriorLedger } from "../../src/memory/skill-prior-writer.js";
 import {
   type ArmSummary,
   headroom as computeHeadroom,
@@ -400,7 +401,11 @@ async function main(): Promise<void> {
       ["ungated", ungated],
       ["shuffled", shuffled],
     ] as const) {
-      await fs.writeFile(path.join(ledgerDir, `${name}.json`), ledger.toJSON(), "utf-8");
+      await writeBenchmarkSkillPriorLedger(
+        path.join(ledgerDir, `${name}.json`),
+        ledger,
+        skillPriorLedgerPath(cfg),
+      );
     }
     await fs.writeFile(
       path.join(out, "learn-log.json"),

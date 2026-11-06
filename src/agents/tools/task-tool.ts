@@ -19,7 +19,12 @@ import { getCronEngine } from "../../cron/active.js";
 import type { CronJob } from "../../cron/types.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
 import { getActiveEventJournal } from "../../infra/event-journal.js";
-import { getTaskCheckContext, parseTaskChecks, runTaskChecks } from "../../tasks/checks.js";
+import {
+  getTaskCheckContext,
+  parseTaskChecks,
+  runTaskChecks,
+  taskChecksHash,
+} from "../../tasks/checks.js";
 import {
   buildTaskVerification,
   DEFAULT_MAX_JUDGE_ROUNDS,
@@ -1234,6 +1239,7 @@ export function createTaskJudgeTool(): AnyAgentTool {
 
       const latestHandoff = store.latestHandoff(taskId) ?? null;
       const checkCtx = getTaskCheckContext();
+      const checksHash = taskChecksHash(task.checks);
       const checkResults = await runTaskChecks(task.checks, {
         workspaceDir: checkCtx.workspaceDir,
         allowCommands: checkCtx.allowCommands,
@@ -1287,6 +1293,7 @@ export function createTaskJudgeTool(): AnyAgentTool {
         judgeCalled,
         runId: task.currentRunId,
       });
+      const checksStable = store.get(taskId)?.checksRevision === task.checksRevision;
       const updated = store.recordVerification(taskId, verification, nextStatus);
       // Journaled under the task id so the run's trace (and the run-outcome
       // derivation in skill-evolution) can find the verdict and its evidence
@@ -1296,6 +1303,13 @@ export function createTaskJudgeTool(): AnyAgentTool {
         level: verification.level,
         checksPassed: checkResults.filter((r) => r.passed).length,
         checksTotal: checkResults.length,
+        checksExecuted: checkResults.filter((r) => r.executed === true).length,
+        checksFailedExecuted: checkResults.filter((r) => r.executed === true && !r.passed).length,
+        checksHash,
+        checksRevision: task.checksRevision,
+        checksStable,
+        checksAuthor: "model",
+        checksIndependent: checkResults.every((r) => r.check.kind !== "output_regex"),
         judgeModel: verification.judgeModel,
         runId: task.currentRunId,
         reasoning: decision.reasoning,

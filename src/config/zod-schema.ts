@@ -935,6 +935,7 @@ export const BitterbotSchema = z
         prior: z
           .object({
             enabled: z.boolean().optional().describe("Default: true"),
+            writer: z.enum(["shadow", "on", "off"]).optional().describe("Default: shadow"),
             mode: z
               .union([z.literal("mean"), z.literal("thompson")])
               .optional()

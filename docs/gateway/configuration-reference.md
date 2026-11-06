@@ -1856,7 +1856,8 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
       sag: { enabled: false },
     },
     prior: {
-      enabled: false, // experimental: order and annotate the skills index from verified outcomes
+      enabled: true, // default: order and annotate the skills index from verified outcomes
+      writer: "shadow", // shadow (journal only) | on | off
       mode: "mean", // mean | thompson
       evidence: "verbal", // verbal | counts | verdict | off (ordering only)
       discount: 0.98,
@@ -1880,8 +1881,19 @@ See [Local Models](/gateway/local-models). TL;DR: run MiniMax M2.1 via LM Studio
   unverified and legacy entries without exact counters remain unannotated.
   The live context cell is currently `default`; a ledger from another cell
   does not provide local evidence. The ledger is a trusted local input and
-  the runtime only reads it. No live outcome writer exists yet; see
-  [Skills pipeline](/memory/skills-pipeline).
+  the run path only reads it. `writer` defaults to `"shadow"`, which records
+  proposed credits and exclusions on the `skills` journal stream without
+  changing the ledger. `"on"` enables asynchronous recording after completed
+  runs; `"off"` stops the writer. `enabled: false` also stops the writer.
+  Only one full skill read with read-time provenance and frozen, executed
+  task checks or authenticated owner feedback qualifies. Non-owner, remote,
+  benchmark and harness runs are excluded. Model-authored checks are marked
+  as such; a clean tool call or judge-only verdict is insufficient.
+  Corrections replace earlier credits, with durable dedupe across restarts.
+  Nonempty unscoped/benchmark ledgers are refused; use a fresh `ledgerPath`.
+  At 10,000 durable credits, new credits stop without discarding history.
+  Changing `discount` or `pseudoCount` requires a fresh path. See
+  [Skills pipeline](/memory/skills-pipeline) for attribution and retention limits.
 
 ---
 

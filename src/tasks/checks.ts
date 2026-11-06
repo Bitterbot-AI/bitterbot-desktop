@@ -20,9 +20,17 @@
  */
 
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { TaskCheck, TaskCheckResult } from "./types.js";
+
+/** Canonical parsed check set, independent of object property insertion order. */
+export function taskChecksHash(checks: readonly TaskCheck[]): string {
+  return createHash("sha256")
+    .update(JSON.stringify(parseTaskChecks(checks)))
+    .digest("hex");
+}
 
 export const MAX_CHECKS_PER_TASK = 20;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -212,7 +220,7 @@ function runCommand(
 }
 
 async function runOne(check: TaskCheck, ctx: TaskCheckContext): Promise<TaskCheckResult> {
-  const base = { check, description: describeTaskCheck(check) };
+  const base = { check, description: describeTaskCheck(check), executed: false };
   switch (check.kind) {
     case "file_exists": {
       const confined = confinePath(ctx.workspaceDir, check.path);
@@ -221,9 +229,19 @@ async function runOne(check: TaskCheck, ctx: TaskCheckContext): Promise<TaskChec
       }
       try {
         await fs.access(confined.ok);
-        return { ...base, passed: true, detail: "exists" };
-      } catch {
-        return { ...base, passed: false, detail: "missing" };
+        return { ...base, executed: true, passed: true, detail: "exists" };
+      } catch (err) {
+        return {
+          ...base,
+          executed:
+            (err as NodeJS.ErrnoException).code === "ENOENT" &&
+            (await fs.stat(ctx.workspaceDir!).then(
+              (s) => s.isDirectory(),
+              () => false,
+            )),
+          passed: false,
+          detail: "missing",
+        };
       }
     }
     case "file_contains": {
@@ -232,7 +250,12 @@ async function runOne(check: TaskCheck, ctx: TaskCheckContext): Promise<TaskChec
         return { ...base, passed: false, detail: file.err };
       }
       const passed = file.text.includes(check.value);
-      return { ...base, passed, detail: passed ? "found" : "value not found in file" };
+      return {
+        ...base,
+        executed: true,
+        passed,
+        detail: passed ? "found" : "value not found in file",
+      };
     }
     case "file_regex": {
       const file = await readWorkspaceFile(ctx.workspaceDir, check.path);
@@ -240,14 +263,14 @@ async function runOne(check: TaskCheck, ctx: TaskCheckContext): Promise<TaskChec
         return { ...base, passed: false, detail: file.err };
       }
       const passed = new RegExp(check.pattern, "m").test(file.text);
-      return { ...base, passed, detail: passed ? "matched" : "no match in file" };
+      return { ...base, executed: true, passed, detail: passed ? "matched" : "no match in file" };
     }
     case "output_regex": {
       if (ctx.output === null || ctx.output.trim().length === 0) {
         return { ...base, passed: false, detail: "task has no recorded output" };
       }
       const passed = new RegExp(check.pattern, "m").test(ctx.output);
-      return { ...base, passed, detail: passed ? "matched" : "no match in output" };
+      return { ...base, executed: true, passed, detail: passed ? "matched" : "no match in output" };
     }
     case "command": {
       if (!ctx.allowCommands) {
@@ -269,18 +292,20 @@ async function runOne(check: TaskCheck, ctx: TaskCheckContext): Promise<TaskChec
       if (r.timedOut) {
         return { ...base, passed: false, detail: "command timed out" };
       }
+      const executed = r.exitCode !== null && r.exitCode !== 126 && r.exitCode !== 127;
       const expected = check.expectExitCode ?? 0;
       if (r.exitCode !== expected) {
         return {
           ...base,
           passed: false,
+          executed,
           detail: `exit ${r.exitCode ?? "?"} (expected ${expected})${r.stderr.trim() ? `: ${r.stderr.trim().slice(0, 200)}` : ""}`,
         };
       }
       if (check.stdoutRegex && !new RegExp(check.stdoutRegex, "m").test(r.stdout)) {
-        return { ...base, passed: false, detail: "exit ok but stdout did not match" };
+        return { ...base, executed, passed: false, detail: "exit ok but stdout did not match" };
       }
-      return { ...base, passed: true, detail: `exit ${r.exitCode}` };
+      return { ...base, executed, passed: true, detail: `exit ${r.exitCode}` };
     }
   }
 }
@@ -299,6 +324,7 @@ export async function runTaskChecks(
         check,
         description: describeTaskCheck(check),
         passed: false,
+        executed: false,
         detail: `check crashed: ${err instanceof Error ? err.message : String(err)}`,
       });
     }

@@ -19,6 +19,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { emitAgentEvent } from "../infra/agent-events.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { requireNodeSqlite } from "../memory/sqlite.js";
 import { resolveUserPath } from "../utils.js";
@@ -109,6 +110,8 @@ export class TaskStore {
     // 2026-09-05 harness review B4: typed verification columns. Additive,
     // idempotent; pre-B4 rows read back as no checks / no verification.
     ensureColumn(this.db, "tasks", "checks_json", "TEXT");
+    ensureColumn(this.db, "tasks", "checks_revision", "INTEGER NOT NULL DEFAULT 0");
+    ensureColumn(this.db, "tasks", "checks_updated_at", "INTEGER NOT NULL DEFAULT 0");
     ensureColumn(this.db, "tasks", "verification_json", "TEXT");
     ensureColumn(this.db, "tasks", "judge_rounds", "INTEGER NOT NULL DEFAULT 0");
     this.sweepLegacyCuriosityTasks();
@@ -259,6 +262,8 @@ export class TaskStore {
       currentRunId: null,
       output: null,
       checks: input.checks ?? [],
+      checksRevision: 0,
+      checksUpdatedAt: 0,
       verification: null,
       judgeRounds: 0,
       source: input.source ?? "user",
@@ -349,6 +354,8 @@ export class TaskStore {
       goal: input.goal ?? existing.goal,
       doneCriteria: input.doneCriteria ?? existing.doneCriteria,
       checks: input.checks !== undefined ? input.checks : existing.checks,
+      checksRevision: (existing.checksRevision ?? 0) + (input.checks !== undefined ? 1 : 0),
+      checksUpdatedAt: input.checks !== undefined ? now : (existing.checksUpdatedAt ?? 0),
       status: input.status ?? existing.status,
       plan: input.plan !== undefined ? input.plan : existing.plan,
       checkpoint: input.checkpoint !== undefined ? input.checkpoint : existing.checkpoint,
@@ -374,7 +381,7 @@ export class TaskStore {
            checkpoint_thread = ?, checkpoint_step = ?, current_run_id = ?,
            output_ref = ?, source = ?, bounty = ?, agent_session_key = ?,
            wakeup_count = ?, updated_at = ?, completed_at = ?, last_seen_at = ?,
-           metadata_json = ?, checks_json = ?
+           metadata_json = ?, checks_json = ?, checks_revision = ?, checks_updated_at = ?
          WHERE id = ?`,
       )
       .run(
@@ -395,8 +402,22 @@ export class TaskStore {
         next.lastSeenAt,
         next.metadata ? JSON.stringify(next.metadata) : null,
         next.checks.length > 0 ? JSON.stringify(next.checks) : null,
+        next.checksRevision ?? 0,
+        next.checksUpdatedAt ?? 0,
         id,
       );
+    if (input.checks !== undefined) {
+      emitAgentEvent({
+        runId: `task:${id}`,
+        taskId: id,
+        stream: "task",
+        data: {
+          phase: "checks_changed",
+          revision: next.checksRevision,
+          runId: existing.currentRunId,
+        },
+      });
+    }
     this.emit({ type: "updated", task: next });
     return next;
   }
@@ -768,6 +789,8 @@ type RawTaskRow = {
   last_seen_at: number;
   metadata_json: string | null;
   checks_json?: string | null;
+  checks_revision?: number;
+  checks_updated_at?: number;
   verification_json?: string | null;
   judge_rounds?: number | null;
 };
@@ -806,6 +829,8 @@ function rowToTask(row: RawTaskRow): Task {
     currentRunId: row.current_run_id,
     output: row.output_ref,
     checks: parseJsonOr<TaskCheck[]>(row.checks_json, []),
+    checksRevision: row.checks_revision ?? 0,
+    checksUpdatedAt: row.checks_updated_at ?? 0,
     verification: parseJsonOr<TaskVerification | null>(row.verification_json, null),
     judgeRounds: typeof row.judge_rounds === "number" ? row.judge_rounds : 0,
     source: row.source as TaskSource,

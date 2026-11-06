@@ -54,6 +54,8 @@ export type TaskCheck =
   | { kind: "command"; command: string; expectExitCode?: number; stdoutRegex?: string };
 
 export type TaskCheckResult = {
+  /** True only when the check produced an assessable result; absent on legacy records. */
+  executed?: boolean;
   check: TaskCheck;
   description: string;
   passed: boolean;
@@ -105,6 +107,9 @@ export type Task = {
   output: string | null;
   /** Deterministic acceptance checks run by the judge pass (may be empty). */
   checks: TaskCheck[];
+  /** Store-owned mutation counter and last check-set update time. */
+  checksRevision?: number;
+  checksUpdatedAt?: number;
   /** Latest verification record; `completed` is unreachable without a passing one. */
   verification: TaskVerification | null;
   /** Typed judge-round counter (was model-mutable metadata before B4). */
