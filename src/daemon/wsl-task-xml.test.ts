@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   buildWslTaskArguments,
@@ -41,7 +42,7 @@ describe("WSL logon task XML", () => {
       "    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>",
       "    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>",
       "    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>",
-      "    <AllowHardTerminatingTask>true</AllowHardTerminatingTask>",
+      "    <AllowHardTerminate>true</AllowHardTerminate>",
       "    <StartWhenAvailable>true</StartWhenAvailable>",
       "    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>",
       "    <IdleSettings>",
@@ -105,6 +106,37 @@ describe("WSL logon task XML", () => {
     expect([...buf.subarray(2, 6)]).toEqual([0x3c, 0x00, 0x61, 0x00]);
     expect(buf.subarray(2).toString("utf16le")).toBe("<a/>");
   });
+
+  it.skipIf(process.platform !== "win32")(
+    "passes Windows Task Scheduler validation without registering a task",
+    () => {
+      // TASK_VALIDATE_ONLY (1) checks the real Windows schema without creating
+      // or starting a task. A string snapshot alone previously blessed a typo.
+      const script = `
+$ErrorActionPreference = 'Stop'
+$xml = [Console]::In.ReadToEnd()
+$user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+$xml = $xml.Replace('BITTERBOT_TEST_USER', [System.Security.SecurityElement]::Escape($user))
+$scheduler = New-Object -ComObject 'Schedule.Service'
+$scheduler.Connect()
+$folder = $scheduler.GetFolder('\\')
+[void]$folder.RegisterTask('Bitterbot XML validation', $xml, 1, $null, $null, 3, $null)
+Write-Output 'valid'
+`;
+      const validate = (xml: string) =>
+        execFileSync(
+          "powershell.exe",
+          ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+          { input: xml, encoding: "utf8", windowsHide: true, timeout: 15_000, stdio: "pipe" },
+        ).trim();
+      const xml = buildWslTaskXml({ ...spec, windowsUser: "BITTERBOT_TEST_USER" });
+      expect(validate(xml)).toBe("valid");
+      expect(() =>
+        validate(xml.replaceAll("AllowHardTerminate", "AllowHardTerminatingTask")),
+      ).toThrow();
+    },
+    35_000,
+  );
 
   it("names the task after the distro and the profile", () => {
     expect(resolveWslTaskName("Ubuntu")).toBe("Bitterbot Gateway (WSL Ubuntu)");
