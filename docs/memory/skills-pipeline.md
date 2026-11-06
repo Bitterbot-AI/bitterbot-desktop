@@ -498,6 +498,43 @@ the next turn. Consequences the rest of this document depends on:
   credits each live SKILL.md the agent actually opened in a real run, with
   the run's outcome, into `skill-wiki/skill-reads.jsonl` and the lifecycle
   store; `skills.evolution.status` reports per-skill 14-day read counts.
+- **Index order is directory order.** Entries arrive in `readdirSync` order
+  per root and roots merge by precedence; nothing ranks them, and the
+  budget compactor never reorders or drops a block. The experimental
+  **experience-guided skill prior** (`skills.prior`, on by default,
+  `src/agents/skills/skill-prior.ts`) is the one component that may reorder
+  the index: a Beta-Bernoulli posterior per (context cell, skill) with
+  hierarchical shrinkage, geometric discounting and a reset when the skill's
+  content hash changes, updated only from a deterministically verified
+  outcome for the one skill that was read (never from co-occurrence). It
+  reorders and may annotate; it never removes an entry or grants a tool, and
+  validation rollouts bypass it. The decision is journaled on the `skills`
+  stream (`prior: {cell, mode, changed, baseline, order, means, evidenceStyle,
+  annotated}`). With the prior enabled, `skills.prior.evidence` defaults to
+  `verbal`: exact verified counts become phrases such as `ACCEPTED every time
+  it was used (3 uses)`, using the same formatter as the online benchmark.
+  `counts` shows numeric pass/run counts, `verdict` shows a majority verdict,
+  and `off` disables annotation while keeping ordering. Single-skill indexes
+  can also carry evidence. Zero-run entries remain byte-identical.
+
+  Exact counters are optional fields in version-1 ledgers, separate from
+  discounted posteriors and global pseudo-counts. Only eligible, deduplicated
+  updates explicitly marked `verified: true` advance them. The use-only
+  negative control does not. Matching context and content hash are required;
+  malformed counters, unknown hashes and legacy entries without counters
+  cannot annotate. Old ledgers still order skills and count only new verified
+  observations toward annotation. The deliberate shuffled-cell control drops
+  these counters rather than claiming evidence from the wrong context.
+
+  The runtime only reads the trusted local ledger and uses the `default`
+  context cell today; it does not import benchmark cells into live contexts.
+  No live path writes this ledger. `skill_executions` now records skill reads
+  and can receive grounded run outcomes, but a read or clean tool call alone
+  does not verify task success. A future writer needs trustworthy pass/fail
+  attribution to the actual skill version and context before enablement.
+  The controlled test in `benchmarks/skill-prior/` manufactures verified
+  outcomes and tests global-success, shuffled and ungated controls.
+  `skills.prior.enabled` remains false by default.
 
 ## Skill Lifecycle
 

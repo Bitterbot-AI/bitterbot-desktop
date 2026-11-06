@@ -78,6 +78,8 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "circles.sandbox.enabled": true,
   // src/memory/dream-engine.ts:2697 — `=== false` skips the evolution pass.
   "skills.evolution.enabled": true,
+  "skills.prior.enabled": true,
+  "skills.prior.evidence": "verbal",
   // src/memory/skill-evolution/housekeeping.ts:149 — `propagate !== false`.
   "skills.evolution.propagate": true,
   // src/memory/skill-evolution/validation-gate.ts:1082 — `descriptionRepair !== false`.
