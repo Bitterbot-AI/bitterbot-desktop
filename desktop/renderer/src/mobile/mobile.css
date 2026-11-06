@@ -239,6 +239,23 @@
   white-space: pre;
 }
 
+.mobile-app .chat-markdown pre.m-code-wrap code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* "There is more to the right": a soft fade over the last few characters. */
+.m-code-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--background));
+  opacity: 0.85;
+}
+
 .mobile-app .chat-markdown table {
   display: block;
   overflow-x: auto;

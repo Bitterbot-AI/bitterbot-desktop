@@ -4,11 +4,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   handleMobileHttpRequest,
   isPublicMobileAssetPath,
   isSameOriginPost,
+  rateLimitClientKey,
   resetMobileHttpRateLimitsForTests,
 } from "./http.js";
 import {
@@ -178,6 +180,73 @@ describe("phone app HTTP (PLAN-62)", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("refuses encoded separators and dot segments under /m/ (no path to the gated page)", () => {
+    expect(isPublicMobileAssetPath("/m/..%2Findex.html")).toBe(false);
+    expect(isPublicMobileAssetPath("/m/%2e%2e/index.html")).toBe(false);
+    expect(isPublicMobileAssetPath("/m/..%5Cindex.html")).toBe(false);
+    expect(isPublicMobileAssetPath("/m/../index.html")).toBe(false);
+    expect(isPublicMobileAssetPath("/assets/../index.html")).toBe(false);
+    expect(isPublicMobileAssetPath("/m/icons/icon-192.png")).toBe(true);
+  });
+
+  it("keys the pairing rate limit on the tailnet identity behind Tailscale Serve", () => {
+    const viaServe = fakeReq({
+      url: "/",
+      headers: { "tailscale-user-login": "Peter@Example.com" },
+    });
+    expect(rateLimitClientKey(viaServe, "127.0.0.1")).toEqual({
+      key: "ts:peter@example.com",
+      shared: false,
+    });
+    expect(rateLimitClientKey(fakeReq({ url: "/" }), "127.0.0.1")).toEqual({
+      key: "127.0.0.1",
+      shared: true,
+    });
+    // The header means nothing from a non-loopback peer (anyone can send it).
+    expect(rateLimitClientKey(viaServe, "192.168.1.9")).toEqual({
+      key: "192.168.1.9",
+      shared: false,
+    });
+  });
+
+  it("limits claims per setup code too, so one shared address does not block everyone", async () => {
+    let last = fakeRes();
+    for (let i = 0; i < 11; i++) {
+      last = fakeRes();
+      await handleMobileHttpRequest(
+        fakeReq({
+          method: "POST",
+          url: "/m/api/pair/claim",
+          headers: { "content-type": "application/json" },
+          body: { code: "the-same-code-for-every-try" },
+        }),
+        last,
+        opts,
+      );
+    }
+    expect(last.statusCode).toBe(429);
+    const other = fakeRes();
+    await handleMobileHttpRequest(
+      fakeReq({
+        method: "POST",
+        url: "/m/api/pair/claim",
+        headers: { "content-type": "application/json" },
+        body: { code: "a-different-code-entirely" },
+      }),
+      other,
+      opts,
+    );
+    expect(other.statusCode).not.toBe(429);
+  });
+
+  it("works under a Control UI base path", async () => {
+    const res = fakeRes();
+    expect(
+      await handleMobileHttpRequest(fakeReq({ url: "/bb/m" }), res, { ...opts, basePath: "/bb" }),
+    ).toBe(true);
+    expect(res.headersOut.location).toBe("/bb/m/");
+  });
+
   it("treats only the phone shell and shared static assets as public", () => {
     expect(isPublicMobileAssetPath("/m/")).toBe(true);
     expect(isPublicMobileAssetPath("/m/sw.js")).toBe(true);
@@ -194,5 +263,20 @@ describe("phone app HTTP (PLAN-62)", () => {
     expect(isSameOriginPost(same)).toBe(true);
     expect(isSameOriginPost(other)).toBe(false);
     expect(isSameOriginPost(nullOrigin)).toBe(false);
+  });
+});
+
+describe("phone page paths (PLAN-62)", () => {
+  it("references fonts, icons and the favicon relative to the page, so a base path works", async () => {
+    const html = await fs.readFile(
+      path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "../../../desktop/renderer/m/index.html",
+      ),
+      "utf8",
+    );
+    const head = html.split("<body")[0];
+    expect(head).not.toMatch(/(?:href|src)="\/(?!\/)/);
+    expect(head).not.toMatch(/url\("\//);
   });
 });

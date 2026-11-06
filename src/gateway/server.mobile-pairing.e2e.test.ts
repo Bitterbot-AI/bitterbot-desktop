@@ -245,4 +245,49 @@ describe("phone pairing over the gateway (PLAN-62)", () => {
     );
     expect(list.payload?.paired.some((d) => d.deviceId === key.id)).toBe(false);
   });
+
+  test("a phone is a non-owner surface with a redacted view of the gateway", async () => {
+    const { port, key, deviceToken } = await pairPhone();
+    const { ws, nonce } = await openRemote(port);
+    cleanups.push(() => ws.close());
+    const res = await phoneConnect(ws, key, nonce, deviceToken);
+    expect(res.ok).toBe(true);
+    const hello = JSON.stringify(res.payload);
+    expect(hello).not.toContain("configPath");
+    expect(hello).not.toContain("stateDir");
+
+    const pair = await rpcReq(ws, "chat.send", {
+      sessionKey: "default",
+      message: "/pair approve latest",
+      idempotencyKey: "phone-pair-1",
+    });
+    expect(pair.ok).toBe(false);
+    expect(pair.error?.message ?? "").toContain("only available on your computer");
+
+    const other = await rpcReq(ws, "chat.history", {
+      sessionKey: "agent:main:whatsapp:dm:+15550001",
+    });
+    expect(other.ok).toBe(false);
+
+    const always = await rpcReq(ws, "exec.approval.resolve", {
+      id: "nope",
+      decision: "allow-always",
+    });
+    expect(always.ok).toBe(false);
+    expect(always.error?.message ?? "").toContain("once");
+  });
+
+  test("revoking a node token leaves the device's operator connection alone", async () => {
+    const { admin, port, key, deviceToken } = await pairPhone();
+    const { ws, nonce } = await openRemote(port);
+    cleanups.push(() => ws.close());
+    expect((await phoneConnect(ws, key, nonce, deviceToken)).ok).toBe(true);
+    const revoked = await rpcReq(admin, "device.token.revoke", {
+      deviceId: ` ${key.id} `,
+      role: "node",
+    });
+    expect(revoked.ok).toBe(false); // the phone has no node token
+    const self = await rpcReq(ws, "mobile.self.get", {});
+    expect(self.ok).toBe(true);
+  });
 });

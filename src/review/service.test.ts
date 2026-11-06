@@ -459,3 +459,61 @@ describe("PLAN-57 §4.8: executors learn who decided", () => {
     ).toBeNull();
   });
 });
+
+describe("ReviewService phone policy (PLAN-62)", () => {
+  const PHONE = ["operator.approvals", "operator.chat", "operator.notifications"];
+
+  it("refuses a phone's approval of a spend, from the app or relayed through /approve", async () => {
+    const { action } = hold(await service.consider("wallet", SEND, CTX));
+    const { ReviewDecisionRefused } = await import("./service.js");
+    await expect(
+      service.resolve(action.id, "approve", {
+        decidedBy: "phone",
+        decidedVia: "phone",
+        scopes: PHONE,
+      }),
+    ).rejects.toBeInstanceOf(ReviewDecisionRefused);
+    await expect(
+      service.resolve(action.id, "approve", {
+        decidedBy: "chat",
+        decidedVia: "chat",
+        scopes: ["operator.admin"],
+        originScopes: PHONE,
+      }),
+    ).rejects.toBeInstanceOf(ReviewDecisionRefused);
+    expect(executed).toEqual([]);
+    expect(store.get(action.id)?.status).toBe("pending");
+  });
+
+  it("lets a phone deny a spend", async () => {
+    const { action } = hold(await service.consider("wallet", SEND, CTX));
+    const denied = await service.resolve(action.id, "deny", {
+      decidedBy: "phone",
+      decidedVia: "phone",
+      scopes: PHONE,
+    });
+    expect(denied?.status).toBe("denied");
+  });
+
+  it("refuses a standing always-allow from a phone", async () => {
+    const { action } = hold(await service.consider("wallet", SEND, CTX));
+    await expect(
+      service.resolve(action.id, "approve", {
+        decidedBy: "phone",
+        decidedVia: "phone",
+        scopes: PHONE,
+        always: true,
+      }),
+    ).rejects.toThrow(/once/);
+  });
+
+  it("leaves the desktop's approvals alone", async () => {
+    const { action } = hold(await service.consider("wallet", SEND, CTX));
+    const approved = await service.resolve(action.id, "approve", {
+      decidedBy: "owner",
+      decidedVia: "control-ui",
+      scopes: ["operator.admin"],
+    });
+    expect(approved?.status).toBe("executed");
+  });
+});

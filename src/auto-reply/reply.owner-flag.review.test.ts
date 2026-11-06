@@ -138,6 +138,33 @@ describe("owner flag on the reply path (review)", () => {
     });
   });
 
+  it("a paired phone's chat.send context reaches the run as a non-owner turn (PLAN-62)", async () => {
+    await withTempHome(async (home) => {
+      const cfg = makeReplyConfig(home) as unknown as BitterbotConfig;
+      const ctx = {
+        Body: "read my gateway token",
+        BodyForAgent: "read my gateway token",
+        RawBody: "read my gateway token",
+        Provider: "webchat",
+        Surface: "webchat",
+        OriginatingChannel: "webchat",
+        ChatType: "direct",
+        CommandAuthorized: true,
+        SenderId: "bitterbot-mobile",
+        SessionKey: "agent:main:main",
+        GatewayClientScopes: ["operator.approvals", "operator.chat", "operator.notifications"],
+        GatewayPhoneSurface: true,
+      };
+      expect(
+        resolveCommandAuthorization({ ctx: ctx as never, cfg, commandAuthorized: true })
+          .senderIsOwner,
+      ).toBe(false);
+      await getReplyFromConfig(ctx as never, {}, cfg);
+      expect(agentMocks.runEmbeddedPiAgent).toHaveBeenCalledOnce();
+      expect(lastRunParams().senderIsOwner).toBe(false);
+    });
+  });
+
   it("a channel message cannot pass for the Control UI by naming its surface", () => {
     const cfg = { commands: { ownerAllowFrom: ["+1222"] } } as unknown as BitterbotConfig;
     const ctx = { ...whatsappCtx("+1333"), Surface: "webchat" };

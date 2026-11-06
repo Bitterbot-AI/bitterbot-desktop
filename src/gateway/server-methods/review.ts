@@ -5,9 +5,8 @@
  */
 
 import { getReviewService } from "../../review/runtime.js";
-import { publicView } from "../../review/service.js";
+import { publicView, ReviewDecisionRefused } from "../../review/service.js";
 import type { ReviewStatus } from "../../review/store.js";
-import { isMobileScopedConnection } from "../mobile/scopes.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
@@ -93,36 +92,30 @@ export const reviewHandlers: GatewayRequestHandlers = {
         return;
       }
     }
-    // PLAN-62: a phone holds a scoped device token, not the owner's full
-    // authority. Until phone approvals carry a passkey signature (PLAN-62
-    // slice B), money is approved on the desktop; a phone may still deny.
-    if (decision === "approve" && isMobileScopedConnection(client?.connect?.scopes)) {
-      const pending = getReviewService().get(id);
-      if (
-        (pending?.cls === "spend" || pending?.tool === "compute") &&
-        pending.status === "pending"
-      ) {
-        respond(
-          false,
-          undefined,
-          errorShape(
-            ErrorCodes.INVALID_REQUEST,
-            "payments are approved on the desktop for now; you can deny this one here",
-          ),
-        );
+    const originScopes = Array.isArray(params.originScopes)
+      ? params.originScopes.filter((v): v is string => typeof v === "string")
+      : undefined;
+    let action;
+    try {
+      action = await getReviewService().resolve(id, decision, {
+        decidedBy: String(decidedBy).slice(0, 120),
+        decidedVia,
+        note: typeof params.note === "string" ? params.note.slice(0, 500) : undefined,
+        // For a shell command: allow it from now on, not only this once.
+        ...(params.always === true ? { always: true } : {}),
+        // PLAN-57 §4.8: executors that move money bind to the deciding connection.
+        scopes: client?.connect?.scopes ?? [],
+        connectionMode,
+        // PLAN-62: only ever makes the policy stricter (phone-policy.ts).
+        ...(originScopes ? { originScopes } : {}),
+      });
+    } catch (err) {
+      if (err instanceof ReviewDecisionRefused) {
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, err.message));
         return;
       }
+      throw err;
     }
-    const action = await getReviewService().resolve(id, decision, {
-      decidedBy: String(decidedBy).slice(0, 120),
-      decidedVia,
-      note: typeof params.note === "string" ? params.note.slice(0, 500) : undefined,
-      // For a shell command: allow it from now on, not only this once.
-      ...(params.always === true ? { always: true } : {}),
-      // PLAN-57 §4.8: executors that move money bind to the deciding connection.
-      scopes: client?.connect?.scopes ?? [],
-      connectionMode,
-    });
     if (!action) {
       respond(
         false,

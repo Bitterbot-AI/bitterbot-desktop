@@ -121,6 +121,11 @@ export type MsgContext = {
   CommandTargetSessionKey?: string;
   /** Gateway client scopes when the message originates from the gateway. */
   GatewayClientScopes?: string[];
+  /**
+   * PLAN-62: the turn came from a paired phone. It runs as a non-owner and
+   * only the commands in gateway/mobile/phone-policy.ts are authorized.
+   */
+  GatewayPhoneSurface?: boolean;
   /** Thread identifier (Telegram topic id or Matrix thread event id). */
   MessageThreadId?: string | number;
   /** Telegram forum supergroup marker. */

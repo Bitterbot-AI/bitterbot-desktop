@@ -10,7 +10,8 @@
  *      app at the right screen.
  */
 
-const CACHE = "bitterbot-mobile-shell-v1";
+const CACHE_PREFIX = "bitterbot-mobile-";
+const CACHE = `${CACHE_PREFIX}shell-v2`;
 const SCOPE = self.registration ? self.registration.scope : new URL("./", self.location).href;
 const SHELL_URL = SCOPE; // …/m/
 
@@ -68,7 +69,11 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      // Only our own old shells: other Cache Storage on this origin (the
+      // Control UI, anything else) is not ours to delete.
+      await Promise.all(
+        keys.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE).map((k) => caches.delete(k)),
+      );
       await self.clients.claim();
     })(),
   );
@@ -86,11 +91,24 @@ self.addEventListener("fetch", (event) => {
   // The app's own pages: network first (updates land on the next open),
   // cached shell when offline.
   if (req.mode === "navigate" && url.href.startsWith(SCOPE)) {
+    // Only the shell itself (…/m/ or …/m/index.html, any query) refreshes the
+    // cached shell, and only a real HTML 200 from this origin. Any other page
+    // under /m/ is served but never stored as the shell.
+    const shellPath = new URL(SHELL_URL).pathname;
+    const isShell = url.pathname === shellPath || url.pathname === `${shellPath}index.html`;
     event.respondWith(
       (async () => {
         try {
           const fresh = await fetch(req);
-          if (fresh.ok) {
+          const type = fresh.headers.get("content-type") || "";
+          if (
+            isShell &&
+            fresh.ok &&
+            fresh.status === 200 &&
+            fresh.type === "basic" &&
+            !fresh.redirected &&
+            type.startsWith("text/html")
+          ) {
             const cache = await caches.open(CACHE);
             await cache.put(SHELL_URL, fresh.clone());
           }

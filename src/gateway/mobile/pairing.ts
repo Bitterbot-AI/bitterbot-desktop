@@ -47,7 +47,7 @@ type SetupCodeEntry = {
   expiresAtMs: number;
   createdBy?: string;
   /** Set once a device claims it; a code is single-use. */
-  claimedBy?: { deviceId: string; claimId: string };
+  claimedBy?: { deviceId: string; claimId: string; signedAt: number; ready: boolean };
 };
 
 type ClaimEntry = {
@@ -253,16 +253,20 @@ export async function claimSetupCode(input: ClaimInput, now = Date.now()): Promi
   }
 
   // Single use. The same phone retrying (a dropped response) gets its claim
-  // back; any other device is refused, even inside the five minutes.
+  // back, but only with a fresh signature (a newer signedAt), so a captured
+  // claim request cannot be replayed to learn the claim id. Any other device
+  // is refused, even inside the five minutes.
   if (entry.claimedBy) {
-    if (entry.claimedBy.deviceId !== device.id) {
+    const prior = entry.claimedBy;
+    if (prior.deviceId !== device.id || !prior.ready || device.signedAt <= prior.signedAt) {
       return { ok: false, status: 410, error: GENERIC_CODE_ERROR };
     }
-    const existing = claims.get(entry.claimedBy.claimId);
-    if (existing) {
+    const existing = claims.get(prior.claimId);
+    if (existing && !existing.collectedAtMs) {
       const list = await listDevicePairing();
       const request = list.pending.find((p) => p.requestId === existing.requestId);
       if (request) {
+        prior.signedAt = device.signedAt;
         return {
           ok: true,
           claimId: existing.claimId,
@@ -275,31 +279,42 @@ export async function claimSetupCode(input: ClaimInput, now = Date.now()): Promi
     return { ok: false, status: 410, error: GENERIC_CODE_ERROR };
   }
 
-  const confirmCode = deriveConfirmCode(input.code, publicKey);
-  // A pending request from an earlier attempt of this device would be handed
-  // back unchanged (with the old code's confirmation number): drop it first.
-  const list = await listDevicePairing();
-  for (const pending of list.pending) {
-    if (pending.deviceId === device.id && pending.setupId !== entry.setupId) {
-      await rejectDevicePairing(pending.requestId);
-    }
-  }
-  const pairing = await requestDevicePairing({
-    deviceId: device.id,
-    publicKey,
-    displayName: cleanLabel(input.displayName, 64) ?? "Phone",
-    platform: cleanLabel(input.platform, 32),
-    clientId: MOBILE_CLIENT_ID,
-    clientMode: "ui",
-    role: "operator",
-    scopes: [...MOBILE_DEVICE_SCOPES],
-    remoteIp: input.remoteIp,
-    silent: false,
-    setupId: entry.setupId,
-    confirmCode,
-  });
+  // Reserve the code synchronously, before the first await: two concurrent
+  // claims of one code cannot both get past this line.
   const claimId = randomBytes(18).toString("base64url");
-  entry.claimedBy = { deviceId: device.id, claimId };
+  entry.claimedBy = { deviceId: device.id, claimId, signedAt: device.signedAt, ready: false };
+  let pairing: Awaited<ReturnType<typeof requestDevicePairing>>;
+  const confirmCode = deriveConfirmCode(input.code, publicKey);
+  try {
+    // A pending request from an earlier attempt of this device would be handed
+    // back unchanged (with the old code's confirmation number): drop it first.
+    const list = await listDevicePairing();
+    for (const pending of list.pending) {
+      if (pending.deviceId === device.id && pending.setupId !== entry.setupId) {
+        await rejectDevicePairing(pending.requestId);
+      }
+    }
+    pairing = await requestDevicePairing({
+      deviceId: device.id,
+      publicKey,
+      displayName: cleanLabel(input.displayName, 64) ?? "Phone",
+      platform: cleanLabel(input.platform, 32),
+      clientId: MOBILE_CLIENT_ID,
+      clientMode: "ui",
+      role: "operator",
+      scopes: [...MOBILE_DEVICE_SCOPES],
+      remoteIp: input.remoteIp,
+      silent: false,
+      setupId: entry.setupId,
+      confirmCode,
+    });
+  } catch (err) {
+    // Roll the reservation back so the owner's code is not burned by an I/O error.
+    if (entry.claimedBy?.claimId === claimId) {
+      entry.claimedBy = undefined;
+    }
+    throw err;
+  }
   claims.set(claimId, {
     claimId,
     setupId: entry.setupId,
@@ -308,6 +323,7 @@ export async function claimSetupCode(input: ClaimInput, now = Date.now()): Promi
     createdAtMs: now,
     expiresAtMs: now + CLAIM_COLLECT_TTL_MS,
   });
+  entry.claimedBy.ready = true;
   return { ok: true, claimId, confirmCode, request: pairing.request, created: pairing.created };
 }
 
@@ -341,7 +357,8 @@ export async function readClaimStatus(params: {
   const paired = await getPairedDevice(claim.deviceId);
   const token = paired?.tokens?.operator;
   if (paired && token && !token.revokedAtMs && paired.approvedAtMs >= claim.createdAtMs) {
-    claim.collectedAtMs ??= now;
+    // Handed out once: the claim is consumed on first collection.
+    claims.delete(claim.claimId);
     return {
       status: "approved",
       deviceToken: token.token,

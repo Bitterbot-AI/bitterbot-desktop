@@ -79,14 +79,24 @@ A phone gets its own token with three scopes:
 
 | Scope                    | Allows                                                                                                                        |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `operator.chat`          | Chat, conversation history and the conversation list, voice transcription, and read-only status (health, mood, dream journal) |
-| `operator.approvals`     | List and answer held actions (payments: deny only)                                                                            |
+| `operator.chat`          | Chat in the main conversation and the ones the phone started, voice transcription, and read-only status (mood, dream journal) |
+| `operator.approvals`     | List and answer held actions, once at a time (payments and compute funding: deny only)                                        |
 | `operator.notifications` | Its own push subscription                                                                                                     |
 
 It cannot change settings, read logs or memory directly, run nodes, install skills, or pair,
-rename or remove other devices. Messages you send from the phone run as you, the owner, like
-messages from your own account on a chat app; owner-only tools still ask for approval where they
-always did.
+rename or remove other devices.
+
+**A phone is not the owner.** Until the phone can prove it is you with a passkey (a later
+release), its messages run as a non-owner:
+
+- Owner-only tools (shell commands, configuration, gateway control) are not available to its turns.
+- Only `/new`, `/reset`, `/stop`, `/status`, `/help` and `/commands` work from it; every other
+  command (`/config`, `/pair`, `/approve` and so on) is refused.
+- It sees only the main conversation and the conversations it started. Conversations with other
+  people on your chat channels stay on the computer, and so do their live events.
+- It can allow an approval once, but never "always allow", and never approve a payment.
+- Its connection gets a reduced view of the gateway: no file paths, no other devices' addresses,
+  and tool activity without arguments or results.
 
 ## Rename, remove, revoke
 
@@ -119,6 +129,10 @@ carries a title and a preview of at most 90 characters; turn **Show previews** o
 only that something happened. Approval details are always loaded over the authenticated
 connection when you open the app, never from the notification. Push services see encrypted
 payloads and timing only.
+
+Pairing requests are rate limited per client and per setup code. Behind Tailscale Serve every
+request reaches the gateway from loopback, so the limiter tells phones apart by their tailnet
+identity; without one, the per-code limit keeps one noisy client from blocking everyone.
 
 Requirements: HTTPS, notification permission, and on iPhone iOS 16.4 or later with the app added
 to the Home Screen.

@@ -21,7 +21,6 @@ describe("phone scopes (PLAN-62)", () => {
     "chat.history",
     "sessions.list",
     "talk.transcribe",
-    "health",
     "dream.status",
     "dream.emotional",
     "dream.journal",
@@ -62,6 +61,7 @@ describe("phone scopes (PLAN-62)", () => {
     "device.rename",
     "mobile.pair.create",
     // broad reads stay off
+    "health",
     "logs.tail",
     "memory.list",
     "wallet.getBalance",

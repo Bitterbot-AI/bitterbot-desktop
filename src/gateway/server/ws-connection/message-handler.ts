@@ -37,6 +37,8 @@ import {
   markBootstrapPairingUsed,
 } from "../../bootstrap-pairing.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
+import { redactSnapshotForPhone } from "../../mobile/phone-events.js";
+import { isMobileScopedConnection } from "../../mobile/scopes.js";
 import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from "../../net.js";
 import { resolveHostName } from "../../net.js";
 import { resolveNodeCommandAllowlist } from "../../node-command-policy.js";
@@ -920,8 +922,12 @@ export function attachGatewayWsMessageHandler(params: {
           incrementPresenceVersion();
         }
 
-        const snapshot = buildGatewaySnapshot();
-        const cachedHealth = getHealthCache();
+        // PLAN-62: a phone gets a redacted hello: no filesystem paths, no
+        // presence (hostnames and IPs of other devices), no health summary.
+        const phoneConnection = isMobileScopedConnection(scopes);
+        const fullSnapshot = buildGatewaySnapshot();
+        const snapshot = phoneConnection ? redactSnapshotForPhone(fullSnapshot) : fullSnapshot;
+        const cachedHealth = phoneConnection ? null : getHealthCache();
         if (cachedHealth) {
           snapshot.health = cachedHealth;
           snapshot.stateVersion.health = getHealthVersion();
@@ -932,12 +938,12 @@ export function attachGatewayWsMessageHandler(params: {
           server: {
             version: resolveGatewayVersion(),
             commit: process.env.GIT_COMMIT,
-            host: os.hostname(),
+            host: phoneConnection ? undefined : os.hostname(),
             connId,
           },
           features: { methods: gatewayMethods, events },
           snapshot,
-          canvasHostUrl,
+          canvasHostUrl: phoneConnection ? undefined : canvasHostUrl,
           auth: deviceToken
             ? {
                 deviceToken: deviceToken.token,

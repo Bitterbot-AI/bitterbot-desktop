@@ -1,6 +1,6 @@
-import { Check, Copy, ExternalLink } from "lucide-react";
+import { Check, Copy, ExternalLink, WrapText } from "lucide-react";
 import { marked } from "marked";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "../../lib/utils";
@@ -16,6 +16,29 @@ import { cn } from "../../lib/utils";
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
   const [copied, setCopied] = useState(false);
+  const [wrap, setWrap] = useState(false);
+  const [overflowing, setOverflowing] = useState(false);
+  const [atEnd, setAtEnd] = useState(false);
+  const preRef = useRef<HTMLPreElement>(null);
+
+  // Long lines scroll sideways; a fade on the right edge says there is more,
+  // and the wrap toggle folds them instead.
+  useEffect(() => {
+    const el = preRef.current;
+    if (!el) return;
+    const measure = () => {
+      setOverflowing(el.scrollWidth > el.clientWidth + 1);
+      setAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 2);
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    window.addEventListener("resize", measure);
+    return () => {
+      el.removeEventListener("scroll", measure);
+      window.removeEventListener("resize", measure);
+    };
+  }, [code, wrap]);
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
@@ -27,20 +50,39 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
   };
   return (
     <div className="my-3 overflow-hidden rounded-xl border border-[var(--m-hairline)] bg-[var(--m-surface-strong)]">
-      <div className="flex items-center justify-between pl-3.5 pr-1 border-b border-[var(--m-hairline)]">
+      <div className="flex items-center justify-between border-b border-[var(--m-hairline)] pl-3.5 pr-1">
         <span className="font-mono text-2xs text-muted-foreground">{language}</span>
-        <button
-          type="button"
-          onClick={copy}
-          className="m-touch m-press flex items-center justify-center gap-1.5 text-2xs text-muted-foreground"
-          aria-label={copied ? "Copied" : "Copy code"}
-        >
-          {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
-        </button>
+        <div className="flex items-center">
+          {overflowing || wrap ? (
+            <button
+              type="button"
+              onClick={() => setWrap((v) => !v)}
+              aria-pressed={wrap}
+              aria-label={wrap ? "Scroll long lines" : "Wrap long lines"}
+              className={cn(
+                "m-touch m-press flex items-center justify-center",
+                wrap ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              <WrapText className="size-4" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={copy}
+            className="m-touch m-press flex items-center justify-center gap-1.5 text-2xs text-muted-foreground"
+            aria-label={copied ? "Copied" : "Copy code"}
+          >
+            {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
+          </button>
+        </div>
       </div>
-      <pre className="overflow-x-auto">
-        <code className={`language-${language} font-mono`}>{code}</code>
-      </pre>
+      <div className="relative">
+        <pre ref={preRef} className={cn("m-code", wrap ? "m-code-wrap" : "overflow-x-auto")}>
+          <code className={`language-${language} font-mono`}>{code}</code>
+        </pre>
+        {overflowing && !wrap && !atEnd ? <span aria-hidden className="m-code-fade" /> : null}
+      </div>
     </div>
   );
 }

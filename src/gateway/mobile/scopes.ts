@@ -37,7 +37,6 @@ export const CHAT_SCOPE_METHODS: ReadonlySet<string> = new Set([
   "sessions.list",
   "sessions.preview",
   "talk.transcribe",
-  "health",
   "agent.identity.get",
   "dream.status",
   "dream.emotional",

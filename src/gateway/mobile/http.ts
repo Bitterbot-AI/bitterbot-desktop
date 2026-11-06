@@ -14,7 +14,9 @@
  * one-time secret, so the limit is about noise, not brute force.
  */
 
+import { createHash } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { resolveRequestClientIp } from "../auth.js";
 import { resolveControlUiRoot } from "../control-ui-assets.js";
@@ -138,10 +140,14 @@ export async function handleMobileHttpRequest(
     }
     const ip = resolveRequestClientIp(req, opts.trustedProxies) ?? "unknown";
     const kind = pathname.endsWith("/claim") ? "claim" : "status";
-    if (rateLimited(`${kind}:${ip}`, LIMITS[kind])) {
+    const client = rateLimitClientKey(req, ip);
+    const tooMany = () => {
       res.setHeader("Retry-After", "30");
       sendJson(res, 429, { error: "too many requests, try again shortly" });
       return true;
+    };
+    if (rateLimited(`${kind}:${client.key}`, client.shared ? LIMITS[kind] * 6 : LIMITS[kind])) {
+      return tooMany();
     }
     const body = await readJsonBody(req, MAX_BODY_BYTES);
     if (!body.ok) {
@@ -149,6 +155,19 @@ export async function handleMobileHttpRequest(
       return true;
     }
     const value = (body.value ?? {}) as Record<string, unknown>;
+    // A second bucket per setup code / claim, so one noisy client behind a
+    // shared proxy address cannot exhaust the limit for everyone else.
+    const subject =
+      kind === "claim"
+        ? typeof value.code === "string"
+          ? createHash("sha256").update(value.code).digest("hex").slice(0, 16)
+          : "none"
+        : typeof value.claimId === "string"
+          ? value.claimId.slice(0, 48)
+          : "none";
+    if (rateLimited(`${kind}-subject:${subject}`, kind === "claim" ? 10 : LIMITS.status)) {
+      return tooMany();
+    }
     if (kind === "claim") {
       const result = await claimSetupCode({
         code: typeof value.code === "string" ? value.code : "",
@@ -211,8 +230,47 @@ export function setMobileClaimListener(listener: ClaimListener | null) {
   onClaimed = listener;
 }
 
-/** True for the static paths a phone must load without a gateway credential. */
-export function isPublicMobileAssetPath(relative: string): boolean {
+/**
+ * The rate-limit identity of a pairing request. Behind Tailscale Serve every
+ * request arrives from loopback, so the tailnet identity header (which only
+ * Serve on this machine can add to a loopback connection) tells clients apart.
+ * With no identity, a loopback address is a shared bucket and gets a higher
+ * ceiling; the per-code bucket still bounds any one setup code.
+ */
+export function rateLimitClientKey(
+  req: IncomingMessage,
+  ip: string,
+): { key: string; shared: boolean } {
+  const loopback = ip === "127.0.0.1" || ip === "::1" || ip.startsWith("::ffff:127.");
+  const login = req.headers["tailscale-user-login"];
+  if (loopback && typeof login === "string" && login.trim()) {
+    return { key: `ts:${login.trim().toLowerCase()}`, shared: false };
+  }
+  return { key: ip, shared: loopback };
+}
+
+/** Encoded separators or dot segments in a raw path (`%2F`, `%5C`, `%2E`, `\`). */
+const SUSPICIOUS_PATH = /%2f|%5c|%2e|\\/i;
+
+/**
+ * True for the static paths a phone must load without a gateway credential.
+ * Checked on the decoded, normalised path (what the file resolver will open),
+ * and anything with encoded separators or dot segments is refused outright, so
+ * `/m/..%2Findex.html` cannot reach the gated Control UI page.
+ */
+export function isPublicMobileAssetPath(rawRelative: string): boolean {
+  if (SUSPICIOUS_PATH.test(rawRelative)) {
+    return false;
+  }
+  let relative: string;
+  try {
+    relative = path.posix.normalize(decodeURIComponent(rawRelative));
+  } catch {
+    return false;
+  }
+  if (rawRelative.endsWith("/") && !relative.endsWith("/")) {
+    relative = `${relative}/`;
+  }
   return (
     relative === "/m/" ||
     relative.startsWith("/m/") ||

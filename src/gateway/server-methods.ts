@@ -1,4 +1,5 @@
 import { withSpan } from "../observability/otel.js";
+import { guardPhoneRequest, isPhoneSurface } from "./mobile/phone-policy.js";
 import {
   CHAT_SCOPE,
   CHAT_SCOPE_METHODS,
@@ -457,6 +458,22 @@ export async function handleGatewayRequest(
     respond(false, undefined, authError);
     return;
   }
+  let params = (req.params ?? {}) as Record<string, unknown>;
+  let respondOut = respond;
+  // PLAN-62: a phone sees only its own and the main conversation.
+  if (isPhoneSurface(client?.connect?.scopes)) {
+    const guard = guardPhoneRequest(req.method, params);
+    if (!guard.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, guard.message));
+      return;
+    }
+    params = guard.params;
+    const filterPayload = guard.filterPayload;
+    if (filterPayload) {
+      respondOut = (ok, payload, error, meta) =>
+        respond(ok, ok ? filterPayload(payload) : payload, error, meta);
+    }
+  }
   const handler = opts.extraHandlers?.[req.method] ?? coreGatewayHandlers[req.method];
   if (!handler) {
     respond(
@@ -471,10 +488,10 @@ export async function handleGatewayRequest(
     async () => {
       await handler({
         req,
-        params: (req.params ?? {}) as Record<string, unknown>,
+        params,
         client,
         isWebchatConnect,
-        respond,
+        respond: respondOut,
         context,
       });
     },

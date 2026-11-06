@@ -154,7 +154,7 @@ describe("mobile setup codes (PLAN-62)", () => {
       ok: false,
       status: 410,
     });
-    const retry = await claimSetupCode(claimInput(code, key));
+    const retry = await claimSetupCode(claimInput(code, key, Date.now() + 5));
     expect(retry.ok).toBe(true);
     if (first.ok && retry.ok) {
       expect(retry.claimId).toBe(first.claimId);
@@ -231,5 +231,51 @@ describe("mobile setup codes (PLAN-62)", () => {
     const input = { ...claimInput(code, key), displayName: "Evil\u0007\nPhone" };
     const claim = await claimSetupCode(input);
     expect(claim.ok && claim.request.displayName).toBe("EvilPhone");
+  });
+
+  it("cannot be claimed twice by concurrent claims (the reservation is synchronous)", async () => {
+    const { code } = createSetupCode();
+    const keys = Array.from({ length: 6 }, () => phoneKey());
+    const results = await Promise.all(keys.map((k) => claimSetupCode(claimInput(code, k))));
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect((await listDevicePairing()).pending).toHaveLength(1);
+  });
+
+  it("does not hand the claim id to a replay of the same signed request", async () => {
+    const key = phoneKey();
+    const { code } = createSetupCode();
+    const signedAt = Date.now();
+    expect((await claimSetupCode(claimInput(code, key, signedAt))).ok).toBe(true);
+    expect(await claimSetupCode(claimInput(code, key, signedAt))).toMatchObject({
+      ok: false,
+      status: 410,
+    });
+  });
+
+  it("hands the token out once, then the claim is gone", async () => {
+    const key = phoneKey();
+    const { code } = createSetupCode();
+    const claim = await claimSetupCode(claimInput(code, key));
+    if (!claim.ok) throw new Error("claim failed");
+    await approveDevicePairing(claim.request.requestId);
+    expect((await readClaimStatus({ claimId: claim.claimId, deviceId: key.id })).status).toBe(
+      "approved",
+    );
+    expect(await readClaimStatus({ claimId: claim.claimId, deviceId: key.id })).toEqual({
+      status: "expired",
+    });
+  });
+});
+
+describe("pairing address labels (PLAN-62)", () => {
+  it("labels two addresses of the same kind distinctly", async () => {
+    const { labelDistinctly } = await import("./urls.js");
+    expect(
+      labelDistinctly([
+        { url: "http://192.168.1.5:19001", label: "Home network", secure: false },
+        { url: "http://10.0.0.7:19001", label: "Home network", secure: false },
+        { url: "https://box.tail.ts.net", label: "Tailscale", secure: true },
+      ]).map((u) => u.label),
+    ).toEqual(["Home network (192.168.1.5)", "Home network (10.0.0.7)", "Tailscale"]);
   });
 });

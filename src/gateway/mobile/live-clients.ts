@@ -23,13 +23,22 @@ export function deviceIdOf(client: GatewayWsClient | null | undefined): string |
  * Close every open connection that authenticated as this device. Returns how
  * many were closed. 4001 tells the client not to retry with the same token.
  */
-export function disconnectDevice(deviceId: string, reason = "device removed"): number {
-  if (!liveClients) {
+export function disconnectDevice(
+  deviceId: string,
+  reason = "device removed",
+  opts: { role?: string } = {},
+): number {
+  const id = deviceId.trim();
+  if (!liveClients || !id) {
     return 0;
   }
   let closed = 0;
   for (const client of liveClients) {
-    if (deviceIdOf(client) !== deviceId) {
+    if (deviceIdOf(client) !== id) {
+      continue;
+    }
+    // Revoking one role's token leaves the device's other roles connected.
+    if (opts.role && (client.connect.role ?? "operator") !== opts.role) {
       continue;
     }
     try {

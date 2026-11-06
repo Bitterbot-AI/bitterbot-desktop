@@ -40,7 +40,11 @@ function isTailnetIPv4(address: string): boolean {
 
 function listIPv4(filter: (address: string) => boolean): string[] {
   const out: string[] = [];
-  for (const entries of Object.values(os.networkInterfaces())) {
+  for (const [name, entries] of Object.entries(os.networkInterfaces())) {
+    // Container and VM bridges are not addresses a phone can reach.
+    if (/^(docker|br-|veth|virbr|cni|flannel|podman)/.test(name)) {
+      continue;
+    }
     for (const entry of entries ?? []) {
       const isIpv4 = entry.family === "IPv4" || String(entry.family) === "4";
       if (!entry.internal && isIpv4 && entry.address && filter(entry.address)) {
@@ -127,7 +131,27 @@ export async function resolveMobileBaseUrls(
       });
     }
   }
-  return out;
+  return labelDistinctly(out);
+}
+
+/** Two addresses with the same label ("Home network" twice) get their host appended. */
+export function labelDistinctly(entries: MobileBaseUrl[]): MobileBaseUrl[] {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    counts.set(entry.label, (counts.get(entry.label) ?? 0) + 1);
+  }
+  return entries.map((entry) => {
+    if ((counts.get(entry.label) ?? 0) < 2) {
+      return entry;
+    }
+    let host = entry.url;
+    try {
+      host = new URL(entry.url).hostname;
+    } catch {
+      // keep the url
+    }
+    return { ...entry, label: `${entry.label} (${host})` };
+  });
 }
 
 /** The link a phone opens to claim a setup code. The code rides in the fragment. */
