@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.13.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.12.0...v1.13.0) (2026-11-07)
+
+
+### Features
+
+* **a2a:** accept XNO payments on the A2A payment gate ([#348](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/348)) ([595167c](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/595167cf4db9e4481db94c67cd43f13040114cbb))
+* add learning strategy lab and benchmark evidence ([#363](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/363)) ([3ea3f55](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3ea3f55329411f37a0ce36af34fe67ac61410991))
+* **memory:** default procedural learning to shadow capture ([#364](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/364)) ([edd9f02](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/edd9f02f8f67de9876216da6109ebcc76a7dac70))
+* **memory:** run gated failure experiments from idle dreams ([#365](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/365)) ([f10139f](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/f10139f8ee7eb5a747b20192d5f3cb3f0afdf5ff))
+* **skills:** add verified live outcome writer in shadow mode ([#369](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/369)) ([fe15ee3](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/fe15ee33fad8398c66317bd0737ddedec45cd490))
+* **skills:** experience-guided skill prior (on by default) and its controlled test ([#347](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/347)) ([1a23cb7](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/1a23cb721ed21aa875010f1cba06302e82193d00))
+
+
+### Bug Fixes
+
+* **gateway:** correct WSL logon task XML schema ([#367](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/367)) ([a41e019](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/a41e019a05b0290d62eb17091913a572839b2a63))
+* **skills:** record skill executions when the agent reads a skill's SKILL.md ([#350](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/350)) ([41241db](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/41241db24e007827e021382ffd89949b2b652ec0))
+* **skills:** skills index compactor no longer merges a block into the next one ([#351](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/351)) ([eca2269](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/eca2269a291dc58ef3178832affbe17dc865ed7e))
+
 ## [1.12.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.11.0...v1.12.0) (2026-10-31)
 
 
