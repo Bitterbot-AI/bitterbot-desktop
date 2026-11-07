@@ -3,10 +3,14 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetAgentRunContextForTest } from "../../infra/agent-events.js";
-import { startEventJournal, stopEventJournal } from "../../infra/event-journal.js";
+import {
+  getActiveEventJournal,
+  startEventJournal,
+  stopEventJournal,
+} from "../../infra/event-journal.js";
 import { registerTaskCheckContext } from "../../tasks/checks.js";
 import { registerJudgeLlmCall } from "../../tasks/judge.js";
-import { startTaskStore, stopTaskStore } from "../../tasks/store.js";
+import { getActiveTaskStore, startTaskStore, stopTaskStore } from "../../tasks/store.js";
 
 vi.mock("../../cron/active.js", () => ({
   getCronEngine: () => null,
@@ -69,6 +73,61 @@ describe("PLAN-16 Phase D: task_judge", () => {
       process.env.BITTERBOT_EVENT_JOURNAL = prevJournalEnv;
     }
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("journals executed-check counts without changing the existing totals", async () => {
+    registerTaskCheckContext({ workspaceDir: dir, allowCommands: false });
+    registerJudgeLlmCall(async () => JSON.stringify({ verdict: "pass", reasoning: "checked" }));
+    const task = getActiveTaskStore()!.create({
+      goal: "artifact",
+      doneCriteria: "file exists",
+      checks: [{ kind: "command", command: "true" }],
+    });
+    getActiveTaskStore()!.update(task.id, { currentRunId: "bound-run" });
+    const result = await callTool(createTaskJudgeTool(), { task_id: task.id });
+    expect(result, result.error).toMatchObject({ ok: true });
+    const judged = getActiveEventJournal()!
+      .query({ taskId: task.id })
+      .find((e) => e.data.phase === "judged")!;
+    expect(judged.data).toMatchObject({
+      runId: "bound-run",
+      checksTotal: 1,
+      checksPassed: 0,
+      checksExecuted: 0,
+      checksFailedExecuted: 0,
+      checksRevision: 0,
+      checksStable: true,
+      checksAuthor: "model",
+    });
+    expect(judged.data.checksHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("marks checks unstable if task_update replaces them while judging", async () => {
+    registerTaskCheckContext({ workspaceDir: dir, allowCommands: false });
+    fs.writeFileSync(path.join(dir, "artifact"), "done");
+    const store = getActiveTaskStore()!;
+    const task = store.create({
+      goal: "artifact",
+      doneCriteria: "file exists",
+      checks: [{ kind: "file_exists", path: "artifact" }],
+    });
+    store.update(task.id, { currentRunId: "bound-run" });
+    registerJudgeLlmCall(async () => {
+      store.update(task.id, { checks: task.checks });
+      return JSON.stringify({ verdict: "pass", reasoning: "checked" });
+    });
+    const result = await callTool(createTaskJudgeTool(), { task_id: task.id });
+    expect(result, result.error).toMatchObject({ ok: true });
+    const judged = getActiveEventJournal()!
+      .query({ taskId: task.id })
+      .find((e) => e.data.phase === "judged")!;
+    expect(judged.data).toMatchObject({
+      checksTotal: 1,
+      checksPassed: 1,
+      checksExecuted: 1,
+      checksStable: false,
+      checksRevision: 0,
+    });
   });
 
   it("returns error when no judge LLM is registered", async () => {

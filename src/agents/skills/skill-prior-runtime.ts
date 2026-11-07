@@ -4,7 +4,7 @@
  * hash the skills by content, reorder, annotate verified outcomes, and journal the
  * decision on the `skills` stream next to the canary exposure row.
  *
- * Default off (`skills.prior.enabled`). Nothing here writes the ledger.
+ * Default on (`skills.prior.enabled`). The separate gateway writer defaults to shadow.
  */
 
 import { createHash } from "node:crypto";
@@ -27,7 +27,7 @@ import {
 
 const log = createSubsystemLogger("skills/prior");
 
-/** Context cell used on the live path until a verified live outcome signal exists. */
+/** Single live context cell; benchmark cells are kept separate. */
 export const DEFAULT_PRIOR_CELL = "default";
 
 export function skillPriorLedgerPath(cfg: BitterbotConfig | undefined): string {

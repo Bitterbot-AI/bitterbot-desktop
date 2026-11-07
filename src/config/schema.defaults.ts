@@ -80,6 +80,7 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "skills.evolution.enabled": true,
   "skills.prior.enabled": true,
   "skills.prior.evidence": "verbal",
+  "skills.prior.writer": "shadow",
   // src/memory/skill-evolution/housekeeping.ts:149 — `propagate !== false`.
   "skills.evolution.propagate": true,
   // src/memory/skill-evolution/validation-gate.ts:1082 — `descriptionRepair !== false`.

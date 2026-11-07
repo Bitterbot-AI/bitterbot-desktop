@@ -163,6 +163,7 @@ export class SkillExecutionTracker {
       toolCallId?: string;
       /** Defaults to "tool": the row proves a tool call, nothing more. */
       evidence?: ExecutionEvidence;
+      context?: Record<string, unknown>;
     },
   ): string {
     const id = crypto.randomUUID();
@@ -175,8 +176,8 @@ export class SkillExecutionTracker {
       this.db
         .prepare(
           `INSERT INTO skill_executions (id, skill_crystal_id, session_id, started_at, tool_name, recorded_by,
-             run_id, tool_call_id, evidence)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             run_id, tool_call_id, evidence, context_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -188,6 +189,7 @@ export class SkillExecutionTracker {
           provenance?.runId ?? null,
           provenance?.toolCallId ?? null,
           provenance?.evidence ?? "tool",
+          provenance?.context ? JSON.stringify(provenance.context) : null,
         );
       return id;
     } catch {

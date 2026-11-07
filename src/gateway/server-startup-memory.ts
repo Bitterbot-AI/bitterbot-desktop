@@ -105,5 +105,8 @@ export async function startGatewayMemoryBackend(params: {
     }
   }
 
+  if (typeof managerForHook.startSkillPriorWriter === "function") {
+    (managerForHook.startSkillPriorWriter as (config: () => BitterbotConfig) => void)(loadConfig);
+  }
   return { skillNetworkBridge };
 }

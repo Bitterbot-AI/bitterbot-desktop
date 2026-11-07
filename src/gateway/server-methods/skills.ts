@@ -1445,7 +1445,7 @@ export const skillsHandlers: GatewayRequestHandlers = {
       );
     }
   },
-  "skills.evolution.feedback": async ({ params, respond }) => {
+  "skills.evolution.feedback": async ({ params, respond, client }) => {
     if (!validateSkillsEvolutionFeedbackParams(params)) {
       respond(
         false,
@@ -1468,6 +1468,11 @@ export const skillsHandlers: GatewayRequestHandlers = {
       const entry = await appendRunFeedback({
         runId: p.runId,
         verdict: p.verdict,
+        ...((client?.connect.role ?? "operator") === "operator" &&
+        client?.connect.scopes?.includes("operator.admin") &&
+        !client.setupToken
+          ? { authority: "owner-operator" as const }
+          : {}),
         ...(p.note ? { note: p.note } : {}),
         ...(p.by ? { by: p.by } : {}),
       });

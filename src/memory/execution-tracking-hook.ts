@@ -191,12 +191,16 @@ export function createExecutionTrackingHook(
         return;
       }
 
+      const result = event.result as { details?: { skillRead?: unknown } } | undefined;
       const execId = tracker.startExecution(skillId, ctx.sessionKey, {
         toolName: event.toolName,
         recordedBy: "after_tool_call",
         runId: ctx.runId,
         toolCallId: ctx.toolCallId,
         evidence: "tool",
+        ...(readTarget && result?.details?.skillRead
+          ? { context: { skillRead: result.details.skillRead } }
+          : {}),
       });
 
       const outcome: ExecutionOutcome = {

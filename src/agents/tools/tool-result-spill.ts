@@ -202,7 +202,14 @@ async function spillResult(result: unknown, ctx: SpillContext): Promise<unknown>
     }
     next.push(item);
   }
-  return changed ? { ...record, content: next } : result;
+  if (!changed) return result;
+  const details = record.details as Record<string, unknown> | undefined;
+  const skillRead = details?.skillRead as Record<string, unknown> | undefined;
+  return {
+    ...record,
+    content: next,
+    ...(skillRead ? { details: { ...details, skillRead: { ...skillRead, complete: false } } } : {}),
+  };
 }
 
 export function wrapToolWithResultSpill(tool: AnyAgentTool, ctx: SpillContext): AnyAgentTool {

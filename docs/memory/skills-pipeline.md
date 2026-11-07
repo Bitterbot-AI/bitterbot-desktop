@@ -526,15 +526,72 @@ the next turn. Consequences the rest of this document depends on:
   observations toward annotation. The deliberate shuffled-cell control drops
   these counters rather than claiming evidence from the wrong context.
 
-  The runtime only reads the trusted local ledger and uses the `default`
-  context cell today; it does not import benchmark cells into live contexts.
-  No live path writes this ledger. `skill_executions` now records skill reads
-  and can receive grounded run outcomes, but a read or clean tool call alone
-  does not verify task success. A future writer needs trustworthy pass/fail
-  attribution to the actual skill version and context before enablement.
-  The controlled test in `benchmarks/skill-prior/` manufactures verified
-  outcomes and tests global-success, shuffled and ungated controls.
-  `skills.prior.enabled` remains false by default.
+  The runtime reads the trusted local ledger and uses the `default` context
+  cell. The gateway's verified-outcome writer (`src/memory/skill-prior-service.ts`)
+  ships with `skills.prior.writer: "shadow"`: it journals proposed credits and
+  exclusion reasons on the `skills` stream (`phase: "prior-writer"`) without
+  creating or changing a ledger. `"on"` records verified outcomes; `"off"`
+  disables the worker. `skills.prior.enabled: false` disables both ordering
+  and writing. Ordering remains on by default.
+
+  A credit requires exactly one full native `read` of a `SKILL.md` in the
+  completed run and one matching `skill_executions` row. Repeat reads,
+  untracked extra reads, partial or spilled reads, sandbox reads without
+  provenance, incomplete journals, and pre-upgrade records are excluded.
+  The content hash and frontmatter skill name come from the bytes read,
+  never a later version of the file. The run must carry an explicit owner
+  flag; guest, remote, non-owner phone, benchmark and harness runs cannot
+  contribute.
+
+  Two outcome sources qualify:
+
+  - Executed, independent task checks bound to the exact run. All checks
+    must have produced assessable results; pass requires every check to
+    pass, and failure requires an actual failed check. Disabled commands,
+    missing workspaces, timeouts, launch failures and output-regex checks
+    against the model's own summary do not qualify. Nonzero Windows command
+    exits are also excluded because a missing executable and an assertion
+    failure share the same exit code. The check set is hashed
+    before the skill read; creation and the last check change must predate
+    the run, and its store-owned revision must match at judging.
+    Any check update during the run, including changing and restoring the
+    same checks, excludes the run.
+  - Explicit accept/reject through `skills.evolution.feedback`, stamped
+    by an authenticated owner operator. The caller's `by` label is not
+    authority. Feedback on a non-owner run still cannot qualify.
+
+  **Limitation:** task checks are currently model-authored. Freezing prevents
+  changing the test after seeing the skill, but does not prove the original
+  test is adequate. Credits and shadow events record `author: model`
+  (or `operator` for explicit owner feedback). These counts are observational
+  evidence, not causal proof that the skill improved a task. Reads, clean
+  tool calls, self-reports, judge-only verdicts and aggregate promotion gates
+  never change the prior.
+
+  The worker starts only with the gateway memory backend, queues after
+  terminal run/judgment/feedback events, yields between runs, and reconciles
+  at startup and every 30 minutes. It examines at most the latest 10,000
+  attributed runs per reconciliation and requires complete relevant histories
+  of at most 500 events per run/task. Errors are logged and do not fail the
+  run. No model calls are made.
+
+  Live ledgers use a scoped version-1 envelope with durable credit identities.
+  Restarts cannot double-count a run, including beyond the core ledger's
+  5,000-entry dedupe window. Later owner corrections replace the old credit;
+  replay in original run order preserves discounting and content-version
+  resets. Saved credits allow owner reversals after journal retention.
+  Updates are serialized, locked, written through a mode-600 temporary file,
+  synced and atomically renamed; mtime changes invalidate the runtime cache.
+  At 10,000 credits, new credits stop with a warning/event, existing
+  corrections remain possible, and dedupe history is never discarded.
+  Changing discount/pseudo-count settings requires a fresh ledger path.
+
+  Benchmark writers tag their separate ledgers and refuse the configured
+  live path. The live writer refuses nonempty unscoped or benchmark ledgers;
+  move the file or set `skills.prior.ledgerPath` to a fresh location.
+  Empty legacy ledgers are accepted. The controlled tests in
+  `benchmarks/skill-prior/` continue to test global-success, shuffled and
+  ungated controls independently of live evidence.
 
 ## Skill Lifecycle
 

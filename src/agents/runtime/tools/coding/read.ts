@@ -40,6 +40,12 @@ import type { AgentTool } from "@mariozechner/pi-agent-core";
 import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { toPlainJsonSchema } from "../../../schema/plain-json-schema.js";
+import {
+  isSkillReadPath,
+  skillReadProof,
+  type SkillReadContext,
+  type SkillReadProof,
+} from "../../../skills/skill-read-provenance.js";
 import { formatDimensionNote, resizeImage } from "./image-resize.js";
 import { detectSupportedImageMimeTypeFromFile } from "./mime.js";
 import { resolveReadPath } from "./path-utils.js";
@@ -74,6 +80,10 @@ const readSchema = toPlainJsonSchema(
 
 export interface ReadToolDetails {
   truncation?: TruncationResult;
+  /** Hash of the bytes actually read, with pre-read task provenance. */
+  skillRead?: SkillReadProof;
+  /** Also count untracked/malformed skill files and rewritten tool parameters. */
+  skillReadPath?: string;
 }
 
 /**
@@ -100,6 +110,8 @@ export interface ReadToolOptions {
   autoResizeImages?: boolean;
   /** Custom operations for file reading. Default: local filesystem */
   operations?: ReadOperations;
+  /** Internal provenance callback, evaluated before any read I/O. */
+  skillReadContext?: () => SkillReadContext | undefined;
 }
 
 type ReadToolResult = {
@@ -145,6 +157,14 @@ export function createReadTool(
 
         void (async () => {
           try {
+            let skillContext: SkillReadContext | undefined;
+            if (isSkillReadPath(absolutePath)) {
+              try {
+                skillContext = options?.skillReadContext?.();
+              } catch {
+                /* fail closed for credit */
+              }
+            }
             // Check if file exists and is readable.
             await ops.access(absolutePath);
             if (aborted) {
@@ -239,6 +259,16 @@ export function createReadTool(
                 // No truncation and no remaining user-limited content.
                 outputText = truncation.content;
               }
+              const proof = skillReadProof(
+                absolutePath,
+                buffer,
+                startLine === 0 &&
+                  !truncation.truncated &&
+                  !truncation.firstLineExceedsLimit &&
+                  (userLimitedLines === undefined || userLimitedLines >= totalFileLines),
+                skillContext,
+              );
+              if (proof) details = { ...details, skillRead: proof };
               content = [{ type: "text", text: outputText }];
             }
 
@@ -246,6 +276,8 @@ export function createReadTool(
               return;
             }
             signal?.removeEventListener("abort", onAbort);
+            if (isSkillReadPath(absolutePath))
+              details = { ...details, skillReadPath: absolutePath };
             resolve({ content, details });
           } catch (error: unknown) {
             signal?.removeEventListener("abort", onAbort);

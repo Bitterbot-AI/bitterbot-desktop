@@ -17,6 +17,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "skills.evolution.enabled": "Skill Evolution (Wiki)",
   "skills.prior.enabled": "Experience-Guided Skill Prior",
   "skills.prior.evidence": "Skill Prior Evidence Wording",
+  "skills.prior.writer": "Verified Skill Outcome Writer",
   "skills.evolution.propagate": "Evolved Skill P2P Publishing",
   "skills.evolution.cadenceHours": "Skill Evolution Cadence (hours)",
   "skills.evolution.validationMode": "Skill Evolution Validation Mode",

@@ -192,6 +192,7 @@ import { readValidationSummaries } from "./skill-evolution/validation-summaries.
 import { SkillExecutionTracker, runEvidenceWhere } from "./skill-execution-tracker.js";
 import { SkillMarketplace } from "./skill-marketplace.js";
 import { SkillNetworkBridge, type OrchestratorBridgeLike } from "./skill-network-bridge.js";
+import { SkillPriorWriterService } from "./skill-prior-service.js";
 import { SkillVerifier } from "./skill-verifier.js";
 import { recordAccess } from "./spacing-effect.js";
 import { requireNodeSqlite } from "./sqlite.js";
@@ -420,6 +421,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   private memStore: MemStore | null = null;
   private skillNetworkBridge: SkillNetworkBridge | null = null;
   private executionTracker: SkillExecutionTracker | null = null;
+  private skillPriorWriter: SkillPriorWriterService | null = null;
   private executionTrackingHook:
     | ((event: PluginHookAfterToolCallEvent, ctx: PluginHookToolContext) => void)
     | null = null;
@@ -7811,6 +7813,12 @@ export class MemoryIndexManager implements MemorySearchManager {
     return this.skillNetworkBridge;
   }
 
+  /** Called only by gateway startup; library/harness managers never start a live writer. */
+  startSkillPriorWriter(config: () => BitterbotConfig): void {
+    if (this.closed || this.skillPriorWriter) return;
+    this.skillPriorWriter = new SkillPriorWriterService({ db: () => this.db, config });
+  }
+
   /**
    * Get the `after_tool_call` hook handler for plugin registration.
    * Returns null if execution tracking is not initialized.
@@ -8113,6 +8121,8 @@ export class MemoryIndexManager implements MemorySearchManager {
         // The launching call site already logs sync failures.
       }
     }
+    await this.skillPriorWriter?.close();
+    this.skillPriorWriter = null;
     await this.failureLearningPending;
     await this.dreamEngine?.waitForLearning();
     await this.proceduralLearningService?.close();

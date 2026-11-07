@@ -244,7 +244,7 @@ function createSkillSourceInfo(filePath: string, baseDir: string, source: string
  * The YAML frontmatter of a markdown file as a field map; empty when the file
  * has no frontmatter block. Throws what the YAML parser throws.
  */
-function parseSkillFrontmatter(content: string): Record<string, unknown> {
+export function parseSkillFrontmatter(content: string): Record<string, unknown> {
   const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   if (!normalized.startsWith("---")) {
     return {};
