@@ -16,7 +16,8 @@ import {
  * the Bitterbot phone app and claims a setup code with a key the phone makes
  * on the spot. The phone then shows a six-digit code; `/pair approve <code>`
  * here (or Approve in the Control UI) finishes it. The gateway token never
- * appears in the link or in this chat.
+ * appears in the link or in this chat. Owner only: a non-owner who may chat
+ * with the agent cannot pair or approve a phone.
  */
 
 type DevicePairPluginConfig = {
@@ -110,6 +111,12 @@ export default function register(api: BitterbotPluginApi) {
     description: "Pair a phone with a one-time link, and approve pairing requests.",
     acceptsArgs: true,
     handler: async (ctx) => {
+      // A paired phone can answer the agent's approvals, so only the owner may
+      // create one or approve one. Being allowed to chat is not enough.
+      if (ctx.senderIsOwner !== true) {
+        api.logger.info?.(`device-pair: /pair refused for non-owner on ${ctx.channel}`);
+        return { text: "Only the owner can pair devices. Use Devices in the Control UI." };
+      }
       const args = ctx.args?.trim() ?? "";
       const tokens = args.split(/\s+/).filter(Boolean);
       const action = tokens[0]?.toLowerCase() ?? "";

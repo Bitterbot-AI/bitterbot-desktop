@@ -26,3 +26,41 @@ describe("/pair approve target (PLAN-62)", () => {
     expect(pickPendingRequest(pending, "latest").request?.requestId).toBe("r2");
   });
 });
+
+describe("/pair is owner only (PLAN-62)", () => {
+  type Handler = (ctx: Record<string, unknown>) => Promise<{ text?: string }>;
+  function loadHandler(): Promise<Handler> {
+    return import("./index.js").then((mod) => {
+      let handler: Handler | undefined;
+      mod.default({
+        registerCommand: (cmd: { handler: Handler }) => {
+          handler = cmd.handler;
+        },
+        logger: {},
+        config: {},
+      } as never);
+      if (!handler) {
+        throw new Error("/pair not registered");
+      }
+      return handler;
+    });
+  }
+
+  it.each([false, undefined])(
+    "refuses a sender who may chat but is not the owner (senderIsOwner=%s)",
+    async (senderIsOwner) => {
+      const handler = await loadHandler();
+      for (const args of ["", "approve 472913", "status"]) {
+        const result = await handler({
+          channel: "telegram",
+          isAuthorizedSender: true,
+          senderIsOwner,
+          args,
+          commandBody: `/pair ${args}`.trim(),
+          config: {},
+        });
+        expect(result.text).toContain("Only the owner can pair devices");
+      }
+    },
+  );
+});

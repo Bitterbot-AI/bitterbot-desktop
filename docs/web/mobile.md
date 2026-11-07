@@ -47,8 +47,9 @@ See [Tailscale](/gateway/tailscale) and [Remote access](/gateway/remote).
 ## Pair a phone
 
 1. On your computer, open the Control UI, go to **Devices**, and choose **Pair a phone**.
-   From a terminal, run `bitterbot devices pair` instead. From a chat app with the
-   `device-pair` plugin enabled, send `/pair`.
+   From a terminal, run `bitterbot devices pair` instead. From a chat app, send `/pair`
+   (owner only; the `device-pair` plugin is on by default, set
+   `plugins.entries.device-pair.enabled: false` to turn it off).
 2. Scan the QR code with the phone's camera (or open the link). The link works once and expires
    after five minutes.
 3. The phone makes its own key and shows a six-digit code. Your computer shows the code it
