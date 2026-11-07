@@ -68,6 +68,45 @@ describe("durable verified outcome writer", () => {
       incremental.toJSON(),
     );
   });
+  it("appends only new observations while retaining exact replay across version resets", async () => {
+    const credits = Array.from({ length: 40 }, (_, i) => ({
+      ...credit(i, i % 3 ? 1 : 0),
+      skill: { name: i % 2 ? "format" : "report", hash: (i < 20 ? "a" : "b").repeat(64) },
+    }));
+    await apply(file, credits.slice(0, 10));
+    const updates = vi.spyOn(SkillPriorLedger.prototype, "update");
+    await apply(file, credits.slice(10).toReversed());
+    expect(updates).toHaveBeenCalledTimes(30);
+    updates.mockRestore();
+    const incremental = new SkillPriorLedger(undefined, options);
+    for (const c of credits)
+      incremental.update({ ...c, cell: "default", gate: true, verified: true });
+    expect(SkillPriorLedger.fromJSON(await fs.readFile(file, "utf8")).toJSON()).toBe(
+      incremental.toJSON(),
+    );
+    expect(await rebuildLivePrior(credits, options)).toEqual(
+      JSON.parse(await fs.readFile(file, "utf8")),
+    );
+  });
+  it("normalizes cold history order before appending and yields during replay", async () => {
+    const credits = Array.from({ length: 300 }, (_, i) => credit(i, i % 2 ? 1 : 0));
+    let yielded = false;
+    const tick = new Promise<void>((resolve) =>
+      setImmediate(() => {
+        yielded = true;
+        resolve();
+      }),
+    );
+    const state = await rebuildLivePrior(credits, options);
+    expect(yielded).toBe(true);
+    await tick;
+    state.liveWriter.credits.reverse();
+    await fs.writeFile(file, JSON.stringify(state));
+    await apply(file, [credit(300)]);
+    expect(JSON.parse(await fs.readFile(file, "utf8"))).toEqual(
+      await rebuildLivePrior([...credits, credit(300)], options),
+    );
+  });
   it("restarts dedupe, and a human reversal replaces one original observation exactly", async () => {
     const credits = [credit(1), credit(2, 0), credit(3)];
     await apply(file, credits);
@@ -95,7 +134,15 @@ describe("durable verified outcome writer", () => {
   });
   it("preserves durable dedupe beyond the core 5000-entry window and stops at capacity", async () => {
     const credits = Array.from({ length: LIVE_PRIOR_CAPACITY }, (_, i) => credit(i));
-    await apply(file, credits);
+    await apply(file, credits.slice(0, -1));
+    const updates = vi.spyOn(SkillPriorLedger.prototype, "update");
+    await apply(file, credits.slice(-1));
+    expect(updates).toHaveBeenCalledTimes(1);
+    updates.mockRestore();
+    // A distinct file identity forces the same validation path as a restart.
+    const restarted = path.join(dir, "restarted.json");
+    await fs.copyFile(file, restarted);
+    file = restarted;
     const retry = await apply(file, [credit(0), credit(LIVE_PRIOR_CAPACITY)]);
     expect(retry.changes.map((c) => c.action)).toEqual(["duplicate", "capacity"]);
     expect((await readLivePriorCredits(file, options)).length).toBe(LIVE_PRIOR_CAPACITY);
@@ -114,7 +161,7 @@ describe("durable verified outcome writer", () => {
         reversal.skill,
       ),
     ).toEqual({ passed: LIVE_PRIOR_CAPACITY - 1, runs: LIVE_PRIOR_CAPACITY });
-  }, 20_000);
+  });
   it("serializes concurrent aliases; files are 0600 and mtime invalidates the runtime cache", async () => {
     const alias = path.join(dir, "alias");
     await fs.symlink(dir, alias, process.platform === "win32" ? "junction" : "dir");

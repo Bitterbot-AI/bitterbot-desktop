@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { setImmediate as yieldLoop } from "node:timers/promises";
 import { DEFAULT_PRIOR_CELL } from "../agents/skills/skill-prior-runtime.js";
 import {
@@ -29,7 +30,21 @@ export interface WriterChange {
 }
 export class SkillPriorWriterRefusal extends Error {}
 const queues = new Map<string, Promise<unknown>>();
-const validated = new Map<string, { signature: string; state: LivePriorState }>();
+const validated = new Map<string, { signature: string; digest: string; state: LivePriorState }>();
+
+function rememberValidated(
+  file: string,
+  signature: string,
+  raw: string,
+  state: LivePriorState,
+): void {
+  validated.set(file, { signature, digest: createHash("sha256").update(raw).digest("hex"), state });
+  if (validated.size > 8) validated.delete(validated.keys().next().value!);
+}
+
+function compareCredits(a: SkillPriorCredit, b: SkillPriorCredit): number {
+  return a.startedAt - b.startedAt || a.runId.localeCompare(b.runId);
+}
 
 export function writerOptions(config?: { discount?: number; pseudoCount?: number }): WriterOptions {
   return {
@@ -89,6 +104,7 @@ async function canonicalFile(file: string): Promise<string> {
 async function readState(file: string, options: WriterOptions): Promise<LivePriorState> {
   let raw: string;
   let signature = "";
+  const cached = validated.get(file);
   try {
     const stat = await fs.lstat(file);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_LEDGER_BYTES)
@@ -101,7 +117,6 @@ async function readState(file: string, options: WriterOptions): Promise<LivePrio
       options.discount,
       options.pseudoCount,
     ].join(":");
-    const cached = validated.get(file);
     if (cached?.signature === signature) return cached.state;
     raw = await fs.readFile(file, "utf8");
   } catch (err) {
@@ -112,6 +127,17 @@ async function readState(file: string, options: WriterOptions): Promise<LivePrio
         liveWriter: { version: 1, options, credits: [] },
       };
     throw err;
+  }
+  // An exact byte match to our last atomic write needs no replay. Read and hash
+  // after a signature change so external edits still receive full validation.
+  if (
+    cached &&
+    cached.state.liveWriter.options.discount === options.discount &&
+    cached.state.liveWriter.options.pseudoCount === options.pseudoCount &&
+    cached.digest === createHash("sha256").update(raw).digest("hex")
+  ) {
+    cached.signature = signature;
+    return cached.state;
   }
   let parsed: LivePriorState;
   try {
@@ -171,8 +197,8 @@ async function readState(file: string, options: WriterOptions): Promise<LivePrio
     throw new SkillPriorWriterRefusal(
       "Ledger projection disagrees with its durable credit history",
     );
-  validated.set(file, { signature, state: parsed });
-  if (validated.size > 8) validated.delete(validated.keys().next().value!);
+  parsed.liveWriter.credits = replay.liveWriter.credits;
+  rememberValidated(file, signature, raw, parsed);
   return parsed;
 }
 
@@ -186,17 +212,22 @@ export async function readLivePriorCredits(
   }));
 }
 
-/** Replay is exact for discounting and version resets; subtracting a count is not. */
-export async function rebuildLivePrior(
+/**
+ * The durable history has already deduplicated these credits. Keep the core's
+ * serialized window, but avoid its O(window) scan/shift on every replay step.
+ * Only a private projection is mutated; cached state must remain immutable.
+ */
+async function foldUniqueCredits(
+  state: SkillPriorLedgerState,
   credits: readonly SkillPriorCredit[],
   options: WriterOptions,
-): Promise<LivePriorState> {
-  const ordered = credits.toSorted(
-    (a, b) => a.startedAt - b.startedAt || a.runId.localeCompare(b.runId),
-  );
-  const ledger = new SkillPriorLedger(undefined, options);
-  for (let i = 0; i < ordered.length; i++) {
-    const c = ordered[i];
+): Promise<SkillPriorLedgerState> {
+  const ledger = new SkillPriorLedger(state, options);
+  const seen = [...state.seen];
+  state.seen = [];
+  let deadline = performance.now() + 8;
+  for (let i = 0; i < credits.length; i++) {
+    const c = credits[i];
     ledger.update({
       cell: DEFAULT_PRIOR_CELL,
       skill: c.skill,
@@ -205,19 +236,54 @@ export async function rebuildLivePrior(
       gate: true,
       verified: true,
     });
-    if (i % 100 === 99) await yieldLoop();
+    seen.push(creditKey(c));
+    state.seen.length = 0;
+    if (i % 100 === 99 || performance.now() >= deadline) {
+      await yieldLoop();
+      deadline = performance.now() + 8;
+    }
   }
+  state.seen = seen.slice(-SKILL_PRIOR_DEFAULTS.seenMax);
+  return state;
+}
+
+/** Replay is exact for discounting and version resets; subtracting a count is not. */
+export async function rebuildLivePrior(
+  credits: readonly SkillPriorCredit[],
+  options: WriterOptions,
+): Promise<LivePriorState> {
+  if (new Set(credits.map((c) => c.runId)).size !== credits.length)
+    throw new SkillPriorWriterRefusal("Duplicate durable credit history");
+  const ordered = credits.toSorted(compareCredits);
   return {
-    ...(JSON.parse(ledger.toJSON()) as SkillPriorLedgerState),
+    ...(await foldUniqueCredits(emptyLedgerState(), ordered, options)),
     scope: "live-skill-prior",
     liveWriter: { version: 1, options, credits: ordered },
+  };
+}
+
+async function appendLivePrior(
+  existing: LivePriorState,
+  additions: readonly SkillPriorCredit[],
+  options: WriterOptions,
+): Promise<LivePriorState> {
+  const { version, cells, global, seen } = existing;
+  const projection = structuredClone({ version, cells, global, seen });
+  return {
+    ...(await foldUniqueCredits(projection, additions, options)),
+    scope: "live-skill-prior",
+    liveWriter: {
+      version: 1,
+      options,
+      credits: [...existing.liveWriter.credits, ...additions],
+    },
   };
 }
 
 async function writeAtomic(
   file: string,
   state: SkillPriorLedgerState & { scope: string },
-): Promise<void> {
+): Promise<string> {
   const body = JSON.stringify(state);
   if (Buffer.byteLength(body) > MAX_LEDGER_BYTES)
     throw new SkillPriorWriterRefusal("Ledger exceeds size bound");
@@ -254,6 +320,7 @@ async function writeAtomic(
       if (err.code !== "ENOENT") throw err;
     });
   }
+  return body;
 }
 
 export async function applySkillPriorCredits(params: {
@@ -280,6 +347,8 @@ export async function applySkillPriorCredits(params: {
         const byRun = new Map(existing.liveWriter.credits.map((c) => [c.runId, c]));
         const changes: WriterChange[] = [];
         let changed = false;
+        let correction = false;
+        const additions = new Map<string, SkillPriorCredit>();
         for (const credit of params.credits) {
           if (!validCredit(credit)) throw new SkillPriorWriterRefusal("Invalid proposed credit");
           const old = byRun.get(credit.runId);
@@ -302,13 +371,29 @@ export async function applySkillPriorCredits(params: {
           else if (!old && byRun.size >= LIVE_PRIOR_CAPACITY) action = "capacity";
           else {
             action = old ? "replace" : "insert";
-            byRun.set(credit.runId, { ...credit, skill: { ...credit.skill } });
+            const copy = { ...credit, skill: { ...credit.skill } };
+            byRun.set(credit.runId, copy);
+            if (old) correction = true;
+            else additions.set(credit.runId, copy);
             changed = true;
           }
           changes.push({ runId: credit.runId, action });
         }
-        if (changed && params.mode === "on")
-          await writeAtomic(file, await rebuildLivePrior([...byRun.values()], params.options));
+        if (changed && params.mode === "on") {
+          const ordered = [...additions.values()].toSorted(compareCredits);
+          // Late evidence may belong before the saved tail. Discounting and hash
+          // resets are order-sensitive, so that case still requires exact replay.
+          const tail = existing.liveWriter.credits.at(-1);
+          const first = ordered[0];
+          const appendOnly =
+            !correction && first !== undefined && (!tail || compareCredits(first, tail) > 0);
+          const next = appendOnly
+            ? await appendLivePrior(existing, ordered, params.options)
+            : await rebuildLivePrior([...byRun.values()], params.options);
+          const raw = await writeAtomic(file, next);
+          // The next read verifies the written bytes before trusting this cache.
+          rememberValidated(file, "", raw, next);
+        }
         return { changes, written: changed && params.mode === "on" };
       } finally {
         await lock?.release();
