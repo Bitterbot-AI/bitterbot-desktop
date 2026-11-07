@@ -38,7 +38,7 @@ import {
 } from "../../bootstrap-pairing.js";
 import { buildDeviceAuthPayload } from "../../device-auth.js";
 import { redactSnapshotForPhone } from "../../mobile/phone-events.js";
-import { isMobileScopedConnection } from "../../mobile/scopes.js";
+import { isMobileScopedConnection, PHONE_PRINCIPAL_SCOPE } from "../../mobile/scopes.js";
 import { isLoopbackAddress, isTrustedProxyAddress, resolveGatewayClientIp } from "../../net.js";
 import { resolveHostName } from "../../net.js";
 import { resolveNodeCommandAllowlist } from "../../node-command-policy.js";
@@ -309,6 +309,8 @@ export function attachGatewayWsMessageHandler(params: {
         // Note: If the client does not present a device identity, we can't bind scopes to a paired
         // device/token, so we will clear scopes after auth to avoid self-declared permissions.
         let scopes = Array.isArray(connectParams.scopes) ? connectParams.scopes : [];
+        // PLAN-62: set from the paired-device record below; never from the request.
+        let pairedAsPhone = false;
         connectParams.role = role;
         connectParams.scopes = scopes;
 
@@ -813,6 +815,8 @@ export function attachGatewayWsMessageHandler(params: {
 
           const paired = await getPairedDevice(device.id);
           const isPaired = paired?.publicKey === devicePublicKey;
+          // PLAN-62: phone provenance comes from the gateway's record, never the request.
+          pairedAsPhone = isPaired && paired?.principal === "phone";
           if (!isPaired) {
             const ok = await requirePairing("not-paired");
             if (!ok) {
@@ -868,6 +872,13 @@ export function attachGatewayWsMessageHandler(params: {
         const deviceToken = device
           ? await ensureDeviceToken({ deviceId: device.id, role, scopes })
           : null;
+
+        // After the token is minted and the record is updated, so the marker is
+        // never persisted or handed back: it lives on this connection only.
+        if (pairedAsPhone) {
+          scopes = [...scopes.filter((s) => s !== PHONE_PRINCIPAL_SCOPE), PHONE_PRINCIPAL_SCOPE];
+          connectParams.scopes = scopes;
+        }
 
         if (role === "node") {
           const cfg = loadConfig();

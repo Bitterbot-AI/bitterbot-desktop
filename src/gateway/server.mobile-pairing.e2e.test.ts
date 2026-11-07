@@ -158,7 +158,13 @@ async function pairPhone() {
     deviceId: key.id,
   });
   expect(after.json.status).toBe("approved");
-  return { admin, port, key, deviceToken: String(after.json.deviceToken) };
+  return {
+    admin,
+    port,
+    key,
+    claimId: String(claim.json.claimId),
+    deviceToken: String(after.json.deviceToken),
+  };
 }
 
 describe("phone pairing over the gateway (PLAN-62)", () => {
@@ -275,6 +281,59 @@ describe("phone pairing over the gateway (PLAN-62)", () => {
     });
     expect(always.ok).toBe(false);
     expect(always.error?.message ?? "").toContain("once");
+  });
+
+  // Adversarial review (2026-11-07): asking for fewer scopes must never shed the phone policy.
+  test("a phone that reconnects with approvals only is still a phone", async () => {
+    const { admin, port, key, deviceToken } = await pairPhone();
+    const { ws, nonce } = await openRemote(port);
+    cleanups.push(() => ws.close());
+    const res = await phoneConnect(ws, key, nonce, deviceToken, ["operator.approvals"]);
+    expect(res.ok).toBe(true);
+    const hello = JSON.stringify(res.payload);
+    expect(hello).not.toContain("stateDir");
+    expect(hello).not.toContain("configPath");
+    const requested = await rpcReq(admin, "exec.approval.request", {
+      id: "narrowed-phone-fixture",
+      command: "echo never-run",
+      timeoutMs: 30_000,
+      twoPhase: true,
+    });
+    expect(requested.ok).toBe(true);
+    const always = await rpcReq(ws, "exec.approval.resolve", {
+      id: "narrowed-phone-fixture",
+      decision: "allow-always",
+    });
+    expect(always.ok).toBe(false);
+    expect(always.error?.message ?? "").toContain("once");
+  });
+
+  test("a phone cannot read another phone's conversation", async () => {
+    const { port, key, deviceToken } = await pairPhone();
+    const { ws, nonce } = await openRemote(port);
+    cleanups.push(() => ws.close());
+    expect((await phoneConnect(ws, key, nonce, deviceToken)).ok).toBe(true);
+    const tag = key.id
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 12);
+    const foreign = await rpcReq(ws, "chat.history", {
+      sessionKey: "agent:main:mobile-000000000000-202611071200",
+    });
+    expect(foreign.ok).toBe(false);
+    const untagged = await rpcReq(ws, "chat.history", { sessionKey: "agent:main:mobile-other" });
+    expect(untagged.ok).toBe(false);
+    const own = await rpcReq(ws, "chat.history", {
+      sessionKey: `agent:main:mobile-${tag}-202611071200`,
+    });
+    expect(own.ok).toBe(true);
+  });
+
+  test("a phone whose approval response was lost can collect it again", async () => {
+    const { port, key, claimId, deviceToken } = await pairPhone();
+    const again = await post(port, "/m/api/pair/status", { claimId, deviceId: key.id });
+    expect(again.json.status).toBe("approved");
+    expect(again.json.deviceToken).toBe(deviceToken);
   });
 
   test("revoking a node token leaves the device's operator connection alone", async () => {

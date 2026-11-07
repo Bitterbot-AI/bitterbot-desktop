@@ -252,18 +252,33 @@ describe("mobile setup codes (PLAN-62)", () => {
     });
   });
 
-  it("hands the token out once, then the claim is gone", async () => {
+  it("lets the claimant collect again for a short while (lost response), then the claim is gone", async () => {
     const key = phoneKey();
     const { code } = createSetupCode();
     const claim = await claimSetupCode(claimInput(code, key));
     if (!claim.ok) throw new Error("claim failed");
     await approveDevicePairing(claim.request.requestId);
-    expect((await readClaimStatus({ claimId: claim.claimId, deviceId: key.id })).status).toBe(
-      "approved",
-    );
-    expect(await readClaimStatus({ claimId: claim.claimId, deviceId: key.id })).toEqual({
-      status: "expired",
-    });
+    const first = await readClaimStatus({ claimId: claim.claimId, deviceId: key.id });
+    expect(first.status).toBe("approved");
+    const t0 = Date.now();
+    // A retry after a dropped response gets the same token.
+    expect(
+      await readClaimStatus({ claimId: claim.claimId, deviceId: key.id, now: t0 + 30_000 }),
+    ).toEqual(first);
+    // Only the claimant: the right claim id with another device id gets nothing.
+    expect(
+      (
+        await readClaimStatus({
+          claimId: claim.claimId,
+          deviceId: "someone-else",
+          now: t0 + 30_000,
+        })
+      ).status,
+    ).toBe("expired");
+    // After the grace window the claim is gone.
+    expect(
+      await readClaimStatus({ claimId: claim.claimId, deviceId: key.id, now: t0 + 3 * 60_000 }),
+    ).toEqual({ status: "expired" });
   });
 });
 

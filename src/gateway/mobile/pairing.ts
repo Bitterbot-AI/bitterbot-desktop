@@ -37,6 +37,8 @@ import { MOBILE_CLIENT_ID, MOBILE_DEVICE_SCOPES } from "./scopes.js";
 export const SETUP_CODE_TTL_MS = 5 * 60_000;
 /** How long an approved phone has to collect its token. */
 const CLAIM_COLLECT_TTL_MS = 10 * 60_000;
+/** After the first collection, the same claimant may collect again for this long (a lost response). */
+const CLAIM_RECOLLECT_GRACE_MS = 2 * 60_000;
 const CLAIM_SIGNATURE_SKEW_MS = 10 * 60_000;
 const MAX_OUTSTANDING_CODES = 8;
 
@@ -307,6 +309,7 @@ export async function claimSetupCode(input: ClaimInput, now = Date.now()): Promi
       silent: false,
       setupId: entry.setupId,
       confirmCode,
+      principal: "phone",
     });
   } catch (err) {
     // Roll the reservation back so the owner's code is not burned by an I/O error.
@@ -357,8 +360,13 @@ export async function readClaimStatus(params: {
   const paired = await getPairedDevice(claim.deviceId);
   const token = paired?.tokens?.operator;
   if (paired && token && !token.revokedAtMs && paired.approvedAtMs >= claim.createdAtMs) {
-    // Handed out once: the claim is consumed on first collection.
-    claims.delete(claim.claimId);
+    // The first collection starts a short grace window instead of consuming the
+    // claim, so a phone whose response was lost (network drop, app killed) can
+    // ask again. Only the claimant can (unguessable claim id + its device id).
+    if (claim.collectedAtMs === undefined) {
+      claim.collectedAtMs = now;
+      claim.expiresAtMs = Math.min(claim.expiresAtMs, now + CLAIM_RECOLLECT_GRACE_MS);
+    }
     return {
       status: "approved",
       deviceToken: token.token,

@@ -33,12 +33,16 @@ function sessionKeyOf(payload: unknown): string | undefined {
  * The payload a phone receives for this event, or DROP. Returns the same
  * object when nothing needs cutting, so the caller can reuse the shared frame.
  */
-export function phoneEventPayload(event: string, payload: unknown): unknown {
+export function phoneEventPayload(
+  event: string,
+  payload: unknown,
+  deviceId?: string | null,
+): unknown {
   if (PHONE_EVENTS_AS_IS.has(event)) {
     return payload;
   }
   if (event === "chat") {
-    return isPhoneSessionAllowed(sessionKeyOf(payload)) ? payload : DROP;
+    return isPhoneSessionAllowed(sessionKeyOf(payload), deviceId) ? payload : DROP;
   }
   if (event === "agent") {
     const p = payload as {
@@ -49,7 +53,7 @@ export function phoneEventPayload(event: string, payload: unknown): unknown {
       sessionKey?: unknown;
       data?: { phase?: unknown; name?: unknown; toolCallId?: unknown } | null;
     } | null;
-    if (!p || p.stream !== "tool" || !isPhoneSessionAllowed(sessionKeyOf(p))) {
+    if (!p || p.stream !== "tool" || !isPhoneSessionAllowed(sessionKeyOf(p), deviceId)) {
       return DROP;
     }
     return {

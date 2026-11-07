@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { authorizeGatewayMethod } from "../server-methods.js";
-import { isMobileScopedConnection, MOBILE_DEVICE_SCOPES } from "./scopes.js";
+import { isMobileScopedConnection, MOBILE_DEVICE_SCOPES, PHONE_PRINCIPAL_SCOPE } from "./scopes.js";
 
 function phone(scopes: readonly string[] = MOBILE_DEVICE_SCOPES) {
   return {
@@ -79,6 +79,13 @@ describe("phone scopes (PLAN-62)", () => {
     expect(isMobileScopedConnection(["operator.admin", "operator.chat"])).toBe(false);
     expect(isMobileScopedConnection(["operator.read"])).toBe(false);
     expect(isMobileScopedConnection(undefined)).toBe(false);
+  });
+
+  it("treats the gateway's phone marker as a phone whatever else is asked for", () => {
+    // Approvals only (the narrowing attack) and even admin: still a phone.
+    expect(isMobileScopedConnection(["operator.approvals", PHONE_PRINCIPAL_SCOPE])).toBe(true);
+    expect(isMobileScopedConnection(["operator.admin", PHONE_PRINCIPAL_SCOPE])).toBe(true);
+    expect(isMobileScopedConnection([PHONE_PRINCIPAL_SCOPE])).toBe(true);
   });
 
   it("keeps the device scope list sorted, as device tokens store scopes", () => {

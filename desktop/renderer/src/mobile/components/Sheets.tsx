@@ -1,8 +1,9 @@
 import { Check, MessageSquarePlus, PlusSquare, Share, X } from "lucide-react";
 import { Drawer, DrawerContent, DrawerTitle } from "../../components/ui/drawer";
 import { cn } from "../../lib/utils";
-import { writePersisted } from "../persist";
+import { readPersisted, writePersisted } from "../persist";
 import { isIos, isStandalone } from "../push";
+import { newPhoneSessionKey } from "../session-key";
 import { useMobile } from "../store";
 import { sessionTitle } from "./Chrome";
 
@@ -38,9 +39,7 @@ export function SessionSheet({
           <DrawerTitle className="text-base">Conversations</DrawerTitle>
           <button
             type="button"
-            onClick={() =>
-              pick(`mobile-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, "")}`)
-            }
+            onClick={() => pick(newPhoneSessionKey(readPersisted().deviceId) ?? "main")}
             className="m-press m-touch -mr-2 flex items-center gap-1.5 px-2 text-sm font-semibold text-primary"
           >
             <MessageSquarePlus className="size-4" />

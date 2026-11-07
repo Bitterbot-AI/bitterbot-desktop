@@ -563,7 +563,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     if (phoneSurface) {
       const refusal = !isPhoneMessageAllowed(inboundMessage)
         ? PHONE_COMMAND_REFUSAL
-        : !isPhoneSessionAllowed(p.sessionKey)
+        : !isPhoneSessionAllowed(p.sessionKey, client?.connect?.device?.id)
           ? PHONE_SESSION_REFUSAL
           : p.deliver === true
             ? "A paired phone cannot send replies out to a chat channel."

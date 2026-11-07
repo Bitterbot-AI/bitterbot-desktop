@@ -26,6 +26,8 @@ export type DevicePairingPendingRequest = {
   setupId?: string;
   /** Mobile pairing: the short code the phone shows; the owner checks it matches. */
   confirmCode?: string;
+  /** Set only by the gateway's phone pairing flow, never from client input. */
+  principal?: "phone";
   ts: number;
 };
 
@@ -61,6 +63,12 @@ export type PairedDevice = {
   remoteIp?: string;
   /** Owner-chosen name; wins over the displayName the client reports on connect. */
   label?: string;
+  /**
+   * PLAN-62: "phone" when the device was paired through the phone flow. Set by
+   * the gateway at approval, sticky for the life of the pairing, and never
+   * changed by what the device reports or requests on connect.
+   */
+  principal?: "phone";
   tokens?: Record<string, DeviceAuthToken>;
   createdAtMs: number;
   approvedAtMs: number;
@@ -262,6 +270,7 @@ export async function requestDevicePairing(
       roles: req.role ? [req.role] : undefined,
       scopes: req.scopes,
       remoteIp: req.remoteIp,
+      ...(req.principal === "phone" ? { principal: "phone" as const } : {}),
       silent: req.silent,
       isRepair,
       setupId: req.setupId,
@@ -315,6 +324,9 @@ export async function approveDevicePairing(
       roles,
       scopes,
       remoteIp: pending.remoteIp,
+      ...(existing?.principal === "phone" || pending.principal === "phone"
+        ? { principal: "phone" as const }
+        : {}),
       label: existing?.label,
       tokens,
       createdAtMs: existing?.createdAtMs ?? now,
@@ -365,7 +377,12 @@ export async function updatePairedDeviceMetadata(
       role: patch.role ?? existing.role,
       roles,
       scopes,
+      // Provenance is the gateway's, not the client's: a connect cannot set or clear it.
+      principal: existing.principal,
     };
+    if (!existing.principal) {
+      delete state.pairedByDeviceId[deviceId].principal;
+    }
     await persistState(state, baseDir);
   });
 }

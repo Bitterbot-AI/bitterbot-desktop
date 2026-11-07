@@ -106,11 +106,14 @@ export function createGatewayBroadcaster(params: {
       stateVersion: opts?.stateVersion,
     });
     // PLAN-62: phones get an allowlist (mobile/phone-events.ts), with tool
-    // activity cut down. Built once per broadcast, only if a phone is listening.
-    let phoneFrame: string | typeof DROP | undefined;
-    const frameForPhone = (): string | typeof DROP => {
+    // activity cut down and conversations limited to that phone's own. Built
+    // once per phone per broadcast, only if a phone is listening.
+    const phoneFrames = new Map<string, string | typeof DROP>();
+    const frameForPhone = (deviceId: string | undefined): string | typeof DROP => {
+      const cacheKey = deviceId ?? "";
+      let phoneFrame = phoneFrames.get(cacheKey);
       if (phoneFrame === undefined) {
-        const cut = phoneEventPayload(event, payload);
+        const cut = phoneEventPayload(event, payload, deviceId);
         phoneFrame =
           cut === DROP
             ? DROP
@@ -123,6 +126,7 @@ export function createGatewayBroadcaster(params: {
                   seq: eventSeq,
                   stateVersion: opts?.stateVersion,
                 });
+        phoneFrames.set(cacheKey, phoneFrame);
       }
       return phoneFrame;
     };
@@ -149,7 +153,7 @@ export function createGatewayBroadcaster(params: {
         continue;
       }
       const isPhone = isMobileScopedConnection(c.connect.scopes);
-      const outFrame = isPhone ? frameForPhone() : frame;
+      const outFrame = isPhone ? frameForPhone(c.connect.device?.id) : frame;
       if (outFrame === DROP) {
         continue;
       }

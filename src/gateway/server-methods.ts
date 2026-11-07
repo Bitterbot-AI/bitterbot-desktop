@@ -462,7 +462,7 @@ export async function handleGatewayRequest(
   let respondOut = respond;
   // PLAN-62: a phone sees only its own and the main conversation.
   if (isPhoneSurface(client?.connect?.scopes)) {
-    const guard = guardPhoneRequest(req.method, params);
+    const guard = guardPhoneRequest(req.method, params, client?.connect?.device?.id);
     if (!guard.ok) {
       respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, guard.message));
       return;

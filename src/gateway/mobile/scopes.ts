@@ -59,9 +59,27 @@ export const NOTIFICATIONS_SCOPE_METHODS: ReadonlySet<string> = new Set([
   "mobile.presence",
 ]);
 
-/** True when a connection's scopes are a phone's: chat or notifications, never admin. */
+/**
+ * Server-only marker the handshake adds to a connection whose device was
+ * paired as a phone (PairedDevice.principal). It never grants a method; it
+ * only switches the phone policy on. A client gains nothing by sending it.
+ */
+export const PHONE_PRINCIPAL_SCOPE = "phone.principal";
+
+/**
+ * True when a connection is a phone. The authoritative signal is the marker
+ * the handshake derives from the paired-device record, so asking for fewer
+ * scopes (approvals only) can never shed the phone policy. Without the
+ * marker, chat or notifications scopes without admin still count as a phone.
+ */
 export function isMobileScopedConnection(scopes: readonly string[] | undefined): boolean {
-  if (!scopes || scopes.includes("operator.admin")) {
+  if (!scopes) {
+    return false;
+  }
+  if (scopes.includes(PHONE_PRINCIPAL_SCOPE)) {
+    return true;
+  }
+  if (scopes.includes("operator.admin")) {
     return false;
   }
   return scopes.includes(CHAT_SCOPE) || scopes.includes(NOTIFICATIONS_SCOPE);

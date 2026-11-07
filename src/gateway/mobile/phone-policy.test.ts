@@ -103,9 +103,15 @@ describe("phone approvals (PLAN-62)", () => {
 
 describe("phone conversations (PLAN-62)", () => {
   it("allows the main conversation and the phone's own, nothing from channels", () => {
+    const me = "A1b2C3d4E5f6a7b8c9d0";
+    const other = "ffffeeeeddddccccbbbb";
     expect(isPhoneSessionAllowed("default")).toBe(true);
     expect(isPhoneSessionAllowed("agent:main:main")).toBe(true);
-    expect(isPhoneSessionAllowed("agent:main:mobile-202611061200")).toBe(true);
+    expect(isPhoneSessionAllowed("agent:main:mobile-a1b2c3d4e5f6-202611061200", me)).toBe(true);
+    // Another phone's conversation, an untagged legacy key, or no device id: refused.
+    expect(isPhoneSessionAllowed("agent:main:mobile-a1b2c3d4e5f6-202611061200", other)).toBe(false);
+    expect(isPhoneSessionAllowed("agent:main:mobile-202611061200", me)).toBe(false);
+    expect(isPhoneSessionAllowed("agent:main:mobile-a1b2c3d4e5f6-202611061200")).toBe(false);
     expect(isPhoneSessionAllowed("agent:main:whatsapp:dm:+15551234567")).toBe(false);
     expect(isPhoneSessionAllowed("agent:main:discord:channel:123")).toBe(false);
     expect(isPhoneSessionAllowed("agent:main:cron:nightly")).toBe(false);
@@ -118,6 +124,11 @@ describe("phone conversations (PLAN-62)", () => {
     );
     expect(guardPhoneRequest("chat.history", {}).ok).toBe(false);
     expect(guardPhoneRequest("chat.history", { sessionKey: "default" }).ok).toBe(true);
+    const mine = "agent:main:mobile-a1b2c3d4e5f6-1";
+    expect(guardPhoneRequest("chat.history", { sessionKey: mine }, "a1b2c3d4e5f6xx").ok).toBe(true);
+    expect(guardPhoneRequest("chat.history", { sessionKey: mine }, "999999999999xx").ok).toBe(
+      false,
+    );
     const preview = guardPhoneRequest("sessions.preview", {
       keys: ["default", "agent:main:whatsapp:dm:1"],
     });
@@ -159,6 +170,9 @@ describe("what a phone socket hears (PLAN-62)", () => {
     expect(phoneEventPayload("chat", { runId: "r", sessionKey: "agent:main:whatsapp:dm:1" })).toBe(
       DROP,
     );
+    const theirs = { runId: "r", sessionKey: "agent:main:mobile-a1b2c3d4e5f6-1" };
+    expect(phoneEventPayload("chat", theirs, "a1b2c3d4e5f6zz")).toBe(theirs);
+    expect(phoneEventPayload("chat", theirs, "0000000000000z")).toBe(DROP);
   });
 
   it("cuts tool events down to name and phase, no arguments or results", () => {

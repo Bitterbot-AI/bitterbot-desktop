@@ -65,18 +65,39 @@ export function isPhoneCommandAllowed(text: string | undefined | null): boolean 
 }
 
 /**
- * Conversations a phone may read and write: the owner's main conversation and
- * the ones it started itself (the app names them `mobile-...`). Channel
- * conversations with other people (a WhatsApp DM, a Discord channel) stay on
- * the computer.
+ * The part of a phone's conversation keys that ties them to that phone:
+ * the first 12 letters/digits of its device id, lowercased. The app names new
+ * conversations `mobile-<tag>-<time>` (desktop/renderer/src/mobile/session-key.ts).
  */
-export function isPhoneSessionAllowed(sessionKey: string | undefined | null): boolean {
+export function phoneSessionTag(deviceId: string | undefined | null): string | null {
+  const tag = (deviceId ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 12);
+  return tag.length === 12 ? tag : null;
+}
+
+/**
+ * Conversations a phone may read and write: the owner's main conversation and
+ * the ones THIS phone started (`mobile-<its tag>-...`). Another phone's
+ * conversations and channel conversations with other people (a WhatsApp DM, a
+ * Discord channel) stay out of reach. Without a device id only main is allowed.
+ */
+export function isPhoneSessionAllowed(
+  sessionKey: string | undefined | null,
+  deviceId?: string | null,
+): boolean {
   const key = (sessionKey ?? "").trim().toLowerCase();
   if (!key) {
     return false;
   }
   const rest = key.startsWith("agent:") ? key.split(":").slice(2).join(":") : key;
-  return rest === "main" || rest === "default" || /^mobile[-:][a-z0-9:_-]{1,80}$/.test(rest);
+  if (rest === "main" || rest === "default") {
+    return true;
+  }
+  const tag = phoneSessionTag(deviceId);
+  const match = /^mobile-([a-z0-9]{12})(?:[-:][a-z0-9:_-]{1,80})?$/.exec(rest);
+  return tag !== null && match !== null && match[1] === tag;
 }
 
 export const PHONE_SESSION_REFUSAL =
@@ -143,10 +164,11 @@ export type PhoneRequestGuard =
 export function guardPhoneRequest(
   method: string,
   params: Record<string, unknown>,
+  deviceId?: string | null,
 ): PhoneRequestGuard {
   if (PHONE_SESSION_PARAM_METHODS.has(method)) {
     const key = params.sessionKey;
-    if (key !== undefined && (typeof key !== "string" || !isPhoneSessionAllowed(key))) {
+    if (key !== undefined && (typeof key !== "string" || !isPhoneSessionAllowed(key, deviceId))) {
       return { ok: false, message: PHONE_SESSION_REFUSAL };
     }
     if (key === undefined && method !== "agent.identity.get") {
@@ -160,7 +182,7 @@ export function guardPhoneRequest(
       ok: true,
       params: {
         ...params,
-        keys: keys.filter((k) => typeof k === "string" && isPhoneSessionAllowed(k)),
+        keys: keys.filter((k) => typeof k === "string" && isPhoneSessionAllowed(k, deviceId)),
       },
     };
   }
@@ -174,7 +196,7 @@ export function guardPhoneRequest(
           return payload;
         }
         const sessions = p.sessions.filter(
-          (row) => typeof row?.key === "string" && isPhoneSessionAllowed(row.key),
+          (row) => typeof row?.key === "string" && isPhoneSessionAllowed(row.key, deviceId),
         );
         // Paths in the store listing are not the phone's business either.
         return { ...p, path: undefined, sessions, count: sessions.length };
