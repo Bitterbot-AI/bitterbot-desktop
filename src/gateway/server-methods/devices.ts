@@ -9,7 +9,6 @@ import {
 } from "../../infra/device-pairing.js";
 import { disconnectDevice } from "../mobile/live-clients.js";
 import { getActivePushDispatcher } from "../mobile/push-dispatcher.js";
-import { removePushSubscription } from "../mobile/push-store.js";
 import {
   ErrorCodes,
   errorShape,
@@ -20,6 +19,7 @@ import {
   validateDeviceTokenRevokeParams,
   validateDeviceTokenRotateParams,
 } from "../protocol/index.js";
+import { removePushSubscriptionLogged } from "./mobile.js";
 import type { GatewayRequestHandlers } from "./types.js";
 
 function redactPairedDevice(
@@ -189,11 +189,12 @@ export const deviceHandlers: GatewayRequestHandlers = {
     // device already has open, which would otherwise keep working.
     // Push belongs to the operator token (the phone app); a node token's
     // revocation leaves it alone. Sockets close only for the revoked role.
-    if (role === "operator") {
-      await removePushSubscription(deviceId);
-      getActivePushDispatcher()?.forgetDevice(deviceId);
-    }
+    // Sockets close first: a failed push cleanup must not leave them open.
     disconnectDevice(deviceId, "device token revoked", { role });
+    if (role === "operator") {
+      getActivePushDispatcher()?.forgetDevice(deviceId);
+      await removePushSubscriptionLogged(deviceId);
+    }
     context.logGateway.info(`device token revoked device=${deviceId} role=${entry.role}`);
     respond(
       true,

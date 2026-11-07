@@ -8,8 +8,15 @@ import {
   parseChatEvent,
 } from "../lib/message-utils";
 import type { ChatMessage } from "../stores/chat-store";
+import {
+  clearStashedPairCode,
+  shouldInstallBeforePairing,
+  stashPairCode,
+  takeStashedPairCode,
+} from "./install-handoff";
 import { claimSetupCode, guessDeviceName, readClaimStatus } from "./pairing-client";
-import { clearPersistedPairing, readPersisted, writePersisted } from "./persist";
+import { clearPersistedPairing, readPersisted, writePersisted, type PendingClaim } from "./persist";
+import { isStandalone } from "./push";
 
 /** Must match src/gateway/mobile/scopes.ts MOBILE_DEVICE_SCOPES (sorted). */
 export const MOBILE_SCOPES = ["operator.approvals", "operator.chat", "operator.notifications"];
@@ -17,12 +24,17 @@ export const MOBILE_CLIENT_ID = "bitterbot-mobile";
 export const IDENTITY_NAME = "mobile";
 const DEFAULT_SESSION = "default";
 
-export type Phase = "boot" | "welcome" | "pairing" | "ready";
+/** `install`: iPhone Safari holding a pairing link until the app is on the Home Screen. */
+export type Phase = "boot" | "welcome" | "install" | "pairing" | "ready";
 export type ConnState = "connecting" | "online" | "offline";
 
 export type PairingState = {
   step: "claiming" | "waiting" | "approved" | "failed";
   confirmCode?: string;
+  /** Waiting, but the last status check did not reach the gateway. */
+  offline?: boolean;
+  /** Why it failed: the owner declined, the code ran out, or something else. */
+  reason?: "declined" | "expired" | "error";
   error?: string;
 };
 
@@ -86,6 +98,8 @@ type MobileState = {
   /** Set when the gateway said this phone is no longer paired. */
   unpairedReason: string | null;
   pairing: PairingState | null;
+  /** The setup code waiting for the Home Screen app (phase `install`). */
+  installCode: string | null;
   insecure: boolean;
   hello: GatewayHelloOk | null;
 
@@ -106,6 +120,10 @@ type MobileState = {
   push: { subscribed: boolean; categories: PushCategories };
 
   boot: () => Promise<void>;
+  /** A pairing link arrived: pair here, or on iPhone Safari, install first. */
+  receivePairCode: (code: string) => void;
+  /** Skip the Home Screen and pair in this browser (no notifications on iPhone). */
+  pairInBrowserInstead: () => void;
   startPairing: (code: string) => Promise<void>;
   connect: () => Promise<void>;
   request: <T = unknown>(method: string, params?: unknown, timeoutMs?: number) => Promise<T>;
@@ -122,12 +140,18 @@ type MobileState = {
   loadStatus: () => Promise<void>;
   loadSelf: () => Promise<void>;
   rename: (name: string) => Promise<void>;
-  unpair: () => Promise<void>;
+  /**
+   * Unpair on the gateway, then forget locally. Returns an error when the
+   * gateway could not confirm, and leaves the pairing in place unless `force`.
+   */
+  unpair: (opts?: { force?: boolean }) => Promise<string | null>;
   setVisible: (visible: boolean) => void;
   forgetPairing: (reason: string) => Promise<void>;
 };
 
 let client: GatewayClient | null = null;
+/** Bumped by every pairing start, so an older polling loop stops on its own. */
+let pairingAttempt = 0;
 let idCounter = 0;
 const nextId = () => `m-${Date.now().toString(36)}-${++idCounter}`;
 
@@ -150,12 +174,97 @@ function sameSession(a: string | undefined, b: string): boolean {
   return a.endsWith(`:${b}`) || b.endsWith(`:${a}`);
 }
 
+async function resumePairing(pending: PendingClaim) {
+  const attempt = ++pairingAttempt;
+  useMobile.setState({
+    phase: "pairing",
+    pairing: { step: "waiting", confirmCode: pending.confirmCode },
+    unpairedReason: null,
+  });
+  try {
+    await waitForApproval(pending, attempt);
+  } catch (err) {
+    failPairing(err, attempt);
+  }
+}
+
+/** Poll the claim until the owner decides. A newer pairing start ends this loop. */
+async function waitForApproval(pending: PendingClaim, attempt: number) {
+  const { getState, setState } = useMobile;
+  setState({ pairing: { step: "waiting", confirmCode: pending.confirmCode } });
+  while (Date.now() < pending.expiresAtMs) {
+    await new Promise((r) => setTimeout(r, 1500));
+    if (attempt !== pairingAttempt || getState().phase !== "pairing") return;
+    let status;
+    try {
+      status = await readClaimStatus(pending.claimId, pending.deviceId);
+    } catch {
+      setState({ pairing: { step: "waiting", confirmCode: pending.confirmCode, offline: true } });
+      continue; // a blip; keep waiting
+    }
+    if (attempt !== pairingAttempt) return;
+    if (getState().pairing?.offline) {
+      setState({ pairing: { step: "waiting", confirmCode: pending.confirmCode } });
+    }
+    if (status.status === "approved") {
+      writePersisted({
+        deviceToken: status.deviceToken,
+        deviceId: status.deviceId,
+        pendingClaim: undefined,
+      });
+      setState({ pairing: { step: "approved", confirmCode: pending.confirmCode } });
+      await new Promise((r) => setTimeout(r, 900));
+      if (attempt !== pairingAttempt) return;
+      setState({ phase: "ready", pairing: null });
+      await getState().connect();
+      return;
+    }
+    if (status.status === "rejected") {
+      throw new PairingError("declined", "The pairing was declined on the computer.");
+    }
+    if (status.status === "expired") {
+      throw new PairingError(
+        "expired",
+        "The pairing code expired. Make a new one on the computer and scan it again.",
+      );
+    }
+  }
+  throw new PairingError(
+    "expired",
+    "Nobody approved the pairing in time. Make a new code on the computer and scan it again.",
+  );
+}
+
+class PairingError extends Error {
+  constructor(
+    readonly reason: "declined" | "expired",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function failPairing(err: unknown, attempt: number) {
+  if (attempt !== pairingAttempt) return;
+  writePersisted({ pendingClaim: undefined });
+  const { getState, setState } = useMobile;
+  setState({
+    pairing: {
+      step: "failed",
+      confirmCode: getState().pairing?.confirmCode,
+      reason: err instanceof PairingError ? err.reason : "error",
+      error: err instanceof Error ? err.message : String(err),
+    },
+  });
+}
+
 export const useMobile = create<MobileState>((set, get) => ({
   phase: "boot",
   conn: "offline",
   connError: null,
   unpairedReason: null,
   pairing: null,
+  installCode: null,
   insecure: typeof isSecureContext !== "undefined" ? !isSecureContext : false,
   hello: null,
 
@@ -174,7 +283,7 @@ export const useMobile = create<MobileState>((set, get) => ({
   self: null,
   push: {
     subscribed: false,
-    categories: { approvals: true, replies: true, notices: true, previews: true },
+    categories: { approvals: true, replies: true, notices: true, previews: false },
   },
 
   boot: async () => {
@@ -182,6 +291,44 @@ export const useMobile = create<MobileState>((set, get) => ({
     if (persisted.deviceToken) {
       set({ phase: "ready" });
       await get().connect();
+      return;
+    }
+    // Reloaded (or evicted) while waiting for the owner: pick the wait back up.
+    const pending = persisted.pendingClaim;
+    if (pending && pending.expiresAtMs > Date.now()) {
+      await resumePairing(pending);
+      return;
+    }
+    if (pending) {
+      writePersisted({ pendingClaim: undefined });
+    }
+    // Opened from the Home Screen right after installing: Safari handed the
+    // pairing link over (see install-handoff.ts).
+    const handedOver = isStandalone() ? takeStashedPairCode() : null;
+    if (handedOver) {
+      await get().startPairing(handedOver);
+      return;
+    }
+    set({ phase: "welcome" });
+  },
+
+  receivePairCode: (code: string) => {
+    if (shouldInstallBeforePairing()) {
+      stashPairCode(code);
+      client?.stop();
+      client = null;
+      set({ phase: "install", installCode: code, pairing: null, unpairedReason: null });
+      return;
+    }
+    void get().startPairing(code);
+  },
+
+  pairInBrowserInstead: () => {
+    const code = get().installCode;
+    clearStashedPairCode();
+    set({ installCode: null });
+    if (code) {
+      void get().startPairing(code);
     } else {
       set({ phase: "welcome" });
     }
@@ -190,7 +337,13 @@ export const useMobile = create<MobileState>((set, get) => ({
   startPairing: async (code: string) => {
     client?.stop();
     client = null;
-    set({ phase: "pairing", pairing: { step: "claiming" }, unpairedReason: null });
+    const attempt = ++pairingAttempt;
+    set({
+      phase: "pairing",
+      pairing: { step: "claiming" },
+      installCode: null,
+      unpairedReason: null,
+    });
     try {
       const identity = await loadOrCreateDeviceIdentity(IDENTITY_NAME, {
         allowInsecureFallback: true,
@@ -199,41 +352,17 @@ export const useMobile = create<MobileState>((set, get) => ({
         throw new Error("This browser cannot store a device key (is private browsing on?).");
       }
       const claim = await claimSetupCode(code, identity, guessDeviceName());
-      set({ pairing: { step: "waiting", confirmCode: claim.localConfirmCode } });
-      const deadline = Date.now() + 6 * 60_000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 1500));
-        if (get().phase !== "pairing") return;
-        let status;
-        try {
-          status = await readClaimStatus(claim.claimId, identity.deviceId);
-        } catch {
-          continue; // a blip; keep waiting
-        }
-        if (status.status === "approved") {
-          writePersisted({ deviceToken: status.deviceToken, deviceId: status.deviceId });
-          set({ pairing: { step: "approved", confirmCode: claim.localConfirmCode } });
-          await new Promise((r) => setTimeout(r, 900));
-          set({ phase: "ready", pairing: null });
-          await get().connect();
-          return;
-        }
-        if (status.status === "rejected") {
-          throw new Error("The pairing was declined on the computer.");
-        }
-        if (status.status === "expired") {
-          throw new Error("The pairing code expired. Make a new one on the computer.");
-        }
-      }
-      throw new Error("Nobody approved the pairing in time. Make a new code and try again.");
+      if (attempt !== pairingAttempt) return;
+      const pending: PendingClaim = {
+        claimId: claim.claimId,
+        deviceId: identity.deviceId,
+        confirmCode: claim.localConfirmCode,
+        expiresAtMs: Date.now() + 6 * 60_000,
+      };
+      writePersisted({ pendingClaim: pending });
+      await waitForApproval(pending, attempt);
     } catch (err) {
-      set({
-        pairing: {
-          step: "failed",
-          confirmCode: get().pairing?.confirmCode,
-          error: err instanceof Error ? err.message : String(err),
-        },
-      });
+      failPairing(err, attempt);
     }
   },
 
@@ -480,13 +609,21 @@ export const useMobile = create<MobileState>((set, get) => ({
     set({ self: res });
   },
 
-  unpair: async () => {
+  unpair: async (opts) => {
     try {
       await get().request("mobile.self.unpair", {});
-    } catch {
-      // unpair locally regardless: the owner asked for it
+    } catch (err) {
+      if (!opts?.force) {
+        return err instanceof Error ? err.message : String(err);
+      }
+      // The owner chose to forget it here only: say so, the computer still lists it.
+      await get().forgetPairing(
+        "This phone forgot its pairing, but your computer could not be reached. Remove it under Devices on your computer too.",
+      );
+      return null;
     }
     await get().forgetPairing("This phone is unpaired. Pair again from your computer any time.");
+    return null;
   },
 
   setVisible: (visible) => {

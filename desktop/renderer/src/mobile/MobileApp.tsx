@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
 import { ConnectionBanner, Header, TabBar } from "./components/Chrome";
-import { InstallSheet, SessionSheet, shouldOfferInstall } from "./components/Sheets";
+import { SessionSheet } from "./components/Sheets";
 import { takePairCodeFromLocation } from "./pairing-client";
-import { readPersisted } from "./persist";
 import { registerServiceWorker } from "./push";
 import { useRoute } from "./route";
 import { ApprovalsScreen } from "./screens/ApprovalsScreen";
 import { ChatScreen } from "./screens/ChatScreen";
-import { PairScreen, WelcomeScreen } from "./screens/Onboarding";
+import { InstallFirstScreen, PairScreen, WelcomeScreen } from "./screens/Onboarding";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { StatusScreen } from "./screens/StatusScreen";
 import { nudgeReconnect, useMobile } from "./store";
@@ -24,7 +23,6 @@ export function MobileApp() {
   const phase = useMobile((s) => s.phase);
   const route = useRoute();
   const [sessionsOpen, setSessionsOpen] = useState(false);
-  const [installOpen, setInstallOpen] = useState(false);
   const [dark, setDark] = useState(() => resolveDark());
   const [keyboardOpen, setKeyboardOpen] = useState(false);
 
@@ -32,14 +30,14 @@ export function MobileApp() {
     const code = takePairCodeFromLocation();
     void registerServiceWorker();
     if (code) {
-      void useMobile.getState().startPairing(code);
+      useMobile.getState().receivePairCode(code);
     } else {
       void useMobile.getState().boot();
     }
     // A pairing link opened while the app is already running (iOS reuses the window).
     const onHash = () => {
       const next = takePairCodeFromLocation();
-      if (next) void useMobile.getState().startPairing(next);
+      if (next) useMobile.getState().receivePairCode(next);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -103,14 +101,6 @@ export function MobileApp() {
     }
   }, [route, phase]);
 
-  // Offer the Home Screen guide once, after pairing, on iPhone Safari.
-  useEffect(() => {
-    if (phase === "ready" && shouldOfferInstall() && !readPersisted().installDismissed) {
-      const t = setTimeout(() => setInstallOpen(true), 1500);
-      return () => clearTimeout(t);
-    }
-  }, [phase]);
-
   const toaster = (
     <Toaster
       theme={dark ? "dark" : "light"}
@@ -127,6 +117,14 @@ export function MobileApp() {
     return (
       <>
         <WelcomeScreen />
+        {toaster}
+      </>
+    );
+  }
+  if (phase === "install") {
+    return (
+      <>
+        <InstallFirstScreen />
         {toaster}
       </>
     );
@@ -159,7 +157,6 @@ export function MobileApp() {
           if (open) void useMobile.getState().loadSessions();
         }}
       />
-      <InstallSheet open={installOpen} onOpenChange={setInstallOpen} />
       {toaster}
     </div>
   );

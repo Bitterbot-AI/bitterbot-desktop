@@ -15,7 +15,13 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
  */
 
 type PairUrl = { url: string; label: string; secure: boolean; pairUrl: string };
-type CreateResult = { code: string; setupId: string; expiresAtMs: number; urls: PairUrl[] };
+type CreateResult = {
+  code: string;
+  setupId: string;
+  expiresAtMs: number;
+  basePath?: string;
+  urls: PairUrl[];
+};
 type PendingClaim = {
   requestId: string;
   setupId?: string;
@@ -29,13 +35,21 @@ function isLoopbackHost(host: string): boolean {
   return /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(host);
 }
 
-/** This page's own address is a usable option when it is not localhost. */
-function currentOrigin(code: string): PairUrl | null {
-  const loc = window.location;
+/**
+ * This page's own address is a usable option when it is not localhost. The
+ * gateway's base path (gateway.controlUi.basePath) is kept, so a Control UI at
+ * https://host/bitterbot pairs the phone to https://host/bitterbot/m/.
+ */
+export function currentOrigin(
+  code: string,
+  basePath = "",
+  loc: Pick<Location, "protocol" | "host" | "origin"> = window.location,
+): PairUrl | null {
   if (!/^https?:$/.test(loc.protocol) || isLoopbackHost(loc.host)) {
     return null;
   }
-  const base = loc.origin;
+  const path = basePath.replace(/\/+$/, "");
+  const base = `${loc.origin}${path.startsWith("/") || !path ? path : `/${path}`}`;
   return {
     url: base,
     label: "This address",
@@ -60,6 +74,7 @@ export function PairPhoneDialog({
   const [urls, setUrls] = useState<PairUrl[]>([]);
   const [selected, setSelected] = useState(0);
   const [qr, setQr] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claim, setClaim] = useState<PendingClaim | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -72,9 +87,10 @@ export function PairPhoneDialog({
     setDone(null);
     setCreated(null);
     setQr(null);
+    setCopied(false);
     try {
       const res = await request<CreateResult>("mobile.pair.create", {});
-      const own = currentOrigin(res.code);
+      const own = currentOrigin(res.code, res.basePath);
       const list = [...res.urls];
       if (own && !list.some((u) => u.url === own.url)) list.unshift(own);
       setCreated(res);
@@ -97,6 +113,7 @@ export function PairPhoneDialog({
 
   useEffect(() => {
     const target = urls[selected]?.pairUrl;
+    setCopied(false);
     if (!target) {
       setQr(null);
       return;
@@ -253,11 +270,25 @@ export function PairPhoneDialog({
                 {current.url}
               </p>
             )}
+            {current && !expired && (
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(current.pairUrl).then(
+                    () => setCopied(true),
+                    () => setCopied(false),
+                  );
+                }}
+                className="mt-2 text-xs font-medium text-primary hover:underline"
+              >
+                {copied ? "Link copied. It works once, for five minutes." : "Copy link"}
+              </button>
+            )}
             {current && !current.secure && (
               <p className="mt-3 flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
                 <ShieldAlert className="mt-0.5 size-3.5 shrink-0" />
-                Plain HTTP: chat works on a network you trust, but installing the app and
-                notifications need HTTPS, such as Tailscale Serve.
+                Plain HTTP: anyone on this network could read or change the traffic, so use it only
+                on a network you trust. Notifications need HTTPS, such as Tailscale Serve.
               </p>
             )}
             <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">

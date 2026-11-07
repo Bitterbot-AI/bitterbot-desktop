@@ -24,8 +24,8 @@ What it does:
   journal entry, and owner notices.
 - **Notifications** (Web Push): approvals waiting, replies that landed while the app was closed,
   and owner notices. Sent straight from your gateway to Apple, Google or Mozilla's push service.
-- **Settings**: rename the phone, choose which notifications you get (and whether they show a
-  preview), light or dark mode, and unpair.
+- **Settings**: rename the phone, choose which notifications you get (and whether replies and
+  notices show a preview), light or dark mode, and unpair.
 
 ## Before you start: reach the gateway from the phone
 
@@ -37,10 +37,16 @@ The gateway listens on `127.0.0.1` by default, which a phone cannot reach. Pick 
 | Your own HTTPS address        | Yes                       | `gateway.tls` or a reverse proxy, then `gateway.mobile.publicUrl` |
 | Home network, plain HTTP      | Chat and approvals only   | `gateway.bind: "lan"`                                             |
 
-Browsers only allow installing a web app, background notifications and non-extractable keys on
-HTTPS (or `localhost`). Over plain HTTP the app still pairs and chats, but it warns you that the
-connection is not encrypted, and it keeps its key in a form a script on the page could read.
-Use plain HTTP only on a network you trust.
+Notifications, the service worker and non-extractable keys need HTTPS (or `localhost`). Over
+plain HTTP the app still pairs and chats, but it warns you that the connection is not encrypted.
+Anyone on the network can then read or change the traffic, including the app's own code, and the
+phone keeps its key in a form a script on the page could read. Use plain HTTP only on a network
+you trust.
+
+A private address in the list is not proof the phone can reach it. The gateway must listen on
+that interface, the computer's firewall must allow it, and some Wi-Fi networks keep devices from
+seeing each other. Under WSL 2 the gateway sits behind a NAT by default, so its address is not
+reachable from the phone without mirrored networking, a port forward, or Tailscale.
 
 See [Tailscale](/gateway/tailscale) and [Remote access](/gateway/remote).
 
@@ -50,24 +56,36 @@ See [Tailscale](/gateway/tailscale) and [Remote access](/gateway/remote).
    From a terminal, run `bitterbot devices pair` instead. From a chat app, send `/pair`
    (owner only; the `device-pair` plugin is on by default, set
    `plugins.entries.device-pair.enabled: false` to turn it off).
-2. Scan the QR code with the phone's camera (or open the link). The link works once and expires
-   after five minutes.
-3. The phone makes its own key and shows a six-digit code. Your computer shows the code it
+2. Scan the QR code with the phone's camera (or choose **Copy link** and open it on the phone).
+   The link works once and expires after five minutes.
+3. **On iPhone (iOS 16.4 or later, over HTTPS)**, the page asks you to add Bitterbot to your Home
+   Screen first: Share, then Add to Home Screen. Open the new icon within five minutes and it
+   carries on from step 4. iPhone gives a Home Screen app its own storage, separate from Safari,
+   and only the Home Screen app can get notifications, so pairing happens there. You can choose
+   **Use it in Safari instead** to skip notifications.
+4. The phone makes its own key and shows a six-digit code. Your computer shows the code it
    expects. **Approve only if the two match.** In chat, reply `/pair approve <code>`; in a
    terminal, `bitterbot devices approve <code>`.
-4. The app opens. On iPhone, add it to your Home Screen when it offers (Share, then Add to Home
-   Screen); that is also the only way iPhone allows notifications for web apps.
 
 Then turn on notifications in the app's **Settings**.
+
+If the Home Screen app opens without the pairing (the five minutes ran out, or iOS is older than
+17.2, which does not hand Safari's cookies to a new Home Screen app), it offers a box to paste
+the link: make a new code, choose **Copy link** and send it to the phone. If the phone loses its
+connection while you approve, it picks the result up again when it is back, for two minutes after
+the first pick-up; reloading the page while you wait carries on too.
 
 ### What pairing protects against
 
 - **No gateway token ever leaves your computer.** The QR code carries a one-time setup code in
   the URL fragment (the part after `#`, which browsers never send to the server), so it does not
   land in logs.
-- **The phone's key never leaves the phone.** It is created in the browser with WebCrypto as a
-  non-extractable key and stored in the browser's IndexedDB. Ed25519 where the browser supports
-  it (Safari 17 and later, current Chrome and Firefox), ECDSA P-256 otherwise.
+- **The phone's key never leaves the phone.** Over HTTPS it is created in the browser with
+  WebCrypto as a non-extractable key and stored in the browser's IndexedDB: Ed25519 where the
+  browser supports it (Safari 17 and later, current Chrome and Firefox), ECDSA P-256 otherwise.
+  Over plain HTTP the browser offers no WebCrypto, so the key is made in script and can be read
+  by a script on the page. Non-extractable is not the same as unusable: code running on the page
+  can still use the key while it runs.
 - **Every connection proves the key.** The gateway sends a fresh challenge; the phone signs it.
   The phone's token is useless without the key, so a copied token does nothing.
 - **A leaked link is caught by the confirmation code.** The code is derived from the setup secret
@@ -93,8 +111,9 @@ release), its messages run as a non-owner:
 - Owner-only tools (shell commands, configuration, gateway control) are not available to its turns.
 - Only `/new`, `/reset`, `/stop`, `/status`, `/help` and `/commands` work from it; every other
   command (`/config`, `/pair`, `/approve` and so on) is refused.
-- It sees only the main conversation and the conversations it started. Conversations with other
-  people on your chat channels stay on the computer, and so do their live events.
+- It sees the main conversation, which every phone and the computer share, and the conversations
+  it started itself. Another phone's conversations, and conversations with other people on your
+  chat channels, stay out of its lists, history and live events.
 - It can allow an approval once, but never "always allow", and never approve a payment.
 - Its connection gets a reduced view of the gateway: no file paths, no other devices' addresses,
   and tool activity without arguments or results.
@@ -108,10 +127,15 @@ bitterbot devices rename <deviceId> "Work phone"
 bitterbot devices remove <deviceId>
 ```
 
-Removing a phone deletes its token and its push subscription and closes its open connection at
-once. Revoking its token (`bitterbot devices revoke --device <id> --role operator`) also
+Removing a phone deletes its token and closes its open connection at once, then deletes its push
+subscription. Revoking its token (`bitterbot devices revoke --device <id> --role operator`) also
 disconnects it and deletes the push subscription. Neither touches the gateway token or any other
-device. The phone can also unpair itself from its own Settings.
+device. If the push cleanup fails, the gateway still never pushes to a phone that is no longer
+paired. A notification already handed to Apple or Google before the removal may still arrive.
+
+The phone can also unpair itself from its own Settings. When the computer cannot be reached, the
+phone says so and stays paired; you can try again, or forget the pairing on the phone only and
+remove it under **Devices** later.
 
 ## Notifications
 
@@ -124,12 +148,18 @@ The gateway creates a VAPID key pair the first time a phone subscribes and keeps
 - **Notices**: owner notices such as a failed scheduled job.
 
 Nothing is sent to a phone that has the app open on screen. Each phone gets at most 30 per hour
-(`gateway.mobile.push.maxPerHour`), and replies and notices wait out your
-[`notifications.quietHours`](/gateway/configuration-reference#notifications). A notification
-carries a title and a preview of at most 90 characters; turn **Show previews** off and it says
-only that something happened. Approval details are always loaded over the authenticated
-connection when you open the app, never from the notification. Push services see encrypted
-payloads and timing only.
+(`gateway.mobile.push.maxPerHour`). During your
+[`notifications.quietHours`](/gateway/configuration-reference#notifications), replies and notices
+are counted instead of sent, and each phone gets one summary when quiet hours end (for example
+"2 replies and 1 notice"). Only the counts are kept, in memory: a gateway restart overnight drops
+the summary. Approvals still go out during quiet hours.
+
+By default a notification says only what happened ("Bitterbot replied", "A shell command needs
+your OK"). Turn on **Show previews** to add up to 90 characters of a reply or notice. An approval
+never shows the command or any of its details on the lock screen, whatever the setting: they are
+loaded over the authenticated connection when you open the app. Payloads are encrypted to the
+phone (RFC 8291), so Apple, Google or Mozilla see the encrypted payload and delivery metadata (the
+endpoint, size, time, urgency and expiry), not its text.
 
 Pairing requests are rate limited per client and per setup code. Behind Tailscale Serve every
 request reaches the gateway from loopback, so the limiter tells phones apart by their tailnet
@@ -163,6 +193,9 @@ to the Home Screen.
 - **The phone says the code expired**: make a new one; codes last five minutes and work once.
 - **"This phone was unpaired"**: it was removed or its token revoked. Pair again.
 - **No notification toggle on iPhone**: open the app from the Home Screen icon, not from Safari.
+  A phone paired in Safari pairs once more from the Home Screen app; unpair the Safari copy
+  afterwards.
+- **The Home Screen app opened unpaired**: paste a fresh link (see [Pair a phone](#pair-a-phone)).
 - **Notifications toggle is greyed out**: the page is on plain HTTP; use Tailscale Serve.
 
 ## Related

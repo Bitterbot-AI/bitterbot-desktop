@@ -15,6 +15,8 @@ import {
   renamePairedDevice,
   type PairedDevice,
 } from "../../infra/device-pairing.js";
+import { createSubsystemLogger } from "../../logging/subsystem.js";
+import { normalizeControlUiBasePath } from "../control-ui-shared.js";
 import { deviceIdOf, disconnectDevice } from "../mobile/live-clients.js";
 import { createSetupCode, SETUP_CODE_TTL_MS } from "../mobile/pairing.js";
 import { getActivePushDispatcher, loadVapidKeys, pushEnabled } from "../mobile/push-dispatcher.js";
@@ -30,6 +32,8 @@ import {
 import { buildMobilePairUrl, resolveMobileBaseUrls } from "../mobile/urls.js";
 import { ErrorCodes, errorShape } from "../protocol/index.js";
 import type { GatewayRequestHandlers, RespondFn } from "./types.js";
+
+const log = createSubsystemLogger("mobile");
 
 function invalid(respond: RespondFn, message: string) {
   respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, message));
@@ -78,10 +82,24 @@ function readCategories(raw: unknown): Partial<PushCategories> {
  */
 export async function removeDeviceEverywhere(deviceId: string): Promise<PairedDevice | null> {
   const removed = await removePairedDevice(deviceId);
-  await removePushSubscription(deviceId);
+  // Once the pairing is gone, the open sockets go too, before anything that
+  // can fail. A push subscription left behind by a failed cleanup is harmless:
+  // the dispatcher only pushes to a device that is still paired.
   getActivePushDispatcher()?.forgetDevice(deviceId);
   disconnectDevice(deviceId, "device removed");
+  await removePushSubscriptionLogged(deviceId);
   return removed;
+}
+
+/** Push cleanup after a revoke; a failure is logged, never surfaced as a failed revoke. */
+export async function removePushSubscriptionLogged(deviceId: string): Promise<void> {
+  try {
+    await removePushSubscription(deviceId);
+  } catch (err) {
+    log.warn(
+      `push subscription cleanup for device ${deviceId.slice(0, 12)} failed: ${String(err)}`,
+    );
+  }
 }
 
 export const mobileHandlers: GatewayRequestHandlers = {
@@ -101,6 +119,9 @@ export const mobileHandlers: GatewayRequestHandlers = {
       setupId: created.setupId,
       expiresAtMs: created.expiresAtMs,
       ttlMs: SETUP_CODE_TTL_MS,
+      // The dialog builds "This address" from its own origin; it needs the
+      // configured base path so a QR for https://host/bitterbot keeps it.
+      basePath: normalizeControlUiBasePath(cfg.gateway?.controlUi?.basePath),
       urls: bases.map((base) => ({ ...base, pairUrl: buildMobilePairUrl(base.url, created.code) })),
     });
   },

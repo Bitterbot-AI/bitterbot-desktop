@@ -108,6 +108,9 @@ describe("phone conversations (PLAN-62)", () => {
     expect(isPhoneSessionAllowed("default")).toBe(true);
     expect(isPhoneSessionAllowed("agent:main:main")).toBe(true);
     expect(isPhoneSessionAllowed("agent:main:mobile-a1b2c3d4e5f6-202611061200", me)).toBe(true);
+    expect(isPhoneSessionAllowed("agent:main:mobile-a1b2c3d4e5f6-202611061200-abababab", me)).toBe(
+      true,
+    );
     // Another phone's conversation, an untagged legacy key, or no device id: refused.
     expect(isPhoneSessionAllowed("agent:main:mobile-a1b2c3d4e5f6-202611061200", other)).toBe(false);
     expect(isPhoneSessionAllowed("agent:main:mobile-202611061200", me)).toBe(false);

@@ -13,11 +13,14 @@
  *   - `owner.notice`: the existing owner notices (failed jobs, stranded tasks).
  *
  * A phone that has the app open and visible gets nothing: it already shows the
- * card. Each device has an hourly budget, and the owner's quiet hours hold
- * replies and notices (approvals still go out: a held action is waiting on a
- * human). Payloads carry a title, a short optional preview and a deep link.
- * Never tool arguments in full, never secrets: approval details are fetched
- * over the authenticated socket when the notification is opened.
+ * card. Each device has an hourly budget. During the owner's quiet hours,
+ * replies and notices are counted instead of sent, and one summary goes out
+ * when quiet hours end (approvals still go out: a held action is waiting on a
+ * human). Payloads carry a title, a deep link and, only when the phone turned
+ * previews on, a short preview of a reply or notice. An approval notification
+ * never carries the command or any tool argument, whatever the setting:
+ * truncation is not redaction, so its details are fetched over the
+ * authenticated socket when the notification is opened.
  */
 
 import { createECDH } from "node:crypto";
@@ -42,10 +45,12 @@ const HOUR_MS = 60 * 60_000;
 /** A device only gets reply pushes for sessions it sent to within this window. */
 const REPLY_INTEREST_MS = 6 * 60 * 60_000;
 const PREVIEW_CHARS = 90;
+/** How often a held quiet-hours summary checks whether quiet hours ended. */
+const HELD_FLUSH_INTERVAL_MS = 5 * 60_000;
 export const DEFAULT_VAPID_SUBJECT = "https://github.com/Bitterbot-AI/bitterbot-desktop";
 
 export type PushPayload = {
-  kind: "approval" | "reply" | "notice" | "test";
+  kind: "approval" | "reply" | "notice" | "summary" | "test";
   title: string;
   body: string;
   /** Collapses repeats of the same thing into one notification. */
@@ -176,13 +181,12 @@ export function buildPushFromEvent(
     if (!id || (payload.status && payload.status !== "pending")) {
       return null;
     }
-    const preview = typeof payload.preview === "string" ? payload.preview : "";
     return {
       category: "approvals",
       payload: {
         kind: "approval",
         title: describeReview(payload),
-        body: preview ? truncate(preview, PREVIEW_CHARS) : "Tap to review.",
+        body: "Tap to review.",
         tag: `review-${id}`,
         url: `#/approvals?id=${encodeURIComponent(id)}`,
         ts: now,
@@ -276,6 +280,30 @@ export function createPushDispatcher(deps: PushDispatcherDeps = {}) {
   const sentAt = new Map<string, number[]>();
   /** deviceId -> sessionKey -> last chat.send from that device. */
   const interest = new Map<string, Map<string, number>>();
+  /** deviceId -> what quiet hours held back. Counts only, never content. */
+  const held = new Map<string, { replies: number; notices: number }>();
+  let heldTimer: ReturnType<typeof setInterval> | null = null;
+
+  function hold(deviceId: string, category: "replies" | "notices") {
+    const entry = held.get(deviceId) ?? { replies: 0, notices: 0 };
+    entry[category] = Math.min(entry[category] + 1, 999);
+    held.set(deviceId, entry);
+    if (!heldTimer) {
+      heldTimer = setInterval(() => {
+        void dispatcher.flushHeld().catch((err: unknown) => {
+          log.warn(`push summary failed: ${String(err)}`);
+        });
+      }, HELD_FLUSH_INTERVAL_MS);
+      heldTimer.unref?.();
+    }
+  }
+
+  function stopHeldTimer() {
+    if (heldTimer && held.size === 0) {
+      clearInterval(heldTimer);
+      heldTimer = null;
+    }
+  }
 
   function allowRate(deviceId: string, limit: number, t: number): boolean {
     const times = (sentAt.get(deviceId) ?? []).filter((ts) => t - ts < HOUR_MS);
@@ -335,6 +363,66 @@ export function createPushDispatcher(deps: PushDispatcherDeps = {}) {
     forgetDevice(deviceId: string) {
       interest.delete(deviceId);
       sentAt.delete(deviceId);
+      held.delete(deviceId);
+      stopHeldTimer();
+    },
+
+    /**
+     * After quiet hours: one summary per phone of what was held back.
+     * Rechecks the subscription, its categories and the pairing first, so a
+     * phone removed or muted overnight gets nothing.
+     */
+    async flushHeld(): Promise<number> {
+      if (held.size === 0) {
+        stopHeldTimer();
+        return 0;
+      }
+      const cfg = getConfig();
+      const t = now();
+      if (!pushEnabled(cfg)) {
+        held.clear();
+        stopHeldTimer();
+        return 0;
+      }
+      if (isOwnerQuietHours(cfg, t)) {
+        return 0;
+      }
+      const pending = new Map(held);
+      held.clear();
+      stopHeldTimer();
+      const subs = await list();
+      const limit = cfg.gateway?.mobile?.push?.maxPerHour ?? DEFAULT_PUSH_MAX_PER_HOUR;
+      let sent = 0;
+      for (const sub of subs) {
+        const entry = pending.get(sub.deviceId);
+        if (!entry) {
+          continue;
+        }
+        const replies = sub.categories.replies ? entry.replies : 0;
+        const notices = sub.categories.notices ? entry.notices : 0;
+        if (replies + notices === 0 || isForeground(sub.deviceId)) {
+          continue;
+        }
+        if (!(await isDeviceActive(sub.deviceId)) || !allowRate(sub.deviceId, limit, t)) {
+          continue;
+        }
+        const parts = [
+          replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : "",
+          notices ? `${notices} ${notices === 1 ? "notice" : "notices"}` : "",
+        ].filter(Boolean);
+        const payload: PushPayload = {
+          kind: "summary",
+          title: "While notifications were paused",
+          body: parts.join(" and "),
+          tag: "quiet-summary",
+          url: replies ? "#/chat" : "#/status",
+          ts: t,
+        };
+        if (await deliver(sub, payload, cfg)) {
+          sent += 1;
+        }
+      }
+      return sent;
     },
 
     /** Called for every broadcast. Never throws, never blocks the broadcast. */
@@ -361,8 +449,9 @@ export function createPushDispatcher(deps: PushDispatcherDeps = {}) {
       if (!pushEnabled(cfg)) {
         return 0;
       }
-      if (built.category !== "approvals" && isOwnerQuietHours(cfg, t)) {
-        return 0;
+      const quiet = built.category !== "approvals" && isOwnerQuietHours(cfg, t);
+      if (!quiet && held.size > 0) {
+        await dispatcher.flushHeld();
       }
       const subs = await list();
       if (subs.length === 0) {
@@ -380,6 +469,10 @@ export function createPushDispatcher(deps: PushDispatcherDeps = {}) {
           }
         }
         if (isForeground(sub.deviceId)) {
+          continue;
+        }
+        if (quiet) {
+          hold(sub.deviceId, built.category === "replies" ? "replies" : "notices");
           continue;
         }
         if (!(await isDeviceActive(sub.deviceId))) {

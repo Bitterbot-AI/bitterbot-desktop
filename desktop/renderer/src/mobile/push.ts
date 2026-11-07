@@ -144,7 +144,7 @@ export function describePushSupport(reason: Exclude<PushSupport, { ok: true }>["
     case "insecure":
       return "Notifications need a secure (HTTPS) address, such as Tailscale Serve. Chat works without it.";
     case "ios-not-installed":
-      return "On iPhone, add Bitterbot to your Home Screen first, then open it from there.";
+      return "On iPhone, notifications need the Home Screen app.";
     case "denied":
       return "Notifications are blocked for this site. Allow them in the phone's settings.";
     default:

@@ -29,7 +29,7 @@ export const DEFAULT_PUSH_CATEGORIES: PushCategories = {
   approvals: true,
   replies: true,
   notices: true,
-  previews: true,
+  previews: false,
 };
 
 export type StoredPushSubscription = {

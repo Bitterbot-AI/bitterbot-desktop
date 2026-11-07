@@ -80,11 +80,11 @@ describe("push subscriptions (PLAN-62)", () => {
       approvals: true,
       replies: false,
       notices: true,
-      previews: true,
+      previews: false,
     });
 
-    await updatePushCategories("dev-a", { previews: false, bogus: true } as never, dir);
-    expect((await getPushSubscription("dev-a", dir))?.categories.previews).toBe(false);
+    await updatePushCategories("dev-a", { previews: true, bogus: true } as never, dir);
+    expect((await getPushSubscription("dev-a", dir))?.categories.previews).toBe(true);
 
     expect(await removePushSubscription("dev-a", dir)).toBe(true);
     expect(await getPushSubscription("dev-a", dir)).toBeNull();
@@ -126,7 +126,7 @@ describe("push payloads (PLAN-62)", () => {
     expect(built?.payload).toMatchObject({
       kind: "approval",
       title: "A shell command needs your OK",
-      body: "rm -rf build && make",
+      body: "Tap to review.",
       tag: "review-rv-1",
       url: "#/approvals?id=rv-1",
     });
@@ -169,7 +169,12 @@ describe("push dispatcher (PLAN-62)", () => {
 
   function setup(
     subs: StoredPushSubscription[],
-    opts: { foreground?: string[]; inactive?: string[] } = {},
+    opts: {
+      foreground?: string[];
+      inactive?: string[];
+      config?: () => BitterbotConfig;
+      now?: () => number;
+    } = {},
   ) {
     const sent: Array<{ deviceId: string; body: Record<string, unknown> }> = [];
     const send: PushSendFn = async (s, payload) => {
@@ -178,13 +183,13 @@ describe("push dispatcher (PLAN-62)", () => {
     };
     const dispatcher = createPushDispatcher({
       send,
-      getConfig: () => cfg,
+      getConfig: opts.config ?? (() => cfg),
       listSubscriptions: async () => subs,
       isForeground: (id) => opts.foreground?.includes(id) ?? false,
       getVapid: async () => ({ publicKey: "p", privateKey: "k", createdAtMs: 0 }),
       recordOutcome: async () => {},
       isDeviceActive: async (id) => !opts.inactive?.includes(id),
-      now: () => Date.UTC(2026, 10, 5, 12),
+      now: opts.now ?? (() => Date.UTC(2026, 10, 5, 12)),
     });
     return { dispatcher, sent };
   }
@@ -204,6 +209,16 @@ describe("push dispatcher (PLAN-62)", () => {
     expect(sent.map((s) => s.deviceId)).toEqual(["a"]);
   });
 
+  it("never puts the command on the lock screen, even with previews on", async () => {
+    const { dispatcher, sent } = setup([sub("a", { previews: true })]);
+    await dispatcher.dispatch("review.requested", {
+      ...approval,
+      preview: "curl -H 'Authorization: Bearer EXAMPLE_SECRET_VALUE' https://x",
+    });
+    expect(sent[0]?.body.body).toBe("Tap to review.");
+    expect(JSON.stringify(sent[0]?.body)).not.toContain("EXAMPLE_SECRET_VALUE");
+  });
+
   it("replaces the preview with a generic line when previews are off", async () => {
     const { dispatcher, sent } = setup([sub("a", { previews: false })]);
     await dispatcher.dispatch("review.requested", approval);
@@ -219,6 +234,43 @@ describe("push dispatcher (PLAN-62)", () => {
     expect(sent.map((s) => s.deviceId)).toEqual(["a"]);
     dispatcher.forgetDevice("a");
     expect(await dispatcher.dispatch("chat", final)).toBe(0);
+  });
+
+  it("holds replies and notices in quiet hours and sends one summary after", async () => {
+    const quietCfg = {
+      gateway: { mobile: { push: { maxPerHour: 30 } } },
+      notifications: { quietHours: { start: "22:00", end: "07:00", timezone: "UTC" } },
+    } as BitterbotConfig;
+    let t = Date.UTC(2026, 10, 5, 23);
+    const subs = [sub("a"), sub("b", { notices: false }), sub("gone")];
+    const { dispatcher, sent } = setup(subs, {
+      config: () => quietCfg,
+      now: () => t,
+      inactive: ["gone"],
+    });
+    dispatcher.noteChatSend("a", "default");
+    dispatcher.noteChatSend("gone", "default");
+    const final = { state: "final", sessionKey: "default", message: { content: "done" } };
+    expect(await dispatcher.dispatch("chat", final)).toBe(0);
+    expect(await dispatcher.dispatch("chat", final)).toBe(0);
+    expect(await dispatcher.dispatch("owner.notice", { kind: "cron-error", text: "x" })).toBe(0);
+    // Approvals still go out during quiet hours.
+    expect(await dispatcher.dispatch("review.requested", approval)).toBe(3 - 1);
+    expect(sent.every((s) => s.body.kind === "approval")).toBe(true);
+    // Still quiet: nothing flushed.
+    expect(await dispatcher.flushHeld()).toBe(0);
+
+    t = Date.UTC(2026, 10, 6, 8);
+    sent.length = 0;
+    expect(await dispatcher.flushHeld()).toBe(1);
+    expect(sent).toEqual([
+      {
+        deviceId: "a",
+        body: expect.objectContaining({ kind: "summary", body: "2 replies and 1 notice" }),
+      },
+    ]);
+    // Sent once, not again.
+    expect(await dispatcher.flushHeld()).toBe(0);
   });
 
   it("enforces the per-device hourly budget", async () => {

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "../../components/ui/switch";
 import { cn } from "../../lib/utils";
+import { InstallSheet } from "../components/Sheets";
 import { readPersisted, type ThemePref } from "../persist";
 import {
   describePushSupport,
@@ -50,7 +51,7 @@ const CATEGORY_ROWS: Array<{ key: keyof PushCategories; label: string; hint: str
   {
     key: "previews",
     label: "Show previews",
-    hint: "Off: notifications say only that something happened",
+    hint: "Show the start of replies and notices on the lock screen. Approvals never show the command.",
   },
 ];
 
@@ -65,6 +66,17 @@ export function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [confirmUnpair, setConfirmUnpair] = useState(false);
+  const [unpairError, setUnpairError] = useState<string | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [unpairing, setUnpairing] = useState(false);
+  const runUnpair = async (force = false) => {
+    setUnpairing(true);
+    try {
+      setUnpairError(await unpair({ force }));
+    } finally {
+      setUnpairing(false);
+    }
+  };
   const [theme, setTheme] = useState<ThemePref>(readPersisted().theme ?? "system");
   const support = pushSupport();
 
@@ -185,6 +197,16 @@ export function SettingsScreen() {
               />
             )}
           </Row>
+          {!support.ok && support.reason === "ios-not-installed" ? (
+            <button
+              type="button"
+              onClick={() => setInstallOpen(true)}
+              className="m-press flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm font-semibold text-primary"
+            >
+              <Bell className="size-4" />
+              How to get notifications on iPhone
+            </button>
+          ) : null}
           {push.subscribed &&
             CATEGORY_ROWS.map((row) => (
               <Row key={row.key} label={row.label} hint={row.hint}>
@@ -241,6 +263,13 @@ export function SettingsScreen() {
                 Unpair this phone? Its key and token are deleted and it stops getting notifications.
                 You can pair it again from your computer.
               </p>
+              {unpairError ? (
+                <p className="mt-3 rounded-xl bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning">
+                  Your computer did not confirm ({unpairError}), so this phone is still paired. Try
+                  again when it is reachable, or forget the pairing here only and remove the phone
+                  under Devices on your computer.
+                </p>
+              ) : null}
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -251,12 +280,23 @@ export function SettingsScreen() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => void unpair()}
-                  className="m-press m-touch rounded-xl bg-danger text-sm font-semibold text-danger-foreground"
+                  disabled={unpairing}
+                  onClick={() => void runUnpair()}
+                  className="m-press m-touch rounded-xl bg-danger text-sm font-semibold text-danger-foreground disabled:opacity-60"
                 >
-                  Unpair
+                  {unpairError ? "Try again" : "Unpair"}
                 </button>
               </div>
+              {unpairError ? (
+                <button
+                  type="button"
+                  disabled={unpairing}
+                  onClick={() => void runUnpair(true)}
+                  className="m-press m-touch mt-2 w-full rounded-xl text-sm font-semibold text-danger"
+                >
+                  Forget on this phone only
+                </button>
+              ) : null}
             </div>
           ) : (
             <button
@@ -276,6 +316,7 @@ export function SettingsScreen() {
           {self?.deviceId.slice(0, 12) ?? "this phone"}
         </p>
       </div>
+      <InstallSheet open={installOpen} onOpenChange={setInstallOpen} />
     </div>
   );
 }

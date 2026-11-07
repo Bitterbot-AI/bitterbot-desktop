@@ -1,8 +1,7 @@
 import { Check, MessageSquarePlus, PlusSquare, Share, X } from "lucide-react";
 import { Drawer, DrawerContent, DrawerTitle } from "../../components/ui/drawer";
 import { cn } from "../../lib/utils";
-import { readPersisted, writePersisted } from "../persist";
-import { isIos, isStandalone } from "../push";
+import { readPersisted } from "../persist";
 import { newPhoneSessionKey } from "../session-key";
 import { useMobile } from "../store";
 import { sessionTitle } from "./Chrome";
@@ -91,11 +90,6 @@ export function SessionSheet({
   );
 }
 
-/** iOS has no install prompt: explain Share > Add to Home Screen once. */
-export function shouldOfferInstall(): boolean {
-  return isIos() && !isStandalone() && typeof isSecureContext !== "undefined" && isSecureContext;
-}
-
 export function InstallSheet({
   open,
   onOpenChange,
@@ -103,10 +97,7 @@ export function InstallSheet({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const close = () => {
-    writePersisted({ installDismissed: true });
-    onOpenChange(false);
-  };
+  const close = () => onOpenChange(false);
   return (
     <Drawer open={open} onOpenChange={(v) => (v ? onOpenChange(v) : close())}>
       <DrawerContent className="mobile-app border-[var(--m-hairline)] bg-background pb-[calc(var(--m-safe-bottom)+1rem)]">
@@ -123,7 +114,8 @@ export function InstallSheet({
         </div>
         <p className="px-5 pt-1 text-sm leading-relaxed text-muted-foreground">
           It opens full screen like an app, and it is the only way iPhone allows notifications for
-          web apps.
+          web apps. iPhone keeps the Home Screen app separate from Safari, so it pairs once on its
+          own.
         </p>
         <ol className="flex flex-col gap-3 px-5 pt-5">
           {[
@@ -131,7 +123,7 @@ export function InstallSheet({
             { icon: PlusSquare, text: "Scroll down and choose Add to Home Screen." },
             {
               icon: Check,
-              text: "Open Bitterbot from the new icon, then turn on notifications in Settings.",
+              text: "Open Bitterbot from the new icon and pair it from your computer, then unpair this Safari copy here in Settings.",
             },
           ].map((step, i) => (
             <li key={i} className="m-card flex items-center gap-3 p-3.5">
