@@ -19,6 +19,7 @@
 
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
+import { forageNightShiftEnabled } from "../config/feature-switches.js";
 import { parseHeartbeatTerms } from "../gateway/a2a/forage.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { contentDigest, simhash64 } from "./bounty-audit.js";
@@ -109,7 +110,7 @@ export async function nightShiftSweep(opts: {
     errors: 0,
   };
   // V1 default flip (PLAN-41 D-D): night-shift hunting is opt-in.
-  if (cfg.enabled !== true) return result;
+  if (!forageNightShiftEnabled(cfg)) return result;
   const maxHunts = cfg.maxConcurrentHunts ?? NIGHT_SHIFT_DEFAULTS.maxConcurrentHunts;
   const maxReward = cfg.maxRewardUsdc ?? NIGHT_SHIFT_DEFAULTS.maxRewardUsdc;
 

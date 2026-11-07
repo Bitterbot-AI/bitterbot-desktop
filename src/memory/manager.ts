@@ -30,6 +30,20 @@ import {
 import { getComputeRuntime } from "../compute/awareness/runtime.js";
 import { getComputeSnapshot } from "../compute/awareness/state.js";
 import { loadConfig, type BitterbotConfig } from "../config/config.js";
+import {
+  architectCycleEnabled,
+  architectRulesEnabled,
+  canonicalLedgerEnabled,
+  conversationMemoryEnabled,
+  correctionCaptureEnabled,
+  curiosityEnabled,
+  dreamBriefEnabled,
+  dreamEngineEnabled,
+  harnessEvolveEnabled,
+  marketabilityPredictorEnabled,
+  skillEvolutionEnabled,
+  skillSeekersEnabled,
+} from "../config/feature-switches.js";
 import { isBackgroundUsagePaused } from "../infra/usage-budgets.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { getUsageLedger } from "../infra/usage-ledger.js";
@@ -1404,7 +1418,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     // take a slot a current one could fill.
     const tagSuperseded =
       opts?.tagSuperseded !== false &&
-      this.cfg.memory?.canonicalLedger?.enabled !== false &&
+      canonicalLedgerEnabled(this.cfg.memory?.canonicalLedger) &&
       hasSupersessionMarks(this.db);
     const want = opts?.maxResults ?? this.settings.query.maxResults;
     const innerOpts = tagSuperseded
@@ -3144,7 +3158,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   private ensureDreamEngine(): void {
     const dreamCfg = this.cfg.memory?.dream;
-    if (dreamCfg?.enabled === false) {
+    if (!dreamEngineEnabled(dreamCfg)) {
       return;
     }
 
@@ -3282,7 +3296,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so
     // the ledger kill switch must also silence the promoter.
-    if (this.cfg.memory?.canonicalLedger?.enabled === false) {
+    if (!canonicalLedgerEnabled(this.cfg.memory?.canonicalLedger)) {
       engineCfg.modes = {
         ...engineCfg.modes,
         canonical_promotion: { enabled: false, weight: 0, maxChunks: 0, requiresLlm: true },
@@ -3427,7 +3441,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     // resolves the config-derived HarnessPolicy floor that evolved policies
     // overlay.
     this.dreamEngine.setHarnessEvolveContext({
-      enabled: this.cfg.agents?.defaults?.harnessEvolve?.enabled ?? false,
+      enabled: harnessEvolveEnabled(this.cfg.agents?.defaults?.harnessEvolve),
       baseline: () => resolveHarnessPolicy(this.cfg),
     });
 
@@ -3579,7 +3593,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /** Queue the `## Curiosity Gaps` bullets of a fresh MEMORY.md as questions. */
   async ingestCuriosityGaps(memoryMd: string): Promise<number> {
-    if (this.cfg.memory?.curiosity?.enabled === false) {
+    if (!curiosityEnabled(this.cfg.memory?.curiosity)) {
       return 0;
     }
     const questions = parseCuriosityGaps(memoryMd);
@@ -3662,7 +3676,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     opts: { force?: boolean } = {},
   ): Promise<import("./curiosity-researcher.js").CuriosityRunSummary> {
     const idle = { ran: false, attempted: 0, learned: 0, outcomes: {}, costUsd: 0 };
-    if (this.cfg.memory?.curiosity?.enabled === false) {
+    if (!curiosityEnabled(this.cfg.memory?.curiosity)) {
       return { ...idle, reason: "memory.curiosity.enabled is false" };
     }
     const { runCuriosityResearch } = await import("./curiosity-researcher.js");
@@ -3844,7 +3858,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
   /** PLAN-53 G4: tell the owner what the agent dreamed and learned today. */
   async sendDreamBrief(opts: { force?: boolean } = {}): Promise<string | null> {
-    if (this.cfg.memory?.dreamBrief?.enabled === false && !opts.force) {
+    if (!dreamBriefEnabled(this.cfg.memory?.dreamBrief) && !opts.force) {
       return null;
     }
     try {
@@ -4061,7 +4075,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   > {
     const predictorCfg = this.cfg.skills?.marketability?.predictor;
     // V1 default flip (PLAN-41 D-D): opt-in via skills.marketability.predictor.
-    if (predictorCfg?.enabled !== true) {
+    if (!marketabilityPredictorEnabled(predictorCfg)) {
       return null;
     }
     if (this.marketabilityPredictor) {
@@ -4275,8 +4289,8 @@ export class MemoryIndexManager implements MemorySearchManager {
       this.closed ||
       this.syncing ||
       this.agentId !== resolveDefaultAgentId(this.cfg) ||
-      this.cfg.memory?.dream?.enabled === false ||
-      this.cfg.skills?.evolution?.enabled === false
+      !dreamEngineEnabled(this.cfg.memory?.dream) ||
+      !skillEvolutionEnabled(this.cfg.skills?.evolution)
     )
       return false;
     if (
@@ -4515,7 +4529,7 @@ export class MemoryIndexManager implements MemorySearchManager {
    * extraction on held-out sessions). Off the critical path.
    */
   private async maybeRunArchitectCycle(): Promise<void> {
-    if (this.cfg.memory?.architectEvolution?.enabled === false) {
+    if (!architectCycleEnabled(this.cfg.memory?.architectEvolution)) {
       return;
     }
     const llmCall = this.dreamLlmCall;
@@ -4574,7 +4588,7 @@ export class MemoryIndexManager implements MemorySearchManager {
       return;
     }
     // PLAN-55 Phase 1: incognito. Nothing is learned from transcripts.
-    if (this.cfg.session?.memory === "off") {
+    if (!conversationMemoryEnabled(this.cfg.session)) {
       log.debug("session extraction skipped: session.memory is off");
       return;
     }
@@ -4606,7 +4620,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     // is conditioned on the current hormonal state (state-nearest rules, count
     // modulated by cortisol/dopamine) rather than dumping every rule.
     // V1 default flip (PLAN-41 D-D): opt-in.
-    const architectEnabled = this.cfg.memory?.architectEvolution?.enabled === true;
+    const architectEnabled = architectRulesEnabled(this.cfg.memory?.architectEvolution);
     const learnedRules = architectEnabled ? selectRulesForState(this.db, hormonalBias) : [];
 
     // PLAN-34 M2 hotfix: structured ground-truth writes (canonical pins,
@@ -6889,7 +6903,7 @@ export class MemoryIndexManager implements MemorySearchManager {
   correctionLlmCall():
     | ((prompt: string, callOpts?: { signal?: AbortSignal }) => Promise<string>)
     | null {
-    if (this.cfg.memory?.correction?.enabled === false) {
+    if (!correctionCaptureEnabled(this.cfg.memory?.correction)) {
       return null;
     }
     // Built with the dream engine when that is on (an injected dream llmCall
@@ -7740,7 +7754,7 @@ export class MemoryIndexManager implements MemorySearchManager {
     // Skill Seekers adapter (optional external skill generation).
     // V1 default flip (PLAN-41 D-D): opt-in via skills.skillSeekers.enabled.
     const ssConfig = this.cfg.skills?.skillSeekers;
-    if (ssConfig?.enabled === true) {
+    if (skillSeekersEnabled(ssConfig)) {
       Promise.all([import("./skill-seekers-adapter.js"), import("./skill-seekers-url-finder.js")])
         .then(([{ SkillSeekersAdapter }, { buildUrlFinder }]) => {
           this.skillSeekersAdapter = new SkillSeekersAdapter(this.db, ssConfig);
@@ -7890,7 +7904,7 @@ export class MemoryIndexManager implements MemorySearchManager {
         log.debug(`evidence telemetry unavailable: ${String(err)}`);
       }
     }
-    if (curiosityCfg?.enabled === false) {
+    if (!curiosityEnabled(curiosityCfg)) {
       return;
     }
 

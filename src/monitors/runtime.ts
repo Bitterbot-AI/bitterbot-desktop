@@ -1,5 +1,5 @@
 import type { BitterbotConfig } from "../config/config.js";
-import { isTruthyEnvValue } from "../infra/env.js";
+import { monitorsEnabled } from "../config/feature-switches.js";
 import { requestHeartbeatNow } from "../infra/heartbeat-wake.js";
 import { notifyOwner } from "../infra/owner-notify.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -57,7 +57,7 @@ export function handleMonitorEvent(event: MonitorEvent): void {
 
 export async function startMonitorEngine(cfg: BitterbotConfig): Promise<MonitorEngine | null> {
   await stopMonitorEngine();
-  if (cfg.monitors?.enabled === false || isTruthyEnvValue(process.env.BITTERBOT_SKIP_MONITORS)) {
+  if (!monitorsEnabled(cfg.monitors)) {
     log.info("monitor engine skipped (disabled in config or BITTERBOT_SKIP_MONITORS=1)");
     return null;
   }

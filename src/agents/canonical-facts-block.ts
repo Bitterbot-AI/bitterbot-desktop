@@ -11,6 +11,7 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { canonicalLedgerEnabled } from "../config/feature-switches.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { normalizeScopeName } from "../memory/canonical-facts.js";
 
@@ -92,7 +93,7 @@ export async function resolveCanonicalFactsBlock(params: {
   /** PLAN-55 Phase 1: the run's workspace, for project-scoped facts. */
   workspaceDir?: string;
 }): Promise<string | undefined> {
-  if (params.config?.memory?.canonicalLedger?.enabled === false) {
+  if (!canonicalLedgerEnabled(params.config?.memory?.canonicalLedger)) {
     return undefined;
   }
   if (params.promptMode === "none") {

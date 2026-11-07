@@ -7,6 +7,12 @@ import {
 } from "../agents/model-selection.js";
 import type { CliDeps } from "../cli/deps.js";
 import type { loadConfig } from "../config/config.js";
+import {
+  a2aEnabled,
+  p2pEnabled,
+  walletCredentialsPresent,
+  walletToolEnabled,
+} from "../config/feature-switches.js";
 import { startCronEngine } from "../cron/runtime.js";
 import { startGmailWatcher } from "../hooks/gmail-watcher.js";
 import {
@@ -176,11 +182,12 @@ export async function startGatewaySidecars(params: {
     null;
   let computeMesh: import("../compute/mesh-service.js").ComputeMeshService | undefined;
   let peerRpcTransport: { stop(): void } | undefined;
-  if (params.cfg.p2p?.enabled) {
+  const p2pCfg = params.cfg.p2p;
+  if (p2pCfg && p2pEnabled(params.cfg)) {
     try {
       const { OrchestratorBridge: Bridge, setActiveOrchestratorBridge } =
         await import("../infra/orchestrator-bridge.js");
-      orchestratorBridge = new Bridge(params.cfg.p2p);
+      orchestratorBridge = new Bridge(p2pCfg);
       await orchestratorBridge.start();
       // PLAN-14 Pillar 4: register the bridge for tool-side accessors
       // (computer_use IPC, etc.) without threading it through every
@@ -426,20 +433,16 @@ export async function startGatewaySidecars(params: {
       // a configured wallet stay silent (no noisy init attempts). Addresses are
       // public; advertising one exposes no signing capability.
       const walletCfg = params.cfg.tools?.wallet;
-      const hasWalletCreds = Boolean(
-        (walletCfg?.cdpApiKeyId ?? process.env.CDP_API_KEY_ID) &&
-        (walletCfg?.cdpApiKeySecret ?? process.env.CDP_API_KEY_SECRET) &&
-        process.env.CDP_WALLET_SECRET,
-      );
+      const hasWalletCreds = walletCredentialsPresent(walletCfg);
       // V1 default flip (PLAN-41 D-D): wallet surfaces are opt-in.
-      if (walletCfg?.enabled === true && hasWalletCreds) {
+      if (walletToolEnabled(walletCfg) && hasWalletCreds) {
         const advertiseBridge = orchestratorBridge;
-        const a2aEnabled = params.cfg.a2a?.enabled === true;
+        const a2aIsEnabled = a2aEnabled(params.cfg);
         // Advertise the A2A endpoint URL alongside the wallet so peers can
         // resolve peerId -> URL and hire this node without an out-of-band
         // exchange. Only an explicitly configured public URL is useful to
         // peers; a localhost fallback would just pollute the mesh.
-        const a2aUrl = a2aEnabled ? params.cfg.a2a?.url : undefined;
+        const a2aUrl = a2aIsEnabled ? params.cfg.a2a?.url : undefined;
         const advertiseWallet = async () => {
           try {
             const { createWalletService } = await import("../services/wallet-service.js");
@@ -450,7 +453,7 @@ export async function startGatewaySidecars(params: {
               address,
               network,
               acceptsPayments: true,
-              a2aEnabled,
+              a2aEnabled: a2aIsEnabled,
               a2aUrl,
               updatedAt: Date.now(),
             });
@@ -458,7 +461,7 @@ export async function startGatewaySidecars(params: {
               address,
               network,
               acceptsPayments: true,
-              a2aEnabled,
+              a2aEnabled: a2aIsEnabled,
               a2aUrl,
             });
           } catch (err) {

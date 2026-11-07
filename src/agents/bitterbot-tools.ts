@@ -40,6 +40,7 @@ import { createNetworkStatusTool } from "./tools/network-status-tool.js";
 import { createNodesTool } from "./tools/nodes-tool.js";
 import { createPurchaseTool } from "./tools/purchase-tool.js";
 import { createRecallRangeTool } from "./tools/recall-range-tool.js";
+import { createSelfStateTool } from "./tools/self-state-tool.js";
 import { createSessionStatusTool } from "./tools/session-status-tool.js";
 import { createSessionsHistoryTool } from "./tools/sessions-history-tool.js";
 import { createSessionsListTool } from "./tools/sessions-list-tool.js";
@@ -288,6 +289,8 @@ export function createBitterbotTools(options?: {
     createMemoryExpandTool(memoryOpts),
     createMemoryPinTool({ ...memoryOpts, workspaceDir: options?.workspaceDir }),
     createMemoryStatusTool(memoryOpts),
+    // Not gated on memory search: the agent's on/off state is always readable.
+    createSelfStateTool({ config: options?.config, guest: options?.memoryGuest === true }),
     createDreamSearchTool(memoryOpts),
     createDreamStatusTool(memoryOpts),
     createCuriosityStateTool(memoryOpts),

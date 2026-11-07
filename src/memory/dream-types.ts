@@ -74,6 +74,33 @@ export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   anticipation: { enabled: true, weight: 0.1, maxChunks: 12, requiresLlm: true },
 };
 
+/**
+ * The defaults with the owner's per-mode overrides on top. Keys that are not
+ * a DreamMode (`mutation` and `research`, retired in PLAN-45 Phase 1) are
+ * dropped and reported through `onRetired`, so an old bitterbot.json keeps
+ * working. The dream engine and the agent's self-state read modes through
+ * this one function.
+ */
+export function mergeDreamModeConfigs(
+  overrides: Partial<Record<string, Partial<DreamModeConfig>>> | undefined,
+  onRetired?: (mode: string) => void,
+): Record<DreamMode, DreamModeConfig> {
+  const resolved = { ...DEFAULT_MODE_CONFIGS };
+  if (overrides) {
+    for (const [mode, override] of Object.entries(overrides)) {
+      const key = mode as DreamMode;
+      if (!(key in DEFAULT_MODE_CONFIGS)) {
+        onRetired?.(mode);
+        continue;
+      }
+      if (resolved[key] && override) {
+        resolved[key] = { ...resolved[key], ...override };
+      }
+    }
+  }
+  return resolved;
+}
+
 export type DreamCluster = {
   id: string;
   chunkIds: string[];

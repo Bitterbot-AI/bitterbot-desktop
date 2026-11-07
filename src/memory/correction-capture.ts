@@ -38,6 +38,7 @@
  */
 
 import type { BitterbotConfig } from "../config/config.js";
+import { conversationMemoryEnabled, correctionCaptureEnabled } from "../config/feature-switches.js";
 import { USAGE_FEATURES } from "../infra/usage-features.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { isCronSessionKey } from "../sessions/session-key-utils.js";
@@ -300,10 +301,10 @@ export function resolveCorrectionSkipReason(params: {
   isHeartbeat: boolean;
   userMessage: string;
 }): string | null {
-  if (params.cfg.memory?.correction?.enabled === false) {
+  if (!correctionCaptureEnabled(params.cfg.memory?.correction)) {
     return "disabled";
   }
-  if (params.cfg.session?.memory === "off") {
+  if (!conversationMemoryEnabled(params.cfg.session)) {
     return "session-memory-off";
   }
   if (params.isHeartbeat) {

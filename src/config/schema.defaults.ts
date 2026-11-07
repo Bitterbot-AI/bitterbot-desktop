@@ -113,6 +113,13 @@ export const FIELD_DEFAULTS: Record<string, unknown> = {
   "tools.web.search.enabled": true,
   // src/agents/tools/web-fetch.ts:91 (resolveFetchEnabled) — unset ⇒ true.
   "tools.web.fetch.enabled": true,
+  // src/media-understanding/runner.ts runCapability refuses only on
+  // `enabled === false`; unset, resolveAutoEntries finds a model (the active
+  // one, local audio, the Gemini CLI or a provider key) and runs it. The
+  // resolve.ts helper the old entry cited has no production caller.
+  "tools.media.image.enabled": true,
+  "tools.media.audio.enabled": true,
+  "tools.media.video.enabled": true,
   // src/node-host/runner.ts:92 — `!== false && resolvedBrowser.enabled`: unset means on,
   // but the proxy only starts when the browser itself is enabled.
   "nodeHost.browserProxy.enabled": true,
@@ -215,12 +222,6 @@ export const UNSET_MEANS_FALSE: Record<string, string> = {
   "diagnostics.otel.logs": "No reader (see diagnostics.otel.enabled).",
   "diagnostics.cacheTrace.enabled":
     "src/agents/cache-trace.ts:170 — `envEnabled ?? config?.enabled ?? false`.",
-  "tools.media.image.enabled":
-    "src/media-understanding/resolve.ts:165 — without `enabled: true` or explicit models no model is resolved (runner.ts:607 only refuses on `=== false`).",
-  "tools.media.audio.enabled":
-    "src/media-understanding/resolve.ts:165 — same as tools.media.image.enabled.",
-  "tools.media.video.enabled":
-    "src/media-understanding/resolve.ts:165 — same as tools.media.image.enabled.",
   "tools.links.enabled":
     "src/link-understanding/runner.ts:113 — `!config || config.enabled === false` returns.",
   "tools.exec.applyPatch.enabled": "src/agents/agent-tools.ts:342 — `!!applyPatchConfig?.enabled`.",

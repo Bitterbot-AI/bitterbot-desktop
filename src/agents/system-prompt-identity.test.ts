@@ -120,6 +120,14 @@ describe("talking about yourself, facts and sources, plan honesty", () => {
     expect(prompt({ promptMode: "minimal" })).not.toContain("## Talking About Yourself");
   });
 
+  it("carries the current-state block in the cached half, never for guests or subagents", () => {
+    const selfState = "## Your Current State\nOn: dream engine.\nOff: wallet.";
+    const p = prompt({ selfState });
+    expect(stableOf(p)).toContain(selfState);
+    expect(prompt({ selfState, guestTurn: true })).not.toContain("## Your Current State");
+    expect(prompt({ selfState, promptMode: "minimal" })).not.toContain("## Your Current State");
+  });
+
   it("data integrity is in every mode but none; research rules need a web tool", () => {
     const full = prompt({ toolNames: ["read", "web_search", "web_fetch"] });
     expect(full).toContain("Never state what a file, PDF, web page or command output says");

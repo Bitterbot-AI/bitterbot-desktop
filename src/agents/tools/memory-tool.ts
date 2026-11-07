@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
+import { canonicalLedgerEnabled } from "../../config/feature-switches.js";
 import type { MemoryCitationsMode } from "../../config/types.memory.js";
 import { normalizeCanonicalScope } from "../../memory/canonical-facts.js";
 import type { HybridChannels } from "../../memory/hybrid.js";
@@ -285,7 +286,7 @@ export function createMemoryPinTool(options: {
     return null;
   }
   const { cfg, agentId } = ctx;
-  if (cfg.memory?.canonicalLedger?.enabled === false) {
+  if (!canonicalLedgerEnabled(cfg.memory?.canonicalLedger)) {
     return null;
   }
   // A guest can neither read the owner's ledger nor write beliefs into it:
@@ -445,7 +446,7 @@ function resolveCanonicalLookup(
   source: string;
   match: "key" | "value";
 }> {
-  if (cfg.memory?.canonicalLedger?.enabled === false) {
+  if (!canonicalLedgerEnabled(cfg.memory?.canonicalLedger)) {
     return [];
   }
   try {

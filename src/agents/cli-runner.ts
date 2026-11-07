@@ -169,6 +169,8 @@ export async function runCliAgent(params: {
   // Undefined at steady state or when nothing has published a snapshot.
   const { resolveComputeStateBlockFromConfig } = await import("../compute/awareness/state.js");
   const computeState = resolveComputeStateBlockFromConfig(params.config);
+  const { resolveSelfStateBlock } = await import("./self-state/render.js");
+  const selfState = resolveSelfStateBlock(params.config);
 
   const systemPrompt = buildSystemPrompt({
     workspaceDir,
@@ -186,6 +188,7 @@ export async function runCliAgent(params: {
     canonicalFacts,
     researchFindings,
     computeState,
+    selfState,
   });
 
   const { sessionId: cliSessionIdToSend, isNew } = resolveSessionIdToSend({

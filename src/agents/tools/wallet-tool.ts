@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
+import { walletToolEnabled } from "../../config/feature-switches.js";
 import type { WalletConfig } from "../../config/types.wallet.js";
 import { getPeerWalletCapability } from "../../infra/wallet-discovery.js";
 import { sessionSpentUsd } from "../../payments/ap2/gate.js";
@@ -76,7 +77,7 @@ export function createWalletTool(opts?: WalletToolOptions): AnyAgentTool | undef
   const walletConfig: WalletConfig | undefined = opts?.config?.tools?.wallet;
   // V1 default flip (PLAN-41 D-D): the wallet tool is opt-in
   // (tools.wallet.enabled=true) — money-adjacent surfaces don't self-enable.
-  if (walletConfig?.enabled !== true) {
+  if (!walletToolEnabled(walletConfig)) {
     return undefined;
   }
 

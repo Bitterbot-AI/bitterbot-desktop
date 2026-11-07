@@ -445,6 +445,24 @@ When that search runs, the canonical ledger is consulted first: `memory_search` 
 
 ---
 
+## Knowing Its Own State
+
+The agent is told which of its parts are running. Every turn, the system prompt carries a short
+`## Your Current State` block that names what is on, what is off, what only records (runs and
+keeps a record without changing anything yet, such as the verified-outcome writer in shadow
+mode), and what is switched on but blocked by something missing (a web search key, wallet
+credentials). The `self_state` tool gives the detail: what each part does, whether its state is
+the default or the owner's setting, and the config key that changes it. Guests never see either.
+
+Both read the state through the same function the part itself calls to decide whether to run
+(`src/config/feature-switches.ts`, or the part's own resolver), so the agent's account cannot
+drift from what actually runs. The `memory-architecture` skill explains how the parts work and
+never says what is switched on. Tests check that every setting the registry names exists, that
+switching a part's key off turns it off, that its defaults agree with the Settings form's
+registry, and that the skill names only real tools, dream modes and settings.
+
+---
+
 ## What Makes This Different
 
 Every serious competitor (Mem0, Zep, Letta, Hindsight, Cognee) has some combination of knowledge graphs, vector search, and memory consolidation. Those are table stakes now.

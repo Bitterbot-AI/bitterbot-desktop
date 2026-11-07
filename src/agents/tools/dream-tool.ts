@@ -4,6 +4,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
+import { dreamEngineEnabled } from "../../config/feature-switches.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
@@ -28,7 +29,7 @@ function resolveDreamToolContext(options: { config?: BitterbotConfig; agentSessi
   // require an explicit `memory.dream.enabled: true` nobody sets, leaving
   // consumption structurally impossible while the engine burned cycles.
   // Honor the merged default: enabled unless explicitly disabled.
-  if (cfg.memory?.dream?.enabled === false) {
+  if (!dreamEngineEnabled(cfg.memory?.dream)) {
     return null;
   }
   const agentId = resolveSessionAgentId({

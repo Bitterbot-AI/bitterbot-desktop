@@ -62,7 +62,7 @@ function buildMemorySection(params: {
   }
   const lines = [
     "## Memory System",
-    "Local, self-evolving memory (decaying Knowledge Crystals, hormones that modulate recall and tone, a dream engine that rewrites MEMORY.md). Long-form guidance is in skills, read on demand: `memory-architecture`, `working-memory-protocol`, `curiosity-loop`, `pre-action-interceptors`.",
+    "Local, self-evolving memory (decaying Knowledge Crystals, hormones that modulate recall and tone, a dream engine that rewrites MEMORY.md). Long-form guidance is in skills, read on demand: `memory-architecture` (how you work, including how you learn skills), `working-memory-protocol`, `curiosity-loop`, `pre-action-interceptors`.",
     "### Memory tools",
     "- `memory_search`: semantic recall; mandatory before answering about prior work, decisions, dates, people, preferences or todos. Then `memory_get` for exact lines.",
     '- `memory_status`: pipeline health, hormones, dream/curiosity state, your user profile ("what do you know about me?"), interceptor firings.',
@@ -513,6 +513,13 @@ export function buildAgentSystemPrompt(params: {
    */
   computeState?: string;
   /**
+   * Pre-rendered `## Your Current State` block (resolveSelfStateBlock): what
+   * is on, off, recording only or blocked, from the live config. Moves only
+   * when the config does, so it sits in the cached half. Omitted on guest
+   * turns and in minimal mode.
+   */
+  selfState?: string;
+  /**
    * Session-scoped facts that select conditional sections of the injected
    * workspace files (constant for the life of a session, so cache-safe).
    * Defaults: `group` = full mode with a Group Chat Context; `githubAvailable`
@@ -770,6 +777,7 @@ export function buildAgentSystemPrompt(params: {
   if (!isMinimal) {
     stable.push(
       ...buildTalkingAboutYourselfSection(isMinimal),
+      ...(params.selfState && !params.guestTurn ? [params.selfState, ""] : []),
       ...buildTemperamentVoiceSection({
         temperament: temperamentFromContextFiles(contextFiles.stable),
         guest: params.guestTurn,

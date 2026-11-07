@@ -18,6 +18,7 @@ export const TOOL_GROUPS: Record<string, string[]> = {
     "memory_search",
     "memory_get",
     "memory_status",
+    "self_state",
     "dream_search",
     "dream_status",
     "curiosity_state",

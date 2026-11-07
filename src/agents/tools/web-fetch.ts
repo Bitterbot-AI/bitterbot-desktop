@@ -79,7 +79,7 @@ type FirecrawlFetchConfig =
     }
   | undefined;
 
-function resolveFetchConfig(cfg?: BitterbotConfig): WebFetchConfig {
+export function resolveFetchConfig(cfg?: BitterbotConfig): WebFetchConfig {
   const fetch = cfg?.tools?.web?.fetch;
   if (!fetch || typeof fetch !== "object") {
     return undefined;
@@ -87,7 +87,10 @@ function resolveFetchConfig(cfg?: BitterbotConfig): WebFetchConfig {
   return fetch as WebFetchConfig;
 }
 
-function resolveFetchEnabled(params: { fetch?: WebFetchConfig; sandboxed?: boolean }): boolean {
+export function resolveFetchEnabled(params: {
+  fetch?: WebFetchConfig;
+  sandboxed?: boolean;
+}): boolean {
   if (typeof params.fetch?.enabled === "boolean") {
     return params.fetch.enabled;
   }

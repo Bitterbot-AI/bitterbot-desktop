@@ -628,6 +628,23 @@ export function resolveSkillPriorPlacement(
   return cfg?.placement === "last" ? "last" : "first";
 }
 
+/** How verified outcomes appear beside skills: `verbal` unless set. "off" while the prior is off. */
+export function resolveSkillPriorEvidence(
+  cfg: SkillsPriorConfig | undefined,
+): NonNullable<SkillsPriorConfig["evidence"]> {
+  if (resolveSkillPriorMode(cfg) === "off") {
+    return "off";
+  }
+  return cfg?.evidence ?? SKILL_PRIOR_DEFAULTS.evidence;
+}
+
+/** The verified-outcome writer: `shadow` unless set; "off" while the prior is off. */
+export function resolveSkillPriorWriterMode(
+  cfg: SkillsPriorConfig | undefined,
+): NonNullable<SkillsPriorConfig["writer"]> {
+  return cfg?.enabled === false ? "off" : (cfg?.writer ?? "shadow");
+}
+
 export function resolveSkillPriorMode(cfg: SkillsPriorConfig | undefined): SkillPriorMode {
   if (cfg?.enabled === false) {
     return "off";
