@@ -96,7 +96,7 @@ import {
 } from "./dream-gate.js";
 import { searchDreamInsights, type DreamSearchResult } from "./dream-search.js";
 import type { DreamStats, SynthesizeFn } from "./dream-types.js";
-import { DEFAULT_DREAM_CONFIG } from "./dream-types.js";
+import { applyDreamModeKillSwitches, DEFAULT_DREAM_CONFIG } from "./dream-types.js";
 import { type EmbeddingProfile, embeddingProfileKey } from "./embedding-profile.js";
 import { createPoolEmbeddingProvider, isPoolEmbeddingProvider } from "./embeddings-pool.js";
 import {
@@ -249,32 +249,9 @@ const MAX_OWNER_PREVIEWS_IN_FLIGHT = 2;
 
 const log = createSubsystemLogger("memory");
 
-/**
- * PLAN-34 Phase 2 adversarial fix: known LOCAL model-spec providers. A
- * depersonalization model must resolve to one of these for autonomous
- * research egress to activate — otherwise the verbatim private note would
- * be sent to a cloud API. Conservative allowlist; unknown providers are
- * treated as non-local (fail closed).
- */
-const LOCAL_MODEL_PROVIDERS = new Set([
-  "ollama",
-  "lmstudio",
-  "llamacpp",
-  "llama-cpp",
-  "local",
-  "localai",
-  "localhost",
-  "jan",
-  "gpt4all",
-]);
+import { isLocalModelSpec } from "./local-model-spec.js";
 
-export function isLocalModelSpec(spec?: string): boolean {
-  if (!spec) {
-    return false;
-  }
-  const provider = spec.split("/")[0]?.trim().toLowerCase() ?? "";
-  return LOCAL_MODEL_PROVIDERS.has(provider);
-}
+export { isLocalModelSpec };
 
 const INDEX_CACHE = new Map<string, MemoryIndexManager>();
 /**
@@ -3296,12 +3273,7 @@ export class MemoryIndexManager implements MemorySearchManager {
 
     // PLAN-33: the canonical_promotion dream mode writes into the ledger, so
     // the ledger kill switch must also silence the promoter.
-    if (!canonicalLedgerEnabled(this.cfg.memory?.canonicalLedger)) {
-      engineCfg.modes = {
-        ...engineCfg.modes,
-        canonical_promotion: { enabled: false, weight: 0, maxChunks: 0, requiresLlm: true },
-      };
-    }
+    engineCfg.modes = applyDreamModeKillSwitches(engineCfg.modes, this.cfg);
 
     let synthesizeFn: SynthesizeFn;
     if (builtLlmCall) {
@@ -3816,6 +3788,11 @@ export class MemoryIndexManager implements MemorySearchManager {
   async curiosityList(limit?: number) {
     const { listCuriosity } = await import("./curiosity-researcher.js");
     return listCuriosity(this.db, { limit });
+  }
+
+  async curiosityResearchPaused(): Promise<boolean> {
+    const { isCuriosityPaused } = await import("./curiosity-researcher.js");
+    return isCuriosityPaused(this.db);
   }
 
   async curiosityPause(paused: boolean): Promise<void> {

@@ -7,6 +7,7 @@
  * one-line log, see the DreamEngine constructor.
  */
 
+import { canonicalLedgerEnabled } from "../config/feature-switches.js";
 import type { SkillsEvolutionConfig } from "../config/types.skills.js";
 
 export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAKENING";
@@ -99,6 +100,24 @@ export function mergeDreamModeConfigs(
     }
   }
   return resolved;
+}
+
+/**
+ * Switches outside `memory.dream.modes` that silence a mode. PLAN-33: the
+ * canonical_promotion mode writes into the settled-facts ledger, so the
+ * ledger kill switch silences it too. The dream engine and the agent's
+ * self-state both apply this.
+ */
+export function applyDreamModeKillSwitches<
+  T extends Partial<Record<string, Partial<DreamModeConfig>>> | undefined,
+>(modes: T, cfg: { memory?: { canonicalLedger?: { enabled?: boolean } } }): T {
+  if (canonicalLedgerEnabled(cfg.memory?.canonicalLedger)) {
+    return modes;
+  }
+  return {
+    ...modes,
+    canonical_promotion: { enabled: false, weight: 0, maxChunks: 0, requiresLlm: true },
+  } as T;
 }
 
 export type DreamCluster = {

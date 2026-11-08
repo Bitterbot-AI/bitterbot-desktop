@@ -659,7 +659,9 @@ export async function runEmbeddedAttempt(
     const selfState =
       remoteTaskTurn || guestTurn
         ? undefined
-        : (await import("../../self-state/render.js")).resolveSelfStateBlock(params.config);
+        : (await import("../../self-state/render.js")).resolveSelfStateBlock(params.config, {
+            agentId: sessionAgentId,
+          });
 
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,

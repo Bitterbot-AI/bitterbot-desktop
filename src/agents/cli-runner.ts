@@ -169,8 +169,13 @@ export async function runCliAgent(params: {
   // Undefined at steady state or when nothing has published a snapshot.
   const { resolveComputeStateBlockFromConfig } = await import("../compute/awareness/state.js");
   const computeState = resolveComputeStateBlockFromConfig(params.config);
+  // The owner's setup, so only on a turn known to be the owner's: a CLI turn
+  // that does not say who is speaking gets none (fail closed).
   const { resolveSelfStateBlock } = await import("./self-state/render.js");
-  const selfState = resolveSelfStateBlock(params.config);
+  const selfState =
+    params.senderIsOwner === true
+      ? resolveSelfStateBlock(params.config, { agentId: sessionAgentId })
+      : undefined;
 
   const systemPrompt = buildSystemPrompt({
     workspaceDir,

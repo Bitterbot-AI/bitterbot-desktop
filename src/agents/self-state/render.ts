@@ -1,6 +1,11 @@
 import type { BitterbotConfig } from "../../config/config.js";
 import { CAPABILITIES } from "./registry.js";
-import type { Capability, CapabilityState, ResolvedCapability } from "./types.js";
+import type {
+  Capability,
+  CapabilityObservations,
+  CapabilityState,
+  ResolvedCapability,
+} from "./types.js";
 
 function hasPath(config: unknown, dotted: string): boolean {
   let node: unknown = config;
@@ -21,6 +26,10 @@ export type ResolveOptions = {
    * `source` is "default" only if no key is present in `config`.
    */
   fileConfig?: unknown;
+  /** The agent taking the turn (per-agent overrides). Defaults to the default agent. */
+  agentId?: string;
+  /** What the gateway observed now; the prompt block passes none. */
+  observed?: CapabilityObservations;
 };
 
 export function resolveCapability(
@@ -29,13 +38,19 @@ export function resolveCapability(
   options: ResolveOptions = {},
 ): ResolvedCapability {
   const { read, ...rest } = capability;
-  const reading = read({ config, env: options.env ?? process.env });
+  const { source: readSource, ...reading } = read({
+    config,
+    env: options.env ?? process.env,
+    agentId: options.agentId,
+    observed: options.observed,
+  });
   const written = options.fileConfig ?? config;
-  return {
-    ...rest,
-    ...reading,
-    source: capability.keys.some((key) => hasPath(written, key)) ? "config" : "default",
-  };
+  // A parent or the environment decided it: its own keys say nothing about who set that.
+  const deciding = reading.because?.keys?.length ? reading.because.keys : capability.keys;
+  const ownerSet =
+    readSource === "config" ||
+    (reading.because?.kind !== "environment" && deciding.some((key) => hasPath(written, key)));
+  return { ...rest, ...reading, source: ownerSet ? "config" : "default" };
 }
 
 export function resolveCapabilities(
@@ -47,9 +62,10 @@ export function resolveCapabilities(
 }
 
 const LINE_ORDER: Array<{ state: CapabilityState; title: string }> = [
-  { state: "on", title: "On" },
-  { state: "recording", title: "Recording only (changes nothing yet)" },
-  { state: "blocked", title: "On but blocked" },
+  { state: "on", title: "Switched on" },
+  { state: "recording", title: "Recording only (keeps a record, changes no behaviour yet)" },
+  { state: "paused", title: "Paused by the owner" },
+  { state: "blocked", title: "Switched on but blocked" },
   { state: "off", title: "Off" },
 ];
 
@@ -61,8 +77,10 @@ function labelWithMode(c: ResolvedCapability): string {
 }
 
 /**
- * The `## Your Current State` block: names only, grouped by state. It moves
- * only when the config does, so it sits in the cached half of the prompt.
+ * The `## Your Current State` block: names only, grouped by state, from the
+ * settings alone. It moves only when the config does, so it sits in the
+ * cached half of the prompt; what is observed live (pauses, backends,
+ * peers) is left to `self_state`.
  */
 export function renderSelfStateBlock(resolved: readonly ResolvedCapability[]): string {
   const lines = ["## Your Current State"];
@@ -73,14 +91,17 @@ export function renderSelfStateBlock(resolved: readonly ResolvedCapability[]): s
     }
   }
   lines.push(
-    "Read from the live config on every turn. Before saying a part of you is running, check here; `self_state` has what each part does, why it is in its state and the setting that changes it.",
+    "This is what your settings switch on, read every turn. It cannot see whether a switched-on part is working at this moment (paused by the owner, no backend or model, no peers). Before saying a part is running, call `self_state`: it checks that, and says what each part does, why it is in its state and the setting that changes it.",
   );
   return lines.join("\n");
 }
 
-export function resolveSelfStateBlock(config: BitterbotConfig | undefined): string | undefined {
+export function resolveSelfStateBlock(
+  config: BitterbotConfig | undefined,
+  options: { agentId?: string } = {},
+): string | undefined {
   if (!config) {
     return undefined;
   }
-  return renderSelfStateBlock(resolveCapabilities(config));
+  return renderSelfStateBlock(resolveCapabilities(config, { agentId: options.agentId }));
 }

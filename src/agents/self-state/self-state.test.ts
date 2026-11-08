@@ -135,9 +135,13 @@ describe("self-state registry", () => {
     expect(byId["skills.harnessEvolve"]?.state).toBe("off");
     expect(byId["network.wallet"]?.state).toBe("off");
     expect(byId["network.p2p"]?.state).toBe("on");
-    expect(byId["memory.architect"]?.state).toBe("recording");
+    expect(byId["memory.architect"]).toMatchObject({
+      state: "on",
+      mode: "learning rules, not applying them yet",
+    });
     for (const [mode, cfg] of Object.entries(DEFAULT_MODE_CONFIGS)) {
       const expected = cfg.enabled && mode !== "harness_evolve" ? "on" : "off";
+      // harness_evolve: its mode default and its own switch are both off.
       expect(byId[`dream.${mode}`]?.state, mode).toBe(expected);
     }
     // Every part's source is "default" for an empty config.
@@ -167,6 +171,118 @@ describe("self-state registry", () => {
     );
   });
 
+  it("reports what it observed: an owner pause, a missing or read-only backend, no peers", () => {
+    const research = loaded(withKey("memory.curiosity.research.enabled", true));
+    const searchOn = isWebSearchConfigured(research);
+    const paused = resolveCapability(
+      CAPABILITIES.find((c) => c.id === "curiosity.research")!,
+      research,
+      { env: ENV, observed: { curiosityPaused: true } },
+    );
+    expect(paused.state).toBe("paused");
+    expect(paused.because?.kind).toBe("observed");
+    if (searchOn) {
+      expect(stateOf("curiosity.research", research).state).toBe("on");
+    }
+    const compute = (computeBackend: "none" | "read-only" | "jobs") =>
+      resolveCapability(
+        CAPABILITIES.find((c) => c.id === "network.compute")!,
+        loaded({}),
+        {
+          env: ENV,
+          observed: { computeBackend },
+        },
+      );
+    expect(compute("none")).toMatchObject({ state: "blocked" });
+    expect(compute("read-only")).toMatchObject({
+      state: "on",
+      mode: "read-only, cannot submit jobs",
+    });
+    expect(compute("jobs")).toMatchObject({ state: "on" });
+    const noPeers = resolveCapability(
+      CAPABILITIES.find((c) => c.id === "network.p2p")!,
+      loaded({}),
+      { env: ENV, observed: { p2pConnected: false } },
+    );
+    expect(noPeers.state).toBe("blocked");
+  });
+
+  it("reads the agent taking the turn, with its own override", () => {
+    const config = {
+      agents: {
+        defaults: { memorySearch: { enabled: true } },
+        list: [
+          { id: "main", default: true },
+          { id: "support", memorySearch: { enabled: false } },
+        ],
+      },
+    } as BitterbotConfig;
+    const search = CAPABILITIES.find((c) => c.id === "memory.search")!;
+    expect(resolveCapability(search, config, { env: ENV, agentId: "main" }).state).toBe("on");
+    const support = resolveCapability(search, config, { env: ENV, agentId: "support" });
+    expect(support).toMatchObject({ state: "off", source: "config" });
+    expect(support.controls).toEqual(["agents.list[support].memorySearch.enabled"]);
+  });
+
+  it("follows the switches the engine applies outside a part's own key", () => {
+    // The ledger kill switch silences canonical promotion (manager.ts).
+    const noLedger = withKey("memory.canonicalLedger.enabled", false);
+    expect(stateOf("dream.canonical_promotion", noLedger)).toMatchObject({
+      state: "off",
+      because: { kind: "parent", keys: ["memory.canonicalLedger.enabled"] },
+    });
+    // The brief rides the daily digest, not the dream engine.
+    expect(stateOf("dream.brief", withKey("memory.dream.enabled", false)).state).toBe("on");
+    expect(stateOf("dream.brief", withKey("memory.digest.enabled", false)).state).toBe("off");
+    // Dream research runs inside exploration dreams, through Skill Seekers, with a local model.
+    expect(
+      stateOf("curiosity.autoResearch", withKey("memory.curiosity.autoResearch.enabled", true)),
+    ).toMatchObject({ state: "off", because: { kind: "parent" } });
+    const allOn = {
+      memory: {
+        curiosity: { autoResearch: { enabled: true } },
+        dream: { modes: { exploration: { enabled: true } } },
+      },
+      skills: { skillSeekers: { enabled: true } },
+    } as BitterbotConfig;
+    expect(stateOf("curiosity.autoResearch", allOn).state).toBe("blocked");
+    allOn.memory!.dream!.modelTiers = { localModel: "ollama/llama3" };
+    expect(stateOf("curiosity.autoResearch", allOn).state).toBe("on");
+  });
+
+  it("names the environment, not a setting that cannot help, when it decides", () => {
+    const file = withKey("monitors.enabled", true);
+    const monitors = resolveCapability(
+      CAPABILITIES.find((c) => c.id === "tools.monitors")!,
+      file,
+      {
+        env: { BITTERBOT_SKIP_MONITORS: "1" } as NodeJS.ProcessEnv,
+        fileConfig: file,
+      },
+    );
+    expect(monitors).toMatchObject({
+      state: "off",
+      source: "default",
+      because: { kind: "environment", keys: ["BITTERBOT_SKIP_MONITORS"] },
+    });
+    // A parent that is off is named, and the owner setting it counts as theirs.
+    const noDreams = withKey("memory.dream.enabled", false);
+    expect(
+      resolveCapability(
+        CAPABILITIES.find((c) => c.id === "skills.curator")!,
+        noDreams,
+        {
+          env: ENV,
+          fileConfig: noDreams,
+        },
+      ),
+    ).toMatchObject({
+      state: "off",
+      source: "config",
+      because: { keys: ["memory.dream.enabled"] },
+    });
+  });
+
   it("says when the owner set it", () => {
     const file = withKey("skills.prior.writer", "on");
     const resolved = resolveCapability(
@@ -179,8 +295,9 @@ describe("self-state registry", () => {
 
   it("renders names grouped by state", () => {
     const block = renderSelfStateBlock(resolveCapabilities(loaded({}), { env: ENV }));
-    expect(block).toMatch(/^## Your Current State\nOn: /);
-    expect(block).toContain("Recording only (changes nothing yet): ");
+    expect(block).toMatch(/^## Your Current State\nSwitched on: /);
+    expect(block).toContain("Recording only (keeps a record, changes no behaviour yet): ");
+    expect(block).toContain("call `self_state`");
     expect(block).toContain("verified-outcome recording (shadow)");
     expect(block).toMatch(/\nOff: .*harness evolution/);
   });

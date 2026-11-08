@@ -170,6 +170,8 @@ function runAgentAttempt(params: {
       streamParams: params.opts.streamParams,
       // Lane 3 owner gate input: the channel this session belongs to, if any.
       messageProvider: params.sessionEntry?.channel,
+      // Same owner flag as the embedded path below.
+      senderIsOwner: params.opts.senderIsOwner !== false,
     });
   }
 

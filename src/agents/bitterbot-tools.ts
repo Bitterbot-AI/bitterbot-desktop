@@ -290,7 +290,11 @@ export function createBitterbotTools(options?: {
     createMemoryPinTool({ ...memoryOpts, workspaceDir: options?.workspaceDir }),
     createMemoryStatusTool(memoryOpts),
     // Not gated on memory search: the agent's on/off state is always readable.
-    createSelfStateTool({ config: options?.config, guest: options?.memoryGuest === true }),
+    createSelfStateTool({
+      config: options?.config,
+      agentSessionKey: options?.agentSessionKey,
+      guest: options?.memoryGuest === true,
+    }),
     createDreamSearchTool(memoryOpts),
     createDreamStatusTool(memoryOpts),
     createCuriosityStateTool(memoryOpts),

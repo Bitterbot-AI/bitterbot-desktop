@@ -5,6 +5,11 @@
  * resolver), so the agent's account matches what runs. Adding a part: add its
  * switch where the part decides, call it from both places, and add the entry
  * here; self-state.test.ts checks that its keys exist in the config schema.
+ *
+ * A reading says what the settings switch on. Where the gateway can see
+ * more (an owner pause, a missing backend, no peers), `ctx.observed`
+ * carries it and the reading reports that instead; the system prompt block
+ * reads settings only, the `self_state` tool adds the observations.
  */
 
 import { resolveBrowserConfig } from "../../browser/config.js";
@@ -36,10 +41,15 @@ import {
   x402Enabled,
 } from "../../config/feature-switches.js";
 import { resolveCuriosityResearchConfig } from "../../memory/curiosity-researcher.js";
-import { mergeDreamModeConfigs, type DreamMode } from "../../memory/dream-types.js";
+import {
+  applyDreamModeKillSwitches,
+  mergeDreamModeConfigs,
+  type DreamMode,
+} from "../../memory/dream-types.js";
 import { resolveEvidenceConfig } from "../../memory/evidence-telemetry.js";
+import { isLocalModelSpec } from "../../memory/local-model-spec.js";
 import { resolveSurfacingTrialConfig } from "../../memory/surfacing-trial.js";
-import { resolveDefaultAgentId } from "../agent-scope.js";
+import { resolveAgentConfig, resolveDefaultAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
 import {
   resolveSkillPriorEvidence,
@@ -52,15 +62,35 @@ import {
   resolveSearchConfig,
   resolveSearchEnabled,
 } from "../tools/web-search.js";
-import type { Capability, CapabilityReading } from "./types.js";
+import type { Capability, CapabilityContext, CapabilityReading } from "./types.js";
 
 const SILENT = { debug: () => {}, warn: () => {} };
 
 const onOff = (on: boolean): CapabilityReading => ({ state: on ? "on" : "off" });
 
-/** On, but only as far as the parts it depends on are on. */
-function within(parentOn: boolean, reading: CapabilityReading): CapabilityReading {
-  return parentOn ? reading : { state: "off" };
+type Parent = { on: boolean; label: string; keys: string[] };
+
+/** On, but only as far as the parts it depends on are on; says which one is not. */
+function within(parents: Parent[], reading: CapabilityReading): CapabilityReading {
+  const off = parents.find((p) => !p.on);
+  if (!off) {
+    return reading;
+  }
+  return {
+    state: "off",
+    because: { kind: "parent", detail: `${off.label} is off`, keys: off.keys },
+  };
+}
+
+const dreamEngine = (config: CapabilityContext["config"]): Parent => ({
+  on: dreamEngineEnabled(config.memory?.dream),
+  label: "the dream engine",
+  keys: ["memory.dream.enabled"],
+});
+
+/** Dream modes after every switch that can silence them (the engine's own merge). */
+function effectiveDreamModes(config: CapabilityContext["config"]) {
+  return mergeDreamModeConfigs(applyDreamModeKillSwitches(config.memory?.dream?.modes, config));
 }
 
 const DREAM_MODE_LABELS: Record<DreamMode, { label: string; does: string }> = {
@@ -123,12 +153,22 @@ const dreamModeCapabilities: Capability[] = (Object.keys(DREAM_MODE_LABELS) as D
     does: DREAM_MODE_LABELS[mode].does,
     keys: [`memory.dream.modes.${mode}.enabled`],
     read: ({ config }) => {
-      const modes = mergeDreamModeConfigs(config.memory?.dream?.modes);
-      let on = dreamEngineEnabled(config.memory?.dream) && modes[mode].enabled;
-      if (mode === "harness_evolve") {
-        on = on && harnessEvolveEnabled(config.agents?.defaults?.harnessEvolve);
+      const parents = [dreamEngine(config)];
+      if (mode === "canonical_promotion") {
+        parents.push({
+          on: canonicalLedgerEnabled(config.memory?.canonicalLedger),
+          label: "the settled-facts ledger",
+          keys: ["memory.canonicalLedger.enabled"],
+        });
       }
-      return onOff(on);
+      if (mode === "harness_evolve") {
+        parents.push({
+          on: harnessEvolveEnabled(config.agents?.defaults?.harnessEvolve),
+          label: "harness evolution",
+          keys: ["agents.defaults.harnessEvolve.enabled"],
+        });
+      }
+      return within(parents, onOff(effectiveDreamModes(config)[mode].enabled));
     },
   }),
 );
@@ -141,11 +181,24 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "memory search",
     does: "Searches what you remember: settled facts first, then meaning, keywords and the knowledge graph fused together.",
     keys: ["agents.defaults.memorySearch.enabled"],
-    read: ({ config, env }) => {
+    read: ({ config, env, agentId }) => {
       if (env.BITTERBOT_MEMORY_OFF === "1") {
-        return { state: "off" };
+        return {
+          state: "off",
+          because: {
+            kind: "environment",
+            detail: "turned off for this process by the environment",
+            keys: ["BITTERBOT_MEMORY_OFF"],
+          },
+        };
       }
-      return onOff(resolveMemorySearchConfig(config, resolveDefaultAgentId(config)) !== null);
+      // The agent taking the turn, with its own override (memory-tool.ts does the same).
+      const id = agentId ?? resolveDefaultAgentId(config);
+      const override = resolveAgentConfig(config, id)?.memorySearch?.enabled;
+      const reading = onOff(resolveMemorySearchConfig(config, id) !== null);
+      return override === undefined
+        ? reading
+        : { ...reading, controls: [`agents.list[${id}].memorySearch.enabled`], source: "config" };
     },
   },
   {
@@ -172,8 +225,18 @@ export const CAPABILITIES: readonly Capability[] = [
     keys: ["memory.correction.enabled"],
     read: ({ config }) =>
       within(
-        conversationMemoryEnabled(config.session) &&
-          canonicalLedgerEnabled(config.memory?.canonicalLedger),
+        [
+          {
+            on: conversationMemoryEnabled(config.session),
+            label: "conversation memory",
+            keys: ["session.memory"],
+          },
+          {
+            on: canonicalLedgerEnabled(config.memory?.canonicalLedger),
+            label: "the settled-facts ledger",
+            keys: ["memory.canonicalLedger.enabled"],
+          },
+        ],
         onOff(correctionCaptureEnabled(config.memory?.correction)),
       ),
   },
@@ -191,11 +254,18 @@ export const CAPABILITIES: readonly Capability[] = [
     id: "dream.brief",
     area: "dreams",
     label: "daily dream brief",
-    does: "Sends the owner a short note of what you dreamed.",
+    does: "Sends the owner a short daily note of what you dreamed and learned, when there is something worth sending.",
     keys: ["memory.dreamBrief.enabled"],
+    // It rides the daily digest timer, not the dream engine (manager.ts).
     read: ({ config }) =>
       within(
-        dreamEngineEnabled(config.memory?.dream),
+        [
+          {
+            on: config.memory?.digest?.enabled !== false,
+            label: "the daily digest",
+            keys: ["memory.digest.enabled"],
+          },
+        ],
         onOff(dreamBriefEnabled(config.memory?.dreamBrief)),
       ),
   },
@@ -214,18 +284,34 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "curiosity research",
     does: "Takes one generic question at a time, searches the web, and keeps an answer only when two sources agree.",
     keys: ["memory.curiosity.research.enabled", "memory.curiosity.autoResearch.enabled"],
-    read: ({ config }) => {
+    read: ({ config, observed }) => {
       const curiosity = config.memory?.curiosity;
       const on = resolveCuriosityResearchConfig(
         curiosity?.research,
         curiosity?.autoResearch?.enabled,
       ).enabled;
-      if (!curiosityEnabled(curiosity) || !on) {
-        return { state: "off" };
+      const reading = within(
+        [
+          {
+            on: curiosityEnabled(curiosity),
+            label: "the curiosity engine",
+            keys: ["memory.curiosity.enabled"],
+          },
+        ],
+        onOff(on),
+      );
+      if (reading.state === "off") {
+        return reading;
+      }
+      if (observed?.curiosityPaused) {
+        return {
+          state: "paused",
+          because: { kind: "observed", detail: "the owner paused curiosity research" },
+        };
       }
       return isWebSearchConfigured(config)
         ? { state: "on" }
-        : { state: "blocked", missing: "a web search API key" };
+        : { state: "blocked", missing: "a configured web search provider" };
     },
   },
   {
@@ -234,7 +320,32 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "dream research step",
     does: "Lets exploration dreams run a Skill Seekers research step with a local model.",
     keys: ["memory.curiosity.autoResearch.enabled"],
-    read: ({ config }) => onOff(autoResearchEnabled(config.memory?.curiosity?.autoResearch)),
+    // Runs inside exploration dreams, through the Skill Seekers adapter, and
+    // fails closed without a genuinely local model (dream-engine.ts).
+    read: ({ config }) => {
+      const reading = within(
+        [
+          dreamEngine(config),
+          {
+            on: effectiveDreamModes(config).exploration.enabled,
+            label: "exploration dreams",
+            keys: ["memory.dream.modes.exploration.enabled"],
+          },
+          {
+            on: skillSeekersEnabled(config.skills?.skillSeekers),
+            label: "Skill Seekers",
+            keys: ["skills.skillSeekers.enabled"],
+          },
+        ],
+        onOff(autoResearchEnabled(config.memory?.curiosity?.autoResearch)),
+      );
+      if (reading.state !== "on") {
+        return reading;
+      }
+      return isLocalModelSpec(config.memory?.dream?.modelTiers?.localModel)
+        ? reading
+        : { state: "blocked", missing: "a local model (memory.dream.modelTiers.localModel)" };
+    },
   },
   {
     id: "curiosity.evidence",
@@ -268,10 +379,7 @@ export const CAPABILITIES: readonly Capability[] = [
     does: "Proposes new or changed skills from your runs; only gated, validated ones go live.",
     keys: ["skills.evolution.enabled"],
     read: ({ config }) =>
-      within(
-        dreamEngineEnabled(config.memory?.dream),
-        onOff(skillEvolutionEnabled(config.skills?.evolution)),
-      ),
+      within([dreamEngine(config)], onOff(skillEvolutionEnabled(config.skills?.evolution))),
   },
   {
     id: "skills.propagate",
@@ -279,16 +387,26 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "skill sharing with peers",
     does: "Publishes promoted skills to the P2P network after their maturity window.",
     keys: ["skills.evolution.propagate"],
-    read: ({ config }) => {
-      if (
-        !skillEvolutionEnabled(config.skills?.evolution) ||
-        !skillPropagationEnabled(config.skills?.evolution)
-      ) {
-        return { state: "off" };
+    read: ({ config, observed }) => {
+      const reading = within(
+        [
+          {
+            on: skillEvolutionEnabled(config.skills?.evolution),
+            label: "skill evolution",
+            keys: ["skills.evolution.enabled"],
+          },
+        ],
+        onOff(skillPropagationEnabled(config.skills?.evolution)),
+      );
+      if (reading.state === "off") {
+        return reading;
       }
-      return p2pEnabled(config)
-        ? { state: "on" }
-        : { state: "blocked", missing: "the P2P network" };
+      if (!p2pEnabled(config)) {
+        return { state: "blocked", missing: "the P2P network (p2p.enabled)" };
+      }
+      return observed?.p2pConnected === false
+        ? { state: "blocked", missing: "a connected peer" }
+        : reading;
     },
   },
   {
@@ -298,10 +416,7 @@ export const CAPABILITIES: readonly Capability[] = [
     does: "Archives, patches or merges skills you made, based on use and errors.",
     keys: ["memory.dream.skillCurator.enabled"],
     read: ({ config }) =>
-      within(
-        dreamEngineEnabled(config.memory?.dream),
-        onOff(skillCuratorEnabled(config.memory?.dream?.skillCurator)),
-      ),
+      within([dreamEngine(config)], onOff(skillCuratorEnabled(config.memory?.dream?.skillCurator))),
   },
   {
     id: "skills.prior",
@@ -368,7 +483,7 @@ export const CAPABILITIES: readonly Capability[] = [
     id: "memory.architect",
     area: "memory",
     label: "memory architect",
-    does: "Learns rules for what to extract and remember; the rules apply only when switched on explicitly.",
+    does: "Proposes rules for what to extract and remember (model calls), validates them and stores the accepted ones; they change extraction only when set to true explicitly.",
     keys: ["memory.architectEvolution.enabled"],
     read: ({ config }) => {
       const architect = config.memory?.architectEvolution;
@@ -376,8 +491,8 @@ export const CAPABILITIES: readonly Capability[] = [
         return { state: "off" };
       }
       return architectRulesEnabled(architect)
-        ? { state: "on" }
-        : { state: "recording", mode: "learning rules, not applying them" };
+        ? { state: "on", mode: "applying its rules" }
+        : { state: "on", mode: "learning rules, not applying them yet" };
     },
   },
   // ---- network ----
@@ -387,7 +502,14 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "P2P network",
     does: "Connects you to other Bitterbot agents to exchange skills and telemetry.",
     keys: ["p2p.enabled"],
-    read: ({ config }) => onOff(p2pEnabled(config)),
+    read: ({ config, observed }) => {
+      if (!p2pEnabled(config)) {
+        return { state: "off" };
+      }
+      return observed?.p2pConnected === false
+        ? { state: "blocked", missing: "a connection to the network (no peers right now)" }
+        : { state: "on" };
+    },
   },
   {
     id: "network.circles",
@@ -451,7 +573,20 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "compute pools",
     does: "Runs jobs on shared GPU pools.",
     keys: ["compute.enabled"],
-    read: ({ config }) => onOff(computeEnabled(config.compute)),
+    // compute-tool.ts drops the tool without a backend, and read-only without a runtime.
+    read: ({ config, observed }) => {
+      if (!computeEnabled(config.compute)) {
+        return { state: "off" };
+      }
+      switch (observed?.computeBackend) {
+        case "none":
+          return { state: "blocked", missing: "a registered compute backend" };
+        case "read-only":
+          return { state: "on", mode: "read-only, cannot submit jobs" };
+        default:
+          return { state: "on" };
+      }
+    },
   },
   {
     id: "network.paidCompute",
@@ -460,7 +595,10 @@ export const CAPABILITIES: readonly Capability[] = [
     does: "Pays for compute jobs, with owner approval and per-job and per-day caps.",
     keys: ["compute.paid.enabled"],
     read: ({ config }) =>
-      within(computeEnabled(config.compute), onOff(paidComputeEnabled(config.compute))),
+      within(
+        [{ on: computeEnabled(config.compute), label: "compute pools", keys: ["compute.enabled"] }],
+        onOff(paidComputeEnabled(config.compute)),
+      ),
   },
   // ---- tools ----
   {
@@ -475,7 +613,7 @@ export const CAPABILITIES: readonly Capability[] = [
       }
       return isWebSearchConfigured(config)
         ? { state: "on" }
-        : { state: "blocked", missing: "a web search API key" };
+        : { state: "blocked", missing: "a configured web search provider" };
     },
   },
   {
@@ -500,6 +638,18 @@ export const CAPABILITIES: readonly Capability[] = [
     label: "monitors",
     does: "Watches things on a schedule and tells the owner when they change.",
     keys: ["monitors.enabled"],
-    read: ({ config, env }) => onOff(monitorsEnabled(config.monitors, env)),
+    read: ({ config, env }) => {
+      if (config.monitors?.enabled !== false && !monitorsEnabled(config.monitors, env)) {
+        return {
+          state: "off",
+          because: {
+            kind: "environment",
+            detail: "turned off for this process by the environment",
+            keys: ["BITTERBOT_SKIP_MONITORS"],
+          },
+        };
+      }
+      return onOff(monitorsEnabled(config.monitors, env));
+    },
   },
 ];

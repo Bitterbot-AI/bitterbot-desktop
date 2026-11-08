@@ -447,19 +447,29 @@ When that search runs, the canonical ledger is consulted first: `memory_search` 
 
 ## Knowing Its Own State
 
-The agent is told which of its parts are running. Every turn, the system prompt carries a short
-`## Your Current State` block that names what is on, what is off, what only records (runs and
-keeps a record without changing anything yet, such as the verified-outcome writer in shadow
-mode), and what is switched on but blocked by something missing (a web search key, wallet
-credentials). The `self_state` tool gives the detail: what each part does, whether its state is
-the default or the owner's setting, and the config key that changes it. Guests never see either.
+The agent is told which of its parts its settings switch on. Every turn, the system prompt carries
+a short `## Your Current State` block that names what is switched on, what is off, what only
+records (keeps a record without changing behaviour yet, such as the verified-outcome writer in
+shadow mode), and what is switched on but blocked by a missing setting (a web search provider,
+wallet credentials, a local model). The block reads settings only, so it can sit in the cached
+part of the prompt.
 
-Both read the state through the same function the part itself calls to decide whether to run
-(`src/config/feature-switches.ts`, or the part's own resolver), so the agent's account cannot
-drift from what actually runs. The `memory-architecture` skill explains how the parts work and
-never says what is switched on. Tests check that every setting the registry names exists, that
-switching a part's key off turns it off, that its defaults agree with the Settings form's
-registry, and that the skill names only real tools, dream modes and settings.
+The `self_state` tool adds what the gateway can see at that moment: curiosity research paused by
+the owner, no compute backend (or one that can only read), the P2P network with no peers. It
+also says why each part is in its state (a parent part that is off, an environment variable),
+whether the owner or a default set it, the settings that change it, and when the config file has
+changed since the turn started. It reads the agent taking the turn, with that agent's own
+overrides. It cannot see every runtime failure, such as a model call that errors. The agent is
+told to call it before saying a part is running. Guests, remote agents and CLI turns that do not
+say the owner is speaking never get either.
+
+Settings are read through the same function the part itself calls to decide whether to run
+(`src/config/feature-switches.ts`, or the part's own resolver), so the settings side cannot drift
+from what runs. The `memory-architecture` skill explains how the parts work and never says what
+is switched on. Tests check that every setting the registry names exists, that switching a part's
+key off turns it off, that its defaults agree with the Settings form's registry, that each
+observation and dependency is reported, and that the skill names only real tools, dream modes
+and settings.
 
 ---
 

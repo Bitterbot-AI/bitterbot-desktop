@@ -638,7 +638,7 @@ export function resolveSkillPriorEvidence(
   return cfg?.evidence ?? SKILL_PRIOR_DEFAULTS.evidence;
 }
 
-/** The verified-outcome writer: `shadow` unless set; "off" while the prior is off. */
+/** The verified-outcome writer: `shadow` unless set; "off" when `skills.prior.enabled` is false or the writer is set to "off". */
 export function resolveSkillPriorWriterMode(
   cfg: SkillsPriorConfig | undefined,
 ): NonNullable<SkillsPriorConfig["writer"]> {

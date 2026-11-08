@@ -67,6 +67,7 @@ export const A2A_REMOTE_TOOL_DENY_ALWAYS = [
   "*artifact*", // writes attacker HTML/JS into the owner's Control UI panel
   "dream_*",
   "curiosity_*",
+  "self_state", // the owner's setup: which parts are on, the settings that change them
   "forage*",
   "circle*",
   "task_*",

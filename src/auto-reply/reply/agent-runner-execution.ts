@@ -212,6 +212,8 @@ export async function runAgentTurnWithFallback(params: {
                   runId,
                   extraSystemPrompt: params.followupRun.run.extraSystemPrompt,
                   ownerNumbers: params.followupRun.run.ownerNumbers,
+                  senderIsOwner: params.isHeartbeat ? false : params.followupRun.run.senderIsOwner,
+                  messageProvider: params.sessionCtx.Provider?.trim().toLowerCase() || undefined,
                   cliSessionId,
                   images: params.opts?.images,
                 });
