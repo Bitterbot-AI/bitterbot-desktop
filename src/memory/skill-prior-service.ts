@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { setImmediate as yieldLoop } from "node:timers/promises";
 import type { ImpactTrailOptions } from "../agents/skills/impact-trail.js";
 import { skillPriorLedgerPath } from "../agents/skills/skill-prior-runtime.js";
+import { resolveSkillPriorWriterMode as resolvePriorWriterMode } from "../agents/skills/skill-prior.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";
 import { getActiveEventJournal, type EventJournal } from "../infra/event-journal.js";
@@ -25,7 +26,7 @@ const BATCH_SIZE = 100;
 const RECONCILE_LIMIT = 10_000;
 
 export function resolveSkillPriorWriterMode(cfg?: BitterbotConfig): WriterMode {
-  return cfg?.skills?.prior?.enabled === false ? "off" : (cfg?.skills?.prior?.writer ?? "shadow");
+  return resolvePriorWriterMode(cfg?.skills?.prior);
 }
 
 /** Gateway-owned worker. Event listeners enqueue only; all I/O runs after yielding. */

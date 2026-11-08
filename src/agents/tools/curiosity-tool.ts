@@ -4,6 +4,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
+import { curiosityEnabled } from "../../config/feature-switches.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
@@ -24,7 +25,9 @@ function resolveCuriosityToolContext(options: {
   if (!cfg) {
     return null;
   }
-  if (!cfg.memory?.curiosity?.enabled) {
+  // Same rule as the curiosity engine: on unless switched off. A truthy
+  // check here hid these tools on every config that left the key unset.
+  if (!curiosityEnabled(cfg.memory?.curiosity)) {
     return null;
   }
   const agentId = resolveSessionAgentId({

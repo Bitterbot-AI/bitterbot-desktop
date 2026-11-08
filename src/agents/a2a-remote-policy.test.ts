@@ -33,6 +33,7 @@ const FLOOR_SAMPLES = [
   "code_interpreter",
   "memory_search",
   "dream_status",
+  "self_state",
   "a2a_client",
   "task_workspace_get",
 ];
@@ -71,6 +72,15 @@ describe("resolveA2aRemoteToolPolicy", () => {
     }
     // The wildcard does widen non-floor tools — that is the operator's call.
     expect(isToolAllowedByPolicyName("read", policy)).toBe(true);
+  });
+
+  it("the owner's self state stays denied even through group:memory", () => {
+    const cfg = {
+      a2a: { remoteExecution: { tools: { allow: ["group:memory", "self_state"] } } },
+    } as unknown as BitterbotConfig;
+    const policy = resolveA2aRemoteToolPolicy(cfg);
+    expect(isToolAllowedByPolicyName("self_state", policy)).toBe(false);
+    expect(isToolAllowedByPolicyName("memory_search", policy)).toBe(false);
   });
 
   it("operator deny narrows further", () => {

@@ -7,6 +7,7 @@
  * one-line log, see the DreamEngine constructor.
  */
 
+import { canonicalLedgerEnabled } from "../config/feature-switches.js";
 import type { SkillsEvolutionConfig } from "../config/types.skills.js";
 
 export type DreamState = "DORMANT" | "INCUBATING" | "DREAMING" | "SYNTHESIZING" | "AWAKENING";
@@ -73,6 +74,51 @@ export const DEFAULT_MODE_CONFIGS: Record<DreamMode, DreamModeConfig> = {
   // PLAN-40 Lane 3: at most 1 brief/cycle, 5 open; skips when context is quiet.
   anticipation: { enabled: true, weight: 0.1, maxChunks: 12, requiresLlm: true },
 };
+
+/**
+ * The defaults with the owner's per-mode overrides on top. Keys that are not
+ * a DreamMode (`mutation` and `research`, retired in PLAN-45 Phase 1) are
+ * dropped and reported through `onRetired`, so an old bitterbot.json keeps
+ * working. The dream engine and the agent's self-state read modes through
+ * this one function.
+ */
+export function mergeDreamModeConfigs(
+  overrides: Partial<Record<string, Partial<DreamModeConfig>>> | undefined,
+  onRetired?: (mode: string) => void,
+): Record<DreamMode, DreamModeConfig> {
+  const resolved = { ...DEFAULT_MODE_CONFIGS };
+  if (overrides) {
+    for (const [mode, override] of Object.entries(overrides)) {
+      const key = mode as DreamMode;
+      if (!(key in DEFAULT_MODE_CONFIGS)) {
+        onRetired?.(mode);
+        continue;
+      }
+      if (resolved[key] && override) {
+        resolved[key] = { ...resolved[key], ...override };
+      }
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Switches outside `memory.dream.modes` that silence a mode. PLAN-33: the
+ * canonical_promotion mode writes into the settled-facts ledger, so the
+ * ledger kill switch silences it too. The dream engine and the agent's
+ * self-state both apply this.
+ */
+export function applyDreamModeKillSwitches<
+  T extends Partial<Record<string, Partial<DreamModeConfig>>> | undefined,
+>(modes: T, cfg: { memory?: { canonicalLedger?: { enabled?: boolean } } }): T {
+  if (canonicalLedgerEnabled(cfg.memory?.canonicalLedger)) {
+    return modes;
+  }
+  return {
+    ...modes,
+    canonical_promotion: { enabled: false, weight: 0, maxChunks: 0, requiresLlm: true },
+  } as T;
+}
 
 export type DreamCluster = {
   id: string;

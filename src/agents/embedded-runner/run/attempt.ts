@@ -654,6 +654,15 @@ export async function runEmbeddedAttempt(
             params.config,
           );
 
+    // The agent's own on/off state, read through the same switches the parts
+    // use. Not for guests or remote tasks: it describes the owner's setup.
+    const selfState =
+      remoteTaskTurn || guestTurn
+        ? undefined
+        : (await import("../../self-state/render.js")).resolveSelfStateBlock(params.config, {
+            agentId: sessionAgentId,
+          });
+
     const appendPrompt = buildEmbeddedSystemPrompt({
       workspaceDir: effectiveWorkspace,
       defaultThinkLevel: params.thinkLevel,
@@ -691,6 +700,7 @@ export async function runEmbeddedAttempt(
       canonicalFacts,
       researchFindings,
       computeState,
+      selfState,
       agentName,
       guestTurn,
     });

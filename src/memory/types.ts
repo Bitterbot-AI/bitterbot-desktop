@@ -175,6 +175,8 @@ export interface MemorySearchManager {
   dreamStatus?(): Record<string, unknown>;
   // Curiosity Engine
   curiosityState?(): Record<string, unknown> | null;
+  /** True when the owner paused curiosity research (self_state reads this). */
+  curiosityResearchPaused?(): Promise<boolean>;
   curiosityResolve?(targetId: string): boolean;
   // Emotional Anchors
   createEmotionalAnchor?(label: string, description?: string): { id: string; label: string } | null;

@@ -73,6 +73,7 @@ export function buildSystemPrompt(params: {
   researchFindings?: string;
   /** PLAN-57: pre-rendered `<compute-state>` block (volatile tail). */
   computeState?: string;
+  selfState?: string;
 }) {
   const defaultModelRef = resolveDefaultModelForAgent({
     cfg: params.config ?? {},
@@ -117,6 +118,7 @@ export function buildSystemPrompt(params: {
     canonicalFacts: params.canonicalFacts,
     researchFindings: params.researchFindings,
     computeState: params.computeState,
+    selfState: params.selfState,
     agentName,
   });
 }

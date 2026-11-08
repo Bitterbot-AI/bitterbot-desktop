@@ -71,6 +71,7 @@ export function buildEmbeddedSystemPrompt(params: {
   researchFindings?: string;
   /** PLAN-57: pre-rendered `<compute-state>` block (volatile tail). */
   computeState?: string;
+  selfState?: string;
   /** The agent's display name (config identity); "Bitterbot" when unset. */
   agentName?: string;
   /** A guest (someone the owner has not vouched for) drives this turn. */
@@ -107,6 +108,7 @@ export function buildEmbeddedSystemPrompt(params: {
     canonicalFacts: params.canonicalFacts,
     researchFindings: params.researchFindings,
     computeState: params.computeState,
+    selfState: params.selfState,
     agentName: params.agentName,
     guestTurn: params.guestTurn,
   });

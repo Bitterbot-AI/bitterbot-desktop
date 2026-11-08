@@ -15,6 +15,7 @@
 
 import { Type } from "@sinclair/typebox";
 import type { BitterbotConfig } from "../../config/config.js";
+import { skillSeekersEnabled } from "../../config/feature-switches.js";
 import { getMemorySearchManager } from "../../memory/index.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
@@ -65,7 +66,7 @@ function resolveSkillSeekersToolContext(options: {
   // V1 default flip (PLAN-41 D-D): skill-seekers is opt-in, and the tool
   // follows the adapter's gate. Availability is still checked at execute-time
   // and surfaced as an error payload if the CLI/MCP isn't installed.
-  if (cfg.skills?.skillSeekers?.enabled !== true) {
+  if (!skillSeekersEnabled(cfg.skills?.skillSeekers)) {
     return null;
   }
   const agentId = resolveSessionAgentId({

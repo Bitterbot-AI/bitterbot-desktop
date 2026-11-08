@@ -191,7 +191,7 @@ function extractGrokContent(data: GrokSearchResponse): {
   return { text, annotationCitations: [] };
 }
 
-function resolveSearchConfig(cfg?: BitterbotConfig): WebSearchConfig {
+export function resolveSearchConfig(cfg?: BitterbotConfig): WebSearchConfig {
   const search = cfg?.tools?.web?.search;
   if (!search || typeof search !== "object") {
     return undefined;
@@ -199,7 +199,10 @@ function resolveSearchConfig(cfg?: BitterbotConfig): WebSearchConfig {
   return search as WebSearchConfig;
 }
 
-function resolveSearchEnabled(params: { search?: WebSearchConfig; sandboxed?: boolean }): boolean {
+export function resolveSearchEnabled(params: {
+  search?: WebSearchConfig;
+  sandboxed?: boolean;
+}): boolean {
   if (typeof params.search?.enabled === "boolean") {
     return params.search.enabled;
   }

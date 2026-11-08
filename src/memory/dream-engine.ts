@@ -17,6 +17,12 @@
 import crypto from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { HarnessPolicy } from "../agents/embedded-runner/harness-policy.js";
+import {
+  autoResearchEnabled,
+  skillCuratorEnabled,
+  skillEvolutionEnabled,
+  skillPropagationEnabled,
+} from "../config/feature-switches.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import { computeDreamTaskAdjustments, scanPendingTasksForDream } from "../tasks/biology.js";
 import {
@@ -60,6 +66,7 @@ import {
   type SynthesizeFn,
   DEFAULT_DREAM_CONFIG,
   DEFAULT_MODE_CONFIGS,
+  mergeDreamModeConfigs,
   DEFAULT_MODE_TIERS,
 } from "./dream-types.js";
 import { yieldToEventLoop } from "./event-loop.js";
@@ -278,19 +285,9 @@ export class DreamEngine {
     // Merge mode configs. PLAN-45 Phase 1: keys that are no longer a
     // DreamMode (`mutation`, `research`) are dropped with one log line each
     // so a bitterbot.json written before the retirement keeps working.
-    const resolvedModes = { ...DEFAULT_MODE_CONFIGS };
-    if (config?.modes) {
-      for (const [mode, overrides] of Object.entries(config.modes)) {
-        const key = mode as DreamMode;
-        if (!(key in DEFAULT_MODE_CONFIGS)) {
-          log.info(`dream mode ${mode} was retired in PLAN-45 Phase 1; ignoring`);
-          continue;
-        }
-        if (resolvedModes[key] && overrides) {
-          resolvedModes[key] = { ...resolvedModes[key], ...overrides };
-        }
-      }
-    }
+    const resolvedModes = mergeDreamModeConfigs(config?.modes, (mode) =>
+      log.info(`dream mode ${mode} was retired in PLAN-45 Phase 1; ignoring`),
+    );
     this.config = {
       ...DEFAULT_DREAM_CONFIG,
       ...config,
@@ -320,7 +317,7 @@ export class DreamEngine {
     this.llmCallLocal = config?.localLlmCall ?? null;
     this.llmCallSynthesis = config?.synthesisLlmCall ?? null;
     // V1 default flip (PLAN-41 D-D): research egress is opt-in.
-    this.autoResearchEnabled = config?.autoResearch?.enabled === true;
+    this.autoResearchEnabled = autoResearchEnabled(config?.autoResearch);
     this.autoResearchMaxPerDay =
       config?.autoResearch?.maxPerDay ?? AUTO_RESEARCH_DEFAULT_MAX_PER_DAY;
     this.insightPromotionEnabled = config?.insightPromotion?.enabled !== false;
@@ -2771,7 +2768,7 @@ export class DreamEngine {
    */
   private async maybeRunCuratorPass(): Promise<void> {
     const curatorCfg = this.config.skillCurator;
-    if (curatorCfg?.enabled === false) {
+    if (!skillCuratorEnabled(curatorCfg)) {
       return;
     }
     const minIntervalMs = curatorCfg?.minIntervalMs ?? 24 * 60 * 60 * 1000;
@@ -2815,7 +2812,7 @@ export class DreamEngine {
    */
   private async maybeRunSkillEvolutionPass(cycleId: string, automatic = false): Promise<void> {
     const cfg = this.config.skillEvolution;
-    if (cfg?.enabled === false) {
+    if (!skillEvolutionEnabled(cfg)) {
       return;
     }
     const host = this.failureLearningHost;
@@ -2918,7 +2915,7 @@ export class DreamEngine {
       ...(cfg?.semanticLintCadenceDays !== undefined
         ? { semanticLintCadenceDays: cfg.semanticLintCadenceDays }
         : {}),
-      ...(cfg?.propagate !== undefined ? { propagate: cfg.propagate } : {}),
+      propagate: skillPropagationEnabled(cfg),
       ...(cfg?.maturityDays !== undefined ? { maturityDays: cfg.maturityDays } : {}),
       ...(cfg?.requireCrossModel ? { requireCrossModel: true } : {}),
       ...(cfg?.applicabilityProfile ? { applicabilityProfile: cfg.applicabilityProfile } : {}),

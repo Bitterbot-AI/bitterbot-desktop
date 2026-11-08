@@ -22,6 +22,7 @@ import {
   resolveSkillPriorMode,
   resolveSkillPriorPlacement,
   SKILL_PRIOR_DEFAULTS,
+  resolveSkillPriorEvidence,
   SkillPriorLedger,
 } from "./skill-prior.js";
 
@@ -118,7 +119,7 @@ export function applySkillPriorForRun(params: {
       mode,
       placement: resolveSkillPriorPlacement(params.config?.skills?.prior),
     });
-    const evidenceStyle = params.config?.skills?.prior?.evidence ?? SKILL_PRIOR_DEFAULTS.evidence;
+    const evidenceStyle = resolveSkillPriorEvidence(params.config?.skills?.prior);
     const evidence: Record<string, SkillEvidence> = {};
     if (evidenceStyle !== "off") {
       for (const name of applied.baseline) {

@@ -10,6 +10,7 @@ import type { DatabaseSync } from "node:sqlite";
 import chokidar, { type FSWatcher } from "chokidar";
 import { isExcludedMemoryPath } from "../agents/memory-search.js";
 import { resolveWatchPaths } from "../agents/skills/refresh.js";
+import { conversationMemoryEnabled } from "../config/feature-switches.js";
 import { resolveSessionTranscriptsDirForAgent } from "../config/sessions/paths.js";
 import { assertNotRealStateUnderTest } from "../infra/test-state-guard.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -860,7 +861,7 @@ class MemoryManagerSyncOps {
   }) {
     // PLAN-55 Phase 1: incognito. Transcripts stay on disk but are not
     // indexed into memory while session.memory is "off".
-    if (this.cfg.session?.memory === "off") {
+    if (!conversationMemoryEnabled(this.cfg.session)) {
       log.debug("memory sync: session indexing skipped (session.memory is off)");
       return;
     }

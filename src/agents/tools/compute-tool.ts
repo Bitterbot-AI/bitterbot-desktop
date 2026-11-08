@@ -37,6 +37,7 @@ import {
   COMPUTE_MAX_INPUTS,
 } from "../../compute/awareness/index.js";
 import type { BitterbotConfig } from "../../config/config.js";
+import { computeEnabled, paidComputeEnabled } from "../../config/feature-switches.js";
 import { stringEnum } from "../schema/typebox.js";
 import {
   type AnyAgentTool,
@@ -127,7 +128,7 @@ type ComputeToolOptions = {
 };
 
 export function createComputeTool(opts?: ComputeToolOptions): AnyAgentTool | undefined {
-  if (opts?.config?.compute?.enabled === false) {
+  if (!computeEnabled(opts?.config?.compute)) {
     return undefined;
   }
   const backend = getComputeBackend();
@@ -138,7 +139,7 @@ export function createComputeTool(opts?: ComputeToolOptions): AnyAgentTool | und
   const canWrite = typeof backend.submit === "function" && runtime !== null;
   const actions = canWrite ? [...READ_ACTIONS, ...WRITE_ACTIONS] : [...READ_ACTIONS];
   const isOwner = opts?.senderIsOwner === true;
-  const paidEnabled = opts?.config?.compute?.paid?.enabled === true;
+  const paidEnabled = paidComputeEnabled(opts?.config?.compute);
   const maxUsdcPerJob = opts?.config?.compute?.paid?.maxUsdcPerJob ?? DEFAULT_MAX_USDC_PER_JOB;
 
   const paidDoc = paidEnabled
