@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  Copy,
   Laptop,
   PlusSquare,
   QrCode,
@@ -13,7 +14,7 @@ import {
 import { useState } from "react";
 import { BitterBotAvatar } from "../../components/chat/BitterBotAvatar";
 import { AVATAR_SRC, Wordmark } from "../components/Chrome";
-import { parsePairInput } from "../install-handoff";
+import { handoffIsAutomatic, pairLinkFor, parsePairInput } from "../install-handoff";
 import { formatConfirmCode } from "../pairing-client";
 import { isStandalone } from "../push";
 import { useMobile } from "../store";
@@ -85,22 +86,50 @@ function PasteLink() {
  */
 export function InstallFirstScreen() {
   const pairInBrowserInstead = useMobile((s) => s.pairInBrowserInstead);
+  const code = useMobile((s) => s.installCode);
+  const automatic = handoffIsAutomatic();
+  const [copied, setCopied] = useState<"yes" | "failed" | null>(null);
+  const copyLink = async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(pairLinkFor(code));
+      setCopied("yes");
+    } catch {
+      setCopied("failed");
+    }
+  };
+  const steps = [
+    ...(automatic
+      ? []
+      : [
+          {
+            icon: Copy,
+            text: "Copy the pairing link (button below). This iOS will not pass it on.",
+          },
+        ]),
+    { icon: Share, text: "Tap the Share button in Safari's toolbar." },
+    { icon: PlusSquare, text: "Choose Add to Home Screen, then Add." },
+    automatic
+      ? { icon: Smartphone, text: "Open Bitterbot from the new icon within five minutes." }
+      : {
+          icon: Smartphone,
+          text: "Open Bitterbot from the new icon within five minutes and paste the link.",
+        },
+  ];
   return (
     <Shell>
       <div className="m-fade-in flex flex-col items-center text-center">
         <BitterBotAvatar size={76} src={AVATAR_SRC} isThinking />
         <h1 className="mt-5 text-xl font-semibold">Add Bitterbot to your Home Screen</h1>
         <p className="mt-2 max-w-xs text-sm leading-relaxed text-muted-foreground">
-          Then open it from there and it finishes pairing on its own. That is the only way iPhone
-          gives a web app notifications.
+          {automatic
+            ? "Then open it from there and it finishes pairing on its own."
+            : "Then open it from there and paste the pairing link."}{" "}
+          That is the only way iPhone gives a web app notifications.
         </p>
       </div>
       <ol className="m-fade-in mt-8 flex flex-col gap-3">
-        {[
-          { icon: Share, text: "Tap the Share button in Safari's toolbar." },
-          { icon: PlusSquare, text: "Choose Add to Home Screen, then Add." },
-          { icon: Smartphone, text: "Open Bitterbot from the new icon within five minutes." },
-        ].map((step, i) => (
+        {steps.map((step, i) => (
           <li key={i} className="m-card flex items-center gap-3 p-3.5">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
               <step.icon className="size-[1.125rem]" />
@@ -109,6 +138,22 @@ export function InstallFirstScreen() {
           </li>
         ))}
       </ol>
+      {automatic ? null : (
+        <div className="m-fade-in mt-4 flex flex-col items-center gap-2">
+          <button
+            type="button"
+            onClick={copyLink}
+            className="m-press m-touch rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground"
+          >
+            {copied === "yes" ? "Link copied" : "Copy pairing link"}
+          </button>
+          {copied === "failed" ? (
+            <p className="text-xs text-muted-foreground">
+              Could not copy. Copy the address from Safari's address bar instead.
+            </p>
+          ) : null}
+        </div>
+      )}
       <div className="mt-auto flex flex-col items-center pt-8">
         <button
           type="button"

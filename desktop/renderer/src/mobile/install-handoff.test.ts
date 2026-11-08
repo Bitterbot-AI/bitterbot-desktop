@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  handoffIsAutomatic,
   iosVersion,
+  pairLinkFor,
   parsePairInput,
   shouldInstallBeforePairing,
   stashPairCode,
@@ -66,5 +68,16 @@ describe("pairing inside the Home Screen app (PLAN-62)", () => {
     expect(parsePairInput(` https://box.ts.net/m/#pair=${CODE} `)).toBe(CODE);
     expect(parsePairInput(CODE)).toBe(CODE);
     expect(parsePairInput("hello")).toBeNull();
+  });
+
+  it("asks for the link by hand where iOS does not pass cookies on (before 17.2)", () => {
+    asBrowser(IPHONE_18.replace(/18_1/g, "17_1"), { secure: true });
+    expect(shouldInstallBeforePairing()).toBe(true);
+    expect(handoffIsAutomatic()).toBe(false);
+    asBrowser(IPHONE_18.replace(/18_1/g, "17_2"), { secure: true });
+    expect(handoffIsAutomatic()).toBe(true);
+    expect(pairLinkFor(CODE, { origin: "https://box.ts.net", pathname: "/m/" } as Location)).toBe(
+      `https://box.ts.net/m/#pair=${CODE}`,
+    );
   });
 });

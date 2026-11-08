@@ -99,7 +99,35 @@ async function loadState(baseDir?: string): Promise<DevicePairingStateFile> {
     pairedByDeviceId: paired ?? {},
   };
   pruneExpiredPending(state.pendingById, Date.now(), PENDING_TTL_MS);
+  for (const device of Object.values(state.pairedByDeviceId)) {
+    markLegacyPhone(device);
+  }
   return state;
+}
+
+/**
+ * PLAN-62: a phone paired before `principal` existed has no marker, so it
+ * could ask for approvals only and shed the phone policy. Its persisted,
+ * gateway-approved scopes still say what it is: `operator.chat` and
+ * `operator.notifications` were created for phones, and no other client is
+ * ever approved for them without `operator.admin`.
+ */
+function markLegacyPhone(device: PairedDevice): void {
+  if (device.principal) {
+    return;
+  }
+  const approved = new Set(device.scopes ?? []);
+  for (const token of Object.values(device.tokens ?? {})) {
+    for (const scope of token.scopes ?? []) {
+      approved.add(scope);
+    }
+  }
+  if (
+    !approved.has("operator.admin") &&
+    (approved.has("operator.chat") || approved.has("operator.notifications"))
+  ) {
+    device.principal = "phone";
+  }
 }
 
 async function persistState(state: DevicePairingStateFile, baseDir?: string) {

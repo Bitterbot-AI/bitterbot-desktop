@@ -150,8 +150,16 @@ type MobileState = {
 };
 
 let client: GatewayClient | null = null;
-/** Bumped by every pairing start, so an older polling loop stops on its own. */
+/**
+ * Bumped by every pairing start, by switching to the install screen and by
+ * forgetting the pairing, so an older polling loop stops on its own.
+ */
 let pairingAttempt = 0;
+
+/** True while `attempt` is still the pairing on screen; checked after every await. */
+function pairingIsCurrent(attempt: number): boolean {
+  return attempt === pairingAttempt && useMobile.getState().phase === "pairing";
+}
 let idCounter = 0;
 const nextId = () => `m-${Date.now().toString(36)}-${++idCounter}`;
 
@@ -194,15 +202,16 @@ async function waitForApproval(pending: PendingClaim, attempt: number) {
   setState({ pairing: { step: "waiting", confirmCode: pending.confirmCode } });
   while (Date.now() < pending.expiresAtMs) {
     await new Promise((r) => setTimeout(r, 1500));
-    if (attempt !== pairingAttempt || getState().phase !== "pairing") return;
+    if (!pairingIsCurrent(attempt)) return;
     let status;
     try {
       status = await readClaimStatus(pending.claimId, pending.deviceId);
     } catch {
+      if (!pairingIsCurrent(attempt)) return;
       setState({ pairing: { step: "waiting", confirmCode: pending.confirmCode, offline: true } });
       continue; // a blip; keep waiting
     }
-    if (attempt !== pairingAttempt) return;
+    if (!pairingIsCurrent(attempt)) return;
     if (getState().pairing?.offline) {
       setState({ pairing: { step: "waiting", confirmCode: pending.confirmCode } });
     }
@@ -214,7 +223,7 @@ async function waitForApproval(pending: PendingClaim, attempt: number) {
       });
       setState({ pairing: { step: "approved", confirmCode: pending.confirmCode } });
       await new Promise((r) => setTimeout(r, 900));
-      if (attempt !== pairingAttempt) return;
+      if (!pairingIsCurrent(attempt)) return;
       setState({ phase: "ready", pairing: null });
       await getState().connect();
       return;
@@ -245,7 +254,7 @@ class PairingError extends Error {
 }
 
 function failPairing(err: unknown, attempt: number) {
-  if (attempt !== pairingAttempt) return;
+  if (!pairingIsCurrent(attempt)) return;
   writePersisted({ pendingClaim: undefined });
   const { getState, setState } = useMobile;
   setState({
@@ -315,6 +324,7 @@ export const useMobile = create<MobileState>((set, get) => ({
   receivePairCode: (code: string) => {
     if (shouldInstallBeforePairing()) {
       stashPairCode(code);
+      pairingAttempt++;
       client?.stop();
       client = null;
       set({ phase: "install", installCode: code, pairing: null, unpairedReason: null });
@@ -351,8 +361,9 @@ export const useMobile = create<MobileState>((set, get) => ({
       if (!identity) {
         throw new Error("This browser cannot store a device key (is private browsing on?).");
       }
+      if (!pairingIsCurrent(attempt)) return;
       const claim = await claimSetupCode(code, identity, guessDeviceName());
-      if (attempt !== pairingAttempt) return;
+      if (!pairingIsCurrent(attempt)) return;
       const pending: PendingClaim = {
         claimId: claim.claimId,
         deviceId: identity.deviceId,
@@ -634,6 +645,7 @@ export const useMobile = create<MobileState>((set, get) => ({
   },
 
   forgetPairing: async (reason) => {
+    pairingAttempt++;
     client?.halt();
     client?.stop();
     client = null;

@@ -126,6 +126,62 @@ describe("phone pairing flow (PLAN-62)", () => {
     expect(readClaimStatus.mock.calls.every(([id]) => id === "claim-2")).toBe(true);
   });
 
+  describe("a status reply that lands after the screen moved on", () => {
+    function deferStatus() {
+      let settle!: { resolve: (v: unknown) => void; reject: (e: unknown) => void };
+      readClaimStatus.mockImplementation(
+        () =>
+          new Promise((resolve, reject) => {
+            settle = { resolve, reject };
+          }),
+      );
+      return () => settle;
+    }
+    const APPROVED = { status: "approved", deviceToken: "tok-A", deviceId: "dev-1", scopes: [] };
+    const stored = () => JSON.parse(localStorage.getItem("bitterbot-mobile-v1") ?? "{}");
+
+    it("an approval for code A cannot replace the install screen for code B", async () => {
+      const pending = deferStatus();
+      asIphone(false);
+      const { useMobile } = await freshStore();
+      useMobile.getState().pairInBrowserInstead();
+      void useMobile.getState().startPairing(CODE);
+      await vi.advanceTimersByTimeAsync(1600); // A is now waiting on its status read
+      useMobile.getState().receivePairCode(`${CODE}B`);
+      expect(useMobile.getState().phase).toBe("install");
+      pending().resolve(APPROVED);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(useMobile.getState()).toMatchObject({ phase: "install", installCode: `${CODE}B` });
+      expect(stored().deviceToken).toBeUndefined();
+    });
+
+    it("a failed read for code A does not touch the pairing for code B", async () => {
+      const pending = deferStatus();
+      const { useMobile } = await freshStore();
+      void useMobile.getState().startPairing(CODE);
+      await vi.advanceTimersByTimeAsync(1600);
+      const stale = pending();
+      claimSetupCode.mockResolvedValue({ claimId: "claim-2", localConfirmCode: "654321" });
+      void useMobile.getState().startPairing(`${CODE}B`);
+      await vi.advanceTimersByTimeAsync(0);
+      stale.reject(new Error("network"));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(useMobile.getState().pairing).toEqual({ step: "waiting", confirmCode: "654321" });
+    });
+
+    it("forgetting the pairing ends a wait that was in flight", async () => {
+      const pending = deferStatus();
+      const { useMobile } = await freshStore();
+      void useMobile.getState().startPairing(CODE);
+      await vi.advanceTimersByTimeAsync(1600);
+      await useMobile.getState().forgetPairing("forgotten");
+      pending().resolve(APPROVED);
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(useMobile.getState().phase).toBe("welcome");
+      expect(stored().deviceToken).toBeUndefined();
+    });
+  });
+
   it("says when the code ran out, apart from a decline", async () => {
     readClaimStatus.mockResolvedValue({ status: "expired" });
     const { useMobile } = await freshStore();

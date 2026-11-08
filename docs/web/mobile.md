@@ -60,7 +60,8 @@ See [Tailscale](/gateway/tailscale) and [Remote access](/gateway/remote).
    The link works once and expires after five minutes.
 3. **On iPhone (iOS 16.4 or later, over HTTPS)**, the page asks you to add Bitterbot to your Home
    Screen first: Share, then Add to Home Screen. Open the new icon within five minutes and it
-   carries on from step 4. iPhone gives a Home Screen app its own storage, separate from Safari,
+   carries on from step 4. On iOS 16.4 to 17.1 it cannot carry on by itself: the page first asks
+   you to **Copy pairing link**, and you paste it into the Home Screen app. iPhone gives a Home Screen app its own storage, separate from Safari,
    and only the Home Screen app can get notifications, so pairing happens there. You can choose
    **Use it in Safari instead** to skip notifications.
 4. The phone makes its own key and shows a six-digit code. Your computer shows the code it
@@ -151,8 +152,8 @@ Nothing is sent to a phone that has the app open on screen. Each phone gets at m
 (`gateway.mobile.push.maxPerHour`). During your
 [`notifications.quietHours`](/gateway/configuration-reference#notifications), replies and notices
 are counted instead of sent, and each phone gets one summary when quiet hours end (for example
-"2 replies and 1 notice"). Only the counts are kept, in memory: a gateway restart overnight drops
-the summary. Approvals still go out during quiet hours.
+"2 replies and 1 notice"). The summary is best effort: only the counts are kept, in memory, so a
+gateway restart overnight or a failed send drops it. Approvals still go out during quiet hours.
 
 By default a notification says only what happened ("Bitterbot replied", "A shell command needs
 your OK"). Turn on **Show previews** to add up to 90 characters of a reply or notice. An approval

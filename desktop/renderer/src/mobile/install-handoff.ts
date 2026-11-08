@@ -38,6 +38,23 @@ export function shouldInstallBeforePairing(): boolean {
   return major > 16 || (major === 16 && minor >= 4);
 }
 
+/**
+ * Whether the installed app will find the setup code on its own. Safari copies
+ * cookies into a new Home Screen app only from iOS 17.2; on 16.4 to 17.1 the
+ * owner has to carry the link across by hand (copy here, paste there).
+ */
+export function handoffIsAutomatic(): boolean {
+  const version = iosVersion();
+  if (!version) return true; // iPadOS reports as a Mac: assume current
+  const [major, minor] = version;
+  return major > 17 || (major === 17 && minor >= 2);
+}
+
+/** The pairing link for `code` on this gateway, for copying across by hand. */
+export function pairLinkFor(code: string, loc: Location = window.location): string {
+  return `${loc.origin}${loc.pathname}#pair=${code}`;
+}
+
 function cookiePath(loc: Location = window.location): string {
   return loc.pathname.endsWith("/") ? loc.pathname : loc.pathname.replace(/[^/]*$/, "");
 }
