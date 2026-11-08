@@ -457,7 +457,7 @@ The P2P orchestrator bridge is wired later at gateway startup via `wireOrchestra
 | `peer_activity_log`         | Peer activity timestamps for anomaly detection                                     |
 | `mutation_queue`            | Dropped in v58 (PLAN-40); the mutation flow itself was retired in PLAN-45 Phase 1  |
 | `skill_edges`               | Discovered skill relationships (prerequisite, enables, etc.)                       |
-| `embedding_cache`           | Cached embedding vectors                                                           |
+| `embedding_cache`           | Cached embedding vectors by text hash; every write trims it to `cache.maxEntries`  |
 | `memory_audit_log`          | Governance audit trail                                                             |
 | `entities`                  | Knowledge graph entities (person, project, concept, etc.)                          |
 | `relationships`             | Temporal entity relationships + SAGE per-edge gate (`gate_value`, `gate_features`) |

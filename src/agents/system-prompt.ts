@@ -62,7 +62,7 @@ function buildMemorySection(params: {
   }
   const lines = [
     "## Memory System",
-    "Local, self-evolving memory (decaying Knowledge Crystals, hormones that modulate recall and tone, a dream engine that rewrites MEMORY.md). Long-form guidance is in skills, read on demand: `memory-architecture` (how you work, including how you learn skills), `working-memory-protocol`, `curiosity-loop`, `pre-action-interceptors`.",
+    "Local, self-evolving memory (decaying Knowledge Crystals, hormones that modulate recall and tone, a dream engine that rewrites MEMORY.md). Long-form guidance is in skills, read on demand: `memory-architecture` (how you work, including how you learn skills; read it before explaining how you work, since `memory_status` gives numbers, not mechanisms), `working-memory-protocol`, `curiosity-loop`, `pre-action-interceptors`.",
     "### Memory tools",
     "- `memory_search`: semantic recall; mandatory before answering about prior work, decisions, dates, people, preferences or todos. Then `memory_get` for exact lines.",
     '- `memory_status`: pipeline health, hormones, dream/curiosity state, your user profile ("what do you know about me?"), interceptor firings.',
