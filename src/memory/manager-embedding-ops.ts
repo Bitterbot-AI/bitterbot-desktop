@@ -167,6 +167,9 @@ class MemoryManagerEmbeddingOps {
         now,
       );
     }
+    // Embeddings reach the cache between full syncs too (session and crystal
+    // writes), so the cap is kept here, not only at the end of a sync.
+    this.pruneEmbeddingCacheIfNeeded();
   }
 
   private pruneEmbeddingCacheIfNeeded(): void {
