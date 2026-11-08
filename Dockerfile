@@ -21,6 +21,8 @@ RUN if [ -n "$BITTERBOT_DOCKER_APT_PACKAGES" ]; then \
 # desktop/ and extensions/* are pnpm workspace members: without their
 # package.json files, `--frozen-lockfile` fails against the workspace lockfile.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+# pnpm-workspace.yaml's patchedDependencies point here.
+COPY patches ./patches
 COPY desktop/package.json ./desktop/
 # One line per extension, deliberately: `COPY --parents` needs a newer BuildKit
 # than CI's classic builder (and many self-hosters' Docker) provides. If a new

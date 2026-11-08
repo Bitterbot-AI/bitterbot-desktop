@@ -201,5 +201,18 @@ only a Bitterbot User-Agent), Skill Seekers ingestion
 off) all require you to configure or enable them explicitly, and each has
 a matching flag in Settings.
 
+## Third-party SDK analytics: switched off
+
+`@coinbase/agentkit` (the wallet layer) sends usage analytics to
+`cca-lite.coinbase.com` on its own: the wallet address, network and chain
+each time a wallet provider starts, and the name of every wallet action
+invoked. It has no setting to stop this, so Bitterbot ships a patch
+(`patches/@coinbase__agentkit@0.10.4.patch`, applied by pnpm in every
+install, image and release tarball) that makes it send nothing. Releases up
+to 1.13.0 did not carry the patch; those requests were rejected by Coinbase
+(HTTP 400) on the node we checked and appeared in its gateway log as
+non-fatal unhandled rejections.
+Calls you make to the Coinbase CDP APIs for your own wallet are unaffected.
+
 To verify this page against the code, grep the repo for the hostnames
 above — every dial is in source, none are obfuscated.

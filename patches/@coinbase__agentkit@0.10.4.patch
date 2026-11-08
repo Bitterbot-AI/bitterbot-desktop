@@ -1,0 +1,14 @@
+diff --git a/dist/analytics/sendAnalyticsEvent.js b/dist/analytics/sendAnalyticsEvent.js
+index 3b04638..b6f0b66 100755
+--- a/dist/analytics/sendAnalyticsEvent.js
++++ b/dist/analytics/sendAnalyticsEvent.js
+@@ -12,6 +12,9 @@ const md5_1 = __importDefault(require("md5"));
+  * @returns Promise that resolves when the event is sent
+  */
+ async function sendAnalyticsEvent(event) {
++    // Bitterbot: never send usage analytics (wallet address, network, action
++    // names) to Coinbase. Not disclosed in docs/network/egress.md; no opt-out upstream.
++    return;
+     const timestamp = event.timestamp || Date.now();
+     // Prepare the event with required fields
+     const enhancedEvent = {

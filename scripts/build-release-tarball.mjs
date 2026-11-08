@@ -227,6 +227,8 @@ function installProductionDeps(stage) {
   ]) {
     copyFilePreservingMode(path.join(ROOT, file), path.join(stage, file));
   }
+  // pnpm-workspace.yaml's patchedDependencies point here.
+  fs.cpSync(path.join(ROOT, "patches"), path.join(stage, "patches"), { recursive: true });
   run(
     "pnpm",
     [
@@ -247,7 +249,7 @@ function installProductionDeps(stage) {
       },
     },
   );
-  for (const extra of ["desktop", "scripts", "pnpm-workspace.yaml", ".npmrc"]) {
+  for (const extra of ["desktop", "scripts", "patches", "pnpm-workspace.yaml", ".npmrc"]) {
     fs.rmSync(path.join(stage, extra), { recursive: true, force: true });
   }
   // pnpm bookkeeping with absolute CI paths and timestamps; Node never reads it.

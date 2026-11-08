@@ -17,6 +17,12 @@ overrides:
   tar: 7.5.9
   tough-cookie: 4.1.3
 
+# @coinbase/agentkit posts the wallet address, network and every wallet action
+# name to cca-lite.coinbase.com, with no opt-out. The patch makes that a no-op
+# (see docs/network/egress.md). Re-check it when bumping agentkit.
+patchedDependencies:
+  "@coinbase/agentkit@0.10.4": patches/@coinbase__agentkit@0.10.4.patch
+
 onlyBuiltDependencies:
   - "@lydell/node-pty"
   - "@matrix-org/matrix-sdk-crypto-nodejs"
