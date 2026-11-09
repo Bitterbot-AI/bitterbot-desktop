@@ -633,6 +633,11 @@ const webSearchStep: SetupStepDef = {
         : []),
       { value: "later", label: "Later", hint: "Add a provider in Settings when you want it" },
       { value: "parallel", label: "Parallel Search", hint: "Free, no key needed" },
+      {
+        value: "keenable",
+        label: "Keenable",
+        hint: "Free, no key needed, publication-date filters",
+      },
       ...WEB_SEARCH_PASTE.map((entry) => ({
         value: `paste:${entry.provider}`,
         label: `Paste ${withArticle(entry.label)} key`,
@@ -679,9 +684,9 @@ const webSearchStep: SetupStepDef = {
       };
     };
     const pastedSearch = WEB_SEARCH_PASTE.find((entry) => entry.provider === answer.webProvider);
-    if (answer.choice === "parallel") {
-      write({ provider: "parallel", enabled: true });
-      draft.answers.webSearch = "parallel";
+    if (answer.choice === "parallel" || answer.choice === "keenable") {
+      write({ provider: answer.choice, enabled: true });
+      draft.answers.webSearch = answer.choice;
     } else if (
       answer.choice.startsWith("env:") &&
       answer.choice === `env:${detectSearchEnv(ctx.env ?? process.env)?.provider ?? ""}`
