@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.13.1](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.13.0...v1.13.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **memory:** trim the embedding cache on every write; the agent explains its memory from its guide ([#371](https://github.com/Bitterbot-AI/bitterbot-desktop/issues/371)) ([3fd4221](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3fd4221814f8d57c5e1e5efd43f5322612f1d61d))
+* **wallet:** stop @coinbase/agentkit sending analytics to Coinbase ([c62b524](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/c62b5245987f2c7453b0b06da9ba68bb53c77fdd))
+* **wallet:** stop @coinbase/agentkit sending analytics to Coinbase ([3ff9302](https://github.com/Bitterbot-AI/bitterbot-desktop/commit/3ff93025e22001cdfa31d01013aee6fc26aff9c6))
+
 ## [1.13.0](https://github.com/Bitterbot-AI/bitterbot-desktop/compare/v1.12.0...v1.13.0) (2026-11-08)
 
 
