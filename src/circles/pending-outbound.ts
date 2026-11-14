@@ -31,7 +31,7 @@ const PRUNE_AFTER_MS = 30 * 24 * 60 * 60_000;
  */
 export const MAX_PENDING_PER_CIRCLE = 5;
 
-export type PendingOutboundAction = "send" | "ask" | "log_expense";
+export type PendingOutboundAction = "send" | "ask" | "log_expense" | "share_skill";
 
 export type PendingOutbound = {
   id: string;

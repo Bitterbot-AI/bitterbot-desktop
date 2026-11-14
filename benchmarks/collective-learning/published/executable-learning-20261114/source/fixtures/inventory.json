@@ -1,0 +1,334 @@
+[
+  {
+    "id": "selection-2501",
+    "partition": "selection",
+    "layout": "body",
+    "flag": "Yes",
+    "alias": "No",
+    "missing": null,
+    "files": {
+      "employee_data.json": "58ddb0f862da751edae66b559dccb9b24f1d73ec6d19094fc20bc7444a2c03a5",
+      "offer_letter_template.docx": "fac41d968b95260f22cff3bd73800163f73391aebccba4943205c48babab1b8c",
+      "reference.docx": "dbdbda33f083c291f7721b4dfc38dda98f6b7e9aae4d42525bd07578a4440826"
+    }
+  },
+  {
+    "id": "selection-2502",
+    "partition": "selection",
+    "layout": "nested",
+    "flag": "No",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "7bed7af239642955c6db9a0b75f3f03363ec458005c2e85305c08a3e99653b5f",
+      "offer_letter_template.docx": "1604538a74c8b373fcacc87b8c8b4563c0f4902fbbc248e6bc28d4e73258438b",
+      "reference.docx": "a0ef820ca20b86c26699df803cfe9807aa2381c9dc00ad754d957e23c0b42618"
+    }
+  },
+  {
+    "id": "selection-2503",
+    "partition": "selection",
+    "layout": "sections",
+    "flag": "YES",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "6e602449d6a44c609978637d625006711a1f3d555ede29a8c406c4b72061bf8d",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a",
+      "reference.docx": "32a8133d757db4b511ac8657aff9de4c706035a85f9b55ad047ba8e32db5a21b"
+    }
+  },
+  {
+    "id": "selection-2504",
+    "partition": "selection",
+    "layout": "sections",
+    "flag": null,
+    "alias": null,
+    "missing": null,
+    "files": {
+      "employee_data.json": "b9eebe7f7400bccf875bbe13e4f9ab26efca77cfff84697d7a890040205616db",
+      "offer_letter_template.docx": "aa67b97805573b6448f2d183bbb384e5a6ab5650329c8707d49cdff2023a430a",
+      "reference.docx": "caaa48cf02ecae0cccedc5ceba079597bff6645576eec9370b698d052b37e649"
+    }
+  },
+  {
+    "id": "evaluation-2601",
+    "partition": "evaluation",
+    "layout": "body",
+    "flag": "Yes",
+    "alias": "No",
+    "missing": null,
+    "files": {
+      "employee_data.json": "22fc82a8855b8b4e71ad70dda0de4f23fc728d1b34b21a7ede9e0090bc233078",
+      "offer_letter_template.docx": "fac41d968b95260f22cff3bd73800163f73391aebccba4943205c48babab1b8c",
+      "reference.docx": "aa5e82bc8de2952a61344dc871e8b161347fa0b2df153c7543e3211934eb706c"
+    }
+  },
+  {
+    "id": "evaluation-2602",
+    "partition": "evaluation",
+    "layout": "nested",
+    "flag": "No",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "c7634c73e16ed81f7e7841d79244b59d76d33000fd1ac08294780aafdaa74ebe",
+      "offer_letter_template.docx": "1604538a74c8b373fcacc87b8c8b4563c0f4902fbbc248e6bc28d4e73258438b",
+      "reference.docx": "16ba49e0da0fef222262ff5a2fdb4b4f21e478c2c2e6168004c41853e888f49b"
+    }
+  },
+  {
+    "id": "evaluation-2603",
+    "partition": "evaluation",
+    "layout": "sections",
+    "flag": "YES",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "a422265b335a61f90d545f45ddcc0a6c896dbee4f9b82e69e5d2fffd7dcb8981",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a",
+      "reference.docx": "0a9fc9bf997c09450c77006ea9c998067b8f15f47c014c2008e06919f6d1bb08"
+    }
+  },
+  {
+    "id": "evaluation-2604",
+    "partition": "evaluation",
+    "layout": "sections",
+    "flag": null,
+    "alias": null,
+    "missing": null,
+    "files": {
+      "employee_data.json": "291bd2c7906410253af818a640c6a7839e5f592f94a728142dbf7a904d8caf68",
+      "offer_letter_template.docx": "aa67b97805573b6448f2d183bbb384e5a6ab5650329c8707d49cdff2023a430a",
+      "reference.docx": "0fd11d33f60dbca14e5ab4202d8f2ba7d6436aab1647e729750fe5693ad00493"
+    }
+  },
+  {
+    "id": "evaluation-2605",
+    "partition": "evaluation",
+    "layout": "nested",
+    "flag": " Yes ",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "3cb8532853f20b4d6d97ca1bc459f99c72c5eafa072135fa4e856c64f45dc030",
+      "offer_letter_template.docx": "1604538a74c8b373fcacc87b8c8b4563c0f4902fbbc248e6bc28d4e73258438b",
+      "reference.docx": "d212941c9abbf5671523b633ebbe1b22709626244b9667a821689a6ed46743f2"
+    }
+  },
+  {
+    "id": "evaluation-2606",
+    "partition": "evaluation",
+    "layout": "sections",
+    "flag": "Yes",
+    "alias": null,
+    "missing": null,
+    "files": {
+      "employee_data.json": "dad027c8008b9a289546335f17eec906d41bff2c2c2781ead1e5e18a614f3928",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a",
+      "reference.docx": "d11acd1ca6685743f6874e96bec0dcfb10e3d405c368264d97be01db12aa1e3b"
+    }
+  },
+  {
+    "id": "evaluation-2607",
+    "partition": "evaluation",
+    "layout": "body",
+    "flag": null,
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "e80625af4d95610cb58abe01382f712d5594cee6350182eb6b03127af397facf",
+      "offer_letter_template.docx": "00639fde5c68292767b019800891f25d18fe5e2e5bdfa66943ea854692fb7610",
+      "reference.docx": "bcc979d064bf2742e4f58ce33d6b46647315496f564063ee8aeb24bcdc6328ba"
+    }
+  },
+  {
+    "id": "evaluation-2608",
+    "partition": "evaluation",
+    "layout": "sections",
+    "flag": "Yes",
+    "alias": "No",
+    "missing": null,
+    "files": {
+      "employee_data.json": "85a9ad39ba5197a6a232a2663621dcbd04c3a350f20fe3ccff050e1942dc1285",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a",
+      "reference.docx": "3ce874e9a5c799c1d2a331fdbdda710be7d2f717618fe78a50e7427dc217e695"
+    }
+  },
+  {
+    "id": "agent-2701",
+    "partition": "agent",
+    "layout": "body",
+    "flag": "Yes",
+    "alias": "No",
+    "missing": null,
+    "files": {
+      "employee_data.json": "6ba306cf0a5a45a2a0092be39f94151fff9e5e5feb77efe89bbfef4dc6bddcfd",
+      "offer_letter_template.docx": "fac41d968b95260f22cff3bd73800163f73391aebccba4943205c48babab1b8c",
+      "reference.docx": "a1bcee5b3be24d261ad9a37e46838f551ddf6bcf6b37b8775db90f511757de37"
+    }
+  },
+  {
+    "id": "agent-2702",
+    "partition": "agent",
+    "layout": "nested",
+    "flag": "No",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "863d7911a18795133984b27d465f1b9493ddacf7a3be0824859c6ad15e0ec346",
+      "offer_letter_template.docx": "1604538a74c8b373fcacc87b8c8b4563c0f4902fbbc248e6bc28d4e73258438b",
+      "reference.docx": "445658ff4c39efa2b9124572810477e09476498089c8fe78089e725bba144d87"
+    }
+  },
+  {
+    "id": "agent-2703",
+    "partition": "agent",
+    "layout": "sections",
+    "flag": "YES",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "882ed5d0e044d008970d0e01c9d8ddc867ee676d95e62f587bafca21cd1fd1ff",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a",
+      "reference.docx": "d87aaa8340bda1d86df90a73e1dba39cb1b9d88245d8fbf4a7969238ffbd1237"
+    }
+  },
+  {
+    "id": "agent-2704",
+    "partition": "agent",
+    "layout": "sections",
+    "flag": null,
+    "alias": null,
+    "missing": null,
+    "files": {
+      "employee_data.json": "6047906ca30ce3d548c551573113f76a4c0b3f6cd4c603f0a0410b6c277a81e7",
+      "offer_letter_template.docx": "aa67b97805573b6448f2d183bbb384e5a6ab5650329c8707d49cdff2023a430a",
+      "reference.docx": "1be95f4cbf922760f4c22cf7a1200edea1631a0c9ee097b875cedc9c868e38b9"
+    }
+  },
+  {
+    "id": "agent-2705",
+    "partition": "agent",
+    "layout": "nested",
+    "flag": " Yes ",
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "186764a77a975782d3bbd14b16081c1e0e4c9c19bc413de85d64b18b80190e5a",
+      "offer_letter_template.docx": "1604538a74c8b373fcacc87b8c8b4563c0f4902fbbc248e6bc28d4e73258438b",
+      "reference.docx": "06f7337d8e2b4bc5c158a5bd249b0557da273c8782031dc283bf6017d8ef2063"
+    }
+  },
+  {
+    "id": "agent-2706",
+    "partition": "agent",
+    "layout": "sections",
+    "flag": "Yes",
+    "alias": null,
+    "missing": null,
+    "files": {
+      "employee_data.json": "d3e92a52f777c4dd2692c340f6e9e72e44b32bc9ffba8016f26b1b480e15354c",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a",
+      "reference.docx": "0bd0e8504c308a5a9738f015e0bd3fe5ccae64b2e92ebd3443267323f7f31df0"
+    }
+  },
+  {
+    "id": "agent-2707",
+    "partition": "agent",
+    "layout": "body",
+    "flag": null,
+    "alias": "Yes",
+    "missing": null,
+    "files": {
+      "employee_data.json": "431e4ced4c7c36ada1bb4fe82c4addd650a38cc988f505ef7f828a02fcb36bbb",
+      "offer_letter_template.docx": "00639fde5c68292767b019800891f25d18fe5e2e5bdfa66943ea854692fb7610",
+      "reference.docx": "d22c58f17a4bb30fb9918dbc59b7e3a41ae49620173bf2654a2b8a90510683b3"
+    }
+  },
+  {
+    "id": "agent-2708",
+    "partition": "agent",
+    "layout": "sections",
+    "flag": "Yes",
+    "alias": "No",
+    "missing": null,
+    "files": {
+      "employee_data.json": "6c895b4c85412c1cab6b5dc8f30dafbd0283b3d6b5c23f990d88b6823c6dc210",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a",
+      "reference.docx": "f9a203fffc47d3720e0908502395c6967f0eb625bd1ec95e1de621d1b8029ead"
+    }
+  },
+  {
+    "id": "selection-invalid-2801",
+    "partition": "selection-invalid",
+    "layout": "body",
+    "flag": "Yes",
+    "alias": null,
+    "missing": "RELOCATION_PACKAGE",
+    "files": {
+      "employee_data.json": "40521ed409b85bcfaef983bb2c91f7503f87e42c9337cd44c6bc093076b6797a",
+      "offer_letter_template.docx": "fac41d968b95260f22cff3bd73800163f73391aebccba4943205c48babab1b8c"
+    }
+  },
+  {
+    "id": "selection-invalid-2802",
+    "partition": "selection-invalid",
+    "layout": "nested",
+    "flag": "Yes",
+    "alias": "Yes",
+    "missing": "RELOCATION_PACKAGE",
+    "files": {
+      "employee_data.json": "c1f98cc954f25ea13d511aad93ef36636b3ca9d8752cb9099196df54419c05cf",
+      "offer_letter_template.docx": "1604538a74c8b373fcacc87b8c8b4563c0f4902fbbc248e6bc28d4e73258438b"
+    }
+  },
+  {
+    "id": "evaluation-invalid-2901",
+    "partition": "evaluation-invalid",
+    "layout": "sections",
+    "flag": "Yes",
+    "alias": null,
+    "missing": "RELOCATION_PACKAGE",
+    "files": {
+      "employee_data.json": "3518ccfbde5b80647d4f57f76fa77e7131d9a70f5c5cf039b4ffb60cf04928e8",
+      "offer_letter_template.docx": "7b12eec1d5d8c7aab8bae88032f1173ff326ebd2e9ec72a316d9615fe990734a"
+    }
+  },
+  {
+    "id": "evaluation-invalid-2902",
+    "partition": "evaluation-invalid",
+    "layout": "sections",
+    "flag": "Yes",
+    "alias": "No",
+    "missing": "RELOCATION_PACKAGE",
+    "files": {
+      "employee_data.json": "73508b651dd0f0929b32c1ce539c08bacebffa57da7ce577dc8abc0d1cc53b5e",
+      "offer_letter_template.docx": "d3a3651cb32ff5e65ef0f14ab03897e609f609bed85c374f5ab8844d8112192a"
+    }
+  },
+  {
+    "id": "evaluation-invalid-2903",
+    "partition": "evaluation-invalid",
+    "layout": "nested",
+    "flag": "Yes",
+    "alias": "Yes",
+    "missing": "CANDIDATE_FULL_NAME",
+    "files": {
+      "employee_data.json": "585dbd13f2a6ed7e2c7274fb88e5b9f928c385b1db2639a2c1e57fe382bbdb95",
+      "offer_letter_template.docx": "9b88c1e3c8cc517d14e59e8e69770b53a0d842c483efacc4e0bbf6b7bfc98f5d"
+    }
+  },
+  {
+    "id": "evaluation-invalid-2904",
+    "partition": "evaluation-invalid",
+    "layout": "sections",
+    "flag": "Yes",
+    "alias": null,
+    "missing": "COMPANY_NAME",
+    "files": {
+      "employee_data.json": "7854d6e5abe9ee87de77a029abb5c4a5c5b6ca550f7856e9d5988055f34cd34b",
+      "offer_letter_template.docx": "d3a3651cb32ff5e65ef0f14ab03897e609f609bed85c374f5ab8844d8112192a"
+    }
+  }
+]

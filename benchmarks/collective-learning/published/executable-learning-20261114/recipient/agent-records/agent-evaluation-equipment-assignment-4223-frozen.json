@@ -1,0 +1,192 @@
+{
+  "id": "agent-evaluation-equipment-assignment-4223-frozen",
+  "caseId": "evaluation-equipment-assignment-4223",
+  "arm": "frozen",
+  "runId": "91846a06-2f86-4379-ab39-afa804e169c3",
+  "cost": {
+    "providerUsd": 0.3099805,
+    "toolCalls": 12,
+    "wallMs": 77879
+  },
+  "tokens": 146699,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [],
+  "helperInvocations": [],
+  "toolActions": [
+    {
+      "name": "exec",
+      "id": "toolu_0123bsLqNQCUdorUS4RsBoop",
+      "arguments": {
+        "command": "cd /workspace && ls -la inputs/ && echo \"---JSON---\" && cat inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01RQGu313i7yMFWm9JjeLPy3",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p /tmp/docx && cd /tmp/docx && unzip -o /workspace/inputs/offer_letter_template.docx -d extracted >/dev/null && find extracted -type f | sort"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "error"
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_012VtjyMeyB4oieGBvSGsNEf",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"import zipfile; z=zipfile.ZipFile('inputs/offer_letter_template.docx'); [print(n) for n in z.namelist()]\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_012GvCBk3bNV3WLDTw8NJhJ4",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nd=z.read('word/document.xml').decode('utf-8')\nprint(d)\n\" | head -c 8000"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_016zZYNkPS4gkQMDQXppkLvD",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nrels=z.read('word/_rels/document.xml.rels').decode('utf-8')\nfor m in re.findall(r'<Relationship [^>]+>', rels):\n    print(m)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01XsjsSGEf9euZyEUKDKYpiH",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor i in range(1,7):\n    for kind in ('header','footer'):\n        name=f'word/{kind}{i}.xml'\n        d=z.read(name).decode('utf-8')\n        texts=re.findall(r'<w:t[^>]*>(.*?)</w:t>', d)\n        joined=''.join(texts)\n        if '{{' in joined or 'IF_' in joined:\n            print(name,'=>',repr(joined))\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01H7arFWSE3nHp5JkScAv2s2",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nd=z.read('word/header1.xml').decode('utf-8')\nprint(d[d.index('<w:body') if '<w:body' in d else 0:])\n\" 2>/dev/null | grep -o '<w:t[^>]*>[^<]*</w:t>' "
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "write",
+      "id": "toolu_01WC3yZmXw31M5M2muGgXUHG",
+      "arguments": {
+        "file_path": "/workspace/fill.py",
+        "content": "#!/usr/bin/env python3\nimport sys, os, re, json, zipfile, shutil\n\nSRC = 'inputs/offer_letter_template.docx'\nDATA = 'inputs/employee_data.json'\nOUT = 'output/offer_letter_filled.docx'\n\ndef fail(msg):\n    sys.stderr.write(\"ERROR: \" + msg + \"\\n\")\n    sys.exit(1)\n\nwith open(DATA, encoding='utf-8') as f:\n    data = json.load(f)\n\nPLACEHOLDER_RE = re.compile(r'\\{\\{([A-Z0-9_]+)\\}\\}')\nCOND_RE = re.compile(r'\\{\\{IF_RELOCATION\\}\\}(.*?)\\{\\{END_IF_RELOCATION\\}\\}', re.DOTALL)\n\nmissing = []\n\ndef process_text(text, errors):\n    \"\"\"Process a joined paragraph text: handle conditionals then placeholders.\"\"\"\n    # Conditional: governed ONLY by RELOCATION_PACKAGE\n    def cond_sub(m):\n        inner = m.group(1)\n        if 'RELOCATION_PACKAGE' not in data:\n            errors.append('RELOCATION_PACKAGE (required for IF_RELOCATION)')\n            return ''\n        keep = data.get('RELOCATION_PACKAGE') == 'Yes'\n        return inner if keep else ''\n    text = COND_RE.sub(cond_sub, text)\n\n    # Placeholder replacement\n    def ph_sub(m):\n        key = m.group(1)\n        if key in ('IF_RELOCATION', 'END_IF_RELOCATION'):\n            # leftover (unbalanced) conditional marker - treat as missing/error\n            errors.append('unbalanced conditional marker ' + key)\n            return m.group(0)\n        if key not in data:\n            errors.append(key)\n            return m.group(0)\n        return str(data[key])\n    text = PLACEHOLDER_RE.sub(ph_sub, text)\n    return text\n\n# Regex to find <w:p ...>...</w:p> (paragraphs). Non-greedy, but paragraphs\n# don't nest, so this works for innermost; need care with nested tables which\n# contain their own <w:p>. We'll process per-paragraph by matching the\n# innermost <w:p> that have no nested <w:p>. Simpler: process each <w:t> run\n# group within each paragraph. Use a parser approach over <w:p> boundaries.\n\nWT_RE = re.compile(r'(<w:t\\b[^>]*>)(.*?)(</w:t>)', re.DOTALL)\n\ndef process_paragraph(ptext, errors):\n    \"\"\"ptext is the inner content of a single paragraph (may contain its own\n    runs). Join all <w:t> texts, transform, put result in first <w:t>, blank rest.\"\"\"\n    matches = list(WT_RE.finditer(ptext))\n    if not matches:\n        return ptext\n    joined = ''.join(m.group(2) for m in matches)\n    # unescape XML entities for processing\n    def unescape(s):\n        return s.replace('&lt;','<').replace('&gt;','>').replace('&quot;','\"').replace('&apos;',\"'\").replace('&amp;','&')\n    def escape(s):\n        return s.replace('&','&amp;').replace('<','&lt;').replace('>','&gt;')\n    raw = unescape(joined)\n    if '{{' not in raw and 'IF_RELOCATION' not in raw:\n        return ptext\n    new = process_text(raw, errors)\n    new_esc = escape(new)\n    # Rebuild: first run gets full text with xml:space preserve; others blank\n    out = []\n    last = 0\n    for idx, m in enumerate(matches):\n        out.append(ptext[last:m.start()])\n        if idx == 0:\n            # ensure xml:space preserve on the opening tag\n            open_tag = m.group(1)\n            if 'xml:space' not in open_tag:\n                open_tag = open_tag[:-1] + ' xml:space=\"preserve\">'\n            out.append(open_tag + new_esc + m.group(3))\n        else:\n            open_tag = m.group(1)\n            if 'xml:space' not in open_tag:\n                open_tag = open_tag[:-1] + ' xml:space=\"preserve\">'\n            out.append(open_tag + '' + m.group(3))\n        last = m.end()\n    out.append(ptext[last:])\n    return ''.join(out)\n\n# Split XML into paragraphs. Paragraphs can nest tables which contain\n# paragraphs. We must process innermost paragraphs first so each is isolated.\n# Strategy: repeatedly find <w:p ...>...</w:p> that contain NO nested <w:p>.\nINNER_P_RE = re.compile(r'<w:p\\b[^>]*>(?:(?!<w:p\\b|</w:p>).)*?</w:p>', re.DOTALL)\n# Also self-closing <w:p/> has no text, skip.\n\ndef process_xml(xml, errors):\n    # iterate: replace innermost paragraphs' text content\n    def repl(m):\n        whole = m.group(0)\n        # separate opening tag\n        om = re.match(r'(<w:p\\b[^>]*>)(.*)(</w:p>)', whole, re.DOTALL)\n        if not om:\n            return whole\n        inner = process_paragraph(om.group(2), errors)\n        return om.group(1) + inner + om.group(3)\n    return INNER_P_RE.sub(repl, xml)\n\n# Build output zip\nos.makedirs('output', exist_ok=True)\nzin = zipfile.ZipFile(SRC, 'r')\ntargets = ['word/document.xml'] + [f'word/header{i}.xml' for i in range(1,7)] + [f'word/footer{i}.xml' for i in range(1,7)]\n\nprocessed = {}\nall_errors = []\nfor name in zin.namelist():\n    if name in targets:\n        xml = zin.read(name).decode('utf-8')\n        errs = []\n        xml = process_xml(xml, errs)\n        all_errors.extend(errs)\n        processed[name] = xml.encode('utf-8')\n\n# dedupe errors but keep required-check semantics\nuniq_missing = []\nfor e in all_errors:\n    if e not in uniq_missing:\n        uniq_missing.append(e)\nif uniq_missing:\n    zin.close()\n    fail(\"missing/unresolved requirements: \" + \", \".join(uniq_missing))\n\ntmp = OUT + '.tmp'\nwith zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:\n    for item in zin.infolist():\n        data_bytes = processed.get(item.filename)\n        if data_bytes is None:\n            data_bytes = zin.read(item.filename)\n        zout.writestr(item, data_bytes)\nzin.close()\nshutil.move(tmp, OUT)\nprint(\"OK wrote\", OUT)\n"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_014PkLkAKNEseXLikcdAHiHc",
+      "arguments": {
+        "command": "cd /workspace && python3 fill.py; echo \"exit=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_014yk2fC9yo2LJACrkg8tQDv",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('output/offer_letter_filled.docx')\ndef txt(n):\n    d=z.read(n).decode('utf-8')\n    return d\n# document body paragraph texts\ndoc=z.read('word/document.xml').decode('utf-8')\n# join per paragraph\nfor pm in re.finditer(r'<w:p\\b[^>]*>.*?</w:p>', doc, re.DOTALL):\n    ts=re.findall(r'<w:t[^>]*>(.*?)</w:t>', pm.group(0), re.DOTALL)\n    j=''.join(ts)\n    if j.strip():\n        print('BODY:', repr(j))\nprint('--- leftover braces in doc:', '{{' in doc, 'IF_RELOCATION' in doc)\nfor i in range(1,7):\n    for k in ('header','footer'):\n        n=f'word/{k}{i}.xml'\n        d=z.read(n).decode('utf-8')\n        ts=re.findall(r'<w:t[^>]*>(.*?)</w:t>', d, re.DOTALL)\n        print(n, repr(''.join(ts)))\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_0125Bh65qe95mSQbonF3R2Wm",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('output/offer_letter_filled.docx')\nbad=z.testzip()\nprint('zip ok:', bad is None)\nd=z.read('word/document.xml').decode('utf-8')\nprint('sectPr count:', d.count('<w:sectPr'))\nprint('tbl count:', d.count('<w:tbl>'))\nprint('namelist matches orig:', len(z.namelist()))\n# relocation paragraph now empty text\nimport re\nprint('relocation text present:', 'Relocation allowance' in d)\n\" && echo '--- inputs unchanged ---' && md5sum inputs/offer_letter_template.docx inputs/employee_data.json && ls -la output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "1cf207083cb44815892682261175f43953abab208ab44ba868fd714b3850115f",
+  "latencyMs": 77882,
+  "checkerWallMs": 4407,
+  "diagnostic": null,
+  "usage": {
+    "input": 24,
+    "output": 5445,
+    "cacheRead": 123296,
+    "cacheWrite": 17934,
+    "total": 146699
+  },
+  "modelMessages": 12,
+  "sessionHash": "178a208625d6cd5d98423a7f3cf14e7ee7bcb400dbbe7dc0f8f29451416d9e63"
+}

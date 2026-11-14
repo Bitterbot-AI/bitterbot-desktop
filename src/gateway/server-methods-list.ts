@@ -1,6 +1,14 @@
 import { listChannelPlugins } from "../channels/plugins/index.js";
+import {
+  PACKAGE_READ_METHODS,
+  PACKAGE_WRITE_METHODS,
+  PACKAGE_APPROVAL_METHODS,
+} from "./server-methods/skill-packages.js";
 
 const BASE_METHODS = [
+  ...PACKAGE_READ_METHODS,
+  ...PACKAGE_WRITE_METHODS,
+  ...PACKAGE_APPROVAL_METHODS,
   "soapbox.setup.status",
   "soapbox.setup.profile.new",
   "soapbox.setup.profile.cancel",

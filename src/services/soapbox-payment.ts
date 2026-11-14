@@ -3,6 +3,7 @@ import { createPublicClient, encodeFunctionData, http, parseAbi, type Hex } from
 import { baseSepolia } from "viem/chains";
 import type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
 import { SOAPBOX_PAYMENT_POLICY } from "../infra/soapbox-payment-policy.js";
+import { contractAddress, contractEscrowJob } from "./contract-read-result.js";
 export type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
 
 export const soapboxEscrowAbi = parseAbi([
@@ -88,19 +89,23 @@ export async function fundSoapboxEscrow(options: {
       .digest("hex") !== SOAPBOX_PAYMENT_POLICY.codeSha256
   )
     throw new Error("Escrow bytecode does not match the operator's pin");
-  const token = await client.readContract({
-    address,
-    abi: soapboxEscrowAbi,
-    functionName: "token",
-  });
+  const token = contractAddress(
+    await client.readContract({
+      address,
+      abi: soapboxEscrowAbi,
+      functionName: "token",
+    }),
+  );
   if (token.toLowerCase() !== usdc.toLowerCase()) throw new Error("Escrow token mismatch");
   const key = quote.key as Hex;
-  const existing = await client.readContract({
-    address,
-    abi: soapboxEscrowAbi,
-    functionName: "jobs",
-    args: [key],
-  });
+  const existing = contractEscrowJob(
+    await client.readContract({
+      address,
+      abi: soapboxEscrowAbi,
+      functionName: "jobs",
+      args: [key],
+    }),
+  );
   if (existing[4] !== 0n) {
     if (
       existing[0].toLowerCase() !== buyer.toLowerCase() ||

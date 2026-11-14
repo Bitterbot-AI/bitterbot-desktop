@@ -11,6 +11,8 @@ import { useCirclesStore, type PendingOutbound } from "../../stores/circles-stor
 function describe(p: PendingOutbound): string {
   const v = p.preview;
   switch (p.action) {
+    case "share_skill":
+      return `share complete package ${String(v.name)} v${String(v.version)}\nFiles: ${Array.isArray(v.files) ? v.files.join(", ") : ""}\nPackage: ${String(v.packageHash)}\nNo execution evidence is shared by this approval.`;
     case "send":
       return `send: “${String(v.text ?? "")}”`;
     case "ask":

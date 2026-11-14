@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "comparisonFreeze": "fadac6e7ef6a4dde972a5154f27dca555d9bde5bd45a6f0c324175fddc265493",
+  "repairFreeze": "3a15b081015fa966d712108e46e52a12634024d5337790feb5a9b7882cffd6f9",
+  "packageHash": "8a9db2fb33657ba8bb6fa9cf571d98bb4776dcb1881b2f130cd40405ac775eef",
+  "arms": [
+    {
+      "arm": "frozen",
+      "runs": 8,
+      "passes": 7,
+      "providerUsd": 2.957636,
+      "costPerVerifiedCompletion": 0.42251942857142855,
+      "wholeSkillReads": 0,
+      "observedHelperInvocations": 0,
+      "tokens": 1560902,
+      "toolCalls": 112,
+      "modelMessages": 108,
+      "latencyMs": 727384,
+      "checkerWallMs": 36065
+    },
+    {
+      "arm": "learned",
+      "runs": 8,
+      "passes": 8,
+      "providerUsd": 1.1540205,
+      "costPerVerifiedCompletion": 0.1442525625,
+      "wholeSkillReads": 8,
+      "observedHelperInvocations": 8,
+      "tokens": 530626,
+      "toolCalls": 60,
+      "modelMessages": 53,
+      "latencyMs": 281332,
+      "checkerWallMs": 39410
+    }
+  ],
+  "completePairs": 8,
+  "newFailures": 0,
+  "pairedProviderCostDeltas": [
+    {
+      "caseId": "agent-2701",
+      "frozenUsd": 0.638003,
+      "learnedUsd": 0.16048325,
+      "savingsUsd": 0.47751975
+    },
+    {
+      "caseId": "agent-2702",
+      "frozenUsd": 0.2461075,
+      "learnedUsd": 0.11898625,
+      "savingsUsd": 0.12712125000000002
+    },
+    {
+      "caseId": "agent-2703",
+      "frozenUsd": 0.333548,
+      "learnedUsd": 0.1587055,
+      "savingsUsd": 0.1748425
+    },
+    {
+      "caseId": "agent-2704",
+      "frozenUsd": 0.48889725,
+      "learnedUsd": 0.18074525,
+      "savingsUsd": 0.308152
+    },
+    {
+      "caseId": "agent-2705",
+      "frozenUsd": 0.2826095,
+      "learnedUsd": 0.160114,
+      "savingsUsd": 0.12249550000000001
+    },
+    {
+      "caseId": "agent-2706",
+      "frozenUsd": 0.30127675,
+      "learnedUsd": 0.11190475,
+      "savingsUsd": 0.18937199999999998
+    },
+    {
+      "caseId": "agent-2707",
+      "frozenUsd": 0.3308075,
+      "learnedUsd": 0.16894125,
+      "savingsUsd": 0.16186625
+    },
+    {
+      "caseId": "agent-2708",
+      "frozenUsd": 0.3363865,
+      "learnedUsd": 0.09414025,
+      "savingsUsd": 0.24224625
+    }
+  ],
+  "finitePanelEfficiencyTargetMet": false,
+  "relativeCostReduction": 0.6585895162555501,
+  "learningUsd": 3.07113425,
+  "learningUsdIsKnownCostLowerBound": true,
+  "priorUnresolvedLearningReserveUsd": 14.4,
+  "learningUsdIncludingFullPriorHold": 17.47113425,
+  "repairOnlyUsd": 0.50232375,
+  "breakEvenCompletionsFromKnownCosts": 12,
+  "breakEvenCompletionsIncludingFullPriorHold": 63,
+  "amortizedKnownCostPerCompletionAtObservedSample": 0.52814434375,
+  "amortizedCostPerCompletionIncludingFullPriorHold": 2.32814434375,
+  "budget": {
+    "knownUsd": 4.613980249999999,
+    "heldUsd": 0,
+    "unresolved": 0,
+    "stageRemainingUsd": 10.98601975,
+    "cumulativeKnownUsd": 120.13346299999999,
+    "priorReserveUsd": 28.8,
+    "remainingUsd": 101.066537
+  },
+  "unstarted": [],
+  "claimLimits": [
+    "Eight authored task pairs; no population noninferiority claim.",
+    "This measures a supplied shadow package, not production promotion or actual mesh transfer.",
+    "One family and one originating host; pooled evidence benefit remains unproven.",
+    "No 24-hour retention or visual-fidelity rating.",
+    "Provider charges are usage-derived; prior unresolved reserve remains held."
+  ]
+}

@@ -1,0 +1,220 @@
+{
+  "id": "agent-agent-2707-frozen",
+  "caseId": "agent-2707",
+  "arm": "frozen",
+  "runId": "3915bc87-a126-4620-b7e4-287716918bc7",
+  "cost": {
+    "providerUsd": 0.3308075,
+    "toolCalls": 14,
+    "wallMs": 96228
+  },
+  "tokens": 151426,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 1,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [],
+  "helperInvocations": [],
+  "toolActions": [
+    {
+      "name": "exec",
+      "id": "toolu_01R1P4fre8gB6yTwsVxyKTc7",
+      "arguments": {
+        "command": "cd /workspace && ls -la && echo \"---INPUTS---\" && ls -la inputs/ && echo \"---JSON---\" && cat inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_017ByoPuzuccXworDthSrtU1",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p /tmp/docx && cd /tmp/docx && unzip -o /workspace/inputs/offer_letter_template.docx > /dev/null && find . -type f | sort"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "error"
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01PT7tuucoFsEjU3yrm9Uuxm",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor n in z.namelist(): print(n)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01VHEBZdVRJL154z5nXeSEmZ",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\n# find which headers/footers are referenced in document.xml (active)\nimport re\ndoc=z.read('word/document.xml').decode('utf-8')\nrels=z.read('word/_rels/document.xml.rels').decode('utf-8')\nprint('--- headerReference / footerReference in doc ---')\nfor m in re.findall(r'<w:(header|footer)Reference[^>]*/>', doc): print(m)\nprint('--- rels ---')\nfor m in re.findall(r'<Relationship[^>]*/>', rels):\n    if 'header' in m or 'footer' in m: print(m)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01GDCBt4skNHzKQWqJDviFzV",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor f in ['word/document.xml','word/header1.xml','word/footer1.xml']:\n    txt=z.read(f).decode('utf-8')\n    # strip tags to see visible text with placeholders\n    plain=re.sub(r'<[^>]+>','',txt)\n    print('=====',f,'=====')\n    print(plain[:3000])\n    print()\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01YbHAFXRVL89pXhJGWnoBRJ",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor f in ['word/document.xml','word/header1.xml','word/footer1.xml']:\n    txt=z.read(f).decode('utf-8')\n    for kw in ['RELOCATION','IF_','END_IF','{{']:\n        c=txt.count(kw)\n        print(f, kw, c)\n    print()\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01VJRS6iBYFuQaNBMHBCtfsh",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor f in ['word/document.xml','word/header1.xml','word/footer1.xml']:\n    txt=z.read(f).decode('utf-8')\n    # concatenate only text node contents in order\n    texts=re.findall(r'<w:t[^>]*>(.*?)</w:t>', txt, re.S)\n    joined=''.join(texts)\n    print('=====',f,'=====')\n    print(repr(joined))\n    print('tokens:', re.findall(r'\\{\\{[^}]*\\}\\}', joined))\n    print()\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01VGqc7trm88EJoaBNyvNijw",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor f in ['word/document.xml','word/header1.xml','word/footer1.xml']:\n    txt=z.read(f).decode('utf-8')\n    # proper per-t extraction\n    ts=re.findall(r'<w:t\\b[^>]*>(.*?)</w:t>', txt, re.S)\n    joined=''.join(ts)\n    print('=====',f,'=====')\n    print('ALL VISIBLE TEXT:', repr(joined))\n    print('placeholders:', re.findall(r'\\{\\{[A-Z_]+\\}\\}', joined))\n    print('IF/RELOC substr present:', any(k in joined for k in ['IF_','RELOC','END_IF']))\n    print()\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "write",
+      "id": "toolu_017xVWzsV4diYQcFnet2pyHH",
+      "arguments": {
+        "file_path": "/workspace/fill.py",
+        "content": "#!/usr/bin/env python3\nimport json, re, sys, shutil, zipfile, os\n\nSRC = \"inputs/offer_letter_template.docx\"\nDST = \"output/offer_letter_filled.docx\"\nDATA = \"inputs/employee_data.json\"\n\nwith open(DATA, encoding=\"utf-8\") as f:\n    data = json.load(f)\n\nTOKEN_RE = re.compile(r\"\\{\\{([A-Z_]+)\\}\\}\")\n# Conditional markers (spec names). Not expected in this template, but handle them.\nIF_RE = re.compile(r\"\\{\\{IF_RELOCATION\\}\\}\")\nENDIF_RE = re.compile(r\"\\{\\{END_IF_RELOCATION\\}\\}\")\n\nXML_PARTS = [\"word/document.xml\", \"word/header1.xml\", \"word/footer1.xml\"]\n\nmissing = set()\n\ndef para_text(para_xml):\n    return \"\".join(re.findall(r\"<w:t\\b[^>]*>(.*?)</w:t>\", para_xml, re.S))\n\ndef collect_tokens(xml):\n    toks = set()\n    conds = 0\n    # Walk paragraphs to join run-split text (tokens are within a single paragraph).\n    for p in re.findall(r\"<w:p\\b.*?</w:p>\", xml, re.S):\n        t = para_text(p)\n        for m in TOKEN_RE.finditer(t):\n            toks.add(m.group(1))\n        conds += len(IF_RE.findall(t))\n    # Also scan whole-part level in case text sits outside <w:p> groupings.\n    whole = para_text(xml)\n    for m in TOKEN_RE.finditer(whole):\n        toks.add(m.group(1))\n    conds += len(IF_RE.findall(whole))\n    return toks, conds\n\n# ---- Validation pass across all active parts ----\nsrc_zip = zipfile.ZipFile(SRC)\nall_tokens = set()\nconditional_count = 0\npart_xml = {}\nfor part in XML_PARTS:\n    if part in src_zip.namelist():\n        xml = src_zip.read(part).decode(\"utf-8\")\n        part_xml[part] = xml\n        toks, conds = collect_tokens(xml)\n        all_tokens |= toks\n        conditional_count += conds\n\n# IF_RELOCATION governance: if the conditional appears anywhere, RELOCATION_PACKAGE is required.\nreloc_keep = None\nif conditional_count > 0:\n    if \"RELOCATION_PACKAGE\" not in data:\n        print(\"ERROR: conditional IF_RELOCATION present but required field \"\n              \"'RELOCATION_PACKAGE' is missing (no alias/fallback allowed).\",\n              file=sys.stderr)\n        sys.exit(2)\n    reloc_keep = (data[\"RELOCATION_PACKAGE\"] == \"Yes\")\n\n# Every declared plain placeholder must have a value (no invented defaults).\ndeclared_values = set(t for t in all_tokens if t not in (\"IF_RELOCATION\", \"END_IF_RELOCATION\"))\nfor tok in sorted(declared_values):\n    if tok not in data:\n        missing.add(tok)\nif missing:\n    print(\"ERROR: missing required value(s) for declared field(s): \"\n          + \", \".join(sorted(missing)), file=sys.stderr)\n    sys.exit(3)\n\n# ---- Fill pass ----\ndef fill_para(p):\n    \"\"\"Replace tokens within one paragraph, handling run-split placeholders,\n    preserving run structure by placing full value into the run containing the\n    opening '{{' and emptying the remainder of the token's spans.\"\"\"\n    # Extract ordered list of <w:t ...>text</w:t> occurrences with positions.\n    t_iter = list(re.finditer(r\"(<w:t\\b[^>]*>)(.*?)(</w:t>)\", p, re.S))\n    if not t_iter:\n        return p\n    # Build concatenated text and a map from concat index -> (t-node index, offset)\n    segments = [m.group(2) for m in t_iter]\n    concat = \"\".join(segments)\n    # Compute replacements on concat; then redistribute.\n    # We need offsets for each segment in concat.\n    starts = []\n    pos = 0\n    for s in segments:\n        starts.append(pos)\n        pos += len(s)\n\n    # Find all tokens in concat and their replacement values.\n    repls = []  # (start, end, value)\n    for m in TOKEN_RE.finditer(concat):\n        name = m.group(1)\n        if name in (\"IF_RELOCATION\", \"END_IF_RELOCATION\"):\n            continue\n        repls.append((m.start(), m.end(), str(data[name])))\n    if not repls:\n        return p\n\n    # New text per segment: distribute. Simple approach: compute new concat,\n    # then assign all text to first segment that overlapped each token; but to\n    # preserve formatting we place each token's value into the segment holding\n    # its start, and blank out the parts of other segments covered by the token.\n    new_segments = list(segments)\n    # Work from last to first to keep indices valid within per-segment edits.\n    # Instead, rebuild each segment char-by-char with markers.\n    # Build a per-char ownership of concat, then apply token replacement into\n    # start-segment.\n    # Mark ranges to delete (token spans) and insertion at token start seg.\n    # Create list of chars with a 'keep' flag.\n    keep = [True] * len(concat)\n    inserts = {}  # concat index -> inserted string (at that position's segment)\n    for (s, e, val) in repls:\n        for i in range(s, e):\n            keep[i] = False\n        inserts[s] = val\n\n    # Rebuild each segment.\n    out = []\n    for seg_idx, seg in enumerate(segments):\n        base = starts[seg_idx]\n        buf = []\n        for j in range(len(seg)):\n            ci = base + j\n            if ci in inserts:\n                buf.append(inserts[ci])\n            if keep[ci]:\n                buf.append(seg[j])\n        # handle insert at position exactly at end-of-concat edge (token start at a boundary)\n        out.append(\"\".join(buf))\n    # Also handle insert whose index equals len(concat) edge (shouldn't happen for start).\n\n    # Reconstruct paragraph by swapping each t-node's inner text.\n    result = []\n    last = 0\n    for idx, m in enumerate(t_iter):\n        result.append(p[last:m.start()])\n        open_tag, _, close_tag = m.group(1), m.group(2), m.group(3)\n        new_inner = out[idx]\n        # Preserve space if content has leading/trailing spaces: ensure xml:space.\n        if new_inner != new_inner.strip() and \"xml:space\" not in open_tag:\n            open_tag = open_tag[:-1] + ' xml:space=\"preserve\">'\n        result.append(open_tag + new_inner + close_tag)\n        last = m.end()\n    result.append(p[last:])\n    return \"\".join(result)\n\ndef process_xml(xml):\n    # Replace paragraph by paragraph to constrain token scope to one paragraph.\n    def repl(mm):\n        return fill_para(mm.group(0))\n    xml = re.sub(r\"<w:p\\b.*?</w:p>\", repl, xml, flags=re.S)\n    return xml\n\n# Copy source to dest preserving everything, rewriting only the active parts.\nos.makedirs(os.path.dirname(DST), exist_ok=True)\nwith zipfile.ZipFile(SRC) as zin, zipfile.ZipFile(DST, \"w\", zipfile.ZIP_DEFLATED) as zout:\n    for item in zin.infolist():\n        content = zin.read(item.filename)\n        if item.filename in XML_PARTS:\n            xml = content.decode(\"utf-8\")\n            xml = process_xml(xml)\n            content = xml.encode(\"utf-8\")\n        zout.writestr(item, content)\n\nprint(\"OK: wrote\", DST)\nprint(\"Filled fields:\", \", \".join(sorted(declared_values)))\nprint(\"Conditionals (IF_RELOCATION) found:\", conditional_count)\n"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01KRNFF5kwE36WNMXcbF9vwp",
+      "arguments": {
+        "command": "cd /workspace && python3 fill.py; echo \"exit=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_013gmbqxiKDgz8ocNE4xfZ9k",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile,re\nz=zipfile.ZipFile('output/offer_letter_filled.docx')\nfor f in ['word/document.xml','word/header1.xml','word/footer1.xml']:\n    xml=z.read(f).decode('utf-8')\n    vis=''.join(re.findall(r'<w:t\\b[^>]*>(.*?)</w:t>', xml, re.S))\n    print('=====',f,'=====')\n    print(vis)\n    left=re.findall(r'\\{\\{[A-Z_]+\\}\\}', vis)\n    print('residual placeholders:', left)\n    print()\n# structure integrity: table still present\ndoc=z.read('word/document.xml').decode('utf-8')\nprint('table present:', '<w:tbl>' in doc, 'rows:', doc.count('<w:tr>'), 'cells:', doc.count('<w:tc>'))\nprint('namelist count:', len(z.namelist()))\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01HrdWD9E67nUyCgisNnFuF7",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile\nprint('docx valid:', zipfile.ZipFile('output/offer_letter_filled.docx').testzip() is None)\n\" && echo '--- input integrity ---' && md5sum inputs/offer_letter_template.docx inputs/employee_data.json && ls -la output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_017MPDYSHrsefhcNxuQu22xW",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport re\n# mimic the conditional handling logic used would-be: keep only exact 'Yes'\nfor v in ['Yes','yes','YES','No','','Maybe']:\n    print(v, '->', 'KEEP' if v=='Yes' else 'REMOVE')\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "8db33e8a1dffab3b27ae2b21159e39a3a390a6be96e727e03a5a79f0c4e53345",
+  "latencyMs": 96231,
+  "checkerWallMs": 3899,
+  "diagnostic": null,
+  "usage": {
+    "input": 28,
+    "output": 6771,
+    "cacheRead": 129135,
+    "cacheWrite": 15492,
+    "total": 151426
+  },
+  "modelMessages": 14,
+  "sessionHash": "6e212d76b013649cae590b617765482cf9f40e57542c1690dcc070c49d3f6f71"
+}

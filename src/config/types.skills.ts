@@ -237,6 +237,14 @@ export type SkillsPriorConfig = {
 };
 
 export type SkillsConfig = {
+  /** Complete-package learning is opt-in; sharing still requires explicit policies. */
+  collective?: {
+    enabled?: boolean;
+    publicMesh?: boolean;
+    synthesis?: "off" | "shadow" | "active";
+    budget?: { providerUsd: number; toolCalls: number; wallMs: number };
+    validationModel?: string;
+  };
   /** Optional bundled-skill allowlist (only affects bundled skills). */
   allowBundled?: string[];
   load?: SkillsLoadConfig;

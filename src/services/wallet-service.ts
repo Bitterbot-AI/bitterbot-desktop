@@ -4,6 +4,7 @@ import path from "node:path";
 import lockfile from "proper-lockfile";
 import type { WalletConfig } from "../config/types.wallet.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import { contractUint } from "./contract-read-result.js";
 
 export type BalanceResult = {
   token: string;
@@ -542,7 +543,7 @@ export function createWalletService(
         const decimals = TOKEN_DECIMALS[tokenSymbol] ?? 18;
         return {
           token: tokenSymbol,
-          balance: formatBalance(BigInt(rawBalance), decimals),
+          balance: formatBalance(contractUint(rawBalance), decimals),
         };
       } catch (err) {
         throw new Error(

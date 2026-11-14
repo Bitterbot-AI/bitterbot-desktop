@@ -7,6 +7,7 @@ import type { WalletConfig } from "../config/types.wallet.js";
 import type { SoapboxWalletStatus } from "../infra/soapbox-client.js";
 import type { SoapboxPaymentQuote } from "../infra/soapbox-client.js";
 import { gatedWallet } from "../review/spend.js";
+import { contractUint } from "./contract-read-result.js";
 import { assertApprovedSoapboxQuote } from "./soapbox-payment.js";
 import { createWalletService } from "./wallet-service.js";
 
@@ -243,12 +244,14 @@ export async function getSoapboxWalletStatus(): Promise<SoapboxWalletStatus> {
     });
     if ((await client.getChainId()) !== 84532) throw new Error("Wrong Compute wallet chain");
     status.balance_usdc = formatUnits(
-      await client.readContract({
-        address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        abi: parseAbi(["function balanceOf(address) view returns (uint256)"]),
-        functionName: "balanceOf",
-        args: [stored.address],
-      }),
+      contractUint(
+        await client.readContract({
+          address: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+          abi: parseAbi(["function balanceOf(address) view returns (uint256)"]),
+          functionName: "balanceOf",
+          args: [stored.address],
+        }),
+      ),
       6,
     );
   } catch (error) {

@@ -1,0 +1,28 @@
+{
+  "platform": "Windows",
+  "parser": "libxml2 via lxml (host checker uses Python ElementTree)",
+  "records": [
+    {
+      "id": "agent-evaluation-research-award-4213-frozen",
+      "originalOutcome": "task-failure",
+      "parsedXmlParts": 24,
+      "errors": [
+        {
+          "part": "word/document.xml",
+          "position": [
+            2,
+            2693
+          ],
+          "message": "xmlParseEntityRef: no name, line 2, column 2693 (<string>, line 2)"
+        }
+      ]
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-learned",
+      "originalOutcome": "pass",
+      "parsedXmlParts": 25,
+      "errors": []
+    }
+  ],
+  "xmlFailuresConfirmed": true
+}

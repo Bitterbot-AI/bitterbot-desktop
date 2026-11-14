@@ -6,3 +6,4 @@
 # breaks the byte-identity test. Never rewrite its line endings.
 benchmarks/skill-evolution/*.jsonl text eol=lf
 src/infra/__fixtures__/** -text
+test/fixtures/collective-learning/** -text

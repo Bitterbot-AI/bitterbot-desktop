@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "repairFreeze": "3a15b081015fa966d712108e46e52a12634024d5337790feb5a9b7882cffd6f9",
+  "createdAt": "2026-11-14T15:47:15.770Z",
+  "sources": {
+    "research/collective-learning/executable-use-comparison-v3/run.ts": "8d13aff64dca5d37b4644b3e15d7f35aa4a481becde773ab5b2e57cbb2955283"
+  },
+  "packageHash": "8a9db2fb33657ba8bb6fa9cf571d98bb4776dcb1881b2f130cd40405ac775eef",
+  "model": "anthropic/claude-opus-4-8",
+  "modelDefinition": "59e0e98abbb892d3c8a86db8c953467f44f1cafb29cf08d69d923b126735125f",
+  "rates": {
+    "input": 5,
+    "output": 25,
+    "cacheRead": 0.5,
+    "cacheWrite": 6.25
+  },
+  "quote": {
+    "providerUsd": 7.2,
+    "toolCalls": 21,
+    "wallMs": 450000
+  },
+  "taskPrompt": "Fill the declared DOCX fields without editing inputs, preserving text placement and section/table structure. Replace uppercase field placeholders even when split across runs in a paragraph, including body, nested tables and active headers/footers. For IF_RELOCATION/END_IF_RELOCATION, the only governing field is RELOCATION_PACKAGE. That field is required whenever the conditional appears. Keep the content only for the exact string Yes; every other string removes it. An extra RELOCATION field is unused and must never act as an alias or fallback. If the governing field or another required value is absent, exit nonzero and report the missing requirement rather than inventing a default. No installs, network access, macros or cross-paragraph tokens. This is the public task specification, not a verifier or an expected answer. Complete inputs/offer_letter_template.docx using inputs/employee_data.json and save output/offer_letter_filled.docx. Do not modify the inputs. Use the available tools and finish with a concise completion message.",
+  "schedule": [
+    {
+      "id": "agent-agent-2701-frozen",
+      "caseId": "agent-2701",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-agent-2701-learned",
+      "caseId": "agent-2701",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2702-learned",
+      "caseId": "agent-2702",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2702-frozen",
+      "caseId": "agent-2702",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-agent-2703-frozen",
+      "caseId": "agent-2703",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-agent-2703-learned",
+      "caseId": "agent-2703",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2704-learned",
+      "caseId": "agent-2704",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2704-frozen",
+      "caseId": "agent-2704",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-agent-2705-frozen",
+      "caseId": "agent-2705",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-agent-2705-learned",
+      "caseId": "agent-2705",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2706-learned",
+      "caseId": "agent-2706",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2706-frozen",
+      "caseId": "agent-2706",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-agent-2707-frozen",
+      "caseId": "agent-2707",
+      "arm": "frozen"
+    },
+    {
+      "id": "agent-agent-2707-learned",
+      "caseId": "agent-2707",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2708-learned",
+      "caseId": "agent-2708",
+      "arm": "learned"
+    },
+    {
+      "id": "agent-agent-2708-frozen",
+      "caseId": "agent-2708",
+      "arm": "frozen"
+    }
+  ],
+  "budgetBefore": {
+    "knownUsd": 0.50232375,
+    "heldUsd": 0,
+    "unresolved": 0,
+    "stageRemainingUsd": 15.09767625,
+    "cumulativeKnownUsd": 116.0218065,
+    "priorReserveUsd": 28.8,
+    "remainingUsd": 105.17819349999999
+  },
+  "maxTaskRuns": 16,
+  "concurrency": 1,
+  "maximumStageProviderUsd": 15.6,
+  "admission": "Each serial job reserves the full quote against the same $15.60 new-work ledger as this repair; the earlier $14.40 combined holds is retained separately within the aggregate $30 stage. Stop before dispatch if known costs plus holds plus quote exceed cap. Sixteen is a maximum, not permission to exceed the cap.",
+  "claim": "Discovery/use of a supplied, independently checked shadow library through the normal skill loader and sandboxed read/exec tools. No collective activation/promotion gate bypass, transport claim, or independent-node claim.",
+  "primary": "Provider cost per independently verified completion. Target at least 50% reduction, with no added failures on this finite panel.",
+  "secondary": [
+    "checked success",
+    "SKILL.md whole-file read",
+    "successful helper command observed",
+    "tool calls",
+    "model messages (not exact provider request count)",
+    "tokens including cache",
+    "agent latency excluding cold preflight",
+    "verification latency"
+  ],
+  "learningAccounting": "Include both earlier executable learning stages ($2.5688105) and this repair. The two interrupted prior attempts retain $14.40 in unresolved holds; report amortization and break-even bounds including that full hold. Unpaid verification wall time and physical helper runs are separate.",
+  "interpretation": "Eight authored pairs are a development feasibility result, not a powered general efficacy test. Model caching may carry across fresh sessions; order alternates to reduce order effects.",
+  "instrumentation": "Read tracking requires successful whole SKILL.md read. Helper evidence uses successful exec results with a command containing the exact immutable helper path, input and output arguments; it is invocation evidence, not OS-level file-access tracing.",
+  "hash": "fadac6e7ef6a4dde972a5154f27dca555d9bde5bd45a6f0c324175fddc265493"
+}

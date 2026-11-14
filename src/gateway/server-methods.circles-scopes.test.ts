@@ -54,8 +54,8 @@ describe("circles RPC scope gating", () => {
     }
   });
 
-  it("authorizes every circles method with read+write scopes (no admin fall-through)", () => {
-    const client = operatorWith(["operator.read", "operator.write"]);
+  it("authorizes the Circle surface with read, write and approval scopes", () => {
+    const client = operatorWith(["operator.read", "operator.write", "operator.approvals"]);
     for (const method of ALL_CIRCLES_METHODS) {
       expect(authorizeGatewayMethod(method, client), method).toBeNull();
     }
@@ -73,7 +73,11 @@ describe("circles RPC scope gating", () => {
     for (const method of ALL_CIRCLES_METHODS) {
       if (READ_ONLY.has(method)) continue;
       const err = authorizeGatewayMethod(method, client);
-      expect(err?.message, method).toContain("missing scope: operator.write");
+      expect(err?.message, method).toContain(
+        method === "circles.outbound.approve"
+          ? "missing scope: operator.approvals"
+          : "missing scope: operator.write",
+      );
     }
   });
 

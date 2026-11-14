@@ -452,7 +452,6 @@ export function createA2aHttpHandler(opts: {
         });
         return true;
       }
-      const { handleCircleMethod } = await import("./circles.js");
       let circleDb: import("node:sqlite").DatabaseSync | undefined;
       try {
         const { MemoryIndexManager } = await import("../../memory/manager.js");
@@ -486,7 +485,8 @@ export function createA2aHttpHandler(opts: {
         });
         return true;
       }
-      const outcome = handleCircleMethod(
+      const { handleCircleMethodAsync } = await import("./circles.js");
+      const outcome = await handleCircleMethodAsync(
         rpcRequest.method,
         rpcRequest.params,
         circleDb,

@@ -1,0 +1,42 @@
+{
+  "environment": {
+    "model": "anthropic/claude-opus-4-8",
+    "tools": {
+      "python3": "3",
+      "read": "1",
+      "write": "1",
+      "exec": "1"
+    },
+    "runtime": {
+      "platform": "linux",
+      "image": "sha256:8c7a2ed155e6e27b42f6787539eb8dc9d914b2eddb2d0d6ae7c47b5bbc142c6a",
+      "cpus": "0.75",
+      "memory": "384m",
+      "python": "3.11.18",
+      "docx": "1.1.2",
+      "timezone": "America/Toronto",
+      "locale": "C.UTF-8"
+    },
+    "checkerHash": "f129d7ec306e92b1d69a5e508d4b74b88f3a73c81c69b403e1d7323d939f78a9"
+  },
+  "settings": {
+    "cpus": 0.75,
+    "memory": "384m",
+    "env": {
+      "TZ": "America/Toronto",
+      "LANG": "C.UTF-8",
+      "LC_ALL": "C.UTF-8"
+    }
+  },
+  "changedFromSource": {
+    "cpus": "1 -> 0.75",
+    "memory": "512m -> 384m",
+    "timezone": "explicit America/Toronto"
+  },
+  "runtimeMismatchBlocked": [
+    "runtime-unavailable:image:sha256:8c7a2ed155e6e27b42f6787539eb8dc9d914b2eddb2d0d6ae7c47b5bbc142c6a"
+  ],
+  "pinnedImageUnchanged": true,
+  "independentPhysicalMachine": false,
+  "pairedRemoteNodes": 0
+}

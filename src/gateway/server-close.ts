@@ -136,8 +136,12 @@ export function createGatewayCloseHandler(params: {
     if (params.browserControl) {
       await params.browserControl.stop().catch(() => {});
     }
+    const { stopPackageWorker } = await import("../agents/skills/collective/service.js");
+    stopPackageWorker();
     if (params.orchestratorBridge) {
       params.peerRpcTransport?.stop();
+      const { getPackageMesh } = await import("../agents/skills/collective/mesh.js");
+      await getPackageMesh()?.stop();
       await params.computeMesh?.stop().catch(() => {});
       await params.orchestratorBridge.stop().catch(() => {});
     }

@@ -1,0 +1,490 @@
+{
+  "allUsageAgrees": true,
+  "records": [
+    {
+      "id": "agent-agent-2701-frozen",
+      "caseId": "agent-2701",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 16,
+      "usage": {
+        "input": 32,
+        "output": 7799,
+        "cacheRead": 382886,
+        "cacheWrite": 40228
+      },
+      "runnerUsage": {
+        "input": 32,
+        "output": 7799,
+        "cacheRead": 382886,
+        "cacheWrite": 40228
+      },
+      "matches": true,
+      "observedProviderUsd": 0.638003,
+      "ledgerProviderUsd": 0.638003,
+      "costMatches": true,
+      "latencyMs": 117316,
+      "checkerWallMs": 5607,
+      "agentLatencyMs": 111709,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-agent-2701-learned",
+      "caseId": "agent-2701",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 7,
+      "usage": {
+        "input": 14,
+        "output": 1672,
+        "cacheRead": 61914,
+        "cacheWrite": 14025
+      },
+      "runnerUsage": {
+        "input": 14,
+        "output": 1672,
+        "cacheRead": 61914,
+        "cacheWrite": 14025
+      },
+      "matches": true,
+      "observedProviderUsd": 0.16048325,
+      "ledgerProviderUsd": 0.16048325,
+      "costMatches": true,
+      "latencyMs": 37794,
+      "checkerWallMs": 6670,
+      "agentLatencyMs": 31124,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2702-learned",
+      "caseId": "agent-2702",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 6,
+      "usage": {
+        "input": 12,
+        "output": 1457,
+        "cacheRead": 40840,
+        "cacheWrite": 9933
+      },
+      "runnerUsage": {
+        "input": 12,
+        "output": 1457,
+        "cacheRead": 40840,
+        "cacheWrite": 9933
+      },
+      "matches": true,
+      "observedProviderUsd": 0.11898625,
+      "ledgerProviderUsd": 0.11898625,
+      "costMatches": true,
+      "latencyMs": 35342,
+      "checkerWallMs": 6543,
+      "agentLatencyMs": 28799,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2702-frozen",
+      "caseId": "agent-2702",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 9,
+      "usage": {
+        "input": 18,
+        "output": 4336,
+        "cacheRead": 80835,
+        "cacheWrite": 15552
+      },
+      "runnerUsage": {
+        "input": 18,
+        "output": 4336,
+        "cacheRead": 80835,
+        "cacheWrite": 15552
+      },
+      "matches": true,
+      "observedProviderUsd": 0.2461075,
+      "ledgerProviderUsd": 0.2461075,
+      "costMatches": true,
+      "latencyMs": 61639,
+      "checkerWallMs": 5295,
+      "agentLatencyMs": 56344,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-agent-2703-frozen",
+      "caseId": "agent-2703",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 15,
+      "usage": {
+        "input": 30,
+        "output": 6481,
+        "cacheRead": 144521,
+        "cacheWrite": 15858
+      },
+      "runnerUsage": {
+        "input": 30,
+        "output": 6481,
+        "cacheRead": 144521,
+        "cacheWrite": 15858
+      },
+      "matches": true,
+      "observedProviderUsd": 0.333548,
+      "ledgerProviderUsd": 0.333548,
+      "costMatches": true,
+      "latencyMs": 99551,
+      "checkerWallMs": 4459,
+      "agentLatencyMs": 95092,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-agent-2703-learned",
+      "caseId": "agent-2703",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 7,
+      "usage": {
+        "input": 14,
+        "output": 1558,
+        "cacheRead": 63121,
+        "cacheWrite": 14100
+      },
+      "runnerUsage": {
+        "input": 14,
+        "output": 1558,
+        "cacheRead": 63121,
+        "cacheWrite": 14100
+      },
+      "matches": true,
+      "observedProviderUsd": 0.1587055,
+      "ledgerProviderUsd": 0.1587055,
+      "costMatches": true,
+      "latencyMs": 34122,
+      "checkerWallMs": 4040,
+      "agentLatencyMs": 30082,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2704-learned",
+      "caseId": "agent-2704",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 9,
+      "usage": {
+        "input": 18,
+        "output": 2748,
+        "cacheRead": 75498,
+        "cacheWrite": 11873
+      },
+      "runnerUsage": {
+        "input": 18,
+        "output": 2748,
+        "cacheRead": 75498,
+        "cacheWrite": 11873
+      },
+      "matches": true,
+      "observedProviderUsd": 0.18074525,
+      "ledgerProviderUsd": 0.18074525,
+      "costMatches": true,
+      "latencyMs": 46746,
+      "checkerWallMs": 3942,
+      "agentLatencyMs": 42804,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2704-frozen",
+      "caseId": "agent-2704",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 15,
+      "usage": {
+        "input": 30,
+        "output": 6975,
+        "cacheRead": 253182,
+        "cacheWrite": 30045
+      },
+      "runnerUsage": {
+        "input": 30,
+        "output": 6975,
+        "cacheRead": 253182,
+        "cacheWrite": 30045
+      },
+      "matches": true,
+      "observedProviderUsd": 0.48889725,
+      "ledgerProviderUsd": 0.48889725,
+      "costMatches": true,
+      "latencyMs": 98552,
+      "checkerWallMs": 3880,
+      "agentLatencyMs": 94672,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-agent-2705-frozen",
+      "caseId": "agent-2705",
+      "arm": "frozen",
+      "outcome": "task-failure",
+      "observedAssistantResponses": 12,
+      "usage": {
+        "input": 24,
+        "output": 5904,
+        "cacheRead": 98979,
+        "cacheWrite": 13664
+      },
+      "runnerUsage": {
+        "input": 24,
+        "output": 5904,
+        "cacheRead": 98979,
+        "cacheWrite": 13664
+      },
+      "matches": true,
+      "observedProviderUsd": 0.2826095,
+      "ledgerProviderUsd": 0.2826095,
+      "costMatches": true,
+      "latencyMs": 84336,
+      "checkerWallMs": 4916,
+      "agentLatencyMs": 79420,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-agent-2705-learned",
+      "caseId": "agent-2705",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 6,
+      "usage": {
+        "input": 12,
+        "output": 1697,
+        "cacheRead": 54408,
+        "cacheWrite": 14468
+      },
+      "runnerUsage": {
+        "input": 12,
+        "output": 1697,
+        "cacheRead": 54408,
+        "cacheWrite": 14468
+      },
+      "matches": true,
+      "observedProviderUsd": 0.160114,
+      "ledgerProviderUsd": 0.160114,
+      "costMatches": true,
+      "latencyMs": 35112,
+      "checkerWallMs": 3797,
+      "agentLatencyMs": 31315,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2706-learned",
+      "caseId": "agent-2706",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 5,
+      "usage": {
+        "input": 10,
+        "output": 1287,
+        "cacheRead": 32147,
+        "cacheWrite": 10177
+      },
+      "runnerUsage": {
+        "input": 10,
+        "output": 1287,
+        "cacheRead": 32147,
+        "cacheWrite": 10177
+      },
+      "matches": true,
+      "observedProviderUsd": 0.11190475,
+      "ledgerProviderUsd": 0.11190475,
+      "costMatches": true,
+      "latencyMs": 25900,
+      "checkerWallMs": 4124,
+      "agentLatencyMs": 21776,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2706-frozen",
+      "caseId": "agent-2706",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 12,
+      "usage": {
+        "input": 24,
+        "output": 6300,
+        "cacheRead": 106276,
+        "cacheWrite": 14483
+      },
+      "runnerUsage": {
+        "input": 24,
+        "output": 6300,
+        "cacheRead": 106276,
+        "cacheWrite": 14483
+      },
+      "matches": true,
+      "observedProviderUsd": 0.30127675,
+      "ledgerProviderUsd": 0.30127675,
+      "costMatches": true,
+      "latencyMs": 84136,
+      "checkerWallMs": 4011,
+      "agentLatencyMs": 80125,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-agent-2707-frozen",
+      "caseId": "agent-2707",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 14,
+      "usage": {
+        "input": 28,
+        "output": 6771,
+        "cacheRead": 129135,
+        "cacheWrite": 15492
+      },
+      "runnerUsage": {
+        "input": 28,
+        "output": 6771,
+        "cacheRead": 129135,
+        "cacheWrite": 15492
+      },
+      "matches": true,
+      "observedProviderUsd": 0.3308075,
+      "ledgerProviderUsd": 0.3308075,
+      "costMatches": true,
+      "latencyMs": 96231,
+      "checkerWallMs": 3899,
+      "agentLatencyMs": 92332,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    },
+    {
+      "id": "agent-agent-2707-learned",
+      "caseId": "agent-2707",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 8,
+      "usage": {
+        "input": 16,
+        "output": 2696,
+        "cacheRead": 61385,
+        "cacheWrite": 11323
+      },
+      "runnerUsage": {
+        "input": 16,
+        "output": 2696,
+        "cacheRead": 61385,
+        "cacheWrite": 11323
+      },
+      "matches": true,
+      "observedProviderUsd": 0.16894125,
+      "ledgerProviderUsd": 0.16894125,
+      "costMatches": true,
+      "latencyMs": 44995,
+      "checkerWallMs": 5700,
+      "agentLatencyMs": 39295,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2708-learned",
+      "caseId": "agent-2708",
+      "arm": "learned",
+      "outcome": "pass",
+      "observedAssistantResponses": 5,
+      "usage": {
+        "input": 10,
+        "output": 811,
+        "cacheRead": 32143,
+        "cacheWrite": 9239
+      },
+      "runnerUsage": {
+        "input": 10,
+        "output": 811,
+        "cacheRead": 32143,
+        "cacheWrite": 9239
+      },
+      "matches": true,
+      "observedProviderUsd": 0.09414025,
+      "ledgerProviderUsd": 0.09414025,
+      "costMatches": true,
+      "latencyMs": 21321,
+      "checkerWallMs": 4594,
+      "agentLatencyMs": 16727,
+      "wholeSkillRead": true,
+      "observedHelperCommand": true
+    },
+    {
+      "id": "agent-agent-2708-frozen",
+      "caseId": "agent-2708",
+      "arm": "frozen",
+      "outcome": "pass",
+      "observedAssistantResponses": 15,
+      "usage": {
+        "input": 30,
+        "output": 5949,
+        "cacheRead": 151123,
+        "cacheWrite": 17912
+      },
+      "runnerUsage": {
+        "input": 30,
+        "output": 5949,
+        "cacheRead": 151123,
+        "cacheWrite": 17912
+      },
+      "matches": true,
+      "observedProviderUsd": 0.3363865,
+      "ledgerProviderUsd": 0.3363865,
+      "costMatches": true,
+      "latencyMs": 85623,
+      "checkerWallMs": 3998,
+      "agentLatencyMs": 81625,
+      "wholeSkillRead": false,
+      "observedHelperCommand": false
+    }
+  ],
+  "latency": [
+    {
+      "arm": "frozen",
+      "runs": 8,
+      "medianMs": 90927,
+      "meanMs": 90923,
+      "agentExcludingChecker": {
+        "medianMs": 86978.5,
+        "meanMs": 86414.875
+      },
+      "excludingFirstPair": {
+        "runs": 7,
+        "medianMs": 85623,
+        "meanMs": 87152.57142857143,
+        "agentMedianMs": 81625,
+        "agentMeanMs": 82801.42857142857
+      }
+    },
+    {
+      "arm": "learned",
+      "runs": 8,
+      "medianMs": 35227,
+      "meanMs": 35166.5,
+      "agentExcludingChecker": {
+        "medianMs": 30603,
+        "meanMs": 30240.25
+      },
+      "excludingFirstPair": {
+        "runs": 7,
+        "medianMs": 35112,
+        "meanMs": 34791.142857142855,
+        "agentMedianMs": 30082,
+        "agentMeanMs": 30114
+      }
+    }
+  ],
+  "limits": "Observed assistant responses with usage are not an exact count of every attempted provider HTTP request. Latency sensitivity excludes the first pair from both arms as specified before comparison."
+}

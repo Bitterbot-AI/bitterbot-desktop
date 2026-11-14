@@ -1,0 +1,153 @@
+{
+  "id": "agent-agent-2707-learned",
+  "caseId": "agent-2707",
+  "arm": "learned",
+  "runId": "760e0192-e1c3-4406-a537-4f3542ce50e4",
+  "cost": {
+    "providerUsd": 0.16894125,
+    "toolCalls": 8,
+    "wallMs": 44990
+  },
+  "tokens": 75420,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 1,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01Js6Q4fAK8FjS2WSKcEExuA",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_016s3wfYCUYLprpHhj6U2bMr",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01HEsXUjrdNd7iMM74Wg3BQX",
+      "arguments": {
+        "command": "ls -la /workspace/inputs/ && echo \"---\" && cat /workspace/inputs/employee_data.json && echo \"---\" && ls -la /workspace/skill/helpers/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01C2rPXE2P3PuGzFo3vpZDM9",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nfrom docx import Document\nd=Document('inputs/offer_letter_template.docx')\nimport re\ntxt=[]\nfor p in d.paragraphs: txt.append(p.text)\nfor t in d.tables:\n    for row in t.rows:\n        for c in row.cells:\n            for p in c.paragraphs: txt.append(p.text)\nfull='\\n'.join(txt)\nprint(sorted(set(re.findall(r'\\{\\{[^}]+\\}\\}', full))))\n\" 2>&1 | head -40"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Js6Q4fAK8FjS2WSKcEExuA",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01KyjAWPsBHC7Wb8coWzouSJ",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nfrom docx import Document\nimport re\nd=Document('output/offer_letter_filled.docx')\nparts=[]\ndef grab(p): parts.append(p.text)\nfor p in d.paragraphs: grab(p)\nfor t in d.tables:\n    for row in t.rows:\n        for c in row.cells:\n            for p in c.paragraphs: grab(p)\n            for nt in c.tables:\n                for r2 in nt.rows:\n                    for c2 in r2.cells:\n                        for p in c2.paragraphs: grab(p)\nfor s in d.sections:\n    for hf in [s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer]:\n        for p in hf.paragraphs: grab(p)\nfull='\\n'.join(parts)\nleftover=re.findall(r'\\{\\{[^}]*\\}\\}', full)\nprint('LEFTOVER:', leftover)\nprint('IF/RELOC markers:', re.findall(r'IF_RELOCATION|END_IF_RELOCATION', full))\nprint('RELOC content present:', 'RELOCATION' in full or '9,750' in full or '17' in full)\n# show relevant lines\nfor line in parts:\n    if 'reloc' in line.lower() or '9,750' in line or 'René' in line:\n        print('>>', repr(line))\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01CbMCeK9kmdRDVF7KYmuqRK",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile, re\nz=zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor n in z.namelist():\n    if n.endswith('.xml'):\n        data=z.read(n).decode('utf-8','ignore')\n        # strip tags to get run-concatenated text per file\n        # find IF markers across runs: remove xml tags\n        plain=re.sub(r'<[^>]+>','',data)\n        if 'IF_RELOCATION' in plain or 'RELOCATION' in plain:\n            print('FILE:', n)\n            for m in re.findall(r'\\{\\{[^}]*RELOC[^}]*\\}\\}|IF_RELOCATION|END_IF_RELOCATION', plain):\n                print('  marker:', m)\n            # show snippet\n            idx=plain.find('IF_RELOCATION')\n            if idx>=0: print('  snippet:', repr(plain[idx-20:idx+200]))\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01WiBuYhgQwWGJJpb5rKGmq7",
+      "arguments": {
+        "command": "cd /workspace && ls -la output/ && echo \"---inputs unchanged timestamps---\" && ls -la inputs/ && echo \"---all template fields resolved---\" && python3 -c \"\nfrom docx import Document\nd=Document('output/offer_letter_filled.docx')\nimport re\nt='\\n'.join(p.text for p in d.paragraphs for _ in [0]) \n# quick check each expected value present\nvals=['Willow Evidence Services 2707','René Tanaka','Field Analyst 2707','Independent Verification','October 8, 2029','2727,250','Robin Ortiz','WILLOW-2707','Alex Nour']\nfull='\\n'.join(p.text for p in d.paragraphs)\nfor tb in d.tables:\n    for r in tb.rows:\n        for c in r.cells: full+='\\n'+'\\n'.join(p.text for p in c.paragraphs)\nfor v in vals: print(('OK ' if v in full else 'MISS '), v)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "b7eaae13a308b3ff4ac6b0bd4f2dd888bddc4f3c1d9785437909545a84ede194",
+  "latencyMs": 44995,
+  "checkerWallMs": 5700,
+  "diagnostic": null,
+  "usage": {
+    "input": 16,
+    "output": 2696,
+    "cacheRead": 61385,
+    "cacheWrite": 11323,
+    "total": 75420
+  },
+  "modelMessages": 8,
+  "sessionHash": "b18518c5a1e5206b2234cb8b0d58bc5f90c8244a93de1fcaaff33af30f13c0fb"
+}

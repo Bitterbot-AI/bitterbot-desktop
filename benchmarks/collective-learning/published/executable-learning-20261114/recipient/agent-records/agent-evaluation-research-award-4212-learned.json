@@ -1,0 +1,162 @@
+{
+  "id": "agent-evaluation-research-award-4212-learned",
+  "caseId": "evaluation-research-award-4212",
+  "arm": "learned",
+  "runId": "f282d34b-86fc-4fbf-bff4-f81fadfd2bef",
+  "cost": {
+    "providerUsd": 0.1815945,
+    "toolCalls": 8,
+    "wallMs": 37561
+  },
+  "tokens": 86018,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01Qu13nZvKBrdQh2Ze1geubZ",
+      "arguments": {
+        "command": "python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01L5WSUD7A9WpnoiyhjqFdGz",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01ULGpH2zFB5CBFVVUDSjx1T",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_012u3EYdkrrPkndyYbPJdFbb",
+      "arguments": {
+        "path": "skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Y5AR7GVJ3jKNGYzMdqyyMw",
+      "arguments": {
+        "command": "ls -la inputs/ output/ 2>/dev/null; echo \"---skill tree---\"; ls -R skill/ 2>/dev/null | head -50"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01C2G6M49hqf9wTckrmgoxfu",
+      "arguments": {
+        "command": "python3 -c \"import docx, lxml; print('deps ok')\" 2>&1; echo \"---\"; python3 -c \"\nimport docx\nd=docx.Document('inputs/offer_letter_template.docx')\nimport re\nseen=[]\ndef paras(doc):\n    for p in doc.paragraphs: yield p\n    for t in doc.tables:\n        for row in t.rows:\n            for c in row.cells:\n                for p in c.paragraphs: yield p\n    for s in doc.sections:\n        for part in (s.header,s.footer,s.first_page_header,s.first_page_footer,s.even_page_header,s.even_page_footer):\n            if part is None: continue\n            for p in part.paragraphs: yield p\nfor p in paras(d):\n    t=''.join(r.text for r in p.runs)\n    for m in re.finditer(r'\\{\\{[^}]*\\}\\}', t):\n        seen.append(m.group(0))\nfrom collections import Counter\nfor k,v in Counter(seen).items(): print(v,k)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Qu13nZvKBrdQh2Ze1geubZ",
+      "arguments": {
+        "command": "python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01KxhwagSfJpEMLrZbZD263K",
+      "arguments": {
+        "command": "echo \"=== OUTPUT CHECK ===\"; python3 -c \"\nimport docx, re\nd=docx.Document('output/offer_letter_filled.docx')\ndef paras(doc):\n    for p in doc.paragraphs: yield p\n    for t in doc.tables:\n        for row in t.rows:\n            for c in row.cells:\n                for p in c.paragraphs: yield p\n    for s in doc.sections:\n        for part in (s.header,s.footer,s.first_page_header,s.first_page_footer,s.even_page_header,s.even_page_footer):\n            if part is None: continue\n            for p in part.paragraphs: yield p\nleft=[]; reloc_words=[]\nfor p in paras(d):\n    t=''.join(r.text for r in p.runs)\n    left+=re.findall(r'\\{\\{[^}]*\\}\\}',t)\n    if 'reloc' in t.lower() or '6,125' in t: reloc_words.append(t.strip())\nprint('leftover markers:', left)\nprint('relocation-related text remaining:', reloc_words)\n\"\necho \"=== INPUTS UNCHANGED (ls) ===\"; ls -la inputs/ output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "complete",
+      "id": "toolu_01XLLgnpv1yDpWS4tXxhtK3p",
+      "arguments": {
+        "summary": "Filled the DOCX template and saved output/offer_letter_filled.docx (exit 0). All placeholders across body, tables, and headers/footers were replaced; no markers remain. The RELOCATION conditional was correctly dropped because its sole governing field RELOCATION_PACKAGE was \" Yes \" (with spaces), not the exact string \"Yes\" — and the unused bare RELOCATION / RELOCATION_PACKAGE_BACKUP keys were not treated as fallbacks. Inputs were not modified.</summary>\n<completed_tasks>Read skill and helper; inspected template placeholders and data; ran fill_docx.py (exit 0); verified no leftover markers, relocation block dropped, and inputs unchanged.</completed_tasks>\n</invoke>\n"
+      },
+      "result": [
+        {
+          "isError": true
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "6c2a693cb8c1b40c7e4594796ae323de5a182e40874106f286be7daf51ccd019",
+  "latencyMs": 37565,
+  "checkerWallMs": 4408,
+  "diagnostic": null,
+  "usage": {
+    "input": 14,
+    "output": 2173,
+    "cacheRead": 68999,
+    "cacheWrite": 14832,
+    "total": 86018
+  },
+  "modelMessages": 7,
+  "sessionHash": "c11c4c6b80d62dc8bd4fc2a433a0271f1e152bc24740005f87bb6a2737a2bfb9"
+}

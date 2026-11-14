@@ -415,6 +415,8 @@ export { getProceduralLearning } from "../memory/procedural-learning-host.js";
 export { createToolProcedureAdapter } from "../memory/procedural-learning-adapter.js";
 export { learningHash } from "../memory/procedural-learning-contract.js";
 export { ExperienceMemory } from "../memory/experience-memory.js";
+export { VerifiedWorkflowReuse } from "../memory/verified-workflow-reuse.js";
+export type { WorkflowContract, WorkflowReuseResult } from "../memory/verified-workflow-reuse.js";
 export type {
   LearningStrategy,
   StrategyPanel,
@@ -428,3 +430,17 @@ export type {
   LearningScope,
   LearningCost,
 } from "../memory/procedural-learning-contract.js";
+
+export {
+  registerCollectiveExecutionHost,
+  observeCollectiveCanary,
+} from "../agents/skills/collective/runtime.js";
+export type {
+  SkillTraceAdapter,
+  NormalizedSkillTrace,
+} from "../agents/skills/collective/trace-adapter.js";
+export type {
+  PackageExecutionHost,
+  ValidationTask,
+  TrialResult,
+} from "../agents/skills/collective/validation.js";

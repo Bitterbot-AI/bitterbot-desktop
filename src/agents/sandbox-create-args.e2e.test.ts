@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildSandboxCreateArgs, type SandboxDockerConfig } from "./sandbox.js";
+import { buildSandboxCreateArgs } from "./sandbox/docker.js";
+import type { SandboxDockerConfig } from "./sandbox/types.js";
 
 describe("buildSandboxCreateArgs", () => {
   it("includes hardening and resource flags", () => {
@@ -39,6 +40,7 @@ describe("buildSandboxCreateArgs", () => {
     expect(args).toEqual(
       expect.arrayContaining([
         "create",
+        "--init",
         "--name",
         "bitterbot-sbx-test",
         "--label",

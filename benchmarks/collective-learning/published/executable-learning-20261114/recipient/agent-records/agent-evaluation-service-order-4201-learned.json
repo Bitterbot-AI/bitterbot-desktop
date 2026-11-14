@@ -1,0 +1,152 @@
+{
+  "id": "agent-evaluation-service-order-4201-learned",
+  "caseId": "evaluation-service-order-4201",
+  "arm": "learned",
+  "runId": "212db14d-e393-4555-9218-38e2017de8a6",
+  "cost": {
+    "providerUsd": 0.169402,
+    "toolCalls": 8,
+    "wallMs": 34121
+  },
+  "tokens": 90657,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01Civ14BpASkqF9mvHDmF9nW",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01EAsbqJtQCxgmr98oUNwCjL",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01THtBEWabnEtf2eC3afy2Bk",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ && echo \"---INPUTS---\" && ls -la /workspace/inputs/ && echo \"---JSON---\" && cat /workspace/inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_0112ev9i7ipSJ4pT4W9do7Hv",
+      "arguments": {
+        "path": "/workspace/skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_018XZrQwY8UfGuxqXTZMK5o1",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"import docx, lxml; print('deps ok')\" && echo \"---placeholders---\" && python3 -c \"\nimport docx, re\nd=docx.Document('inputs/offer_letter_template.docx')\n\" 2>&1 | head -20"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01Civ14BpASkqF9mvHDmF9nW",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01PVvs7cu5amdtoW5fChL5NU",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport docx, re\nd=docx.Document('output/offer_letter_filled.docx')\ndef paras(doc):\n    for p in doc.paragraphs: yield p\n    for t in doc.tables:\n        for row in t.rows:\n            for c in row.cells:\n                for p in c.paragraphs: yield p\ntxt=[]\nfor p in paras(d):\n    t=''.join(r.text for r in p.runs)\n    if t.strip(): txt.append(t)\nfull='\\n'.join(txt)\nprint('--- leftover markers:', re.findall(r'\\{\\{[^}]*\\}\\}', full))\nprint('--- RELOCATION words present:', [w for w in ['Relocation','relocation','2,125'] if w in full])\nprint('--- sample ---')\nprint(full[:1500])\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01XiDgaeFpPYjGe8BD98kXR3",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport docx, re\nd=docx.Document('output/offer_letter_filled.docx')\nfor s in d.sections:\n    for name,part in [('hdr',s.header),('ftr',s.footer),('fp_hdr',s.first_page_header),('fp_ftr',s.first_page_footer)]:\n        if part is None: continue\n        t='\\n'.join(''.join(r.text for r in p.runs) for p in part.paragraphs).strip()\n        if t: print(name,'::',t)\n\" && echo \"--- input integrity ---\" && md5sum inputs/offer_letter_template.docx inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "477504cc9db17000192ed63046a1ba0ebbaf0b1d3d634ae3d9e2a1e4132130e6",
+  "latencyMs": 34123,
+  "checkerWallMs": 4031,
+  "diagnostic": null,
+  "usage": {
+    "input": 16,
+    "output": 1746,
+    "cacheRead": 74769,
+    "cacheWrite": 14126,
+    "total": 90657
+  },
+  "modelMessages": 8,
+  "sessionHash": "00d2567df4f0dfb96d3131b7d009bf596afe9d11e90bbecfbe9af9b3f467f3f8"
+}

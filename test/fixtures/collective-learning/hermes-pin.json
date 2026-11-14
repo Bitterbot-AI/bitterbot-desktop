@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/NousResearch/hermes-collective-wisdom",
+  "revision": "c443c14dbbf3c8a4d90d613a0456911e087e30a7",
+  "contract": "hermes_wisdom_plugin/contract.py",
+  "packaging": "hermes_wisdom_plugin/package.py",
+  "fixture": "Locally authored conformance fixture derived from the official packaging contract. No upstream skill authorship is implied.",
+  "hashConvention": "sha256 of sorted path + space + file-or-exec + space + sha256:fileDigest + newline records"
+}

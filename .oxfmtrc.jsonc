@@ -18,6 +18,8 @@
     "benchmarks/learning-strategy/data/",
     "benchmarks/learning-strategy/datasets/",
     "benchmarks/learning-strategy/published/",
+    "benchmarks/collective-learning/published/",
+    "test/fixtures/collective-learning/",
     "benchmarks/learning-strategy/telecom/vendor/",
     "benchmarks/learning-strategy/telecom/qualification-*.json",
     "benchmarks/learning-strategy/telecom/native-sources.json",

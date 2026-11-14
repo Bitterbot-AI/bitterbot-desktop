@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-11-14T18:47:02.652Z",
+  "originalFreeze": "bfbc663d9cfa389dca81ebccbf89927b14965e79759f91fd820030616cc308e5",
+  "runner": "research/collective-learning/executable-transfer-continuation/run.ts",
+  "runnerHash": "2e9ccbf06175e9d45c4269032f2b0079ab31eff566c1bd23239a10c0b65c172e",
+  "allowedInterruptedId": "agent-evaluation-service-order-4203-frozen",
+  "originalRecordHash": "154322e60f6c1af7858d258af0aee431c9fcc0a10279c0b4bd05aff44c5b6a13",
+  "auditHash": "890eea9c2f05b10d4f179df00375d0fa2195fcba993ca4205aa088272f18a90b",
+  "reconciledCostUsd": 0.39172275,
+  "purpose": "Resume only the 16 unstarted jobs in the original preselected schedule after inspecting and reconciling one host tool-limit interruption. No retry or replacement.",
+  "unchanged": [
+    "package",
+    "fixtures",
+    "task prompt",
+    "model",
+    "environment",
+    "20-tool limit",
+    "300-second deadline",
+    "original sequence",
+    "$20 combined stage cap",
+    "$250 total authority"
+  ],
+  "outcomePolicy": "Keep the interrupted run in the attempted denominator and all-cost totals. Exclude it from completed matched-pair correctness and cost-per-completion analyses; report its supplementary passing artifact separately. Report all 12 scheduled pairs and 11 possible fully checked pairs without claiming a complete 12-pair endpoint.",
+  "retentionPolicy": "After all 24 scheduled evaluation attempts and the original >=24-hour deadline, six learned-only retention cases remain eligible under the same $20 ledger. Require zero unresolved costs; retention does not replace the interrupted comparison.",
+  "stopPolicy": "Any new interruption, unknown cost, invalid checker, source change or admission failure stops the continuation for inspection. Historical $28.80 holds remain reserved.",
+  "claim": "Post-interruption continuation of a development pilot, transparently amended after observed outcomes. No powered collective-learning efficacy claim."
+}

@@ -1,0 +1,13 @@
+{
+  "SERVICE_DESCRIPTION": "Service order reference 4401",
+  "RECORD_CODE": "ALDER-4401",
+  "ORGANIZATION_NAME": "Alder Field Group 4401",
+  "ISSUE_DATE": "November 13, 2030",
+  "OWNER_NAME": "Jules Okoye",
+  "ADDRESS_LINE": "18 Côte Road, Montréal",
+  "DETAIL_NOTE": "Part A & Part B: Ω check",
+  "RELOCATION_PACKAGE": "No",
+  "RELOCATION_AMOUNT": "6,125",
+  "RELOCATION": "Yes",
+  "RELOCATION_PACKAGE_BACKUP": "Yes"
+}

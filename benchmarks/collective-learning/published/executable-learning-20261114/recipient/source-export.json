@@ -1,0 +1,26 @@
+{
+  "pid": 23586,
+  "publisher": "ed25519:0eadcac3500f5070b0a0e77d904efe79a096f8f4ee9f07b3835565250a4bb9b4",
+  "packageHash": "8a9db2fb33657ba8bb6fa9cf571d98bb4776dcb1881b2f130cd40405ac775eef",
+  "bundleHash": "c3e68f81fefbc203e49e7a61ed997f035367566d98b280127767d85a69c89873",
+  "releaseId": "9eb518461989d8aebceafd851dcc7ac34afbf1881c70ce0c162463df52523591",
+  "files": [
+    {
+      "path": "SKILL.md",
+      "hash": "be791a9a18d92794cad24fc4f9a60bdbfe0ae56040d3c99f7d28d0842a7392e2",
+      "size": 4152,
+      "executable": false
+    },
+    {
+      "path": "helpers/fill_docx.py",
+      "hash": "2294d8513d9ed1f205cf89bc365fb864d581bbec3aad23c5acb633534325b6fa",
+      "size": 10660,
+      "executable": false
+    }
+  ],
+  "method": "operator-assisted offline bundle",
+  "historicalPublisherClaim": false,
+  "qualificationExported": false,
+  "privateModelHistoryExported": false,
+  "modelCalls": 0
+}

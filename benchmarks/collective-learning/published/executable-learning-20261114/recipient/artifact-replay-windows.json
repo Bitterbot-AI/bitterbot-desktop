@@ -1,0 +1,791 @@
+{
+  "platform": "Windows",
+  "artifacts": 60,
+  "checkedOutcomeArtifacts": 59,
+  "allAgreed": true,
+  "records": [
+    {
+      "id": "control:qualification-service-order-4100",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:qualification-service-order-4101",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:qualification-research-award-4110",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:qualification-research-award-4111",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:qualification-equipment-assignment-4120",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:qualification-equipment-assignment-4121",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-08",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-09",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-10",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-11",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-12",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-13",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-14",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-15",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-16",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-17",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-18",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "control:regression-case-19",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:qualification-service-order-4100",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:qualification-service-order-4101",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:qualification-research-award-4110",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:qualification-research-award-4111",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:qualification-equipment-assignment-4120",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:qualification-equipment-assignment-4121",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-08",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-09",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-10",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-11",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-12",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-13",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-14",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-15",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-16",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-17",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-18",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 1,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "candidate:regression-case-19",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4220-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4220-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4221-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4221-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4222-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4222-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4223-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-equipment-assignment-4223-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4210-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4210-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4211-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4211-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4212-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4212-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "task-failure",
+        "issues": [
+          "malformed-xml"
+        ],
+        "details": {}
+      }
+    },
+    {
+      "id": "agent-evaluation-research-award-4213-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-service-order-4200-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-service-order-4200-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": true
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-service-order-4201-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-service-order-4201-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-service-order-4202-frozen",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-service-order-4202-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    },
+    {
+      "id": "agent-evaluation-service-order-4203-learned",
+      "agrees": true,
+      "hashMatches": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    }
+  ],
+  "supplementary": [
+    {
+      "id": "agent-evaluation-service-order-4203-frozen",
+      "originalOutcome": "interrupted",
+      "countedAsCompletion": false,
+      "hashMatches": true,
+      "agreesWithSupplementaryAudit": true,
+      "actual": {
+        "status": "pass",
+        "issues": [],
+        "details": {
+          "effectiveSections": 2,
+          "relocationIncluded": false
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,177 @@
+{
+  "id": "agent-evaluation-service-order-4202-learned",
+  "caseId": "evaluation-service-order-4202",
+  "arm": "learned",
+  "runId": "14b8d4ba-0e93-485d-9c96-bfdbbcfbb89d",
+  "cost": {
+    "providerUsd": 0.336913,
+    "toolCalls": 10,
+    "wallMs": 44447
+  },
+  "tokens": 162486,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01VrPdYZibMPQsJWNf2im7xV",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_015g9P3iV2LZnPBM2jrUFfQ7",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_012z5ytS8gRGt1jbneSroqch",
+      "arguments": {
+        "command": "ls -la /workspace/skill/ /workspace/skill/helpers/ 2>&1; echo \"---INPUTS---\"; ls -la /workspace/inputs/ 2>&1; echo \"---JSON---\"; cat /workspace/inputs/employee_data.json 2>&1"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01JCsRgsYkB23UzGYKs9xcMT",
+      "arguments": {
+        "path": "/workspace/skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01XfqyrveNTsaFvZkwQeQXnf",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"import docx, lxml; print('deps ok')\" 2>&1; echo \"---placeholders---\"; mkdir -p /tmp/tpl && cd /tmp/tpl && unzip -o -q /workspace/inputs/offer_letter_template.docx && grep -rhoE \"\\{\\{[^}]*\\}\\}\" word/ 2>/dev/null | sort -u"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "error"
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01HKY8b9swRMdJYkfy3GuUJf",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile, re\nz = zipfile.ZipFile('inputs/offer_letter_template.docx')\nfound=set()\nfor n in z.namelist():\n    if n.endswith('.xml'):\n        t=z.read(n).decode('utf-8','ignore')\n        # strip tags to catch split runs\n        plain=re.sub(r'<[^>]+>','',t)\n        for m in re.findall(r'\\{\\{[^}]*\\}\\}', plain):\n            found.add(m)\nfor f in sorted(found): print(f)\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01VrPdYZibMPQsJWNf2im7xV",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01QWYmo6vvwFHY9tQjM9YVMF",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"\nimport zipfile, re, docx\n# leftover markers check\nz=zipfile.ZipFile('output/offer_letter_filled.docx')\nleft=set()\nfor n in z.namelist():\n    if n.endswith('.xml'):\n        plain=re.sub(r'<[^>]+>','',z.read(n).decode('utf-8','ignore'))\n        for m in re.findall(r'\\{\\{[^}]*\\}\\}',plain): left.add(m)\nprint('leftover markers:', left or 'NONE')\nd=docx.Document('output/offer_letter_filled.docx')\nfull=[]\nfor p in d.paragraphs: full.append(p.text)\nfor t in d.tables:\n    for row in t.rows:\n        for c in row.cells:\n            for p in c.paragraphs: full.append(p.text)\ntxt='\\n'.join(full)\nprint('RELOCATION_AMOUNT present (3,125)?', '3,125' in txt)\nprint('relocation block dropped (amount should be absent since Yes has spaces)')\nprint('CUSTOMER_NAME present?', 'Nóra Singh' in txt)\nprint('DETAIL_NOTE present?', 'Ω check' in txt)\n\" 2>&1\necho \"--- input integrity (should be unchanged) ---\"\nls -la /workspace/inputs/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_018QBfXWrzRaN6NgCYnH9k33",
+      "arguments": {
+        "path": "/workspace/output/offer_letter_filled.docx"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_016w4XcRou9tpN8rCLg1VXZE",
+      "arguments": {
+        "command": "cd /workspace && ls -la output/offer_letter_filled.docx && python3 -c \"import docx; docx.Document('output/offer_letter_filled.docx'); print('valid docx opens OK')\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "45eb37fd096699a316939a1394210db1c37e7955843b7ff4bbfbf99ea32fd37a",
+  "latencyMs": 44452,
+  "checkerWallMs": 4336,
+  "diagnostic": null,
+  "usage": {
+    "input": 20,
+    "output": 2341,
+    "cacheRead": 125651,
+    "cacheWrite": 34474,
+    "total": 162486
+  },
+  "modelMessages": 10,
+  "sessionHash": "c0ce7725bcab84afd39a606bb3555f6c545fe6257d188058fa0fdf16defeef75"
+}

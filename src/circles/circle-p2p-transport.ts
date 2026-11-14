@@ -174,6 +174,16 @@ export function startCircleP2pTransport(deps: {
         }
         return;
       }
+      if (method === "skill-package/1/capabilities" || method === "skill-package/1/object") {
+        const { getPackageMesh } = await import("../agents/skills/collective/mesh.js");
+        const mesh = getPackageMesh();
+        await respond(
+          mesh
+            ? await mesh.handle(event.from_peer_id, method, params)
+            : { ok: false, error: "Complete package protocol unavailable", refused: true },
+        );
+        return;
+      }
       // ONLY explicit Compute and circle verbs — never a general
       // RPC surface (no mailbox/*, no gateway methods). The circle handlers
       // carry their own auth; an unauthorized envelope is refused exactly as
@@ -194,9 +204,9 @@ export function startCircleP2pTransport(deps: {
           await respond({ ok: false, error: "node not ready" });
           return;
         }
-        const { handleCircleMethod } = await import("../gateway/a2a/circles.js");
+        const { handleCircleMethodAsync } = await import("../gateway/a2a/circles.js");
         const boxKeys = deps.boxKeys ?? loadOrCreateBoxKeys();
-        const outcome = handleCircleMethod(method, params, db, Date.now(), { boxKeys });
+        const outcome = await handleCircleMethodAsync(method, params, db, Date.now(), { boxKeys });
         await respond(
           outcome.ok
             ? { ok: true, result: outcome.result }

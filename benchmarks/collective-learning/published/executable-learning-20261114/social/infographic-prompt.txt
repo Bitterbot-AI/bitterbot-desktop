@@ -1,0 +1,33 @@
+Use case: infographic-diagram.
+Create a polished square social-media infographic for Bitterbot, suitable for LinkedIn and Twitter. High-resolution, precise editorial typography, generous spacing, crisp flat graphic forms, restrained dark charcoal background, bright readable cream type and fresh green accents. Attractive and confident, with a small abstract document/package motif and a clear three-step flow. No robot faces, no invented logos, no decorative fake charts. This is an early experiment, so make the scope and footnote legible rather than hiding them.
+
+All text below must be rendered exactly and clearly. Hierarchy:
+Top wordmark in ordinary clean type: "Bitterbot"
+Small eyebrow: "EARLY EXECUTABLE-LEARNING PILOT"
+Main headline: "Learn. Verify. Reuse."
+
+Main visual: three elegant steps with simple line icons and arrows:
+"Repair a helper" → "Verify the package" → "Reuse on fresh tasks"
+
+Two large metric blocks:
+"59% lower model cost"
+"$5.41 → $2.20"
+"Total across all 24 task attempts"
+
+"109s → 37s"
+"Median task time"
+"11 fully checked pairs"
+
+A wide results panel:
+"With learned helper: 12 passes"
+"Baseline: 10 passes · 1 failure · 1 interruption"
+
+Bottom scope panel, visibly readable:
+"12 task pairs · 3 DOCX document genres"
+"Isolated recipient on the same machine"
+"Small pilot. Broader collective-learning gains remain under study."
+
+Tiny source footer but still readable:
+"Evidence and methodology: Bitterbot repository"
+
+Maintain exact numbers. Cost covers all attempts and includes the interrupted baseline. Median time is for 11 fully checked pairs. Do not claim statistical proof, general intelligence gains, automatic mesh transfer, or pooled-evidence benefits. The image should feel like a professional research product announcement, with clean aligned cards and strong visual hierarchy.

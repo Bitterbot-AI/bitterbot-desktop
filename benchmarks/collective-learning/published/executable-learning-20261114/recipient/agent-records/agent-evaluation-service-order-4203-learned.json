@@ -1,0 +1,123 @@
+{
+  "id": "agent-evaluation-service-order-4203-learned",
+  "caseId": "evaluation-service-order-4203",
+  "arm": "learned",
+  "runId": "942e2fbf-e9c5-4a4c-b75d-707cf2ed45bf",
+  "cost": {
+    "providerUsd": 0.11785725,
+    "toolCalls": 6,
+    "wallMs": 27888
+  },
+  "tokens": 44699,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01HmREgsFFs3RJggQe7uy81T",
+      "arguments": {
+        "command": "cd /workspace && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01HzXxZEATC3tajhDfsK3i88",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01LJDp79gWZQJcBecLTzhjtR",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01M7Dvs6vapghSqLJ4YTTGM1",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ && ls -la inputs/ && ls -la output/ 2>/dev/null; echo \"---\"; python3 -c \"import docx, lxml; print('deps ok')\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01HmREgsFFs3RJggQe7uy81T",
+      "arguments": {
+        "command": "cd /workspace && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01UA11L8Bm5yzN1SAP79hbFe",
+      "arguments": {
+        "command": "cd /workspace && ls -la output/ inputs/ && echo \"--- inputs unchanged (sha) ---\" && sha256sum inputs/offer_letter_template.docx inputs/employee_data.json && echo \"--- output text dump ---\" && python3 -c \"\nimport docx\nd=docx.Document('output/offer_letter_filled.docx')\ndef walk(t,p=''):\n    for para in t.paragraphs:\n        if para.text.strip(): print(p+para.text)\n    for tbl in t.tables:\n        for row in tbl.rows:\n            for c in row.cells:\n                walk(c,p+'  ')\nwalk(d)\nfor s in d.sections:\n    for hf in (s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer):\n        for para in hf.paragraphs:\n            if para.text.strip(): print('[HF]',para.text)\nprint('--- marker scan ---')\nimport re\ntxt=' '.join(p.text for p in d.paragraphs)\nprint('leftover {{ }}:', bool(re.search(r'{{|}}', txt)))\nprint('RELOCATION mentions present?:', 'RELOCATION' in txt, '| relocation word:', 'elocation' in txt.lower())\n\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "98da93104a4f5c9cdc04722fb19bd51e8e1bd832af452ddc2ee75a4f568baa0c",
+  "latencyMs": 27895,
+  "checkerWallMs": 4112,
+  "diagnostic": null,
+  "usage": {
+    "input": 10,
+    "output": 1423,
+    "cacheRead": 32727,
+    "cacheWrite": 10539,
+    "total": 44699
+  },
+  "modelMessages": 5,
+  "sessionHash": "c0af8423ce7bb18e7d32411bd866254d8fcafd996f69f8f0acbe0ea65058d98f"
+}

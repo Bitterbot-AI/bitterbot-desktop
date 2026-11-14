@@ -1,0 +1,138 @@
+{
+  "id": "agent-evaluation-equipment-assignment-4221-learned",
+  "caseId": "evaluation-equipment-assignment-4221",
+  "arm": "learned",
+  "runId": "ed498157-2935-4cb4-b127-9fc0be4f3aa4",
+  "cost": {
+    "providerUsd": 0.17561275,
+    "toolCalls": 7,
+    "wallMs": 35715
+  },
+  "tokens": 79594,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01FpLop1fe9KUijEEuaqMcgu",
+      "arguments": {
+        "command": "mkdir -p output\npython3 /workspace/skill/helpers/fill_docx.py \\\n  --template inputs/offer_letter_template.docx \\\n  --data inputs/employee_data.json \\\n  --output output/offer_letter_filled.docx\necho \"EXIT=$?\"\nls -la output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_0138wCmesCEhSeJH31FyiRBh",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01SwPLARPhjFvVLj9QUV8zkX",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ 2>&1; echo \"---INPUTS---\"; ls -la inputs/ 2>&1; echo \"---DATA---\"; cat inputs/employee_data.json 2>&1"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01QwsBQnws4N9ydeMDaugbjm",
+      "arguments": {
+        "path": "/workspace/skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01AqqWqUfR8bTaevqo2eR49w",
+      "arguments": {
+        "command": "python3 -c \"import docx, lxml; print('deps ok')\" 2>&1; echo \"---\"; python3 - <<'EOF'\nimport docx, re\nd = docx.Document(\"inputs/offer_letter_template.docx\")\nfound=set()\ndef scan(p):\n    t=\"\".join(r.text for r in p.runs)\n    for m in re.finditer(r\"\\{\\{[^}]*\\}\\}\", t):\n        found.add(m.group(0))\nfor p in d.paragraphs: scan(p)\ndef walk(tbl):\n    for row in tbl.rows:\n        for cell in row.cells:\n            for p in cell.paragraphs: scan(p)\n            for n in cell.tables: walk(n)\nfor t in d.tables: walk(t)\nfor s in d.sections:\n    for part in (s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer):\n        if part:\n            for p in part.paragraphs: scan(p)\n            for t in part.tables: walk(t)\nprint(sorted(found))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01FpLop1fe9KUijEEuaqMcgu",
+      "arguments": {
+        "command": "mkdir -p output\npython3 /workspace/skill/helpers/fill_docx.py \\\n  --template inputs/offer_letter_template.docx \\\n  --data inputs/employee_data.json \\\n  --output output/offer_letter_filled.docx\necho \"EXIT=$?\"\nls -la output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01MKWCMkEPRD17R6pE8gaqZv",
+      "arguments": {
+        "command": "python3 - <<'EOF'\nimport docx, re\nd = docx.Document(\"output/offer_letter_filled.docx\")\ntexts=[]\ndef scan(p):\n    t=\"\".join(r.text for r in p.runs)\n    if t.strip(): texts.append(t)\nfor p in d.paragraphs: scan(p)\ndef walk(tbl):\n    for row in tbl.rows:\n        for cell in row.cells:\n            for p in cell.paragraphs: scan(p)\n            for n in cell.tables: walk(n)\nfor t in d.tables: walk(t)\nfor s in d.sections:\n    for part in (s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer):\n        if part:\n            for p in part.paragraphs: scan(p)\n            for t in part.tables: walk(t)\nfull=\"\\n\".join(texts)\nprint(\"LEFTOVER_MARKERS:\", re.findall(r\"\\{\\{[^}]*\\}\\}\", full))\nprint(\"RELOCATION_AMOUNT present (should be absent/dropped):\", \"1,125\" in full)\nprint(\"---TEXT---\")\nprint(full)\nEOF\necho \"---VERIFY INPUTS UNCHANGED---\"\nmd5sum inputs/offer_letter_template.docx inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "9db774c89e1487458acb96711fec1ed0a907542545ff5528021ce68dc749f3fd",
+  "latencyMs": 35719,
+  "checkerWallMs": 4250,
+  "diagnostic": null,
+  "usage": {
+    "input": 14,
+    "output": 2063,
+    "cacheRead": 62698,
+    "cacheWrite": 14819,
+    "total": 79594
+  },
+  "modelMessages": 7,
+  "sessionHash": "f1ef62a2d89dffc7571f192f75c575bcc466e3ecd374214bfc2d962d174a5ed7"
+}

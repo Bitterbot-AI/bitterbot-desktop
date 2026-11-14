@@ -1,0 +1,150 @@
+{
+  "id": "agent-agent-2705-learned",
+  "caseId": "agent-2705",
+  "arm": "learned",
+  "runId": "deb7fdd4-f3b3-45c6-aed3-1b3d17ed22aa",
+  "cost": {
+    "providerUsd": 0.160114,
+    "toolCalls": 8,
+    "wallMs": 35110
+  },
+  "tokens": 70585,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 1,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01MnBfEB14XaLcr9pacZJVBN",
+      "arguments": {
+        "command": "cd /workspace && cp inputs/offer_letter_template.docx inputs/.tmpl.sha.docx 2>/dev/null; sha256sum inputs/offer_letter_template.docx inputs/employee_data.json; echo \"--- RUN ---\"; python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"exit=$?\"; rm -f inputs/.tmpl.sha.docx"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01RicHnbxgjt2Qvto151iHZ5",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_018wcFuwcenrSEe3EWLvsyMX",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01RTF9wCsgRMgSnKuRyT1zxo",
+      "arguments": {
+        "path": "/workspace/skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01JySThNpMC6A4PcywtQiaoZ",
+      "arguments": {
+        "command": "ls -la inputs/ skill/ skill/helpers/ 2>&1; echo \"---\"; ls -la output/ 2>&1"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_011mKgB7gfJdr8V7yoDCVbZx",
+      "arguments": {
+        "command": "cd /workspace && python3 -c \"import docx, lxml; print('deps ok')\" 2>&1"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01MnBfEB14XaLcr9pacZJVBN",
+      "arguments": {
+        "command": "cd /workspace && cp inputs/offer_letter_template.docx inputs/.tmpl.sha.docx 2>/dev/null; sha256sum inputs/offer_letter_template.docx inputs/employee_data.json; echo \"--- RUN ---\"; python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"exit=$?\"; rm -f inputs/.tmpl.sha.docx"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01EGsrVxik9HDjXyPBjSBx92",
+      "arguments": {
+        "command": "cd /workspace && echo \"=== inputs unchanged ===\"; sha256sum inputs/offer_letter_template.docx inputs/employee_data.json; echo; echo \"=== output exists ===\"; ls -la output/; echo; python3 - <<'EOF'\nimport docx, re\nd = docx.Document(\"output/offer_letter_filled.docx\")\ntexts=[]\ndef walk_p(ps):\n    for p in ps:\n        texts.append(\"\".join(r.text for r in p.runs))\ndef walk_tbl(t):\n    for row in t.rows:\n        for c in row.cells:\n            walk_p(c.paragraphs)\n            for nt in c.tables: walk_tbl(nt)\nwalk_p(d.paragraphs)\nfor t in d.tables: walk_tbl(t)\nfor s in d.sections:\n    for part in (s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer):\n        if part is None: continue\n        walk_p(part.paragraphs)\n        for t in part.tables: walk_tbl(t)\nfull=\"\\n\".join(texts)\nleft=re.findall(r\"\\{\\{[^}]*\\}\\}\", full)\nprint(\"leftover markers:\", left)\nprint(\"has 'Lúcia Ahmed':\", \"Lúcia Ahmed\" in full)\nprint(\"has RELOCATION content (7,750):\", \"7,750\" in full)\nprint(\"mentions IF_RELOCATION:\", \"IF_RELOCATION\" in full)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "40e863fed7b371ea755ad1053488b5065dea01dcf08921ef41d746d7946ae89c",
+  "latencyMs": 35112,
+  "checkerWallMs": 3797,
+  "diagnostic": null,
+  "usage": {
+    "input": 12,
+    "output": 1697,
+    "cacheRead": 54408,
+    "cacheWrite": 14468,
+    "total": 70585
+  },
+  "modelMessages": 6,
+  "sessionHash": "cdea9c3881765d9d32640821a636c4cc8b3c8a6906611908a6a84ffa605ceb30"
+}

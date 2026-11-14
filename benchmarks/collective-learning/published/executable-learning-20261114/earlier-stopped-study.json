@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-11-13T23:25:36.901Z",
+  "status": "stopped-at-user-request",
+  "resumeAuthorized": false,
+  "frozenHash": "2264ba867e46d0968e5f83681a6ee58b5801358c64b3d8d2f0aa187e2f4b4df4",
+  "checkedFinals": 76,
+  "interruptedFinals": 1,
+  "notDispatched": 3,
+  "completeMatchedBlocks": 15,
+  "rawPasses": {
+    "frozen": 9,
+    "local": 7,
+    "exchange": 10,
+    "pooled": 10,
+    "context": 9
+  },
+  "primary": {
+    "comparison": "pooled versus exchanged packages",
+    "pairs": 15,
+    "improvements": 1,
+    "regressions": 1
+  },
+  "checkerReplay": {
+    "checked": 100,
+    "agree": 100,
+    "skipped": 1
+  },
+  "budget": {
+    "studyKnownUsd": 51.55416450000001,
+    "newUnresolvedUsd": 0
+  },
+  "conclusion": "No demonstrated collective-learning advantage. Pooled and exchanged packages tie on complete matched blocks. The study stopped early by operator direction; raw outcomes include documented checker/task ambiguities.",
+  "limitations": [
+    "Small public task subset and only two learning histories",
+    "CourtInfo and spreadsheet range/rounding sensitivities are documented, not silently rescored",
+    "Replay repeats the same oracle; it does not establish independent semantic correctness",
+    "Unperformed full-study content/arithmetic audits and elapsed-24-hour checks remain unperformed",
+    "No production adoption or RSI result"
+  ],
+  "modelCalls": 0
+}

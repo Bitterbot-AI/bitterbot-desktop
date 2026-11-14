@@ -1,0 +1,14 @@
+{
+  "id": "agent-evaluation-service-order-4203-frozen",
+  "auditHash": "890eea9c2f05b10d4f179df00375d0fa2195fcba993ca4205aa088272f18a90b",
+  "reconciledAt": "2026-11-14T18:46:22.845Z",
+  "cost": {
+    "providerUsd": 0.39172275,
+    "toolCalls": 21,
+    "wallMs": 99253
+  },
+  "releasedReserveUsd": 6.80827725,
+  "outcomeUnchanged": true,
+  "originalRowPreserved": "study_cost_reconciliations",
+  "originalRecordUnchanged": true
+}

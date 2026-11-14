@@ -68,6 +68,10 @@ import {
   type EnforcerContext,
   wrapToolsWithCapabilityEnforcer,
 } from "./skills/capability-enforcer.js";
+import {
+  isPackageTrialActive,
+  observePackageTrialTools,
+} from "./skills/collective/execution-context.js";
 import { captureSkillReadContext } from "./skills/skill-read-provenance.js";
 import { getSubagentDepthFromSessionStore } from "./subagent-depth.js";
 import { ToolCache } from "./tool-cache.js";
@@ -674,8 +678,12 @@ export function createBitterbotCodingTools(options?: {
   // out with deferral flags (the provider adds `defer_loading` + the search
   // tool); otherwise list_tools/use_tool are added, with the hook + abort
   // wrappers so the adapter sees the same markers as every other tool.
+  const trialTools = observePackageTrialTools(withSpill, sandbox?.enabled === true);
+  // Validation has a small fixed registry. Dispatcher/search metadata tools must
+  // not introduce unmetered actions outside the host's trial tool budget.
+  if (isPackageTrialActive()) return trialTools;
   return applyHotSetExposure({
-    tools: withSpill,
+    tools: trialTools,
     lane: resolveToolLane({
       sessionKey: options?.sessionKey,
       isHeartbeat: options?.isHeartbeat,

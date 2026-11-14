@@ -104,6 +104,7 @@ function containsCriticalInjection(
 // ---------------------------------------------------------------------------
 
 const RATE_LIMITS: Record<string, { windowMs: number; max: number }> = {
+  package: { windowMs: 60_000, max: 512 },
   join: { windowMs: 60_000, max: 6 },
   read: { windowMs: 60_000, max: 60 },
   // PLAN-36 Phase 0 raised this from 12: the fast scheduler beats presence on a
@@ -1113,4 +1114,25 @@ export function handleCircleMethod(
     default:
       return err(A2aErrorCodes.METHOD_NOT_FOUND, `Unknown circle method: ${method}`);
   }
+}
+
+export async function handleCircleMethodAsync(
+  method: string,
+  params: unknown,
+  db: DatabaseSync,
+  now: number = Date.now(),
+  opts?: { boxKeys?: BoxKeyPair },
+): Promise<CircleOutcome<unknown>> {
+  if (
+    [
+      "circle/skill.announce",
+      "circle/skill.object",
+      "circle/skill.withdraw",
+      "circle/skill.evidence",
+    ].includes(method)
+  ) {
+    const { handleCirclePackage } = await import("../../circles/skill-packages.js");
+    return handleCirclePackage(method, params, db, now, opts?.boxKeys);
+  }
+  return handleCircleMethod(method, params, db, now, opts);
 }

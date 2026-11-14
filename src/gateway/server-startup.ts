@@ -194,6 +194,12 @@ export async function startGatewaySidecars(params: {
       // tool factory.
       setActiveOrchestratorBridge(orchestratorBridge);
       try {
+        const { startPackageMesh } = await import("../agents/skills/collective/mesh.js");
+        await startPackageMesh(orchestratorBridge, params.cfg);
+      } catch (error) {
+        params.log.warn(`Complete package mesh unavailable: ${String(error)}`);
+      }
+      try {
         const { startComputeMesh } = await import("../compute/mesh-runtime.js");
         computeMesh = await startComputeMesh(orchestratorBridge, params.cfg);
       } catch {
@@ -524,6 +530,11 @@ export async function startGatewaySidecars(params: {
   void startMonitorEngine(params.cfg).catch((err) => {
     params.log.warn(`monitor engine failed to start: ${String(err)}`);
   });
+
+  if (params.cfg.skills?.collective?.enabled) {
+    const { startPackageWorker } = await import("../agents/skills/collective/service.js");
+    startPackageWorker();
+  }
 
   return {
     browserControl,

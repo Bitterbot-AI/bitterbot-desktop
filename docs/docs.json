@@ -679,7 +679,7 @@
               },
               {
                 "group": "Long-horizon runs",
-                "pages": ["agents/long-horizon"]
+                "pages": ["agents/long-horizon", "agents/collective-learning"]
               },
               {
                 "group": "Messages and delivery",

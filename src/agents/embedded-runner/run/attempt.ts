@@ -29,7 +29,7 @@ import { resolveUserPath } from "../../../utils.js";
 import { normalizeMessageChannel } from "../../../utils/message-channel.js";
 import { isReasoningTagProvider } from "../../../utils/provider-utils.js";
 import { resolveBitterbotAgentDir } from "../../agent-paths.js";
-import { resolveSessionAgentIds } from "../../agent-scope.js";
+import { resolveSessionAgentIds, resolveDefaultAgentId } from "../../agent-scope.js";
 import { createBitterbotCodingTools } from "../../agent-tools.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import { makeBootstrapWarn, resolveBootstrapContextForRun } from "../../bootstrap-files.js";
@@ -80,6 +80,7 @@ import { detectRuntimeShell } from "../../shell-utils.js";
 import {
   applySkillEnvOverrides,
   applySkillEnvOverridesFromSnapshot,
+  buildWorkspaceSkillSnapshot,
   loadWorkspaceSkillEntries,
   resolveSkillsPromptForRun,
 } from "../../skills.js";
@@ -247,6 +248,26 @@ export async function runEmbeddedAttempt(
   await fs.mkdir(resolvedWorkspace, { recursive: true });
 
   const sandboxSessionKey = params.sessionKey?.trim() || params.sessionId;
+  if (params.config?.skills?.collective?.enabled) {
+    const { prepareCollectiveRunSnapshot, withCollectivePackageMounts } =
+      await import("../../skills/collective/run-snapshot.js");
+    const packageAgent = params.agentId ?? resolveDefaultAgentId(params.config);
+    params.skillsSnapshot = await prepareCollectiveRunSnapshot(
+      params.config,
+      packageAgent,
+      params.sessionId,
+      params.skillsSnapshot ??
+        buildWorkspaceSkillSnapshot(resolvedWorkspace, { config: params.config }),
+      `${params.provider}/${params.modelId}`,
+      params.runId,
+    );
+    params.config = withCollectivePackageMounts(
+      params.config,
+      packageAgent,
+      params.skillsSnapshot,
+      sandboxSessionKey,
+    );
+  }
   const sandbox = await resolveSandboxContext({
     config: params.config,
     sessionKey: sandboxSessionKey,
@@ -384,12 +405,15 @@ export async function runEmbeddedAttempt(
           requireExplicitMessageTarget:
             params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
           disableMessageTool: params.disableMessageTool,
-          toolCache: getGlobalToolCache({
-            enabled: params.config?.agents?.defaults?.toolCache?.enabled ?? true,
-            maxEntries: params.config?.agents?.defaults?.toolCache?.maxEntries,
-            defaultTtlMs: params.config?.agents?.defaults?.toolCache?.defaultTtlMs,
-            cacheableTools: params.config?.agents?.defaults?.toolCache?.cacheableTools,
-          }),
+          toolCache:
+            params.config?.agents?.defaults?.toolCache?.enabled === false
+              ? undefined
+              : getGlobalToolCache({
+                  enabled: params.config?.agents?.defaults?.toolCache?.enabled ?? true,
+                  maxEntries: params.config?.agents?.defaults?.toolCache?.maxEntries,
+                  defaultTtlMs: params.config?.agents?.defaults?.toolCache?.defaultTtlMs,
+                  cacheableTools: params.config?.agents?.defaults?.toolCache?.cacheableTools,
+                }),
           capabilityEnforcer,
         });
     // PLAN-25: the active harness policy (config baseline + promoted evolution).

@@ -1,0 +1,179 @@
+{
+  "id": "agent-agent-2704-learned",
+  "caseId": "agent-2704",
+  "arm": "learned",
+  "runId": "f5b36dca-3806-430d-9a25-28fe58644d63",
+  "cost": {
+    "providerUsd": 0.18074525,
+    "toolCalls": 10,
+    "wallMs": 46743
+  },
+  "tokens": 90137,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": false
+    }
+  },
+  "reads": [
+    "SKILL.md"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01QkMMn6EfKS1sZdo3ZdYrxB",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_01AhEWhsWP5GQY88mNmk8Saf",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01LCQeEXUEMwG6YjqBjhUJXY",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01XFE9ksa6W1skq78JoiFikb",
+      "arguments": {
+        "command": "ls -la /workspace/skill/helpers/ && echo \"---\" && ls -la inputs/ && echo \"---\" && python3 -c \"import docx, lxml; print('deps ok')\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01N87ZPiTYG5H9jK3RYv547d",
+      "arguments": {
+        "command": "cd /workspace && python3 - <<'EOF'\nimport re, zipfile\nz = zipfile.ZipFile('inputs/offer_letter_template.docx')\nnames = [n for n in z.namelist() if n.endswith('.xml')]\nfound = set()\nfor n in names:\n    txt = z.read(n).decode('utf-8', 'ignore')\n    # strip tags to reassemble text\n    stripped = re.sub(r'<[^>]+>', '', txt)\n    for m in re.findall(r'\\{\\{[^}]+\\}\\}', stripped):\n        found.add((n, m))\nfor f in sorted(found):\n    print(f)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01CMMFrCRW5sTR4ouR212Fve",
+      "arguments": {
+        "command": "cd /workspace && python3 - <<'EOF'\nimport re, zipfile\nz = zipfile.ZipFile('inputs/offer_letter_template.docx')\nfor n in z.namelist():\n    if not n.endswith('.xml'): continue\n    txt = z.read(n).decode('utf-8','ignore')\n    stripped = re.sub(r'<[^>]+>', '', txt)\n    for m in re.findall(r'\\{\\{[^}]+\\}\\}', stripped):\n        if 'RELOC' in m or 'IF_' in m:\n            print(n, m)\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01HuZKa523mt645418otaNr6",
+      "arguments": {
+        "command": "cd /workspace && python3 - <<'EOF'\nimport zipfile\nfrom docx import Document\nd = Document('inputs/offer_letter_template.docx')\ndef scan(paras, where):\n    for p in paras:\n        t = p.text\n        if 'IF_' in t or 'RELOC' in t or '{{' in t:\n            if 'IF_' in t or 'RELOC' in t:\n                print(where, repr(t))\nfor p in d.paragraphs:\n    if 'IF_' in p.text or 'RELOC' in p.text:\n        print('body', repr(p.text))\nfor tbl in d.tables:\n    for row in tbl.rows:\n        for cell in row.cells:\n            for p in cell.paragraphs:\n                if 'IF_' in p.text or 'RELOC' in p.text:\n                    print('cell', repr(p.text))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_014b6Wd9muuTXqoRaGJMiAbF",
+      "arguments": {
+        "command": "cd /workspace && python3 - <<'EOF'\nimport re, zipfile\nfrom lxml import etree\nz = zipfile.ZipFile('inputs/offer_letter_template.docx')\nW='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'\nfor n in z.namelist():\n    if not n.endswith('.xml'): continue\n    root = etree.fromstring(z.read(n))\n    for p in root.iter(W+'p'):\n        texts = [t.text or '' for t in p.iter(W+'t')]\n        joined = ''.join(texts)\n        if 'IF_' in joined or 'RELOC' in joined:\n            print(n, repr(joined))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01QkMMn6EfKS1sZdo3ZdYrxB",
+      "arguments": {
+        "command": "cd /workspace && mkdir -p output && python3 skill/helpers/fill_docx.py --template inputs/offer_letter_template.docx --data inputs/employee_data.json --output output/offer_letter_filled.docx; echo \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01HK8CTApKDVJyBX19Zo98Pg",
+      "arguments": {
+        "command": "cd /workspace && python3 - <<'EOF'\nimport zipfile\nfrom lxml import etree\nW='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'\nz = zipfile.ZipFile('output/offer_letter_filled.docx')\nresidual=[]\nfor n in z.namelist():\n    if not n.endswith('.xml'): continue\n    root = etree.fromstring(z.read(n))\n    for p in root.iter(W+'p'):\n        joined=''.join(t.text or '' for t in p.iter(W+'t'))\n        if '{{' in joined or '}}' in joined:\n            residual.append((n,joined))\nprint(\"residual markers:\", residual)\n# sample body text\nd=zipfile.ZipFile('output/offer_letter_filled.docx').read('word/document.xml').decode('utf-8','ignore')\nimport re\nfor key in ['René Tanaka','Willow Evidence Services 2704','Field Analyst 2704','WILLOW-2704','2724,250','Alex Nour']:\n    print(key, 'present' if key in re.sub(r'<[^>]+>','',d) else 'MISSING(maybe split)')\nEOF\necho \"--- input unchanged check ---\"\nls -la inputs/offer_letter_filled.docx 2>/dev/null || echo \"no stray file in inputs (good)\"\nls -la output/"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "200e19a5f401eee70ca36f664d8cc9c84590cd6d215015d9bb2ca1a23de2bd99",
+  "latencyMs": 46746,
+  "checkerWallMs": 3942,
+  "diagnostic": null,
+  "usage": {
+    "input": 18,
+    "output": 2748,
+    "cacheRead": 75498,
+    "cacheWrite": 11873,
+    "total": 90137
+  },
+  "modelMessages": 9,
+  "sessionHash": "da6b5d17b44870a2b096f6096be5efe4bdb736954bdcf1f8f602adcb53ef2131"
+}

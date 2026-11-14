@@ -44,7 +44,9 @@ beforeEach(() => {
   fake.chain.mockResolvedValue(84532);
   fake.code.mockResolvedValue("0x6000");
   fake.read.mockImplementation(async ({ functionName }) =>
-    functionName === "token" ? fake.token : ["0x0", "0x0", 0n, 0n, 0n, `0x${"0".repeat(64)}`],
+    functionName === "token"
+      ? fake.token
+      : [`0x${"0".repeat(40)}`, `0x${"0".repeat(40)}`, 0n, 0n, 0n, `0x${"0".repeat(64)}`],
   );
   fake.receipt.mockResolvedValue({ status: "success" });
 });

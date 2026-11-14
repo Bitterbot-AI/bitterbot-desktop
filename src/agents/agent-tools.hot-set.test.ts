@@ -15,6 +15,9 @@ import "./test-helpers/fast-coding-tools.js";
 import type { BitterbotConfig } from "../config/config.js";
 import { isToolWrappedWithBeforeToolCallHook } from "./agent-tools.before-tool-call.js";
 import { createBitterbotCodingTools } from "./agent-tools.js";
+import { resolveSandboxConfigForAgent } from "./sandbox/config.js";
+import { withPackageTrial } from "./skills/collective/execution-context.js";
+import { createHostSandboxFsBridge } from "./test-helpers/host-sandbox-fs-bridge.js";
 import { LIST_TOOLS_NAME, USE_TOOL_NAME } from "./tools/tool-dispatcher-tool.js";
 import {
   estimateToolDefinitionTokens,
@@ -45,6 +48,40 @@ function build(extra: Parameters<typeof createBitterbotCodingTools>[0] = {}) {
 const names = (tools: Array<{ name: string }>) => tools.map((tool) => tool.name);
 
 describe("createBitterbotCodingTools hot-set exposure", () => {
+  it("keeps package trials within the metered registry even when tools are configured as deferred", async () => {
+    const resolved = resolveSandboxConfigForAgent({}, "main");
+    const trial = {
+      workspace: ws,
+      packageFiles: new Set<string>(),
+      reads: new Set<string>(),
+      toolCalls: 0,
+      maxToolCalls: 0,
+    };
+    await withPackageTrial(trial, async () => {
+      const tools = build({
+        config: { tools: { hotSet: { always: [], perLane: { chat: [] } } } },
+        sandbox: {
+          enabled: true,
+          sessionKey: "sandbox:package-trial",
+          workspaceDir: ws,
+          agentWorkspaceDir: ws,
+          workspaceAccess: "rw",
+          containerName: "unused-package-trial",
+          containerWorkdir: "/workspace",
+          fsBridge: createHostSandboxFsBridge(ws),
+          docker: resolved.docker,
+          tools: { deny: [] },
+          browserAllowHostControl: false,
+        },
+      });
+      expect(names(tools).toSorted()).toEqual(["edit", "exec", "process", "read", "write"]);
+      await expect(
+        tools.find((t) => t.name === "read")!.execute("trial", { path: "missing" }),
+      ).rejects.toThrow("Package trial tool budget exhausted");
+      expect(trial.toolCalls).toBe(1);
+    });
+  });
+
   it("chat lane: hot tools + list_tools + use_tool, sorted, under the token budget", () => {
     const tools = build();
     const exposed = names(tools);

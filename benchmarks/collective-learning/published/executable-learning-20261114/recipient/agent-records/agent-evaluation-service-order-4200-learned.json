@@ -1,0 +1,177 @@
+{
+  "id": "agent-evaluation-service-order-4200-learned",
+  "caseId": "evaluation-service-order-4200",
+  "arm": "learned",
+  "runId": "df8f38ce-f62d-4d6d-8675-41c27d9a3d58",
+  "cost": {
+    "providerUsd": 0.171593,
+    "toolCalls": 9,
+    "wallMs": 37400
+  },
+  "tokens": 83781,
+  "outcome": "pass",
+  "grade": {
+    "status": "pass",
+    "issues": [],
+    "details": {
+      "effectiveSections": 2,
+      "relocationIncluded": true
+    }
+  },
+  "reads": [
+    "SKILL.md",
+    "helpers/fill_docx.py"
+  ],
+  "helperInvocations": [
+    {
+      "name": "exec",
+      "id": "toolu_01KGxrSWmoHndcp6jb545kY4",
+      "arguments": {
+        "command": "python3 /workspace/skill/helpers/fill_docx.py \\\n  --template inputs/offer_letter_template.docx \\\n  --data inputs/employee_data.json \\\n  --output output/offer_letter_filled.docx\necho \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    }
+  ],
+  "toolActions": [
+    {
+      "name": "read",
+      "id": "toolu_019v9Tk5XkHcUv5JgaATssQB",
+      "arguments": {
+        "path": "/workspace/skill/SKILL.md"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01Wh7br2oJimt8ZBX57QMcxL",
+      "arguments": {
+        "path": "inputs/employee_data.json"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "read",
+      "id": "toolu_01SnV3sYJ5VsFyNtXQVXx1BP",
+      "arguments": {
+        "path": "/workspace/skill/helpers/fill_docx.py"
+      },
+      "result": [
+        {
+          "isError": false
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_0169bmnrBfwAf1QdE6uZw9FC",
+      "arguments": {
+        "command": "ls -la inputs/ && ls -la output/ 2>/dev/null || echo \"no output dir\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_012WgXWR4tNCCPnauaFRhjWu",
+      "arguments": {
+        "command": "python3 -c \"import docx, lxml; print('deps ok')\" 2>&1"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01KGxrSWmoHndcp6jb545kY4",
+      "arguments": {
+        "command": "python3 /workspace/skill/helpers/fill_docx.py \\\n  --template inputs/offer_letter_template.docx \\\n  --data inputs/employee_data.json \\\n  --output output/offer_letter_filled.docx\necho \"EXIT=$?\""
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_01RdvfHGsCuvWDRYvyjLnrra",
+      "arguments": {
+        "command": "cd output && python3 - <<'EOF'\nimport docx\nd = docx.Document(\"offer_letter_filled.docx\")\ntexts=[]\ndef walk_tbl(t):\n    for r in t.rows:\n        for c in r.cells:\n            for p in c.paragraphs: texts.append(p.text)\n            for nt in c.tables: walk_tbl(nt)\nfor p in d.paragraphs: texts.append(p.text)\nfor t in d.tables: walk_tbl(t)\nfor s in d.sections:\n    for part in (s.header,s.first_page_header,s.even_page_header,s.footer,s.first_page_footer,s.even_page_footer):\n        if part:\n            for p in part.paragraphs: texts.append(p.text)\n            for t in part.tables: walk_tbl(t)\nfull=\"\\n\".join(texts)\nimport re\nleft=re.findall(r\"\\{\\{[^}]*\\}\\}\", full)\nprint(\"LEFTOVERS:\", left)\nprint(\"has RELOCATION_AMOUNT value 1,125:\", \"1,125\" in full)\nprint(\"has Amélie:\", \"Amélie\" in full)\nprint(\"has Ω:\", \"Ω\" in full)\nprint(\"---- non-empty lines ----\")\nfor t in texts:\n    if t.strip(): print(repr(t))\nEOF"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "exec",
+      "id": "toolu_017dBvXo5ApcDBRswFAEHQoL",
+      "arguments": {
+        "command": "ls -la output/ && md5sum inputs/* 2>/dev/null || sha1sum inputs/*"
+      },
+      "result": [
+        {
+          "isError": false,
+          "status": "completed",
+          "exitCode": 0
+        }
+      ]
+    },
+    {
+      "name": "complete",
+      "id": "toolu_014a2GLznHRa2cQJnH3wwaEQ",
+      "arguments": {
+        "summary": "Filled the DOCX template and wrote output/offer_letter_filled.docx. Used the docx-placeholder-workflow skill helper (fill_docx.py), which exited 0. Verified: all {{FIELD}} placeholders resolved across body, nested tables, and all section headers/footers (default/first-page/even-page); no leftover markers; Unicode (Amélie, Ω, Côte) and special chars (Part A & Part B) preserved. The IF_RELOCATION block was kept because RELOCATION_PACKAGE == \"Yes\" (the bare RELOCATION=\"No\" and RELOCATION_PACKAGE_BACKUP keys were correctly ignored as non-governing). Inputs were not modified.",
+        "completed_tasks": "Read skill SKILL.md and helper; Verified inputs and python-docx/lxml deps; Ran fill_docx.py (exit 0); Verified no leftover markers, correct conditional handling, and preserved structure/placement; Confirmed inputs unmodified"
+      },
+      "result": [
+        {
+          "isError": true
+        }
+      ]
+    }
+  ],
+  "inputUnchanged": true,
+  "packageUnchanged": true,
+  "outputHash": "a7c49931d91c23b213f65cbd88506ff9d2e9ce2c4c1d9f09bfed27eb26c11b26",
+  "latencyMs": 37407,
+  "checkerWallMs": 4618,
+  "diagnostic": null,
+  "usage": {
+    "input": 14,
+    "output": 1840,
+    "cacheRead": 67221,
+    "cacheWrite": 14706,
+    "total": 83781
+  },
+  "modelMessages": 7,
+  "sessionHash": "8aeb1abc2f3df1e7ad528945d09bd59354a656fca6f5b25047eaffbfe09c2590"
+}
