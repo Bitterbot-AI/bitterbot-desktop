@@ -26,6 +26,20 @@ class SqlCheckerTests(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
         self.assertFalse(result["orderedMatch"])
 
+    def test_python_build_without_extension_loading_api(self):
+        class NoExtensionConnection(sqlite3.Connection):
+            @property
+            def enable_load_extension(self):
+                raise AttributeError("extension loading is not compiled in")
+
+        connect = sqlite3.connect
+        def restricted_connect(*args, **kwargs):
+            return connect(*args, **kwargs, factory=NoExtensionConnection)
+
+        with patch("bird_sql.sqlite3.connect", side_effect=restricted_connect):
+            self.assertEqual(grade(self.db, self.reference, self.reference)["status"], "pass")
+            self.assertEqual(grade(self.db, self.reference, "SELECT load_extension('/tmp/evil')")["status"], "task-failure")
+
     def test_duplicates_are_not_discarded(self):
         result = grade(self.db, self.reference, "SELECT DISTINCT x FROM t WHERE x IS NOT NULL")
         self.assertEqual(result["status"], "task-failure")

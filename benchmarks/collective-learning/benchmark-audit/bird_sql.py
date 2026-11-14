@@ -34,7 +34,11 @@ def execute(database, sql):
     database = pathlib.Path(database).resolve(strict=True)
     conn = sqlite3.connect(database.as_uri() + "?mode=ro&immutable=1", uri=True, timeout=1)
     try:
-        conn.enable_load_extension(False)
+        # Some macOS Python builds omit the extension-loading API entirely.
+        # Loading is disabled by default; the SQL authorizer below also denies it.
+        disable_extensions = getattr(conn, "enable_load_extension", None)
+        if disable_extensions is not None:
+            disable_extensions(False)
         conn.execute("PRAGMA query_only=ON")
         conn.execute("PRAGMA trusted_schema=OFF")
         conn.execute("PRAGMA cache_size=-8192")
