@@ -110,7 +110,8 @@ export class VerifiedWorkflowReuse {
       shadowEvaluation: true;
     },
   ): Promise<WorkflowReuseResult> {
-    if (params.shadowEvaluation !== true) throw new Error("Explicit shadow execution required");
+    if (!Object.is(params.shadowEvaluation, true))
+      throw new Error("Explicit shadow execution required");
     if (!/^[a-zA-Z0-9_.:-]{1,200}$/.test(params.requestId)) throw new Error("Invalid request ID");
     const start = performance.now();
     const scope = LearningScopeSchema.parse(params.scope),
@@ -247,5 +248,5 @@ export function prioritizeWorkflowPractice(items: readonly PracticeOpportunity[]
     const p = (x.successes + 1) / (x.successes + x.failures + 2);
     return { id: x.id, score: (x.expectedUses * p * (1 - p)) / x.quotedCost };
   });
-  return scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).map((x) => x.id);
+  return scored.toSorted((a, b) => b.score - a.score || a.id.localeCompare(b.id)).map((x) => x.id);
 }
