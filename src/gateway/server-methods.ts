@@ -1,4 +1,11 @@
 import { withSpan } from "../observability/otel.js";
+import { guardPhoneRequest, isPhoneSurface } from "./mobile/phone-policy.js";
+import {
+  CHAT_SCOPE,
+  CHAT_SCOPE_METHODS,
+  NOTIFICATIONS_SCOPE,
+  NOTIFICATIONS_SCOPE_METHODS,
+} from "./mobile/scopes.js";
 import { ErrorCodes, errorShape } from "./protocol/index.js";
 import { agentRuntimeHandlers } from "./server-methods/agent-runtime.js";
 import { agentHandlers } from "./server-methods/agent.js";
@@ -27,6 +34,7 @@ import { healthHandlers } from "./server-methods/health.js";
 import { logsHandlers } from "./server-methods/logs.js";
 import { managementHandlers } from "./server-methods/management.js";
 import { memoryHandlers } from "./server-methods/memory.js";
+import { mobileHandlers } from "./server-methods/mobile.js";
 import { modelsAuthHandlers } from "./server-methods/models-auth.js";
 import { modelsHandlers } from "./server-methods/models.js";
 import { monitorHandlers } from "./server-methods/monitors.js";
@@ -80,6 +88,9 @@ const PAIRING_METHODS = new Set([
   "device.pair.reject",
   "device.token.rotate",
   "device.token.revoke",
+  "device.remove",
+  "device.rename",
+  "mobile.pair.create",
   "node.rename",
 ]);
 const ADMIN_METHOD_PREFIXES = ["exec.approvals.", "soapbox.setup."];
@@ -326,6 +337,14 @@ export function authorizeGatewayMethod(method: string, client: GatewayRequestOpt
   if (scopes.includes(ADMIN_SCOPE)) {
     return null;
   }
+  // PLAN-62: a phone's narrow scopes. Each grants exactly its listed methods,
+  // whatever other set the method also sits in.
+  if (scopes.includes(CHAT_SCOPE) && CHAT_SCOPE_METHODS.has(method)) {
+    return null;
+  }
+  if (scopes.includes(NOTIFICATIONS_SCOPE) && NOTIFICATIONS_SCOPE_METHODS.has(method)) {
+    return null;
+  }
   if (APPROVAL_METHODS.has(method) && !scopes.includes(APPROVALS_SCOPE)) {
     return errorShape(ErrorCodes.INVALID_REQUEST, "missing scope: operator.approvals");
   }
@@ -386,6 +405,7 @@ export const coreGatewayHandlers: GatewayRequestHandlers = {
   ...channelsHandlers,
   ...chatHandlers,
   ...deviceHandlers,
+  ...mobileHandlers,
   ...execApprovalsHandlers,
   ...guardsHandlers,
   ...webHandlers,
@@ -438,6 +458,22 @@ export async function handleGatewayRequest(
     respond(false, undefined, authError);
     return;
   }
+  let params = (req.params ?? {}) as Record<string, unknown>;
+  let respondOut = respond;
+  // PLAN-62: a phone sees only its own and the main conversation.
+  if (isPhoneSurface(client?.connect?.scopes)) {
+    const guard = guardPhoneRequest(req.method, params, client?.connect?.device?.id);
+    if (!guard.ok) {
+      respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, guard.message));
+      return;
+    }
+    params = guard.params;
+    const filterPayload = guard.filterPayload;
+    if (filterPayload) {
+      respondOut = (ok, payload, error, meta) =>
+        respond(ok, ok ? filterPayload(payload) : payload, error, meta);
+    }
+  }
   const handler = opts.extraHandlers?.[req.method] ?? coreGatewayHandlers[req.method];
   if (!handler) {
     respond(
@@ -452,10 +488,10 @@ export async function handleGatewayRequest(
     async () => {
       await handler({
         req,
-        params: (req.params ?? {}) as Record<string, unknown>,
+        params,
         client,
         isWebchatConnect,
-        respond,
+        respond: respondOut,
         context,
       });
     },

@@ -76,6 +76,28 @@ export type GatewayControlUiConfig = {
   dangerouslyDisableDeviceAuth?: boolean;
 };
 
+/** PLAN-62: the phone app at /m, phone pairing and Web Push. */
+export type GatewayMobileConfig = {
+  /** Serve the phone app at /m and allow phone pairing (default: true). */
+  enabled?: boolean;
+  /**
+   * The address a phone should open this gateway at (e.g. https://box.tailnet.ts.net).
+   * Pairing QR codes use it first; otherwise the gateway derives addresses from
+   * Tailscale Serve/Funnel and the bind mode.
+   */
+  publicUrl?: string;
+  push?: {
+    /** Send Web Push notifications to paired phones that turned them on (default: true). */
+    enabled?: boolean;
+    /** VAPID contact (mailto: or https: URL) shown to push services. */
+    subject?: string;
+    /** Notifications per device per hour (default: 30). */
+    maxPerHour?: number;
+    /** Extra push service hostnames to accept subscription endpoints from. */
+    allowedEndpointHosts?: string[];
+  };
+};
+
 export type GatewayAuthMode = "token" | "password" | "trusted-proxy";
 
 /**
@@ -297,6 +319,7 @@ export type GatewayConfig = {
   /** Custom IP address for bind="custom" mode. Fallback: 0.0.0.0. */
   customBindHost?: string;
   controlUi?: GatewayControlUiConfig;
+  mobile?: GatewayMobileConfig;
   auth?: GatewayAuthConfig;
   tailscale?: GatewayTailscaleConfig;
   remote?: GatewayRemoteConfig;

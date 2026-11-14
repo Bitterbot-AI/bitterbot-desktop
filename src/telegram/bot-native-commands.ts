@@ -1,5 +1,6 @@
 import type { Bot, Context } from "grammy";
 import { resolveChunkMode } from "../auto-reply/chunk.js";
+import { resolveCommandAuthorization } from "../auto-reply/command-auth.js";
 import type { CommandArgs } from "../auto-reply/commands-registry.js";
 import {
   buildCommandTextFromArgs,
@@ -663,12 +664,26 @@ export const registerTelegramNativeCommands = ({
             : `telegram:${chatId}`;
           const to = `telegram:${chatId}`;
 
+          // Same owner check the reply pipeline uses (owner-only tools, /pair).
+          const { senderIsOwner } = resolveCommandAuthorization({
+            ctx: {
+              Provider: "telegram",
+              Surface: "telegram",
+              From: from,
+              To: to,
+              SenderId: senderId || undefined,
+              AccountId: accountId,
+            },
+            cfg,
+            commandAuthorized,
+          });
           const result = await executePluginCommand({
             command: match.command,
             args: match.args,
             senderId,
             channel: "telegram",
             isAuthorizedSender: commandAuthorized,
+            senderIsOwner,
             commandBody,
             config: cfg,
             from,

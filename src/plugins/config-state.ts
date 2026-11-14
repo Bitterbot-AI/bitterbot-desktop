@@ -16,7 +16,10 @@ export type NormalizedPluginsConfig = {
 export const BUNDLED_ENABLED_BY_DEFAULT = new Set<string>([
   // Connectors (PLAN-53 D2): registers nothing until the owner adds a server.
   "mcp",
-  // V1 default flip (PLAN-41 D-D): device-pair, phone-control, talk-voice and
+  // PLAN-62: `/pair` from a chat app (owner only). The phone app's welcome
+  // screen offers it, so it must work out of the box.
+  "device-pair",
+  // V1 default flip (PLAN-41 D-D): phone-control, talk-voice and
   // twitch left this set — experimental surfaces are opt-in via
   // plugins.entries.<id>.enabled=true.
   // Bundled CHANNEL extensions register at boot so a fresh node can see and
